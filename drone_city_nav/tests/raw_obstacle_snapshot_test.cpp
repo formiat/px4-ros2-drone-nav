@@ -89,4 +89,20 @@ TEST(RawObstacleSnapshotTracker, ProcessInstanceIdentityDoesNotDependOnRosTime) 
   EXPECT_NE(first, second);
 }
 
+TEST(PendingRawObstacleSnapshotDeadline, PreservesOneWaitAndResetsAfterCompletion) {
+  PendingRawObstacleSnapshotDeadline deadline;
+
+  deadline.startIfIdle(100);
+  deadline.startIfIdle(200);
+  EXPECT_EQ(deadline.startedAtNs(), 100);
+  EXPECT_FALSE(deadline.expired(1099, 1000));
+  EXPECT_TRUE(deadline.expired(1100, 1000));
+
+  deadline.complete();
+  EXPECT_EQ(deadline.startedAtNs(), 0);
+  deadline.startIfIdle(2000);
+  EXPECT_EQ(deadline.startedAtNs(), 2000);
+  EXPECT_FALSE(deadline.expired(2500, 1000));
+}
+
 } // namespace drone_city_nav

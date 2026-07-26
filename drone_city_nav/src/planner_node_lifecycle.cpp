@@ -133,9 +133,10 @@ PlannerNode::PlannerNode()
               no_static_astar_recovery_enabled_ ? "enabled" : "disabled");
   RCLCPP_INFO(get_logger(),
               "No-static rollout acceptance: minimum_length=%.2fm "
+              "vehicle_clearance=%.2fm "
               "local_window=%s "
               "local_window_extra_margin=%.2fm",
-              no_static_rollout_min_length_m_,
+              no_static_rollout_min_length_m_, no_static_vehicle_clearance_m_,
               no_static_rollout_local_window_enabled_ ? "enabled" : "disabled",
               no_static_rollout_local_window_extra_margin_m_);
   RCLCPP_INFO(get_logger(),
@@ -358,6 +359,9 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
       config.no_static_rollout.terminal_braking_decel_mps2;
   no_static_terminal_braking_margin_m_ =
       config.no_static_rollout.terminal_braking_margin_m;
+  no_static_terminal_response_delay_s_ =
+      config.no_static_rollout.terminal_response_delay_s;
+  no_static_vehicle_clearance_m_ = config.no_static_rollout.vehicle_clearance_m;
   no_static_rollout_min_length_m_ = config.no_static_rollout.minimum_length_m;
   no_static_rollout_local_window_enabled_ =
       config.no_static_rollout.local_planning_window_enabled;

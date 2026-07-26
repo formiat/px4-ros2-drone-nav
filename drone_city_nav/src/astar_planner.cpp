@@ -110,7 +110,7 @@ struct CompareOpenNode {
                                       const GridIndex cell) {
   PathRiskScore risk{};
   risk.worst_tier = field.tierAt(cell);
-  risk.minimum_raw_clearance_m = field.occupiedDistance().distanceAt(cell);
+  risk.minimum_raw_clearance_m = field.occupiedClearance().distanceAt(cell);
   return risk;
 }
 
@@ -128,8 +128,8 @@ struct CompareOpenNode {
   } else if (tier == ObstacleRiskTier::kPlanningBand) {
     next.planning_exposure_m += step_distance_m;
   }
-  next.minimum_raw_clearance_m =
-      std::min(next.minimum_raw_clearance_m, field.occupiedDistance().distanceAt(cell));
+  next.minimum_raw_clearance_m = std::min(next.minimum_raw_clearance_m,
+                                          field.occupiedClearance().distanceAt(cell));
   return next;
 }
 

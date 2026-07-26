@@ -55,7 +55,7 @@ private:
       .name = snapshot.risk_snapshot.name,
       .raw_occupancy = &snapshot.risk_snapshot.grid,
       .risk_field = &snapshot.risk_snapshot.risk,
-      .raw_clearance = &snapshot.risk_snapshot.clearance,
+      .raw_clearance = &snapshot.risk_snapshot.risk.occupiedClearance(),
       .raw_clearance_cache_hit = true,
   };
 }
@@ -100,7 +100,7 @@ computeRoute(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
       .current_position = start,
       .goal = goal,
       .astar = astarConfig(config, snapshot.anchor, after_hold),
-      .prohibited_clearance_field = &risk_snapshot.clearance,
+      .prohibited_clearance_field = &risk_snapshot.risk.occupiedClearance(),
       .prohibited_clearance_field_cache_hit = true,
       .stop_token = stop_token,
   });
@@ -153,7 +153,8 @@ singleThreadConfig(const RepairRaceConfig& config) {
       TrajectoryPlannerInput{
           .route_points = route.points,
           .prohibited_grid = &snapshot.risk_snapshot.grid,
-          .prohibited_clearance_field = &snapshot.risk_snapshot.clearance,
+          .prohibited_clearance_field =
+              &snapshot.risk_snapshot.risk.occupiedClearance(),
           .prohibited_clearance_field_cache_hit = true,
           .precomputed_corridor_samples = {},
           .known_passage_map = nullptr,
@@ -277,7 +278,8 @@ finalize(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
         TrajectoryPlannerInput{
             .route_points = route->points,
             .prohibited_grid = &snapshot.risk_snapshot.grid,
-            .prohibited_clearance_field = &snapshot.risk_snapshot.clearance,
+            .prohibited_clearance_field =
+                &snapshot.risk_snapshot.risk.occupiedClearance(),
             .prohibited_clearance_field_cache_hit = true,
             .precomputed_corridor_samples = {},
             .known_passage_map =

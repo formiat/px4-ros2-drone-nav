@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/clearance_field.hpp"
 #include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
 
@@ -27,9 +26,12 @@ struct ObstacleRiskPreparationInput {
 struct PreparedObstacleRiskSnapshot {
   OccupancyGrid2D raw_occupancy;
   ObstacleRiskField risk_field;
-  ClearanceField2D raw_clearance;
   GridBounds evaluation_bounds{};
   RawObstacleVersion version{};
+
+  [[nodiscard]] const ClearanceField2D& rawClearance() const noexcept {
+    return risk_field.occupiedClearance();
+  }
 };
 
 class ObstacleRiskSnapshotBuilder {

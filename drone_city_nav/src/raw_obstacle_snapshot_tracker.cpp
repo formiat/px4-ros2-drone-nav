@@ -88,6 +88,27 @@ RawObstacleSnapshotTracker::current() const noexcept {
   return current_valid_ ? &current_ : nullptr;
 }
 
+void PendingRawObstacleSnapshotDeadline::startIfIdle(
+    const std::int64_t now_ns) noexcept {
+  if (started_at_ns_ <= 0 && now_ns > 0) {
+    started_at_ns_ = now_ns;
+  }
+}
+
+void PendingRawObstacleSnapshotDeadline::complete() noexcept {
+  started_at_ns_ = 0;
+}
+
+bool PendingRawObstacleSnapshotDeadline::expired(
+    const std::int64_t now_ns, const std::int64_t timeout_ns) const noexcept {
+  return started_at_ns_ > 0 && timeout_ns >= 0 && now_ns >= started_at_ns_ &&
+         now_ns - started_at_ns_ >= timeout_ns;
+}
+
+std::int64_t PendingRawObstacleSnapshotDeadline::startedAtNs() const noexcept {
+  return started_at_ns_;
+}
+
 const char* rawSnapshotRelationName(const RawSnapshotRelation relation) noexcept {
   switch (relation) {
     case RawSnapshotRelation::kExact:

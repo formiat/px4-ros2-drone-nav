@@ -43,6 +43,18 @@ private:
   std::vector<std::uint64_t> retired_producers_;
 };
 
+class PendingRawObstacleSnapshotDeadline {
+public:
+  void startIfIdle(std::int64_t now_ns) noexcept;
+  void complete() noexcept;
+  [[nodiscard]] bool expired(std::int64_t now_ns,
+                             std::int64_t timeout_ns) const noexcept;
+  [[nodiscard]] std::int64_t startedAtNs() const noexcept;
+
+private:
+  std::int64_t started_at_ns_{0};
+};
+
 [[nodiscard]] const char*
 rawSnapshotRelationName(RawSnapshotRelation relation) noexcept;
 [[nodiscard]] std::uint64_t generateRawObstacleProducerInstanceId() noexcept;

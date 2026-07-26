@@ -181,6 +181,9 @@ void Px4OffboardNode::onRawObstacleSnapshot(const msg::RawObstacleSnapshot& snap
     msg::ExecutableTrajectory command = std::move(*pending_raw_obstacle_snapshot_);
     pending_raw_obstacle_snapshot_.reset();
     processExecutableTrajectory(command, true);
+    if (!pending_raw_obstacle_snapshot_.has_value()) {
+      pending_raw_obstacle_snapshot_deadline_.complete();
+    }
   }
 }
 

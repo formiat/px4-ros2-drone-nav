@@ -21,6 +21,9 @@ enum class RolloutRejectReason {
 enum class RolloutGridRejectReason {
   kOutsideGrid,
   kRawOccupied,
+  kVehicleClearanceEnvelope,
+  kTerminalResponseEnvelope,
+  kTerminalStoppingEnvelope,
 };
 
 struct RolloutPlannerConfig {
@@ -49,6 +52,9 @@ struct RolloutInput {
   const OccupancyGrid2D* grid{nullptr};
   const ObstacleRiskField* risk_field{nullptr};
   double minimum_length_m{0.0};
+  double minimum_path_clearance_m{0.0};
+  double minimum_terminal_clearance_m{0.0};
+  double minimum_terminal_stopping_distance_m{0.0};
   bool stationary_restart{false};
   std::uint64_t generation{0U};
   std::uint64_t grid_revision{0U};

@@ -41,6 +41,27 @@ namespace {
 
 } // namespace
 
+TEST(PlannerPathPublication, UsesValidatedObstacleSnapshotIdentity) {
+  const TrajectoryDeliveryDiagnostics original{
+      .generation = 19U,
+      .obstacle_snapshot_producer_instance_id = 0U,
+      .obstacle_snapshot_revision = 0U,
+      .risk_policy_fingerprint = 0U,
+  };
+  const RawObstacleVersion version{
+      .build_revision = 41U,
+      .risk_policy_fingerprint = 73U,
+  };
+
+  const TrajectoryDeliveryDiagnostics delivery =
+      deliveryForValidatedObstacleSnapshot(original, 29U, version);
+
+  EXPECT_EQ(delivery.generation, 19U);
+  EXPECT_EQ(delivery.obstacle_snapshot_producer_instance_id, 29U);
+  EXPECT_EQ(delivery.obstacle_snapshot_revision, 41U);
+  EXPECT_EQ(delivery.risk_policy_fingerprint, 73U);
+}
+
 TEST(PlannerPathPublication, NamesPublicationReasons) {
   EXPECT_STREQ(pathPublicationReasonName(PathPublicationReason::kComputedPath),
                "computed_path");

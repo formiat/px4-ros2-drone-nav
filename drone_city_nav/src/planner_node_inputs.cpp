@@ -445,6 +445,28 @@ PlannerNode::buildObstacleField(const std::int64_t now_ns) {
   if (current_lidar_grid.has_value()) {
     result.current_lidar_grid = std::move(current_lidar_grid);
   }
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Planner obstacle source state: "
+      "static[enabled=%s loaded=%s used=%s occupied=%zu] "
+      "memory[enabled=%s seen=%s used=%s occupied=%zu] "
+      "current_lidar[enabled=%s used=%s fresh=%s occupied=%zu]",
+      result.static_source.enabled ? "true" : "false",
+      result.static_source.loaded ? "true" : "false",
+      result.static_source.used ? "true" : "false", result.static_source.occupied_cells,
+      result.memory.enabled ? "true" : "false", result.memory.seen ? "true" : "false",
+      result.memory.used ? "true" : "false", result.memory.source_counts.occupied_cells,
+      result.current_lidar.enabled ? "true" : "false",
+      result.current_lidar.used ? "true" : "false",
+      result.current_lidar.fresh ? "true" : "false",
+      result.current_lidar.occupied_cells);
+  const LidarIngestionDecisionStats& lidar_decisions =
+      result.current_lidar.ingestion_decisions;
+  const std::string lidar_decision_summary =
+      formatLidarIngestionDecisionStatsSummary(lidar_decisions);
+  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                       "Planner current lidar decisions: %s",
+                       lidar_decision_summary.c_str());
   if (result.memory.enabled && !result.memory.seen) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Obstacle memory source is enabled but no grid has been "
@@ -791,7 +813,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       truncation_replan.has_value() ? truncation_replan->generation : 0U);
   std::vector<TrajectoryRiskContext> risk_contexts{
       TrajectoryRiskContext{"raw_risk", &planning_grid, &prepared->risk_field,
-                            &prepared->raw_clearance, true},
+                            &prepared->rawClearance(), true},
   };
   if (plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
       PlannerModePrimaryAction::kRollout) {
@@ -870,6 +892,15 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             ? 0.0
             : std::max(no_static_rollout_min_length_m_,
                        stationary_restart ? 0.0 : terminal_braking_distance_m);
+    const double terminal_response_clearance_m =
+        stationary_restart ? 0.0
+                           : current_speed_mps * no_static_terminal_response_delay_s_ +
+                                 std::sqrt(0.5) * planning_grid.resolution();
+    const double vehicle_clearance_envelope_m =
+        no_static_vehicle_clearance_m_ + std::sqrt(0.5) * planning_grid.resolution();
+    const double terminal_stopping_envelope_m = terminalBrakingDistanceM(
+        std::max(current_speed_mps, rollout_planner_.config().maximum_speed_mps),
+        no_static_terminal_braking_decel_mps2_, no_static_terminal_braking_margin_m_);
     const bool blocked_replacement_context =
         truncation_rollout || rollout_runtime.blocked;
     const auto rollout_started_at = std::chrono::steady_clock::now();
@@ -886,6 +917,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           "ROLLOUT_INPUT generation=%" PRIu64 " grid_revision=%" PRIu64
           " grid=%s start=(%.2f,%.2f) velocity=(%.2f,%.2f) speed=%.2f "
           "preferred_target=(%.2f,%.2f) target_distance=%.2f "
+          "vehicle_clearance_envelope=%.2f terminal_response_clearance=%.2f "
+          "terminal_stopping_envelope=%.2f "
           "target_source=mission_or_recovery "
           "active_path=%s active_path_id=%" PRIu64 " active_s=%.2f "
           "active_remaining=%.2f stable_prefix_m=%.2f "
@@ -895,7 +928,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           rollout_velocity.x, rollout_velocity.y,
           std::hypot(rollout_velocity.x, rollout_velocity.y), preferred_target.x,
           preferred_target.y, distance(rollout_start, preferred_target),
-          rollout_prefix_available ? "true" : "false", active_rollout_path_id_,
+          vehicle_clearance_envelope_m, terminal_response_clearance_m,
+          terminal_stopping_envelope_m, rollout_prefix_available ? "true" : "false",
+          active_rollout_path_id_,
           artifact_matches_active_rollout ? executable_trajectory_artifact_.current_s_m
                                           : 0.0,
           artifact_matches_active_rollout ? rollout_runtime.progress.remaining_m : 0.0,
@@ -910,6 +945,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           .grid = risk_attempt.raw_occupancy,
           .risk_field = &prepared->risk_field,
           .minimum_length_m = required_rollout_length_m,
+          .minimum_path_clearance_m = vehicle_clearance_envelope_m,
+          .minimum_terminal_clearance_m = terminal_response_clearance_m,
+          .minimum_terminal_stopping_distance_m = terminal_stopping_envelope_m,
           .stationary_restart = stationary_restart,
           .generation = invalidation_generation,
           .grid_revision = prepared->version.build_revision,
@@ -1461,11 +1499,6 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       path_result->smoothing_duration_ms);
   const LidarIngestionDecisionStats& lidar_decisions =
       planning_result->current_lidar.ingestion_decisions;
-  const std::string lidar_decision_summary =
-      formatLidarIngestionDecisionStatsSummary(lidar_decisions);
-  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
-                       "Planner current lidar decisions: %s",
-                       lidar_decision_summary.c_str());
   const std::string lidar_decision_samples =
       formatLidarIngestionRepresentativeDiagnostics(lidar_decisions);
   if (lidar_decisions.invariant_fallbacks > 0U) {

@@ -157,7 +157,7 @@ void Px4OffboardNode::updateTemporaryReplanHold() {
 void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
   pending_local_horizon_successor_.reset();
   pending_raw_obstacle_snapshot_.reset();
-  pending_raw_obstacle_snapshot_received_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+  pending_raw_obstacle_snapshot_deadline_.complete();
   if (crashed_ || !safe_trajectory_truncation_enabled_) {
     return;
   }

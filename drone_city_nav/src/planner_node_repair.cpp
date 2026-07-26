@@ -24,7 +24,6 @@ bool PlannerNode::runConfirmedRepairRace(
       .name = "raw_risk",
       .grid = prepared.raw_occupancy,
       .risk = prepared.risk_field,
-      .clearance = prepared.raw_clearance,
   };
   snapshot->old_trajectory = truncation_replan.old_trajectory;
   snapshot->anchor = trajectorySampleAtS(truncation_replan.old_trajectory.samples,

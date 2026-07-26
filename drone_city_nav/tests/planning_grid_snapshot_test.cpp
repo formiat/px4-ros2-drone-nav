@@ -55,6 +55,9 @@ TEST(ObstacleRiskSnapshot, OwnsRawGridDistanceFieldAndIdentity) {
   EXPECT_TRUE(snapshot.raw_occupancy.isOccupied(GridIndex{3, 3}));
   EXPECT_EQ(snapshot.risk_field.tierAt(GridIndex{4, 3}),
             ObstacleRiskTier::kPlanningBand);
+  EXPECT_EQ(&snapshot.rawClearance(), &snapshot.risk_field.occupiedClearance());
+  EXPECT_DOUBLE_EQ(snapshot.rawClearance().distanceAt(GridIndex{4, 3}),
+                   snapshot.risk_field.occupiedClearance().distanceAt(GridIndex{4, 3}));
   EXPECT_EQ(snapshot.version.memory_producer_instance_id, 17U);
   EXPECT_EQ(snapshot.version.memory_sequence, 42U);
   EXPECT_EQ(snapshot.version.lidar_update_ns, 123456);

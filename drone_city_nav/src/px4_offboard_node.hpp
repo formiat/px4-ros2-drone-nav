@@ -480,7 +480,7 @@ private:
   std::optional<msg::ExecutableTrajectory> pending_truncation_suffix_;
   std::optional<msg::ExecutableTrajectory> pending_local_horizon_successor_;
   std::optional<msg::ExecutableTrajectory> pending_raw_obstacle_snapshot_;
-  rclcpp::Time pending_raw_obstacle_snapshot_received_time_{0, 0, RCL_ROS_TIME};
+  PendingRawObstacleSnapshotDeadline pending_raw_obstacle_snapshot_deadline_;
   RawObstacleSnapshotTracker raw_obstacle_snapshot_tracker_;
   TrajectoryMetrics last_trajectory_metrics_{};
   TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};

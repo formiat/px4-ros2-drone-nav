@@ -4,6 +4,16 @@
 
 namespace drone_city_nav {
 
+TrajectoryDeliveryDiagnostics
+deliveryForValidatedObstacleSnapshot(TrajectoryDeliveryDiagnostics delivery,
+                                     const std::uint64_t producer_instance_id,
+                                     const RawObstacleVersion& version) noexcept {
+  delivery.obstacle_snapshot_producer_instance_id = producer_instance_id;
+  delivery.obstacle_snapshot_revision = version.build_revision;
+  delivery.risk_policy_fingerprint = version.risk_policy_fingerprint;
+  return delivery;
+}
+
 [[nodiscard]] RouteCandidateDecision
 selectRouteCandidate(const std::span<const Point2> pre_collapse_points,
                      const double collinearity_tolerance_m,

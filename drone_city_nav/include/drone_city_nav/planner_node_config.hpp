@@ -93,6 +93,8 @@ struct NoStaticRolloutConfig {
   double recovery_lookahead_m{25.0};
   double terminal_braking_decel_mps2{4.0};
   double terminal_braking_margin_m{2.0};
+  double terminal_response_delay_s{0.35};
+  double vehicle_clearance_m{0.5};
   double minimum_length_m{7.0};
   bool local_planning_window_enabled{true};
   double local_planning_window_extra_margin_m{1.0};

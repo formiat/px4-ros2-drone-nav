@@ -106,7 +106,7 @@ void classifyInterval(const ObstacleRiskField& field, const OccupancyGrid2D& raw
       interval_tier = ObstacleRiskTier::kCriticalBand;
       continue;
     }
-    const double clearance_m = field.occupiedDistance().distanceAt(cell);
+    const double clearance_m = field.occupiedClearance().distanceAt(cell);
     score.minimum_raw_clearance_m =
         std::min(score.minimum_raw_clearance_m, clearance_m);
     const ObstacleRiskTier tier = field.tierAt(cell);
@@ -232,9 +232,9 @@ ObstacleRiskField ObstacleRiskField::build(const OccupancyGrid2D& raw_grid,
   ObstacleRiskField field;
   field.policy_ = policy;
   field.evaluation_bounds_ = evaluation_bounds;
-  field.occupied_distance_ = DistanceField2D::build(
+  field.occupied_clearance_ = ClearanceField2D::build(
       raw_grid, policy.preferred_distance_m + raw_grid.resolution(),
-      DistanceFieldSource::kOccupied);
+      ClearanceSource::kOccupied);
   return field;
 }
 
@@ -246,12 +246,12 @@ const GridBounds& ObstacleRiskField::evaluationBounds() const noexcept {
   return evaluation_bounds_;
 }
 
-const DistanceField2D& ObstacleRiskField::occupiedDistance() const noexcept {
-  return occupied_distance_;
+const ClearanceField2D& ObstacleRiskField::occupiedClearance() const noexcept {
+  return occupied_clearance_;
 }
 
 ObstacleRiskTier ObstacleRiskField::tierAt(const GridIndex cell) const {
-  const double clearance_m = occupied_distance_.distanceAt(cell);
+  const double clearance_m = occupied_clearance_.distanceAt(cell);
   if (clearance_m < policy_.critical_distance_m) {
     return ObstacleRiskTier::kCriticalBand;
   }

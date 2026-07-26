@@ -711,6 +711,8 @@ TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
       {rclcpp::Parameter{"no_static_rollout_cycle_period_s", 0.001},
        rclcpp::Parameter{"no_static_rollout_prefix_duration_s", 100.0},
        rclcpp::Parameter{"no_static_rollout_recovery_lookahead_m", 1000.0},
+       rclcpp::Parameter{"no_static_rollout_terminal_response_delay_s", 1000.0},
+       rclcpp::Parameter{"no_static_rollout_vehicle_clearance_m", 1000.0},
        rclcpp::Parameter{"no_static_rollout_min_length_m", 1000.0},
        rclcpp::Parameter{"no_static_rollout_local_window_extra_margin_m", 1000.0},
        rclcpp::Parameter{"no_static_rollout_max_finalists", 0},
@@ -721,6 +723,8 @@ TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
   EXPECT_DOUBLE_EQ(config.no_static_rollout.cycle_period_s, 0.05);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.prefix_duration_s, 3.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.recovery_lookahead_m, 100.0);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.terminal_response_delay_s, 2.0);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.vehicle_clearance_m, 5.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.minimum_length_m, 30.0);
   EXPECT_TRUE(config.no_static_rollout.local_planning_window_enabled);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.local_planning_window_extra_margin_m, 50.0);

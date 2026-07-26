@@ -53,9 +53,6 @@ ObstacleRiskSnapshotBuilder::prepare(const ObstacleRiskPreparationInput& input) 
   OccupancyGrid2D raw_occupancy = *build.raw_occupancy;
   ObstacleRiskField risk_field = ObstacleRiskField::build(
       raw_occupancy, build.risk_policy, *build.evaluation_bounds);
-  ClearanceField2D raw_clearance =
-      ClearanceField2D::build(raw_occupancy, build.risk_policy.preferred_distance_m,
-                              ClearanceSource::kOccupied);
   RawObstacleVersion version{
       .build_revision = next_revision_,
       .memory_producer_instance_id = build.applied_memory_producer_instance_id,
@@ -69,7 +66,6 @@ ObstacleRiskSnapshotBuilder::prepare(const ObstacleRiskPreparationInput& input) 
   return PreparedObstacleRiskSnapshot{
       .raw_occupancy = std::move(raw_occupancy),
       .risk_field = std::move(risk_field),
-      .raw_clearance = std::move(raw_clearance),
       .evaluation_bounds = *build.evaluation_bounds,
       .version = version,
   };

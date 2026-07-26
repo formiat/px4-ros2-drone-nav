@@ -28,7 +28,6 @@ struct RepairRiskSnapshot {
   std::string name;
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 1, 1}};
   ObstacleRiskField risk;
-  ClearanceField2D clearance;
 };
 
 struct RepairSnapshot {

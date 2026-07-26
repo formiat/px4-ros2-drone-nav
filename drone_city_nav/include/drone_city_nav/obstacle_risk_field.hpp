@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/distance_field.hpp"
+#include "drone_city_nav/clearance_field.hpp"
 #include "drone_city_nav/trajectory.hpp"
 
 #include <cstdint>
@@ -10,7 +10,6 @@
 
 namespace drone_city_nav {
 
-class ClearanceField2D;
 class ObstacleRiskField;
 
 enum class ObstacleRiskTier : std::uint8_t {
@@ -65,7 +64,7 @@ public:
 
   [[nodiscard]] const ObstacleRiskPolicy& policy() const noexcept;
   [[nodiscard]] const GridBounds& evaluationBounds() const noexcept;
-  [[nodiscard]] const DistanceField2D& occupiedDistance() const noexcept;
+  [[nodiscard]] const ClearanceField2D& occupiedClearance() const noexcept;
   [[nodiscard]] ObstacleRiskTier tierAt(GridIndex cell) const;
   [[nodiscard]] PathRiskScore evaluate(const OccupancyGrid2D& raw_grid,
                                        std::span<const Point2> points) const;
@@ -76,7 +75,7 @@ public:
 private:
   ObstacleRiskPolicy policy_{};
   GridBounds evaluation_bounds_{};
-  DistanceField2D occupied_distance_{};
+  ClearanceField2D occupied_clearance_{};
 };
 
 [[nodiscard]] bool pathRiskLess(const PathRiskScore& lhs,

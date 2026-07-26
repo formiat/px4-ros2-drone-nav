@@ -58,7 +58,6 @@ namespace {
       .grid = grid,
       .risk = ObstacleRiskField::build(
           grid, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0}),
-      .clearance = ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied),
   };
   value.old_trajectory = ExecutableTrajectoryArtifact{
       .path_id = value.blocked_path_id,

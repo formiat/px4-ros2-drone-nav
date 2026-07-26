@@ -212,12 +212,6 @@ bool PlannerNode::publishTrajectoryResult(
     const OccupancyGrid2D* const source_validation_grid,
     const ObstacleRiskField* const source_validation_risk_field,
     const ClearanceField2D* const source_validation_clearance) {
-  if (source_grid_version != nullptr) {
-    delivery.obstacle_snapshot_producer_instance_id =
-        raw_obstacle_producer_instance_id_;
-    delivery.obstacle_snapshot_revision = source_grid_version->build_revision;
-    delivery.risk_policy_fingerprint = source_grid_version->risk_policy_fingerprint;
-  }
   const bool use_source_validation_grid =
       std::string_view{source_label} == "no_static_rollout";
   const std::uint64_t latest_invalidation_generation =
@@ -308,7 +302,7 @@ bool PlannerNode::publishTrajectoryResult(
     publishRawObstacleSnapshot(*latest_prepared);
     latest_risk_contexts.push_back(TrajectoryRiskContext{
         "raw_risk", &latest_prepared->raw_occupancy, &latest_prepared->risk_field,
-        &latest_prepared->raw_clearance, true});
+        &latest_prepared->rawClearance(), true});
     if (source_grid_version != nullptr) {
       RCLCPP_INFO(get_logger(),
                   "REPAIR_RACE fresh_validation source_revision=%" PRIu64
@@ -324,6 +318,10 @@ bool PlannerNode::publishTrajectoryResult(
                   latest_prepared->version.lidar_update_ns);
     }
   }
+  const RawObstacleVersion& validated_version =
+      use_source_validation_grid ? *source_grid_version : latest_prepared->version;
+  delivery = deliveryForValidatedObstacleSnapshot(
+      delivery, raw_obstacle_producer_instance_id_, validated_version);
 
   std::string handover_grid_name{"not_required"};
   double final_validation_ms = 0.0;

@@ -1,6 +1,7 @@
 #include "drone_city_nav/receding_horizon_trajectory_planner.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numbers>
 
@@ -59,6 +60,77 @@ void recordHardRejection(const OccupancyGrid2D& grid,
   }
 }
 
+void recordClearanceRejection(const OccupancyGrid2D& grid,
+                              const ClearanceField2D& clearance,
+                              std::span<const TrajectoryPointSample> samples,
+                              const std::size_t deterministic_index,
+                              const double minimum_clearance_m,
+                              RolloutDiagnostics& diagnostics) {
+  if (diagnostics.first_grid_rejection.has_value()) {
+    return;
+  }
+  for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
+    const std::optional<GridIndex> start = grid.worldToCell(samples[index].point);
+    const std::optional<GridIndex> end = grid.worldToCell(samples[index + 1U].point);
+    if (!start.has_value() || !end.has_value()) {
+      continue;
+    }
+    for (const GridIndex cell : grid.cellsOnLine(*start, *end)) {
+      if (clearance.distanceAt(cell) + 1.0e-9 < minimum_clearance_m) {
+        diagnostics.first_grid_rejection = RolloutGridRejectionDiagnostic{
+            .reason = RolloutGridRejectReason::kVehicleClearanceEnvelope,
+            .deterministic_index = deterministic_index,
+            .segment_index = index,
+            .position = grid.cellCenter(cell),
+            .cell = cell,
+        };
+        return;
+      }
+    }
+  }
+}
+
+void recordTerminalStoppingRejection(
+    const OccupancyGrid2D& grid, const ClearanceField2D& clearance,
+    std::span<const TrajectoryPointSample> stopping_samples,
+    const std::size_t deterministic_index, const std::size_t terminal_segment_index,
+    const double minimum_clearance_m, RolloutDiagnostics& diagnostics) {
+  if (diagnostics.first_grid_rejection.has_value()) {
+    return;
+  }
+  for (std::size_t index = 0U; index + 1U < stopping_samples.size(); ++index) {
+    const std::optional<GridIndex> start =
+        grid.worldToCell(stopping_samples[index].point);
+    const std::optional<GridIndex> end =
+        grid.worldToCell(stopping_samples[index + 1U].point);
+    if (!start.has_value() || !end.has_value()) {
+      ++diagnostics.outside_grid_rejections;
+      diagnostics.first_grid_rejection = RolloutGridRejectionDiagnostic{
+          .reason = RolloutGridRejectReason::kTerminalStoppingEnvelope,
+          .deterministic_index = deterministic_index,
+          .segment_index = terminal_segment_index,
+          .position = !start.has_value() ? stopping_samples[index].point
+                                         : stopping_samples[index + 1U].point,
+          .cell = std::nullopt,
+      };
+      return;
+    }
+    for (const GridIndex cell : grid.cellsOnLine(*start, *end)) {
+      if (grid.isOccupied(cell) ||
+          clearance.distanceAt(cell) + 1.0e-9 < minimum_clearance_m) {
+        diagnostics.first_grid_rejection = RolloutGridRejectionDiagnostic{
+            .reason = RolloutGridRejectReason::kTerminalStoppingEnvelope,
+            .deterministic_index = deterministic_index,
+            .segment_index = terminal_segment_index,
+            .position = grid.cellCenter(cell),
+            .cell = cell,
+        };
+        return;
+      }
+    }
+  }
+}
+
 } // namespace
 
 std::span<const RolloutCandidate>
@@ -105,6 +177,14 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
   }
   const ObstacleRiskField& risk_field =
       input.risk_field != nullptr ? *input.risk_field : owned_risk.value();
+  const std::optional<GridIndex> start_cell = input.grid->worldToCell(input.position);
+  const double requested_path_clearance_m =
+      std::max(0.0, input.minimum_path_clearance_m);
+  const double start_clearance_m =
+      start_cell.has_value() ? risk_field.occupiedClearance().distanceAt(*start_cell)
+                             : 0.0;
+  const double effective_path_clearance_m =
+      std::min(requested_path_clearance_m, start_clearance_m);
 
   const Point2 goal_delta{input.preferred_target.x - input.position.x,
                           input.preferred_target.y - input.position.y};
@@ -120,6 +200,8 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
                                      ? std::atan2(input.velocity.y, input.velocity.x)
                                      : target_heading;
   const double base_heading_error = clampAngle(target_heading - initial_heading);
+  const double heading_search_limit =
+      input.stationary_restart ? std::numbers::pi : config_.max_heading_offset_rad;
   for (std::size_t candidate_index = 0U; candidate_index < config_.heading_samples;
        ++candidate_index) {
     const double normalized =
@@ -128,8 +210,10 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
             : (2.0 * static_cast<double>(candidate_index) /
                    static_cast<double>(config_.heading_samples - 1U) -
                1.0);
-    const double offset = normalized * config_.max_heading_offset_rad;
+    const double offset = normalized * heading_search_limit;
     const double terminal_heading = target_heading + offset;
+    const double candidate_initial_heading =
+        input.stationary_restart ? terminal_heading : initial_heading;
     for (std::size_t speed_index = 0U; speed_index < config_.speed_samples;
          ++speed_index) {
       const double speed_ratio =
@@ -151,7 +235,8 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
           {config_.horizon_m, goal_distance,
            std::max({config_.sample_step_m, average_speed * config_.horizon_time_s,
                      std::max(0.0, input.minimum_length_m)})});
-      const double heading_delta = clampAngle(terminal_heading - initial_heading);
+      const double heading_delta =
+          clampAngle(terminal_heading - candidate_initial_heading);
       const double curvature = heading_delta / rollout_length;
       if (std::abs(curvature) > config_.maximum_curvature_1pm) {
         ++result.diagnostics.dynamic_limit_rejections;
@@ -178,17 +263,18 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
       for (std::size_t index = 0U; index < sample_count; ++index) {
         const double s = rollout_length * static_cast<double>(index) /
                          static_cast<double>(sample_count - 1U);
-        const double heading = initial_heading + curvature * s;
+        const double heading = candidate_initial_heading + curvature * s;
         Point2 point{};
         if (std::abs(curvature) <= 1.0e-9) {
-          point = Point2{input.position.x + s * std::cos(initial_heading),
-                         input.position.y + s * std::sin(initial_heading)};
+          point = Point2{input.position.x + s * std::cos(candidate_initial_heading),
+                         input.position.y + s * std::sin(candidate_initial_heading)};
         } else {
-          point =
-              Point2{input.position.x +
-                         (std::sin(heading) - std::sin(initial_heading)) / curvature,
-                     input.position.y -
-                         (std::cos(heading) - std::cos(initial_heading)) / curvature};
+          point = Point2{input.position.x +
+                             (std::sin(heading) - std::sin(candidate_initial_heading)) /
+                                 curvature,
+                         input.position.y -
+                             (std::cos(heading) - std::cos(candidate_initial_heading)) /
+                                 curvature};
         }
         TrajectoryPointSample sample;
         sample.s_m = s;
@@ -205,6 +291,62 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
                             candidate.deterministic_index, result.diagnostics);
         ++result.diagnostics.grid_rejections;
         continue;
+      }
+      if (candidate.risk.minimum_raw_clearance_m + 1.0e-9 <
+          effective_path_clearance_m) {
+        recordClearanceRejection(*input.grid, risk_field.occupiedClearance(),
+                                 candidate.samples, candidate.deterministic_index,
+                                 effective_path_clearance_m, result.diagnostics);
+        ++result.diagnostics.grid_rejections;
+        continue;
+      }
+      const std::optional<GridIndex> terminal_cell =
+          input.grid->worldToCell(candidate.samples.back().point);
+      const double required_terminal_clearance_m =
+          std::max(0.0, input.minimum_terminal_clearance_m);
+      if (!terminal_cell.has_value() ||
+          risk_field.occupiedClearance().distanceAt(*terminal_cell) + 1.0e-9 <
+              required_terminal_clearance_m) {
+        if (!result.diagnostics.first_grid_rejection.has_value()) {
+          result.diagnostics.first_grid_rejection = RolloutGridRejectionDiagnostic{
+              .reason = terminal_cell.has_value()
+                            ? RolloutGridRejectReason::kTerminalResponseEnvelope
+                            : RolloutGridRejectReason::kOutsideGrid,
+              .deterministic_index = candidate.deterministic_index,
+              .segment_index = candidate.samples.size() - 1U,
+              .position = candidate.samples.back().point,
+              .cell = terminal_cell,
+          };
+        }
+        if (!terminal_cell.has_value()) {
+          ++result.diagnostics.outside_grid_rejections;
+        }
+        ++result.diagnostics.grid_rejections;
+        continue;
+      }
+      const double terminal_stopping_distance_m =
+          std::max(0.0, input.minimum_terminal_stopping_distance_m);
+      if (terminal_stopping_distance_m > 0.0) {
+        const TrajectoryPointSample& terminal = candidate.samples.back();
+        std::array<TrajectoryPointSample, 2U> stopping_samples{terminal, terminal};
+        stopping_samples.back().s_m = terminal.s_m + terminal_stopping_distance_m;
+        stopping_samples.back().point = Point2{
+            terminal.point.x + terminal.tangent.x * terminal_stopping_distance_m,
+            terminal.point.y + terminal.tangent.y * terminal_stopping_distance_m,
+        };
+        stopping_samples.back().curvature_1pm = 0.0;
+        const PathRiskScore stopping_risk =
+            risk_field.evaluate(*input.grid, stopping_samples);
+        if (!stopping_risk.hardValid() ||
+            stopping_risk.minimum_raw_clearance_m + 1.0e-9 <
+                requested_path_clearance_m) {
+          recordTerminalStoppingRejection(
+              *input.grid, risk_field.occupiedClearance(), stopping_samples,
+              candidate.deterministic_index, candidate.samples.size() - 1U,
+              requested_path_clearance_m, result.diagnostics);
+          ++result.diagnostics.grid_rejections;
+          continue;
+        }
       }
       const double after =
           distance(candidate.samples.back().point, input.preferred_target);
@@ -266,6 +408,12 @@ const char* rolloutGridRejectReasonName(const RolloutGridRejectReason reason) no
       return "outside_grid";
     case RolloutGridRejectReason::kRawOccupied:
       return "raw_occupied";
+    case RolloutGridRejectReason::kVehicleClearanceEnvelope:
+      return "vehicle_clearance_envelope";
+    case RolloutGridRejectReason::kTerminalResponseEnvelope:
+      return "terminal_response_envelope";
+    case RolloutGridRejectReason::kTerminalStoppingEnvelope:
+      return "terminal_stopping_envelope";
   }
   return "unknown";
 }

@@ -260,6 +260,140 @@ TEST(RecedingHorizonTrajectoryPlanner, ExtendsCandidateToMinimumTerminalLength) 
   EXPECT_GE(result.ranked_candidates.front().samples.back().s_m, 15.0);
 }
 
+TEST(RecedingHorizonTrajectoryPlanner, RejectsUnsafeTerminalResponseEnvelope) {
+  OccupancyGrid2D raw = freeGrid();
+  occupyWorldPoint(raw, Point2{8.0, 0.0});
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      raw, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 6.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 1U,
+      .speed_samples = 1U,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+  }};
+
+  const RolloutResult unguarded =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk});
+  const RolloutResult guarded =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk,
+                                .minimum_terminal_clearance_m = 3.0});
+
+  ASSERT_FALSE(unguarded.ranked_candidates.empty());
+  EXPECT_TRUE(guarded.ranked_candidates.empty());
+  ASSERT_TRUE(guarded.diagnostics.first_grid_rejection.has_value());
+  EXPECT_EQ(guarded.diagnostics.first_grid_rejection->reason,
+            RolloutGridRejectReason::kTerminalResponseEnvelope);
+}
+
+TEST(RecedingHorizonTrajectoryPlanner, RejectsUnsafeTerminalStoppingEnvelope) {
+  OccupancyGrid2D raw = freeGrid();
+  occupyWorldPoint(raw, Point2{8.0, 0.0});
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      raw, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 6.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 1U,
+      .speed_samples = 1U,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+  }};
+
+  const RolloutResult unguarded =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk});
+  const RolloutResult guarded =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk,
+                                .minimum_terminal_stopping_distance_m = 4.0});
+
+  ASSERT_FALSE(unguarded.ranked_candidates.empty());
+  EXPECT_TRUE(guarded.ranked_candidates.empty());
+  ASSERT_TRUE(guarded.diagnostics.first_grid_rejection.has_value());
+  EXPECT_EQ(guarded.diagnostics.first_grid_rejection->reason,
+            RolloutGridRejectReason::kTerminalStoppingEnvelope);
+}
+
+TEST(RecedingHorizonTrajectoryPlanner, RejectsVehicleFootprintClearanceViolation) {
+  OccupancyGrid2D raw = freeGrid();
+  for (int x_index = 2; x_index <= 20; ++x_index) {
+    occupyWorldPoint(raw, Point2{0.5 * static_cast<double>(x_index), 0.5});
+  }
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      raw, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 6.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 1U,
+      .speed_samples = 1U,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+  }};
+
+  const RolloutResult unguarded =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk});
+  const RolloutResult guarded =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk,
+                                .minimum_path_clearance_m = 0.85});
+
+  ASSERT_FALSE(unguarded.ranked_candidates.empty());
+  EXPECT_TRUE(guarded.ranked_candidates.empty());
+  ASSERT_TRUE(guarded.diagnostics.first_grid_rejection.has_value());
+  EXPECT_EQ(guarded.diagnostics.first_grid_rejection->reason,
+            RolloutGridRejectReason::kVehicleClearanceEnvelope);
+}
+
+TEST(RecedingHorizonTrajectoryPlanner, AllowsClearanceEscapeFromGuardedStart) {
+  OccupancyGrid2D raw = freeGrid();
+  occupyWorldPoint(raw, Point2{0.0, 0.5});
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      raw, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 6.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 1U,
+      .speed_samples = 1U,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+  }};
+
+  const RolloutResult result =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk,
+                                .minimum_path_clearance_m = 0.85});
+
+  ASSERT_FALSE(result.ranked_candidates.empty());
+  EXPECT_NEAR(result.ranked_candidates.front().risk.minimum_raw_clearance_m, 0.5,
+              1.0e-9);
+}
+
 TEST(RecedingHorizonTrajectoryPlanner, StationaryRestartIgnoresReturnVelocity) {
   OccupancyGrid2D prohibited = freeGrid();
   const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
@@ -305,6 +439,32 @@ TEST(RecedingHorizonTrajectoryPlanner, StationaryRestartHonorsMinimumLength) {
 
   ASSERT_FALSE(result.ranked_candidates.empty());
   EXPECT_GE(result.ranked_candidates.front().samples.back().s_m, 7.0);
+}
+
+TEST(RecedingHorizonTrajectoryPlanner, StationaryRestartCanEscapeBehindObstacle) {
+  OccupancyGrid2D raw = freeGrid();
+  for (int y_index = -20; y_index <= 20; ++y_index) {
+    occupyWorldPoint(raw, Point2{1.0, 0.5 * static_cast<double>(y_index)});
+  }
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 10.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 9U,
+      .speed_samples = 1U,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+  }};
+
+  const RolloutResult result =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {0.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .minimum_length_m = 7.0,
+                                .stationary_restart = true});
+
+  ASSERT_FALSE(result.ranked_candidates.empty());
+  EXPECT_LT(result.ranked_candidates.front().samples.back().point.x, 0.0);
 }
 
 } // namespace drone_city_nav

@@ -343,12 +343,13 @@ void Px4OffboardNode::onExecutableTrajectory(const msg::ExecutableTrajectory& co
 
 void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
   if (pending_raw_obstacle_snapshot_.has_value() &&
-      pending_raw_obstacle_snapshot_received_time_.nanoseconds() > 0 &&
-      (get_clock()->now() - pending_raw_obstacle_snapshot_received_time_).seconds() >=
-          local_horizon_execution_config_.successor_timeout_s) {
+      pending_raw_obstacle_snapshot_deadline_.expired(
+          get_clock()->now().nanoseconds(),
+          static_cast<std::int64_t>(
+              local_horizon_execution_config_.successor_timeout_s * 1.0e9))) {
     msg::ExecutableTrajectory expired = std::move(*pending_raw_obstacle_snapshot_);
     pending_raw_obstacle_snapshot_.reset();
-    pending_raw_obstacle_snapshot_received_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+    pending_raw_obstacle_snapshot_deadline_.complete();
     RCLCPP_WARN(get_logger(),
                 "RAW_OBSTACLE_TRAJECTORY path_id=%" PRIu64
                 " action=rejected reason=snapshot_timeout timeout_s=%.2f",
@@ -479,10 +480,8 @@ void Px4OffboardNode::processExecutableTrajectory(
         snapshot_relation == RawSnapshotRelation::kNoSnapshot ||
         snapshot_relation == RawSnapshotRelation::kDifferentProducer) {
       pending_raw_obstacle_snapshot_ = command;
-      if (!pending_retry ||
-          pending_raw_obstacle_snapshot_received_time_.nanoseconds() <= 0) {
-        pending_raw_obstacle_snapshot_received_time_ = get_clock()->now();
-      }
+      pending_raw_obstacle_snapshot_deadline_.startIfIdle(
+          get_clock()->now().nanoseconds());
       RCLCPP_INFO(get_logger(),
                   "RAW_OBSTACLE_TRAJECTORY path_id=%" PRIu64
                   " relation=%s action=pending producer=%" PRIu64 " revision=%" PRIu64

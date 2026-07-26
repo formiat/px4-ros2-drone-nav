@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/planning_grid_snapshot.hpp"
+#include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -53,6 +55,11 @@ selectRouteCandidate(std::span<const Point2> pre_collapse_points,
                      double collinearity_tolerance_m,
                      bool (*path_traversable)(std::span<const Point2>, const void*),
                      const void* context);
+
+[[nodiscard]] TrajectoryDeliveryDiagnostics
+deliveryForValidatedObstacleSnapshot(TrajectoryDeliveryDiagnostics delivery,
+                                     std::uint64_t producer_instance_id,
+                                     const RawObstacleVersion& version) noexcept;
 
 [[nodiscard]] const char*
 pathPublicationReasonName(PathPublicationReason reason) noexcept;
