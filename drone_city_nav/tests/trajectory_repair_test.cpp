@@ -1,5 +1,6 @@
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/trajectory_repair.hpp"
+#include "drone_city_nav/truncation_suffix_protocol.hpp"
 
 #include <gtest/gtest.h>
 
@@ -120,6 +121,37 @@ TEST(TrajectoryRepair,
             RuntimeBlockerHandoffAction::kBegin);
   EXPECT_EQ(classifyRuntimeBlockerHandoff(accepted_artifact.path_id,
                                           accepted_artifact.path_id),
+            RuntimeBlockerHandoffAction::kAlreadyPending);
+}
+
+TEST(TrajectoryRepair,
+     MissionGoalAckAdoptsExecutablePathBeforeSingleRawBlockerHandoff) {
+  constexpr std::uint64_t kMissionGoalPathId{101U};
+  ASSERT_TRUE(trajectoryActivationAckRequired(TrajectoryActivationAckContract{
+      .explicitly_required = true,
+      .endpoint_semantics = TrajectoryEndpointSemantics::kMissionGoal,
+  }));
+  const TruncationSuffixAckEvaluation ack = evaluateOrdinaryTrajectoryAck(
+      kMissionGoalPathId, kMissionGoalPathId, TruncationSuffixAckDecision::kAccepted);
+  ASSERT_EQ(ack.action, TruncationSuffixAckAction::kAdopt);
+  ASSERT_TRUE(trajectoryAckClearsPending(ack.action));
+
+  OccupancyGrid2D grid = freeGrid();
+  grid.setOccupied(GridIndex{15, 10});
+  ExecutableTrajectoryArtifact adopted_artifact{
+      .path_id = kMissionGoalPathId,
+      .samples = lineSamples(30.0),
+      .current_s_m = 10.0,
+  };
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(adopted_artifact, Point2{10.0, 0.0}, 3.0);
+  const ExecutableSuffixDecision suffix =
+      evaluateExecutableSuffix(grid, adopted_artifact, progress, 0.5);
+
+  ASSERT_TRUE(suffix.blocked);
+  EXPECT_EQ(classifyRuntimeBlockerHandoff(kMissionGoalPathId, std::nullopt),
+            RuntimeBlockerHandoffAction::kBegin);
+  EXPECT_EQ(classifyRuntimeBlockerHandoff(kMissionGoalPathId, kMissionGoalPathId),
             RuntimeBlockerHandoffAction::kAlreadyPending);
 }
 

@@ -237,7 +237,7 @@ private:
                                     const char* source_label, std::uint64_t path_id,
                                     std::optional<double> rollout_score);
 
-  [[nodiscard]] bool localHorizonAckPending() const;
+  [[nodiscard]] bool rolloutActivationAckPending() const;
 
   [[nodiscard]] bool noteTruncationSuccessorPlanningReject(std::uint64_t generation,
                                                            std::size_t rejection_limit);
@@ -635,8 +635,7 @@ private:
   std::optional<TruncationReplanState> truncation_replan_state_;
   std::optional<PendingTruncationRuntimeTrajectory>
       pending_truncation_runtime_trajectory_;
-  std::optional<PendingTruncationRuntimeTrajectory>
-      pending_local_horizon_runtime_trajectory_;
+  std::optional<PendingTruncationRuntimeTrajectory> pending_rollout_runtime_trajectory_;
   mutable std::mutex memory_snapshot_mutex_;
   mutable std::mutex navigation_state_mutex_;
   mutable std::mutex lidar_input_mutex_;

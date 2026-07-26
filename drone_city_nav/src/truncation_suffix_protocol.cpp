@@ -89,6 +89,44 @@ evaluateTruncationSuffixAck(const TruncationSuffixIdentity& expected,
   return {TruncationSuffixAckAction::kIgnore, "invalid_decision"};
 }
 
+bool trajectoryActivationAckRequired(
+    const TrajectoryActivationAckContract& contract) noexcept {
+  return contract.explicitly_required || contract.truncation_suffix ||
+         contract.activate_after_terminal_hold ||
+         contract.endpoint_semantics == TrajectoryEndpointSemantics::kLocalHorizon;
+}
+
+TruncationSuffixAckEvaluation
+evaluateOrdinaryTrajectoryAck(const std::uint64_t expected_path_id,
+                              const std::uint64_t received_path_id,
+                              const TruncationSuffixAckDecision decision) noexcept {
+  if (expected_path_id == 0U || received_path_id == 0U) {
+    return {TruncationSuffixAckAction::kIgnore, "invalid_identity"};
+  }
+  if (received_path_id != expected_path_id) {
+    return {TruncationSuffixAckAction::kIgnore, "path_id_mismatch"};
+  }
+  switch (decision) {
+    case TruncationSuffixAckDecision::kPending:
+      return {TruncationSuffixAckAction::kKeepWaiting, "matching_pending"};
+    case TruncationSuffixAckDecision::kAccepted:
+      return {TruncationSuffixAckAction::kAdopt, "matching_accepted"};
+    case TruncationSuffixAckDecision::kRejected:
+      return {TruncationSuffixAckAction::kRetry, "matching_rejected"};
+  }
+  return {TruncationSuffixAckAction::kIgnore, "invalid_decision"};
+}
+
+bool trajectoryAckClearsPending(const TruncationSuffixAckAction action) noexcept {
+  return action == TruncationSuffixAckAction::kAdopt ||
+         action == TruncationSuffixAckAction::kRetry;
+}
+
+bool terminalHoldAllowsDeferredActivation(const bool temporary_replan_hold_active,
+                                          const bool final_goal_hold_active) noexcept {
+  return temporary_replan_hold_active || final_goal_hold_active;
+}
+
 TruncationSuffixPublicationEvaluation evaluateTruncationSuffixPublication(
     const TruncationSuffixPublicationContext& context,
     const TruncationSuffixIdentity& candidate) noexcept {

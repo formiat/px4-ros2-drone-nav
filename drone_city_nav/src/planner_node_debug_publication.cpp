@@ -226,6 +226,14 @@ std::uint64_t PlannerNode::publishTrajectoryPath(
   command.truncation_suffix = delivery.truncation_suffix;
   command.activate_after_terminal_hold = delivery.activate_after_terminal_hold;
   command.endpoint_semantics = trajectoryEndpointSemanticsToWire(endpoint_semantics);
+  command.requires_activation_ack =
+      trajectoryActivationAckRequired(TrajectoryActivationAckContract{
+          .explicitly_required = source_label != nullptr &&
+                                 std::string_view{source_label} == "no_static_rollout",
+          .truncation_suffix = delivery.truncation_suffix,
+          .activate_after_terminal_hold = delivery.activate_after_terminal_hold,
+          .endpoint_semantics = endpoint_semantics,
+      });
   command.truncation_suffix_activation_mode =
       delivery.truncation_suffix_activation_mode;
   if (trajectory_stats != nullptr) {

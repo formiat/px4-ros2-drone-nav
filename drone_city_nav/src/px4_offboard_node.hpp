@@ -478,7 +478,7 @@ private:
   TrajectoryPlannerStats last_trajectory_planner_stats_{};
   std::optional<TrajectoryPlannerDiagnosticsEnvelope> latest_trajectory_diagnostics_;
   std::optional<msg::ExecutableTrajectory> pending_truncation_suffix_;
-  std::optional<msg::ExecutableTrajectory> pending_local_horizon_successor_;
+  std::optional<msg::ExecutableTrajectory> pending_stationary_rollout_successor_;
   std::optional<msg::ExecutableTrajectory> pending_raw_obstacle_snapshot_;
   PendingRawObstacleSnapshotDeadline pending_raw_obstacle_snapshot_deadline_;
   RawObstacleSnapshotTracker raw_obstacle_snapshot_tracker_;

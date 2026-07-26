@@ -67,6 +67,50 @@ TEST(TruncationSuffixProtocol, RejectsUnknownDecisionValue) {
   EXPECT_FALSE(truncationSuffixAckDecisionFromValue(99U).has_value());
 }
 
+TEST(TruncationSuffixProtocol, MissionGoalRolloutExplicitlyRequiresActivationAck) {
+  EXPECT_TRUE(trajectoryActivationAckRequired(TrajectoryActivationAckContract{
+      .explicitly_required = true,
+      .endpoint_semantics = TrajectoryEndpointSemantics::kMissionGoal,
+  }));
+  EXPECT_FALSE(trajectoryActivationAckRequired(TrajectoryActivationAckContract{
+      .endpoint_semantics = TrajectoryEndpointSemantics::kMissionGoal,
+  }));
+  EXPECT_TRUE(trajectoryActivationAckRequired(TrajectoryActivationAckContract{
+      .endpoint_semantics = TrajectoryEndpointSemantics::kLocalHorizon,
+  }));
+}
+
+TEST(TruncationSuffixProtocol, OrdinaryMissionGoalAckControlsPendingOwnership) {
+  constexpr std::uint64_t kExpectedPathId{101U};
+
+  const TruncationSuffixAckEvaluation pending = evaluateOrdinaryTrajectoryAck(
+      kExpectedPathId, kExpectedPathId, TruncationSuffixAckDecision::kPending);
+  EXPECT_EQ(pending.action, TruncationSuffixAckAction::kKeepWaiting);
+  EXPECT_FALSE(trajectoryAckClearsPending(pending.action));
+
+  const TruncationSuffixAckEvaluation accepted = evaluateOrdinaryTrajectoryAck(
+      kExpectedPathId, kExpectedPathId, TruncationSuffixAckDecision::kAccepted);
+  EXPECT_EQ(accepted.action, TruncationSuffixAckAction::kAdopt);
+  EXPECT_TRUE(trajectoryAckClearsPending(accepted.action));
+
+  const TruncationSuffixAckEvaluation rejected = evaluateOrdinaryTrajectoryAck(
+      kExpectedPathId, kExpectedPathId, TruncationSuffixAckDecision::kRejected);
+  EXPECT_EQ(rejected.action, TruncationSuffixAckAction::kRetry);
+  EXPECT_TRUE(trajectoryAckClearsPending(rejected.action));
+
+  const TruncationSuffixAckEvaluation stale = evaluateOrdinaryTrajectoryAck(
+      kExpectedPathId, 100U, TruncationSuffixAckDecision::kAccepted);
+  EXPECT_EQ(stale.action, TruncationSuffixAckAction::kIgnore);
+  EXPECT_FALSE(trajectoryAckClearsPending(stale.action));
+}
+
+TEST(TruncationSuffixProtocol, DeferredRolloutActivatesFromEitherTerminalHold) {
+  EXPECT_FALSE(terminalHoldAllowsDeferredActivation(false, false));
+  EXPECT_TRUE(terminalHoldAllowsDeferredActivation(true, false));
+  EXPECT_TRUE(terminalHoldAllowsDeferredActivation(false, true));
+  EXPECT_TRUE(terminalHoldAllowsDeferredActivation(true, true));
+}
+
 TEST(TruncationSuffixProtocol, ParsesSuffixActivationModes) {
   EXPECT_EQ(truncationSuffixActivationModeFromValue(0U),
             TruncationSuffixActivationMode::kMovingJoin);

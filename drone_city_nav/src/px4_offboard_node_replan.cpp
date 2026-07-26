@@ -5,9 +5,15 @@ namespace drone_city_nav {
 void Px4OffboardNode::publishTruncationSuffixAck(
     const msg::ExecutableTrajectory& command,
     const TruncationSuffixAckDecision decision, const std::string_view reason) {
-  if ((!command.truncation_suffix && !command.activate_after_terminal_hold &&
-       command.endpoint_semantics !=
-           msg::ExecutableTrajectory::ENDPOINT_LOCAL_HORIZON) ||
+  const std::optional<TrajectoryEndpointSemantics> endpoint_semantics =
+      trajectoryEndpointSemanticsFromWire(command.endpoint_semantics);
+  if (!endpoint_semantics.has_value() ||
+      !trajectoryActivationAckRequired(TrajectoryActivationAckContract{
+          .explicitly_required = command.requires_activation_ack,
+          .truncation_suffix = command.truncation_suffix,
+          .activate_after_terminal_hold = command.activate_after_terminal_hold,
+          .endpoint_semantics = *endpoint_semantics,
+      }) ||
       !truncation_suffix_ack_pub_) {
     return;
   }
@@ -22,15 +28,15 @@ void Px4OffboardNode::publishTruncationSuffixAck(
   const std::optional<TruncationSuffixActivationMode> activation_mode =
       truncationSuffixActivationModeFromValue(
           command.truncation_suffix_activation_mode);
-  RCLCPP_INFO(
-      get_logger(),
-      "%s suffix_activation=%s suffix_ack decision=%s reason=%s "
-      "path_id=%" PRIu64 " generation=%" PRIu64 " prefix_fingerprint=%" PRIu64,
-      command.activate_after_terminal_hold ? "LOCAL_HORIZON" : "REPLAN_TRUNCATION",
-      activation_mode.has_value() ? truncationSuffixActivationModeName(*activation_mode)
-                                  : "invalid",
-      truncationSuffixAckDecisionName(decision), ack.reason.c_str(), ack.path_id,
-      ack.truncation_generation, ack.temporary_prefix_fingerprint);
+  RCLCPP_INFO(get_logger(),
+              "%s suffix_activation=%s activation_ack decision=%s reason=%s "
+              "path_id=%" PRIu64 " generation=%" PRIu64 " prefix_fingerprint=%" PRIu64,
+              command.truncation_suffix ? "REPLAN_TRUNCATION" : "ROLLOUT",
+              activation_mode.has_value()
+                  ? truncationSuffixActivationModeName(*activation_mode)
+                  : "invalid",
+              truncationSuffixAckDecisionName(decision), ack.reason.c_str(),
+              ack.path_id, ack.truncation_generation, ack.temporary_prefix_fingerprint);
 }
 
 void Px4OffboardNode::publishReplanTruncation(
@@ -155,7 +161,7 @@ void Px4OffboardNode::updateTemporaryReplanHold() {
 }
 
 void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
-  pending_local_horizon_successor_.reset();
+  pending_stationary_rollout_successor_.reset();
   pending_raw_obstacle_snapshot_.reset();
   pending_raw_obstacle_snapshot_deadline_.complete();
   if (crashed_ || !safe_trajectory_truncation_enabled_) {

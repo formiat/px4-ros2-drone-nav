@@ -20,7 +20,7 @@ std::optional<std::uint64_t> PlannerNode::beginTruncationReplan(
   }
   const std::uint64_t generation = next_truncation_generation_++;
   pending_truncation_runtime_trajectory_.reset();
-  pending_local_horizon_runtime_trajectory_.reset();
+  pending_rollout_runtime_trajectory_.reset();
   const bool artifact_matches =
       executable_trajectory_artifact_.path_id == blocked_path_id &&
       trajectorySamplesAreUsable(executable_trajectory_artifact_.samples) &&
@@ -175,28 +175,33 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
   if (message.truncation_generation == 0U &&
       message.temporary_prefix_fingerprint == 0U) {
     std::optional<PendingTruncationRuntimeTrajectory> accepted;
+    TruncationSuffixAckEvaluation evaluation{};
     {
       std::scoped_lock lock{truncation_replan_mutex_};
-      if (!pending_local_horizon_runtime_trajectory_.has_value() ||
-          pending_local_horizon_runtime_trajectory_->identity.path_id !=
-              message.path_id) {
-        RCLCPP_WARN(get_logger(),
-                    "LOCAL_HORIZON ignored successor ACK: reason=identity_mismatch "
-                    "path_id=%" PRIu64 " decision=%s",
-                    message.path_id, truncationSuffixAckDecisionName(*decision));
-        return;
+      const std::uint64_t expected_path_id =
+          pending_rollout_runtime_trajectory_.has_value()
+              ? pending_rollout_runtime_trajectory_->identity.path_id
+              : 0U;
+      evaluation =
+          evaluateOrdinaryTrajectoryAck(expected_path_id, message.path_id, *decision);
+      if (evaluation.action == TruncationSuffixAckAction::kAdopt) {
+        accepted.swap(pending_rollout_runtime_trajectory_);
       }
-      if (*decision == TruncationSuffixAckDecision::kAccepted) {
-        accepted = std::move(*pending_local_horizon_runtime_trajectory_);
-      }
-      if (*decision != TruncationSuffixAckDecision::kPending) {
-        pending_local_horizon_runtime_trajectory_.reset();
+      if (trajectoryAckClearsPending(evaluation.action)) {
+        pending_rollout_runtime_trajectory_.reset();
       }
     }
-    if (*decision == TruncationSuffixAckDecision::kPending) {
+    if (evaluation.action == TruncationSuffixAckAction::kIgnore) {
+      RCLCPP_WARN(get_logger(),
+                  "ROLLOUT ignored activation ACK: reason=%s path_id=%" PRIu64
+                  " decision=%s",
+                  evaluation.reason, message.path_id,
+                  truncationSuffixAckDecisionName(*decision));
+      return;
+    }
+    if (evaluation.action == TruncationSuffixAckAction::kKeepWaiting) {
       RCLCPP_INFO(get_logger(),
-                  "LOCAL_HORIZON successor ACK pending: path_id=%" PRIu64
-                  " reason='%s'",
+                  "ROLLOUT activation ACK pending: path_id=%" PRIu64 " reason='%s'",
                   message.path_id, message.reason.c_str());
       return;
     }
@@ -217,7 +222,7 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
     active_rollout_score_ = accepted->rollout_score;
     RCLCPP_INFO(
         get_logger(),
-        "LOCAL_HORIZON successor ACK accepted: path_id=%" PRIu64
+        "ROLLOUT activation ACK accepted: path_id=%" PRIu64
         " reason='%s' runtime_samples=%zu rollout_score=%.3f",
         message.path_id, message.reason.c_str(), last_valid_trajectory_samples_.size(),
         active_rollout_score_.value_or(std::numeric_limits<double>::quiet_NaN()));
@@ -303,9 +308,7 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
         .samples = last_valid_trajectory_samples_,
         .current_s_m = 0.0,
     };
-    if (accepted_trajectory->rollout_score.has_value()) {
-      active_rollout_score_ = accepted_trajectory->rollout_score;
-    }
+    active_rollout_score_ = accepted_trajectory->rollout_score;
     RCLCPP_INFO(get_logger(),
                 "REPLAN_TRUNCATION suffix ACK accepted: path_id=%" PRIu64
                 " generation=%" PRIu64 " reason='%s' attempt=%zu "
@@ -333,7 +336,7 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
       source_label != nullptr && std::string_view{source_label} == "no_static_rollout";
   if (!delivery.truncation_suffix && no_static_rollout) {
     std::scoped_lock lock{truncation_replan_mutex_};
-    pending_local_horizon_runtime_trajectory_ = PendingTruncationRuntimeTrajectory{
+    pending_rollout_runtime_trajectory_ = PendingTruncationRuntimeTrajectory{
         .identity =
             TruncationSuffixIdentity{
                 .path_id = path_id,
@@ -453,9 +456,9 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
   return true;
 }
 
-bool PlannerNode::localHorizonAckPending() const {
+bool PlannerNode::rolloutActivationAckPending() const {
   std::scoped_lock lock{truncation_replan_mutex_};
-  return pending_local_horizon_runtime_trajectory_.has_value();
+  return pending_rollout_runtime_trajectory_.has_value();
 }
 
 bool PlannerNode::noteTruncationSuccessorPlanningReject(

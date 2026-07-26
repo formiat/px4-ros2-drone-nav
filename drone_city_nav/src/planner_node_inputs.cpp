@@ -728,7 +728,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         !progress.valid           ? "projection_unavailable"
         : blocked_span == nullptr ? "clear"
                                   : "raw_occupied_confirmed",
-        last_published_path_id_, localHorizonAckPending() ? "true" : "false");
+        last_published_path_id_, rolloutActivationAckPending() ? "true" : "false");
   }
   const bool active_prefix_available = active_rollout_artifact_available &&
                                        rollout_runtime.progress.valid &&
@@ -819,16 +819,27 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   };
   if (plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
       PlannerModePrimaryAction::kRollout) {
-    if (localHorizonAckPending()) {
+    if (rolloutActivationAckPending()) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "LOCAL_HORIZON publication_coalesced=true reason=awaiting_offboard_ack");
+          "ROLLOUT publication_coalesced=true reason=awaiting_offboard_ack");
       return;
     }
     const bool truncation_rollout = truncation_replan.has_value();
     const bool rollout_prefix_available =
         active_prefix_available && !truncation_rollout;
     const double current_goal_distance_m = distance(planning_start, goal_);
+    if (!truncation_rollout &&
+        current_goal_distance_m <= stable_path_goal_tolerance_m_) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "ROLLOUT mission_goal_settled=true distance=%.2f tolerance=%.2f "
+          "active_path_id=%" PRIu64 " action=skip_successor_publication",
+          current_goal_distance_m, stable_path_goal_tolerance_m_,
+          active_rollout_artifact_available ? executable_trajectory_artifact_.path_id
+                                            : 0U);
+      return;
+    }
     if (!std::isfinite(no_static_best_goal_distance_m_) ||
         current_goal_distance_m + 0.5 < no_static_best_goal_distance_m_) {
       no_static_best_goal_distance_m_ = current_goal_distance_m;

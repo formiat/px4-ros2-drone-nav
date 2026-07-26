@@ -357,18 +357,25 @@ void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
     publishTruncationSuffixAck(expired, TruncationSuffixAckDecision::kRejected,
                                "raw_obstacle_snapshot_timeout");
   }
-  if (pending_local_horizon_successor_.has_value() &&
+  if (pending_stationary_rollout_successor_.has_value() &&
       !pending_truncation_suffix_.has_value()) {
-    if (!temporary_replan_hold_active_ || !localPositionFresh()) {
+    if (!terminalHoldAllowsDeferredActivation(temporary_replan_hold_active_,
+                                              final_goal_hold_active_) ||
+        !localPositionFresh()) {
       return;
     }
-    msg::ExecutableTrajectory command = std::move(*pending_local_horizon_successor_);
-    pending_local_horizon_successor_.reset();
+    msg::ExecutableTrajectory command = std::move(
+        *pending_stationary_rollout_successor_); // NOLINT(bugprone-unchecked-optional-access):
+                                                 // guarded above.
+    pending_stationary_rollout_successor_.reset();
+    const Point2 hold_target = final_goal_hold_active_ ? final_goal_hold_target_
+                                                       : temporary_replan_hold_target_;
     RCLCPP_INFO(get_logger(),
-                "LOCAL_HORIZON event=pending_successor_activated path_id=%" PRIu64
-                " current=(%.2f,%.2f) hold=(%.2f,%.2f) speed=%.2f",
+                "ROLLOUT event=pending_successor_activated path_id=%" PRIu64
+                " current=(%.2f,%.2f) hold=(%.2f,%.2f) hold_type=%s speed=%.2f",
                 command.path_id, current_position_.x, current_position_.y,
-                temporary_replan_hold_target_.x, temporary_replan_hold_target_.y,
+                hold_target.x, hold_target.y,
+                final_goal_hold_active_ ? "final_goal" : "temporary_replan",
                 current_speed_mps_);
     processExecutableTrajectory(command, true);
     return;
@@ -522,12 +529,13 @@ void Px4OffboardNode::processExecutableTrajectory(
     activation_risk_field =
         ObstacleRiskField::build(*activation_raw_grid, current_snapshot->policy);
   }
-  if (command.activate_after_terminal_hold && !pending_retry &&
-      !temporary_replan_hold_active_) {
-    const bool replaced = pending_local_horizon_successor_.has_value();
-    pending_local_horizon_successor_ = command;
+  const bool terminal_hold_active = terminalHoldAllowsDeferredActivation(
+      temporary_replan_hold_active_, final_goal_hold_active_);
+  if (command.activate_after_terminal_hold && !pending_retry && !terminal_hold_active) {
+    const bool replaced = pending_stationary_rollout_successor_.has_value();
+    pending_stationary_rollout_successor_ = command;
     RCLCPP_INFO(get_logger(),
-                "LOCAL_HORIZON event=successor_pending path_id=%" PRIu64
+                "ROLLOUT event=successor_pending path_id=%" PRIu64
                 " reason=waiting_for_terminal_hold replaced=%s",
                 command.path_id, replaced ? "true" : "false");
     publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
@@ -537,8 +545,7 @@ void Px4OffboardNode::processExecutableTrajectory(
   ScopedOffboardCallbackDuration callback_duration{get_logger(), "path",
                                                    path.poses.size()};
   const bool local_horizon_stationary_release =
-      command.activate_after_terminal_hold &&
-      (pending_retry || temporary_replan_hold_active_);
+      command.activate_after_terminal_hold && (pending_retry || terminal_hold_active);
   const std::int64_t path_receive_stamp_ns = get_clock()->now().nanoseconds();
   const std::uint64_t candidate_update_id = received_path_update_id_ + 1U;
   latest_planner_path_id_ = command.path_id;
@@ -1063,7 +1070,7 @@ void Px4OffboardNode::processExecutableTrajectory(
   active_truncation_generation_ = 0U;
   active_temporary_prefix_fingerprint_ = 0U;
   pending_truncation_suffix_.reset();
-  pending_local_horizon_successor_.reset();
+  pending_stationary_rollout_successor_.reset();
   resetVerticalPreAlignment();
   no_path_hold_target_valid_ = false;
   std::vector<Point2> accepted_path_points;

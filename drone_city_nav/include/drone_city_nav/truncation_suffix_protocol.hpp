@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/local_horizon_execution_state.hpp"
+
 #include <cstdint>
 #include <optional>
 
@@ -46,6 +48,14 @@ struct TruncationSuffixPublicationEvaluation {
   const char* reason{"not_evaluated"};
 };
 
+struct TrajectoryActivationAckContract {
+  bool explicitly_required{false};
+  bool truncation_suffix{false};
+  bool activate_after_terminal_hold{false};
+  TrajectoryEndpointSemantics endpoint_semantics{
+      TrajectoryEndpointSemantics::kMissionGoal};
+};
+
 [[nodiscard]] std::optional<TruncationSuffixAckDecision>
 truncationSuffixAckDecisionFromValue(std::uint8_t value) noexcept;
 
@@ -66,6 +76,21 @@ truncationSuffixAckDecisionName(TruncationSuffixAckDecision decision) noexcept;
 evaluateTruncationSuffixAck(const TruncationSuffixIdentity& expected,
                             const TruncationSuffixIdentity& received,
                             TruncationSuffixAckDecision decision) noexcept;
+
+[[nodiscard]] bool trajectoryActivationAckRequired(
+    const TrajectoryActivationAckContract& contract) noexcept;
+
+[[nodiscard]] TruncationSuffixAckEvaluation
+evaluateOrdinaryTrajectoryAck(std::uint64_t expected_path_id,
+                              std::uint64_t received_path_id,
+                              TruncationSuffixAckDecision decision) noexcept;
+
+[[nodiscard]] bool
+trajectoryAckClearsPending(TruncationSuffixAckAction action) noexcept;
+
+[[nodiscard]] bool
+terminalHoldAllowsDeferredActivation(bool temporary_replan_hold_active,
+                                     bool final_goal_hold_active) noexcept;
 
 [[nodiscard]] TruncationSuffixPublicationEvaluation
 evaluateTruncationSuffixPublication(const TruncationSuffixPublicationContext& context,

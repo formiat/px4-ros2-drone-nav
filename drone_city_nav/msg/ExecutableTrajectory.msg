@@ -11,6 +11,7 @@ uint8 truncation_suffix_activation_mode
 bool vertical_pre_alignment_required
 float64 vertical_pre_alignment_target_z_m
 bool activate_after_terminal_hold
+bool requires_activation_ack
 uint8 ENDPOINT_MISSION_GOAL=0
 uint8 ENDPOINT_LOCAL_HORIZON=1
 uint8 ENDPOINT_TEMPORARY_REPLAN_HOLD=2
