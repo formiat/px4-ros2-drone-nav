@@ -92,6 +92,14 @@ production cutover делать только после перевода все�
   `drone_city_nav/src/px4_offboard_node_trajectory.cpp:806-828`,
   `drone_city_nav/src/trajectory_horizontal_handover.cpp:149-342`). Поэтому
   одного risk-aware planner finalization недостаточно.
+- Текущий ROS runtime grid channel использует
+  `nav_msgs::msg::OccupancyGrid`: `rawOccupancyGridToRos()` переносит header,
+  bounds и cells, но не `PlanningGridVersion::build_revision`
+  (`drone_city_nav/src/ros_conversions.cpp:123-149`), а
+  `publishProhibitedGrid()` публикует только этот стандартный message
+  (`drone_city_nav/src/planner_node_debug_publication.cpp:128-130`). Поэтому
+  planner/offboard snapshot identity нельзя кодировать только в trajectory или
+  неявно выводить из timestamp.
 
 Notion и GitLab не читались: prompt не содержит Notion task, GitLab MR или
 review context; при `notion_policy=optional` удаленный контекст не нужен.
@@ -164,7 +172,9 @@ workflow:
 5. **Offboard и safe truncation**
    - `safe_trajectory_truncation.hpp/.cpp`;
    - `px4_offboard_node*.hpp/.cpp`;
-   - ROS topic/config contract для raw obstacle snapshot.
+   - `msg/RawObstacleSnapshot.msg`, `msg/ExecutableTrajectory.msg`;
+   - ROS topic/config/tracker contract для atomic raw obstacle snapshot;
+   - отдельный debug-only `nav_msgs/OccupancyGrid` topic для RViz.
 
 6. **Удаляемая escape/relaxation подсистема**
    - `directed_inflation_escape.hpp/.cpp`;
@@ -418,18 +428,68 @@ raw-clear вариант, допускается только лексикогр
   raw/risk context и после bridge повторно применяет hard/risk validation до
   `buildOffboardTrajectoryState()`.
 
-Чтобы offboard не угадывал static/no-static policy, расширить
-`msg/ExecutableTrajectory.msg` полями policy identity:
+Чтобы offboard не угадывал static/no-static policy и мог сопоставить geometry с
+raw payload, ввести атомарный custom wire contract
+`drone_city_nav/msg/RawObstacleSnapshot.msg`:
 
 ```text
+uint64 producer_instance_id
 uint64 obstacle_snapshot_revision
+uint64 risk_policy_fingerprint
 float64 risk_critical_distance_m
 float64 risk_preferred_distance_m
+nav_msgs/OccupancyGrid grid
 ```
 
-Offboard сверяет конечность/порядок thresholds, применяет их к текущему raw
-obstacle snapshot и логирует несовпадение revision как использование более
-свежих runtime данных, а не как повод принять bridge без проверки.
+`producer_instance_id` создается planner-ом один раз на lifecycle process
+аналогично `ObstacleMemorySnapshot`; `obstacle_snapshot_revision` монотонен
+только внутри этого instance. Raw cells, identity и thresholds публикуются
+одним ROS message с reliable/transient-local QoS, поэтому не могут разъехаться
+внутри payload. Новый message зарегистрировать в `rosidl_generate_interfaces`
+и package dependencies в `drone_city_nav/CMakeLists.txt`/`package.xml`.
+
+`msg/ExecutableTrajectory.msg` несет ссылку на использованный snapshot:
+
+```text
+uint64 obstacle_snapshot_producer_instance_id
+uint64 obstacle_snapshot_revision
+uint64 risk_policy_fingerprint
+```
+
+Thresholds в trajectory не дублируются: offboard берет их только из
+`RawObstacleSnapshot`, identity которого проверена. Ввести production helper
+`RawObstacleSnapshotTracker` с явным результатом:
+
+```cpp
+enum class RawSnapshotRelation {
+  kExact,
+  kRuntimeNewer,
+  kRuntimeOlder,
+  kDifferentProducer,
+  kPolicyMismatch,
+  kMalformed,
+};
+```
+
+Правила offboard:
+
+- exact identity — validate bridge и candidate по snapshot;
+- тот же producer/policy, runtime revision больше — validate по более свежему
+  raw payload и логировать `runtime_newer`;
+- runtime revision меньше trajectory revision — сохранить trajectory pending
+  до прихода matching/newer snapshot;
+- raw snapshot с меньшей revision внутри producer — игнорировать как
+  out-of-order;
+- переключение producer retire-ит предыдущий instance; trajectory от retired
+  producer отклоняется как stale, trajectory от еще неизвестного producer
+  временно pending;
+- malformed zero identity, non-finite/неупорядоченные thresholds или
+  grid/metadata mismatch — snapshot отклоняется;
+- policy fingerprint mismatch — trajectory отклоняется и planner получает
+  обычный retry/reject signal, без validation по другой policy.
+
+Pending trajectory повторно проверяется из raw-snapshot callback; bounded
+existing successor/update timeout не дает ждать identity бесконечно.
 
 Обновить `tests/trajectory_horizontal_handover_test.cpp`:
 
@@ -439,6 +499,11 @@ obstacle snapshot и логирует несовпадение revision как �
 - returned `stitched_risk` совпадает с повторной независимой оценкой samples;
 - planner preflight и offboard consumer используют одинаковые thresholds;
 - hard-window metadata и существующие geometry limits сохраняются.
+
+Добавить `tests/raw_obstacle_snapshot_test.cpp` для message conversion/tracker:
+exact match, newer runtime revision, trajectory-before-snapshot pending,
+out-of-order raw delivery, retired/different producer, policy mismatch,
+zero/malformed identity и invalid grid payload.
 
 ### 8. Удалить escape и inflation relaxation полностью
 
@@ -482,10 +547,19 @@ blocker -> truncation -> confirmation -> suffix ACK protocol.
 Изменение risk exposure без raw intersection может планировать более хороший
 successor в обычном periodic cycle, но не должно запускать аварийную truncation.
 
-Заменить `/drone_city_nav/prohibited_grid` на
-`/drone_city_nav/raw_obstacle_grid` для offboard runtime snapshot.
+Заменить `/drone_city_nav/prohibited_grid` двумя явно разными outputs:
+
+- `/drone_city_nav/raw_obstacle_snapshot` типа
+  `drone_city_nav/msg/RawObstacleSnapshot` — единственный runtime validation
+  input offboard;
+- `/drone_city_nav/raw_obstacle_grid` типа `nav_msgs/OccupancyGrid` —
+  debug/RViz output, который запрещено подключать обратно к planner/offboard
+  validation.
+
 `currentProhibitedGrid()` и связанные freshness/diagnostic names переименовать
-в raw-obstacle terms. Offboard строит occupied distance field локально.
+в raw-snapshot terms. Offboard строит occupied distance field локально из
+атомарного custom snapshot. Lidar debug/RViz продолжают использовать только
+вложенный/отдельный debug grid без identity-семантики.
 
 Числа оставить неизменными:
 
@@ -522,6 +596,8 @@ grid/occupied distance field и явно логировала both
 Добавить bounded diagnostics:
 
 - raw snapshot revision/fingerprint и ROI/halo dimensions;
+- raw snapshot producer instance, candidate/runtime relation
+  (`exact|runtime_newer|pending|stale|policy_mismatch`) и policy fingerprint;
 - policy thresholds;
 - `worst_risk_tier`, critical/planning exposure, minimum raw clearance;
 - hard reject source: raw occupied/outside/known solid;
@@ -557,6 +633,9 @@ distance/risk tiers, которая не участвует в planning input.
 - `trajectory_horizontal_handover_test`: planner preflight/offboard bridge
   hard-reject raw/outside, использует те же thresholds, возвращает наблюдаемый
   risk score и выбирает лучший strict/degraded bridge без скрытого ухудшения.
+- `raw_obstacle_snapshot_test`: atomic payload conversion и tracker покрывают
+  exact/newer/pending/out-of-order/different-producer/policy-mismatch/malformed
+  delivery без вывода revision из `header.stamp`.
 - `trajectory_repair_test` и `repair_race_test`: partial/global candidates
   сравниваются тем же score, anchors могут лежать в soft bands, raw anchors
   отклоняются.
@@ -602,7 +681,8 @@ trunc defaults не изменены.
 planning_grid_builder|planning_grid_snapshot|corridor|trajectory_optimizer|\
 turn_smoothing|trajectory_planner|trajectory_horizontal_handover|\
 trajectory_repair|repair_race|\
-safe_trajectory_truncation|planner_node_config|px4_offboard_node_config|\
+raw_obstacle_snapshot|safe_trajectory_truncation|planner_node_config|\
+px4_offboard_node_config|\
 trajectory_diagnostics'"
    ```
 
@@ -655,14 +735,18 @@ trajectory_diagnostics'"
    hard-rejectится по raw/outside, оценивается общей policy, возвращает
    observable before/after score и детерминированно выбирает лучший
    strict/degraded layout.
-6. **All-mode orchestration**: static A*, no-static rollout, partial repair и
+6. **Raw snapshot wire identity**: custom message атомарно связывает raw cells,
+   producer/revision/policy; tests покрывают exact, newer runtime,
+   trajectory-before-snapshot pending, out-of-order, producer switch,
+   policy mismatch и malformed identity.
+7. **All-mode orchestration**: static A*, no-static rollout, partial repair и
    explicit no-static A* recovery получают одинаковую policy и snapshot.
-7. **Snapshot/ROI**: obstacle in halo affects edge clearance; obstacle outside
+8. **Snapshot/ROI**: obstacle in halo affects edge clearance; obstacle outside
    halo does not leak; successor reuses exact immutable revision.
-8. **Runtime truncation**: raw intersection triggers; soft-band-only proximity
+9. **Runtime truncation**: raw intersection triggers; soft-band-only proximity
    does not; terminal station сохраняет `15/5` policy; stale generation/ACK
    behavior unchanged.
-9. **Removal contract**: config no longer declares escape/relaxation params,
+10. **Removal contract**: config no longer declares escape/relaxation params,
    CMake no longer builds removed targets, ROS raw topic conversion contains no
    inflated cells.
 
@@ -701,9 +785,14 @@ arbitrary smoothing. Для этого потребуется отдельный
    removal/docs/tests.
 9. **Post-finalization geometry может обойти planner validation.** Horizontal
    handover строится заново в offboard по более свежему pose/raw snapshot.
-   Поэтому policy identity должна передаваться в executable message, а
-   фактические stitched samples обязаны проходить shared evaluator перед
-   активацией; planner preflight сам по себе этого риска не закрывает.
+   Поэтому custom raw payload и executable message должны иметь сопоставимую
+   `(producer, revision, policy)` identity, а фактические stitched samples
+   обязаны проходить shared evaluator перед активацией; planner preflight сам
+   по себе этого риска не закрывает.
+10. **ROS topics доставляются независимо.** Trajectory может прийти раньше
+    matching raw snapshot, а transient-local snapshot может уже быть новее.
+    Snapshot tracker и pending/retry rules обязательны; timestamp нельзя
+    использовать как скрытый revision.
 
 ## Open questions
 
