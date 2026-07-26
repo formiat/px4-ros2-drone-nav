@@ -53,6 +53,12 @@ formatHorizontalHandoverDiagnostic(const HorizontalTrajectoryHandoverResult& han
 
 [[nodiscard]] bool Px4OffboardNode::trajectoryDiagnosticsMatchesCurrentPath(
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) const {
+  // A safe prefix keeps the planner path identity but rebases its sample stations.
+  // Full-path diagnostics use the original station frame and must not overwrite the
+  // per-sample vertical metadata retained by truncation.
+  if (temporary_replan_truncation_active_) {
+    return false;
+  }
   return trajectoryDiagnosticsMatchesPath(diagnostics, last_received_path_stamp_ns_,
                                           false, 0U);
 }

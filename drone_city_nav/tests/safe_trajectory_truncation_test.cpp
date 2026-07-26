@@ -50,6 +50,46 @@ TEST(SafeTrajectoryTruncation, RetainsPrefixToFixedMarginBeforeBlocker) {
   EXPECT_NEAR(result.samples.back().s_m, 40.0, 1.0e-6);
 }
 
+TEST(SafeTrajectoryTruncation, PreservesPassageMetadataWhenRebasingPrefix) {
+  std::vector<TrajectoryPointSample> samples = lineSamples();
+  for (TrajectoryPointSample& sample : samples) {
+    if (sample.s_m <= 30.0) {
+      sample.vertical_profile_passage_id = "connector_04_12_opening";
+      sample.vertical_hard_window_active = true;
+      sample.vertical_safe_min_z_m = 12.5;
+      sample.vertical_safe_max_z_m = 17.5;
+      sample.vertical_gate_z_m = 16.5;
+      continue;
+    }
+    sample.z_m = 23.5;
+    sample.vertical_profile_passage_id = "connector_06_14_opening";
+    sample.vertical_hard_window_active = true;
+    sample.vertical_safe_min_z_m = 22.5;
+    sample.vertical_safe_max_z_m = 27.5;
+    sample.vertical_gate_z_m = 23.5;
+  }
+
+  const SafeTrajectoryTruncationResult result = truncateTrajectoryBeforeBlocker(
+      samples, SafeTrajectoryTruncationRequest{.current_position = Point2{45.0, 0.0},
+                                               .blocker_path_distance_m = 45.0,
+                                               .truncation_margin_m = 15.0});
+
+  ASSERT_TRUE(result.applied) << result.reason;
+  ASSERT_FALSE(result.immediate_hold);
+  ASSERT_TRUE(trajectorySamplesAreUsable(result.samples));
+  ASSERT_FALSE(result.samples.empty());
+  EXPECT_NEAR(result.samples.front().s_m, 0.0, 1.0e-6);
+  EXPECT_NEAR(result.samples.back().s_m, 30.0, 1.0e-6);
+  for (const TrajectoryPointSample& sample : result.samples) {
+    EXPECT_DOUBLE_EQ(sample.z_m, 23.5);
+    EXPECT_EQ(sample.vertical_profile_passage_id, "connector_06_14_opening");
+    EXPECT_TRUE(sample.vertical_hard_window_active);
+    EXPECT_DOUBLE_EQ(sample.vertical_safe_min_z_m, 22.5);
+    EXPECT_DOUBLE_EQ(sample.vertical_safe_max_z_m, 27.5);
+    EXPECT_DOUBLE_EQ(sample.vertical_gate_z_m, 23.5);
+  }
+}
+
 TEST(SafeTrajectoryTruncation, HoldsImmediatelyWhenMarginIsAlreadyPassed) {
   const std::vector<TrajectoryPointSample> samples = lineSamples();
 
