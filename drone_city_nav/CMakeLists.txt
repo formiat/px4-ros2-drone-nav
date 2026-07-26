@@ -4,7 +4,7 @@ project(drone_city_nav VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(DRONE_CITY_NAV_ENABLE_CUDA_MPPI
-       "Build the isolated CUDA MPPI benchmark" OFF)
+       "Build CUDA MPPI benchmark and shadow planner" ON)
 set(DRONE_CITY_NAV_CUDA_ARCHITECTURES
     "75;86"
     CACHE STRING "CUDA architectures for the isolated MPPI benchmark")
@@ -13,11 +13,12 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   include(CheckLanguage)
   check_language(CUDA)
   if(NOT CMAKE_CUDA_COMPILER)
-    message(FATAL_ERROR
-            "DRONE_CITY_NAV_ENABLE_CUDA_MPPI requires a CUDA compiler")
+    message(WARNING "CUDA compiler unavailable; CUDA MPPI targets disabled")
+    set(DRONE_CITY_NAV_ENABLE_CUDA_MPPI OFF)
+  else()
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
   endif()
-  enable_language(CUDA)
-  find_package(CUDAToolkit REQUIRED)
 endif()
 
 find_package(ament_cmake REQUIRED)
@@ -67,12 +68,33 @@ function(enable_project_warnings target_name)
 endfunction()
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+  add_library(
+    drone_city_nav_mppi_cuda
+    src/mppi/mppi_engine.cu
+    src/mppi/mppi_reference.cpp)
+  target_compile_features(drone_city_nav_mppi_cuda PUBLIC cxx_std_20)
+  set_target_properties(
+    drone_city_nav_mppi_cuda
+    PROPERTIES CUDA_ARCHITECTURES "${DRONE_CITY_NAV_CUDA_ARCHITECTURES}"
+               CUDA_STANDARD 20
+               CUDA_STANDARD_REQUIRED ON
+               POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(
+    drone_city_nav_mppi_cuda PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+  target_link_libraries(drone_city_nav_mppi_cuda PUBLIC CUDA::cudart)
+  target_compile_options(
+    drone_city_nav_mppi_cuda
+    PRIVATE
+      "$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wshadow;-Wold-style-cast>"
+      $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>)
+
   add_executable(
     mppi_cuda_benchmark
     tools/mppi_cuda_benchmark.cpp
     src/mppi/mppi_cuda.cu
-    src/mppi/mppi_cuda_host.cpp
-    src/mppi/mppi_reference.cpp)
+    src/mppi/mppi_cuda_host.cpp)
   target_compile_features(mppi_cuda_benchmark PRIVATE cxx_std_20)
   set_target_properties(
     mppi_cuda_benchmark
@@ -80,13 +102,19 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
                CUDA_STANDARD 20
                CUDA_STANDARD_REQUIRED ON)
   target_include_directories(mppi_cuda_benchmark PRIVATE include)
-  target_link_libraries(mppi_cuda_benchmark PRIVATE CUDA::cudart)
+  target_link_libraries(mppi_cuda_benchmark PRIVATE drone_city_nav_mppi_cuda
+                                                    CUDA::cudart)
   target_compile_options(
     mppi_cuda_benchmark
     PRIVATE
       "$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wshadow;-Wold-style-cast>"
       $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>)
-  install(TARGETS mppi_cuda_benchmark DESTINATION lib/${PROJECT_NAME})
+  install(
+    TARGETS drone_city_nav_mppi_cuda mppi_cuda_benchmark
+    EXPORT drone_city_nav_targets
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION lib/${PROJECT_NAME})
 endif()
 
 add_library(
@@ -342,6 +370,33 @@ ament_target_dependencies(
   rclcpp
   sensor_msgs)
 enable_project_warnings(lidar_debug_node)
+
+if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+  add_executable(
+    shadow_mppi_node
+    src/shadow_mppi_node.cpp
+    src/shadow_mppi_node_inputs.cpp
+    src/shadow_mppi_node_runtime.cpp
+    src/shadow_mppi_node_diagnostics.cpp)
+  target_compile_features(shadow_mppi_node PRIVATE cxx_std_20)
+  target_link_libraries(
+    shadow_mppi_node
+    drone_city_nav_core
+    drone_city_nav_ros_adapters
+    drone_city_nav_mppi_cuda
+    ${cpp_typesupport_target})
+  ament_target_dependencies(
+    shadow_mppi_node
+    ament_index_cpp
+    nav_msgs
+    px4_msgs
+    rclcpp
+    std_msgs
+    visualization_msgs)
+  enable_project_warnings(shadow_mppi_node)
+  install(TARGETS shadow_mppi_node
+          RUNTIME DESTINATION lib/${PROJECT_NAME})
+endif()
 
 install(
   TARGETS

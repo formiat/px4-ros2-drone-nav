@@ -74,6 +74,7 @@ lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_m
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
 enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
+enable_shadow_mppi="$(normalize_bool "${ENABLE_SHADOW_MPPI:-false}")"
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
@@ -556,6 +557,7 @@ ros_launch_args=(
   enable_gazebo_bridge:=true
   enable_mission_monitor:=true
   enable_lidar_debug:="${enable_lidar_debug}"
+  enable_shadow_mppi:="${enable_shadow_mppi}"
   enable_rviz:="${enable_rviz}"
   rviz_config:="${rviz_config_file}"
   rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"

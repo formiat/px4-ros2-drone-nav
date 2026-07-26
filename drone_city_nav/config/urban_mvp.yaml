@@ -76,6 +76,41 @@ obstacle_memory_node:
     occupied_score: 3
     free_score: -1
 
+shadow_mppi_node:
+  ros__parameters:
+    enabled: false
+    frame_id: map
+    tick_rate_hz: 50.0
+    rviz_rate_hz: 10.0
+    rollouts: 8192
+    steps: 80
+    dt_s: 0.05
+    deadline_ms: 20.0
+    maximum_pose_age_ms: 150.0
+    maximum_esdf_age_ms: 1000.0
+    target_mode: active_route_guide
+    guide_lookahead_m: 30.0
+    passage_activation_distance_m: 45.0
+    raw_collision_radius_m: 0.5
+    critical_distance_m: 1.0
+    preferred_distance_m: 6.0
+    seed: 42
+    px4_local_origin_x_m: 54.0
+    px4_local_origin_y_m: 54.0
+    goal_x_m: 216.0
+    goal_y_m: 378.0
+    goal_z_m: 18.0
+    known_passages_enabled: true
+    known_passages_path: worlds/known_passages.passages3d
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
+    raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
+    active_path_topic: /drone_city_nav/final_trajectory_path
+    shadow_path_topic: /drone_city_nav/shadow_mppi/path
+    shadow_markers_topic: /drone_city_nav/shadow_mppi/markers
+    shadow_status_topic: /drone_city_nav/shadow_mppi/status
+    diagnostics_output_dir: log/shadow_mppi
+
 planner_node:
   ros__parameters:
     frame_id: map

@@ -55,6 +55,7 @@ def generate_launch_description():
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
+    enable_shadow_mppi = LaunchConfiguration("enable_shadow_mppi")
     enable_rviz = LaunchConfiguration("enable_rviz")
     rviz_drone_follow_tf_enabled = LaunchConfiguration(
         "rviz_drone_follow_tf_enabled"
@@ -210,6 +211,21 @@ def generate_launch_description():
         ],
     )
 
+    shadow_mppi = Node(
+        package="drone_city_nav",
+        executable="shadow_mppi_node",
+        name="shadow_mppi_node",
+        output="screen",
+        condition=IfCondition(enable_shadow_mppi),
+        parameters=[
+            params_file,
+            {
+                "use_sim_time": True,
+                "enabled": True,
+            },
+        ],
+    )
+
     # This transform is intentional and must not be "fixed" by changing RViz back
     # to the raw navigation map frame. The generated Gazebo world and the
     # navigation stack historically use different visual conventions: the
@@ -329,6 +345,14 @@ def generate_launch_description():
                 description="Record lidar/grid/path snapshots for debugging.",
             ),
             DeclareLaunchArgument(
+                "enable_shadow_mppi",
+                default_value="false",
+                description=(
+                    "Run CUDA MPPI in diagnostic-only shadow mode. The node "
+                    "does not publish executable trajectories or commands."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "enable_rviz",
                 default_value="false",
                 description="Start RViz with the navigation debug view.",
@@ -371,6 +395,7 @@ def generate_launch_description():
             px4_offboard,
             mission_monitor,
             lidar_debug,
+            shadow_mppi,
             gazebo_aligned_map_tf,
             rviz,
         ]

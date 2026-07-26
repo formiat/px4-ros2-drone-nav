@@ -1,4 +1,5 @@
 #include "drone_city_nav/mppi/mppi_cuda.hpp"
+#include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
 #include <algorithm>
@@ -966,6 +967,105 @@ BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config) {
                        replay_values * sizeof(float), cudaMemcpyDeviceToHost),
             "copy replayed deterministic noise");
   result.deterministic_replay_passed = first_noise == replayed_noise;
+  return result;
+}
+
+BenchmarkResult runPersistentCudaBenchmark(const BenchmarkConfig& config) {
+  if (!benchmarkConfigIsValid(config)) {
+    throw std::invalid_argument{"invalid MPPI benchmark configuration"};
+  }
+  BenchmarkResult result{};
+  int device = 0;
+  checkCuda(cudaGetDevice(&device), "cudaGetDevice");
+  cudaDeviceProp properties{};
+  checkCuda(cudaGetDeviceProperties(&properties, device), "cudaGetDeviceProperties");
+  result.gpu_name = properties.name;
+  result.compute_major = properties.major;
+  result.compute_minor = properties.minor;
+
+  Scenario scenario = makeScenario(config.scenario, result.esdf_build_ms);
+  const auto allocation_started = std::chrono::steady_clock::now();
+  MppiCudaEngine engine{config};
+  result.allocation_ms = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - allocation_started)
+                             .count();
+  const EsdfUploadResult upload =
+      engine.updateEsdf(EsdfSnapshot{scenario.grid, scenario.esdf, 1U});
+  if (!upload.accepted) {
+    throw std::runtime_error{"persistent MPPI engine rejected synthetic ESDF"};
+  }
+  result.esdf_upload_ms = upload.upload_ms;
+  result.allocated_bytes =
+      engine.allocatedBytes() + scenario.esdf.size() * sizeof(float) * 2U;
+
+  TimingSamples measured;
+  MppiTickResult selected;
+  const State target{scenario.target_x_m, scenario.target_y_m, scenario.initial.z};
+  const std::size_t total_ticks = config.warmup_ticks + config.measured_ticks;
+  for (std::size_t tick = 0U; tick < total_ticks; ++tick) {
+    selected = engine.plan(MppiTickInput{scenario.initial, target, std::nullopt,
+                                         static_cast<std::uint64_t>(tick), 1U, 0});
+    if (tick < config.warmup_ticks) {
+      continue;
+    }
+    measured.noise.push_back(selected.timings.noise_generation_ms);
+    measured.simulation.push_back(selected.timings.rollout_simulation_ms);
+    measured.risk.push_back(selected.timings.risk_reduction_ms);
+    measured.weights.push_back(selected.timings.weight_calculation_ms);
+    measured.update.push_back(selected.timings.control_update_ms);
+    measured.warm_start.push_back(selected.timings.warm_start_ms);
+    measured.gpu_total.push_back(selected.timings.gpu_total_ms);
+    measured.host_total.push_back(selected.timings.host_total_ms);
+    if (selected.timings.host_total_ms > config.deadline_ms) {
+      ++result.deadline_misses;
+    }
+  }
+  result.deadline_miss_ratio = static_cast<double>(result.deadline_misses) /
+                               static_cast<double>(config.measured_ticks);
+  result.timings.noise_generation = statistics(std::move(measured.noise));
+  result.timings.rollout_simulation = statistics(std::move(measured.simulation));
+  result.timings.risk_reduction = statistics(std::move(measured.risk));
+  result.timings.weight_calculation = statistics(std::move(measured.weights));
+  result.timings.control_update = statistics(std::move(measured.update));
+  result.timings.warm_start = statistics(std::move(measured.warm_start));
+  result.timings.gpu_total = statistics(std::move(measured.gpu_total));
+  result.timings.host_total = statistics(std::move(measured.host_total));
+
+  const std::vector<Control> zero_noise(config.steps);
+  result.selected = simulateReference(
+      scenario.initial, selected.controls, zero_noise, config.dynamics, config.risk,
+      config.costs, scenario.grid, scenario.esdf, scenario.target_x_m,
+      scenario.target_y_m, config.early_exit_on_collision);
+  result.reference_check_passed = result.selected.collision == selected.raw_collision &&
+                                  result.selected.worst_tier == selected.selected_tier;
+
+  MppiCudaEngine replay_engine{config};
+  const EsdfUploadResult replay_upload =
+      replay_engine.updateEsdf(EsdfSnapshot{scenario.grid, scenario.esdf, 1U});
+  if (!replay_upload.accepted) {
+    throw std::runtime_error{"persistent replay engine rejected synthetic ESDF"};
+  }
+  const MppiTickInput replay_input{scenario.initial, target, std::nullopt, 0U, 1U, 0};
+  MppiCudaEngine first_engine{config};
+  const EsdfUploadResult first_upload =
+      first_engine.updateEsdf(EsdfSnapshot{scenario.grid, scenario.esdf, 1U});
+  if (!first_upload.accepted) {
+    throw std::runtime_error{"persistent reference engine rejected synthetic ESDF"};
+  }
+  const std::vector<Control> first_controls = first_engine.plan(replay_input).controls;
+  const std::vector<Control> replay_controls =
+      replay_engine.plan(replay_input).controls;
+  result.deterministic_replay_passed =
+      first_controls.size() == replay_controls.size() &&
+      std::equal(first_controls.begin(), first_controls.end(), replay_controls.begin(),
+                 [](const Control& first, const Control& replay) {
+                   constexpr float kReplayTolerance{1.0e-4F};
+                   return std::abs(first.ax - replay.ax) <= kReplayTolerance &&
+                          std::abs(first.ay - replay.ay) <= kReplayTolerance &&
+                          std::abs(first.az - replay.az) <= kReplayTolerance &&
+                          std::abs(first.yaw_accel - replay.yaw_accel) <=
+                              kReplayTolerance;
+                 });
   return result;
 }
 

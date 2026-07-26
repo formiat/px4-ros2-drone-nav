@@ -45,6 +45,7 @@ struct BenchmarkResult {
 };
 
 [[nodiscard]] BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config);
+[[nodiscard]] BenchmarkResult runPersistentCudaBenchmark(const BenchmarkConfig& config);
 [[nodiscard]] std::vector<std::string> benchmarkScenarioNames();
 [[nodiscard]] std::string benchmarkResultJson(const BenchmarkConfig& config,
                                               const BenchmarkResult& result);

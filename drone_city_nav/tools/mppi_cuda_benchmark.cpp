@@ -182,7 +182,8 @@ int runMatrix(BenchmarkConfig base, const std::filesystem::path& output_path) {
         config.steps = steps;
         std::cout << "\n=== " << scenario << ' ' << rollouts << "x" << steps
                   << " ===\n";
-        const BenchmarkResult result = drone_city_nav::mppi::runCudaBenchmark(config);
+        const BenchmarkResult result =
+            drone_city_nav::mppi::runPersistentCudaBenchmark(config);
         printSummary(config, result);
         writeJson(directory / (scenario + "_" + std::to_string(rollouts) + "x" +
                                std::to_string(steps) + ".json"),
@@ -203,7 +204,8 @@ int main(const int argc, char** argv) {
     if (matrix_requested) {
       return runMatrix(config, json_path);
     }
-    const BenchmarkResult result = drone_city_nav::mppi::runCudaBenchmark(config);
+    const BenchmarkResult result =
+        drone_city_nav::mppi::runPersistentCudaBenchmark(config);
     printSummary(config, result);
     if (!json_path.empty()) {
       writeJson(json_path, config, result);
