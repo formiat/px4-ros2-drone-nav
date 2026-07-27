@@ -118,13 +118,14 @@ all candidate containers and PIDs before terminating them. Use
 `DRONE_GAZEBO_CLEAN_STALE_DRY_RUN=true` to list candidates without killing, or
 `DRONE_GAZEBO_CLEAN_STALE_PROCESSES=false` only for intentional debugging.
 
-By default, the Gazebo 3D view asks the Gazebo `CameraTracking` GUI plugin to
-follow the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
+By default, the Gazebo 3D view uses Gazebo's `CameraTracking` plugin to follow
+the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
 `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the target with
 `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
-`GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The GUI launch keeps the default Gazebo GUI
-config path and unpauses the simulation separately through Gazebo world
-control.
+`GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The runner waits for the PX4 model to appear
+in the server scene before starting the GUI, then publishes an ID-aware native
+`CameraTrack` command and verifies the resulting target state. Simulation
+unpause remains a separate Gazebo world-control operation.
 
 By default, RViz also opens in a follow-camera debug view that targets the
 visualization-only `drone_follow` TF frame. Disable that behavior with

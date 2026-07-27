@@ -62,6 +62,8 @@ class ContainerEntrypointTest(unittest.TestCase):
         self.assertNotIn("docker ps --filter", text)
         self.assertIn("container_has_simulation_processes", text)
         self.assertIn('docker stop -t "${container_stop_timeout_s}"', text)
+        self.assertIn("docker kill", text)
+        self.assertIn("DRONE_GAZEBO_DOCKER_COMMAND_TIMEOUT_S", text)
         self.assertIn("gz[[:space:]]+sim", text)
         self.assertIn("PX4-Autopilot", text)
         self.assertIn("MicroXRCEAgent", text)

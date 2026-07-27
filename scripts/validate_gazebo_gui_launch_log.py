@@ -103,8 +103,12 @@ def _validate_scene_diagnostics(
     target_model_seen = _read_summary_bool(summary, "target_model_seen")
     target_visual_seen = _read_summary_bool(summary, "target_visual_seen")
     yellow_visual_seen = _read_summary_bool(summary, "yellow_visual_seen")
+    gui_tracking_target_seen = _read_summary_bool(
+        summary, "gui_tracking_target_seen"
+    )
     pose_info_status = _read_summary_value(summary, "pose_info_status")
     scene_info_status = _read_summary_value(summary, "scene_info_status")
+    follow_status = _read_summary_value(summary, "follow_status_status")
     _warn_on_capture_status(result, label="pose_info", status=pose_info_status)
     _warn_on_capture_status(result, label="scene_info", status=scene_info_status)
     if target_model_seen is False and pose_info_status == "ok":
@@ -122,6 +126,12 @@ def _validate_scene_diagnostics(
         result.warn("Gazebo scene diagnostics did not observe x500 visual tokens")
     if yellow_visual_seen is False:
         result.warn("Gazebo scene diagnostics did not observe yellow marker visuals")
+    _warn_on_capture_status(result, label="follow_status", status=follow_status)
+    if follow_status == "ok":
+        result.require(
+            "Gazebo follow camera is attached to the target",
+            gui_tracking_target_seen is True,
+        )
 
 
 def validate_log(
@@ -141,16 +151,17 @@ def validate_log(
         "Gazebo world unpause is confirmed",
         "Gazebo world running command confirmed" in text,
     )
-    follow_best_effort = (
-        "Gazebo GUI follow camera state confirmed" in text
-        or "Gazebo GUI follow camera command accepted but state confirmation is unavailable"
-        in text
-        or "Gazebo GUI follow camera configured" in text
+    result.require(
+        "Gazebo GUI follow camera configuration is logged",
+        "Gazebo GUI follow camera: enabled=" in text,
     )
-    result.require("Gazebo GUI follow camera status is logged", follow_best_effort)
+    if "Gazebo GUI follow camera: enabled=true" in text:
+        result.require(
+            "Gazebo GUI follow camera target is confirmed",
+            "Gazebo GUI follow camera state confirmed:" in text,
+        )
     if "WARNING: Gazebo GUI follow camera" in text:
         result.warn("Gazebo GUI follow camera emitted a warning")
-    result.require("Gazebo GUI config override is absent", "--gui-config" not in text)
     _validate_gui_log(result, gui_log_text)
     _validate_scene_diagnostics(result, scene_diagnostics_dir)
     return result

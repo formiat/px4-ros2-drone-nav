@@ -24,7 +24,8 @@ clean_stale_processes_enabled="$(
 clean_stale_processes_dry_run="$(
   normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_DRY_RUN:-false}"
 )"
-container_stop_timeout_s="${DRONE_GAZEBO_CONTAINER_STOP_TIMEOUT_S:-10}"
+container_stop_timeout_s="${DRONE_GAZEBO_CONTAINER_STOP_TIMEOUT_S:-2}"
+docker_command_timeout_s="${DRONE_GAZEBO_DOCKER_COMMAND_TIMEOUT_S:-4}"
 
 for arg in "$@"; do
   case "${arg}" in
@@ -41,6 +42,7 @@ Environment:
   DRONE_GAZEBO_CLEAN_STALE_DRY_RUN       List candidates without stopping them.
   DRONE_GAZEBO_CLEAN_STALE_PROCESSES     Set false to disable cleanup.
   DRONE_GAZEBO_CONTAINER_STOP_TIMEOUT_S  docker stop timeout in seconds.
+  DRONE_GAZEBO_DOCKER_COMMAND_TIMEOUT_S  hard timeout for Docker commands.
 EOF
       exit 0
       ;;
@@ -68,11 +70,14 @@ container_has_simulation_processes() {
   local combined_text
 
   inspect_text="$(
-    docker inspect \
+    timeout "${docker_command_timeout_s}s" docker inspect \
       --format '{{json .Path}} {{json .Args}} {{json .Config.Cmd}}' \
       "${container_id}" 2>/dev/null || true
   )"
-  top_text="$(docker top "${container_id}" -eo pid,ppid,pgid,cmd 2>/dev/null || true)"
+  top_text="$(
+    timeout "${docker_command_timeout_s}s" \
+      docker top "${container_id}" -eo pid,ppid,pgid,cmd 2>/dev/null || true
+  )"
   combined_text="${inspect_text}"$'\n'"${top_text}"
 
   grep -Eiq \
@@ -88,7 +93,8 @@ stop_stale_simulation_containers() {
 
   local container_ids=()
   mapfile -t container_ids < <(
-    docker ps --format '{{.ID}}' 2>/dev/null || true
+    timeout "${docker_command_timeout_s}s" \
+      docker ps --format '{{.ID}}' 2>/dev/null || true
   )
 
   local selected_ids=()
@@ -113,7 +119,15 @@ stop_stale_simulation_containers() {
     return 0
   fi
 
-  docker stop -t "${container_stop_timeout_s}" "${selected_ids[@]}"
+  if ! timeout "$((container_stop_timeout_s + docker_command_timeout_s))s" \
+    docker stop -t "${container_stop_timeout_s}" "${selected_ids[@]}"; then
+    echo "WARNING: graceful container stop timed out; forcing kill" >&2
+    local selected_id
+    for selected_id in "${selected_ids[@]}"; do
+      timeout "${docker_command_timeout_s}s" \
+        docker kill "${selected_id}" >/dev/null 2>&1 || true
+    done
+  fi
 }
 
 stop_stale_simulation_containers
@@ -123,6 +137,7 @@ cleanup_args=(
   --protect-pid "${BASHPID}"
   --repo-root "${repo_root}"
   --project-marker "/workspace"
+  --term-timeout-s 2
 )
 if [[ "${clean_stale_processes_dry_run}" == "true" ||
   "${clean_stale_processes_dry_run}" == "1" ]]; then

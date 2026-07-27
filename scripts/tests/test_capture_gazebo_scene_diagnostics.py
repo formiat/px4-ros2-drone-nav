@@ -48,7 +48,10 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
                 diagnostics.CommandResult(0, 'name: "yellow_body_plate"\n', ""),
                 diagnostics.CommandResult(
                     0,
-                    'follow_target { name: "x500_lidar_2d_0" }\n',
+                    (
+                        "track_mode: FOLLOW\n"
+                        'follow_target { name: "x500_lidar_2d_0" }\n'
+                    ),
                     "",
                 ),
             ]
@@ -66,7 +69,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
 
             self.assertTrue((output_dir / "pose_info.txt").is_file())
             self.assertTrue((output_dir / "scene_info.txt").is_file())
-            self.assertTrue((output_dir / "currently_tracked.txt").is_file())
+            self.assertTrue((output_dir / "follow_status.txt").is_file())
             self.assertTrue((output_dir / "summary.txt").is_file())
 
         joined_summary = "\n".join(summary)
@@ -78,7 +81,12 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
             any("/world/generated_city/pose/info" in call for call in runner.calls)
         )
         self.assertTrue(any("/world/generated_city/scene/info" in call for call in runner.calls))
-        self.assertTrue(any("/gui/currently_tracked" in call for call in runner.calls))
+        self.assertTrue(
+            any(
+                "/gui/currently_tracked" in call
+                for call in runner.calls
+            )
+        )
 
     def test_failed_topic_capture_is_written_as_warning(self) -> None:
         runner = FakeRunner(

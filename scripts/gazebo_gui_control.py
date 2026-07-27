@@ -37,6 +37,13 @@ class TrackingConfirmation:
     output: str = ""
 
 
+@dataclass(frozen=True)
+class EntityLookup:
+    entity_id: int | None
+    available: bool
+    output: str = ""
+
+
 def _timeout_output_to_text(value: str | bytes | None) -> str:
     if value is None:
         return ""
@@ -120,16 +127,44 @@ def _run_service(
     )
 
 
+def _lookup_scene_entity(
+    runner: CommandRunner,
+    *,
+    world: str,
+    target: str,
+) -> EntityLookup:
+    result = _run_service(
+        runner,
+        service=f"/world/{world}/scene/info",
+        reqtype="gz.msgs.Empty",
+        reptype="gz.msgs.Scene",
+        request="",
+    )
+    output = result.combined_output
+    if result.returncode != 0 or not output.strip():
+        return EntityLookup(None, False, output)
+
+    model_pattern = re.compile(
+        rf'\bmodel\s*\{{\s*name:\s*"{re.escape(target)}"\s*id:\s*(\d+)',
+        re.MULTILINE,
+    )
+    match = model_pattern.search(output)
+    if match is None:
+        return EntityLookup(None, True, output)
+    return EntityLookup(int(match.group(1)), True, output)
+
+
 def _publish_track(
     runner: CommandRunner,
     *,
     target: str,
+    entity_id: int,
     offset: tuple[float, float, float],
 ) -> CommandResult:
     offset_x, offset_y, offset_z = offset
     payload = (
         "track_mode: FOLLOW "
-        f'follow_target {{ name: "{target}" type: MODEL }} '
+        f'follow_target {{ id: {entity_id} name: "{target}" type: MODEL }} '
         "follow_offset { "
         f"x: {_format_float(offset_x)} "
         f"y: {_format_float(offset_y)} "
@@ -201,6 +236,7 @@ def _follow_target_candidates(target: str) -> list[str]:
 
 def configure_follow_camera(
     *,
+    world: str,
     target: str,
     offset_text: str,
     wait_s: int,
@@ -222,6 +258,20 @@ def configure_follow_camera(
     target_candidates = _follow_target_candidates(target)
     for attempt in range(1, wait_s + 1):
         candidate = target_candidates[(attempt - 1) % len(target_candidates)]
+        entity = _lookup_scene_entity(
+            runner,
+            world=world,
+            target=candidate,
+        )
+        if entity.entity_id is None:
+            if attempt == 1 or attempt % 5 == 0:
+                print(
+                    f"Waiting for Gazebo scene entity '{candidate}' "
+                    f"({attempt}/{wait_s})."
+                )
+            time.sleep(1)
+            continue
+
         follow_response = _run_service(
             runner,
             service="/gui/follow",
@@ -242,7 +292,12 @@ def configure_follow_camera(
                     f"z: {_format_float(offset[2])}"
                 ),
             )
-            track_response = _publish_track(runner, target=candidate, offset=offset)
+            track_response = _publish_track(
+                runner,
+                target=candidate,
+                entity_id=entity.entity_id,
+                offset=offset,
+            )
             published_attempts += 1
             if not response_is_true(offset_response):
                 print(
@@ -265,6 +320,7 @@ def configure_follow_camera(
                 print(
                     "Gazebo GUI follow camera state confirmed: "
                     f"requested_target={target} target={candidate} "
+                    f"entity_id={entity.entity_id} "
                     f"offset=({_format_float(offset[0])}, "
                     f"{_format_float(offset[1])}, {_format_float(offset[2])}) "
                     f"published_attempts={published_attempts}"
@@ -297,6 +353,37 @@ def configure_follow_camera(
         f"'{target}' after {wait_s}s. Last response: {last_response}"
     )
     return 0
+
+
+def wait_for_scene_entity(
+    *,
+    world: str,
+    target: str,
+    wait_s: int,
+    runner: CommandRunner = default_runner,
+) -> int:
+    last_output = ""
+    for attempt in range(1, wait_s + 1):
+        entity = _lookup_scene_entity(runner, world=world, target=target)
+        last_output = entity.output
+        if entity.entity_id is not None:
+            print(
+                "Gazebo scene entity ready: "
+                f"world={world} target={target} entity_id={entity.entity_id}"
+            )
+            return 0
+        if attempt == 1 or attempt % 5 == 0:
+            print(
+                f"Waiting for Gazebo scene entity '{target}' "
+                f"({attempt}/{wait_s})."
+            )
+        time.sleep(1)
+
+    print(
+        f"WARNING: Gazebo scene entity '{target}' was not available after "
+        f"{wait_s}s. Last response: {_compact_log_excerpt(last_output)}"
+    )
+    return 1
 
 
 def configure_world_running(
@@ -344,9 +431,15 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     follow = subparsers.add_parser("follow-camera")
+    follow.add_argument("--world", required=True)
     follow.add_argument("--target", required=True)
     follow.add_argument("--offset", required=True)
     follow.add_argument("--wait-s", default="60")
+
+    wait_entity = subparsers.add_parser("wait-for-entity")
+    wait_entity.add_argument("--world", required=True)
+    wait_entity.add_argument("--target", required=True)
+    wait_entity.add_argument("--wait-s", default="60")
 
     world = subparsers.add_parser("world-running")
     world.add_argument("--world", required=True)
@@ -358,9 +451,16 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "follow-camera":
         return configure_follow_camera(
+            world=args.world,
             target=args.target,
             offset_text=args.offset,
             wait_s=parse_wait_s(args.wait_s, default=60, label="Gazebo GUI follow"),
+        )
+    if args.command == "wait-for-entity":
+        return wait_for_scene_entity(
+            world=args.world,
+            target=args.target,
+            wait_s=parse_wait_s(args.wait_s, default=60, label="Gazebo entity"),
         )
     if args.command == "world-running":
         return configure_world_running(

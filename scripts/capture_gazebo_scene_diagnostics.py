@@ -144,7 +144,7 @@ def build_summary(
     capture_by_label = {capture.label: capture for capture in captures}
     pose_text = capture_by_label["pose_info"].text
     scene_text = capture_by_label["scene_info"].text
-    tracked_text = capture_by_label["currently_tracked"].text
+    follow_status_text = capture_by_label["follow_status"].text
     combined_scene_text = "\n".join((pose_text, scene_text))
 
     target_model_seen = target in combined_scene_text
@@ -154,7 +154,9 @@ def build_summary(
     yellow_visual_seen = text_contains_any(
         combined_scene_text, EXPECTED_YELLOW_VISUAL_TOKENS
     )
-    gui_tracking_target_seen = target in tracked_text
+    gui_tracking_target_seen = (
+        target in follow_status_text and "follow_target" in follow_status_text
+    )
 
     lines = [
         "Gazebo scene diagnostics summary:",
@@ -204,9 +206,9 @@ def capture_diagnostics(
             "scene_info.txt",
         ),
         (
-            "currently_tracked",
+            "follow_status",
             "/gui/currently_tracked",
-            "currently_tracked.txt",
+            "follow_status.txt",
         ),
     ]
     captures = [

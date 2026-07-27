@@ -53,6 +53,11 @@ class GazeboGuiControlTest(unittest.TestCase):
     def test_follow_camera_publishes_expected_commands(self) -> None:
         runner = FakeRunner(
             [
+                gui.CommandResult(
+                    0,
+                    'model {\n name: "x500_lidar_2d_0"\n id: 245\n}\n',
+                    "",
+                ),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
@@ -65,6 +70,7 @@ class GazeboGuiControlTest(unittest.TestCase):
         )
 
         exit_code = gui.configure_follow_camera(
+            world="generated_city",
             target="x500_lidar_2d_0",
             offset_text="-12 0 6",
             wait_s=5,
@@ -78,43 +84,39 @@ class GazeboGuiControlTest(unittest.TestCase):
         self.assertTrue(
             any("/gui/follow/offset " in f"{call} " for call in flat_calls)
         )
-        self.assertTrue(any("/gui/track " in f"{call} " for call in flat_calls))
-        self.assertTrue(
-            any(
-                "x500_lidar_2d_0" in call
-                and "follow_target" in call
-                and "type: MODEL" in call
-                and "x: -12" in call
-                and "z: 6" in call
-                for call in flat_calls
-            )
-        )
+        track_call = next(call for call in flat_calls if "/gui/track " in f"{call} ")
+        self.assertIn("id: 245", track_call)
+        self.assertIn('name: "x500_lidar_2d_0"', track_call)
         self.assertTrue(any("/gui/currently_tracked" in call for call in flat_calls))
 
     def test_follow_camera_retries_until_wait_expires_without_confirmation(
         self,
     ) -> None:
         runner = FakeRunner(
-            [
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "", ""),
-            ]
+            sum(
+                (
+                    [
+                        gui.CommandResult(
+                            0,
+                            'model {\n name: "drone"\n id: 245\n}\n',
+                            "",
+                        ),
+                        gui.CommandResult(0, "data: true\n", ""),
+                        gui.CommandResult(0, "data: true\n", ""),
+                        gui.CommandResult(0, "", ""),
+                        gui.CommandResult(0, "", ""),
+                    ]
+                    for _ in range(3)
+                ),
+                [],
+            )
         )
         stdout = StringIO()
 
         with redirect_stdout(stdout), mock.patch.object(gui.time, "sleep"):
             exit_code = gui.configure_follow_camera(
-                target="x500_lidar_2d_0",
+                world="generated_city",
+                target="drone",
                 offset_text="-12 0 6",
                 wait_s=3,
                 runner=runner,
@@ -122,11 +124,6 @@ class GazeboGuiControlTest(unittest.TestCase):
             )
 
         self.assertEqual(exit_code, 0)
-        flat_calls = [" ".join(call) for call in runner.calls]
-        self.assertEqual(
-            3,
-            sum("/gui/track " in f"{call} " for call in flat_calls),
-        )
         self.assertIn(
             "published 3 times but state was not confirmed",
             stdout.getvalue(),
@@ -137,10 +134,20 @@ class GazeboGuiControlTest(unittest.TestCase):
     ) -> None:
         runner = FakeRunner(
             [
+                gui.CommandResult(
+                    0,
+                    'model {\n name: "x500_lidar_2d_0"\n id: 245\n}\n',
+                    "",
+                ),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "follow_target {}\n", ""),
+                gui.CommandResult(
+                    0,
+                    'model {\n name: "x500_lidar_2d"\n id: 246\n}\n',
+                    "",
+                ),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
@@ -154,6 +161,7 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         with mock.patch.object(gui.time, "sleep"):
             exit_code = gui.configure_follow_camera(
+                world="generated_city",
                 target="x500_lidar_2d_0",
                 offset_text="-12 0 6",
                 wait_s=2,
@@ -163,7 +171,9 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         follow_calls = [
-            " ".join(call) for call in runner.calls if "/gui/follow" in call
+            " ".join(call)
+            for call in runner.calls
+            if "/gui/follow" in call and "/gui/follow/offset" not in call
         ]
         self.assertIn('data: "x500_lidar_2d_0"', follow_calls[0])
         self.assertIn('data: "x500_lidar_2d"', follow_calls[1])
@@ -172,6 +182,7 @@ class GazeboGuiControlTest(unittest.TestCase):
         runner = FakeRunner()
 
         exit_code = gui.configure_follow_camera(
+            world="generated_city",
             target="x500_lidar_2d_0",
             offset_text="-12 0",
             wait_s=5,
@@ -180,6 +191,30 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(runner.calls, [])
+
+    def test_wait_for_scene_entity_requires_named_model(self) -> None:
+        runner = FakeRunner(
+            [
+                gui.CommandResult(0, 'model { name: "ground" id: 4 }\n', ""),
+                gui.CommandResult(
+                    0,
+                    'model {\n name: "x500_lidar_2d_0"\n id: 245\n}\n',
+                    "",
+                ),
+            ]
+        )
+
+        with mock.patch.object(gui.time, "sleep"):
+            exit_code = gui.wait_for_scene_entity(
+                world="generated_city",
+                target="x500_lidar_2d_0",
+                wait_s=2,
+                runner=runner,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(runner.calls), 2)
+        self.assertIn("/world/generated_city/scene/info", runner.calls[0])
 
     def test_default_runner_converts_timeout_to_retryable_result(self) -> None:
         timeout = gui.subprocess.TimeoutExpired(

@@ -26,9 +26,10 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
                     "Gazebo world running command confirmed: world=generated_city",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
                     (
-                        "Gazebo GUI follow camera command accepted but state "
-                        "confirmation is unavailable; continuing best-effort."
+                        "Gazebo GUI follow camera state confirmed: "
+                        "target=x500_lidar_2d_0"
                     ),
                 ]
             )
@@ -41,7 +42,11 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
             "\n".join(
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
-                    "Gazebo GUI follow camera state confirmed: target=x500_lidar_2d_0",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                    (
+                        "Gazebo GUI follow camera state confirmed: "
+                        "target=x500_lidar_2d_0"
+                    ),
                 ]
             )
         )
@@ -49,20 +54,22 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("FAIL: Gazebo world unpause is confirmed", result.errors)
 
-    def test_gui_config_override_fails(self) -> None:
+    def test_enabled_follow_without_confirmed_target_fails(self) -> None:
         result = validator.validate_log(
             "\n".join(
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
                     "Gazebo world running command confirmed: world=generated_city",
-                    "Gazebo GUI follow camera state confirmed: target=x500_lidar_2d_0",
-                    "gz sim -g --gui-config /tmp/gui.config",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
                 ]
             )
         )
 
         self.assertFalse(result.ok)
-        self.assertIn("FAIL: Gazebo GUI config override is absent", result.errors)
+        self.assertIn(
+            "FAIL: Gazebo GUI follow camera target is confirmed",
+            result.errors,
+        )
 
     def test_gui_render_warning_is_reported_without_failing(self) -> None:
         result = validator.validate_log(
@@ -70,7 +77,11 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
                     "Gazebo world running command confirmed: world=generated_city",
-                    "Gazebo GUI follow camera state confirmed: target=x500_lidar_2d_0",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                    (
+                        "Gazebo GUI follow camera state confirmed: "
+                        "target=x500_lidar_2d_0"
+                    ),
                 ]
             ),
             gui_log_text=(
@@ -91,7 +102,11 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
                     "Gazebo world running command confirmed: world=generated_city",
-                    "Gazebo GUI follow camera state confirmed: target=x500_lidar_2d_0",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                    (
+                        "Gazebo GUI follow camera state confirmed: "
+                        "target=x500_lidar_2d_0"
+                    ),
                 ]
             ),
             gui_log_text="Unable to find file model://x500_base/meshes/foo.dae",
@@ -127,6 +142,7 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                     [
                         "Gazebo stale cleanup: no conflicting Gazebo processes found",
                         "Gazebo world running command confirmed: world=generated_city",
+                        "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
                         (
                             "Gazebo GUI follow camera state confirmed: "
                             "target=x500_lidar_2d_0"
@@ -166,6 +182,7 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                     [
                         "Gazebo stale cleanup: no conflicting Gazebo processes found",
                         "Gazebo world running command confirmed: world=generated_city",
+                        "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
                         (
                             "Gazebo GUI follow camera state confirmed: "
                             "target=x500_lidar_2d_0"

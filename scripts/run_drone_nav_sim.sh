@@ -318,45 +318,6 @@ set +u
 source "${colcon_install_base}/setup.bash"
 set -u
 
-cleanup() {
-  local job_pids
-  local pids
-  local pid
-  local child_pids
-
-  job_pids="$(jobs -pr || true)"
-  if [[ -z "${job_pids}" ]]; then
-    return
-  fi
-
-  pids="${job_pids}"
-  for pid in ${job_pids}; do
-    child_pids="$(collect_descendant_pids "${pid}")"
-    if [[ -n "${child_pids}" ]]; then
-      pids="$(
-        printf '%s\n%s\n' "${pids}" "${child_pids}" |
-          awk 'NF && !seen[$0]++'
-      )"
-    fi
-  done
-
-  kill ${pids} 2>/dev/null || true
-  for _ in {1..20}; do
-    local live_pid=""
-    for pid in ${pids}; do
-      if kill -0 "${pid}" 2>/dev/null; then
-        live_pid="${pid}"
-        break
-      fi
-    done
-    [[ -z "${live_pid}" ]] && break
-    sleep 0.25
-  done
-
-  kill -KILL ${pids} 2>/dev/null || true
-  wait ${job_pids} 2>/dev/null || true
-}
-
 collect_descendant_pids() {
   local root_pid="$1"
   local child_pid
@@ -366,7 +327,60 @@ collect_descendant_pids() {
     collect_descendant_pids "${child_pid}"
   done
 }
-trap cleanup EXIT INT TERM
+
+terminate_pids_bounded() {
+  local pid
+  local pids=("$@")
+  [[ "${#pids[@]}" -eq 0 ]] && return 0
+
+  kill "${pids[@]}" 2>/dev/null || true
+  for _ in {1..20}; do
+    local live_pid=""
+    for pid in "${pids[@]}"; do
+      if kill -0 "${pid}" 2>/dev/null; then
+        live_pid="${pid}"
+        break
+      fi
+    done
+    [[ -z "${live_pid}" ]] && return 0
+    sleep 0.1
+  done
+  kill -KILL "${pids[@]}" 2>/dev/null || true
+}
+
+cleanup_started=false
+cleanup() {
+  local job_pids
+  local pids=()
+  local pid
+  local child_pids
+
+  if [[ "${cleanup_started}" == "true" ]]; then
+    return
+  fi
+  cleanup_started=true
+  trap - EXIT INT TERM
+
+  job_pids="$(jobs -pr || true)"
+  if [[ -z "${job_pids}" ]]; then
+    return
+  fi
+
+  for pid in ${job_pids}; do
+    pids+=("${pid}")
+    child_pids="$(collect_descendant_pids "${pid}")"
+    if [[ -n "${child_pids}" ]]; then
+      while read -r pid; do
+        [[ -n "${pid}" ]] && pids+=("${pid}")
+      done <<< "${child_pids}"
+    fi
+  done
+
+  terminate_pids_bounded "${pids[@]}"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 run_px4_sitl() {
   make -C "${px4_dir}" px4_sitl "${px4_model_target}"
@@ -378,8 +392,19 @@ configure_gazebo_gui_follow_camera() {
   local wait_s="$3"
   python3 "${repo_root}/scripts/gazebo_gui_control.py" \
     follow-camera \
+    --world "${world_name}" \
     --target "${target}" \
     --offset "${offset}" \
+    --wait-s "${wait_s}"
+}
+
+wait_for_gazebo_scene_entity() {
+  local target="$1"
+  local wait_s="$2"
+  python3 "${repo_root}/scripts/gazebo_gui_control.py" \
+    wait-for-entity \
+    --world "${world_name}" \
+    --target "${target}" \
     --wait-s "${wait_s}"
 }
 
@@ -420,7 +445,8 @@ echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"
-echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
+echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'" |
+  tee -a "${gz_log_file}"
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
@@ -433,18 +459,37 @@ echo "Gazebo resources: ${runtime_dir}"
   gz_gui_pid=""
   gz_follow_pid=""
   gz_unpause_pid=""
+  gazebo_cleanup_started=false
 
   cleanup_gazebo_children() {
+    local child_pids
+    local pid
     local pids=()
+    if [[ "${gazebo_cleanup_started}" == "true" ]]; then
+      return
+    fi
+    gazebo_cleanup_started=true
+    trap - EXIT INT TERM
+
     [[ -n "${gz_unpause_pid}" ]] && pids+=("${gz_unpause_pid}")
     [[ -n "${gz_follow_pid}" ]] && pids+=("${gz_follow_pid}")
     [[ -n "${gz_gui_pid}" ]] && pids+=("${gz_gui_pid}")
     [[ -n "${gz_server_pid}" ]] && pids+=("${gz_server_pid}")
     [[ "${#pids[@]}" -eq 0 ]] && return 0
-    kill "${pids[@]}" 2>/dev/null || true
-    wait "${pids[@]}" 2>/dev/null || true
+
+    for pid in "${pids[@]}"; do
+      child_pids="$(collect_descendant_pids "${pid}")"
+      if [[ -n "${child_pids}" ]]; then
+        while read -r pid; do
+          [[ -n "${pid}" ]] && pids+=("${pid}")
+        done <<< "${child_pids}"
+      fi
+    done
+    terminate_pids_bounded "${pids[@]}"
   }
-  trap cleanup_gazebo_children EXIT INT TERM
+  trap cleanup_gazebo_children EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 
   gz_args=(--verbose="${GZ_VERBOSE:-1}" -r -s)
   if [[ -n "${headless}" ]]; then
@@ -454,6 +499,11 @@ echo "Gazebo resources: ${runtime_dir}"
   gz_server_pid=$!
 
   if [[ -z "${headless}" ]]; then
+    if ! wait_for_gazebo_scene_entity \
+      "${gazebo_gui_follow_target}" \
+      "${gazebo_gui_follow_wait_s}"; then
+      echo "WARNING: launching Gazebo GUI without the requested drone entity."
+    fi
     gz sim -g >> "${gz_gui_log_file}" 2>&1 &
     gz_gui_pid=$!
     configure_gazebo_world_running "${gazebo_world_unpause_wait_s}" &
