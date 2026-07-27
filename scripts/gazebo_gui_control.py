@@ -119,37 +119,6 @@ def _run_service(
     )
 
 
-def _publish_track(
-    runner: CommandRunner,
-    *,
-    target: str,
-    offset: tuple[float, float, float],
-) -> CommandResult:
-    offset_x, offset_y, offset_z = offset
-    payload = (
-        "track_mode: FOLLOW "
-        f'follow_target {{ name: "{target}" type: MODEL }} '
-        "follow_offset { "
-        f"x: {_format_float(offset_x)} "
-        f"y: {_format_float(offset_y)} "
-        f"z: {_format_float(offset_z)} "
-        "} "
-        "follow_pgain: 1.0"
-    )
-    return runner(
-        [
-            "topic",
-            "-t",
-            "/gui/track",
-            "-m",
-            "gz.msgs.CameraTrack",
-            "-p",
-            payload,
-        ],
-        2.0,
-    )
-
-
 def _confirm_tracking(
     runner: CommandRunner,
     *,
@@ -232,7 +201,6 @@ def configure_follow_camera(
                     f"z: {_format_float(offset[2])}"
                 ),
             )
-            track_response = _publish_track(runner, target=target, offset=offset)
             accepted_attempts += 1
             print(
                 "Gazebo GUI follow camera command accepted: "
@@ -245,12 +213,6 @@ def configure_follow_camera(
                     "WARNING: Gazebo GUI follow offset was not confirmed: "
                     f"{offset_response.combined_output}"
                 )
-            if track_response.combined_output.strip():
-                print(
-                    "WARNING: Gazebo GUI track topic publish output: "
-                    f"{track_response.combined_output}"
-                )
-
             tracking_state = _confirm_tracking(
                 runner,
                 target=target,

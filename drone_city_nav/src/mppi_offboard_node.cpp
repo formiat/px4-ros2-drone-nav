@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <tf2_ros/transform_broadcaster.h>
 
 namespace drone_city_nav {
 namespace {
@@ -58,6 +59,16 @@ public:
         declare_parameter<double>("command_resend_period_s", 2.0);
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
     auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
+    rviz_drone_follow_tf_enabled_ =
+        declare_parameter<bool>("rviz_drone_follow_tf_enabled", true);
+    rviz_drone_follow_parent_frame_ =
+        declare_parameter<std::string>("rviz_drone_follow_parent_frame", "gazebo_map");
+    rviz_drone_follow_frame_ =
+        declare_parameter<std::string>("rviz_drone_follow_frame", "drone_follow");
+    if (rviz_drone_follow_tf_enabled_) {
+      rviz_drone_follow_tf_broadcaster_ =
+          std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+    }
     endpoint_.target_system =
         static_cast<std::uint8_t>(declare_parameter<int>("target_system", 1));
     endpoint_.target_component =
@@ -129,6 +140,23 @@ private:
     velocity_up_mps_ = -static_cast<double>(state.vz);
     heading_rad_ = std::isfinite(state.heading) ? state.heading : heading_rad_;
     position_valid_ = true;
+    publishRvizDroneFollowTransform();
+  }
+
+  void publishRvizDroneFollowTransform() {
+    if (!rviz_drone_follow_tf_broadcaster_ || !position_valid_) {
+      return;
+    }
+    geometry_msgs::msg::TransformStamped transform;
+    transform.header.stamp = now();
+    transform.header.frame_id = rviz_drone_follow_parent_frame_;
+    transform.child_frame_id = rviz_drone_follow_frame_;
+    // This visualization-only frame follows the Gazebo-aligned RViz convention.
+    transform.transform.translation.x = local_y_;
+    transform.transform.translation.y = local_x_;
+    transform.transform.translation.z = altitude_m_;
+    transform.transform.rotation.w = 1.0;
+    rviz_drone_follow_tf_broadcaster_->sendTransform(transform);
   }
 
   void onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
@@ -297,6 +325,7 @@ private:
   int warmup_count_{0};
   bool auto_arm_{true};
   bool auto_offboard_{true};
+  bool rviz_drone_follow_tf_enabled_{true};
   bool position_valid_{false};
   bool crashed_{false};
   VehicleCommandEndpoint endpoint_{};
@@ -306,6 +335,9 @@ private:
   std::uint64_t horizon_sequence_{0U};
   std::int64_t horizon_receive_ns_{0};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
+  std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
+  std::string rviz_drone_follow_frame_{"drone_follow"};
+  std::unique_ptr<tf2_ros::TransformBroadcaster> rviz_drone_follow_tf_broadcaster_;
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

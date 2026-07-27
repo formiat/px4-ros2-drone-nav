@@ -112,7 +112,8 @@ def main() -> int:
         require(
             "static map contributes to raw occupancy",
             ros_log,
-            r"Static city map loaded:|use_static_map=true",
+            r"Static city map loaded:|Published static world visualization:|"
+            r"use_static_map=true",
             errors,
         )
     elif expected_static is False and re.search(r"use_static_map=true", ros_log):

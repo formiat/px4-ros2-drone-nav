@@ -98,6 +98,13 @@ def generate_launch_description():
                 output="screen",
                 parameters=obstacle_memory_parameters,
             ),
+            Node(
+                package="drone_city_nav",
+                executable="world_visualization_node",
+                name="world_visualization_node",
+                output="screen",
+                parameters=obstacle_memory_parameters,
+            ),
         ]
 
     mppi_offboard = Node(

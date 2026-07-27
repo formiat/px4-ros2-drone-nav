@@ -168,6 +168,7 @@ add_library(
   src/lidar_debug_pointclouds.cpp
   src/ros_conversions.cpp
   src/known_passage_debug_markers.cpp
+  src/static_map_debug.cpp
   src/static_map_source.cpp
   src/visualization_marker_helpers.cpp)
 target_compile_features(drone_city_nav_ros_adapters PUBLIC cxx_std_20)
@@ -208,8 +209,22 @@ ament_target_dependencies(
   geometry_msgs
   px4_msgs
   rclcpp
-  std_msgs)
+  std_msgs
+  tf2_ros)
 enable_project_warnings(mppi_offboard_node)
+
+add_executable(world_visualization_node src/world_visualization_node.cpp)
+target_compile_features(world_visualization_node PRIVATE cxx_std_20)
+target_link_libraries(world_visualization_node drone_city_nav_core
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
+ament_target_dependencies(
+  world_visualization_node
+  ament_index_cpp
+  nav_msgs
+  rclcpp
+  sensor_msgs
+  visualization_msgs)
+enable_project_warnings(world_visualization_node)
 
 add_executable(collision_crash_node src/collision_crash_node.cpp)
 target_compile_features(collision_crash_node PRIVATE cxx_std_20)
@@ -289,6 +304,7 @@ install(
     lidar_debug_node
     obstacle_memory_node
     mppi_offboard_node
+    world_visualization_node
     mission_monitor_node
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
@@ -335,6 +351,13 @@ if(BUILD_TESTING)
                         drone_city_nav_ros_adapters)
   ament_target_dependencies(px4_offboard_setpoint_io_test_current px4_msgs)
   enable_project_warnings(px4_offboard_setpoint_io_test_current)
+
+  ament_add_gtest(static_map_debug_test_current
+                  tests/static_map_debug_test.cpp)
+  target_compile_features(static_map_debug_test_current PRIVATE cxx_std_20)
+  target_link_libraries(static_map_debug_test_current
+                        drone_city_nav_ros_adapters)
+  enable_project_warnings(static_map_debug_test_current)
 endif()
 
 ament_export_include_directories(include)

@@ -55,7 +55,6 @@ class GazeboGuiControlTest(unittest.TestCase):
             [
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "", ""),
                 gui.CommandResult(
                     0,
                     'header {}\nfollow_target { name: "x500_lidar_2d_0" }\n',
@@ -79,13 +78,7 @@ class GazeboGuiControlTest(unittest.TestCase):
         self.assertTrue(
             any("/gui/follow/offset " in f"{call} " for call in flat_calls)
         )
-        self.assertTrue(any("/gui/track " in f"{call} " for call in flat_calls))
-        self.assertTrue(
-            any(
-                "x500_lidar_2d_0" in call and "follow_target" in call
-                for call in flat_calls
-            )
-        )
+        self.assertFalse(any("/gui/track " in f"{call} " for call in flat_calls))
         self.assertTrue(any("/gui/currently_tracked" in call for call in flat_calls))
 
     def test_follow_camera_logs_unavailable_tracking_state(self) -> None:
@@ -94,14 +87,11 @@ class GazeboGuiControlTest(unittest.TestCase):
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "", ""),
             ]
         )
