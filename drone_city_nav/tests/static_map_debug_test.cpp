@@ -1,4 +1,5 @@
 #include "drone_city_nav/static_map_debug.hpp"
+#include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <gtest/gtest.h>
 
@@ -130,6 +131,15 @@ TEST(StaticMapDebug, EmptyBuildingMapDeletesPreviousMarkers) {
   ASSERT_EQ(markers.markers.size(), 1U);
   EXPECT_EQ(markers.markers.front().ns, "static_building");
   EXPECT_EQ(markers.markers.front().action, visualization_msgs::msg::Marker::DELETEALL);
+}
+
+TEST(VisualizationMarkerHelpers, ConvertsPx4LocalPositionToGazeboAlignedRviz) {
+  const Point3 position =
+      gazeboAlignedRvizPositionFromPx4Local(Point2{2.0, 3.0}, Point2{54.0, 54.0}, 18.0);
+
+  EXPECT_DOUBLE_EQ(position.x, 57.0);
+  EXPECT_DOUBLE_EQ(position.y, 56.0);
+  EXPECT_DOUBLE_EQ(position.z, 18.0);
 }
 
 } // namespace drone_city_nav

@@ -47,6 +47,9 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<std::string>("diagnostics_output_dir", "log/mppi");
   px4_local_origin_.x = declare_parameter<double>("px4_local_origin_x_m", 54.0);
   px4_local_origin_.y = declare_parameter<double>("px4_local_origin_y_m", 54.0);
+  mission_start_.x = declare_parameter<double>("start_x_m", 54.0);
+  mission_start_.y = declare_parameter<double>("start_y_m", 54.0);
+  mission_start_.z = declare_parameter<double>("start_z_m", 0.0);
   mission_goal_.x = declare_parameter<double>("goal_x_m", 216.0);
   mission_goal_.y = declare_parameter<double>("goal_y_m", 378.0);
   mission_goal_.z = declare_parameter<double>("goal_z_m", 18.0);

@@ -114,6 +114,7 @@ private:
   double guide_lookahead_m_{30.0};
   double passage_activation_distance_m_{45.0};
   Point2 px4_local_origin_{54.0, 54.0};
+  Point3 mission_start_{54.0, 54.0, 0.0};
   Point3 mission_goal_{216.0, 378.0, 18.0};
   std::string target_mode_{"active_route_guide"};
   std::string frame_id_{"map"};

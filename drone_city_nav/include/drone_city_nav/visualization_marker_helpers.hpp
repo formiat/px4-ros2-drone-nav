@@ -23,6 +23,10 @@ gazeboAlignedRvizMarkerPoint(const Point3& point);
 [[nodiscard]] geometry_msgs::msg::Point
 gazeboAlignedRvizMarkerPoint(const Point2& point, double z_m);
 
+[[nodiscard]] Point3 gazeboAlignedRvizPositionFromPx4Local(Point2 local_position,
+                                                           Point2 map_origin,
+                                                           double altitude_m) noexcept;
+
 [[nodiscard]] std_msgs::msg::ColorRGBA rgba(float red, float green, float blue,
                                             float alpha);
 

@@ -1,6 +1,7 @@
 #include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
+#include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <px4_msgs/msg/offboard_control_mode.hpp>
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
@@ -66,6 +67,8 @@ public:
         declare_parameter<std::string>("rviz_drone_follow_parent_frame", "gazebo_map");
     rviz_drone_follow_frame_ =
         declare_parameter<std::string>("rviz_drone_follow_frame", "drone_follow");
+    px4_local_origin_.x = declare_parameter<double>("px4_local_origin_x_m", 54.0);
+    px4_local_origin_.y = declare_parameter<double>("px4_local_origin_y_m", 54.0);
     if (rviz_drone_follow_tf_enabled_) {
       rviz_drone_follow_tf_broadcaster_ =
           std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -157,10 +160,10 @@ private:
     transform.header.stamp = now();
     transform.header.frame_id = rviz_drone_follow_parent_frame_;
     transform.child_frame_id = rviz_drone_follow_frame_;
-    // This visualization-only frame follows the Gazebo-aligned RViz convention.
-    transform.transform.translation.x = local_y_;
-    transform.transform.translation.y = local_x_;
-    transform.transform.translation.z = altitude_m_;
+    const Point3 position = rvizDronePosition();
+    transform.transform.translation.x = position.x;
+    transform.transform.translation.y = position.y;
+    transform.transform.translation.z = position.z;
     transform.transform.rotation.w = 1.0;
     rviz_drone_follow_tf_broadcaster_->sendTransform(transform);
   }
@@ -176,9 +179,10 @@ private:
     marker.id = 0;
     marker.type = visualization_msgs::msg::Marker::SPHERE;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.pose.position.x = local_y_;
-    marker.pose.position.y = local_x_;
-    marker.pose.position.z = altitude_m_;
+    const Point3 position = rvizDronePosition();
+    marker.pose.position.x = position.x;
+    marker.pose.position.y = position.y;
+    marker.pose.position.z = position.z;
     marker.pose.orientation.w = 1.0;
     marker.scale.x = 1.0;
     marker.scale.y = 1.0;
@@ -188,6 +192,11 @@ private:
     marker.color.b = 1.0F;
     marker.color.a = 1.0F;
     rviz_drone_marker_pub_->publish(marker);
+  }
+
+  [[nodiscard]] Point3 rvizDronePosition() const noexcept {
+    return gazeboAlignedRvizPositionFromPx4Local(Point2{local_x_, local_y_},
+                                                 px4_local_origin_, altitude_m_);
   }
 
   void onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
@@ -359,6 +368,7 @@ private:
   bool rviz_drone_follow_tf_enabled_{true};
   bool position_valid_{false};
   bool crashed_{false};
+  Point2 px4_local_origin_{54.0, 54.0};
   VehicleCommandEndpoint endpoint_{};
   px4_msgs::msg::VehicleStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;

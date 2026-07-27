@@ -37,6 +37,14 @@ geometry_msgs::msg::Point gazeboAlignedRvizMarkerPoint(const Point2& point,
   return gazeboAlignedRvizMarkerPoint(Point3{point.x, point.y, z_m});
 }
 
+Point3 gazeboAlignedRvizPositionFromPx4Local(const Point2 local_position,
+                                             const Point2 map_origin,
+                                             const double altitude_m) noexcept {
+  const Point2 map_position{local_position.x + map_origin.x,
+                            local_position.y + map_origin.y};
+  return Point3{map_position.y, map_position.x, altitude_m};
+}
+
 std_msgs::msg::ColorRGBA rgba(const float red, const float green, const float blue,
                               const float alpha) {
   std_msgs::msg::ColorRGBA color;
