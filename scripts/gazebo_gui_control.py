@@ -128,14 +128,13 @@ def _publish_track(
     offset_x, offset_y, offset_z = offset
     payload = (
         "track_mode: FOLLOW "
-        f'follow_target {{ name: "{target}" }} '
+        f'follow_target {{ name: "{target}" type: MODEL }} '
         "follow_offset { "
         f"x: {_format_float(offset_x)} "
         f"y: {_format_float(offset_y)} "
         f"z: {_format_float(offset_z)} "
         "} "
-        "follow_pgain: 1.0 "
-        "track_pgain: 1.0"
+        "follow_pgain: 1.0"
     )
     return runner(
         [
@@ -212,10 +211,38 @@ def configure_follow_camera(
     attempted_state_confirmation = False
     last_response = ""
     for attempt in range(1, wait_s + 1):
-        track_response = _publish_track(runner, target=target, offset=offset)
-        last_response = track_response.combined_output
-        if track_response.returncode == 0:
+        follow_response = _run_service(
+            runner,
+            service="/gui/follow",
+            reqtype="gz.msgs.StringMsg",
+            reptype="gz.msgs.Boolean",
+            request=f'data: "{target}"',
+        )
+        last_response = follow_response.combined_output
+        if response_is_true(follow_response):
+            offset_response = _run_service(
+                runner,
+                service="/gui/follow/offset",
+                reqtype="gz.msgs.Vector3d",
+                reptype="gz.msgs.Boolean",
+                request=(
+                    f"x: {_format_float(offset[0])} "
+                    f"y: {_format_float(offset[1])} "
+                    f"z: {_format_float(offset[2])}"
+                ),
+            )
+            track_response = _publish_track(runner, target=target, offset=offset)
             published_attempts += 1
+            if not response_is_true(offset_response):
+                print(
+                    "WARNING: Gazebo GUI follow offset was not confirmed: "
+                    f"{offset_response.combined_output}"
+                )
+            if track_response.returncode != 0:
+                print(
+                    "WARNING: Gazebo GUI track topic publish failed: "
+                    f"{track_response.combined_output}"
+                )
             tracking_state = _confirm_tracking(
                 runner,
                 target=target,
@@ -241,7 +268,7 @@ def configure_follow_camera(
                 )
         elif attempt == 1 or attempt % 5 == 0:
             print(
-                f"Waiting to publish Gazebo GUI follow target '{target}' "
+                f"Waiting for Gazebo GUI follow target '{target}' "
                 f"({attempt}/{wait_s}): {last_response}"
             )
         time.sleep(1)

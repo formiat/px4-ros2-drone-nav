@@ -53,6 +53,8 @@ class GazeboGuiControlTest(unittest.TestCase):
     def test_follow_camera_publishes_expected_commands(self) -> None:
         runner = FakeRunner(
             [
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
                 gui.CommandResult(
                     0,
@@ -72,8 +74,8 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         flat_calls = [" ".join(call) for call in runner.calls]
-        self.assertFalse(any("/gui/follow " in f"{call} " for call in flat_calls))
-        self.assertFalse(
+        self.assertTrue(any("/gui/follow " in f"{call} " for call in flat_calls))
+        self.assertTrue(
             any("/gui/follow/offset " in f"{call} " for call in flat_calls)
         )
         self.assertTrue(any("/gui/track " in f"{call} " for call in flat_calls))
@@ -81,6 +83,7 @@ class GazeboGuiControlTest(unittest.TestCase):
             any(
                 "x500_lidar_2d_0" in call
                 and "follow_target" in call
+                and "type: MODEL" in call
                 and "x: -12" in call
                 and "z: 6" in call
                 for call in flat_calls
@@ -93,10 +96,16 @@ class GazeboGuiControlTest(unittest.TestCase):
     ) -> None:
         runner = FakeRunner(
             [
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "", ""),
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "", ""),
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "", ""),
             ]
