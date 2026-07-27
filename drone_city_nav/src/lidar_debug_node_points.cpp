@@ -69,6 +69,9 @@ LidarDebugNode::hitMemoryKey(const Point2 point) const {
 }
 
 [[nodiscard]] bool LidarDebugNode::rememberedHitsAllowed() const {
+  if (!lidarDebugProjectionHeadingReady(use_px4_heading_for_scan_, px4_heading_seen_)) {
+    return false;
+  }
   if (!(min_remember_altitude_m_ > 0.0)) {
     return true;
   }

@@ -358,6 +358,12 @@ if(BUILD_TESTING)
   target_link_libraries(static_map_debug_test_current
                         drone_city_nav_ros_adapters)
   enable_project_warnings(static_map_debug_test_current)
+
+  ament_add_gtest(lidar_debug_heading_gate_test
+                  tests/lidar_debug_heading_gate_test.cpp)
+  target_compile_features(lidar_debug_heading_gate_test PRIVATE cxx_std_20)
+  target_include_directories(lidar_debug_heading_gate_test PRIVATE include)
+  enable_project_warnings(lidar_debug_heading_gate_test)
 endif()
 
 ament_export_include_directories(include)

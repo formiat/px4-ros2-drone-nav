@@ -74,6 +74,19 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
     return;
   }
 
+  if (!lidarDebugProjectionHeadingReady(use_px4_heading_for_scan_, px4_heading_seen_)) {
+    last_scan_projection_seen_ = false;
+    last_scan_rows_.clear();
+    last_scan_hit_points_.clear();
+    last_projected_beam_poses_.clear();
+    publishRawLidarPointCloud({});
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "LIDAR_DEBUG_PROJECTION_SKIPPED reason=px4_heading_not_ready "
+                         "scan_beams=%zu",
+                         msg.ranges.size());
+    return;
+  }
+
   last_projected_pose_ = current_pose_;
   last_projected_altitude_m_ = current_altitude_m_;
   last_projected_altitude_valid_ = altitude_valid_;

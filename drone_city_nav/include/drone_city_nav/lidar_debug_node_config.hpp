@@ -66,6 +66,12 @@ struct LidarDebugNodeConfig {
   LidarDebugNodeTopics topics{};
 };
 
+[[nodiscard]] constexpr bool
+lidarDebugProjectionHeadingReady(const bool use_px4_heading_for_scan,
+                                 const bool px4_heading_seen) noexcept {
+  return !use_px4_heading_for_scan || px4_heading_seen;
+}
+
 void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config);
 
 [[nodiscard]] LidarDebugNodeConfig loadLidarDebugNodeConfig(rclcpp::Node& node);
