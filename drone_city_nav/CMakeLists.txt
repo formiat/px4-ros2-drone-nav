@@ -402,6 +402,7 @@ if(BUILD_TESTING)
                   tests/lidar_debug_heading_gate_test.cpp)
   target_compile_features(lidar_debug_heading_gate_test PRIVATE cxx_std_20)
   target_include_directories(lidar_debug_heading_gate_test PRIVATE include)
+  target_link_libraries(lidar_debug_heading_gate_test drone_city_nav_core)
   enable_project_warnings(lidar_debug_heading_gate_test)
 endif()
 

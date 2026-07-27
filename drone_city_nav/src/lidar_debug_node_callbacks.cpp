@@ -10,10 +10,12 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
 
   current_pose_.position = Point2{static_cast<double>(msg.x) + px4_local_origin_.x,
                                   static_cast<double>(msg.y) + px4_local_origin_.y};
-  const bool heading_valid = msg.heading_good_for_control && std::isfinite(msg.heading);
+  const bool heading_valid = px4HeadingReadyForMapping(
+      msg.heading_good_for_control, static_cast<double>(msg.heading),
+      static_cast<double>(msg.heading_var), maximum_heading_variance_rad2_);
+  px4_heading_seen_ = heading_valid;
   if (heading_valid) {
     current_pose_.yaw_rad = static_cast<double>(msg.heading);
-    px4_heading_seen_ = true;
     last_heading_receive_ns_ = last_pose_receive_ns_;
   }
   if (msg.z_valid && std::isfinite(msg.z)) {
@@ -81,9 +83,10 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
     last_projected_beam_poses_.clear();
     publishRawLidarPointCloud({});
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
-                         "LIDAR_DEBUG_PROJECTION_SKIPPED reason=px4_heading_not_ready "
-                         "scan_beams=%zu",
-                         msg.ranges.size());
+                         "LIDAR_DEBUG_PROJECTION_SKIPPED "
+                         "reason=px4_heading_not_stable scan_beams=%zu "
+                         "maximum_heading_variance_rad2=%.6f",
+                         msg.ranges.size(), maximum_heading_variance_rad2_);
     return;
   }
 

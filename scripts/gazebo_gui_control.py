@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -190,6 +191,14 @@ def _compact_log_excerpt(text: str, *, limit: int = 240) -> str:
     return compact[: limit - 3] + "..."
 
 
+def _follow_target_candidates(target: str) -> list[str]:
+    candidates = [target]
+    spawned_name = re.fullmatch(r"(.+)_\d+", target)
+    if spawned_name is not None:
+        candidates.append(spawned_name.group(1))
+    return list(dict.fromkeys(candidates))
+
+
 def configure_follow_camera(
     *,
     target: str,
@@ -210,13 +219,15 @@ def configure_follow_camera(
     published_attempts = 0
     attempted_state_confirmation = False
     last_response = ""
+    target_candidates = _follow_target_candidates(target)
     for attempt in range(1, wait_s + 1):
+        candidate = target_candidates[(attempt - 1) % len(target_candidates)]
         follow_response = _run_service(
             runner,
             service="/gui/follow",
             reqtype="gz.msgs.StringMsg",
             reptype="gz.msgs.Boolean",
-            request=f'data: "{target}"',
+            request=f'data: "{candidate}"',
         )
         last_response = follow_response.combined_output
         if response_is_true(follow_response):
@@ -231,7 +242,7 @@ def configure_follow_camera(
                     f"z: {_format_float(offset[2])}"
                 ),
             )
-            track_response = _publish_track(runner, target=target, offset=offset)
+            track_response = _publish_track(runner, target=candidate, offset=offset)
             published_attempts += 1
             if not response_is_true(offset_response):
                 print(
@@ -245,7 +256,7 @@ def configure_follow_camera(
                 )
             tracking_state = _confirm_tracking(
                 runner,
-                target=target,
+                target=candidate,
                 sample_duration_s=tracking_sample_duration_s,
                 attempts=tracking_confirmation_attempts,
             )
@@ -253,7 +264,8 @@ def configure_follow_camera(
             if tracking_state.confirmed:
                 print(
                     "Gazebo GUI follow camera state confirmed: "
-                    f"target={target} offset=({_format_float(offset[0])}, "
+                    f"requested_target={target} target={candidate} "
+                    f"offset=({_format_float(offset[0])}, "
                     f"{_format_float(offset[1])}, {_format_float(offset[2])}) "
                     f"published_attempts={published_attempts}"
                 )
@@ -263,12 +275,12 @@ def configure_follow_camera(
             ):
                 print(
                     "WARNING: Gazebo GUI follow camera state did not mention "
-                    f"target '{target}': "
+                    f"target candidate '{candidate}': "
                     f"{_compact_log_excerpt(tracking_state.output)}"
                 )
         elif attempt == 1 or attempt % 5 == 0:
             print(
-                f"Waiting for Gazebo GUI follow target '{target}' "
+                f"Waiting for Gazebo GUI follow target candidate '{candidate}' "
                 f"({attempt}/{wait_s}): {last_response}"
             )
         time.sleep(1)
@@ -277,7 +289,7 @@ def configure_follow_camera(
         print(
             "WARNING: Gazebo GUI follow camera command was published "
             f"{published_attempts} times but state was not confirmed for "
-            f"target '{target}' after {wait_s}s."
+            f"target candidates {target_candidates} after {wait_s}s."
         )
         return 0
     print(

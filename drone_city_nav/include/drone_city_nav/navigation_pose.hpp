@@ -43,6 +43,11 @@ enum class Px4LocalPoseUpdateStatus {
 [[nodiscard]] double normalizeYaw(double yaw_rad) noexcept;
 
 [[nodiscard]] bool
+px4HeadingReadyForMapping(bool heading_good_for_control, double heading_rad,
+                          double heading_variance_rad2,
+                          double maximum_heading_variance_rad2) noexcept;
+
+[[nodiscard]] bool
 timestampIsFresh(std::int64_t stamp_ns, std::int64_t now_ns,
                  std::int64_t max_staleness_ns,
                  std::int64_t max_future_skew_ns = 100'000'000) noexcept;

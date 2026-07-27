@@ -2,6 +2,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -23,6 +24,10 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       std::min<std::size_t>(config.max_logged_hit_points, 100000U);
   config.max_remembered_hit_points =
       std::clamp<std::size_t>(config.max_remembered_hit_points, 1U, 1000000U);
+  if (!std::isfinite(config.maximum_heading_variance_rad2) ||
+      config.maximum_heading_variance_rad2 < 0.0) {
+    config.maximum_heading_variance_rad2 = 0.01;
+  }
 }
 
 [[nodiscard]] LidarDebugNodeConfig loadLidarDebugNodeConfig(rclcpp::Node& node) {
@@ -62,6 +67,8 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "max_projected_lidar_altitude_m", config.max_projected_lidar_altitude_m);
   config.use_px4_heading_for_scan = node.declare_parameter<bool>(
       "use_px4_heading_for_scan", config.use_px4_heading_for_scan);
+  config.maximum_heading_variance_rad2 = node.declare_parameter<double>(
+      "maximum_heading_variance_rad2", config.maximum_heading_variance_rad2);
   config.lidar_mount_roll_rad = node.declare_parameter<double>(
       "lidar_mount_roll_rad", config.lidar_mount_roll_rad);
   config.lidar_mount_pitch_rad = node.declare_parameter<double>(

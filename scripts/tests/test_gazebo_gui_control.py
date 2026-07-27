@@ -132,6 +132,42 @@ class GazeboGuiControlTest(unittest.TestCase):
             stdout.getvalue(),
         )
 
+    def test_follow_camera_uses_sdf_model_name_when_spawned_name_is_not_rendered(
+        self,
+    ) -> None:
+        runner = FakeRunner(
+            [
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "", ""),
+                gui.CommandResult(0, "follow_target {}\n", ""),
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "", ""),
+                gui.CommandResult(
+                    0,
+                    'follow_target { name: "x500_lidar_2d" }\n',
+                    "",
+                ),
+            ]
+        )
+
+        with mock.patch.object(gui.time, "sleep"):
+            exit_code = gui.configure_follow_camera(
+                target="x500_lidar_2d_0",
+                offset_text="-12 0 6",
+                wait_s=2,
+                runner=runner,
+                tracking_confirmation_attempts=1,
+            )
+
+        self.assertEqual(exit_code, 0)
+        follow_calls = [
+            " ".join(call) for call in runner.calls if "/gui/follow" in call
+        ]
+        self.assertIn('data: "x500_lidar_2d_0"', follow_calls[0])
+        self.assertIn('data: "x500_lidar_2d"', follow_calls[1])
+
     def test_follow_camera_rejects_malformed_offset_before_calling_gz(self) -> None:
         runner = FakeRunner()
 

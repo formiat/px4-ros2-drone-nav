@@ -9,6 +9,7 @@
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_snapshot_writer.hpp"
+#include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -228,6 +229,7 @@ private:
   bool px4_heading_seen_{false};
   bool last_projected_px4_heading_seen_{false};
   bool use_px4_heading_for_scan_{true};
+  double maximum_heading_variance_rad2_{0.01};
   bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{true};
 

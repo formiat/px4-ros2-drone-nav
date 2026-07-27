@@ -47,6 +47,7 @@ struct LidarDebugNodeConfig {
   double min_projected_lidar_altitude_m{0.0};
   double max_projected_lidar_altitude_m{100000.0};
   bool use_px4_heading_for_scan{true};
+  double maximum_heading_variance_rad2{0.01};
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};

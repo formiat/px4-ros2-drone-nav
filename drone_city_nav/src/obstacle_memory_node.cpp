@@ -66,6 +66,13 @@ public:
     static_grid_ = declareStaticRawWorldGrid(*this, frame_id_, package_share);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
+    const double configured_maximum_heading_variance_rad2 =
+        declare_parameter<double>("maximum_heading_variance_rad2", 0.01);
+    maximum_heading_variance_rad2_ =
+        std::isfinite(configured_maximum_heading_variance_rad2) &&
+                configured_maximum_heading_variance_rad2 >= 0.0
+            ? configured_maximum_heading_variance_rad2
+            : 0.01;
     motion_compensate_lidar_pose_ =
         declare_parameter<bool>("motion_compensate_lidar_pose", true);
     lidar_pose_latency_s_ =
@@ -248,7 +255,8 @@ public:
                 "Obstacle memory config: max_range=%.2f stride=%d "
                 "raw_memory_only=true "
                 "score[min=%d max=%d free<=%d occupied>=%d] "
-                "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
+                "yaw_source=%s max_heading_variance=%.6frad2 "
+                "compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "motion_compensation=%s pose_latency=%.3fs "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f) full_extrinsic=%s "
@@ -257,6 +265,7 @@ public:
                 memory_config_.min_score, memory_config_.max_score,
                 memory_config_.free_score, memory_config_.occupied_score,
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
+                maximum_heading_variance_rad2_,
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
                 motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
@@ -277,6 +286,9 @@ public:
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+    const bool heading_ready = px4HeadingReadyForMapping(
+        msg.heading_good_for_control, static_cast<double>(msg.heading),
+        static_cast<double>(msg.heading_var), maximum_heading_variance_rad2_);
     const auto sample =
         Px4LocalPositionSample{static_cast<double>(msg.x),
                                static_cast<double>(msg.y),
@@ -285,7 +297,7 @@ private:
                                static_cast<std::int64_t>(msg.timestamp_sample) * 1000LL,
                                msg.xy_valid,
                                msg.z_valid,
-                               msg.heading_good_for_control};
+                               heading_ready};
     const Px4LocalPoseUpdateStatus status = updateNavigationPoseFromPx4LocalPosition(
         sample, px4_local_pose_config_, current_pose_);
     if (status == Px4LocalPoseUpdateStatus::kInvalidPosition) {
@@ -308,9 +320,11 @@ private:
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Obstacle memory invalidated cached pose after PX4 local position without "
-          "valid heading: heading_good_for_control=%s heading=%.3f",
+          "stable heading: heading_good_for_control=%s heading=%.3f "
+          "heading_variance=%.6f maximum_heading_variance=%.6f",
           msg.heading_good_for_control ? "true" : "false",
-          static_cast<double>(msg.heading));
+          static_cast<double>(msg.heading), static_cast<double>(msg.heading_var),
+          maximum_heading_variance_rad2_);
       return;
     }
 
@@ -975,6 +989,7 @@ private:
   std::int64_t last_debug_publish_stamp_ns_{0};
   std::int64_t last_snapshot_diagnostic_stamp_ns_{0};
   bool use_px4_heading_for_scan_{true};
+  double maximum_heading_variance_rad2_{0.01};
   bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{true};
   bool pose_seen_{false};

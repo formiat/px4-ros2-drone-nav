@@ -21,6 +21,17 @@ double normalizeYaw(const double yaw_rad) noexcept {
   return normalized;
 }
 
+bool px4HeadingReadyForMapping(const bool heading_good_for_control,
+                               const double heading_rad,
+                               const double heading_variance_rad2,
+                               const double maximum_heading_variance_rad2) noexcept {
+  return heading_good_for_control && std::isfinite(heading_rad) &&
+         std::isfinite(heading_variance_rad2) && heading_variance_rad2 >= 0.0 &&
+         std::isfinite(maximum_heading_variance_rad2) &&
+         maximum_heading_variance_rad2 >= 0.0 &&
+         heading_variance_rad2 <= maximum_heading_variance_rad2;
+}
+
 bool timestampIsFresh(const std::int64_t stamp_ns, const std::int64_t now_ns,
                       const std::int64_t max_staleness_ns,
                       const std::int64_t max_future_skew_ns) noexcept {
