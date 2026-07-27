@@ -96,6 +96,14 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
         self.assertGreaterEqual(self.launch_text.count('"use_sim_time": True'), 7)
 
+    def test_static_map_override_reaches_production_mppi(self) -> None:
+        self.assertIn("production_mppi_parameters", self.launch_text)
+        self.assertIn(
+            'production_mppi_parameters.append(\n'
+            '                {"use_static_map": static_map_override}',
+            self.launch_text,
+        )
+
     def test_px4_vertical_velocity_limits_follow_active_ros_config(self) -> None:
         self.assertIn("read_ros_float_parameter()", self.text)
         self.assertIn(

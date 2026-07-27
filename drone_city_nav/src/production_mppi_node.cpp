@@ -41,6 +41,12 @@ ProductionMppiNode::ProductionMppiNode()
   guide_lookahead_m_ = declare_parameter<double>("guide_lookahead_m", 30.0);
   passage_activation_distance_m_ =
       declare_parameter<double>("passage_activation_distance_m", 45.0);
+  passage_speed_policy_.use_static_map =
+      declare_parameter<bool>("use_static_map", true);
+  passage_speed_policy_.static_limit_mps = static_cast<float>(
+      declare_parameter<double>("static_passage_speed_limit_mps", 10.0));
+  passage_speed_policy_.no_static_limit_mps = static_cast<float>(
+      declare_parameter<double>("no_static_passage_speed_limit_mps", 5.0));
   target_mode_ = declare_parameter<std::string>("target_mode", "active_route_guide");
   frame_id_ = declare_parameter<std::string>("frame_id", "map");
   diagnostics_output_dir_ =
@@ -91,8 +97,12 @@ ProductionMppiNode::ProductionMppiNode()
   safety_config_.dt_s = mppi_config_.dynamics.dt_s;
   rviz_period_ns_ = static_cast<std::int64_t>(1.0e9 / std::max(0.1, rviz_rate_hz_));
 
-  if (!(tick_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0)) {
-    throw std::invalid_argument{"invalid production MPPI timing configuration"};
+  if (!(tick_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
+      !std::isfinite(passage_speed_policy_.static_limit_mps) ||
+      passage_speed_policy_.static_limit_mps < 0.0F ||
+      !std::isfinite(passage_speed_policy_.no_static_limit_mps) ||
+      passage_speed_policy_.no_static_limit_mps < 0.0F) {
+    throw std::invalid_argument{"invalid production MPPI configuration"};
   }
 
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
@@ -155,9 +165,12 @@ ProductionMppiNode::ProductionMppiNode()
       std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); });
   RCLCPP_INFO(get_logger(),
               "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
-              "deadline=%.1fms known_solids=%zu",
+              "deadline=%.1fms known_solids=%zu static_map=%s "
+              "passage_speed_limit=%.1fmps",
               mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
-              known_solids_.size());
+              known_solids_.size(),
+              passage_speed_policy_.use_static_map ? "true" : "false",
+              activePassageSpeedLimitMps(passage_speed_policy_));
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

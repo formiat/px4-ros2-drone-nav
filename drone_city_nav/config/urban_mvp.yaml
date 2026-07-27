@@ -111,6 +111,9 @@ production_mppi_node:
     maximum_esdf_age_ms: 1000.0
     guide_lookahead_m: 30.0
     passage_activation_distance_m: 45.0
+    use_static_map: true
+    static_passage_speed_limit_mps: 10.0
+    no_static_passage_speed_limit_mps: 5.0
     raw_collision_radius_m: 0.5
     critical_distance_m: 1.0
     preferred_distance_m: 6.0

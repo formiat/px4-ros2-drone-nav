@@ -202,7 +202,7 @@ ProductionMppiNode::selectPassageConstraint(const mppi::State& state,
              : static_cast<float>(0.5 * (selected->min_z_m + selected->max_z_m)),
       static_cast<float>(selected->approach_distance_m),
       static_cast<float>(selected->exit_distance_m),
-      5.0F,
+      activePassageSpeedLimitMps(passage_speed_policy_),
       inside ? mppi::PassagePhase::kPartialFromInside : mppi::PassagePhase::kApproach};
 }
 

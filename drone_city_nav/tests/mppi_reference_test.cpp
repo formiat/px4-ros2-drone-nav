@@ -1,4 +1,5 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/passage_speed_policy.hpp"
 
 #include <gtest/gtest.h>
 
@@ -68,6 +69,14 @@ TEST(MppiReferenceTest, CollisionIsHardAndStopsEarly) {
   EXPECT_TRUE(metrics.collision);
   EXPECT_EQ(metrics.worst_tier, RiskTier::kCollision);
   EXPECT_FLOAT_EQ(metrics.minimum_clearance_m, 0.0F);
+}
+
+TEST(MppiReferenceTest, PassageSpeedPolicyPreservesMapModeContract) {
+  PassageSpeedPolicy policy{};
+
+  EXPECT_FLOAT_EQ(activePassageSpeedLimitMps(policy), 10.0F);
+  policy.use_static_map = false;
+  EXPECT_FLOAT_EQ(activePassageSpeedLimitMps(policy), 5.0F);
 }
 
 } // namespace

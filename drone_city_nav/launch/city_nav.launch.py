@@ -90,6 +90,14 @@ def generate_launch_description():
         obstacle_memory_parameters = [params_file.perform(context)]
         if obstacle_memory_overrides:
             obstacle_memory_parameters.append(obstacle_memory_overrides)
+        production_mppi_parameters = [
+            params_file.perform(context),
+            {"use_sim_time": True},
+        ]
+        if static_map_override is not None:
+            production_mppi_parameters.append(
+                {"use_static_map": static_map_override}
+            )
         return [
             Node(
                 package="drone_city_nav",
@@ -104,6 +112,13 @@ def generate_launch_description():
                 name="world_visualization_node",
                 output="screen",
                 parameters=obstacle_memory_parameters,
+            ),
+            Node(
+                package="drone_city_nav",
+                executable="production_mppi_node",
+                name="production_mppi_node",
+                output="screen",
+                parameters=production_mppi_parameters,
             ),
         ]
 
@@ -151,19 +166,6 @@ def generate_launch_description():
             {
                 "use_sim_time": True,
                 "output_dir": lidar_debug_output_dir,
-            },
-        ],
-    )
-
-    production_mppi = Node(
-        package="drone_city_nav",
-        executable="production_mppi_node",
-        name="production_mppi_node",
-        output="screen",
-        parameters=[
-            params_file,
-            {
-                "use_sim_time": True,
             },
         ],
     )
@@ -297,7 +299,6 @@ def generate_launch_description():
             mppi_offboard,
             mission_monitor,
             lidar_debug,
-            production_mppi,
             gazebo_aligned_map_tf,
             rviz,
         ]

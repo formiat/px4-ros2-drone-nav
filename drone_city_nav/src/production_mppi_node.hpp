@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
+#include "drone_city_nav/mppi/passage_speed_policy.hpp"
 #include "drone_city_nav/mppi_horizon_safety.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
@@ -123,6 +124,7 @@ private:
   std::int64_t last_rviz_stamp_ns_{0};
 
   mppi::BenchmarkConfig mppi_config_{};
+  mppi::PassageSpeedPolicy passage_speed_policy_{};
   MppiHorizonSafetyConfig safety_config_{};
   RiskAwareLatticeConfig lattice_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
