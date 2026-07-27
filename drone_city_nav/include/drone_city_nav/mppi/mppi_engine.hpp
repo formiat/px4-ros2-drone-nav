@@ -59,6 +59,7 @@ struct MppiTickInput {
   std::int64_t planning_stamp_ns{0};
   std::optional<Control> previous_applied_control;
   std::uint64_t nominal_reseed_generation{0U};
+  float reference_speed_mps{-1.0F};
 };
 
 struct MppiStageTimings {

@@ -26,6 +26,10 @@ namespace {
   return samples[index];
 }
 
+[[nodiscard]] double finiteOrNegative(const double value) noexcept {
+  return std::isfinite(value) ? value : -1.0;
+}
+
 } // namespace
 
 void ProductionMppiNode::publishRviz(const mppi::MppiTickInput& input,
@@ -65,9 +69,10 @@ void ProductionMppiNode::publishDiagnostics(
     const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
     const ProductionMppiPreparedEsdf& esdf, const ProductionMppiStability& stability,
     const ProductionMppiPredictionError& prediction, const MppiLivenessResult& liveness,
-    const std::string_view target_source, const double pose_age_ms,
-    const double esdf_age_ms, const double control_feedback_age_ms,
-    const double snapshot_ms, const double stability_ms, const double rviz_ms) {
+    const MppiSpeedPolicyResult& speed_policy, const std::string_view target_source,
+    const double pose_age_ms, const double esdf_age_ms,
+    const double control_feedback_age_ms, const double snapshot_ms,
+    const double stability_ms, const double rviz_ms) {
   ++tick_sequence_;
   ++completed_ticks_;
   runtime_samples_ms_.push_back(result.timings.host_total_ms);
@@ -85,9 +90,21 @@ void ProductionMppiNode::publishDiagnostics(
        << " esdf_revision=" << result.esdf_revision
        << " memory_sequence=" << memory_sequence_ << " pose_age_ms=" << pose_age_ms
        << " esdf_age_ms=" << esdf_age_ms
-       << " control_feedback_age_ms=" << control_feedback_age_ms
+       << " control_feedback_age_ms=" << control_feedback_age_ms << " planning_mode="
+       << (passage_speed_policy_.use_static_map ? "static" : "no_static")
+       << " horizon_s="
+       << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
        << " target_source=" << target_source << " target=(" << input.target.x << ','
        << input.target.y << ',' << input.target.z << ")"
+       << " target_lookahead_m=" << speed_policy.target_lookahead_m
+       << " reference_speed_mps=" << input.reference_speed_mps
+       << " curvature_speed_limit_mps="
+       << finiteOrNegative(speed_policy.curvature_limit_mps)
+       << " observation_speed_limit_mps="
+       << finiteOrNegative(speed_policy.observation_limit_mps)
+       << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
+       << " passage_speed_limit_mps="
+       << finiteOrNegative(speed_policy.passage_limit_mps)
        << " gpu_ms=" << result.timings.gpu_total_ms
        << " total_ms=" << result.timings.host_total_ms << " snapshot_ms=" << snapshot_ms
        << " stability_ms=" << stability_ms << " rviz_ms=" << rviz_ms
@@ -129,7 +146,19 @@ void ProductionMppiNode::publishDiagnostics(
         << "{\"tick\":" << tick_sequence_
         << ",\"pose_revision\":" << input.pose_revision
         << ",\"raw_revision\":" << input.obstacle_revision
-        << ",\"esdf_revision\":" << result.esdf_revision
+        << ",\"esdf_revision\":" << result.esdf_revision << ",\"planning_mode\":\""
+        << (passage_speed_policy_.use_static_map ? "static" : "no_static") << '"'
+        << ",\"horizon_s\":"
+        << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
+        << ",\"target_lookahead_m\":" << speed_policy.target_lookahead_m
+        << ",\"reference_speed_mps\":" << input.reference_speed_mps
+        << ",\"curvature_speed_limit_mps\":"
+        << finiteOrNegative(speed_policy.curvature_limit_mps)
+        << ",\"observation_speed_limit_mps\":"
+        << finiteOrNegative(speed_policy.observation_limit_mps)
+        << ",\"goal_speed_limit_mps\":" << finiteOrNegative(speed_policy.goal_limit_mps)
+        << ",\"passage_speed_limit_mps\":"
+        << finiteOrNegative(speed_policy.passage_limit_mps)
         << ",\"gpu_ms\":" << result.timings.gpu_total_ms
         << ",\"total_ms\":" << result.timings.host_total_ms
         << ",\"raw_collision\":" << (result.raw_collision ? "true" : "false")

@@ -121,6 +121,40 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('param show MPC_Z_VEL_MAX_DN', self.text)
         self.assertIn('param show MPC_Z_VEL_MAX_UP', self.text)
 
+    def test_static_mode_aligns_px4_horizontal_dynamics_with_mppi(self) -> None:
+        self.assertIn("read_ros_bool_parameter()", self.text)
+        self.assertIn(
+            "production_mppi_node static_absolute_speed_limit_mps",
+            self.text,
+        )
+        self.assertIn(
+            "production_mppi_node static_maximum_horizontal_acceleration_mps2",
+            self.text,
+        )
+        self.assertIn(
+            "production_mppi_node static_maximum_control_jerk_mps3",
+            self.text,
+        )
+        self.assertIn('if bool_is_true "${active_static_map}"; then', self.text)
+        self.assertIn(
+            'param set MPC_XY_VEL_MAX ${px4_static_max_horizontal_speed_mps}',
+            self.text,
+        )
+        self.assertIn(
+            "param set MPC_ACC_HOR_MAX "
+            "${px4_static_max_horizontal_acceleration_mps2}",
+            self.text,
+        )
+        self.assertIn(
+            "param set MPC_ACC_HOR "
+            "${px4_static_max_horizontal_acceleration_mps2}",
+            self.text,
+        )
+        self.assertIn(
+            'param set MPC_JERK_AUTO ${px4_static_maximum_jerk_mps3}',
+            self.text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

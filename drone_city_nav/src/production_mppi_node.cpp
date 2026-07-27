@@ -40,11 +40,16 @@ ProductionMppiNode::ProductionMppiNode()
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
   maximum_control_feedback_age_ms_ =
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
-  guide_lookahead_m_ = declare_parameter<double>("guide_lookahead_m", 30.0);
-  passage_activation_distance_m_ =
+  passage_route_selection_config_.activation_distance_m =
       declare_parameter<double>("passage_activation_distance_m", 45.0);
+  passage_route_selection_config_.lateral_margin_m =
+      declare_parameter<double>("passage_route_lateral_margin_m", 0.5);
+  passage_route_selection_config_.minimum_normal_alignment =
+      declare_parameter<double>("passage_route_minimum_normal_alignment", 0.35);
   passage_speed_policy_.use_static_map =
       declare_parameter<bool>("use_static_map", true);
+  no_static_guide_lookahead_m_ =
+      declare_parameter<double>("no_static_guide_lookahead_m", 30.0);
   passage_speed_policy_.static_limit_mps = static_cast<float>(
       declare_parameter<double>("static_passage_speed_limit_mps", 10.0));
   passage_speed_policy_.no_static_limit_mps = static_cast<float>(
@@ -63,15 +68,63 @@ ProductionMppiNode::ProductionMppiNode()
   mission_goal_.z = declare_parameter<double>("goal_z_m", 18.0);
   mppi_config_.rollouts =
       static_cast<std::size_t>(declare_parameter<int>("rollouts", 8192));
-  mppi_config_.steps = static_cast<std::size_t>(declare_parameter<int>("steps", 80));
   mppi_config_.dynamics.dt_s =
       static_cast<float>(declare_parameter<double>("dt_s", 0.05));
+  const double static_horizon_duration_s =
+      declare_parameter<double>("static_horizon_duration_s", 6.0);
+  const double no_static_horizon_duration_s =
+      declare_parameter<double>("no_static_horizon_duration_s", 4.0);
+  const double active_horizon_duration_s = passage_speed_policy_.use_static_map
+                                               ? static_horizon_duration_s
+                                               : no_static_horizon_duration_s;
+  mppi_config_.steps = static_cast<std::size_t>(
+      std::ceil(active_horizon_duration_s / mppi_config_.dynamics.dt_s));
+  static_speed_policy_config_.horizon_duration_s = static_horizon_duration_s;
+  static_speed_policy_config_.cruise_speed_mps =
+      declare_parameter<double>("static_cruise_speed_mps", 20.0);
+  static_speed_policy_config_.absolute_speed_limit_mps =
+      declare_parameter<double>("static_absolute_speed_limit_mps", 20.0);
+  static_speed_policy_config_.maximum_lateral_acceleration_mps2 =
+      declare_parameter<double>("static_maximum_lateral_acceleration_mps2", 5.0);
+  static_speed_policy_config_.maximum_braking_acceleration_mps2 =
+      declare_parameter<double>("static_maximum_braking_acceleration_mps2", 8.0);
+  static_speed_policy_config_.reaction_latency_s =
+      declare_parameter<double>("static_speed_reaction_latency_s", 0.10);
+  static_speed_policy_config_.observation_distance_m =
+      declare_parameter<double>("static_observation_distance_m", 30.0);
+  static_speed_policy_config_.observation_margin_m =
+      declare_parameter<double>("static_observation_margin_m", 3.0);
+  static_speed_policy_config_.goal_margin_m =
+      declare_parameter<double>("static_goal_braking_margin_m", 2.0);
+  static_speed_policy_config_.curvature_preview_distance_m =
+      declare_parameter<double>("static_curvature_preview_distance_m", 100.0);
+  static_speed_policy_config_.minimum_target_lookahead_m =
+      declare_parameter<double>("static_minimum_target_lookahead_m", 30.0);
+  static_speed_policy_config_.maximum_target_lookahead_m =
+      declare_parameter<double>("static_maximum_target_lookahead_m", 100.0);
+  if (passage_speed_policy_.use_static_map) {
+    mppi_config_.dynamics.maximum_horizontal_speed_mps =
+        static_cast<float>(static_speed_policy_config_.absolute_speed_limit_mps);
+    mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 = static_cast<float>(
+        declare_parameter<double>("static_maximum_horizontal_acceleration_mps2", 8.0));
+    mppi_config_.dynamics.maximum_control_jerk_mps3 = static_cast<float>(
+        declare_parameter<double>("static_maximum_control_jerk_mps3", 20.0));
+  } else {
+    (void)declare_parameter<double>("static_maximum_horizontal_acceleration_mps2", 8.0);
+    (void)declare_parameter<double>("static_maximum_control_jerk_mps3", 20.0);
+  }
   mppi_config_.dynamics.maximum_vertical_speed_mps =
       static_cast<float>(declare_parameter<double>("maximum_vertical_speed_mps", 5.0));
   mppi_config_.costs.head_progress_horizon_s =
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
       static_cast<float>(declare_parameter<double>("head_progress_weight", 8.0));
+  const double static_speed_tracking_weight =
+      declare_parameter<double>("static_speed_tracking_weight", 1.0);
+  mppi_config_.costs.speed_tracking_weight =
+      passage_speed_policy_.use_static_map
+          ? static_cast<float>(static_speed_tracking_weight)
+          : 0.0F;
   mppi_config_.risk.collision_radius_m =
       static_cast<float>(declare_parameter<double>("raw_collision_radius_m", 0.5));
   mppi_config_.risk.critical_distance_m =
@@ -83,10 +136,20 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<std::int64_t>("global_lattice_heading_bins", 16));
   lattice_config_.primitive_length_m =
       declare_parameter<double>("global_lattice_primitive_length_m", 4.0);
-  lattice_config_.receding_goal_distance_m =
-      declare_parameter<double>("global_lattice_receding_goal_distance_m", 60.0);
+  const double static_lattice_distance =
+      declare_parameter<double>("static_global_lattice_window_m", 180.0);
+  const double no_static_lattice_distance =
+      declare_parameter<double>("no_static_global_lattice_window_m", 60.0);
+  lattice_config_.receding_goal_distance_m = passage_speed_policy_.use_static_map
+                                                 ? static_lattice_distance
+                                                 : no_static_lattice_distance;
+  const std::int64_t static_lattice_expansions = declare_parameter<std::int64_t>(
+      "static_global_lattice_maximum_expansions", 120000);
+  const std::int64_t no_static_lattice_expansions = declare_parameter<std::int64_t>(
+      "no_static_global_lattice_maximum_expansions", 60000);
   lattice_config_.maximum_expansions = static_cast<std::size_t>(
-      declare_parameter<int>("global_lattice_maximum_expansions", 60000));
+      passage_speed_policy_.use_static_map ? static_lattice_expansions
+                                           : no_static_lattice_expansions);
   lattice_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   lattice_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
@@ -98,8 +161,13 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("safety_maximum_braking_acceleration_mps2", 8.0);
   safety_config_.minimum_time_to_collision_s =
       declare_parameter<double>("safety_minimum_time_to_collision_s", 0.50);
-  safety_config_.fallback_duration_s =
-      declare_parameter<double>("safety_fallback_duration_s", 2.0);
+  const double static_safety_fallback_duration_s =
+      declare_parameter<double>("static_safety_fallback_duration_s", 3.0);
+  const double no_static_safety_fallback_duration_s =
+      declare_parameter<double>("no_static_safety_fallback_duration_s", 2.0);
+  safety_config_.fallback_duration_s = passage_speed_policy_.use_static_map
+                                           ? static_safety_fallback_duration_s
+                                           : no_static_safety_fallback_duration_s;
   safety_config_.dt_s = mppi_config_.dynamics.dt_s;
   liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", true);
   liveness_config_.observation_window_s =
@@ -115,7 +183,11 @@ ProductionMppiNode::ProductionMppiNode()
       !std::isfinite(passage_speed_policy_.static_limit_mps) ||
       passage_speed_policy_.static_limit_mps < 0.0F ||
       !std::isfinite(passage_speed_policy_.no_static_limit_mps) ||
-      passage_speed_policy_.no_static_limit_mps < 0.0F) {
+      passage_speed_policy_.no_static_limit_mps < 0.0F ||
+      !(passage_route_selection_config_.activation_distance_m > 0.0) ||
+      !(passage_route_selection_config_.lateral_margin_m >= 0.0) ||
+      !(passage_route_selection_config_.minimum_normal_alignment >= 0.0) ||
+      !(passage_route_selection_config_.minimum_normal_alignment <= 1.0)) {
     throw std::invalid_argument{"invalid production MPPI configuration"};
   }
 
@@ -188,10 +260,17 @@ ProductionMppiNode::ProductionMppiNode()
   RCLCPP_INFO(get_logger(),
               "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
               "deadline=%.1fms known_solids=%zu static_map=%s "
+              "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
               "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s",
               mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
               known_solids_.size(),
               passage_speed_policy_.use_static_map ? "true" : "false",
+              static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
+              lattice_config_.receding_goal_distance_m,
+              passage_speed_policy_.use_static_map
+                  ? static_speed_policy_config_.cruise_speed_mps
+                  : -1.0,
+              mppi_config_.dynamics.maximum_horizontal_speed_mps,
               activePassageSpeedLimitMps(passage_speed_policy_),
               mppi_config_.costs.head_progress_horizon_s,
               liveness_config_.enabled ? "true" : "false");

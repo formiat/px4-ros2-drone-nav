@@ -179,10 +179,49 @@ print(value)
 PY
 }
 
+read_ros_bool_parameter() {
+  local node_name="$1"
+  local parameter_name="$2"
+  python3 - "${city_nav_params_file}" "${node_name}" "${parameter_name}" <<'PY'
+import sys
+
+import yaml
+
+params_path, node_name, parameter_name = sys.argv[1:]
+with open(params_path, encoding="utf-8") as stream:
+    document = yaml.safe_load(stream)
+try:
+    value = document[node_name]["ros__parameters"][parameter_name]
+except (KeyError, TypeError) as exc:
+    raise SystemExit(
+        f"Missing boolean ROS parameter {node_name}.{parameter_name} in {params_path}"
+    ) from exc
+if not isinstance(value, bool):
+    raise SystemExit(
+        f"Invalid ROS parameter {node_name}.{parameter_name}={value} in {params_path}"
+    )
+print("true" if value else "false")
+PY
+}
+
 px4_max_climb_speed_mps="$(
     read_ros_float_parameter production_mppi_node maximum_vertical_speed_mps
 )"
 px4_max_descent_speed_mps="${px4_max_climb_speed_mps}"
+configured_static_map="$(
+    read_ros_bool_parameter production_mppi_node use_static_map
+)"
+active_static_map="${enable_static_map_override:-${configured_static_map}}"
+px4_static_max_horizontal_speed_mps="$(
+    read_ros_float_parameter production_mppi_node static_absolute_speed_limit_mps
+)"
+px4_static_max_horizontal_acceleration_mps2="$(
+    read_ros_float_parameter \
+      production_mppi_node static_maximum_horizontal_acceleration_mps2
+)"
+px4_static_maximum_jerk_mps3="$(
+    read_ros_float_parameter production_mppi_node static_maximum_control_jerk_mps3
+)"
 
 format_override_value() {
   local value="$1"
@@ -193,17 +232,7 @@ format_override_value() {
   fi
 }
 
-params_are_default=false
-canonical_city_nav_params_file="$(realpath -m "${city_nav_params_file}")"
-canonical_default_city_nav_params_file="$(realpath -m "${default_city_nav_params_file}")"
-if [[ "${canonical_city_nav_params_file}" == "${canonical_default_city_nav_params_file}" ]]; then
-  params_are_default=true
-fi
-
-expected_static_map="${enable_static_map_override}"
-if [[ "${params_are_default}" == "true" ]]; then
-  expected_static_map="${expected_static_map:-true}"
-fi
+expected_static_map="${active_static_map}"
 expected_obstacle_memory="true"
 expected_current_lidar="true"
 
@@ -454,6 +483,16 @@ echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_
     echo "param set NAV_DLL_ACT 0"
     echo "param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}"
     echo "param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}"
+    if bool_is_true "${active_static_map}"; then
+      echo "param set MPC_XY_VEL_MAX ${px4_static_max_horizontal_speed_mps}"
+      echo "param set MPC_ACC_HOR_MAX ${px4_static_max_horizontal_acceleration_mps2}"
+      echo "param set MPC_ACC_HOR ${px4_static_max_horizontal_acceleration_mps2}"
+      echo "param set MPC_JERK_AUTO ${px4_static_maximum_jerk_mps3}"
+      echo "param show MPC_XY_VEL_MAX"
+      echo "param show MPC_ACC_HOR_MAX"
+      echo "param show MPC_ACC_HOR"
+      echo "param show MPC_JERK_AUTO"
+    fi
     echo "param show MPC_Z_VEL_MAX_DN"
     echo "param show MPC_Z_VEL_MAX_UP"
     while true; do

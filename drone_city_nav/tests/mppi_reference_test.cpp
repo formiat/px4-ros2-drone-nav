@@ -119,6 +119,30 @@ TEST(MppiReferenceTest, AppliedControlDefinesFirstJerkCost) {
   EXPECT_FLOAT_EQ(from_applied.costs.jerk, 0.0F);
 }
 
+TEST(MppiReferenceTest, ReferenceSpeedAddsTrackingCost) {
+  constexpr int kWidth = 20;
+  constexpr int kHeight = 20;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 20.0F);
+  const std::array<Control, 2> controls{};
+  const std::array<Control, 2> noise{};
+  State initial{.x = 1.5F, .y = 1.5F, .vx = 5.0F};
+
+  const RolloutMetrics disabled =
+      simulateReference(initial, controls, noise, DynamicsConfig{}, RiskConfig{},
+                        CostConfig{}, grid, esdf, 10.0F, 1.5F, false);
+  const RolloutMetrics matched =
+      simulateReference(initial, controls, noise, DynamicsConfig{}, RiskConfig{},
+                        CostConfig{}, grid, esdf, 10.0F, 1.5F, false, Control{}, 5.0F);
+  const RolloutMetrics faster =
+      simulateReference(initial, controls, noise, DynamicsConfig{}, RiskConfig{},
+                        CostConfig{}, grid, esdf, 10.0F, 1.5F, false, Control{}, 10.0F);
+
+  EXPECT_FLOAT_EQ(disabled.costs.speed_tracking, 0.0F);
+  EXPECT_LT(matched.costs.speed_tracking, faster.costs.speed_tracking);
+  EXPECT_LT(matched.soft_cost, faster.soft_cost);
+}
+
 TEST(MppiReferenceTest, PassageSpeedPolicyPreservesMapModeContract) {
   PassageSpeedPolicy policy{};
 

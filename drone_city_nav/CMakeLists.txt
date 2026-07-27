@@ -141,9 +141,11 @@ add_library(
   src/lidar_snapshot_writer.cpp
   src/mppi_horizon_safety.cpp
   src/mppi_liveness.cpp
+  src/mppi_speed_policy.cpp
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
+  src/passage_route_selection.cpp
   src/passage_traversal_monitor.cpp
   src/static_city_map.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
@@ -337,6 +339,17 @@ if(BUILD_TESTING)
   target_compile_features(mppi_liveness_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_liveness_test_current drone_city_nav_core)
   enable_project_warnings(mppi_liveness_test_current)
+
+  ament_add_gtest(mppi_speed_policy_test_current tests/mppi_speed_policy_test.cpp)
+  target_compile_features(mppi_speed_policy_test_current PRIVATE cxx_std_20)
+  target_link_libraries(mppi_speed_policy_test_current drone_city_nav_core)
+  enable_project_warnings(mppi_speed_policy_test_current)
+
+  ament_add_gtest(passage_route_selection_test
+                  tests/passage_route_selection_test.cpp)
+  target_compile_features(passage_route_selection_test PRIVATE cxx_std_20)
+  target_link_libraries(passage_route_selection_test drone_city_nav_core)
+  enable_project_warnings(passage_route_selection_test)
 
   if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     ament_add_gtest(mppi_control_sequence_test_current

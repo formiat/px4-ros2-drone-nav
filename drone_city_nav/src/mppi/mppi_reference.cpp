@@ -61,6 +61,8 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.head_progress_horizon_s > 0.0F &&
          std::isfinite(config.costs.head_progress_weight) &&
          config.costs.head_progress_weight >= 0.0F &&
+         std::isfinite(config.costs.speed_tracking_weight) &&
+         config.costs.speed_tracking_weight >= 0.0F &&
          config.risk.collision_radius_m >= 0.0F &&
          config.risk.critical_distance_m >= config.risk.collision_radius_m &&
          config.risk.preferred_distance_m >= config.risk.critical_distance_m;
@@ -95,7 +97,8 @@ RolloutMetrics simulateReference(
     const std::span<const Control> noise_controls, const DynamicsConfig& dynamics,
     const RiskConfig& risk, const CostConfig& costs, const EsdfGrid& grid,
     const std::span<const float> esdf, const float target_x_m, const float target_y_m,
-    const bool early_exit_on_collision, const Control previous_applied_control) {
+    const bool early_exit_on_collision, const Control previous_applied_control,
+    const float reference_speed_mps) {
   RolloutMetrics metrics{};
   metrics.minimum_clearance_m = std::numeric_limits<float>::infinity();
   State state = initial_state;
@@ -142,6 +145,10 @@ RolloutMetrics simulateReference(
     metrics.costs.yaw_change += squared(control.yaw_accel);
     metrics.costs.control_effort += squared(control.ax) + squared(control.ay) +
                                     squared(control.az) + squared(control.yaw_accel);
+    if (reference_speed_mps >= 0.0F) {
+      metrics.costs.speed_tracking +=
+          squared(std::hypot(state.vx, state.vy) - reference_speed_mps);
+    }
     metrics.costs.terminal = target_distance;
     previous = control;
     if (metrics.collision && early_exit_on_collision) {
@@ -153,6 +160,7 @@ RolloutMetrics simulateReference(
   metrics.soft_cost =
       costs.head_progress_weight * -metrics.costs.head_progress +
       costs.progress_weight * metrics.costs.progress +
+      costs.speed_tracking_weight * dynamics.dt_s * metrics.costs.speed_tracking +
       costs.guide_deviation_weight * dynamics.dt_s * metrics.costs.guide_deviation +
       costs.acceleration_weight * dynamics.dt_s * metrics.costs.acceleration +
       costs.jerk_weight * metrics.costs.jerk +

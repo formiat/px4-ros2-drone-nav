@@ -103,18 +103,35 @@ production_mppi_node:
     tick_rate_hz: 50.0
     rviz_rate_hz: 10.0
     rollouts: 8192
-    steps: 80
     dt_s: 0.05
+    static_horizon_duration_s: 6.0
+    no_static_horizon_duration_s: 4.0
     maximum_vertical_speed_mps: 5.0
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
+    static_speed_tracking_weight: 1.0
     deadline_ms: 20.0
     maximum_pose_age_ms: 150.0
     maximum_esdf_age_ms: 1000.0
     maximum_control_feedback_age_ms: 200.0
-    guide_lookahead_m: 30.0
+    no_static_guide_lookahead_m: 30.0
+    static_minimum_target_lookahead_m: 30.0
+    static_maximum_target_lookahead_m: 100.0
     passage_activation_distance_m: 45.0
+    passage_route_lateral_margin_m: 0.5
+    passage_route_minimum_normal_alignment: 0.35
     use_static_map: true
+    static_cruise_speed_mps: 20.0
+    static_absolute_speed_limit_mps: 20.0
+    static_maximum_horizontal_acceleration_mps2: 8.0
+    static_maximum_lateral_acceleration_mps2: 5.0
+    static_maximum_braking_acceleration_mps2: 8.0
+    static_maximum_control_jerk_mps3: 20.0
+    static_speed_reaction_latency_s: 0.10
+    static_observation_distance_m: 30.0
+    static_observation_margin_m: 3.0
+    static_goal_braking_margin_m: 2.0
+    static_curvature_preview_distance_m: 100.0
     static_passage_speed_limit_mps: 10.0
     no_static_passage_speed_limit_mps: 5.0
     raw_collision_radius_m: 0.5
@@ -143,15 +160,18 @@ production_mppi_node:
     safety_reaction_latency_s: 0.10
     safety_maximum_braking_acceleration_mps2: 8.0
     safety_minimum_time_to_collision_s: 0.50
-    safety_fallback_duration_s: 2.0
+    static_safety_fallback_duration_s: 3.0
+    no_static_safety_fallback_duration_s: 2.0
     liveness_enabled: true
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5
     liveness_minimum_predicted_terminal_progress_m: 5.0
     global_lattice_heading_bins: 16
     global_lattice_primitive_length_m: 4.0
-    global_lattice_receding_goal_distance_m: 60.0
-    global_lattice_maximum_expansions: 60000
+    static_global_lattice_window_m: 180.0
+    no_static_global_lattice_window_m: 60.0
+    static_global_lattice_maximum_expansions: 120000
+    no_static_global_lattice_maximum_expansions: 60000
 
 mppi_offboard_node:
   ros__parameters:

@@ -5,10 +5,12 @@
 #include "drone_city_nav/mppi/passage_speed_policy.hpp"
 #include "drone_city_nav/mppi_horizon_safety.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
+#include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
+#include "drone_city_nav/passage_route_selection.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -100,6 +102,7 @@ private:
                           const ProductionMppiStability& stability,
                           const ProductionMppiPredictionError& prediction,
                           const MppiLivenessResult& liveness,
+                          const MppiSpeedPolicyResult& speed_policy,
                           std::string_view target_source, double pose_age_ms,
                           double esdf_age_ms, double control_feedback_age_ms,
                           double snapshot_ms, double stability_ms, double rviz_ms);
@@ -113,9 +116,11 @@ private:
 
   [[nodiscard]] mppi::State selectTarget(const ProductionMppiNavigation& navigation,
                                          const ProductionMppiPreparedEsdf& esdf,
+                                         double lookahead_m,
                                          std::string& target_source) const;
   [[nodiscard]] std::optional<mppi::PassageConstraint>
-  selectPassageConstraint(const mppi::State& state, const mppi::State& target) const;
+  selectPassageConstraint(const mppi::State& state,
+                          std::span<const Point2> guide) const;
   [[nodiscard]] ProductionMppiStability
   compareWithPrevious(const mppi::MppiTickResult& result) const;
 
@@ -125,8 +130,8 @@ private:
   double maximum_pose_age_ms_{150.0};
   double maximum_esdf_age_ms_{1000.0};
   double maximum_control_feedback_age_ms_{200.0};
-  double guide_lookahead_m_{30.0};
-  double passage_activation_distance_m_{45.0};
+  double no_static_guide_lookahead_m_{30.0};
+  PassageRouteSelectionConfig passage_route_selection_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
   Point3 mission_start_{54.0, 54.0, 0.0};
   Point3 mission_goal_{216.0, 378.0, 18.0};
@@ -140,6 +145,7 @@ private:
   mppi::PassageSpeedPolicy passage_speed_policy_{};
   MppiHorizonSafetyConfig safety_config_{};
   MppiLivenessConfig liveness_config_{};
+  MppiSpeedPolicyConfig static_speed_policy_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   RiskAwareLatticeConfig lattice_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;

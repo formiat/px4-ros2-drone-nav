@@ -40,6 +40,7 @@ struct CostConfig {
   float head_progress_horizon_s{0.4F};
   float head_progress_weight{8.0F};
   float progress_weight{4.0F};
+  float speed_tracking_weight{1.0F};
   float acceleration_weight{0.03F};
   float jerk_weight{0.02F};
   float yaw_change_weight{0.1F};

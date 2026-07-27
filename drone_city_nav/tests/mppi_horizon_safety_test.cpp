@@ -41,6 +41,27 @@ TEST(MppiHorizonSafetyTest, ProducesBrakingFallbackBeforeCollision) {
   EXPECT_LT(result.fallback_horizon.back().vx, current.vx);
 }
 
+TEST(MppiHorizonSafetyTest, StaticFallbackStopsFromTwentyMetersPerSecond) {
+  const mppi::EsdfGrid grid{200, 2, 1.0F, 0.0F, 0.0F};
+  std::vector<float> esdf(400U, 10.0F);
+  esdf[100U] = 0.0F;
+  const std::vector<mppi::State> horizon{mppi::State{0.5F, 0.5F},
+                                         mppi::State{100.5F, 0.5F}};
+  mppi::State current{0.5F, 0.5F};
+  current.vx = 20.0F;
+
+  const MppiHorizonSafetyResult result =
+      evaluateMppiHorizonSafety(current, horizon, esdf, grid,
+                                MppiHorizonSafetyConfig{
+                                    .minimum_time_to_collision_s = 0.1,
+                                    .fallback_duration_s = 3.0,
+                                    .dt_s = 0.05,
+                                });
+
+  ASSERT_FALSE(result.fallback_horizon.empty());
+  EXPECT_NEAR(result.fallback_horizon.back().vx, 0.0F, 1.0e-4F);
+}
+
 TEST(MppiHorizonSafetyTest, TreatsOutsideGridAsCollision) {
   const mppi::EsdfGrid grid{2, 2, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf(4U, 10.0F);

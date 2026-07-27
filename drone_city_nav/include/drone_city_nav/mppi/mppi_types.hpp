@@ -32,6 +32,7 @@ struct Control {
 struct CostBreakdown {
   float head_progress{0.0F};
   float progress{0.0F};
+  float speed_tracking{0.0F};
   float guide_deviation{0.0F};
   float acceleration{0.0F};
   float jerk{0.0F};

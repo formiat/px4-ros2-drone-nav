@@ -342,7 +342,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          State initial, State target, DynamicsConfig dynamics, RiskConfig risk,
          CostConfig costs, EsdfGrid grid, cudaTextureObject_t esdf_texture,
          const KnownSolid* solids, std::size_t solid_count, PassageConstraint passage,
-         bool passage_active, Control previous_applied_control, bool early_exit) {
+         bool passage_active, Control previous_applied_control,
+         float reference_speed_mps, bool early_exit) {
   const std::size_t rollout =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (rollout >= rollouts) {
@@ -355,6 +356,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float jerk_cost = 0.0F;
   float yaw_cost = 0.0F;
   float altitude_cost = 0.0F;
+  float speed_tracking_cost = 0.0F;
   float critical_m = 0.0F;
   float planning_m = 0.0F;
   float minimum_clearance_m = kInfinity;
@@ -427,6 +429,10 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
+    if (reference_speed_mps >= 0.0F) {
+      const float speed_error = hypotf(state.vx, state.vy) - reference_speed_mps;
+      speed_tracking_cost += speed_error * speed_error;
+    }
     jerk_cost += (control.ax - previous.ax) * (control.ax - previous.ax) +
                  (control.ay - previous.ay) * (control.ay - previous.ay) +
                  (control.az - previous.az) * (control.az - previous.az);
@@ -439,6 +445,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   const float terminal_distance = hypotf(target.x - state.x, target.y - state.y);
   soft_cost[rollout] = costs.head_progress_weight * -head_progress +
                        costs.progress_weight * -(initial_distance - terminal_distance) +
+                       costs.speed_tracking_weight * dynamics.dt_s *
+                           speed_tracking_cost +
                        costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
                        costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
                        costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
@@ -748,7 +756,8 @@ public:
         config_.risk, config_.costs, textures_[active_texture_].grid(),
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         input.passage.value_or(PassageConstraint{}), input.passage.has_value(),
-        previous_applied_control, config_.early_exit_on_collision);
+        previous_applied_control, input.reference_speed_mps,
+        config_.early_exit_on_collision);
     simulation_done_.record(stream_);
     initializeReduction<<<1, 1, 0U, stream_>>>(
         buffers_.best_tier.get(), buffers_.best_critical.get(),
@@ -858,7 +867,7 @@ public:
         input.initial_state, updated_, zero_noise_, config_.dynamics, config_.risk,
         config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
         input.target.x, input.target.y, config_.early_exit_on_collision,
-        previous_applied_control);
+        previous_applied_control, input.reference_speed_mps);
     result.raw_collision = metrics.collision;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;

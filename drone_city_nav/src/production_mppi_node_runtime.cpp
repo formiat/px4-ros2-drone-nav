@@ -153,6 +153,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
 
 mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& navigation,
                                              const ProductionMppiPreparedEsdf& esdf,
+                                             const double lookahead_m,
                                              std::string& target_source) const {
   mppi::State target{static_cast<float>(mission_goal_.x),
                      static_cast<float>(mission_goal_.y),
@@ -173,18 +174,22 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& nav
     }
   }
   double accumulated = 0.0;
-  std::size_t target_index = nearest_index;
   for (std::size_t index = nearest_index + 1U; index < esdf.global_guide->size();
        ++index) {
     const Point2 previous = (*esdf.global_guide)[index - 1U];
     const Point2 current = (*esdf.global_guide)[index];
-    accumulated += std::hypot(current.x - previous.x, current.y - previous.y);
-    target_index = index;
-    if (accumulated >= guide_lookahead_m_) {
-      break;
+    const double segment_length =
+        std::hypot(current.x - previous.x, current.y - previous.y);
+    if (segment_length > 1.0e-6 && accumulated + segment_length >= lookahead_m) {
+      const double ratio = (lookahead_m - accumulated) / segment_length;
+      target.x = static_cast<float>(std::lerp(previous.x, current.x, ratio));
+      target.y = static_cast<float>(std::lerp(previous.y, current.y, ratio));
+      target_source = "motion_primitive_guide";
+      return target;
     }
+    accumulated += segment_length;
   }
-  const Point2 selected = (*esdf.global_guide)[target_index];
+  const Point2 selected = esdf.global_guide->back();
   target.x = static_cast<float>(selected.x);
   target.y = static_cast<float>(selected.y);
   target_source = "motion_primitive_guide";
@@ -193,20 +198,19 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& nav
 
 std::optional<mppi::PassageConstraint>
 ProductionMppiNode::selectPassageConstraint(const mppi::State& state,
-                                            const mppi::State& target) const {
+                                            const std::span<const Point2> guide) const {
   if (!known_passages_.has_value()) {
     return std::nullopt;
   }
   const PassageOpening* selected = nullptr;
-  double selected_distance = passage_activation_distance_m_;
+  double selected_distance = passage_route_selection_config_.activation_distance_m;
   for (const PassageStructure& structure : known_passages_->structures) {
     for (const PassageOpening& opening : structure.openings) {
       const double opening_distance =
           std::hypot(opening.center.x - state.x, opening.center.y - state.y);
-      const double target_distance =
-          std::hypot(opening.center.x - target.x, opening.center.y - target.y);
       if (opening_distance < selected_distance &&
-          target_distance < opening_distance + guide_lookahead_m_) {
+          guideCrossesPassageAhead(state, guide, opening,
+                                   passage_route_selection_config_)) {
         selected = &opening;
         selected_distance = opening_distance;
       }
@@ -271,10 +275,37 @@ void ProductionMppiNode::planningTick() {
       esdf_age_ms > maximum_esdf_age_ms_) {
     return;
   }
+  const std::span<const Point2> guide =
+      esdf->global_guide ? std::span<const Point2>{*esdf->global_guide}
+                         : std::span<const Point2>{};
+  MppiSpeedPolicyResult speed_policy;
+  speed_policy.target_lookahead_m = no_static_guide_lookahead_m_;
+  if (passage_speed_policy_.use_static_map) {
+    speed_policy = evaluateStaticMppiSpeedPolicy(
+        static_speed_policy_config_, MppiSpeedPolicyInput{
+                                         .state = navigation.state,
+                                         .mission_goal = mission_goal_,
+                                         .guide = guide,
+                                         .passage_speed_limit_mps = std::nullopt,
+                                     });
+  }
   std::string target_source;
-  mppi::State target = selectTarget(navigation, *esdf, target_source);
-  const std::optional<mppi::PassageConstraint> passage =
-      selectPassageConstraint(navigation.state, target);
+  mppi::State target =
+      selectTarget(navigation, *esdf, speed_policy.target_lookahead_m, target_source);
+  std::optional<mppi::PassageConstraint> passage =
+      selectPassageConstraint(navigation.state, guide);
+  if (passage_speed_policy_.use_static_map && passage.has_value()) {
+    speed_policy = evaluateStaticMppiSpeedPolicy(
+        static_speed_policy_config_,
+        MppiSpeedPolicyInput{
+            .state = navigation.state,
+            .mission_goal = mission_goal_,
+            .guide = guide,
+            .passage_speed_limit_mps = passage->speed_limit_mps,
+        });
+    target =
+        selectTarget(navigation, *esdf, speed_policy.target_lookahead_m, target_source);
+  }
   if (passage.has_value()) {
     target.z = passage->preferred_z_m;
     target_source = "passage_primitive";
@@ -307,6 +338,9 @@ void ProductionMppiNode::planningTick() {
           control_feedback_fresh ? std::optional<mppi::Control>{applied_control.control}
                                  : std::nullopt,
       .nominal_reseed_generation = liveness.reseed_generation,
+      .reference_speed_mps = speed_policy.enabled
+                                 ? static_cast<float>(speed_policy.reference_speed_mps)
+                                 : -1.0F,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
@@ -345,8 +379,8 @@ void ProductionMppiNode::planningTick() {
                              std::chrono::steady_clock::now() - rviz_started)
                              .count();
   publishDiagnostics(input, result, *esdf, stability, prediction, liveness,
-                     target_source, pose_age_ms, esdf_age_ms, control_feedback_age_ms,
-                     snapshot_ms, stability_ms, rviz_ms);
+                     speed_policy, target_source, pose_age_ms, esdf_age_ms,
+                     control_feedback_age_ms, snapshot_ms, stability_ms, rviz_ms);
   publishExecutionHorizon(input, result, *esdf, now_ns);
   {
     const std::scoped_lock lock{input_mutex_};
