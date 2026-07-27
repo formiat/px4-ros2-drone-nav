@@ -123,9 +123,10 @@ the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
 `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the target with
 `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
 `GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The runner waits for the PX4 model to appear
-in the server scene before starting the GUI, then publishes an ID-aware native
-`CameraTrack` command and verifies the resulting target state. Simulation
-unpause remains a separate Gazebo world-control operation.
+in the server scene before starting the GUI, then repeatedly publishes an
+ID-aware native `CameraTrack` command until the resulting target state remains
+stable. The conflicting `/gui/follow` service is intentionally not used.
+Simulation unpause remains a separate Gazebo world-control operation.
 
 By default, RViz also opens in a follow-camera debug view that targets the
 visualization-only `drone_follow` TF frame. Disable that behavior with

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "capture_gazebo_scene_diagnostics.py"
@@ -64,6 +65,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
                 output_dir=output_dir,
                 topic_duration_s=0.2,
                 command_timeout_s=1.0,
+                follow_wait_s=0.0,
                 runner=runner,
             )
 
@@ -103,12 +105,44 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
                 output_dir=Path(temp_dir),
                 topic_duration_s=0.2,
                 command_timeout_s=1.0,
+                follow_wait_s=0.0,
                 runner=runner,
             )
 
         joined_summary = "\n".join(summary)
         self.assertIn("pose_info_status=failed", joined_summary)
         self.assertIn("WARNING: pose_info capture failed", joined_summary)
+
+    def test_follow_capture_retries_until_target_is_seen(self) -> None:
+        runner = FakeRunner(
+            [
+                diagnostics.CommandResult(0, 'name: "x500_lidar_2d_0"\n', ""),
+                diagnostics.CommandResult(0, "", ""),
+                diagnostics.CommandResult(0, "follow_target {}\n", ""),
+                diagnostics.CommandResult(
+                    0,
+                    'follow_target { name: "x500_lidar_2d_0" }\n',
+                    "",
+                ),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with mock.patch.object(diagnostics.time, "sleep"):
+                summary = diagnostics.capture_diagnostics(
+                    world="generated_city",
+                    target="x500_lidar_2d_0",
+                    output_dir=Path(temp_dir),
+                    topic_duration_s=0.2,
+                    command_timeout_s=1.0,
+                    follow_wait_s=1.0,
+                    runner=runner,
+                )
+
+        self.assertIn("gui_tracking_target_seen=true", "\n".join(summary))
+        follow_calls = [
+            call for call in runner.calls if "/gui/currently_tracked" in call
+        ]
+        self.assertEqual(len(follow_calls), 2)
 
 
 if __name__ == "__main__":

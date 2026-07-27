@@ -226,14 +226,6 @@ def _compact_log_excerpt(text: str, *, limit: int = 240) -> str:
     return compact[: limit - 3] + "..."
 
 
-def _follow_target_candidates(target: str) -> list[str]:
-    candidates = [target]
-    spawned_name = re.fullmatch(r"(.+)_\d+", target)
-    if spawned_name is not None:
-        candidates.append(spawned_name.group(1))
-    return list(dict.fromkeys(candidates))
-
-
 def configure_follow_camera(
     *,
     world: str,
@@ -243,6 +235,7 @@ def configure_follow_camera(
     runner: CommandRunner = default_runner,
     tracking_sample_duration_s: float = 1.0,
     tracking_confirmation_attempts: int = 2,
+    required_confirmations: int = 3,
 ) -> int:
     offset = parse_offset(offset_text)
     if offset is None:
@@ -253,11 +246,11 @@ def configure_follow_camera(
         return 0
 
     published_attempts = 0
+    confirmed_attempts = 0
     attempted_state_confirmation = False
     last_response = ""
-    target_candidates = _follow_target_candidates(target)
     for attempt in range(1, wait_s + 1):
-        candidate = target_candidates[(attempt - 1) % len(target_candidates)]
+        candidate = target
         entity = _lookup_scene_entity(
             runner,
             world=world,
@@ -272,72 +265,53 @@ def configure_follow_camera(
             time.sleep(1)
             continue
 
-        follow_response = _run_service(
+        track_response = _publish_track(
             runner,
-            service="/gui/follow",
-            reqtype="gz.msgs.StringMsg",
-            reptype="gz.msgs.Boolean",
-            request=f'data: "{candidate}"',
+            target=candidate,
+            entity_id=entity.entity_id,
+            offset=offset,
         )
-        last_response = follow_response.combined_output
-        if response_is_true(follow_response):
-            offset_response = _run_service(
-                runner,
-                service="/gui/follow/offset",
-                reqtype="gz.msgs.Vector3d",
-                reptype="gz.msgs.Boolean",
-                request=(
-                    f"x: {_format_float(offset[0])} "
-                    f"y: {_format_float(offset[1])} "
-                    f"z: {_format_float(offset[2])}"
-                ),
-            )
-            track_response = _publish_track(
-                runner,
-                target=candidate,
-                entity_id=entity.entity_id,
-                offset=offset,
-            )
-            published_attempts += 1
-            if not response_is_true(offset_response):
+        last_response = track_response.combined_output
+        published_attempts += 1
+        if track_response.returncode != 0:
+            confirmed_attempts = 0
+            if attempt == 1 or attempt % 5 == 0:
                 print(
-                    "WARNING: Gazebo GUI follow offset was not confirmed: "
-                    f"{offset_response.combined_output}"
+                    "Waiting for Gazebo GUI track topic "
+                    f"({attempt}/{wait_s}): {last_response}"
                 )
-            if track_response.returncode != 0:
-                print(
-                    "WARNING: Gazebo GUI track topic publish failed: "
-                    f"{track_response.combined_output}"
-                )
-            tracking_state = _confirm_tracking(
-                runner,
-                target=candidate,
-                sample_duration_s=tracking_sample_duration_s,
-                attempts=tracking_confirmation_attempts,
-            )
-            attempted_state_confirmation = True
-            if tracking_state.confirmed:
+            time.sleep(1)
+            continue
+
+        tracking_state = _confirm_tracking(
+            runner,
+            target=candidate,
+            sample_duration_s=tracking_sample_duration_s,
+            attempts=tracking_confirmation_attempts,
+        )
+        attempted_state_confirmation = True
+        if tracking_state.confirmed:
+            confirmed_attempts += 1
+            if confirmed_attempts >= required_confirmations:
                 print(
                     "Gazebo GUI follow camera state confirmed: "
                     f"requested_target={target} target={candidate} "
                     f"entity_id={entity.entity_id} "
                     f"offset=({_format_float(offset[0])}, "
                     f"{_format_float(offset[1])}, {_format_float(offset[2])}) "
-                    f"published_attempts={published_attempts}"
+                    f"published_attempts={published_attempts} "
+                    f"confirmed_attempts={confirmed_attempts}"
                 )
                 return 0
-            if tracking_state.available and (
-                attempt == 1 or attempt % 5 == 0 or attempt == wait_s
-            ):
-                print(
-                    "WARNING: Gazebo GUI follow camera state did not mention "
-                    f"target candidate '{candidate}': "
-                    f"{_compact_log_excerpt(tracking_state.output)}"
-                )
-        elif attempt == 1 or attempt % 5 == 0:
+        else:
+            confirmed_attempts = 0
+        if tracking_state.available and not tracking_state.confirmed and (
+            attempt == 1 or attempt % 5 == 0 or attempt == wait_s
+        ):
             print(
-                f"Waiting for Gazebo GUI follow target candidate '{candidate}' "
-                f"({attempt}/{wait_s}): {last_response}"
+                "WARNING: Gazebo GUI follow camera state did not mention "
+                f"target candidate '{candidate}': "
+                f"{_compact_log_excerpt(tracking_state.output)}"
             )
         time.sleep(1)
 
@@ -345,7 +319,7 @@ def configure_follow_camera(
         print(
             "WARNING: Gazebo GUI follow camera command was published "
             f"{published_attempts} times but state was not confirmed for "
-            f"target candidates {target_candidates} after {wait_s}s."
+            f"target '{target}' after {wait_s}s."
         )
         return 0
     print(

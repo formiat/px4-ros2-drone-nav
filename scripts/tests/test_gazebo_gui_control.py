@@ -58,8 +58,6 @@ class GazeboGuiControlTest(unittest.TestCase):
                     'model {\n name: "x500_lidar_2d_0"\n id: 245\n}\n',
                     "",
                 ),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
                 gui.CommandResult(
                     0,
@@ -76,14 +74,12 @@ class GazeboGuiControlTest(unittest.TestCase):
             wait_s=5,
             runner=runner,
             tracking_confirmation_attempts=1,
+            required_confirmations=1,
         )
 
         self.assertEqual(exit_code, 0)
         flat_calls = [" ".join(call) for call in runner.calls]
-        self.assertTrue(any("/gui/follow " in f"{call} " for call in flat_calls))
-        self.assertTrue(
-            any("/gui/follow/offset " in f"{call} " for call in flat_calls)
-        )
+        self.assertFalse(any("/gui/follow " in f"{call} " for call in flat_calls))
         track_call = next(call for call in flat_calls if "/gui/track " in f"{call} ")
         self.assertIn("id: 245", track_call)
         self.assertIn('name: "x500_lidar_2d_0"', track_call)
@@ -101,8 +97,6 @@ class GazeboGuiControlTest(unittest.TestCase):
                             'model {\n name: "drone"\n id: 245\n}\n',
                             "",
                         ),
-                        gui.CommandResult(0, "data: true\n", ""),
-                        gui.CommandResult(0, "data: true\n", ""),
                         gui.CommandResult(0, "", ""),
                         gui.CommandResult(0, "", ""),
                     ]
@@ -129,34 +123,28 @@ class GazeboGuiControlTest(unittest.TestCase):
             stdout.getvalue(),
         )
 
-    def test_follow_camera_uses_sdf_model_name_when_spawned_name_is_not_rendered(
-        self,
-    ) -> None:
+    def test_follow_camera_requires_consecutive_confirmations(self) -> None:
+        target_seen = gui.CommandResult(
+            0,
+            'follow_target { name: "x500_lidar_2d_0" }\n',
+            "",
+        )
         runner = FakeRunner(
-            [
-                gui.CommandResult(
-                    0,
-                    'model {\n name: "x500_lidar_2d_0"\n id: 245\n}\n',
-                    "",
+            sum(
+                (
+                    [
+                        gui.CommandResult(
+                            0,
+                            'model {\n name: "x500_lidar_2d_0"\n id: 245\n}\n',
+                            "",
+                        ),
+                        gui.CommandResult(0, "", ""),
+                        target_seen,
+                    ]
+                    for _ in range(3)
                 ),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "follow_target {}\n", ""),
-                gui.CommandResult(
-                    0,
-                    'model {\n name: "x500_lidar_2d"\n id: 246\n}\n',
-                    "",
-                ),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "", ""),
-                gui.CommandResult(
-                    0,
-                    'follow_target { name: "x500_lidar_2d" }\n',
-                    "",
-                ),
-            ]
+                [],
+            )
         )
 
         with mock.patch.object(gui.time, "sleep"):
@@ -164,19 +152,16 @@ class GazeboGuiControlTest(unittest.TestCase):
                 world="generated_city",
                 target="x500_lidar_2d_0",
                 offset_text="-12 0 6",
-                wait_s=2,
+                wait_s=3,
                 runner=runner,
                 tracking_confirmation_attempts=1,
             )
 
         self.assertEqual(exit_code, 0)
-        follow_calls = [
-            " ".join(call)
-            for call in runner.calls
-            if "/gui/follow" in call and "/gui/follow/offset" not in call
+        track_calls = [
+            call for call in runner.calls if "/gui/track" in call
         ]
-        self.assertIn('data: "x500_lidar_2d_0"', follow_calls[0])
-        self.assertIn('data: "x500_lidar_2d"', follow_calls[1])
+        self.assertEqual(len(track_calls), 3)
 
     def test_follow_camera_rejects_malformed_offset_before_calling_gz(self) -> None:
         runner = FakeRunner()

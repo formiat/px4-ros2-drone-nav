@@ -8,6 +8,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -192,6 +193,8 @@ def capture_diagnostics(
     output_dir: Path,
     topic_duration_s: float,
     command_timeout_s: float,
+    follow_wait_s: float = 15.0,
+    follow_retry_interval_s: float = 0.5,
     runner: CommandRunner = default_runner,
 ) -> list[str]:
     topics = [
@@ -204,11 +207,6 @@ def capture_diagnostics(
             "scene_info",
             f"/world/{world}/scene/info",
             "scene_info.txt",
-        ),
-        (
-            "follow_status",
-            "/gui/currently_tracked",
-            "follow_status.txt",
         ),
     ]
     captures = [
@@ -223,6 +221,26 @@ def capture_diagnostics(
         )
         for label, topic, file_name in topics
     ]
+    follow_deadline = time.monotonic() + max(0.0, follow_wait_s)
+    while True:
+        follow_capture = capture_topic(
+            label="follow_status",
+            topic="/gui/currently_tracked",
+            file_name="follow_status.txt",
+            duration_s=topic_duration_s,
+            timeout_s=command_timeout_s,
+            output_dir=output_dir,
+            runner=runner,
+        )
+        if (
+            target in follow_capture.text
+            and "follow_target" in follow_capture.text
+        ):
+            break
+        if time.monotonic() >= follow_deadline:
+            break
+        time.sleep(max(0.0, follow_retry_interval_s))
+    captures.append(follow_capture)
     summary = build_summary(target=target, captures=captures)
     (output_dir / "summary.txt").write_text(
         "\n".join(summary) + "\n", encoding="utf-8"
@@ -237,6 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--topic-duration-s", default=0.8, type=float)
     parser.add_argument("--command-timeout-s", default=3.0, type=float)
+    parser.add_argument("--follow-wait-s", default=15.0, type=float)
     return parser
 
 
@@ -249,6 +268,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=args.output_dir,
             topic_duration_s=args.topic_duration_s,
             command_timeout_s=args.command_timeout_s,
+            follow_wait_s=args.follow_wait_s,
         )
     except OSError as exc:
         print(f"ERROR: failed to write Gazebo scene diagnostics: {exc}", file=sys.stderr)
