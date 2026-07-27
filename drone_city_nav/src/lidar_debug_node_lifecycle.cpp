@@ -22,6 +22,9 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   max_projected_lidar_altitude_m_ = config.max_projected_lidar_altitude_m;
   use_px4_heading_for_scan_ = config.use_px4_heading_for_scan;
   maximum_heading_variance_rad2_ = config.maximum_heading_variance_rad2;
+  mapping_yaw_tracker_ =
+      MappingYawTracker{use_px4_heading_for_scan_, initial_heading_rad_,
+                        config.startup_heading_alignment_tolerance_rad};
   lidar_mount_roll_rad_ = config.lidar_mount_roll_rad;
   lidar_mount_pitch_rad_ = config.lidar_mount_pitch_rad;
   lidar_mount_yaw_rad_ = config.lidar_mount_yaw_rad;
@@ -129,7 +132,8 @@ LidarDebugNode::LidarDebugNode()
       "scan_duration_override=%.3fs "
       "pointcloud_z[current=%.2f, remembered=%.2f, occupied=%.2f, "
       "raw_memory=%.2f] "
-      "yaw_source=%s initial_heading=%.3f max_heading_variance=%.6frad2",
+      "yaw_source=%s initial_heading=%.3f max_heading_variance=%.6frad2 "
+      "startup_alignment_tolerance=%.3frad",
       output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
       topics.lidar.c_str(), topics.raw_obstacle_grid.c_str(),
       topics.memory_grid.c_str(), topics.path.c_str(),
@@ -144,7 +148,8 @@ LidarDebugNode::LidarDebugNode()
       motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
       lidar_scan_duration_override_s_, current_pointcloud_z_m_,
       remembered_pointcloud_z_m_, occupied_pointcloud_z_m_, raw_memory_pointcloud_z_m_,
-      yawSourceName(), initial_heading_rad_, maximum_heading_variance_rad2_);
+      yawSourceName(), initial_heading_rad_, maximum_heading_variance_rad2_,
+      config.startup_heading_alignment_tolerance_rad);
 }
 
 } // namespace drone_city_nav

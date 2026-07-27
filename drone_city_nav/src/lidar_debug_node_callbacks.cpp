@@ -13,9 +13,12 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
   const bool heading_valid = px4HeadingReadyForMapping(
       msg.heading_good_for_control, static_cast<double>(msg.heading),
       static_cast<double>(msg.heading_var), maximum_heading_variance_rad2_);
-  px4_heading_seen_ = heading_valid;
-  if (heading_valid) {
-    current_pose_.yaw_rad = static_cast<double>(msg.heading);
+  const MappingYawSelection mapping_yaw =
+      mapping_yaw_tracker_.update(heading_valid, static_cast<double>(msg.heading));
+  mapping_heading_ready_ = mapping_yaw.valid;
+  px4_heading_seen_ = mapping_yaw.source == MappingYawSource::kPx4Heading;
+  if (mapping_yaw.valid) {
+    current_pose_.yaw_rad = mapping_yaw.yaw_rad;
     last_heading_receive_ns_ = last_pose_receive_ns_;
   }
   if (msg.z_valid && std::isfinite(msg.z)) {
@@ -26,7 +29,7 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
       last_pose_receive_ns_,
       Point3{current_pose_.position.x, current_pose_.position.y, current_altitude_m_},
       use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_,
-      altitude_valid_ && (!use_px4_heading_for_scan_ || heading_valid),
+      altitude_valid_ && mapping_yaw.valid,
       px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
       lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
   if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
@@ -76,7 +79,7 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
     return;
   }
 
-  if (!lidarDebugProjectionHeadingReady(use_px4_heading_for_scan_, px4_heading_seen_)) {
+  if (!mapping_heading_ready_) {
     last_scan_projection_seen_ = false;
     last_scan_rows_.clear();
     last_scan_hit_points_.clear();

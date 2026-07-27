@@ -40,7 +40,39 @@ enum class Px4LocalPoseUpdateStatus {
   kInvalidYaw,
 };
 
+enum class MappingYawSource {
+  kUnavailable,
+  kInitialMapHeading,
+  kPx4Heading,
+};
+
+struct MappingYawSelection {
+  double yaw_rad{0.0};
+  MappingYawSource source{MappingYawSource::kUnavailable};
+  bool valid{false};
+};
+
+class MappingYawTracker {
+public:
+  MappingYawTracker() = default;
+  MappingYawTracker(bool use_px4_heading, double initial_map_heading_rad,
+                    double alignment_tolerance_rad) noexcept;
+
+  [[nodiscard]] MappingYawSelection update(bool px4_heading_ready,
+                                           double px4_heading_rad) noexcept;
+  [[nodiscard]] bool px4Aligned() const noexcept;
+  void reset() noexcept;
+
+private:
+  bool use_px4_heading_{true};
+  double initial_map_heading_rad_{0.0};
+  double alignment_tolerance_rad_{0.15};
+  bool px4_aligned_{false};
+};
+
 [[nodiscard]] double normalizeYaw(double yaw_rad) noexcept;
+
+[[nodiscard]] const char* mappingYawSourceName(MappingYawSource source) noexcept;
 
 [[nodiscard]] bool
 px4HeadingReadyForMapping(bool heading_good_for_control, double heading_rad,

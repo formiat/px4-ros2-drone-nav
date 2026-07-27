@@ -128,15 +128,12 @@ mountedLidarDirection(const Point3& lidar_direction,
 [[nodiscard]] std::array<double, 4>
 projectionBodyQuaternion(const LidarProjectionPose& pose,
                          const LidarProjectionConfig& config) noexcept {
-  if (config.compensate_attitude && pose.attitude_valid &&
-      pose.body_to_ned_quaternion_valid &&
-      validQuaternion(pose.body_to_ned_quaternion)) {
-    return normalizedQuaternion(pose.body_to_ned_quaternion);
-  }
   const double roll =
       config.compensate_attitude && pose.attitude_valid ? pose.roll_rad : 0.0;
   const double pitch =
       config.compensate_attitude && pose.attitude_valid ? pose.pitch_rad : 0.0;
+  // Mapping yaw may intentionally differ from the estimator quaternion during
+  // startup. Keep quaternion-derived tilt, but honor the synchronized mapping yaw.
   return quaternionFromRpy(roll, pitch, pose.yaw_rad);
 }
 

@@ -26,7 +26,11 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       std::clamp<std::size_t>(config.max_remembered_hit_points, 1U, 1000000U);
   if (!std::isfinite(config.maximum_heading_variance_rad2) ||
       config.maximum_heading_variance_rad2 < 0.0) {
-    config.maximum_heading_variance_rad2 = 0.01;
+    config.maximum_heading_variance_rad2 = 0.05;
+  }
+  if (!std::isfinite(config.startup_heading_alignment_tolerance_rad) ||
+      config.startup_heading_alignment_tolerance_rad < 0.0) {
+    config.startup_heading_alignment_tolerance_rad = 0.15;
   }
 }
 
@@ -69,6 +73,9 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "use_px4_heading_for_scan", config.use_px4_heading_for_scan);
   config.maximum_heading_variance_rad2 = node.declare_parameter<double>(
       "maximum_heading_variance_rad2", config.maximum_heading_variance_rad2);
+  config.startup_heading_alignment_tolerance_rad =
+      node.declare_parameter<double>("startup_heading_alignment_tolerance_rad",
+                                     config.startup_heading_alignment_tolerance_rad);
   config.lidar_mount_roll_rad = node.declare_parameter<double>(
       "lidar_mount_roll_rad", config.lidar_mount_roll_rad);
   config.lidar_mount_pitch_rad = node.declare_parameter<double>(

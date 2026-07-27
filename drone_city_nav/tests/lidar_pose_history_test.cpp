@@ -34,7 +34,7 @@ TEST(LidarPoseHistoryTest, InterpolatesXyzYawAndQuaternionAttitude) {
   EXPECT_NEAR(value.pose.position.x, 5.0, 1.0e-9);
   EXPECT_NEAR(value.pose.position.y, 15.0, 1.0e-9);
   EXPECT_NEAR(value.pose.altitude_m, 25.0, 1.0e-9);
-  EXPECT_NEAR(value.pose.yaw_rad, 0.0, 1.0e-6);
+  EXPECT_NEAR(std::abs(value.pose.yaw_rad), kPi, 1.0e-6);
   EXPECT_NEAR(value.pose.pitch_rad, kPi / 4.0, 1.0e-6);
   EXPECT_TRUE(value.pose.body_to_ned_quaternion_valid);
   EXPECT_TRUE(value.position_interpolated);

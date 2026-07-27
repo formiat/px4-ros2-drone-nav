@@ -404,6 +404,17 @@ if(BUILD_TESTING)
   target_include_directories(lidar_debug_heading_gate_test PRIVATE include)
   target_link_libraries(lidar_debug_heading_gate_test drone_city_nav_core)
   enable_project_warnings(lidar_debug_heading_gate_test)
+
+  ament_add_gtest(lidar_projection_test_current tests/lidar_projection_test.cpp)
+  target_compile_features(lidar_projection_test_current PRIVATE cxx_std_20)
+  target_link_libraries(lidar_projection_test_current drone_city_nav_core)
+  enable_project_warnings(lidar_projection_test_current)
+
+  ament_add_gtest(lidar_pose_history_test_current
+                  tests/lidar_pose_history_test.cpp)
+  target_compile_features(lidar_pose_history_test_current PRIVATE cxx_std_20)
+  target_link_libraries(lidar_pose_history_test_current drone_city_nav_core)
+  enable_project_warnings(lidar_pose_history_test_current)
 endif()
 
 ament_export_include_directories(include)

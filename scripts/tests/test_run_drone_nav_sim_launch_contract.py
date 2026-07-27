@@ -15,6 +15,16 @@ LAUNCH_FILE = (
     / "launch"
     / "city_nav.launch.py"
 )
+RVIZ_CONFIGS = (
+    Path(__file__).resolve().parents[2]
+    / "drone_city_nav"
+    / "rviz"
+    / "city_nav_debug.rviz",
+    Path(__file__).resolve().parents[2]
+    / "drone_city_nav"
+    / "rviz"
+    / "city_nav_debug_top_down.rviz",
+)
 
 
 class RunDroneNavSimLaunchContractTest(unittest.TestCase):
@@ -97,6 +107,23 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("city_nav_debug_top_down.rviz", self.text)
         self.assertIn("rviz_drone_follow_tf_enabled:=", self.text)
         self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA", self.container_text)
+
+    def test_known_passage_markers_use_durable_rviz_qos(self) -> None:
+        for config in RVIZ_CONFIGS:
+            with self.subTest(config=config.name):
+                text = config.read_text(encoding="utf-8")
+                passage_display = text.split("Name: Known Passages", maxsplit=1)[1]
+                passage_display = passage_display.split(
+                    "Name: Lidar Hit Points", maxsplit=1
+                )[0]
+                self.assertIn(
+                    "Value: /drone_city_nav/known_passage_markers",
+                    passage_display,
+                )
+                self.assertIn(
+                    "Durability Policy: Transient Local", passage_display
+                )
+                self.assertIn("Reliability Policy: Reliable", passage_display)
 
     def test_launch_uses_offboard_flight_control_backend(self) -> None:
         self.assertIn('executable="mppi_offboard_node"', self.launch_text)

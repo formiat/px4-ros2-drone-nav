@@ -27,7 +27,8 @@ obstacle_memory_node:
     grid_origin_y: -30.0
     initial_x_m: 54.0
     initial_y_m: 54.0
-    initial_heading_rad: 0.0
+    # Gazebo spawn yaw 0 maps to +Y after the gazebo_map -> map frame transform.
+    initial_heading_rad: 1.5707963267948966
     px4_local_origin_x_m: 54.0
     px4_local_origin_y_m: 54.0
     use_initial_pose_until_px4: true
@@ -36,6 +37,7 @@ obstacle_memory_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     maximum_heading_variance_rad2: 0.05
+    startup_heading_alignment_tolerance_rad: 0.15
     motion_compensate_lidar_pose: true
     lidar_pose_latency_s: 0.05
     compensate_lidar_attitude: true
@@ -233,10 +235,12 @@ lidar_debug_node:
     output_dir: log/lidar_debug
     snapshot_period_s: 1.0
     image_size_px: 900
-    initial_heading_rad: 0.0
+    # Keep debug projection on the same startup yaw contract as obstacle memory.
+    initial_heading_rad: 1.5707963267948966
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     maximum_heading_variance_rad2: 0.05
+    startup_heading_alignment_tolerance_rad: 0.15
     motion_compensate_lidar_pose: true
     lidar_pose_latency_s: 0.05
     lidar_scan_duration_override_s: 0.0

@@ -147,6 +147,24 @@ TEST(LidarProjection, FullExtrinsicRotatesLeverArmWithBodyPitch) {
   EXPECT_GT(projection.ray_origin_map_m.x, 0.12);
 }
 
+TEST(LidarProjection, FullExtrinsicUsesMappingYawInsteadOfQuaternionYaw) {
+  constexpr double mapping_yaw_rad{0.4};
+  constexpr double estimator_yaw_rad{1.1};
+  LidarProjectionPose pose{
+      Point2{0.0, 0.0}, 18.0, mapping_yaw_rad, 0.0, 0.0, true, true};
+  pose.body_to_ned_quaternion = {std::cos(estimator_yaw_rad / 2.0), 0.0, 0.0,
+                                 std::sin(estimator_yaw_rad / 2.0)};
+  pose.body_to_ned_quaternion_valid = true;
+  LidarProjectionConfig config{};
+  config.use_full_lidar_extrinsic = true;
+  config.lidar_flu_to_body_frd_quaternion = {0.0, 1.0, 0.0, 0.0};
+
+  const LidarBeamProjection projection = project(pose, config, 10.0F);
+
+  EXPECT_NEAR(projection.ned_direction.x, std::cos(mapping_yaw_rad), 1.0e-9);
+  EXPECT_NEAR(projection.ned_direction.y, std::sin(mapping_yaw_rad), 1.0e-9);
+}
+
 TEST(LidarProjection, TiltedProjectionUsesBodyFrdAxes) {
   LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.25, -0.35, true, true};
   LidarProjectionConfig config{};

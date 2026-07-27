@@ -6,6 +6,51 @@
 
 namespace drone_city_nav {
 
+MappingYawTracker::MappingYawTracker(const bool use_px4_heading,
+                                     const double initial_map_heading_rad,
+                                     const double alignment_tolerance_rad) noexcept
+    : use_px4_heading_{use_px4_heading},
+      initial_map_heading_rad_{normalizeYaw(initial_map_heading_rad)},
+      alignment_tolerance_rad_{std::isfinite(alignment_tolerance_rad) &&
+                                       alignment_tolerance_rad >= 0.0
+                                   ? std::min(alignment_tolerance_rad, std::numbers::pi)
+                                   : 0.15} {
+}
+
+MappingYawSelection MappingYawTracker::update(const bool px4_heading_ready,
+                                              const double px4_heading_rad) noexcept {
+  if (!std::isfinite(initial_map_heading_rad_)) {
+    return {};
+  }
+  if (!use_px4_heading_) {
+    return MappingYawSelection{initial_map_heading_rad_,
+                               MappingYawSource::kInitialMapHeading, true};
+  }
+  if (!px4_aligned_) {
+    if (px4_heading_ready && std::isfinite(px4_heading_rad) &&
+        std::abs(normalizeYaw(px4_heading_rad - initial_map_heading_rad_)) <=
+            alignment_tolerance_rad_) {
+      px4_aligned_ = true;
+    } else {
+      return MappingYawSelection{initial_map_heading_rad_,
+                                 MappingYawSource::kInitialMapHeading, true};
+    }
+  }
+  if (!px4_heading_ready || !std::isfinite(px4_heading_rad)) {
+    return {};
+  }
+  return MappingYawSelection{normalizeYaw(px4_heading_rad),
+                             MappingYawSource::kPx4Heading, true};
+}
+
+bool MappingYawTracker::px4Aligned() const noexcept {
+  return px4_aligned_;
+}
+
+void MappingYawTracker::reset() noexcept {
+  px4_aligned_ = false;
+}
+
 double normalizeYaw(const double yaw_rad) noexcept {
   if (!std::isfinite(yaw_rad)) {
     return yaw_rad;
@@ -19,6 +64,18 @@ double normalizeYaw(const double yaw_rad) noexcept {
     normalized -= 2.0 * std::numbers::pi;
   }
   return normalized;
+}
+
+const char* mappingYawSourceName(const MappingYawSource source) noexcept {
+  switch (source) {
+    case MappingYawSource::kUnavailable:
+      return "unavailable";
+    case MappingYawSource::kInitialMapHeading:
+      return "initial_map_heading";
+    case MappingYawSource::kPx4Heading:
+      return "px4_heading";
+  }
+  return "unknown";
 }
 
 bool px4HeadingReadyForMapping(const bool heading_good_for_control,

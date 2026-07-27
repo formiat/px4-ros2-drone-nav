@@ -104,6 +104,28 @@ declareAmbiguousLidarHitTrackerConfig(rclcpp::Node& node) {
   };
 }
 
+LidarMappingYawConfig declareLidarMappingYawConfig(rclcpp::Node& node) {
+  LidarMappingYawConfig config;
+  config.use_px4_heading =
+      node.declare_parameter<bool>("use_px4_heading_for_scan", true);
+  config.initial_heading_rad =
+      node.declare_parameter<double>("initial_heading_rad", 0.0);
+  const double maximum_heading_variance_rad2 =
+      node.declare_parameter<double>("maximum_heading_variance_rad2", 0.05);
+  if (std::isfinite(maximum_heading_variance_rad2) &&
+      maximum_heading_variance_rad2 >= 0.0) {
+    config.maximum_heading_variance_rad2 = maximum_heading_variance_rad2;
+  }
+  const double startup_alignment_tolerance_rad =
+      node.declare_parameter<double>("startup_heading_alignment_tolerance_rad", 0.15);
+  if (std::isfinite(startup_alignment_tolerance_rad) &&
+      startup_alignment_tolerance_rad >= 0.0) {
+    config.startup_alignment_tolerance_rad =
+        std::min(startup_alignment_tolerance_rad, std::numbers::pi);
+  }
+  return config;
+}
+
 KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
                                                    const std::string& frame_id) {
   KnownStaticLidarSetup setup;

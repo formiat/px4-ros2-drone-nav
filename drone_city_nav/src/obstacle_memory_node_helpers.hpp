@@ -4,6 +4,7 @@
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
+#include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -35,6 +36,15 @@ passageStructureNearPoint(const std::optional<KnownPassageMap>& map, Point2 poin
 
 [[nodiscard]] AmbiguousLidarHitTrackerConfig
 declareAmbiguousLidarHitTrackerConfig(rclcpp::Node& node);
+
+struct LidarMappingYawConfig {
+  bool use_px4_heading{true};
+  double initial_heading_rad{0.0};
+  double maximum_heading_variance_rad2{0.05};
+  double startup_alignment_tolerance_rad{0.15};
+};
+
+[[nodiscard]] LidarMappingYawConfig declareLidarMappingYawConfig(rclcpp::Node& node);
 
 struct KnownStaticLidarSetup {
   std::optional<KnownPassageMap> passage_map;

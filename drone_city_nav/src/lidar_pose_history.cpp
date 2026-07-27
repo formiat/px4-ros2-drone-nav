@@ -352,6 +352,9 @@ LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
                         position_from.position_map_m.z +
                             position_ratio * (position_to.position_map_m.z -
                                               position_from.position_map_m.z)};
+  const double yaw_delta = normalizedAngle(position_to.yaw_rad - position_from.yaw_rad);
+  const double yaw_rad =
+      normalizedAngle(position_from.yaw_rad + position_ratio * yaw_delta);
   const double attitude_ratio =
       interpolationRatio(attitude_from_stamp_ns, attitude_to_stamp_ns, stamp_ns);
   const auto attitude_quaternion =
@@ -366,7 +369,7 @@ LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
           LidarProjectionPose{
               .position = Point2{position.x, position.y},
               .altitude_m = position.z,
-              .yaw_rad = attitude->yaw_rad,
+              .yaw_rad = yaw_rad,
               .roll_rad = attitude->roll_rad,
               .pitch_rad = attitude->pitch_rad,
               .altitude_valid = true,
