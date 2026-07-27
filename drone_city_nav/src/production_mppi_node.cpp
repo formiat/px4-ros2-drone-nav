@@ -138,7 +138,7 @@ ProductionMppiNode::ProductionMppiNode()
       rclcpp::QoS{1}.reliable());
   markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       declare_parameter<std::string>("markers_topic", "/drone_city_nav/mppi/markers"),
-      rclcpp::QoS{1}.best_effort());
+      rclcpp::QoS{1}.reliable());
   status_pub_ = create_publisher<std_msgs::msg::String>(
       declare_parameter<std::string>("status_topic", "/drone_city_nav/mppi/status"),
       rclcpp::QoS{10}.best_effort());

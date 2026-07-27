@@ -8,6 +8,7 @@
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -69,6 +70,10 @@ public:
       rviz_drone_follow_tf_broadcaster_ =
           std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     }
+    rviz_drone_marker_pub_ = create_publisher<visualization_msgs::msg::Marker>(
+        declare_parameter<std::string>("rviz_drone_marker_topic",
+                                       "/drone_city_nav/drone_marker"),
+        rclcpp::QoS{1}.reliable());
     endpoint_.target_system =
         static_cast<std::uint8_t>(declare_parameter<int>("target_system", 1));
     endpoint_.target_component =
@@ -141,6 +146,7 @@ private:
     heading_rad_ = std::isfinite(state.heading) ? state.heading : heading_rad_;
     position_valid_ = true;
     publishRvizDroneFollowTransform();
+    publishRvizDroneMarker();
   }
 
   void publishRvizDroneFollowTransform() {
@@ -157,6 +163,31 @@ private:
     transform.transform.translation.z = altitude_m_;
     transform.transform.rotation.w = 1.0;
     rviz_drone_follow_tf_broadcaster_->sendTransform(transform);
+  }
+
+  void publishRvizDroneMarker() {
+    if (!rviz_drone_marker_pub_ || !position_valid_) {
+      return;
+    }
+    visualization_msgs::msg::Marker marker;
+    marker.header.stamp = now();
+    marker.header.frame_id = rviz_drone_follow_parent_frame_;
+    marker.ns = "drone";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::SPHERE;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.position.x = local_y_;
+    marker.pose.position.y = local_x_;
+    marker.pose.position.z = altitude_m_;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 1.0;
+    marker.scale.y = 1.0;
+    marker.scale.z = 0.45;
+    marker.color.r = 0.15F;
+    marker.color.g = 0.65F;
+    marker.color.b = 1.0F;
+    marker.color.a = 1.0F;
+    rviz_drone_marker_pub_->publish(marker);
   }
 
   void onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
@@ -338,6 +369,7 @@ private:
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   std::string rviz_drone_follow_frame_{"drone_follow"};
   std::unique_ptr<tf2_ros::TransformBroadcaster> rviz_drone_follow_tf_broadcaster_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr rviz_drone_marker_pub_;
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

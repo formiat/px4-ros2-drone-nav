@@ -210,7 +210,8 @@ ament_target_dependencies(
   px4_msgs
   rclcpp
   std_msgs
-  tf2_ros)
+  tf2_ros
+  visualization_msgs)
 enable_project_warnings(mppi_offboard_node)
 
 add_executable(world_visualization_node src/world_visualization_node.cpp)

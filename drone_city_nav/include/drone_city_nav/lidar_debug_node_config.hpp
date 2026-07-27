@@ -22,7 +22,7 @@ struct LidarDebugNodeTopics {
   std::string pointcloud{"/drone_city_nav/lidar_debug_points"};
   std::string raw_lidar_3d_pointcloud{"/drone_city_nav/raw_lidar_hit_points_3d"};
   std::string remembered_pointcloud{"/drone_city_nav/remembered_lidar_points"};
-  std::string occupied_pointcloud{"/drone_city_nav/prohibited_obstacle_points"};
+  std::string occupied_pointcloud{"/drone_city_nav/raw_occupied_cells"};
   std::string raw_memory_pointcloud{"/drone_city_nav/raw_memory_obstacle_points"};
   std::string px4_local_position{"/fmu/out/vehicle_local_position_v1"};
   std::string px4_vehicle_attitude{"/fmu/out/vehicle_attitude"};

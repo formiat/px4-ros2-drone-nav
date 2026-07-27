@@ -62,6 +62,20 @@ Visualization Manager:
         Value: /drone_city_nav/mppi/path
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
+      Name: MPPI Markers
+      Namespaces:
+        mppi: true
+      Topic:
+        Value: /drone_city_nav/mppi/markers
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Drone
+      Namespaces:
+        drone: true
+      Topic:
+        Value: /drone_city_nav/drone_marker
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
       Name: Known Passages
       Namespaces:
         known_passage_approach: true
@@ -148,13 +162,13 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
-      Name: Prohibited Safety Cells
+      Name: Raw Occupied Cells
       Position Transformer: XYZ
       Size (Pixels): 2
       Size (m): 0.35
       Style: Flat Squares
       Topic:
-        Value: /drone_city_nav/prohibited_obstacle_points
+        Value: /drone_city_nav/raw_occupied_cells
     - Class: rviz_default_plugins/Axes
       Enabled: true
       Length: 3
