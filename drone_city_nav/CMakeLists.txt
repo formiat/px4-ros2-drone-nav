@@ -166,6 +166,7 @@ add_library(
   src/obstacle_memory_provenance_ros.cpp
   src/px4_offboard_setpoint_io.cpp
   src/lidar_debug_pointclouds.cpp
+  src/mppi_debug_markers.cpp
   src/ros_conversions.cpp
   src/known_passage_debug_markers.cpp
   src/static_map_debug.cpp
@@ -359,6 +360,13 @@ if(BUILD_TESTING)
   target_link_libraries(static_map_debug_test_current
                         drone_city_nav_ros_adapters)
   enable_project_warnings(static_map_debug_test_current)
+
+  ament_add_gtest(mppi_debug_markers_test_current
+                  tests/mppi_debug_markers_test.cpp)
+  target_compile_features(mppi_debug_markers_test_current PRIVATE cxx_std_20)
+  target_link_libraries(mppi_debug_markers_test_current
+                        drone_city_nav_ros_adapters)
+  enable_project_warnings(mppi_debug_markers_test_current)
 
   ament_add_gtest(lidar_debug_heading_gate_test
                   tests/lidar_debug_heading_gate_test.cpp)

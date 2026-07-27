@@ -64,9 +64,12 @@ Visualization Manager:
       Enabled: true
       Name: MPPI Markers
       Namespaces:
+        global_lattice_guide: true
         mppi: true
+        mppi_target: true
         mission_goal: true
         mission_start: true
+        selected_passage: true
       Topic:
         Value: /drone_city_nav/mppi/markers
     - Class: rviz_default_plugins/Marker

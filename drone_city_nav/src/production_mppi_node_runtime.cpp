@@ -261,7 +261,7 @@ void ProductionMppiNode::planningTick() {
                                   .count();
   const auto rviz_started = std::chrono::steady_clock::now();
   if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
-    publishRviz(input, result);
+    publishRviz(input, result, *esdf);
     last_rviz_stamp_ns_ = now_ns;
   }
   const double rviz_ms = std::chrono::duration<double, std::milli>(

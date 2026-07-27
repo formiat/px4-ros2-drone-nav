@@ -91,8 +91,8 @@ private:
                           std::string_view target_source, double pose_age_ms,
                           double esdf_age_ms, double snapshot_ms, double stability_ms,
                           double rviz_ms);
-  void publishRviz(const mppi::MppiTickInput& input,
-                   const mppi::MppiTickResult& result);
+  void publishRviz(const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
+                   const ProductionMppiPreparedEsdf& esdf);
   void publishSummary();
   void publishExecutionHorizon(const mppi::MppiTickInput& input,
                                const mppi::MppiTickResult& result,

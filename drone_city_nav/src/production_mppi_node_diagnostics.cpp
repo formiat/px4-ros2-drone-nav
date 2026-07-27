@@ -1,7 +1,5 @@
+#include "drone_city_nav/mppi_debug_markers.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
-
-#include <geometry_msgs/msg/point.hpp>
-#include <std_msgs/msg/color_rgba.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -15,21 +13,6 @@
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] std_msgs::msg::ColorRGBA riskColor(const mppi::RiskTier tier) {
-  std_msgs::msg::ColorRGBA color;
-  color.a = 0.95F;
-  if (tier == mppi::RiskTier::kPreferred) {
-    color.g = 1.0F;
-    color.b = 0.8F;
-  } else if (tier == mppi::RiskTier::kPlanning) {
-    color.r = 1.0F;
-    color.g = 0.8F;
-  } else {
-    color.r = 1.0F;
-  }
-  return color;
-}
 
 [[nodiscard]] double percentile(std::vector<double> samples, const double ratio) {
   if (samples.empty()) {
@@ -46,7 +29,8 @@ namespace {
 } // namespace
 
 void ProductionMppiNode::publishRviz(const mppi::MppiTickInput& input,
-                                     const mppi::MppiTickResult& result) {
+                                     const mppi::MppiTickResult& result,
+                                     const ProductionMppiPreparedEsdf& esdf) {
   const auto stamp = now();
   nav_msgs::msg::Path path;
   path.header.frame_id = frame_id_;
@@ -63,89 +47,17 @@ void ProductionMppiNode::publishRviz(const mppi::MppiTickInput& input,
   }
   path_pub_->publish(path);
 
-  visualization_msgs::msg::MarkerArray markers;
-  visualization_msgs::msg::Marker line;
-  line.header = path.header;
-  line.ns = "mppi";
-  line.id = 0;
-  line.type = visualization_msgs::msg::Marker::LINE_STRIP;
-  line.action = visualization_msgs::msg::Marker::ADD;
-  line.pose.orientation.w = 1.0;
-  line.scale.x = 0.45;
-  line.color = riskColor(result.selected_tier);
-  for (const mppi::State& state : result.horizon) {
-    geometry_msgs::msg::Point point;
-    point.x = state.x;
-    point.y = state.y;
-    point.z = gazeboAlignedRvizZ(state.z);
-    line.points.push_back(point);
-  }
-  markers.markers.push_back(line);
-  visualization_msgs::msg::Marker target;
-  target.header = path.header;
-  target.ns = "mppi";
-  target.id = 1;
-  target.type = visualization_msgs::msg::Marker::SPHERE;
-  target.action = visualization_msgs::msg::Marker::ADD;
-  target.pose.position.x = input.target.x;
-  target.pose.position.y = input.target.y;
-  target.pose.position.z = gazeboAlignedRvizZ(input.target.z);
-  target.pose.orientation.w = 1.0;
-  target.scale.x = 1.2;
-  target.scale.y = 1.2;
-  target.scale.z = 1.2;
-  target.color.r = 0.2F;
-  target.color.g = 0.7F;
-  target.color.b = 1.0F;
-  target.color.a = 0.9F;
-  markers.markers.push_back(target);
-  visualization_msgs::msg::Marker mission_start;
-  mission_start.header = path.header;
-  mission_start.ns = "mission_start";
-  mission_start.id = 0;
-  mission_start.type = visualization_msgs::msg::Marker::CYLINDER;
-  mission_start.action = visualization_msgs::msg::Marker::ADD;
-  mission_start.pose.position = gazeboAlignedRvizMarkerPoint(mission_start_);
-  mission_start.pose.orientation.w = 1.0;
-  mission_start.scale.x = 2.0;
-  mission_start.scale.y = 2.0;
-  mission_start.scale.z = 0.35;
-  mission_start.color.r = 0.15F;
-  mission_start.color.g = 1.0F;
-  mission_start.color.b = 0.25F;
-  mission_start.color.a = 1.0F;
-  markers.markers.push_back(mission_start);
-  visualization_msgs::msg::Marker mission_goal;
-  mission_goal.header = path.header;
-  mission_goal.ns = "mission_goal";
-  mission_goal.id = 0;
-  mission_goal.type = visualization_msgs::msg::Marker::SPHERE;
-  mission_goal.action = visualization_msgs::msg::Marker::ADD;
-  mission_goal.pose.position = gazeboAlignedRvizMarkerPoint(mission_goal_);
-  mission_goal.pose.orientation.w = 1.0;
-  mission_goal.scale.x = 2.0;
-  mission_goal.scale.y = 2.0;
-  mission_goal.scale.z = 2.0;
-  mission_goal.color.r = 1.0F;
-  mission_goal.color.g = 0.15F;
-  mission_goal.color.b = 0.8F;
-  mission_goal.color.a = 1.0F;
-  markers.markers.push_back(mission_goal);
-  if (previous_result_.has_value()) {
-    visualization_msgs::msg::Marker previous = line;
-    previous.id = 2;
-    previous.scale.x = 0.18;
-    previous.color.a = 0.25F;
-    previous.points.clear();
-    for (const mppi::State& state : previous_result_->horizon) {
-      geometry_msgs::msg::Point point;
-      point.x = state.x;
-      point.y = state.y;
-      point.z = gazeboAlignedRvizZ(state.z);
-      previous.points.push_back(point);
-    }
-    markers.markers.push_back(previous);
-  }
+  const std::span<const mppi::State> previous_horizon =
+      previous_result_.has_value()
+          ? std::span<const mppi::State>{previous_result_->horizon}
+          : std::span<const mppi::State>{};
+  const std::span<const Point2> global_guide =
+      esdf.global_guide ? std::span<const Point2>{*esdf.global_guide}
+                        : std::span<const Point2>{};
+  const visualization_msgs::msg::MarkerArray markers = buildMppiDebugMarkers(
+      MppiDebugMarkerInput{path.header, result.horizon, previous_horizon, global_guide,
+                           input.initial_state, input.target, mission_start_,
+                           mission_goal_, input.passage, result.selected_tier});
   markers_pub_->publish(markers);
 }
 
