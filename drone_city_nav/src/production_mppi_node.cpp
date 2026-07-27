@@ -38,6 +38,8 @@ ProductionMppiNode::ProductionMppiNode()
   deadline_ms_ = declare_parameter<double>("deadline_ms", 20.0);
   maximum_pose_age_ms_ = declare_parameter<double>("maximum_pose_age_ms", 150.0);
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
+  maximum_control_feedback_age_ms_ =
+      declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
   guide_lookahead_m_ = declare_parameter<double>("guide_lookahead_m", 30.0);
   passage_activation_distance_m_ =
       declare_parameter<double>("passage_activation_distance_m", 45.0);
@@ -66,6 +68,10 @@ ProductionMppiNode::ProductionMppiNode()
       static_cast<float>(declare_parameter<double>("dt_s", 0.05));
   mppi_config_.dynamics.maximum_vertical_speed_mps =
       static_cast<float>(declare_parameter<double>("maximum_vertical_speed_mps", 5.0));
+  mppi_config_.costs.head_progress_horizon_s =
+      static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
+  mppi_config_.costs.head_progress_weight =
+      static_cast<float>(declare_parameter<double>("head_progress_weight", 8.0));
   mppi_config_.risk.collision_radius_m =
       static_cast<float>(declare_parameter<double>("raw_collision_radius_m", 0.5));
   mppi_config_.risk.critical_distance_m =
@@ -95,9 +101,17 @@ ProductionMppiNode::ProductionMppiNode()
   safety_config_.fallback_duration_s =
       declare_parameter<double>("safety_fallback_duration_s", 2.0);
   safety_config_.dt_s = mppi_config_.dynamics.dt_s;
+  liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", true);
+  liveness_config_.observation_window_s =
+      declare_parameter<double>("liveness_observation_window_s", 1.0);
+  liveness_config_.minimum_actual_displacement_m =
+      declare_parameter<double>("liveness_minimum_actual_displacement_m", 0.5);
+  liveness_config_.minimum_predicted_terminal_progress_m =
+      declare_parameter<double>("liveness_minimum_predicted_terminal_progress_m", 5.0);
   rviz_period_ns_ = static_cast<std::int64_t>(1.0e9 / std::max(0.1, rviz_rate_hz_));
 
   if (!(tick_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
+      !(maximum_control_feedback_age_ms_ > 0.0) ||
       !std::isfinite(passage_speed_policy_.static_limit_mps) ||
       passage_speed_policy_.static_limit_mps < 0.0F ||
       !std::isfinite(passage_speed_policy_.no_static_limit_mps) ||
@@ -105,6 +119,7 @@ ProductionMppiNode::ProductionMppiNode()
     throw std::invalid_argument{"invalid production MPPI configuration"};
   }
 
+  liveness_supervisor_ = std::make_unique<MppiLivenessSupervisor>(liveness_config_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
   const bool passages_enabled = declare_parameter<bool>("known_passages_enabled", true);
   const std::string passages_path = declare_parameter<std::string>(
@@ -146,6 +161,13 @@ ProductionMppiNode::ProductionMppiNode()
       [this](const msg::ObstacleMemorySnapshot::SharedPtr message) {
         onMemorySnapshot(*message);
       });
+  applied_control_sub_ = create_subscription<msg::MppiControlFeedback>(
+      declare_parameter<std::string>("applied_control_feedback_topic",
+                                     "/drone_city_nav/mppi/applied_control"),
+      rclcpp::QoS{10}.reliable(),
+      [this](const msg::MppiControlFeedback::SharedPtr message) {
+        onAppliedControl(*message);
+      });
   path_pub_ = create_publisher<nav_msgs::msg::Path>(
       declare_parameter<std::string>("path_topic", "/drone_city_nav/mppi/path"),
       rclcpp::QoS{1}.reliable());
@@ -166,11 +188,13 @@ ProductionMppiNode::ProductionMppiNode()
   RCLCPP_INFO(get_logger(),
               "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
               "deadline=%.1fms known_solids=%zu static_map=%s "
-              "passage_speed_limit=%.1fmps",
+              "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s",
               mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
               known_solids_.size(),
               passage_speed_policy_.use_static_map ? "true" : "false",
-              activePassageSpeedLimitMps(passage_speed_policy_));
+              activePassageSpeedLimitMps(passage_speed_policy_),
+              mppi_config_.costs.head_progress_horizon_s,
+              liveness_config_.enabled ? "true" : "false");
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

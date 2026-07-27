@@ -1,3 +1,4 @@
+#include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
@@ -341,14 +342,14 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          State initial, State target, DynamicsConfig dynamics, RiskConfig risk,
          CostConfig costs, EsdfGrid grid, cudaTextureObject_t esdf_texture,
          const KnownSolid* solids, std::size_t solid_count, PassageConstraint passage,
-         bool passage_active, bool early_exit) {
+         bool passage_active, Control previous_applied_control, bool early_exit) {
   const std::size_t rollout =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (rollout >= rollouts) {
     return;
   }
   State state = initial;
-  Control previous{};
+  Control previous = previous_applied_control;
   float guide_cost = 0.0F;
   float acceleration_cost = 0.0F;
   float jerk_cost = 0.0F;
@@ -361,6 +362,13 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   bool solid_hit = false;
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
   const float initial_distance = hypotf(target.x - initial.x, target.y - initial.y);
+  float head_progress = 0.0F;
+  const std::size_t requested_head_steps =
+      static_cast<std::size_t>(ceilf(costs.head_progress_horizon_s / dynamics.dt_s));
+  const std::size_t head_steps =
+      requested_head_steps == 0U
+          ? 1U
+          : (requested_head_steps > steps ? steps : requested_head_steps);
   for (std::size_t step = 0U; step < steps; ++step) {
     const std::size_t index = rollout * steps + step;
     Control control{
@@ -384,8 +392,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       const bool inside_passage_window = longitudinal >= -passage.approach_distance_m &&
                                          longitudinal <= passage.exit_distance_m;
       const bool inside_opening = fabsf(longitudinal) <= passage.half_depth_m;
-      if (inside_opening &&
-          (state.z < passage.min_z_m || state.z > passage.max_z_m)) {
+      if (inside_opening && (state.z < passage.min_z_m || state.z > passage.max_z_m)) {
         solid_hit = true;
       }
       if (inside_passage_window) {
@@ -415,6 +422,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     guide_cost += (guide_cross / guide_length) * (guide_cross / guide_length);
     const float altitude_error = state.z - target.z;
     altitude_cost += altitude_error * altitude_error;
+    if (step + 1U == head_steps) {
+      head_progress = initial_distance - hypotf(target.x - state.x, target.y - state.y);
+    }
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
     jerk_cost += (control.ax - previous.ax) * (control.ax - previous.ax) +
@@ -427,7 +437,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
   }
   const float terminal_distance = hypotf(target.x - state.x, target.y - state.y);
-  soft_cost[rollout] = costs.progress_weight * -(initial_distance - terminal_distance) +
+  soft_cost[rollout] = costs.head_progress_weight * -head_progress +
+                       costs.progress_weight * -(initial_distance - terminal_distance) +
                        costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
                        costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
                        costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
@@ -574,13 +585,15 @@ __global__ void updateControls(const Control* nominal, Control* updated,
 }
 
 __global__ void limitControls(Control* controls, std::size_t steps,
-                              DynamicsConfig dynamics) {
+                              DynamicsConfig dynamics, Control previous_applied_control,
+                              float first_control_interval_s) {
   if (blockIdx.x != 0 || threadIdx.x != 0) {
     return;
   }
-  Control previous{};
-  const float maximum_delta = dynamics.maximum_control_jerk_mps3 * dynamics.dt_s;
+  Control previous = previous_applied_control;
   for (std::size_t step = 0U; step < steps; ++step) {
+    const float interval_s = step == 0U ? first_control_interval_s : dynamics.dt_s;
+    const float maximum_delta = dynamics.maximum_control_jerk_mps3 * interval_s;
     Control control = controls[step];
     clampHorizontal(control.ax, control.ay,
                     dynamics.maximum_horizontal_acceleration_mps2);
@@ -597,14 +610,6 @@ __global__ void limitControls(Control* controls, std::size_t steps,
                             previous.az + maximum_delta);
     controls[step] = control;
     previous = control;
-  }
-}
-
-__global__ void warmStart(Control* nominal, const Control* updated, std::size_t steps) {
-  const std::size_t index =
-      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index < steps) {
-    nominal[index] = updated[index + (index + 1U < steps ? 1U : 0U)];
   }
 }
 
@@ -694,7 +699,40 @@ public:
         static_cast<int>((config_.rollouts + kThreadsPerBlock - 1U) / kThreadsPerBlock);
     const int control_blocks =
         static_cast<int>((config_.steps + kThreadsPerBlock - 1U) / kThreadsPerBlock);
+    double elapsed_s = 0.0;
+    if (has_updated_) {
+      if (last_planning_stamp_ns_ > 0 &&
+          input.planning_stamp_ns > last_planning_stamp_ns_) {
+        elapsed_s =
+            static_cast<double>(input.planning_stamp_ns - last_planning_stamp_ns_) /
+            1.0e9;
+      } else {
+        elapsed_s = config_.dynamics.dt_s;
+      }
+    }
+    const bool nominal_reseeded =
+        input.nominal_reseed_generation > nominal_reseed_generation_;
+    if (nominal_reseeded) {
+      nominal_ = buildGuideDirectedNominalSeed(input.initial_state, input.target,
+                                               config_.dynamics, config_.steps,
+                                               input.nominal_reseed_generation);
+      nominal_reseed_generation_ = input.nominal_reseed_generation;
+    } else if (has_updated_) {
+      nominal_ = shiftControlSequence(updated_, config_.dynamics.dt_s, elapsed_s);
+    }
+    const Control previous_applied_control = input.previous_applied_control.value_or(
+        last_output_control_.value_or(Control{}));
+    const float first_control_interval_s =
+        has_updated_
+            ? std::clamp(static_cast<float>(elapsed_s), 1.0e-3F, config_.dynamics.dt_s)
+            : config_.dynamics.dt_s;
+
     started_.record(stream_);
+    checkCuda(cudaMemcpyAsync(buffers_.nominal.get(), nominal_.data(),
+                              nominal_.size() * sizeof(Control), cudaMemcpyHostToDevice,
+                              stream_),
+              "copy time-shifted nominal controls");
+    warm_done_.record(stream_);
     generateNoise<<<noise_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
         buffers_.noise_yaw.get(), noise_count, config_.seed, tick_sequence_++,
@@ -710,7 +748,7 @@ public:
         config_.risk, config_.costs, textures_[active_texture_].grid(),
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         input.passage.value_or(PassageConstraint{}), input.passage.has_value(),
-        config_.early_exit_on_collision);
+        previous_applied_control, config_.early_exit_on_collision);
     simulation_done_.record(stream_);
     initializeReduction<<<1, 1, 0U, stream_>>>(
         buffers_.best_tier.get(), buffers_.best_critical.get(),
@@ -751,28 +789,29 @@ public:
         buffers_.weights.get(), buffers_.weight_sum.get(), config_.rollouts,
         config_.steps);
     limitControls<<<1, 1, 0U, stream_>>>(buffers_.updated.get(), config_.steps,
-                                         config_.dynamics);
+                                         config_.dynamics, previous_applied_control,
+                                         first_control_interval_s);
     update_done_.record(stream_);
     checkCuda(cudaMemcpyAsync(updated_.data(), buffers_.updated.get(),
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,
                               stream_),
               "copy selected controls");
-    warmStart<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.nominal.get(), buffers_.updated.get(), config_.steps);
-    warm_done_.record(stream_);
-    warm_done_.synchronize();
+    completed_.record(stream_);
+    completed_.synchronize();
     checkCuda(cudaGetLastError(), "MPPI engine kernels");
 
     MppiTickResult result;
     result.controls = updated_;
+    result.warm_start_shift_s = elapsed_s;
+    result.nominal_reseeded = nominal_reseeded;
     result.esdf_revision = textures_[active_texture_].revision();
-    result.timings.noise_generation_ms = elapsedMs(started_, noise_done_);
+    result.timings.warm_start_ms = elapsedMs(started_, warm_done_);
+    result.timings.noise_generation_ms = elapsedMs(warm_done_, noise_done_);
     result.timings.rollout_simulation_ms = elapsedMs(noise_done_, simulation_done_);
     result.timings.risk_reduction_ms = elapsedMs(simulation_done_, reduction_done_);
     result.timings.weight_calculation_ms = elapsedMs(reduction_done_, weights_done_);
     result.timings.control_update_ms = elapsedMs(weights_done_, update_done_);
-    result.timings.warm_start_ms = elapsedMs(update_done_, warm_done_);
-    result.timings.gpu_total_ms = elapsedMs(started_, warm_done_);
+    result.timings.gpu_total_ms = elapsedMs(started_, completed_);
     const auto reconstruction_started = std::chrono::steady_clock::now();
     State state = input.initial_state;
     result.horizon.reserve(updated_.size() + 1U);
@@ -781,20 +820,36 @@ public:
         std::hypot(input.target.x - state.x, input.target.y - state.y);
     result.minimum_esdf_distance_m = kInfinity;
     result.selected_tier = RiskTier::kPreferred;
-    Control previous_control{};
-    for (const Control& control : updated_) {
+    Control previous_control = previous_applied_control;
+    if (!updated_.empty()) {
+      result.first_control_delta =
+          std::hypot(std::hypot(updated_.front().ax - previous_applied_control.ax,
+                                updated_.front().ay - previous_applied_control.ay),
+                     updated_.front().az - previous_applied_control.az);
+    }
+    const std::size_t head_steps = std::clamp<std::size_t>(
+        static_cast<std::size_t>(
+            std::ceil(config_.costs.head_progress_horizon_s / config_.dynamics.dt_s)),
+        1U, updated_.size());
+    for (std::size_t index = 0U; index < updated_.size(); ++index) {
+      const Control& control = updated_[index];
       result.maximum_acceleration_mps2 =
           std::max(result.maximum_acceleration_mps2,
                    std::hypot(std::hypot(control.ax, control.ay), control.az));
-      result.maximum_jerk_mps3 =
-          std::max(result.maximum_jerk_mps3,
-                   std::hypot(std::hypot(control.ax - previous_control.ax,
-                                         control.ay - previous_control.ay),
-                              control.az - previous_control.az) /
-                       config_.dynamics.dt_s);
+      result.maximum_jerk_mps3 = std::max(
+          result.maximum_jerk_mps3,
+          std::hypot(std::hypot(control.ax - previous_control.ax,
+                                control.ay - previous_control.ay),
+                     control.az - previous_control.az) /
+              (index == 0U ? first_control_interval_s : config_.dynamics.dt_s));
       previous_control = control;
       state = integrateReference(state, control, config_.dynamics);
       result.horizon.push_back(state);
+      if (index + 1U == head_steps) {
+        result.head_progress_m =
+            initial_distance -
+            std::hypot(input.target.x - state.x, input.target.y - state.y);
+      }
       if (hostSolidCollision(state, known_solids_)) {
         result.known_solid_collision = true;
       }
@@ -802,15 +857,17 @@ public:
     const RolloutMetrics metrics = simulateReference(
         input.initial_state, updated_, zero_noise_, config_.dynamics, config_.risk,
         config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
-        input.target.x, input.target.y, config_.early_exit_on_collision);
+        input.target.x, input.target.y, config_.early_exit_on_collision,
+        previous_applied_control);
     result.raw_collision = metrics.collision;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;
     result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
     result.selected_tier =
         result.known_solid_collision ? RiskTier::kCollision : metrics.worst_tier;
-    result.progress_m = initial_distance -
-                        std::hypot(input.target.x - state.x, input.target.y - state.y);
+    result.terminal_progress_m =
+        initial_distance -
+        std::hypot(input.target.x - state.x, input.target.y - state.y);
     result.timings.horizon_reconstruction_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   reconstruction_started)
@@ -818,6 +875,11 @@ public:
     result.timings.host_total_ms = std::chrono::duration<double, std::milli>(
                                        std::chrono::steady_clock::now() - host_started)
                                        .count();
+    has_updated_ = true;
+    last_planning_stamp_ns_ = input.planning_stamp_ns;
+    if (!updated_.empty()) {
+      last_output_control_ = updated_.front();
+    }
     return result;
   }
 
@@ -844,6 +906,10 @@ private:
   std::vector<Control> nominal_;
   std::vector<Control> updated_;
   std::vector<Control> zero_noise_;
+  std::optional<Control> last_output_control_;
+  std::int64_t last_planning_stamp_ns_{0};
+  std::uint64_t nominal_reseed_generation_{0U};
+  bool has_updated_{false};
   std::uint64_t tick_sequence_{0U};
   cudaStream_t stream_{nullptr};
   Event started_;
@@ -853,6 +919,7 @@ private:
   Event weights_done_;
   Event update_done_;
   Event warm_done_;
+  Event completed_;
   mutable std::mutex mutex_;
 };
 

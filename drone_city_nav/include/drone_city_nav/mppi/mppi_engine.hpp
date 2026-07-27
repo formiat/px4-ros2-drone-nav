@@ -57,6 +57,8 @@ struct MppiTickInput {
   std::uint64_t pose_revision{0U};
   std::uint64_t obstacle_revision{0U};
   std::int64_t planning_stamp_ns{0};
+  std::optional<Control> previous_applied_control;
+  std::uint64_t nominal_reseed_generation{0U};
 };
 
 struct MppiStageTimings {
@@ -80,9 +82,13 @@ struct MppiTickResult {
   float critical_exposure_m{0.0F};
   float planning_exposure_m{0.0F};
   float minimum_esdf_distance_m{0.0F};
-  float progress_m{0.0F};
+  float head_progress_m{0.0F};
+  float terminal_progress_m{0.0F};
   float maximum_acceleration_mps2{0.0F};
   float maximum_jerk_mps3{0.0F};
+  float first_control_delta{0.0F};
+  double warm_start_shift_s{0.0};
+  bool nominal_reseeded{false};
   std::uint64_t esdf_revision{0U};
   MppiStageTimings timings{};
 };

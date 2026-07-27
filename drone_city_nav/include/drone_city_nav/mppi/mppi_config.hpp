@@ -37,6 +37,8 @@ struct RiskConfig {
 struct CostConfig {
   float guide_deviation_weight{1.0F};
   float altitude_tracking_weight{4.0F};
+  float head_progress_horizon_s{0.4F};
+  float head_progress_weight{8.0F};
   float progress_weight{4.0F};
   float acceleration_weight{0.03F};
   float jerk_weight{0.02F};

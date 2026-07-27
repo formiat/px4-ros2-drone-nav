@@ -1,4 +1,5 @@
 #include "drone_city_nav/distance_field.hpp"
+#include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 
 #include <algorithm>
@@ -6,6 +7,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <limits>
+#include <span>
 #include <utility>
 
 #include "production_mppi_node.hpp"
@@ -17,6 +19,35 @@ namespace {
   return std::hypot(std::hypot(static_cast<double>(first.x - second.x),
                                static_cast<double>(first.y - second.y)),
                     static_cast<double>(first.z - second.z));
+}
+
+[[nodiscard]] mppi::State interpolateState(const mppi::State& first,
+                                           const mppi::State& second,
+                                           const double ratio) {
+  const float clamped = static_cast<float>(std::clamp(ratio, 0.0, 1.0));
+  return mppi::State{
+      .x = std::lerp(first.x, second.x, clamped),
+      .y = std::lerp(first.y, second.y, clamped),
+      .z = std::lerp(first.z, second.z, clamped),
+      .vx = std::lerp(first.vx, second.vx, clamped),
+      .vy = std::lerp(first.vy, second.vy, clamped),
+      .vz = std::lerp(first.vz, second.vz, clamped),
+      .yaw = std::lerp(first.yaw, second.yaw, clamped),
+      .yaw_rate = std::lerp(first.yaw_rate, second.yaw_rate, clamped),
+  };
+}
+
+[[nodiscard]] mppi::State sampleState(const std::span<const mppi::State> states,
+                                      const double offset_steps) {
+  if (states.empty()) {
+    return {};
+  }
+  const double source =
+      std::clamp(offset_steps, 0.0, static_cast<double>(states.size() - 1U));
+  const std::size_t lower = static_cast<std::size_t>(std::floor(source));
+  const std::size_t upper = std::min(lower + 1U, states.size() - 1U);
+  return interpolateState(states[lower], states[upper],
+                          source - static_cast<double>(lower));
 }
 
 } // namespace
@@ -213,10 +244,12 @@ void ProductionMppiNode::planningTick() {
   const auto snapshot_started = std::chrono::steady_clock::now();
   ProductionMppiNavigation navigation;
   ProductionMppiPredictionError prediction;
+  ProductionMppiAppliedControl applied_control;
   {
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
     prediction = latest_prediction_error_;
+    applied_control = applied_control_;
   }
   std::optional<ProductionMppiPreparedEsdf> esdf;
   {
@@ -229,6 +262,10 @@ void ProductionMppiNode::planningTick() {
   const double esdf_age_ms =
       esdf.has_value() ? static_cast<double>(now_ns - esdf->ready_stamp_ns) / 1.0e6
                        : std::numeric_limits<double>::infinity();
+  const double control_feedback_age_ms =
+      applied_control.valid
+          ? static_cast<double>(now_ns - applied_control.receive_stamp_ns) / 1.0e6
+          : std::numeric_limits<double>::infinity();
   if (!navigation.valid || !esdf.has_value() || pose_age_ms < 0.0 ||
       pose_age_ms > maximum_pose_age_ms_ || esdf_age_ms < 0.0 ||
       esdf_age_ms > maximum_esdf_age_ms_) {
@@ -242,8 +279,35 @@ void ProductionMppiNode::planningTick() {
     target.z = passage->preferred_z_m;
     target_source = "passage_primitive";
   }
-  const mppi::MppiTickInput input{navigation.state,    target,         passage,
-                                  navigation.revision, esdf->revision, now_ns};
+  const bool control_feedback_fresh =
+      applied_control.valid && control_feedback_age_ms >= 0.0 &&
+      control_feedback_age_ms <= maximum_control_feedback_age_ms_;
+  MppiLivenessResult liveness;
+  if (liveness_supervisor_) {
+    liveness = liveness_supervisor_->evaluate(MppiLivenessObservation{
+        .stamp_ns = now_ns,
+        .actual_state = navigation.state,
+        .controller_active = control_feedback_fresh,
+        .emergency_braking =
+            control_feedback_fresh && applied_control.emergency_braking,
+        .predicted_head_progress_m =
+            previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
+        .predicted_terminal_progress_m =
+            previous_result_.has_value() ? previous_result_->terminal_progress_m : 0.0,
+    });
+  }
+  mppi::MppiTickInput input{
+      .initial_state = navigation.state,
+      .target = target,
+      .passage = passage,
+      .pose_revision = navigation.revision,
+      .obstacle_revision = esdf->revision,
+      .planning_stamp_ns = now_ns,
+      .previous_applied_control =
+          control_feedback_fresh ? std::optional<mppi::Control>{applied_control.control}
+                                 : std::nullopt,
+      .nominal_reseed_generation = liveness.reseed_generation,
+  };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
                                  .count();
@@ -253,6 +317,19 @@ void ProductionMppiNode::planningTick() {
   } catch (const std::exception& error) {
     RCLCPP_ERROR(get_logger(), "PRODUCTION_MPPI_TICK failed: %s", error.what());
     return;
+  }
+  if (liveness.reseed_requested) {
+    ++liveness_reseeds_;
+    RCLCPP_WARN(get_logger(),
+                "MPPI_LIVENESS_RESEED generation=%" PRIu64
+                " observation_age_s=%.3f actual_displacement_m=%.3f speed_mps=%.3f "
+                "predicted_head_progress_m=%.3f predicted_terminal_progress_m=%.3f "
+                "feedback_sequence=%" PRIu64,
+                liveness.reseed_generation, liveness.observation_age_s,
+                liveness.actual_displacement_m, liveness.actual_speed_mps,
+                liveness.predicted_head_progress_m,
+                liveness.predicted_terminal_progress_m,
+                applied_control.horizon_sequence);
   }
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);
@@ -267,8 +344,9 @@ void ProductionMppiNode::planningTick() {
   const double rviz_ms = std::chrono::duration<double, std::milli>(
                              std::chrono::steady_clock::now() - rviz_started)
                              .count();
-  publishDiagnostics(input, result, *esdf, stability, prediction, target_source,
-                     pose_age_ms, esdf_age_ms, snapshot_ms, stability_ms, rviz_ms);
+  publishDiagnostics(input, result, *esdf, stability, prediction, liveness,
+                     target_source, pose_age_ms, esdf_age_ms, control_feedback_age_ms,
+                     snapshot_ms, stability_ms, rviz_ms);
   publishExecutionHorizon(input, result, *esdf, now_ns);
   {
     const std::scoped_lock lock{input_mutex_};
@@ -289,16 +367,21 @@ ProductionMppiNode::compareWithPrevious(const mppi::MppiTickResult& result) cons
     return stability;
   }
   const mppi::Control& current = result.controls.front();
-  const mppi::Control& previous = previous_result_->controls[1U];
+  const double offset_steps =
+      result.warm_start_shift_s / static_cast<double>(mppi_config_.dynamics.dt_s);
+  const std::vector<mppi::Control> shifted_controls =
+      mppi::shiftControlSequence(previous_result_->controls, mppi_config_.dynamics.dt_s,
+                                 result.warm_start_shift_s);
+  const mppi::Control& previous = shifted_controls.front();
   stability.first_control_delta =
       std::hypot(std::hypot(current.ax - previous.ax, current.ay - previous.ay),
                  current.az - previous.az);
-  const std::size_t count =
-      std::min(result.horizon.size(), previous_result_->horizon.size() - 1U);
+  const std::size_t count = result.horizon.size();
   double squared_sum = 0.0;
   for (std::size_t index = 0U; index < count; ++index) {
-    const double difference =
-        distance3(result.horizon[index], previous_result_->horizon[index + 1U]);
+    const mppi::State previous_state = sampleState(
+        previous_result_->horizon, offset_steps + static_cast<double>(index));
+    const double difference = distance3(result.horizon[index], previous_state);
     squared_sum += difference * difference;
     stability.position_max_m = std::max(stability.position_max_m, difference);
   }

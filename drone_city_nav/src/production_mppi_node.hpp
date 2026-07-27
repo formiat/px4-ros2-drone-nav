@@ -4,6 +4,8 @@
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/passage_speed_policy.hpp"
 #include "drone_city_nav/mppi_horizon_safety.hpp"
+#include "drone_city_nav/mppi_liveness.hpp"
+#include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
@@ -67,6 +69,14 @@ struct ProductionMppiPredictionError {
   bool valid{false};
 };
 
+struct ProductionMppiAppliedControl {
+  mppi::Control control{};
+  std::int64_t receive_stamp_ns{0};
+  std::uint64_t horizon_sequence{0U};
+  bool emergency_braking{false};
+  bool valid{false};
+};
+
 class ProductionMppiNode final : public rclcpp::Node {
 public:
   ProductionMppiNode();
@@ -81,6 +91,7 @@ private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
+  void onAppliedControl(const msg::MppiControlFeedback& message);
   void esdfWorker(std::stop_token stop_token);
   void planningTick();
   void publishDiagnostics(const mppi::MppiTickInput& input,
@@ -88,9 +99,10 @@ private:
                           const ProductionMppiPreparedEsdf& esdf,
                           const ProductionMppiStability& stability,
                           const ProductionMppiPredictionError& prediction,
+                          const MppiLivenessResult& liveness,
                           std::string_view target_source, double pose_age_ms,
-                          double esdf_age_ms, double snapshot_ms, double stability_ms,
-                          double rviz_ms);
+                          double esdf_age_ms, double control_feedback_age_ms,
+                          double snapshot_ms, double stability_ms, double rviz_ms);
   void publishRviz(const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
                    const ProductionMppiPreparedEsdf& esdf);
   void publishSummary();
@@ -112,6 +124,7 @@ private:
   double deadline_ms_{20.0};
   double maximum_pose_age_ms_{150.0};
   double maximum_esdf_age_ms_{1000.0};
+  double maximum_control_feedback_age_ms_{200.0};
   double guide_lookahead_m_{30.0};
   double passage_activation_distance_m_{45.0};
   Point2 px4_local_origin_{54.0, 54.0};
@@ -126,6 +139,8 @@ private:
   mppi::BenchmarkConfig mppi_config_{};
   mppi::PassageSpeedPolicy passage_speed_policy_{};
   MppiHorizonSafetyConfig safety_config_{};
+  MppiLivenessConfig liveness_config_{};
+  std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   RiskAwareLatticeConfig lattice_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<KnownPassageMap> known_passages_;
@@ -133,6 +148,7 @@ private:
 
   mutable std::mutex input_mutex_;
   ProductionMppiNavigation navigation_{};
+  ProductionMppiAppliedControl applied_control_{};
   std::uint64_t memory_sequence_{0U};
   std::int64_t memory_receive_stamp_ns_{0};
 
@@ -155,6 +171,7 @@ private:
   std::uint64_t raw_collision_horizons_{0U};
   std::uint64_t solid_collision_horizons_{0U};
   std::uint64_t no_progress_horizons_{0U};
+  std::uint64_t liveness_reseeds_{0U};
   std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
   std::ofstream diagnostics_stream_;
@@ -163,6 +180,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
   rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
+  rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;

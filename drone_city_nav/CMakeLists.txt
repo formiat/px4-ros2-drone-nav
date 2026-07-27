@@ -48,6 +48,7 @@ rosidl_generate_interfaces(
   "msg/CrashState.msg"
   "msg/MppiHorizonPoint.msg"
   "msg/MppiTrajectoryHorizon.msg"
+  "msg/MppiControlFeedback.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
                               rosidl_typesupport_cpp)
@@ -69,6 +70,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
     drone_city_nav_mppi_cuda
     src/mppi/mppi_engine.cu
+    src/mppi/mppi_control_sequence.cpp
     src/mppi/mppi_reference.cpp)
   target_compile_features(drone_city_nav_mppi_cuda PUBLIC cxx_std_20)
   set_target_properties(
@@ -138,6 +140,7 @@ add_library(
   src/risk_aware_lattice.cpp
   src/lidar_snapshot_writer.cpp
   src/mppi_horizon_safety.cpp
+  src/mppi_liveness.cpp
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
@@ -329,6 +332,20 @@ if(BUILD_TESTING)
   target_compile_features(mppi_horizon_safety_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_horizon_safety_test_current drone_city_nav_core)
   enable_project_warnings(mppi_horizon_safety_test_current)
+
+  ament_add_gtest(mppi_liveness_test_current tests/mppi_liveness_test.cpp)
+  target_compile_features(mppi_liveness_test_current PRIVATE cxx_std_20)
+  target_link_libraries(mppi_liveness_test_current drone_city_nav_core)
+  enable_project_warnings(mppi_liveness_test_current)
+
+  if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+    ament_add_gtest(mppi_control_sequence_test_current
+                    tests/mppi_control_sequence_test.cpp)
+    target_compile_features(mppi_control_sequence_test_current PRIVATE cxx_std_20)
+    target_link_libraries(mppi_control_sequence_test_current
+                          drone_city_nav_mppi_cuda)
+    enable_project_warnings(mppi_control_sequence_test_current)
+  endif()
 
   ament_add_gtest(risk_aware_lattice_test
                   tests/risk_aware_lattice_test.cpp)

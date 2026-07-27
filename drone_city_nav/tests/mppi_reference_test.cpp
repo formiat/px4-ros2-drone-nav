@@ -71,6 +71,54 @@ TEST(MppiReferenceTest, CollisionIsHardAndStopsEarly) {
   EXPECT_FLOAT_EQ(metrics.minimum_clearance_m, 0.0F);
 }
 
+TEST(MppiReferenceTest, HeadProgressIsMeasuredAtConfiguredEarlyHorizon) {
+  constexpr int kWidth = 20;
+  constexpr int kHeight = 20;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 20.0F);
+  const std::array<Control, 4> controls{
+      Control{.ax = 1.0F},
+      Control{.ax = 1.0F},
+      Control{.ax = 1.0F},
+      Control{.ax = 1.0F},
+  };
+  const std::array<Control, 4> noise{};
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.linear_drag_1ps = 0.0F;
+  CostConfig costs;
+  costs.head_progress_horizon_s = 0.2F;
+
+  const RolloutMetrics metrics =
+      simulateReference(State{1.5F, 1.5F, 0.0F}, controls, noise, dynamics,
+                        RiskConfig{}, costs, grid, esdf, 10.0F, 1.5F, false);
+
+  EXPECT_GT(metrics.costs.head_progress, 0.0F);
+  EXPECT_GT(-metrics.costs.progress, metrics.costs.head_progress);
+}
+
+TEST(MppiReferenceTest, AppliedControlDefinesFirstJerkCost) {
+  constexpr int kWidth = 20;
+  constexpr int kHeight = 20;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 20.0F);
+  const std::array<Control, 2> controls{
+      Control{.ax = 2.0F},
+      Control{.ax = 2.0F},
+  };
+  const std::array<Control, 2> noise{};
+
+  const RolloutMetrics from_zero =
+      simulateReference(State{1.5F, 1.5F, 0.0F}, controls, noise, DynamicsConfig{},
+                        RiskConfig{}, CostConfig{}, grid, esdf, 10.0F, 1.5F, false);
+  const RolloutMetrics from_applied = simulateReference(
+      State{1.5F, 1.5F, 0.0F}, controls, noise, DynamicsConfig{}, RiskConfig{},
+      CostConfig{}, grid, esdf, 10.0F, 1.5F, false, Control{.ax = 2.0F});
+
+  EXPECT_GT(from_zero.costs.jerk, from_applied.costs.jerk);
+  EXPECT_FLOAT_EQ(from_applied.costs.jerk, 0.0F);
+}
+
 TEST(MppiReferenceTest, PassageSpeedPolicyPreservesMapModeContract) {
   PassageSpeedPolicy policy{};
 

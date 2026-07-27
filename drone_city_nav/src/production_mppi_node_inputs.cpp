@@ -66,4 +66,21 @@ void ProductionMppiNode::onMemorySnapshot(const msg::ObstacleMemorySnapshot& mes
   memory_receive_stamp_ns_ = get_clock()->now().nanoseconds();
 }
 
+void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& message) {
+  ProductionMppiAppliedControl feedback;
+  feedback.receive_stamp_ns = get_clock()->now().nanoseconds();
+  feedback.horizon_sequence = message.horizon_sequence;
+  feedback.emergency_braking = message.emergency_braking;
+  feedback.valid =
+      message.header.frame_id == frame_id_ && std::isfinite(message.acceleration.x) &&
+      std::isfinite(message.acceleration.y) && std::isfinite(message.acceleration.z);
+  if (feedback.valid) {
+    feedback.control.ax = static_cast<float>(message.acceleration.x);
+    feedback.control.ay = static_cast<float>(message.acceleration.y);
+    feedback.control.az = static_cast<float>(message.acceleration.z);
+  }
+  const std::scoped_lock lock{input_mutex_};
+  applied_control_ = feedback;
+}
+
 } // namespace drone_city_nav

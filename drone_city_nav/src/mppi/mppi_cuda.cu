@@ -498,6 +498,13 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
   bool collided = false;
   const float initial_distance = hypotf(target_x - state.x, target_y - state.y);
+  float head_progress = 0.0F;
+  const std::size_t requested_head_steps =
+      static_cast<std::size_t>(ceilf(costs.head_progress_horizon_s / dynamics.dt_s));
+  const std::size_t head_steps =
+      requested_head_steps == 0U
+          ? 1U
+          : (requested_head_steps > steps ? steps : requested_head_steps);
   for (std::size_t step = 0U; step < steps; ++step) {
     const std::size_t index = rollout * steps + step;
     Control control{
@@ -531,6 +538,9 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
     yaw_cost += control.yaw_accel * control.yaw_accel;
     effort_cost += control.ax * control.ax + control.ay * control.ay +
                    control.az * control.az + control.yaw_accel * control.yaw_accel;
+    if (step + 1U == head_steps) {
+      head_progress = initial_distance - hypotf(target_x - state.x, target_y - state.y);
+    }
     previous = control;
     if (collided && early_exit) {
       break;
@@ -538,7 +548,8 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
   }
   const float terminal_distance = hypotf(target_x - state.x, target_y - state.y);
   const float progress_cost = -(initial_distance - terminal_distance);
-  soft_cost[rollout] = costs.progress_weight * progress_cost +
+  soft_cost[rollout] = costs.head_progress_weight * -head_progress +
+                       costs.progress_weight * progress_cost +
                        costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
                        costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
                        costs.jerk_weight * jerk_cost +

@@ -1,4 +1,5 @@
 #include "drone_city_nav/msg/crash_state.hpp"
+#include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
@@ -77,6 +78,12 @@ public:
         declare_parameter<std::string>("rviz_drone_marker_topic",
                                        "/drone_city_nav/drone_marker"),
         rclcpp::QoS{1}.reliable());
+    applied_control_feedback_frame_id_ =
+        declare_parameter<std::string>("applied_control_feedback_frame_id", "map");
+    applied_control_feedback_pub_ = create_publisher<msg::MppiControlFeedback>(
+        declare_parameter<std::string>("applied_control_feedback_topic",
+                                       "/drone_city_nav/mppi/applied_control"),
+        rclcpp::QoS{10}.reliable());
     endpoint_.target_system =
         static_cast<std::uint8_t>(declare_parameter<int>("target_system", 1));
     endpoint_.target_component =
@@ -299,16 +306,23 @@ private:
         duration > 1.0e-6
             ? std::clamp((elapsed_s - first.time_from_start_s) / duration, 0.0, 1.0)
             : 0.0;
+    const Point2 velocity{interpolate(first.velocity.x, second.velocity.x, ratio),
+                          interpolate(first.velocity.y, second.velocity.y, ratio)};
+    const double vertical_velocity =
+        interpolate(first.velocity.z, second.velocity.z, ratio);
+    const Point2 acceleration{
+        interpolate(first.acceleration.x, second.acceleration.x, ratio),
+        interpolate(first.acceleration.y, second.acceleration.y, ratio)};
+    const double vertical_acceleration =
+        interpolate(first.acceleration.z, second.acceleration.z, ratio);
+    const double yaw = interpolate(first.yaw_rad, second.yaw_rad, ratio);
+    const double yaw_rate =
+        interpolate(first.yaw_rate_radps, second.yaw_rate_radps, ratio);
     setpoint_pub_->publish(buildMppiTrajectorySetpoint(
-        nowMicros(),
-        Point2{interpolate(first.velocity.x, second.velocity.x, ratio),
-               interpolate(first.velocity.y, second.velocity.y, ratio)},
-        interpolate(first.velocity.z, second.velocity.z, ratio),
-        Point2{interpolate(first.acceleration.x, second.acceleration.x, ratio),
-               interpolate(first.acceleration.y, second.acceleration.y, ratio)},
-        interpolate(first.acceleration.z, second.acceleration.z, ratio),
-        interpolate(first.yaw_rad, second.yaw_rad, ratio),
-        interpolate(first.yaw_rate_radps, second.yaw_rate_radps, ratio)));
+        nowMicros(), velocity, vertical_velocity, acceleration, vertical_acceleration,
+        yaw, yaw_rate));
+    publishAppliedControlFeedback(acceleration, vertical_acceleration, yaw_rate,
+                                  horizon.emergency_braking);
     return true;
   }
 
@@ -318,23 +332,46 @@ private:
     if (speed <= 0.15) {
       setpoint_pub_->publish(buildPositionTrajectorySetpoint(
           nowMicros(), Point2{local_x_, local_y_}, altitude_m_, heading_rad_));
+      publishAppliedControlFeedback(Point2{}, 0.0, 0.0, true);
       return;
     }
     constexpr double kControlPeriodS{0.02};
     const double scale = std::max(0.0, 1.0 - fallback_braking_acceleration_mps2_ *
                                                  kControlPeriodS / speed);
+    const Point2 acceleration{
+        -fallback_braking_acceleration_mps2_ * velocity_x_ / speed,
+        -fallback_braking_acceleration_mps2_ * velocity_y_ / speed};
+    const double vertical_acceleration =
+        -fallback_braking_acceleration_mps2_ * velocity_up_mps_ / speed;
     setpoint_pub_->publish(buildMppiTrajectorySetpoint(
         nowMicros(), Point2{velocity_x_ * scale, velocity_y_ * scale},
-        velocity_up_mps_ * scale,
-        Point2{-fallback_braking_acceleration_mps2_ * velocity_x_ / speed,
-               -fallback_braking_acceleration_mps2_ * velocity_y_ / speed},
-        -fallback_braking_acceleration_mps2_ * velocity_up_mps_ / speed, heading_rad_,
+        velocity_up_mps_ * scale, acceleration, vertical_acceleration, heading_rad_,
         0.0));
+    publishAppliedControlFeedback(acceleration, vertical_acceleration, 0.0, true);
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "MPPI_HORIZON_DEADLINE_MISSED action=dynamic_braking sequence=%" PRIu64
         " speed=%.2f",
         horizon_sequence_, speed);
+  }
+
+  void publishAppliedControlFeedback(const Point2 acceleration,
+                                     const double vertical_acceleration,
+                                     const double yaw_rate,
+                                     const bool emergency_braking) {
+    if (!applied_control_feedback_pub_) {
+      return;
+    }
+    msg::MppiControlFeedback feedback;
+    feedback.header.stamp = now();
+    feedback.header.frame_id = applied_control_feedback_frame_id_;
+    feedback.horizon_sequence = horizon_sequence_;
+    feedback.acceleration.x = acceleration.x;
+    feedback.acceleration.y = acceleration.y;
+    feedback.acceleration.z = vertical_acceleration;
+    feedback.yaw_rate_radps = static_cast<float>(yaw_rate);
+    feedback.emergency_braking = emergency_braking;
+    applied_control_feedback_pub_->publish(feedback);
   }
 
   void publishCommand(const std::uint32_t command, const float param1,
@@ -378,8 +415,10 @@ private:
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   std::string rviz_drone_follow_frame_{"drone_follow"};
+  std::string applied_control_feedback_frame_id_{"map"};
   std::unique_ptr<tf2_ros::TransformBroadcaster> rviz_drone_follow_tf_broadcaster_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr rviz_drone_marker_pub_;
+  rclcpp::Publisher<msg::MppiControlFeedback>::SharedPtr applied_control_feedback_pub_;
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

@@ -106,9 +106,12 @@ production_mppi_node:
     steps: 80
     dt_s: 0.05
     maximum_vertical_speed_mps: 5.0
+    head_progress_horizon_s: 0.4
+    head_progress_weight: 8.0
     deadline_ms: 20.0
     maximum_pose_age_ms: 150.0
     maximum_esdf_age_ms: 1000.0
+    maximum_control_feedback_age_ms: 200.0
     guide_lookahead_m: 30.0
     passage_activation_distance_m: 45.0
     use_static_map: true
@@ -134,12 +137,17 @@ production_mppi_node:
     path_topic: /drone_city_nav/mppi/path
     markers_topic: /drone_city_nav/mppi/markers
     status_topic: /drone_city_nav/mppi/status
+    applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     diagnostics_output_dir: log/mppi
     execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
     safety_reaction_latency_s: 0.10
     safety_maximum_braking_acceleration_mps2: 8.0
     safety_minimum_time_to_collision_s: 0.50
     safety_fallback_duration_s: 2.0
+    liveness_enabled: true
+    liveness_observation_window_s: 1.0
+    liveness_minimum_actual_displacement_m: 0.5
+    liveness_minimum_predicted_terminal_progress_m: 5.0
     global_lattice_heading_bins: 16
     global_lattice_primitive_length_m: 4.0
     global_lattice_receding_goal_distance_m: 60.0
@@ -150,6 +158,8 @@ mppi_offboard_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     mppi_execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
+    applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
+    applied_control_feedback_frame_id: map
     mppi_horizon_max_receive_age_s: 0.20
     mppi_control_lookahead_s: 0.05
     mppi_fallback_braking_acceleration_mps2: 8.0

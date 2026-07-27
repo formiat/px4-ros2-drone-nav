@@ -56,7 +56,12 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.measured_ticks > 0U && std::isfinite(config.deadline_ms) &&
          config.deadline_ms > 0.0 && std::isfinite(config.dynamics.dt_s) &&
          config.dynamics.dt_s > 0.0F && std::isfinite(config.costs.temperature) &&
-         config.costs.temperature > 0.0F && config.risk.collision_radius_m >= 0.0F &&
+         config.costs.temperature > 0.0F &&
+         std::isfinite(config.costs.head_progress_horizon_s) &&
+         config.costs.head_progress_horizon_s > 0.0F &&
+         std::isfinite(config.costs.head_progress_weight) &&
+         config.costs.head_progress_weight >= 0.0F &&
+         config.risk.collision_radius_m >= 0.0F &&
          config.risk.critical_distance_m >= config.risk.collision_radius_m &&
          config.risk.preferred_distance_m >= config.risk.critical_distance_m;
 }
@@ -85,20 +90,22 @@ State integrateReference(State state, Control control,
   return state;
 }
 
-RolloutMetrics simulateReference(const State& initial_state,
-                                 const std::span<const Control> nominal_controls,
-                                 const std::span<const Control> noise_controls,
-                                 const DynamicsConfig& dynamics, const RiskConfig& risk,
-                                 const CostConfig& costs, const EsdfGrid& grid,
-                                 const std::span<const float> esdf,
-                                 const float target_x_m, const float target_y_m,
-                                 const bool early_exit_on_collision) {
+RolloutMetrics simulateReference(
+    const State& initial_state, const std::span<const Control> nominal_controls,
+    const std::span<const Control> noise_controls, const DynamicsConfig& dynamics,
+    const RiskConfig& risk, const CostConfig& costs, const EsdfGrid& grid,
+    const std::span<const float> esdf, const float target_x_m, const float target_y_m,
+    const bool early_exit_on_collision, const Control previous_applied_control) {
   RolloutMetrics metrics{};
   metrics.minimum_clearance_m = std::numeric_limits<float>::infinity();
   State state = initial_state;
-  Control previous{};
+  Control previous = previous_applied_control;
   const float initial_target_distance =
       std::hypot(target_x_m - state.x, target_y_m - state.y);
+  const std::size_t head_steps =
+      std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
+                                  costs.head_progress_horizon_s / dynamics.dt_s)),
+                              1U, nominal_controls.size());
   for (std::size_t step = 0U; step < nominal_controls.size(); ++step) {
     Control control{
         .ax = nominal_controls[step].ax + noise_controls[step].ax,
@@ -123,6 +130,9 @@ RolloutMetrics simulateReference(const State& initial_state,
 
     const float target_distance =
         std::hypot(target_x_m - state.x, target_y_m - state.y);
+    if (step + 1U == head_steps) {
+      metrics.costs.head_progress = initial_target_distance - target_distance;
+    }
     metrics.costs.guide_deviation += squared(state.y - initial_state.y);
     metrics.costs.acceleration +=
         squared(control.ax) + squared(control.ay) + squared(control.az);
@@ -141,6 +151,7 @@ RolloutMetrics simulateReference(const State& initial_state,
   metrics.costs.progress = -(initial_target_distance -
                              std::hypot(target_x_m - state.x, target_y_m - state.y));
   metrics.soft_cost =
+      costs.head_progress_weight * -metrics.costs.head_progress +
       costs.progress_weight * metrics.costs.progress +
       costs.guide_deviation_weight * dynamics.dt_s * metrics.costs.guide_deviation +
       costs.acceleration_weight * dynamics.dt_s * metrics.costs.acceleration +

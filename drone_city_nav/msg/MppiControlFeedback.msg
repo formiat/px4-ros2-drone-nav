@@ -1,0 +1,5 @@
+std_msgs/Header header
+uint64 horizon_sequence
+geometry_msgs/Vector3 acceleration
+float32 yaw_rate_radps
+bool emergency_braking
