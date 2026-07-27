@@ -119,6 +119,38 @@ def _run_service(
     )
 
 
+def _publish_track(
+    runner: CommandRunner,
+    *,
+    target: str,
+    offset: tuple[float, float, float],
+) -> CommandResult:
+    offset_x, offset_y, offset_z = offset
+    payload = (
+        "track_mode: FOLLOW "
+        f'follow_target {{ name: "{target}" }} '
+        "follow_offset { "
+        f"x: {_format_float(offset_x)} "
+        f"y: {_format_float(offset_y)} "
+        f"z: {_format_float(offset_z)} "
+        "} "
+        "follow_pgain: 1.0 "
+        "track_pgain: 1.0"
+    )
+    return runner(
+        [
+            "topic",
+            "-t",
+            "/gui/track",
+            "-m",
+            "gz.msgs.CameraTrack",
+            "-p",
+            payload,
+        ],
+        2.0,
+    )
+
+
 def _confirm_tracking(
     runner: CommandRunner,
     *,
@@ -165,7 +197,6 @@ def configure_follow_camera(
     offset_text: str,
     wait_s: int,
     runner: CommandRunner = default_runner,
-    required_accepted_attempts: int = 3,
     tracking_sample_duration_s: float = 1.0,
     tracking_confirmation_attempts: int = 2,
 ) -> int:
@@ -177,42 +208,14 @@ def configure_follow_camera(
         )
         return 0
 
-    accepted_attempts = 0
+    published_attempts = 0
     attempted_state_confirmation = False
     last_response = ""
     for attempt in range(1, wait_s + 1):
-        follow_response = _run_service(
-            runner,
-            service="/gui/follow",
-            reqtype="gz.msgs.StringMsg",
-            reptype="gz.msgs.Boolean",
-            request=f'data: "{target}"',
-        )
-        last_response = follow_response.combined_output
-        if response_is_true(follow_response):
-            offset_response = _run_service(
-                runner,
-                service="/gui/follow/offset",
-                reqtype="gz.msgs.Vector3d",
-                reptype="gz.msgs.Boolean",
-                request=(
-                    f"x: {_format_float(offset[0])} "
-                    f"y: {_format_float(offset[1])} "
-                    f"z: {_format_float(offset[2])}"
-                ),
-            )
-            accepted_attempts += 1
-            print(
-                "Gazebo GUI follow camera command accepted: "
-                f"target={target} offset=({_format_float(offset[0])}, "
-                f"{_format_float(offset[1])}, {_format_float(offset[2])}) "
-                f"accepted_attempts={accepted_attempts}"
-            )
-            if not response_is_true(offset_response):
-                print(
-                    "WARNING: Gazebo GUI follow offset was not confirmed: "
-                    f"{offset_response.combined_output}"
-                )
+        track_response = _publish_track(runner, target=target, offset=offset)
+        last_response = track_response.combined_output
+        if track_response.returncode == 0:
+            published_attempts += 1
             tracking_state = _confirm_tracking(
                 runner,
                 target=target,
@@ -221,39 +224,33 @@ def configure_follow_camera(
             )
             attempted_state_confirmation = True
             if tracking_state.confirmed:
-                print(f"Gazebo GUI follow camera state confirmed: target={target}")
+                print(
+                    "Gazebo GUI follow camera state confirmed: "
+                    f"target={target} offset=({_format_float(offset[0])}, "
+                    f"{_format_float(offset[1])}, {_format_float(offset[2])}) "
+                    f"published_attempts={published_attempts}"
+                )
                 return 0
-            if tracking_state.available:
+            if tracking_state.available and (
+                attempt == 1 or attempt % 5 == 0 or attempt == wait_s
+            ):
                 print(
                     "WARNING: Gazebo GUI follow camera state did not mention "
                     f"target '{target}': "
                     f"{_compact_log_excerpt(tracking_state.output)}"
                 )
-            if accepted_attempts >= required_accepted_attempts:
-                if tracking_state.available:
-                    print(
-                        "WARNING: Gazebo GUI follow camera command accepted but "
-                        "state does not track the requested target; continuing "
-                        "best-effort."
-                    )
-                else:
-                    print(
-                        "WARNING: Gazebo GUI follow camera command accepted but "
-                        "state confirmation is unavailable; continuing "
-                        "best-effort."
-                    )
-                return 0
         elif attempt == 1 or attempt % 5 == 0:
             print(
-                f"Waiting for Gazebo GUI follow target '{target}' "
+                f"Waiting to publish Gazebo GUI follow target '{target}' "
                 f"({attempt}/{wait_s}): {last_response}"
             )
         time.sleep(1)
 
-    if attempted_state_confirmation and accepted_attempts > 0:
+    if attempted_state_confirmation and published_attempts > 0:
         print(
-            "WARNING: Gazebo GUI follow camera command was accepted but state "
-            f"was not confirmed for target '{target}' after {wait_s}s."
+            "WARNING: Gazebo GUI follow camera command was published "
+            f"{published_attempts} times but state was not confirmed for "
+            f"target '{target}' after {wait_s}s."
         )
         return 0
     print(

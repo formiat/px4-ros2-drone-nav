@@ -53,8 +53,7 @@ class GazeboGuiControlTest(unittest.TestCase):
     def test_follow_camera_publishes_expected_commands(self) -> None:
         runner = FakeRunner(
             [
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "", ""),
                 gui.CommandResult(
                     0,
                     'header {}\nfollow_target { name: "x500_lidar_2d_0" }\n',
@@ -68,48 +67,59 @@ class GazeboGuiControlTest(unittest.TestCase):
             offset_text="-12 0 6",
             wait_s=5,
             runner=runner,
-            required_accepted_attempts=3,
             tracking_confirmation_attempts=1,
         )
 
         self.assertEqual(exit_code, 0)
         flat_calls = [" ".join(call) for call in runner.calls]
-        self.assertTrue(any("/gui/follow " in f"{call} " for call in flat_calls))
-        self.assertTrue(
+        self.assertFalse(any("/gui/follow " in f"{call} " for call in flat_calls))
+        self.assertFalse(
             any("/gui/follow/offset " in f"{call} " for call in flat_calls)
         )
-        self.assertFalse(any("/gui/track " in f"{call} " for call in flat_calls))
+        self.assertTrue(any("/gui/track " in f"{call} " for call in flat_calls))
+        self.assertTrue(
+            any(
+                "x500_lidar_2d_0" in call
+                and "follow_target" in call
+                and "x: -12" in call
+                and "z: 6" in call
+                for call in flat_calls
+            )
+        )
         self.assertTrue(any("/gui/currently_tracked" in call for call in flat_calls))
 
-    def test_follow_camera_logs_unavailable_tracking_state(self) -> None:
+    def test_follow_camera_retries_until_wait_expires_without_confirmation(
+        self,
+    ) -> None:
         runner = FakeRunner(
             [
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
-                gui.CommandResult(0, "data: true\n", ""),
-                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "", ""),
+                gui.CommandResult(0, "", ""),
+                gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "", ""),
             ]
         )
         stdout = StringIO()
 
-        with redirect_stdout(stdout):
+        with redirect_stdout(stdout), mock.patch.object(gui.time, "sleep"):
             exit_code = gui.configure_follow_camera(
                 target="x500_lidar_2d_0",
                 offset_text="-12 0 6",
-                wait_s=5,
+                wait_s=3,
                 runner=runner,
-                required_accepted_attempts=3,
                 tracking_confirmation_attempts=1,
             )
 
         self.assertEqual(exit_code, 0)
+        flat_calls = [" ".join(call) for call in runner.calls]
+        self.assertEqual(
+            3,
+            sum("/gui/track " in f"{call} " for call in flat_calls),
+        )
         self.assertIn(
-            "state confirmation is unavailable",
+            "published 3 times but state was not confirmed",
             stdout.getvalue(),
         )
 
