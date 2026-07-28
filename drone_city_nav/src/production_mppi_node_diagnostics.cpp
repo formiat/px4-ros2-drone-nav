@@ -111,6 +111,8 @@ void ProductionMppiNode::publishDiagnostics(
        << " guide_heading_source="
        << globalGuideHeadingSourceName(esdf.global_guide_heading_source)
        << " guide_risk=" << globalGuideRiskTierName(esdf.global_guide_risk)
+       << " guide_acceptance="
+       << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason)
        << " guide_station_m=" << esdf.global_guide_projection.station_m
        << " guide_remaining_m=" << esdf.global_guide_projection.remaining_m
        << " lattice_search_performed="
@@ -206,7 +208,9 @@ void ProductionMppiNode::publishDiagnostics(
         << ",\"guide_heading_source\":\""
         << globalGuideHeadingSourceName(esdf.global_guide_heading_source) << '"'
         << ",\"guide_risk\":\"" << globalGuideRiskTierName(esdf.global_guide_risk)
-        << '"' << ",\"guide_station_m\":" << esdf.global_guide_projection.station_m
+        << '"' << ",\"guide_acceptance\":\""
+        << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason) << '"'
+        << ",\"guide_station_m\":" << esdf.global_guide_projection.station_m
         << ",\"guide_remaining_m\":" << esdf.global_guide_projection.remaining_m
         << ",\"lattice_search_performed\":"
         << (esdf.lattice_search_performed ? "true" : "false")

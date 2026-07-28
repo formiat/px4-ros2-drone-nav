@@ -13,6 +13,11 @@ namespace {
 
 constexpr double kEpsilon{1.0e-9};
 
+struct GlobalGuideRiskEvaluation {
+  GlobalGuideRiskTier risk{GlobalGuideRiskTier::kPreferred};
+  GlobalGuideAcceptanceReason rejection_reason{GlobalGuideAcceptanceReason::kAccepted};
+};
+
 [[nodiscard]] double dot(const Point2 first, const Point2 second) noexcept {
   return first.x * second.x + first.y * second.y;
 }
@@ -42,7 +47,9 @@ constexpr double kEpsilon{1.0e-9};
 
 [[nodiscard]] GlobalGuideRiskTier
 riskTier(const float clearance_m, const ActiveGlobalGuideConfig& config) noexcept {
-  if (!std::isfinite(clearance_m) || clearance_m <= config.collision_radius_m) {
+  if (std::isnan(clearance_m) ||
+      (std::isinf(clearance_m) && std::signbit(clearance_m)) ||
+      clearance_m <= config.collision_radius_m) {
     return GlobalGuideRiskTier::kCollision;
   }
   if (clearance_m < config.critical_distance_m) {
@@ -54,22 +61,40 @@ riskTier(const float clearance_m, const ActiveGlobalGuideConfig& config) noexcep
   return GlobalGuideRiskTier::kPreferred;
 }
 
-[[nodiscard]] GlobalGuideRiskTier suffixRisk(const std::span<const Point2> guide,
-                                             const double start_station_m,
-                                             const mppi::EsdfGrid& grid,
-                                             const std::span<const float> esdf_m,
-                                             const ActiveGlobalGuideConfig& config) {
+[[nodiscard]] GlobalGuideRiskEvaluation
+suffixRisk(const std::span<const Point2> guide, const double start_station_m,
+           const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+           const ActiveGlobalGuideConfig& config) {
   if (guide.size() < 2U) {
-    return GlobalGuideRiskTier::kCollision;
+    return {GlobalGuideRiskTier::kCollision,
+            GlobalGuideAcceptanceReason::kInvalidGuide};
   }
   double total_length_m = 0.0;
   for (std::size_t index = 1U; index < guide.size(); ++index) {
     total_length_m += distance(guide[index - 1U], guide[index]);
   }
   if (!(total_length_m > kEpsilon)) {
-    return GlobalGuideRiskTier::kCollision;
+    return {GlobalGuideRiskTier::kCollision,
+            GlobalGuideAcceptanceReason::kInvalidGuide};
   }
   GlobalGuideRiskTier worst = GlobalGuideRiskTier::kPreferred;
+  const auto evaluatePoint =
+      [&](const Point2 point) -> std::optional<GlobalGuideAcceptanceReason> {
+    const std::optional<float> clearance = clearanceAt(grid, esdf_m, point);
+    if (!clearance.has_value()) {
+      return GlobalGuideAcceptanceReason::kOutsideGrid;
+    }
+    if (std::isnan(*clearance) ||
+        (std::isinf(*clearance) && std::signbit(*clearance))) {
+      return GlobalGuideAcceptanceReason::kInvalidClearance;
+    }
+    const GlobalGuideRiskTier tier = riskTier(*clearance, config);
+    worst = std::max(worst, tier);
+    if (tier == GlobalGuideRiskTier::kCollision) {
+      return GlobalGuideAcceptanceReason::kCollision;
+    }
+    return std::nullopt;
+  };
   const double step_m = std::max(config.validation_sample_step_m,
                                  0.5 * static_cast<double>(grid.resolution_m));
   const double first_station = std::clamp(start_station_m, 0.0, total_length_m);
@@ -77,21 +102,18 @@ riskTier(const float clearance_m, const ActiveGlobalGuideConfig& config) noexcep
       static_cast<std::size_t>(std::ceil((total_length_m - first_station) / step_m));
   for (std::size_t index = 0U; index < sample_count; ++index) {
     const double station = first_station + static_cast<double>(index) * step_m;
-    const std::optional<float> clearance =
-        clearanceAt(grid, esdf_m, sampleGlobalGuide(guide, station));
-    const GlobalGuideRiskTier tier = clearance.has_value()
-                                         ? riskTier(*clearance, config)
-                                         : GlobalGuideRiskTier::kCollision;
-    worst = std::max(worst, tier);
-    if (worst == GlobalGuideRiskTier::kCollision) {
-      return worst;
+    if (const std::optional<GlobalGuideAcceptanceReason> rejection =
+            evaluatePoint(sampleGlobalGuide(guide, station));
+        rejection.has_value()) {
+      return {GlobalGuideRiskTier::kCollision, *rejection};
     }
   }
-  const std::optional<float> terminal_clearance =
-      clearanceAt(grid, esdf_m, guide.back());
-  return std::max(worst, terminal_clearance.has_value()
-                             ? riskTier(*terminal_clearance, config)
-                             : GlobalGuideRiskTier::kCollision);
+  if (const std::optional<GlobalGuideAcceptanceReason> rejection =
+          evaluatePoint(guide.back());
+      rejection.has_value()) {
+    return {GlobalGuideRiskTier::kCollision, *rejection};
+  }
+  return {worst, GlobalGuideAcceptanceReason::kAccepted};
 }
 
 [[nodiscard]] double blendAngles(const double first, const double second,
@@ -213,7 +235,7 @@ ActiveGlobalGuideUpdate ActiveGlobalGuideLifecycle::update(
     status_.projection.remaining_m =
         std::max(0.0, projection.total_length_m - current_station_m_);
     status_.current_risk =
-        suffixRisk(*guide_, current_station_m_, grid, esdf_m, config_);
+        suffixRisk(*guide_, current_station_m_, grid, esdf_m, config_).risk;
     const bool newly_blocked =
         status_.current_risk == GlobalGuideRiskTier::kCollision ||
         (status_.current_risk == GlobalGuideRiskTier::kCritical &&
@@ -253,28 +275,38 @@ ActiveGlobalGuideUpdate ActiveGlobalGuideLifecycle::update(
   return status_;
 }
 
-bool ActiveGlobalGuideLifecycle::accept(
+GlobalGuideAcceptanceResult ActiveGlobalGuideLifecycle::accept(
     std::shared_ptr<const std::vector<Point2>> guide, const bool reaches_mission_goal,
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const Point2 position) {
   if (!guide || guide->size() < 2U) {
-    return false;
+    return {.reason = GlobalGuideAcceptanceReason::kInvalidGuide,
+            .risk = GlobalGuideRiskTier::kCollision};
   }
   const GlobalGuideProjection projection = projectOntoGlobalGuide(*guide, position);
-  if (!projection.valid || projection.cross_track_m > config_.maximum_cross_track_m) {
-    return false;
+  if (!projection.valid) {
+    return {.reason = GlobalGuideAcceptanceReason::kInvalidProjection,
+            .risk = GlobalGuideRiskTier::kCollision,
+            .projection = projection};
   }
-  const GlobalGuideRiskTier accepted_risk =
+  if (projection.cross_track_m > config_.maximum_cross_track_m) {
+    return {.reason = GlobalGuideAcceptanceReason::kCrossTrackExceeded,
+            .risk = GlobalGuideRiskTier::kCollision,
+            .projection = projection};
+  }
+  const GlobalGuideRiskEvaluation evaluation =
       suffixRisk(*guide, projection.station_m, grid, esdf_m, config_);
-  if (accepted_risk == GlobalGuideRiskTier::kCollision) {
-    return false;
+  if (evaluation.rejection_reason != GlobalGuideAcceptanceReason::kAccepted) {
+    return {.reason = evaluation.rejection_reason,
+            .risk = evaluation.risk,
+            .projection = projection};
   }
 
   guide_ = std::move(guide);
   ++generation_;
   current_station_m_ = projection.station_m;
   reaches_mission_goal_ = reaches_mission_goal;
-  accepted_risk_ = accepted_risk;
+  accepted_risk_ = evaluation.risk;
   reference_tangent_ = projection.tangent;
   reference_tangent_valid_ = true;
   status_ = ActiveGlobalGuideUpdate{
@@ -287,7 +319,10 @@ bool ActiveGlobalGuideLifecycle::accept(
       .current_risk = accepted_risk_,
       .projection = projection,
   };
-  return true;
+  return {.accepted = true,
+          .reason = GlobalGuideAcceptanceReason::kAccepted,
+          .risk = accepted_risk_,
+          .projection = projection};
 }
 
 GlobalGuideHeading
@@ -423,6 +458,29 @@ const char* globalGuideRiskTierName(const GlobalGuideRiskTier tier) noexcept {
     case GlobalGuideRiskTier::kCritical:
       return "critical";
     case GlobalGuideRiskTier::kCollision:
+      return "collision";
+  }
+  return "unknown";
+}
+
+const char*
+globalGuideAcceptanceReasonName(const GlobalGuideAcceptanceReason reason) noexcept {
+  switch (reason) {
+    case GlobalGuideAcceptanceReason::kNotAttempted:
+      return "not_attempted";
+    case GlobalGuideAcceptanceReason::kAccepted:
+      return "accepted";
+    case GlobalGuideAcceptanceReason::kInvalidGuide:
+      return "invalid_guide";
+    case GlobalGuideAcceptanceReason::kInvalidProjection:
+      return "invalid_projection";
+    case GlobalGuideAcceptanceReason::kCrossTrackExceeded:
+      return "cross_track_exceeded";
+    case GlobalGuideAcceptanceReason::kOutsideGrid:
+      return "outside_grid";
+    case GlobalGuideAcceptanceReason::kInvalidClearance:
+      return "invalid_clearance";
+    case GlobalGuideAcceptanceReason::kCollision:
       return "collision";
   }
   return "unknown";

@@ -64,6 +64,8 @@ struct ProductionMppiPreparedEsdf {
   GlobalGuideHeadingSource global_guide_heading_source{
       GlobalGuideHeadingSource::kYawFallback};
   GlobalGuideRiskTier global_guide_risk{GlobalGuideRiskTier::kPreferred};
+  GlobalGuideAcceptanceReason global_guide_acceptance_reason{
+      GlobalGuideAcceptanceReason::kNotAttempted};
   GlobalGuideProjection global_guide_projection{};
   bool lattice_search_performed{false};
   bool lattice_legacy_valid{false};

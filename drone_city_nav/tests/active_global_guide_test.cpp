@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <vector>
@@ -29,8 +30,8 @@ TEST(ActiveGlobalGuideTest, RetainsClearGuideAcrossWorldUpdates) {
   ActiveGlobalGuideLifecycle lifecycle;
   const std::vector<float> esdf = clearEsdf();
 
-  ASSERT_TRUE(
-      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 0U);
 
@@ -45,8 +46,8 @@ TEST(ActiveGlobalGuideTest, RetainsClearGuideAcrossWorldUpdates) {
 TEST(ActiveGlobalGuideTest, ReleasesGuideWhenNewCriticalBandAppears) {
   ActiveGlobalGuideLifecycle lifecycle;
   std::vector<float> esdf = clearEsdf();
-  ASSERT_TRUE(
-      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
   esdf[10U * 80U + 20U] = 0.75F;
 
   const ActiveGlobalGuideUpdate update =
@@ -61,8 +62,8 @@ TEST(ActiveGlobalGuideTest, KeepsGuideAcceptedInsideCriticalBand) {
   ActiveGlobalGuideLifecycle lifecycle;
   std::vector<float> esdf = clearEsdf();
   esdf[10U * 80U + 20U] = 0.75F;
-  ASSERT_TRUE(
-      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
 
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 0U);
@@ -71,13 +72,67 @@ TEST(ActiveGlobalGuideTest, KeepsGuideAcceptedInsideCriticalBand) {
   EXPECT_EQ(update.current_risk, GlobalGuideRiskTier::kCritical);
 }
 
+TEST(ActiveGlobalGuideTest, AcceptsPositiveInfinityAsTruncatedPreferredClearance) {
+  ActiveGlobalGuideLifecycle lifecycle;
+  const mppi::EsdfGrid model = grid();
+  const std::vector<float> esdf(static_cast<std::size_t>(model.width * model.height),
+                                std::numeric_limits<float>::infinity());
+
+  const GlobalGuideAcceptanceResult result =
+      lifecycle.accept(straightGuide(), false, model, esdf, Point2{2.5, 10.5});
+
+  EXPECT_TRUE(result.accepted);
+  EXPECT_EQ(result.reason, GlobalGuideAcceptanceReason::kAccepted);
+  EXPECT_EQ(result.risk, GlobalGuideRiskTier::kPreferred);
+}
+
+TEST(ActiveGlobalGuideTest, RejectsNanClearanceAsInvalid) {
+  ActiveGlobalGuideLifecycle lifecycle;
+  std::vector<float> esdf = clearEsdf();
+  esdf[10U * 80U + 20U] = std::numeric_limits<float>::quiet_NaN();
+
+  const GlobalGuideAcceptanceResult result =
+      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5});
+
+  EXPECT_FALSE(result.accepted);
+  EXPECT_EQ(result.reason, GlobalGuideAcceptanceReason::kInvalidClearance);
+  EXPECT_EQ(result.risk, GlobalGuideRiskTier::kCollision);
+}
+
+TEST(ActiveGlobalGuideTest, RejectsNegativeInfinityClearanceAsInvalid) {
+  ActiveGlobalGuideLifecycle lifecycle;
+  std::vector<float> esdf = clearEsdf();
+  esdf[10U * 80U + 20U] = -std::numeric_limits<float>::infinity();
+
+  const GlobalGuideAcceptanceResult result =
+      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5});
+
+  EXPECT_FALSE(result.accepted);
+  EXPECT_EQ(result.reason, GlobalGuideAcceptanceReason::kInvalidClearance);
+  EXPECT_EQ(result.risk, GlobalGuideRiskTier::kCollision);
+}
+
+TEST(ActiveGlobalGuideTest, RejectsGuideLeavingGrid) {
+  ActiveGlobalGuideLifecycle lifecycle;
+  const std::vector<float> esdf = clearEsdf();
+  const auto guide = std::make_shared<const std::vector<Point2>>(
+      std::vector<Point2>{{2.5, 10.5}, {82.5, 10.5}});
+
+  const GlobalGuideAcceptanceResult result =
+      lifecycle.accept(guide, false, grid(), esdf, Point2{2.5, 10.5});
+
+  EXPECT_FALSE(result.accepted);
+  EXPECT_EQ(result.reason, GlobalGuideAcceptanceReason::kOutsideGrid);
+  EXPECT_EQ(result.risk, GlobalGuideRiskTier::kCollision);
+}
+
 TEST(ActiveGlobalGuideTest, ReleasesNonTerminalGuideNearItsEnd) {
   ActiveGlobalGuideConfig config;
   config.minimum_remaining_m = 15.0;
   ActiveGlobalGuideLifecycle lifecycle{config};
   const std::vector<float> esdf = clearEsdf();
-  ASSERT_TRUE(
-      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
 
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{32.5, 10.5}, 0U);
@@ -89,7 +144,8 @@ TEST(ActiveGlobalGuideTest, ReleasesNonTerminalGuideNearItsEnd) {
 TEST(ActiveGlobalGuideTest, KeepsMissionGoalGuideNearItsEnd) {
   ActiveGlobalGuideLifecycle lifecycle;
   const std::vector<float> esdf = clearEsdf();
-  ASSERT_TRUE(lifecycle.accept(straightGuide(), true, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), true, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
 
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{40.5, 10.5}, 1U);
@@ -102,8 +158,8 @@ TEST(ActiveGlobalGuideTest, KeepsMissionGoalGuideNearItsEnd) {
 TEST(ActiveGlobalGuideTest, ReleasesGuideForNewStallGeneration) {
   ActiveGlobalGuideLifecycle lifecycle;
   const std::vector<float> esdf = clearEsdf();
-  ASSERT_TRUE(
-      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
 
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 1U);
@@ -117,8 +173,8 @@ TEST(ActiveGlobalGuideTest, DoesNotApplyStallGenerationFromBeforeAcceptance) {
   const std::vector<float> esdf = clearEsdf();
   EXPECT_EQ(lifecycle.update(grid(), esdf, Point2{2.5, 10.5}, 4U).release_reason,
             GlobalGuideReleaseReason::kNoActiveGuide);
-  ASSERT_TRUE(
-      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
 
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 4U);
@@ -142,8 +198,8 @@ TEST(ActiveGlobalGuideTest, UsesVelocityHeadingAtCruiseSpeed) {
 TEST(ActiveGlobalGuideTest, UsesAcceptedGuideHeadingWhileStationary) {
   ActiveGlobalGuideLifecycle lifecycle;
   const std::vector<float> esdf = clearEsdf();
-  ASSERT_TRUE(
-      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
 
   const GlobalGuideHeading heading =
       lifecycle.selectPlanningHeading(mppi::State{}, std::numbers::pi / 2.0);
@@ -155,8 +211,8 @@ TEST(ActiveGlobalGuideTest, UsesAcceptedGuideHeadingWhileStationary) {
 TEST(ActiveGlobalGuideTest, BlendsGuideAndVelocityAcrossSpeedTransition) {
   ActiveGlobalGuideLifecycle lifecycle;
   const std::vector<float> esdf = clearEsdf();
-  ASSERT_TRUE(
-      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5}));
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
   mppi::State state;
   state.vy = 1.0F;
 

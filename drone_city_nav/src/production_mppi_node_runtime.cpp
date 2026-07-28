@@ -118,6 +118,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     GlobalGuideHeading guide_heading;
     RiskAwareLatticeResult lattice_observation;
     bool lattice_search_performed = false;
+    GlobalGuideAcceptanceResult guide_acceptance;
     std::shared_ptr<const std::vector<Point2>> guide;
     if (navigation.valid && active_guide_lifecycle_) {
       const Point2 position{navigation.state.x, navigation.state.y};
@@ -140,10 +141,13 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             lattice_observation.reached_mission_goal && !candidate->empty() &&
             distance(candidate->back(), Point2{mission_goal_.x, mission_goal_.y}) <=
                 lattice_config_.goal_tolerance_m;
-        if (lattice_observation.valid &&
-            active_guide_lifecycle_->accept(candidate, reaches_mission_goal, grid,
-                                            *host_distances, position)) {
+        if (lattice_observation.valid) {
+          guide_acceptance = active_guide_lifecycle_->accept(
+              candidate, reaches_mission_goal, grid, *host_distances, position);
+        }
+        if (guide_acceptance.accepted) {
           guide = active_guide_lifecycle_->guide();
+          guide_update = active_guide_lifecycle_->status();
           active_guide_expansions = lattice_observation.expansions;
           active_guide_cost = lattice_observation.cost;
         } else {
@@ -178,6 +182,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         .global_guide_release_reason = guide_update.release_reason,
         .global_guide_heading_source = guide_heading.source,
         .global_guide_risk = active_status.current_risk,
+        .global_guide_acceptance_reason = guide_acceptance.reason,
         .global_guide_projection = active_status.projection,
         .lattice_search_performed = lattice_search_performed,
         .lattice_legacy_valid = lattice_observation.valid,
@@ -203,7 +208,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         " guide_valid=%s guide_points=%zu guide_expansions=%zu guide_cost=%.2f "
         "guide_generation=%" PRIu64
         " guide_reused=%s guide_mission_goal_hold=%s guide_release=%s "
-        "guide_heading_source=%s guide_risk=%s guide_station_m=%.2f "
+        "guide_heading_source=%s guide_risk=%s guide_acceptance=%s "
+        "guide_station_m=%.2f "
         "guide_remaining_m=%.2f guide_cross_track_m=%.2f "
         "lattice_search_performed=%s lattice_legacy_valid=%s lattice_status=%s "
         "lattice_termination=%s lattice_planning_goal_reached=%s "
@@ -221,6 +227,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         globalGuideReleaseReasonName(prepared.global_guide_release_reason),
         globalGuideHeadingSourceName(prepared.global_guide_heading_source),
         globalGuideRiskTierName(prepared.global_guide_risk),
+        globalGuideAcceptanceReasonName(prepared.global_guide_acceptance_reason),
         prepared.global_guide_projection.station_m,
         prepared.global_guide_projection.remaining_m,
         prepared.global_guide_projection.cross_track_m,

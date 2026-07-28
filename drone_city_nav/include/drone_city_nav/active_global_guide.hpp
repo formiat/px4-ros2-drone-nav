@@ -33,6 +33,17 @@ enum class GlobalGuideRiskTier : std::uint8_t {
   kCollision,
 };
 
+enum class GlobalGuideAcceptanceReason : std::uint8_t {
+  kNotAttempted,
+  kAccepted,
+  kInvalidGuide,
+  kInvalidProjection,
+  kCrossTrackExceeded,
+  kOutsideGrid,
+  kInvalidClearance,
+  kCollision,
+};
+
 struct ActiveGlobalGuideConfig {
   double collision_radius_m{0.5};
   double critical_distance_m{1.0};
@@ -69,6 +80,13 @@ struct ActiveGlobalGuideUpdate {
 struct GlobalGuideHeading {
   double heading_rad{0.0};
   GlobalGuideHeadingSource source{GlobalGuideHeadingSource::kYawFallback};
+};
+
+struct GlobalGuideAcceptanceResult {
+  bool accepted{false};
+  GlobalGuideAcceptanceReason reason{GlobalGuideAcceptanceReason::kNotAttempted};
+  GlobalGuideRiskTier risk{GlobalGuideRiskTier::kPreferred};
+  GlobalGuideProjection projection{};
 };
 
 struct GlobalGuideProgressConfig {
@@ -108,9 +126,9 @@ public:
                                                Point2 position,
                                                std::uint64_t stall_generation);
 
-  [[nodiscard]] bool accept(std::shared_ptr<const std::vector<Point2>> guide,
-                            bool reaches_mission_goal, const mppi::EsdfGrid& grid,
-                            std::span<const float> esdf_m, Point2 position);
+  [[nodiscard]] GlobalGuideAcceptanceResult
+  accept(std::shared_ptr<const std::vector<Point2>> guide, bool reaches_mission_goal,
+         const mppi::EsdfGrid& grid, std::span<const float> esdf_m, Point2 position);
 
   [[nodiscard]] GlobalGuideHeading selectPlanningHeading(const mppi::State& state,
                                                          double yaw_fallback_rad) const;
@@ -154,5 +172,7 @@ globalGuideReleaseReasonName(GlobalGuideReleaseReason reason) noexcept;
 [[nodiscard]] const char*
 globalGuideHeadingSourceName(GlobalGuideHeadingSource source) noexcept;
 [[nodiscard]] const char* globalGuideRiskTierName(GlobalGuideRiskTier tier) noexcept;
+[[nodiscard]] const char*
+globalGuideAcceptanceReasonName(GlobalGuideAcceptanceReason reason) noexcept;
 
 } // namespace drone_city_nav
