@@ -169,6 +169,7 @@ private:
   void publishExecutionHorizon(const mppi::MppiTickInput& input,
                                const mppi::MppiTickResult& result,
                                const ProductionMppiPreparedEsdf& esdf,
+                               const PassageCoordinatorResult& passage_coordinator,
                                ProductionMppiPlanningState planning_state,
                                std::int64_t now_ns);
 

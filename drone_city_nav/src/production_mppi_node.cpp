@@ -160,8 +160,27 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("passage_vertical_clearance_margin_m", 1.0);
   passage_coordinator_config_.vertical_capture_hysteresis_m =
       declare_parameter<double>("passage_vertical_capture_hysteresis_m", 0.25);
+  passage_coordinator_config_.preferred_z_capture_tolerance_m =
+      declare_parameter<double>("passage_preferred_z_capture_tolerance_m", 0.5);
   passage_coordinator_config_.maximum_capture_vertical_speed_mps =
       declare_parameter<double>("passage_vertical_capture_maximum_speed_mps", 0.5);
+  const std::int64_t passage_capture_stable_cycles =
+      declare_parameter<std::int64_t>("passage_capture_stable_cycles", 3);
+  const std::int64_t passage_retention_violation_cycles =
+      declare_parameter<std::int64_t>("passage_retention_violation_cycles", 3);
+  if (passage_capture_stable_cycles <= 0 || passage_retention_violation_cycles <= 0) {
+    throw std::invalid_argument{"passage stability cycles must be positive"};
+  }
+  passage_coordinator_config_.capture_stable_cycles =
+      static_cast<std::size_t>(passage_capture_stable_cycles);
+  passage_coordinator_config_.retention_violation_cycles =
+      static_cast<std::size_t>(passage_retention_violation_cycles);
+  passage_coordinator_config_.lateral_alignment_tolerance_m =
+      declare_parameter<double>("passage_lateral_alignment_tolerance_m", 2.0);
+  passage_coordinator_config_.approach_alignment_speed_mps =
+      declare_parameter<double>("passage_approach_alignment_speed_mps", 3.0);
+  passage_coordinator_config_.approach_staging_distance_m =
+      declare_parameter<double>("passage_approach_staging_distance_m", 2.0);
   passage_coordinator_config_.alignment_time_margin_s =
       declare_parameter<double>("passage_alignment_time_margin_s", 0.5);
   passage_coordinator_config_.minimum_stationary_trigger_distance_m =

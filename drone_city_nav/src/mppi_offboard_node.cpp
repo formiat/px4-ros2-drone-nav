@@ -31,11 +31,16 @@ namespace {
 }
 
 [[nodiscard]] bool finitePoint(const msg::MppiHorizonPoint& point) {
-  return std::isfinite(point.time_from_start_s) && std::isfinite(point.velocity.x) &&
-         std::isfinite(point.velocity.y) && std::isfinite(point.velocity.z) &&
-         std::isfinite(point.acceleration.x) && std::isfinite(point.acceleration.y) &&
-         std::isfinite(point.acceleration.z) && std::isfinite(point.yaw_rad) &&
-         std::isfinite(point.yaw_rate_radps);
+  return std::isfinite(point.time_from_start_s) && std::isfinite(point.position.x) &&
+         std::isfinite(point.position.y) && std::isfinite(point.position.z) &&
+         std::isfinite(point.velocity.x) && std::isfinite(point.velocity.y) &&
+         std::isfinite(point.velocity.z) && std::isfinite(point.acceleration.x) &&
+         std::isfinite(point.acceleration.y) && std::isfinite(point.acceleration.z) &&
+         std::isfinite(point.yaw_rad) && std::isfinite(point.yaw_rate_radps);
+}
+
+[[nodiscard]] bool finitePoint(const geometry_msgs::msg::Point& point) {
+  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
 
 [[nodiscard]] double interpolate(const double first, const double second,
@@ -207,15 +212,48 @@ private:
   }
 
   void onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
-    if (horizon.sequence <= horizon_sequence_ || horizon.header.frame_id != "map" ||
-        horizon.points.size() < 2U ||
-        timeNanoseconds(horizon.valid_until) <= timeNanoseconds(horizon.valid_from) ||
-        !std::ranges::all_of(horizon.points, finitePoint)) {
+    const char* rejection_reason = nullptr;
+    if (horizon.sequence <= horizon_sequence_) {
+      rejection_reason = "stale_sequence";
+    } else if (horizon.header.frame_id != "map") {
+      rejection_reason = "invalid_frame";
+    } else if (horizon.points.size() < 2U) {
+      rejection_reason = "insufficient_points";
+    } else if (timeNanoseconds(horizon.valid_until) <=
+               timeNanoseconds(horizon.valid_from)) {
+      rejection_reason = "invalid_validity_window";
+    } else if (!std::ranges::all_of(horizon.points,
+                                    [](const msg::MppiHorizonPoint& point) {
+                                      return finitePoint(point);
+                                    })) {
+      rejection_reason = "non_finite_point";
+    } else if (horizon.stationary_position_hold &&
+               !finitePoint(horizon.stationary_hold_position)) {
+      rejection_reason = "non_finite_hold_target";
+    }
+    if (rejection_reason != nullptr) {
+      if (horizon.stationary_position_hold) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "PASSAGE_POSITION_HOLD horizon_rejected sequence=%" PRIu64
+                             " previous=%" PRIu64 " reason=%s",
+                             horizon.sequence, horizon_sequence_, rejection_reason);
+      }
       return;
     }
+    const bool previous_hold =
+        horizon_.has_value() && horizon_.value().stationary_position_hold;
     horizon_ = horizon;
     horizon_sequence_ = horizon.sequence;
     horizon_receive_ns_ = now().nanoseconds();
+    if (previous_hold != horizon.stationary_position_hold) {
+      RCLCPP_INFO(get_logger(),
+                  "PASSAGE_POSITION_HOLD active=%s sequence=%" PRIu64
+                  " target=(%.3f,%.3f,%.3f)",
+                  horizon.stationary_position_hold ? "true" : "false", horizon.sequence,
+                  horizon.stationary_hold_position.x,
+                  horizon.stationary_hold_position.y,
+                  horizon.stationary_hold_position.z);
+    }
   }
 
   [[nodiscard]] bool horizonFresh() const {
@@ -230,6 +268,10 @@ private:
            now_ns < timeNanoseconds(horizon_->valid_until);
   }
 
+  [[nodiscard]] bool stationaryPassageHoldActive() const noexcept {
+    return horizon_.has_value() && horizon_->stationary_position_hold;
+  }
+
   void controlTick() {
     if (crashed_) {
       publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
@@ -237,11 +279,12 @@ private:
       return;
     }
     const bool navigating =
-        position_valid_ && altitude_m_ >= initial_altitude_m_ - 0.5 &&
-        takeoff_complete_stamp_.has_value() &&
+        position_valid_ && takeoff_complete_stamp_.has_value() &&
         (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
-    const OffboardSetpointMode mode = navigating ? OffboardSetpointMode::kVelocityCruise
-                                                 : OffboardSetpointMode::kPositionHold;
+    const bool stationary_passage_hold = navigating && stationaryPassageHoldActive();
+    const OffboardSetpointMode mode = navigating && !stationary_passage_hold
+                                          ? OffboardSetpointMode::kVelocityCruise
+                                          : OffboardSetpointMode::kPositionHold;
     offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
     if (!navigating) {
       publishTakeoffSetpoint();
@@ -249,6 +292,8 @@ private:
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
       }
+    } else if (stationary_passage_hold) {
+      publishStationaryPassageHoldSetpoint();
     } else if (!publishHorizonSetpoint()) {
       publishBrakingSetpoint();
     }
@@ -278,6 +323,18 @@ private:
   void publishTakeoffSetpoint() {
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
         nowMicros(), Point2{local_x_, local_y_}, initial_altitude_m_, heading_rad_));
+  }
+
+  void publishStationaryPassageHoldSetpoint() {
+    if (!horizon_.has_value()) {
+      return;
+    }
+    const geometry_msgs::msg::Point& target = horizon_.value().stationary_hold_position;
+    const Point2 local_target{target.x - px4_local_origin_.x,
+                              target.y - px4_local_origin_.y};
+    setpoint_pub_->publish(buildPositionTrajectorySetpoint(nowMicros(), local_target,
+                                                           target.z, heading_rad_));
+    publishAppliedControlFeedback(Point2{}, 0.0, 0.0, false);
   }
 
   [[nodiscard]] bool publishHorizonSetpoint() {

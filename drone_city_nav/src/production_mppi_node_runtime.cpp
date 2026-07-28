@@ -384,6 +384,12 @@ void ProductionMppiNode::planningTick() {
       speed_policy.reference_speed_mps = 0.0;
       speed_policy.target_lookahead_m = 0.0;
       target_source = "passage_vertical_alignment";
+    } else if (passage_result.approach_alignment_active) {
+      target.x = static_cast<float>(passage_result.approach_target.x);
+      target.y = static_cast<float>(passage_result.approach_target.y);
+      speed_policy.reference_speed_mps = passage_result.approach_reference_speed_mps;
+      speed_policy.target_lookahead_m = 0.0;
+      target_source = "passage_approach_alignment";
     } else {
       target_source = "passage_primitive";
     }
@@ -472,7 +478,7 @@ void ProductionMppiNode::planningTick() {
   ++tick_sequence_;
   recordTickStatistics(result, passage_result, planning_state,
                        liveness.reseed_requested);
-  publishExecutionHorizon(input, result, *esdf, planning_state, now_ns);
+  publishExecutionHorizon(input, result, *esdf, passage_result, planning_state, now_ns);
 
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);

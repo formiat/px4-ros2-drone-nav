@@ -146,7 +146,13 @@ production_mppi_node:
     no_static_passage_speed_limit_mps: 5.0
     passage_vertical_clearance_margin_m: 1.0
     passage_vertical_capture_hysteresis_m: 0.25
+    passage_preferred_z_capture_tolerance_m: 0.5
     passage_vertical_capture_maximum_speed_mps: 0.5
+    passage_capture_stable_cycles: 3
+    passage_retention_violation_cycles: 3
+    passage_lateral_alignment_tolerance_m: 2.0
+    passage_approach_alignment_speed_mps: 3.0
+    passage_approach_staging_distance_m: 2.0
     passage_alignment_time_margin_s: 0.5
     passage_stationary_trigger_minimum_distance_m: 2.0
     maximum_vertical_acceleration_mps2: 4.0

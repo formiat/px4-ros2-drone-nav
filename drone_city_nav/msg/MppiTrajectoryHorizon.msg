@@ -7,4 +7,6 @@ uint64 obstacle_revision
 uint8 risk_tier
 bool emergency_braking
 bool passage_constrained
+bool stationary_position_hold
+geometry_msgs/Point stationary_hold_position
 MppiHorizonPoint[] points

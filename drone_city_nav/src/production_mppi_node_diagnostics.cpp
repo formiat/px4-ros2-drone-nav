@@ -216,10 +216,18 @@ void ProductionMppiNode::processDiagnostics(
        << (passage_coordinator.opening_id.empty() ? "none"
                                                   : passage_coordinator.opening_id)
        << " passage_xy_hold=" << (passage_coordinator.hold_xy ? "true" : "false")
+       << " passage_approach_alignment="
+       << (passage_coordinator.approach_alignment_active ? "true" : "false")
        << " passage_vertical_ready="
        << (passage_coordinator.vertical_ready ? "true" : "false")
        << " passage_target_z_m=" << passage_coordinator.preferred_z_m
        << " passage_vertical_error_m=" << passage_coordinator.vertical_error_m
+       << " passage_lateral_error_m=" << passage_coordinator.lateral_error_m
+       << " passage_approach_reference_speed_mps="
+       << passage_coordinator.approach_reference_speed_mps
+       << " passage_capture_stable_cycles=" << passage_coordinator.capture_stable_cycles
+       << " passage_retention_violation_cycles="
+       << passage_coordinator.retention_violation_cycles
        << " passage_distance_to_entry_m=" << passage_coordinator.distance_to_entry_m
        << " passage_required_alignment_time_s="
        << passage_coordinator.required_alignment_time_s
@@ -347,10 +355,19 @@ void ProductionMppiNode::processDiagnostics(
         << passageCoordinatorPhaseName(passage_coordinator.phase) << '"'
         << ",\"passage_opening\":\"" << passage_coordinator.opening_id << '"'
         << ",\"passage_xy_hold\":" << (passage_coordinator.hold_xy ? "true" : "false")
+        << ",\"passage_approach_alignment\":"
+        << (passage_coordinator.approach_alignment_active ? "true" : "false")
         << ",\"passage_vertical_ready\":"
         << (passage_coordinator.vertical_ready ? "true" : "false")
         << ",\"passage_target_z_m\":" << passage_coordinator.preferred_z_m
         << ",\"passage_vertical_error_m\":" << passage_coordinator.vertical_error_m
+        << ",\"passage_lateral_error_m\":" << passage_coordinator.lateral_error_m
+        << ",\"passage_approach_reference_speed_mps\":"
+        << passage_coordinator.approach_reference_speed_mps
+        << ",\"passage_capture_stable_cycles\":"
+        << passage_coordinator.capture_stable_cycles
+        << ",\"passage_retention_violation_cycles\":"
+        << passage_coordinator.retention_violation_cycles
         << ",\"passage_distance_to_entry_m\":"
         << passage_coordinator.distance_to_entry_m
         << ",\"passage_required_alignment_time_s\":"
