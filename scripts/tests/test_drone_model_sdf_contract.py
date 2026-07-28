@@ -13,6 +13,7 @@ WRAPPER_SDF = REPO_ROOT / "drone_city_nav/models/x500_lidar_2d/model.sdf"
 LIDAR_SDF = REPO_ROOT / "drone_city_nav/models/lidar_2d_v2/model.sdf"
 NAV_CONFIG = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
 WORLD_SDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.sdf"
+PASSAGES_3D = REPO_ROOT / "drone_city_nav/worlds/known_passages.passages3d"
 
 GZ_VISIBILITY_ALL = 0x0FFFFFFF
 PASSAGE_MASS_VISIBILITY_FLAG = 0x08000000
@@ -101,7 +102,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
             if int(visual.findtext("visibility_flags", "0"))
             & PASSAGE_MASS_VISIBILITY_FLAG
         ]
-        self.assertEqual(6, len(flagged_visuals))
+        self.assertEqual(12, len(flagged_visuals))
 
         connector_models = [
             model
@@ -110,7 +111,18 @@ class DroneModelSdfContractTest(unittest.TestCase):
                 "physical_building_connector_"
             )
         ]
-        self.assertEqual(3, len(connector_models))
+        self.assertEqual(6, len(connector_models))
+        self.assertEqual(
+            {
+                "physical_building_connector_04_12",
+                "physical_building_connector_06_14",
+                "physical_building_connector_11_19",
+                "physical_building_connector_20_21",
+                "physical_building_connector_22_23",
+                "physical_building_connector_22_30",
+            },
+            {model.attrib["name"] for model in connector_models},
+        )
 
         for model in connector_models:
             for mass_name in ("lower_mass", "upper_mass"):
@@ -131,6 +143,39 @@ class DroneModelSdfContractTest(unittest.TestCase):
                     visual_flags = int(visual.findtext("visibility_flags", ""))
                     self.assertEqual(PASSAGE_MASS_VISIBILITY_FLAG, visual_flags)
                     self.assertEqual(0, lidar_mask & visual_flags)
+
+    def test_physical_connectors_match_known_passage_annotations(self) -> None:
+        world_root = parse_sdf(WORLD_SDF)
+        connector_poses = {
+            model.attrib["name"]: [
+                float(value) for value in model.findtext("pose", "").split()
+            ]
+            for model in world_root.iter("model")
+            if model.attrib.get("name", "").startswith(
+                "physical_building_connector_"
+            )
+        }
+        structures = {}
+        openings = {}
+        for raw_line in PASSAGES_3D.read_text(encoding="utf-8").splitlines():
+            line = raw_line.partition("#")[0].strip()
+            if not line:
+                continue
+            fields = line.split()
+            if fields[0] == "structure":
+                structures[fields[1]] = tuple(float(value) for value in fields[2:])
+            elif fields[0] == "opening":
+                openings[fields[1]] = fields[2]
+
+        self.assertEqual(set(connector_poses), set(structures))
+        self.assertEqual(set(connector_poses), set(openings))
+        for connector, pose in connector_poses.items():
+            with self.subTest(connector=connector):
+                center_x_m, center_y_m = structures[connector][:2]
+                self.assertAlmostEqual(center_y_m - 225.0, pose[0])
+                self.assertAlmostEqual(center_x_m - 135.0, pose[1])
+                self.assertEqual(f"{connector.removeprefix('physical_building_')}_opening",
+                                 openings[connector])
 
     def test_lidar_sensor_pose_matches_configured_full_extrinsic(self) -> None:
         wrapper_root = parse_sdf(WRAPPER_SDF)
