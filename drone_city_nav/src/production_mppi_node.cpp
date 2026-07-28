@@ -46,6 +46,8 @@ ProductionMppiNode::ProductionMppiNode()
     : Node{"production_mppi_node"} {
   tick_rate_hz_ = declare_parameter<double>("tick_rate_hz", 50.0);
   rviz_rate_hz_ = declare_parameter<double>("rviz_rate_hz", 10.0);
+  diagnostics_info_rate_hz_ =
+      declare_parameter<double>("diagnostics_info_rate_hz", 5.0);
   deadline_ms_ = declare_parameter<double>("deadline_ms", 20.0);
   maximum_pose_age_ms_ = declare_parameter<double>("maximum_pose_age_ms", 150.0);
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
@@ -269,8 +271,11 @@ ProductionMppiNode::ProductionMppiNode()
   liveness_config_.minimum_predicted_terminal_progress_m =
       declare_parameter<double>("liveness_minimum_predicted_terminal_progress_m", 5.0);
   rviz_period_ns_ = static_cast<std::int64_t>(1.0e9 / std::max(0.1, rviz_rate_hz_));
+  diagnostics_info_period_ns_ =
+      static_cast<std::int64_t>(1.0e9 / std::max(0.1, diagnostics_info_rate_hz_));
 
-  if (!(tick_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
+  if (!(tick_rate_hz_ > 0.0) || !(rviz_rate_hz_ > 0.0) ||
+      !(diagnostics_info_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
       !(maximum_control_feedback_age_ms_ > 0.0) ||
       !std::isfinite(passage_speed_policy_.static_limit_mps) ||
       passage_speed_policy_.static_limit_mps < 0.0F ||
@@ -351,6 +356,8 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<std::string>("execution_horizon_topic",
                                      "/drone_city_nav/mppi/execution_horizon"),
       rclcpp::QoS{2}.reliable());
+  diagnostics_worker_ =
+      std::jthread([this](const std::stop_token token) { diagnosticsWorker(token); });
   esdf_worker_ =
       std::jthread([this](const std::stop_token token) { esdfWorker(token); });
   planning_timer_ = create_wall_timer(
@@ -385,6 +392,11 @@ ProductionMppiNode::ProductionMppiNode()
 }
 
 ProductionMppiNode::~ProductionMppiNode() {
+  if (diagnostics_worker_.joinable()) {
+    diagnostics_worker_.request_stop();
+    diagnostics_mailbox_.notifyAll();
+    diagnostics_worker_.join();
+  }
   if (esdf_worker_.joinable()) {
     esdf_worker_.request_stop();
     raw_queue_condition_.notify_all();

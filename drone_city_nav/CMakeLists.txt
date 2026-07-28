@@ -347,6 +347,12 @@ if(BUILD_TESTING)
   target_link_libraries(mppi_liveness_test_current drone_city_nav_core)
   enable_project_warnings(mppi_liveness_test_current)
 
+  ament_add_gtest(latest_value_mailbox_test
+                  tests/latest_value_mailbox_test.cpp)
+  target_compile_features(latest_value_mailbox_test PRIVATE cxx_std_20)
+  target_include_directories(latest_value_mailbox_test PRIVATE include)
+  enable_project_warnings(latest_value_mailbox_test)
+
   ament_add_gtest(mppi_post_update_classification_test
                   tests/mppi_post_update_classification_test.cpp)
   target_compile_features(mppi_post_update_classification_test PRIVATE cxx_std_20)

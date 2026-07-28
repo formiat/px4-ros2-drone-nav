@@ -298,11 +298,13 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiNavigation navigation;
   ProductionMppiPredictionError prediction;
   ProductionMppiAppliedControl applied_control;
+  std::uint64_t memory_sequence{0U};
   {
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
     prediction = latest_prediction_error_;
     applied_control = applied_control_;
+    memory_sequence = memory_sequence_;
   }
   std::optional<ProductionMppiPreparedEsdf> esdf;
   {
@@ -426,14 +428,6 @@ void ProductionMppiNode::planningTick() {
     if (guide_progress.stalled) {
       guide_stall_generation_.store(guide_progress.stall_generation,
                                     std::memory_order_relaxed);
-      RCLCPP_WARN(
-          get_logger(),
-          "GLOBAL_GUIDE_STALL guide_generation=%" PRIu64 " stall_generation=%" PRIu64
-          " observation_age_s=%.3f along_guide_progress_m=%.3f "
-          "predicted_head_progress_m=%.3f",
-          esdf->global_guide_generation, guide_progress.stall_generation,
-          guide_progress.observation_age_s, guide_progress.progress_m,
-          previous_result_.has_value() ? previous_result_->head_progress_m : 0.0F);
     }
   }
   mppi::MppiTickInput input{
@@ -467,13 +461,6 @@ void ProductionMppiNode::planningTick() {
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   snapshot_started)
             .count();
-    ++no_guide_braking_hold_ticks_;
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "PRODUCTION_MPPI_NO_GUIDE mode=no_static action=braking_hold "
-                         "lattice_status=%s lattice_termination=%s speed_mps=%.2f",
-                         latticePlanStatusName(esdf->lattice_status),
-                         latticeSearchTerminationName(esdf->lattice_termination),
-                         std::hypot(navigation.state.vx, navigation.state.vy));
   } else {
     try {
       result = engine_->plan(input);
@@ -482,37 +469,72 @@ void ProductionMppiNode::planningTick() {
       return;
     }
   }
-  if (liveness.reseed_requested) {
-    ++liveness_reseeds_;
-    RCLCPP_WARN(get_logger(),
-                "MPPI_LIVENESS_RESEED generation=%" PRIu64
-                " observation_age_s=%.3f actual_displacement_m=%.3f speed_mps=%.3f "
-                "predicted_head_progress_m=%.3f predicted_terminal_progress_m=%.3f "
-                "feedback_sequence=%" PRIu64,
-                liveness.reseed_generation, liveness.observation_age_s,
-                liveness.actual_displacement_m, liveness.actual_speed_mps,
-                liveness.predicted_head_progress_m,
-                liveness.predicted_terminal_progress_m,
-                applied_control.horizon_sequence);
-  }
+  ++tick_sequence_;
+  recordTickStatistics(result, passage_result, planning_state,
+                       liveness.reseed_requested);
+  publishExecutionHorizon(input, result, *esdf, planning_state, now_ns);
+
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);
   const double stability_ms = std::chrono::duration<double, std::milli>(
                                   std::chrono::steady_clock::now() - stability_started)
                                   .count();
-  const auto rviz_started = std::chrono::steady_clock::now();
+  std::optional<ProductionMppiRvizSnapshot> rviz;
   if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
-    publishRviz(input, result, *esdf);
+    rviz = ProductionMppiRvizSnapshot{
+        .horizon = result.horizon,
+        .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
+                                                         : std::vector<mppi::State>{},
+        .global_guide = esdf->global_guide,
+    };
     last_rviz_stamp_ns_ = now_ns;
   }
-  const double rviz_ms = std::chrono::duration<double, std::milli>(
-                             std::chrono::steady_clock::now() - rviz_started)
-                             .count();
-  publishDiagnostics(input, result, *esdf, stability, prediction, liveness,
-                     speed_policy, passage_result, planning_state, target_source,
-                     pose_age_ms, esdf_age_ms, control_feedback_age_ms, snapshot_ms,
-                     stability_ms, rviz_ms);
-  publishExecutionHorizon(input, result, *esdf, planning_state, now_ns);
+
+  mppi::MppiTickResult diagnostic_result;
+  diagnostic_result.eligible_risk_contract = result.eligible_risk_contract;
+  diagnostic_result.post_update_classification = result.post_update_classification;
+  diagnostic_result.selected_tier = result.selected_tier;
+  diagnostic_result.raw_collision = result.raw_collision;
+  diagnostic_result.known_solid_collision = result.known_solid_collision;
+  diagnostic_result.critical_exposure_m = result.critical_exposure_m;
+  diagnostic_result.planning_exposure_m = result.planning_exposure_m;
+  diagnostic_result.minimum_esdf_distance_m = result.minimum_esdf_distance_m;
+  diagnostic_result.head_progress_m = result.head_progress_m;
+  diagnostic_result.terminal_progress_m = result.terminal_progress_m;
+  diagnostic_result.maximum_acceleration_mps2 = result.maximum_acceleration_mps2;
+  diagnostic_result.maximum_jerk_mps3 = result.maximum_jerk_mps3;
+  diagnostic_result.first_control_delta = result.first_control_delta;
+  diagnostic_result.warm_start_shift_s = result.warm_start_shift_s;
+  diagnostic_result.nominal_reseeded = result.nominal_reseeded;
+  diagnostic_result.esdf_revision = result.esdf_revision;
+  diagnostic_result.timings = result.timings;
+  ProductionMppiPreparedEsdf diagnostic_esdf = *esdf;
+  diagnostic_esdf.distances_m.reset();
+  if (!rviz.has_value()) {
+    diagnostic_esdf.global_guide.reset();
+  }
+  enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot{
+      .input = input,
+      .result = std::move(diagnostic_result),
+      .esdf = std::move(diagnostic_esdf),
+      .stability = stability,
+      .prediction = prediction,
+      .liveness = liveness,
+      .speed_policy = speed_policy,
+      .passage_coordinator = passage_result,
+      .guide_progress = guide_progress,
+      .planning_state = planning_state,
+      .rviz = std::move(rviz),
+      .target_source = target_source,
+      .tick_sequence = tick_sequence_,
+      .memory_sequence = memory_sequence,
+      .pose_age_ms = pose_age_ms,
+      .esdf_age_ms = esdf_age_ms,
+      .control_feedback_age_ms = control_feedback_age_ms,
+      .snapshot_ms = snapshot_ms,
+      .stability_ms = stability_ms,
+      .liveness_reseed_requested = liveness.reseed_requested,
+  });
   {
     const std::scoped_lock lock{input_mutex_};
     if (result.horizon.size() > 1U) {

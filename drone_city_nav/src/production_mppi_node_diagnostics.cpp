@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <numeric>
 #include <sstream>
+#include <utility>
 
 #include "production_mppi_node.hpp"
 
@@ -32,15 +33,72 @@ namespace {
 
 } // namespace
 
-void ProductionMppiNode::publishRviz(const mppi::MppiTickInput& input,
-                                     const mppi::MppiTickResult& result,
-                                     const ProductionMppiPreparedEsdf& esdf) {
+void ProductionMppiNode::diagnosticsWorker(const std::stop_token stop_token) {
+  while (!stop_token.stop_requested()) {
+    std::optional<ProductionMppiDiagnosticsSnapshot> snapshot =
+        diagnostics_mailbox_.waitPop(stop_token);
+    if (!snapshot.has_value()) {
+      break;
+    }
+    processDiagnostics(*snapshot);
+  }
+  if (std::optional<ProductionMppiDiagnosticsSnapshot> pending =
+          diagnostics_mailbox_.tryPop();
+      pending.has_value()) {
+    processDiagnostics(*pending);
+  }
+  if (diagnostics_stream_) {
+    diagnostics_stream_.flush();
+  }
+}
+
+void ProductionMppiNode::enqueueDiagnostics(
+    ProductionMppiDiagnosticsSnapshot snapshot) {
+  if (diagnostics_mailbox_.push(std::move(snapshot))) {
+    dropped_diagnostics_snapshots_.fetch_add(1U, std::memory_order_relaxed);
+  }
+}
+
+void ProductionMppiNode::recordTickStatistics(
+    const mppi::MppiTickResult& result,
+    const PassageCoordinatorResult& passage_coordinator,
+    const ProductionMppiPlanningState planning_state,
+    const bool liveness_reseed_requested) {
+  const std::scoped_lock lock{statistics_mutex_};
+  ++completed_ticks_;
+  runtime_samples_ms_.push_back(result.timings.host_total_ms);
+  deadline_misses_ += result.timings.host_total_ms > deadline_ms_ ? 1U : 0U;
+  raw_collision_horizons_ += result.raw_collision ? 1U : 0U;
+  solid_collision_horizons_ += result.known_solid_collision ? 1U : 0U;
+  post_update_contract_violations_ +=
+      planning_state == ProductionMppiPlanningState::kPlanned &&
+              !result.post_update_classification.contract_preserved
+          ? 1U
+          : 0U;
+  no_progress_horizons_ += result.head_progress_m <= 0.0F ? 1U : 0U;
+  liveness_reseeds_ += liveness_reseed_requested ? 1U : 0U;
+  no_guide_braking_hold_ticks_ +=
+      planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ? 1U : 0U;
+  passage_vertical_alignment_ticks_ += passage_coordinator.hold_xy ? 1U : 0U;
+  passage_traversal_ticks_ +=
+      passage_coordinator.phase == PassageCoordinatorPhase::kTraversal ||
+              passage_coordinator.phase == PassageCoordinatorPhase::kPartialFromInside
+          ? 1U
+          : 0U;
+}
+
+void ProductionMppiNode::publishRviz(
+    const ProductionMppiDiagnosticsSnapshot& snapshot) {
+  if (!snapshot.rviz.has_value()) {
+    return;
+  }
+  const ProductionMppiRvizSnapshot& rviz = *snapshot.rviz;
   const auto stamp = now();
   nav_msgs::msg::Path path;
   path.header.frame_id = frame_id_;
   path.header.stamp = stamp;
-  path.poses.reserve(result.horizon.size());
-  for (const mppi::State& state : result.horizon) {
+  path.poses.reserve(rviz.horizon.size());
+  for (const mppi::State& state : rviz.horizon) {
     geometry_msgs::msg::PoseStamped pose;
     pose.header = path.header;
     pose.pose.position.x = state.x;
@@ -51,59 +109,76 @@ void ProductionMppiNode::publishRviz(const mppi::MppiTickInput& input,
   }
   path_pub_->publish(path);
 
-  const std::span<const mppi::State> previous_horizon =
-      previous_result_.has_value()
-          ? std::span<const mppi::State>{previous_result_->horizon}
-          : std::span<const mppi::State>{};
+  const std::span<const mppi::State> previous_horizon{rviz.previous_horizon};
   const std::span<const Point2> global_guide =
-      esdf.global_guide ? std::span<const Point2>{*esdf.global_guide}
+      rviz.global_guide ? std::span<const Point2>{*rviz.global_guide}
                         : std::span<const Point2>{};
-  const visualization_msgs::msg::MarkerArray markers = buildMppiDebugMarkers(
-      MppiDebugMarkerInput{path.header, result.horizon, previous_horizon, global_guide,
-                           input.initial_state, input.target, mission_start_,
-                           mission_goal_, input.passage, result.selected_tier});
+  const visualization_msgs::msg::MarkerArray markers =
+      buildMppiDebugMarkers(MppiDebugMarkerInput{
+          path.header, rviz.horizon, previous_horizon, global_guide,
+          snapshot.input.initial_state, snapshot.input.target, mission_start_,
+          mission_goal_, snapshot.input.passage, snapshot.result.selected_tier});
   markers_pub_->publish(markers);
 }
 
-void ProductionMppiNode::publishDiagnostics(
-    const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
-    const ProductionMppiPreparedEsdf& esdf, const ProductionMppiStability& stability,
-    const ProductionMppiPredictionError& prediction, const MppiLivenessResult& liveness,
-    const MppiSpeedPolicyResult& speed_policy,
-    const PassageCoordinatorResult& passage_coordinator,
-    const ProductionMppiPlanningState planning_state,
-    const std::string_view target_source, const double pose_age_ms,
-    const double esdf_age_ms, const double control_feedback_age_ms,
-    const double snapshot_ms, const double stability_ms, const double rviz_ms) {
-  ++tick_sequence_;
-  ++completed_ticks_;
-  runtime_samples_ms_.push_back(result.timings.host_total_ms);
-  if (result.timings.host_total_ms > deadline_ms_) {
-    ++deadline_misses_;
+void ProductionMppiNode::processDiagnostics(
+    const ProductionMppiDiagnosticsSnapshot& snapshot) {
+  const mppi::MppiTickInput& input = snapshot.input;
+  const mppi::MppiTickResult& result = snapshot.result;
+  const ProductionMppiPreparedEsdf& esdf = snapshot.esdf;
+  const ProductionMppiStability& stability = snapshot.stability;
+  const ProductionMppiPredictionError& prediction = snapshot.prediction;
+  const MppiLivenessResult& liveness = snapshot.liveness;
+  const MppiSpeedPolicyResult& speed_policy = snapshot.speed_policy;
+  const PassageCoordinatorResult& passage_coordinator = snapshot.passage_coordinator;
+  const ProductionMppiPlanningState planning_state = snapshot.planning_state;
+  const std::string_view target_source = snapshot.target_source;
+  const auto rviz_started = std::chrono::steady_clock::now();
+  publishRviz(snapshot);
+  const double rviz_ms = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - rviz_started)
+                             .count();
+
+  if (snapshot.liveness_reseed_requested) {
+    RCLCPP_WARN(get_logger(),
+                "MPPI_LIVENESS_RESEED generation=%" PRIu64
+                " observation_age_s=%.3f actual_displacement_m=%.3f speed_mps=%.3f "
+                "predicted_head_progress_m=%.3f predicted_terminal_progress_m=%.3f",
+                liveness.reseed_generation, liveness.observation_age_s,
+                liveness.actual_displacement_m, liveness.actual_speed_mps,
+                liveness.predicted_head_progress_m,
+                liveness.predicted_terminal_progress_m);
   }
-  raw_collision_horizons_ += result.raw_collision ? 1U : 0U;
-  solid_collision_horizons_ += result.known_solid_collision ? 1U : 0U;
-  post_update_contract_violations_ +=
-      planning_state == ProductionMppiPlanningState::kPlanned &&
-              !result.post_update_classification.contract_preserved
-          ? 1U
-          : 0U;
-  no_progress_horizons_ += result.head_progress_m <= 0.0F ? 1U : 0U;
-  passage_vertical_alignment_ticks_ += passage_coordinator.hold_xy ? 1U : 0U;
-  passage_traversal_ticks_ +=
-      passage_coordinator.phase == PassageCoordinatorPhase::kTraversal ||
-              passage_coordinator.phase == PassageCoordinatorPhase::kPartialFromInside
-          ? 1U
-          : 0U;
+  if (snapshot.guide_progress.stalled) {
+    RCLCPP_WARN(get_logger(),
+                "GLOBAL_GUIDE_STALL guide_generation=%" PRIu64
+                " stall_generation=%" PRIu64
+                " observation_age_s=%.3f along_guide_progress_m=%.3f "
+                "predicted_head_progress_m=%.3f",
+                esdf.global_guide_generation, snapshot.guide_progress.stall_generation,
+                snapshot.guide_progress.observation_age_s,
+                snapshot.guide_progress.progress_m, liveness.predicted_head_progress_m);
+  }
+  if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PRODUCTION_MPPI_NO_GUIDE mode=no_static action=braking_hold "
+                         "lattice_status=%s lattice_termination=%s speed_mps=%.2f",
+                         latticePlanStatusName(esdf.lattice_status),
+                         latticeSearchTerminationName(esdf.lattice_termination),
+                         std::hypot(input.initial_state.vx, input.initial_state.vy));
+  }
+
   std::ostringstream line;
   line << std::fixed << std::setprecision(3)
-       << "PRODUCTION_MPPI_TICK tick=" << tick_sequence_
+       << "PRODUCTION_MPPI_TICK tick=" << snapshot.tick_sequence
        << " pose_revision=" << input.pose_revision
        << " raw_revision=" << input.obstacle_revision
        << " esdf_revision=" << result.esdf_revision
-       << " memory_sequence=" << memory_sequence_ << " pose_age_ms=" << pose_age_ms
-       << " esdf_age_ms=" << esdf_age_ms
-       << " control_feedback_age_ms=" << control_feedback_age_ms << " planning_mode="
+       << " memory_sequence=" << snapshot.memory_sequence
+       << " pose_age_ms=" << snapshot.pose_age_ms
+       << " esdf_age_ms=" << snapshot.esdf_age_ms
+       << " control_feedback_age_ms=" << snapshot.control_feedback_age_ms
+       << " planning_mode="
        << (passage_speed_policy_.use_static_map ? "static" : "no_static")
        << " planning_state=" << productionMppiPlanningStateName(planning_state)
        << " horizon_s="
@@ -153,8 +228,9 @@ void ProductionMppiNode::publishDiagnostics(
        << " passage_required_alignment_distance_m="
        << passage_coordinator.required_alignment_distance_m
        << " gpu_ms=" << result.timings.gpu_total_ms
-       << " total_ms=" << result.timings.host_total_ms << " snapshot_ms=" << snapshot_ms
-       << " stability_ms=" << stability_ms << " rviz_ms=" << rviz_ms
+       << " total_ms=" << result.timings.host_total_ms
+       << " snapshot_ms=" << snapshot.snapshot_ms
+       << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
        << " deadline_missed="
        << (result.timings.host_total_ms > deadline_ms_ ? "true" : "false")
        << " risk_tier=" << mppi::mppiRiskTierName(result.selected_tier)
@@ -202,17 +278,27 @@ void ProductionMppiNode::publishDiagnostics(
        << (stability.valid ? stability.first_control_delta : -1.0)
        << " prediction_position_error_m="
        << (prediction.valid ? prediction.position_m : -1.0)
-       << " esdf_build_ms=" << esdf.build_ms << " esdf_upload_ms=" << esdf.upload_ms;
-  RCLCPP_INFO(get_logger(), "%s", line.str().c_str());
-  std_msgs::msg::String status;
-  status.data = line.str();
-  status_pub_->publish(status);
+       << " esdf_build_ms=" << esdf.build_ms << " esdf_upload_ms=" << esdf.upload_ms
+       << " dropped_diagnostics="
+       << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed);
+  const std::int64_t now_ns = get_clock()->now().nanoseconds();
+  if (now_ns - last_diagnostics_info_stamp_ns_ >= diagnostics_info_period_ns_) {
+    RCLCPP_INFO(get_logger(), "%s", line.str().c_str());
+    std_msgs::msg::String status;
+    status.data = line.str();
+    status_pub_->publish(status);
+    last_diagnostics_info_stamp_ns_ = now_ns;
+  }
   if (diagnostics_stream_) {
     diagnostics_stream_
-        << "{\"tick\":" << tick_sequence_
+        << "{\"tick\":" << snapshot.tick_sequence
         << ",\"pose_revision\":" << input.pose_revision
         << ",\"raw_revision\":" << input.obstacle_revision
-        << ",\"esdf_revision\":" << result.esdf_revision << ",\"planning_mode\":\""
+        << ",\"esdf_revision\":" << result.esdf_revision
+        << ",\"pose_age_ms\":" << snapshot.pose_age_ms
+        << ",\"esdf_age_ms\":" << snapshot.esdf_age_ms
+        << ",\"control_feedback_age_ms\":" << snapshot.control_feedback_age_ms
+        << ",\"planning_mode\":\""
         << (passage_speed_policy_.use_static_map ? "static" : "no_static") << '"'
         << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
         << '"' << ",\"target_source\":\"" << target_source << '"' << ",\"horizon_s\":"
@@ -275,6 +361,8 @@ void ProductionMppiNode::publishDiagnostics(
         << passage_coordinator.required_alignment_distance_m
         << ",\"gpu_ms\":" << result.timings.gpu_total_ms
         << ",\"total_ms\":" << result.timings.host_total_ms
+        << ",\"snapshot_ms\":" << snapshot.snapshot_ms
+        << ",\"stability_ms\":" << snapshot.stability_ms << ",\"rviz_ms\":" << rviz_ms
         << ",\"raw_collision\":" << (result.raw_collision ? "true" : "false")
         << ",\"known_solid_collision\":"
         << (result.known_solid_collision ? "true" : "false") << ",\"risk_tier\":\""
@@ -311,10 +399,11 @@ void ProductionMppiNode::publishDiagnostics(
         << ",\"maximum_jerk_mps3\":" << result.maximum_jerk_mps3
         << ",\"first_control_delta\":" << result.first_control_delta
         << ",\"stability_rms_m\":"
-        << (stability.valid ? stability.position_rms_m : -1.0) << "}\n";
+        << (stability.valid ? stability.position_rms_m : -1.0)
+        << ",\"dropped_diagnostics\":"
+        << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed) << "}\n";
     diagnostics_stream_.flush();
   }
-  const std::int64_t now_ns = get_clock()->now().nanoseconds();
   if (now_ns - last_summary_stamp_ns_ >= 5000000000LL) {
     publishSummary();
     last_summary_stamp_ns_ = now_ns;
@@ -322,11 +411,41 @@ void ProductionMppiNode::publishDiagnostics(
 }
 
 void ProductionMppiNode::publishSummary() {
-  if (runtime_samples_ms_.empty()) {
+  std::vector<double> runtime_samples_ms;
+  std::uint64_t completed_ticks{0U};
+  std::uint64_t deadline_misses{0U};
+  std::uint64_t raw_collision_horizons{0U};
+  std::uint64_t solid_collision_horizons{0U};
+  std::uint64_t post_update_contract_violations{0U};
+  std::uint64_t no_progress_horizons{0U};
+  std::uint64_t liveness_reseeds{0U};
+  std::uint64_t no_guide_braking_hold_ticks{0U};
+  std::uint64_t passage_vertical_alignment_ticks{0U};
+  std::uint64_t passage_traversal_ticks{0U};
+  {
+    const std::scoped_lock lock{statistics_mutex_};
+    runtime_samples_ms = runtime_samples_ms_;
+    completed_ticks = completed_ticks_;
+    deadline_misses = deadline_misses_;
+    raw_collision_horizons = raw_collision_horizons_;
+    solid_collision_horizons = solid_collision_horizons_;
+    post_update_contract_violations = post_update_contract_violations_;
+    no_progress_horizons = no_progress_horizons_;
+    liveness_reseeds = liveness_reseeds_;
+    no_guide_braking_hold_ticks = no_guide_braking_hold_ticks_;
+    passage_vertical_alignment_ticks = passage_vertical_alignment_ticks_;
+    passage_traversal_ticks = passage_traversal_ticks_;
+  }
+  if (runtime_samples_ms.empty()) {
     return;
   }
+  std::uint64_t dropped_esdf_updates{0U};
+  {
+    const std::scoped_lock lock{raw_queue_mutex_};
+    dropped_esdf_updates = dropped_raw_snapshots_;
+  }
   const double maximum =
-      *std::max_element(runtime_samples_ms_.begin(), runtime_samples_ms_.end());
+      *std::max_element(runtime_samples_ms.begin(), runtime_samples_ms.end());
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
@@ -336,13 +455,14 @@ void ProductionMppiNode::publishSummary() {
       " no_progress_horizons=%" PRIu64 " liveness_reseeds=%" PRIu64
       " no_guide_braking_hold_ticks=%" PRIu64
       " passage_vertical_alignment_ticks=%" PRIu64 " passage_traversal_ticks=%" PRIu64
-      " dropped_esdf_updates=%" PRIu64,
-      completed_ticks_, percentile(runtime_samples_ms_, 0.50),
-      percentile(runtime_samples_ms_, 0.95), percentile(runtime_samples_ms_, 0.99),
-      maximum, deadline_misses_, raw_collision_horizons_, solid_collision_horizons_,
-      post_update_contract_violations_, no_progress_horizons_, liveness_reseeds_,
-      no_guide_braking_hold_ticks_, passage_vertical_alignment_ticks_,
-      passage_traversal_ticks_, dropped_raw_snapshots_);
+      " dropped_esdf_updates=%" PRIu64 " dropped_diagnostics=%" PRIu64,
+      completed_ticks, percentile(runtime_samples_ms, 0.50),
+      percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
+      maximum, deadline_misses, raw_collision_horizons, solid_collision_horizons,
+      post_update_contract_violations, no_progress_horizons, liveness_reseeds,
+      no_guide_braking_hold_ticks, passage_vertical_alignment_ticks,
+      passage_traversal_ticks, dropped_esdf_updates,
+      dropped_diagnostics_snapshots_.load(std::memory_order_relaxed));
 }
 
 } // namespace drone_city_nav

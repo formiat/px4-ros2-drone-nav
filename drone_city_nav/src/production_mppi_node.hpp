@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
+#include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/passage_speed_policy.hpp"
 #include "drone_city_nav/mppi_horizon_safety.hpp"
@@ -102,9 +103,38 @@ struct ProductionMppiAppliedControl {
   bool valid{false};
 };
 
+struct ProductionMppiRvizSnapshot {
+  std::vector<mppi::State> horizon;
+  std::vector<mppi::State> previous_horizon;
+  std::shared_ptr<const std::vector<Point2>> global_guide;
+};
+
 enum class ProductionMppiPlanningState {
   kPlanned,
   kNoGuideBrakingHold,
+};
+
+struct ProductionMppiDiagnosticsSnapshot {
+  mppi::MppiTickInput input{};
+  mppi::MppiTickResult result{};
+  ProductionMppiPreparedEsdf esdf{};
+  ProductionMppiStability stability{};
+  ProductionMppiPredictionError prediction{};
+  MppiLivenessResult liveness{};
+  MppiSpeedPolicyResult speed_policy{};
+  PassageCoordinatorResult passage_coordinator{};
+  GlobalGuideProgressUpdate guide_progress{};
+  ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
+  std::optional<ProductionMppiRvizSnapshot> rviz;
+  std::string target_source;
+  std::uint64_t tick_sequence{0U};
+  std::uint64_t memory_sequence{0U};
+  double pose_age_ms{0.0};
+  double esdf_age_ms{0.0};
+  double control_feedback_age_ms{0.0};
+  double snapshot_ms{0.0};
+  double stability_ms{0.0};
+  bool liveness_reseed_requested{false};
 };
 
 [[nodiscard]] const char*
@@ -126,18 +156,15 @@ private:
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void esdfWorker(std::stop_token stop_token);
+  void diagnosticsWorker(std::stop_token stop_token);
   void planningTick();
-  void publishDiagnostics(
-      const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
-      const ProductionMppiPreparedEsdf& esdf, const ProductionMppiStability& stability,
-      const ProductionMppiPredictionError& prediction,
-      const MppiLivenessResult& liveness, const MppiSpeedPolicyResult& speed_policy,
-      const PassageCoordinatorResult& passage_coordinator,
-      ProductionMppiPlanningState planning_state, std::string_view target_source,
-      double pose_age_ms, double esdf_age_ms, double control_feedback_age_ms,
-      double snapshot_ms, double stability_ms, double rviz_ms);
-  void publishRviz(const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
-                   const ProductionMppiPreparedEsdf& esdf);
+  void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
+  void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);
+  void enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot snapshot);
+  void recordTickStatistics(const mppi::MppiTickResult& result,
+                            const PassageCoordinatorResult& passage_coordinator,
+                            ProductionMppiPlanningState planning_state,
+                            bool liveness_reseed_requested);
   void publishSummary();
   void publishExecutionHorizon(const mppi::MppiTickInput& input,
                                const mppi::MppiTickResult& result,
@@ -156,6 +183,7 @@ private:
 
   double tick_rate_hz_{50.0};
   double rviz_rate_hz_{10.0};
+  double diagnostics_info_rate_hz_{5.0};
   double deadline_ms_{20.0};
   double maximum_pose_age_ms_{150.0};
   double maximum_esdf_age_ms_{1000.0};
@@ -169,7 +197,9 @@ private:
   std::string frame_id_{"map"};
   std::filesystem::path diagnostics_output_dir_{"log/mppi"};
   std::int64_t rviz_period_ns_{100000000};
+  std::int64_t diagnostics_info_period_ns_{200000000};
   std::int64_t last_rviz_stamp_ns_{0};
+  std::int64_t last_diagnostics_info_stamp_ns_{0};
 
   mppi::BenchmarkConfig mppi_config_{};
   mppi::PassageSpeedPolicy passage_speed_policy_{};
@@ -221,7 +251,11 @@ private:
   std::uint64_t passage_traversal_ticks_{0U};
   std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
+  mutable std::mutex statistics_mutex_;
   std::ofstream diagnostics_stream_;
+  LatestValueMailbox<ProductionMppiDiagnosticsSnapshot> diagnostics_mailbox_;
+  std::atomic<std::uint64_t> dropped_diagnostics_snapshots_{0U};
+  std::jthread diagnostics_worker_;
 
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
