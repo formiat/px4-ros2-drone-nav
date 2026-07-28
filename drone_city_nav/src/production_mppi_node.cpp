@@ -31,6 +31,17 @@ namespace {
 
 } // namespace
 
+const char*
+productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcept {
+  switch (state) {
+    case ProductionMppiPlanningState::kPlanned:
+      return "planned";
+    case ProductionMppiPlanningState::kNoGuideBrakingHold:
+      return "no_guide_braking_hold";
+  }
+  return "unknown";
+}
+
 ProductionMppiNode::ProductionMppiNode()
     : Node{"production_mppi_node"} {
   tick_rate_hz_ = declare_parameter<double>("tick_rate_hz", 50.0);
@@ -79,40 +90,66 @@ ProductionMppiNode::ProductionMppiNode()
                                                : no_static_horizon_duration_s;
   mppi_config_.steps = static_cast<std::size_t>(
       std::ceil(active_horizon_duration_s / mppi_config_.dynamics.dt_s));
-  static_speed_policy_config_.horizon_duration_s = static_horizon_duration_s;
-  static_speed_policy_config_.cruise_speed_mps =
+  MppiSpeedPolicyConfig static_speed_policy_config;
+  static_speed_policy_config.horizon_duration_s = static_horizon_duration_s;
+  static_speed_policy_config.cruise_speed_mps =
       declare_parameter<double>("static_cruise_speed_mps", 20.0);
-  static_speed_policy_config_.absolute_speed_limit_mps =
+  static_speed_policy_config.absolute_speed_limit_mps =
       declare_parameter<double>("static_absolute_speed_limit_mps", 20.0);
-  static_speed_policy_config_.maximum_lateral_acceleration_mps2 =
+  static_speed_policy_config.maximum_lateral_acceleration_mps2 =
       declare_parameter<double>("static_maximum_lateral_acceleration_mps2", 5.0);
-  static_speed_policy_config_.maximum_braking_acceleration_mps2 =
+  static_speed_policy_config.maximum_braking_acceleration_mps2 =
       declare_parameter<double>("static_maximum_braking_acceleration_mps2", 8.0);
-  static_speed_policy_config_.reaction_latency_s =
+  static_speed_policy_config.reaction_latency_s =
       declare_parameter<double>("static_speed_reaction_latency_s", 0.10);
-  static_speed_policy_config_.observation_distance_m =
+  static_speed_policy_config.observation_distance_m =
       declare_parameter<double>("static_observation_distance_m", 30.0);
-  static_speed_policy_config_.observation_margin_m =
+  static_speed_policy_config.observation_margin_m =
       declare_parameter<double>("static_observation_margin_m", 3.0);
-  static_speed_policy_config_.goal_margin_m =
+  static_speed_policy_config.goal_margin_m =
       declare_parameter<double>("static_goal_braking_margin_m", 2.0);
-  static_speed_policy_config_.curvature_preview_distance_m =
+  static_speed_policy_config.curvature_preview_distance_m =
       declare_parameter<double>("static_curvature_preview_distance_m", 100.0);
-  static_speed_policy_config_.minimum_target_lookahead_m =
+  static_speed_policy_config.minimum_target_lookahead_m =
       declare_parameter<double>("static_minimum_target_lookahead_m", 30.0);
-  static_speed_policy_config_.maximum_target_lookahead_m =
+  static_speed_policy_config.maximum_target_lookahead_m =
       declare_parameter<double>("static_maximum_target_lookahead_m", 100.0);
-  if (passage_speed_policy_.use_static_map) {
-    mppi_config_.dynamics.maximum_horizontal_speed_mps =
-        static_cast<float>(static_speed_policy_config_.absolute_speed_limit_mps);
-    mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 = static_cast<float>(
-        declare_parameter<double>("static_maximum_horizontal_acceleration_mps2", 8.0));
-    mppi_config_.dynamics.maximum_control_jerk_mps3 = static_cast<float>(
-        declare_parameter<double>("static_maximum_control_jerk_mps3", 20.0));
-  } else {
-    (void)declare_parameter<double>("static_maximum_horizontal_acceleration_mps2", 8.0);
-    (void)declare_parameter<double>("static_maximum_control_jerk_mps3", 20.0);
-  }
+  const double static_maximum_horizontal_acceleration_mps2 =
+      declare_parameter<double>("static_maximum_horizontal_acceleration_mps2", 8.0);
+  const double static_maximum_control_jerk_mps3 =
+      declare_parameter<double>("static_maximum_control_jerk_mps3", 20.0);
+  MppiSpeedPolicyConfig no_static_speed_policy_config = static_speed_policy_config;
+  no_static_speed_policy_config.horizon_duration_s = no_static_horizon_duration_s;
+  no_static_speed_policy_config.cruise_speed_mps =
+      declare_parameter<double>("no_static_cruise_speed_mps", 10.0);
+  no_static_speed_policy_config.absolute_speed_limit_mps =
+      declare_parameter<double>("no_static_absolute_speed_limit_mps", 10.0);
+  const double no_static_maximum_horizontal_acceleration_mps2 =
+      declare_parameter<double>("no_static_maximum_horizontal_acceleration_mps2", 4.0);
+  const double no_static_maximum_control_jerk_mps3 =
+      declare_parameter<double>("no_static_maximum_control_jerk_mps3", 12.0);
+  no_static_speed_policy_config.maximum_lateral_acceleration_mps2 =
+      no_static_maximum_horizontal_acceleration_mps2;
+  no_static_speed_policy_config.maximum_braking_acceleration_mps2 =
+      no_static_maximum_horizontal_acceleration_mps2;
+  no_static_speed_policy_config.curvature_preview_distance_m =
+      declare_parameter<double>("no_static_curvature_preview_distance_m", 60.0);
+  no_static_speed_policy_config.minimum_target_lookahead_m =
+      no_static_guide_lookahead_m_;
+  no_static_speed_policy_config.maximum_target_lookahead_m =
+      no_static_guide_lookahead_m_;
+  speed_policy_config_ = passage_speed_policy_.use_static_map
+                             ? static_speed_policy_config
+                             : no_static_speed_policy_config;
+  mppi_config_.dynamics.maximum_horizontal_speed_mps =
+      static_cast<float>(speed_policy_config_.absolute_speed_limit_mps);
+  mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 =
+      static_cast<float>(passage_speed_policy_.use_static_map
+                             ? static_maximum_horizontal_acceleration_mps2
+                             : no_static_maximum_horizontal_acceleration_mps2);
+  mppi_config_.dynamics.maximum_control_jerk_mps3 = static_cast<float>(
+      passage_speed_policy_.use_static_map ? static_maximum_control_jerk_mps3
+                                           : no_static_maximum_control_jerk_mps3);
   mppi_config_.dynamics.maximum_vertical_speed_mps =
       static_cast<float>(declare_parameter<double>("maximum_vertical_speed_mps", 5.0));
   mppi_config_.costs.head_progress_horizon_s =
@@ -121,10 +158,11 @@ ProductionMppiNode::ProductionMppiNode()
       static_cast<float>(declare_parameter<double>("head_progress_weight", 8.0));
   const double static_speed_tracking_weight =
       declare_parameter<double>("static_speed_tracking_weight", 1.0);
-  mppi_config_.costs.speed_tracking_weight =
-      passage_speed_policy_.use_static_map
-          ? static_cast<float>(static_speed_tracking_weight)
-          : 0.0F;
+  const double no_static_speed_tracking_weight =
+      declare_parameter<double>("no_static_speed_tracking_weight", 1.0);
+  mppi_config_.costs.speed_tracking_weight = static_cast<float>(
+      passage_speed_policy_.use_static_map ? static_speed_tracking_weight
+                                           : no_static_speed_tracking_weight);
   mppi_config_.risk.collision_radius_m =
       static_cast<float>(declare_parameter<double>("raw_collision_radius_m", 0.5));
   mppi_config_.risk.critical_distance_m =
@@ -183,17 +221,25 @@ ProductionMppiNode::ProductionMppiNode()
   safety_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   safety_config_.reaction_latency_s =
       declare_parameter<double>("safety_reaction_latency_s", 0.10);
-  safety_config_.maximum_braking_acceleration_mps2 =
-      declare_parameter<double>("safety_maximum_braking_acceleration_mps2", 8.0);
+  safety_config_.maximum_braking_acceleration_mps2 = std::min(
+      declare_parameter<double>("safety_maximum_braking_acceleration_mps2", 8.0),
+      static_cast<double>(mppi_config_.dynamics.maximum_horizontal_acceleration_mps2));
   safety_config_.minimum_time_to_collision_s =
       declare_parameter<double>("safety_minimum_time_to_collision_s", 0.50);
   const double static_safety_fallback_duration_s =
       declare_parameter<double>("static_safety_fallback_duration_s", 3.0);
   const double no_static_safety_fallback_duration_s =
-      declare_parameter<double>("no_static_safety_fallback_duration_s", 2.0);
-  safety_config_.fallback_duration_s = passage_speed_policy_.use_static_map
-                                           ? static_safety_fallback_duration_s
+      declare_parameter<double>("no_static_safety_fallback_duration_s", 3.0);
+  const double configured_fallback_duration_s =
+      passage_speed_policy_.use_static_map ? static_safety_fallback_duration_s
                                            : no_static_safety_fallback_duration_s;
+  const double minimum_fallback_duration_s =
+      safety_config_.reaction_latency_s +
+      speed_policy_config_.absolute_speed_limit_mps /
+          std::max(1.0e-3, safety_config_.maximum_braking_acceleration_mps2) +
+      mppi_config_.dynamics.dt_s;
+  safety_config_.fallback_duration_s =
+      std::max(configured_fallback_duration_s, minimum_fallback_duration_s);
   safety_config_.dt_s = mppi_config_.dynamics.dt_s;
   liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", true);
   liveness_config_.observation_window_s =
@@ -287,28 +333,29 @@ ProductionMppiNode::ProductionMppiNode()
       std::jthread([this](const std::stop_token token) { esdfWorker(token); });
   planning_timer_ = create_wall_timer(
       std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); });
-  RCLCPP_INFO(get_logger(),
-              "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
-              "deadline=%.1fms known_solids=%zu static_map=%s "
-              "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
-              "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
-              "sticky_guide=true guide_replan_remaining=%.1fm "
-              "guide_heading_blend=(%.1f,%.1f)mps",
-              mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
-              known_solids_.size(),
-              passage_speed_policy_.use_static_map ? "true" : "false",
-              static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
-              lattice_config_.receding_goal_distance_m,
-              passage_speed_policy_.use_static_map
-                  ? static_speed_policy_config_.cruise_speed_mps
-                  : -1.0,
-              mppi_config_.dynamics.maximum_horizontal_speed_mps,
-              activePassageSpeedLimitMps(passage_speed_policy_),
-              mppi_config_.costs.head_progress_horizon_s,
-              liveness_config_.enabled ? "true" : "false",
-              active_guide_config_.minimum_remaining_m,
-              active_guide_config_.velocity_heading_low_speed_mps,
-              active_guide_config_.velocity_heading_high_speed_mps);
+  RCLCPP_INFO(
+      get_logger(),
+      "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
+      "deadline=%.1fms known_solids=%zu static_map=%s "
+      "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
+      "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
+      "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
+      "sticky_guide=true guide_replan_remaining=%.1fm "
+      "guide_heading_blend=(%.1f,%.1f)mps",
+      mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
+      known_solids_.size(), passage_speed_policy_.use_static_map ? "true" : "false",
+      static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
+      lattice_config_.receding_goal_distance_m, speed_policy_config_.cruise_speed_mps,
+      mppi_config_.dynamics.maximum_horizontal_speed_mps,
+      mppi_config_.dynamics.maximum_horizontal_acceleration_mps2,
+      mppi_config_.dynamics.maximum_control_jerk_mps3,
+      mppi_config_.costs.speed_tracking_weight,
+      activePassageSpeedLimitMps(passage_speed_policy_),
+      mppi_config_.costs.head_progress_horizon_s,
+      liveness_config_.enabled ? "true" : "false",
+      active_guide_config_.minimum_remaining_m,
+      active_guide_config_.velocity_heading_low_speed_mps,
+      active_guide_config_.velocity_heading_high_speed_mps);
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

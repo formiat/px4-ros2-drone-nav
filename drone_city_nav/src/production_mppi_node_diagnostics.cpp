@@ -69,10 +69,11 @@ void ProductionMppiNode::publishDiagnostics(
     const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
     const ProductionMppiPreparedEsdf& esdf, const ProductionMppiStability& stability,
     const ProductionMppiPredictionError& prediction, const MppiLivenessResult& liveness,
-    const MppiSpeedPolicyResult& speed_policy, const std::string_view target_source,
-    const double pose_age_ms, const double esdf_age_ms,
-    const double control_feedback_age_ms, const double snapshot_ms,
-    const double stability_ms, const double rviz_ms) {
+    const MppiSpeedPolicyResult& speed_policy,
+    const ProductionMppiPlanningState planning_state,
+    const std::string_view target_source, const double pose_age_ms,
+    const double esdf_age_ms, const double control_feedback_age_ms,
+    const double snapshot_ms, const double stability_ms, const double rviz_ms) {
   ++tick_sequence_;
   ++completed_ticks_;
   runtime_samples_ms_.push_back(result.timings.host_total_ms);
@@ -82,7 +83,10 @@ void ProductionMppiNode::publishDiagnostics(
   raw_collision_horizons_ += result.raw_collision ? 1U : 0U;
   solid_collision_horizons_ += result.known_solid_collision ? 1U : 0U;
   post_update_contract_violations_ +=
-      result.post_update_classification.contract_preserved ? 0U : 1U;
+      planning_state == ProductionMppiPlanningState::kPlanned &&
+              !result.post_update_classification.contract_preserved
+          ? 1U
+          : 0U;
   no_progress_horizons_ += result.head_progress_m <= 0.0F ? 1U : 0U;
   std::ostringstream line;
   line << std::fixed << std::setprecision(3)
@@ -94,6 +98,7 @@ void ProductionMppiNode::publishDiagnostics(
        << " esdf_age_ms=" << esdf_age_ms
        << " control_feedback_age_ms=" << control_feedback_age_ms << " planning_mode="
        << (passage_speed_policy_.use_static_map ? "static" : "no_static")
+       << " planning_state=" << productionMppiPlanningStateName(planning_state)
        << " horizon_s="
        << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
        << " target_source=" << target_source << " target=(" << input.target.x << ','
@@ -184,8 +189,14 @@ void ProductionMppiNode::publishDiagnostics(
         << ",\"raw_revision\":" << input.obstacle_revision
         << ",\"esdf_revision\":" << result.esdf_revision << ",\"planning_mode\":\""
         << (passage_speed_policy_.use_static_map ? "static" : "no_static") << '"'
-        << ",\"horizon_s\":"
+        << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
+        << '"' << ",\"target_source\":\"" << target_source << '"' << ",\"horizon_s\":"
         << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
+        << ",\"speed_cap_mps\":" << mppi_config_.dynamics.maximum_horizontal_speed_mps
+        << ",\"acceleration_cap_mps2\":"
+        << mppi_config_.dynamics.maximum_horizontal_acceleration_mps2
+        << ",\"jerk_cap_mps3\":" << mppi_config_.dynamics.maximum_control_jerk_mps3
+        << ",\"speed_tracking_weight\":" << mppi_config_.costs.speed_tracking_weight
         << ",\"guide_generation\":" << esdf.global_guide_generation
         << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
         << ",\"guide_mission_goal_hold\":"
@@ -281,12 +292,12 @@ void ProductionMppiNode::publishSummary() {
       "deadline_misses=%" PRIu64 " raw_collision_horizons=%" PRIu64
       " solid_collision_horizons=%" PRIu64 " post_update_contract_violations=%" PRIu64
       " no_progress_horizons=%" PRIu64 " liveness_reseeds=%" PRIu64
-      " dropped_esdf_updates=%" PRIu64,
+      " no_guide_braking_hold_ticks=%" PRIu64 " dropped_esdf_updates=%" PRIu64,
       completed_ticks_, percentile(runtime_samples_ms_, 0.50),
       percentile(runtime_samples_ms_, 0.95), percentile(runtime_samples_ms_, 0.99),
       maximum, deadline_misses_, raw_collision_horizons_, solid_collision_horizons_,
       post_update_contract_violations_, no_progress_horizons_, liveness_reseeds_,
-      dropped_raw_snapshots_);
+      no_guide_braking_hold_ticks_, dropped_raw_snapshots_);
 }
 
 } // namespace drone_city_nav

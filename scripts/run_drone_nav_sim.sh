@@ -215,6 +215,9 @@ active_static_map="${enable_static_map_override:-${configured_static_map}}"
 px4_static_max_horizontal_speed_mps="$(
     read_ros_float_parameter production_mppi_node static_absolute_speed_limit_mps
 )"
+px4_static_cruise_speed_mps="$(
+    read_ros_float_parameter production_mppi_node static_cruise_speed_mps
+)"
 px4_static_max_horizontal_acceleration_mps2="$(
     read_ros_float_parameter \
       production_mppi_node static_maximum_horizontal_acceleration_mps2
@@ -222,6 +225,34 @@ px4_static_max_horizontal_acceleration_mps2="$(
 px4_static_maximum_jerk_mps3="$(
     read_ros_float_parameter production_mppi_node static_maximum_control_jerk_mps3
 )"
+px4_no_static_max_horizontal_speed_mps="$(
+    read_ros_float_parameter production_mppi_node no_static_absolute_speed_limit_mps
+)"
+px4_no_static_cruise_speed_mps="$(
+    read_ros_float_parameter production_mppi_node no_static_cruise_speed_mps
+)"
+px4_no_static_max_horizontal_acceleration_mps2="$(
+    read_ros_float_parameter \
+      production_mppi_node no_static_maximum_horizontal_acceleration_mps2
+)"
+px4_no_static_maximum_jerk_mps3="$(
+    read_ros_float_parameter production_mppi_node no_static_maximum_control_jerk_mps3
+)"
+if bool_is_true "${active_static_map}"; then
+  px4_active_max_horizontal_speed_mps="${px4_static_max_horizontal_speed_mps}"
+  px4_active_cruise_speed_mps="${px4_static_cruise_speed_mps}"
+  px4_active_max_horizontal_acceleration_mps2="$(
+    printf '%s' "${px4_static_max_horizontal_acceleration_mps2}"
+  )"
+  px4_active_maximum_jerk_mps3="${px4_static_maximum_jerk_mps3}"
+else
+  px4_active_max_horizontal_speed_mps="${px4_no_static_max_horizontal_speed_mps}"
+  px4_active_cruise_speed_mps="${px4_no_static_cruise_speed_mps}"
+  px4_active_max_horizontal_acceleration_mps2="$(
+    printf '%s' "${px4_no_static_max_horizontal_acceleration_mps2}"
+  )"
+  px4_active_maximum_jerk_mps3="${px4_no_static_maximum_jerk_mps3}"
+fi
 
 format_override_value() {
   local value="$1"
@@ -533,16 +564,16 @@ echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_
     echo "param set NAV_DLL_ACT 0"
     echo "param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}"
     echo "param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}"
-    if bool_is_true "${active_static_map}"; then
-      echo "param set MPC_XY_VEL_MAX ${px4_static_max_horizontal_speed_mps}"
-      echo "param set MPC_ACC_HOR_MAX ${px4_static_max_horizontal_acceleration_mps2}"
-      echo "param set MPC_ACC_HOR ${px4_static_max_horizontal_acceleration_mps2}"
-      echo "param set MPC_JERK_AUTO ${px4_static_maximum_jerk_mps3}"
-      echo "param show MPC_XY_VEL_MAX"
-      echo "param show MPC_ACC_HOR_MAX"
-      echo "param show MPC_ACC_HOR"
-      echo "param show MPC_JERK_AUTO"
-    fi
+    echo "param set MPC_XY_CRUISE ${px4_active_cruise_speed_mps}"
+    echo "param set MPC_XY_VEL_MAX ${px4_active_max_horizontal_speed_mps}"
+    echo "param set MPC_ACC_HOR_MAX ${px4_active_max_horizontal_acceleration_mps2}"
+    echo "param set MPC_ACC_HOR ${px4_active_max_horizontal_acceleration_mps2}"
+    echo "param set MPC_JERK_AUTO ${px4_active_maximum_jerk_mps3}"
+    echo "param show MPC_XY_CRUISE"
+    echo "param show MPC_XY_VEL_MAX"
+    echo "param show MPC_ACC_HOR_MAX"
+    echo "param show MPC_ACC_HOR"
+    echo "param show MPC_JERK_AUTO"
     echo "param show MPC_Z_VEL_MAX_DN"
     echo "param show MPC_Z_VEL_MAX_UP"
     while true; do

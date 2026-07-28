@@ -21,9 +21,9 @@ namespace {
                 static_cast<std::size_t>(x)];
 }
 
-void buildBrakingFallback(const mppi::State& initial,
-                          const MppiHorizonSafetyConfig& config,
-                          MppiHorizonSafetyResult& result) {
+void populateBrakingFallback(const mppi::State& initial,
+                             const MppiHorizonSafetyConfig& config,
+                             MppiHorizonSafetyResult& result) {
   mppi::State state = initial;
   const std::size_t steps =
       static_cast<std::size_t>(std::ceil(config.fallback_duration_s / config.dt_s));
@@ -58,6 +58,26 @@ void buildBrakingFallback(const mppi::State& initial,
 
 } // namespace
 
+MppiHorizonSafetyResult
+buildMppiBrakingFallback(const mppi::State& current_state,
+                         const MppiHorizonSafetyConfig& config) {
+  MppiHorizonSafetyResult result;
+  const double speed =
+      std::hypot(std::hypot(current_state.vx, current_state.vy), current_state.vz);
+  result.decision = speed > 0.15 ? MppiHorizonSafetyDecision::kBrake
+                                 : MppiHorizonSafetyDecision::kHold;
+  result.stopping_time_s =
+      config.reaction_latency_s +
+      speed / std::max(1.0e-3, config.maximum_braking_acceleration_mps2);
+  result.stopping_distance_m =
+      speed * config.reaction_latency_s +
+      speed * speed /
+          (2.0 * std::max(1.0e-3, config.maximum_braking_acceleration_mps2));
+  result.time_to_collision_s = std::numeric_limits<double>::infinity();
+  populateBrakingFallback(current_state, config, result);
+  return result;
+}
+
 MppiHorizonSafetyResult evaluateMppiHorizonSafety(
     const mppi::State& current_state, const std::span<const mppi::State> horizon,
     const std::span<const float> esdf_m, const mppi::EsdfGrid& grid,
@@ -88,7 +108,7 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
               std::max(config.minimum_time_to_collision_s, result.stopping_time_s)
           ? MppiHorizonSafetyDecision::kBrake
           : MppiHorizonSafetyDecision::kHold;
-  buildBrakingFallback(current_state, config, result);
+  populateBrakingFallback(current_state, config, result);
   return result;
 }
 

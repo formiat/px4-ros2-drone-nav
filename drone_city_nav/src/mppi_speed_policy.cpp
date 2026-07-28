@@ -48,7 +48,7 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.horizon_duration_s > 0.0) ||
       !(config.minimum_target_lookahead_m > 0.0) ||
       !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m)) {
-    throw std::invalid_argument{"invalid static MPPI speed policy configuration"};
+    throw std::invalid_argument{"invalid MPPI speed policy configuration"};
   }
 }
 
@@ -69,8 +69,8 @@ double stoppingLimitedSpeed(const double available_distance_m,
   return std::max(0.0, std::sqrt(discriminant) - latency_velocity);
 }
 
-MppiSpeedPolicyResult evaluateStaticMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,
-                                                    const MppiSpeedPolicyInput& input) {
+MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,
+                                              const MppiSpeedPolicyInput& input) {
   validateConfig(config);
   MppiSpeedPolicyResult result;
   result.enabled = true;

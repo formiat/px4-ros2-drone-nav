@@ -74,5 +74,34 @@ TEST(MppiHorizonSafetyTest, TreatsOutsideGridAsCollision) {
   EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
 }
 
+TEST(MppiHorizonSafetyTest, ExplicitFallbackBrakesWithoutAPlannedHorizon) {
+  mppi::State current{1.0F, 2.0F, 3.0F};
+  current.vx = 10.0F;
+
+  const MppiHorizonSafetyResult result =
+      buildMppiBrakingFallback(current, MppiHorizonSafetyConfig{
+                                            .maximum_braking_acceleration_mps2 = 4.0,
+                                            .fallback_duration_s = 3.0,
+                                            .dt_s = 0.05,
+                                        });
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kBrake);
+  ASSERT_FALSE(result.fallback_controls.empty());
+  ASSERT_EQ(result.fallback_horizon.size(), result.fallback_controls.size() + 1U);
+  EXPECT_FLOAT_EQ(result.fallback_horizon.front().vx, 10.0F);
+  EXPECT_NEAR(result.fallback_horizon.back().vx, 0.0F, 1.0e-4F);
+}
+
+TEST(MppiHorizonSafetyTest, ExplicitFallbackHoldsAnAlreadyStationaryVehicle) {
+  const MppiHorizonSafetyResult result =
+      buildMppiBrakingFallback(mppi::State{}, MppiHorizonSafetyConfig{});
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kHold);
+  ASSERT_FALSE(result.fallback_horizon.empty());
+  EXPECT_FLOAT_EQ(result.fallback_horizon.back().vx, 0.0F);
+  EXPECT_FLOAT_EQ(result.fallback_horizon.back().vy, 0.0F);
+  EXPECT_FLOAT_EQ(result.fallback_horizon.back().vz, 0.0F);
+}
+
 } // namespace
 } // namespace drone_city_nav

@@ -113,6 +113,7 @@ production_mppi_node:
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
     static_speed_tracking_weight: 1.0
+    no_static_speed_tracking_weight: 1.0
     deadline_ms: 20.0
     maximum_pose_age_ms: 150.0
     maximum_esdf_age_ms: 1000.0
@@ -130,6 +131,11 @@ production_mppi_node:
     static_maximum_lateral_acceleration_mps2: 5.0
     static_maximum_braking_acceleration_mps2: 8.0
     static_maximum_control_jerk_mps3: 20.0
+    no_static_cruise_speed_mps: 10.0
+    no_static_absolute_speed_limit_mps: 10.0
+    no_static_maximum_horizontal_acceleration_mps2: 4.0
+    no_static_maximum_control_jerk_mps3: 12.0
+    no_static_curvature_preview_distance_m: 60.0
     static_speed_reaction_latency_s: 0.10
     static_observation_distance_m: 30.0
     static_observation_margin_m: 3.0
@@ -164,7 +170,7 @@ production_mppi_node:
     safety_maximum_braking_acceleration_mps2: 8.0
     safety_minimum_time_to_collision_s: 0.50
     static_safety_fallback_duration_s: 3.0
-    no_static_safety_fallback_duration_s: 2.0
+    no_static_safety_fallback_duration_s: 3.0
     liveness_enabled: true
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5

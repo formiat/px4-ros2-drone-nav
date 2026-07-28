@@ -99,6 +99,14 @@ struct ProductionMppiAppliedControl {
   bool valid{false};
 };
 
+enum class ProductionMppiPlanningState {
+  kPlanned,
+  kNoGuideBrakingHold,
+};
+
+[[nodiscard]] const char*
+productionMppiPlanningStateName(ProductionMppiPlanningState state) noexcept;
+
 class ProductionMppiNode final : public rclcpp::Node {
 public:
   ProductionMppiNode();
@@ -116,22 +124,21 @@ private:
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void esdfWorker(std::stop_token stop_token);
   void planningTick();
-  void publishDiagnostics(const mppi::MppiTickInput& input,
-                          const mppi::MppiTickResult& result,
-                          const ProductionMppiPreparedEsdf& esdf,
-                          const ProductionMppiStability& stability,
-                          const ProductionMppiPredictionError& prediction,
-                          const MppiLivenessResult& liveness,
-                          const MppiSpeedPolicyResult& speed_policy,
-                          std::string_view target_source, double pose_age_ms,
-                          double esdf_age_ms, double control_feedback_age_ms,
-                          double snapshot_ms, double stability_ms, double rviz_ms);
+  void publishDiagnostics(
+      const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
+      const ProductionMppiPreparedEsdf& esdf, const ProductionMppiStability& stability,
+      const ProductionMppiPredictionError& prediction,
+      const MppiLivenessResult& liveness, const MppiSpeedPolicyResult& speed_policy,
+      ProductionMppiPlanningState planning_state, std::string_view target_source,
+      double pose_age_ms, double esdf_age_ms, double control_feedback_age_ms,
+      double snapshot_ms, double stability_ms, double rviz_ms);
   void publishRviz(const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
                    const ProductionMppiPreparedEsdf& esdf);
   void publishSummary();
   void publishExecutionHorizon(const mppi::MppiTickInput& input,
                                const mppi::MppiTickResult& result,
                                const ProductionMppiPreparedEsdf& esdf,
+                               ProductionMppiPlanningState planning_state,
                                std::int64_t now_ns);
 
   [[nodiscard]] mppi::State selectTarget(const ProductionMppiNavigation& navigation,
@@ -165,7 +172,7 @@ private:
   mppi::PassageSpeedPolicy passage_speed_policy_{};
   MppiHorizonSafetyConfig safety_config_{};
   MppiLivenessConfig liveness_config_{};
-  MppiSpeedPolicyConfig static_speed_policy_config_{};
+  MppiSpeedPolicyConfig speed_policy_config_{};
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
@@ -204,6 +211,7 @@ private:
   std::uint64_t post_update_contract_violations_{0U};
   std::uint64_t no_progress_horizons_{0U};
   std::uint64_t liveness_reseeds_{0U};
+  std::uint64_t no_guide_braking_hold_ticks_{0U};
   std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
   std::ofstream diagnostics_stream_;

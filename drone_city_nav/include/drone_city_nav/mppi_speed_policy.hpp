@@ -51,7 +51,7 @@ struct MppiSpeedPolicyResult {
                                           double braking_acceleration_mps2) noexcept;
 
 [[nodiscard]] MppiSpeedPolicyResult
-evaluateStaticMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,
-                              const MppiSpeedPolicyInput& input);
+evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,
+                        const MppiSpeedPolicyInput& input);
 
 } // namespace drone_city_nav

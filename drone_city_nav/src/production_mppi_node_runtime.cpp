@@ -342,35 +342,38 @@ void ProductionMppiNode::planningTick() {
   const std::span<const Point2> guide =
       esdf->global_guide ? std::span<const Point2>{*esdf->global_guide}
                          : std::span<const Point2>{};
-  MppiSpeedPolicyResult speed_policy;
-  speed_policy.target_lookahead_m = no_static_guide_lookahead_m_;
-  if (passage_speed_policy_.use_static_map) {
-    speed_policy = evaluateStaticMppiSpeedPolicy(
-        static_speed_policy_config_, MppiSpeedPolicyInput{
-                                         .state = navigation.state,
-                                         .mission_goal = mission_goal_,
-                                         .guide = guide,
-                                         .passage_speed_limit_mps = std::nullopt,
-                                     });
-  }
+  MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
+      speed_policy_config_, MppiSpeedPolicyInput{
+                                .state = navigation.state,
+                                .mission_goal = mission_goal_,
+                                .guide = guide,
+                                .passage_speed_limit_mps = std::nullopt,
+                            });
   std::string target_source;
   mppi::State target =
       selectTarget(navigation, *esdf, speed_policy.target_lookahead_m, target_source);
   std::optional<mppi::PassageConstraint> passage =
       selectPassageConstraint(navigation.state, guide);
-  if (passage_speed_policy_.use_static_map && passage.has_value()) {
-    speed_policy = evaluateStaticMppiSpeedPolicy(
-        static_speed_policy_config_,
-        MppiSpeedPolicyInput{
-            .state = navigation.state,
-            .mission_goal = mission_goal_,
-            .guide = guide,
-            .passage_speed_limit_mps = passage->speed_limit_mps,
-        });
+  if (passage.has_value()) {
+    speed_policy = evaluateMppiSpeedPolicy(
+        speed_policy_config_, MppiSpeedPolicyInput{
+                                  .state = navigation.state,
+                                  .mission_goal = mission_goal_,
+                                  .guide = guide,
+                                  .passage_speed_limit_mps = passage->speed_limit_mps,
+                              });
     target =
         selectTarget(navigation, *esdf, speed_policy.target_lookahead_m, target_source);
   }
-  if (passage.has_value()) {
+  ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
+  if (!passage_speed_policy_.use_static_map && target_source == "mission_goal_direct") {
+    planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
+    target = navigation.state;
+    passage.reset();
+    speed_policy.reference_speed_mps = 0.0;
+    speed_policy.target_lookahead_m = 0.0;
+    target_source = "no_guide_braking_hold";
+  } else if (passage.has_value()) {
     target.z = passage->preferred_z_m;
     target_source = "passage_primitive";
   }
@@ -443,11 +446,32 @@ void ProductionMppiNode::planningTick() {
                                  std::chrono::steady_clock::now() - snapshot_started)
                                  .count();
   mppi::MppiTickResult result;
-  try {
-    result = engine_->plan(input);
-  } catch (const std::exception& error) {
-    RCLCPP_ERROR(get_logger(), "PRODUCTION_MPPI_TICK failed: %s", error.what());
-    return;
+  if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
+    const MppiHorizonSafetyResult fallback =
+        buildMppiBrakingFallback(input.initial_state, safety_config_);
+    result.horizon = fallback.fallback_horizon;
+    result.controls = fallback.fallback_controls;
+    result.selected_tier = mppi::RiskTier::kPreferred;
+    result.raw_collision = false;
+    result.esdf_revision = esdf->revision;
+    result.timings.host_total_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  snapshot_started)
+            .count();
+    ++no_guide_braking_hold_ticks_;
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PRODUCTION_MPPI_NO_GUIDE mode=no_static action=braking_hold "
+                         "lattice_status=%s lattice_termination=%s speed_mps=%.2f",
+                         latticePlanStatusName(esdf->lattice_status),
+                         latticeSearchTerminationName(esdf->lattice_termination),
+                         std::hypot(navigation.state.vx, navigation.state.vy));
+  } else {
+    try {
+      result = engine_->plan(input);
+    } catch (const std::exception& error) {
+      RCLCPP_ERROR(get_logger(), "PRODUCTION_MPPI_TICK failed: %s", error.what());
+      return;
+    }
   }
   if (liveness.reseed_requested) {
     ++liveness_reseeds_;
@@ -476,9 +500,10 @@ void ProductionMppiNode::planningTick() {
                              std::chrono::steady_clock::now() - rviz_started)
                              .count();
   publishDiagnostics(input, result, *esdf, stability, prediction, liveness,
-                     speed_policy, target_source, pose_age_ms, esdf_age_ms,
-                     control_feedback_age_ms, snapshot_ms, stability_ms, rviz_ms);
-  publishExecutionHorizon(input, result, *esdf, now_ns);
+                     speed_policy, planning_state, target_source, pose_age_ms,
+                     esdf_age_ms, control_feedback_age_ms, snapshot_ms, stability_ms,
+                     rviz_ms);
+  publishExecutionHorizon(input, result, *esdf, planning_state, now_ns);
   {
     const std::scoped_lock lock{input_mutex_};
     if (result.horizon.size() > 1U) {

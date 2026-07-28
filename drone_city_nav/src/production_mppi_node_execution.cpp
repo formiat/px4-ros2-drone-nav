@@ -17,10 +17,10 @@ timeFromNanoseconds(const std::int64_t nanoseconds) {
 
 } // namespace
 
-void ProductionMppiNode::publishExecutionHorizon(const mppi::MppiTickInput& input,
-                                                 const mppi::MppiTickResult& result,
-                                                 const ProductionMppiPreparedEsdf& esdf,
-                                                 const std::int64_t now_ns) {
+void ProductionMppiNode::publishExecutionHorizon(
+    const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
+    const ProductionMppiPreparedEsdf& esdf,
+    const ProductionMppiPlanningState planning_state, const std::int64_t now_ns) {
   if (!execution_horizon_pub_ || !esdf.distances_m || result.horizon.size() < 2U) {
     return;
   }
@@ -28,14 +28,16 @@ void ProductionMppiNode::publishExecutionHorizon(const mppi::MppiTickInput& inpu
       evaluateMppiHorizonSafety(input.initial_state, result.horizon, *esdf.distances_m,
                                 esdf.grid, safety_config_);
   const bool engine_collision = result.raw_collision || result.known_solid_collision;
-  const bool braking =
-      engine_collision || safety.decision != MppiHorizonSafetyDecision::kExecute;
-  const std::span<const mppi::State> states =
-      braking ? std::span<const mppi::State>{safety.fallback_horizon}
-              : std::span<const mppi::State>{result.horizon};
-  const std::span<const mppi::Control> controls =
-      braking ? std::span<const mppi::Control>{safety.fallback_controls}
-              : std::span<const mppi::Control>{result.controls};
+  const bool forced_braking_hold =
+      planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold;
+  const bool braking = forced_braking_hold || engine_collision ||
+                       safety.decision != MppiHorizonSafetyDecision::kExecute;
+  std::span<const mppi::State> states{result.horizon};
+  std::span<const mppi::Control> controls{result.controls};
+  if (braking && !forced_braking_hold) {
+    states = safety.fallback_horizon;
+    controls = safety.fallback_controls;
+  }
   if (states.size() < 2U || controls.empty()) {
     return;
   }
