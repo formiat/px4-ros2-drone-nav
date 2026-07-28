@@ -4,10 +4,25 @@
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <vector>
 
 namespace drone_city_nav {
+
+enum class LatticePlanStatus : std::uint8_t {
+  kInvalidInput,
+  kReachedPlanningGoal,
+  kViableFrontier,
+  kDeadEnd,
+};
+
+enum class LatticeSearchTermination : std::uint8_t {
+  kInvalidInput,
+  kPlanningGoalReached,
+  kOpenSetExhausted,
+  kExpansionBudgetExhausted,
+};
 
 struct RiskAwareLatticeConfig {
   int heading_bins{16};
@@ -23,15 +38,25 @@ struct RiskAwareLatticeConfig {
   double turn_cost{0.5};
   double heuristic_weight{2.0};
   std::size_t maximum_expansions{60000U};
+  std::size_t minimum_frontier_guide_points{3U};
+  double minimum_frontier_guide_length_m{8.0};
+  double minimum_frontier_progress_m{4.0};
 };
 
 struct RiskAwareLatticeResult {
   bool valid{false};
   bool reached_mission_goal{false};
+  bool planning_goal_reached{false};
   Point2 planning_goal{};
   std::vector<Point2> guide;
   std::size_t expansions{0U};
   double cost{0.0};
+  LatticePlanStatus status{LatticePlanStatus::kInvalidInput};
+  LatticeSearchTermination termination{LatticeSearchTermination::kInvalidInput};
+  double achieved_progress_m{0.0};
+  double guide_length_m{0.0};
+  double remaining_goal_distance_m{0.0};
+  std::size_t terminal_successor_count{0U};
 };
 
 [[nodiscard]] RiskAwareLatticeResult
@@ -39,5 +64,10 @@ planRiskAwareMotionPrimitiveGuide(const mppi::EsdfGrid& grid,
                                   std::span<const float> esdf_m, Point2 start,
                                   double start_heading_rad, Point2 mission_goal,
                                   const RiskAwareLatticeConfig& config);
+
+[[nodiscard]] const char* latticePlanStatusName(LatticePlanStatus status) noexcept;
+
+[[nodiscard]] const char*
+latticeSearchTerminationName(LatticeSearchTermination termination) noexcept;
 
 } // namespace drone_city_nav

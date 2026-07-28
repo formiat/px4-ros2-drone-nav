@@ -801,15 +801,48 @@ public:
                                          config_.dynamics, previous_applied_control,
                                          first_control_interval_s);
     update_done_.record(stream_);
+    int eligible_tier_value = static_cast<int>(RiskTier::kCollision);
+    float best_critical_exposure_m = kInfinity;
+    float best_planning_exposure_m = kInfinity;
+    float eligible_weight_sum = 0.0F;
     checkCuda(cudaMemcpyAsync(updated_.data(), buffers_.updated.get(),
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,
                               stream_),
               "copy selected controls");
+    checkCuda(cudaMemcpyAsync(&eligible_tier_value, buffers_.best_tier.get(),
+                              sizeof(eligible_tier_value), cudaMemcpyDeviceToHost,
+                              stream_),
+              "copy eligible risk tier");
+    checkCuda(cudaMemcpyAsync(&best_critical_exposure_m, buffers_.best_critical.get(),
+                              sizeof(best_critical_exposure_m), cudaMemcpyDeviceToHost,
+                              stream_),
+              "copy eligible critical exposure");
+    checkCuda(cudaMemcpyAsync(&best_planning_exposure_m, buffers_.best_planning.get(),
+                              sizeof(best_planning_exposure_m), cudaMemcpyDeviceToHost,
+                              stream_),
+              "copy eligible planning exposure");
+    checkCuda(cudaMemcpyAsync(&eligible_weight_sum, buffers_.weight_sum.get(),
+                              sizeof(eligible_weight_sum), cudaMemcpyDeviceToHost,
+                              stream_),
+              "copy eligible weight sum");
     completed_.record(stream_);
     completed_.synchronize();
     checkCuda(cudaGetLastError(), "MPPI engine kernels");
 
     MppiTickResult result;
+    const bool eligible_tier_available =
+        eligible_tier_value >= static_cast<int>(RiskTier::kPreferred) &&
+        eligible_tier_value < static_cast<int>(RiskTier::kCollision);
+    result.eligible_risk_contract = MppiEligibleRiskContract{
+        .available = eligible_tier_available && eligible_weight_sum > 0.0F,
+        .tier = eligible_tier_available ? static_cast<RiskTier>(eligible_tier_value)
+                                        : RiskTier::kCollision,
+        .best_critical_exposure_m = best_critical_exposure_m,
+        .best_planning_exposure_m = best_planning_exposure_m,
+        .critical_exposure_tolerance_m = config_.risk.critical_exposure_tolerance_m,
+        .planning_exposure_tolerance_m = config_.risk.planning_exposure_tolerance_m,
+        .weight_sum = eligible_weight_sum,
+    };
     result.controls = updated_;
     result.warm_start_shift_s = elapsed_s;
     result.nominal_reseeded = nominal_reseeded;
@@ -874,6 +907,15 @@ public:
     result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
     result.selected_tier =
         result.known_solid_collision ? RiskTier::kCollision : metrics.worst_tier;
+    result.post_update_classification = classifyMppiPostUpdate(
+        result.eligible_risk_contract,
+        MppiPostUpdateObservation{
+            .tier = result.selected_tier,
+            .raw_collision = result.raw_collision,
+            .known_solid_collision = result.known_solid_collision,
+            .critical_exposure_m = result.critical_exposure_m,
+            .planning_exposure_m = result.planning_exposure_m,
+        });
     result.terminal_progress_m =
         initial_distance -
         std::hypot(input.target.x - state.x, input.target.y - state.y);

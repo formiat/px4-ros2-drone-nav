@@ -81,6 +81,8 @@ void ProductionMppiNode::publishDiagnostics(
   }
   raw_collision_horizons_ += result.raw_collision ? 1U : 0U;
   solid_collision_horizons_ += result.known_solid_collision ? 1U : 0U;
+  post_update_contract_violations_ +=
+      result.post_update_classification.contract_preserved ? 0U : 1U;
   no_progress_horizons_ += result.head_progress_m <= 0.0F ? 1U : 0U;
   std::ostringstream line;
   line << std::fixed << std::setprecision(3)
@@ -106,6 +108,11 @@ void ProductionMppiNode::publishDiagnostics(
        << " guide_risk=" << globalGuideRiskTierName(esdf.global_guide_risk)
        << " guide_station_m=" << esdf.global_guide_projection.station_m
        << " guide_remaining_m=" << esdf.global_guide_projection.remaining_m
+       << " lattice_search_performed="
+       << (esdf.lattice_search_performed ? "true" : "false")
+       << " lattice_status=" << latticePlanStatusName(esdf.lattice_status)
+       << " lattice_termination="
+       << latticeSearchTerminationName(esdf.lattice_termination)
        << " target_lookahead_m=" << speed_policy.target_lookahead_m
        << " reference_speed_mps=" << input.reference_speed_mps
        << " curvature_speed_limit_mps="
@@ -120,11 +127,30 @@ void ProductionMppiNode::publishDiagnostics(
        << " stability_ms=" << stability_ms << " rviz_ms=" << rviz_ms
        << " deadline_missed="
        << (result.timings.host_total_ms > deadline_ms_ ? "true" : "false")
-       << " risk_tier=" << static_cast<int>(result.selected_tier)
+       << " risk_tier=" << mppi::mppiRiskTierName(result.selected_tier)
        << " raw_collision=" << (result.raw_collision ? "true" : "false")
        << " known_solid_collision=" << (result.known_solid_collision ? "true" : "false")
        << " critical_exposure_m=" << result.critical_exposure_m
        << " planning_exposure_m=" << result.planning_exposure_m
+       << " eligible_available="
+       << (result.eligible_risk_contract.available ? "true" : "false")
+       << " eligible_risk_tier="
+       << mppi::mppiRiskTierName(result.eligible_risk_contract.tier)
+       << " eligible_best_critical_exposure_m="
+       << finiteOrNegative(result.eligible_risk_contract.best_critical_exposure_m)
+       << " eligible_best_planning_exposure_m="
+       << finiteOrNegative(result.eligible_risk_contract.best_planning_exposure_m)
+       << " eligible_weight_sum="
+       << finiteOrNegative(result.eligible_risk_contract.weight_sum)
+       << " eligible_critical_limit_m="
+       << finiteOrNegative(result.post_update_classification.critical_exposure_limit_m)
+       << " eligible_planning_limit_m="
+       << finiteOrNegative(result.post_update_classification.planning_exposure_limit_m)
+       << " post_update_classification="
+       << mppi::mppiPostUpdateClassificationName(
+              result.post_update_classification.classification)
+       << " post_update_contract_preserved="
+       << (result.post_update_classification.contract_preserved ? "true" : "false")
        << " minimum_esdf_m=" << result.minimum_esdf_distance_m
        << " head_progress_m=" << result.head_progress_m
        << " terminal_progress_m=" << result.terminal_progress_m
@@ -171,6 +197,20 @@ void ProductionMppiNode::publishDiagnostics(
         << ",\"guide_risk\":\"" << globalGuideRiskTierName(esdf.global_guide_risk)
         << '"' << ",\"guide_station_m\":" << esdf.global_guide_projection.station_m
         << ",\"guide_remaining_m\":" << esdf.global_guide_projection.remaining_m
+        << ",\"lattice_search_performed\":"
+        << (esdf.lattice_search_performed ? "true" : "false")
+        << ",\"lattice_legacy_valid\":"
+        << (esdf.lattice_legacy_valid ? "true" : "false") << ",\"lattice_status\":\""
+        << latticePlanStatusName(esdf.lattice_status) << '"'
+        << ",\"lattice_termination\":\""
+        << latticeSearchTerminationName(esdf.lattice_termination) << '"'
+        << ",\"lattice_planning_goal_reached\":"
+        << (esdf.lattice_planning_goal_reached ? "true" : "false")
+        << ",\"lattice_achieved_progress_m\":" << esdf.lattice_achieved_progress_m
+        << ",\"lattice_guide_length_m\":" << esdf.lattice_guide_length_m
+        << ",\"lattice_remaining_goal_distance_m\":"
+        << esdf.lattice_remaining_goal_distance_m
+        << ",\"lattice_terminal_successors\":" << esdf.lattice_terminal_successor_count
         << ",\"target_lookahead_m\":" << speed_policy.target_lookahead_m
         << ",\"reference_speed_mps\":" << input.reference_speed_mps
         << ",\"curvature_speed_limit_mps\":"
@@ -184,7 +224,27 @@ void ProductionMppiNode::publishDiagnostics(
         << ",\"total_ms\":" << result.timings.host_total_ms
         << ",\"raw_collision\":" << (result.raw_collision ? "true" : "false")
         << ",\"known_solid_collision\":"
-        << (result.known_solid_collision ? "true" : "false")
+        << (result.known_solid_collision ? "true" : "false") << ",\"risk_tier\":\""
+        << mppi::mppiRiskTierName(result.selected_tier) << '"'
+        << ",\"eligible_available\":"
+        << (result.eligible_risk_contract.available ? "true" : "false")
+        << ",\"eligible_risk_tier\":\""
+        << mppi::mppiRiskTierName(result.eligible_risk_contract.tier) << '"'
+        << ",\"eligible_best_critical_exposure_m\":"
+        << finiteOrNegative(result.eligible_risk_contract.best_critical_exposure_m)
+        << ",\"eligible_best_planning_exposure_m\":"
+        << finiteOrNegative(result.eligible_risk_contract.best_planning_exposure_m)
+        << ",\"eligible_weight_sum\":"
+        << finiteOrNegative(result.eligible_risk_contract.weight_sum)
+        << ",\"eligible_critical_limit_m\":"
+        << finiteOrNegative(result.post_update_classification.critical_exposure_limit_m)
+        << ",\"eligible_planning_limit_m\":"
+        << finiteOrNegative(result.post_update_classification.planning_exposure_limit_m)
+        << ",\"post_update_classification\":\""
+        << mppi::mppiPostUpdateClassificationName(
+               result.post_update_classification.classification)
+        << '"' << ",\"post_update_contract_preserved\":"
+        << (result.post_update_classification.contract_preserved ? "true" : "false")
         << ",\"critical_exposure_m\":" << result.critical_exposure_m
         << ",\"planning_exposure_m\":" << result.planning_exposure_m
         << ",\"head_progress_m\":" << result.head_progress_m
@@ -214,17 +274,19 @@ void ProductionMppiNode::publishSummary() {
   }
   const double maximum =
       *std::max_element(runtime_samples_ms_.begin(), runtime_samples_ms_.end());
-  RCLCPP_INFO(get_logger(),
-              "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
-              " runtime_p50=%.3f runtime_p95=%.3f runtime_p99=%.3f runtime_max=%.3f "
-              "deadline_misses=%" PRIu64 " raw_collision_horizons=%" PRIu64
-              " solid_collision_horizons=%" PRIu64 " no_progress_horizons=%" PRIu64
-              " liveness_reseeds=%" PRIu64 " dropped_esdf_updates=%" PRIu64,
-              completed_ticks_, percentile(runtime_samples_ms_, 0.50),
-              percentile(runtime_samples_ms_, 0.95),
-              percentile(runtime_samples_ms_, 0.99), maximum, deadline_misses_,
-              raw_collision_horizons_, solid_collision_horizons_, no_progress_horizons_,
-              liveness_reseeds_, dropped_raw_snapshots_);
+  RCLCPP_INFO(
+      get_logger(),
+      "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
+      " runtime_p50=%.3f runtime_p95=%.3f runtime_p99=%.3f runtime_max=%.3f "
+      "deadline_misses=%" PRIu64 " raw_collision_horizons=%" PRIu64
+      " solid_collision_horizons=%" PRIu64 " post_update_contract_violations=%" PRIu64
+      " no_progress_horizons=%" PRIu64 " liveness_reseeds=%" PRIu64
+      " dropped_esdf_updates=%" PRIu64,
+      completed_ticks_, percentile(runtime_samples_ms_, 0.50),
+      percentile(runtime_samples_ms_, 0.95), percentile(runtime_samples_ms_, 0.99),
+      maximum, deadline_misses_, raw_collision_horizons_, solid_collision_horizons_,
+      post_update_contract_violations_, no_progress_horizons_, liveness_reseeds_,
+      dropped_raw_snapshots_);
 }
 
 } // namespace drone_city_nav

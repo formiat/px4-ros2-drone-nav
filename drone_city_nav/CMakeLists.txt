@@ -140,6 +140,7 @@ add_library(
   src/px4_ros_time_mapper.cpp
   src/risk_aware_lattice.cpp
   src/lidar_snapshot_writer.cpp
+  src/mppi/mppi_post_update_classification.cpp
   src/mppi_horizon_safety.cpp
   src/mppi_liveness.cpp
   src/mppi_speed_policy.cpp
@@ -156,6 +157,10 @@ target_include_directories(
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:include>")
 enable_project_warnings(drone_city_nav_core)
+
+if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+  target_link_libraries(drone_city_nav_mppi_cuda PUBLIC drone_city_nav_core)
+endif()
 
 add_library(drone_contact_system SHARED src/drone_contact_system.cpp)
 target_compile_features(drone_contact_system PRIVATE cxx_std_20)
@@ -340,6 +345,12 @@ if(BUILD_TESTING)
   target_compile_features(mppi_liveness_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_liveness_test_current drone_city_nav_core)
   enable_project_warnings(mppi_liveness_test_current)
+
+  ament_add_gtest(mppi_post_update_classification_test
+                  tests/mppi_post_update_classification_test.cpp)
+  target_compile_features(mppi_post_update_classification_test PRIVATE cxx_std_20)
+  target_link_libraries(mppi_post_update_classification_test drone_city_nav_core)
+  enable_project_warnings(mppi_post_update_classification_test)
 
   ament_add_gtest(mppi_speed_policy_test_current tests/mppi_speed_policy_test.cpp)
   target_compile_features(mppi_speed_policy_test_current PRIVATE cxx_std_20)

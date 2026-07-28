@@ -65,6 +65,15 @@ struct ProductionMppiPreparedEsdf {
       GlobalGuideHeadingSource::kYawFallback};
   GlobalGuideRiskTier global_guide_risk{GlobalGuideRiskTier::kPreferred};
   GlobalGuideProjection global_guide_projection{};
+  bool lattice_search_performed{false};
+  bool lattice_legacy_valid{false};
+  LatticePlanStatus lattice_status{LatticePlanStatus::kInvalidInput};
+  LatticeSearchTermination lattice_termination{LatticeSearchTermination::kInvalidInput};
+  bool lattice_planning_goal_reached{false};
+  double lattice_achieved_progress_m{0.0};
+  double lattice_guide_length_m{0.0};
+  double lattice_remaining_goal_distance_m{0.0};
+  std::size_t lattice_terminal_successor_count{0U};
 };
 
 struct ProductionMppiStability {
@@ -192,6 +201,7 @@ private:
   std::uint64_t deadline_misses_{0U};
   std::uint64_t raw_collision_horizons_{0U};
   std::uint64_t solid_collision_horizons_{0U};
+  std::uint64_t post_update_contract_violations_{0U};
   std::uint64_t no_progress_horizons_{0U};
   std::uint64_t liveness_reseeds_{0U};
   std::vector<double> runtime_samples_ms_;

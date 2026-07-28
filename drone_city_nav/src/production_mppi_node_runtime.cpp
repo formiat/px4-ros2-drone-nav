@@ -116,6 +116,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     }
     ActiveGlobalGuideUpdate guide_update;
     GlobalGuideHeading guide_heading;
+    RiskAwareLatticeResult lattice_observation;
+    bool lattice_search_performed = false;
     std::shared_ptr<const std::vector<Point2>> guide;
     if (navigation.valid && active_guide_lifecycle_) {
       const Point2 position{navigation.state.x, navigation.state.y};
@@ -128,21 +130,22 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       } else {
         guide_heading = active_guide_lifecycle_->selectPlanningHeading(
             navigation.state, navigation.state.yaw);
-        RiskAwareLatticeResult lattice = planRiskAwareMotionPrimitiveGuide(
+        lattice_observation = planRiskAwareMotionPrimitiveGuide(
             grid, *host_distances, position, guide_heading.heading_rad,
             Point2{mission_goal_.x, mission_goal_.y}, lattice_config_);
-        const auto candidate =
-            std::make_shared<const std::vector<Point2>>(std::move(lattice.guide));
+        lattice_search_performed = true;
+        const auto candidate = std::make_shared<const std::vector<Point2>>(
+            std::move(lattice_observation.guide));
         const bool reaches_mission_goal =
-            lattice.reached_mission_goal && !candidate->empty() &&
+            lattice_observation.reached_mission_goal && !candidate->empty() &&
             distance(candidate->back(), Point2{mission_goal_.x, mission_goal_.y}) <=
                 lattice_config_.goal_tolerance_m;
-        if (lattice.valid &&
+        if (lattice_observation.valid &&
             active_guide_lifecycle_->accept(candidate, reaches_mission_goal, grid,
                                             *host_distances, position)) {
           guide = active_guide_lifecycle_->guide();
-          active_guide_expansions = lattice.expansions;
-          active_guide_cost = lattice.cost;
+          active_guide_expansions = lattice_observation.expansions;
+          active_guide_cost = lattice_observation.cost;
         } else {
           active_guide_expansions = 0U;
           active_guide_cost = 0.0;
@@ -176,6 +179,17 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         .global_guide_heading_source = guide_heading.source,
         .global_guide_risk = active_status.current_risk,
         .global_guide_projection = active_status.projection,
+        .lattice_search_performed = lattice_search_performed,
+        .lattice_legacy_valid = lattice_observation.valid,
+        .lattice_status = lattice_observation.status,
+        .lattice_termination = lattice_observation.termination,
+        .lattice_planning_goal_reached = lattice_observation.planning_goal_reached,
+        .lattice_achieved_progress_m = lattice_observation.achieved_progress_m,
+        .lattice_guide_length_m = lattice_observation.guide_length_m,
+        .lattice_remaining_goal_distance_m =
+            lattice_observation.remaining_goal_distance_m,
+        .lattice_terminal_successor_count =
+            lattice_observation.terminal_successor_count,
     };
     {
       const std::scoped_lock lock{esdf_state_mutex_};
@@ -190,7 +204,12 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         "guide_generation=%" PRIu64
         " guide_reused=%s guide_mission_goal_hold=%s guide_release=%s "
         "guide_heading_source=%s guide_risk=%s guide_station_m=%.2f "
-        "guide_remaining_m=%.2f guide_cross_track_m=%.2f",
+        "guide_remaining_m=%.2f guide_cross_track_m=%.2f "
+        "lattice_search_performed=%s lattice_legacy_valid=%s lattice_status=%s "
+        "lattice_termination=%s lattice_planning_goal_reached=%s "
+        "lattice_achieved_progress_m=%.2f lattice_guide_length_m=%.2f "
+        "lattice_remaining_goal_distance_m=%.2f "
+        "lattice_terminal_successors=%zu",
         prepared.revision, prepared.build_ms, prepared.conversion_ms,
         prepared.upload_ms,
         static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
@@ -204,7 +223,15 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         globalGuideRiskTierName(prepared.global_guide_risk),
         prepared.global_guide_projection.station_m,
         prepared.global_guide_projection.remaining_m,
-        prepared.global_guide_projection.cross_track_m);
+        prepared.global_guide_projection.cross_track_m,
+        prepared.lattice_search_performed ? "true" : "false",
+        prepared.lattice_legacy_valid ? "true" : "false",
+        latticePlanStatusName(prepared.lattice_status),
+        latticeSearchTerminationName(prepared.lattice_termination),
+        prepared.lattice_planning_goal_reached ? "true" : "false",
+        prepared.lattice_achieved_progress_m, prepared.lattice_guide_length_m,
+        prepared.lattice_remaining_goal_distance_m,
+        prepared.lattice_terminal_successor_count);
   }
 }
 

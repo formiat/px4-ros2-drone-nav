@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_config.hpp"
+#include "drone_city_nav/mppi/mppi_post_update_classification.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -77,6 +78,8 @@ struct MppiStageTimings {
 struct MppiTickResult {
   std::vector<State> horizon;
   std::vector<Control> controls;
+  MppiEligibleRiskContract eligible_risk_contract{};
+  MppiPostUpdateClassificationResult post_update_classification{};
   RiskTier selected_tier{RiskTier::kCollision};
   bool raw_collision{true};
   bool known_solid_collision{false};

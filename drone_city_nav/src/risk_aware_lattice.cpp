@@ -93,6 +93,36 @@ struct QueueEntry {
                 start.y + (mission_goal.y - start.y) * ratio};
 }
 
+[[nodiscard]] bool primitiveIsCollisionFree(const mppi::EsdfGrid& grid,
+                                            const std::span<const float> esdf_m,
+                                            const Point2 start, const int heading_bin,
+                                            const RiskAwareLatticeConfig& config) {
+  const double heading = headingForBin(heading_bin, config.heading_bins);
+  const int sample_count = static_cast<int>(
+      std::ceil(config.primitive_length_m / config.primitive_sample_step_m));
+  for (int sample_index = 1; sample_index <= sample_count; ++sample_index) {
+    const double distance =
+        std::min(config.primitive_length_m,
+                 static_cast<double>(sample_index) * config.primitive_sample_step_m);
+    const Point2 sample{start.x + std::cos(heading) * distance,
+                        start.y + std::sin(heading) * distance};
+    const std::optional<float> clearance = clearanceAt(grid, esdf_m, sample);
+    if (!clearance.has_value() || *clearance <= config.collision_radius_m) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] double guideLength(const std::span<const Point2> guide) noexcept {
+  double length_m = 0.0;
+  for (std::size_t index = 1U; index < guide.size(); ++index) {
+    length_m += std::hypot(guide[index].x - guide[index - 1U].x,
+                           guide[index].y - guide[index - 1U].y);
+  }
+  return length_m;
+}
+
 } // namespace
 
 RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
@@ -119,6 +149,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   if (!clearanceAt(grid, esdf_m, start).has_value()) {
     return result;
   }
+  result.status = LatticePlanStatus::kDeadEnd;
+  result.termination = LatticeSearchTermination::kOpenSetExhausted;
   std::unordered_map<LatticeKey, Record, LatticeKeyHash> records;
   std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<>> open;
   records[start_key].cost = 0.0;
@@ -142,6 +174,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     }
     if (goal_distance <= config.goal_tolerance_m) {
       best_goal = current_entry.key;
+      result.planning_goal_reached = true;
       break;
     }
     ++result.expansions;
@@ -188,6 +221,13 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       open.push(QueueEntry{next_cost + config.heuristic_weight * heuristic, next});
     }
   }
+  if (result.planning_goal_reached) {
+    result.termination = LatticeSearchTermination::kPlanningGoalReached;
+  } else if (!open.empty() && result.expansions >= config.maximum_expansions) {
+    result.termination = LatticeSearchTermination::kExpansionBudgetExhausted;
+  } else {
+    result.termination = LatticeSearchTermination::kOpenSetExhausted;
+  }
   if (!best_goal.has_value()) {
     return result;
   }
@@ -198,7 +238,59 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   }
   std::ranges::reverse(result.guide);
   result.valid = result.guide.size() >= 2U;
+  result.guide_length_m = guideLength(result.guide);
+  result.remaining_goal_distance_m = best_goal_distance;
+  result.achieved_progress_m =
+      std::hypot(result.planning_goal.x - start.x, result.planning_goal.y - start.y) -
+      result.remaining_goal_distance_m;
+  const Point2 terminal = cellCenter(grid, *best_goal);
+  for (const int heading_delta : {-1, 0, 1}) {
+    const int next_heading =
+        wrapHeading(best_goal->heading + heading_delta, config.heading_bins);
+    if (primitiveIsCollisionFree(grid, esdf_m, terminal, next_heading, config)) {
+      ++result.terminal_successor_count;
+    }
+  }
+  if (result.planning_goal_reached) {
+    result.status = LatticePlanStatus::kReachedPlanningGoal;
+  } else if (result.guide.size() >= config.minimum_frontier_guide_points &&
+             result.guide_length_m >= config.minimum_frontier_guide_length_m &&
+             result.achieved_progress_m >= config.minimum_frontier_progress_m &&
+             result.terminal_successor_count > 0U) {
+    result.status = LatticePlanStatus::kViableFrontier;
+  } else {
+    result.status = LatticePlanStatus::kDeadEnd;
+  }
   return result;
+}
+
+const char* latticePlanStatusName(const LatticePlanStatus status) noexcept {
+  switch (status) {
+    case LatticePlanStatus::kInvalidInput:
+      return "invalid_input";
+    case LatticePlanStatus::kReachedPlanningGoal:
+      return "reached_planning_goal";
+    case LatticePlanStatus::kViableFrontier:
+      return "viable_frontier";
+    case LatticePlanStatus::kDeadEnd:
+      return "dead_end";
+  }
+  return "unknown";
+}
+
+const char*
+latticeSearchTerminationName(const LatticeSearchTermination termination) noexcept {
+  switch (termination) {
+    case LatticeSearchTermination::kInvalidInput:
+      return "invalid_input";
+    case LatticeSearchTermination::kPlanningGoalReached:
+      return "planning_goal_reached";
+    case LatticeSearchTermination::kOpenSetExhausted:
+      return "open_set_exhausted";
+    case LatticeSearchTermination::kExpansionBudgetExhausted:
+      return "expansion_budget_exhausted";
+  }
+  return "unknown";
 }
 
 } // namespace drone_city_nav
