@@ -153,6 +153,32 @@ ProductionMppiNode::ProductionMppiNode()
   lattice_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   lattice_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
+  active_guide_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
+  active_guide_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
+  active_guide_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
+  active_guide_config_.validation_sample_step_m =
+      declare_parameter<double>("global_guide_validation_sample_step_m", 0.5);
+  const double static_guide_replan_remaining_m =
+      declare_parameter<double>("static_global_guide_replan_remaining_m", 45.0);
+  const double no_static_guide_replan_remaining_m =
+      declare_parameter<double>("no_static_global_guide_replan_remaining_m", 15.0);
+  active_guide_config_.minimum_remaining_m = passage_speed_policy_.use_static_map
+                                                 ? static_guide_replan_remaining_m
+                                                 : no_static_guide_replan_remaining_m;
+  active_guide_config_.mission_goal_hold_distance_m =
+      declare_parameter<double>("global_guide_mission_goal_hold_distance_m", 5.0);
+  active_guide_config_.maximum_cross_track_m =
+      declare_parameter<double>("global_guide_maximum_cross_track_m", 15.0);
+  active_guide_config_.velocity_heading_low_speed_mps =
+      declare_parameter<double>("global_guide_heading_low_speed_mps", 0.5);
+  active_guide_config_.velocity_heading_high_speed_mps =
+      declare_parameter<double>("global_guide_heading_high_speed_mps", 1.5);
+  guide_progress_config_.observation_window_s =
+      declare_parameter<double>("global_guide_stall_observation_window_s", 1.0);
+  guide_progress_config_.minimum_progress_m =
+      declare_parameter<double>("global_guide_stall_minimum_progress_m", 0.5);
+  guide_progress_config_.minimum_predicted_head_progress_m = declare_parameter<double>(
+      "global_guide_stall_minimum_predicted_head_progress_m", 0.5);
   mppi_config_.early_exit_on_collision = true;
   safety_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   safety_config_.reaction_latency_s =
@@ -192,6 +218,10 @@ ProductionMppiNode::ProductionMppiNode()
   }
 
   liveness_supervisor_ = std::make_unique<MppiLivenessSupervisor>(liveness_config_);
+  active_guide_lifecycle_ =
+      std::make_unique<ActiveGlobalGuideLifecycle>(active_guide_config_);
+  guide_progress_tracker_ =
+      std::make_unique<GlobalGuideProgressTracker>(guide_progress_config_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
   const bool passages_enabled = declare_parameter<bool>("known_passages_enabled", true);
   const std::string passages_path = declare_parameter<std::string>(
@@ -261,7 +291,9 @@ ProductionMppiNode::ProductionMppiNode()
               "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
               "deadline=%.1fms known_solids=%zu static_map=%s "
               "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
-              "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s",
+              "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
+              "sticky_guide=true guide_replan_remaining=%.1fm "
+              "guide_heading_blend=(%.1f,%.1f)mps",
               mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
               known_solids_.size(),
               passage_speed_policy_.use_static_map ? "true" : "false",
@@ -273,7 +305,10 @@ ProductionMppiNode::ProductionMppiNode()
               mppi_config_.dynamics.maximum_horizontal_speed_mps,
               activePassageSpeedLimitMps(passage_speed_policy_),
               mppi_config_.costs.head_progress_horizon_s,
-              liveness_config_.enabled ? "true" : "false");
+              liveness_config_.enabled ? "true" : "false",
+              active_guide_config_.minimum_remaining_m,
+              active_guide_config_.velocity_heading_low_speed_mps,
+              active_guide_config_.velocity_heading_high_speed_mps);
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

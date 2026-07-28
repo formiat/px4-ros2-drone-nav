@@ -119,6 +119,7 @@ endif()
 
 add_library(
   drone_city_nav_core
+  src/active_global_guide.cpp
   src/ambiguous_lidar_hit_tracker.cpp
   src/debug_image.cpp
   src/distance_field.cpp
@@ -365,6 +366,12 @@ if(BUILD_TESTING)
   target_compile_features(risk_aware_lattice_test PRIVATE cxx_std_20)
   target_link_libraries(risk_aware_lattice_test drone_city_nav_core)
   enable_project_warnings(risk_aware_lattice_test)
+
+  ament_add_gtest(active_global_guide_test
+                  tests/active_global_guide_test.cpp)
+  target_compile_features(active_global_guide_test PRIVATE cxx_std_20)
+  target_link_libraries(active_global_guide_test drone_city_nav_core)
+  enable_project_warnings(active_global_guide_test)
 
   ament_add_gtest(distance_field_test_current tests/distance_field_test.cpp)
   target_compile_features(distance_field_test_current PRIVATE cxx_std_20)

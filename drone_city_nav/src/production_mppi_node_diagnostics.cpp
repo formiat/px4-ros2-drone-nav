@@ -96,6 +96,16 @@ void ProductionMppiNode::publishDiagnostics(
        << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
        << " target_source=" << target_source << " target=(" << input.target.x << ','
        << input.target.y << ',' << input.target.z << ")"
+       << " guide_generation=" << esdf.global_guide_generation
+       << " guide_reused=" << (esdf.global_guide_reused ? "true" : "false")
+       << " guide_mission_goal_hold="
+       << (esdf.global_guide_mission_goal_hold ? "true" : "false") << " guide_release="
+       << globalGuideReleaseReasonName(esdf.global_guide_release_reason)
+       << " guide_heading_source="
+       << globalGuideHeadingSourceName(esdf.global_guide_heading_source)
+       << " guide_risk=" << globalGuideRiskTierName(esdf.global_guide_risk)
+       << " guide_station_m=" << esdf.global_guide_projection.station_m
+       << " guide_remaining_m=" << esdf.global_guide_projection.remaining_m
        << " target_lookahead_m=" << speed_policy.target_lookahead_m
        << " reference_speed_mps=" << input.reference_speed_mps
        << " curvature_speed_limit_mps="
@@ -150,6 +160,17 @@ void ProductionMppiNode::publishDiagnostics(
         << (passage_speed_policy_.use_static_map ? "static" : "no_static") << '"'
         << ",\"horizon_s\":"
         << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
+        << ",\"guide_generation\":" << esdf.global_guide_generation
+        << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
+        << ",\"guide_mission_goal_hold\":"
+        << (esdf.global_guide_mission_goal_hold ? "true" : "false")
+        << ",\"guide_release\":\""
+        << globalGuideReleaseReasonName(esdf.global_guide_release_reason) << '"'
+        << ",\"guide_heading_source\":\""
+        << globalGuideHeadingSourceName(esdf.global_guide_heading_source) << '"'
+        << ",\"guide_risk\":\"" << globalGuideRiskTierName(esdf.global_guide_risk)
+        << '"' << ",\"guide_station_m\":" << esdf.global_guide_projection.station_m
+        << ",\"guide_remaining_m\":" << esdf.global_guide_projection.remaining_m
         << ",\"target_lookahead_m\":" << speed_policy.target_lookahead_m
         << ",\"reference_speed_mps\":" << input.reference_speed_mps
         << ",\"curvature_speed_limit_mps\":"

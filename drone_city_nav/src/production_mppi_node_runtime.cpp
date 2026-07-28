@@ -53,6 +53,8 @@ namespace {
 } // namespace
 
 void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
+  std::size_t active_guide_expansions = 0U;
+  double active_guide_cost = 0.0;
   while (!stop_token.stop_requested()) {
     msg::RawObstacleSnapshot::ConstSharedPtr snapshot;
     {
@@ -112,27 +114,69 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       const std::scoped_lock lock{input_mutex_};
       navigation = navigation_;
     }
-    RiskAwareLatticeResult lattice;
-    if (navigation.valid) {
-      lattice = planRiskAwareMotionPrimitiveGuide(
-          grid, *host_distances, Point2{navigation.state.x, navigation.state.y},
-          navigation.state.yaw, Point2{mission_goal_.x, mission_goal_.y},
-          lattice_config_);
+    ActiveGlobalGuideUpdate guide_update;
+    GlobalGuideHeading guide_heading;
+    std::shared_ptr<const std::vector<Point2>> guide;
+    if (navigation.valid && active_guide_lifecycle_) {
+      const Point2 position{navigation.state.x, navigation.state.y};
+      guide_update = active_guide_lifecycle_->update(
+          grid, *host_distances, position,
+          guide_stall_generation_.load(std::memory_order_relaxed));
+      if (guide_update.active) {
+        guide = active_guide_lifecycle_->guide();
+        guide_heading.source = GlobalGuideHeadingSource::kActiveGuide;
+      } else {
+        guide_heading = active_guide_lifecycle_->selectPlanningHeading(
+            navigation.state, navigation.state.yaw);
+        RiskAwareLatticeResult lattice = planRiskAwareMotionPrimitiveGuide(
+            grid, *host_distances, position, guide_heading.heading_rad,
+            Point2{mission_goal_.x, mission_goal_.y}, lattice_config_);
+        const auto candidate =
+            std::make_shared<const std::vector<Point2>>(std::move(lattice.guide));
+        const bool reaches_mission_goal =
+            lattice.reached_mission_goal && !candidate->empty() &&
+            distance(candidate->back(), Point2{mission_goal_.x, mission_goal_.y}) <=
+                lattice_config_.goal_tolerance_m;
+        if (lattice.valid &&
+            active_guide_lifecycle_->accept(candidate, reaches_mission_goal, grid,
+                                            *host_distances, position)) {
+          guide = active_guide_lifecycle_->guide();
+          active_guide_expansions = lattice.expansions;
+          active_guide_cost = lattice.cost;
+        } else {
+          active_guide_expansions = 0U;
+          active_guide_cost = 0.0;
+        }
+      }
+    } else if (active_guide_lifecycle_) {
+      guide = active_guide_lifecycle_->guide();
+      guide_update = active_guide_lifecycle_->status();
+      guide_update.retained = guide != nullptr;
     }
-    const auto guide =
-        std::make_shared<const std::vector<Point2>>(std::move(lattice.guide));
-    const ProductionMppiPreparedEsdf prepared{snapshot->producer_instance_id,
-                                              snapshot->obstacle_snapshot_revision,
-                                              source_stamp_ns,
-                                              get_clock()->now().nanoseconds(),
-                                              build_ms,
-                                              conversion_ms,
-                                              upload.upload_ms,
-                                              grid,
-                                              host_distances,
-                                              guide,
-                                              lattice.expansions,
-                                              lattice.cost};
+    const ActiveGlobalGuideUpdate active_status =
+        active_guide_lifecycle_ ? active_guide_lifecycle_->status()
+                                : ActiveGlobalGuideUpdate{};
+    const ProductionMppiPreparedEsdf prepared{
+        .producer_instance_id = snapshot->producer_instance_id,
+        .revision = snapshot->obstacle_snapshot_revision,
+        .source_stamp_ns = source_stamp_ns,
+        .ready_stamp_ns = get_clock()->now().nanoseconds(),
+        .build_ms = build_ms,
+        .conversion_ms = conversion_ms,
+        .upload_ms = upload.upload_ms,
+        .grid = grid,
+        .distances_m = host_distances,
+        .global_guide = guide,
+        .global_guide_expansions = active_guide_expansions,
+        .global_guide_cost = active_guide_cost,
+        .global_guide_generation = active_status.generation,
+        .global_guide_reused = guide_update.retained,
+        .global_guide_mission_goal_hold = active_status.mission_goal_hold,
+        .global_guide_release_reason = guide_update.release_reason,
+        .global_guide_heading_source = guide_heading.source,
+        .global_guide_risk = active_status.current_risk,
+        .global_guide_projection = active_status.projection,
+    };
     {
       const std::scoped_lock lock{esdf_state_mutex_};
       prepared_esdf_ = prepared;
@@ -142,12 +186,25 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         "PRODUCTION_MPPI_ESDF revision=%" PRIu64
         " build_ms=%.2f conversion_ms=%.2f upload_ms=%.2f "
         "raw_to_ready_ms=%.2f dropped_updates=%" PRIu64
-        " guide_valid=%s guide_points=%zu guide_expansions=%zu guide_cost=%.2f",
+        " guide_valid=%s guide_points=%zu guide_expansions=%zu guide_cost=%.2f "
+        "guide_generation=%" PRIu64
+        " guide_reused=%s guide_mission_goal_hold=%s guide_release=%s "
+        "guide_heading_source=%s guide_risk=%s guide_station_m=%.2f "
+        "guide_remaining_m=%.2f guide_cross_track_m=%.2f",
         prepared.revision, prepared.build_ms, prepared.conversion_ms,
         prepared.upload_ms,
         static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
-        dropped_raw_snapshots_, guide->size() >= 2U ? "true" : "false", guide->size(),
-        prepared.global_guide_expansions, prepared.global_guide_cost);
+        dropped_raw_snapshots_, guide && guide->size() >= 2U ? "true" : "false",
+        guide ? guide->size() : 0U, prepared.global_guide_expansions,
+        prepared.global_guide_cost, prepared.global_guide_generation,
+        prepared.global_guide_reused ? "true" : "false",
+        prepared.global_guide_mission_goal_hold ? "true" : "false",
+        globalGuideReleaseReasonName(prepared.global_guide_release_reason),
+        globalGuideHeadingSourceName(prepared.global_guide_heading_source),
+        globalGuideRiskTierName(prepared.global_guide_risk),
+        prepared.global_guide_projection.station_m,
+        prepared.global_guide_projection.remaining_m,
+        prepared.global_guide_projection.cross_track_m);
   }
 }
 
@@ -162,34 +219,14 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& nav
   if (!esdf.global_guide || esdf.global_guide->empty()) {
     return target;
   }
-  std::size_t nearest_index = 0U;
-  double nearest_distance = std::numeric_limits<double>::infinity();
-  for (std::size_t index = 0U; index < esdf.global_guide->size(); ++index) {
-    const Point2 position = (*esdf.global_guide)[index];
-    const double candidate =
-        std::hypot(position.x - navigation.state.x, position.y - navigation.state.y);
-    if (candidate < nearest_distance) {
-      nearest_distance = candidate;
-      nearest_index = index;
-    }
+  const GlobalGuideProjection projection = projectOntoGlobalGuide(
+      *esdf.global_guide, Point2{navigation.state.x, navigation.state.y},
+      esdf.global_guide_projection.station_m);
+  if (!projection.valid) {
+    return target;
   }
-  double accumulated = 0.0;
-  for (std::size_t index = nearest_index + 1U; index < esdf.global_guide->size();
-       ++index) {
-    const Point2 previous = (*esdf.global_guide)[index - 1U];
-    const Point2 current = (*esdf.global_guide)[index];
-    const double segment_length =
-        std::hypot(current.x - previous.x, current.y - previous.y);
-    if (segment_length > 1.0e-6 && accumulated + segment_length >= lookahead_m) {
-      const double ratio = (lookahead_m - accumulated) / segment_length;
-      target.x = static_cast<float>(std::lerp(previous.x, current.x, ratio));
-      target.y = static_cast<float>(std::lerp(previous.y, current.y, ratio));
-      target_source = "motion_primitive_guide";
-      return target;
-    }
-    accumulated += segment_length;
-  }
-  const Point2 selected = esdf.global_guide->back();
+  const Point2 selected = sampleGlobalGuide(
+      *esdf.global_guide, projection.station_m + std::max(0.0, lookahead_m));
   target.x = static_cast<float>(selected.x);
   target.y = static_cast<float>(selected.y);
   target_source = "motion_primitive_guide";
@@ -326,6 +363,39 @@ void ProductionMppiNode::planningTick() {
         .predicted_terminal_progress_m =
             previous_result_.has_value() ? previous_result_->terminal_progress_m : 0.0,
     });
+  }
+  GlobalGuideProgressUpdate guide_progress;
+  if (guide_progress_tracker_) {
+    const GlobalGuideProjection projection =
+        guide.empty()
+            ? GlobalGuideProjection{}
+            : projectOntoGlobalGuide(guide,
+                                     Point2{navigation.state.x, navigation.state.y},
+                                     esdf->global_guide_projection.station_m);
+    guide_progress = guide_progress_tracker_->evaluate(GlobalGuideProgressObservation{
+        .stamp_ns = now_ns,
+        .guide_generation = projection.valid && !esdf->global_guide_mission_goal_hold
+                                ? esdf->global_guide_generation
+                                : 0U,
+        .station_m = projection.station_m,
+        .predicted_head_progress_m =
+            previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
+        .controller_active = control_feedback_fresh,
+        .emergency_braking =
+            control_feedback_fresh && applied_control.emergency_braking,
+    });
+    if (guide_progress.stalled) {
+      guide_stall_generation_.store(guide_progress.stall_generation,
+                                    std::memory_order_relaxed);
+      RCLCPP_WARN(
+          get_logger(),
+          "GLOBAL_GUIDE_STALL guide_generation=%" PRIu64 " stall_generation=%" PRIu64
+          " observation_age_s=%.3f along_guide_progress_m=%.3f "
+          "predicted_head_progress_m=%.3f",
+          esdf->global_guide_generation, guide_progress.stall_generation,
+          guide_progress.observation_age_s, guide_progress.progress_m,
+          previous_result_.has_value() ? previous_result_->head_progress_m : 0.0F);
+    }
   }
   mppi::MppiTickInput input{
       .initial_state = navigation.state,

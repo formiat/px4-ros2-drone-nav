@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/passage_speed_policy.hpp"
@@ -20,6 +21,7 @@
 #include <std_msgs/msg/string.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
@@ -54,6 +56,15 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<Point2>> global_guide;
   std::size_t global_guide_expansions{0U};
   double global_guide_cost{0.0};
+  std::uint64_t global_guide_generation{0U};
+  bool global_guide_reused{false};
+  bool global_guide_mission_goal_hold{false};
+  GlobalGuideReleaseReason global_guide_release_reason{
+      GlobalGuideReleaseReason::kNoActiveGuide};
+  GlobalGuideHeadingSource global_guide_heading_source{
+      GlobalGuideHeadingSource::kYawFallback};
+  GlobalGuideRiskTier global_guide_risk{GlobalGuideRiskTier::kPreferred};
+  GlobalGuideProjection global_guide_projection{};
 };
 
 struct ProductionMppiStability {
@@ -146,7 +157,11 @@ private:
   MppiHorizonSafetyConfig safety_config_{};
   MppiLivenessConfig liveness_config_{};
   MppiSpeedPolicyConfig static_speed_policy_config_{};
+  ActiveGlobalGuideConfig active_guide_config_{};
+  GlobalGuideProgressConfig guide_progress_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
+  std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
+  std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
   RiskAwareLatticeConfig lattice_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<KnownPassageMap> known_passages_;
@@ -163,6 +178,7 @@ private:
   msg::RawObstacleSnapshot::ConstSharedPtr pending_raw_snapshot_;
   std::uint64_t dropped_raw_snapshots_{0U};
   std::jthread esdf_worker_;
+  std::atomic<std::uint64_t> guide_stall_generation_{0U};
 
   mutable std::mutex esdf_state_mutex_;
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
