@@ -1,647 +1,127 @@
 # Configuration Reference
 
-The main parameter file is:
+The authoritative runtime defaults are in:
 
 ```text
 drone_city_nav/config/urban_mvp.yaml
 ```
 
-The file name is legacy. It remains the active default configuration for
-`city_nav.launch.py`.
-
-## Main Nodes In The YAML
-
-- `obstacle_memory_node`
-- `planner_node`
-- `px4_offboard_node`
-- `lidar_debug_node`
-- `mission_monitor_node`
-
-When adding a new parameter, keep C++ defaults and YAML defaults synchronized.
-This repository intentionally avoids hidden behavior that only works when the
-YAML file is present.
-
-## Planner Parameters
-
-Mission and map:
-
-- `start_x_m`, `start_y_m`
-- `goal_x_m`, `goal_y_m`
-- `initial_altitude_m`
-- `px4_local_origin_x_m`, `px4_local_origin_y_m`
-- planning grid resolution, size, and origin.
-
-`initial_altitude_m` is the startup altitude seed. Before the vehicle has a
-valid airborne altitude, it initializes executable trajectory `z_m` samples and
-acts as a conservative position-hold fallback. After takeoff, route publication
-uses the current vehicle altitude, passage traversal can change altitude, and
-terminal position capture holds the current altitude latched at terminal entry.
-
-Obstacle/grid:
-
-- `inflation_radius_m`
-- `planning_clearance_m`
-- `no_static_planning_clearance_m` (used instead of `planning_clearance_m` when
-  `use_static_map=false`)
-- `raw_obstacle_snapshot_topic`: atomic raw occupancy, revision, producer, and
-  risk-policy thresholds consumed by offboard validation.
-- `raw_obstacle_grid_topic`: debug-only RViz view of raw occupancy.
-- `obstacle_memory_grid_topic`
-- `raw_memory_3d_pointcloud_topic`
-- `obstacle_memory_provenance_topic`
-- `obstacle_memory_snapshot_topic`
-- `executable_trajectory_topic`: authoritative planner-to-offboard command;
-  atomically carries path id and safe-truncation correlation metadata.
-- `replan_blocker_topic`: planner-to-offboard raw-collision event.
-- `replan_truncation_topic`: offboard-to-planner confirmed truncation join.
-- `truncation_suffix_ack_topic`: offboard-to-planner pending, accepted, or
-  rejected result for a published truncation suffix.
-- `use_static_map`
-- `static_map_path`
-- `static_map_grid_topic`
-- `static_map_points_topic`
-- `static_building_markers_topic`
-- lidar overlay and memory input settings.
-
-`obstacle_memory_grid_topic` and `obstacle_memory_provenance_topic` are separate
-debug/visualization outputs. The planner does not correlate those topics at
-runtime. It consumes `obstacle_memory_snapshot_topic`, whose single typed message
-contains both the authoritative raw 2D grid and its exact provenance. The whole
-message is rejected unless stamp, frame, geometry, grid content, occupied count,
-and provenance records agree. This prevents callback backlog or cross-topic
-delivery order from separating a blocker grid from its diagnostic evidence.
-
-`raw_memory_3d_pointcloud_topic` defaults to
-`/drone_city_nav/raw_memory_obstacle_points_3d`. It is an always-available,
-diagnostics-only PointCloud2 derived from active occupancy-trigger provenance at
-`obstacle_memory_debug_publish_period_s`. It does not replace
-`obstacle_memory_snapshot_topic`, does not affect memory scoring or planning,
-and has no separate enable parameter.
-
-`raw_lidar_3d_pointcloud_topic` defaults to
-`/drone_city_nav/raw_lidar_hit_points_3d`. It is a volatile, current-scan-only
-visualization topic from `lidar_debug_node`; it is not an obstacle-memory,
-planner, or control input.
-
-Known passages:
-
-- `known_passages_enabled`
-- `known_passages_path`
-- `known_passage_markers_topic`
-- `known_passage_debug_publish_period_s`
-- `known_passage_validation_enabled`
-- `known_passage_validation_min_opening_overlap_m`
-- `known_passage_validation_min_opening_depth_fraction`
-- `known_passage_validation_clearance_margin_m`
-- `known_passage_validation_max_diagnostics`
-- `known_static_lidar_hit_classifier_enabled`
-- `known_static_lidar_hit_closer_range_tolerance_m`
-- `known_static_lidar_hit_farther_range_tolerance_m`
-- `known_static_lidar_hit_endpoint_volume_tolerance_m`
-- `known_static_opening_boundary_tolerance_m`
-- `ground_lidar_rejection_enabled`
-- `ground_lidar_altitude_m`
-- `ground_lidar_closer_range_tolerance_m`
-- `ground_lidar_farther_range_tolerance_m`
-- `ground_lidar_candidate_endpoint_altitude_tolerance_m`
-- `ground_lidar_attached_endpoint_altitude_tolerance_m`
-- `lidar_uncertain_hit_confirmation_enabled`
-- `lidar_uncertain_unknown_require_source_timestamp_alignment`
-- `lidar_uncertain_unknown_reliable_range_margin_m`
-- `lidar_memory_hit_dump_enabled`
-- `lidar_memory_hit_dump_path`
-- `lidar_memory_hit_dump_max_records`
-- `obstacle_memory_debug_publish_period_s`
-- `obstacle_memory_snapshot_diagnostic_period_s`
-- `obstacle_memory_snapshot_max_serialized_bytes`
-- `obstacle_memory_snapshot_max_assembly_time_ms`
-- `obstacle_memory_snapshot_max_publish_interval_ms`
-- `obstacle_memory_snapshot_max_age_ms`
-- `obstacle_memory_snapshot_max_callback_time_ms`
-- `obstacle_memory_snapshot_max_apply_delay_ms`
-- `obstacle_memory_snapshot_min_apply_rate_hz`
-- `vertical_setpoint_max_climb_speed_mps`
-- `vertical_setpoint_max_descent_speed_mps`
-- `vertical_setpoint_max_accel_mps2`
-- `vertical_setpoint_max_jerk_mps3`
-- `vertical_profile_max_climb_speed_mps`
-- `vertical_profile_max_descent_speed_mps`
-- `vertical_profile_max_vertical_accel_mps2`
-- `vertical_profile_max_vertical_jerk_mps3`
-- `vertical_profile_max_climb_angle_deg`
-- `vertical_profile_preferred_gate_clearance_margin_m`
-- `vertical_trackability_altitude_tolerance_m`
-- `vertical_trackability_response_time_s`
-- `vertical_trackability_min_speed_mps`
-- `known_passage_traversal_speed_limit_mps`
-- `passage_insertion_enabled`
-- `passage_insertion_sample_step_m`
-- `passage_insertion_min_anchor_margin_m`
-- `passage_insertion_max_anchor_margin_m`
-- `passage_insertion_opening_lateral_target_margin_m`
-- `passage_insertion_repair_clearance_margin_m`
-- `passage_insertion_max_lateral_shift_m`
-- `passage_insertion_max_join_tangent_delta_deg`
-- `passage_insertion_max_join_curvature_jump_1pm`
-- `passage_insertion_min_inserted_radius_m`
-- `passage_insertion_max_candidates`
-- `passage_insertion_max_diagnostics`
-
-`known_static_lidar_hit_classifier_enabled` controls the optional geometric
-fallback classifier in both the planner and obstacle-memory nodes. It is
-disabled by default. The simulation's GPU lidar visibility mask excludes the
-annotated lower and upper passage masses at the sensor level while leaving
-their visuals and collisions intact.
-
-When explicitly enabled, the classifier compares each measured hit range and
-endpoint XYZ with the nearest known passage-building solid. Its closer and
-farther tolerances must be configured identically for both nodes. A hit
-materially closer and spatially detached from the solid remains immediate
-obstacle evidence. A closer endpoint inside or near the solid becomes
-non-mutating ambiguous evidence instead of an obstacle. Opening-interior hits
-remain immediate obstacles. A hit no more than
-`known_static_opening_boundary_tolerance_m` from the matching lower or upper
-solid is ambiguous static evidence instead of an immediate obstacle. Missing
-geometry or invalid 3D pose is fail-open.
-
-`known_static_lidar_hit_endpoint_volume_tolerance_m` controls only the spatial
-near-surface relation; it does not widen the global range tolerance.
-`known_static_opening_boundary_tolerance_m` is a narrower local tolerance used
-only where an endpoint is simultaneously inside an opening and next to a solid
-mass of the same annotated structure. The default is 0.30 m. Ambiguous evidence
-is keyed by structure, part, and endpoint voxel. The
-`ambiguous_lidar_hit_*` parameters configure required independent scans,
-retention, voxel size, minimum viewpoint translation, and minimum direction
-change. The tracker serves all uncertain pre-grid hypotheses: known-static
-boundaries, low ground candidates, and unknown returns whose projection did not
-use a source-timestamp-aligned pose or lies too close to the effective range
-limit.
-
-Known passages describe pre-annotated passage structures and openings. They
-publish RViz markers, validate whether the final executable trajectory crosses a
-known structure footprint through an allowed opening volume, and provide
-known-solid geometry to the optional lidar classifier when it is enabled.
-
-See `known_passages.md` for the complete physical-world, trajectory, runtime,
-and diagnostic contract.
-
-Known passage structures are not encoded into the 2D static obstacle map as hard
-blocking cells. The 2D planner must be able to route through the footprint when
-a valid 3D opening is annotated; RViz shows those volumes through
-`/drone_city_nav/known_passage_markers` instead.
-
-The validation layer does not reject trajectories by itself. When enabled, the
-lidar classifier does not detect passages, does not modify static map cells,
-and does not create a trajectory-dependent working copy of lidar or memory
-data. It suppresses a new hit explained by a known physical solid. Hits through
-the free opening and clearly detached hits remain dynamic obstacle evidence.
-Boundary or static-attached ambiguous hits remain pending without changing
-memory or the current-lidar overlay.
-
-The default file format is line-based and versioned:
-
-```text
-drone_city_nav_known_passages_v1
-frame_id map
-structure <id> <center_x> <center_y> <size_x> <size_y> <z_min> <z_max>
-opening <structure_id> <opening_id> <center_x> <center_y> <center_z> <normal_x> <normal_y> <width> <height> <depth> <min_z> <max_z> <approach_m> <exit_m>
-```
-
-The parser rejects unknown keywords, duplicate ids, invalid dimensions,
-non-finite values, openings outside their structure footprint, and opening z
-ranges outside the structure z range.
-
-The validation layer reports a diagnostics contract for known passages. It is a
-planner repair/telemetry signal, not a substitute for the ordinary physical
-building collision volumes:
-
-- no structure footprint intersection is valid;
-- structure footprint intersection through a matching opening volume is valid;
-- structure footprint intersection without a matching opening is reported as a
-  violation with `structure_without_opening` or `opening_volume_miss`;
-- `known_passage_validation_min_opening_overlap_m` controls the absolute
-  minimum station overlap required to count an opening match.
-- `known_passage_validation_min_opening_depth_fraction` requires the trajectory
-  to cover a configured fraction of the opening depth before a span is treated
-  as a confident opening match.
-- `known_passage_validation_clearance_margin_m` rejects an opening match as
-  `opening_volume_miss` when its lateral/vertical clearance is below this
-  margin.
-- `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
-- `known_static_lidar_hit_classifier_enabled` enables the optional known-solid
-  source classifier. The default is `false` in both lidar ingestion nodes.
-- `known_static_lidar_hit_closer_range_tolerance_m` bounds how much closer a
-  hit may be before it is retained as an unknown object in front of the known
-  solid.
-- `known_static_lidar_hit_farther_range_tolerance_m` bounds a later return
-  still treated as the known collision surface. It must have the same effective
-  value in planner and obstacle-memory node configuration.
-- `ground_lidar_rejection_enabled` enables the always-on, per-beam flat-ground
-  provider. It does not suspend mapping based on vehicle tilt.
-- `ground_lidar_altitude_m` is the map-frame Z of the expected flat ground. The
-  generated city default is `0.05` m, matching the top of the physical ground
-  collision box.
-- `ground_lidar_closer_range_tolerance_m` is the strict allowance before the
-  expected ground range. A hit closer by more than this value remains unknown
-  obstacle evidence.
-- `ground_lidar_farther_range_tolerance_m` is the bounded allowance behind the
-  analytic ground intersection. A farther ground-facing return is ambiguous and
-  performs no hit or free-space update.
-- `ground_lidar_candidate_endpoint_altitude_tolerance_m` bounds the narrow
-  altitude band in which an otherwise unexplained low return is held for
-  geometric confirmation instead of immediately entering the 2D grids.
-- `ground_lidar_attached_endpoint_altitude_tolerance_m` is the inner band used
-  as evidence that repeated returns remain attached to the ground plane.
-- `lidar_uncertain_hit_confirmation_enabled` enables the shared pre-grid
-  confidence policy for obstacle memory and the current-lidar overlay.
-- `lidar_uncertain_unknown_require_source_timestamp_alignment` treats an
-  otherwise unknown hit from a receive-time, extrapolated, or callback-pose
-  fallback as pending until independent scans confirm it.
-- `lidar_uncertain_unknown_reliable_range_margin_m` similarly holds unknown
-  hits within the configured distance of the effective lidar range limit.
-- `lidar_memory_hit_dump_enabled` writes a JSONL record whenever an XY memory
-  cell first becomes occupied. It is diagnostics-only and does not change
-  memory behavior.
-- `lidar_memory_hit_dump_path` selects the JSONL destination. The simulation
-  runner overrides it with a unique per-run path unless
-  `LIDAR_MEMORY_HIT_DUMP_PATH` is set.
-- `lidar_memory_hit_dump_max_records` bounds the number of first-occupancy
-  records written by one node instance. Once reached, the node emits one warning
-  and keeps mapping normally.
-
-All six ground parameters have identical defaults in `obstacle_memory_node`
-and `planner_node`: enabled, ground Z `0.05` m, closer tolerance `0.5` m,
-farther tolerance `1.5` m, candidate altitude tolerance `1.5` m, and attached
-altitude tolerance `0.3` m. The uncertainty policy defaults to enabled, requires
-source-timestamp alignment for immediate unknown hits, and reserves `0.5` m at
-the range limit. Headless validation requires the effective logged
-configuration to match. The known-static fallback must also have the same
-enabled state and tolerances in both nodes; its default state is `disabled`.
-A deliberately disabled ground provider is reported as `disabled`; invalid
-numeric ground configuration is `unavailable` and does not alter the
-independent known-static setting.
-- `obstacle_memory_debug_publish_period_s` limits only the standalone raw-grid
-  and provenance debug topics. `0` publishes them with every atomic update;
-  the default `1.0 s` avoids tripling the large per-scan transport payload.
-- `obstacle_memory_snapshot_diagnostic_period_s` controls producer and planner
-  transport-budget summaries; per-publication/apply identity logs remain
-  available for exact event correlation.
-- `obstacle_memory_snapshot_max_serialized_bytes` and
-  `obstacle_memory_snapshot_max_assembly_time_ms` are producer warning budgets
-  for the complete atomic message and its construction cost.
-- `obstacle_memory_snapshot_max_publish_interval_ms` warns when authoritative
-  producer cadence falls below its operational budget.
-- `obstacle_memory_snapshot_max_age_ms`,
-  `obstacle_memory_snapshot_max_callback_time_ms`,
-  `obstacle_memory_snapshot_max_apply_delay_ms`, and
-  `obstacle_memory_snapshot_min_apply_rate_hz` are planner warning budgets for
-  snapshot freshness when adopted, callback parsing, parsed-to-active delay,
-  and effective adoption by the 0.5 s planning timer. The defaults are 350 ms
-  apply age, 100 ms callback time, 300 ms apply delay, and 1.0 Hz apply rate.
-  Apply rate is intentionally lower than producer cadence because planning
-  adopts only the newest parsed snapshot, not every intermediate publication.
-  These are diagnostic budgets, not rejection thresholds.
-- `vertical_profile_preferred_gate_clearance_margin_m` keeps the selected gate
-  altitude inside a preferred safe band when possible. It clamps to the nearest
-  preferred boundary instead of forcing the opening center.
-- `vertical_profile_max_climb_speed_mps` and
-  `vertical_profile_max_descent_speed_mps` are directional nominal limits used
-  while constructing `z(s)` and its horizontal speed constraints. Each planner
-  value is clamped to the corresponding runtime setpoint limit.
-- `vertical_setpoint_max_climb_speed_mps` and
-  `vertical_setpoint_max_descent_speed_mps` bound the offboard vertical command.
-  The simulation runner copies these values into PX4
-  `MPC_Z_VEL_MAX_UP`/`MPC_Z_VEL_MAX_DN` before flight and prints the PX4
-  readback. Keep the planner values lower when control headroom is required.
-- `vertical_setpoint_max_accel_mps2` and
-  `vertical_setpoint_max_jerk_mps3` bound runtime command dynamics. Vertical
-  trackability uses the same acceleration and directional speed limits when it
-  estimates whether the current altitude can reach a hard window.
-- `vertical_trackability_min_speed_mps` is the horizontal fallback speed while
-  the drone is already inside a hard window but still outside its safe altitude
-  interval. The cap remains active until the altitude is safe; it is not relaxed
-  merely because the trajectory projection has passed the window entry plane.
-- `known_passage_traversal_speed_limit_mps` caps speed inside known-passage hard
-  altitude windows.
-- `passage_insertion_enabled` controls the optional local XY repair stage. It
-  is enabled by default so annotated passages can locally align XY trajectory
-  geometry before vertical profiling.
-- `passage_insertion_sample_step_m` controls inserted segment sampling.
-- `passage_insertion_min_anchor_margin_m` and
-  `passage_insertion_max_anchor_margin_m` bound the stitch window around the
-  missed opening span.
-- `passage_insertion_opening_lateral_target_margin_m` keeps the repaired path
-  away from the opening side edges.
-- `passage_insertion_repair_clearance_margin_m` also repairs already-valid
-  opening traversals when their lateral clearance is below the preferred margin.
-- `passage_insertion_max_lateral_shift_m` rejects repairs that would require a
-  large local shift.
-- `passage_insertion_max_join_tangent_delta_deg` and
-  `passage_insertion_max_join_curvature_jump_1pm` protect stitch continuity.
-- `passage_insertion_min_inserted_radius_m` can require a minimum local radius;
-  `0` disables this radius gate.
-- `passage_insertion_max_candidates` and `passage_insertion_max_diagnostics`
-  bound CPU work and log volume.
-
-`mission_monitor_node` also reads `known_passages_enabled` and
-`known_passages_path`. When enabled, it converts each annotated architectural
-passage into ordinary solid building volumes around the opening. The opening
-itself remains free space. Its geometric clearance estimate is diagnostic only:
-the monitor does not command PX4, and Gazebo collision geometry remains the
-physical source of truth.
-
-## Physical Collision Parameters
-
-`collision_crash_node` consumes `/drone_city_nav/drone_contacts`, PX4 local
-position, attitude, and status. `airborne_altitude_m` is the one-way takeoff
-gate: contacts are ignored before an armed vehicle reaches that altitude; every
-external physical contact after that point is fatal for the remainder of the
-run. The default is `1.0 m`.
-
-The resulting `/drone_city_nav/crash_state` uses reliable transient-local QoS.
-It is intentionally not configurable as a clearance or impact-force threshold.
-The current simulation contract treats every physical contact after takeoff as
-fatal. Geometric building-clearance parameters in `mission_monitor_node` remain
-diagnostic only.
-
-`passage_traversal_hysteresis_m` controls the distance on each side of the
-annotated entry and exit planes that must be crossed before the monitor records
-a directed traversal. The default `0.25` m prevents position noise at a plane
-from producing repeated or incomplete traversal events. This parameter changes
-diagnostics and headless validation only; it does not change planning or flight.
-
-## A* Parameters
-
-- `astar_heuristic_weight`
-- `astar_turn_cost_weight`
-- `astar_evasive_maneuvering_enabled`
-- `astar_evasive_maneuvering_straight_cost_weight`
-- `astar_initial_heading_bias_enabled`
-- `astar_initial_heading_bias_min_speed_mps`
-- `astar_initial_heading_bias_weight`
-
-Evasive maneuvering is disabled by default.
-
-## Corridor Parameters
-
-- `corridor_max_radius_m`
-- `corridor_sample_step_m`
-- `corridor_ray_step_m`
-- `corridor_center_recovery_max_m`
-- `corridor_lateral_limit_window_m`
-- `corridor_lateral_limit_ratio`
-- `corridor_lateral_limit_margin_m`
-- `corridor_parallel_workers`
-
-Corridor diagnostics report width, clearance, reused samples, clearance-field
-reuse, and route-prohibited samples.
-
-## Trajectory Optimizer Parameters
-
-Important smoothing and search parameters:
-
-- `trajectory_optimizer_max_iterations`
-- `trajectory_optimizer_optimizer_sample_step_m`
-- `trajectory_optimizer_initial_offset_step_m`
-- `trajectory_optimizer_min_offset_step_m`
-- `trajectory_optimizer_cooling_ratio`
-- `trajectory_optimizer_parallel_workers`
-
-Smoothness weights:
-
-- `trajectory_optimizer_weight_curvature`
-- `trajectory_optimizer_weight_curvature_change`
-- `trajectory_optimizer_preferred_min_radius_m`
-- `trajectory_optimizer_weight_radius_shortfall`
-- `trajectory_optimizer_weight_offset_change`
-- `trajectory_optimizer_weight_offset_second_change`
-- `trajectory_optimizer_weight_offset_slope`
-- `trajectory_optimizer_max_offset_slope_per_m`
-
-Active windows and DP:
-
-- `trajectory_optimizer_window_*`
-- `trajectory_optimizer_dp_*`
-
-Executable trajectory scheduling uses one dedicated latest-wins planning
-worker. It is not configurable because synchronous planning would block pose
-and lidar callbacks and prevent fresh-state validation before publication.
-
-## Turn Smoothing Parameters
-
-- `turn_smoothing_trigger_heading_delta_deg`
-- `turn_smoothing_trigger_min_radius_m`
-- `turn_smoothing_trigger_speed_limit_mps`
-- `turn_smoothing_entry_distance_m`
-- `turn_smoothing_exit_distance_m`
-- `turn_smoothing_sample_step_m`
-- `turn_smoothing_outer_bias_ratio`
-- `turn_smoothing_min_outer_shift_m`
-- `turn_smoothing_max_outer_shift_m`
-- `turn_smoothing_min_heading_improvement_deg`
-- `turn_smoothing_max_passes`
-
-## Speed Profile Parameters
-
-Construction:
-
-- `cruise_speed_mps`
-- `min_turn_speed_mps`
-- `speed_profile_accel_mps2`
-- `speed_profile_decel_mps2`
-- `turn_speed_lateral_accel_mps2`
-- `speed_profile_sample_step_m`
-
-Runtime policy:
-
-- `speed_profile_lookahead_time_s`
-- `speed_profile_lookahead_min_m`
-- `speed_profile_lookahead_max_m`
-- `setpoint_forward_accel_mps2`
-- `setpoint_forward_decel_mps2`
-
-Planner and offboard both expose speed-related settings. Construction,
-runtime-speed-policy, and runtime-velocity-control fingerprints help detect
-configuration drift.
-
-## Offboard Control Parameters
-
-- `cross_track_gain`
-- `cross_track_derivative_gain`
-- `cross_track_p_gain_schedule_*`
-- `cross_track_d_gain_schedule_*`
-- `tracking_prediction_horizon_s`
-- `max_lateral_control_angle_deg`
-- `setpoint_lateral_response_accel_mps2`
-- `curvature_feedforward_*`
-- `max_velocity_jerk_mps3`
-- `max_lateral_velocity_jerk_mps3`
-- `control_tangent_smoothing_*`
-- `control_curve_smoothing_*`
-- `trajectory_update_max_start_cross_track_m`
-- `trajectory_handover_enabled`
-- `trajectory_handover_require_validation_grid`
-- `trajectory_handover_prefix_time_s`
-- `trajectory_handover_min_prefix_distance_m`
-- `trajectory_handover_max_prefix_distance_m`
-- `trajectory_handover_candidate_lookahead_distance_m`
-- `trajectory_handover_hard_window_exit_settle_distance_m`
-- `trajectory_handover_sample_step_m`
-- `trajectory_handover_max_join_distance_m`
-- `trajectory_handover_max_sample_heading_delta_deg`
-- `trajectory_handover_max_abs_curvature_1pm`
-- `trajectory_continuity_defer_min_speed_mps`
-- `trajectory_continuity_defer_projection_jump_m`
-- `trajectory_continuity_defer_tangent_jump_deg`
-- `trajectory_continuity_defer_command_jump_mps`
-
-## Terminal Capture Parameters
-
-- `acceptance_radius_m`
-- `final_hold_max_speed_mps`
-- `terminal_capture_radius_m`
-- `terminal_capture_gain_1ps`
-- `terminal_capture_max_speed_mps`
-- `terminal_capture_decel_mps2`
-- `terminal_capture_braking_margin_m`
-- `terminal_position_capture_max_entry_speed_mps`
-- `terminal_stuck_speed_mps`
-
-## Diagnostics Parameters
-
-- `telemetry_log_period_s`
-- `flight_blackbox_enabled`
-- `flight_blackbox_path`
-- `final_trajectory_debug_topic`
-- `final_trajectory_debug_sample_step_m`
-- `offboard_debug_marker_topic`
-- `static_building_markers_topic`
-- `known_passage_markers_topic`
-- `known_passage_debug_publish_period_s`
-- `diagnostic_turn_preview_distance_m`
-
-`diagnostic_turn_preview_distance_m` is diagnostics-only.
-
-## Configuration Philosophy
-
-Configuration values are part of the system contract. A parameter should have a
-clear owner, a clear default, and the same value in code defaults and the main
-YAML unless there is an explicit reason for a launch-specific override.
-
-The project uses this rule because many failures look like algorithmic
-problems but are really configuration drift. If a parameter is enabled in YAML
-but disabled by code default, a developer running without the YAML can observe
-a different controller. For active features, code defaults and the main
-configuration should match.
-
-Parameters should be grouped by physical meaning:
-
-- route and grid parameters describe space and obstacles;
-- trajectory parameters describe geometry generation;
-- speed-profile parameters describe scalar speed along geometry;
-- velocity-control parameters describe runtime setpoint behavior;
-- terminal parameters describe final state transitions;
-- diagnostic parameters describe logging and visualization only.
-
-## Risk Tier Distances
-
-`inflation_radius_m` now defines the critical soft-risk boundary.
-`inflation_radius_m + planning_clearance_m` defines the preferred-space
-boundary. Both influence lexicographic candidate ordering, but neither creates
-occupied cells or directly triggers safe truncation. Raw occupancy remains the
-hard runtime trigger.
-
-Partial repair race parameters are:
-
-- `partial_replan_enabled`;
-- `partial_replan_reconnect_margins_m`, defaulting to
-  `[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]`;
-- `partial_replan_internal_parallel_workers`, which must be `1`.
-
-An explicitly configured reconnect list must be non-empty, finite, positive,
-and strictly increasing. Invalid values fail planner configuration instead of
-being sorted, deduplicated, or replaced with defaults. Internal corridor and
-optimizer parallelism is fixed to one worker per external race job.
-
-Planning clearance contributes to the preferred-space risk boundary. It
-encourages A*, corridor construction, and trajectory generation to stay farther
-away from obstacles, but it is not a runtime replan boundary.
-
-When changing margins, update both code defaults and YAML. Then verify in RViz
-that:
-
-- raw occupied cells match obstacle evidence;
-- planning-generated trajectories prefer the intended extra clearance;
-- runtime truncation still comes only from raw occupied intersections.
-
-## Speed And Control Parameter Boundaries
-
-Several parameters sound similar but belong to different layers.
-
-`turn_speed_lateral_accel_mps2` describes how fast the drone may fly through a
-curve based on radius. It belongs to speed profile and turn-speed feasibility.
-
-`setpoint_lateral_response_accel_mps2` describes how quickly the velocity
-setpoint can respond laterally. It belongs to the velocity smoother and
-setpoint dynamics.
-
-`setpoint_forward_accel_mps2` and `setpoint_forward_decel_mps2` describe
-forward setpoint response. They should not be silently limited by a turn-speed
-lateral acceleration budget.
-
-Keeping these names separate prevents one parameter from accidentally meaning
-both "how fast through a turn" and "how fast the command can change".
-
-## Fingerprints
-
-Configuration fingerprints are diagnostics for cross-node compatibility. They
-are split by purpose:
-
-- speed-profile construction fingerprint;
-- runtime speed-policy fingerprint;
-- runtime velocity-control fingerprint.
-
-The construction fingerprint is the strongest compatibility check between
-planner and offboard because both sides can reason about speed-profile sample
-construction. Runtime fingerprints are useful context, but some runtime control
-parameters are intentionally offboard-owned. A mismatch there should be
-reported carefully so logs do not produce noisy false alarms.
-
-## Safe Tuning Workflow
-
-For behavior changes:
-
-1. Change one conceptual layer at a time.
-2. Update code default and YAML together.
-3. Run tests and quality checks.
-4. Run a simulation and compare blackbox metrics.
-5. Inspect RViz for visual regressions.
-6. Keep notes on which metric improved and which metric worsened.
-
-Examples:
-
-- To make trajectories rounder, tune trajectory optimizer radius and curvature
-  weights before changing the controller.
-- To reduce left-right oscillation on a straight, inspect projection smoothing,
-  P schedule, D schedule, feedforward suppression, and smoother lag.
-- To improve final positioning, tune terminal state thresholds rather than
-  normal lateral control.
-
-Avoid stacking several fixes for the same symptom at once. If a change helps,
-the logs should show why it helped.
-
-## Deprecated Or Diagnostic-Only Parameters
-
-When a parameter no longer affects control, either remove it or rename it so
-its diagnostic-only role is obvious. Stale parameters are dangerous because
-they invite tuning that cannot affect the run.
-
-Examples of parameters that should be handled carefully:
-
-- old turn-preview values that are route diagnostics only;
-- planner-side speed diagnostics that are not the runtime speed profile;
-- any field left over from a removed rate limiter or old lateral feature.
-
-The configuration reference should not preserve legacy names merely for
-comfort. If the project no longer uses a concept, the docs should say so or the
-concept should be removed.
+Node constructors declare and validate the same parameters. This document
+describes ownership and tuning order instead of duplicating every numeric
+default.
+
+## `obstacle_memory_node`
+
+World inputs:
+
+- `use_static_map`, `static_map_path`;
+- `grid_*`, `initial_*`, `px4_local_origin_*`;
+- `risk_critical_distance_m`, `risk_preferred_distance_m`.
+
+Lidar projection:
+
+- pose and heading topics;
+- heading variance and startup alignment gates;
+- scan latency and motion compensation;
+- lidar mount translation and quaternion;
+- accepted projected-altitude and range bounds.
+
+Memory:
+
+- hit/miss weights and score thresholds;
+- scan stride;
+- debug/snapshot publication periods;
+- provenance transport limits.
+
+Known-static filtering:
+
+- `known_passages_enabled`, `known_passages_path`;
+- `known_static_lidar_hit_classifier_enabled`;
+- endpoint/range tolerances;
+- ambiguous-evidence confirmation and retention.
+
+The classifier is disabled by default. Enabling it changes how new lidar
+evidence enters memory; it does not change static-map cells.
+
+## `production_mppi_node`
+
+Execution cadence:
+
+- `tick_rate_hz`, `rviz_rate_hz`, `diagnostics_info_rate_hz`;
+- `rollouts`, `dt_s`, mode-specific horizon duration;
+- deadline and maximum input ages.
+
+Mode policy:
+
+- `use_static_map`;
+- static/no-static cruise and absolute speed;
+- acceleration, lateral acceleration, braking, and jerk limits;
+- mode-specific lookahead and curvature preview;
+- mode-specific observation, goal, and passage limits.
+
+Risk:
+
+- `raw_collision_radius_m`;
+- `critical_distance_m`;
+- `preferred_distance_m`.
+
+Global guide:
+
+- heading bins and primitive length;
+- static/no-static lattice window and expansion limits;
+- validation sampling;
+- remaining-distance replacement thresholds;
+- cross-track and stall thresholds;
+- velocity/previous-guide heading cascade thresholds.
+
+Passages:
+
+- selection distance, lateral margin, and normal alignment;
+- vertical clearance and capture hysteresis;
+- capture and retention cycles;
+- lateral staging and approach speed;
+- stationary-trigger and dynamics estimates.
+
+Safety and liveness:
+
+- reaction latency and braking acceleration;
+- fallback duration;
+- time-to-collision threshold;
+- actual-displacement and predicted-progress thresholds.
+
+## `mppi_offboard_node`
+
+- execution-horizon and PX4 topics;
+- maximum receive age and control lookahead;
+- fallback braking acceleration;
+- takeoff altitude and hover time;
+- arm/offboard resend policy;
+- map origin;
+- RViz drone marker and follow TF.
+
+## Other Nodes
+
+`world_visualization_node` owns world and passage debug topics.
+`mission_monitor_node` owns mission success, crash, and actual passage metrics.
+`lidar_debug_node` owns snapshot cadence, projection diagnostics, and point
+cloud topics.
+
+## Environment Overrides
+
+Simulation scripts translate environment variables such as
+`ENABLE_STATIC_MAP`, `ENABLE_RVIZ`, and camera toggles into launch arguments or
+temporary parameter overrides. The launch file and `scripts/run_drone_nav_sim.sh`
+are the source of truth for supported overrides.
+
+## Tuning Order
+
+1. Verify frame transforms and raw obstacle evidence.
+2. Verify mode-specific PX4 limits match MPPI limits.
+3. Verify horizon safety and braking behavior.
+4. Tune reference speed and lookahead.
+5. Tune risk-band exposure.
+6. Tune smoothness and control costs.
+7. Tune liveness and guide lifecycle only from observed failure cases.
+
+Do not compensate for frame, collision, or stale-input failures by changing
+soft MPPI weights.

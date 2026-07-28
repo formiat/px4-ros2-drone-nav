@@ -1,302 +1,138 @@
 # Architecture
 
-The project is organized as one ROS 2 package, `drone_city_nav`, plus scripts,
-world assets, and Docker tooling around it.
+The project contains one ROS 2 package, `drone_city_nav`, plus Gazebo assets,
+PX4 orchestration scripts, and container tooling.
 
-## Main Nodes
-
-`obstacle_memory_node`
-
-- subscribes to lidar scans and PX4 pose/attitude;
-- projects scan hits into the map frame;
-- maintains an occupancy-style memory grid;
-- publishes the raw debug grid and provenance topics;
-- publishes `/drone_city_nav/obstacle_memory_snapshot`, an atomic grid/provenance
-  pair used by the planner.
-- assigns every atomic artifact a monotonic sequence and reports full transport
-  size, assembly cadence, planner age/apply cadence, replacements, and rejects;
-- rate-limits the duplicate standalone grid/provenance debug topics independently
-  from the per-update authoritative snapshot.
-
-`planner_node`
-
-- consumes static map, current lidar overlay, and obstacle memory;
-- receives and parses atomic memory snapshots in a dedicated callback group;
-- keeps only the newest parsed snapshot while planning is busy, then atomically
-  adopts that grid/provenance pair before the next planning-grid build;
-- builds one merged raw occupancy snapshot and its distance-derived risk field;
-- runs A* rough routing;
-- builds a corridor;
-- builds optimized executable trajectories;
-- publishes the authoritative `/drone_city_nav/executable_trajectory` command,
-  plus `/drone_city_nav/path`, `/drone_city_nav/path_id`,
-  `/drone_city_nav/trajectory_diagnostics`,
-  `/drone_city_nav/raw_obstacle_snapshot`, the debug-only
-  `/drone_city_nav/raw_obstacle_grid`, and static-map debug topics.
-
-`px4_offboard_node`
-
-- consumes the accepted executable path and PX4 state;
-- rebuilds runtime trajectory samples and speed profile;
-- tracks the trajectory with offboard setpoints;
-- publishes PX4 offboard control, trajectory setpoints, final trajectory debug
-  path, and debug markers;
-- writes offboard blackbox telemetry.
-
-`lidar_debug_node`
-
-- records lidar, memory, raw-obstacle, and trajectory debug snapshots;
-- publishes point clouds for RViz;
-- writes image/JSON/CSV artifacts under `log/lidar_debug`.
-
-`mission_monitor_node`
-
-- simulation-only observer for mission success and physical crash results; it
-  does not publish control commands or alter PX4 state.
-
-`DroneContactSystem` and `collision_crash_node`
-
-- the Gazebo model plugin enables physics contact data on every collision entity
-  belonging to the X500 without adding or enlarging collision geometry;
-- the plugin publishes only external contacts involving the drone;
-- the ROS node ignores contacts before takeoff and latches the first external
-  contact after the vehicle has been airborne as `/drone_city_nav/crash_state`;
-- the transient-local crash state independently drives PX4 force-disarm and a
-  failed mission result.
-
-`scan_bridge`
-
-- Gazebo-to-ROS bridge for the lidar scan, physical contacts, and clock.
-
-## Data Flow
+## Runtime Data Flow
 
 ```text
-Gazebo lidar
-  -> /scan
+Gazebo GPU lidar + PX4 pose
   -> obstacle_memory_node
-  -> /drone_city_nav/obstacle_memory_snapshot
-
-/scan + memory + static map + PX4 pose
-  -> planner_node
-  -> raw obstacle snapshot + risk field
-  -> A*
-  -> corridor
-  -> trajectory optimizer
-  -> turn smoothing
-  -> executable path + diagnostics
-
-executable path + PX4 pose/attitude/status
-  -> px4_offboard_node
-  -> trajectory projection
-  -> speed policy
-  -> velocity command
-  -> velocity smoother / terminal state machine
-  -> PX4 trajectory setpoint
-
-Gazebo physics contact involving X500
-  -> DroneContactSystem
-  -> /drone_city_nav/drone_contacts
-  -> collision_crash_node
-  -> /drone_city_nav/crash_state (reliable, transient local)
-  -> px4_offboard_node force-disarm + mission_monitor_node failure
+  -> obstacle memory + atomic raw obstacle snapshot
+  -> production_mppi_node ESDF worker
+  -> sticky risk-aware lattice guide
+  -> GPU MPPI local horizon
+  -> post-update classification + braking supervisor
+  -> timestamped execution horizon
+  -> mppi_offboard_node
+  -> PX4 trajectory setpoints
 ```
 
-Physical collision and obstacle sensing have separate responsibilities. Lidar,
-memory, raw occupied cells, and geometric clearance may affect planning or emit
-diagnostics, but they never declare a crash. Only a contact reported by Gazebo
-physics after takeoff latches the crash state. Once latched, offboard stops all
-trajectory setpoints, ignores later paths, disables automatic arming, and repeats
-the PX4 force-disarm command until disarmed status is observed. The model then
-falls and moves according to normal Gazebo physics.
-
-## Planner vs Offboard Responsibilities
-
-Planner responsibilities:
-
-- obstacle source fusion;
-- raw occupancy fusion and risk-field construction;
-- route and trajectory generation;
-- geometry smoothing;
-- planning diagnostics;
-- final path publication.
-
-Offboard responsibilities:
-
-- accepting and tracking executable trajectories;
-- computing runtime trajectory samples and speed profile;
-- managing trajectory continuity updates;
-- generating velocity and terminal position setpoints;
-- logging runtime telemetry.
-
-The offboard node treats the planner path as an executable artifact, but it
-does not blindly trust planner diagnostics. Diagnostics are matched by
-`path_stamp_ns`; the accepted planner path id is confirmed from matching
-diagnostics.
-
-## Executable Trajectory Lifecycle
-
-1. `planner_node` publishes `path_id`, diagnostics, and path.
-2. `px4_offboard_node` receives a path and builds an `OffboardTrajectoryState`.
-3. The candidate is validated for freshness and continuity.
-4. Invalid or discontinuous candidates can be rejected while the old trajectory
-   remains active.
-5. Accepted candidates become the executable trajectory.
-6. Planner diagnostics are merged only when their `path_stamp_ns` matches the
-   accepted trajectory.
-
-This protects the controller from switching to unrelated or stale diagnostics.
-
-## Main Configuration Files
-
-- `drone_city_nav/config/urban_mvp.yaml` - node parameters.
-- `drone_city_nav/launch/city_nav.launch.py` - ROS launch graph.
-- `drone_city_nav/rviz/city_nav_debug.rviz` - RViz debug layout.
-- `docker/Dockerfile` - dev/runtime image.
-- `Makefile` and `scripts/` - approved workflow entry points.
-
-## Architectural Intent
-
-The project is split into generation, acceptance, and execution layers. The
-planner generates candidate geometry. The offboard node decides whether that
-geometry is safe to execute now. The PX4 interface executes only the current
-accepted setpoint stream. This separation is intentional: planning can be slow
-or exploratory, but the controller must always have one clear executable
-trajectory and one clear setpoint mode.
-
-The important design rule is that debug data must not become an implicit
-control input. RViz markers, diagnostic JSON, route-progress counters, and
-timing summaries are useful for analysis, but the drone should not depend on
-them unless the dependency is explicitly named and tested. When a value is only
-diagnostic, the documentation and the parameter name should say so.
-
-The second design rule is that safety validation and planning preference are
-different concepts. Raw occupied and outside-ROI answer "must not cross".
-Distance-derived risk tiers answer "prefer to stay farther away". Crossing a
-soft risk boundary should not by itself force a replan.
-
-## Layer Boundaries
-
-The normal runtime boundary is:
+Gazebo contacts follow an independent safety path:
 
 ```text
-sensor evidence
-  -> obstacle memory and current scan overlay
-  -> planner grid builder
-  -> executable path artifact
-  -> offboard trajectory state
-  -> velocity or position setpoint
-  -> PX4
+Gazebo contact involving the drone
+  -> DroneContactSystem
+  -> collision_crash_node
+  -> latched crash state
+  -> offboard force-disarm + mission failure
 ```
 
-Each boundary has a different failure policy:
+## Node Ownership
 
-- sensor evidence can be incomplete or noisy, so it is merged into an atomic
-  raw snapshot and a distance-derived risk field;
-- planner output can be rejected, so the previous accepted trajectory remains
-  active;
-- offboard setpoints must be continuous enough for PX4, so the smoother and
-  continuity gates protect the handover;
-- PX4 terminal position capture is preserved as the final precision mode at
-  the goal.
+### `obstacle_memory_node`
 
-The planner's pose, lidar, planner-control, and memory callbacks use separate
-callback groups. A dedicated worker snapshots those inputs and builds the grid,
-A* route, smoothed route, and complete optimized executable trajectory. It does
-not publish a rough baseline. The previously accepted trajectory remains active
-until the worker result passes fresh-pose, latest-grid, and handover preflight
-validation.
+- projects lidar scans into `map`;
+- waits for a valid PX4 heading before accepting scan geometry;
+- maintains occupancy memory and sparse 3D provenance;
+- optionally merges the static city map;
+- publishes `/drone_city_nav/obstacle_memory_snapshot`;
+- publishes `/drone_city_nav/raw_obstacle_snapshot`;
+- owns the optional known-static lidar fallback classifier.
 
-Offboard then owns runtime handover. Compatible updates preserve smoother
-history. Incompatible updates first attempt a grid-validated predicted-prefix
-bridge. A high-speed update that still has excessive projection, tangent, or
-command discontinuity is deferred rather than exposed through an abrupt reset.
+### `production_mppi_node`
 
-## Ownership Model
+- consumes PX4 state and immutable obstacle snapshots;
+- builds ESDF snapshots asynchronously;
+- builds and maintains the active global lattice guide;
+- selects local lookahead targets;
+- runs the persistent CUDA MPPI engine;
+- coordinates known-passage approach, vertical alignment, and traversal;
+- validates the reconstructed horizon;
+- publishes `/drone_city_nav/mppi/execution_horizon`;
+- publishes MPPI RViz and diagnostic outputs.
 
-The planner owns:
+This node has no direct PX4 command publisher.
 
-- the grid representation used for global and local route search;
-- corridor bounds and clearance diagnostics;
-- trajectory geometry before publication;
-- planning-only speed-profile diagnostics;
-- optimizer and turn-smoothing timing.
+### `mppi_offboard_node`
 
-The offboard node owns:
+- consumes only fresh `MppiTrajectoryHorizon` messages;
+- applies timestamp lookahead to the current horizon;
+- emits PX4 velocity or position setpoints;
+- executes passage stationary-position hold when explicitly requested;
+- falls back to braking when no fresh executable horizon is available;
+- publishes the applied-control feedback used by MPPI continuity logic;
+- publishes the RViz drone marker and follow TF.
 
-- the accepted executable trajectory state;
-- runtime speed policy and runtime speed diagnostics;
-- current projection and cross-track state;
-- terminal state machine state;
-- smoother history and continuity decisions;
-- the actual velocity or position setpoint sent to PX4.
+### Visualization And Observation
 
-The same concept must not have two active owners. For example, planner
-diagnostics can describe what the planner estimated, but offboard runtime
-telemetry is authoritative for what the drone actually tried to fly.
+`world_visualization_node` publishes static-map, raw-world, building, and
+known-passage visualization. The production MPPI markers include mission start,
+mission goal, global guide, and local target. `lidar_debug_node` writes
+synchronized diagnostic snapshots. `mission_monitor_node` and
+`collision_crash_node` observe the mission without participating in route
+selection.
 
-## Topic And Artifact Contracts
+## World Representation
 
-`/drone_city_nav/executable_trajectory` is the authoritative control command.
-It atomically carries the ROS path, path id, and optional truncation generation
-and temporary-prefix fingerprint. `/drone_city_nav/path` mirrors its geometry
-for RViz, bags, and compatibility, but offboard does not use that debug topic as
-its command source.
+The production planner uses:
 
-For a truncation suffix, command publication and control acceptance are
-different states. Offboard publishes `/drone_city_nav/truncation_suffix_ack`
-with the correlated path id, generation, and prefix fingerprint. Planner keeps
-the previously accepted runtime trajectory until the ACK is `accepted`; a
-`rejected` ACK retains the stable truncation join and triggers a retry.
+- raw 2D occupied cells;
+- an ESDF resident on the GPU;
+- preferred, planning, critical, and collision risk tiers;
+- known 3D solid volumes for passage buildings;
+- passage opening metadata.
 
-`/drone_city_nav/trajectory_diagnostics` is a companion artifact. It is matched
-by path timestamp, not by delivery order. This matters because ROS topics are
-not an atomic multi-message transaction. If a path is accepted and diagnostics
-arrive later with the same stamp, the diagnostics can still be attached to the
-accepted trajectory.
+There are no separately materialized planner/prohibited inflated grids,
+inflation relaxation, or escape tunnels.
 
-`/drone_city_nav/path_id` is a human-readable correlation id. It is useful for
-logs, but it is weaker than the path timestamp because it travels on a separate
-topic. The offboard node can update the accepted id from matching diagnostics
-when the diagnostic stamp proves the association.
+## Global And Local Planning
 
-`/drone_city_nav/raw_obstacle_snapshot` is the atomic hard-safety artifact.
-Raw occupied cells and evaluation bounds are hard constraints. Critical and
-planning bands are lexicographic route preferences derived from the included
-thresholds; they are not separate occupancy grids.
+The risk-aware lattice produces a guide polyline from motion primitives. The
+active guide is sticky: new snapshots validate the accepted guide instead of
+replacing it solely because another route scores slightly better. Blocked,
+exhausted, or stalled guides can be replaced.
 
-## State Ownership During Replanning
+The lattice guide chooses route direction. GPU MPPI owns the executable local
+motion and continuously warm-starts from its previous control sequence.
 
-When the current trajectory intersects raw occupancy in the latest snapshot,
-the planner first publishes a blocker event. Offboard truncates the executable
-trajectory and returns a generation-tagged stable join point. The planner builds
-the replacement suffix from that point. Until the suffix is accepted, offboard
-executes the safe prefix or holds at its terminal point. A failed build must not
-delete that command source.
+## Execution Contract
 
-This rule is important during lidar-triggered replans. Lidar can reveal an
-obstacle imperfectly or only partially. The system should respond by building a
-better route, but the control layer should not lose its current path merely
-because the new candidate has not finished yet.
+`MppiTrajectoryHorizon` contains:
 
-The future local-repair architecture should preserve the same ownership model:
-a local repair is just another candidate executable trajectory. It can be
-accepted, rejected, or ignored as stale using the same continuity and validity
-checks as a full replan.
+- sequence and obstacle/pose revisions;
+- `valid_from` and `valid_until`;
+- risk and braking state;
+- optional passage constraint state;
+- time-indexed position, velocity, acceleration, yaw, and yaw rate;
+- an explicit stationary position-hold request used during passage alignment.
 
-## Configuration Ownership
+Offboard executes only the current fresh horizon. There is no legacy path-id,
+suffix ACK, partial-replan, safe-truncation, or moving/after-hold protocol.
 
-Several parameters are read by both planner and offboard nodes because both
-need to understand the same physical limits. The project treats those values as
-a contract rather than as two independent truths. Configuration fingerprints
-exist to detect when the planner and the runtime controller are no longer
-using compatible assumptions.
+## Safety Boundaries
 
-The fingerprints are split by meaning:
+- Raw occupancy and known-solid intersections are hard collision results.
+- Risk-band exposure ranks candidates but is not physical crash detection.
+- The braking supervisor evaluates the selected horizon and can publish a
+  dynamically generated fallback.
+- Gazebo physical contact is the authoritative simulated crash event.
 
-- speed-profile construction describes how trajectory sample limits are built;
-- runtime speed policy describes how offboard chooses scalar target speed;
-- runtime velocity control describes smoothing and setpoint response.
+Debug topics, RViz markers, and JSONL files never feed back into control.
 
-Only the construction mismatch is a strong planner/offboard compatibility
-warning today. Runtime policy fingerprints are still useful context, but some
-runtime settings can legitimately be offboard-only.
+## Concurrency
+
+ROS callbacks update short latest-value state. ESDF construction runs outside
+the control callback. MPPI uses persistent GPU allocations. Diagnostics are
+copied into a bounded latest-value mailbox and written after the execution
+horizon has been published.
+
+## Current Architectural Limits
+
+- The lattice is not incremental AD*.
+- MPPI follows a lookahead target rather than a full GPU-resident guide
+  polyline.
+- Passage selection is inferred from guide/opening intersection.
+- Stationary passage hold shares the execution-horizon message.
+- Known-solid and braking validation still require a complete drone-footprint
+  contract.

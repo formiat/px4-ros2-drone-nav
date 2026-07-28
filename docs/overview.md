@@ -1,136 +1,89 @@
 # Project Overview
 
-This repository is a ROS 2 workspace for PX4/Gazebo drone navigation. The main
-package is `drone_city_nav`, an ament CMake package that builds the planner,
-obstacle-memory, offboard-control, diagnostics, and simulation helper nodes.
+This repository is a ROS 2 workspace for PX4/Gazebo drone navigation. Its
+production navigation stack uses raw occupancy, a distance field, a
+risk-aware motion-primitive lattice guide, GPU MPPI, and an independent
+braking supervisor.
 
-The project is no longer just a minimal proof of concept. It is a working
-navigation stack with a Gazebo/PX4 simulation environment, a planner that
-builds obstacle-aware executable trajectories, and an offboard controller that
-tracks those trajectories with velocity and terminal position setpoints.
-
-## Goals
-
-The project aims to provide a practical testbed for:
-
-- obstacle-aware drone navigation in a local 2D planning map;
-- static-map, lidar-overlay, and obstacle-memory fusion;
-- smooth executable trajectory generation after rough A* routing;
-- PX4 offboard control through velocity setpoints;
-- robust terminal capture through a final position-setpoint mode;
-- repeatable diagnostics for planner, trajectory, control, and simulation runs.
+The project is a simulation-oriented research system. It is not certified for
+real-aircraft operation.
 
 ## Current Capabilities
 
-The current stack supports:
+- Gazebo Harmonic simulation with PX4 SITL and a GPU lidar.
+- Static-map and no-static operating modes.
+- Map-frame lidar projection and accumulated obstacle memory.
+- Atomic raw-obstacle snapshots with provenance and revisions.
+- ESDF-based collision queries and categorical risk bands.
+- A sticky global lattice guide for route direction.
+- CUDA MPPI local planning at a receding horizon.
+- Static and no-static speed policies.
+- Timestamped execution horizons consumed by the MPPI offboard node.
+- Braking fallback when the selected horizon is not executable.
+- Known 3D architectural passages and physical solid validation.
+- Gazebo contact-based crash detection.
+- RViz, JSONL, lidar snapshots, and mission diagnostics.
 
-- Gazebo simulation with PX4 SITL and an `x500_lidar_2d_0` model;
-- ROS 2 nodes for obstacle memory, planning, offboard control, lidar debug, and
-  mission monitoring;
-- a static city map loaded from `drone_city_nav/worlds/generated_city.map2d`;
-- a known passage annotation map loaded from
-  `drone_city_nav/worlds/known_passages.passages3d`;
-- current lidar obstacle overlay and accumulated obstacle memory;
-- atomic raw-obstacle fusion with distance-derived planning risk;
-- A* rough route planning;
-- corridor construction around the route;
-- smooth trajectory optimization inside the corridor;
-- turn smoothing and isolated geometry spike cleanup;
-- speed-profile construction for trajectory samples;
-- accepted executable trajectory publication with per-sample debug altitude;
-- offboard velocity following with P/D cross-track control, curvature
-  feedforward, projection smoothing, and velocity smoothing;
-- a terminal state machine that transitions from cruise to velocity terminal
-  capture, position capture, and final hold;
-- RViz visualization, trajectory/corridor dumps, lidar snapshots, and
-  offboard blackbox telemetry.
+## Main Runtime Nodes
+
+- `obstacle_memory_node` owns lidar ingestion, memory, and raw world snapshots.
+- `world_visualization_node` publishes static/raw world and passage markers.
+- `production_mppi_node` owns ESDF preparation, the lattice guide, MPPI, passage
+  coordination, and horizon publication.
+- `mppi_offboard_node` executes fresh timestamped horizons through PX4.
+- `collision_crash_node` converts Gazebo contacts into a latched crash state.
+- `mission_monitor_node` observes mission completion and passage traversal.
+- `lidar_debug_node` records map-frame lidar and navigation snapshots.
 
 ## Main Run Modes
 
-- Gazebo simulation: `./scripts/sim_gui.sh`
-- Headless smoke simulation: `./scripts/sim_headless.sh`
-- Build-only workflow: `./scripts/build.sh`
-- Test workflow: `./scripts/test.sh`
-- Interactive container workflow: `./scripts/dev_shell.sh`
-- RViz debug view: enabled through the `enable_rviz` launch argument or the GUI
-  simulation workflow.
+```bash
+./scripts/sim_headless.sh
+./scripts/sim_gui.sh
+```
 
-The container workflow is the only supported workflow. Do not run ad-hoc
-top-level CMake commands from the host.
+`ENABLE_STATIC_MAP=true` uses the known city map and the long, high-speed static
+profile. `ENABLE_STATIC_MAP=false` uses lidar memory as the world source and the
+shorter, conservative no-static profile.
 
-## Non-Goals
-
-This project is not currently intended to provide:
-
-- a production-certified flight stack;
-- real-aircraft safety guarantees;
-- GPS/global-map mission planning;
-- multi-drone coordination;
-- full 3D volumetric planning;
-- a general SLAM system;
-- support for arbitrary simulator versions outside the repository container.
-
-The planner still performs XY obstacle avoidance and trajectory shaping in a
-2D navigation representation. Executable trajectory samples also carry `z_m`,
-seeded from `initial_altitude_m` before takeoff and from current vehicle
-altitude after takeoff. Known-passage local XY repair and vertical profiling
-can modify the final executable trajectory; passage windows can also constrain
-runtime speed. Terminal position capture holds the current altitude latched at
-terminal entry.
-
-Known 3D passages are loaded as annotations. Architectural passage structures,
-opening frames, opening centers, approach arrows, and exit arrows are published
-for RViz/debugging. The planner validates whether the final trajectory crosses a
-known structure footprint through an allowed opening volume. The same
-annotations can provide known physical solids to an optional 3D lidar fallback
-classifier, disabled by default. When enabled, it combines range residuals with
-the endpoint's 3D relation to known solids and free opening volumes. Confident
-known-static returns are suppressed, geometrically ambiguous static-attached
-returns remain pending without mutating either grid, and detached or
-inside-opening returns remain dynamic obstacles. The classifier does not detect
-passages, filter static-map cells, or change A* route preferences. The separate
-annotated-passage stages can locally repair final XY geometry, add a vertical
-profile, and constrain speed while an opening is traversed.
+All build, test, quality, and simulation commands must run through the
+repository container workflow.
 
 ## Important Terms
 
-- Raw obstacle source: direct obstacle evidence from a static map, lidar
-  overlay, or memory grid. Raw sources must not contain safety inflation.
-- Raw obstacle snapshot: the atomic merged occupancy, producer identity,
-  revision, and risk-policy fingerprint used for runtime validation.
-- Critical/planning risk bands: soft distance-derived tiers used
-  lexicographically while building paths and trajectories. Entering a soft
-  band is not itself a replan reason.
-- Executable trajectory: the accepted path that the offboard controller tracks.
-  Its global routing and curvature profile are XY-owned; each sample also
-  carries `z_m`, and known passages can add local XY repair, vertical
-  constraints, and a passage traversal speed cap.
-- Known passage: a pre-annotated 3D passage structure and opening that can be
-  visualized, validated, and used as known-solid geometry by the lidar
-  classifier.
-- Trajectory optimizer: the post-corridor optimizer that improves smoothness
-  and radius while staying inside the valid corridor.
-- Terminal capture: the final control state sequence that slows down, enters
-  position capture, and holds the goal.
+- **Raw occupancy**: direct static-map or sensor evidence. Raw collision is a
+  hard reject.
+- **ESDF**: occupied-distance field used for collision queries and risk-band
+  classification.
+- **Risk tier**: preferred, planning, critical, or collision.
+- **Global lattice guide**: a locally planned route-direction polyline. It is
+  not a persistent topological street graph.
+- **MPPI horizon**: the short dynamically simulated trajectory recomputed on
+  every planning tick.
+- **Execution horizon**: a timestamped MPPI horizon published to offboard.
+- **Known passage**: an annotated 3D opening plus its surrounding known solids
+  and traversal policy.
+
+## Explicit Non-Capabilities
+
+- The lattice search is recomputed; it is not AD*, LPA*, or D* Lite.
+- No persistent no-static topological memory exists yet.
+- Known passages are selected from guide geometry; they are not full lattice
+  portal primitives yet.
+- Known-solid collision currently evaluates the drone state point, not a full
+  rotor/body footprint.
+- The braking fallback is an approximate reachable braking trajectory, not a
+  full reachable-set solver.
 
 ## Documentation Map
 
-- `installation.md` explains host setup.
-- `build_and_run.md` explains the container commands.
-- `gazebo_simulation.md` explains simulator-specific behavior.
-- `rviz.md` explains visualization layers.
-- `architecture.md` explains nodes and data flow.
-- `navigation_pipeline.md` explains planner stages.
-- `known_passages.md` explains physical openings, annotations, lidar filtering,
-  passage insertion, vertical profiling, and their diagnostics.
-- `trajectory_optimization.md` explains smoothing and optimization.
-- `drone_control.md` explains offboard trajectory following.
-- `terminal_capture.md` explains final-goal behavior.
-- `replanning.md` explains path invalidation and replans.
-- `obstacle_mapping.md` explains static, lidar, and memory obstacle sources.
-- `configuration.md` explains the main configuration groups.
-- `diagnostics.md` explains logs, dumps, and blackbox telemetry.
-- `testing.md` explains verification commands.
-- `development.md` explains repository development rules.
-- `troubleshooting.md` lists common failures.
-- `performance.md` explains timing diagnostics and bottlenecks.
+- `architecture.md`: node ownership and data flow.
+- `navigation_pipeline.md`: current world-to-control pipeline.
+- `known_passages.md`: passage geometry, selection, coordination, and limits.
+- `trajectory_optimization.md`: GPU MPPI optimization.
+- `replanning.md`: receding-horizon updates, guide replacement, and liveness.
+- `obstacle_mapping.md`: static, lidar, memory, and raw snapshot sources.
+- `configuration.md`: parameter groups and source-of-truth guidance.
+- `diagnostics.md`: current logs, metrics, and artifacts.
+- `rviz.md`: current visualization layers.
+- `build_and_run.md`: supported container commands.

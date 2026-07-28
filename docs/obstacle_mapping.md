@@ -87,7 +87,7 @@ the hit that first made the cell occupied, the latest accepted hit, the observed
 minimum/maximum endpoint Z, the accepted-hit count, the score transition that
 first crossed the occupied threshold, that threshold, and the number of
 independent scans supporting the trigger decision. This metadata never
-participates in scoring, inflation, A*, or trajectory control. It is published
+participates in risk scoring, lattice search, MPPI, or trajectory control. It is published
 on `/drone_city_nav/obstacle_memory_provenance` for standalone diagnostics. The
 planner receives the same data through the authoritative atomic
 `/drone_city_nav/obstacle_memory_snapshot` message, which carries the raw grid
@@ -245,17 +245,10 @@ Raw obstacles are direct evidence. The planner merges raw sources once and
 builds an occupied-distance field. It does not materialize prohibited or
 planning-clearance occupancy grids.
 
-The current default is:
-
-```yaml
-inflation_radius_m: 1.0
-planning_clearance_m: 3.0
-```
-
-Raw occupied cells and evaluation bounds are hard rejects. The former 1 m
-inflation boundary is now the critical risk tier. The preferred boundary is
-4 m in static mode and 6 m in no-static mode. A shared lexicographic comparator
-orders A*, rollout, refinement, repair, handover, and final validation.
+The current default critical boundary is 1 m and the preferred boundary is 6 m.
+Raw occupied cells and evaluation bounds are hard rejects. MPPI first selects
+the best eligible risk class, then applies its soft dynamics and progress cost
+within that class.
 
 ## Atomic Memory Transport
 
@@ -353,10 +346,10 @@ These sources are complementary:
 - the occupied distance field turns merged evidence into risk tiers.
 
 Known-passage geometry is used consistently by both lidar ingestion paths. The
-optional classifier never filters static-map cells and never changes A* route
+optional classifier never filters static-map cells and never changes lattice-guide
 selection. When enabled, it only prevents known physical masses from becoming
 new dynamic evidence; a real object before a wall or inside an opening still
-follows normal raw obstacle snapshot and replan behavior.
+follows normal raw obstacle snapshot and receding-horizon behavior.
 
 The ground provider follows the same shared decision path but does not add a 3D
 planning layer. Obstacle memory remains a 2D scored grid. Accepted occupied cells
@@ -367,13 +360,12 @@ counters/log samples and never become obstacle-memory provenance.
 ## Risk And Distance Fields
 
 The planner builds one occupied distance field from merged raw occupancy.
-Distance below `inflation_radius_m` is the critical tier; distance below
-`inflation_radius_m + planning_clearance_m` is the planning tier. These tiers
-are soft lexicographic preferences, not materialized occupied grids.
+Distance below `critical_distance_m` is the critical tier; distance below
+`preferred_distance_m` is the planning tier. These tiers are categorical
+preferences, not materialized occupied grids.
 
-Raw occupied and outside-ROI remain hard rejects. The same field supplies
-corridor clearance and bounded diagnostics. Boundary behavior is covered by
-exact tier and segment-exposure tests.
+Raw occupied and outside-grid samples remain hard rejects. The same field
+supplies GPU collision queries, risk exposure, and diagnostics.
 
 ## Motion Compensation Diagnostics
 

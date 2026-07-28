@@ -1,82 +1,118 @@
 # Troubleshooting
 
-This page lists common failure modes and first checks.
-
-## Simulation Does Not Start
-
-Check:
-
-- Docker permissions: `docker ps`;
-- stale simulator processes: `./scripts/stop_sim.sh --dry-run`;
-- full cleanup: `./scripts/stop_sim.sh`;
-- container image availability;
-- host display access for GUI runs.
-
-## Build Cannot Find `px4_msgs`
-
-Use the repository wrappers:
+## Supported First Steps
 
 ```bash
+./scripts/stop_sim.sh
 ./scripts/build.sh
 ./scripts/test.sh
 ```
 
-They start the dev container and source `/opt/px4_msgs_ws/install/setup.bash`
-automatically. If `px4_msgs` is still missing, rebuild or refresh the dev image:
+Use only the container workflow. Every diagnostic simulation must use a timeout
+of at least 120 seconds.
 
-```bash
-./scripts/build_dev_image.sh
-```
-
-Only set `PX4_MSGS_SETUP_FILE` manually when intentionally using a custom
-container image or external `px4_msgs` install.
-
-## Drone Takes Off And Hovers
+## Drone Takes Off And Holds
 
 Check:
 
-- whether `/drone_city_nav/path` is published;
-- planner logs for A* or trajectory failure;
-- offboard logs for path acceptance/rejection;
-- PX4 offboard mode and arming state;
-- mission start/goal/origin consistency.
+- `production_mppi_node` started and CUDA is available;
+- raw obstacle and ESDF revisions advance;
+- pose and ESDF age remain below configured limits;
+- target source is not `no_guide_braking_hold`;
+- selected horizon is not collision-classified;
+- offboard receives fresh increasing horizon sequences.
 
-## RViz Does Not Show The Path
+## Drone Drives Into An Obstacle
+
+Inspect in this order:
+
+1. raw obstacle grid and lidar projection;
+2. ESDF revision and age;
+3. lattice guide status and target source;
+4. post-update collision classification;
+5. braking decision and time-to-collision;
+6. offboard deadline and applied command.
+
+For passage structures, inspect known-solid collision separately from 2D ESDF.
+
+## Drone Stalls At A Wall
+
+Compare:
+
+- active global guide endpoint;
+- lattice reached/frontier/dead-end classification;
+- guide remaining length;
+- head and terminal predicted progress;
+- actual displacement;
+- liveness reseed and guide-stall generations.
+
+A short frontier aimed at a wall and repeatedly high predicted progress indicate
+guide/recovery failure, not a speed-policy problem.
+
+## Route Flaps Left And Right
+
+Check whether the global guide generation changes. If it does, inspect sticky
+guide release reasons. If the guide remains stable but the blue MPPI horizon
+flaps, inspect warm-start shift, first-control delta, horizon stability, and
+local cost hierarchy.
+
+## Passage Alignment Does Not Release
 
 Check:
 
-- `enable_rviz:=true`;
-- RViz fixed frame is `map`;
-- `/drone_city_nav/final_trajectory_path`;
-- `/drone_city_nav/path`;
-- whether the planner published an empty hold path;
-- `log/final_trajectory_samples/latest.csv`.
+- selected opening id;
+- current phase;
+- vertical/lateral error;
+- capture window and vertical speed;
+- stable capture cycles;
+- offboard `PASSAGE_POSITION_HOLD` activation;
+- fresh horizon reception;
+- actual opening coordinates and travel direction.
 
-## Path Flickers Or Disappears
+Passage activation alone does not mean the global guide truly traversed the
+opening.
 
-Likely causes:
+## No-Static Flight Is Too Fast
 
-- invalid new trajectory;
-- failed replan;
-- diagnostics/path stamp mismatch;
-- empty hold path after planning failure;
-- stale pose or path update rejection.
+Confirm:
 
-Inspect planner logs and offboard trajectory update logs.
+- `use_static_map=false` reached both obstacle memory and MPPI;
+- no-static horizon duration, cruise, cap, acceleration, and jerk values;
+- PX4 `MPC_XY_VEL_MAX` and acceleration parameters were set for the run;
+- target source is never distant `mission_goal_direct` without a guide.
 
-## Replan Loop
+## Lidar Is Rotated At Startup
 
-Check:
+Projection must remain gated until PX4 heading is valid and aligned with the
+configured startup heading. Inspect heading variance, alignment diagnostics,
+pose history, scan timestamp, and mount quaternion. Do not correct this with a
+fixed arbitrary yaw subtraction.
 
-- raw-occupied intersection logs;
-- raw obstacle sources;
-- current lidar overlay quality;
-- obstacle memory scoring;
-- risk policy thresholds;
-- whether the drone actually crosses raw occupancy or only enters a soft risk
-  band.
+## RViz Is Empty
 
-## Gazebo Or PX4 Processes Remain After Closing GUI
+Check the actual topics:
+
+- `/drone_city_nav/raw_obstacle_grid`;
+- `/drone_city_nav/mppi/path`;
+- `/drone_city_nav/mppi/markers`;
+- `/drone_city_nav/known_passage_markers`;
+- `/drone_city_nav/drone_marker`.
+
+Verify reliable/transient-local QoS for durable world and passage markers.
+
+## Gazebo Camera Does Not Follow
+
+Verify:
+
+- the spawned entity is `x500_lidar_2d_0`;
+- `ENABLE_GZ_GUI_FOLLOW_CAMERA` is true;
+- CameraTracking diagnostics show a non-empty entity id;
+- stale Gazebo processes were stopped before launch.
+
+RViz follow uses a separate `drone_follow` TF and is not evidence that Gazebo
+CameraTracking is configured.
+
+## Ctrl+C Or Cleanup Hangs
 
 Run:
 
@@ -85,214 +121,6 @@ Run:
 ./scripts/stop_sim.sh
 ```
 
-The standard workflow does not support multiple simultaneous Gazebo instances.
-
-## Docker / X11 Problems
-
-Check:
-
-- Docker group membership;
-- `DISPLAY`;
-- Xauthority or Wayland/XWayland setup;
-- whether host security policy blocks GUI clients from containers.
-
-For headless validation, use `./scripts/sim_headless.sh`.
-
-## Lidar Or Memory Is Shifted
-
-Check:
-
-- `px4_local_origin_x_m`, `px4_local_origin_y_m`;
-- `use_px4_heading_for_scan`;
-- `scan_yaw_offset_rad`;
-- lidar mount roll/pitch/yaw;
-- `lidar_pose_latency_s`;
-- attitude compensation settings.
-
-In the normal full-extrinsic mode also check:
-
-- `px4_timesync_status_topic` and `source_timestamp_aligned` in alignment logs;
-- clock mapper sample count, scale, offset, and maximum residual;
-- `lidar_extrinsic_translation_body_frd_m`;
-- `lidar_extrinsic_quaternion_lidar_flu_to_body_frd`;
-- whether an event unexpectedly used a receive, motion, or callback fallback.
-
-Use lidar debug snapshots and the static map analyzer script.
-
-If downward lidar returns cause false replans, inspect both
-`Obstacle memory lidar decisions` and `Planner current lidar decisions`:
-
-- `expected_ground` should rise when the tilted lidar sees the physical ground;
-- `closer_retained` means a return was materially before the expected surface
-  and spatially detached enough to be kept;
-- `static[pending=...]` means closer/boundary evidence stayed attached to known
-  geometry and therefore changed neither hit scores nor free space;
-- `opening[interior_obstacle=...]` counts ordinary obstacles integrated inside free
-  opening volume;
-- `ground[pending=...]` identifies low or contradictory returns that are still
-  non-mutating candidates; `surface` and `obstacle` show their resolutions;
-- `projection[pending=...]` identifies unknown returns waiting because the pose
-  source or range margin was uncertain; `obstacle` counts confirmed clusters;
-- `ground_unavailable` indicates invalid ground configuration, missing altitude,
-  or missing attitude required by compensated 3D projection;
-- `non_ground_altitude_rejected` identifies the legacy altitude gate rather than
-  ground rejection.
-
-Compare the bounded sample's measured range, expected range, endpoint Z, and
-ray direction. Do not add a global tilt cutoff to hide the symptom: ordinary
-high-speed flight can use the same roll/pitch angles. Verify that
-`ground_lidar_altitude_m` matches the physical ground surface and that both
-nodes log the same effective tolerances.
-
-Every memory-sourced prohibited replan should report
-`memory_provenance[status=matched ...]` on the same log line. The atomic
-`/drone_city_nav/obstacle_memory_snapshot` subscription does not accept a grid
-without its exact provenance. The matched record contains endpoint XYZ,
-attitude, measured/expected ranges, delta, selected ingestion surface,
-`trigger_score`, `occupied_threshold`, `trigger_independent_scans`, and the total
-accepted-hit count. A `trigger_score=0->4 occupied_threshold=3` record with
-`trigger_independent_scans=1` proves that one scan made the cell occupied.
-
-If a memory blocker reports `not_received`, `cell_missing`, `pending`, or
-`history_expired`, treat it as an invariant failure rather than normal callback
-ordering. Check for `Ignoring invalid atomic obstacle memory snapshot`, compare
-the nested grid/provenance identity, and verify that the planner subscribes to
-the atomic snapshot topic rather than the standalone debug topics.
-
-For a suspected transport-induced replan or clearance failure, inspect the
-`memory_snapshot_transport[...]` block on that exact replan line. Its sequence,
-stamp, apply age, current age, callback time, receive/apply rates, pending
-sequence, replacements, and rejects describe the authoritative planner input at
-the event. Cross-check the active sequence against `Obstacle memory snapshot
-published`, `queued`, and `applied`. `dds_sequence_gaps` means DDS replaced a
-message before the dedicated callback received it. `pending_replacements` is
-expected when multiple valid snapshots arrive while one planning cycle is
-running; the newest complete pair wins. A reject means a delivered pair failed
-identity or nested consistency checks. Budget warnings identify oversized
-messages, slow assembly, stale adoption, slow parsing, excessive apply delay, or
-inadequate effective apply rate.
-
-## A* Does Not Find A Path
-
-Check:
-
-- raw obstacle snapshot coverage;
-- start and goal positions;
-- grid bounds;
-- static map path;
-- risk policy thresholds and exposure diagnostics;
-- whether current lidar or memory creates a blocking wall.
-
-## Trajectory Diagnostics Do Not Match
-
-Diagnostics should match accepted trajectories by `path_stamp_ns`. If they do
-not:
-
-- check `/drone_city_nav/path` header stamp;
-- check `/drone_city_nav/trajectory_diagnostics`;
-- check offboard logs for accepted planner id confirmation;
-- check whether a candidate trajectory was rejected after diagnostics arrived.
-
-## Drone Takes Too Long To Position At The Finish
-
-Check terminal logs:
-
-- terminal state;
-- velocity terminal capture activation distance;
-- position capture reason;
-- final hold speed and radius;
-- current speed near the final point.
-
-Position capture should take over near the end. If it does not, check terminal
-thresholds and speed.
-
-## Drone Oscillates On A Nearly Straight Segment
-
-Check:
-
-- signed cross-track zero crossings;
-- normal velocity zero crossings;
-- desired versus smoothed normal velocity;
-- projection smoothing mode;
-- curvature feedforward context scale;
-- P gain factor near the path;
-- effective D gain factor;
-- smoother jerk limit activity.
-
-Likely causes:
-
-- local tangent noise is being followed too literally;
-- curvature feedforward is active on sign-changing micro-curvature;
-- near-path P gain is too weak or too strong;
-- D damping is insufficient at high speed;
-- smoother lag makes the command arrive late.
-
-Do not assume the published trajectory is broken only because it is slightly
-wavy. The drone should track reasonable smooth waves without visible
-left-right oscillation.
-
-## Drone Misses A Turn
-
-Separate scalar speed from velocity direction:
-
-- Was speed consistent with the turn radius?
-- Was actual normal velocity outward before the turn?
-- Did desired normal velocity point into the turn early enough?
-- Did the smoother clip setpoint rotation?
-- Did projection smoothing suppress curvature too much?
-- Did the turn radius shrink quickly over a short distance?
-
-If scalar speed was too high for the radius, inspect speed profile and
-lookahead. If scalar speed was reasonable but direction was wrong, inspect
-projection, feedforward, normal velocity, and smoother lag.
-
-## Trajectory Looks Too Angular
-
-Check:
-
-- corridor width near the angular segment;
-- optimizer active windows;
-- minimum radius and radius-shortfall cost;
-- curvature-jump cost;
-- turn-smoothing detected and attempted corners;
-- rejected smoothing candidate reasons;
-- raw-occupancy intersections for otherwise nicer candidates.
-
-If the corridor is narrow, the planner may not have space to create a large
-radius. If the corridor is wide, tune trajectory optimizer and turn-smoothing
-logic before changing runtime control.
-
-## Planning Time Regressed
-
-Check stage wall time first:
-
-- grid and clearance;
-- A*;
-- corridor;
-- trajectory optimizer;
-- turn smoothing;
-- speed profile;
-- diagnostics.
-
-Then inspect aggregate candidate timing. A wall-time regression in optimizer or
-turn smoothing often comes from too many active samples, too many candidates,
-or strict rejection rules that force long searches.
-
-If a diagnostic-only feature became expensive, disable or sample it before
-changing path selection.
-
-## New Trajectory Is Rejected
-
-Check:
-
-- candidate path validity;
-- stale pose handling;
-- projection jump;
-- tangent jump;
-- curvature jump;
-- speed-limit jump;
-- tangent-speed command jump;
-- accepted path stamp and diagnostics stamp.
-
-A rejected candidate should not delete the active trajectory. If the path
-disappears after rejection, inspect publication and fallback behavior.
+Inspect stale container, Gazebo, PX4, Micro XRCE-DDS, RViz, and ROS process
+lists printed by the script. Do not start another GUI world until cleanup
+finishes.

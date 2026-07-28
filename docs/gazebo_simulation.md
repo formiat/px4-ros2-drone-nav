@@ -11,8 +11,8 @@ World and map assets live under `drone_city_nav/worlds/`:
 - `generated_city.sdf`
 - `generated_city.map2d`
 
-The `.sdf` world describes the simulator scene. The `.map2d` file is the static
-planner obstacle source used by `planner_node`.
+The `.sdf` world describes the simulator scene. The `.map2d` file is the optional
+static obstacle source loaded by `obstacle_memory_node`.
 
 ## Drone Model
 
@@ -150,9 +150,10 @@ empty space.
 
 Known architectural passage buildings are the deliberate exception: they exist
 physically in `generated_city.sdf`, but they are intentionally absent from
-`generated_city.map2d` so 2D A* can route through the opening footprint. Their
-3D geometry is represented by `known_passages.passages3d`, and the executable
-trajectory layer validates/profiles the actual opening traversal.
+`generated_city.map2d` so the 2D raw occupancy does not block the complete
+connector footprint. Their 3D geometry is represented by
+`known_passages.passages3d`; the lattice guide, MPPI known-solid checks, and
+passage coordinator handle the actual traversal.
 
 The SDF and annotation file are separate but coupled artifacts. Update both in
 the same change, keep passage structures out of `.map2d`, and run the passage
@@ -170,13 +171,14 @@ When editing a world, verify:
 - RViz static map and static building volume markers overlay the visible city.
 
 The static map should remain raw. Do not pre-inflate buildings in the map to
-"help" the planner. Inflation and planning clearance are planner parameters.
+"help" the planner. MPPI derives categorical risk bands from the occupied
+distance field.
 
 ## Spawn And Goal Consistency
 
 The spawn pose, PX4 local origin, and mission goal are coupled. A mismatch can
-look like a planner bug because A* and RViz operate in map coordinates while
-Gazebo renders world coordinates.
+look like a planner bug because navigation and RViz operate in map coordinates
+while Gazebo renders world coordinates.
 
 Useful checks:
 

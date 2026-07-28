@@ -1,197 +1,77 @@
-# Replanning
+# Receding-Horizon Updates And Guide Replacement
 
-Replanning is triggered when the current trajectory is no longer safe or when
-the planner needs to build a path from updated state.
+The current stack does not perform legacy full/partial path replanning.
 
-## Hard Replan Trigger
+## Local Horizon Updates
 
-The main hard trigger is intersection with the current raw obstacle snapshot.
-Raw occupied cells are the only 2D obstacle hard gate; leaving the evaluated
-planning ROI is also rejected.
+GPU MPPI recomputes a local horizon at the configured planning frequency. It
+uses:
 
-Critical and planning risk bands are distance-derived preferences. Entering
-either soft band is not by itself a runtime replan reason.
+- current pose and velocity;
+- the latest complete ESDF revision;
+- the active global lattice guide;
+- the previous control sequence as a warm start;
+- the latest applied-control feedback.
 
-When `known_static_lidar_hit_classifier_enabled=true`, known passage geometry
-is handled before a new lidar hit enters either dynamic source. A confident
-range/geometry match to a known physical solid is suppressed. A hit clearly
-detached from the solid or inside a free opening is retained immediately. A
-boundary, low ground candidate, or projection-uncertain hit performs no hit or
-free-space update until independent 3D viewpoints resolve its geometry. The
-optional classifier is independent of the current trajectory and never
-suppresses a static-map cell. Any retained hit that becomes raw occupied on the
-current path remains a normal hard replan trigger.
+Only a fresh timestamped horizon is executable. Offboard never continues an
+expired horizon as though it were a long accepted route.
 
-## Runtime Validation
+## Sticky Global Guide
 
-The planner periodically checks the current path/trajectory against updated
-obstacle data. Relevant diagnostics include:
+The global lattice guide is persistent across ordinary ESDF revisions. A newly
+calculated guide does not replace it merely because it has a slightly different
+score.
 
-- raw occupied intersection;
-- blocked spans;
-- grid bounds;
-- current projection on trajectory;
-- distance to blocked span;
-- path id and path stamp.
-- known-static lidar classification counters and first matched solid identity.
+The active guide can be released when it is:
 
-## Failed Replan Behavior
+- blocked by current raw occupancy;
+- exhausted below the mode-specific remaining-distance threshold;
+- too far from the current vehicle position;
+- stalled according to along-guide progress;
+- superseded by mission-goal completion.
 
-If a new candidate trajectory is invalid, stale, or discontinuous, the offboard
-node can reject it and keep the previous accepted trajectory. This prevents a
-failed update from deleting a still-usable trajectory.
+Heading for a replacement guide comes from velocity at speed, the previous
+accepted-guide tangent at low speed, or yaw/goal direction as the final
+fallback.
 
-When the planner explicitly publishes an empty hold path after failure, the
-offboard node enters hold/fallback behavior instead of treating the empty path
-as a normal executable trajectory.
+## Liveness
 
-## Trajectory Continuity
+The liveness monitor distinguishes predicted progress from actual vehicle
+motion. A horizon that repeatedly predicts useful terminal motion while the
+vehicle remains stationary is considered ineffective.
 
-Offboard trajectory update continuity checks:
+Recovery can:
 
-- projection jump;
-- tangent jump;
-- curvature jump;
-- speed-limit jump;
-- tangent-speed command jump.
+- reseed the local MPPI nominal control sequence;
+- release a stalled active guide so the lattice can build another guide;
+- brake or hold when no executable local continuation exists.
 
-The result can be:
+The current lattice still has limited recovery primitives and no persistent
+topological memory. A dead end may therefore end in hold rather than a complete
+route around the obstacle.
 
-- preserve smoother history;
-- reset smoother history;
-- defer a high-speed update until a safe transition is available;
-- reject candidate trajectory.
+## Safety During Updates
 
-Before deferring an XY-discontinuous update, offboard attempts a continuity
-handover. It preserves a speed-dependent prefix of the accepted executable
-trajectory, joins it to a future station on the candidate, rebuilds geometry
-and speed constraints, and validates the complete stitch against the current
-raw obstacle snapshot and risk policy. A failed geometry or hard-risk check
-never bypasses the continuity
-gate.
+There is no prefix/suffix stitch or safe truncation. Safety comes from:
 
-Every horizontal handover result records whether the builder was attempted and
-why it was not applied. An active passage hard window no longer rejects the
-update by itself: the builder preserves the old constrained prefix through the
-window exit and settle distance, then reconnects outside the window. Different
-active passage ids are rejected as `hard_window_prefix_not_reconnectable`.
-Other reasons cover unavailable or invalid trajectories, stale local position,
-an already-compatible update, missing validation grid, excessive join distance,
-geometry limits, and a non-traversable stitch. A stale
-trajectory rejection prints this complete result, including projection
-stations, projection and tangent jumps, prefix and join distances, curvature,
-and the rejected grid segment.
+- short overlapping horizons;
+- ESDF and known-solid collision evaluation;
+- first-control continuity relative to the command actually sent;
+- time-to-collision and braking fallback;
+- horizon validity deadlines.
 
-Replans caused by a prohibited blocker also emit `REPLAN_DELIVERY` lifecycle
-events. They correlate blocker detection, trajectory-build start, path
-publication, offboard receipt, and late diagnostics receipt by trajectory
-generation, path id, and path timestamp. The planner records pose and velocity
-at detection and build start and uses the position snapshot taken at the start
-of the planning cycle as the A* start. Before publication it compares a
-diagnostic constant-velocity publication estimate with the fresh actual pose;
-that estimate does not affect planning geometry. Offboard reports
-publish-to-receive and blocker-to-receive latency plus its actual and
-independently extrapolated receive positions.
+If a replacement horizon is unsafe, the system publishes braking behavior. It
+does not preserve a physically blocked old trajectory just because a new plan
+failed.
 
-## Diagnostics Matching
+## Removed Protocols
 
-Planner diagnostics are matched to the accepted trajectory by `path_stamp_ns`.
-The accepted planner path id is confirmed from matching diagnostics. This
-avoids relying on cross-topic delivery ordering between `/path_id`,
-`/trajectory_diagnostics`, and `/path`.
+The following concepts are not part of production runtime:
 
-## Local Segment Repair
-
-After safe truncation is confirmed, production replanning races ten local
-segment repairs against one full replan. All jobs read one immutable snapshot
-containing the accepted trajectory artifact, the absolute blocked span, known
-passages, and one prepared raw/risk snapshot. Local jobs reconnect at fixed
-stations 10 through 100 metres after the actual blocked-span exit.
-
-Blocked spans use the same ordered `cellsOnLine` and raw-occupied traversal as
-runtime path checks, including diagonal segments.
-
-Each local job runs A*, corridor construction, optimization, and smoothing only
-from the confirmed truncation point to its reconnect station. It then appends
-the unchanged old suffix and globally rebuilds vertical, passage, and speed
-metadata. The first completed hard-valid result wins; invalid completions do
-not close the race. The full job remains an equal production competitor.
-
-## Replan Decision Philosophy
-
-The system should not treat every obstacle update as a reason to throw away the
-whole plan. Full replanning is robust but expensive, and it can create visible
-trajectory changes even when only a small future span is affected. Safe
-truncation retains the executable prefix while local and full candidates race,
-so planning latency does not invalidate the confirmed join point.
-
-The planner should distinguish:
-
-- current trajectory hard-invalid now;
-- current trajectory intersects a future blocked span;
-- planning clearance is reduced but hard trajectory remains valid;
-- lidar evidence is noisy or incomplete;
-- the drone is already beyond the blocked region.
-
-These conditions require different responses. A blocked span 80 m ahead can be
-handled differently from a prohibited cell under the current vehicle.
-
-## Local Segment Replan Concept
-
-The first practical local-repair implementation should reuse the existing
-planning stack on a shorter window. The sequence is:
-
-1. project the drone onto the accepted executable trajectory;
-2. find raw occupied spans against the latest obstacle snapshot;
-3. choose start and end anchors around the affected span;
-4. generate configured reconnect stations after the blocked-span exit;
-5. run A*, corridor, optimizer, and turn smoothing between anchors;
-6. stitch old prefix, repaired segment, and old suffix;
-7. rebuild the speed profile for the stitched full trajectory;
-8. validate raw-occupancy/ROI safety and known solid geometry;
-9. publish only if the stitched candidate passes the same acceptance gates as a
-   full replan.
-
-This approach is easier than direct corridor surgery because it reuses known
-planner stages. Direct corridor repair can be faster later, but it requires
-retaining and modifying more internal planner state.
-
-## Parallel Repair And Full Replan
-
-Local repair and full replan run concurrently and every result carries the
-truncation generation, blocked path id, prefix fingerprint, and exact planning
-grid version. The first hard-valid completion wins. Later results are canceled
-cooperatively or ignored as stale.
-
-The winner is handed to the guarded publication path immediately after
-selection. Joining losing jobs happens after this handoff, so a slow loser does
-not delay an already valid suffix. A* and trajectory optimization both observe
-the shared cancellation token.
-
-Offboard reports when the temporary terminal hold is actually reached. The
-publication handoff resolves a moving candidate to `AFTER_HOLD` when that state
-arrives before the winner; otherwise the planned `MOVING_JOIN`/`AFTER_HOLD`
-mode is preserved. This prevents a late winner from retaining moving-prefix
-tangent semantics after the vehicle has already stopped.
-
-The implementation does not need unsafe thread termination. Cooperative
-cancellation or stale-result rejection is enough for correctness. The
-controller should only see accepted executable trajectories, not partial repair
-attempts.
-
-## Validation Requirements For Stitched Paths
-
-A stitched path must be treated as a new executable trajectory, not as a small
-patch that bypasses validation. It must pass:
-
-- finite geometry checks;
-- hard raw-occupancy/ROI validation;
-- ordered planning-clearance/runtime-prohibited validation;
-- mandatory known-solid non-intersection;
-- maximum segment length checks;
-- speed-profile rebuild;
-- offboard trajectory continuity acceptance.
-
-Join tangent and curvature remain quality and speed-profile inputs rather than
-automatic hard rejection. Non-finite geometry, runtime-prohibited
-intersection, broken endpoints, or known-solid intersection are hard rejects.
+- partial A* repair;
+- repair margins and parallel repair races;
+- blocked-span suffix stitching;
+- safe truncation;
+- truncation generation or fingerprints;
+- moving/after-hold successor negotiation;
+- path-id ACK/coalescing lifecycle.

@@ -191,14 +191,10 @@ python3 scripts/analyze_lidar_projection_snapshots.py \
   --static-map drone_city_nav/worlds/generated_city.map2d
 ```
 
-Offboard flight diagnostics are also written as JSON Lines to
-`log/offboard_blackbox.jsonl` by default. This file mirrors the 2 Hz telemetry
-logs with path ids, cross-track error, heading error, commanded target motion,
-commanded velocity, vehicle attitude, and nearest-obstacle bearing.
-Final trajectory samples are dumped to `log/final_trajectory_samples/` on every
-trajectory rebuild. Corridor samples are dumped to `log/corridor_samples/` on
-every corridor rebuild. Each directory contains timestamped history files and a
-`latest.csv` shortcut for the most recent rebuild.
+Production MPPI diagnostics are written as JSON Lines under `log/mppi/`.
+Synchronized lidar, raw-grid, and local-horizon snapshots are written under
+`log/lidar_debug/`. The simulation wrapper prints the exact per-run artifact
+directory.
 
 ## Build System
 

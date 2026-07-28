@@ -375,6 +375,32 @@ if(BUILD_TESTING)
   target_link_libraries(passage_coordinator_test drone_city_nav_core)
   enable_project_warnings(passage_coordinator_test)
 
+  ament_add_gtest(passage_traversal_monitor_test
+                  tests/passage_traversal_monitor_test.cpp)
+  target_compile_features(passage_traversal_monitor_test PRIVATE cxx_std_20)
+  target_link_libraries(passage_traversal_monitor_test drone_city_nav_core)
+  enable_project_warnings(passage_traversal_monitor_test)
+
+  ament_add_gtest(known_passage_map_test tests/known_passage_map_test.cpp)
+  target_compile_features(known_passage_map_test PRIVATE cxx_std_20)
+  target_link_libraries(known_passage_map_test drone_city_nav_core)
+  enable_project_warnings(known_passage_map_test)
+
+  ament_add_gtest(known_passage_solid_volumes_test
+                  tests/known_passage_solid_volumes_test.cpp)
+  target_compile_features(known_passage_solid_volumes_test PRIVATE cxx_std_20)
+  target_link_libraries(known_passage_solid_volumes_test drone_city_nav_core)
+  enable_project_warnings(known_passage_solid_volumes_test)
+
+  ament_add_gtest(known_passage_debug_markers_test
+                  tests/known_passage_debug_markers_test.cpp)
+  target_compile_features(known_passage_debug_markers_test PRIVATE cxx_std_20)
+  target_link_libraries(known_passage_debug_markers_test
+                        drone_city_nav_ros_adapters)
+  ament_target_dependencies(known_passage_debug_markers_test geometry_msgs
+                            std_msgs visualization_msgs)
+  enable_project_warnings(known_passage_debug_markers_test)
+
   if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     ament_add_gtest(mppi_control_sequence_test_current
                     tests/mppi_control_sequence_test.cpp)
