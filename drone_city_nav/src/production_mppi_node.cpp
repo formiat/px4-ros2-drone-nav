@@ -150,8 +150,28 @@ ProductionMppiNode::ProductionMppiNode()
   mppi_config_.dynamics.maximum_control_jerk_mps3 = static_cast<float>(
       passage_speed_policy_.use_static_map ? static_maximum_control_jerk_mps3
                                            : no_static_maximum_control_jerk_mps3);
+  mppi_config_.dynamics.maximum_vertical_acceleration_mps2 = static_cast<float>(
+      declare_parameter<double>("maximum_vertical_acceleration_mps2", 4.0));
   mppi_config_.dynamics.maximum_vertical_speed_mps =
       static_cast<float>(declare_parameter<double>("maximum_vertical_speed_mps", 5.0));
+  passage_coordinator_config_.vertical_clearance_margin_m =
+      declare_parameter<double>("passage_vertical_clearance_margin_m", 1.0);
+  passage_coordinator_config_.vertical_capture_hysteresis_m =
+      declare_parameter<double>("passage_vertical_capture_hysteresis_m", 0.25);
+  passage_coordinator_config_.maximum_capture_vertical_speed_mps =
+      declare_parameter<double>("passage_vertical_capture_maximum_speed_mps", 0.5);
+  passage_coordinator_config_.alignment_time_margin_s =
+      declare_parameter<double>("passage_alignment_time_margin_s", 0.5);
+  passage_coordinator_config_.minimum_stationary_trigger_distance_m =
+      declare_parameter<double>("passage_stationary_trigger_minimum_distance_m", 2.0);
+  passage_coordinator_config_.maximum_vertical_acceleration_mps2 =
+      mppi_config_.dynamics.maximum_vertical_acceleration_mps2;
+  passage_coordinator_config_.maximum_vertical_speed_mps =
+      mppi_config_.dynamics.maximum_vertical_speed_mps;
+  passage_coordinator_config_.maximum_horizontal_braking_acceleration_mps2 =
+      speed_policy_config_.maximum_braking_acceleration_mps2;
+  passage_coordinator_config_.reaction_latency_s =
+      speed_policy_config_.reaction_latency_s;
   mppi_config_.costs.head_progress_horizon_s =
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
@@ -268,6 +288,8 @@ ProductionMppiNode::ProductionMppiNode()
       std::make_unique<ActiveGlobalGuideLifecycle>(active_guide_config_);
   guide_progress_tracker_ =
       std::make_unique<GlobalGuideProgressTracker>(guide_progress_config_);
+  passage_coordinator_ =
+      std::make_unique<PassageCoordinator>(passage_coordinator_config_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
   const bool passages_enabled = declare_parameter<bool>("known_passages_enabled", true);
   const std::string passages_path = declare_parameter<std::string>(
@@ -341,7 +363,8 @@ ProductionMppiNode::ProductionMppiNode()
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
       "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
       "sticky_guide=true guide_replan_remaining=%.1fm "
-      "guide_heading_blend=(%.1f,%.1f)mps",
+      "guide_heading_blend=(%.1f,%.1f)mps passage_vertical_margin=%.2fm "
+      "passage_capture_hysteresis=%.2fm passage_capture_max_vz=%.2fmps",
       mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
       known_solids_.size(), passage_speed_policy_.use_static_map ? "true" : "false",
       static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
@@ -355,7 +378,10 @@ ProductionMppiNode::ProductionMppiNode()
       liveness_config_.enabled ? "true" : "false",
       active_guide_config_.minimum_remaining_m,
       active_guide_config_.velocity_heading_low_speed_mps,
-      active_guide_config_.velocity_heading_high_speed_mps);
+      active_guide_config_.velocity_heading_high_speed_mps,
+      passage_coordinator_config_.vertical_clearance_margin_m,
+      passage_coordinator_config_.vertical_capture_hysteresis_m,
+      passage_coordinator_config_.maximum_capture_vertical_speed_mps);
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

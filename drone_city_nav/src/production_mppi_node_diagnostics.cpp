@@ -70,6 +70,7 @@ void ProductionMppiNode::publishDiagnostics(
     const ProductionMppiPreparedEsdf& esdf, const ProductionMppiStability& stability,
     const ProductionMppiPredictionError& prediction, const MppiLivenessResult& liveness,
     const MppiSpeedPolicyResult& speed_policy,
+    const PassageCoordinatorResult& passage_coordinator,
     const ProductionMppiPlanningState planning_state,
     const std::string_view target_source, const double pose_age_ms,
     const double esdf_age_ms, const double control_feedback_age_ms,
@@ -88,6 +89,12 @@ void ProductionMppiNode::publishDiagnostics(
           ? 1U
           : 0U;
   no_progress_horizons_ += result.head_progress_m <= 0.0F ? 1U : 0U;
+  passage_vertical_alignment_ticks_ += passage_coordinator.hold_xy ? 1U : 0U;
+  passage_traversal_ticks_ +=
+      passage_coordinator.phase == PassageCoordinatorPhase::kTraversal ||
+              passage_coordinator.phase == PassageCoordinatorPhase::kPartialFromInside
+          ? 1U
+          : 0U;
   std::ostringstream line;
   line << std::fixed << std::setprecision(3)
        << "PRODUCTION_MPPI_TICK tick=" << tick_sequence_
@@ -129,6 +136,22 @@ void ProductionMppiNode::publishDiagnostics(
        << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
        << " passage_speed_limit_mps="
        << finiteOrNegative(speed_policy.passage_limit_mps)
+       << " passage_phase=" << passageCoordinatorPhaseName(passage_coordinator.phase)
+       << " passage_opening="
+       << (passage_coordinator.opening_id.empty() ? "none"
+                                                  : passage_coordinator.opening_id)
+       << " passage_xy_hold=" << (passage_coordinator.hold_xy ? "true" : "false")
+       << " passage_vertical_ready="
+       << (passage_coordinator.vertical_ready ? "true" : "false")
+       << " passage_target_z_m=" << passage_coordinator.preferred_z_m
+       << " passage_vertical_error_m=" << passage_coordinator.vertical_error_m
+       << " passage_distance_to_entry_m=" << passage_coordinator.distance_to_entry_m
+       << " passage_required_alignment_time_s="
+       << passage_coordinator.required_alignment_time_s
+       << " passage_required_stopping_distance_m="
+       << passage_coordinator.required_stopping_distance_m
+       << " passage_required_alignment_distance_m="
+       << passage_coordinator.required_alignment_distance_m
        << " gpu_ms=" << result.timings.gpu_total_ms
        << " total_ms=" << result.timings.host_total_ms << " snapshot_ms=" << snapshot_ms
        << " stability_ms=" << stability_ms << " rviz_ms=" << rviz_ms
@@ -234,7 +257,22 @@ void ProductionMppiNode::publishDiagnostics(
         << finiteOrNegative(speed_policy.observation_limit_mps)
         << ",\"goal_speed_limit_mps\":" << finiteOrNegative(speed_policy.goal_limit_mps)
         << ",\"passage_speed_limit_mps\":"
-        << finiteOrNegative(speed_policy.passage_limit_mps)
+        << finiteOrNegative(speed_policy.passage_limit_mps) << ",\"passage_phase\":\""
+        << passageCoordinatorPhaseName(passage_coordinator.phase) << '"'
+        << ",\"passage_opening\":\"" << passage_coordinator.opening_id << '"'
+        << ",\"passage_xy_hold\":" << (passage_coordinator.hold_xy ? "true" : "false")
+        << ",\"passage_vertical_ready\":"
+        << (passage_coordinator.vertical_ready ? "true" : "false")
+        << ",\"passage_target_z_m\":" << passage_coordinator.preferred_z_m
+        << ",\"passage_vertical_error_m\":" << passage_coordinator.vertical_error_m
+        << ",\"passage_distance_to_entry_m\":"
+        << passage_coordinator.distance_to_entry_m
+        << ",\"passage_required_alignment_time_s\":"
+        << passage_coordinator.required_alignment_time_s
+        << ",\"passage_required_stopping_distance_m\":"
+        << passage_coordinator.required_stopping_distance_m
+        << ",\"passage_required_alignment_distance_m\":"
+        << passage_coordinator.required_alignment_distance_m
         << ",\"gpu_ms\":" << result.timings.gpu_total_ms
         << ",\"total_ms\":" << result.timings.host_total_ms
         << ",\"raw_collision\":" << (result.raw_collision ? "true" : "false")
@@ -296,12 +334,15 @@ void ProductionMppiNode::publishSummary() {
       "deadline_misses=%" PRIu64 " raw_collision_horizons=%" PRIu64
       " solid_collision_horizons=%" PRIu64 " post_update_contract_violations=%" PRIu64
       " no_progress_horizons=%" PRIu64 " liveness_reseeds=%" PRIu64
-      " no_guide_braking_hold_ticks=%" PRIu64 " dropped_esdf_updates=%" PRIu64,
+      " no_guide_braking_hold_ticks=%" PRIu64
+      " passage_vertical_alignment_ticks=%" PRIu64 " passage_traversal_ticks=%" PRIu64
+      " dropped_esdf_updates=%" PRIu64,
       completed_ticks_, percentile(runtime_samples_ms_, 0.50),
       percentile(runtime_samples_ms_, 0.95), percentile(runtime_samples_ms_, 0.99),
       maximum, deadline_misses_, raw_collision_horizons_, solid_collision_horizons_,
       post_update_contract_violations_, no_progress_horizons_, liveness_reseeds_,
-      no_guide_braking_hold_ticks_, dropped_raw_snapshots_);
+      no_guide_braking_hold_ticks_, passage_vertical_alignment_ticks_,
+      passage_traversal_ticks_, dropped_raw_snapshots_);
 }
 
 } // namespace drone_city_nav

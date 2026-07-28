@@ -11,6 +11,7 @@
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
+#include "drone_city_nav/passage_coordinator.hpp"
 #include "drone_city_nav/passage_route_selection.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/types.hpp"
@@ -131,6 +132,7 @@ private:
       const ProductionMppiPreparedEsdf& esdf, const ProductionMppiStability& stability,
       const ProductionMppiPredictionError& prediction,
       const MppiLivenessResult& liveness, const MppiSpeedPolicyResult& speed_policy,
+      const PassageCoordinatorResult& passage_coordinator,
       ProductionMppiPlanningState planning_state, std::string_view target_source,
       double pose_age_ms, double esdf_age_ms, double control_feedback_age_ms,
       double snapshot_ms, double stability_ms, double rviz_ms);
@@ -147,9 +149,8 @@ private:
                                          const ProductionMppiPreparedEsdf& esdf,
                                          double lookahead_m,
                                          std::string& target_source) const;
-  [[nodiscard]] std::optional<mppi::PassageConstraint>
-  selectPassageConstraint(const mppi::State& state,
-                          std::span<const Point2> guide) const;
+  [[nodiscard]] const PassageOpening*
+  selectPassageOpening(const mppi::State& state, std::span<const Point2> guide) const;
   [[nodiscard]] ProductionMppiStability
   compareWithPrevious(const mppi::MppiTickResult& result) const;
 
@@ -175,11 +176,13 @@ private:
   MppiHorizonSafetyConfig safety_config_{};
   MppiLivenessConfig liveness_config_{};
   MppiSpeedPolicyConfig speed_policy_config_{};
+  PassageCoordinatorConfig passage_coordinator_config_{};
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
+  std::unique_ptr<PassageCoordinator> passage_coordinator_;
   RiskAwareLatticeConfig lattice_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<KnownPassageMap> known_passages_;
@@ -214,6 +217,8 @@ private:
   std::uint64_t no_progress_horizons_{0U};
   std::uint64_t liveness_reseeds_{0U};
   std::uint64_t no_guide_braking_hold_ticks_{0U};
+  std::uint64_t passage_vertical_alignment_ticks_{0U};
+  std::uint64_t passage_traversal_ticks_{0U};
   std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
   std::ofstream diagnostics_stream_;

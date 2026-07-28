@@ -147,6 +147,7 @@ add_library(
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
+  src/passage_coordinator.cpp
   src/passage_route_selection.cpp
   src/passage_traversal_monitor.cpp
   src/static_city_map.cpp)
@@ -362,6 +363,11 @@ if(BUILD_TESTING)
   target_compile_features(passage_route_selection_test PRIVATE cxx_std_20)
   target_link_libraries(passage_route_selection_test drone_city_nav_core)
   enable_project_warnings(passage_route_selection_test)
+
+  ament_add_gtest(passage_coordinator_test tests/passage_coordinator_test.cpp)
+  target_compile_features(passage_coordinator_test PRIVATE cxx_std_20)
+  target_link_libraries(passage_coordinator_test drone_city_nav_core)
+  enable_project_warnings(passage_coordinator_test)
 
   if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     ament_add_gtest(mppi_control_sequence_test_current

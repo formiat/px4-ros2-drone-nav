@@ -32,6 +32,7 @@ struct KnownSolid {
 
 enum class PassagePhase : std::uint8_t {
   kApproach,
+  kStationaryVerticalAlignment,
   kTraversal,
   kPartialFromInside,
 };

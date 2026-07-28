@@ -267,11 +267,11 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& nav
   return target;
 }
 
-std::optional<mppi::PassageConstraint>
-ProductionMppiNode::selectPassageConstraint(const mppi::State& state,
-                                            const std::span<const Point2> guide) const {
+const PassageOpening*
+ProductionMppiNode::selectPassageOpening(const mppi::State& state,
+                                         const std::span<const Point2> guide) const {
   if (!known_passages_.has_value()) {
-    return std::nullopt;
+    return nullptr;
   }
   const PassageOpening* selected = nullptr;
   double selected_distance = passage_route_selection_config_.activation_distance_m;
@@ -287,29 +287,7 @@ ProductionMppiNode::selectPassageConstraint(const mppi::State& state,
       }
     }
   }
-  if (selected == nullptr) {
-    return std::nullopt;
-  }
-  const double local_x = state.x - selected->center.x;
-  const double local_y = state.y - selected->center.y;
-  const double longitudinal =
-      local_x * selected->normal_xy.x + local_y * selected->normal_xy.y;
-  const bool inside = std::abs(longitudinal) <= 0.5 * selected->depth_m &&
-                      state.z >= selected->min_z_m && state.z <= selected->max_z_m;
-  return mppi::PassageConstraint{
-      static_cast<float>(selected->center.x),
-      static_cast<float>(selected->center.y),
-      static_cast<float>(selected->normal_xy.x),
-      static_cast<float>(selected->normal_xy.y),
-      static_cast<float>(0.5 * selected->depth_m),
-      static_cast<float>(selected->min_z_m + 1.0),
-      static_cast<float>(selected->max_z_m - 1.0),
-      inside ? state.z
-             : static_cast<float>(0.5 * (selected->min_z_m + selected->max_z_m)),
-      static_cast<float>(selected->approach_distance_m),
-      static_cast<float>(selected->exit_distance_m),
-      activePassageSpeedLimitMps(passage_speed_policy_),
-      inside ? mppi::PassagePhase::kPartialFromInside : mppi::PassagePhase::kApproach};
+  return selected;
 }
 
 void ProductionMppiNode::planningTick() {
@@ -359,8 +337,20 @@ void ProductionMppiNode::planningTick() {
   std::string target_source;
   mppi::State target =
       selectTarget(navigation, *esdf, speed_policy.target_lookahead_m, target_source);
-  std::optional<mppi::PassageConstraint> passage =
-      selectPassageConstraint(navigation.state, guide);
+  PassageCoordinatorResult passage_result;
+  const PassageOpening* selected_opening =
+      selectPassageOpening(navigation.state, guide);
+  if (passage_coordinator_) {
+    const double passage_speed_limit_mps =
+        activePassageSpeedLimitMps(passage_speed_policy_);
+    passage_result = passage_coordinator_->update(PassageCoordinatorInput{
+        .state = navigation.state,
+        .selected_opening = selected_opening,
+        .approach_speed_mps = speed_policy.reference_speed_mps,
+        .passage_speed_limit_mps = passage_speed_limit_mps,
+    });
+  }
+  std::optional<mppi::PassageConstraint> passage = passage_result.constraint;
   if (passage.has_value()) {
     speed_policy = evaluateMppiSpeedPolicy(
         speed_policy_config_, MppiSpeedPolicyInput{
@@ -376,13 +366,25 @@ void ProductionMppiNode::planningTick() {
   if (!passage_speed_policy_.use_static_map && target_source == "mission_goal_direct") {
     planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
     target = navigation.state;
+    if (passage_coordinator_) {
+      passage_coordinator_->reset();
+    }
+    passage_result = {};
     passage.reset();
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "no_guide_braking_hold";
   } else if (passage.has_value()) {
     target.z = passage->preferred_z_m;
-    target_source = "passage_primitive";
+    if (passage_result.hold_xy) {
+      target.x = static_cast<float>(passage_result.hold_position.x);
+      target.y = static_cast<float>(passage_result.hold_position.y);
+      speed_policy.reference_speed_mps = 0.0;
+      speed_policy.target_lookahead_m = 0.0;
+      target_source = "passage_vertical_alignment";
+    } else {
+      target_source = "passage_primitive";
+    }
   }
   const bool control_feedback_fresh =
       applied_control.valid && control_feedback_age_ms >= 0.0 &&
@@ -392,7 +394,7 @@ void ProductionMppiNode::planningTick() {
     liveness = liveness_supervisor_->evaluate(MppiLivenessObservation{
         .stamp_ns = now_ns,
         .actual_state = navigation.state,
-        .controller_active = control_feedback_fresh,
+        .controller_active = control_feedback_fresh && !passage_result.hold_xy,
         .emergency_braking =
             control_feedback_fresh && applied_control.emergency_braking,
         .predicted_head_progress_m =
@@ -417,7 +419,7 @@ void ProductionMppiNode::planningTick() {
         .station_m = projection.station_m,
         .predicted_head_progress_m =
             previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
-        .controller_active = control_feedback_fresh,
+        .controller_active = control_feedback_fresh && !passage_result.hold_xy,
         .emergency_braking =
             control_feedback_fresh && applied_control.emergency_braking,
     });
@@ -507,9 +509,9 @@ void ProductionMppiNode::planningTick() {
                              std::chrono::steady_clock::now() - rviz_started)
                              .count();
   publishDiagnostics(input, result, *esdf, stability, prediction, liveness,
-                     speed_policy, planning_state, target_source, pose_age_ms,
-                     esdf_age_ms, control_feedback_age_ms, snapshot_ms, stability_ms,
-                     rviz_ms);
+                     speed_policy, passage_result, planning_state, target_source,
+                     pose_age_ms, esdf_age_ms, control_feedback_age_ms, snapshot_ms,
+                     stability_ms, rviz_ms);
   publishExecutionHorizon(input, result, *esdf, planning_state, now_ns);
   {
     const std::scoped_lock lock{input_mutex_};

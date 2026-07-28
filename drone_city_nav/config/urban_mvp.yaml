@@ -143,6 +143,12 @@ production_mppi_node:
     static_curvature_preview_distance_m: 100.0
     static_passage_speed_limit_mps: 10.0
     no_static_passage_speed_limit_mps: 5.0
+    passage_vertical_clearance_margin_m: 1.0
+    passage_vertical_capture_hysteresis_m: 0.25
+    passage_vertical_capture_maximum_speed_mps: 0.5
+    passage_alignment_time_margin_s: 0.5
+    passage_stationary_trigger_minimum_distance_m: 2.0
+    maximum_vertical_acceleration_mps2: 4.0
     raw_collision_radius_m: 0.5
     critical_distance_m: 1.0
     preferred_distance_m: 6.0
