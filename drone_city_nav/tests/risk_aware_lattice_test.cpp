@@ -23,9 +23,11 @@ TEST(RiskAwareLattice, BuildsGuideThroughOpenSpace) {
   ASSERT_TRUE(result.valid);
   ASSERT_GE(result.guide.size(), 2U);
   EXPECT_TRUE(result.planning_goal_reached);
+  EXPECT_TRUE(result.exact_terminal_connector);
   EXPECT_EQ(result.status, LatticePlanStatus::kReachedPlanningGoal);
   EXPECT_EQ(result.termination, LatticeSearchTermination::kPlanningGoalReached);
-  EXPECT_LT(result.guide.back().x, 40.0);
+  EXPECT_DOUBLE_EQ(result.guide.back().x, 34.5);
+  EXPECT_DOUBLE_EQ(result.guide.back().y, 10.5);
   EXPECT_NEAR(result.guide.front().y, 10.5, 1.0);
 }
 
@@ -100,12 +102,27 @@ TEST(RiskAwareLattice, ClassifiesShortTwoPointGuideAsDeadEnd) {
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{18.5, 10.5}, RiskAwareLatticeConfig{});
 
-  ASSERT_TRUE(result.valid);
+  ASSERT_FALSE(result.valid);
   ASSERT_EQ(result.guide.size(), 2U);
   EXPECT_FALSE(result.planning_goal_reached);
   EXPECT_EQ(result.status, LatticePlanStatus::kDeadEnd);
   EXPECT_EQ(result.termination, LatticeSearchTermination::kOpenSetExhausted);
   EXPECT_EQ(result.terminal_successor_count, 0U);
+}
+
+TEST(RiskAwareLattice, DoesNotReachGoalThroughBlockedTerminalConnector) {
+  const mppi::EsdfGrid grid = makeGrid();
+  std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height), 20.0F);
+  esdf[10U * static_cast<std::size_t>(grid.width) + 34U] = 0.0F;
+
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{34.5, 10.5}, RiskAwareLatticeConfig{});
+
+  EXPECT_FALSE(result.planning_goal_reached);
+  EXPECT_FALSE(result.exact_terminal_connector);
+  EXPECT_NE(result.status, LatticePlanStatus::kReachedPlanningGoal);
+  EXPECT_TRUE(result.guide.empty() ||
+              distance(result.guide.back(), Point2{34.5, 10.5}) > 1.0e-6);
 }
 
 TEST(RiskAwareLattice, ClassifiesUsefulBudgetLimitedGuideAsViableFrontier) {

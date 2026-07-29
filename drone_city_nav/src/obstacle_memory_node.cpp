@@ -1,6 +1,7 @@
 #include "drone_city_nav/grid_config.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
+#include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
@@ -23,6 +24,7 @@
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
@@ -31,7 +33,9 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -40,6 +44,14 @@
 
 namespace drone_city_nav {
 constexpr double kPassageMemoryDiagnosticMarginM{2.0};
+constexpr std::int64_t kLidarDiagnosticsInfoThrottleMs{200};
+
+struct LidarMemoryHitDiagnosticBatch {
+  std::vector<ObstacleMemoryOccupiedTransition> transitions;
+  LidarMemoryHitDiagnosticContext common_context;
+  LidarPoseHistory pose_history;
+  Px4RosTimeMapper time_mapper;
+};
 
 class ObstacleMemoryNode final : public rclcpp::Node {
 public:
@@ -273,6 +285,8 @@ public:
         use_full_lidar_extrinsic_ ? "true" : "false", lidar_translation_body_frd_m_.x,
         lidar_translation_body_frd_m_.y, lidar_translation_body_frd_m_.z);
     openLidarMemoryHitDump();
+    lidar_diagnostics_worker_ = std::jthread(
+        [this](const std::stop_token token) { lidarDiagnosticsWorker(token); });
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory snapshot transport: debug_period=%.2fs "
                 "diagnostic_period=%.2fs budgets[serialized_bytes=%zu assembly=%.1fms "
@@ -281,6 +295,19 @@ public:
                 snapshot_max_serialized_bytes_, snapshot_max_assembly_time_ms_,
                 snapshot_max_publish_interval_ms_);
   }
+
+  ~ObstacleMemoryNode() override {
+    if (lidar_diagnostics_worker_.joinable()) {
+      lidar_diagnostics_worker_.request_stop();
+      lidar_diagnostics_mailbox_.notifyAll();
+      lidar_diagnostics_worker_.join();
+    }
+  }
+
+  ObstacleMemoryNode(const ObstacleMemoryNode&) = delete;
+  ObstacleMemoryNode& operator=(const ObstacleMemoryNode&) = delete;
+  ObstacleMemoryNode(ObstacleMemoryNode&&) = delete;
+  ObstacleMemoryNode& operator=(ObstacleMemoryNode&&) = delete;
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
@@ -484,71 +511,11 @@ private:
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
                            alignment_diagnostic.c_str());
     }
-    const ObstacleMemoryStats stats = memory_->integrateScan(
+    ObstacleMemoryStats stats = memory_->integrateScan(
         scan_pose, scan_view, memory_config_,
         known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
                                                    : nullptr,
         &ground_lidar_rejection_config_);
-
-    for (const ObstacleMemoryOccupiedTransition& transition :
-         stats.occupied_transitions) {
-      const MemoryCellProvenance& provenance = transition.provenance;
-      const LidarBeamObservation& observation = provenance.occupancy_trigger.beam;
-      const LidarMemoryHitDiagnosticContext diagnostic_context =
-          makeLidarMemoryHitDiagnosticContext(scan, now_ns, motion_compensation,
-                                              observation);
-      const LidarMemoryHitDumpWriteResult dump_result = lidar_memory_hit_dump_.write(
-          LidarMemoryHitDiagnosticRecord{0U, transition, diagnostic_context});
-      if (dump_result.status == LidarMemoryHitDumpWriteStatus::kLimitReached &&
-          dump_result.first_limit_reached) {
-        RCLCPP_WARN(get_logger(),
-                    "Lidar memory-hit diagnostic dump reached max_records=%" PRIu64
-                    "; further occupied transitions are not recorded",
-                    lidar_memory_hit_dump_max_records_);
-      } else if (dump_result.status == LidarMemoryHitDumpWriteStatus::kWriteFailed) {
-        RCLCPP_WARN(
-            get_logger(),
-            "Lidar memory-hit diagnostic dump disabled after write failure: '%s'",
-            lidar_memory_hit_dump_.path().string().c_str());
-      }
-      const std::uint64_t dump_record_index = dump_result.record_index;
-      if (isRetainedExpectedSurfaceHit(transition.trigger_decision)) {
-        const double known_candidate_range_m =
-            transition.trigger_decision.known_static_surface.has_value()
-                ? transition.trigger_decision.known_static_surface->range_m
-                : std::numeric_limits<double>::quiet_NaN();
-        RCLCPP_WARN(
-            get_logger(),
-            "LIDAR_RETAINED_EXPECTED_SURFACE dump_record=%" PRIu64 " cell=(%d, %d) "
-            "beam=%zu endpoint=(%.3f, %.3f, %.3f) measured_range=%.3f "
-            "selected_surface=%s expected_range=%.3f delta=%.3f "
-            "ground_candidate=%.3f known_candidate=%.3f",
-            dump_record_index, provenance.cell.x, provenance.cell.y,
-            observation.beam_index, observation.projection.endpoint_map_m.x,
-            observation.projection.endpoint_map_m.y,
-            observation.projection.endpoint_map_m.z, observation.measured_range_m,
-            lidarExpectedSurfaceKindName(transition.trigger_decision.expected_surface),
-            transition.trigger_decision.expected_range_m,
-            transition.trigger_decision.range_delta_m,
-            transition.trigger_decision.expected_ground_range_m.value_or(
-                std::numeric_limits<double>::quiet_NaN()),
-            known_candidate_range_m);
-      }
-      const PassageStructure* structure =
-          passageStructureNearPoint(known_passage_map_,
-                                    Point2{observation.projection.endpoint_map_m.x,
-                                           observation.projection.endpoint_map_m.y},
-                                    kPassageMemoryDiagnosticMarginM);
-      if (structure == nullptr) {
-        continue;
-      }
-      const std::string passage_diagnostic = formatPassageMemoryHitDiagnostic(
-          dump_record_index, structure->id, transition,
-          Point3{current_pose_.pose.position.x, current_pose_.pose.position.y,
-                 current_pose_.altitude_m},
-          scan_pose.position, diagnostic_context);
-      RCLCPP_INFO(get_logger(), "%s", passage_diagnostic.c_str());
-    }
 
     if (!scan_seen_) {
       scan_seen_ = true;
@@ -563,6 +530,17 @@ private:
     }
 
     publishMemorySnapshot();
+    if (!stats.occupied_transitions.empty()) {
+      LidarMemoryHitDiagnosticBatch diagnostics;
+      diagnostics.transitions = std::move(stats.occupied_transitions);
+      diagnostics.common_context =
+          makeLidarMemoryHitDiagnosticContext(scan, now_ns, motion_compensation);
+      diagnostics.pose_history = lidar_pose_history_;
+      diagnostics.time_mapper = px4_ros_time_mapper_;
+      if (lidar_diagnostics_mailbox_.push(std::move(diagnostics))) {
+        dropped_lidar_diagnostic_batches_.fetch_add(1U, std::memory_order_relaxed);
+      }
+    }
 
     const GridCellCounts raw_counts = memory_->countRawCells();
     RCLCPP_INFO_THROTTLE(
@@ -697,8 +675,7 @@ private:
 
   [[nodiscard]] LidarMemoryHitDiagnosticContext makeLidarMemoryHitDiagnosticContext(
       const sensor_msgs::msg::LaserScan& scan, const std::int64_t callback_stamp_ns,
-      const LidarPoseMotionCompensationResult& motion_compensation,
-      const LidarBeamObservation& observation) const {
+      const LidarPoseMotionCompensationResult& motion_compensation) const {
     return LidarMemoryHitDiagnosticContext{
         .callback_stamp_ns = callback_stamp_ns,
         .pose_sample_stamp_ns = current_pose_.stamp_ns,
@@ -717,8 +694,6 @@ private:
         .horizontal_velocity = current_velocity_,
         .horizontal_velocity_valid = current_velocity_valid_,
         .motion_compensation = motion_compensation,
-        .acquisition_pose_alignment = samplePoseAtRosAcquisition(
-            observation.acquisition_stamp_ns, observation.acquisition_stamp_valid),
         .scan_range_min_m = static_cast<double>(scan.range_min),
         .scan_range_max_m = static_cast<double>(scan.range_max),
         .scan_angle_min_rad = static_cast<double>(scan.angle_min),
@@ -755,23 +730,23 @@ private:
     };
   }
 
-  [[nodiscard]] LidarPoseSampleResult
-  samplePoseAtRosAcquisition(const std::int64_t ros_stamp_ns,
-                             const bool stamp_valid) const noexcept {
+  [[nodiscard]] static LidarPoseSampleResult samplePoseAtRosAcquisition(
+      const LidarPoseHistory& pose_history, const Px4RosTimeMapper& time_mapper,
+      const std::int64_t ros_stamp_ns, const bool stamp_valid) noexcept {
     if (!stamp_valid) {
       return {};
     }
-    const auto px4_stamp_ns = px4_ros_time_mapper_.rosToPx4LocalTimeNs(ros_stamp_ns);
+    const auto px4_stamp_ns = time_mapper.rosToPx4LocalTimeNs(ros_stamp_ns);
     if (px4_stamp_ns.has_value()) {
-      LidarPoseSampleResult source_result = lidar_pose_history_.sampleWithDiagnostics(
+      LidarPoseSampleResult source_result = pose_history.sampleWithDiagnostics(
           *px4_stamp_ns, LidarPoseTimeBasis::kPx4AcquisitionTime);
       if (source_result.aligned_pose.has_value()) {
-        const auto map_timing = [this](LidarPoseTemporalAlignment& timing) {
+        const auto map_timing = [&time_mapper](LidarPoseTemporalAlignment& timing) {
           timing.from_acquisition_ros_stamp_ns =
-              px4_ros_time_mapper_.px4LocalToRosTimeNs(timing.from_acquisition_stamp_ns)
+              time_mapper.px4LocalToRosTimeNs(timing.from_acquisition_stamp_ns)
                   .value_or(0);
           timing.to_acquisition_ros_stamp_ns =
-              px4_ros_time_mapper_.px4LocalToRosTimeNs(timing.to_acquisition_stamp_ns)
+              time_mapper.px4LocalToRosTimeNs(timing.to_acquisition_stamp_ns)
                   .value_or(0);
         };
         map_timing(source_result.position_timing);
@@ -779,8 +754,8 @@ private:
         return source_result;
       }
     }
-    return lidar_pose_history_.sampleWithDiagnostics(ros_stamp_ns,
-                                                     LidarPoseTimeBasis::kReceiveTime);
+    return pose_history.sampleWithDiagnostics(ros_stamp_ns,
+                                              LidarPoseTimeBasis::kReceiveTime);
   }
 
   void openLidarMemoryHitDump() {
@@ -800,6 +775,67 @@ private:
                   "Lidar memory-hit diagnostic dump disabled: status=%d path='%s'",
                   static_cast<int>(status), lidar_memory_hit_dump_path_.c_str());
     }
+  }
+
+  void lidarDiagnosticsWorker(const std::stop_token stop_token) {
+    while (!stop_token.stop_requested()) {
+      std::optional<LidarMemoryHitDiagnosticBatch> batch =
+          lidar_diagnostics_mailbox_.waitPop(stop_token);
+      if (!batch.has_value()) {
+        break;
+      }
+      processLidarDiagnostics(*batch);
+    }
+    if (std::optional<LidarMemoryHitDiagnosticBatch> pending =
+            lidar_diagnostics_mailbox_.tryPop();
+        pending.has_value()) {
+      processLidarDiagnostics(*pending);
+    }
+  }
+
+  void processLidarDiagnostics(const LidarMemoryHitDiagnosticBatch& batch) {
+    std::size_t passage_hits{0U};
+    std::size_t retained_expected_surface_hits{0U};
+    for (const ObstacleMemoryOccupiedTransition& transition : batch.transitions) {
+      LidarMemoryHitDiagnosticContext context = batch.common_context;
+      const LidarBeamObservation& observation =
+          transition.provenance.occupancy_trigger.beam;
+      context.acquisition_pose_alignment = samplePoseAtRosAcquisition(
+          batch.pose_history, batch.time_mapper, observation.acquisition_stamp_ns,
+          observation.acquisition_stamp_valid);
+      const LidarMemoryHitDiagnosticRecord record{0U, transition, context};
+      const LidarMemoryHitDumpWriteResult dump_result =
+          lidar_memory_hit_dump_.write(record);
+      if (dump_result.status == LidarMemoryHitDumpWriteStatus::kLimitReached &&
+          dump_result.first_limit_reached) {
+        RCLCPP_WARN(get_logger(),
+                    "Lidar memory-hit diagnostic dump reached max_records=%" PRIu64
+                    "; further occupied transitions are not recorded",
+                    lidar_memory_hit_dump_max_records_);
+      } else if (dump_result.status == LidarMemoryHitDumpWriteStatus::kWriteFailed) {
+        RCLCPP_WARN(
+            get_logger(),
+            "Lidar memory-hit diagnostic dump disabled after write failure: '%s'",
+            lidar_memory_hit_dump_.path().string().c_str());
+      }
+      retained_expected_surface_hits +=
+          isRetainedExpectedSurfaceHit(record.transition.trigger_decision) ? 1U : 0U;
+      const LidarBeamProjection& projection =
+          record.transition.provenance.occupancy_trigger.beam.projection;
+      passage_hits +=
+          passageStructureNearPoint(
+              known_passage_map_,
+              Point2{projection.endpoint_map_m.x, projection.endpoint_map_m.y},
+              kPassageMemoryDiagnosticMarginM) != nullptr
+              ? 1U
+              : 0U;
+    }
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), kLidarDiagnosticsInfoThrottleMs,
+        "LIDAR_MEMORY_HIT_DIAGNOSTICS records=%zu passage_hits=%zu "
+        "retained_expected_surface_hits=%zu dropped_batches=%" PRIu64,
+        batch.transitions.size(), passage_hits, retained_expected_surface_hits,
+        dropped_lidar_diagnostic_batches_.load(std::memory_order_relaxed));
   }
 
   void publishMemorySnapshot() {
@@ -998,6 +1034,9 @@ private:
   std::string lidar_memory_hit_dump_path_;
   std::uint64_t lidar_memory_hit_dump_max_records_{10000U};
   LidarMemoryHitDumpWriter lidar_memory_hit_dump_;
+  LatestValueMailbox<LidarMemoryHitDiagnosticBatch> lidar_diagnostics_mailbox_;
+  std::atomic<std::uint64_t> dropped_lidar_diagnostic_batches_{0U};
+  std::jthread lidar_diagnostics_worker_;
   std::int64_t last_snapshot_publish_stamp_ns_{0};
   std::int64_t last_debug_publish_stamp_ns_{0};
   std::int64_t last_snapshot_diagnostic_stamp_ns_{0};

@@ -135,6 +135,7 @@ add_library(
   src/lidar_ingestion_decision.cpp
   src/lidar_ingestion_confidence.cpp
   src/lidar_memory_hit_diagnostics.cpp
+  src/mission_goal_capture.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/px4_ros_time_mapper.cpp
@@ -347,6 +348,11 @@ if(BUILD_TESTING)
   target_compile_features(mppi_liveness_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_liveness_test_current drone_city_nav_core)
   enable_project_warnings(mppi_liveness_test_current)
+
+  ament_add_gtest(mission_goal_capture_test tests/mission_goal_capture_test.cpp)
+  target_compile_features(mission_goal_capture_test PRIVATE cxx_std_20)
+  target_link_libraries(mission_goal_capture_test drone_city_nav_core)
+  enable_project_warnings(mission_goal_capture_test)
 
   ament_add_gtest(latest_value_mailbox_test
                   tests/latest_value_mailbox_test.cpp)

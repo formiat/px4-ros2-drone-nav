@@ -197,13 +197,14 @@ production_mppi_node:
     global_guide_validation_sample_step_m: 0.5
     static_global_guide_replan_remaining_m: 45.0
     no_static_global_guide_replan_remaining_m: 15.0
-    global_guide_mission_goal_hold_distance_m: 5.0
+    mission_goal_capture_radius_m: 2.0
     global_guide_maximum_cross_track_m: 15.0
     global_guide_heading_low_speed_mps: 0.5
     global_guide_heading_high_speed_mps: 1.5
     global_guide_stall_observation_window_s: 1.0
     global_guide_stall_minimum_progress_m: 0.5
     global_guide_stall_minimum_predicted_head_progress_m: 0.5
+    persistent_safety_rejection_window_s: 1.0
 
 mppi_offboard_node:
   ros__parameters:

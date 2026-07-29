@@ -38,6 +38,10 @@ productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcep
       return "planned";
     case ProductionMppiPlanningState::kNoGuideBrakingHold:
       return "no_guide_braking_hold";
+    case ProductionMppiPlanningState::kStaleWorldBrakingHold:
+      return "stale_world_braking_hold";
+    case ProductionMppiPlanningState::kMissionGoalPositionHold:
+      return "mission_goal_position_hold";
   }
   return "unknown";
 }
@@ -77,6 +81,8 @@ ProductionMppiNode::ProductionMppiNode()
   mission_goal_.x = declare_parameter<double>("goal_x_m", 216.0);
   mission_goal_.y = declare_parameter<double>("goal_y_m", 378.0);
   mission_goal_.z = declare_parameter<double>("goal_z_m", 18.0);
+  mission_goal_capture_config_.capture_radius_m =
+      declare_parameter<double>("mission_goal_capture_radius_m", 2.0);
   mppi_config_.rollouts =
       static_cast<std::size_t>(declare_parameter<int>("rollouts", 8192));
   mppi_config_.dynamics.dt_s =
@@ -246,8 +252,6 @@ ProductionMppiNode::ProductionMppiNode()
   active_guide_config_.minimum_remaining_m = passage_speed_policy_.use_static_map
                                                  ? static_guide_replan_remaining_m
                                                  : no_static_guide_replan_remaining_m;
-  active_guide_config_.mission_goal_hold_distance_m =
-      declare_parameter<double>("global_guide_mission_goal_hold_distance_m", 5.0);
   active_guide_config_.maximum_cross_track_m =
       declare_parameter<double>("global_guide_maximum_cross_track_m", 15.0);
   active_guide_config_.velocity_heading_low_speed_mps =
@@ -260,6 +264,8 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("global_guide_stall_minimum_progress_m", 0.5);
   guide_progress_config_.minimum_predicted_head_progress_m = declare_parameter<double>(
       "global_guide_stall_minimum_predicted_head_progress_m", 0.5);
+  guide_progress_config_.persistent_safety_rejection_window_s =
+      declare_parameter<double>("persistent_safety_rejection_window_s", 1.0);
   mppi_config_.early_exit_on_collision = true;
   safety_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   safety_config_.reaction_latency_s =
@@ -313,6 +319,8 @@ ProductionMppiNode::ProductionMppiNode()
       std::make_unique<ActiveGlobalGuideLifecycle>(active_guide_config_);
   guide_progress_tracker_ =
       std::make_unique<GlobalGuideProgressTracker>(guide_progress_config_);
+  mission_goal_capture_latch_ =
+      std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
   passage_coordinator_ =
       std::make_unique<PassageCoordinator>(passage_coordinator_config_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);

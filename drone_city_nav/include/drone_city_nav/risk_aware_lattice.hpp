@@ -52,6 +52,7 @@ struct RiskAwareLatticeResult {
   bool valid{false};
   bool reached_mission_goal{false};
   bool planning_goal_reached{false};
+  bool exact_terminal_connector{false};
   Point2 planning_goal{};
   std::vector<Point2> guide;
   std::size_t expansions{0U};

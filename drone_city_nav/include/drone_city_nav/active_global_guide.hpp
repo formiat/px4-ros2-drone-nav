@@ -16,6 +16,7 @@ enum class GlobalGuideReleaseReason : std::uint8_t {
   kBlocked,
   kExhausted,
   kStalled,
+  kPersistentSafetyRejection,
   kDiverged,
 };
 
@@ -50,7 +51,6 @@ struct ActiveGlobalGuideConfig {
   double preferred_distance_m{6.0};
   double validation_sample_step_m{0.5};
   double minimum_remaining_m{15.0};
-  double mission_goal_hold_distance_m{5.0};
   double maximum_cross_track_m{15.0};
   double velocity_heading_low_speed_mps{0.5};
   double velocity_heading_high_speed_mps{1.5};
@@ -70,7 +70,7 @@ struct ActiveGlobalGuideUpdate {
   bool active{false};
   bool retained{false};
   bool requires_replan{true};
-  bool mission_goal_hold{false};
+  bool reaches_mission_goal{false};
   std::uint64_t generation{0U};
   GlobalGuideReleaseReason release_reason{GlobalGuideReleaseReason::kNoActiveGuide};
   GlobalGuideRiskTier current_risk{GlobalGuideRiskTier::kPreferred};
@@ -93,6 +93,7 @@ struct GlobalGuideProgressConfig {
   double observation_window_s{1.0};
   double minimum_progress_m{0.5};
   double minimum_predicted_head_progress_m{0.5};
+  double persistent_safety_rejection_window_s{1.0};
 };
 
 struct GlobalGuideProgressObservation {
@@ -106,6 +107,7 @@ struct GlobalGuideProgressObservation {
 
 struct GlobalGuideProgressUpdate {
   bool stalled{false};
+  bool persistent_safety_rejection{false};
   std::uint64_t stall_generation{0U};
   double observation_age_s{0.0};
   double progress_m{0.0};
@@ -121,10 +123,10 @@ class ActiveGlobalGuideLifecycle {
 public:
   explicit ActiveGlobalGuideLifecycle(const ActiveGlobalGuideConfig& config = {});
 
-  [[nodiscard]] ActiveGlobalGuideUpdate update(const mppi::EsdfGrid& grid,
-                                               std::span<const float> esdf_m,
-                                               Point2 position,
-                                               std::uint64_t stall_generation);
+  [[nodiscard]] ActiveGlobalGuideUpdate
+  update(const mppi::EsdfGrid& grid, std::span<const float> esdf_m, Point2 position,
+         std::uint64_t release_generation,
+         GlobalGuideReleaseReason release_reason = GlobalGuideReleaseReason::kStalled);
 
   [[nodiscard]] GlobalGuideAcceptanceResult
   accept(std::shared_ptr<const std::vector<Point2>> guide, bool reaches_mission_goal,
@@ -164,6 +166,9 @@ private:
   std::int64_t anchor_stamp_ns_{0};
   std::uint64_t anchor_guide_generation_{0U};
   double anchor_station_m_{0.0};
+  bool safety_rejection_anchor_valid_{false};
+  std::int64_t safety_rejection_anchor_stamp_ns_{0};
+  std::uint64_t safety_rejection_guide_generation_{0U};
   std::uint64_t stall_generation_{0U};
 };
 

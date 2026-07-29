@@ -16,13 +16,13 @@ timeFromNanoseconds(const std::int64_t nanoseconds) {
 }
 
 void appendStationaryHoldPoint(msg::MppiTrajectoryHorizon& horizon,
-                               const PassageCoordinatorResult& passage,
+                               const Point3& hold_position,
                                const float time_from_start_s, const float yaw_rad) {
   msg::MppiHorizonPoint point;
   point.time_from_start_s = time_from_start_s;
-  point.position.x = passage.hold_position.x;
-  point.position.y = passage.hold_position.y;
-  point.position.z = passage.preferred_z_m;
+  point.position.x = hold_position.x;
+  point.position.y = hold_position.y;
+  point.position.z = hold_position.z;
   point.yaw_rad = yaw_rad;
   horizon.points.push_back(point);
 }
@@ -49,37 +49,55 @@ void ProductionMppiNode::publishExecutionHorizon(
     horizon.obstacle_revision = input.obstacle_revision;
     horizon.risk_tier = static_cast<std::uint8_t>(result.selected_tier);
     horizon.passage_constrained = input.passage.has_value();
-    horizon.stationary_position_hold = passage_coordinator.hold_xy;
-    horizon.stationary_hold_position.x = passage_coordinator.hold_position.x;
-    horizon.stationary_hold_position.y = passage_coordinator.hold_position.y;
-    horizon.stationary_hold_position.z = passage_coordinator.preferred_z_m;
+    const bool goal_hold =
+        planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
+    horizon.stationary_position_hold = passage_coordinator.hold_xy || goal_hold;
+    horizon.stationary_hold_position.x =
+        goal_hold ? mission_goal_.x : passage_coordinator.hold_position.x;
+    horizon.stationary_hold_position.y =
+        goal_hold ? mission_goal_.y : passage_coordinator.hold_position.y;
+    horizon.stationary_hold_position.z =
+        goal_hold ? mission_goal_.z : passage_coordinator.preferred_z_m;
     return horizon;
   };
 
-  if (passage_coordinator.hold_xy) {
+  const bool goal_hold =
+      planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
+  if (passage_coordinator.hold_xy || goal_hold) {
+    const Point3 hold_position = goal_hold ? mission_goal_
+                                           : Point3{passage_coordinator.hold_position.x,
+                                                    passage_coordinator.hold_position.y,
+                                                    passage_coordinator.preferred_z_m};
     const auto hold_duration_ns = static_cast<std::int64_t>(
         std::max(0.2, 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) * 1.0e9);
     msg::MppiTrajectoryHorizon horizon = make_horizon(now_ns + hold_duration_ns);
     horizon.points.reserve(2U);
-    appendStationaryHoldPoint(horizon, passage_coordinator, 0.0F,
-                              input.initial_state.yaw);
-    appendStationaryHoldPoint(horizon, passage_coordinator, mppi_config_.dynamics.dt_s,
+    appendStationaryHoldPoint(horizon, hold_position, 0.0F, input.initial_state.yaw);
+    appendStationaryHoldPoint(horizon, hold_position, mppi_config_.dynamics.dt_s,
                               input.initial_state.yaw);
     execution_horizon_pub_->publish(horizon);
     return;
   }
 
-  if (!esdf.distances_m || result.horizon.size() < 2U) {
+  if (result.horizon.size() < 2U) {
     return;
   }
-  const bool engine_collision = result.raw_collision || result.known_solid_collision;
-  MppiHorizonSafetyResult safety = evaluateMppiHorizonSafety(
-      input.initial_state, result.horizon, *esdf.distances_m, esdf.grid, safety_config_,
-      engine_collision, known_solids_);
   const bool forced_braking_hold =
-      planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold;
-  const bool braking = forced_braking_hold || engine_collision ||
-                       safety.decision != MppiHorizonSafetyDecision::kExecute;
+      planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ||
+      planning_state == ProductionMppiPlanningState::kStaleWorldBrakingHold;
+  const bool engine_collision = result.raw_collision || result.known_solid_collision;
+  MppiHorizonSafetyResult safety;
+  if (!forced_braking_hold) {
+    if (!esdf.distances_m) {
+      return;
+    }
+    safety = evaluateMppiHorizonSafety(input.initial_state, result.horizon,
+                                       *esdf.distances_m, esdf.grid, safety_config_,
+                                       engine_collision, known_solids_);
+  }
+  const bool braking =
+      forced_braking_hold || engine_collision ||
+      (!forced_braking_hold && safety.decision != MppiHorizonSafetyDecision::kExecute);
   std::span<const mppi::State> states{result.horizon};
   std::span<const mppi::Control> controls{result.controls};
   if (braking && !forced_braking_hold) {

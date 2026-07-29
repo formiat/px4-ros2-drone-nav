@@ -79,6 +79,10 @@ void ProductionMppiNode::recordTickStatistics(
   liveness_reseeds_ += liveness_reseed_requested ? 1U : 0U;
   no_guide_braking_hold_ticks_ +=
       planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ? 1U : 0U;
+  stale_world_braking_hold_ticks_ +=
+      planning_state == ProductionMppiPlanningState::kStaleWorldBrakingHold ? 1U : 0U;
+  mission_goal_position_hold_ticks_ +=
+      planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold ? 1U : 0U;
   passage_vertical_alignment_ticks_ += passage_coordinator.hold_xy ? 1U : 0U;
   passage_traversal_ticks_ +=
       passage_coordinator.phase == PassageCoordinatorPhase::kTraversal ? 1U : 0U;
@@ -149,21 +153,40 @@ void ProductionMppiNode::processDiagnostics(
   }
   if (snapshot.guide_progress.stalled) {
     RCLCPP_WARN(get_logger(),
-                "GLOBAL_GUIDE_STALL guide_generation=%" PRIu64
+                "GLOBAL_GUIDE_STALL guide_generation=%" PRIu64 " reason=%s"
                 " stall_generation=%" PRIu64
                 " observation_age_s=%.3f along_guide_progress_m=%.3f "
                 "predicted_head_progress_m=%.3f",
-                esdf.global_guide_generation, snapshot.guide_progress.stall_generation,
+                esdf.global_guide_generation,
+                snapshot.guide_progress.persistent_safety_rejection
+                    ? "persistent_safety_rejection"
+                    : "no_progress",
+                snapshot.guide_progress.stall_generation,
                 snapshot.guide_progress.observation_age_s,
                 snapshot.guide_progress.progress_m, liveness.predicted_head_progress_m);
   }
   if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "PRODUCTION_MPPI_NO_GUIDE mode=no_static action=braking_hold "
+                         "PRODUCTION_MPPI_NO_GUIDE mode=%s action=braking_hold "
                          "lattice_status=%s lattice_termination=%s speed_mps=%.2f",
+                         passage_speed_policy_.use_static_map ? "static" : "no_static",
                          latticePlanStatusName(esdf.lattice_status),
                          latticeSearchTerminationName(esdf.lattice_termination),
                          std::hypot(input.initial_state.vx, input.initial_state.vy));
+  }
+  if (planning_state == ProductionMppiPlanningState::kStaleWorldBrakingHold) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "PRODUCTION_MPPI_STALE_WORLD action=braking_hold esdf_age_ms=%.1f "
+        "maximum_esdf_age_ms=%.1f raw_revision=%" PRIu64,
+        snapshot.esdf_age_ms, maximum_esdf_age_ms_, esdf.revision);
+  }
+  if (snapshot.goal_capture.newly_latched) {
+    RCLCPP_INFO(get_logger(),
+                "MISSION_GOAL_CAPTURE state=latched goal=(%.2f, %.2f, %.2f) "
+                "distance_m=%.3f action=position_hold",
+                mission_goal_.x, mission_goal_.y, mission_goal_.z,
+                snapshot.goal_capture.horizontal_distance_m);
   }
 
   std::ostringstream line;
@@ -185,8 +208,11 @@ void ProductionMppiNode::processDiagnostics(
        << input.target.y << ',' << input.target.z << ")"
        << " guide_generation=" << esdf.global_guide_generation
        << " guide_reused=" << (esdf.global_guide_reused ? "true" : "false")
-       << " guide_mission_goal_hold="
-       << (esdf.global_guide_mission_goal_hold ? "true" : "false") << " guide_release="
+       << " guide_reaches_mission_goal="
+       << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
+       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
+       << " goal_distance_m=" << snapshot.goal_capture.horizontal_distance_m
+       << " guide_release="
        << globalGuideReleaseReasonName(esdf.global_guide_release_reason)
        << " guide_heading_source="
        << globalGuideHeadingSourceName(esdf.global_guide_heading_source)
@@ -324,8 +350,11 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"speed_tracking_weight\":" << mppi_config_.costs.speed_tracking_weight
         << ",\"guide_generation\":" << esdf.global_guide_generation
         << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
-        << ",\"guide_mission_goal_hold\":"
-        << (esdf.global_guide_mission_goal_hold ? "true" : "false")
+        << ",\"guide_reaches_mission_goal\":"
+        << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
+        << ",\"goal_capture_latched\":"
+        << (snapshot.goal_capture.latched ? "true" : "false")
+        << ",\"goal_distance_m\":" << snapshot.goal_capture.horizontal_distance_m
         << ",\"guide_release\":\""
         << globalGuideReleaseReasonName(esdf.global_guide_release_reason) << '"'
         << ",\"guide_heading_source\":\""
@@ -337,9 +366,8 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"guide_remaining_m\":" << esdf.global_guide_projection.remaining_m
         << ",\"lattice_search_performed\":"
         << (esdf.lattice_search_performed ? "true" : "false")
-        << ",\"lattice_legacy_valid\":"
-        << (esdf.lattice_legacy_valid ? "true" : "false") << ",\"lattice_status\":\""
-        << latticePlanStatusName(esdf.lattice_status) << '"'
+        << ",\"lattice_executable\":" << (esdf.lattice_executable ? "true" : "false")
+        << ",\"lattice_status\":\"" << latticePlanStatusName(esdf.lattice_status) << '"'
         << ",\"lattice_termination\":\""
         << latticeSearchTerminationName(esdf.lattice_termination) << '"'
         << ",\"lattice_planning_goal_reached\":"
@@ -451,6 +479,8 @@ void ProductionMppiNode::publishSummary() {
   std::uint64_t no_progress_horizons{0U};
   std::uint64_t liveness_reseeds{0U};
   std::uint64_t no_guide_braking_hold_ticks{0U};
+  std::uint64_t stale_world_braking_hold_ticks{0U};
+  std::uint64_t mission_goal_position_hold_ticks{0U};
   std::uint64_t passage_vertical_alignment_ticks{0U};
   std::uint64_t passage_traversal_ticks{0U};
   {
@@ -464,6 +494,8 @@ void ProductionMppiNode::publishSummary() {
     no_progress_horizons = no_progress_horizons_;
     liveness_reseeds = liveness_reseeds_;
     no_guide_braking_hold_ticks = no_guide_braking_hold_ticks_;
+    stale_world_braking_hold_ticks = stale_world_braking_hold_ticks_;
+    mission_goal_position_hold_ticks = mission_goal_position_hold_ticks_;
     passage_vertical_alignment_ticks = passage_vertical_alignment_ticks_;
     passage_traversal_ticks = passage_traversal_ticks_;
   }
@@ -484,14 +516,16 @@ void ProductionMppiNode::publishSummary() {
       "deadline_misses=%" PRIu64 " raw_collision_horizons=%" PRIu64
       " solid_collision_horizons=%" PRIu64 " post_update_contract_violations=%" PRIu64
       " no_progress_horizons=%" PRIu64 " liveness_reseeds=%" PRIu64
-      " no_guide_braking_hold_ticks=%" PRIu64
+      " no_guide_braking_hold_ticks=%" PRIu64 " stale_world_braking_hold_ticks=%" PRIu64
+      " mission_goal_position_hold_ticks=%" PRIu64
       " passage_vertical_alignment_ticks=%" PRIu64 " passage_traversal_ticks=%" PRIu64
       " dropped_esdf_updates=%" PRIu64 " dropped_diagnostics=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, raw_collision_horizons, solid_collision_horizons,
       post_update_contract_violations, no_progress_horizons, liveness_reseeds,
-      no_guide_braking_hold_ticks, passage_vertical_alignment_ticks,
+      no_guide_braking_hold_ticks, stale_world_braking_hold_ticks,
+      mission_goal_position_hold_ticks, passage_vertical_alignment_ticks,
       passage_traversal_ticks, dropped_esdf_updates,
       dropped_diagnostics_snapshots_.load(std::memory_order_relaxed));
 }

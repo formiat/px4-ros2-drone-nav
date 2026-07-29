@@ -3,6 +3,7 @@
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
+#include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/passage_speed_policy.hpp"
 #include "drone_city_nav/mppi_horizon_safety.hpp"
@@ -66,7 +67,7 @@ struct ProductionMppiPreparedEsdf {
   double global_guide_cost{0.0};
   std::uint64_t global_guide_generation{0U};
   bool global_guide_reused{false};
-  bool global_guide_mission_goal_hold{false};
+  bool global_guide_reaches_mission_goal{false};
   GlobalGuideReleaseReason global_guide_release_reason{
       GlobalGuideReleaseReason::kNoActiveGuide};
   GlobalGuideHeadingSource global_guide_heading_source{
@@ -76,7 +77,7 @@ struct ProductionMppiPreparedEsdf {
       GlobalGuideAcceptanceReason::kNotAttempted};
   GlobalGuideProjection global_guide_projection{};
   bool lattice_search_performed{false};
-  bool lattice_legacy_valid{false};
+  bool lattice_executable{false};
   LatticePlanStatus lattice_status{LatticePlanStatus::kInvalidInput};
   LatticeSearchTermination lattice_termination{LatticeSearchTermination::kInvalidInput};
   bool lattice_planning_goal_reached{false};
@@ -118,6 +119,8 @@ struct ProductionMppiRvizSnapshot {
 enum class ProductionMppiPlanningState {
   kPlanned,
   kNoGuideBrakingHold,
+  kStaleWorldBrakingHold,
+  kMissionGoalPositionHold,
 };
 
 struct ProductionMppiDiagnosticsSnapshot {
@@ -130,6 +133,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   MppiSpeedPolicyResult speed_policy{};
   PassageCoordinatorResult passage_coordinator{};
   GlobalGuideProgressUpdate guide_progress{};
+  MissionGoalCaptureResult goal_capture{};
   ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
   std::optional<ProductionMppiRvizSnapshot> rviz;
   std::string target_source;
@@ -194,6 +198,7 @@ private:
   double maximum_esdf_age_ms_{1000.0};
   double maximum_control_feedback_age_ms_{200.0};
   double no_static_guide_lookahead_m_{30.0};
+  MissionGoalCaptureConfig mission_goal_capture_config_{};
   SemanticPortalRouteConfig semantic_route_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
   Point3 mission_start_{54.0, 54.0, 0.0};
@@ -217,6 +222,7 @@ private:
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
+  std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
   std::unique_ptr<PassageCoordinator> passage_coordinator_;
   RiskAwareLatticeConfig lattice_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
@@ -235,7 +241,9 @@ private:
   msg::RawObstacleSnapshot::ConstSharedPtr pending_raw_snapshot_;
   std::uint64_t dropped_raw_snapshots_{0U};
   std::jthread esdf_worker_;
-  std::atomic<std::uint64_t> guide_stall_generation_{0U};
+  std::atomic<std::uint64_t> guide_release_generation_{0U};
+  std::atomic<GlobalGuideReleaseReason> guide_release_reason_{
+      GlobalGuideReleaseReason::kStalled};
 
   mutable std::mutex esdf_state_mutex_;
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
@@ -253,6 +261,8 @@ private:
   std::uint64_t no_progress_horizons_{0U};
   std::uint64_t liveness_reseeds_{0U};
   std::uint64_t no_guide_braking_hold_ticks_{0U};
+  std::uint64_t stale_world_braking_hold_ticks_{0U};
+  std::uint64_t mission_goal_position_hold_ticks_{0U};
   std::uint64_t passage_vertical_alignment_ticks_{0U};
   std::uint64_t passage_traversal_ticks_{0U};
   std::vector<double> runtime_samples_ms_;

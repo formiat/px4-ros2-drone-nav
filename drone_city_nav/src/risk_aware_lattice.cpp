@@ -261,6 +261,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   open.push(QueueEntry{0.0, start_key});
   std::optional<LatticeKey> best_goal;
   double best_goal_distance = std::numeric_limits<double>::infinity();
+  bool exact_terminal_connector = false;
+  double exact_terminal_connector_cost = 0.0;
 
   while (!open.empty() && result.expansions < config.maximum_expansions) {
     const QueueEntry current_entry = open.top();
@@ -277,9 +279,16 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       best_goal = current_entry.key;
     }
     if (goal_distance <= config.goal_tolerance_m) {
-      best_goal = current_entry.key;
-      result.planning_goal_reached = true;
-      break;
+      const SegmentEvaluation connector = evaluateSegment(
+          grid, esdf_m, current, result.planning_goal, config, portals, false);
+      if (connector.valid) {
+        best_goal = current_entry.key;
+        result.planning_goal_reached = true;
+        exact_terminal_connector = true;
+        exact_terminal_connector_cost =
+            distance(current, result.planning_goal) + connector.risk_cost;
+        break;
+      }
     }
     ++result.expansions;
     for (const int heading_delta : {-1, 0, 1}) {
@@ -346,15 +355,21 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   if (!best_goal.has_value()) {
     return result;
   }
-  result.cost = records[*best_goal].cost;
+  result.cost = records[*best_goal].cost + exact_terminal_connector_cost;
   for (std::optional<LatticeKey> key = best_goal; key.has_value();) {
     result.guide.push_back(cellCenter(grid, *key));
     key = records[*key].parent;
   }
   std::ranges::reverse(result.guide);
-  result.valid = result.guide.size() >= 2U;
+  if (exact_terminal_connector &&
+      (result.guide.empty() ||
+       distance(result.guide.back(), result.planning_goal) > 1.0e-6)) {
+    result.guide.push_back(result.planning_goal);
+  }
+  result.exact_terminal_connector = exact_terminal_connector;
   result.guide_length_m = guideLength(result.guide);
-  result.remaining_goal_distance_m = best_goal_distance;
+  result.remaining_goal_distance_m =
+      exact_terminal_connector ? 0.0 : best_goal_distance;
   result.achieved_progress_m =
       std::hypot(result.planning_goal.x - start.x, result.planning_goal.y - start.y) -
       result.remaining_goal_distance_m;
@@ -377,6 +392,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   } else {
     result.status = LatticePlanStatus::kDeadEnd;
   }
+  result.valid = result.status == LatticePlanStatus::kReachedPlanningGoal ||
+                 result.status == LatticePlanStatus::kViableFrontier;
   return result;
 }
 

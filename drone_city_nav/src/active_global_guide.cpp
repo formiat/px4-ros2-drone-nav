@@ -200,9 +200,7 @@ ActiveGlobalGuideLifecycle::ActiveGlobalGuideLifecycle(
       !(config_.critical_distance_m > config_.collision_radius_m) ||
       !(config_.preferred_distance_m > config_.critical_distance_m) ||
       !(config_.validation_sample_step_m > 0.0) ||
-      !(config_.minimum_remaining_m >= 0.0) ||
-      !(config_.mission_goal_hold_distance_m >= 0.0) ||
-      !(config_.maximum_cross_track_m > 0.0) ||
+      !(config_.minimum_remaining_m >= 0.0) || !(config_.maximum_cross_track_m > 0.0) ||
       !(config_.velocity_heading_low_speed_mps >= 0.0) ||
       !(config_.velocity_heading_high_speed_mps >
         config_.velocity_heading_low_speed_mps)) {
@@ -212,11 +210,13 @@ ActiveGlobalGuideLifecycle::ActiveGlobalGuideLifecycle(
 
 ActiveGlobalGuideUpdate ActiveGlobalGuideLifecycle::update(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const Point2 position, const std::uint64_t stall_generation) {
+    const Point2 position, const std::uint64_t release_generation,
+    const GlobalGuideReleaseReason release_reason) {
   status_ = {};
   status_.generation = generation_;
   if (!guide_) {
-    consumed_stall_generation_ = std::max(consumed_stall_generation_, stall_generation);
+    consumed_stall_generation_ =
+        std::max(consumed_stall_generation_, release_generation);
     status_.release_reason = GlobalGuideReleaseReason::kNoActiveGuide;
     return status_;
   }
@@ -240,19 +240,15 @@ ActiveGlobalGuideUpdate ActiveGlobalGuideLifecycle::update(
         status_.current_risk == GlobalGuideRiskTier::kCollision ||
         (status_.current_risk == GlobalGuideRiskTier::kCritical &&
          accepted_risk_ < GlobalGuideRiskTier::kCritical);
-    const bool mission_goal_hold =
-        reaches_mission_goal_ &&
-        status_.projection.remaining_m <= config_.mission_goal_hold_distance_m;
-    status_.mission_goal_hold = mission_goal_hold;
-    if (mission_goal_hold) {
-      consumed_stall_generation_ =
-          std::max(consumed_stall_generation_, stall_generation);
-    }
+    status_.reaches_mission_goal = reaches_mission_goal_;
     if (newly_blocked) {
       status_.release_reason = GlobalGuideReleaseReason::kBlocked;
-    } else if (!mission_goal_hold && stall_generation > consumed_stall_generation_) {
-      consumed_stall_generation_ = stall_generation;
-      status_.release_reason = GlobalGuideReleaseReason::kStalled;
+    } else if (release_generation > consumed_stall_generation_) {
+      consumed_stall_generation_ = release_generation;
+      status_.release_reason =
+          release_reason == GlobalGuideReleaseReason::kPersistentSafetyRejection
+              ? GlobalGuideReleaseReason::kPersistentSafetyRejection
+              : GlobalGuideReleaseReason::kStalled;
     } else if (!reaches_mission_goal_ &&
                status_.projection.remaining_m < config_.minimum_remaining_m) {
       status_.release_reason = GlobalGuideReleaseReason::kExhausted;
@@ -313,7 +309,7 @@ GlobalGuideAcceptanceResult ActiveGlobalGuideLifecycle::accept(
       .active = true,
       .retained = false,
       .requires_replan = false,
-      .mission_goal_hold = false,
+      .reaches_mission_goal = reaches_mission_goal_,
       .generation = generation_,
       .release_reason = GlobalGuideReleaseReason::kNone,
       .current_risk = accepted_risk_,
@@ -366,7 +362,8 @@ GlobalGuideProgressTracker::GlobalGuideProgressTracker(
     const GlobalGuideProgressConfig& config)
     : config_{config} {
   if (!(config_.observation_window_s > 0.0) || !(config_.minimum_progress_m >= 0.0) ||
-      !(config_.minimum_predicted_head_progress_m >= 0.0)) {
+      !(config_.minimum_predicted_head_progress_m >= 0.0) ||
+      !(config_.persistent_safety_rejection_window_s > 0.0)) {
     throw std::invalid_argument{"invalid global guide progress configuration"};
   }
 }
@@ -377,10 +374,35 @@ GlobalGuideProgressUpdate GlobalGuideProgressTracker::evaluate(
   if (observation.stamp_ns <= 0 || observation.guide_generation == 0U ||
       !std::isfinite(observation.station_m) ||
       !std::isfinite(observation.predicted_head_progress_m) ||
-      !observation.controller_active || observation.emergency_braking) {
+      !observation.controller_active) {
+    anchor_valid_ = false;
+    safety_rejection_anchor_valid_ = false;
+    return update;
+  }
+  if (observation.emergency_braking) {
+    if (!safety_rejection_anchor_valid_ ||
+        safety_rejection_guide_generation_ != observation.guide_generation ||
+        observation.stamp_ns < safety_rejection_anchor_stamp_ns_) {
+      safety_rejection_anchor_valid_ = true;
+      safety_rejection_anchor_stamp_ns_ = observation.stamp_ns;
+      safety_rejection_guide_generation_ = observation.guide_generation;
+      return update;
+    }
+    update.observation_age_s =
+        static_cast<double>(observation.stamp_ns - safety_rejection_anchor_stamp_ns_) /
+        1.0e9;
+    if (update.observation_age_s < config_.persistent_safety_rejection_window_s) {
+      return update;
+    }
+    ++stall_generation_;
+    update.stalled = true;
+    update.persistent_safety_rejection = true;
+    update.stall_generation = stall_generation_;
+    safety_rejection_anchor_stamp_ns_ = observation.stamp_ns;
     anchor_valid_ = false;
     return update;
   }
+  safety_rejection_anchor_valid_ = false;
   if (!anchor_valid_ || observation.guide_generation != anchor_guide_generation_ ||
       observation.stamp_ns < anchor_stamp_ns_) {
     resetAnchor(observation);
@@ -428,6 +450,8 @@ globalGuideReleaseReasonName(const GlobalGuideReleaseReason reason) noexcept {
       return "exhausted";
     case GlobalGuideReleaseReason::kStalled:
       return "stalled";
+    case GlobalGuideReleaseReason::kPersistentSafetyRejection:
+      return "persistent_safety_rejection";
     case GlobalGuideReleaseReason::kDiverged:
       return "diverged";
   }

@@ -150,7 +150,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       const Point2 position{navigation.state.x, navigation.state.y};
       guide_update = active_guide_lifecycle_->update(
           grid, *host_distances, position,
-          guide_stall_generation_.load(std::memory_order_relaxed));
+          guide_release_generation_.load(std::memory_order_acquire),
+          guide_release_reason_.load(std::memory_order_relaxed));
       if (guide_update.active) {
         guide = active_guide_lifecycle_->guide();
         guide_heading.source = GlobalGuideHeadingSource::kActiveGuide;
@@ -165,10 +166,15 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         const auto candidate = std::make_shared<const std::vector<Point2>>(
             std::move(lattice_observation.guide));
         const bool reaches_mission_goal =
-            lattice_observation.reached_mission_goal && !candidate->empty() &&
+            lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal &&
+            lattice_observation.reached_mission_goal &&
+            lattice_observation.exact_terminal_connector && !candidate->empty() &&
             distance(candidate->back(), Point2{mission_goal_.x, mission_goal_.y}) <=
-                lattice_config_.goal_tolerance_m;
-        if (lattice_observation.valid) {
+                1.0e-6;
+        const bool executable =
+            lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal ||
+            lattice_observation.status == LatticePlanStatus::kViableFrontier;
+        if (executable) {
           guide_acceptance = active_guide_lifecycle_->accept(
               candidate, reaches_mission_goal, grid, *host_distances, position);
         }
@@ -225,14 +231,14 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         .global_guide_cost = active_guide_cost,
         .global_guide_generation = active_status.generation,
         .global_guide_reused = guide_update.retained,
-        .global_guide_mission_goal_hold = active_status.mission_goal_hold,
+        .global_guide_reaches_mission_goal = active_status.reaches_mission_goal,
         .global_guide_release_reason = guide_update.release_reason,
         .global_guide_heading_source = guide_heading.source,
         .global_guide_risk = active_status.current_risk,
         .global_guide_acceptance_reason = guide_acceptance.reason,
         .global_guide_projection = active_status.projection,
         .lattice_search_performed = lattice_search_performed,
-        .lattice_legacy_valid = lattice_observation.valid,
+        .lattice_executable = lattice_observation.valid,
         .lattice_status = lattice_observation.status,
         .lattice_termination = lattice_observation.termination,
         .lattice_planning_goal_reached = lattice_observation.planning_goal_reached,
@@ -256,11 +262,11 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         "portal_events=%zu portal_route_misses=%zu portal_overlaps=%zu "
         "semantic_side_volumes=%zu semantic_side_cells=%zu "
         "guide_generation=%" PRIu64
-        " guide_reused=%s guide_mission_goal_hold=%s guide_release=%s "
+        " guide_reused=%s guide_reaches_mission_goal=%s guide_release=%s "
         "guide_heading_source=%s guide_risk=%s guide_acceptance=%s "
         "guide_station_m=%.2f "
         "guide_remaining_m=%.2f guide_cross_track_m=%.2f "
-        "lattice_search_performed=%s lattice_legacy_valid=%s lattice_status=%s "
+        "lattice_search_performed=%s lattice_executable=%s lattice_status=%s "
         "lattice_termination=%s lattice_planning_goal_reached=%s "
         "lattice_achieved_progress_m=%.2f lattice_guide_length_m=%.2f "
         "lattice_remaining_goal_distance_m=%.2f "
@@ -275,7 +281,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         prepared.semantic_side_volumes, prepared.semantic_side_cells,
         prepared.global_guide_generation,
         prepared.global_guide_reused ? "true" : "false",
-        prepared.global_guide_mission_goal_hold ? "true" : "false",
+        prepared.global_guide_reaches_mission_goal ? "true" : "false",
         globalGuideReleaseReasonName(prepared.global_guide_release_reason),
         globalGuideHeadingSourceName(prepared.global_guide_heading_source),
         globalGuideRiskTierName(prepared.global_guide_risk),
@@ -284,7 +290,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         prepared.global_guide_projection.remaining_m,
         prepared.global_guide_projection.cross_track_m,
         prepared.lattice_search_performed ? "true" : "false",
-        prepared.lattice_legacy_valid ? "true" : "false",
+        prepared.lattice_executable ? "true" : "false",
         latticePlanStatusName(prepared.lattice_status),
         latticeSearchTerminationName(prepared.lattice_termination),
         prepared.lattice_planning_goal_reached ? "true" : "false",
@@ -325,7 +331,7 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& nav
 }
 
 void ProductionMppiNode::planningTick() {
-  if (!engine_ || !engine_->ready()) {
+  if (!engine_) {
     return;
   }
   const auto snapshot_started = std::chrono::steady_clock::now();
@@ -355,15 +361,89 @@ void ProductionMppiNode::planningTick() {
       applied_control.valid
           ? static_cast<double>(now_ns - applied_control.receive_stamp_ns) / 1.0e6
           : std::numeric_limits<double>::infinity();
-  if (!navigation.valid || !esdf.has_value() || pose_age_ms < 0.0 ||
-      pose_age_ms > maximum_pose_age_ms_ || esdf_age_ms < 0.0 ||
-      esdf_age_ms > maximum_esdf_age_ms_) {
+  if (!navigation.valid || pose_age_ms < 0.0 || pose_age_ms > maximum_pose_age_ms_) {
+    return;
+  }
+  if (!esdf.has_value() || esdf_age_ms < 0.0 || esdf_age_ms > maximum_esdf_age_ms_) {
+    const ProductionMppiPreparedEsdf stale_esdf =
+        esdf.value_or(ProductionMppiPreparedEsdf{});
+    mppi::MppiTickInput input{
+        .initial_state = navigation.state,
+        .target = navigation.state,
+        .passage = std::nullopt,
+        .pose_revision = navigation.revision,
+        .obstacle_revision = stale_esdf.revision,
+        .planning_stamp_ns = now_ns,
+        .previous_applied_control = std::nullopt,
+        .nominal_reseed_generation = 0U,
+        .reference_speed_mps = 0.0F,
+        .route = std::nullopt,
+    };
+    const MppiHorizonSafetyResult fallback =
+        buildMppiBrakingFallback(input.initial_state, safety_config_);
+    mppi::MppiTickResult result;
+    result.horizon = fallback.fallback_horizon;
+    result.controls = fallback.fallback_controls;
+    result.selected_tier = mppi::RiskTier::kPreferred;
+    result.raw_collision = false;
+    result.known_solid_collision = false;
+    result.esdf_revision = stale_esdf.revision;
+    result.timings.host_total_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  snapshot_started)
+            .count();
+    const PassageCoordinatorResult passage_result;
+    const ProductionMppiPlanningState planning_state =
+        ProductionMppiPlanningState::kStaleWorldBrakingHold;
+    ++tick_sequence_;
+    recordTickStatistics(result, passage_result, planning_state, false);
+    publishExecutionHorizon(input, result, stale_esdf, passage_result, planning_state,
+                            now_ns);
+    ProductionMppiPreparedEsdf diagnostic_esdf = stale_esdf;
+    diagnostic_esdf.distances_m.reset();
+    diagnostic_esdf.semantic_route.reset();
+    diagnostic_esdf.mppi_route.reset();
+    enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot{
+        .input = input,
+        .result = result,
+        .esdf = std::move(diagnostic_esdf),
+        .stability = {},
+        .prediction = prediction,
+        .liveness = {},
+        .speed_policy = {},
+        .passage_coordinator = {},
+        .guide_progress = {},
+        .goal_capture = {},
+        .planning_state = planning_state,
+        .rviz = std::nullopt,
+        .target_source = "stale_world_braking",
+        .tick_sequence = tick_sequence_,
+        .memory_sequence = memory_sequence,
+        .pose_age_ms = pose_age_ms,
+        .esdf_age_ms = esdf_age_ms,
+        .control_feedback_age_ms = control_feedback_age_ms,
+        .snapshot_ms = result.timings.host_total_ms,
+        .stability_ms = 0.0,
+        .liveness_reseed_requested = false,
+    });
+    previous_result_ = std::move(result);
+    return;
+  }
+  if (!engine_->ready()) {
     return;
   }
   const std::span<const Point2> guide =
       esdf->semantic_route && esdf->semantic_route->polyline
           ? std::span<const Point2>{*esdf->semantic_route->polyline}
           : std::span<const Point2>{};
+  const MissionGoalCaptureResult goal_capture =
+      mission_goal_capture_latch_
+          ? mission_goal_capture_latch_->update(MissionGoalCaptureObservation{
+                .mission_goal = mission_goal_,
+                .state = navigation.state,
+                .terminal_route_available = esdf->global_guide_reaches_mission_goal,
+            })
+          : MissionGoalCaptureResult{};
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
       speed_policy_config_, MppiSpeedPolicyInput{
                                 .state = navigation.state,
@@ -412,7 +492,23 @@ void ProductionMppiNode::planningTick() {
         *esdf->semantic_route, target_station_m, mission_goal_.z));
   }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
-  if (!passage_speed_policy_.use_static_map && target_source == "mission_goal_direct") {
+  if (goal_capture.latched) {
+    planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
+    target = mppi::State{
+        .x = static_cast<float>(mission_goal_.x),
+        .y = static_cast<float>(mission_goal_.y),
+        .z = static_cast<float>(mission_goal_.z),
+        .yaw = navigation.state.yaw,
+    };
+    if (passage_coordinator_) {
+      passage_coordinator_->reset();
+    }
+    passage_result = {};
+    passage.reset();
+    speed_policy.reference_speed_mps = 0.0;
+    speed_policy.target_lookahead_m = 0.0;
+    target_source = "mission_goal_position_hold";
+  } else if (target_source == "mission_goal_direct") {
     planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
     target = navigation.state;
     if (passage_coordinator_) {
@@ -443,7 +539,8 @@ void ProductionMppiNode::planningTick() {
     liveness = liveness_supervisor_->evaluate(MppiLivenessObservation{
         .stamp_ns = now_ns,
         .actual_state = navigation.state,
-        .controller_active = control_feedback_fresh && !passage_result.hold_xy,
+        .controller_active = control_feedback_fresh && !passage_result.hold_xy &&
+                             planning_state == ProductionMppiPlanningState::kPlanned,
         .emergency_braking =
             control_feedback_fresh && applied_control.emergency_braking,
         .predicted_head_progress_m =
@@ -462,9 +559,10 @@ void ProductionMppiNode::planningTick() {
                                      esdf->global_guide_projection.station_m);
     guide_progress = guide_progress_tracker_->evaluate(GlobalGuideProgressObservation{
         .stamp_ns = now_ns,
-        .guide_generation = projection.valid && !esdf->global_guide_mission_goal_hold
-                                ? esdf->global_guide_generation
-                                : 0U,
+        .guide_generation =
+            projection.valid && planning_state == ProductionMppiPlanningState::kPlanned
+                ? esdf->global_guide_generation
+                : 0U,
         .station_m = projection.station_m,
         .predicted_head_progress_m =
             previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
@@ -473,8 +571,13 @@ void ProductionMppiNode::planningTick() {
             control_feedback_fresh && applied_control.emergency_braking,
     });
     if (guide_progress.stalled) {
-      guide_stall_generation_.store(guide_progress.stall_generation,
-                                    std::memory_order_relaxed);
+      guide_release_reason_.store(
+          guide_progress.persistent_safety_rejection
+              ? GlobalGuideReleaseReason::kPersistentSafetyRejection
+              : GlobalGuideReleaseReason::kStalled,
+          std::memory_order_relaxed);
+      guide_release_generation_.store(guide_progress.stall_generation,
+                                      std::memory_order_release);
     }
   }
   mppi::MppiTickInput input{
@@ -511,6 +614,17 @@ void ProductionMppiNode::planningTick() {
     result.controls = fallback.fallback_controls;
     result.selected_tier = mppi::RiskTier::kPreferred;
     result.raw_collision = false;
+    result.esdf_revision = esdf->revision;
+    result.timings.host_total_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  snapshot_started)
+            .count();
+  } else if (planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold) {
+    result.horizon = {target, target};
+    result.controls = {mppi::Control{}};
+    result.selected_tier = mppi::RiskTier::kPreferred;
+    result.raw_collision = false;
+    result.known_solid_collision = false;
     result.esdf_revision = esdf->revision;
     result.timings.host_total_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
@@ -579,6 +693,7 @@ void ProductionMppiNode::planningTick() {
       .speed_policy = speed_policy,
       .passage_coordinator = passage_result,
       .guide_progress = guide_progress,
+      .goal_capture = goal_capture,
       .planning_state = planning_state,
       .rviz = std::move(rviz),
       .target_source = target_source,

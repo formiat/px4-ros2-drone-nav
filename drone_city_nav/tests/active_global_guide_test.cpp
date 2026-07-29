@@ -141,17 +141,17 @@ TEST(ActiveGlobalGuideTest, ReleasesNonTerminalGuideNearItsEnd) {
   EXPECT_TRUE(update.requires_replan);
 }
 
-TEST(ActiveGlobalGuideTest, KeepsMissionGoalGuideNearItsEnd) {
+TEST(ActiveGlobalGuideTest, KeepsExactMissionGoalGuideNearItsEnd) {
   ActiveGlobalGuideLifecycle lifecycle;
   const std::vector<float> esdf = clearEsdf();
   ASSERT_TRUE(lifecycle.accept(straightGuide(), true, grid(), esdf, Point2{2.5, 10.5})
                   .accepted);
 
   const ActiveGlobalGuideUpdate update =
-      lifecycle.update(grid(), esdf, Point2{40.5, 10.5}, 1U);
+      lifecycle.update(grid(), esdf, Point2{40.5, 10.5}, 0U);
 
   EXPECT_TRUE(update.active);
-  EXPECT_TRUE(update.mission_goal_hold);
+  EXPECT_TRUE(update.reaches_mission_goal);
   EXPECT_EQ(update.release_reason, GlobalGuideReleaseReason::kNone);
 }
 
@@ -290,6 +290,52 @@ TEST(GlobalGuideProgressTrackerTest, ResetsAfterUsefulProgress) {
 
   EXPECT_FALSE(update.stalled);
   EXPECT_NEAR(update.progress_m, 0.6, 1.0e-9);
+}
+
+TEST(GlobalGuideProgressTrackerTest, ReleasesAfterPersistentSafetyRejection) {
+  GlobalGuideProgressConfig config;
+  config.persistent_safety_rejection_window_s = 1.0;
+  GlobalGuideProgressTracker tracker{config};
+  EXPECT_FALSE(tracker
+                   .evaluate(GlobalGuideProgressObservation{
+                       .stamp_ns = 1'000'000'000LL,
+                       .guide_generation = 7U,
+                       .station_m = 5.0,
+                       .predicted_head_progress_m = 2.0,
+                       .controller_active = true,
+                       .emergency_braking = true,
+                   })
+                   .stalled);
+
+  const GlobalGuideProgressUpdate update =
+      tracker.evaluate(GlobalGuideProgressObservation{
+          .stamp_ns = 2'100'000'000LL,
+          .guide_generation = 7U,
+          .station_m = 5.0,
+          .predicted_head_progress_m = 2.0,
+          .controller_active = true,
+          .emergency_braking = true,
+      });
+
+  EXPECT_TRUE(update.stalled);
+  EXPECT_TRUE(update.persistent_safety_rejection);
+  EXPECT_EQ(update.stall_generation, 1U);
+}
+
+TEST(ActiveGlobalGuideTest, UsesPersistentSafetyRejectionReleaseReason) {
+  ActiveGlobalGuideLifecycle lifecycle;
+  const std::vector<float> esdf = clearEsdf();
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
+
+  const ActiveGlobalGuideUpdate update =
+      lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 1U,
+                       GlobalGuideReleaseReason::kPersistentSafetyRejection);
+
+  EXPECT_FALSE(update.active);
+  EXPECT_TRUE(update.requires_replan);
+  EXPECT_EQ(update.release_reason,
+            GlobalGuideReleaseReason::kPersistentSafetyRejection);
 }
 
 } // namespace

@@ -79,6 +79,22 @@ TEST(MppiLivenessTest, EmergencyBrakingCannotTriggerReseed) {
 
   EXPECT_FALSE(result.reseed_requested);
   EXPECT_EQ(result.state, MppiLivenessState::kEmergencyBraking);
+  EXPECT_NEAR(result.emergency_braking_duration_s, 0.0, 1.0e-9);
+}
+
+TEST(MppiLivenessTest, EmergencyBrakingKeepsObservationAnchor) {
+  MppiLivenessSupervisor supervisor;
+  (void)supervisor.evaluate(observation(1'000'000'000LL));
+  MppiLivenessObservation emergency = observation(1'500'000'000LL);
+  emergency.emergency_braking = true;
+  (void)supervisor.evaluate(emergency);
+  emergency.stamp_ns = 2'600'000'000LL;
+  const MppiLivenessResult emergency_result = supervisor.evaluate(emergency);
+  EXPECT_NEAR(emergency_result.emergency_braking_duration_s, 1.1, 1.0e-9);
+
+  const MppiLivenessResult resumed = supervisor.evaluate(observation(2'700'000'000LL));
+
+  EXPECT_TRUE(resumed.reseed_requested);
 }
 
 } // namespace
