@@ -106,6 +106,42 @@ TEST(PassageCoordinatorTest, TargetsStagingPointBeforeHoldingWhenLaterallyMisali
   EXPECT_DOUBLE_EQ(result.lateral_error_m, 4.0);
 }
 
+TEST(PassageCoordinatorTest, RetainsVerticalReadinessDuringLateralApproach) {
+  PassageCoordinator coordinator;
+  const PassageOpening opening = testOpening();
+  PassageCoordinatorInput input = inputAt(&opening, 0.0F, 15.0F);
+  input.state.y = 4.0F;
+  static_cast<void>(coordinator.update(input));
+  input.state.z = 5.0F;
+  static_cast<void>(coordinator.update(input));
+  static_cast<void>(coordinator.update(input));
+  const PassageCoordinatorResult captured = coordinator.update(input);
+
+  input.state.z = 5.4F;
+  input.state.vz = 1.0F;
+  const PassageCoordinatorResult disturbed = coordinator.update(input);
+
+  ASSERT_TRUE(captured.vertical_ready);
+  EXPECT_TRUE(captured.approach_alignment_active);
+  EXPECT_EQ(disturbed.phase, PassageCoordinatorPhase::kApproach);
+  EXPECT_TRUE(disturbed.vertical_ready);
+  EXPECT_FALSE(disturbed.hold_xy);
+  EXPECT_TRUE(disturbed.approach_alignment_active);
+  EXPECT_EQ(disturbed.retention_violation_cycles, 0U);
+
+  input.state.z = 8.0F;
+  input.state.vz = 0.0F;
+  const PassageCoordinatorResult violation_first = coordinator.update(input);
+  const PassageCoordinatorResult violation_second = coordinator.update(input);
+  const PassageCoordinatorResult lost = coordinator.update(input);
+
+  EXPECT_TRUE(violation_first.vertical_ready);
+  EXPECT_TRUE(violation_second.vertical_ready);
+  EXPECT_EQ(lost.phase, PassageCoordinatorPhase::kStationaryVerticalAlignment);
+  EXPECT_FALSE(lost.vertical_ready);
+  EXPECT_TRUE(lost.hold_xy);
+}
+
 TEST(PassageCoordinatorTest, KeepsStationaryHoldAcrossLateralError) {
   PassageCoordinator coordinator;
   const PassageOpening opening = testOpening();

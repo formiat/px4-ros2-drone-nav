@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import unittest
 import xml.etree.ElementTree as ET
+from math import hypot
 from pathlib import Path
 
 
@@ -146,10 +147,8 @@ class DroneModelSdfContractTest(unittest.TestCase):
 
     def test_physical_connectors_match_known_passage_annotations(self) -> None:
         world_root = parse_sdf(WORLD_SDF)
-        connector_poses = {
-            model.attrib["name"]: [
-                float(value) for value in model.findtext("pose", "").split()
-            ]
+        connector_models = {
+            model.attrib["name"]: model
             for model in world_root.iter("model")
             if model.attrib.get("name", "").startswith(
                 "physical_building_connector_"
@@ -165,17 +164,60 @@ class DroneModelSdfContractTest(unittest.TestCase):
             if fields[0] == "structure":
                 structures[fields[1]] = tuple(float(value) for value in fields[2:])
             elif fields[0] == "opening":
-                openings[fields[1]] = fields[2]
+                openings[fields[1]] = (
+                    fields[2],
+                    tuple(float(value) for value in fields[3:]),
+                )
 
-        self.assertEqual(set(connector_poses), set(structures))
-        self.assertEqual(set(connector_poses), set(openings))
-        for connector, pose in connector_poses.items():
+        self.assertEqual(set(connector_models), set(structures))
+        self.assertEqual(set(connector_models), set(openings))
+        for connector, model in connector_models.items():
             with self.subTest(connector=connector):
-                center_x_m, center_y_m = structures[connector][:2]
+                pose = [float(value) for value in model.findtext("pose", "").split()]
+                center_x_m, center_y_m, size_x_m, size_y_m = structures[connector][
+                    :4
+                ]
+                opening_id, opening = openings[connector]
+                normal_x, normal_y = opening[3:5]
+                opening_width_m = opening[5]
+                opening_depth_m = opening[7]
+                lower_mass = next(
+                    link
+                    for link in model.findall("link")
+                    if link.attrib.get("name") == "lower_mass"
+                )
+                sdf_size = [
+                    float(value)
+                    for value in lower_mass.findtext(
+                        "collision/geometry/box/size", ""
+                    ).split()
+                ]
+                map_size_x_m = sdf_size[1]
+                map_size_y_m = sdf_size[0]
+                normal_length = hypot(normal_x, normal_y)
+                self.assertGreater(normal_length, 0.0)
+                lateral_x = -normal_y / normal_length
+                lateral_y = normal_x / normal_length
+                normal_x /= normal_length
+                normal_y /= normal_length
+                footprint_depth_m = (
+                    abs(normal_x) * size_x_m + abs(normal_y) * size_y_m
+                )
+                footprint_width_m = (
+                    abs(lateral_x) * size_x_m + abs(lateral_y) * size_y_m
+                )
+
                 self.assertAlmostEqual(center_y_m - 225.0, pose[0])
                 self.assertAlmostEqual(center_x_m - 135.0, pose[1])
-                self.assertEqual(f"{connector.removeprefix('physical_building_')}_opening",
-                                 openings[connector])
+                self.assertAlmostEqual(map_size_x_m, size_x_m)
+                self.assertAlmostEqual(map_size_y_m, size_y_m)
+                self.assertAlmostEqual(1.0, normal_length)
+                self.assertAlmostEqual(opening_depth_m, footprint_depth_m)
+                self.assertAlmostEqual(opening_width_m, footprint_width_m)
+                self.assertEqual(
+                    f"{connector.removeprefix('physical_building_')}_opening",
+                    opening_id,
+                )
 
     def test_lidar_sensor_pose_matches_configured_full_extrinsic(self) -> None:
         wrapper_root = parse_sdf(WRAPPER_SDF)

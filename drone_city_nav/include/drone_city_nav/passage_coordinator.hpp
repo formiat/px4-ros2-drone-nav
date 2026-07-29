@@ -79,6 +79,7 @@ private:
   std::optional<PassageOpening> active_opening_;
   double travel_sign_{1.0};
   bool vertical_alignment_active_{false};
+  bool vertical_ready_latched_{false};
   bool traversal_latched_{false};
   bool partial_from_inside_{false};
   std::size_t capture_stable_cycles_{0U};

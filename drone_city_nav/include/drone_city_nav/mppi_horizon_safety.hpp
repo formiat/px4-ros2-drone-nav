@@ -35,10 +35,9 @@ struct MppiHorizonSafetyResult {
 buildMppiBrakingFallback(const mppi::State& current_state,
                          const MppiHorizonSafetyConfig& config);
 
-[[nodiscard]] MppiHorizonSafetyResult
-evaluateMppiHorizonSafety(const mppi::State& current_state,
-                          std::span<const mppi::State> horizon,
-                          std::span<const float> esdf_m, const mppi::EsdfGrid& grid,
-                          const MppiHorizonSafetyConfig& config);
+[[nodiscard]] MppiHorizonSafetyResult evaluateMppiHorizonSafety(
+    const mppi::State& current_state, std::span<const mppi::State> horizon,
+    std::span<const float> esdf_m, const mppi::EsdfGrid& grid,
+    const MppiHorizonSafetyConfig& config, bool engine_collision = false);
 
 } // namespace drone_city_nav

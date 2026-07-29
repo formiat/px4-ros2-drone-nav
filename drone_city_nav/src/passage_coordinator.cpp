@@ -136,6 +136,7 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     if (inside_footprint &&
         inside(static_cast<double>(input.state.z), safe_min_z, safe_max_z)) {
       partial_from_inside_ = true;
+      vertical_ready_latched_ = true;
       traversal_latched_ = true;
       preferred_z_m_ = input.state.z;
     }
@@ -194,6 +195,9 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     capture_stable_cycles_ = 0U;
   }
   const bool captured = capture_stable_cycles_ >= config_.capture_stable_cycles;
+  if (captured) {
+    vertical_ready_latched_ = true;
+  }
   const double vertical_error_m = distanceToInterval(z_m, capture_min_z, capture_max_z);
   const double braking_time_s = std::abs(static_cast<double>(input.state.vz)) /
                                 config_.maximum_vertical_acceleration_mps2;
@@ -225,20 +229,21 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       opening.approach_distance_m, half_depth_m + config_.approach_staging_distance_m);
 
   if (vertical_alignment_active_) {
-    if (captured) {
+    if (vertical_ready_latched_) {
       vertical_alignment_active_ = false;
       traversal_latched_ = lateral_aligned;
     }
-  } else if (!partial_from_inside_ && !traversal_latched_ && !captured &&
+  } else if (!partial_from_inside_ && !traversal_latched_ && !vertical_ready_latched_ &&
              distance_to_entry_m <= stationary_trigger_distance_m) {
     vertical_alignment_active_ = true;
     hold_position_ = Point2{input.state.x, input.state.y};
-  } else if (!partial_from_inside_ && !traversal_latched_ && captured &&
+  } else if (!partial_from_inside_ && !traversal_latched_ && vertical_ready_latched_ &&
              lateral_aligned) {
     traversal_latched_ = true;
   }
   const bool staging_required = !partial_from_inside_ && !vertical_alignment_active_ &&
-                                !traversal_latched_ && captured && !lateral_aligned;
+                                !traversal_latched_ && vertical_ready_latched_ &&
+                                !lateral_aligned;
   if (staging_required && !approach_target_.has_value()) {
     const double target_longitudinal_m =
         std::min(coordinates.longitudinal_m, -staging_offset_m);
@@ -257,7 +262,7 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     phase = PassageCoordinatorPhase::kTraversal;
   }
 
-  if (traversal_latched_ && !partial_from_inside_) {
+  if (vertical_ready_latched_ && !partial_from_inside_) {
     if (inside_retention_window) {
       retention_violation_cycles_ = 0U;
     } else {
@@ -266,6 +271,7 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     }
     if (retention_violation_cycles_ >= config_.retention_violation_cycles) {
       vertical_alignment_active_ = true;
+      vertical_ready_latched_ = false;
       traversal_latched_ = false;
       capture_stable_cycles_ = 0U;
       retention_violation_cycles_ = 0U;
@@ -298,9 +304,7 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       .active = true,
       .hold_xy = vertical_alignment_active_,
       .approach_alignment_active = staging_required,
-      .vertical_ready = partial_from_inside_ ||
-                        (traversal_latched_ && retention_violation_cycles_ <
-                                                   config_.retention_violation_cycles),
+      .vertical_ready = partial_from_inside_ || vertical_ready_latched_,
       .hold_position = hold_position_,
       .approach_target = approach_target_.value_or(Point2{}),
       .preferred_z_m = preferred_z_m_,
@@ -322,6 +326,7 @@ void PassageCoordinator::reset() noexcept {
   active_opening_.reset();
   travel_sign_ = 1.0;
   vertical_alignment_active_ = false;
+  vertical_ready_latched_ = false;
   traversal_latched_ = false;
   partial_from_inside_ = false;
   capture_stable_cycles_ = 0U;

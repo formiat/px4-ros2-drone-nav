@@ -81,7 +81,7 @@ buildMppiBrakingFallback(const mppi::State& current_state,
 MppiHorizonSafetyResult evaluateMppiHorizonSafety(
     const mppi::State& current_state, const std::span<const mppi::State> horizon,
     const std::span<const float> esdf_m, const mppi::EsdfGrid& grid,
-    const MppiHorizonSafetyConfig& config) {
+    const MppiHorizonSafetyConfig& config, const bool engine_collision) {
   MppiHorizonSafetyResult result;
   const double speed =
       std::hypot(std::hypot(current_state.vx, current_state.vy), current_state.vz);
@@ -99,9 +99,12 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
       break;
     }
   }
-  if (!std::isfinite(result.time_to_collision_s)) {
+  if (!std::isfinite(result.time_to_collision_s) && !engine_collision) {
     result.decision = MppiHorizonSafetyDecision::kExecute;
     return result;
+  }
+  if (!std::isfinite(result.time_to_collision_s)) {
+    return buildMppiBrakingFallback(current_state, config);
   }
   result.decision =
       result.time_to_collision_s >
