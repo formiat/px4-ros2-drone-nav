@@ -58,6 +58,34 @@ TEST(MppiHorizonSafetyTest, ProducesFallbackForEngineOnlyCollision) {
   EXPECT_LT(result.fallback_horizon.back().vx, current.vx);
 }
 
+TEST(MppiHorizonSafetyTest, RejectsHorizonIntersectingKnownThreeDimensionalSolid) {
+  const mppi::EsdfGrid grid{20, 20, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(400U, 10.0F);
+  const std::vector<mppi::State> horizon{
+      mppi::State{1.0F, 1.0F, 5.0F},
+      mppi::State{5.0F, 5.0F, 5.0F},
+  };
+  const std::vector<mppi::KnownSolid> solids{
+      mppi::KnownSolid{
+          .center_x_m = 5.0F,
+          .center_y_m = 5.0F,
+          .normal_x = 1.0F,
+          .normal_y = 0.0F,
+          .lateral_x = 0.0F,
+          .lateral_y = 1.0F,
+          .half_depth_m = 1.0F,
+          .half_width_m = 1.0F,
+          .min_z_m = 4.0F,
+          .max_z_m = 6.0F,
+      },
+  };
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      horizon.front(), horizon, esdf, grid, MppiHorizonSafetyConfig{}, false, solids);
+
+  EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
+}
+
 TEST(MppiHorizonSafetyTest, StaticFallbackStopsFromTwentyMetersPerSecond) {
   const mppi::EsdfGrid grid{200, 2, 1.0F, 0.0F, 0.0F};
   std::vector<float> esdf(400U, 10.0F);

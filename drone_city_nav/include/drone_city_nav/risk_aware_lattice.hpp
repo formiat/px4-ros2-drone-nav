@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/semantic_portal_route.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -41,6 +42,10 @@ struct RiskAwareLatticeConfig {
   std::size_t minimum_frontier_guide_points{3U};
   double minimum_frontier_guide_length_m{8.0};
   double minimum_frontier_progress_m{4.0};
+  double portal_lateral_margin_m{0.5};
+  double portal_entry_capture_distance_m{6.0};
+  double portal_exit_extension_m{4.0};
+  int portal_maximum_heading_delta_bins{4};
 };
 
 struct RiskAwareLatticeResult {
@@ -59,11 +64,10 @@ struct RiskAwareLatticeResult {
   std::size_t terminal_successor_count{0U};
 };
 
-[[nodiscard]] RiskAwareLatticeResult
-planRiskAwareMotionPrimitiveGuide(const mppi::EsdfGrid& grid,
-                                  std::span<const float> esdf_m, Point2 start,
-                                  double start_heading_rad, Point2 mission_goal,
-                                  const RiskAwareLatticeConfig& config);
+[[nodiscard]] RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
+    const mppi::EsdfGrid& grid, std::span<const float> esdf_m, Point2 start,
+    double start_heading_rad, Point2 mission_goal, const RiskAwareLatticeConfig& config,
+    std::span<const SemanticPortalPrimitive> portals = {});
 
 [[nodiscard]] const char* latticePlanStatusName(LatticePlanStatus status) noexcept;
 

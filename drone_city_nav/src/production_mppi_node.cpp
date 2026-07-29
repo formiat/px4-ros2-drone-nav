@@ -53,12 +53,10 @@ ProductionMppiNode::ProductionMppiNode()
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
   maximum_control_feedback_age_ms_ =
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
-  passage_route_selection_config_.activation_distance_m =
-      declare_parameter<double>("passage_activation_distance_m", 45.0);
-  passage_route_selection_config_.lateral_margin_m =
-      declare_parameter<double>("passage_route_lateral_margin_m", 0.5);
-  passage_route_selection_config_.minimum_normal_alignment =
-      declare_parameter<double>("passage_route_minimum_normal_alignment", 0.35);
+  semantic_route_config_.crossing_lateral_margin_m =
+      declare_parameter<double>("portal_crossing_lateral_margin_m", 0.5);
+  semantic_route_config_.minimum_normal_alignment =
+      declare_parameter<double>("portal_minimum_route_normal_alignment", 0.35);
   passage_speed_policy_.use_static_map =
       declare_parameter<bool>("use_static_map", true);
   no_static_guide_lookahead_m_ =
@@ -175,12 +173,6 @@ ProductionMppiNode::ProductionMppiNode()
       static_cast<std::size_t>(passage_capture_stable_cycles);
   passage_coordinator_config_.retention_violation_cycles =
       static_cast<std::size_t>(passage_retention_violation_cycles);
-  passage_coordinator_config_.lateral_alignment_tolerance_m =
-      declare_parameter<double>("passage_lateral_alignment_tolerance_m", 2.0);
-  passage_coordinator_config_.approach_alignment_speed_mps =
-      declare_parameter<double>("passage_approach_alignment_speed_mps", 3.0);
-  passage_coordinator_config_.approach_staging_distance_m =
-      declare_parameter<double>("passage_approach_staging_distance_m", 2.0);
   passage_coordinator_config_.alignment_time_margin_s =
       declare_parameter<double>("passage_alignment_time_margin_s", 0.5);
   passage_coordinator_config_.minimum_stationary_trigger_distance_m =
@@ -193,6 +185,8 @@ ProductionMppiNode::ProductionMppiNode()
       speed_policy_config_.maximum_braking_acceleration_mps2;
   passage_coordinator_config_.reaction_latency_s =
       speed_policy_config_.reaction_latency_s;
+  passage_coordinator_config_.exit_station_hysteresis_m =
+      declare_parameter<double>("portal_exit_station_hysteresis_m", 0.5);
   mppi_config_.costs.head_progress_horizon_s =
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
@@ -232,6 +226,14 @@ ProductionMppiNode::ProductionMppiNode()
   lattice_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   lattice_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
+  lattice_config_.portal_lateral_margin_m =
+      semantic_route_config_.crossing_lateral_margin_m;
+  lattice_config_.portal_entry_capture_distance_m =
+      declare_parameter<double>("portal_lattice_entry_capture_distance_m", 6.0);
+  lattice_config_.portal_exit_extension_m =
+      declare_parameter<double>("portal_lattice_exit_extension_m", 4.0);
+  lattice_config_.portal_maximum_heading_delta_bins = static_cast<int>(
+      declare_parameter<std::int64_t>("portal_lattice_maximum_heading_delta_bins", 4));
   active_guide_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   active_guide_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   active_guide_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
@@ -300,10 +302,9 @@ ProductionMppiNode::ProductionMppiNode()
       passage_speed_policy_.static_limit_mps < 0.0F ||
       !std::isfinite(passage_speed_policy_.no_static_limit_mps) ||
       passage_speed_policy_.no_static_limit_mps < 0.0F ||
-      !(passage_route_selection_config_.activation_distance_m > 0.0) ||
-      !(passage_route_selection_config_.lateral_margin_m >= 0.0) ||
-      !(passage_route_selection_config_.minimum_normal_alignment >= 0.0) ||
-      !(passage_route_selection_config_.minimum_normal_alignment <= 1.0)) {
+      !(semantic_route_config_.crossing_lateral_margin_m >= 0.0) ||
+      !(semantic_route_config_.minimum_normal_alignment >= 0.0) ||
+      !(semantic_route_config_.minimum_normal_alignment <= 1.0)) {
     throw std::invalid_argument{"invalid production MPPI configuration"};
   }
 
@@ -325,6 +326,7 @@ ProductionMppiNode::ProductionMppiNode()
           passages_enabled, passages_path, package_share, frame_id_});
   if (passage_source.map.has_value()) {
     known_passages_ = passage_source.map;
+    semantic_portal_primitives_ = semanticPortalPrimitives(*known_passages_);
     for (const KnownPassageSolidVolume& solid :
          knownPassageSolidVolumes(*known_passages_)) {
       known_solids_.push_back(toMppiSolid(solid));

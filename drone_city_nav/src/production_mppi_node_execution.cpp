@@ -73,9 +73,9 @@ void ProductionMppiNode::publishExecutionHorizon(
     return;
   }
   const bool engine_collision = result.raw_collision || result.known_solid_collision;
-  MppiHorizonSafetyResult safety =
-      evaluateMppiHorizonSafety(input.initial_state, result.horizon, *esdf.distances_m,
-                                esdf.grid, safety_config_, engine_collision);
+  MppiHorizonSafetyResult safety = evaluateMppiHorizonSafety(
+      input.initial_state, result.horizon, *esdf.distances_m, esdf.grid, safety_config_,
+      engine_collision, known_solids_);
   const bool forced_braking_hold =
       planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold;
   const bool braking = forced_braking_hold || engine_collision ||

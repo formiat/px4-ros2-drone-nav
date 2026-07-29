@@ -122,9 +122,12 @@ production_mppi_node:
     no_static_guide_lookahead_m: 30.0
     static_minimum_target_lookahead_m: 30.0
     static_maximum_target_lookahead_m: 100.0
-    passage_activation_distance_m: 45.0
-    passage_route_lateral_margin_m: 0.5
-    passage_route_minimum_normal_alignment: 0.35
+    portal_crossing_lateral_margin_m: 0.5
+    portal_minimum_route_normal_alignment: 0.35
+    portal_exit_station_hysteresis_m: 0.5
+    portal_lattice_entry_capture_distance_m: 6.0
+    portal_lattice_exit_extension_m: 4.0
+    portal_lattice_maximum_heading_delta_bins: 4
     use_static_map: true
     static_cruise_speed_mps: 20.0
     static_absolute_speed_limit_mps: 20.0
@@ -150,9 +153,6 @@ production_mppi_node:
     passage_vertical_capture_maximum_speed_mps: 0.5
     passage_capture_stable_cycles: 3
     passage_retention_violation_cycles: 3
-    passage_lateral_alignment_tolerance_m: 2.0
-    passage_approach_alignment_speed_mps: 3.0
-    passage_approach_staging_distance_m: 2.0
     passage_alignment_time_margin_s: 0.5
     passage_stationary_trigger_minimum_distance_m: 2.0
     maximum_vertical_acceleration_mps2: 4.0

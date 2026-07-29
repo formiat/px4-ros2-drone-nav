@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <ranges>
 
 namespace drone_city_nav {
 namespace {
@@ -19,6 +20,20 @@ namespace {
   }
   return esdf_m[static_cast<std::size_t>(y) * static_cast<std::size_t>(grid.width) +
                 static_cast<std::size_t>(x)];
+}
+
+[[nodiscard]] bool
+intersectsKnownSolid(const mppi::State& state,
+                     const std::span<const mppi::KnownSolid> known_solids) noexcept {
+  return std::ranges::any_of(known_solids, [&state](const mppi::KnownSolid& solid) {
+    if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
+      return false;
+    }
+    const float dx = state.x - solid.center_x_m;
+    const float dy = state.y - solid.center_y_m;
+    return std::abs(dx * solid.normal_x + dy * solid.normal_y) <= solid.half_depth_m &&
+           std::abs(dx * solid.lateral_x + dy * solid.lateral_y) <= solid.half_width_m;
+  });
 }
 
 void populateBrakingFallback(const mppi::State& initial,
@@ -81,7 +96,8 @@ buildMppiBrakingFallback(const mppi::State& current_state,
 MppiHorizonSafetyResult evaluateMppiHorizonSafety(
     const mppi::State& current_state, const std::span<const mppi::State> horizon,
     const std::span<const float> esdf_m, const mppi::EsdfGrid& grid,
-    const MppiHorizonSafetyConfig& config, const bool engine_collision) {
+    const MppiHorizonSafetyConfig& config, const bool engine_collision,
+    const std::span<const mppi::KnownSolid> known_solids) {
   MppiHorizonSafetyResult result;
   const double speed =
       std::hypot(std::hypot(current_state.vx, current_state.vy), current_state.vz);
@@ -94,7 +110,8 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
           (2.0 * std::max(1.0e-3, config.maximum_braking_acceleration_mps2));
   result.time_to_collision_s = std::numeric_limits<double>::infinity();
   for (std::size_t index = 0U; index < horizon.size(); ++index) {
-    if (clearanceAt(horizon[index], esdf_m, grid) <= config.collision_radius_m) {
+    if (clearanceAt(horizon[index], esdf_m, grid) <= config.collision_radius_m ||
+        intersectsKnownSolid(horizon[index], known_solids)) {
       result.time_to_collision_s = static_cast<double>(index) * config.dt_s;
       break;
     }

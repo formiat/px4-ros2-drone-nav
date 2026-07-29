@@ -1,10 +1,12 @@
 #pragma once
 
-#include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
+#include "drone_city_nav/semantic_portal_route.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -12,11 +14,12 @@ namespace drone_city_nav {
 
 enum class PassageCoordinatorPhase {
   kInactive,
-  kApproach,
-  kStationaryVerticalAlignment,
+  kUpcoming,
+  kVerticalAlignment,
+  kReady,
   kTraversal,
-  kPartialFromInside,
-  kInvalidOpening,
+  kCleared,
+  kInvalidRouteEvent,
 };
 
 struct PassageCoordinatorConfig {
@@ -26,44 +29,47 @@ struct PassageCoordinatorConfig {
   double maximum_capture_vertical_speed_mps{0.5};
   std::size_t capture_stable_cycles{3U};
   std::size_t retention_violation_cycles{3U};
-  double lateral_alignment_tolerance_m{2.0};
-  double approach_alignment_speed_mps{3.0};
-  double approach_staging_distance_m{2.0};
   double alignment_time_margin_s{0.5};
   double minimum_stationary_trigger_distance_m{2.0};
   double maximum_vertical_acceleration_mps2{4.0};
   double maximum_vertical_speed_mps{5.0};
   double maximum_horizontal_braking_acceleration_mps2{4.0};
   double reaction_latency_s{0.1};
+  double exit_station_hysteresis_m{0.5};
 };
 
 struct PassageCoordinatorInput {
   mppi::State state{};
-  const PassageOpening* selected_opening{nullptr};
+  std::shared_ptr<const SemanticPortalRoute> route;
+  double route_station_m{0.0};
+  double normal_flight_z_m{0.0};
   double approach_speed_mps{0.0};
-  double passage_speed_limit_mps{0.0};
 };
 
 struct PassageCoordinatorResult {
   PassageCoordinatorPhase phase{PassageCoordinatorPhase::kInactive};
   std::optional<mppi::PassageConstraint> constraint;
-  std::string opening_id;
+  std::string portal_id;
+  std::uint64_t route_generation{0U};
+  std::size_t route_event_index{0U};
   bool active{false};
   bool hold_xy{false};
-  bool approach_alignment_active{false};
   bool vertical_ready{false};
+  bool speed_limit_active{false};
+  bool entry_plane_crossed{false};
+  bool exit_plane_crossed{false};
   Point2 hold_position{};
-  Point2 approach_target{};
   double preferred_z_m{0.0};
+  double z_reference_m{0.0};
   double vertical_error_m{0.0};
-  double lateral_error_m{0.0};
-  double approach_reference_speed_mps{0.0};
   double distance_to_entry_m{0.0};
   std::size_t capture_stable_cycles{0U};
   std::size_t retention_violation_cycles{0U};
   double required_alignment_time_s{0.0};
   double required_stopping_distance_m{0.0};
   double required_alignment_distance_m{0.0};
+  double entry_plane_signed_distance_m{0.0};
+  double exit_plane_signed_distance_m{0.0};
 };
 
 class PassageCoordinator {
@@ -75,18 +81,25 @@ public:
   void reset() noexcept;
 
 private:
+  void resetForRoute(std::uint64_t generation) noexcept;
+
   PassageCoordinatorConfig config_{};
-  std::optional<PassageOpening> active_opening_;
-  double travel_sign_{1.0};
+  std::uint64_t route_generation_{0U};
+  std::size_t next_event_index_{0U};
+  bool route_seen_{false};
+  bool event_initialized_{false};
+  bool position_seen_{false};
+  bool entry_plane_crossed_{false};
+  bool exit_plane_crossed_{false};
   bool vertical_alignment_active_{false};
   bool vertical_ready_latched_{false};
-  bool traversal_latched_{false};
-  bool partial_from_inside_{false};
+  bool preserve_inside_altitude_{false};
   std::size_t capture_stable_cycles_{0U};
   std::size_t retention_violation_cycles_{0U};
   Point2 hold_position_{};
-  std::optional<Point2> approach_target_;
   double preferred_z_m_{0.0};
+  double previous_entry_plane_distance_m_{0.0};
+  double previous_exit_plane_distance_m_{0.0};
 };
 
 [[nodiscard]] const char*

@@ -31,10 +31,10 @@ struct KnownSolid {
 };
 
 enum class PassagePhase : std::uint8_t {
-  kApproach,
-  kStationaryVerticalAlignment,
+  kUpcoming,
+  kVerticalAlignment,
+  kReady,
   kTraversal,
-  kPartialFromInside,
 };
 
 struct PassageConstraint {
@@ -46,10 +46,25 @@ struct PassageConstraint {
   float min_z_m{0.0F};
   float max_z_m{0.0F};
   float preferred_z_m{0.0F};
-  float approach_distance_m{0.0F};
-  float exit_distance_m{0.0F};
+  float normal_flight_z_m{0.0F};
+  float approach_station_m{0.0F};
+  float entry_station_m{0.0F};
+  float exit_station_m{0.0F};
+  float departure_station_m{0.0F};
   float speed_limit_mps{0.0F};
-  PassagePhase phase{PassagePhase::kApproach};
+  PassagePhase phase{PassagePhase::kUpcoming};
+};
+
+struct RoutePoint {
+  float x_m{0.0F};
+  float y_m{0.0F};
+  float station_m{0.0F};
+};
+
+struct RouteReference {
+  std::shared_ptr<const std::vector<RoutePoint>> points;
+  std::uint64_t generation{0U};
+  float initial_station_m{0.0F};
 };
 
 struct MppiTickInput {
@@ -62,6 +77,7 @@ struct MppiTickInput {
   std::optional<Control> previous_applied_control;
   std::uint64_t nominal_reseed_generation{0U};
   float reference_speed_mps{-1.0F};
+  std::optional<RouteReference> route;
 };
 
 struct MppiStageTimings {

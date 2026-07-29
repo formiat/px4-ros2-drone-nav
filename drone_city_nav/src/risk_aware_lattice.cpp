@@ -79,6 +79,115 @@ struct QueueEntry {
       bins);
 }
 
+[[nodiscard]] int headingBinDistance(const int first, const int second,
+                                     const int bins) noexcept {
+  const int direct = std::abs(first - second);
+  return std::min(direct, bins - direct);
+}
+
+[[nodiscard]] bool
+pointInsidePortalFootprint(const Point2 point,
+                           const SemanticPortalPrimitive& portal) noexcept {
+  const Point2 offset{point.x - portal.center.x, point.y - portal.center.y};
+  const Point2 lateral_axis{-portal.normal_xy.y, portal.normal_xy.x};
+  const double longitudinal =
+      offset.x * portal.normal_xy.x + offset.y * portal.normal_xy.y;
+  const double lateral = offset.x * lateral_axis.x + offset.y * lateral_axis.y;
+  return std::abs(longitudinal) <= 0.5 * portal.depth_m &&
+         std::abs(lateral) <= 0.5 * portal.width_m;
+}
+
+[[nodiscard]] bool pointInsideAnyPortalFootprint(
+    const Point2 point,
+    const std::span<const SemanticPortalPrimitive> portals) noexcept {
+  return std::ranges::any_of(portals, [&](const SemanticPortalPrimitive& portal) {
+    return pointInsidePortalFootprint(point, portal);
+  });
+}
+
+struct SegmentEvaluation {
+  bool valid{false};
+  double risk_cost{0.0};
+};
+
+[[nodiscard]] SegmentEvaluation
+evaluateSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+                const Point2 start, const Point2 endpoint,
+                const RiskAwareLatticeConfig& config,
+                const std::span<const SemanticPortalPrimitive> portals,
+                const bool allow_portal_footprint) {
+  SegmentEvaluation result{.valid = true};
+  const double length_m = distance(start, endpoint);
+  const int sample_count =
+      static_cast<int>(std::ceil(length_m / config.primitive_sample_step_m));
+  for (int sample_index = 1; sample_index <= sample_count; ++sample_index) {
+    const double sample_distance = std::min(
+        length_m, static_cast<double>(sample_index) * config.primitive_sample_step_m);
+    const double ratio = length_m > 0.0 ? sample_distance / length_m : 1.0;
+    const Point2 sample{std::lerp(start.x, endpoint.x, ratio),
+                        std::lerp(start.y, endpoint.y, ratio)};
+    const std::optional<float> clearance = clearanceAt(grid, esdf_m, sample);
+    if (!clearance.has_value() || *clearance <= config.collision_radius_m ||
+        (!allow_portal_footprint && pointInsideAnyPortalFootprint(sample, portals))) {
+      result.valid = false;
+      return result;
+    }
+    if (*clearance < config.critical_distance_m) {
+      result.risk_cost += config.critical_cost_per_m * config.primitive_sample_step_m;
+    } else if (*clearance < config.preferred_distance_m) {
+      result.risk_cost += config.planning_cost_per_m * config.primitive_sample_step_m;
+    }
+  }
+  return result;
+}
+
+struct PortalSuccessor {
+  Point2 endpoint{};
+  int heading_bin{0};
+  double length_m{0.0};
+};
+
+[[nodiscard]] std::optional<PortalSuccessor>
+portalSuccessor(const Point2 current, const int current_heading,
+                const SemanticPortalPrimitive& portal, const int direction,
+                const RiskAwareLatticeConfig& config) {
+  const Point2 lateral_axis{-portal.normal_xy.y, portal.normal_xy.x};
+  const Point2 offset{current.x - portal.center.x, current.y - portal.center.y};
+  const double longitudinal =
+      offset.x * portal.normal_xy.x + offset.y * portal.normal_xy.y;
+  const double lateral = offset.x * lateral_axis.x + offset.y * lateral_axis.y;
+  const double directed_longitudinal = static_cast<double>(direction) * longitudinal;
+  const double half_depth_m = 0.5 * portal.depth_m;
+  const double usable_half_width_m =
+      0.5 * portal.width_m - config.portal_lateral_margin_m;
+  if (!(usable_half_width_m > 0.0) || std::abs(lateral) > usable_half_width_m ||
+      directed_longitudinal < -half_depth_m - config.portal_entry_capture_distance_m ||
+      directed_longitudinal >= half_depth_m) {
+    return std::nullopt;
+  }
+  const double heading =
+      std::atan2(static_cast<double>(direction) * portal.normal_xy.y,
+                 static_cast<double>(direction) * portal.normal_xy.x);
+  const int heading_bin = nearestHeadingBin(heading, config.heading_bins);
+  if (headingBinDistance(current_heading, heading_bin, config.heading_bins) >
+      config.portal_maximum_heading_delta_bins) {
+    return std::nullopt;
+  }
+  const double exit_longitudinal =
+      static_cast<double>(direction) * (half_depth_m + config.portal_exit_extension_m);
+  const Point2 endpoint{
+      portal.center.x + exit_longitudinal * portal.normal_xy.x +
+          lateral * lateral_axis.x,
+      portal.center.y + exit_longitudinal * portal.normal_xy.y +
+          lateral * lateral_axis.y,
+  };
+  return PortalSuccessor{
+      .endpoint = endpoint,
+      .heading_bin = heading_bin,
+      .length_m = distance(current, endpoint),
+  };
+}
+
 [[nodiscard]] Point2 recedingGoal(const Point2 start, const Point2 mission_goal,
                                   const RiskAwareLatticeConfig& config,
                                   bool& reached_mission_goal) {
@@ -93,25 +202,15 @@ struct QueueEntry {
                 start.y + (mission_goal.y - start.y) * ratio};
 }
 
-[[nodiscard]] bool primitiveIsCollisionFree(const mppi::EsdfGrid& grid,
-                                            const std::span<const float> esdf_m,
-                                            const Point2 start, const int heading_bin,
-                                            const RiskAwareLatticeConfig& config) {
+[[nodiscard]] bool
+primitiveIsCollisionFree(const mppi::EsdfGrid& grid,
+                         const std::span<const float> esdf_m, const Point2 start,
+                         const int heading_bin, const RiskAwareLatticeConfig& config,
+                         const std::span<const SemanticPortalPrimitive> portals) {
   const double heading = headingForBin(heading_bin, config.heading_bins);
-  const int sample_count = static_cast<int>(
-      std::ceil(config.primitive_length_m / config.primitive_sample_step_m));
-  for (int sample_index = 1; sample_index <= sample_count; ++sample_index) {
-    const double distance =
-        std::min(config.primitive_length_m,
-                 static_cast<double>(sample_index) * config.primitive_sample_step_m);
-    const Point2 sample{start.x + std::cos(heading) * distance,
-                        start.y + std::sin(heading) * distance};
-    const std::optional<float> clearance = clearanceAt(grid, esdf_m, sample);
-    if (!clearance.has_value() || *clearance <= config.collision_radius_m) {
-      return false;
-    }
-  }
-  return true;
+  const Point2 endpoint{start.x + std::cos(heading) * config.primitive_length_m,
+                        start.y + std::sin(heading) * config.primitive_length_m};
+  return evaluateSegment(grid, esdf_m, start, endpoint, config, portals, false).valid;
 }
 
 [[nodiscard]] double guideLength(const std::span<const Point2> guide) noexcept {
@@ -128,12 +227,17 @@ struct QueueEntry {
 RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m, const Point2 start,
     const double start_heading_rad, const Point2 mission_goal,
-    const RiskAwareLatticeConfig& config) {
+    const RiskAwareLatticeConfig& config,
+    const std::span<const SemanticPortalPrimitive> portals) {
   RiskAwareLatticeResult result;
   if (grid.width <= 0 || grid.height <= 0 || grid.resolution_m <= 0.0F ||
       esdf_m.size() != static_cast<std::size_t>(grid.width) *
                            static_cast<std::size_t>(grid.height) ||
-      config.heading_bins < 4) {
+      config.heading_bins < 4 || !(config.portal_lateral_margin_m >= 0.0) ||
+      !(config.portal_entry_capture_distance_m > 0.0) ||
+      !(config.portal_exit_extension_m > 0.0) ||
+      config.portal_maximum_heading_delta_bins < 0 ||
+      config.portal_maximum_heading_delta_bins > config.heading_bins / 2) {
     return result;
   }
   result.planning_goal =
@@ -182,34 +286,17 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const int next_heading =
           wrapHeading(current_entry.key.heading + heading_delta, config.heading_bins);
       const double heading = headingForBin(next_heading, config.heading_bins);
-      bool collision = false;
-      double risk_cost = 0.0;
-      Point2 endpoint = current;
-      const int sample_count = static_cast<int>(
-          std::ceil(config.primitive_length_m / config.primitive_sample_step_m));
-      for (int sample_index = 1; sample_index <= sample_count; ++sample_index) {
-        const double distance =
-            std::min(config.primitive_length_m, static_cast<double>(sample_index) *
-                                                    config.primitive_sample_step_m);
-        endpoint = Point2{current.x + std::cos(heading) * distance,
-                          current.y + std::sin(heading) * distance};
-        const std::optional<float> clearance = clearanceAt(grid, esdf_m, endpoint);
-        if (!clearance.has_value() || *clearance <= config.collision_radius_m) {
-          collision = true;
-          break;
-        }
-        if (*clearance < config.critical_distance_m) {
-          risk_cost += config.critical_cost_per_m * config.primitive_sample_step_m;
-        } else if (*clearance < config.preferred_distance_m) {
-          risk_cost += config.planning_cost_per_m * config.primitive_sample_step_m;
-        }
-      }
-      if (collision) {
+      const Point2 endpoint{current.x + std::cos(heading) * config.primitive_length_m,
+                            current.y + std::sin(heading) * config.primitive_length_m};
+      const SegmentEvaluation segment =
+          evaluateSegment(grid, esdf_m, current, endpoint, config, portals, false);
+      if (!segment.valid) {
         continue;
       }
       const LatticeKey next = makeKey(endpoint, next_heading);
       const double next_cost = current_record->second.cost + config.primitive_length_m +
-                               risk_cost + config.turn_cost * std::abs(heading_delta);
+                               segment.risk_cost +
+                               config.turn_cost * std::abs(heading_delta);
       Record& record = records[next];
       if (next_cost >= record.cost) {
         continue;
@@ -219,6 +306,34 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const double heuristic = std::hypot(result.planning_goal.x - endpoint.x,
                                           result.planning_goal.y - endpoint.y);
       open.push(QueueEntry{next_cost + config.heuristic_weight * heuristic, next});
+    }
+    for (const SemanticPortalPrimitive& portal : portals) {
+      for (const int direction : {-1, 1}) {
+        const std::optional<PortalSuccessor> successor = portalSuccessor(
+            current, current_entry.key.heading, portal, direction, config);
+        if (!successor.has_value()) {
+          continue;
+        }
+        const SegmentEvaluation segment = evaluateSegment(
+            grid, esdf_m, current, successor->endpoint, config, portals, true);
+        if (!segment.valid) {
+          continue;
+        }
+        const LatticeKey next = makeKey(successor->endpoint, successor->heading_bin);
+        const int heading_delta = headingBinDistance(
+            current_entry.key.heading, successor->heading_bin, config.heading_bins);
+        const double next_cost = current_record->second.cost + successor->length_m +
+                                 segment.risk_cost +
+                                 config.turn_cost * static_cast<double>(heading_delta);
+        Record& record = records[next];
+        if (next_cost >= record.cost) {
+          continue;
+        }
+        record.cost = next_cost;
+        record.parent = current_entry.key;
+        const double heuristic = distance(result.planning_goal, successor->endpoint);
+        open.push(QueueEntry{next_cost + config.heuristic_weight * heuristic, next});
+      }
     }
   }
   if (result.planning_goal_reached) {
@@ -247,7 +362,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   for (const int heading_delta : {-1, 0, 1}) {
     const int next_heading =
         wrapHeading(best_goal->heading + heading_delta, config.heading_bins);
-    if (primitiveIsCollisionFree(grid, esdf_m, terminal, next_heading, config)) {
+    if (primitiveIsCollisionFree(grid, esdf_m, terminal, next_heading, config,
+                                 portals)) {
       ++result.terminal_successor_count;
     }
   }

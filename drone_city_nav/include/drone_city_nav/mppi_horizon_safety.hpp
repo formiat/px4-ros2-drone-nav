@@ -38,6 +38,7 @@ buildMppiBrakingFallback(const mppi::State& current_state,
 [[nodiscard]] MppiHorizonSafetyResult evaluateMppiHorizonSafety(
     const mppi::State& current_state, std::span<const mppi::State> horizon,
     std::span<const float> esdf_m, const mppi::EsdfGrid& grid,
-    const MppiHorizonSafetyConfig& config, bool engine_collision = false);
+    const MppiHorizonSafetyConfig& config, bool engine_collision = false,
+    std::span<const mppi::KnownSolid> known_solids = {});
 
 } // namespace drone_city_nav

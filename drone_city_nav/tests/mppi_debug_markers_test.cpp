@@ -67,8 +67,22 @@ TEST(MppiDebugMarkers, UsesSeparateCurrentTargetNamespace) {
 TEST(MppiDebugMarkers, HighlightsSelectedPassageAndTraversalDirection) {
   MppiDebugMarkerInput input = markerInput();
   input.passage = mppi::PassageConstraint{
-      25.0F, 30.0F, 1.0F, 0.0F, 2.0F,  4.0F,
-      10.0F, 7.0F,  5.0F, 6.0F, 10.0F, mppi::PassagePhase::kApproach};
+      .center_x_m = 25.0F,
+      .center_y_m = 30.0F,
+      .normal_x = 1.0F,
+      .normal_y = 0.0F,
+      .half_depth_m = 2.0F,
+      .min_z_m = 4.0F,
+      .max_z_m = 10.0F,
+      .preferred_z_m = 7.0F,
+      .normal_flight_z_m = 18.0F,
+      .approach_station_m = 5.0F,
+      .entry_station_m = 10.0F,
+      .exit_station_m = 14.0F,
+      .departure_station_m = 20.0F,
+      .speed_limit_mps = 10.0F,
+      .phase = mppi::PassagePhase::kUpcoming,
+  };
 
   const auto markers = buildMppiDebugMarkers(input);
 
@@ -80,8 +94,8 @@ TEST(MppiDebugMarkers, HighlightsSelectedPassageAndTraversalDirection) {
   const auto& direction = findMarker(markers, "selected_passage", 1);
   EXPECT_EQ(direction.action, visualization_msgs::msg::Marker::ADD);
   ASSERT_EQ(direction.points.size(), 2U);
-  EXPECT_DOUBLE_EQ(direction.points.front().x, 18.0);
-  EXPECT_DOUBLE_EQ(direction.points.back().x, 33.0);
+  EXPECT_DOUBLE_EQ(direction.points.front().x, 23.0);
+  EXPECT_DOUBLE_EQ(direction.points.back().x, 27.0);
 }
 
 TEST(MppiDebugMarkers, DeletesSelectedPassageWhenNoneIsActive) {

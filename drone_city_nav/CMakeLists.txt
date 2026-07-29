@@ -148,8 +148,9 @@ add_library(
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
   src/passage_coordinator.cpp
-  src/passage_route_selection.cpp
   src/passage_traversal_monitor.cpp
+  src/semantic_portal_occupancy.cpp
+  src/semantic_portal_route.cpp
   src/static_city_map.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
 target_include_directories(
@@ -364,11 +365,17 @@ if(BUILD_TESTING)
   target_link_libraries(mppi_speed_policy_test_current drone_city_nav_core)
   enable_project_warnings(mppi_speed_policy_test_current)
 
-  ament_add_gtest(passage_route_selection_test
-                  tests/passage_route_selection_test.cpp)
-  target_compile_features(passage_route_selection_test PRIVATE cxx_std_20)
-  target_link_libraries(passage_route_selection_test drone_city_nav_core)
-  enable_project_warnings(passage_route_selection_test)
+  ament_add_gtest(semantic_portal_route_test
+                  tests/semantic_portal_route_test.cpp)
+  target_compile_features(semantic_portal_route_test PRIVATE cxx_std_20)
+  target_link_libraries(semantic_portal_route_test drone_city_nav_core)
+  enable_project_warnings(semantic_portal_route_test)
+
+  ament_add_gtest(semantic_portal_occupancy_test
+                  tests/semantic_portal_occupancy_test.cpp)
+  target_compile_features(semantic_portal_occupancy_test PRIVATE cxx_std_20)
+  target_link_libraries(semantic_portal_occupancy_test drone_city_nav_core)
+  enable_project_warnings(semantic_portal_occupancy_test)
 
   ament_add_gtest(passage_coordinator_test tests/passage_coordinator_test.cpp)
   target_compile_features(passage_coordinator_test PRIVATE cxx_std_20)

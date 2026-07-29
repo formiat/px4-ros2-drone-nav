@@ -13,8 +13,8 @@
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/passage_coordinator.hpp"
-#include "drone_city_nav/passage_route_selection.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
+#include "drone_city_nav/semantic_portal_route.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/path.hpp>
@@ -55,7 +55,13 @@ struct ProductionMppiPreparedEsdf {
   double upload_ms{0.0};
   mppi::EsdfGrid grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
-  std::shared_ptr<const std::vector<Point2>> global_guide;
+  std::shared_ptr<const SemanticPortalRoute> semantic_route;
+  std::shared_ptr<const std::vector<mppi::RoutePoint>> mppi_route;
+  std::size_t portal_events{0U};
+  std::size_t rejected_portal_route_misses{0U};
+  std::size_t rejected_portal_overlaps{0U};
+  std::size_t semantic_side_volumes{0U};
+  std::size_t semantic_side_cells{0U};
   std::size_t global_guide_expansions{0U};
   double global_guide_cost{0.0};
   std::uint64_t global_guide_generation{0U};
@@ -106,7 +112,7 @@ struct ProductionMppiAppliedControl {
 struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> horizon;
   std::vector<mppi::State> previous_horizon;
-  std::shared_ptr<const std::vector<Point2>> global_guide;
+  std::shared_ptr<const SemanticPortalRoute> semantic_route;
 };
 
 enum class ProductionMppiPlanningState {
@@ -175,10 +181,8 @@ private:
 
   [[nodiscard]] mppi::State selectTarget(const ProductionMppiNavigation& navigation,
                                          const ProductionMppiPreparedEsdf& esdf,
-                                         double lookahead_m,
-                                         std::string& target_source) const;
-  [[nodiscard]] const PassageOpening*
-  selectPassageOpening(const mppi::State& state, std::span<const Point2> guide) const;
+                                         double lookahead_m, std::string& target_source,
+                                         double& target_station_m) const;
   [[nodiscard]] ProductionMppiStability
   compareWithPrevious(const mppi::MppiTickResult& result) const;
 
@@ -190,7 +194,7 @@ private:
   double maximum_esdf_age_ms_{1000.0};
   double maximum_control_feedback_age_ms_{200.0};
   double no_static_guide_lookahead_m_{30.0};
-  PassageRouteSelectionConfig passage_route_selection_config_{};
+  SemanticPortalRouteConfig semantic_route_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
   Point3 mission_start_{54.0, 54.0, 0.0};
   Point3 mission_goal_{216.0, 378.0, 18.0};
@@ -217,6 +221,7 @@ private:
   RiskAwareLatticeConfig lattice_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<KnownPassageMap> known_passages_;
+  std::vector<SemanticPortalPrimitive> semantic_portal_primitives_;
   std::vector<mppi::KnownSolid> known_solids_;
 
   mutable std::mutex input_mutex_;

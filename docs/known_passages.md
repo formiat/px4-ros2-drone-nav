@@ -1,13 +1,14 @@
-# Known Architectural Passages
+# Semantic Portals
 
-Known passages describe physical 3D openings that require route selection,
-altitude alignment, and solid-volume collision checks.
+Semantic portals describe physical 3D openings that are part of a typed global
+route. They combine route-station events, altitude references, speed policy,
+and solid-volume collision checks without requiring a dense 3D map.
 
 ## Sources Of Truth
 
 ```text
 generated_city.sdf                 physical visuals and collisions
-known_passages.passages3d          planner knowledge and passage semantics
+known_passages.passages3d          semantic portal and solid-volume model
 generated_city.map2d               ordinary 2D static obstacle evidence
 ```
 
@@ -57,39 +58,55 @@ the free opening:
 The volumes are uploaded once to the persistent MPPI engine. Every rollout
 sample and the reconstructed nominal horizon are checked against them.
 
-Current limitation: known-solid checks use the simulated state point and do not
-yet expand geometry by the full drone body or rotor footprint.
+Left and right masses are also rasterized into the unified raw 2D world
+snapshot before ESDF construction because they are solid at every flight
+altitude. Lower and upper masses remain exclusively 3D constraints, leaving
+the portal footprint traversable at its valid altitude. This gives the global
+lattice the same connector topology in static and no-static modes.
 
-## Passage Selection
+## Typed Global Route
 
-The runtime considers an opening only when:
+When a sticky global guide generation is accepted, it is converted once into a
+`SemanticPortalRoute`. Each opening crossed by the guide creates a
+`RoutePassageEvent` containing:
 
-- it is within the configured activation distance;
-- the remaining global guide crosses the opening plane;
-- guide direction has sufficient alignment with the opening normal;
-- the crossing lies inside the usable lateral opening width.
+- the directed entry and exit planes;
+- the opening polygon and hard Z interval;
+- approach, entry, exit, and departure route stations;
+- traversal direction;
+- preferred altitude;
+- mode-specific speed limit.
 
-Among matching openings, the nearest one is selected. The coordinator then
-latches that opening until it exits or invalidates the episode.
+The complete route is split into typed normal, portal-approach,
+portal-traversal, and portal-exit segments. A portal is never selected from
+distance to the drone. A new global-route generation invalidates the old event
+sequence atomically.
 
-This is guide-based passage selection, not a full global lattice portal
-primitive.
+The global lattice treats every portal footprint as unavailable to ordinary
+motion primitives. A dedicated bidirectional portal primitive is the only graph
+edge allowed to enter through one portal plane and leave through the other.
+That edge still checks the raw ESDF, so semantic geometry never hides a live
+lidar obstacle. Consequently every accepted route through a connector already
+contains a complete entry-to-exit crossing before route events are created.
 
 ## Coordinator Phases
 
 `PassageCoordinator` owns:
 
 - `inactive`;
-- `approach`;
-- `stationary_vertical_alignment`;
+- `upcoming`;
+- `vertical_alignment`;
+- `ready`;
 - `traversal`;
-- `partial_from_inside`;
-- `invalid_opening`.
+- `cleared`;
+- `invalid_route_event`.
 
-The coordinator computes a safe vertical interval by applying the configured
-clearance margin. Capture requires both altitude and vertical-speed conditions
-for several stable cycles. Retention hysteresis prevents one noisy sample from
-dropping traversal state.
+The coordinator consumes the next event from the active semantic route and the
+current monotonic route station. Capture requires both altitude and
+vertical-speed conditions for several stable cycles. Retention hysteresis
+prevents one noisy sample from dropping traversal state. Starting inside a
+portal initializes the same traversal phase while preserving a valid current
+altitude.
 
 If altitude cannot be captured before the entry boundary, the coordinator
 requests:
@@ -101,24 +118,27 @@ XY position hold
 -> traversal release
 ```
 
-If altitude is already valid but the drone is laterally misaligned, it first
-uses a low-speed approach staging target. A drone starting inside the opening
-keeps its current valid altitude until it leaves the passage footprint.
-
 ## MPPI And Offboard Integration
 
-An active passage provides MPPI with:
+Every MPPI tick receives the full route polyline with cumulative station, not
+only one lookahead point. Every rollout sample is projected onto this route;
+cross-track error and along-route progress are computed from the projection.
+
+The upcoming route event provides MPPI with:
 
 - opening center and normal;
 - depth;
 - safe Z range and preferred Z;
-- approach and exit distances;
+- approach, entry, exit, and departure route stations;
 - mode-specific speed threshold;
 - current passage phase.
 
-Known-solid intersection and Z-window violation are collision results. Passage
-speed above the configured threshold currently contributes a cost and the
-separate speed policy lowers the reference speed.
+The vertical reference is a continuous `z(route_station)` profile: normal
+flight altitude before approach, interpolation to the preferred portal
+altitude, fixed altitude through the opening, and interpolation back on exit.
+Known-solid intersection and opening Z-window violation are collision results.
+The passage speed policy is activated only after the current route station
+enters the portal approach.
 
 During stationary alignment, the execution horizon carries an explicit
 position-hold request. Offboard switches to PX4 position mode at the captured
@@ -128,27 +148,25 @@ coordinator releases hold.
 ## Visualization And Diagnostics
 
 `world_visualization_node` publishes durable markers for structures, solids,
-openings, and approach/exit directions. MPPI markers show the selected opening
+portals, and approach/exit directions. MPPI markers show the active route event
 and current local target.
 
 Useful diagnostics include:
 
-- selected opening id;
+- portal id and route generation;
+- route event index and station;
 - coordinator phase;
-- vertical and lateral error;
+- vertical error and Z reference;
 - distance to entry;
 - capture/retention counters;
 - alignment and stopping estimates;
 - known-solid collision;
 - actual opening-entry metrics from `mission_monitor_node`.
 
-## Current Limitations
+## Remaining Limitations
 
 - SDF and annotation are manually synchronized.
 - Structure orientation is inferred from current axis-aligned city geometry.
-- Passage selection is local guide inference rather than a persistent global
-  portal choice.
-- Preferred altitude is not yet a route-station `z(s)` profile.
 - Stationary hold shares the execution-horizon protocol.
 - Full drone-footprint and 3D braking-fallback validation remain future safety
   work.

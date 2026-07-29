@@ -87,7 +87,7 @@ horizon, not successful navigation.
 
 Inspect:
 
-- selected opening;
+- active semantic portal and route event;
 - approach/alignment/traversal phase;
 - vertical and lateral errors;
 - capture and retention counters;

@@ -81,10 +81,7 @@ void ProductionMppiNode::recordTickStatistics(
       planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ? 1U : 0U;
   passage_vertical_alignment_ticks_ += passage_coordinator.hold_xy ? 1U : 0U;
   passage_traversal_ticks_ +=
-      passage_coordinator.phase == PassageCoordinatorPhase::kTraversal ||
-              passage_coordinator.phase == PassageCoordinatorPhase::kPartialFromInside
-          ? 1U
-          : 0U;
+      passage_coordinator.phase == PassageCoordinatorPhase::kTraversal ? 1U : 0U;
 }
 
 void ProductionMppiNode::publishRviz(
@@ -111,8 +108,9 @@ void ProductionMppiNode::publishRviz(
 
   const std::span<const mppi::State> previous_horizon{rviz.previous_horizon};
   const std::span<const Point2> global_guide =
-      rviz.global_guide ? std::span<const Point2>{*rviz.global_guide}
-                        : std::span<const Point2>{};
+      rviz.semantic_route && rviz.semantic_route->polyline
+          ? std::span<const Point2>{*rviz.semantic_route->polyline}
+          : std::span<const Point2>{};
   const visualization_msgs::msg::MarkerArray markers =
       buildMppiDebugMarkers(MppiDebugMarkerInput{
           path.header, rviz.horizon, previous_horizon, global_guide,
@@ -212,19 +210,27 @@ void ProductionMppiNode::processDiagnostics(
        << " passage_speed_limit_mps="
        << finiteOrNegative(speed_policy.passage_limit_mps)
        << " passage_phase=" << passageCoordinatorPhaseName(passage_coordinator.phase)
-       << " passage_opening="
-       << (passage_coordinator.opening_id.empty() ? "none"
-                                                  : passage_coordinator.opening_id)
+       << " passage_portal="
+       << (passage_coordinator.portal_id.empty() ? "none"
+                                                 : passage_coordinator.portal_id)
+       << " passage_route_generation=" << passage_coordinator.route_generation
+       << " passage_route_event_index=" << passage_coordinator.route_event_index
        << " passage_xy_hold=" << (passage_coordinator.hold_xy ? "true" : "false")
-       << " passage_approach_alignment="
-       << (passage_coordinator.approach_alignment_active ? "true" : "false")
        << " passage_vertical_ready="
        << (passage_coordinator.vertical_ready ? "true" : "false")
+       << " passage_speed_limit_active="
+       << (passage_coordinator.speed_limit_active ? "true" : "false")
+       << " passage_entry_plane_crossed="
+       << (passage_coordinator.entry_plane_crossed ? "true" : "false")
+       << " passage_exit_plane_crossed="
+       << (passage_coordinator.exit_plane_crossed ? "true" : "false")
+       << " passage_entry_plane_distance_m="
+       << passage_coordinator.entry_plane_signed_distance_m
+       << " passage_exit_plane_distance_m="
+       << passage_coordinator.exit_plane_signed_distance_m
        << " passage_target_z_m=" << passage_coordinator.preferred_z_m
+       << " passage_z_reference_m=" << passage_coordinator.z_reference_m
        << " passage_vertical_error_m=" << passage_coordinator.vertical_error_m
-       << " passage_lateral_error_m=" << passage_coordinator.lateral_error_m
-       << " passage_approach_reference_speed_mps="
-       << passage_coordinator.approach_reference_speed_mps
        << " passage_capture_stable_cycles=" << passage_coordinator.capture_stable_cycles
        << " passage_retention_violation_cycles="
        << passage_coordinator.retention_violation_cycles
@@ -353,17 +359,25 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"passage_speed_limit_mps\":"
         << finiteOrNegative(speed_policy.passage_limit_mps) << ",\"passage_phase\":\""
         << passageCoordinatorPhaseName(passage_coordinator.phase) << '"'
-        << ",\"passage_opening\":\"" << passage_coordinator.opening_id << '"'
+        << ",\"passage_portal\":\"" << passage_coordinator.portal_id << '"'
+        << ",\"passage_route_generation\":" << passage_coordinator.route_generation
+        << ",\"passage_route_event_index\":" << passage_coordinator.route_event_index
         << ",\"passage_xy_hold\":" << (passage_coordinator.hold_xy ? "true" : "false")
-        << ",\"passage_approach_alignment\":"
-        << (passage_coordinator.approach_alignment_active ? "true" : "false")
         << ",\"passage_vertical_ready\":"
         << (passage_coordinator.vertical_ready ? "true" : "false")
+        << ",\"passage_speed_limit_active\":"
+        << (passage_coordinator.speed_limit_active ? "true" : "false")
+        << ",\"passage_entry_plane_crossed\":"
+        << (passage_coordinator.entry_plane_crossed ? "true" : "false")
+        << ",\"passage_exit_plane_crossed\":"
+        << (passage_coordinator.exit_plane_crossed ? "true" : "false")
+        << ",\"passage_entry_plane_distance_m\":"
+        << passage_coordinator.entry_plane_signed_distance_m
+        << ",\"passage_exit_plane_distance_m\":"
+        << passage_coordinator.exit_plane_signed_distance_m
         << ",\"passage_target_z_m\":" << passage_coordinator.preferred_z_m
+        << ",\"passage_z_reference_m\":" << passage_coordinator.z_reference_m
         << ",\"passage_vertical_error_m\":" << passage_coordinator.vertical_error_m
-        << ",\"passage_lateral_error_m\":" << passage_coordinator.lateral_error_m
-        << ",\"passage_approach_reference_speed_mps\":"
-        << passage_coordinator.approach_reference_speed_mps
         << ",\"passage_capture_stable_cycles\":"
         << passage_coordinator.capture_stable_cycles
         << ",\"passage_retention_violation_cycles\":"

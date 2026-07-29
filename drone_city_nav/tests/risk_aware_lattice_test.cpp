@@ -46,6 +46,35 @@ TEST(RiskAwareLattice, RejectsRawCollisionAndRoutesAroundWall) {
   }));
 }
 
+TEST(RiskAwareLattice, UsesDedicatedLongPrimitiveToTraversePortal) {
+  const mppi::EsdfGrid grid = makeGrid();
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                20.0F);
+  const std::vector<SemanticPortalPrimitive> portals{
+      SemanticPortalPrimitive{
+          .id = "portal",
+          .center = Point2{20.0, 10.5},
+          .normal_xy = Point2{1.0, 0.0},
+          .width_m = 8.0,
+          .depth_m = 8.0,
+      },
+  };
+
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{36.5, 10.5}, RiskAwareLatticeConfig{},
+      portals);
+
+  ASSERT_TRUE(result.valid);
+  ASSERT_TRUE(result.planning_goal_reached);
+  bool long_portal_segment_seen = false;
+  for (std::size_t index = 1U; index < result.guide.size(); ++index) {
+    if (distance(result.guide[index - 1U], result.guide[index]) > 8.0) {
+      long_portal_segment_seen = true;
+    }
+  }
+  EXPECT_TRUE(long_portal_segment_seen);
+}
+
 TEST(RiskAwareLattice, FailsWhenStartIsOutsideWorldModel) {
   const mppi::EsdfGrid grid = makeGrid();
   const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),

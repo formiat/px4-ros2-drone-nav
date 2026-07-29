@@ -134,18 +134,12 @@ void appendSelectedPassageMarkers(visualization_msgs::msg::MarkerArray& markers,
   center.color = rgba(1.0F, 0.15F, 0.65F, 1.0F);
   markers.markers.push_back(center);
 
-  const double target_projection =
-      (static_cast<double>(input.target.x) - passage.center_x_m) * passage.normal_x +
-      (static_cast<double>(input.target.y) - passage.center_y_m) * passage.normal_y;
-  const double direction = target_projection < 0.0 ? -1.0 : 1.0;
-  const Point2 normal{direction * passage.normal_x, direction * passage.normal_y};
+  const Point2 normal{passage.normal_x, passage.normal_y};
   const Point2 center_xy{passage.center_x_m, passage.center_y_m};
-  const Point2 start{
-      center_xy.x - normal.x * (passage.half_depth_m + passage.approach_distance_m),
-      center_xy.y - normal.y * (passage.half_depth_m + passage.approach_distance_m)};
-  const Point2 end{
-      center_xy.x + normal.x * (passage.half_depth_m + passage.exit_distance_m),
-      center_xy.y + normal.y * (passage.half_depth_m + passage.exit_distance_m)};
+  const Point2 start{center_xy.x - normal.x * passage.half_depth_m,
+                     center_xy.y - normal.y * passage.half_depth_m};
+  const Point2 end{center_xy.x + normal.x * passage.half_depth_m,
+                   center_xy.y + normal.y * passage.half_depth_m};
   visualization_msgs::msg::Marker direction_marker =
       makeMarker(input.header, kSelectedPassageNamespace, 1,
                  visualization_msgs::msg::Marker::ARROW);

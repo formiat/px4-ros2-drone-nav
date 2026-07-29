@@ -60,7 +60,7 @@ local cost hierarchy.
 
 Check:
 
-- selected opening id;
+- active semantic portal id and route generation;
 - current phase;
 - vertical/lateral error;
 - capture window and vertical speed;

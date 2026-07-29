@@ -19,6 +19,7 @@ namespace {
 
 constexpr int kThreadsPerBlock{256};
 constexpr std::size_t kMaximumKnownSolids{2048U};
+constexpr std::size_t kMaximumRoutePoints{512U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
 
@@ -212,6 +213,7 @@ struct DeviceBuffers {
   DeviceBuffer<float> minimum_soft;
   DeviceBuffer<float> weight_sum;
   DeviceBuffer<KnownSolid> solids{kMaximumKnownSolids};
+  DeviceBuffer<RoutePoint> route_points{kMaximumRoutePoints};
 
   DeviceBuffers(const std::size_t rollouts, const std::size_t steps)
       : noise_ax{rollouts * steps},
@@ -242,7 +244,7 @@ struct DeviceBuffers {
            solid_collision.bytes() + weights.bytes() + nominal.bytes() +
            updated.bytes() + best_tier.bytes() + best_critical.bytes() +
            best_planning.bytes() + minimum_soft.bytes() + weight_sum.bytes() +
-           solids.bytes();
+           solids.bytes() + route_points.bytes();
   }
 };
 
@@ -333,6 +335,78 @@ __device__ bool intersectsSolid(const State& state, const KnownSolid& solid) {
   return fabsf(depth) <= solid.half_depth_m && fabsf(lateral) <= solid.half_width_m;
 }
 
+struct RouteProjection {
+  float station_m{0.0F};
+  float cross_track_m{0.0F};
+  bool valid{false};
+};
+
+__device__ RouteProjection projectOntoRoute(const State& state,
+                                            const RoutePoint* route_points,
+                                            const std::size_t route_point_count,
+                                            const float minimum_station_m) {
+  RouteProjection result;
+  float best_squared_distance = kInfinity;
+  for (std::size_t index = 0U; index + 1U < route_point_count; ++index) {
+    const RoutePoint first = route_points[index];
+    const RoutePoint second = route_points[index + 1U];
+    if (second.station_m + 2.0F < minimum_station_m) {
+      continue;
+    }
+    const float dx = second.x_m - first.x_m;
+    const float dy = second.y_m - first.y_m;
+    const float squared_length = dx * dx + dy * dy;
+    if (!(squared_length > 1.0e-8F)) {
+      continue;
+    }
+    const float ratio =
+        clampValue(((state.x - first.x_m) * dx + (state.y - first.y_m) * dy) /
+                       squared_length,
+                   0.0F, 1.0F);
+    const float projected_x = first.x_m + ratio * dx;
+    const float projected_y = first.y_m + ratio * dy;
+    const float offset_x = state.x - projected_x;
+    const float offset_y = state.y - projected_y;
+    const float squared_distance = offset_x * offset_x + offset_y * offset_y;
+    if (squared_distance < best_squared_distance) {
+      best_squared_distance = squared_distance;
+      result.station_m = first.station_m +
+                         ratio * (second.station_m - first.station_m);
+      result.cross_track_m = sqrtf(squared_distance);
+      result.valid = true;
+    }
+  }
+  return result;
+}
+
+__device__ float passageZReference(const PassageConstraint& passage,
+                                   const float station_m) {
+  if (station_m < passage.approach_station_m ||
+      station_m > passage.departure_station_m) {
+    return passage.normal_flight_z_m;
+  }
+  if (passage.phase != PassagePhase::kUpcoming &&
+      station_m <= passage.exit_station_m) {
+    return passage.preferred_z_m;
+  }
+  if (station_m < passage.entry_station_m) {
+    const float length =
+        fmaxf(1.0e-3F, passage.entry_station_m - passage.approach_station_m);
+    const float ratio =
+        (station_m - passage.approach_station_m) / length;
+    return passage.normal_flight_z_m +
+           ratio * (passage.preferred_z_m - passage.normal_flight_z_m);
+  }
+  if (station_m <= passage.exit_station_m) {
+    return passage.preferred_z_m;
+  }
+  const float length =
+      fmaxf(1.0e-3F, passage.departure_station_m - passage.exit_station_m);
+  const float ratio = (station_m - passage.exit_station_m) / length;
+  return passage.preferred_z_m +
+         ratio * (passage.normal_flight_z_m - passage.preferred_z_m);
+}
+
 __global__ void
 simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          const float* noise_yaw, const Control* nominal, float* soft_cost,
@@ -342,7 +416,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          State initial, State target, DynamicsConfig dynamics, RiskConfig risk,
          CostConfig costs, EsdfGrid grid, cudaTextureObject_t esdf_texture,
          const KnownSolid* solids, std::size_t solid_count, PassageConstraint passage,
-         bool passage_active, Control previous_applied_control,
+         bool passage_active, const RoutePoint* route_points,
+         std::size_t route_point_count, float initial_route_station_m,
+         Control previous_applied_control,
          float reference_speed_mps, bool early_exit) {
   const std::size_t rollout =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -365,6 +441,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
   const float initial_distance = hypotf(target.x - initial.x, target.y - initial.y);
   float head_progress = 0.0F;
+  float terminal_route_progress = 0.0F;
   const std::size_t requested_head_steps =
       static_cast<std::size_t>(ceilf(costs.head_progress_horizon_s / dynamics.dt_s));
   const std::size_t head_steps =
@@ -386,19 +463,25 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          ++solid_index) {
       solid_hit = intersectsSolid(state, solids[solid_index]);
     }
+    const RouteProjection route_projection =
+        route_point_count >= 2U
+            ? projectOntoRoute(state, route_points, route_point_count,
+                               initial_route_station_m)
+            : RouteProjection{};
     if (passage_active) {
       const float passage_dx = state.x - passage.center_x_m;
       const float passage_dy = state.y - passage.center_y_m;
       const float longitudinal =
           passage_dx * passage.normal_x + passage_dy * passage.normal_y;
-      const bool inside_passage_window = longitudinal >= -passage.approach_distance_m &&
-                                         longitudinal <= passage.exit_distance_m;
       const bool inside_opening = fabsf(longitudinal) <= passage.half_depth_m;
       if (inside_opening && (state.z < passage.min_z_m || state.z > passage.max_z_m)) {
         solid_hit = true;
       }
-      if (inside_passage_window) {
-        const float altitude_error = state.z - passage.preferred_z_m;
+      if (route_projection.valid &&
+          route_projection.station_m >= passage.approach_station_m &&
+          route_projection.station_m <= passage.departure_station_m) {
+        const float altitude_error =
+            state.z - passageZReference(passage, route_projection.station_m);
         guide_cost += altitude_error * altitude_error;
         const float speed = hypotf(state.vx, state.vy);
         if (passage.speed_limit_mps > 0.0F && speed > passage.speed_limit_mps) {
@@ -417,15 +500,29 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kPlanning));
       planning_m += segment_m;
     }
-    const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
-                              (state.x - initial.x) * (target.y - initial.y);
-    const float guide_length =
-        fmaxf(1.0F, hypotf(target.x - initial.x, target.y - initial.y));
-    guide_cost += (guide_cross / guide_length) * (guide_cross / guide_length);
-    const float altitude_error = state.z - target.z;
+    if (route_projection.valid) {
+      guide_cost += route_projection.cross_track_m * route_projection.cross_track_m;
+      terminal_route_progress =
+          route_projection.station_m - initial_route_station_m;
+    } else {
+      const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
+                                (state.x - initial.x) * (target.y - initial.y);
+      const float guide_length =
+          fmaxf(1.0F, hypotf(target.x - initial.x, target.y - initial.y));
+      guide_cost += (guide_cross / guide_length) * (guide_cross / guide_length);
+    }
+    const float z_reference =
+        passage_active && route_projection.valid
+            ? passageZReference(passage, route_projection.station_m)
+            : target.z;
+    const float altitude_error = state.z - z_reference;
     altitude_cost += altitude_error * altitude_error;
     if (step + 1U == head_steps) {
-      head_progress = initial_distance - hypotf(target.x - state.x, target.y - state.y);
+      head_progress =
+          route_projection.valid
+              ? route_projection.station_m - initial_route_station_m
+              : initial_distance -
+                    hypotf(target.x - state.x, target.y - state.y);
     }
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
@@ -443,8 +540,12 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
   }
   const float terminal_distance = hypotf(target.x - state.x, target.y - state.y);
+  const float progress =
+      route_point_count >= 2U
+          ? terminal_route_progress
+          : initial_distance - terminal_distance;
   soft_cost[rollout] = costs.head_progress_weight * -head_progress +
-                       costs.progress_weight * -(initial_distance - terminal_distance) +
+                       costs.progress_weight * -progress +
                        costs.speed_tracking_weight * dynamics.dt_s *
                            speed_tracking_cost +
                        costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
@@ -734,6 +835,26 @@ public:
         has_updated_
             ? std::clamp(static_cast<float>(elapsed_s), 1.0e-3F, config_.dynamics.dt_s)
             : config_.dynamics.dt_s;
+    const bool route_active =
+        input.route.has_value() && input.route->points &&
+        input.route->points->size() >= 2U;
+    if (route_active) {
+      if (input.route->points->size() > kMaximumRoutePoints) {
+        throw std::invalid_argument{"MPPI route exceeds device route capacity"};
+      }
+      if (!route_uploaded_ || route_generation_ != input.route->generation ||
+          route_points_host_.get() != input.route->points.get()) {
+        checkCuda(cudaMemcpyAsync(
+                      buffers_.route_points.get(), input.route->points->data(),
+                      input.route->points->size() * sizeof(RoutePoint),
+                      cudaMemcpyHostToDevice, stream_),
+                  "upload semantic route");
+        route_points_host_ = input.route->points;
+        route_generation_ = input.route->generation;
+        route_point_count_ = input.route->points->size();
+        route_uploaded_ = true;
+      }
+    }
 
     started_.record(stream_);
     checkCuda(cudaMemcpyAsync(buffers_.nominal.get(), nominal_.data(),
@@ -756,6 +877,8 @@ public:
         config_.risk, config_.costs, textures_[active_texture_].grid(),
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         input.passage.value_or(PassageConstraint{}), input.passage.has_value(),
+        buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
+        route_active ? input.route->initial_station_m : 0.0F,
         previous_applied_control, input.reference_speed_mps,
         config_.early_exit_on_collision);
     simulation_done_.record(stream_);
@@ -860,6 +983,46 @@ public:
     result.horizon.push_back(state);
     const float initial_distance =
         std::hypot(input.target.x - state.x, input.target.y - state.y);
+    const auto hostRouteProjection = [&input](const State& candidate)
+        -> std::optional<float> {
+      if (!input.route.has_value() || !input.route->points ||
+          input.route->points->size() < 2U) {
+        return std::nullopt;
+      }
+      float best_squared_distance = kInfinity;
+      float best_station = input.route->initial_station_m;
+      const auto& points = *input.route->points;
+      for (std::size_t route_index = 0U; route_index + 1U < points.size();
+           ++route_index) {
+        const RoutePoint& first = points[route_index];
+        const RoutePoint& second = points[route_index + 1U];
+        if (second.station_m + 2.0F < input.route->initial_station_m) {
+          continue;
+        }
+        const float dx = second.x_m - first.x_m;
+        const float dy = second.y_m - first.y_m;
+        const float squared_length = dx * dx + dy * dy;
+        if (!(squared_length > 1.0e-8F)) {
+          continue;
+        }
+        const float ratio = std::clamp(
+            ((candidate.x - first.x_m) * dx + (candidate.y - first.y_m) * dy) /
+                squared_length,
+            0.0F, 1.0F);
+        const float offset_x = candidate.x - (first.x_m + ratio * dx);
+        const float offset_y = candidate.y - (first.y_m + ratio * dy);
+        const float squared_distance =
+            offset_x * offset_x + offset_y * offset_y;
+        if (squared_distance < best_squared_distance) {
+          best_squared_distance = squared_distance;
+          best_station = first.station_m +
+                         ratio * (second.station_m - first.station_m);
+        }
+      }
+      return best_squared_distance < kInfinity
+                 ? std::optional<float>{best_station}
+                 : std::nullopt;
+    };
     result.minimum_esdf_distance_m = kInfinity;
     result.selected_tier = RiskTier::kPreferred;
     Control previous_control = previous_applied_control;
@@ -888,9 +1051,13 @@ public:
       state = integrateReference(state, control, config_.dynamics);
       result.horizon.push_back(state);
       if (index + 1U == head_steps) {
+        const std::optional<float> route_station = hostRouteProjection(state);
         result.head_progress_m =
-            initial_distance -
-            std::hypot(input.target.x - state.x, input.target.y - state.y);
+            route_station.has_value()
+                ? *route_station - input.route->initial_station_m
+                : initial_distance -
+                      std::hypot(input.target.x - state.x,
+                                 input.target.y - state.y);
       }
       if (hostSolidCollision(state, known_solids_)) {
         result.known_solid_collision = true;
@@ -916,9 +1083,13 @@ public:
             .critical_exposure_m = result.critical_exposure_m,
             .planning_exposure_m = result.planning_exposure_m,
         });
+    const std::optional<float> terminal_route_station =
+        hostRouteProjection(state);
     result.terminal_progress_m =
-        initial_distance -
-        std::hypot(input.target.x - state.x, input.target.y - state.y);
+        terminal_route_station.has_value()
+            ? *terminal_route_station - input.route->initial_station_m
+            : initial_distance -
+                  std::hypot(input.target.x - state.x, input.target.y - state.y);
     result.timings.horizon_reconstruction_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   reconstruction_started)
@@ -954,6 +1125,10 @@ private:
   std::size_t active_texture_{0U};
   std::vector<KnownSolid> known_solids_;
   std::size_t solid_count_{0U};
+  std::shared_ptr<const std::vector<RoutePoint>> route_points_host_;
+  std::size_t route_point_count_{0U};
+  std::uint64_t route_generation_{0U};
+  bool route_uploaded_{false};
   std::vector<Control> nominal_;
   std::vector<Control> updated_;
   std::vector<Control> zero_noise_;

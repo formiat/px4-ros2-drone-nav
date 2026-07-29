@@ -1,6 +1,7 @@
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
+#include "drone_city_nav/semantic_portal_occupancy.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -50,11 +51,32 @@ namespace {
                           source - static_cast<double>(lower));
 }
 
+[[nodiscard]] std::shared_ptr<const std::vector<mppi::RoutePoint>>
+makeMppiRoute(const SemanticPortalRoute& route) {
+  auto points = std::make_shared<std::vector<mppi::RoutePoint>>();
+  points->reserve(route.polyline ? route.polyline->size() : 0U);
+  if (!route.polyline || route.polyline->size() != route.point_stations_m.size()) {
+    return points;
+  }
+  for (std::size_t index = 0U; index < route.polyline->size(); ++index) {
+    points->push_back(mppi::RoutePoint{
+        .x_m = static_cast<float>((*route.polyline)[index].x),
+        .y_m = static_cast<float>((*route.polyline)[index].y),
+        .station_m = static_cast<float>(route.point_stations_m[index]),
+    });
+  }
+  return points;
+}
+
 } // namespace
 
 void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
   std::size_t active_guide_expansions = 0U;
   double active_guide_cost = 0.0;
+  std::shared_ptr<const SemanticPortalRoute> semantic_route;
+  std::shared_ptr<const std::vector<mppi::RoutePoint>> mppi_route;
+  std::shared_ptr<const std::vector<Point2>> semantic_route_source;
+  SemanticPortalRouteBuildResult semantic_route_build;
   while (!stop_token.stop_requested()) {
     msg::RawObstacleSnapshot::ConstSharedPtr snapshot;
     {
@@ -70,7 +92,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       continue;
     }
     const std::int64_t source_stamp_ns = get_clock()->now().nanoseconds();
-    const RawOccupancyGridFromRosResult conversion =
+    RawOccupancyGridFromRosResult conversion =
         rawOccupancyGridFromRos(snapshot->grid, RawOccupancyGridFromRosConfig{100, 0});
     if (!conversion.grid.has_value()) {
       RCLCPP_WARN(get_logger(),
@@ -79,6 +101,10 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                   snapshot->obstacle_snapshot_revision);
       continue;
     }
+    const SemanticPortalOccupancyResult semantic_occupancy =
+        known_passages_.has_value()
+            ? overlaySemanticPortalSideSolids(*conversion.grid, *known_passages_)
+            : SemanticPortalOccupancyResult{};
     const auto build_started = std::chrono::steady_clock::now();
     const DistanceField2D field = DistanceField2D::build(
         *conversion.grid,
@@ -133,7 +159,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             navigation.state, navigation.state.yaw);
         lattice_observation = planRiskAwareMotionPrimitiveGuide(
             grid, *host_distances, position, guide_heading.heading_rad,
-            Point2{mission_goal_.x, mission_goal_.y}, lattice_config_);
+            Point2{mission_goal_.x, mission_goal_.y}, lattice_config_,
+            semantic_portal_primitives_);
         lattice_search_performed = true;
         const auto candidate = std::make_shared<const std::vector<Point2>>(
             std::move(lattice_observation.guide));
@@ -163,6 +190,20 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     const ActiveGlobalGuideUpdate active_status =
         active_guide_lifecycle_ ? active_guide_lifecycle_->status()
                                 : ActiveGlobalGuideUpdate{};
+    if (!guide) {
+      semantic_route.reset();
+      mppi_route.reset();
+      semantic_route_source.reset();
+      semantic_route_build = {};
+    } else if (guide.get() != semantic_route_source.get() || !semantic_route ||
+               semantic_route->generation != active_status.generation) {
+      semantic_route_build = buildSemanticPortalRoute(
+          guide, active_status.generation, known_passages_.value_or(KnownPassageMap{}),
+          activePassageSpeedLimitMps(passage_speed_policy_), semantic_route_config_);
+      semantic_route = semantic_route_build.route;
+      mppi_route = semantic_route ? makeMppiRoute(*semantic_route) : nullptr;
+      semantic_route_source = guide;
+    }
     const ProductionMppiPreparedEsdf prepared{
         .producer_instance_id = snapshot->producer_instance_id,
         .revision = snapshot->obstacle_snapshot_revision,
@@ -173,7 +214,13 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         .upload_ms = upload.upload_ms,
         .grid = grid,
         .distances_m = host_distances,
-        .global_guide = guide,
+        .semantic_route = semantic_route,
+        .mppi_route = mppi_route,
+        .portal_events = semantic_route_build.portal_events_created,
+        .rejected_portal_route_misses = semantic_route_build.rejected_route_miss,
+        .rejected_portal_overlaps = semantic_route_build.rejected_overlap,
+        .semantic_side_volumes = semantic_occupancy.side_volumes_considered,
+        .semantic_side_cells = semantic_occupancy.cells_marked_occupied,
         .global_guide_expansions = active_guide_expansions,
         .global_guide_cost = active_guide_cost,
         .global_guide_generation = active_status.generation,
@@ -206,6 +253,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         " build_ms=%.2f conversion_ms=%.2f upload_ms=%.2f "
         "raw_to_ready_ms=%.2f dropped_updates=%" PRIu64
         " guide_valid=%s guide_points=%zu guide_expansions=%zu guide_cost=%.2f "
+        "portal_events=%zu portal_route_misses=%zu portal_overlaps=%zu "
+        "semantic_side_volumes=%zu semantic_side_cells=%zu "
         "guide_generation=%" PRIu64
         " guide_reused=%s guide_mission_goal_hold=%s guide_release=%s "
         "guide_heading_source=%s guide_risk=%s guide_acceptance=%s "
@@ -221,7 +270,10 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
         dropped_raw_snapshots_, guide && guide->size() >= 2U ? "true" : "false",
         guide ? guide->size() : 0U, prepared.global_guide_expansions,
-        prepared.global_guide_cost, prepared.global_guide_generation,
+        prepared.global_guide_cost, prepared.portal_events,
+        prepared.rejected_portal_route_misses, prepared.rejected_portal_overlaps,
+        prepared.semantic_side_volumes, prepared.semantic_side_cells,
+        prepared.global_guide_generation,
         prepared.global_guide_reused ? "true" : "false",
         prepared.global_guide_mission_goal_hold ? "true" : "false",
         globalGuideReleaseReasonName(prepared.global_guide_release_reason),
@@ -245,49 +297,31 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
 mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& navigation,
                                              const ProductionMppiPreparedEsdf& esdf,
                                              const double lookahead_m,
-                                             std::string& target_source) const {
+                                             std::string& target_source,
+                                             double& target_station_m) const {
   mppi::State target{static_cast<float>(mission_goal_.x),
                      static_cast<float>(mission_goal_.y),
                      static_cast<float>(mission_goal_.z)};
   target_source = "mission_goal_direct";
-  if (!esdf.global_guide || esdf.global_guide->empty()) {
+  target_station_m = 0.0;
+  if (!esdf.semantic_route || !esdf.semantic_route->polyline ||
+      esdf.semantic_route->polyline->empty()) {
     return target;
   }
   const GlobalGuideProjection projection = projectOntoGlobalGuide(
-      *esdf.global_guide, Point2{navigation.state.x, navigation.state.y},
+      *esdf.semantic_route->polyline, Point2{navigation.state.x, navigation.state.y},
       esdf.global_guide_projection.station_m);
   if (!projection.valid) {
     return target;
   }
-  const Point2 selected = sampleGlobalGuide(
-      *esdf.global_guide, projection.station_m + std::max(0.0, lookahead_m));
+  target_station_m = std::min(esdf.semantic_route->total_length_m,
+                              projection.station_m + std::max(0.0, lookahead_m));
+  const Point2 selected =
+      sampleGlobalGuide(*esdf.semantic_route->polyline, target_station_m);
   target.x = static_cast<float>(selected.x);
   target.y = static_cast<float>(selected.y);
   target_source = "motion_primitive_guide";
   return target;
-}
-
-const PassageOpening*
-ProductionMppiNode::selectPassageOpening(const mppi::State& state,
-                                         const std::span<const Point2> guide) const {
-  if (!known_passages_.has_value()) {
-    return nullptr;
-  }
-  const PassageOpening* selected = nullptr;
-  double selected_distance = passage_route_selection_config_.activation_distance_m;
-  for (const PassageStructure& structure : known_passages_->structures) {
-    for (const PassageOpening& opening : structure.openings) {
-      const double opening_distance =
-          std::hypot(opening.center.x - state.x, opening.center.y - state.y);
-      if (opening_distance < selected_distance &&
-          guideCrossesPassageAhead(state, guide, opening,
-                                   passage_route_selection_config_)) {
-        selected = &opening;
-        selected_distance = opening_distance;
-      }
-    }
-  }
-  return selected;
 }
 
 void ProductionMppiNode::planningTick() {
@@ -327,8 +361,9 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const std::span<const Point2> guide =
-      esdf->global_guide ? std::span<const Point2>{*esdf->global_guide}
-                         : std::span<const Point2>{};
+      esdf->semantic_route && esdf->semantic_route->polyline
+          ? std::span<const Point2>{*esdf->semantic_route->polyline}
+          : std::span<const Point2>{};
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
       speed_policy_config_, MppiSpeedPolicyInput{
                                 .state = navigation.state,
@@ -337,32 +372,44 @@ void ProductionMppiNode::planningTick() {
                                 .passage_speed_limit_mps = std::nullopt,
                             });
   std::string target_source;
-  mppi::State target =
-      selectTarget(navigation, *esdf, speed_policy.target_lookahead_m, target_source);
+  double target_station_m = 0.0;
+  mppi::State target = selectTarget(navigation, *esdf, speed_policy.target_lookahead_m,
+                                    target_source, target_station_m);
   PassageCoordinatorResult passage_result;
-  const PassageOpening* selected_opening =
-      selectPassageOpening(navigation.state, guide);
+  const GlobalGuideProjection route_projection =
+      guide.empty()
+          ? GlobalGuideProjection{}
+          : projectOntoGlobalGuide(guide,
+                                   Point2{navigation.state.x, navigation.state.y},
+                                   esdf->global_guide_projection.station_m);
   if (passage_coordinator_) {
-    const double passage_speed_limit_mps =
-        activePassageSpeedLimitMps(passage_speed_policy_);
     passage_result = passage_coordinator_->update(PassageCoordinatorInput{
         .state = navigation.state,
-        .selected_opening = selected_opening,
+        .route = esdf->semantic_route,
+        .route_station_m = route_projection.valid ? route_projection.station_m : 0.0,
+        .normal_flight_z_m = mission_goal_.z,
         .approach_speed_mps = speed_policy.reference_speed_mps,
-        .passage_speed_limit_mps = passage_speed_limit_mps,
     });
   }
   std::optional<mppi::PassageConstraint> passage = passage_result.constraint;
   if (passage.has_value()) {
     speed_policy = evaluateMppiSpeedPolicy(
-        speed_policy_config_, MppiSpeedPolicyInput{
-                                  .state = navigation.state,
-                                  .mission_goal = mission_goal_,
-                                  .guide = guide,
-                                  .passage_speed_limit_mps = passage->speed_limit_mps,
-                              });
-    target =
-        selectTarget(navigation, *esdf, speed_policy.target_lookahead_m, target_source);
+        speed_policy_config_,
+        MppiSpeedPolicyInput{
+            .state = navigation.state,
+            .mission_goal = mission_goal_,
+            .guide = guide,
+            .passage_speed_limit_mps =
+                passage_result.speed_limit_active
+                    ? std::optional<double>{passage->speed_limit_mps}
+                    : std::nullopt,
+        });
+    target = selectTarget(navigation, *esdf, speed_policy.target_lookahead_m,
+                          target_source, target_station_m);
+  }
+  if (esdf->semantic_route) {
+    target.z = static_cast<float>(semanticRouteZReference(
+        *esdf->semantic_route, target_station_m, mission_goal_.z));
   }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
   if (!passage_speed_policy_.use_static_map && target_source == "mission_goal_direct") {
@@ -377,21 +424,15 @@ void ProductionMppiNode::planningTick() {
     speed_policy.target_lookahead_m = 0.0;
     target_source = "no_guide_braking_hold";
   } else if (passage.has_value()) {
-    target.z = passage->preferred_z_m;
     if (passage_result.hold_xy) {
       target.x = static_cast<float>(passage_result.hold_position.x);
       target.y = static_cast<float>(passage_result.hold_position.y);
+      target.z = static_cast<float>(passage_result.preferred_z_m);
       speed_policy.reference_speed_mps = 0.0;
       speed_policy.target_lookahead_m = 0.0;
       target_source = "passage_vertical_alignment";
-    } else if (passage_result.approach_alignment_active) {
-      target.x = static_cast<float>(passage_result.approach_target.x);
-      target.y = static_cast<float>(passage_result.approach_target.y);
-      speed_policy.reference_speed_mps = passage_result.approach_reference_speed_mps;
-      speed_policy.target_lookahead_m = 0.0;
-      target_source = "passage_approach_alignment";
     } else {
-      target_source = "passage_primitive";
+      target_source = "semantic_portal_route";
     }
   }
   const bool control_feedback_fresh =
@@ -450,6 +491,14 @@ void ProductionMppiNode::planningTick() {
       .reference_speed_mps = speed_policy.enabled
                                  ? static_cast<float>(speed_policy.reference_speed_mps)
                                  : -1.0F,
+      .route =
+          esdf->mppi_route && route_projection.valid
+              ? std::optional<mppi::RouteReference>{mppi::RouteReference{
+                    .points = esdf->mppi_route,
+                    .generation = esdf->global_guide_generation,
+                    .initial_station_m = static_cast<float>(route_projection.station_m),
+                }}
+              : std::nullopt,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
@@ -491,7 +540,7 @@ void ProductionMppiNode::planningTick() {
         .horizon = result.horizon,
         .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
                                                          : std::vector<mppi::State>{},
-        .global_guide = esdf->global_guide,
+        .semantic_route = esdf->semantic_route,
     };
     last_rviz_stamp_ns_ = now_ns;
   }
@@ -517,7 +566,8 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiPreparedEsdf diagnostic_esdf = *esdf;
   diagnostic_esdf.distances_m.reset();
   if (!rviz.has_value()) {
-    diagnostic_esdf.global_guide.reset();
+    diagnostic_esdf.semantic_route.reset();
+    diagnostic_esdf.mppi_route.reset();
   }
   enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot{
       .input = input,
