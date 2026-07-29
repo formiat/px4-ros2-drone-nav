@@ -371,13 +371,18 @@ GlobalGuideProgressTracker::GlobalGuideProgressTracker(
 
 GlobalGuideProgressUpdate GlobalGuideProgressTracker::evaluate(
     const GlobalGuideProgressObservation& observation) {
-  GlobalGuideProgressUpdate update{.stall_generation = stall_generation_};
+  GlobalGuideProgressUpdate update{
+      .stall_generation = stall_generation_,
+      .local_reseed_generation = local_reseed_generation_,
+      .predicted_head_progress_m = observation.predicted_head_progress_m,
+  };
   if (observation.stamp_ns <= 0 || observation.guide_generation == 0U ||
       !std::isfinite(observation.station_m) ||
       !std::isfinite(observation.predicted_head_progress_m) ||
       !observation.controller_active) {
     anchor_valid_ = false;
     safety_rejection_anchor_valid_ = false;
+    local_reseed_pending_ = false;
     return update;
   }
   if (observation.emergency_braking) {
@@ -396,16 +401,19 @@ GlobalGuideProgressUpdate GlobalGuideProgressTracker::evaluate(
       return update;
     }
     ++stall_generation_;
+    update.action = GlobalGuideProgressAction::kReleasePersistentSafetyRejection;
     update.stalled = true;
     update.persistent_safety_rejection = true;
     update.stall_generation = stall_generation_;
     safety_rejection_anchor_stamp_ns_ = observation.stamp_ns;
     anchor_valid_ = false;
+    local_reseed_pending_ = false;
     return update;
   }
   safety_rejection_anchor_valid_ = false;
   if (!anchor_valid_ || observation.guide_generation != anchor_guide_generation_ ||
       observation.stamp_ns < anchor_stamp_ns_) {
+    local_reseed_pending_ = false;
     resetAnchor(observation);
     return update;
   }
@@ -414,18 +422,40 @@ GlobalGuideProgressUpdate GlobalGuideProgressTracker::evaluate(
       static_cast<double>(observation.stamp_ns - anchor_stamp_ns_) / 1.0e9;
   update.progress_m = observation.station_m - anchor_station_m_;
   if (update.progress_m >= config_.minimum_progress_m) {
+    local_reseed_pending_ = false;
     resetAnchor(observation);
     return update;
   }
-  if (update.observation_age_s < config_.observation_window_s ||
-      observation.predicted_head_progress_m <
-          config_.minimum_predicted_head_progress_m) {
+  if (update.observation_age_s < config_.observation_window_s) {
+    return update;
+  }
+
+  if (observation.predicted_head_progress_m <
+      config_.minimum_predicted_head_progress_m) {
+    ++stall_generation_;
+    update.action = GlobalGuideProgressAction::kReleaseLowPredictedProgress;
+    update.stalled = true;
+    update.stall_generation = stall_generation_;
+    local_reseed_pending_ = false;
+    resetAnchor(observation);
+    return update;
+  }
+
+  if (!local_reseed_pending_) {
+    ++local_reseed_generation_;
+    update.action = GlobalGuideProgressAction::kReseedLocalMppi;
+    update.local_reseed_requested = true;
+    update.local_reseed_generation = local_reseed_generation_;
+    local_reseed_pending_ = true;
+    resetAnchor(observation);
     return update;
   }
 
   ++stall_generation_;
+  update.action = GlobalGuideProgressAction::kReleasePredictionMismatch;
   update.stalled = true;
   update.stall_generation = stall_generation_;
+  local_reseed_pending_ = false;
   resetAnchor(observation);
   return update;
 }
@@ -507,6 +537,23 @@ globalGuideAcceptanceReasonName(const GlobalGuideAcceptanceReason reason) noexce
       return "invalid_clearance";
     case GlobalGuideAcceptanceReason::kCollision:
       return "collision";
+  }
+  return "unknown";
+}
+
+const char*
+globalGuideProgressActionName(const GlobalGuideProgressAction action) noexcept {
+  switch (action) {
+    case GlobalGuideProgressAction::kNone:
+      return "none";
+    case GlobalGuideProgressAction::kReseedLocalMppi:
+      return "reseed_local_mppi";
+    case GlobalGuideProgressAction::kReleaseLowPredictedProgress:
+      return "release_low_predicted_progress";
+    case GlobalGuideProgressAction::kReleasePredictionMismatch:
+      return "release_prediction_mismatch";
+    case GlobalGuideProgressAction::kReleasePersistentSafetyRejection:
+      return "release_persistent_safety_rejection";
   }
   return "unknown";
 }

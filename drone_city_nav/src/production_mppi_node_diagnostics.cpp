@@ -152,6 +152,17 @@ void ProductionMppiNode::processDiagnostics(
                 liveness.predicted_head_progress_m,
                 liveness.predicted_terminal_progress_m);
   }
+  if (snapshot.guide_progress.local_reseed_requested) {
+    RCLCPP_WARN(
+        get_logger(),
+        "GLOBAL_GUIDE_LOCAL_RESEED guide_generation=%" PRIu64
+        " reseed_generation=%" PRIu64
+        " observation_age_s=%.3f along_guide_progress_m=%.3f "
+        "predicted_head_progress_m=%.3f",
+        esdf.global_guide_generation, snapshot.guide_progress.local_reseed_generation,
+        snapshot.guide_progress.observation_age_s, snapshot.guide_progress.progress_m,
+        snapshot.guide_progress.predicted_head_progress_m);
+  }
   if (snapshot.guide_progress.stalled) {
     RCLCPP_WARN(get_logger(),
                 "GLOBAL_GUIDE_STALL guide_generation=%" PRIu64 " reason=%s"
@@ -159,12 +170,11 @@ void ProductionMppiNode::processDiagnostics(
                 " observation_age_s=%.3f along_guide_progress_m=%.3f "
                 "predicted_head_progress_m=%.3f",
                 esdf.global_guide_generation,
-                snapshot.guide_progress.persistent_safety_rejection
-                    ? "persistent_safety_rejection"
-                    : "no_progress",
+                globalGuideProgressActionName(snapshot.guide_progress.action),
                 snapshot.guide_progress.stall_generation,
                 snapshot.guide_progress.observation_age_s,
-                snapshot.guide_progress.progress_m, liveness.predicted_head_progress_m);
+                snapshot.guide_progress.progress_m,
+                snapshot.guide_progress.predicted_head_progress_m);
   }
   if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
@@ -229,6 +239,10 @@ void ProductionMppiNode::processDiagnostics(
        << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason)
        << " guide_station_m=" << esdf.global_guide_projection.station_m
        << " guide_remaining_m=" << esdf.global_guide_projection.remaining_m
+       << " guide_progress_action="
+       << globalGuideProgressActionName(snapshot.guide_progress.action)
+       << " guide_local_reseed_generation="
+       << snapshot.guide_progress.local_reseed_generation
        << " lattice_search_performed="
        << (esdf.lattice_search_performed ? "true" : "false")
        << " lattice_status=" << latticePlanStatusName(esdf.lattice_status)
@@ -381,6 +395,10 @@ void ProductionMppiNode::processDiagnostics(
         << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason) << '"'
         << ",\"guide_station_m\":" << esdf.global_guide_projection.station_m
         << ",\"guide_remaining_m\":" << esdf.global_guide_projection.remaining_m
+        << ",\"guide_progress_action\":\""
+        << globalGuideProgressActionName(snapshot.guide_progress.action) << '"'
+        << ",\"guide_local_reseed_generation\":"
+        << snapshot.guide_progress.local_reseed_generation
         << ",\"lattice_search_performed\":"
         << (esdf.lattice_search_performed ? "true" : "false")
         << ",\"lattice_executable\":" << (esdf.lattice_executable ? "true" : "false")

@@ -247,7 +247,7 @@ TEST(ActiveGlobalGuideTest, ProjectionDoesNotMoveBehindMinimumStation) {
   EXPECT_NEAR(projection.point.x, 15.0, 1.0e-9);
 }
 
-TEST(GlobalGuideProgressTrackerTest, DetectsMissingAlongGuideProgress) {
+TEST(GlobalGuideProgressTrackerTest, ReseedsThenReleasesPredictionMismatch) {
   GlobalGuideProgressTracker tracker;
   EXPECT_FALSE(tracker
                    .evaluate(GlobalGuideProgressObservation{
@@ -259,7 +259,7 @@ TEST(GlobalGuideProgressTrackerTest, DetectsMissingAlongGuideProgress) {
                    })
                    .stalled);
 
-  const GlobalGuideProgressUpdate update =
+  const GlobalGuideProgressUpdate reseed =
       tracker.evaluate(GlobalGuideProgressObservation{
           .stamp_ns = 2100000000LL,
           .guide_generation = 3U,
@@ -268,9 +268,51 @@ TEST(GlobalGuideProgressTrackerTest, DetectsMissingAlongGuideProgress) {
           .controller_active = true,
       });
 
+  EXPECT_FALSE(reseed.stalled);
+  EXPECT_TRUE(reseed.local_reseed_requested);
+  EXPECT_EQ(reseed.action, GlobalGuideProgressAction::kReseedLocalMppi);
+  EXPECT_EQ(reseed.local_reseed_generation, 1U);
+  EXPECT_NEAR(reseed.progress_m, 0.2, 1.0e-9);
+
+  const GlobalGuideProgressUpdate release =
+      tracker.evaluate(GlobalGuideProgressObservation{
+          .stamp_ns = 3'200'000'000LL,
+          .guide_generation = 3U,
+          .station_m = 5.3,
+          .predicted_head_progress_m = 2.0,
+          .controller_active = true,
+      });
+
+  EXPECT_TRUE(release.stalled);
+  EXPECT_FALSE(release.local_reseed_requested);
+  EXPECT_EQ(release.action, GlobalGuideProgressAction::kReleasePredictionMismatch);
+  EXPECT_EQ(release.stall_generation, 1U);
+  EXPECT_NEAR(release.progress_m, 0.1, 1.0e-9);
+}
+
+TEST(GlobalGuideProgressTrackerTest, ReleasesLowPredictedProgressAfterWindow) {
+  GlobalGuideProgressTracker tracker;
+  (void)tracker.evaluate(GlobalGuideProgressObservation{
+      .stamp_ns = 1'000'000'000LL,
+      .guide_generation = 3U,
+      .station_m = 5.0,
+      .predicted_head_progress_m = 0.1,
+      .controller_active = true,
+  });
+
+  const GlobalGuideProgressUpdate update =
+      tracker.evaluate(GlobalGuideProgressObservation{
+          .stamp_ns = 2'100'000'000LL,
+          .guide_generation = 3U,
+          .station_m = 5.2,
+          .predicted_head_progress_m = 0.1,
+          .controller_active = true,
+      });
+
   EXPECT_TRUE(update.stalled);
+  EXPECT_FALSE(update.local_reseed_requested);
+  EXPECT_EQ(update.action, GlobalGuideProgressAction::kReleaseLowPredictedProgress);
   EXPECT_EQ(update.stall_generation, 1U);
-  EXPECT_NEAR(update.progress_m, 0.2, 1.0e-9);
 }
 
 TEST(GlobalGuideProgressTrackerTest, ResetsAfterUsefulProgress) {
@@ -293,7 +335,50 @@ TEST(GlobalGuideProgressTrackerTest, ResetsAfterUsefulProgress) {
       });
 
   EXPECT_FALSE(update.stalled);
+  EXPECT_FALSE(update.local_reseed_requested);
   EXPECT_NEAR(update.progress_m, 0.6, 1.0e-9);
+}
+
+TEST(GlobalGuideProgressTrackerTest, UsefulProgressClearsPendingReseed) {
+  GlobalGuideProgressTracker tracker;
+  (void)tracker.evaluate(GlobalGuideProgressObservation{
+      .stamp_ns = 1'000'000'000LL,
+      .guide_generation = 3U,
+      .station_m = 5.0,
+      .predicted_head_progress_m = 2.0,
+      .controller_active = true,
+  });
+  ASSERT_TRUE(tracker
+                  .evaluate(GlobalGuideProgressObservation{
+                      .stamp_ns = 2'100'000'000LL,
+                      .guide_generation = 3U,
+                      .station_m = 5.1,
+                      .predicted_head_progress_m = 2.0,
+                      .controller_active = true,
+                  })
+                  .local_reseed_requested);
+  EXPECT_FALSE(tracker
+                   .evaluate(GlobalGuideProgressObservation{
+                       .stamp_ns = 3'200'000'000LL,
+                       .guide_generation = 3U,
+                       .station_m = 5.7,
+                       .predicted_head_progress_m = 2.0,
+                       .controller_active = true,
+                   })
+                   .stalled);
+
+  const GlobalGuideProgressUpdate reseed =
+      tracker.evaluate(GlobalGuideProgressObservation{
+          .stamp_ns = 4'300'000'000LL,
+          .guide_generation = 3U,
+          .station_m = 5.8,
+          .predicted_head_progress_m = 2.0,
+          .controller_active = true,
+      });
+
+  EXPECT_TRUE(reseed.local_reseed_requested);
+  EXPECT_FALSE(reseed.stalled);
+  EXPECT_EQ(reseed.local_reseed_generation, 2U);
 }
 
 TEST(GlobalGuideProgressTrackerTest, ReleasesAfterPersistentSafetyRejection) {
@@ -323,6 +408,8 @@ TEST(GlobalGuideProgressTrackerTest, ReleasesAfterPersistentSafetyRejection) {
 
   EXPECT_TRUE(update.stalled);
   EXPECT_TRUE(update.persistent_safety_rejection);
+  EXPECT_EQ(update.action,
+            GlobalGuideProgressAction::kReleasePersistentSafetyRejection);
   EXPECT_EQ(update.stall_generation, 1U);
 }
 

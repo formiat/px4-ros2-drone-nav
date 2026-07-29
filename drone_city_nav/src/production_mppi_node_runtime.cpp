@@ -691,6 +691,8 @@ void ProductionMppiNode::planningTick() {
                                       std::memory_order_release);
     }
   }
+  const std::uint64_t nominal_reseed_generation =
+      liveness.reseed_generation + guide_progress.local_reseed_generation;
   mppi::MppiTickInput input{
       .initial_state = navigation.state,
       .target = target,
@@ -701,7 +703,7 @@ void ProductionMppiNode::planningTick() {
       .previous_applied_control =
           control_feedback_fresh ? std::optional<mppi::Control>{applied_control.control}
                                  : std::nullopt,
-      .nominal_reseed_generation = liveness.reseed_generation,
+      .nominal_reseed_generation = nominal_reseed_generation,
       .reference_speed_mps = speed_policy.enabled
                                  ? static_cast<float>(speed_policy.reference_speed_mps)
                                  : -1.0F,
@@ -752,7 +754,8 @@ void ProductionMppiNode::planningTick() {
   }
   ++tick_sequence_;
   recordTickStatistics(result, passage_result, planning_state,
-                       liveness.reseed_requested);
+                       liveness.reseed_requested ||
+                           guide_progress.local_reseed_requested);
   publishExecutionHorizon(input, result, *esdf, passage_result, planning_state, now_ns);
 
   const auto stability_started = std::chrono::steady_clock::now();

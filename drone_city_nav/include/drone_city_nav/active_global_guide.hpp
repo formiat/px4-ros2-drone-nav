@@ -105,12 +105,24 @@ struct GlobalGuideProgressObservation {
   bool emergency_braking{false};
 };
 
+enum class GlobalGuideProgressAction : std::uint8_t {
+  kNone,
+  kReseedLocalMppi,
+  kReleaseLowPredictedProgress,
+  kReleasePredictionMismatch,
+  kReleasePersistentSafetyRejection,
+};
+
 struct GlobalGuideProgressUpdate {
+  GlobalGuideProgressAction action{GlobalGuideProgressAction::kNone};
   bool stalled{false};
   bool persistent_safety_rejection{false};
+  bool local_reseed_requested{false};
   std::uint64_t stall_generation{0U};
+  std::uint64_t local_reseed_generation{0U};
   double observation_age_s{0.0};
   double progress_m{0.0};
+  double predicted_head_progress_m{0.0};
 };
 
 [[nodiscard]] GlobalGuideProjection
@@ -170,6 +182,8 @@ private:
   std::int64_t safety_rejection_anchor_stamp_ns_{0};
   std::uint64_t safety_rejection_guide_generation_{0U};
   std::uint64_t stall_generation_{0U};
+  std::uint64_t local_reseed_generation_{0U};
+  bool local_reseed_pending_{false};
 };
 
 [[nodiscard]] const char*
@@ -179,5 +193,7 @@ globalGuideHeadingSourceName(GlobalGuideHeadingSource source) noexcept;
 [[nodiscard]] const char* globalGuideRiskTierName(GlobalGuideRiskTier tier) noexcept;
 [[nodiscard]] const char*
 globalGuideAcceptanceReasonName(GlobalGuideAcceptanceReason reason) noexcept;
+[[nodiscard]] const char*
+globalGuideProgressActionName(GlobalGuideProgressAction action) noexcept;
 
 } // namespace drone_city_nav
