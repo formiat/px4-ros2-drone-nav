@@ -92,30 +92,41 @@ TEST(PassageCoordinatorTest, ReportsUpcomingEventWithoutLimitingSpeed) {
   EXPECT_EQ(upcoming_constraint.phase, mppi::PassagePhase::kUpcoming);
 }
 
-TEST(PassageCoordinatorTest, HoldsXYWhenAltitudeCannotBeCapturedBeforeEntry) {
+TEST(PassageCoordinatorTest, RollsSpeedDownBeforeStationaryAlignmentIsNecessary) {
   PassageCoordinator coordinator;
 
   const PassageCoordinatorResult result =
       coordinator.update(inputAt(testRoute(), 5.0F, 18.0F));
 
-  EXPECT_EQ(result.phase, PassageCoordinatorPhase::kVerticalAlignment);
-  EXPECT_TRUE(result.hold_xy);
+  EXPECT_EQ(result.phase, PassageCoordinatorPhase::kUpcoming);
+  EXPECT_FALSE(result.hold_xy);
   EXPECT_TRUE(result.speed_limit_active);
   EXPECT_GT(result.required_alignment_distance_m, result.distance_to_entry_m);
   ASSERT_TRUE(result.constraint.has_value());
   const mppi::PassageConstraint alignment_constraint =
       result.constraint.value_or(mppi::PassageConstraint{});
-  EXPECT_EQ(alignment_constraint.phase, mppi::PassagePhase::kVerticalAlignment);
+  EXPECT_EQ(alignment_constraint.phase, mppi::PassagePhase::kUpcoming);
+  EXPECT_LT(alignment_constraint.speed_limit_mps, 5.0F);
+}
+
+TEST(PassageCoordinatorTest, HoldsOnlyImmediatelyBeforeEntryWhenAltitudeIsNotReady) {
+  PassageCoordinator coordinator;
+
+  const PassageCoordinatorResult result =
+      coordinator.update(inputAt(testRoute(), 8.0F, 18.0F));
+
+  EXPECT_EQ(result.phase, PassageCoordinatorPhase::kVerticalAlignment);
+  EXPECT_TRUE(result.hold_xy);
 }
 
 TEST(PassageCoordinatorTest, ReleasesHoldAfterStableVerticalCapture) {
   PassageCoordinator coordinator;
   const auto route = testRoute();
-  static_cast<void>(coordinator.update(inputAt(route, 5.0F, 18.0F)));
+  static_cast<void>(coordinator.update(inputAt(route, 8.0F, 18.0F)));
 
   PassageCoordinatorResult result;
   for (std::size_t cycle = 0U; cycle < 3U; ++cycle) {
-    result = coordinator.update(inputAt(route, 5.0F, 5.0F, 0.1F));
+    result = coordinator.update(inputAt(route, 8.0F, 5.0F, 0.1F));
   }
 
   EXPECT_EQ(result.phase, PassageCoordinatorPhase::kReady);
@@ -200,7 +211,7 @@ TEST(PassageCoordinatorTest, RetainsReadyStateAcrossBriefAltitudeViolation) {
 
   EXPECT_TRUE(first.vertical_ready);
   EXPECT_TRUE(second.vertical_ready);
-  EXPECT_EQ(lost.phase, PassageCoordinatorPhase::kVerticalAlignment);
+  EXPECT_EQ(lost.phase, PassageCoordinatorPhase::kUpcoming);
   EXPECT_FALSE(lost.vertical_ready);
 }
 

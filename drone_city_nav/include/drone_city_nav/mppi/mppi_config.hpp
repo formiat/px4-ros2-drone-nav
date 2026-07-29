@@ -46,6 +46,8 @@ struct CostConfig {
   float yaw_change_weight{0.1F};
   float control_effort_weight{0.01F};
   float terminal_weight{2.0F};
+  float planning_exposure_weight{2.0F};
+  float critical_exposure_weight{20.0F};
   float temperature{8.0F};
 };
 

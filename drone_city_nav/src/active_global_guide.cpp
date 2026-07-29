@@ -236,10 +236,7 @@ ActiveGlobalGuideUpdate ActiveGlobalGuideLifecycle::update(
         std::max(0.0, projection.total_length_m - current_station_m_);
     status_.current_risk =
         suffixRisk(*guide_, current_station_m_, grid, esdf_m, config_).risk;
-    const bool newly_blocked =
-        status_.current_risk == GlobalGuideRiskTier::kCollision ||
-        (status_.current_risk == GlobalGuideRiskTier::kCritical &&
-         accepted_risk_ < GlobalGuideRiskTier::kCritical);
+    const bool newly_blocked = status_.current_risk == GlobalGuideRiskTier::kCollision;
     status_.reaches_mission_goal = reaches_mission_goal_;
     if (newly_blocked) {
       status_.release_reason = GlobalGuideReleaseReason::kBlocked;
@@ -251,11 +248,15 @@ ActiveGlobalGuideUpdate ActiveGlobalGuideLifecycle::update(
               : GlobalGuideReleaseReason::kStalled;
     } else if (!reaches_mission_goal_ &&
                status_.projection.remaining_m < config_.minimum_remaining_m) {
+      status_.active = true;
+      status_.retained = true;
+      status_.requires_replan = true;
       status_.release_reason = GlobalGuideReleaseReason::kExhausted;
+      return status_;
     } else {
       status_.active = true;
       status_.retained = true;
-      status_.requires_replan = false;
+      status_.requires_replan = status_.current_risk == GlobalGuideRiskTier::kCritical;
       status_.release_reason = GlobalGuideReleaseReason::kNone;
       return status_;
     }

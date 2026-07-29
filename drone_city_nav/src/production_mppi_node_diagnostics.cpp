@@ -79,8 +79,9 @@ void ProductionMppiNode::recordTickStatistics(
   liveness_reseeds_ += liveness_reseed_requested ? 1U : 0U;
   no_guide_braking_hold_ticks_ +=
       planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ? 1U : 0U;
-  stale_world_braking_hold_ticks_ +=
-      planning_state == ProductionMppiPlanningState::kStaleWorldBrakingHold ? 1U : 0U;
+  unavailable_world_braking_hold_ticks_ +=
+      planning_state == ProductionMppiPlanningState::kUnavailableWorldBrakingHold ? 1U
+                                                                                  : 0U;
   mission_goal_position_hold_ticks_ +=
       planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold ? 1U : 0U;
   passage_vertical_alignment_ticks_ += passage_coordinator.hold_xy ? 1U : 0U;
@@ -174,12 +175,19 @@ void ProductionMppiNode::processDiagnostics(
                          latticeSearchTerminationName(esdf.lattice_termination),
                          std::hypot(input.initial_state.vx, input.initial_state.vy));
   }
-  if (planning_state == ProductionMppiPlanningState::kStaleWorldBrakingHold) {
+  if (planning_state == ProductionMppiPlanningState::kUnavailableWorldBrakingHold) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "PRODUCTION_MPPI_STALE_WORLD action=braking_hold esdf_age_ms=%.1f "
+        "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=braking_hold esdf_age_ms=%.1f "
         "maximum_esdf_age_ms=%.1f raw_revision=%" PRIu64,
         snapshot.esdf_age_ms, maximum_esdf_age_ms_, esdf.revision);
+  }
+  if (planning_state == ProductionMppiPlanningState::kPlanned &&
+      snapshot.esdf_age_ms > maximum_esdf_age_ms_) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PRODUCTION_MPPI_STALE_WORLD action=continue_resident_esdf "
+                         "esdf_age_ms=%.1f warning_age_ms=%.1f revision=%" PRIu64,
+                         snapshot.esdf_age_ms, maximum_esdf_age_ms_, esdf.revision);
   }
   if (snapshot.goal_capture.newly_latched) {
     RCLCPP_INFO(get_logger(),
@@ -226,6 +234,15 @@ void ProductionMppiNode::processDiagnostics(
        << " lattice_status=" << latticePlanStatusName(esdf.lattice_status)
        << " lattice_termination="
        << latticeSearchTerminationName(esdf.lattice_termination)
+       << " lattice_risk_stage=" << latticeRiskStageName(esdf.lattice_risk_stage)
+       << " lattice_stale_pops=" << esdf.lattice_stale_queue_pops
+       << " lattice_open_peak=" << esdf.lattice_open_peak
+       << " lattice_records_peak=" << esdf.lattice_records_peak
+       << " lattice_two_step_states=" << esdf.lattice_two_step_reachable_states
+       << " lattice_reachable_depth_m=" << esdf.lattice_reachable_depth_m
+       << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
+       << " maximum_eligible_risk_tier="
+       << mppi::mppiRiskTierName(snapshot.maximum_eligible_risk_tier)
        << " target_lookahead_m=" << speed_policy.target_lookahead_m
        << " reference_speed_mps=" << input.reference_speed_mps
        << " curvature_speed_limit_mps="
@@ -370,6 +387,18 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_status\":\"" << latticePlanStatusName(esdf.lattice_status) << '"'
         << ",\"lattice_termination\":\""
         << latticeSearchTerminationName(esdf.lattice_termination) << '"'
+        << ",\"lattice_risk_stage\":\"" << latticeRiskStageName(esdf.lattice_risk_stage)
+        << '"' << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
+        << ",\"lattice_open_peak\":" << esdf.lattice_open_peak
+        << ",\"lattice_records_peak\":" << esdf.lattice_records_peak
+        << ",\"lattice_two_step_reachable_states\":"
+        << esdf.lattice_two_step_reachable_states
+        << ",\"lattice_reachable_depth_m\":" << esdf.lattice_reachable_depth_m
+        << ",\"lattice_frontier_candidates_considered\":"
+        << esdf.lattice_frontier_candidates_considered
+        << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
+        << ",\"maximum_eligible_risk_tier\":\""
+        << mppi::mppiRiskTierName(snapshot.maximum_eligible_risk_tier) << '"'
         << ",\"lattice_planning_goal_reached\":"
         << (esdf.lattice_planning_goal_reached ? "true" : "false")
         << ",\"lattice_achieved_progress_m\":" << esdf.lattice_achieved_progress_m
@@ -479,7 +508,7 @@ void ProductionMppiNode::publishSummary() {
   std::uint64_t no_progress_horizons{0U};
   std::uint64_t liveness_reseeds{0U};
   std::uint64_t no_guide_braking_hold_ticks{0U};
-  std::uint64_t stale_world_braking_hold_ticks{0U};
+  std::uint64_t unavailable_world_braking_hold_ticks{0U};
   std::uint64_t mission_goal_position_hold_ticks{0U};
   std::uint64_t passage_vertical_alignment_ticks{0U};
   std::uint64_t passage_traversal_ticks{0U};
@@ -494,7 +523,7 @@ void ProductionMppiNode::publishSummary() {
     no_progress_horizons = no_progress_horizons_;
     liveness_reseeds = liveness_reseeds_;
     no_guide_braking_hold_ticks = no_guide_braking_hold_ticks_;
-    stale_world_braking_hold_ticks = stale_world_braking_hold_ticks_;
+    unavailable_world_braking_hold_ticks = unavailable_world_braking_hold_ticks_;
     mission_goal_position_hold_ticks = mission_goal_position_hold_ticks_;
     passage_vertical_alignment_ticks = passage_vertical_alignment_ticks_;
     passage_traversal_ticks = passage_traversal_ticks_;
@@ -516,7 +545,8 @@ void ProductionMppiNode::publishSummary() {
       "deadline_misses=%" PRIu64 " raw_collision_horizons=%" PRIu64
       " solid_collision_horizons=%" PRIu64 " post_update_contract_violations=%" PRIu64
       " no_progress_horizons=%" PRIu64 " liveness_reseeds=%" PRIu64
-      " no_guide_braking_hold_ticks=%" PRIu64 " stale_world_braking_hold_ticks=%" PRIu64
+      " no_guide_braking_hold_ticks=%" PRIu64
+      " unavailable_world_braking_hold_ticks=%" PRIu64
       " mission_goal_position_hold_ticks=%" PRIu64
       " passage_vertical_alignment_ticks=%" PRIu64 " passage_traversal_ticks=%" PRIu64
       " dropped_esdf_updates=%" PRIu64 " dropped_diagnostics=%" PRIu64,
@@ -524,7 +554,7 @@ void ProductionMppiNode::publishSummary() {
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, raw_collision_horizons, solid_collision_horizons,
       post_update_contract_violations, no_progress_horizons, liveness_reseeds,
-      no_guide_braking_hold_ticks, stale_world_braking_hold_ticks,
+      no_guide_braking_hold_ticks, unavailable_world_braking_hold_ticks,
       mission_goal_position_hold_ticks, passage_vertical_alignment_ticks,
       passage_traversal_ticks, dropped_esdf_updates,
       dropped_diagnostics_snapshots_.load(std::memory_order_relaxed));

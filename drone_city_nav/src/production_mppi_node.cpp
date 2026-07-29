@@ -38,8 +38,8 @@ productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcep
       return "planned";
     case ProductionMppiPlanningState::kNoGuideBrakingHold:
       return "no_guide_braking_hold";
-    case ProductionMppiPlanningState::kStaleWorldBrakingHold:
-      return "stale_world_braking_hold";
+    case ProductionMppiPlanningState::kUnavailableWorldBrakingHold:
+      return "unavailable_world_braking_hold";
     case ProductionMppiPlanningState::kMissionGoalPositionHold:
       return "mission_goal_position_hold";
   }
@@ -54,6 +54,8 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("diagnostics_info_rate_hz", 5.0);
   deadline_ms_ = declare_parameter<double>("deadline_ms", 20.0);
   maximum_pose_age_ms_ = declare_parameter<double>("maximum_pose_age_ms", 150.0);
+  maximum_pose_prediction_age_ms_ =
+      declare_parameter<double>("maximum_pose_prediction_age_ms", 1000.0);
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
   maximum_control_feedback_age_ms_ =
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
@@ -65,6 +67,13 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<bool>("use_static_map", true);
   no_static_guide_lookahead_m_ =
       declare_parameter<double>("no_static_guide_lookahead_m", 30.0);
+  const std::int64_t risk_recovery_stable_cycles =
+      declare_parameter<std::int64_t>("mppi_risk_recovery_stable_cycles", 20);
+  if (risk_recovery_stable_cycles <= 0) {
+    throw std::invalid_argument{"MPPI risk recovery stable cycles must be positive"};
+  }
+  const std::size_t risk_recovery_cycles =
+      static_cast<std::size_t>(risk_recovery_stable_cycles);
   passage_speed_policy_.static_limit_mps = static_cast<float>(
       declare_parameter<double>("static_passage_speed_limit_mps", 10.0));
   passage_speed_policy_.no_static_limit_mps = static_cast<float>(
@@ -94,6 +103,14 @@ ProductionMppiNode::ProductionMppiNode()
   const double active_horizon_duration_s = passage_speed_policy_.use_static_map
                                                ? static_horizon_duration_s
                                                : no_static_horizon_duration_s;
+  const double static_stale_esdf_execution_window_s = declare_parameter<double>(
+      "static_stale_esdf_execution_window_s", static_horizon_duration_s);
+  const double no_static_stale_esdf_execution_window_s = declare_parameter<double>(
+      "no_static_stale_esdf_execution_window_s", no_static_horizon_duration_s);
+  stale_esdf_execution_window_ms_ =
+      1000.0 * (passage_speed_policy_.use_static_map
+                    ? static_stale_esdf_execution_window_s
+                    : no_static_stale_esdf_execution_window_s);
   mppi_config_.steps = static_cast<std::size_t>(
       std::ceil(active_horizon_duration_s / mppi_config_.dynamics.dt_s));
   MppiSpeedPolicyConfig static_speed_policy_config;
@@ -229,6 +246,33 @@ ProductionMppiNode::ProductionMppiNode()
   lattice_config_.maximum_expansions = static_cast<std::size_t>(
       passage_speed_policy_.use_static_map ? static_lattice_expansions
                                            : no_static_lattice_expansions);
+  const double static_lattice_deadline_ms =
+      declare_parameter<double>("static_global_lattice_deadline_ms", 250.0);
+  const double no_static_lattice_deadline_ms =
+      declare_parameter<double>("no_static_global_lattice_deadline_ms", 100.0);
+  lattice_config_.maximum_search_time_ms = passage_speed_policy_.use_static_map
+                                               ? static_lattice_deadline_ms
+                                               : no_static_lattice_deadline_ms;
+  const double static_lattice_roi_halo_m =
+      declare_parameter<double>("static_global_lattice_roi_halo_m", 90.0);
+  const double no_static_lattice_roi_halo_m =
+      declare_parameter<double>("no_static_global_lattice_roi_halo_m", 45.0);
+  lattice_config_.maximum_search_roi_halo_m = passage_speed_policy_.use_static_map
+                                                  ? static_lattice_roi_halo_m
+                                                  : no_static_lattice_roi_halo_m;
+  lattice_config_.maximum_frontier_candidates = static_cast<std::size_t>(
+      declare_parameter<std::int64_t>("global_lattice_frontier_candidates", 64));
+  lattice_config_.minimum_frontier_reachable_depth_m =
+      declare_parameter<double>("global_lattice_frontier_reachable_depth_m", 8.0);
+  lattice_config_.frontier_blacklist_radius_m =
+      declare_parameter<double>("global_lattice_frontier_blacklist_radius_m", 6.0);
+  lattice_config_.frontier_blacklist_heading_tolerance_bins =
+      static_cast<int>(declare_parameter<std::int64_t>(
+          "global_lattice_frontier_blacklist_heading_bins", 1));
+  lattice_config_.planning_exposure_tie_break_per_m =
+      declare_parameter<double>("global_lattice_planning_tie_break_per_m", 1.0);
+  lattice_config_.critical_exposure_tie_break_per_m =
+      declare_parameter<double>("global_lattice_critical_tie_break_per_m", 10.0);
   lattice_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   lattice_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
@@ -315,6 +359,8 @@ ProductionMppiNode::ProductionMppiNode()
   }
 
   liveness_supervisor_ = std::make_unique<MppiLivenessSupervisor>(liveness_config_);
+  risk_escalation_ = std::make_unique<MppiRiskEscalation>(
+      MppiRiskEscalationConfig{.recovery_stable_cycles = risk_recovery_cycles});
   active_guide_lifecycle_ =
       std::make_unique<ActiveGlobalGuideLifecycle>(active_guide_config_);
   guide_progress_tracker_ =

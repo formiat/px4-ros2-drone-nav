@@ -56,8 +56,6 @@ public:
       : Node{"mppi_offboard_node"} {
     initial_altitude_m_ = declare_parameter<double>("initial_altitude_m", 18.0);
     takeoff_hover_s_ = declare_parameter<double>("takeoff_hover_s", 1.0);
-    horizon_max_receive_age_s_ =
-        declare_parameter<double>("mppi_horizon_max_receive_age_s", 0.20);
     control_lookahead_s_ = declare_parameter<double>("mppi_control_lookahead_s", 0.05);
     fallback_braking_acceleration_mps2_ =
         declare_parameter<double>("mppi_fallback_braking_acceleration_mps2", 8.0);
@@ -140,10 +138,8 @@ public:
     timer_ =
         create_wall_timer(std::chrono::milliseconds{20}, [this]() { controlTick(); });
     RCLCPP_INFO(get_logger(),
-                "Production MPPI offboard ready: altitude=%.1f horizon_age=%.2fs "
-                "braking=%.1fmps2",
-                initial_altitude_m_, horizon_max_receive_age_s_,
-                fallback_braking_acceleration_mps2_);
+                "Production MPPI offboard ready: altitude=%.1f braking=%.1fmps2",
+                initial_altitude_m_, fallback_braking_acceleration_mps2_);
   }
 
 private:
@@ -244,7 +240,6 @@ private:
         horizon_.has_value() && horizon_.value().stationary_position_hold;
     horizon_ = horizon;
     horizon_sequence_ = horizon.sequence;
-    horizon_receive_ns_ = now().nanoseconds();
     if (previous_hold != horizon.stationary_position_hold) {
       RCLCPP_INFO(get_logger(),
                   "PASSAGE_POSITION_HOLD active=%s sequence=%" PRIu64
@@ -261,10 +256,7 @@ private:
       return false;
     }
     const std::int64_t now_ns = now().nanoseconds();
-    const double receive_age_s =
-        static_cast<double>(now_ns - horizon_receive_ns_) / 1.0e9;
-    return receive_age_s >= 0.0 && receive_age_s <= horizon_max_receive_age_s_ &&
-           now_ns >= timeNanoseconds(horizon_->valid_from) &&
+    return now_ns >= timeNanoseconds(horizon_->valid_from) &&
            now_ns < timeNanoseconds(horizon_->valid_until);
   }
 
@@ -444,7 +436,6 @@ private:
 
   double initial_altitude_m_{18.0};
   double takeoff_hover_s_{1.0};
-  double horizon_max_receive_age_s_{0.20};
   double control_lookahead_s_{0.05};
   double fallback_braking_acceleration_mps2_{8.0};
   double command_resend_period_s_{2.0};
@@ -468,7 +459,6 @@ private:
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
   std::uint64_t horizon_sequence_{0U};
-  std::int64_t horizon_receive_ns_{0};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   std::string rviz_drone_follow_frame_{"drone_follow"};

@@ -246,10 +246,8 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     }
     if (retention_violation_cycles_ >= config_.retention_violation_cycles) {
       vertical_ready_latched_ = false;
-      vertical_alignment_active_ = true;
       capture_stable_cycles_ = 0U;
       retention_violation_cycles_ = 0U;
-      hold_position_ = Point2{input.state.x, input.state.y};
     }
   }
 
@@ -281,9 +279,10 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
   if (vertical_alignment_active_ && vertical_ready_latched_) {
     vertical_alignment_active_ = false;
   }
-  if (in_approach && !vertical_ready_latched_ &&
-      distance_to_entry_m <= std::max(config_.minimum_stationary_trigger_distance_m,
-                                      required_distance_m) &&
+  const bool immediately_before_entry =
+      in_approach &&
+      distance_to_entry_m <= config_.minimum_stationary_trigger_distance_m;
+  if ((immediately_before_entry || in_traversal) && !vertical_ready_latched_ &&
       !vertical_alignment_active_) {
     vertical_alignment_active_ = true;
     hold_position_ = Point2{input.state.x, input.state.y};
@@ -303,6 +302,14 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
           ? semanticRouteZReference(*input.route, input.route_station_m,
                                     input.normal_flight_z_m)
           : preferred_z_m_;
+  const double alignment_window_s = alignment_time_s + config_.alignment_time_margin_s;
+  const double alignment_limited_speed_mps =
+      alignment_window_s > 1.0e-6 ? distance_to_entry_m / alignment_window_s
+                                  : event.speed_limit_mps;
+  const double effective_speed_limit_mps =
+      in_approach && !vertical_ready_latched_
+          ? std::clamp(alignment_limited_speed_mps, 0.0, event.speed_limit_mps)
+          : event.speed_limit_mps;
   const mppi::PassageConstraint constraint{
       .center_x_m = static_cast<float>(event.portal.center.x),
       .center_y_m = static_cast<float>(event.portal.center.y),
@@ -317,7 +324,7 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       .entry_station_m = static_cast<float>(event.entry_station_m),
       .exit_station_m = static_cast<float>(event.exit_station_m),
       .departure_station_m = static_cast<float>(event.departure_station_m),
-      .speed_limit_mps = static_cast<float>(event.speed_limit_mps),
+      .speed_limit_mps = static_cast<float>(effective_speed_limit_mps),
       .phase = toMppiPassagePhase(phase),
   };
   return PassageCoordinatorResult{

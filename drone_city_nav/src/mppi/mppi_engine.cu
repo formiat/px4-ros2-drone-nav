@@ -553,6 +553,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                        costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
                        costs.jerk_weight * jerk_cost +
                        costs.yaw_change_weight * yaw_cost +
+                       costs.planning_exposure_weight * planning_m +
+                       costs.critical_exposure_weight * critical_m +
                        costs.terminal_weight * terminal_distance;
   critical_exposure[rollout] = critical_m;
   planning_exposure[rollout] = planning_m;
@@ -590,10 +592,11 @@ __global__ void initializeReduction(int* best_tier, float* best_critical,
 
 __global__ void reduceTier(const std::uint8_t* tier, const std::uint8_t* raw_collision,
                            const std::uint8_t* solid_collision, std::size_t count,
-                           int* best_tier) {
+                           int maximum_tier, int* best_tier) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U) {
+  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
+      static_cast<int>(tier[index]) <= maximum_tier) {
     atomicMin(best_tier, static_cast<int>(tier[index]));
   }
 }
@@ -630,13 +633,22 @@ __global__ void reduceSoft(const std::uint8_t* tier, const float* critical,
                            const std::uint8_t* solid_collision, std::size_t count,
                            const int* best_tier, const float* best_critical,
                            const float* best_planning, float* minimum_soft,
-                           RiskConfig risk) {
+                           RiskConfig risk, int maximum_tier) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
-      static_cast<int>(tier[index]) == *best_tier &&
-      critical[index] <= *best_critical + risk.critical_exposure_tolerance_m &&
-      planning[index] <= *best_planning + risk.planning_exposure_tolerance_m) {
+  if (index >= count) {
+    return;
+  }
+  const bool escalated = maximum_tier > static_cast<int>(RiskTier::kPreferred);
+  const bool eligible =
+      escalated
+          ? static_cast<int>(tier[index]) <= maximum_tier
+          : static_cast<int>(tier[index]) == *best_tier &&
+                critical[index] <=
+                    *best_critical + risk.critical_exposure_tolerance_m &&
+                planning[index] <=
+                    *best_planning + risk.planning_exposure_tolerance_m;
+  if (raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
     atomicMinFloat(minimum_soft, soft[index]);
   }
 }
@@ -648,17 +660,24 @@ __global__ void calculateWeights(const std::uint8_t* tier, const float* critical
                                  std::size_t count, const int* best_tier,
                                  const float* best_critical, const float* best_planning,
                                  const float* minimum_soft, RiskConfig risk,
-                                 float temperature, float* weight_sum) {
+                                 float temperature, int maximum_tier,
+                                 float* weight_sum) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= count) {
     return;
   }
   float weight = 0.0F;
-  if (raw_collision[index] == 0U && solid_collision[index] == 0U &&
-      static_cast<int>(tier[index]) == *best_tier &&
-      critical[index] <= *best_critical + risk.critical_exposure_tolerance_m &&
-      planning[index] <= *best_planning + risk.planning_exposure_tolerance_m) {
+  const bool escalated = maximum_tier > static_cast<int>(RiskTier::kPreferred);
+  const bool eligible =
+      escalated
+          ? static_cast<int>(tier[index]) <= maximum_tier
+          : static_cast<int>(tier[index]) == *best_tier &&
+                critical[index] <=
+                    *best_critical + risk.critical_exposure_tolerance_m &&
+                planning[index] <=
+                    *best_planning + risk.planning_exposure_tolerance_m;
+  if (raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
     weight = expf(-(soft[index] - *minimum_soft) / temperature);
   }
   weights[index] = weight;
@@ -888,7 +907,9 @@ public:
         buffers_.weight_sum.get());
     reduceTier<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.raw_collision.get(),
-        buffers_.solid_collision.get(), config_.rollouts, buffers_.best_tier.get());
+        buffers_.solid_collision.get(), config_.rollouts,
+        static_cast<int>(input.maximum_eligible_risk_tier),
+        buffers_.best_tier.get());
     reduceCritical<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
         buffers_.raw_collision.get(), buffers_.solid_collision.get(), config_.rollouts,
@@ -904,7 +925,8 @@ public:
         buffers_.planning_exposure.get(), buffers_.soft_cost.get(),
         buffers_.raw_collision.get(), buffers_.solid_collision.get(), config_.rollouts,
         buffers_.best_tier.get(), buffers_.best_critical.get(),
-        buffers_.best_planning.get(), buffers_.minimum_soft.get(), config_.risk);
+        buffers_.best_planning.get(), buffers_.minimum_soft.get(), config_.risk,
+        static_cast<int>(input.maximum_eligible_risk_tier));
     reduction_done_.record(stream_);
     calculateWeights<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
@@ -913,6 +935,7 @@ public:
         buffers_.weights.get(), config_.rollouts, buffers_.best_tier.get(),
         buffers_.best_critical.get(), buffers_.best_planning.get(),
         buffers_.minimum_soft.get(), config_.risk, config_.costs.temperature,
+        static_cast<int>(input.maximum_eligible_risk_tier),
         buffers_.weight_sum.get());
     weights_done_.record(stream_);
     updateControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
@@ -956,6 +979,13 @@ public:
     const bool eligible_tier_available =
         eligible_tier_value >= static_cast<int>(RiskTier::kPreferred) &&
         eligible_tier_value < static_cast<int>(RiskTier::kCollision);
+    if (input.maximum_eligible_risk_tier != RiskTier::kPreferred &&
+        eligible_tier_available) {
+      eligible_tier_value =
+          static_cast<int>(input.maximum_eligible_risk_tier);
+      best_critical_exposure_m = kInfinity;
+      best_planning_exposure_m = kInfinity;
+    }
     result.eligible_risk_contract = MppiEligibleRiskContract{
         .available = eligible_tier_available && eligible_weight_sum > 0.0F,
         .tier = eligible_tier_available ? static_cast<RiskTier>(eligible_tier_value)

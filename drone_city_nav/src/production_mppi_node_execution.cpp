@@ -64,6 +64,7 @@ void ProductionMppiNode::publishExecutionHorizon(
   const bool goal_hold =
       planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
   if (passage_coordinator.hold_xy || goal_hold) {
+    safety_intervention_tracker_.reset();
     const Point3 hold_position = goal_hold ? mission_goal_
                                            : Point3{passage_coordinator.hold_position.x,
                                                     passage_coordinator.hold_position.y,
@@ -84,20 +85,25 @@ void ProductionMppiNode::publishExecutionHorizon(
   }
   const bool forced_braking_hold =
       planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ||
-      planning_state == ProductionMppiPlanningState::kStaleWorldBrakingHold;
-  const bool engine_collision = result.raw_collision || result.known_solid_collision;
+      planning_state == ProductionMppiPlanningState::kUnavailableWorldBrakingHold;
   MppiHorizonSafetyResult safety;
+  MppiSafetyInterventionUpdate intervention;
   if (!forced_braking_hold) {
     if (!esdf.distances_m) {
       return;
     }
     safety = evaluateMppiHorizonSafety(input.initial_state, result.horizon,
                                        *esdf.distances_m, esdf.grid, safety_config_,
-                                       engine_collision, known_solids_);
+                                       false, known_solids_);
+    intervention = safety_intervention_tracker_.update(now_ns, safety);
+  } else {
+    safety_intervention_tracker_.reset();
   }
   const bool braking =
-      forced_braking_hold || engine_collision ||
-      (!forced_braking_hold && safety.decision != MppiHorizonSafetyDecision::kExecute);
+      forced_braking_hold ||
+      (!forced_braking_hold &&
+       intervention.decision != MppiHorizonSafetyDecision::kExecute &&
+       intervention.decision != MppiHorizonSafetyDecision::kExecuteUntilDeadline);
   std::span<const mppi::State> states{result.horizon};
   std::span<const mppi::Control> controls{result.controls};
   if (braking && !forced_braking_hold) {

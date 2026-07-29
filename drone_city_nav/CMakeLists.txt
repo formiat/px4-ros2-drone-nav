@@ -135,6 +135,7 @@ add_library(
   src/lidar_ingestion_decision.cpp
   src/lidar_ingestion_confidence.cpp
   src/lidar_memory_hit_diagnostics.cpp
+  src/mapping_lifecycle.cpp
   src/mission_goal_capture.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
@@ -144,7 +145,9 @@ add_library(
   src/mppi/mppi_post_update_classification.cpp
   src/mppi_horizon_safety.cpp
   src/mppi_liveness.cpp
+  src/mppi_risk_escalation.cpp
   src/mppi_speed_policy.cpp
+  src/navigation_state_prediction.cpp
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
@@ -349,10 +352,27 @@ if(BUILD_TESTING)
   target_link_libraries(mppi_liveness_test_current drone_city_nav_core)
   enable_project_warnings(mppi_liveness_test_current)
 
+  ament_add_gtest(mppi_risk_escalation_test
+                  tests/mppi_risk_escalation_test.cpp)
+  target_compile_features(mppi_risk_escalation_test PRIVATE cxx_std_20)
+  target_link_libraries(mppi_risk_escalation_test drone_city_nav_core)
+  enable_project_warnings(mppi_risk_escalation_test)
+
   ament_add_gtest(mission_goal_capture_test tests/mission_goal_capture_test.cpp)
   target_compile_features(mission_goal_capture_test PRIVATE cxx_std_20)
   target_link_libraries(mission_goal_capture_test drone_city_nav_core)
   enable_project_warnings(mission_goal_capture_test)
+
+  ament_add_gtest(mapping_lifecycle_test tests/mapping_lifecycle_test.cpp)
+  target_compile_features(mapping_lifecycle_test PRIVATE cxx_std_20)
+  target_link_libraries(mapping_lifecycle_test drone_city_nav_core)
+  enable_project_warnings(mapping_lifecycle_test)
+
+  ament_add_gtest(navigation_state_prediction_test
+                  tests/navigation_state_prediction_test.cpp)
+  target_compile_features(navigation_state_prediction_test PRIVATE cxx_std_20)
+  target_link_libraries(navigation_state_prediction_test drone_city_nav_core)
+  enable_project_warnings(navigation_state_prediction_test)
 
   ament_add_gtest(latest_value_mailbox_test
                   tests/latest_value_mailbox_test.cpp)

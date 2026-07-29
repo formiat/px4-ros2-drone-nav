@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <ranges>
 
@@ -89,6 +90,7 @@ buildMppiBrakingFallback(const mppi::State& current_state,
       speed * speed /
           (2.0 * std::max(1.0e-3, config.maximum_braking_acceleration_mps2));
   result.time_to_collision_s = std::numeric_limits<double>::infinity();
+  result.latest_safe_intervention_time_s = 0.0;
   populateBrakingFallback(current_state, config, result);
   return result;
 }
@@ -118,18 +120,53 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
   }
   if (!std::isfinite(result.time_to_collision_s) && !engine_collision) {
     result.decision = MppiHorizonSafetyDecision::kExecute;
+    result.latest_safe_intervention_time_s = std::numeric_limits<double>::infinity();
     return result;
   }
   if (!std::isfinite(result.time_to_collision_s)) {
     return buildMppiBrakingFallback(current_state, config);
   }
-  result.decision =
-      result.time_to_collision_s >
-              std::max(config.minimum_time_to_collision_s, result.stopping_time_s)
-          ? MppiHorizonSafetyDecision::kBrake
-          : MppiHorizonSafetyDecision::kHold;
+  result.latest_safe_intervention_time_s =
+      std::max(0.0, result.time_to_collision_s - result.stopping_time_s);
+  if (result.latest_safe_intervention_time_s > 0.0) {
+    result.decision = MppiHorizonSafetyDecision::kExecuteUntilDeadline;
+    populateBrakingFallback(current_state, config, result);
+    return result;
+  }
+  result.decision = result.time_to_collision_s > config.minimum_time_to_collision_s
+                        ? MppiHorizonSafetyDecision::kBrake
+                        : MppiHorizonSafetyDecision::kHold;
   populateBrakingFallback(current_state, config, result);
   return result;
+}
+
+MppiSafetyInterventionUpdate
+MppiSafetyInterventionTracker::update(const std::int64_t now_ns,
+                                      const MppiHorizonSafetyResult& result) noexcept {
+  if (result.decision == MppiHorizonSafetyDecision::kExecute) {
+    reset();
+    return {.decision = MppiHorizonSafetyDecision::kExecute,
+            .deadline_ns = std::nullopt};
+  }
+  if (result.decision == MppiHorizonSafetyDecision::kExecuteUntilDeadline) {
+    const auto candidate_ns =
+        now_ns +
+        static_cast<std::int64_t>(result.latest_safe_intervention_time_s * 1.0e9);
+    if (!deadline_ns_.has_value() || candidate_ns < *deadline_ns_) {
+      deadline_ns_ = candidate_ns;
+    }
+    if (now_ns < *deadline_ns_) {
+      return {.decision = MppiHorizonSafetyDecision::kExecuteUntilDeadline,
+              .deadline_ns = deadline_ns_};
+    }
+    return {.decision = MppiHorizonSafetyDecision::kBrake, .deadline_ns = deadline_ns_};
+  }
+  deadline_ns_ = now_ns;
+  return {.decision = result.decision, .deadline_ns = deadline_ns_};
+}
+
+void MppiSafetyInterventionTracker::reset() noexcept {
+  deadline_ns_.reset();
 }
 
 } // namespace drone_city_nav

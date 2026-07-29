@@ -56,12 +56,6 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
     return result;
   }
   emergency_braking_started_ns_.reset();
-  if (observation.predicted_terminal_progress_m <
-      config_.minimum_predicted_terminal_progress_m) {
-    anchor_.reset();
-    result.state = MppiLivenessState::kInsufficientPrediction;
-    return result;
-  }
   if (!anchor_.has_value() || observation.stamp_ns <= anchor_->stamp_ns) {
     anchor_ = Anchor{observation.stamp_ns, observation.actual_state};
     result.state = MppiLivenessState::kMonitoring;
@@ -86,6 +80,10 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
   result.state = MppiLivenessState::kReseedRequested;
   result.reseed_requested = true;
   result.reseed_generation = reseed_generation_;
+  if (observation.predicted_terminal_progress_m <
+      config_.minimum_predicted_terminal_progress_m) {
+    result.state = MppiLivenessState::kReseedRequested;
+  }
   return result;
 }
 
@@ -100,8 +98,6 @@ const char* mppiLivenessStateName(const MppiLivenessState state) noexcept {
       return "inactive";
     case MppiLivenessState::kEmergencyBraking:
       return "emergency_braking";
-    case MppiLivenessState::kInsufficientPrediction:
-      return "insufficient_prediction";
     case MppiLivenessState::kMonitoring:
       return "monitoring";
     case MppiLivenessState::kMoving:

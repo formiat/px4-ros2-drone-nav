@@ -2,6 +2,8 @@
 
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 
+#include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -18,6 +20,7 @@ struct MppiHorizonSafetyConfig {
 
 enum class MppiHorizonSafetyDecision {
   kExecute,
+  kExecuteUntilDeadline,
   kBrake,
   kHold,
 };
@@ -27,8 +30,24 @@ struct MppiHorizonSafetyResult {
   double time_to_collision_s{0.0};
   double stopping_time_s{0.0};
   double stopping_distance_m{0.0};
+  double latest_safe_intervention_time_s{0.0};
   std::vector<mppi::State> fallback_horizon;
   std::vector<mppi::Control> fallback_controls;
+};
+
+struct MppiSafetyInterventionUpdate {
+  MppiHorizonSafetyDecision decision{MppiHorizonSafetyDecision::kHold};
+  std::optional<std::int64_t> deadline_ns;
+};
+
+class MppiSafetyInterventionTracker {
+public:
+  [[nodiscard]] MppiSafetyInterventionUpdate
+  update(std::int64_t now_ns, const MppiHorizonSafetyResult& result) noexcept;
+  void reset() noexcept;
+
+private:
+  std::optional<std::int64_t> deadline_ns_;
 };
 
 [[nodiscard]] MppiHorizonSafetyResult

@@ -8,11 +8,13 @@
 #include "drone_city_nav/mppi/passage_speed_policy.hpp"
 #include "drone_city_nav/mppi_horizon_safety.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
+#include "drone_city_nav/mppi_risk_escalation.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
+#include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/passage_coordinator.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/semantic_portal_route.hpp"
@@ -85,6 +87,13 @@ struct ProductionMppiPreparedEsdf {
   double lattice_guide_length_m{0.0};
   double lattice_remaining_goal_distance_m{0.0};
   std::size_t lattice_terminal_successor_count{0U};
+  LatticeRiskStage lattice_risk_stage{LatticeRiskStage::kPreferredOnly};
+  std::size_t lattice_stale_queue_pops{0U};
+  std::size_t lattice_open_peak{0U};
+  std::size_t lattice_records_peak{0U};
+  std::size_t lattice_two_step_reachable_states{0U};
+  double lattice_reachable_depth_m{0.0};
+  std::size_t lattice_frontier_candidates_considered{0U};
 };
 
 struct ProductionMppiStability {
@@ -119,7 +128,7 @@ struct ProductionMppiRvizSnapshot {
 enum class ProductionMppiPlanningState {
   kPlanned,
   kNoGuideBrakingHold,
-  kStaleWorldBrakingHold,
+  kUnavailableWorldBrakingHold,
   kMissionGoalPositionHold,
 };
 
@@ -145,6 +154,8 @@ struct ProductionMppiDiagnosticsSnapshot {
   double snapshot_ms{0.0};
   double stability_ms{0.0};
   bool liveness_reseed_requested{false};
+  bool pose_predicted{false};
+  mppi::RiskTier maximum_eligible_risk_tier{mppi::RiskTier::kPreferred};
 };
 
 [[nodiscard]] const char*
@@ -195,7 +206,9 @@ private:
   double diagnostics_info_rate_hz_{5.0};
   double deadline_ms_{20.0};
   double maximum_pose_age_ms_{150.0};
+  double maximum_pose_prediction_age_ms_{1000.0};
   double maximum_esdf_age_ms_{1000.0};
+  double stale_esdf_execution_window_ms_{4000.0};
   double maximum_control_feedback_age_ms_{200.0};
   double no_static_guide_lookahead_m_{30.0};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
@@ -214,12 +227,14 @@ private:
   mppi::BenchmarkConfig mppi_config_{};
   mppi::PassageSpeedPolicy passage_speed_policy_{};
   MppiHorizonSafetyConfig safety_config_{};
+  MppiSafetyInterventionTracker safety_intervention_tracker_{};
   MppiLivenessConfig liveness_config_{};
   MppiSpeedPolicyConfig speed_policy_config_{};
   PassageCoordinatorConfig passage_coordinator_config_{};
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
+  std::unique_ptr<MppiRiskEscalation> risk_escalation_;
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
   std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
@@ -244,6 +259,9 @@ private:
   std::atomic<std::uint64_t> guide_release_generation_{0U};
   std::atomic<GlobalGuideReleaseReason> guide_release_reason_{
       GlobalGuideReleaseReason::kStalled};
+  std::shared_ptr<const std::vector<Point2>> pending_global_guide_;
+  bool pending_global_guide_reaches_mission_goal_{false};
+  std::vector<LatticeFrontierBlacklistEntry> frontier_blacklist_;
 
   mutable std::mutex esdf_state_mutex_;
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
@@ -253,6 +271,7 @@ private:
   std::int64_t previous_prediction_stamp_ns_{0};
   ProductionMppiPredictionError latest_prediction_error_{};
   std::uint64_t tick_sequence_{0U};
+  mppi::RiskTier maximum_eligible_risk_tier_{mppi::RiskTier::kPreferred};
   std::uint64_t completed_ticks_{0U};
   std::uint64_t deadline_misses_{0U};
   std::uint64_t raw_collision_horizons_{0U};
@@ -261,7 +280,7 @@ private:
   std::uint64_t no_progress_horizons_{0U};
   std::uint64_t liveness_reseeds_{0U};
   std::uint64_t no_guide_braking_hold_ticks_{0U};
-  std::uint64_t stale_world_braking_hold_ticks_{0U};
+  std::uint64_t unavailable_world_braking_hold_ticks_{0U};
   std::uint64_t mission_goal_position_hold_ticks_{0U};
   std::uint64_t passage_vertical_alignment_ticks_{0U};
   std::uint64_t passage_traversal_ticks_{0U};

@@ -6,6 +6,7 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
 #include <exception>
+#include <limits>
 #include <numbers>
 #include <utility>
 
@@ -21,6 +22,73 @@ validRosStampNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
   }
   return static_cast<std::int64_t>(stamp.sec) * kNanosecondsPerSecond +
          static_cast<std::int64_t>(stamp.nanosec);
+}
+
+double navigationPoseAgeSeconds(const std::int64_t last_pose_update_ns,
+                                const std::int64_t now_ns) noexcept {
+  if (last_pose_update_ns <= 0 || now_ns <= last_pose_update_ns) {
+    return std::numeric_limits<double>::infinity();
+  }
+  return static_cast<double>(now_ns - last_pose_update_ns) / 1.0e9;
+}
+
+double navigationPoseReceiveLagSeconds(const std::int64_t last_pose_update_ns,
+                                       const std::int64_t scan_receive_ns) noexcept {
+  if (scan_receive_ns > 0 && last_pose_update_ns > 0 &&
+      scan_receive_ns > last_pose_update_ns) {
+    return static_cast<double>(scan_receive_ns - last_pose_update_ns) / 1.0e9;
+  }
+  return 0.0;
+}
+
+LidarPoseSampleResult samplePoseAtRosAcquisition(const LidarPoseHistory& pose_history,
+                                                 const Px4RosTimeMapper& time_mapper,
+                                                 const std::int64_t ros_stamp_ns,
+                                                 const bool stamp_valid) noexcept {
+  if (!stamp_valid) {
+    return {};
+  }
+  const auto px4_stamp_ns = time_mapper.rosToPx4LocalTimeNs(ros_stamp_ns);
+  if (px4_stamp_ns.has_value()) {
+    LidarPoseSampleResult source_result = pose_history.sampleWithDiagnostics(
+        *px4_stamp_ns, LidarPoseTimeBasis::kPx4AcquisitionTime);
+    if (source_result.aligned_pose.has_value()) {
+      const auto map_timing = [&time_mapper](LidarPoseTemporalAlignment& timing) {
+        timing.from_acquisition_ros_stamp_ns =
+            time_mapper.px4LocalToRosTimeNs(timing.from_acquisition_stamp_ns)
+                .value_or(0);
+        timing.to_acquisition_ros_stamp_ns =
+            time_mapper.px4LocalToRosTimeNs(timing.to_acquisition_stamp_ns).value_or(0);
+      };
+      map_timing(source_result.position_timing);
+      map_timing(source_result.attitude_timing);
+      return source_result;
+    }
+  }
+  return pose_history.sampleWithDiagnostics(ros_stamp_ns,
+                                            LidarPoseTimeBasis::kReceiveTime);
+}
+
+void logFirstNavigationPose(rclcpp::Node& node, bool& pose_seen,
+                            const NavigationPose2D& pose, const char* source_name) {
+  if (pose_seen) {
+    return;
+  }
+  pose_seen = true;
+  RCLCPP_INFO(node.get_logger(),
+              "First valid navigation pose: source=%s x=%.2f y=%.2f altitude=%.2f "
+              "altitude_valid=%s yaw=%.2f",
+              source_name, pose.pose.position.x, pose.pose.position.y, pose.altitude_m,
+              pose.altitude_valid ? "true" : "false", pose.pose.yaw_rad);
+}
+
+void invalidateObstacleNavigationPose(NavigationPose2D& pose,
+                                      std::int64_t& last_pose_update_ns,
+                                      Point2& velocity, bool& velocity_valid) noexcept {
+  invalidateNavigationPose(pose);
+  last_pose_update_ns = 0;
+  velocity = Point2{};
+  velocity_valid = false;
 }
 
 std::int8_t rawOccupancyValue(const OccupancyGrid2D& grid, const GridIndex cell) {

@@ -43,7 +43,7 @@ TEST(ActiveGlobalGuideTest, RetainsClearGuideAcrossWorldUpdates) {
   EXPECT_NEAR(update.projection.remaining_m, 34.0, 1.0e-9);
 }
 
-TEST(ActiveGlobalGuideTest, ReleasesGuideWhenNewCriticalBandAppears) {
+TEST(ActiveGlobalGuideTest, RetainsGuideAndRequestsBackgroundReplanForCriticalBand) {
   ActiveGlobalGuideLifecycle lifecycle;
   std::vector<float> esdf = clearEsdf();
   ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
@@ -53,9 +53,10 @@ TEST(ActiveGlobalGuideTest, ReleasesGuideWhenNewCriticalBandAppears) {
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 0U);
 
-  EXPECT_FALSE(update.active);
+  EXPECT_TRUE(update.active);
+  EXPECT_TRUE(update.retained);
   EXPECT_TRUE(update.requires_replan);
-  EXPECT_EQ(update.release_reason, GlobalGuideReleaseReason::kBlocked);
+  EXPECT_EQ(update.release_reason, GlobalGuideReleaseReason::kNone);
 }
 
 TEST(ActiveGlobalGuideTest, KeepsGuideAcceptedInsideCriticalBand) {
@@ -69,6 +70,7 @@ TEST(ActiveGlobalGuideTest, KeepsGuideAcceptedInsideCriticalBand) {
       lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 0U);
 
   EXPECT_TRUE(update.active);
+  EXPECT_TRUE(update.requires_replan);
   EXPECT_EQ(update.current_risk, GlobalGuideRiskTier::kCritical);
 }
 
@@ -126,7 +128,7 @@ TEST(ActiveGlobalGuideTest, RejectsGuideLeavingGrid) {
   EXPECT_EQ(result.risk, GlobalGuideRiskTier::kCollision);
 }
 
-TEST(ActiveGlobalGuideTest, ReleasesNonTerminalGuideNearItsEnd) {
+TEST(ActiveGlobalGuideTest, RetainsNonTerminalGuideWhileRequestingExtension) {
   ActiveGlobalGuideConfig config;
   config.minimum_remaining_m = 15.0;
   ActiveGlobalGuideLifecycle lifecycle{config};
@@ -138,6 +140,8 @@ TEST(ActiveGlobalGuideTest, ReleasesNonTerminalGuideNearItsEnd) {
       lifecycle.update(grid(), esdf, Point2{32.5, 10.5}, 0U);
 
   EXPECT_EQ(update.release_reason, GlobalGuideReleaseReason::kExhausted);
+  EXPECT_TRUE(update.active);
+  EXPECT_TRUE(update.retained);
   EXPECT_TRUE(update.requires_replan);
 }
 

@@ -77,6 +77,7 @@ struct MppiTickInput {
   std::optional<Control> previous_applied_control;
   std::uint64_t nominal_reseed_generation{0U};
   float reference_speed_mps{-1.0F};
+  RiskTier maximum_eligible_risk_tier{RiskTier::kPreferred};
   std::optional<RouteReference> route;
 };
 

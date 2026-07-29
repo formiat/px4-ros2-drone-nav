@@ -17,7 +17,6 @@ struct MppiLivenessConfig {
 enum class MppiLivenessState : std::uint8_t {
   kInactive,
   kEmergencyBraking,
-  kInsufficientPrediction,
   kMonitoring,
   kMoving,
   kReseedRequested,

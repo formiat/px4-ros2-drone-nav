@@ -103,7 +103,7 @@ TEST(RiskAwareLattice, ClassifiesShortTwoPointGuideAsDeadEnd) {
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{18.5, 10.5}, RiskAwareLatticeConfig{});
 
   ASSERT_FALSE(result.valid);
-  ASSERT_EQ(result.guide.size(), 2U);
+  EXPECT_TRUE(result.guide.empty());
   EXPECT_FALSE(result.planning_goal_reached);
   EXPECT_EQ(result.status, LatticePlanStatus::kDeadEnd);
   EXPECT_EQ(result.termination, LatticeSearchTermination::kOpenSetExhausted);
@@ -130,7 +130,7 @@ TEST(RiskAwareLattice, ClassifiesUsefulBudgetLimitedGuideAsViableFrontier) {
   const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
                                 20.0F);
   RiskAwareLatticeConfig config;
-  config.maximum_expansions = 3U;
+  config.maximum_expansions = 30U;
 
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config);
@@ -143,6 +143,57 @@ TEST(RiskAwareLattice, ClassifiesUsefulBudgetLimitedGuideAsViableFrontier) {
   EXPECT_GE(result.guide_length_m, config.minimum_frontier_guide_length_m);
   EXPECT_GE(result.achieved_progress_m, config.minimum_frontier_progress_m);
   EXPECT_GT(result.terminal_successor_count, 0U);
+  EXPECT_GT(result.two_step_reachable_states, 0U);
+  EXPECT_GE(result.reachable_depth_m, config.minimum_frontier_reachable_depth_m);
+}
+
+TEST(RiskAwareLattice, ReportsIncompleteWhenBudgetEndsWithoutViableFrontier) {
+  const mppi::EsdfGrid grid{200, 30, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                20.0F);
+  RiskAwareLatticeConfig config;
+  config.maximum_expansions = 3U;
+
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config);
+
+  EXPECT_FALSE(result.valid);
+  EXPECT_EQ(result.status, LatticePlanStatus::kSearchIncomplete);
+  EXPECT_EQ(result.termination, LatticeSearchTermination::kExpansionBudgetExhausted);
+}
+
+TEST(RiskAwareLattice, EscalatesToPlanningStageForCompleteRoute) {
+  const mppi::EsdfGrid grid = makeGrid();
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                2.0F);
+
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{34.5, 10.5}, RiskAwareLatticeConfig{});
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.planning_goal_reached);
+  EXPECT_EQ(result.risk_stage, LatticeRiskStage::kPlanningAllowed);
+}
+
+TEST(RiskAwareLattice, EscalatesToCriticalStageButNeverRawCollision) {
+  const mppi::EsdfGrid grid = makeGrid();
+  const std::vector<float> critical_esdf(
+      static_cast<std::size_t>(grid.width * grid.height), 0.75F);
+
+  const RiskAwareLatticeResult critical_result =
+      planRiskAwareMotionPrimitiveGuide(grid, critical_esdf, Point2{2.5, 10.5}, 0.0,
+                                        Point2{34.5, 10.5}, RiskAwareLatticeConfig{});
+
+  ASSERT_TRUE(critical_result.valid);
+  EXPECT_EQ(critical_result.risk_stage, LatticeRiskStage::kCriticalAllowed);
+
+  const std::vector<float> occupied_esdf(
+      static_cast<std::size_t>(grid.width * grid.height), 0.0F);
+  const RiskAwareLatticeResult occupied_result =
+      planRiskAwareMotionPrimitiveGuide(grid, occupied_esdf, Point2{2.5, 10.5}, 0.0,
+                                        Point2{34.5, 10.5}, RiskAwareLatticeConfig{});
+  EXPECT_FALSE(occupied_result.valid);
+  EXPECT_EQ(occupied_result.status, LatticePlanStatus::kDeadEnd);
 }
 
 } // namespace

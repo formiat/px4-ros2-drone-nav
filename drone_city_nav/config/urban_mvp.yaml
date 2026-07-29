@@ -117,7 +117,10 @@ production_mppi_node:
     no_static_speed_tracking_weight: 1.0
     deadline_ms: 20.0
     maximum_pose_age_ms: 150.0
+    maximum_pose_prediction_age_ms: 1000.0
     maximum_esdf_age_ms: 1000.0
+    static_stale_esdf_execution_window_s: 6.0
+    no_static_stale_esdf_execution_window_s: 4.0
     maximum_control_feedback_age_ms: 200.0
     no_static_guide_lookahead_m: 30.0
     static_minimum_target_lookahead_m: 30.0
@@ -188,12 +191,23 @@ production_mppi_node:
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5
     liveness_minimum_predicted_terminal_progress_m: 5.0
+    mppi_risk_recovery_stable_cycles: 20
     global_lattice_heading_bins: 16
     global_lattice_primitive_length_m: 4.0
     static_global_lattice_window_m: 180.0
     no_static_global_lattice_window_m: 60.0
     static_global_lattice_maximum_expansions: 120000
     no_static_global_lattice_maximum_expansions: 60000
+    static_global_lattice_deadline_ms: 250.0
+    no_static_global_lattice_deadline_ms: 100.0
+    static_global_lattice_roi_halo_m: 90.0
+    no_static_global_lattice_roi_halo_m: 45.0
+    global_lattice_frontier_candidates: 64
+    global_lattice_frontier_reachable_depth_m: 8.0
+    global_lattice_frontier_blacklist_radius_m: 6.0
+    global_lattice_frontier_blacklist_heading_bins: 1
+    global_lattice_planning_tie_break_per_m: 1.0
+    global_lattice_critical_tie_break_per_m: 10.0
     global_guide_validation_sample_step_m: 0.5
     static_global_guide_replan_remaining_m: 45.0
     no_static_global_guide_replan_remaining_m: 15.0
@@ -213,7 +227,6 @@ mppi_offboard_node:
     mppi_execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
     applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     applied_control_feedback_frame_id: map
-    mppi_horizon_max_receive_age_s: 0.20
     mppi_control_lookahead_s: 0.05
     mppi_fallback_braking_acceleration_mps2: 8.0
     initial_altitude_m: 18.0

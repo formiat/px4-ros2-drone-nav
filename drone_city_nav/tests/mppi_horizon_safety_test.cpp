@@ -20,7 +20,7 @@ TEST(MppiHorizonSafetyTest, ExecutesCollisionFreeHorizon) {
   EXPECT_TRUE(result.fallback_horizon.empty());
 }
 
-TEST(MppiHorizonSafetyTest, ProducesBrakingFallbackBeforeCollision) {
+TEST(MppiHorizonSafetyTest, DelaysInterventionForDistantCollision) {
   const mppi::EsdfGrid grid{20, 20, 1.0F, 0.0F, 0.0F};
   std::vector<float> esdf(400U, 10.0F);
   esdf[1U * 20U + 6U] = 0.0F;
@@ -36,9 +36,30 @@ TEST(MppiHorizonSafetyTest, ProducesBrakingFallbackBeforeCollision) {
       current, horizon, esdf, grid,
       MppiHorizonSafetyConfig{.minimum_time_to_collision_s = 0.1, .dt_s = 0.2});
 
-  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kBrake);
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecuteUntilDeadline);
+  EXPECT_GT(result.latest_safe_intervention_time_s, 0.0);
   ASSERT_FALSE(result.fallback_horizon.empty());
   EXPECT_LT(result.fallback_horizon.back().vx, current.vx);
+}
+
+TEST(MppiHorizonSafetyTest, KeepsEarliestInterventionDeadlineAcrossTicks) {
+  MppiSafetyInterventionTracker tracker;
+  MppiHorizonSafetyResult first;
+  first.decision = MppiHorizonSafetyDecision::kExecuteUntilDeadline;
+  first.latest_safe_intervention_time_s = 1.0;
+  const MppiSafetyInterventionUpdate first_update =
+      tracker.update(1'000'000'000, first);
+
+  MppiHorizonSafetyResult later = first;
+  later.latest_safe_intervention_time_s = 2.0;
+  const MppiSafetyInterventionUpdate later_update =
+      tracker.update(1'500'000'000, later);
+  const MppiSafetyInterventionUpdate expired = tracker.update(2'000'000'000, later);
+
+  ASSERT_TRUE(first_update.deadline_ns.has_value());
+  EXPECT_EQ(later_update.deadline_ns, first_update.deadline_ns);
+  EXPECT_EQ(later_update.decision, MppiHorizonSafetyDecision::kExecuteUntilDeadline);
+  EXPECT_EQ(expired.decision, MppiHorizonSafetyDecision::kBrake);
 }
 
 TEST(MppiHorizonSafetyTest, ProducesFallbackForEngineOnlyCollision) {

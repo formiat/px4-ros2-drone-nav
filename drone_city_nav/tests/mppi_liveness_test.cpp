@@ -30,6 +30,19 @@ TEST(MppiLivenessTest, RequestsReseedAfterStationaryPredictionWindow) {
   EXPECT_DOUBLE_EQ(result.actual_displacement_m, 0.0);
 }
 
+TEST(MppiLivenessTest, LowPredictedProgressDoesNotResetStationaryTimer) {
+  MppiLivenessSupervisor supervisor;
+  MppiLivenessObservation low_prediction = observation(1'000'000'000LL);
+  low_prediction.predicted_terminal_progress_m = 0.0;
+  EXPECT_EQ(supervisor.evaluate(low_prediction).state, MppiLivenessState::kMonitoring);
+
+  low_prediction.stamp_ns = 2'100'000'000LL;
+  const MppiLivenessResult result = supervisor.evaluate(low_prediction);
+
+  EXPECT_TRUE(result.reseed_requested);
+  EXPECT_EQ(result.state, MppiLivenessState::kReseedRequested);
+}
+
 TEST(MppiLivenessTest, DisplacementInAnyDirectionCountsAsMovement) {
   MppiLivenessSupervisor supervisor;
   (void)supervisor.evaluate(observation(1'000'000'000LL));
