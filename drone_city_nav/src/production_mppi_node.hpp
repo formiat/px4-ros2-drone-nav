@@ -214,6 +214,7 @@ private:
   double stale_esdf_execution_window_ms_{4000.0};
   double maximum_control_feedback_age_ms_{200.0};
   double no_static_guide_lookahead_m_{30.0};
+  bool frontier_blacklist_enabled_{false};
   double frontier_blacklist_ttl_s_{15.0};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
   SemanticPortalRouteConfig semantic_route_config_{};

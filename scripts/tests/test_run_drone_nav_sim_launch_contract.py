@@ -15,6 +15,24 @@ LAUNCH_FILE = (
     / "launch"
     / "city_nav.launch.py"
 )
+NAV_CONFIG = (
+    Path(__file__).resolve().parents[2]
+    / "drone_city_nav"
+    / "config"
+    / "urban_mvp.yaml"
+)
+PRODUCTION_MPPI_SOURCE = (
+    Path(__file__).resolve().parents[2]
+    / "drone_city_nav"
+    / "src"
+    / "production_mppi_node.cpp"
+)
+PRODUCTION_MPPI_RUNTIME_SOURCE = (
+    Path(__file__).resolve().parents[2]
+    / "drone_city_nav"
+    / "src"
+    / "production_mppi_node_runtime.cpp"
+)
 RVIZ_CONFIGS = (
     Path(__file__).resolve().parents[2]
     / "drone_city_nav"
@@ -33,6 +51,13 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         cls.text = RUNNER.read_text(encoding="utf-8")
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
         cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
+        cls.nav_config_text = NAV_CONFIG.read_text(encoding="utf-8")
+        cls.production_mppi_source_text = PRODUCTION_MPPI_SOURCE.read_text(
+            encoding="utf-8"
+        )
+        cls.production_mppi_runtime_source_text = (
+            PRODUCTION_MPPI_RUNTIME_SOURCE.read_text(encoding="utf-8")
+        )
 
     def test_gazebo_gui_launch_uses_native_follow_camera(self) -> None:
         self.assertIn("configure_gazebo_gui_follow_camera", self.text)
@@ -142,6 +167,18 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             'production_mppi_parameters.append(\n'
             '                {"use_static_map": static_map_override}',
             self.launch_text,
+        )
+
+    def test_frontier_blacklist_is_explicit_and_disabled_by_default(self) -> None:
+        parameter = "global_lattice_frontier_blacklist_enabled"
+        self.assertIn(f"{parameter}: false", self.nav_config_text)
+        self.assertIn(
+            f'declare_parameter<bool>("{parameter}", false)',
+            self.production_mppi_source_text,
+        )
+        self.assertIn(
+            "if (frontier_blacklist_enabled_ && !guide_update.active",
+            self.production_mppi_runtime_source_text,
         )
 
     def test_px4_vertical_velocity_limits_follow_active_ros_config(self) -> None:

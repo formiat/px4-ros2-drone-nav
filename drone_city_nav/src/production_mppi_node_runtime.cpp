@@ -160,8 +160,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           grid, *host_distances, position,
           guide_release_generation_.load(std::memory_order_acquire),
           guide_release_reason_.load(std::memory_order_relaxed));
-      if (!guide_update.active && previous_active_guide &&
-          previous_active_guide->size() >= 2U &&
+      if (frontier_blacklist_enabled_ && !guide_update.active &&
+          previous_active_guide && previous_active_guide->size() >= 2U &&
           (guide_update.release_reason == GlobalGuideReleaseReason::kStalled ||
            guide_update.release_reason ==
                GlobalGuideReleaseReason::kPersistentSafetyRejection)) {

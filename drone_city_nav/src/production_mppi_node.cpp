@@ -277,6 +277,8 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<std::int64_t>("global_lattice_frontier_candidates", 64));
   lattice_config_.minimum_frontier_reachable_depth_m =
       declare_parameter<double>("global_lattice_frontier_reachable_depth_m", 8.0);
+  frontier_blacklist_enabled_ =
+      declare_parameter<bool>("global_lattice_frontier_blacklist_enabled", false);
   lattice_config_.frontier_blacklist_radius_m =
       declare_parameter<double>("global_lattice_frontier_blacklist_radius_m", 6.0);
   lattice_config_.frontier_blacklist_heading_tolerance_bins =
@@ -460,7 +462,7 @@ ProductionMppiNode::ProductionMppiNode()
       "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
       "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
-      "sticky_guide=true guide_replan_remaining=%.1fm "
+      "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
       "guide_heading_blend=(%.1f,%.1f)mps passage_vertical_margin=%.2fm "
       "passage_capture_hysteresis=%.2fm passage_capture_max_vz=%.2fmps "
       "passage_hold_clearance=%.2fm passage_minimum_continuous_speed=%.2fmps",
@@ -475,6 +477,7 @@ ProductionMppiNode::ProductionMppiNode()
       activePassageSpeedLimitMps(passage_speed_policy_),
       mppi_config_.costs.head_progress_horizon_s,
       liveness_config_.enabled ? "true" : "false",
+      frontier_blacklist_enabled_ ? "true" : "false",
       active_guide_config_.minimum_remaining_m,
       active_guide_config_.velocity_heading_low_speed_mps,
       active_guide_config_.velocity_heading_high_speed_mps,
