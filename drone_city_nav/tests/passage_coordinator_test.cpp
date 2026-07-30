@@ -167,6 +167,60 @@ TEST(PassageCoordinatorTest, PreservesValidAltitudeWhenRouteStartsInsidePortal) 
   EXPECT_DOUBLE_EQ(result.preferred_z_m, 6.0);
 }
 
+TEST(PassageCoordinatorTest, PreservesTraversalAcrossMatchingRouteGeneration) {
+  PassageCoordinator coordinator;
+  const auto first_route = testRoute(10U);
+  const PassageCoordinatorResult initial =
+      coordinator.update(inputAt(first_route, 10.0F, 5.0F));
+
+  const auto replacement_route = testRoute(11U);
+  const PassageCoordinatorResult replacement =
+      coordinator.update(inputAt(replacement_route, 10.25F, 5.0F));
+
+  EXPECT_EQ(initial.phase, PassageCoordinatorPhase::kTraversal);
+  EXPECT_EQ(replacement.phase, PassageCoordinatorPhase::kTraversal);
+  EXPECT_EQ(replacement.route_generation, 11U);
+  EXPECT_TRUE(replacement.entry_plane_crossed);
+  EXPECT_TRUE(replacement.vertical_ready);
+  EXPECT_FALSE(replacement.hold_xy);
+  EXPECT_DOUBLE_EQ(replacement.preferred_z_m, 5.0);
+}
+
+TEST(PassageCoordinatorTest, RecapturesReachableAltitudeAfterInsideRouteReplacement) {
+  PassageCoordinator coordinator;
+  const auto first_route = testRoute(10U);
+  const PassageCoordinatorResult initial =
+      coordinator.update(inputAt(first_route, 10.0F, 2.51F));
+
+  EXPECT_EQ(initial.phase, PassageCoordinatorPhase::kTraversal);
+  EXPECT_TRUE(initial.vertical_ready);
+  EXPECT_FALSE(initial.hold_xy);
+  EXPECT_DOUBLE_EQ(initial.preferred_z_m, 2.75);
+
+  const auto replacement_route = testRoute(11U);
+  PassageCoordinatorResult result =
+      coordinator.update(inputAt(replacement_route, 10.25F, 2.49F));
+  EXPECT_EQ(result.route_generation, 11U);
+  EXPECT_TRUE(result.vertical_ready);
+  EXPECT_FALSE(result.hold_xy);
+
+  for (std::size_t cycle = 1U; cycle < 3U; ++cycle) {
+    result = coordinator.update(inputAt(replacement_route, 10.25F, 2.49F));
+  }
+  EXPECT_EQ(result.phase, PassageCoordinatorPhase::kVerticalAlignment);
+  EXPECT_TRUE(result.hold_xy);
+  EXPECT_FALSE(result.vertical_ready);
+  EXPECT_DOUBLE_EQ(result.preferred_z_m, 2.75);
+
+  for (std::size_t cycle = 0U; cycle < 3U; ++cycle) {
+    result = coordinator.update(inputAt(replacement_route, 10.25F, 2.75F, 0.1F));
+    EXPECT_FALSE(result.hold_xy && result.vertical_ready);
+  }
+  EXPECT_EQ(result.phase, PassageCoordinatorPhase::kTraversal);
+  EXPECT_FALSE(result.hold_xy);
+  EXPECT_TRUE(result.vertical_ready);
+}
+
 TEST(PassageCoordinatorTest, CompletesEventAfterCrossingExitPlane) {
   PassageCoordinator coordinator;
   const auto route = testRoute();

@@ -81,7 +81,16 @@ public:
   void reset() noexcept;
 
 private:
+  enum class VerticalState {
+    kUncaptured,
+    kAlignment,
+    kReady,
+  };
+
+  [[nodiscard]] bool
+  continueTraversalForRoute(const PassageCoordinatorInput& input) noexcept;
   void resetForRoute(std::uint64_t generation) noexcept;
+  void resetEventState() noexcept;
 
   PassageCoordinatorConfig config_{};
   std::uint64_t route_generation_{0U};
@@ -91,11 +100,11 @@ private:
   bool position_seen_{false};
   bool entry_plane_crossed_{false};
   bool exit_plane_crossed_{false};
-  bool vertical_alignment_active_{false};
-  bool vertical_ready_latched_{false};
-  bool preserve_inside_altitude_{false};
+  VerticalState vertical_state_{VerticalState::kUncaptured};
   std::size_t capture_stable_cycles_{0U};
   std::size_t retention_violation_cycles_{0U};
+  std::string active_portal_id_;
+  int active_traversal_direction_{0};
   Point2 hold_position_{};
   double preferred_z_m_{0.0};
   double previous_entry_plane_distance_m_{0.0};

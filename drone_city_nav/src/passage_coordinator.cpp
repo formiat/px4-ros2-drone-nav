@@ -36,6 +36,13 @@ namespace {
          (position.y - portal.center.y) * lateral.y;
 }
 
+[[nodiscard]] bool insidePortalFootprint(const Point2 position,
+                                         const Portal& portal) noexcept {
+  return std::abs(portalLateralDistance(position, portal)) <= 0.5 * portal.width_m &&
+         signedPlaneDistance(position, portal.entry_plane) >= 0.0 &&
+         signedPlaneDistance(position, portal.exit_plane) <= 0.0;
+}
+
 [[nodiscard]] double minimumRestToRestTime(const double distance_m,
                                            const double acceleration_mps2,
                                            const double speed_mps) noexcept {
@@ -104,7 +111,9 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     return {};
   }
   if (!route_seen_ || route_generation_ != input.route->generation) {
-    resetForRoute(input.route->generation);
+    if (!continueTraversalForRoute(input)) {
+      resetForRoute(input.route->generation);
+    }
   }
 
   if (next_event_index_ >= input.route->passage_events.size()) {
@@ -124,7 +133,11 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
 
   const double safe_min_z = event.portal.min_z_m + config_.vertical_clearance_margin_m;
   const double safe_max_z = event.portal.max_z_m - config_.vertical_clearance_margin_m;
-  if (!(safe_max_z > safe_min_z)) {
+  const double capture_interior_min_z =
+      safe_min_z + config_.vertical_capture_hysteresis_m;
+  const double capture_interior_max_z =
+      safe_max_z - config_.vertical_capture_hysteresis_m;
+  if (!(capture_interior_max_z > capture_interior_min_z)) {
     return PassageCoordinatorResult{
         .phase = PassageCoordinatorPhase::kInvalidRouteEvent,
         .constraint = std::nullopt,
@@ -145,16 +158,19 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
 
   if (!event_initialized_) {
     event_initialized_ = true;
+    active_portal_id_ = event.portal.id;
+    active_traversal_direction_ = event.traversal_direction;
+    vertical_state_ = VerticalState::kUncaptured;
     preferred_z_m_ = event.preferred_z_m;
-    const bool starts_inside = inside_portal_width && entry_plane_distance_m >= 0.0 &&
-                               exit_plane_distance_m <= 0.0;
+    const bool starts_inside = insidePortalFootprint(position, event.portal);
     if (starts_inside) {
       entry_plane_crossed_ = true;
     }
     if (starts_inside && inside(input.state.z, safe_min_z, safe_max_z)) {
-      preserve_inside_altitude_ = true;
-      vertical_ready_latched_ = true;
-      preferred_z_m_ = input.state.z;
+      vertical_state_ = VerticalState::kReady;
+      capture_stable_cycles_ = config_.capture_stable_cycles;
+      preferred_z_m_ = std::clamp(static_cast<double>(input.state.z),
+                                  capture_interior_min_z, capture_interior_max_z);
     }
     if (inside_portal_width &&
         exit_plane_distance_m >= config_.exit_station_hysteresis_m &&
@@ -173,6 +189,8 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       exit_plane_crossed_ = true;
     }
   }
+  preferred_z_m_ =
+      std::clamp(preferred_z_m_, capture_interior_min_z, capture_interior_max_z);
   position_seen_ = true;
   previous_entry_plane_distance_m_ = entry_plane_distance_m;
   previous_exit_plane_distance_m_ = exit_plane_distance_m;
@@ -180,18 +198,7 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
   if (exit_plane_crossed_) {
     const std::size_t cleared_event_index = next_event_index_;
     ++next_event_index_;
-    event_initialized_ = false;
-    position_seen_ = false;
-    entry_plane_crossed_ = false;
-    exit_plane_crossed_ = false;
-    vertical_alignment_active_ = false;
-    vertical_ready_latched_ = false;
-    preserve_inside_altitude_ = false;
-    capture_stable_cycles_ = 0U;
-    retention_violation_cycles_ = 0U;
-    preferred_z_m_ = 0.0;
-    previous_entry_plane_distance_m_ = 0.0;
-    previous_exit_plane_distance_m_ = 0.0;
+    resetEventState();
     return PassageCoordinatorResult{
         .phase = PassageCoordinatorPhase::kCleared,
         .constraint = std::nullopt,
@@ -208,12 +215,10 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     };
   }
 
-  const double capture_min_z =
-      std::max(safe_min_z + config_.vertical_capture_hysteresis_m,
-               preferred_z_m_ - config_.preferred_z_capture_tolerance_m);
-  const double capture_max_z =
-      std::min(safe_max_z - config_.vertical_capture_hysteresis_m,
-               preferred_z_m_ + config_.preferred_z_capture_tolerance_m);
+  const double capture_min_z = std::max(
+      capture_interior_min_z, preferred_z_m_ - config_.preferred_z_capture_tolerance_m);
+  const double capture_max_z = std::min(
+      capture_interior_max_z, preferred_z_m_ + config_.preferred_z_capture_tolerance_m);
   if (!(capture_max_z > capture_min_z)) {
     return PassageCoordinatorResult{
         .phase = PassageCoordinatorPhase::kInvalidRouteEvent,
@@ -230,14 +235,14 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
   if (inside(z_m, capture_min_z, capture_max_z) && capture_velocity_safe) {
     capture_stable_cycles_ =
         std::min(capture_stable_cycles_ + 1U, config_.capture_stable_cycles);
-  } else if (!vertical_ready_latched_) {
+  } else if (vertical_state_ != VerticalState::kReady) {
     capture_stable_cycles_ = 0U;
   }
   if (capture_stable_cycles_ >= config_.capture_stable_cycles) {
-    vertical_ready_latched_ = true;
+    vertical_state_ = VerticalState::kReady;
   }
 
-  if (vertical_ready_latched_) {
+  if (vertical_state_ == VerticalState::kReady) {
     if (inside(z_m, safe_min_z, safe_max_z)) {
       retention_violation_cycles_ = 0U;
     } else {
@@ -245,7 +250,7 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
                                              config_.retention_violation_cycles);
     }
     if (retention_violation_cycles_ >= config_.retention_violation_cycles) {
-      vertical_ready_latched_ = false;
+      vertical_state_ = VerticalState::kUncaptured;
       capture_stable_cycles_ = 0U;
       retention_violation_cycles_ = 0U;
     }
@@ -276,24 +281,21 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
                            input.route_station_m < event.entry_station_m;
   const bool in_traversal = entry_plane_crossed_;
 
-  if (vertical_alignment_active_ && vertical_ready_latched_) {
-    vertical_alignment_active_ = false;
-  }
   const bool immediately_before_entry =
       in_approach &&
       distance_to_entry_m <= config_.minimum_stationary_trigger_distance_m;
-  if ((immediately_before_entry || in_traversal) && !vertical_ready_latched_ &&
-      !vertical_alignment_active_) {
-    vertical_alignment_active_ = true;
+  if ((immediately_before_entry || in_traversal) &&
+      vertical_state_ == VerticalState::kUncaptured) {
+    vertical_state_ = VerticalState::kAlignment;
     hold_position_ = Point2{input.state.x, input.state.y};
   }
 
   PassageCoordinatorPhase phase = PassageCoordinatorPhase::kUpcoming;
-  if (vertical_alignment_active_) {
+  if (vertical_state_ == VerticalState::kAlignment) {
     phase = PassageCoordinatorPhase::kVerticalAlignment;
   } else if (in_traversal) {
     phase = PassageCoordinatorPhase::kTraversal;
-  } else if (in_approach && vertical_ready_latched_) {
+  } else if (in_approach && vertical_state_ == VerticalState::kReady) {
     phase = PassageCoordinatorPhase::kReady;
   }
 
@@ -307,7 +309,7 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       alignment_window_s > 1.0e-6 ? distance_to_entry_m / alignment_window_s
                                   : event.speed_limit_mps;
   const double effective_speed_limit_mps =
-      in_approach && !vertical_ready_latched_
+      in_approach && vertical_state_ != VerticalState::kReady
           ? std::clamp(alignment_limited_speed_mps, 0.0, event.speed_limit_mps)
           : event.speed_limit_mps;
   const mppi::PassageConstraint constraint{
@@ -334,8 +336,8 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       .route_generation = route_generation_,
       .route_event_index = next_event_index_,
       .active = true,
-      .hold_xy = vertical_alignment_active_,
-      .vertical_ready = preserve_inside_altitude_ || vertical_ready_latched_,
+      .hold_xy = vertical_state_ == VerticalState::kAlignment,
+      .vertical_ready = vertical_state_ == VerticalState::kReady,
       .speed_limit_active =
           input.route_station_m >= event.approach_station_m && !exit_plane_crossed_,
       .entry_plane_crossed = entry_plane_crossed_,
@@ -355,29 +357,69 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
   };
 }
 
+bool PassageCoordinator::continueTraversalForRoute(
+    const PassageCoordinatorInput& input) noexcept {
+  if (!input.route || !event_initialized_ || !entry_plane_crossed_ ||
+      exit_plane_crossed_ || active_portal_id_.empty()) {
+    return false;
+  }
+
+  const Point2 position{input.state.x, input.state.y};
+  for (std::size_t index = 0U; index < input.route->passage_events.size(); ++index) {
+    const RoutePassageEvent& event = input.route->passage_events[index];
+    const double entry_distance_m =
+        signedPlaneDistance(position, event.portal.entry_plane);
+    const double exit_distance_m =
+        signedPlaneDistance(position, event.portal.exit_plane);
+    const bool within_traversal_region =
+        std::abs(portalLateralDistance(position, event.portal)) <=
+            0.5 * event.portal.width_m &&
+        entry_distance_m >= -config_.exit_station_hysteresis_m &&
+        exit_distance_m < config_.exit_station_hysteresis_m;
+    if (event.portal.id != active_portal_id_ ||
+        event.traversal_direction != active_traversal_direction_ ||
+        !routeEventIsValid(event) || !within_traversal_region) {
+      continue;
+    }
+
+    route_generation_ = input.route->generation;
+    next_event_index_ = index;
+    route_seen_ = true;
+    position_seen_ = true;
+    previous_entry_plane_distance_m_ = entry_distance_m;
+    previous_exit_plane_distance_m_ = exit_distance_m;
+    return true;
+  }
+  return false;
+}
+
 void PassageCoordinator::resetForRoute(const std::uint64_t generation) noexcept {
   reset();
   route_generation_ = generation;
   route_seen_ = true;
 }
 
-void PassageCoordinator::reset() noexcept {
-  route_generation_ = 0U;
-  next_event_index_ = 0U;
-  route_seen_ = false;
+void PassageCoordinator::resetEventState() noexcept {
   event_initialized_ = false;
   position_seen_ = false;
   entry_plane_crossed_ = false;
   exit_plane_crossed_ = false;
-  vertical_alignment_active_ = false;
-  vertical_ready_latched_ = false;
-  preserve_inside_altitude_ = false;
+  vertical_state_ = VerticalState::kUncaptured;
   capture_stable_cycles_ = 0U;
   retention_violation_cycles_ = 0U;
+  active_portal_id_.clear();
+  active_traversal_direction_ = 0;
   hold_position_ = {};
   preferred_z_m_ = 0.0;
   previous_entry_plane_distance_m_ = 0.0;
   previous_exit_plane_distance_m_ = 0.0;
+}
+
+void PassageCoordinator::reset() noexcept {
+  route_generation_ = 0U;
+  next_event_index_ = 0U;
+  route_seen_ = false;
+  resetEventState();
 }
 
 const char* passageCoordinatorPhaseName(const PassageCoordinatorPhase phase) noexcept {
