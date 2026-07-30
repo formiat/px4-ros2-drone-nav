@@ -61,10 +61,12 @@ Mode policy:
 
 Risk:
 
-- `vehicle_rotor_center_x_m`, `vehicle_rotor_center_y_m`, and
-  `vehicle_rotor_radius_m` define the circular collision footprint;
 - `critical_distance_m`;
 - `preferred_distance_m`.
+
+Raw occupied cells are the only hard 2D collision geometry. The distance
+thresholds classify free cells for risk ranking; they do not inflate raw
+occupancy.
 
 Global guide:
 

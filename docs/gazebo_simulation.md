@@ -76,7 +76,8 @@ static_map_min_blocking_height_m: 0.0
 ```
 
 The static map is a raw obstacle source. It must not contain planner inflation.
-Inflation and planning clearance are applied by the planner grid builder.
+The planner derives non-collision risk bands from its ESDF without inflating
+hard occupancy.
 
 ## Changing The Environment
 
@@ -183,7 +184,7 @@ while Gazebo renders world coordinates.
 Useful checks:
 
 - the drone spawns where RViz says it spawns;
-- the goal marker is reachable and not inside hard prohibited cells;
+- the goal marker is reachable and not inside a raw occupied cell;
 - the first planned segment starts near the drone, not offset by a map origin
   error;
 - lidar points align with static map buildings while the drone is stationary.

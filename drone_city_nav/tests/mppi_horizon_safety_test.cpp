@@ -178,7 +178,6 @@ TEST(MppiHorizonSafetyTest, SweptValidationFindsCollisionBetweenHorizonStates) {
   const MppiHorizonSafetyResult result =
       evaluateMppiHorizonSafety(current, horizon, esdf, grid,
                                 MppiHorizonSafetyConfig{
-                                    .collision_radius_m = 0.1,
                                     .minimum_time_to_collision_s = 0.01,
                                     .dt_s = 1.0,
                                     .swept_validation_step_m = 0.25,
@@ -187,6 +186,18 @@ TEST(MppiHorizonSafetyTest, SweptValidationFindsCollisionBetweenHorizonStates) {
   EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
   EXPECT_GT(result.time_to_collision_s, 0.0);
   EXPECT_LT(result.time_to_collision_s, 1.0);
+}
+
+TEST(MppiHorizonSafetyTest, DoesNotTreatNearWallFreeCellAsHardCollision) {
+  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf{1.0F, 0.0F};
+  const mppi::State current{0.5F, 0.5F};
+  const std::vector<mppi::State> horizon{current, mppi::State{0.99F, 0.5F}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, esdf, grid, MppiHorizonSafetyConfig{});
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
 }
 
 TEST(MppiHorizonSafetyTest, BrakingLifecycleLatchesPositionAfterVehicleSlows) {

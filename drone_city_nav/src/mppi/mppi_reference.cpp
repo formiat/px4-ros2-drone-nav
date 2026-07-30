@@ -23,10 +23,10 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
   }
 }
 
-[[nodiscard]] float sampleEsdf(const EsdfGrid& grid, const std::span<const float> esdf,
-                               const float x, const float y) noexcept {
-  const EsdfQueryResult query = queryConservativeEsdf(grid, esdf, x, y);
-  return query.status == EsdfQueryStatus::kValid ? query.clearance_m : 0.0F;
+[[nodiscard]] EsdfQueryResult sampleEsdf(const EsdfGrid& grid,
+                                         const std::span<const float> esdf,
+                                         const float x, const float y) noexcept {
+  return queryConservativeEsdf(grid, esdf, x, y);
 }
 
 [[nodiscard]] float squared(const float value) noexcept {
@@ -47,8 +47,7 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.head_progress_weight >= 0.0F &&
          std::isfinite(config.costs.speed_tracking_weight) &&
          config.costs.speed_tracking_weight >= 0.0F &&
-         config.risk.collision_radius_m >= 0.0F &&
-         config.risk.critical_distance_m >= config.risk.collision_radius_m &&
+         config.risk.critical_distance_m > 0.0F &&
          config.risk.preferred_distance_m >= config.risk.critical_distance_m;
 }
 
@@ -108,16 +107,20 @@ RolloutMetrics simulateReference(
     const std::size_t validation_samples = std::max<std::size_t>(
         1U, static_cast<std::size_t>(std::ceil(segment_length_m / validation_step_m)));
     float clearance = std::numeric_limits<float>::infinity();
+    bool raw_collision = false;
     for (std::size_t sample = 1U; sample <= validation_samples; ++sample) {
       const float ratio =
           static_cast<float>(sample) / static_cast<float>(validation_samples);
-      clearance = std::min(
-          clearance, sampleEsdf(grid, esdf, std::lerp(previous_state.x, state.x, ratio),
-                                std::lerp(previous_state.y, state.y, ratio)));
+      const EsdfQueryResult query =
+          sampleEsdf(grid, esdf, std::lerp(previous_state.x, state.x, ratio),
+                     std::lerp(previous_state.y, state.y, ratio));
+      raw_collision = raw_collision || query.status != EsdfQueryStatus::kValid ||
+                      query.raw_occupied;
+      clearance = std::min(clearance, query.clearance_m);
     }
     metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
     const float segment_m = dynamics.dt_s * std::hypot(state.vx, state.vy);
-    if (clearance <= risk.collision_radius_m) {
+    if (raw_collision) {
       metrics.collision = true;
       metrics.worst_tier = RiskTier::kCollision;
     } else if (clearance < risk.critical_distance_m) {

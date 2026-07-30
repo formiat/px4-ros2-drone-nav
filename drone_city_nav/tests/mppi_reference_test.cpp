@@ -71,6 +71,23 @@ TEST(MppiReferenceTest, CollisionIsHardAndStopsEarly) {
   EXPECT_FLOAT_EQ(metrics.minimum_clearance_m, 0.0F);
 }
 
+TEST(MppiReferenceTest, NearWallFreeCellIsCriticalRatherThanCollision) {
+  const EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf{1.0F, 0.0F};
+  const std::array<Control, 1> controls{};
+  const std::array<Control, 1> noise{};
+  DynamicsConfig dynamics{};
+  dynamics.dt_s = 0.1F;
+  State initial{.x = 0.99F, .y = 0.5F};
+
+  const RolloutMetrics metrics =
+      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
+                        grid, esdf, 0.99F, 0.5F, false);
+
+  EXPECT_FALSE(metrics.collision);
+  EXPECT_EQ(metrics.worst_tier, RiskTier::kCritical);
+}
+
 TEST(MppiReferenceTest, HeadProgressIsMeasuredAtConfiguredEarlyHorizon) {
   constexpr int kWidth = 20;
   constexpr int kHeight = 20;

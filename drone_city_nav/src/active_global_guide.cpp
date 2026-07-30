@@ -28,24 +28,21 @@ struct GlobalGuideRiskEvaluation {
   return Point2{first.x - second.x, first.y - second.y};
 }
 
-[[nodiscard]] std::optional<float> clearanceAt(const mppi::EsdfGrid& grid,
-                                               const std::span<const float> esdf_m,
-                                               const Point2 point) {
-  const EsdfQueryResult query = queryConservativeEsdf(
-      grid, esdf_m, static_cast<float>(point.x), static_cast<float>(point.y));
-  if (query.status == EsdfQueryStatus::kOutsideGrid) {
-    return std::nullopt;
-  }
-  return query.status == EsdfQueryStatus::kValid
-             ? query.clearance_m
-             : std::numeric_limits<float>::quiet_NaN();
+[[nodiscard]] EsdfQueryResult queryAt(const mppi::EsdfGrid& grid,
+                                      const std::span<const float> esdf_m,
+                                      const Point2 point) {
+  return queryConservativeEsdf(grid, esdf_m, static_cast<float>(point.x),
+                               static_cast<float>(point.y));
 }
 
 [[nodiscard]] GlobalGuideRiskTier
-riskTier(const float clearance_m, const ActiveGlobalGuideConfig& config) noexcept {
+riskTier(const EsdfQueryResult& query, const ActiveGlobalGuideConfig& config) noexcept {
+  if (query.status != EsdfQueryStatus::kValid || query.raw_occupied) {
+    return GlobalGuideRiskTier::kCollision;
+  }
+  const float clearance_m = query.clearance_m;
   if (std::isnan(clearance_m) ||
-      (std::isinf(clearance_m) && std::signbit(clearance_m)) ||
-      clearance_m <= config.collision_radius_m) {
+      (std::isinf(clearance_m) && std::signbit(clearance_m))) {
     return GlobalGuideRiskTier::kCollision;
   }
   if (clearance_m < config.critical_distance_m) {
@@ -76,15 +73,14 @@ suffixRisk(const std::span<const Point2> guide, const double start_station_m,
   GlobalGuideRiskTier worst = GlobalGuideRiskTier::kPreferred;
   const auto evaluatePoint =
       [&](const Point2 point) -> std::optional<GlobalGuideAcceptanceReason> {
-    const std::optional<float> clearance = clearanceAt(grid, esdf_m, point);
-    if (!clearance.has_value()) {
+    const EsdfQueryResult query = queryAt(grid, esdf_m, point);
+    if (query.status == EsdfQueryStatus::kOutsideGrid) {
       return GlobalGuideAcceptanceReason::kOutsideGrid;
     }
-    if (std::isnan(*clearance) ||
-        (std::isinf(*clearance) && std::signbit(*clearance))) {
+    if (query.status != EsdfQueryStatus::kValid) {
       return GlobalGuideAcceptanceReason::kInvalidClearance;
     }
-    const GlobalGuideRiskTier tier = riskTier(*clearance, config);
+    const GlobalGuideRiskTier tier = riskTier(query, config);
     worst = std::max(worst, tier);
     if (tier == GlobalGuideRiskTier::kCollision) {
       return GlobalGuideAcceptanceReason::kCollision;
@@ -192,8 +188,7 @@ Point2 sampleGlobalGuide(const std::span<const Point2> guide, const double stati
 ActiveGlobalGuideLifecycle::ActiveGlobalGuideLifecycle(
     const ActiveGlobalGuideConfig& config)
     : config_{config} {
-  if (!(config_.collision_radius_m >= 0.0) ||
-      !(config_.critical_distance_m > config_.collision_radius_m) ||
+  if (!(config_.critical_distance_m > 0.0) ||
       !(config_.preferred_distance_m > config_.critical_distance_m) ||
       !(config_.validation_sample_step_m > 0.0) ||
       !(config_.minimum_remaining_m >= 0.0) || !(config_.maximum_cross_track_m > 0.0) ||

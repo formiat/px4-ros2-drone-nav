@@ -161,9 +161,6 @@ production_mppi_node:
     passage_minimum_continuous_speed_mps: 0.5
     passage_prediction_time_step_s: 0.02
     maximum_vertical_acceleration_mps2: 4.0
-    vehicle_rotor_center_x_m: 0.48
-    vehicle_rotor_center_y_m: 0.48
-    vehicle_rotor_radius_m: 0.14
     critical_distance_m: 1.0
     preferred_distance_m: 6.0
     seed: 42

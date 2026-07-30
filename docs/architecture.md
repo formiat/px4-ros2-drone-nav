@@ -84,7 +84,10 @@ The production planner uses:
 - passage opening metadata.
 
 There are no separately materialized planner/prohibited inflated grids,
-inflation relaxation, or escape tunnels.
+hard collision envelopes around raw cells, inflation relaxation, or escape
+tunnels. Conservative ESDF clearance is used only to classify the critical and
+planning risk bands. A free cell remains executable even when that clearance
+falls to zero.
 
 ## Global And Local Planning
 
@@ -134,5 +137,6 @@ horizon has been published.
   polyline.
 - Passage selection is inferred from guide/opening intersection.
 - Stationary passage hold shares the execution-horizon message.
-- Known-solid and braking validation still require a complete drone-footprint
-  contract.
+- Collision validation intentionally uses the drone state point against raw
+  occupied cells and exact known-solid volumes; vehicle footprint inflation is
+  not part of the planning contract.

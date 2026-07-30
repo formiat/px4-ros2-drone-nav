@@ -1,6 +1,5 @@
 #include "production_mppi_node.hpp"
 
-#include "drone_city_nav/collision_geometry.hpp"
 #include "drone_city_nav/known_passage_solid_volumes.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
@@ -12,9 +11,7 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] mppi::KnownSolid toMppiSolid(const KnownPassageSolidVolume& solid,
-                                           const double footprint_radius_m) {
-  const float footprint_margin_m = static_cast<float>(footprint_radius_m);
+[[nodiscard]] mppi::KnownSolid toMppiSolid(const KnownPassageSolidVolume& solid) {
   return mppi::KnownSolid{
       .center_x_m = static_cast<float>(solid.center.x),
       .center_y_m = static_cast<float>(solid.center.y),
@@ -22,10 +19,10 @@ namespace {
       .normal_y = static_cast<float>(solid.normal_xy.y),
       .lateral_x = static_cast<float>(solid.lateral_xy.x),
       .lateral_y = static_cast<float>(solid.lateral_xy.y),
-      .half_depth_m = static_cast<float>(0.5 * solid.depth_m) + footprint_margin_m,
-      .half_width_m = static_cast<float>(0.5 * solid.width_m) + footprint_margin_m,
-      .min_z_m = static_cast<float>(solid.min_z_m) - footprint_margin_m,
-      .max_z_m = static_cast<float>(solid.max_z_m) + footprint_margin_m,
+      .half_depth_m = static_cast<float>(0.5 * solid.depth_m),
+      .half_width_m = static_cast<float>(0.5 * solid.width_m),
+      .min_z_m = static_cast<float>(solid.min_z_m),
+      .max_z_m = static_cast<float>(solid.max_z_m),
   };
 }
 
@@ -225,15 +222,6 @@ ProductionMppiNode::ProductionMppiNode()
   mppi_config_.costs.speed_tracking_weight = static_cast<float>(
       passage_speed_policy_.use_static_map ? static_speed_tracking_weight
                                            : no_static_speed_tracking_weight);
-  const VehicleFootprintGeometry footprint_geometry{
-      .rotor_center_x_m = declare_parameter<double>("vehicle_rotor_center_x_m", 0.48),
-      .rotor_center_y_m = declare_parameter<double>("vehicle_rotor_center_y_m", 0.48),
-      .rotor_radius_m = declare_parameter<double>("vehicle_rotor_radius_m", 0.14),
-  };
-  const double effective_collision_radius_m =
-      effectiveCollisionRadiusM(footprint_geometry);
-  mppi_config_.risk.collision_radius_m =
-      static_cast<float>(effective_collision_radius_m);
   mppi_config_.risk.critical_distance_m =
       static_cast<float>(declare_parameter<double>("critical_distance_m", 1.0));
   mppi_config_.risk.preferred_distance_m =
@@ -299,7 +287,6 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("global_lattice_planning_tie_break_per_m", 1.0);
   lattice_config_.critical_exposure_tie_break_per_m =
       declare_parameter<double>("global_lattice_critical_tie_break_per_m", 10.0);
-  lattice_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   lattice_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
   lattice_config_.portal_lateral_margin_m =
@@ -310,7 +297,6 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("portal_lattice_exit_extension_m", 4.0);
   lattice_config_.portal_maximum_heading_delta_bins = static_cast<int>(
       declare_parameter<std::int64_t>("portal_lattice_maximum_heading_delta_bins", 4));
-  active_guide_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   active_guide_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   active_guide_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
   active_guide_config_.validation_sample_step_m =
@@ -337,7 +323,6 @@ ProductionMppiNode::ProductionMppiNode()
   guide_progress_config_.persistent_safety_rejection_window_s =
       declare_parameter<double>("persistent_safety_rejection_window_s", 1.0);
   mppi_config_.early_exit_on_collision = true;
-  safety_config_.collision_radius_m = mppi_config_.risk.collision_radius_m;
   safety_config_.reaction_latency_s =
       declare_parameter<double>("safety_reaction_latency_s", 0.10);
   safety_config_.maximum_braking_acceleration_mps2 = std::min(
@@ -416,7 +401,7 @@ ProductionMppiNode::ProductionMppiNode()
     semantic_portal_primitives_ = semanticPortalPrimitives(*known_passages_);
     for (const KnownPassageSolidVolume& solid :
          knownPassageSolidVolumes(*known_passages_)) {
-      known_solids_.push_back(toMppiSolid(solid, effective_collision_radius_m));
+      known_solids_.push_back(toMppiSolid(solid));
     }
     engine_->updateKnownSolids(known_solids_);
   }

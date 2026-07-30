@@ -29,10 +29,13 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
   const float center_distance_m = esdf_m[index];
   if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {
     return {.clearance_m = std::numeric_limits<float>::infinity(),
-            .status = EsdfQueryStatus::kValid};
+            .status = EsdfQueryStatus::kValid,
+            .raw_occupied = false};
   }
   if (!std::isfinite(center_distance_m) || center_distance_m < 0.0F) {
-    return {.clearance_m = 0.0F, .status = EsdfQueryStatus::kInvalidDistance};
+    return {.clearance_m = 0.0F,
+            .status = EsdfQueryStatus::kInvalidDistance,
+            .raw_occupied = true};
   }
 
   const float center_x_m =
@@ -46,6 +49,7 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
       .clearance_m = std::max(0.0F, center_distance_m - query_to_center_m -
                                         occupied_cell_radius_m),
       .status = EsdfQueryStatus::kValid,
+      .raw_occupied = center_distance_m == 0.0F,
   };
 }
 

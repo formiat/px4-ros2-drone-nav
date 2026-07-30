@@ -1,8 +1,8 @@
 # Obstacle Mapping
 
 Obstacle mapping combines static obstacles, current lidar hits, and accumulated
-memory into planner inputs. The main rule is that raw sources stay raw; the
-planner owns inflation and planning clearance.
+memory into planner inputs. The main rule is that raw sources stay raw. The
+planner derives distance-based risk tiers without inflating hard occupancy.
 
 ## Static Map
 
@@ -308,14 +308,13 @@ Useful visualization topics:
 
 Obstacle mapping starts from evidence, not from final safety decisions. A lidar
 hit, a remembered obstacle cell, and a static map cell all mean that obstacle
-evidence exists at a location. They do not mean that the whole safety margin is
-already occupied. The grid builder owns the conversion from raw evidence to
-hard prohibited space and planning-clearance preference space.
+evidence exists at a location. Only that raw cell is hard occupied. The ESDF
+classifies surrounding free cells into critical, planning, and preferred risk
+tiers.
 
-This contract prevents hidden double margins. If obstacle memory stored already
-inflated cells and the planner inflated them again, the effective blocked area
-would grow with every source and become difficult to reason about. Keeping raw
-sources raw makes every margin visible in configuration and diagnostics.
+This contract prevents hidden hard margins. Keeping raw sources raw makes risk
+classification visible in configuration and diagnostics without changing
+reachability.
 
 ## Static, Dynamic, And Memory Roles
 
@@ -393,8 +392,8 @@ For an unexpected replan, inspect:
 
 1. Was the raw occupied intersection caused by static map, memory, or current
    lidar?
-2. Did the raw evidence actually overlap the trajectory, or only the inflated
-   margin?
+2. Did the raw occupied cell actually overlap the trajectory, or was only a
+   non-collision risk band entered?
 3. Was the intersecting span ahead of the drone or already behind it?
 4. Did planning clearance get mistaken for hard prohibited space?
 5. Did pose or attitude compensation shift the lidar overlay?

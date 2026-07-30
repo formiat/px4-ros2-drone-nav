@@ -1,7 +1,6 @@
 #pragma once
 
 #include "drone_city_nav/active_global_guide.hpp"
-#include "drone_city_nav/collision_geometry.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"

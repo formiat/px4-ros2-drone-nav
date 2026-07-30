@@ -74,6 +74,18 @@ TEST(ActiveGlobalGuideTest, KeepsGuideAcceptedInsideCriticalBand) {
   EXPECT_EQ(update.current_risk, GlobalGuideRiskTier::kCritical);
 }
 
+TEST(ActiveGlobalGuideTest, AcceptsFreeCellsWithZeroConservativeClearance) {
+  ActiveGlobalGuideLifecycle lifecycle;
+  std::vector<float> esdf = clearEsdf();
+  esdf[10U * 80U + 20U] = 0.5F;
+
+  const GlobalGuideAcceptanceResult result =
+      lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5});
+
+  EXPECT_TRUE(result.accepted);
+  EXPECT_EQ(result.risk, GlobalGuideRiskTier::kCritical);
+}
+
 TEST(ActiveGlobalGuideTest, AcceptsPositiveInfinityAsTruncatedPreferredClearance) {
   ActiveGlobalGuideLifecycle lifecycle;
   const mppi::EsdfGrid model = grid();

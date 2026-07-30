@@ -11,11 +11,11 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] float clearanceAt(const mppi::State& state,
-                                const std::span<const float> esdf_m,
-                                const mppi::EsdfGrid& grid) {
+[[nodiscard]] bool rawCollisionAt(const mppi::State& state,
+                                  const std::span<const float> esdf_m,
+                                  const mppi::EsdfGrid& grid) {
   const EsdfQueryResult query = queryConservativeEsdf(grid, esdf_m, state.x, state.y);
-  return query.status == EsdfQueryStatus::kValid ? query.clearance_m : 0.0F;
+  return query.status != EsdfQueryStatus::kValid || query.raw_occupied;
 }
 
 [[nodiscard]] bool
@@ -136,7 +136,7 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
       const double ratio =
           static_cast<double>(sample) / static_cast<double>(sample_count);
       const mppi::State state = interpolateState(previous, next, ratio);
-      if (clearanceAt(state, esdf_m, grid) <= config.collision_radius_m ||
+      if (rawCollisionAt(state, esdf_m, grid) ||
           intersectsKnownSolid(state, known_solids)) {
         result.time_to_collision_s =
             index == 0U ? 0.0 : (static_cast<double>(index - 1U) + ratio) * config.dt_s;

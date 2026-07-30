@@ -59,8 +59,10 @@ Soft cost includes guide deviation, mission progress, early/head progress,
 altitude error, speed tracking, acceleration, jerk, yaw motion, terminal error,
 and control effort.
 
-Risk tiers are not a continuously varying clearance penalty. Distance is used
-to classify static bands and detect collision.
+Risk tiers are not a continuously varying clearance penalty. Conservative ESDF
+distance classifies the critical and planning bands. Hard raw collision is
+reported only when the sampled state enters an occupied cell; known-solid
+collision uses the exact semantic volume.
 
 ## Static And No-Static Profiles
 

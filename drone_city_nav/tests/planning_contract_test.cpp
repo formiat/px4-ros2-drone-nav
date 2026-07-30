@@ -1,20 +1,9 @@
-#include "drone_city_nav/collision_geometry.hpp"
 #include "drone_city_nav/mppi_nominal_reseed.hpp"
 
 #include <gtest/gtest.h>
 
-#include <cmath>
-
 namespace drone_city_nav {
 namespace {
-
-TEST(CollisionGeometryTest, CoversOutermostRotorEdge) {
-  const double radius = effectiveCollisionRadiusM(VehicleFootprintGeometry{});
-
-  EXPECT_NEAR(radius, std::hypot(0.48, 0.48) + 0.14, 1.0e-12);
-  EXPECT_GT(radius, 0.81);
-  EXPECT_LT(radius, 0.83);
-}
 
 TEST(MppiNominalReseedTrackerTest, ReseedsOnGuideGenerationChange) {
   MppiNominalReseedTracker tracker;

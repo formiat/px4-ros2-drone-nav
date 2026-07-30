@@ -305,7 +305,7 @@ public:
     cudaTextureDesc texture{};
     texture.addressMode[0] = cudaAddressModeBorder;
     texture.addressMode[1] = cudaAddressModeBorder;
-    texture.filterMode = cudaFilterModeLinear;
+    texture.filterMode = cudaFilterModePoint;
     texture.readMode = cudaReadModeElementType;
     texture.normalizedCoords = 0;
     checkCuda(cudaCreateTextureObject(&texture_, &resource, &texture, nullptr),
@@ -469,6 +469,42 @@ __device__ State integrateDevice(State state, Control control,
   return state;
 }
 
+struct DeviceEsdfQuery {
+  float clearance_m;
+  bool raw_collision;
+};
+
+__device__ DeviceEsdfQuery
+queryEsdf(const State& state, const EsdfGrid grid,
+          const cudaTextureObject_t esdf_texture) {
+  const float cell_x_float = (state.x - grid.origin_x_m) / grid.resolution_m;
+  const float cell_y_float = (state.y - grid.origin_y_m) / grid.resolution_m;
+  const int cell_x = static_cast<int>(floorf(cell_x_float));
+  const int cell_y = static_cast<int>(floorf(cell_y_float));
+  if (cell_x < 0 || cell_y < 0 || cell_x >= grid.width || cell_y >= grid.height) {
+    return {0.0F, true};
+  }
+  const float center_distance_m =
+      tex2D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
+                   static_cast<float>(cell_y) + 0.5F);
+  if (isinf(center_distance_m) && center_distance_m > 0.0F) {
+    return {center_distance_m, false};
+  }
+  if (!isfinite(center_distance_m) || center_distance_m < 0.0F) {
+    return {0.0F, true};
+  }
+  const float center_x_m =
+      grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
+  const float center_y_m =
+      grid.origin_y_m + (static_cast<float>(cell_y) + 0.5F) * grid.resolution_m;
+  constexpr float kHalfDiagonalScale{0.70710678118654752440F};
+  const float correction_m =
+      hypotf(state.x - center_x_m, state.y - center_y_m) +
+      kHalfDiagonalScale * grid.resolution_m;
+  return {fmaxf(0.0F, center_distance_m - correction_m),
+          center_distance_m == 0.0F};
+}
+
 __global__ void
 simulateKernel(const float* const noise_ax, const float* const noise_ay,
                const float* const noise_az, const float* const noise_yaw,
@@ -514,12 +550,11 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
         nominal[step].yaw_accel + noise_yaw[index],
     };
     state = integrateDevice(state, control, dynamics);
-    const float texture_x = (state.x - grid.origin_x_m) / grid.resolution_m;
-    const float texture_y = (state.y - grid.origin_y_m) / grid.resolution_m;
-    const float clearance = tex2D<float>(esdf_texture, texture_x, texture_y);
+    const DeviceEsdfQuery esdf_query = queryEsdf(state, grid, esdf_texture);
+    const float clearance = esdf_query.clearance_m;
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
     const float segment_m = dynamics.dt_s * hypotf(state.vx, state.vy);
-    if (clearance <= risk.collision_radius_m) {
+    if (esdf_query.raw_collision) {
       collided = true;
       tier = static_cast<std::uint8_t>(RiskTier::kCollision);
     } else if (clearance < risk.critical_distance_m) {

@@ -255,6 +255,21 @@ TEST(RiskAwareLattice, EscalatesToCriticalStageButNeverRawCollision) {
   EXPECT_EQ(occupied_result.status, LatticePlanStatus::kMotionGraphExhausted);
 }
 
+TEST(RiskAwareLattice, AllowsFreeCellsWithZeroConservativeClearanceAtCriticalStage) {
+  const mppi::EsdfGrid grid = makeGrid();
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                0.5F);
+
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{34.5, 10.5}, RiskAwareLatticeConfig{});
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_FALSE(result.guide.empty());
+  EXPECT_NE(result.status, LatticePlanStatus::kMotionGraphExhausted);
+  EXPECT_EQ(result.risk_stage, LatticeRiskStage::kCriticalAllowed);
+  EXPECT_EQ(result.successor_diagnostics.rejected_raw_collision, 0U);
+}
+
 TEST(RiskAwareLattice, EscapesWallEvenWhenPreferredHeadingPointsIntoIt) {
   const mppi::EsdfGrid grid{50, 40, 1.0F, 0.0F, 0.0F};
   std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height), 20.0F);

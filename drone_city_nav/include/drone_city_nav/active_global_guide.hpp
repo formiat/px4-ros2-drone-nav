@@ -46,7 +46,6 @@ enum class GlobalGuideAcceptanceReason : std::uint8_t {
 };
 
 struct ActiveGlobalGuideConfig {
-  double collision_radius_m{0.82};
   double critical_distance_m{1.0};
   double preferred_distance_m{6.0};
   double validation_sample_step_m{0.5};

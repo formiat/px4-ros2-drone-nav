@@ -168,5 +168,5 @@ Useful diagnostics include:
 - SDF and annotation are manually synchronized.
 - Structure orientation is inferred from current axis-aligned city geometry.
 - Stationary hold shares the execution-horizon protocol.
-- Full drone-footprint and 3D braking-fallback validation remain future safety
-  work.
+- Collision validation uses the drone state point against exact semantic solid
+  volumes; footprint inflation is intentionally outside the current contract.

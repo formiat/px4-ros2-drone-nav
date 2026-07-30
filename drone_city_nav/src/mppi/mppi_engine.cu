@@ -384,23 +384,29 @@ __device__ RouteProjection projectOntoRoute(const State& state,
   return result;
 }
 
-__device__ float conservativeEsdfClearance(const State& state, const EsdfGrid grid,
-                                           const cudaTextureObject_t esdf_texture) {
+struct DeviceEsdfQuery {
+  float clearance_m;
+  bool raw_collision;
+};
+
+__device__ DeviceEsdfQuery
+queryEsdf(const State& state, const EsdfGrid grid,
+          const cudaTextureObject_t esdf_texture) {
   const float cell_x_float = (state.x - grid.origin_x_m) / grid.resolution_m;
   const float cell_y_float = (state.y - grid.origin_y_m) / grid.resolution_m;
   const int cell_x = static_cast<int>(floorf(cell_x_float));
   const int cell_y = static_cast<int>(floorf(cell_y_float));
   if (cell_x < 0 || cell_y < 0 || cell_x >= grid.width || cell_y >= grid.height) {
-    return 0.0F;
+    return {0.0F, true};
   }
   const float center_distance_m =
       tex2D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
                    static_cast<float>(cell_y) + 0.5F);
   if (isinf(center_distance_m) && center_distance_m > 0.0F) {
-    return center_distance_m;
+    return {center_distance_m, false};
   }
   if (!isfinite(center_distance_m) || center_distance_m < 0.0F) {
-    return 0.0F;
+    return {0.0F, true};
   }
   const float center_x_m =
       grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
@@ -410,7 +416,8 @@ __device__ float conservativeEsdfClearance(const State& state, const EsdfGrid gr
   const float correction_m =
       hypotf(state.x - center_x_m, state.y - center_y_m) +
       kHalfDiagonalScale * grid.resolution_m;
-  return fmaxf(0.0F, center_distance_m - correction_m);
+  return {fmaxf(0.0F, center_distance_m - correction_m),
+          center_distance_m == 0.0F};
 }
 
 __device__ float passageZReference(const PassageConstraint& passage,
@@ -497,6 +504,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     const int validation_samples =
         max(1, static_cast<int>(ceilf(segment_length_m / validation_step_m)));
     float clearance = kInfinity;
+    bool segment_raw_hit = false;
     for (int sample = 1; sample <= validation_samples; ++sample) {
       const float ratio =
           static_cast<float>(sample) / static_cast<float>(validation_samples);
@@ -504,8 +512,10 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       swept_state.x = previous_state.x + ratio * (state.x - previous_state.x);
       swept_state.y = previous_state.y + ratio * (state.y - previous_state.y);
       swept_state.z = previous_state.z + ratio * (state.z - previous_state.z);
-      clearance =
-          fminf(clearance, conservativeEsdfClearance(swept_state, grid, esdf_texture));
+      const DeviceEsdfQuery esdf_query =
+          queryEsdf(swept_state, grid, esdf_texture);
+      clearance = fminf(clearance, esdf_query.clearance_m);
+      segment_raw_hit = segment_raw_hit || esdf_query.raw_collision;
       for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;
            ++solid_index) {
         solid_hit = intersectsSolid(swept_state, solids[solid_index]);
@@ -523,7 +533,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       }
     }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
-    raw_hit = raw_hit || clearance <= risk.collision_radius_m;
+    raw_hit = raw_hit || segment_raw_hit;
     const RouteProjection route_projection =
         route_point_count >= 2U
             ? projectOntoRoute(state, route_points, route_point_count,

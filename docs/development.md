@@ -64,7 +64,7 @@ Debug/prohibited outputs must not be wired back into raw planner inputs.
 Planner owns:
 
 - obstacle merging;
-- grid inflation and planning clearance;
+- ESDF risk-band classification;
 - route and trajectory generation;
 - planning diagnostics.
 

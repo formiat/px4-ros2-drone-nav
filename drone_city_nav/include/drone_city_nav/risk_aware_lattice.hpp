@@ -61,7 +61,6 @@ struct RiskAwareLatticeConfig {
   double primitive_sample_step_m{0.5};
   double goal_tolerance_m{5.0};
   double receding_goal_distance_m{60.0};
-  double collision_radius_m{0.82};
   double critical_distance_m{1.0};
   double preferred_distance_m{6.0};
   double planning_exposure_tie_break_per_m{1.0};

@@ -15,6 +15,7 @@ enum class EsdfQueryStatus {
 struct EsdfQueryResult {
   float clearance_m{0.0F};
   EsdfQueryStatus status{EsdfQueryStatus::kOutsideGrid};
+  bool raw_occupied{true};
 };
 
 [[nodiscard]] EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,

@@ -102,17 +102,11 @@ struct StageOutcome {
       grid.origin_y_m + (static_cast<double>(key.y) + 0.5) * grid.resolution_m};
 }
 
-[[nodiscard]] std::optional<float> clearanceAt(const mppi::EsdfGrid& grid,
-                                               const std::span<const float> esdf_m,
-                                               const Point2 point) {
-  const EsdfQueryResult query = queryConservativeEsdf(
-      grid, esdf_m, static_cast<float>(point.x), static_cast<float>(point.y));
-  if (query.status == EsdfQueryStatus::kOutsideGrid) {
-    return std::nullopt;
-  }
-  return query.status == EsdfQueryStatus::kValid
-             ? query.clearance_m
-             : std::numeric_limits<float>::quiet_NaN();
+[[nodiscard]] EsdfQueryResult queryAt(const mppi::EsdfGrid& grid,
+                                      const std::span<const float> esdf_m,
+                                      const Point2 point) {
+  return queryConservativeEsdf(grid, esdf_m, static_cast<float>(point.x),
+                               static_cast<float>(point.y));
 }
 
 [[nodiscard]] double headingForBin(const int bin, const int bins) {
@@ -204,34 +198,35 @@ evaluateSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const double ratio = length_m > 0.0 ? sample_distance / length_m : 1.0;
     const Point2 sample{std::lerp(start.x, endpoint.x, ratio),
                         std::lerp(start.y, endpoint.y, ratio)};
-    const std::optional<float> clearance = clearanceAt(grid, esdf_m, sample);
-    if (!clearance.has_value()) {
+    const EsdfQueryResult query = queryAt(grid, esdf_m, sample);
+    if (query.status == EsdfQueryStatus::kOutsideGrid) {
       result.valid = false;
       result.rejection_reason = SegmentEvaluation::RejectionReason::kOutsideGrid;
       return result;
     }
-    if (!std::isfinite(*clearance)) {
-      if (*clearance > 0.0F) {
-        continue;
-      }
+    if (query.status != EsdfQueryStatus::kValid) {
       result.valid = false;
       result.rejection_reason = SegmentEvaluation::RejectionReason::kInvalidClearance;
       return result;
     }
-    if (*clearance <= config.collision_radius_m) {
+    if (query.raw_occupied) {
       result.valid = false;
       result.rejection_reason = SegmentEvaluation::RejectionReason::kRawCollision;
       return result;
+    }
+    const float clearance = query.clearance_m;
+    if (std::isinf(clearance) && clearance > 0.0F) {
+      continue;
     }
     if (!allow_portal_footprint && pointInsideAnyPortalFootprint(sample, portals)) {
       result.valid = false;
       result.rejection_reason = SegmentEvaluation::RejectionReason::kPortalFootprint;
       return result;
     }
-    if (*clearance < config.critical_distance_m) {
+    if (clearance < config.critical_distance_m) {
       result.worst_tier = mppi::RiskTier::kCritical;
       result.critical_exposure_m += config.primitive_sample_step_m;
-    } else if (*clearance < config.preferred_distance_m) {
+    } else if (clearance < config.preferred_distance_m) {
       result.worst_tier = std::max(result.worst_tier, mppi::RiskTier::kPlanning);
       result.planning_exposure_m += config.primitive_sample_step_m;
     }
@@ -486,7 +481,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   };
   const LatticeKey start_key =
       makeKey(start, nearestHeadingBin(preferred_heading_rad, config.heading_bins));
-  if (!clearanceAt(grid, esdf_m, start).has_value()) {
+  if (queryAt(grid, esdf_m, start).status == EsdfQueryStatus::kOutsideGrid) {
     return result;
   }
   std::unique_ptr<RiskAwareLatticeSearchSession> local_session;
