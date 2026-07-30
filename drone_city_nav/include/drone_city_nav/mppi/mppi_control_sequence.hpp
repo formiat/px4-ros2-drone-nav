@@ -14,6 +14,10 @@ namespace drone_city_nav::mppi {
 [[nodiscard]] std::vector<Control>
 shiftControlSequence(std::span<const Control> controls, float dt_s, double elapsed_s);
 
+void limitControlSequence(std::span<Control> controls, const DynamicsConfig& dynamics,
+                          Control previous_applied_control,
+                          float first_control_interval_s) noexcept;
+
 [[nodiscard]] std::vector<Control>
 buildGuideDirectedNominalSeed(const State& initial, const State& target,
                               const DynamicsConfig& dynamics, std::size_t steps,

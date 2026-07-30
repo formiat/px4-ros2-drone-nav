@@ -97,6 +97,8 @@ struct ProductionMppiPreparedEsdf {
   double lattice_reachable_depth_m{0.0};
   std::size_t lattice_frontier_candidates_considered{0U};
   LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
+  std::size_t lattice_continuation_attempt{0U};
+  bool lattice_search_session_resumed{false};
 };
 
 struct ProductionMppiStability {
@@ -180,6 +182,7 @@ private:
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void esdfWorker(std::stop_token stop_token);
+  void guideWorker(std::stop_token stop_token);
   void diagnosticsWorker(std::stop_token stop_token);
   void planningTick();
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
@@ -216,6 +219,7 @@ private:
   double no_static_guide_lookahead_m_{30.0};
   bool frontier_blacklist_enabled_{false};
   double frontier_blacklist_ttl_s_{15.0};
+  std::size_t lattice_maximum_continuation_attempts_{4U};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
   SemanticPortalRouteConfig semantic_route_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
@@ -233,6 +237,7 @@ private:
   mppi::PassageSpeedPolicy passage_speed_policy_{};
   MppiHorizonSafetyConfig safety_config_{};
   MppiSafetyInterventionTracker safety_intervention_tracker_{};
+  MppiBrakeHoldLifecycle brake_hold_lifecycle_{};
   MppiLivenessConfig liveness_config_{};
   MppiSpeedPolicyConfig speed_policy_config_{};
   PassageCoordinatorConfig passage_coordinator_config_{};
@@ -260,8 +265,13 @@ private:
   std::mutex raw_queue_mutex_;
   std::condition_variable_any raw_queue_condition_;
   msg::RawObstacleSnapshot::ConstSharedPtr pending_raw_snapshot_;
-  std::uint64_t dropped_raw_snapshots_{0U};
+  std::atomic<std::uint64_t> dropped_raw_snapshots_{0U};
   std::jthread esdf_worker_;
+  std::mutex guide_queue_mutex_;
+  std::condition_variable_any guide_queue_condition_;
+  std::shared_ptr<const ProductionMppiPreparedEsdf> pending_guide_world_;
+  std::atomic<std::uint64_t> dropped_guide_worlds_{0U};
+  std::jthread guide_worker_;
   std::atomic<std::uint64_t> guide_release_generation_{0U};
   std::atomic<GlobalGuideReleaseReason> guide_release_reason_{
       GlobalGuideReleaseReason::kStalled};

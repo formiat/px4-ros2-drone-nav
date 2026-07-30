@@ -54,5 +54,26 @@ TEST(MppiControlSequenceTest, ReseedAlternatesLateralBias) {
   EXPECT_GT(right.front().ax, 0.0F);
 }
 
+TEST(MppiControlSequenceTest, HostLimiterMatchesAccelerationAndJerkContract) {
+  std::array<Control, 2> controls{
+      Control{.ax = 20.0F, .ay = 20.0F, .az = 20.0F},
+      Control{.ax = -20.0F, .ay = -20.0F, .az = -20.0F},
+  };
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.maximum_horizontal_acceleration_mps2 = 4.0F;
+  dynamics.maximum_vertical_acceleration_mps2 = 3.0F;
+  dynamics.maximum_control_jerk_mps3 = 10.0F;
+
+  limitControlSequence(controls, dynamics, Control{}, 0.05F);
+
+  EXPECT_NEAR(controls[0].ax, 0.5F, 1.0e-6F);
+  EXPECT_NEAR(controls[0].ay, 0.5F, 1.0e-6F);
+  EXPECT_NEAR(controls[0].az, 0.5F, 1.0e-6F);
+  EXPECT_NEAR(controls[1].ax, -0.5F, 1.0e-6F);
+  EXPECT_NEAR(controls[1].ay, -0.5F, 1.0e-6F);
+  EXPECT_NEAR(controls[1].az, -0.5F, 1.0e-6F);
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

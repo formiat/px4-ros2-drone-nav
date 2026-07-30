@@ -72,12 +72,6 @@ makeMppiRoute(const SemanticPortalRoute& route) {
 } // namespace
 
 void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
-  std::size_t active_guide_expansions = 0U;
-  double active_guide_cost = 0.0;
-  std::shared_ptr<const SemanticPortalRoute> semantic_route;
-  std::shared_ptr<const std::vector<mppi::RoutePoint>> mppi_route;
-  std::shared_ptr<const std::vector<Point2>> semantic_route_source;
-  SemanticPortalRouteBuildResult semantic_route_build;
   while (!stop_token.stop_requested()) {
     msg::RawObstacleSnapshot::ConstSharedPtr snapshot;
     {
@@ -134,13 +128,103 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     if (!upload.accepted) {
       continue;
     }
-    const auto host_distances =
-        std::make_shared<const std::vector<float>>(std::move(distances));
-    ProductionMppiNavigation navigation;
+
+    ProductionMppiPreparedEsdf prepared;
     {
-      const std::scoped_lock lock{input_mutex_};
-      navigation = navigation_;
+      const std::scoped_lock lock{esdf_state_mutex_};
+      if (prepared_esdf_.has_value()) {
+        prepared = *prepared_esdf_;
+      }
     }
+    prepared.producer_instance_id = snapshot->producer_instance_id;
+    prepared.revision = snapshot->obstacle_snapshot_revision;
+    prepared.source_stamp_ns = source_stamp_ns;
+    prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
+    prepared.build_ms = build_ms;
+    prepared.conversion_ms = conversion_ms;
+    prepared.upload_ms = upload.upload_ms;
+    prepared.grid = grid;
+    prepared.distances_m =
+        std::make_shared<const std::vector<float>>(std::move(distances));
+    prepared.semantic_side_volumes = semantic_occupancy.side_volumes_considered;
+    prepared.semantic_side_cells = semantic_occupancy.cells_marked_occupied;
+    prepared.lattice_search_performed = false;
+    prepared.lattice_continuation_attempt = 0U;
+
+    {
+      const std::scoped_lock lock{esdf_state_mutex_};
+      prepared_esdf_ = prepared;
+    }
+    auto guide_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
+    {
+      const std::scoped_lock lock{guide_queue_mutex_};
+      if (pending_guide_world_) {
+        dropped_guide_worlds_.fetch_add(1U, std::memory_order_relaxed);
+      }
+      pending_guide_world_ = std::move(guide_world);
+    }
+    guide_queue_condition_.notify_all();
+
+    RCLCPP_INFO(
+        get_logger(),
+        "PRODUCTION_MPPI_ESDF revision=%" PRIu64
+        " build_ms=%.2f conversion_ms=%.2f upload_ms=%.2f "
+        "raw_to_ready_ms=%.2f dropped_raw=%" PRIu64 " dropped_guide_worlds=%" PRIu64,
+        prepared.revision, prepared.build_ms, prepared.conversion_ms,
+        prepared.upload_ms,
+        static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
+        dropped_raw_snapshots_.load(std::memory_order_relaxed),
+        dropped_guide_worlds_.load(std::memory_order_relaxed));
+  }
+}
+
+void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
+  std::size_t active_guide_expansions = 0U;
+  double active_guide_cost = 0.0;
+  std::shared_ptr<const SemanticPortalRoute> semantic_route;
+  std::shared_ptr<const std::vector<mppi::RoutePoint>> mppi_route;
+  std::shared_ptr<const std::vector<Point2>> semantic_route_source;
+  SemanticPortalRouteBuildResult semantic_route_build;
+  std::shared_ptr<const ProductionMppiPreparedEsdf> world;
+  RiskAwareLatticeSearchSession search_session;
+  std::optional<ProductionMppiNavigation> search_navigation;
+  std::size_t continuation_attempt = 0U;
+  while (!stop_token.stop_requested()) {
+    {
+      std::unique_lock lock{guide_queue_mutex_};
+      if (!world) {
+        guide_queue_condition_.wait(
+            lock, stop_token, [this]() { return pending_guide_world_ != nullptr; });
+      }
+      if (stop_token.stop_requested()) {
+        return;
+      }
+      if (pending_guide_world_) {
+        world = std::exchange(pending_guide_world_, nullptr);
+        search_session.reset();
+        search_navigation.reset();
+        continuation_attempt = 0U;
+      }
+    }
+    if (!world || !world->distances_m) {
+      world.reset();
+      continue;
+    }
+    const mppi::EsdfGrid& grid = world->grid;
+    const std::shared_ptr<const std::vector<float>>& host_distances =
+        world->distances_m;
+    RiskAwareLatticeConfig search_config = lattice_config_;
+    const std::size_t continuation_scale =
+        std::size_t{1U} << std::min<std::size_t>(continuation_attempt, 3U);
+    search_config.maximum_expansions =
+        lattice_config_.maximum_expansions * continuation_scale;
+    search_config.maximum_search_time_ms = lattice_config_.maximum_search_time_ms *
+                                           static_cast<double>(continuation_scale);
+    if (!search_navigation.has_value()) {
+      const std::scoped_lock lock{input_mutex_};
+      search_navigation = navigation_;
+    }
+    const ProductionMppiNavigation navigation = *search_navigation;
     ActiveGlobalGuideUpdate guide_update;
     GlobalGuideHeading guide_heading;
     RiskAwareLatticeResult lattice_observation;
@@ -191,8 +275,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
               navigation.state, Point2{mission_goal_.x, mission_goal_.y});
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
-              Point2{mission_goal_.x, mission_goal_.y}, lattice_config_,
-              semantic_portal_primitives_, frontier_blacklist_);
+              Point2{mission_goal_.x, mission_goal_.y}, search_config,
+              semantic_portal_primitives_, frontier_blacklist_, &search_session);
           lattice_search_performed = true;
           const auto candidate =
               std::make_shared<const std::vector<Point2>>(lattice_observation.guide);
@@ -243,8 +327,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
               navigation.state, Point2{mission_goal_.x, mission_goal_.y});
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
-              Point2{mission_goal_.x, mission_goal_.y}, lattice_config_,
-              semantic_portal_primitives_, frontier_blacklist_);
+              Point2{mission_goal_.x, mission_goal_.y}, search_config,
+              semantic_portal_primitives_, frontier_blacklist_, &search_session);
           lattice_search_performed = true;
           const auto candidate = std::make_shared<const std::vector<Point2>>(
               std::move(lattice_observation.guide));
@@ -294,64 +378,59 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       mppi_route = semantic_route ? makeMppiRoute(*semantic_route) : nullptr;
       semantic_route_source = guide;
     }
-    const ProductionMppiPreparedEsdf prepared{
-        .producer_instance_id = snapshot->producer_instance_id,
-        .revision = snapshot->obstacle_snapshot_revision,
-        .source_stamp_ns = source_stamp_ns,
-        .ready_stamp_ns = get_clock()->now().nanoseconds(),
-        .build_ms = build_ms,
-        .conversion_ms = conversion_ms,
-        .upload_ms = upload.upload_ms,
-        .grid = grid,
-        .distances_m = host_distances,
-        .semantic_route = semantic_route,
-        .mppi_route = mppi_route,
-        .portal_events = semantic_route_build.portal_events_created,
-        .rejected_portal_route_misses = semantic_route_build.rejected_route_miss,
-        .rejected_portal_overlaps = semantic_route_build.rejected_overlap,
-        .semantic_side_volumes = semantic_occupancy.side_volumes_considered,
-        .semantic_side_cells = semantic_occupancy.cells_marked_occupied,
-        .global_guide_expansions = active_guide_expansions,
-        .global_guide_cost = active_guide_cost,
-        .global_guide_generation = active_status.generation,
-        .global_guide_reused = guide_update.retained,
-        .global_guide_reaches_mission_goal = active_status.reaches_mission_goal,
-        .global_guide_release_reason = guide_update.release_reason,
-        .global_guide_heading_source = guide_heading.source,
-        .global_guide_risk = active_status.current_risk,
-        .global_guide_acceptance_reason = guide_acceptance.reason,
-        .global_guide_projection = active_status.projection,
-        .lattice_search_performed = lattice_search_performed,
-        .lattice_executable = lattice_observation.valid,
-        .lattice_status = lattice_observation.status,
-        .lattice_termination = lattice_observation.termination,
-        .lattice_planning_goal_reached = lattice_observation.planning_goal_reached,
-        .lattice_achieved_progress_m = lattice_observation.achieved_progress_m,
-        .lattice_guide_length_m = lattice_observation.guide_length_m,
-        .lattice_remaining_goal_distance_m =
-            lattice_observation.remaining_goal_distance_m,
-        .lattice_terminal_successor_count =
-            lattice_observation.terminal_successor_count,
-        .lattice_risk_stage = lattice_observation.risk_stage,
-        .lattice_stale_queue_pops = lattice_observation.stale_queue_pops,
-        .lattice_open_peak = lattice_observation.open_peak,
-        .lattice_records_peak = lattice_observation.records_peak,
-        .lattice_two_step_reachable_states =
-            lattice_observation.two_step_reachable_states,
-        .lattice_reachable_depth_m = lattice_observation.reachable_depth_m,
-        .lattice_frontier_candidates_considered =
-            lattice_observation.frontier_candidates_considered,
-        .lattice_successor_diagnostics = lattice_observation.successor_diagnostics,
-    };
+    ProductionMppiPreparedEsdf prepared = *world;
+    prepared.semantic_route = semantic_route;
+    prepared.mppi_route = mppi_route;
+    prepared.portal_events = semantic_route_build.portal_events_created;
+    prepared.rejected_portal_route_misses = semantic_route_build.rejected_route_miss;
+    prepared.rejected_portal_overlaps = semantic_route_build.rejected_overlap;
+    prepared.global_guide_expansions = active_guide_expansions;
+    prepared.global_guide_cost = active_guide_cost;
+    prepared.global_guide_generation = active_status.generation;
+    prepared.global_guide_reused = guide_update.retained;
+    prepared.global_guide_reaches_mission_goal = active_status.reaches_mission_goal;
+    prepared.global_guide_release_reason = guide_update.release_reason;
+    prepared.global_guide_heading_source = guide_heading.source;
+    prepared.global_guide_risk = active_status.current_risk;
+    prepared.global_guide_acceptance_reason = guide_acceptance.reason;
+    prepared.global_guide_projection = active_status.projection;
+    prepared.lattice_search_performed = lattice_search_performed;
+    prepared.lattice_executable = lattice_observation.valid;
+    prepared.lattice_status = lattice_observation.status;
+    prepared.lattice_termination = lattice_observation.termination;
+    prepared.lattice_planning_goal_reached = lattice_observation.planning_goal_reached;
+    prepared.lattice_achieved_progress_m = lattice_observation.achieved_progress_m;
+    prepared.lattice_guide_length_m = lattice_observation.guide_length_m;
+    prepared.lattice_remaining_goal_distance_m =
+        lattice_observation.remaining_goal_distance_m;
+    prepared.lattice_terminal_successor_count =
+        lattice_observation.terminal_successor_count;
+    prepared.lattice_risk_stage = lattice_observation.risk_stage;
+    prepared.lattice_stale_queue_pops = lattice_observation.stale_queue_pops;
+    prepared.lattice_open_peak = lattice_observation.open_peak;
+    prepared.lattice_records_peak = lattice_observation.records_peak;
+    prepared.lattice_two_step_reachable_states =
+        lattice_observation.two_step_reachable_states;
+    prepared.lattice_reachable_depth_m = lattice_observation.reachable_depth_m;
+    prepared.lattice_frontier_candidates_considered =
+        lattice_observation.frontier_candidates_considered;
+    prepared.lattice_successor_diagnostics = lattice_observation.successor_diagnostics;
+    prepared.lattice_continuation_attempt = continuation_attempt;
+    prepared.lattice_search_session_resumed =
+        lattice_observation.search_session_resumed;
+    bool activated = false;
     {
       const std::scoped_lock lock{esdf_state_mutex_};
-      prepared_esdf_ = prepared;
+      if (prepared_esdf_.has_value() && prepared_esdf_->revision == prepared.revision) {
+        prepared_esdf_ = prepared;
+        activated = true;
+      }
     }
     RCLCPP_INFO(
         get_logger(),
-        "PRODUCTION_MPPI_ESDF revision=%" PRIu64
-        " build_ms=%.2f conversion_ms=%.2f upload_ms=%.2f "
-        "raw_to_ready_ms=%.2f dropped_updates=%" PRIu64
+        "PRODUCTION_MPPI_GUIDE revision=%" PRIu64
+        " activated=%s continuation_attempt=%zu search_session_resumed=%s "
+        "dropped_guide_worlds=%" PRIu64
         " guide_valid=%s guide_points=%zu guide_expansions=%zu guide_cost=%.2f "
         "portal_events=%zu portal_route_misses=%zu portal_overlaps=%zu "
         "semantic_side_volumes=%zu semantic_side_cells=%zu "
@@ -370,15 +449,14 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         "successor_reject_collision=%zu successor_reject_portal=%zu "
         "successor_reject_risk=%zu successor_reject_blacklist=%zu "
         "successor_reject_cost=%zu",
-        prepared.revision, prepared.build_ms, prepared.conversion_ms,
-        prepared.upload_ms,
-        static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
-        dropped_raw_snapshots_, guide && guide->size() >= 2U ? "true" : "false",
-        guide ? guide->size() : 0U, prepared.global_guide_expansions,
-        prepared.global_guide_cost, prepared.portal_events,
-        prepared.rejected_portal_route_misses, prepared.rejected_portal_overlaps,
-        prepared.semantic_side_volumes, prepared.semantic_side_cells,
-        prepared.global_guide_generation,
+        prepared.revision, activated ? "true" : "false", continuation_attempt,
+        prepared.lattice_search_session_resumed ? "true" : "false",
+        dropped_guide_worlds_.load(std::memory_order_relaxed),
+        guide && guide->size() >= 2U ? "true" : "false", guide ? guide->size() : 0U,
+        prepared.global_guide_expansions, prepared.global_guide_cost,
+        prepared.portal_events, prepared.rejected_portal_route_misses,
+        prepared.rejected_portal_overlaps, prepared.semantic_side_volumes,
+        prepared.semantic_side_cells, prepared.global_guide_generation,
         prepared.global_guide_reused ? "true" : "false",
         prepared.global_guide_reaches_mission_goal ? "true" : "false",
         globalGuideReleaseReasonName(prepared.global_guide_release_reason),
@@ -406,6 +484,23 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         prepared.lattice_successor_diagnostics.rejected_risk_stage,
         prepared.lattice_successor_diagnostics.rejected_blacklisted_failure,
         prepared.lattice_successor_diagnostics.rejected_no_cost_improvement);
+
+    const bool search_incomplete =
+        lattice_search_performed &&
+        lattice_observation.status == LatticePlanStatus::kSearchIncomplete;
+    bool newer_world_pending = false;
+    {
+      const std::scoped_lock lock{guide_queue_mutex_};
+      newer_world_pending = pending_guide_world_ != nullptr;
+    }
+    if (search_incomplete && !newer_world_pending &&
+        continuation_attempt + 1U < lattice_maximum_continuation_attempts_) {
+      ++continuation_attempt;
+      continue;
+    }
+    world.reset();
+    search_navigation.reset();
+    continuation_attempt = 0U;
   }
 }
 
@@ -821,6 +916,8 @@ void ProductionMppiNode::planningTick() {
   mppi::MppiTickResult diagnostic_result;
   diagnostic_result.eligible_risk_contract = result.eligible_risk_contract;
   diagnostic_result.post_update_classification = result.post_update_classification;
+  diagnostic_result.post_update_repair = result.post_update_repair;
+  diagnostic_result.post_update_backtrack_ratio = result.post_update_backtrack_ratio;
   diagnostic_result.selected_tier = result.selected_tier;
   diagnostic_result.raw_collision = result.raw_collision;
   diagnostic_result.known_solid_collision = result.known_solid_collision;

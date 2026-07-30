@@ -1,5 +1,7 @@
 #include "drone_city_nav/active_global_guide.hpp"
 
+#include "drone_city_nav/esdf_query.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -29,20 +31,14 @@ struct GlobalGuideRiskEvaluation {
 [[nodiscard]] std::optional<float> clearanceAt(const mppi::EsdfGrid& grid,
                                                const std::span<const float> esdf_m,
                                                const Point2 point) {
-  const int x =
-      static_cast<int>(std::floor((point.x - grid.origin_x_m) / grid.resolution_m));
-  const int y =
-      static_cast<int>(std::floor((point.y - grid.origin_y_m) / grid.resolution_m));
-  if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) {
+  const EsdfQueryResult query = queryConservativeEsdf(
+      grid, esdf_m, static_cast<float>(point.x), static_cast<float>(point.y));
+  if (query.status == EsdfQueryStatus::kOutsideGrid) {
     return std::nullopt;
   }
-  const std::size_t index =
-      static_cast<std::size_t>(y) * static_cast<std::size_t>(grid.width) +
-      static_cast<std::size_t>(x);
-  if (index >= esdf_m.size()) {
-    return std::nullopt;
-  }
-  return esdf_m[index];
+  return query.status == EsdfQueryStatus::kValid
+             ? query.clearance_m
+             : std::numeric_limits<float>::quiet_NaN();
 }
 
 [[nodiscard]] GlobalGuideRiskTier

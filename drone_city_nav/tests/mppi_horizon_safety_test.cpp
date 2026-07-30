@@ -169,5 +169,44 @@ TEST(MppiHorizonSafetyTest, ExplicitFallbackHoldsAnAlreadyStationaryVehicle) {
   EXPECT_FLOAT_EQ(result.fallback_horizon.back().vz, 0.0F);
 }
 
+TEST(MppiHorizonSafetyTest, SweptValidationFindsCollisionBetweenHorizonStates) {
+  const mppi::EsdfGrid grid{5, 1, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf{2.0F, 1.0F, 0.0F, 1.0F, 2.0F};
+  const mppi::State current{0.5F, 0.5F};
+  const std::vector<mppi::State> horizon{current, mppi::State{4.5F, 0.5F}};
+
+  const MppiHorizonSafetyResult result =
+      evaluateMppiHorizonSafety(current, horizon, esdf, grid,
+                                MppiHorizonSafetyConfig{
+                                    .collision_radius_m = 0.1,
+                                    .minimum_time_to_collision_s = 0.01,
+                                    .dt_s = 1.0,
+                                    .swept_validation_step_m = 0.25,
+                                });
+
+  EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_GT(result.time_to_collision_s, 0.0);
+  EXPECT_LT(result.time_to_collision_s, 1.0);
+}
+
+TEST(MppiHorizonSafetyTest, BrakingLifecycleLatchesPositionAfterVehicleSlows) {
+  MppiBrakeHoldLifecycle lifecycle;
+  mppi::State moving{2.0F, 3.0F, 4.0F};
+  moving.vx = 1.0F;
+  EXPECT_FALSE(lifecycle.update(true, moving, 0.2).position_hold);
+
+  mppi::State stopped = moving;
+  stopped.x = 2.5F;
+  stopped.vx = 0.1F;
+  const MppiBrakeHoldUpdate captured = lifecycle.update(true, stopped, 0.2);
+  ASSERT_TRUE(captured.position_hold);
+  EXPECT_FLOAT_EQ(captured.hold_state.x, 2.5F);
+
+  stopped.x = 2.7F;
+  const MppiBrakeHoldUpdate retained = lifecycle.update(true, stopped, 0.2);
+  EXPECT_FLOAT_EQ(retained.hold_state.x, 2.5F);
+  EXPECT_FALSE(lifecycle.update(false, stopped, 0.2).position_hold);
+}
+
 } // namespace
 } // namespace drone_city_nav

@@ -286,6 +286,15 @@ ProductionMppiNode::ProductionMppiNode()
           "global_lattice_frontier_blacklist_heading_bins", 1));
   frontier_blacklist_ttl_s_ =
       declare_parameter<double>("global_lattice_frontier_blacklist_ttl_s", 15.0);
+  const std::int64_t lattice_maximum_continuation_attempts =
+      declare_parameter<std::int64_t>("global_lattice_maximum_continuation_attempts",
+                                      4);
+  if (lattice_maximum_continuation_attempts <= 0) {
+    throw std::invalid_argument{
+        "global lattice maximum continuation attempts must be positive"};
+  }
+  lattice_maximum_continuation_attempts_ =
+      static_cast<std::size_t>(lattice_maximum_continuation_attempts);
   lattice_config_.planning_exposure_tie_break_per_m =
       declare_parameter<double>("global_lattice_planning_tie_break_per_m", 1.0);
   lattice_config_.critical_exposure_tie_break_per_m =
@@ -336,6 +345,10 @@ ProductionMppiNode::ProductionMppiNode()
       static_cast<double>(mppi_config_.dynamics.maximum_horizontal_acceleration_mps2));
   safety_config_.minimum_time_to_collision_s =
       declare_parameter<double>("safety_minimum_time_to_collision_s", 0.50);
+  safety_config_.swept_validation_step_m =
+      declare_parameter<double>("safety_swept_validation_step_m", 0.25);
+  safety_config_.position_hold_capture_speed_mps =
+      declare_parameter<double>("safety_position_hold_capture_speed_mps", 0.20);
   const double static_safety_fallback_duration_s =
       declare_parameter<double>("static_safety_fallback_duration_s", 3.0);
   const double no_static_safety_fallback_duration_s =
@@ -370,6 +383,8 @@ ProductionMppiNode::ProductionMppiNode()
       !std::isfinite(passage_speed_policy_.no_static_limit_mps) ||
       passage_speed_policy_.no_static_limit_mps < 0.0F ||
       !(semantic_route_config_.crossing_lateral_margin_m >= 0.0) ||
+      !(safety_config_.swept_validation_step_m > 0.0) ||
+      !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
       !(frontier_blacklist_ttl_s_ > 0.0) ||
       !(semantic_route_config_.minimum_normal_alignment >= 0.0) ||
       !(semantic_route_config_.minimum_normal_alignment <= 1.0)) {
@@ -453,6 +468,8 @@ ProductionMppiNode::ProductionMppiNode()
       std::jthread([this](const std::stop_token token) { diagnosticsWorker(token); });
   esdf_worker_ =
       std::jthread([this](const std::stop_token token) { esdfWorker(token); });
+  guide_worker_ =
+      std::jthread([this](const std::stop_token token) { guideWorker(token); });
   planning_timer_ = create_wall_timer(
       std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); });
   RCLCPP_INFO(
@@ -498,6 +515,11 @@ ProductionMppiNode::~ProductionMppiNode() {
     esdf_worker_.request_stop();
     raw_queue_condition_.notify_all();
     esdf_worker_.join();
+  }
+  if (guide_worker_.joinable()) {
+    guide_worker_.request_stop();
+    guide_queue_condition_.notify_all();
+    guide_worker_.join();
   }
   publishSummary();
 }

@@ -11,6 +11,15 @@ namespace {
   return std::clamp(value, -limit, limit);
 }
 
+void clampHorizontal(float& x, float& y, const float limit) noexcept {
+  const float magnitude = std::hypot(x, y);
+  if (magnitude > limit && magnitude > 0.0F) {
+    const float scale = limit / magnitude;
+    x *= scale;
+    y *= scale;
+  }
+}
+
 } // namespace
 
 Control interpolateControl(const Control& first, const Control& second,
@@ -54,6 +63,31 @@ std::vector<Control> shiftControlSequence(const std::span<const Control> control
                            static_cast<float>(source - static_cast<double>(lower))));
   }
   return shifted;
+}
+
+void limitControlSequence(const std::span<Control> controls,
+                          const DynamicsConfig& dynamics,
+                          const Control previous_applied_control,
+                          const float first_control_interval_s) noexcept {
+  Control previous = previous_applied_control;
+  for (std::size_t step = 0U; step < controls.size(); ++step) {
+    const float interval_s = step == 0U ? first_control_interval_s : dynamics.dt_s;
+    const float maximum_delta = dynamics.maximum_control_jerk_mps3 * interval_s;
+    Control& control = controls[step];
+    clampHorizontal(control.ax, control.ay,
+                    dynamics.maximum_horizontal_acceleration_mps2);
+    control.az =
+        clampMagnitude(control.az, dynamics.maximum_vertical_acceleration_mps2);
+    control.yaw_accel =
+        clampMagnitude(control.yaw_accel, dynamics.maximum_yaw_acceleration_radps2);
+    control.ax = std::clamp(control.ax, previous.ax - maximum_delta,
+                            previous.ax + maximum_delta);
+    control.ay = std::clamp(control.ay, previous.ay - maximum_delta,
+                            previous.ay + maximum_delta);
+    control.az = std::clamp(control.az, previous.az - maximum_delta,
+                            previous.az + maximum_delta);
+    previous = control;
+  }
 }
 
 std::vector<Control> buildGuideDirectedNominalSeed(const State& initial,

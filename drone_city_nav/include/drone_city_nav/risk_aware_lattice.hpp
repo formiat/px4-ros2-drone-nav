@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -106,6 +107,30 @@ struct RiskAwareLatticeResult {
   double reachable_depth_m{0.0};
   std::size_t frontier_candidates_considered{0U};
   LatticeSuccessorDiagnostics successor_diagnostics{};
+  bool search_session_resumed{false};
+};
+
+class RiskAwareLatticeSearchSession final {
+public:
+  RiskAwareLatticeSearchSession();
+  ~RiskAwareLatticeSearchSession();
+
+  RiskAwareLatticeSearchSession(const RiskAwareLatticeSearchSession&) = delete;
+  RiskAwareLatticeSearchSession&
+  operator=(const RiskAwareLatticeSearchSession&) = delete;
+  RiskAwareLatticeSearchSession(RiskAwareLatticeSearchSession&&) noexcept;
+  RiskAwareLatticeSearchSession& operator=(RiskAwareLatticeSearchSession&&) noexcept;
+
+  void reset();
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+
+  friend RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
+      const mppi::EsdfGrid&, std::span<const float>, Point2, double, Point2,
+      const RiskAwareLatticeConfig&, std::span<const SemanticPortalPrimitive>,
+      std::span<const LatticeFrontierBlacklistEntry>, RiskAwareLatticeSearchSession*);
 };
 
 [[nodiscard]] RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
@@ -113,7 +138,8 @@ struct RiskAwareLatticeResult {
     double preferred_heading_rad, Point2 mission_goal,
     const RiskAwareLatticeConfig& config,
     std::span<const SemanticPortalPrimitive> portals = {},
-    std::span<const LatticeFrontierBlacklistEntry> frontier_blacklist = {});
+    std::span<const LatticeFrontierBlacklistEntry> frontier_blacklist = {},
+    RiskAwareLatticeSearchSession* session = nullptr);
 
 [[nodiscard]] const char* latticePlanStatusName(LatticePlanStatus status) noexcept;
 

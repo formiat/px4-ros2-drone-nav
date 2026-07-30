@@ -189,6 +189,8 @@ production_mppi_node:
     safety_reaction_latency_s: 0.10
     safety_maximum_braking_acceleration_mps2: 8.0
     safety_minimum_time_to_collision_s: 0.50
+    safety_swept_validation_step_m: 0.25
+    safety_position_hold_capture_speed_mps: 0.20
     static_safety_fallback_duration_s: 3.0
     no_static_safety_fallback_duration_s: 3.0
     liveness_enabled: true
@@ -213,6 +215,7 @@ production_mppi_node:
     global_lattice_frontier_blacklist_radius_m: 6.0
     global_lattice_frontier_blacklist_heading_bins: 1
     global_lattice_frontier_blacklist_ttl_s: 15.0
+    global_lattice_maximum_continuation_attempts: 4
     global_lattice_planning_tie_break_per_m: 1.0
     global_lattice_critical_tie_break_per_m: 10.0
     global_guide_validation_sample_step_m: 0.5

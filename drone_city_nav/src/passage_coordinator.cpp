@@ -526,13 +526,10 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
         maximumSafePassageSpeed(input, event, safe_min_z, safe_max_z, config_);
   }
   const bool traversal_predicted_safe = speed_prediction.safe;
-  if (vertical_state_ == VerticalState::kAlignment &&
-      (traversal_predicted_safe || in_traversal)) {
-    vertical_state_ = VerticalState::kUncaptured;
-  }
-  const bool movement_ready = in_approach || in_traversal
-                                  ? traversal_predicted_safe
-                                  : vertical_state_ == VerticalState::kReady;
+  const bool movement_ready =
+      vertical_state_ != VerticalState::kAlignment &&
+      (in_approach || in_traversal ? traversal_predicted_safe
+                                   : vertical_state_ == VerticalState::kReady);
 
   const double distance_to_hold_station_m =
       std::max(0.0, stationary_hold_station_m_ - input.route_station_m);

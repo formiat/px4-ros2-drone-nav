@@ -1,5 +1,7 @@
 #include "drone_city_nav/mppi_horizon_safety.hpp"
 
+#include "drone_city_nav/esdf_query.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -12,15 +14,8 @@ namespace {
 [[nodiscard]] float clearanceAt(const mppi::State& state,
                                 const std::span<const float> esdf_m,
                                 const mppi::EsdfGrid& grid) {
-  const int x =
-      static_cast<int>(std::floor((state.x - grid.origin_x_m) / grid.resolution_m));
-  const int y =
-      static_cast<int>(std::floor((state.y - grid.origin_y_m) / grid.resolution_m));
-  if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) {
-    return 0.0F;
-  }
-  return esdf_m[static_cast<std::size_t>(y) * static_cast<std::size_t>(grid.width) +
-                static_cast<std::size_t>(x)];
+  const EsdfQueryResult query = queryConservativeEsdf(grid, esdf_m, state.x, state.y);
+  return query.status == EsdfQueryStatus::kValid ? query.clearance_m : 0.0F;
 }
 
 [[nodiscard]] bool
@@ -72,6 +67,22 @@ void populateBrakingFallback(const mppi::State& initial,
   }
 }
 
+[[nodiscard]] mppi::State interpolateState(const mppi::State& first,
+                                           const mppi::State& second,
+                                           const double ratio) noexcept {
+  const float value = static_cast<float>(std::clamp(ratio, 0.0, 1.0));
+  return mppi::State{
+      .x = std::lerp(first.x, second.x, value),
+      .y = std::lerp(first.y, second.y, value),
+      .z = std::lerp(first.z, second.z, value),
+      .vx = std::lerp(first.vx, second.vx, value),
+      .vy = std::lerp(first.vy, second.vy, value),
+      .vz = std::lerp(first.vz, second.vz, value),
+      .yaw = std::lerp(first.yaw, second.yaw, value),
+      .yaw_rate = std::lerp(first.yaw_rate, second.yaw_rate, value),
+  };
+}
+
 } // namespace
 
 MppiHorizonSafetyResult
@@ -111,12 +122,31 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
       speed * speed /
           (2.0 * std::max(1.0e-3, config.maximum_braking_acceleration_mps2));
   result.time_to_collision_s = std::numeric_limits<double>::infinity();
+  mppi::State previous = current_state;
   for (std::size_t index = 0U; index < horizon.size(); ++index) {
-    if (clearanceAt(horizon[index], esdf_m, grid) <= config.collision_radius_m ||
-        intersectsKnownSolid(horizon[index], known_solids)) {
-      result.time_to_collision_s = static_cast<double>(index) * config.dt_s;
+    const mppi::State& next = horizon[index];
+    const double segment_length_m =
+        std::hypot(std::hypot(static_cast<double>(next.x - previous.x),
+                              static_cast<double>(next.y - previous.y)),
+                   static_cast<double>(next.z - previous.z));
+    const double validation_step_m = std::max(1.0e-3, config.swept_validation_step_m);
+    const std::size_t sample_count = std::max<std::size_t>(
+        1U, static_cast<std::size_t>(std::ceil(segment_length_m / validation_step_m)));
+    for (std::size_t sample = 1U; sample <= sample_count; ++sample) {
+      const double ratio =
+          static_cast<double>(sample) / static_cast<double>(sample_count);
+      const mppi::State state = interpolateState(previous, next, ratio);
+      if (clearanceAt(state, esdf_m, grid) <= config.collision_radius_m ||
+          intersectsKnownSolid(state, known_solids)) {
+        result.time_to_collision_s =
+            index == 0U ? 0.0 : (static_cast<double>(index - 1U) + ratio) * config.dt_s;
+        break;
+      }
+    }
+    if (std::isfinite(result.time_to_collision_s)) {
       break;
     }
+    previous = next;
   }
   if (!std::isfinite(result.time_to_collision_s) && !engine_collision) {
     result.decision = MppiHorizonSafetyDecision::kExecute;
@@ -167,6 +197,34 @@ MppiSafetyInterventionTracker::update(const std::int64_t now_ns,
 
 void MppiSafetyInterventionTracker::reset() noexcept {
   deadline_ns_.reset();
+}
+
+MppiBrakeHoldUpdate
+MppiBrakeHoldLifecycle::update(const bool braking_required,
+                               const mppi::State& current_state,
+                               const double capture_speed_mps) noexcept {
+  if (!braking_required) {
+    reset();
+    return {};
+  }
+  if (!hold_state_.has_value()) {
+    const double speed = std::hypot(std::hypot(static_cast<double>(current_state.vx),
+                                               static_cast<double>(current_state.vy)),
+                                    static_cast<double>(current_state.vz));
+    if (speed <= std::max(0.0, capture_speed_mps)) {
+      hold_state_ = current_state;
+      hold_state_->vx = 0.0F;
+      hold_state_->vy = 0.0F;
+      hold_state_->vz = 0.0F;
+    }
+  }
+  return hold_state_.has_value()
+             ? MppiBrakeHoldUpdate{.position_hold = true, .hold_state = *hold_state_}
+             : MppiBrakeHoldUpdate{};
+}
+
+void MppiBrakeHoldLifecycle::reset() noexcept {
+  hold_state_.reset();
 }
 
 } // namespace drone_city_nav

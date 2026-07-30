@@ -123,6 +123,7 @@ add_library(
   src/ambiguous_lidar_hit_tracker.cpp
   src/debug_image.cpp
   src/distance_field.cpp
+  src/esdf_query.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/known_passage_map.cpp
@@ -340,6 +341,7 @@ if(BUILD_TESTING)
                   src/mppi/mppi_reference.cpp)
   target_compile_features(mppi_reference_test_current PRIVATE cxx_std_20)
   target_include_directories(mppi_reference_test_current PRIVATE include)
+  target_link_libraries(mppi_reference_test_current drone_city_nav_core)
   enable_project_warnings(mppi_reference_test_current)
 
   ament_add_gtest(mppi_horizon_safety_test_current
@@ -347,6 +349,11 @@ if(BUILD_TESTING)
   target_compile_features(mppi_horizon_safety_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_horizon_safety_test_current drone_city_nav_core)
   enable_project_warnings(mppi_horizon_safety_test_current)
+
+  ament_add_gtest(esdf_query_test tests/esdf_query_test.cpp)
+  target_compile_features(esdf_query_test PRIVATE cxx_std_20)
+  target_link_libraries(esdf_query_test drone_city_nav_core)
+  enable_project_warnings(esdf_query_test)
 
   ament_add_gtest(mppi_liveness_test_current tests/mppi_liveness_test.cpp)
   target_compile_features(mppi_liveness_test_current PRIVATE cxx_std_20)

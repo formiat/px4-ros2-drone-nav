@@ -1,5 +1,7 @@
 #include "drone_city_nav/risk_aware_lattice.hpp"
 
+#include "drone_city_nav/esdf_query.hpp"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -53,6 +55,47 @@ struct QueueEntry {
   }
 };
 
+struct Successor {
+  LatticeKey key{};
+  Point2 endpoint{};
+  double length_m{0.0};
+  double edge_cost{0.0};
+};
+
+struct FrontierEvaluation {
+  LatticeKey key{};
+  std::vector<Point2> guide;
+  double guide_length_m{0.0};
+  double progress_m{0.0};
+  double remaining_m{0.0};
+  double cost{0.0};
+  std::size_t immediate_successors{0U};
+  std::size_t two_step_states{0U};
+  double reachable_depth_m{0.0};
+  LatticeRiskStage stage{LatticeRiskStage::kPreferredOnly};
+};
+
+struct StageOutcome {
+  bool initialized{false};
+  bool goal_reached{false};
+  bool budget_exhausted{false};
+  bool deadline_reached{false};
+  bool roi_boundary_seen{false};
+  LatticeRiskStage stage{LatticeRiskStage::kPreferredOnly};
+  LatticeSearchTermination termination{LatticeSearchTermination::kOpenSetExhausted};
+  std::unordered_map<LatticeKey, Record, LatticeKeyHash> records;
+  std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<>> open;
+  std::vector<std::pair<double, LatticeKey>> frontier_pool;
+  std::optional<LatticeKey> terminal;
+  double terminal_connector_cost{0.0};
+  std::uint64_t insertion_sequence{0U};
+  std::size_t expansions{0U};
+  std::size_t stale_pops{0U};
+  std::size_t open_peak{0U};
+  std::size_t records_peak{0U};
+  LatticeSuccessorDiagnostics successor_diagnostics{};
+};
+
 [[nodiscard]] Point2 cellCenter(const mppi::EsdfGrid& grid, const LatticeKey& key) {
   return Point2{
       grid.origin_x_m + (static_cast<double>(key.x) + 0.5) * grid.resolution_m,
@@ -62,15 +105,14 @@ struct QueueEntry {
 [[nodiscard]] std::optional<float> clearanceAt(const mppi::EsdfGrid& grid,
                                                const std::span<const float> esdf_m,
                                                const Point2 point) {
-  const int x =
-      static_cast<int>(std::floor((point.x - grid.origin_x_m) / grid.resolution_m));
-  const int y =
-      static_cast<int>(std::floor((point.y - grid.origin_y_m) / grid.resolution_m));
-  if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) {
+  const EsdfQueryResult query = queryConservativeEsdf(
+      grid, esdf_m, static_cast<float>(point.x), static_cast<float>(point.y));
+  if (query.status == EsdfQueryStatus::kOutsideGrid) {
     return std::nullopt;
   }
-  return esdf_m[static_cast<std::size_t>(y) * static_cast<std::size_t>(grid.width) +
-                static_cast<std::size_t>(x)];
+  return query.status == EsdfQueryStatus::kValid
+             ? query.clearance_m
+             : std::numeric_limits<float>::quiet_NaN();
 }
 
 [[nodiscard]] double headingForBin(const int bin, const int bins) {
@@ -335,12 +377,86 @@ portalSuccessor(const Point2 current, const int current_heading,
 
 } // namespace
 
+struct RiskAwareLatticeSearchSession::Impl {
+  bool initialized{false};
+  mppi::EsdfGrid grid{};
+  const float* esdf_data{nullptr};
+  std::size_t esdf_size{0U};
+  Point2 start{};
+  Point2 mission_goal{};
+  double preferred_heading_rad{0.0};
+  const SemanticPortalPrimitive* portals_data{nullptr};
+  std::size_t portals_size{0U};
+  const LatticeFrontierBlacklistEntry* blacklist_data{nullptr};
+  std::size_t blacklist_size{0U};
+  std::array<StageOutcome, 3U> outcomes{};
+
+  [[nodiscard]] bool
+  matches(const mppi::EsdfGrid& candidate_grid,
+          const std::span<const float> candidate_esdf, const Point2 candidate_start,
+          const double candidate_heading, const Point2 candidate_goal,
+          const std::span<const SemanticPortalPrimitive> candidate_portals,
+          const std::span<const LatticeFrontierBlacklistEntry> candidate_blacklist)
+      const noexcept {
+    return initialized && grid.width == candidate_grid.width &&
+           grid.height == candidate_grid.height &&
+           grid.resolution_m == candidate_grid.resolution_m &&
+           grid.origin_x_m == candidate_grid.origin_x_m &&
+           grid.origin_y_m == candidate_grid.origin_y_m &&
+           esdf_data == candidate_esdf.data() && esdf_size == candidate_esdf.size() &&
+           start.x == candidate_start.x && start.y == candidate_start.y &&
+           mission_goal.x == candidate_goal.x && mission_goal.y == candidate_goal.y &&
+           preferred_heading_rad == candidate_heading &&
+           portals_data == candidate_portals.data() &&
+           portals_size == candidate_portals.size() &&
+           blacklist_data == candidate_blacklist.data() &&
+           blacklist_size == candidate_blacklist.size();
+  }
+
+  void
+  initialize(const mppi::EsdfGrid& candidate_grid,
+             const std::span<const float> candidate_esdf, const Point2 candidate_start,
+             const double candidate_heading, const Point2 candidate_goal,
+             const std::span<const SemanticPortalPrimitive> candidate_portals,
+             const std::span<const LatticeFrontierBlacklistEntry> candidate_blacklist) {
+    initialized = true;
+    grid = candidate_grid;
+    esdf_data = candidate_esdf.data();
+    esdf_size = candidate_esdf.size();
+    start = candidate_start;
+    mission_goal = candidate_goal;
+    preferred_heading_rad = candidate_heading;
+    portals_data = candidate_portals.data();
+    portals_size = candidate_portals.size();
+    blacklist_data = candidate_blacklist.data();
+    blacklist_size = candidate_blacklist.size();
+    outcomes = {};
+  }
+};
+
+RiskAwareLatticeSearchSession::RiskAwareLatticeSearchSession()
+    : impl_{std::make_unique<Impl>()} {
+}
+
+RiskAwareLatticeSearchSession::~RiskAwareLatticeSearchSession() = default;
+
+RiskAwareLatticeSearchSession::RiskAwareLatticeSearchSession(
+    RiskAwareLatticeSearchSession&&) noexcept = default;
+
+RiskAwareLatticeSearchSession& RiskAwareLatticeSearchSession::operator=(
+    RiskAwareLatticeSearchSession&&) noexcept = default;
+
+void RiskAwareLatticeSearchSession::reset() {
+  impl_ = std::make_unique<Impl>();
+}
+
 RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m, const Point2 start,
     const double preferred_heading_rad, const Point2 mission_goal,
     const RiskAwareLatticeConfig& config,
     const std::span<const SemanticPortalPrimitive> portals,
-    const std::span<const LatticeFrontierBlacklistEntry> frontier_blacklist) {
+    const std::span<const LatticeFrontierBlacklistEntry> frontier_blacklist,
+    RiskAwareLatticeSearchSession* session) {
   RiskAwareLatticeResult result;
   if (grid.width <= 0 || grid.height <= 0 || grid.resolution_m <= 0.0F ||
       esdf_m.size() != static_cast<std::size_t>(grid.width) *
@@ -373,6 +489,20 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   if (!clearanceAt(grid, esdf_m, start).has_value()) {
     return result;
   }
+  std::unique_ptr<RiskAwareLatticeSearchSession> local_session;
+  if (session == nullptr) {
+    local_session = std::make_unique<RiskAwareLatticeSearchSession>();
+    session = local_session.get();
+  }
+  RiskAwareLatticeSearchSession& active_session = *session;
+  result.search_session_resumed =
+      active_session.impl_->matches(grid, esdf_m, start, preferred_heading_rad,
+                                    mission_goal, portals, frontier_blacklist);
+  if (!result.search_session_resumed) {
+    active_session.impl_->initialize(grid, esdf_m, start, preferred_heading_rad,
+                                     mission_goal, portals, frontier_blacklist);
+  }
+  std::array<StageOutcome, 3U>& outcomes = active_session.impl_->outcomes;
   const double roi_min_x =
       std::min(start.x, result.planning_goal.x) - config.maximum_search_roi_halo_m;
   const double roi_max_x =
@@ -384,44 +514,6 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   const auto inside_roi = [&](const Point2 point) {
     return point.x >= roi_min_x && point.x <= roi_max_x && point.y >= roi_min_y &&
            point.y <= roi_max_y;
-  };
-
-  struct Successor {
-    LatticeKey key{};
-    Point2 endpoint{};
-    double length_m{0.0};
-    double edge_cost{0.0};
-  };
-
-  struct FrontierEvaluation {
-    LatticeKey key{};
-    std::vector<Point2> guide;
-    double guide_length_m{0.0};
-    double progress_m{0.0};
-    double remaining_m{0.0};
-    double cost{0.0};
-    std::size_t immediate_successors{0U};
-    std::size_t two_step_states{0U};
-    double reachable_depth_m{0.0};
-    LatticeRiskStage stage{LatticeRiskStage::kPreferredOnly};
-  };
-
-  struct StageOutcome {
-    bool goal_reached{false};
-    bool budget_exhausted{false};
-    bool deadline_reached{false};
-    bool roi_boundary_seen{false};
-    LatticeRiskStage stage{LatticeRiskStage::kPreferredOnly};
-    LatticeSearchTermination termination{LatticeSearchTermination::kOpenSetExhausted};
-    std::unordered_map<LatticeKey, Record, LatticeKeyHash> records;
-    std::optional<LatticeKey> terminal;
-    std::vector<LatticeKey> frontier_keys;
-    double terminal_connector_cost{0.0};
-    std::size_t expansions{0U};
-    std::size_t stale_pops{0U};
-    std::size_t open_peak{0U};
-    std::size_t records_peak{0U};
-    LatticeSuccessorDiagnostics successor_diagnostics{};
   };
 
   const auto collect_successors = [&](const Point2 current,
@@ -540,28 +632,29 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     return successors;
   };
 
-  const auto run_stage = [&](const LatticeRiskStage stage,
+  const auto run_stage = [&](StageOutcome& outcome, const LatticeRiskStage stage,
                              const std::size_t expansion_budget,
                              const double stage_time_ms) {
-    StageOutcome outcome;
-    outcome.stage = stage;
-    std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<>> open;
-    outcome.records[start_key].cost = 0.0;
-    std::uint64_t insertion_sequence = 0U;
-    open.push(QueueEntry{.key = start_key,
-                         .g_at_insert = 0.0,
-                         .f_score = distance(start, result.planning_goal),
-                         .insertion_sequence = insertion_sequence++});
-    outcome.open_peak = 1U;
-    outcome.records_peak = 1U;
+    if (!outcome.initialized) {
+      outcome.initialized = true;
+      outcome.stage = stage;
+      outcome.records[start_key].cost = 0.0;
+      outcome.open.push(QueueEntry{.key = start_key,
+                                   .g_at_insert = 0.0,
+                                   .f_score = distance(start, result.planning_goal),
+                                   .insertion_sequence = outcome.insertion_sequence++});
+      outcome.open_peak = 1U;
+      outcome.records_peak = 1U;
+      outcome.frontier_pool.reserve(config.maximum_frontier_candidates + 1U);
+    }
+    outcome.budget_exhausted = false;
+    outcome.deadline_reached = false;
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::duration<double, std::milli>{stage_time_ms};
-    std::vector<std::pair<double, LatticeKey>> frontier_pool;
-    frontier_pool.reserve(config.maximum_frontier_candidates + 1U);
-    while (!open.empty() && outcome.expansions < expansion_budget &&
+    while (!outcome.open.empty() && outcome.expansions < expansion_budget &&
            std::chrono::steady_clock::now() < deadline) {
-      const QueueEntry entry = open.top();
-      open.pop();
+      const QueueEntry entry = outcome.open.top();
+      outcome.open.pop();
       const auto record = outcome.records.find(entry.key);
       if (record == outcome.records.end() ||
           entry.g_at_insert > record->second.cost + 1.0e-9) {
@@ -572,10 +665,11 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const double goal_distance = distance(current, result.planning_goal);
       const double progress = distance(start, result.planning_goal) - goal_distance;
       if (progress >= config.minimum_frontier_progress_m) {
-        frontier_pool.emplace_back(goal_distance, entry.key);
-        std::ranges::sort(frontier_pool, {}, &std::pair<double, LatticeKey>::first);
-        if (frontier_pool.size() > config.maximum_frontier_candidates) {
-          frontier_pool.pop_back();
+        outcome.frontier_pool.emplace_back(goal_distance, entry.key);
+        std::ranges::sort(outcome.frontier_pool, {},
+                          &std::pair<double, LatticeKey>::first);
+        if (outcome.frontier_pool.size() > config.maximum_frontier_candidates) {
+          outcome.frontier_pool.pop_back();
         }
       }
       if (goal_distance <= config.goal_tolerance_m) {
@@ -603,21 +697,21 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         next_record.cost = next_cost;
         next_record.parent = entry.key;
         const double heuristic = distance(result.planning_goal, successor.endpoint);
-        open.push(QueueEntry{
+        outcome.open.push(QueueEntry{
             .key = successor.key,
             .g_at_insert = next_cost,
             .f_score = next_cost + config.heuristic_weight * heuristic,
-            .insertion_sequence = insertion_sequence++,
+            .insertion_sequence = outcome.insertion_sequence++,
         });
       }
-      outcome.open_peak = std::max(outcome.open_peak, open.size());
+      outcome.open_peak = std::max(outcome.open_peak, outcome.open.size());
       outcome.records_peak = std::max(outcome.records_peak, outcome.records.size());
     }
     if (!outcome.goal_reached) {
       outcome.deadline_reached =
-          !open.empty() && std::chrono::steady_clock::now() >= deadline;
+          !outcome.open.empty() && std::chrono::steady_clock::now() >= deadline;
       outcome.budget_exhausted =
-          !open.empty() && outcome.expansions >= expansion_budget;
+          !outcome.open.empty() && outcome.expansions >= expansion_budget;
       if (outcome.deadline_reached) {
         outcome.termination = LatticeSearchTermination::kDeadlineReached;
       } else if (outcome.budget_exhausted) {
@@ -626,12 +720,6 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         outcome.termination = LatticeSearchTermination::kOpenSetExhausted;
       }
     }
-    outcome.frontier_keys.reserve(frontier_pool.size());
-    for (const auto& [unused_distance, key] : frontier_pool) {
-      static_cast<void>(unused_distance);
-      outcome.frontier_keys.push_back(key);
-    }
-    return outcome;
   };
 
   const auto reconstruct = [&](const StageOutcome& outcome,
@@ -645,23 +733,23 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     return guide;
   };
 
-  const std::array stages{LatticeRiskStage::kPreferredOnly,
-                          LatticeRiskStage::kPlanningAllowed,
-                          LatticeRiskStage::kCriticalAllowed};
+  const std::array stage_runs{
+      std::pair{LatticeRiskStage::kPreferredOnly, &outcomes.at(0U)},
+      std::pair{LatticeRiskStage::kPlanningAllowed, &outcomes.at(1U)},
+      std::pair{LatticeRiskStage::kCriticalAllowed, &outcomes.at(2U)},
+  };
   const std::size_t stage_budget =
-      std::max<std::size_t>(1U, config.maximum_expansions / stages.size());
+      std::max<std::size_t>(1U, config.maximum_expansions / stage_runs.size());
   const double stage_time_ms =
-      config.maximum_search_time_ms / static_cast<double>(stages.size());
-  std::vector<StageOutcome> outcomes;
-  outcomes.reserve(stages.size());
+      config.maximum_search_time_ms / static_cast<double>(stage_runs.size());
   std::optional<FrontierEvaluation> best_frontier;
   bool search_incomplete = false;
   LatticeSearchTermination incomplete_termination{
       LatticeSearchTermination::kOpenSetExhausted};
 
-  for (const LatticeRiskStage stage : stages) {
-    outcomes.push_back(run_stage(stage, stage_budget, stage_time_ms));
-    const StageOutcome& outcome = outcomes.back();
+  for (const auto& [stage, outcome_pointer] : stage_runs) {
+    StageOutcome& outcome = *outcome_pointer;
+    run_stage(outcome, stage, stage_budget, stage_time_ms);
     result.expansions += outcome.expansions;
     result.stale_queue_pops += outcome.stale_pops;
     result.open_peak = std::max(result.open_peak, outcome.open_peak);
@@ -714,7 +802,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         incomplete_termination = LatticeSearchTermination::kRoiBoundaryReached;
       }
     }
-    for (const LatticeKey& key : outcome.frontier_keys) {
+    for (const auto& [unused_distance, key] : outcome.frontier_pool) {
+      static_cast<void>(unused_distance);
       ++result.frontier_candidates_considered;
       const Point2 terminal = cellCenter(grid, key);
       std::vector<Point2> guide = reconstruct(outcome, key);

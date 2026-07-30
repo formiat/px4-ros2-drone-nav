@@ -248,6 +248,9 @@ void ProductionMppiNode::processDiagnostics(
        << " lattice_status=" << latticePlanStatusName(esdf.lattice_status)
        << " lattice_termination="
        << latticeSearchTerminationName(esdf.lattice_termination)
+       << " lattice_continuation_attempt=" << esdf.lattice_continuation_attempt
+       << " lattice_search_session_resumed="
+       << (esdf.lattice_search_session_resumed ? "true" : "false")
        << " lattice_risk_stage=" << latticeRiskStageName(esdf.lattice_risk_stage)
        << " lattice_stale_pops=" << esdf.lattice_stale_queue_pops
        << " lattice_open_peak=" << esdf.lattice_open_peak
@@ -345,6 +348,9 @@ void ProductionMppiNode::processDiagnostics(
               result.post_update_classification.classification)
        << " post_update_contract_preserved="
        << (result.post_update_classification.contract_preserved ? "true" : "false")
+       << " post_update_repair="
+       << mppi::mppiPostUpdateRepairName(result.post_update_repair)
+       << " post_update_backtrack_ratio=" << result.post_update_backtrack_ratio
        << " minimum_esdf_m=" << result.minimum_esdf_distance_m
        << " head_progress_m=" << result.head_progress_m
        << " terminal_progress_m=" << result.terminal_progress_m
@@ -422,6 +428,9 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_status\":\"" << latticePlanStatusName(esdf.lattice_status) << '"'
         << ",\"lattice_termination\":\""
         << latticeSearchTerminationName(esdf.lattice_termination) << '"'
+        << ",\"lattice_continuation_attempt\":" << esdf.lattice_continuation_attempt
+        << ",\"lattice_search_session_resumed\":"
+        << (esdf.lattice_search_session_resumed ? "true" : "false")
         << ",\"lattice_risk_stage\":\"" << latticeRiskStageName(esdf.lattice_risk_stage)
         << '"' << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
         << ",\"lattice_open_peak\":" << esdf.lattice_open_peak
@@ -550,6 +559,9 @@ void ProductionMppiNode::processDiagnostics(
                result.post_update_classification.classification)
         << '"' << ",\"post_update_contract_preserved\":"
         << (result.post_update_classification.contract_preserved ? "true" : "false")
+        << ",\"post_update_repair\":\""
+        << mppi::mppiPostUpdateRepairName(result.post_update_repair) << '"'
+        << ",\"post_update_backtrack_ratio\":" << result.post_update_backtrack_ratio
         << ",\"critical_exposure_m\":" << result.critical_exposure_m
         << ",\"planning_exposure_m\":" << result.planning_exposure_m
         << ",\"head_progress_m\":" << result.head_progress_m

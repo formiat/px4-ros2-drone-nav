@@ -94,11 +94,35 @@ struct MppiStageTimings {
   double horizon_reconstruction_ms{0.0};
 };
 
+enum class MppiPostUpdateRepair : std::uint8_t {
+  kNotRequired,
+  kBacktracked,
+  kBestEligibleRollout,
+  kFailed,
+};
+
+[[nodiscard]] inline const char*
+mppiPostUpdateRepairName(const MppiPostUpdateRepair repair) noexcept {
+  switch (repair) {
+    case MppiPostUpdateRepair::kNotRequired:
+      return "not_required";
+    case MppiPostUpdateRepair::kBacktracked:
+      return "backtracked";
+    case MppiPostUpdateRepair::kBestEligibleRollout:
+      return "best_eligible_rollout";
+    case MppiPostUpdateRepair::kFailed:
+      return "failed";
+  }
+  return "unknown";
+}
+
 struct MppiTickResult {
   std::vector<State> horizon;
   std::vector<Control> controls;
   MppiEligibleRiskContract eligible_risk_contract{};
   MppiPostUpdateClassificationResult post_update_classification{};
+  MppiPostUpdateRepair post_update_repair{MppiPostUpdateRepair::kNotRequired};
+  float post_update_backtrack_ratio{1.0F};
   RiskTier selected_tier{RiskTier::kCollision};
   bool raw_collision{true};
   bool known_solid_collision{false};

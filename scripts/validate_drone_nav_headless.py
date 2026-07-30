@@ -77,9 +77,15 @@ def main() -> int:
         errors,
     )
     require(
-        "ESDF and global guide are available",
+        "ESDF is available",
         ros_log,
-        r"PRODUCTION_MPPI_ESDF .*guide_(?:points|valid)=",
+        r"PRODUCTION_MPPI_ESDF .*revision=",
+        errors,
+    )
+    require(
+        "global guide is available",
+        ros_log,
+        r"PRODUCTION_MPPI_GUIDE .*guide_valid=true",
         errors,
     )
     require(

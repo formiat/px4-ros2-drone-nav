@@ -16,6 +16,8 @@ struct MppiHorizonSafetyConfig {
   double minimum_time_to_collision_s{0.50};
   double fallback_duration_s{2.0};
   double dt_s{0.05};
+  double swept_validation_step_m{0.25};
+  double position_hold_capture_speed_mps{0.20};
 };
 
 enum class MppiHorizonSafetyDecision {
@@ -48,6 +50,22 @@ public:
 
 private:
   std::optional<std::int64_t> deadline_ns_;
+};
+
+struct MppiBrakeHoldUpdate {
+  bool position_hold{false};
+  mppi::State hold_state{};
+};
+
+class MppiBrakeHoldLifecycle {
+public:
+  [[nodiscard]] MppiBrakeHoldUpdate update(bool braking_required,
+                                           const mppi::State& current_state,
+                                           double capture_speed_mps) noexcept;
+  void reset() noexcept;
+
+private:
+  std::optional<mppi::State> hold_state_;
 };
 
 [[nodiscard]] MppiHorizonSafetyResult

@@ -1,5 +1,7 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
+#include "drone_city_nav/esdf_query.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -23,26 +25,8 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
 
 [[nodiscard]] float sampleEsdf(const EsdfGrid& grid, const std::span<const float> esdf,
                                const float x, const float y) noexcept {
-  const float grid_x = (x - grid.origin_x_m) / grid.resolution_m - 0.5F;
-  const float grid_y = (y - grid.origin_y_m) / grid.resolution_m - 0.5F;
-  if (grid_x < 0.0F || grid_y < 0.0F || grid_x >= static_cast<float>(grid.width - 1) ||
-      grid_y >= static_cast<float>(grid.height - 1)) {
-    return 0.0F;
-  }
-  const int x0 = static_cast<int>(std::floor(grid_x));
-  const int y0 = static_cast<int>(std::floor(grid_y));
-  const int x1 = x0 + 1;
-  const int y1 = y0 + 1;
-  const float fx = grid_x - static_cast<float>(x0);
-  const float fy = grid_y - static_cast<float>(y0);
-  const auto at = [&esdf, &grid](const int cell_x, const int cell_y) {
-    return esdf[static_cast<std::size_t>(cell_y) *
-                    static_cast<std::size_t>(grid.width) +
-                static_cast<std::size_t>(cell_x)];
-  };
-  const float lower = std::lerp(at(x0, y0), at(x1, y0), fx);
-  const float upper = std::lerp(at(x0, y1), at(x1, y1), fx);
-  return std::lerp(lower, upper, fy);
+  const EsdfQueryResult query = queryConservativeEsdf(grid, esdf, x, y);
+  return query.status == EsdfQueryStatus::kValid ? query.clearance_m : 0.0F;
 }
 
 [[nodiscard]] float squared(const float value) noexcept {
@@ -116,8 +100,21 @@ RolloutMetrics simulateReference(
         .az = nominal_controls[step].az + noise_controls[step].az,
         .yaw_accel = nominal_controls[step].yaw_accel + noise_controls[step].yaw_accel,
     };
+    const State previous_state = state;
     state = integrateReference(state, control, dynamics);
-    const float clearance = sampleEsdf(grid, esdf, state.x, state.y);
+    const float segment_length_m =
+        std::hypot(state.x - previous_state.x, state.y - previous_state.y);
+    const float validation_step_m = std::max(0.05F, 0.5F * grid.resolution_m);
+    const std::size_t validation_samples = std::max<std::size_t>(
+        1U, static_cast<std::size_t>(std::ceil(segment_length_m / validation_step_m)));
+    float clearance = std::numeric_limits<float>::infinity();
+    for (std::size_t sample = 1U; sample <= validation_samples; ++sample) {
+      const float ratio =
+          static_cast<float>(sample) / static_cast<float>(validation_samples);
+      clearance = std::min(
+          clearance, sampleEsdf(grid, esdf, std::lerp(previous_state.x, state.x, ratio),
+                                std::lerp(previous_state.y, state.y, ratio)));
+    }
     metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
     const float segment_m = dynamics.dt_s * std::hypot(state.vx, state.vy);
     if (clearance <= risk.collision_radius_m) {

@@ -65,6 +65,7 @@ void ProductionMppiNode::publishExecutionHorizon(
       planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
   if (passage_coordinator.hold_xy || goal_hold) {
     safety_intervention_tracker_.reset();
+    brake_hold_lifecycle_.reset();
     const Point3 hold_position = goal_hold ? mission_goal_
                                            : Point3{passage_coordinator.hold_position.x,
                                                     passage_coordinator.hold_position.y,
@@ -104,6 +105,26 @@ void ProductionMppiNode::publishExecutionHorizon(
       (!forced_braking_hold &&
        intervention.decision != MppiHorizonSafetyDecision::kExecute &&
        intervention.decision != MppiHorizonSafetyDecision::kExecuteUntilDeadline);
+  const MppiBrakeHoldUpdate brake_hold = brake_hold_lifecycle_.update(
+      braking, input.initial_state, safety_config_.position_hold_capture_speed_mps);
+  if (brake_hold.position_hold) {
+    const auto hold_duration_ns = static_cast<std::int64_t>(
+        std::max(0.2, 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) * 1.0e9);
+    msg::MppiTrajectoryHorizon horizon = make_horizon(now_ns + hold_duration_ns);
+    horizon.stationary_position_hold = true;
+    horizon.stationary_hold_position.x = brake_hold.hold_state.x;
+    horizon.stationary_hold_position.y = brake_hold.hold_state.y;
+    horizon.stationary_hold_position.z = brake_hold.hold_state.z;
+    horizon.emergency_braking = true;
+    horizon.points.reserve(2U);
+    const Point3 hold_position{brake_hold.hold_state.x, brake_hold.hold_state.y,
+                               brake_hold.hold_state.z};
+    appendStationaryHoldPoint(horizon, hold_position, 0.0F, brake_hold.hold_state.yaw);
+    appendStationaryHoldPoint(horizon, hold_position, mppi_config_.dynamics.dt_s,
+                              brake_hold.hold_state.yaw);
+    execution_horizon_pub_->publish(horizon);
+    return;
+  }
   std::span<const mppi::State> states{result.horizon};
   std::span<const mppi::Control> controls{result.controls};
   if (braking && !forced_braking_hold) {

@@ -48,7 +48,7 @@ TEST(ActiveGlobalGuideTest, RetainsGuideAndRequestsBackgroundReplanForCriticalBa
   std::vector<float> esdf = clearEsdf();
   ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
                   .accepted);
-  esdf[10U * 80U + 20U] = 0.9F;
+  esdf[10U * 80U + 20U] = 2.2F;
 
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 0U);
@@ -62,7 +62,7 @@ TEST(ActiveGlobalGuideTest, RetainsGuideAndRequestsBackgroundReplanForCriticalBa
 TEST(ActiveGlobalGuideTest, KeepsGuideAcceptedInsideCriticalBand) {
   ActiveGlobalGuideLifecycle lifecycle;
   std::vector<float> esdf = clearEsdf();
-  esdf[10U * 80U + 20U] = 0.9F;
+  esdf[10U * 80U + 20U] = 2.2F;
   ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
                   .accepted);
 

@@ -3,7 +3,9 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cuda_runtime.h>
@@ -136,7 +138,7 @@ public:
       cudaTextureDesc texture_description{};
       texture_description.addressMode[0] = cudaAddressModeBorder;
       texture_description.addressMode[1] = cudaAddressModeBorder;
-      texture_description.filterMode = cudaFilterModeLinear;
+      texture_description.filterMode = cudaFilterModePoint;
       texture_description.readMode = cudaReadModeElementType;
       texture_description.normalizedCoords = 0;
       checkCuda(
@@ -207,7 +209,9 @@ struct DeviceBuffers {
   DeviceBuffer<float> weights;
   DeviceBuffer<Control> nominal;
   DeviceBuffer<Control> updated;
+  DeviceBuffer<Control> best_eligible;
   DeviceBuffer<int> best_tier;
+  DeviceBuffer<int> best_rollout;
   DeviceBuffer<float> best_critical;
   DeviceBuffer<float> best_planning;
   DeviceBuffer<float> minimum_soft;
@@ -230,7 +234,9 @@ struct DeviceBuffers {
         weights{rollouts},
         nominal{steps},
         updated{steps},
+        best_eligible{steps},
         best_tier{1U},
+        best_rollout{1U},
         best_critical{1U},
         best_planning{1U},
         minimum_soft{1U},
@@ -242,7 +248,8 @@ struct DeviceBuffers {
            soft_cost.bytes() + critical_exposure.bytes() + planning_exposure.bytes() +
            minimum_clearance.bytes() + worst_tier.bytes() + raw_collision.bytes() +
            solid_collision.bytes() + weights.bytes() + nominal.bytes() +
-           updated.bytes() + best_tier.bytes() + best_critical.bytes() +
+           updated.bytes() + best_eligible.bytes() + best_tier.bytes() +
+           best_rollout.bytes() + best_critical.bytes() +
            best_planning.bytes() + minimum_soft.bytes() + weight_sum.bytes() +
            solids.bytes() + route_points.bytes();
   }
@@ -377,6 +384,35 @@ __device__ RouteProjection projectOntoRoute(const State& state,
   return result;
 }
 
+__device__ float conservativeEsdfClearance(const State& state, const EsdfGrid grid,
+                                           const cudaTextureObject_t esdf_texture) {
+  const float cell_x_float = (state.x - grid.origin_x_m) / grid.resolution_m;
+  const float cell_y_float = (state.y - grid.origin_y_m) / grid.resolution_m;
+  const int cell_x = static_cast<int>(floorf(cell_x_float));
+  const int cell_y = static_cast<int>(floorf(cell_y_float));
+  if (cell_x < 0 || cell_y < 0 || cell_x >= grid.width || cell_y >= grid.height) {
+    return 0.0F;
+  }
+  const float center_distance_m =
+      tex2D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
+                   static_cast<float>(cell_y) + 0.5F);
+  if (isinf(center_distance_m) && center_distance_m > 0.0F) {
+    return center_distance_m;
+  }
+  if (!isfinite(center_distance_m) || center_distance_m < 0.0F) {
+    return 0.0F;
+  }
+  const float center_x_m =
+      grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
+  const float center_y_m =
+      grid.origin_y_m + (static_cast<float>(cell_y) + 0.5F) * grid.resolution_m;
+  constexpr float kHalfDiagonalScale{0.70710678118654752440F};
+  const float correction_m =
+      hypotf(state.x - center_x_m, state.y - center_y_m) +
+      kHalfDiagonalScale * grid.resolution_m;
+  return fmaxf(0.0F, center_distance_m - correction_m);
+}
+
 __device__ float passageZReference(const PassageConstraint& passage,
                                    const float station_m) {
   if (station_m < passage.approach_station_m ||
@@ -453,30 +489,47 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     Control control{
         nominal[step].ax + noise_ax[index], nominal[step].ay + noise_ay[index],
         nominal[step].az + noise_az[index], nominal[step].yaw_accel + noise_yaw[index]};
+    const State previous_state = state;
     state = integrate(state, control, dynamics);
-    const float texture_x = (state.x - grid.origin_x_m) / grid.resolution_m;
-    const float texture_y = (state.y - grid.origin_y_m) / grid.resolution_m;
-    const float clearance = tex2D<float>(esdf_texture, texture_x, texture_y);
+    const float segment_length_m =
+        hypotf(state.x - previous_state.x, state.y - previous_state.y);
+    const float validation_step_m = fmaxf(0.05F, 0.5F * grid.resolution_m);
+    const int validation_samples =
+        max(1, static_cast<int>(ceilf(segment_length_m / validation_step_m)));
+    float clearance = kInfinity;
+    for (int sample = 1; sample <= validation_samples; ++sample) {
+      const float ratio =
+          static_cast<float>(sample) / static_cast<float>(validation_samples);
+      State swept_state = state;
+      swept_state.x = previous_state.x + ratio * (state.x - previous_state.x);
+      swept_state.y = previous_state.y + ratio * (state.y - previous_state.y);
+      swept_state.z = previous_state.z + ratio * (state.z - previous_state.z);
+      clearance =
+          fminf(clearance, conservativeEsdfClearance(swept_state, grid, esdf_texture));
+      for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;
+           ++solid_index) {
+        solid_hit = intersectsSolid(swept_state, solids[solid_index]);
+      }
+      if (passage_active) {
+        const float passage_dx = swept_state.x - passage.center_x_m;
+        const float passage_dy = swept_state.y - passage.center_y_m;
+        const float longitudinal =
+            passage_dx * passage.normal_x + passage_dy * passage.normal_y;
+        const bool inside_opening = fabsf(longitudinal) <= passage.half_depth_m;
+        if (inside_opening &&
+            (swept_state.z < passage.min_z_m || swept_state.z > passage.max_z_m)) {
+          solid_hit = true;
+        }
+      }
+    }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
     raw_hit = raw_hit || clearance <= risk.collision_radius_m;
-    for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;
-         ++solid_index) {
-      solid_hit = intersectsSolid(state, solids[solid_index]);
-    }
     const RouteProjection route_projection =
         route_point_count >= 2U
             ? projectOntoRoute(state, route_points, route_point_count,
                                initial_route_station_m)
             : RouteProjection{};
     if (passage_active) {
-      const float passage_dx = state.x - passage.center_x_m;
-      const float passage_dy = state.y - passage.center_y_m;
-      const float longitudinal =
-          passage_dx * passage.normal_x + passage_dy * passage.normal_y;
-      const bool inside_opening = fabsf(longitudinal) <= passage.half_depth_m;
-      if (inside_opening && (state.z < passage.min_z_m || state.z > passage.max_z_m)) {
-        solid_hit = true;
-      }
       if (route_projection.valid &&
           route_projection.station_m >= passage.approach_station_m &&
           route_projection.station_m <= passage.departure_station_m) {
@@ -574,14 +627,48 @@ __device__ float atomicMinFloat(float* address, float value) {
 
 __global__ void initializeReduction(int* best_tier, float* best_critical,
                                     float* best_planning, float* minimum_soft,
-                                    float* weight_sum) {
+                                    float* weight_sum, int* best_rollout) {
   if (blockIdx.x == 0 && threadIdx.x == 0) {
     *best_tier = static_cast<int>(RiskTier::kCollision);
     *best_critical = kInfinity;
     *best_planning = kInfinity;
     *minimum_soft = kInfinity;
     *weight_sum = 0.0F;
+    *best_rollout = INT_MAX;
   }
+}
+
+__global__ void selectBestEligibleRollout(const float* weights, const float* soft_cost,
+                                          const float* minimum_soft,
+                                          const std::size_t count,
+                                          int* best_rollout) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count && weights[index] > 0.0F &&
+      soft_cost[index] <= *minimum_soft + 1.0e-5F) {
+    atomicMin(best_rollout, static_cast<int>(index));
+  }
+}
+
+__global__ void buildBestEligibleControls(
+    const Control* nominal, Control* best_eligible, const float* noise_ax,
+    const float* noise_ay, const float* noise_az, const float* noise_yaw,
+    const int* best_rollout, const std::size_t rollouts, const std::size_t steps) {
+  const std::size_t step =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (step >= steps) {
+    return;
+  }
+  const int rollout = *best_rollout;
+  if (rollout < 0 || static_cast<std::size_t>(rollout) >= rollouts) {
+    best_eligible[step] = nominal[step];
+    return;
+  }
+  const std::size_t index = static_cast<std::size_t>(rollout) * steps + step;
+  best_eligible[step] =
+      Control{nominal[step].ax + noise_ax[index], nominal[step].ay + noise_ay[index],
+              nominal[step].az + noise_az[index],
+              nominal[step].yaw_accel + noise_yaw[index]};
 }
 
 __global__ void reduceTier(const std::uint8_t* tier, const std::uint8_t* raw_collision,
@@ -744,6 +831,32 @@ __global__ void limitControls(Control* controls, std::size_t steps,
   });
 }
 
+[[nodiscard]] bool
+hostSweptSolidCollision(const State& initial, const std::span<const Control> controls,
+                        const DynamicsConfig& dynamics,
+                        const std::span<const KnownSolid> solids) {
+  State previous = initial;
+  for (const Control& control : controls) {
+    const State next = integrateReference(previous, control, dynamics);
+    const float segment_length_m =
+        std::hypot(next.x - previous.x, next.y - previous.y);
+    const std::size_t samples = std::max<std::size_t>(
+        1U, static_cast<std::size_t>(std::ceil(segment_length_m / 0.25F)));
+    for (std::size_t sample = 1U; sample <= samples; ++sample) {
+      const float ratio = static_cast<float>(sample) / static_cast<float>(samples);
+      State state = next;
+      state.x = std::lerp(previous.x, next.x, ratio);
+      state.y = std::lerp(previous.y, next.y, ratio);
+      state.z = std::lerp(previous.z, next.z, ratio);
+      if (hostSolidCollision(state, solids)) {
+        return true;
+      }
+    }
+    previous = next;
+  }
+  return false;
+}
+
 } // namespace
 
 class MppiCudaEngine::Impl {
@@ -753,6 +866,7 @@ public:
         buffers_{config_.rollouts, config_.steps},
         nominal_(config_.steps),
         updated_(config_.steps),
+        best_eligible_(config_.steps),
         zero_noise_(config_.steps) {
     if (!benchmarkConfigIsValid(config_)) {
       throw std::invalid_argument{"invalid MPPI engine configuration"};
@@ -892,7 +1006,7 @@ public:
     initializeReduction<<<1, 1, 0U, stream_>>>(
         buffers_.best_tier.get(), buffers_.best_critical.get(),
         buffers_.best_planning.get(), buffers_.minimum_soft.get(),
-        buffers_.weight_sum.get());
+        buffers_.weight_sum.get(), buffers_.best_rollout.get());
     reduceTier<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.raw_collision.get(),
         buffers_.solid_collision.get(), config_.rollouts,
@@ -923,6 +1037,9 @@ public:
         buffers_.best_critical.get(), buffers_.best_planning.get(),
         buffers_.minimum_soft.get(), config_.risk, config_.costs.temperature,
         static_cast<int>(input.maximum_eligible_risk_tier), buffers_.weight_sum.get());
+    selectBestEligibleRollout<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
+        buffers_.weights.get(), buffers_.soft_cost.get(), buffers_.minimum_soft.get(),
+        config_.rollouts, buffers_.best_rollout.get());
     weights_done_.record(stream_);
     updateControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.nominal.get(), buffers_.updated.get(), buffers_.noise_ax.get(),
@@ -932,6 +1049,13 @@ public:
     limitControls<<<1, 1, 0U, stream_>>>(buffers_.updated.get(), config_.steps,
                                          config_.dynamics, previous_applied_control,
                                          first_control_interval_s);
+    buildBestEligibleControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
+        buffers_.nominal.get(), buffers_.best_eligible.get(), buffers_.noise_ax.get(),
+        buffers_.noise_ay.get(), buffers_.noise_az.get(), buffers_.noise_yaw.get(),
+        buffers_.best_rollout.get(), config_.rollouts, config_.steps);
+    limitControls<<<1, 1, 0U, stream_>>>(
+        buffers_.best_eligible.get(), config_.steps, config_.dynamics,
+        previous_applied_control, first_control_interval_s);
     update_done_.record(stream_);
     int eligible_tier_value = static_cast<int>(RiskTier::kCollision);
     float best_critical_exposure_m = kInfinity;
@@ -941,6 +1065,10 @@ public:
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,
                               stream_),
               "copy selected controls");
+    checkCuda(cudaMemcpyAsync(best_eligible_.data(), buffers_.best_eligible.get(),
+                              best_eligible_.size() * sizeof(Control),
+                              cudaMemcpyDeviceToHost, stream_),
+              "copy best eligible controls");
     checkCuda(cudaMemcpyAsync(&eligible_tier_value, buffers_.best_tier.get(),
                               sizeof(eligible_tier_value), cudaMemcpyDeviceToHost,
                               stream_),
@@ -968,8 +1096,8 @@ public:
     if (input.maximum_eligible_risk_tier != RiskTier::kPreferred &&
         eligible_tier_available) {
       eligible_tier_value = static_cast<int>(input.maximum_eligible_risk_tier);
-      best_critical_exposure_m = kInfinity;
-      best_planning_exposure_m = kInfinity;
+      best_critical_exposure_m = std::numeric_limits<float>::max() * 0.25F;
+      best_planning_exposure_m = std::numeric_limits<float>::max() * 0.25F;
     }
     result.eligible_risk_contract = MppiEligibleRiskContract{
         .available = eligible_tier_available && eligible_weight_sum > 0.0F,
@@ -981,6 +1109,62 @@ public:
         .planning_exposure_tolerance_m = config_.risk.planning_exposure_tolerance_m,
         .weight_sum = eligible_weight_sum,
     };
+    const auto classify_controls =
+        [&](const std::span<const Control> controls) {
+          const RolloutMetrics metrics = simulateReference(
+              input.initial_state, controls, zero_noise_, config_.dynamics, config_.risk,
+              config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
+              input.target.x, input.target.y, config_.early_exit_on_collision,
+              previous_applied_control, input.reference_speed_mps);
+          const bool known_solid_collision = hostSweptSolidCollision(
+              input.initial_state, controls, config_.dynamics, known_solids_);
+          return classifyMppiPostUpdate(
+              result.eligible_risk_contract,
+              MppiPostUpdateObservation{
+                  .tier = known_solid_collision ? RiskTier::kCollision
+                                                : metrics.worst_tier,
+                  .raw_collision = metrics.collision,
+                  .known_solid_collision = known_solid_collision,
+                  .critical_exposure_m = metrics.critical_exposure_m,
+                  .planning_exposure_m = metrics.planning_exposure_m,
+              });
+        };
+    MppiPostUpdateClassificationResult weighted_classification =
+        classify_controls(updated_);
+    if (!weighted_classification.contract_preserved &&
+        result.eligible_risk_contract.available) {
+      std::vector<Control> limited_nominal = nominal_;
+      limitControlSequence(limited_nominal, config_.dynamics, previous_applied_control,
+                           first_control_interval_s);
+      constexpr std::array backtrack_ratios{0.5F, 0.25F, 0.125F, 0.0625F, 0.0F};
+      bool repaired = false;
+      std::vector<Control> candidate(updated_.size());
+      for (const float ratio : backtrack_ratios) {
+        for (std::size_t index = 0U; index < candidate.size(); ++index) {
+          candidate[index] =
+              interpolateControl(limited_nominal[index], updated_[index], ratio);
+        }
+        limitControlSequence(candidate, config_.dynamics, previous_applied_control,
+                             first_control_interval_s);
+        if (classify_controls(candidate).contract_preserved) {
+          updated_ = candidate;
+          result.post_update_repair = MppiPostUpdateRepair::kBacktracked;
+          result.post_update_backtrack_ratio = ratio;
+          repaired = true;
+          break;
+        }
+      }
+      if (!repaired &&
+          classify_controls(best_eligible_).contract_preserved) {
+        updated_ = best_eligible_;
+        result.post_update_repair = MppiPostUpdateRepair::kBestEligibleRollout;
+        result.post_update_backtrack_ratio = 0.0F;
+        repaired = true;
+      }
+      if (!repaired) {
+        result.post_update_repair = MppiPostUpdateRepair::kFailed;
+      }
+    }
     result.controls = updated_;
     result.warm_start_shift_s = elapsed_s;
     result.nominal_reseeded = nominal_reseeded;
@@ -1141,6 +1325,7 @@ private:
   bool route_uploaded_{false};
   std::vector<Control> nominal_;
   std::vector<Control> updated_;
+  std::vector<Control> best_eligible_;
   std::vector<Control> zero_noise_;
   std::optional<Control> last_output_control_;
   std::int64_t last_planning_stamp_ns_{0};

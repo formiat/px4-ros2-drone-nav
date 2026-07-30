@@ -173,6 +173,23 @@ TEST(PassageCoordinatorTest, ReleasesHoldAfterStableVerticalCapture) {
   EXPECT_NEAR(result.z_reference_m, 5.0, 0.2);
 }
 
+TEST(PassageCoordinatorTest,
+     StationaryFallbackIgnoresOptimisticPredictionUntilCapture) {
+  PassageCoordinator coordinator;
+  const auto route = testRoute();
+  const PassageCoordinatorResult alignment =
+      coordinator.update(inputAt(route, 8.0F, 18.0F));
+  ASSERT_TRUE(alignment.hold_xy);
+
+  const PassageCoordinatorResult still_moving =
+      coordinator.update(inputAt(route, 8.0F, 6.0F, 1.0F));
+
+  EXPECT_EQ(still_moving.phase, PassageCoordinatorPhase::kVerticalAlignment);
+  EXPECT_TRUE(still_moving.hold_xy);
+  EXPECT_FALSE(still_moving.vertical_ready);
+  EXPECT_EQ(still_moving.capture_stable_cycles, 0U);
+}
+
 TEST(PassageCoordinatorTest, TraversesOnlyTheEventFromCurrentRouteGeneration) {
   PassageCoordinator coordinator;
   const auto first_route = testRoute(10U);

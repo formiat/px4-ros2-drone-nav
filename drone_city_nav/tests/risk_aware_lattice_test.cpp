@@ -193,10 +193,37 @@ TEST(RiskAwareLattice, ReportsIncompleteWhenBudgetEndsWithoutViableFrontier) {
   EXPECT_EQ(result.termination, LatticeSearchTermination::kExpansionBudgetExhausted);
 }
 
+TEST(RiskAwareLattice, ResumesPersistentSearchSessionAcrossBudgetSlices) {
+  const mppi::EsdfGrid grid{200, 30, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                20.0F);
+  RiskAwareLatticeConfig config;
+  config.maximum_expansions = 3U;
+  RiskAwareLatticeSearchSession session;
+
+  const RiskAwareLatticeResult first =
+      planRiskAwareMotionPrimitiveGuide(grid, esdf, Point2{2.5, 10.5}, 0.0,
+                                        Point2{150.5, 10.5}, config, {}, {}, &session);
+  config.maximum_expansions = 12U;
+  const RiskAwareLatticeResult resumed =
+      planRiskAwareMotionPrimitiveGuide(grid, esdf, Point2{2.5, 10.5}, 0.0,
+                                        Point2{150.5, 10.5}, config, {}, {}, &session);
+
+  EXPECT_FALSE(first.search_session_resumed);
+  EXPECT_TRUE(resumed.search_session_resumed);
+  EXPECT_GT(resumed.expansions, first.expansions);
+
+  session.reset();
+  const RiskAwareLatticeResult restarted =
+      planRiskAwareMotionPrimitiveGuide(grid, esdf, Point2{2.5, 10.5}, 0.0,
+                                        Point2{150.5, 10.5}, config, {}, {}, &session);
+  EXPECT_FALSE(restarted.search_session_resumed);
+}
+
 TEST(RiskAwareLattice, EscalatesToPlanningStageForCompleteRoute) {
   const mppi::EsdfGrid grid = makeGrid();
   const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
-                                2.0F);
+                                2.70710678F);
 
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{34.5, 10.5}, RiskAwareLatticeConfig{});
@@ -209,11 +236,12 @@ TEST(RiskAwareLattice, EscalatesToPlanningStageForCompleteRoute) {
 TEST(RiskAwareLattice, EscalatesToCriticalStageButNeverRawCollision) {
   const mppi::EsdfGrid grid = makeGrid();
   const std::vector<float> critical_esdf(
-      static_cast<std::size_t>(grid.width * grid.height), 0.9F);
+      static_cast<std::size_t>(grid.width * grid.height), 2.4F);
+  RiskAwareLatticeConfig critical_config;
+  critical_config.critical_distance_m = 1.5;
 
-  const RiskAwareLatticeResult critical_result =
-      planRiskAwareMotionPrimitiveGuide(grid, critical_esdf, Point2{2.5, 10.5}, 0.0,
-                                        Point2{34.5, 10.5}, RiskAwareLatticeConfig{});
+  const RiskAwareLatticeResult critical_result = planRiskAwareMotionPrimitiveGuide(
+      grid, critical_esdf, Point2{2.5, 10.5}, 0.0, Point2{34.5, 10.5}, critical_config);
 
   ASSERT_TRUE(critical_result.valid);
   EXPECT_EQ(critical_result.risk_stage, LatticeRiskStage::kCriticalAllowed);
