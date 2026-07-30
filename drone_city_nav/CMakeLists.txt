@@ -145,6 +145,7 @@ add_library(
   src/mppi/mppi_post_update_classification.cpp
   src/mppi_horizon_safety.cpp
   src/mppi_liveness.cpp
+  src/mppi_nominal_reseed.cpp
   src/mppi_risk_escalation.cpp
   src/mppi_speed_policy.cpp
   src/navigation_state_prediction.cpp
@@ -454,6 +455,11 @@ if(BUILD_TESTING)
   target_compile_features(active_global_guide_test PRIVATE cxx_std_20)
   target_link_libraries(active_global_guide_test drone_city_nav_core)
   enable_project_warnings(active_global_guide_test)
+
+  ament_add_gtest(planning_contract_test tests/planning_contract_test.cpp)
+  target_compile_features(planning_contract_test PRIVATE cxx_std_20)
+  target_link_libraries(planning_contract_test drone_city_nav_core)
+  enable_project_warnings(planning_contract_test)
 
   ament_add_gtest(distance_field_test_current tests/distance_field_test.cpp)
   target_compile_features(distance_field_test_current PRIVATE cxx_std_20)

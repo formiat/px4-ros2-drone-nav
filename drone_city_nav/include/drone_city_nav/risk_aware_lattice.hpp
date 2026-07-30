@@ -16,7 +16,7 @@ enum class LatticePlanStatus : std::uint8_t {
   kReachedPlanningGoal,
   kViableFrontier,
   kSearchIncomplete,
-  kDeadEnd,
+  kMotionGraphExhausted,
 };
 
 enum class LatticeSearchTermination : std::uint8_t {
@@ -35,17 +35,32 @@ enum class LatticeRiskStage : std::uint8_t {
 };
 
 struct LatticeFrontierBlacklistEntry {
-  Point2 terminal{};
+  Point2 failure_point{};
   double approach_heading_rad{0.0};
+  std::int64_t expires_at_ns{0};
+};
+
+struct LatticeSuccessorDiagnostics {
+  std::size_t generated{0U};
+  std::size_t accepted{0U};
+  std::size_t rejected_outside_roi{0U};
+  std::size_t rejected_outside_grid{0U};
+  std::size_t rejected_invalid_clearance{0U};
+  std::size_t rejected_raw_collision{0U};
+  std::size_t rejected_portal_footprint{0U};
+  std::size_t rejected_risk_stage{0U};
+  std::size_t rejected_blacklisted_failure{0U};
+  std::size_t rejected_no_cost_improvement{0U};
 };
 
 struct RiskAwareLatticeConfig {
   int heading_bins{16};
   double primitive_length_m{4.0};
+  double short_primitive_length_m{2.0};
   double primitive_sample_step_m{0.5};
   double goal_tolerance_m{5.0};
   double receding_goal_distance_m{60.0};
-  double collision_radius_m{0.5};
+  double collision_radius_m{0.82};
   double critical_distance_m{1.0};
   double preferred_distance_m{6.0};
   double planning_exposure_tie_break_per_m{1.0};
@@ -90,11 +105,13 @@ struct RiskAwareLatticeResult {
   std::size_t two_step_reachable_states{0U};
   double reachable_depth_m{0.0};
   std::size_t frontier_candidates_considered{0U};
+  LatticeSuccessorDiagnostics successor_diagnostics{};
 };
 
 [[nodiscard]] RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     const mppi::EsdfGrid& grid, std::span<const float> esdf_m, Point2 start,
-    double start_heading_rad, Point2 mission_goal, const RiskAwareLatticeConfig& config,
+    double preferred_heading_rad, Point2 mission_goal,
+    const RiskAwareLatticeConfig& config,
     std::span<const SemanticPortalPrimitive> portals = {},
     std::span<const LatticeFrontierBlacklistEntry> frontier_blacklist = {});
 

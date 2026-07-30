@@ -1,5 +1,6 @@
 #include "production_mppi_node.hpp"
 
+#include "drone_city_nav/collision_geometry.hpp"
 #include "drone_city_nav/known_passage_solid_volumes.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
@@ -11,8 +12,9 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] mppi::KnownSolid toMppiSolid(const KnownPassageSolidVolume& solid) {
-  constexpr float kVehicleFootprintMarginM{0.75F};
+[[nodiscard]] mppi::KnownSolid toMppiSolid(const KnownPassageSolidVolume& solid,
+                                           const double footprint_radius_m) {
+  const float footprint_margin_m = static_cast<float>(footprint_radius_m);
   return mppi::KnownSolid{
       .center_x_m = static_cast<float>(solid.center.x),
       .center_y_m = static_cast<float>(solid.center.y),
@@ -20,12 +22,10 @@ namespace {
       .normal_y = static_cast<float>(solid.normal_xy.y),
       .lateral_x = static_cast<float>(solid.lateral_xy.x),
       .lateral_y = static_cast<float>(solid.lateral_xy.y),
-      .half_depth_m =
-          static_cast<float>(0.5 * solid.depth_m) + kVehicleFootprintMarginM,
-      .half_width_m =
-          static_cast<float>(0.5 * solid.width_m) + kVehicleFootprintMarginM,
-      .min_z_m = static_cast<float>(solid.min_z_m) - kVehicleFootprintMarginM,
-      .max_z_m = static_cast<float>(solid.max_z_m) + kVehicleFootprintMarginM,
+      .half_depth_m = static_cast<float>(0.5 * solid.depth_m) + footprint_margin_m,
+      .half_width_m = static_cast<float>(0.5 * solid.width_m) + footprint_margin_m,
+      .min_z_m = static_cast<float>(solid.min_z_m) - footprint_margin_m,
+      .max_z_m = static_cast<float>(solid.max_z_m) + footprint_margin_m,
   };
 }
 
@@ -225,8 +225,15 @@ ProductionMppiNode::ProductionMppiNode()
   mppi_config_.costs.speed_tracking_weight = static_cast<float>(
       passage_speed_policy_.use_static_map ? static_speed_tracking_weight
                                            : no_static_speed_tracking_weight);
+  const VehicleFootprintGeometry footprint_geometry{
+      .rotor_center_x_m = declare_parameter<double>("vehicle_rotor_center_x_m", 0.48),
+      .rotor_center_y_m = declare_parameter<double>("vehicle_rotor_center_y_m", 0.48),
+      .rotor_radius_m = declare_parameter<double>("vehicle_rotor_radius_m", 0.14),
+  };
+  const double effective_collision_radius_m =
+      effectiveCollisionRadiusM(footprint_geometry);
   mppi_config_.risk.collision_radius_m =
-      static_cast<float>(declare_parameter<double>("raw_collision_radius_m", 0.5));
+      static_cast<float>(effective_collision_radius_m);
   mppi_config_.risk.critical_distance_m =
       static_cast<float>(declare_parameter<double>("critical_distance_m", 1.0));
   mppi_config_.risk.preferred_distance_m =
@@ -236,6 +243,8 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<std::int64_t>("global_lattice_heading_bins", 16));
   lattice_config_.primitive_length_m =
       declare_parameter<double>("global_lattice_primitive_length_m", 4.0);
+  lattice_config_.short_primitive_length_m =
+      declare_parameter<double>("global_lattice_short_primitive_length_m", 2.0);
   const double static_lattice_distance =
       declare_parameter<double>("static_global_lattice_window_m", 180.0);
   const double no_static_lattice_distance =
@@ -273,6 +282,8 @@ ProductionMppiNode::ProductionMppiNode()
   lattice_config_.frontier_blacklist_heading_tolerance_bins =
       static_cast<int>(declare_parameter<std::int64_t>(
           "global_lattice_frontier_blacklist_heading_bins", 1));
+  frontier_blacklist_ttl_s_ =
+      declare_parameter<double>("global_lattice_frontier_blacklist_ttl_s", 15.0);
   lattice_config_.planning_exposure_tie_break_per_m =
       declare_parameter<double>("global_lattice_planning_tie_break_per_m", 1.0);
   lattice_config_.critical_exposure_tie_break_per_m =
@@ -357,6 +368,7 @@ ProductionMppiNode::ProductionMppiNode()
       !std::isfinite(passage_speed_policy_.no_static_limit_mps) ||
       passage_speed_policy_.no_static_limit_mps < 0.0F ||
       !(semantic_route_config_.crossing_lateral_margin_m >= 0.0) ||
+      !(frontier_blacklist_ttl_s_ > 0.0) ||
       !(semantic_route_config_.minimum_normal_alignment >= 0.0) ||
       !(semantic_route_config_.minimum_normal_alignment <= 1.0)) {
     throw std::invalid_argument{"invalid production MPPI configuration"};
@@ -387,7 +399,7 @@ ProductionMppiNode::ProductionMppiNode()
     semantic_portal_primitives_ = semanticPortalPrimitives(*known_passages_);
     for (const KnownPassageSolidVolume& solid :
          knownPassageSolidVolumes(*known_passages_)) {
-      known_solids_.push_back(toMppiSolid(solid));
+      known_solids_.push_back(toMppiSolid(solid, effective_collision_radius_m));
     }
     engine_->updateKnownSolids(known_solids_);
   }

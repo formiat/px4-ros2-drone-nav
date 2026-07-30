@@ -10,7 +10,7 @@
 namespace drone_city_nav {
 
 struct MppiHorizonSafetyConfig {
-  double collision_radius_m{0.5};
+  double collision_radius_m{0.82};
   double reaction_latency_s{0.10};
   double maximum_braking_acceleration_mps2{8.0};
   double minimum_time_to_collision_s{0.50};

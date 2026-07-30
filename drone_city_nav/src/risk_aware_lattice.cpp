@@ -9,8 +9,10 @@
 #include <numbers>
 #include <optional>
 #include <queue>
+#include <ranges>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace drone_city_nav {
 namespace {
@@ -114,8 +116,17 @@ pointInsidePortalFootprint(const Point2 point,
 }
 
 struct SegmentEvaluation {
+  enum class RejectionReason : std::uint8_t {
+    kNone,
+    kOutsideGrid,
+    kInvalidClearance,
+    kRawCollision,
+    kPortalFootprint,
+    kRiskStage,
+  };
+
   bool valid{false};
-  bool raw_collision{false};
+  RejectionReason rejection_reason{RejectionReason::kNone};
   double critical_exposure_m{0.0};
   double planning_exposure_m{0.0};
   mppi::RiskTier worst_tier{mppi::RiskTier::kPreferred};
@@ -152,10 +163,27 @@ evaluateSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const Point2 sample{std::lerp(start.x, endpoint.x, ratio),
                         std::lerp(start.y, endpoint.y, ratio)};
     const std::optional<float> clearance = clearanceAt(grid, esdf_m, sample);
-    if (!clearance.has_value() || *clearance <= config.collision_radius_m ||
-        (!allow_portal_footprint && pointInsideAnyPortalFootprint(sample, portals))) {
+    if (!clearance.has_value()) {
       result.valid = false;
-      result.raw_collision = true;
+      result.rejection_reason = SegmentEvaluation::RejectionReason::kOutsideGrid;
+      return result;
+    }
+    if (!std::isfinite(*clearance)) {
+      if (*clearance > 0.0F) {
+        continue;
+      }
+      result.valid = false;
+      result.rejection_reason = SegmentEvaluation::RejectionReason::kInvalidClearance;
+      return result;
+    }
+    if (*clearance <= config.collision_radius_m) {
+      result.valid = false;
+      result.rejection_reason = SegmentEvaluation::RejectionReason::kRawCollision;
+      return result;
+    }
+    if (!allow_portal_footprint && pointInsideAnyPortalFootprint(sample, portals)) {
+      result.valid = false;
+      result.rejection_reason = SegmentEvaluation::RejectionReason::kPortalFootprint;
       return result;
     }
     if (*clearance < config.critical_distance_m) {
@@ -168,12 +196,36 @@ evaluateSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   }
   if (!riskAllowed(result.worst_tier, stage)) {
     result.valid = false;
+    result.rejection_reason = SegmentEvaluation::RejectionReason::kRiskStage;
     return result;
   }
   result.risk_cost =
       result.critical_exposure_m * config.critical_exposure_tie_break_per_m +
       result.planning_exposure_m * config.planning_exposure_tie_break_per_m;
   return result;
+}
+
+void recordSegmentRejection(const SegmentEvaluation& segment,
+                            LatticeSuccessorDiagnostics& diagnostics) noexcept {
+  switch (segment.rejection_reason) {
+    case SegmentEvaluation::RejectionReason::kNone:
+      break;
+    case SegmentEvaluation::RejectionReason::kOutsideGrid:
+      ++diagnostics.rejected_outside_grid;
+      break;
+    case SegmentEvaluation::RejectionReason::kInvalidClearance:
+      ++diagnostics.rejected_invalid_clearance;
+      break;
+    case SegmentEvaluation::RejectionReason::kRawCollision:
+      ++diagnostics.rejected_raw_collision;
+      break;
+    case SegmentEvaluation::RejectionReason::kPortalFootprint:
+      ++diagnostics.rejected_portal_footprint;
+      break;
+    case SegmentEvaluation::RejectionReason::kRiskStage:
+      ++diagnostics.rejected_risk_stage;
+      break;
+  }
 }
 
 struct PortalSuccessor {
@@ -244,11 +296,48 @@ portalSuccessor(const Point2 current, const int current_heading,
   return length_m;
 }
 
+[[nodiscard]] bool repeatsBlacklistedFailure(
+    const std::span<const Point2> guide,
+    const std::span<const LatticeFrontierBlacklistEntry> blacklist,
+    const RiskAwareLatticeConfig& config) {
+  for (std::size_t index = 1U; index < guide.size(); ++index) {
+    const Point2& from = guide[index - 1U];
+    const Point2& to = guide[index];
+    const double segment_heading = std::atan2(to.y - from.y, to.x - from.x);
+    const int segment_heading_bin =
+        nearestHeadingBin(segment_heading, config.heading_bins);
+    for (const LatticeFrontierBlacklistEntry& entry : blacklist) {
+      const int failed_heading_bin =
+          nearestHeadingBin(entry.approach_heading_rad, config.heading_bins);
+      if (headingBinDistance(segment_heading_bin, failed_heading_bin,
+                             config.heading_bins) >
+          config.frontier_blacklist_heading_tolerance_bins) {
+        continue;
+      }
+      const double segment_length = distance(from, to);
+      const int sample_count = std::max(
+          1,
+          static_cast<int>(std::ceil(segment_length / config.primitive_sample_step_m)));
+      for (int sample = 1; sample <= sample_count; ++sample) {
+        const double ratio =
+            static_cast<double>(sample) / static_cast<double>(sample_count);
+        const Point2 point{std::lerp(from.x, to.x, ratio),
+                           std::lerp(from.y, to.y, ratio)};
+        if (distance(point, entry.failure_point) <=
+            config.frontier_blacklist_radius_m) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 } // namespace
 
 RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m, const Point2 start,
-    const double start_heading_rad, const Point2 mission_goal,
+    const double preferred_heading_rad, const Point2 mission_goal,
     const RiskAwareLatticeConfig& config,
     const std::span<const SemanticPortalPrimitive> portals,
     const std::span<const LatticeFrontierBlacklistEntry> frontier_blacklist) {
@@ -256,7 +345,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   if (grid.width <= 0 || grid.height <= 0 || grid.resolution_m <= 0.0F ||
       esdf_m.size() != static_cast<std::size_t>(grid.width) *
                            static_cast<std::size_t>(grid.height) ||
-      config.heading_bins < 4 || !(config.portal_lateral_margin_m >= 0.0) ||
+      config.heading_bins < 4 || !(config.short_primitive_length_m > 0.0) ||
+      !(config.primitive_length_m >= config.short_primitive_length_m) ||
+      !(config.portal_lateral_margin_m >= 0.0) ||
       !(config.portal_entry_capture_distance_m > 0.0) ||
       !(config.portal_exit_extension_m > 0.0) ||
       !(config.maximum_search_roi_halo_m > 0.0) ||
@@ -278,7 +369,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         wrapHeading(heading, config.heading_bins)};
   };
   const LatticeKey start_key =
-      makeKey(start, nearestHeadingBin(start_heading_rad, config.heading_bins));
+      makeKey(start, nearestHeadingBin(preferred_heading_rad, config.heading_bins));
   if (!clearanceAt(grid, esdf_m, start).has_value()) {
     return result;
   }
@@ -330,36 +421,73 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     std::size_t stale_pops{0U};
     std::size_t open_peak{0U};
     std::size_t records_peak{0U};
+    LatticeSuccessorDiagnostics successor_diagnostics{};
   };
 
   const auto collect_successors = [&](const Point2 current,
                                       const LatticeKey& current_key,
                                       const LatticeRiskStage stage,
-                                      bool& roi_boundary_seen) {
+                                      bool& roi_boundary_seen,
+                                      LatticeSuccessorDiagnostics* diagnostics) {
     std::vector<Successor> successors;
-    successors.reserve(5U);
-    for (const int heading_delta : {-1, 0, 1}) {
-      const int next_heading =
-          wrapHeading(current_key.heading + heading_delta, config.heading_bins);
+    successors.reserve(static_cast<std::size_t>(config.heading_bins) + 8U);
+    std::unordered_set<LatticeKey, LatticeKeyHash> emitted;
+    const auto add_motion_successor = [&](const int next_heading,
+                                          const double length_m) {
+      if (diagnostics != nullptr) {
+        ++diagnostics->generated;
+      }
       const double heading = headingForBin(next_heading, config.heading_bins);
-      const Point2 endpoint{current.x + std::cos(heading) * config.primitive_length_m,
-                            current.y + std::sin(heading) * config.primitive_length_m};
+      const Point2 endpoint{current.x + std::cos(heading) * length_m,
+                            current.y + std::sin(heading) * length_m};
       if (!inside_roi(endpoint)) {
         roi_boundary_seen = true;
-        continue;
+        if (diagnostics != nullptr) {
+          ++diagnostics->rejected_outside_roi;
+        }
+        return;
       }
       const SegmentEvaluation segment = evaluateSegment(grid, esdf_m, current, endpoint,
                                                         config, portals, false, stage);
       if (!segment.valid) {
-        continue;
+        if (diagnostics != nullptr) {
+          recordSegmentRejection(segment, *diagnostics);
+        }
+        return;
       }
+      const std::array candidate_segment{current, endpoint};
+      if (repeatsBlacklistedFailure(candidate_segment, frontier_blacklist, config)) {
+        if (diagnostics != nullptr) {
+          ++diagnostics->rejected_blacklisted_failure;
+        }
+        return;
+      }
+      const LatticeKey key = makeKey(endpoint, next_heading);
+      if (!emitted.insert(key).second) {
+        return;
+      }
+      const int heading_change =
+          headingBinDistance(current_key.heading, next_heading, config.heading_bins);
       successors.push_back(Successor{
-          .key = makeKey(endpoint, next_heading),
+          .key = key,
           .endpoint = endpoint,
-          .length_m = config.primitive_length_m,
-          .edge_cost = config.primitive_length_m + segment.risk_cost +
-                       config.turn_cost * std::abs(heading_delta),
+          .length_m = length_m,
+          .edge_cost = length_m + segment.risk_cost +
+                       config.turn_cost * static_cast<double>(heading_change),
       });
+      if (diagnostics != nullptr) {
+        ++diagnostics->accepted;
+      }
+    };
+
+    for (int next_heading = 0; next_heading < config.heading_bins; ++next_heading) {
+      add_motion_successor(next_heading, config.short_primitive_length_m);
+    }
+    constexpr std::array normal_heading_offsets{-4, -2, -1, 0, 1, 2, 4, 8};
+    for (const int heading_offset : normal_heading_offsets) {
+      add_motion_successor(
+          wrapHeading(current_key.heading + heading_offset, config.heading_bins),
+          config.primitive_length_m);
     }
     for (const SemanticPortalPrimitive& portal : portals) {
       for (const int direction : {-1, 1}) {
@@ -370,12 +498,29 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         }
         if (!inside_roi(portal_successor->endpoint)) {
           roi_boundary_seen = true;
+          if (diagnostics != nullptr) {
+            ++diagnostics->generated;
+            ++diagnostics->rejected_outside_roi;
+          }
           continue;
+        }
+        if (diagnostics != nullptr) {
+          ++diagnostics->generated;
         }
         const SegmentEvaluation segment =
             evaluateSegment(grid, esdf_m, current, portal_successor->endpoint, config,
                             portals, true, stage);
         if (!segment.valid) {
+          if (diagnostics != nullptr) {
+            recordSegmentRejection(segment, *diagnostics);
+          }
+          continue;
+        }
+        const std::array candidate_segment{current, portal_successor->endpoint};
+        if (repeatsBlacklistedFailure(candidate_segment, frontier_blacklist, config)) {
+          if (diagnostics != nullptr) {
+            ++diagnostics->rejected_blacklisted_failure;
+          }
           continue;
         }
         const int heading_delta = headingBinDistance(
@@ -387,6 +532,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
             .edge_cost = portal_successor->length_m + segment.risk_cost +
                          config.turn_cost * static_cast<double>(heading_delta),
         });
+        if (diagnostics != nullptr) {
+          ++diagnostics->accepted;
+        }
       }
     }
     return successors;
@@ -443,11 +591,13 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       }
       ++outcome.expansions;
       const std::vector<Successor> successors =
-          collect_successors(current, entry.key, stage, outcome.roi_boundary_seen);
+          collect_successors(current, entry.key, stage, outcome.roi_boundary_seen,
+                             &outcome.successor_diagnostics);
       for (const Successor& successor : successors) {
         const double next_cost = record->second.cost + successor.edge_cost;
         Record& next_record = outcome.records[successor.key];
         if (next_cost >= next_record.cost) {
+          ++outcome.successor_diagnostics.rejected_no_cost_improvement;
           continue;
         }
         next_record.cost = next_cost;
@@ -516,6 +666,24 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     result.stale_queue_pops += outcome.stale_pops;
     result.open_peak = std::max(result.open_peak, outcome.open_peak);
     result.records_peak = std::max(result.records_peak, outcome.records_peak);
+    result.successor_diagnostics.generated += outcome.successor_diagnostics.generated;
+    result.successor_diagnostics.accepted += outcome.successor_diagnostics.accepted;
+    result.successor_diagnostics.rejected_outside_roi +=
+        outcome.successor_diagnostics.rejected_outside_roi;
+    result.successor_diagnostics.rejected_outside_grid +=
+        outcome.successor_diagnostics.rejected_outside_grid;
+    result.successor_diagnostics.rejected_invalid_clearance +=
+        outcome.successor_diagnostics.rejected_invalid_clearance;
+    result.successor_diagnostics.rejected_raw_collision +=
+        outcome.successor_diagnostics.rejected_raw_collision;
+    result.successor_diagnostics.rejected_portal_footprint +=
+        outcome.successor_diagnostics.rejected_portal_footprint;
+    result.successor_diagnostics.rejected_risk_stage +=
+        outcome.successor_diagnostics.rejected_risk_stage;
+    result.successor_diagnostics.rejected_blacklisted_failure +=
+        outcome.successor_diagnostics.rejected_blacklisted_failure;
+    result.successor_diagnostics.rejected_no_cost_improvement +=
+        outcome.successor_diagnostics.rejected_no_cost_improvement;
     if (outcome.goal_reached && outcome.terminal.has_value()) {
       result.guide = reconstruct(outcome, *outcome.terminal);
       if (result.guide.empty() ||
@@ -549,29 +717,21 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     for (const LatticeKey& key : outcome.frontier_keys) {
       ++result.frontier_candidates_considered;
       const Point2 terminal = cellCenter(grid, key);
-      const bool blacklisted = std::ranges::any_of(
-          frontier_blacklist, [&](const LatticeFrontierBlacklistEntry& entry) {
-            const int entry_heading =
-                nearestHeadingBin(entry.approach_heading_rad, config.heading_bins);
-            return distance(terminal, entry.terminal) <=
-                       config.frontier_blacklist_radius_m &&
-                   headingBinDistance(key.heading, entry_heading,
-                                      config.heading_bins) <=
-                       config.frontier_blacklist_heading_tolerance_bins;
-          });
-      if (blacklisted) {
+      std::vector<Point2> guide = reconstruct(outcome, key);
+      if (repeatsBlacklistedFailure(guide, frontier_blacklist, config)) {
         continue;
       }
       bool roi_boundary_seen = false;
       const std::vector<Successor> immediate =
-          collect_successors(terminal, key, stage, roi_boundary_seen);
+          collect_successors(terminal, key, stage, roi_boundary_seen, nullptr);
       static_cast<void>(roi_boundary_seen);
       std::size_t two_step_states = 0U;
       double reachable_depth_m = 0.0;
       for (const Successor& successor : immediate) {
         bool second_roi_boundary_seen = false;
-        const std::vector<Successor> second = collect_successors(
-            successor.endpoint, successor.key, stage, second_roi_boundary_seen);
+        const std::vector<Successor> second =
+            collect_successors(successor.endpoint, successor.key, stage,
+                               second_roi_boundary_seen, nullptr);
         static_cast<void>(second_roi_boundary_seen);
         two_step_states += second.size();
         if (!second.empty()) {
@@ -581,7 +741,6 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
               std::max(reachable_depth_m, successor.length_m + deepest_second);
         }
       }
-      std::vector<Point2> guide = reconstruct(outcome, key);
       const double guide_length_m = guideLength(guide);
       const double remaining_m = distance(terminal, result.planning_goal);
       const double progress_m = distance(start, result.planning_goal) - remaining_m;
@@ -637,7 +796,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   }
 
   result.status = search_incomplete ? LatticePlanStatus::kSearchIncomplete
-                                    : LatticePlanStatus::kDeadEnd;
+                                    : LatticePlanStatus::kMotionGraphExhausted;
   result.termination = search_incomplete ? incomplete_termination
                                          : LatticeSearchTermination::kOpenSetExhausted;
   return result;
@@ -653,8 +812,8 @@ const char* latticePlanStatusName(const LatticePlanStatus status) noexcept {
       return "viable_frontier";
     case LatticePlanStatus::kSearchIncomplete:
       return "search_incomplete";
-    case LatticePlanStatus::kDeadEnd:
-      return "dead_end";
+    case LatticePlanStatus::kMotionGraphExhausted:
+      return "motion_graph_exhausted";
   }
   return "unknown";
 }

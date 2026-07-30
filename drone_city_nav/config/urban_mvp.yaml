@@ -161,7 +161,9 @@ production_mppi_node:
     passage_minimum_continuous_speed_mps: 0.5
     passage_prediction_time_step_s: 0.02
     maximum_vertical_acceleration_mps2: 4.0
-    raw_collision_radius_m: 0.5
+    vehicle_rotor_center_x_m: 0.48
+    vehicle_rotor_center_y_m: 0.48
+    vehicle_rotor_radius_m: 0.14
     critical_distance_m: 1.0
     preferred_distance_m: 6.0
     seed: 42
@@ -196,6 +198,7 @@ production_mppi_node:
     mppi_risk_recovery_stable_cycles: 20
     global_lattice_heading_bins: 16
     global_lattice_primitive_length_m: 4.0
+    global_lattice_short_primitive_length_m: 2.0
     static_global_lattice_window_m: 180.0
     no_static_global_lattice_window_m: 60.0
     static_global_lattice_maximum_expansions: 120000
@@ -208,6 +211,7 @@ production_mppi_node:
     global_lattice_frontier_reachable_depth_m: 8.0
     global_lattice_frontier_blacklist_radius_m: 6.0
     global_lattice_frontier_blacklist_heading_bins: 1
+    global_lattice_frontier_blacklist_ttl_s: 15.0
     global_lattice_planning_tie_break_per_m: 1.0
     global_lattice_critical_tie_break_per_m: 10.0
     global_guide_validation_sample_step_m: 0.5

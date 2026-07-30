@@ -48,7 +48,7 @@ TEST(ActiveGlobalGuideTest, RetainsGuideAndRequestsBackgroundReplanForCriticalBa
   std::vector<float> esdf = clearEsdf();
   ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
                   .accepted);
-  esdf[10U * 80U + 20U] = 0.75F;
+  esdf[10U * 80U + 20U] = 0.9F;
 
   const ActiveGlobalGuideUpdate update =
       lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 0U);
@@ -62,7 +62,7 @@ TEST(ActiveGlobalGuideTest, RetainsGuideAndRequestsBackgroundReplanForCriticalBa
 TEST(ActiveGlobalGuideTest, KeepsGuideAcceptedInsideCriticalBand) {
   ActiveGlobalGuideLifecycle lifecycle;
   std::vector<float> esdf = clearEsdf();
-  esdf[10U * 80U + 20U] = 0.75F;
+  esdf[10U * 80U + 20U] = 0.9F;
   ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
                   .accepted);
 
@@ -193,7 +193,8 @@ TEST(ActiveGlobalGuideTest, UsesVelocityHeadingAtCruiseSpeed) {
   state.vx = 3.0F;
   state.vy = 4.0F;
 
-  const GlobalGuideHeading heading = lifecycle.selectPlanningHeading(state, 0.0);
+  const GlobalGuideHeading heading =
+      lifecycle.selectPlanningHeading(state, Point2{10.0, 10.0});
 
   EXPECT_EQ(heading.source, GlobalGuideHeadingSource::kVelocity);
   EXPECT_NEAR(heading.heading_rad, std::atan2(4.0, 3.0), 1.0e-9);
@@ -206,7 +207,7 @@ TEST(ActiveGlobalGuideTest, UsesAcceptedGuideHeadingWhileStationary) {
                   .accepted);
 
   const GlobalGuideHeading heading =
-      lifecycle.selectPlanningHeading(mppi::State{}, std::numbers::pi / 2.0);
+      lifecycle.selectPlanningHeading(mppi::State{}, Point2{10.0, 10.0});
 
   EXPECT_EQ(heading.source, GlobalGuideHeadingSource::kActiveGuide);
   EXPECT_NEAR(heading.heading_rad, 0.0, 1.0e-9);
@@ -220,20 +221,44 @@ TEST(ActiveGlobalGuideTest, BlendsGuideAndVelocityAcrossSpeedTransition) {
   mppi::State state;
   state.vy = 1.0F;
 
-  const GlobalGuideHeading heading = lifecycle.selectPlanningHeading(state, 0.0);
+  const GlobalGuideHeading heading =
+      lifecycle.selectPlanningHeading(state, Point2{10.0, 10.0});
 
   EXPECT_EQ(heading.source, GlobalGuideHeadingSource::kBlended);
   EXPECT_NEAR(heading.heading_rad, std::numbers::pi / 4.0, 1.0e-9);
 }
 
-TEST(ActiveGlobalGuideTest, FallsBackToYawWithoutVelocityOrGuide) {
+TEST(ActiveGlobalGuideTest, UsesGoalDirectionWithoutVelocityOrGuide) {
   ActiveGlobalGuideLifecycle lifecycle;
+  mppi::State state;
+  state.x = 2.0F;
+  state.y = 3.0F;
+  state.yaw = -0.75F;
 
   const GlobalGuideHeading heading =
-      lifecycle.selectPlanningHeading(mppi::State{}, -0.75);
+      lifecycle.selectPlanningHeading(state, Point2{2.0, 13.0});
 
-  EXPECT_EQ(heading.source, GlobalGuideHeadingSource::kYawFallback);
-  EXPECT_DOUBLE_EQ(heading.heading_rad, -0.75);
+  EXPECT_EQ(heading.source, GlobalGuideHeadingSource::kGoalDirection);
+  EXPECT_NEAR(heading.heading_rad, std::numbers::pi / 2.0, 1.0e-9);
+}
+
+TEST(ActiveGlobalGuideTest, BodyYawNeverChangesPlanningHeading) {
+  ActiveGlobalGuideLifecycle lifecycle;
+  mppi::State first;
+  first.x = 2.0F;
+  first.y = 3.0F;
+  first.yaw = -2.5F;
+  mppi::State second = first;
+  second.yaw = 1.7F;
+
+  const GlobalGuideHeading first_heading =
+      lifecycle.selectPlanningHeading(first, Point2{12.0, 13.0});
+  const GlobalGuideHeading second_heading =
+      lifecycle.selectPlanningHeading(second, Point2{12.0, 13.0});
+
+  EXPECT_EQ(first_heading.source, GlobalGuideHeadingSource::kGoalDirection);
+  EXPECT_EQ(second_heading.source, GlobalGuideHeadingSource::kGoalDirection);
+  EXPECT_DOUBLE_EQ(first_heading.heading_rad, second_heading.heading_rad);
 }
 
 TEST(ActiveGlobalGuideTest, ProjectionDoesNotMoveBehindMinimumStation) {

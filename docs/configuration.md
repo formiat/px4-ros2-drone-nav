@@ -61,7 +61,8 @@ Mode policy:
 
 Risk:
 
-- `raw_collision_radius_m`;
+- `vehicle_rotor_center_x_m`, `vehicle_rotor_center_y_m`, and
+  `vehicle_rotor_radius_m` define the circular collision footprint;
 - `critical_distance_m`;
 - `preferred_distance_m`.
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/active_global_guide.hpp"
+#include "drone_city_nav/collision_geometry.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
@@ -8,6 +9,7 @@
 #include "drone_city_nav/mppi/passage_speed_policy.hpp"
 #include "drone_city_nav/mppi_horizon_safety.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
+#include "drone_city_nav/mppi_nominal_reseed.hpp"
 #include "drone_city_nav/mppi_risk_escalation.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
@@ -73,7 +75,7 @@ struct ProductionMppiPreparedEsdf {
   GlobalGuideReleaseReason global_guide_release_reason{
       GlobalGuideReleaseReason::kNoActiveGuide};
   GlobalGuideHeadingSource global_guide_heading_source{
-      GlobalGuideHeadingSource::kYawFallback};
+      GlobalGuideHeadingSource::kGoalDirection};
   GlobalGuideRiskTier global_guide_risk{GlobalGuideRiskTier::kPreferred};
   GlobalGuideAcceptanceReason global_guide_acceptance_reason{
       GlobalGuideAcceptanceReason::kNotAttempted};
@@ -94,6 +96,7 @@ struct ProductionMppiPreparedEsdf {
   std::size_t lattice_two_step_reachable_states{0U};
   double lattice_reachable_depth_m{0.0};
   std::size_t lattice_frontier_candidates_considered{0U};
+  LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
 };
 
 struct ProductionMppiStability {
@@ -211,6 +214,7 @@ private:
   double stale_esdf_execution_window_ms_{4000.0};
   double maximum_control_feedback_age_ms_{200.0};
   double no_static_guide_lookahead_m_{30.0};
+  double frontier_blacklist_ttl_s_{15.0};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
   SemanticPortalRouteConfig semantic_route_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
@@ -235,6 +239,7 @@ private:
   GlobalGuideProgressConfig guide_progress_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   std::unique_ptr<MppiRiskEscalation> risk_escalation_;
+  MppiNominalReseedTracker nominal_reseed_tracker_{};
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
   std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;

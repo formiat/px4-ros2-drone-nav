@@ -27,7 +27,7 @@ struct NoiseConfig {
 };
 
 struct RiskConfig {
-  float collision_radius_m{0.5F};
+  float collision_radius_m{0.82F};
   float critical_distance_m{1.0F};
   float preferred_distance_m{6.0F};
   float critical_exposure_tolerance_m{0.5F};

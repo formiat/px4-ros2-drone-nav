@@ -431,6 +431,26 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_reachable_depth_m\":" << esdf.lattice_reachable_depth_m
         << ",\"lattice_frontier_candidates_considered\":"
         << esdf.lattice_frontier_candidates_considered
+        << ",\"lattice_successors_generated\":"
+        << esdf.lattice_successor_diagnostics.generated
+        << ",\"lattice_successors_accepted\":"
+        << esdf.lattice_successor_diagnostics.accepted
+        << ",\"lattice_successors_rejected_outside_roi\":"
+        << esdf.lattice_successor_diagnostics.rejected_outside_roi
+        << ",\"lattice_successors_rejected_outside_grid\":"
+        << esdf.lattice_successor_diagnostics.rejected_outside_grid
+        << ",\"lattice_successors_rejected_invalid_clearance\":"
+        << esdf.lattice_successor_diagnostics.rejected_invalid_clearance
+        << ",\"lattice_successors_rejected_raw_collision\":"
+        << esdf.lattice_successor_diagnostics.rejected_raw_collision
+        << ",\"lattice_successors_rejected_portal_footprint\":"
+        << esdf.lattice_successor_diagnostics.rejected_portal_footprint
+        << ",\"lattice_successors_rejected_risk_stage\":"
+        << esdf.lattice_successor_diagnostics.rejected_risk_stage
+        << ",\"lattice_successors_rejected_blacklisted_failure\":"
+        << esdf.lattice_successor_diagnostics.rejected_blacklisted_failure
+        << ",\"lattice_successors_rejected_no_cost_improvement\":"
+        << esdf.lattice_successor_diagnostics.rejected_no_cost_improvement
         << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
         << ",\"maximum_eligible_risk_tier\":\""
         << mppi::mppiRiskTierName(snapshot.maximum_eligible_risk_tier) << '"'

@@ -149,6 +149,11 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     std::shared_ptr<const std::vector<Point2>> guide;
     if (navigation.valid && active_guide_lifecycle_) {
       const Point2 position{navigation.state.x, navigation.state.y};
+      const std::int64_t blacklist_now_ns = get_clock()->now().nanoseconds();
+      std::erase_if(frontier_blacklist_,
+                    [blacklist_now_ns](const LatticeFrontierBlacklistEntry& entry) {
+                      return entry.expires_at_ns <= blacklist_now_ns;
+                    });
       const std::shared_ptr<const std::vector<Point2>> previous_active_guide =
           active_guide_lifecycle_->guide();
       guide_update = active_guide_lifecycle_->update(
@@ -160,13 +165,18 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           (guide_update.release_reason == GlobalGuideReleaseReason::kStalled ||
            guide_update.release_reason ==
                GlobalGuideReleaseReason::kPersistentSafetyRejection)) {
-        const Point2& before_terminal =
-            (*previous_active_guide)[previous_active_guide->size() - 2U];
-        const Point2& terminal = previous_active_guide->back();
+        const GlobalGuideProjection failure_projection =
+            projectOntoGlobalGuide(*previous_active_guide, position);
+        const Point2 failure_point =
+            failure_projection.valid ? failure_projection.point : position;
+        const Point2 failure_tangent =
+            failure_projection.valid ? failure_projection.tangent
+                                     : Point2{navigation.state.vx, navigation.state.vy};
         frontier_blacklist_.push_back(LatticeFrontierBlacklistEntry{
-            .terminal = terminal,
-            .approach_heading_rad = std::atan2(terminal.y - before_terminal.y,
-                                               terminal.x - before_terminal.x),
+            .failure_point = failure_point,
+            .approach_heading_rad = std::atan2(failure_tangent.y, failure_tangent.x),
+            .expires_at_ns = blacklist_now_ns + static_cast<std::int64_t>(
+                                                    frontier_blacklist_ttl_s_ * 1.0e9),
         });
         constexpr std::size_t kMaximumFrontierBlacklistEntries{8U};
         if (frontier_blacklist_.size() > kMaximumFrontierBlacklistEntries) {
@@ -178,7 +188,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         guide_heading.source = GlobalGuideHeadingSource::kActiveGuide;
         if (guide_update.requires_replan) {
           guide_heading = active_guide_lifecycle_->selectPlanningHeading(
-              navigation.state, navigation.state.yaw);
+              navigation.state, Point2{mission_goal_.x, mission_goal_.y});
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
               Point2{mission_goal_.x, mission_goal_.y}, lattice_config_,
@@ -230,7 +240,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           guide_update = active_guide_lifecycle_->status();
         } else {
           guide_heading = active_guide_lifecycle_->selectPlanningHeading(
-              navigation.state, navigation.state.yaw);
+              navigation.state, Point2{mission_goal_.x, mission_goal_.y});
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
               Point2{mission_goal_.x, mission_goal_.y}, lattice_config_,
@@ -331,6 +341,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         .lattice_reachable_depth_m = lattice_observation.reachable_depth_m,
         .lattice_frontier_candidates_considered =
             lattice_observation.frontier_candidates_considered,
+        .lattice_successor_diagnostics = lattice_observation.successor_diagnostics,
     };
     {
       const std::scoped_lock lock{esdf_state_mutex_};
@@ -353,7 +364,12 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         "lattice_termination=%s lattice_planning_goal_reached=%s "
         "lattice_achieved_progress_m=%.2f lattice_guide_length_m=%.2f "
         "lattice_remaining_goal_distance_m=%.2f "
-        "lattice_terminal_successors=%zu",
+        "lattice_terminal_successors=%zu successor_generated=%zu "
+        "successor_accepted=%zu successor_reject_roi=%zu "
+        "successor_reject_grid=%zu successor_reject_invalid=%zu "
+        "successor_reject_collision=%zu successor_reject_portal=%zu "
+        "successor_reject_risk=%zu successor_reject_blacklist=%zu "
+        "successor_reject_cost=%zu",
         prepared.revision, prepared.build_ms, prepared.conversion_ms,
         prepared.upload_ms,
         static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
@@ -379,7 +395,17 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         prepared.lattice_planning_goal_reached ? "true" : "false",
         prepared.lattice_achieved_progress_m, prepared.lattice_guide_length_m,
         prepared.lattice_remaining_goal_distance_m,
-        prepared.lattice_terminal_successor_count);
+        prepared.lattice_terminal_successor_count,
+        prepared.lattice_successor_diagnostics.generated,
+        prepared.lattice_successor_diagnostics.accepted,
+        prepared.lattice_successor_diagnostics.rejected_outside_roi,
+        prepared.lattice_successor_diagnostics.rejected_outside_grid,
+        prepared.lattice_successor_diagnostics.rejected_invalid_clearance,
+        prepared.lattice_successor_diagnostics.rejected_raw_collision,
+        prepared.lattice_successor_diagnostics.rejected_portal_footprint,
+        prepared.lattice_successor_diagnostics.rejected_risk_stage,
+        prepared.lattice_successor_diagnostics.rejected_blacklisted_failure,
+        prepared.lattice_successor_diagnostics.rejected_no_cost_improvement);
   }
 }
 
@@ -700,8 +726,15 @@ void ProductionMppiNode::planningTick() {
                                       std::memory_order_release);
     }
   }
-  const std::uint64_t nominal_reseed_generation =
-      liveness.reseed_generation + guide_progress.local_reseed_generation;
+  const MppiNominalReseedUpdate nominal_reseed =
+      nominal_reseed_tracker_.update(MppiNominalReseedObservation{
+          .guide_generation = esdf->global_guide_generation,
+          .local_liveness_generation = liveness.reseed_generation,
+          .guide_liveness_generation = guide_progress.local_reseed_generation,
+          .safety_rejection_generation = guide_progress.persistent_safety_rejection
+                                             ? guide_progress.stall_generation
+                                             : 0U,
+      });
   mppi::MppiTickInput input{
       .initial_state = navigation.state,
       .target = target,
@@ -712,7 +745,7 @@ void ProductionMppiNode::planningTick() {
       .previous_applied_control =
           control_feedback_fresh ? std::optional<mppi::Control>{applied_control.control}
                                  : std::nullopt,
-      .nominal_reseed_generation = nominal_reseed_generation,
+      .nominal_reseed_generation = nominal_reseed.generation,
       .reference_speed_mps = speed_policy.enabled
                                  ? static_cast<float>(speed_policy.reference_speed_mps)
                                  : -1.0F,
@@ -760,6 +793,8 @@ void ProductionMppiNode::planningTick() {
       RCLCPP_ERROR(get_logger(), "PRODUCTION_MPPI_TICK failed: %s", error.what());
       return;
     }
+    nominal_reseed_tracker_.observeEligibleRolloutResult(
+        result.eligible_risk_contract.available);
   }
   ++tick_sequence_;
   recordTickStatistics(result, passage_result, planning_state,

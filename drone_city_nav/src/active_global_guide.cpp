@@ -324,7 +324,7 @@ GlobalGuideAcceptanceResult ActiveGlobalGuideLifecycle::accept(
 
 GlobalGuideHeading
 ActiveGlobalGuideLifecycle::selectPlanningHeading(const mppi::State& state,
-                                                  const double yaw_fallback_rad) const {
+                                                  const Point2 planning_goal) const {
   const double speed_mps =
       std::hypot(static_cast<double>(state.vx), static_cast<double>(state.vy));
   const double velocity_heading =
@@ -346,8 +346,11 @@ ActiveGlobalGuideLifecycle::selectPlanningHeading(const mppi::State& state,
   if (speed_mps > config_.velocity_heading_low_speed_mps) {
     return GlobalGuideHeading{velocity_heading, GlobalGuideHeadingSource::kVelocity};
   }
-  return GlobalGuideHeading{std::isfinite(yaw_fallback_rad) ? yaw_fallback_rad : 0.0,
-                            GlobalGuideHeadingSource::kYawFallback};
+  const double goal_heading =
+      std::atan2(planning_goal.y - static_cast<double>(state.y),
+                 planning_goal.x - static_cast<double>(state.x));
+  return GlobalGuideHeading{std::isfinite(goal_heading) ? goal_heading : 0.0,
+                            GlobalGuideHeadingSource::kGoalDirection};
 }
 
 std::shared_ptr<const std::vector<Point2>>
@@ -498,8 +501,8 @@ globalGuideHeadingSourceName(const GlobalGuideHeadingSource source) noexcept {
       return "active_guide";
     case GlobalGuideHeadingSource::kBlended:
       return "blended";
-    case GlobalGuideHeadingSource::kYawFallback:
-      return "yaw_fallback";
+    case GlobalGuideHeadingSource::kGoalDirection:
+      return "goal_direction";
   }
   return "unknown";
 }

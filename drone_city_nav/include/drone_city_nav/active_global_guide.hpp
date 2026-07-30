@@ -24,7 +24,7 @@ enum class GlobalGuideHeadingSource : std::uint8_t {
   kVelocity,
   kActiveGuide,
   kBlended,
-  kYawFallback,
+  kGoalDirection,
 };
 
 enum class GlobalGuideRiskTier : std::uint8_t {
@@ -46,7 +46,7 @@ enum class GlobalGuideAcceptanceReason : std::uint8_t {
 };
 
 struct ActiveGlobalGuideConfig {
-  double collision_radius_m{0.5};
+  double collision_radius_m{0.82};
   double critical_distance_m{1.0};
   double preferred_distance_m{6.0};
   double validation_sample_step_m{0.5};
@@ -79,7 +79,7 @@ struct ActiveGlobalGuideUpdate {
 
 struct GlobalGuideHeading {
   double heading_rad{0.0};
-  GlobalGuideHeadingSource source{GlobalGuideHeadingSource::kYawFallback};
+  GlobalGuideHeadingSource source{GlobalGuideHeadingSource::kGoalDirection};
 };
 
 struct GlobalGuideAcceptanceResult {
@@ -145,7 +145,7 @@ public:
          const mppi::EsdfGrid& grid, std::span<const float> esdf_m, Point2 position);
 
   [[nodiscard]] GlobalGuideHeading selectPlanningHeading(const mppi::State& state,
-                                                         double yaw_fallback_rad) const;
+                                                         Point2 planning_goal) const;
 
   [[nodiscard]] std::shared_ptr<const std::vector<Point2>> guide() const noexcept;
   [[nodiscard]] ActiveGlobalGuideUpdate status() const noexcept;
