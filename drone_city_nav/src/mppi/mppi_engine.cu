@@ -359,10 +359,9 @@ __device__ RouteProjection projectOntoRoute(const State& state,
     if (!(squared_length > 1.0e-8F)) {
       continue;
     }
-    const float ratio =
-        clampValue(((state.x - first.x_m) * dx + (state.y - first.y_m) * dy) /
-                       squared_length,
-                   0.0F, 1.0F);
+    const float ratio = clampValue(
+        ((state.x - first.x_m) * dx + (state.y - first.y_m) * dy) / squared_length,
+        0.0F, 1.0F);
     const float projected_x = first.x_m + ratio * dx;
     const float projected_y = first.y_m + ratio * dy;
     const float offset_x = state.x - projected_x;
@@ -370,8 +369,7 @@ __device__ RouteProjection projectOntoRoute(const State& state,
     const float squared_distance = offset_x * offset_x + offset_y * offset_y;
     if (squared_distance < best_squared_distance) {
       best_squared_distance = squared_distance;
-      result.station_m = first.station_m +
-                         ratio * (second.station_m - first.station_m);
+      result.station_m = first.station_m + ratio * (second.station_m - first.station_m);
       result.cross_track_m = sqrtf(squared_distance);
       result.valid = true;
     }
@@ -385,15 +383,18 @@ __device__ float passageZReference(const PassageConstraint& passage,
       station_m > passage.departure_station_m) {
     return passage.normal_flight_z_m;
   }
-  if (passage.phase != PassagePhase::kUpcoming &&
+  if (passage.phase == PassagePhase::kVerticalAlignment &&
       station_m <= passage.exit_station_m) {
     return passage.preferred_z_m;
   }
-  if (station_m < passage.entry_station_m) {
+  const auto smooth_step = [](const float ratio) {
+    const float value = fminf(1.0F, fmaxf(0.0F, ratio));
+    return value * value * value * (value * (value * 6.0F - 15.0F) + 10.0F);
+  };
+  if (station_m < passage.alignment_station_m) {
     const float length =
-        fmaxf(1.0e-3F, passage.entry_station_m - passage.approach_station_m);
-    const float ratio =
-        (station_m - passage.approach_station_m) / length;
+        fmaxf(1.0e-3F, passage.alignment_station_m - passage.approach_station_m);
+    const float ratio = smooth_step((station_m - passage.approach_station_m) / length);
     return passage.normal_flight_z_m +
            ratio * (passage.preferred_z_m - passage.normal_flight_z_m);
   }
@@ -402,7 +403,7 @@ __device__ float passageZReference(const PassageConstraint& passage,
   }
   const float length =
       fmaxf(1.0e-3F, passage.departure_station_m - passage.exit_station_m);
-  const float ratio = (station_m - passage.exit_station_m) / length;
+  const float ratio = smooth_step((station_m - passage.exit_station_m) / length);
   return passage.preferred_z_m +
          ratio * (passage.normal_flight_z_m - passage.preferred_z_m);
 }
@@ -418,8 +419,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          const KnownSolid* solids, std::size_t solid_count, PassageConstraint passage,
          bool passage_active, const RoutePoint* route_points,
          std::size_t route_point_count, float initial_route_station_m,
-         Control previous_applied_control,
-         float reference_speed_mps, bool early_exit) {
+         Control previous_applied_control, float reference_speed_mps, bool early_exit) {
   const std::size_t rollout =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (rollout >= rollouts) {
@@ -502,8 +502,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
     if (route_projection.valid) {
       guide_cost += route_projection.cross_track_m * route_projection.cross_track_m;
-      terminal_route_progress =
-          route_projection.station_m - initial_route_station_m;
+      terminal_route_progress = route_projection.station_m - initial_route_station_m;
     } else {
       const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
                                 (state.x - initial.x) * (target.y - initial.y);
@@ -521,8 +520,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       head_progress =
           route_projection.valid
               ? route_projection.station_m - initial_route_station_m
-              : initial_distance -
-                    hypotf(target.x - state.x, target.y - state.y);
+              : initial_distance - hypotf(target.x - state.x, target.y - state.y);
     }
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
@@ -540,22 +538,18 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
   }
   const float terminal_distance = hypotf(target.x - state.x, target.y - state.y);
-  const float progress =
-      route_point_count >= 2U
-          ? terminal_route_progress
-          : initial_distance - terminal_distance;
-  soft_cost[rollout] = costs.head_progress_weight * -head_progress +
-                       costs.progress_weight * -progress +
-                       costs.speed_tracking_weight * dynamics.dt_s *
-                           speed_tracking_cost +
-                       costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
-                       costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
-                       costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
-                       costs.jerk_weight * jerk_cost +
-                       costs.yaw_change_weight * yaw_cost +
-                       costs.planning_exposure_weight * planning_m +
-                       costs.critical_exposure_weight * critical_m +
-                       costs.terminal_weight * terminal_distance;
+  const float progress = route_point_count >= 2U ? terminal_route_progress
+                                                 : initial_distance - terminal_distance;
+  soft_cost[rollout] =
+      costs.head_progress_weight * -head_progress + costs.progress_weight * -progress +
+      costs.speed_tracking_weight * dynamics.dt_s * speed_tracking_cost +
+      costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
+      costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
+      costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
+      costs.jerk_weight * jerk_cost + costs.yaw_change_weight * yaw_cost +
+      costs.planning_exposure_weight * planning_m +
+      costs.critical_exposure_weight * critical_m +
+      costs.terminal_weight * terminal_distance;
   critical_exposure[rollout] = critical_m;
   planning_exposure[rollout] = planning_m;
   minimum_clearance[rollout] = minimum_clearance_m;
@@ -646,22 +640,19 @@ __global__ void reduceSoft(const std::uint8_t* tier, const float* critical,
           : static_cast<int>(tier[index]) == *best_tier &&
                 critical[index] <=
                     *best_critical + risk.critical_exposure_tolerance_m &&
-                planning[index] <=
-                    *best_planning + risk.planning_exposure_tolerance_m;
+                planning[index] <= *best_planning + risk.planning_exposure_tolerance_m;
   if (raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
     atomicMinFloat(minimum_soft, soft[index]);
   }
 }
 
-__global__ void calculateWeights(const std::uint8_t* tier, const float* critical,
-                                 const float* planning, const float* soft,
-                                 const std::uint8_t* raw_collision,
-                                 const std::uint8_t* solid_collision, float* weights,
-                                 std::size_t count, const int* best_tier,
-                                 const float* best_critical, const float* best_planning,
-                                 const float* minimum_soft, RiskConfig risk,
-                                 float temperature, int maximum_tier,
-                                 float* weight_sum) {
+__global__ void
+calculateWeights(const std::uint8_t* tier, const float* critical, const float* planning,
+                 const float* soft, const std::uint8_t* raw_collision,
+                 const std::uint8_t* solid_collision, float* weights, std::size_t count,
+                 const int* best_tier, const float* best_critical,
+                 const float* best_planning, const float* minimum_soft, RiskConfig risk,
+                 float temperature, int maximum_tier, float* weight_sum) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= count) {
@@ -675,8 +666,7 @@ __global__ void calculateWeights(const std::uint8_t* tier, const float* critical
           : static_cast<int>(tier[index]) == *best_tier &&
                 critical[index] <=
                     *best_critical + risk.critical_exposure_tolerance_m &&
-                planning[index] <=
-                    *best_planning + risk.planning_exposure_tolerance_m;
+                planning[index] <= *best_planning + risk.planning_exposure_tolerance_m;
   if (raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
     weight = expf(-(soft[index] - *minimum_soft) / temperature);
   }
@@ -854,19 +844,18 @@ public:
         has_updated_
             ? std::clamp(static_cast<float>(elapsed_s), 1.0e-3F, config_.dynamics.dt_s)
             : config_.dynamics.dt_s;
-    const bool route_active =
-        input.route.has_value() && input.route->points &&
-        input.route->points->size() >= 2U;
+    const bool route_active = input.route.has_value() && input.route->points &&
+                              input.route->points->size() >= 2U;
     if (route_active) {
       if (input.route->points->size() > kMaximumRoutePoints) {
         throw std::invalid_argument{"MPPI route exceeds device route capacity"};
       }
       if (!route_uploaded_ || route_generation_ != input.route->generation ||
           route_points_host_.get() != input.route->points.get()) {
-        checkCuda(cudaMemcpyAsync(
-                      buffers_.route_points.get(), input.route->points->data(),
-                      input.route->points->size() * sizeof(RoutePoint),
-                      cudaMemcpyHostToDevice, stream_),
+        checkCuda(cudaMemcpyAsync(buffers_.route_points.get(),
+                                  input.route->points->data(),
+                                  input.route->points->size() * sizeof(RoutePoint),
+                                  cudaMemcpyHostToDevice, stream_),
                   "upload semantic route");
         route_points_host_ = input.route->points;
         route_generation_ = input.route->generation;
@@ -897,9 +886,8 @@ public:
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         input.passage.value_or(PassageConstraint{}), input.passage.has_value(),
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
-        route_active ? input.route->initial_station_m : 0.0F,
-        previous_applied_control, input.reference_speed_mps,
-        config_.early_exit_on_collision);
+        route_active ? input.route->initial_station_m : 0.0F, previous_applied_control,
+        input.reference_speed_mps, config_.early_exit_on_collision);
     simulation_done_.record(stream_);
     initializeReduction<<<1, 1, 0U, stream_>>>(
         buffers_.best_tier.get(), buffers_.best_critical.get(),
@@ -908,8 +896,7 @@ public:
     reduceTier<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.raw_collision.get(),
         buffers_.solid_collision.get(), config_.rollouts,
-        static_cast<int>(input.maximum_eligible_risk_tier),
-        buffers_.best_tier.get());
+        static_cast<int>(input.maximum_eligible_risk_tier), buffers_.best_tier.get());
     reduceCritical<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
         buffers_.raw_collision.get(), buffers_.solid_collision.get(), config_.rollouts,
@@ -935,8 +922,7 @@ public:
         buffers_.weights.get(), config_.rollouts, buffers_.best_tier.get(),
         buffers_.best_critical.get(), buffers_.best_planning.get(),
         buffers_.minimum_soft.get(), config_.risk, config_.costs.temperature,
-        static_cast<int>(input.maximum_eligible_risk_tier),
-        buffers_.weight_sum.get());
+        static_cast<int>(input.maximum_eligible_risk_tier), buffers_.weight_sum.get());
     weights_done_.record(stream_);
     updateControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.nominal.get(), buffers_.updated.get(), buffers_.noise_ax.get(),
@@ -981,8 +967,7 @@ public:
         eligible_tier_value < static_cast<int>(RiskTier::kCollision);
     if (input.maximum_eligible_risk_tier != RiskTier::kPreferred &&
         eligible_tier_available) {
-      eligible_tier_value =
-          static_cast<int>(input.maximum_eligible_risk_tier);
+      eligible_tier_value = static_cast<int>(input.maximum_eligible_risk_tier);
       best_critical_exposure_m = kInfinity;
       best_planning_exposure_m = kInfinity;
     }
@@ -1013,8 +998,8 @@ public:
     result.horizon.push_back(state);
     const float initial_distance =
         std::hypot(input.target.x - state.x, input.target.y - state.y);
-    const auto hostRouteProjection = [&input](const State& candidate)
-        -> std::optional<float> {
+    const auto hostRouteProjection =
+        [&input](const State& candidate) -> std::optional<float> {
       if (!input.route.has_value() || !input.route->points ||
           input.route->points->size() < 2U) {
         return std::nullopt;
@@ -1041,17 +1026,14 @@ public:
             0.0F, 1.0F);
         const float offset_x = candidate.x - (first.x_m + ratio * dx);
         const float offset_y = candidate.y - (first.y_m + ratio * dy);
-        const float squared_distance =
-            offset_x * offset_x + offset_y * offset_y;
+        const float squared_distance = offset_x * offset_x + offset_y * offset_y;
         if (squared_distance < best_squared_distance) {
           best_squared_distance = squared_distance;
-          best_station = first.station_m +
-                         ratio * (second.station_m - first.station_m);
+          best_station = first.station_m + ratio * (second.station_m - first.station_m);
         }
       }
-      return best_squared_distance < kInfinity
-                 ? std::optional<float>{best_station}
-                 : std::nullopt;
+      return best_squared_distance < kInfinity ? std::optional<float>{best_station}
+                                               : std::nullopt;
     };
     result.minimum_esdf_distance_m = kInfinity;
     result.selected_tier = RiskTier::kPreferred;
@@ -1086,8 +1068,7 @@ public:
             route_station.has_value()
                 ? *route_station - input.route->initial_station_m
                 : initial_distance -
-                      std::hypot(input.target.x - state.x,
-                                 input.target.y - state.y);
+                      std::hypot(input.target.x - state.x, input.target.y - state.y);
       }
       if (hostSolidCollision(state, known_solids_)) {
         result.known_solid_collision = true;
@@ -1113,8 +1094,7 @@ public:
             .critical_exposure_m = result.critical_exposure_m,
             .planning_exposure_m = result.planning_exposure_m,
         });
-    const std::optional<float> terminal_route_station =
-        hostRouteProjection(state);
+    const std::optional<float> terminal_route_station = hostRouteProjection(state);
     result.terminal_progress_m =
         terminal_route_station.has_value()
             ? *terminal_route_station - input.route->initial_station_m

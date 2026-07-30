@@ -197,9 +197,13 @@ ProductionMppiNode::ProductionMppiNode()
   passage_coordinator_config_.retention_violation_cycles =
       static_cast<std::size_t>(passage_retention_violation_cycles);
   passage_coordinator_config_.alignment_time_margin_s =
-      declare_parameter<double>("passage_alignment_time_margin_s", 0.5);
-  passage_coordinator_config_.minimum_stationary_trigger_distance_m =
-      declare_parameter<double>("passage_stationary_trigger_minimum_distance_m", 2.0);
+      declare_parameter<double>("passage_alignment_time_margin_s", 1.5);
+  passage_coordinator_config_.stationary_hold_clearance_m =
+      declare_parameter<double>("passage_stationary_hold_clearance_m", 2.0);
+  passage_coordinator_config_.minimum_continuous_speed_mps =
+      declare_parameter<double>("passage_minimum_continuous_speed_mps", 0.5);
+  passage_coordinator_config_.prediction_time_step_s =
+      declare_parameter<double>("passage_prediction_time_step_s", 0.02);
   passage_coordinator_config_.maximum_vertical_acceleration_mps2 =
       mppi_config_.dynamics.maximum_vertical_acceleration_mps2;
   passage_coordinator_config_.maximum_vertical_speed_mps =
@@ -446,7 +450,8 @@ ProductionMppiNode::ProductionMppiNode()
       "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
       "sticky_guide=true guide_replan_remaining=%.1fm "
       "guide_heading_blend=(%.1f,%.1f)mps passage_vertical_margin=%.2fm "
-      "passage_capture_hysteresis=%.2fm passage_capture_max_vz=%.2fmps",
+      "passage_capture_hysteresis=%.2fm passage_capture_max_vz=%.2fmps "
+      "passage_hold_clearance=%.2fm passage_minimum_continuous_speed=%.2fmps",
       mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
       known_solids_.size(), passage_speed_policy_.use_static_map ? "true" : "false",
       static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
@@ -463,7 +468,9 @@ ProductionMppiNode::ProductionMppiNode()
       active_guide_config_.velocity_heading_high_speed_mps,
       passage_coordinator_config_.vertical_clearance_margin_m,
       passage_coordinator_config_.vertical_capture_hysteresis_m,
-      passage_coordinator_config_.maximum_capture_vertical_speed_mps);
+      passage_coordinator_config_.maximum_capture_vertical_speed_mps,
+      passage_coordinator_config_.stationary_hold_clearance_m,
+      passage_coordinator_config_.minimum_continuous_speed_mps);
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

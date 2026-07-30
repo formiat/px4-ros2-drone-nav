@@ -380,21 +380,45 @@ double semanticRouteZReference(const SemanticPortalRoute& route, const double st
     if (station < event.approach_station_m || station > event.departure_station_m) {
       continue;
     }
-    if (station < event.entry_station_m) {
-      const double length = event.entry_station_m - event.approach_station_m;
-      const double ratio =
-          length > kEpsilon ? (station - event.approach_station_m) / length : 1.0;
-      return std::lerp(normal_flight_z_m, event.preferred_z_m, ratio);
-    }
-    if (station <= event.exit_station_m) {
-      return event.preferred_z_m;
-    }
-    const double length = event.departure_station_m - event.exit_station_m;
-    const double ratio =
-        length > kEpsilon ? (station - event.exit_station_m) / length : 1.0;
-    return std::lerp(event.preferred_z_m, normal_flight_z_m, ratio);
+    return routePassageZReference(event, station, normal_flight_z_m,
+                                  event.approach_station_m);
   }
   return normal_flight_z_m;
+}
+
+double routePassageZReference(const RoutePassageEvent& event, const double station_m,
+                              const double normal_flight_z_m,
+                              const double approach_station_m) noexcept {
+  return routePassageZReference(event, station_m, normal_flight_z_m, approach_station_m,
+                                event.entry_station_m);
+}
+
+double routePassageZReference(const RoutePassageEvent& event, const double station_m,
+                              const double normal_flight_z_m,
+                              const double approach_station_m,
+                              const double alignment_station_m) noexcept {
+  const double approach = std::min(approach_station_m, event.entry_station_m);
+  const double alignment =
+      std::clamp(alignment_station_m, approach, event.entry_station_m);
+  if (station_m < approach || station_m > event.departure_station_m) {
+    return normal_flight_z_m;
+  }
+  const auto smoothStep = [](const double ratio) noexcept {
+    const double value = std::clamp(ratio, 0.0, 1.0);
+    return value * value * value * (value * (value * 6.0 - 15.0) + 10.0);
+  };
+  if (station_m < alignment) {
+    const double length = alignment - approach;
+    const double ratio = length > kEpsilon ? (station_m - approach) / length : 1.0;
+    return std::lerp(normal_flight_z_m, event.preferred_z_m, smoothStep(ratio));
+  }
+  if (station_m <= event.exit_station_m) {
+    return event.preferred_z_m;
+  }
+  const double length = event.departure_station_m - event.exit_station_m;
+  const double ratio =
+      length > kEpsilon ? (station_m - event.exit_station_m) / length : 1.0;
+  return std::lerp(event.preferred_z_m, normal_flight_z_m, smoothStep(ratio));
 }
 
 const RoutePassageEvent*

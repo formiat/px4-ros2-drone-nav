@@ -156,8 +156,10 @@ production_mppi_node:
     passage_vertical_capture_maximum_speed_mps: 0.5
     passage_capture_stable_cycles: 3
     passage_retention_violation_cycles: 3
-    passage_alignment_time_margin_s: 0.5
-    passage_stationary_trigger_minimum_distance_m: 2.0
+    passage_alignment_time_margin_s: 1.5
+    passage_stationary_hold_clearance_m: 2.0
+    passage_minimum_continuous_speed_mps: 0.5
+    passage_prediction_time_step_s: 0.02
     maximum_vertical_acceleration_mps2: 4.0
     raw_collision_radius_m: 0.5
     critical_distance_m: 1.0

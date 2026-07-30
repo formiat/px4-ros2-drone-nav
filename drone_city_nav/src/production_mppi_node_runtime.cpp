@@ -585,8 +585,17 @@ void ProductionMppiNode::planningTick() {
                           target_source, target_station_m);
   }
   if (esdf->semantic_route) {
-    target.z = static_cast<float>(semanticRouteZReference(
-        *esdf->semantic_route, target_station_m, mission_goal_.z));
+    if (passage_result.active && passage_result.route_event_index <
+                                     esdf->semantic_route->passage_events.size()) {
+      target.z = static_cast<float>(routePassageZReference(
+          esdf->semantic_route->passage_events[passage_result.route_event_index],
+          target_station_m, mission_goal_.z,
+          passage_result.effective_approach_station_m,
+          passage_result.alignment_completion_station_m));
+    } else {
+      target.z = static_cast<float>(semanticRouteZReference(
+          *esdf->semantic_route, target_station_m, mission_goal_.z));
+    }
   }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
   if (goal_capture.latched) {

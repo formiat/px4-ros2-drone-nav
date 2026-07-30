@@ -48,6 +48,7 @@ struct PassageConstraint {
   float preferred_z_m{0.0F};
   float normal_flight_z_m{0.0F};
   float approach_station_m{0.0F};
+  float alignment_station_m{0.0F};
   float entry_station_m{0.0F};
   float exit_station_m{0.0F};
   float departure_station_m{0.0F};

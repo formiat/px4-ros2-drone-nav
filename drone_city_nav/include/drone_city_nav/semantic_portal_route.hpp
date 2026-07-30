@@ -104,6 +104,15 @@ semanticPortalPrimitives(const KnownPassageMap& passage_map);
                                              double station_m,
                                              double normal_flight_z_m) noexcept;
 
+[[nodiscard]] double routePassageZReference(const RoutePassageEvent& event,
+                                            double station_m, double normal_flight_z_m,
+                                            double approach_station_m) noexcept;
+
+[[nodiscard]] double routePassageZReference(const RoutePassageEvent& event,
+                                            double station_m, double normal_flight_z_m,
+                                            double approach_station_m,
+                                            double alignment_station_m) noexcept;
+
 [[nodiscard]] const RoutePassageEvent*
 nextRoutePassageEvent(const SemanticPortalRoute& route, double station_m,
                       std::size_t minimum_event_index = 0U) noexcept;

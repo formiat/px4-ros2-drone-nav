@@ -136,6 +136,20 @@ TEST(SemanticPortalRouteTest, ProvidesContinuousStationBasedAltitudeProfile) {
   EXPECT_DOUBLE_EQ(semanticRouteZReference(*result.route, 15.0, 18.0), 18.0);
 }
 
+TEST(SemanticPortalRouteTest, SupportsEarlierDynamicAltitudeApproach) {
+  const SemanticPortalRouteBuildResult result = buildSemanticPortalRoute(
+      route({Point2{0.0, 0.0}, Point2{20.0, 0.0}}), 3U, passageMap(opening()), 5.0);
+  ASSERT_TRUE(result.route);
+  ASSERT_EQ(result.route->passage_events.size(), 1U);
+  const RoutePassageEvent& event = result.route->passage_events.front();
+
+  EXPECT_DOUBLE_EQ(routePassageZReference(event, 0.0, 18.0, 0.0), 18.0);
+  EXPECT_LT(routePassageZReference(event, 4.0, 18.0, 0.0), 18.0);
+  EXPECT_GT(routePassageZReference(event, 4.0, 18.0, 0.0), 5.0);
+  EXPECT_DOUBLE_EQ(routePassageZReference(event, 9.0, 18.0, 0.0), 5.0);
+  EXPECT_DOUBLE_EQ(routePassageZReference(event, 7.0, 18.0, 0.0, 6.0), 5.0);
+}
+
 TEST(SemanticPortalRouteTest, RejectsOverlappingPortalEventsDeterministically) {
   KnownPassageMap map = passageMap(opening(10.0));
   PassageOpening second = opening(12.0);

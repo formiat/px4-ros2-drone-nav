@@ -57,6 +57,216 @@ namespace {
          (distance_m - acceleration_distance) / speed_mps;
 }
 
+struct VerticalPrediction {
+  bool safe{false};
+  double entry_z_m{0.0};
+  double entry_vz_mps{0.0};
+  double exit_z_m{0.0};
+  double exit_vz_mps{0.0};
+  double minimum_z_m{0.0};
+  double maximum_z_m{0.0};
+};
+
+[[nodiscard]] double timeToCoverDistance(const double distance_m,
+                                         const double initial_speed_mps,
+                                         const double speed_limit_mps,
+                                         const double braking_acceleration_mps2,
+                                         const double reaction_latency_s) noexcept {
+  if (!(distance_m > 0.0)) {
+    return 0.0;
+  }
+  const double speed_limit = std::max(speed_limit_mps, 1.0e-3);
+  const double initial_speed = std::max(initial_speed_mps, speed_limit);
+  if (initial_speed <= speed_limit + 1.0e-9) {
+    return distance_m / speed_limit;
+  }
+
+  const double latency_distance = initial_speed * reaction_latency_s;
+  if (distance_m <= latency_distance) {
+    return distance_m / initial_speed;
+  }
+  const double remaining_distance = distance_m - latency_distance;
+  const double braking_time = (initial_speed - speed_limit) / braking_acceleration_mps2;
+  const double braking_distance = 0.5 * (initial_speed + speed_limit) * braking_time;
+  if (remaining_distance <= braking_distance) {
+    const double discriminant =
+        std::max(0.0, initial_speed * initial_speed -
+                          2.0 * braking_acceleration_mps2 * remaining_distance);
+    return reaction_latency_s +
+           (initial_speed - std::sqrt(discriminant)) / braking_acceleration_mps2;
+  }
+  return reaction_latency_s + braking_time +
+         (remaining_distance - braking_distance) / speed_limit;
+}
+
+[[nodiscard]] VerticalPrediction
+predictVerticalTraversal(const mppi::State& state, const double preferred_z_m,
+                         const double safe_min_z_m, const double safe_max_z_m,
+                         const double time_to_entry_s, const double time_to_exit_s,
+                         const PassageCoordinatorConfig& config) noexcept {
+  VerticalPrediction prediction{
+      .entry_z_m = state.z,
+      .entry_vz_mps = state.vz,
+      .exit_z_m = state.z,
+      .exit_vz_mps = state.vz,
+      .minimum_z_m = state.z,
+      .maximum_z_m = state.z,
+  };
+  double z_m = state.z;
+  double vz_mps = state.vz;
+  double elapsed_s = 0.0;
+  bool entry_recorded = time_to_entry_s <= 1.0e-9;
+  bool safe = !entry_recorded || inside(z_m, safe_min_z_m, safe_max_z_m);
+  if (entry_recorded) {
+    prediction.minimum_z_m = z_m;
+    prediction.maximum_z_m = z_m;
+  }
+
+  while (elapsed_s < time_to_exit_s - 1.0e-9) {
+    const double step_s =
+        std::min(config.prediction_time_step_s, time_to_exit_s - elapsed_s);
+    const double error_m = preferred_z_m - z_m;
+    const double desired_speed_mps = std::copysign(
+        std::min(config.maximum_vertical_speed_mps,
+                 std::sqrt(2.0 * config.maximum_vertical_acceleration_mps2 *
+                           std::abs(error_m))),
+        error_m);
+    const double acceleration_mps2 =
+        std::clamp((desired_speed_mps - vz_mps) / step_s,
+                   -config.maximum_vertical_acceleration_mps2,
+                   config.maximum_vertical_acceleration_mps2);
+    const double next_z_m =
+        z_m + vz_mps * step_s + 0.5 * acceleration_mps2 * step_s * step_s;
+    const double next_vz_mps = std::clamp(vz_mps + acceleration_mps2 * step_s,
+                                          -config.maximum_vertical_speed_mps,
+                                          config.maximum_vertical_speed_mps);
+    const double next_elapsed_s = elapsed_s + step_s;
+
+    if (!entry_recorded && next_elapsed_s >= time_to_entry_s) {
+      const double ratio = std::clamp((time_to_entry_s - elapsed_s) / step_s, 0.0, 1.0);
+      prediction.entry_z_m = std::lerp(z_m, next_z_m, ratio);
+      prediction.entry_vz_mps = std::lerp(vz_mps, next_vz_mps, ratio);
+      prediction.minimum_z_m = prediction.entry_z_m;
+      prediction.maximum_z_m = prediction.entry_z_m;
+      safe = inside(prediction.entry_z_m, safe_min_z_m, safe_max_z_m);
+      entry_recorded = true;
+    }
+    if (entry_recorded) {
+      prediction.minimum_z_m = std::min(prediction.minimum_z_m, next_z_m);
+      prediction.maximum_z_m = std::max(prediction.maximum_z_m, next_z_m);
+      safe = safe && inside(next_z_m, safe_min_z_m, safe_max_z_m);
+    }
+
+    z_m = next_z_m;
+    vz_mps = next_vz_mps;
+    elapsed_s = next_elapsed_s;
+  }
+
+  prediction.exit_z_m = z_m;
+  prediction.exit_vz_mps = vz_mps;
+  prediction.safe =
+      entry_recorded && safe && inside(prediction.exit_z_m, safe_min_z_m, safe_max_z_m);
+  return prediction;
+}
+
+struct PassageSpeedPrediction {
+  bool safe{false};
+  double speed_limit_mps{0.0};
+  VerticalPrediction vertical{};
+};
+
+[[nodiscard]] PassageSpeedPrediction
+predictAtSpeed(const PassageCoordinatorInput& input, const RoutePassageEvent& event,
+               const double safe_min_z_m, const double safe_max_z_m,
+               const double speed_limit_mps,
+               const PassageCoordinatorConfig& config) noexcept {
+  const double horizontal_speed_mps = std::hypot(static_cast<double>(input.state.vx),
+                                                 static_cast<double>(input.state.vy));
+  const double distance_to_entry_m =
+      std::max(0.0, event.entry_station_m - input.route_station_m);
+  const double distance_to_exit_m =
+      std::max(0.0, event.exit_station_m - input.route_station_m);
+  const double time_to_entry_s = timeToCoverDistance(
+      distance_to_entry_m, horizontal_speed_mps, speed_limit_mps,
+      config.maximum_horizontal_braking_acceleration_mps2, config.reaction_latency_s);
+  const double time_to_exit_s = timeToCoverDistance(
+      distance_to_exit_m, horizontal_speed_mps, speed_limit_mps,
+      config.maximum_horizontal_braking_acceleration_mps2, config.reaction_latency_s);
+  VerticalPrediction vertical =
+      predictVerticalTraversal(input.state, event.preferred_z_m, safe_min_z_m,
+                               safe_max_z_m, time_to_entry_s, time_to_exit_s, config);
+  return PassageSpeedPrediction{
+      .safe = vertical.safe,
+      .speed_limit_mps = speed_limit_mps,
+      .vertical = vertical,
+  };
+}
+
+[[nodiscard]] PassageSpeedPrediction
+maximumSafePassageSpeed(const PassageCoordinatorInput& input,
+                        const RoutePassageEvent& event, const double safe_min_z_m,
+                        const double safe_max_z_m,
+                        const PassageCoordinatorConfig& config) noexcept {
+  PassageSpeedPrediction upper = predictAtSpeed(
+      input, event, safe_min_z_m, safe_max_z_m, event.speed_limit_mps, config);
+  if (upper.safe) {
+    return upper;
+  }
+
+  const double minimum_speed_mps =
+      std::min(config.minimum_continuous_speed_mps, event.speed_limit_mps);
+  PassageSpeedPrediction lower = predictAtSpeed(
+      input, event, safe_min_z_m, safe_max_z_m, minimum_speed_mps, config);
+  if (!lower.safe) {
+    return lower;
+  }
+
+  double lower_speed_mps = minimum_speed_mps;
+  double upper_speed_mps = event.speed_limit_mps;
+  for (std::size_t iteration = 0U; iteration < 16U; ++iteration) {
+    const double candidate_speed_mps = 0.5 * (lower_speed_mps + upper_speed_mps);
+    PassageSpeedPrediction candidate = predictAtSpeed(
+        input, event, safe_min_z_m, safe_max_z_m, candidate_speed_mps, config);
+    if (candidate.safe) {
+      lower = candidate;
+      lower_speed_mps = candidate_speed_mps;
+    } else {
+      upper_speed_mps = candidate_speed_mps;
+    }
+  }
+  return lower;
+}
+
+[[nodiscard]] Point2 pointAtRouteStation(const SemanticPortalRoute& route,
+                                         const double station_m) noexcept {
+  if (!route.polyline || route.polyline->empty() ||
+      route.point_stations_m.size() != route.polyline->size()) {
+    return {};
+  }
+  const double station = std::clamp(station_m, 0.0, route.total_length_m);
+  const auto upper = std::upper_bound(route.point_stations_m.begin(),
+                                      route.point_stations_m.end(), station);
+  if (upper == route.point_stations_m.begin()) {
+    return route.polyline->front();
+  }
+  if (upper == route.point_stations_m.end()) {
+    return route.polyline->back();
+  }
+  const std::size_t second_index =
+      static_cast<std::size_t>(std::distance(route.point_stations_m.begin(), upper));
+  const std::size_t first_index = second_index - 1U;
+  const double length =
+      route.point_stations_m[second_index] - route.point_stations_m[first_index];
+  const double ratio =
+      length > 1.0e-9 ? (station - route.point_stations_m[first_index]) / length : 0.0;
+  return Point2{
+      std::lerp((*route.polyline)[first_index].x, (*route.polyline)[second_index].x,
+                ratio),
+      std::lerp((*route.polyline)[first_index].y, (*route.polyline)[second_index].y,
+                ratio),
+  };
+}
+
 [[nodiscard]] mppi::PassagePhase
 toMppiPassagePhase(const PassageCoordinatorPhase phase) noexcept {
   switch (phase) {
@@ -81,7 +291,7 @@ toMppiPassagePhase(const PassageCoordinatorPhase phase) noexcept {
          event.exit_station_m > event.entry_station_m &&
          event.departure_station_m >= event.exit_station_m &&
          event.portal.max_z_m > event.portal.min_z_m && event.portal.depth_m > 0.0 &&
-         event.portal.width_m > 0.0 && event.speed_limit_mps >= 0.0;
+         event.portal.width_m > 0.0 && event.speed_limit_mps > 0.0;
 }
 
 } // namespace
@@ -94,7 +304,9 @@ PassageCoordinator::PassageCoordinator(const PassageCoordinatorConfig& config)
       !(config_.maximum_capture_vertical_speed_mps >= 0.0) ||
       config_.capture_stable_cycles == 0U || config_.retention_violation_cycles == 0U ||
       !(config_.alignment_time_margin_s >= 0.0) ||
-      !(config_.minimum_stationary_trigger_distance_m >= 0.0) ||
+      !(config_.stationary_hold_clearance_m > 0.0) ||
+      !(config_.minimum_continuous_speed_mps > 0.0) ||
+      !(config_.prediction_time_step_s > 0.0) ||
       !(config_.maximum_vertical_acceleration_mps2 > 0.0) ||
       !(config_.maximum_vertical_speed_mps > 0.0) ||
       !(config_.maximum_horizontal_braking_acceleration_mps2 > 0.0) ||
@@ -162,6 +374,11 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     active_traversal_direction_ = event.traversal_direction;
     vertical_state_ = VerticalState::kUncaptured;
     preferred_z_m_ = event.preferred_z_m;
+    effective_approach_station_m_ = event.approach_station_m;
+    alignment_completion_station_m_ = event.entry_station_m;
+    stationary_hold_station_m_ =
+        std::max(0.0, event.entry_station_m - config_.stationary_hold_clearance_m);
+    hold_position_ = pointAtRouteStation(*input.route, stationary_hold_station_m_);
     const bool starts_inside = insidePortalFootprint(position, event.portal);
     if (starts_inside) {
       entry_plane_crossed_ = true;
@@ -263,31 +480,73 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       braking_time_s + minimumRestToRestTime(vertical_error_m,
                                              config_.maximum_vertical_acceleration_mps2,
                                              config_.maximum_vertical_speed_mps);
-  const double approach_speed_mps =
-      std::max(0.0, std::min(input.approach_speed_mps, event.speed_limit_mps));
-  const double vertical_alignment_distance_m =
-      approach_speed_mps * (alignment_time_s + config_.alignment_time_margin_s);
   const double horizontal_speed_mps = std::hypot(static_cast<double>(input.state.vx),
                                                  static_cast<double>(input.state.vy));
+  const double approach_speed_mps = std::max(
+      horizontal_speed_mps,
+      std::max(0.0, std::min(input.approach_speed_mps, event.speed_limit_mps)));
+  const double vertical_alignment_distance_m =
+      approach_speed_mps * (alignment_time_s + config_.alignment_time_margin_s);
   const double stopping_distance_m =
       horizontal_speed_mps * config_.reaction_latency_s +
       horizontal_speed_mps * horizontal_speed_mps /
           (2.0 * config_.maximum_horizontal_braking_acceleration_mps2);
   const double required_distance_m =
       std::max(vertical_alignment_distance_m, stopping_distance_m);
+  effective_approach_station_m_ =
+      std::min(effective_approach_station_m_,
+               std::max(0.0, event.entry_station_m - required_distance_m));
+  alignment_completion_station_m_ =
+      std::min(alignment_completion_station_m_,
+               std::max(effective_approach_station_m_,
+                        event.entry_station_m -
+                            approach_speed_mps * config_.alignment_time_margin_s));
   const double distance_to_entry_m =
       std::max(0.0, event.entry_station_m - input.route_station_m);
-  const bool in_approach = input.route_station_m >= event.approach_station_m &&
+  const bool in_approach = input.route_station_m >= effective_approach_station_m_ &&
                            input.route_station_m < event.entry_station_m;
   const bool in_traversal = entry_plane_crossed_;
 
-  const bool immediately_before_entry =
-      in_approach &&
-      distance_to_entry_m <= config_.minimum_stationary_trigger_distance_m;
-  if ((immediately_before_entry || in_traversal) &&
-      vertical_state_ == VerticalState::kUncaptured) {
+  PassageSpeedPrediction speed_prediction{
+      .safe = vertical_state_ == VerticalState::kReady,
+      .speed_limit_mps = event.speed_limit_mps,
+      .vertical =
+          VerticalPrediction{
+              .safe = vertical_state_ == VerticalState::kReady,
+              .entry_z_m = z_m,
+              .entry_vz_mps = input.state.vz,
+              .exit_z_m = z_m,
+              .exit_vz_mps = input.state.vz,
+              .minimum_z_m = z_m,
+              .maximum_z_m = z_m,
+          },
+  };
+  if (in_approach || in_traversal) {
+    speed_prediction =
+        maximumSafePassageSpeed(input, event, safe_min_z, safe_max_z, config_);
+  }
+  const bool traversal_predicted_safe = speed_prediction.safe;
+  if (vertical_state_ == VerticalState::kAlignment &&
+      (traversal_predicted_safe || in_traversal)) {
+    vertical_state_ = VerticalState::kUncaptured;
+  }
+  const bool movement_ready = in_approach || in_traversal
+                                  ? traversal_predicted_safe
+                                  : vertical_state_ == VerticalState::kReady;
+
+  const double distance_to_hold_station_m =
+      std::max(0.0, stationary_hold_station_m_ - input.route_station_m);
+  const bool must_start_stationary_fallback =
+      in_approach && !entry_plane_crossed_ && !movement_ready &&
+      speed_prediction.speed_limit_mps <=
+          config_.minimum_continuous_speed_mps + 1.0e-6 &&
+      !speed_prediction.safe && distance_to_hold_station_m <= stopping_distance_m;
+  if (must_start_stationary_fallback && vertical_state_ != VerticalState::kAlignment) {
     vertical_state_ = VerticalState::kAlignment;
-    hold_position_ = Point2{input.state.x, input.state.y};
+    stationary_hold_station_m_ =
+        std::min(event.entry_station_m - 0.25,
+                 std::max(stationary_hold_station_m_, input.route_station_m));
+    hold_position_ = pointAtRouteStation(*input.route, stationary_hold_station_m_);
   }
 
   PassageCoordinatorPhase phase = PassageCoordinatorPhase::kUpcoming;
@@ -295,23 +554,22 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
     phase = PassageCoordinatorPhase::kVerticalAlignment;
   } else if (in_traversal) {
     phase = PassageCoordinatorPhase::kTraversal;
-  } else if (in_approach && vertical_state_ == VerticalState::kReady) {
+  } else if (in_approach && movement_ready) {
     phase = PassageCoordinatorPhase::kReady;
   }
 
   const double z_reference_m =
-      phase == PassageCoordinatorPhase::kUpcoming
-          ? semanticRouteZReference(*input.route, input.route_station_m,
-                                    input.normal_flight_z_m)
-          : preferred_z_m_;
-  const double alignment_window_s = alignment_time_s + config_.alignment_time_margin_s;
-  const double alignment_limited_speed_mps =
-      alignment_window_s > 1.0e-6 ? distance_to_entry_m / alignment_window_s
-                                  : event.speed_limit_mps;
-  const double effective_speed_limit_mps =
-      in_approach && vertical_state_ != VerticalState::kReady
-          ? std::clamp(alignment_limited_speed_mps, 0.0, event.speed_limit_mps)
-          : event.speed_limit_mps;
+      phase == PassageCoordinatorPhase::kVerticalAlignment
+          ? preferred_z_m_
+          : routePassageZReference(
+                event, input.route_station_m, input.normal_flight_z_m,
+                effective_approach_station_m_, alignment_completion_station_m_);
+  double effective_speed_limit_mps = event.speed_limit_mps;
+  if (vertical_state_ == VerticalState::kAlignment) {
+    effective_speed_limit_mps = 0.0;
+  } else if (in_approach || in_traversal) {
+    effective_speed_limit_mps = speed_prediction.speed_limit_mps;
+  }
   const mppi::PassageConstraint constraint{
       .center_x_m = static_cast<float>(event.portal.center.x),
       .center_y_m = static_cast<float>(event.portal.center.y),
@@ -322,7 +580,8 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       .max_z_m = static_cast<float>(safe_max_z),
       .preferred_z_m = static_cast<float>(preferred_z_m_),
       .normal_flight_z_m = static_cast<float>(input.normal_flight_z_m),
-      .approach_station_m = static_cast<float>(event.approach_station_m),
+      .approach_station_m = static_cast<float>(effective_approach_station_m_),
+      .alignment_station_m = static_cast<float>(alignment_completion_station_m_),
       .entry_station_m = static_cast<float>(event.entry_station_m),
       .exit_station_m = static_cast<float>(event.exit_station_m),
       .departure_station_m = static_cast<float>(event.departure_station_m),
@@ -337,9 +596,10 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       .route_event_index = next_event_index_,
       .active = true,
       .hold_xy = vertical_state_ == VerticalState::kAlignment,
-      .vertical_ready = vertical_state_ == VerticalState::kReady,
-      .speed_limit_active =
-          input.route_station_m >= event.approach_station_m && !exit_plane_crossed_,
+      .vertical_ready = movement_ready,
+      .traversal_predicted_safe = traversal_predicted_safe,
+      .speed_limit_active = input.route_station_m >= effective_approach_station_m_ &&
+                            !exit_plane_crossed_,
       .entry_plane_crossed = entry_plane_crossed_,
       .exit_plane_crossed = exit_plane_crossed_,
       .hold_position = hold_position_,
@@ -352,6 +612,16 @@ PassageCoordinator::update(const PassageCoordinatorInput& input) {
       .required_alignment_time_s = alignment_time_s,
       .required_stopping_distance_m = stopping_distance_m,
       .required_alignment_distance_m = required_distance_m,
+      .effective_approach_station_m = effective_approach_station_m_,
+      .alignment_completion_station_m = alignment_completion_station_m_,
+      .effective_speed_limit_mps = effective_speed_limit_mps,
+      .stationary_hold_station_m = stationary_hold_station_m_,
+      .predicted_entry_z_m = speed_prediction.vertical.entry_z_m,
+      .predicted_entry_vz_mps = speed_prediction.vertical.entry_vz_mps,
+      .predicted_exit_z_m = speed_prediction.vertical.exit_z_m,
+      .predicted_exit_vz_mps = speed_prediction.vertical.exit_vz_mps,
+      .predicted_minimum_z_m = speed_prediction.vertical.minimum_z_m,
+      .predicted_maximum_z_m = speed_prediction.vertical.maximum_z_m,
       .entry_plane_signed_distance_m = entry_plane_distance_m,
       .exit_plane_signed_distance_m = exit_plane_distance_m,
   };
@@ -411,6 +681,9 @@ void PassageCoordinator::resetEventState() noexcept {
   active_traversal_direction_ = 0;
   hold_position_ = {};
   preferred_z_m_ = 0.0;
+  effective_approach_station_m_ = 0.0;
+  alignment_completion_station_m_ = 0.0;
+  stationary_hold_station_m_ = 0.0;
   previous_entry_plane_distance_m_ = 0.0;
   previous_exit_plane_distance_m_ = 0.0;
 }

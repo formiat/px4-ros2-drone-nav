@@ -211,10 +211,8 @@ portalSuccessor(const Point2 current, const int current_heading,
   const double exit_longitudinal =
       static_cast<double>(direction) * (half_depth_m + config.portal_exit_extension_m);
   const Point2 endpoint{
-      portal.center.x + exit_longitudinal * portal.normal_xy.x +
-          lateral * lateral_axis.x,
-      portal.center.y + exit_longitudinal * portal.normal_xy.y +
-          lateral * lateral_axis.y,
+      portal.center.x + exit_longitudinal * portal.normal_xy.x,
+      portal.center.y + exit_longitudinal * portal.normal_xy.y,
   };
   return PortalSuccessor{
       .endpoint = endpoint,

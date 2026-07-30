@@ -275,6 +275,8 @@ void ProductionMppiNode::processDiagnostics(
        << " passage_xy_hold=" << (passage_coordinator.hold_xy ? "true" : "false")
        << " passage_vertical_ready="
        << (passage_coordinator.vertical_ready ? "true" : "false")
+       << " passage_traversal_predicted_safe="
+       << (passage_coordinator.traversal_predicted_safe ? "true" : "false")
        << " passage_speed_limit_active="
        << (passage_coordinator.speed_limit_active ? "true" : "false")
        << " passage_entry_plane_crossed="
@@ -298,6 +300,21 @@ void ProductionMppiNode::processDiagnostics(
        << passage_coordinator.required_stopping_distance_m
        << " passage_required_alignment_distance_m="
        << passage_coordinator.required_alignment_distance_m
+       << " passage_effective_approach_station_m="
+       << passage_coordinator.effective_approach_station_m
+       << " passage_alignment_completion_station_m="
+       << passage_coordinator.alignment_completion_station_m
+       << " passage_effective_speed_limit_mps="
+       << passage_coordinator.effective_speed_limit_mps
+       << " passage_stationary_hold_station_m="
+       << passage_coordinator.stationary_hold_station_m
+       << " passage_predicted_entry_z_m=" << passage_coordinator.predicted_entry_z_m
+       << " passage_predicted_entry_vz_mps="
+       << passage_coordinator.predicted_entry_vz_mps
+       << " passage_predicted_exit_z_m=" << passage_coordinator.predicted_exit_z_m
+       << " passage_predicted_exit_vz_mps=" << passage_coordinator.predicted_exit_vz_mps
+       << " passage_predicted_minimum_z_m=" << passage_coordinator.predicted_minimum_z_m
+       << " passage_predicted_maximum_z_m=" << passage_coordinator.predicted_maximum_z_m
        << " gpu_ms=" << result.timings.gpu_total_ms
        << " total_ms=" << result.timings.host_total_ms
        << " snapshot_ms=" << snapshot.snapshot_ms
@@ -440,6 +457,8 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"passage_xy_hold\":" << (passage_coordinator.hold_xy ? "true" : "false")
         << ",\"passage_vertical_ready\":"
         << (passage_coordinator.vertical_ready ? "true" : "false")
+        << ",\"passage_traversal_predicted_safe\":"
+        << (passage_coordinator.traversal_predicted_safe ? "true" : "false")
         << ",\"passage_speed_limit_active\":"
         << (passage_coordinator.speed_limit_active ? "true" : "false")
         << ",\"passage_entry_plane_crossed\":"
@@ -465,6 +484,25 @@ void ProductionMppiNode::processDiagnostics(
         << passage_coordinator.required_stopping_distance_m
         << ",\"passage_required_alignment_distance_m\":"
         << passage_coordinator.required_alignment_distance_m
+        << ",\"passage_effective_approach_station_m\":"
+        << passage_coordinator.effective_approach_station_m
+        << ",\"passage_alignment_completion_station_m\":"
+        << passage_coordinator.alignment_completion_station_m
+        << ",\"passage_effective_speed_limit_mps\":"
+        << passage_coordinator.effective_speed_limit_mps
+        << ",\"passage_stationary_hold_station_m\":"
+        << passage_coordinator.stationary_hold_station_m
+        << ",\"passage_predicted_entry_z_m\":"
+        << passage_coordinator.predicted_entry_z_m
+        << ",\"passage_predicted_entry_vz_mps\":"
+        << passage_coordinator.predicted_entry_vz_mps
+        << ",\"passage_predicted_exit_z_m\":" << passage_coordinator.predicted_exit_z_m
+        << ",\"passage_predicted_exit_vz_mps\":"
+        << passage_coordinator.predicted_exit_vz_mps
+        << ",\"passage_predicted_minimum_z_m\":"
+        << passage_coordinator.predicted_minimum_z_m
+        << ",\"passage_predicted_maximum_z_m\":"
+        << passage_coordinator.predicted_maximum_z_m
         << ",\"gpu_ms\":" << result.timings.gpu_total_ms
         << ",\"total_ms\":" << result.timings.host_total_ms
         << ",\"snapshot_ms\":" << snapshot.snapshot_ms
