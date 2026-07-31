@@ -4,6 +4,16 @@ This repository is a ROS 2 workspace for a PX4/Gazebo drone navigation stack.
 The main package is `drone_city_nav`, an ament CMake package built with
 `colcon`.
 
+## Demo Videos
+
+| Static-map navigation | Navigation without a static map |
+|:--:|:--:|
+| [![Static-map navigation demo](https://img.youtube.com/vi/sYGQDgPQ-mc/maxresdefault.jpg)](https://youtu.be/sYGQDgPQ-mc) | [![Navigation without a static map](https://img.youtube.com/vi/DAHCt6dmAAE/maxresdefault.jpg)](https://youtu.be/DAHCt6dmAAE) |
+| [Watch on YouTube](https://youtu.be/sYGQDgPQ-mc) | [Watch on YouTube](https://youtu.be/DAHCt6dmAAE) |
+
+The videos demonstrate the static-map and sensor-driven operating modes as of
+July 2026.
+
 ## Status And Safety
 
 This project is a simulation-oriented research and development stack. It is
