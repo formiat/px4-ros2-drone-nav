@@ -24,17 +24,16 @@ TEST(LidarDebugHeadingGate, RequiresBoundedEstimatorVariance) {
                                          0.0007, 0.01));
 }
 
-TEST(LidarDebugHeadingGate, UsesKnownMapHeadingUntilPx4HeadingAligns) {
+TEST(LidarDebugHeadingGate, RejectsProjectionUntilPx4HeadingAligns) {
   MappingYawTracker tracker{true, std::numbers::pi / 2.0, 0.15};
 
   const MappingYawSelection unavailable_px4 = tracker.update(false, 1.9);
-  EXPECT_TRUE(unavailable_px4.valid);
-  EXPECT_EQ(unavailable_px4.source, MappingYawSource::kInitialMapHeading);
-  EXPECT_NEAR(unavailable_px4.yaw_rad, std::numbers::pi / 2.0, 1.0e-9);
+  EXPECT_FALSE(unavailable_px4.valid);
+  EXPECT_EQ(unavailable_px4.source, MappingYawSource::kUnavailable);
 
   const MappingYawSelection misaligned_px4 = tracker.update(true, 1.82);
-  EXPECT_TRUE(misaligned_px4.valid);
-  EXPECT_EQ(misaligned_px4.source, MappingYawSource::kInitialMapHeading);
+  EXPECT_FALSE(misaligned_px4.valid);
+  EXPECT_EQ(misaligned_px4.source, MappingYawSource::kUnavailable);
   EXPECT_FALSE(tracker.px4Aligned());
 
   const MappingYawSelection aligned_px4 = tracker.update(true, 1.68);
@@ -42,6 +41,17 @@ TEST(LidarDebugHeadingGate, UsesKnownMapHeadingUntilPx4HeadingAligns) {
   EXPECT_EQ(aligned_px4.source, MappingYawSource::kPx4Heading);
   EXPECT_NEAR(aligned_px4.yaw_rad, 1.68, 1.0e-9);
   EXPECT_TRUE(tracker.px4Aligned());
+}
+
+TEST(LidarDebugHeadingGate, UsesInitialMapHeadingOnlyWhenPx4HeadingIsDisabled) {
+  MappingYawTracker tracker{false, std::numbers::pi / 2.0, 0.15};
+
+  const MappingYawSelection selection = tracker.update(false, 1.9);
+
+  EXPECT_TRUE(selection.valid);
+  EXPECT_EQ(selection.source, MappingYawSource::kInitialMapHeading);
+  EXPECT_NEAR(selection.yaw_rad, std::numbers::pi / 2.0, 1.0e-9);
+  EXPECT_FALSE(tracker.px4Aligned());
 }
 
 TEST(LidarDebugHeadingGate, RejectsInvalidPx4HeadingAfterHandoff) {
@@ -52,6 +62,18 @@ TEST(LidarDebugHeadingGate, RejectsInvalidPx4HeadingAfterHandoff) {
 
   EXPECT_FALSE(selection.valid);
   EXPECT_EQ(selection.source, MappingYawSource::kUnavailable);
+}
+
+TEST(LidarDebugHeadingGate, RequiresFreshAlignmentAfterReset) {
+  MappingYawTracker tracker{true, std::numbers::pi / 2.0, 0.15};
+  ASSERT_TRUE(tracker.update(true, 1.60).valid);
+
+  tracker.reset();
+  const MappingYawSelection selection = tracker.update(false, 1.60);
+
+  EXPECT_FALSE(selection.valid);
+  EXPECT_EQ(selection.source, MappingYawSource::kUnavailable);
+  EXPECT_FALSE(tracker.px4Aligned());
 }
 
 } // namespace drone_city_nav

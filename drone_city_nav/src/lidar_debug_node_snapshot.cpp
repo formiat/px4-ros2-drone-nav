@@ -90,7 +90,7 @@ void LidarDebugNode::writeSnapshot() {
 }
 
 [[nodiscard]] const char* LidarDebugNode::yawSourceName() const noexcept {
-  if (!use_px4_heading_for_scan_ || (mapping_heading_ready_ && !px4_heading_seen_)) {
+  if (!use_px4_heading_for_scan_) {
     return "initial_map_heading";
   }
   return px4_heading_seen_ ? "px4_heading" : "unavailable";

@@ -27,7 +27,8 @@ obstacle_memory_node:
     grid_origin_y: -30.0
     initial_x_m: 54.0
     initial_y_m: 54.0
-    # Gazebo spawn yaw 0 maps to +Y after the gazebo_map -> map frame transform.
+    # Used as the map yaw only when PX4 heading projection is disabled. With PX4
+    # enabled it is only the startup alignment reference.
     initial_heading_rad: 1.5707963267948966
     px4_local_origin_x_m: 54.0
     px4_local_origin_y_m: 54.0
@@ -285,7 +286,7 @@ lidar_debug_node:
     output_dir: log/lidar_debug
     snapshot_period_s: 1.0
     image_size_px: 900
-    # Keep debug projection on the same startup yaw contract as obstacle memory.
+    # Keep debug projection on the same strict PX4 heading contract as obstacle memory.
     initial_heading_rad: 1.5707963267948966
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true

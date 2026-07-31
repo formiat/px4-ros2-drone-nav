@@ -15,7 +15,12 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
       static_cast<double>(msg.heading_var), maximum_heading_variance_rad2_);
   const MappingYawSelection mapping_yaw =
       mapping_yaw_tracker_.update(heading_valid, static_cast<double>(msg.heading));
-  mapping_heading_ready_ = mapping_yaw.valid;
+  const bool starts_new_px4_generation =
+      use_px4_heading_for_scan_ &&
+      mapping_yaw.source == MappingYawSource::kPx4Heading && !px4_heading_seen_;
+  if (starts_new_px4_generation) {
+    lidar_pose_history_.clear();
+  }
   px4_heading_seen_ = mapping_yaw.source == MappingYawSource::kPx4Heading;
   if (mapping_yaw.valid) {
     current_pose_.yaw_rad = mapping_yaw.yaw_rad;
@@ -76,15 +81,17 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
 
   if (!pose_seen_) {
     publishRawLidarPointCloud({});
+    publishPointCloud({}, current_pointcloud_z_m_, pointcloud_pub_);
     return;
   }
 
-  if (!mapping_heading_ready_) {
+  if (!lidarDebugProjectionHeadingReady(use_px4_heading_for_scan_, px4_heading_seen_)) {
     last_scan_projection_seen_ = false;
     last_scan_rows_.clear();
     last_scan_hit_points_.clear();
     last_projected_beam_poses_.clear();
     publishRawLidarPointCloud({});
+    publishPointCloud({}, current_pointcloud_z_m_, pointcloud_pub_);
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
                          "LIDAR_DEBUG_PROJECTION_SKIPPED "
                          "reason=px4_heading_not_stable scan_beams=%zu "

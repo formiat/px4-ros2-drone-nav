@@ -228,7 +228,6 @@ private:
   bool attitude_valid_{false};
   bool last_projected_attitude_valid_{false};
   bool px4_heading_seen_{false};
-  bool mapping_heading_ready_{false};
   bool last_projected_px4_heading_seen_{false};
   bool use_px4_heading_for_scan_{true};
   double maximum_heading_variance_rad2_{0.05};

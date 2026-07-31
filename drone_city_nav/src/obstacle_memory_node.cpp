@@ -200,7 +200,8 @@ public:
                            declare_parameter<double>("px4_local_origin_x_m", 0.0),
                            declare_parameter<double>("px4_local_origin_y_m", 0.0)};
     current_pose_.pose.yaw_rad = initial_heading_rad_;
-    current_pose_.yaw_valid = std::isfinite(initial_heading_rad_);
+    current_pose_.yaw_valid =
+        !use_px4_heading_for_scan_ && std::isfinite(initial_heading_rad_);
     if (use_initial_pose) {
       current_pose_.pose.position =
           Point2{declare_parameter<double>("initial_x_m", 0.0),
@@ -329,6 +330,13 @@ private:
         static_cast<double>(msg.heading_var), maximum_heading_variance_rad2_);
     const MappingYawSelection mapping_yaw =
         mapping_yaw_tracker_.update(heading_ready, static_cast<double>(msg.heading));
+    const bool starts_new_px4_generation =
+        use_px4_heading_for_scan_ &&
+        mapping_yaw.source == MappingYawSource::kPx4Heading &&
+        last_mapping_yaw_source_ != MappingYawSource::kPx4Heading;
+    if (starts_new_px4_generation) {
+      lidar_pose_history_.clear();
+    }
     if (mapping_yaw.source != last_mapping_yaw_source_) {
       RCLCPP_INFO(get_logger(),
                   "LIDAR_MAPPING_YAW source=%s yaw=%.3f px4_heading=%.3f "

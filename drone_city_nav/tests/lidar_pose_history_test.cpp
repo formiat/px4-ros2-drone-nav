@@ -120,6 +120,26 @@ TEST(LidarPoseHistoryTest, RejectsInvalidSamples) {
   EXPECT_FALSE(history.sample(1'000'000'000).has_value());
 }
 
+TEST(LidarPoseHistoryTest, ClearStartsIndependentPoseGeneration) {
+  LidarPoseHistory history;
+  ASSERT_TRUE(history.addPosition(1'000'000'000, Point3{0.0, 0.0, 10.0}, 0.0, true));
+  ASSERT_TRUE(history.addAttitude(1'000'000'000, {1.0F, 0.0F, 0.0F, 0.0F}));
+
+  history.clear();
+
+  EXPECT_EQ(history.positionSampleCount(), 0U);
+  EXPECT_EQ(history.attitudeSampleCount(), 0U);
+  EXPECT_FALSE(history.sample(1'000'000'000).has_value());
+
+  ASSERT_TRUE(history.addPosition(2'000'000'000, Point3{1.0, 2.0, 11.0}, 1.2, true));
+  ASSERT_TRUE(history.addAttitude(2'000'000'000, {1.0F, 0.0F, 0.0F, 0.0F}));
+  const auto sample = history.sample(2'000'000'000);
+  ASSERT_TRUE(sample.has_value());
+  const TimestampAlignedLidarPose& aligned_pose =
+      sample.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_NEAR(aligned_pose.pose.yaw_rad, 1.2, 1.0e-9);
+}
+
 TEST(LidarPoseHistoryTest, RejectsAcquisitionClockDomainJump) {
   LidarPoseHistory history{
       LidarPoseHistoryConfig{3'000'000'000, 100'000'000, 1'000'000'000, 500'000'000}};

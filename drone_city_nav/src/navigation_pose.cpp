@@ -32,8 +32,7 @@ MappingYawSelection MappingYawTracker::update(const bool px4_heading_ready,
             alignment_tolerance_rad_) {
       px4_aligned_ = true;
     } else {
-      return MappingYawSelection{initial_map_heading_rad_,
-                                 MappingYawSource::kInitialMapHeading, true};
+      return {};
     }
   }
   if (!px4_heading_ready || !std::isfinite(px4_heading_rad)) {
