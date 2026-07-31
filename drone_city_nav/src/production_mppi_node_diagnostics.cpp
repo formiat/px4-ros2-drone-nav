@@ -178,6 +178,14 @@ void ProductionMppiNode::processDiagnostics(
                 snapshot.guide_progress.progress_m,
                 snapshot.guide_progress.predicted_head_progress_m);
   }
+  if (snapshot.no_eligible_recovery.guide_replan_requested) {
+    RCLCPP_WARN(get_logger(),
+                "MPPI_NO_ELIGIBLE_RECOVERY action=release_global_guide"
+                " recovery_generation=%" PRIu64 " phase=%s guide_generation=%" PRIu64,
+                snapshot.no_eligible_recovery.no_eligible_recovery_generation,
+                mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase),
+                esdf.global_guide_generation);
+  }
   if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "PRODUCTION_MPPI_NO_GUIDE mode=%s action=braking_hold "
@@ -365,6 +373,12 @@ void ProductionMppiNode::processDiagnostics(
        << (input.previous_applied_control.has_value() ? "offboard_feedback"
                                                       : "engine_fallback")
        << " nominal_reseeded=" << (result.nominal_reseeded ? "true" : "false")
+       << " no_eligible_phase="
+       << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase)
+       << " no_eligible_recovery_generation="
+       << snapshot.no_eligible_recovery.no_eligible_recovery_generation
+       << " no_eligible_guide_replan="
+       << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
        << " liveness_state=" << mppiLivenessStateName(liveness.state)
        << " liveness_window_s=" << liveness.observation_age_s
        << " liveness_actual_displacement_m=" << liveness.actual_displacement_m
@@ -580,6 +594,12 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"terminal_progress_m\":" << result.terminal_progress_m
         << ",\"warm_start_shift_ms\":" << result.warm_start_shift_s * 1000.0
         << ",\"nominal_reseeded\":" << (result.nominal_reseeded ? "true" : "false")
+        << ",\"no_eligible_phase\":\""
+        << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase) << '"'
+        << ",\"no_eligible_recovery_generation\":"
+        << snapshot.no_eligible_recovery.no_eligible_recovery_generation
+        << ",\"no_eligible_guide_replan\":"
+        << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
         << ",\"liveness_state\":\"" << mppiLivenessStateName(liveness.state) << '"'
         << ",\"liveness_actual_displacement_m\":" << liveness.actual_displacement_m
         << ",\"liveness_reseed_generation\":" << liveness.reseed_generation

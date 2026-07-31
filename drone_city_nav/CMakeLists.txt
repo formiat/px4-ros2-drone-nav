@@ -121,6 +121,7 @@ add_library(
   drone_city_nav_core
   src/active_global_guide.cpp
   src/ambiguous_lidar_hit_tracker.cpp
+  src/crash_disarm_lifecycle.cpp
   src/debug_image.cpp
   src/distance_field.cpp
   src/esdf_query.cpp
@@ -467,6 +468,12 @@ if(BUILD_TESTING)
   target_compile_features(planning_contract_test PRIVATE cxx_std_20)
   target_link_libraries(planning_contract_test drone_city_nav_core)
   enable_project_warnings(planning_contract_test)
+
+  ament_add_gtest(crash_disarm_lifecycle_test
+                  tests/crash_disarm_lifecycle_test.cpp)
+  target_compile_features(crash_disarm_lifecycle_test PRIVATE cxx_std_20)
+  target_link_libraries(crash_disarm_lifecycle_test drone_city_nav_core)
+  enable_project_warnings(crash_disarm_lifecycle_test)
 
   ament_add_gtest(distance_field_test_current tests/distance_field_test.cpp)
   target_compile_features(distance_field_test_current PRIVATE cxx_std_20)

@@ -11,6 +11,8 @@
 
 namespace drone_city_nav {
 
+inline constexpr float kPx4ForceDisarmMagicParam2{21196.0F};
+
 enum class OffboardSetpointMode : std::uint8_t {
   kPositionHold,
   kTerminalPositionCapture,

@@ -1,3 +1,4 @@
+#include "drone_city_nav/crash_disarm_lifecycle.hpp"
 #include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
@@ -95,6 +96,9 @@ public:
         static_cast<int>(declare_parameter<std::int64_t>("warmup_setpoints", 20));
     command_resend_period_s_ =
         declare_parameter<double>("command_resend_period_s", 2.0);
+    crash_disarm_lifecycle_ = std::make_unique<CrashDisarmLifecycle>(
+        CrashDisarmLifecycleConfig{.retry_period_s = declare_parameter<double>(
+                                       "crash_force_disarm_retry_period_s", 0.2)});
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
     auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
     rviz_drone_follow_tf_enabled_ =
@@ -148,11 +152,25 @@ public:
                                        "/fmu/out/vehicle_status_v1"),
         px4_qos, [this](const px4_msgs::msg::VehicleStatus::SharedPtr status) {
           vehicle_status_ = *status;
+          vehicle_status_seen_ = true;
         });
     crash_state_sub_ = create_subscription<msg::CrashState>(
         "/drone_city_nav/crash_state",
         rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
-        [this](const msg::CrashState::SharedPtr state) { crashed_ = state->crashed; });
+        [this](const msg::CrashState::SharedPtr state) {
+          if (!state->crashed || crash_disarm_lifecycle_->latched()) {
+            return;
+          }
+          crash_disarm_lifecycle_->latch(now().nanoseconds());
+          horizon_.reset();
+          auto_arm_ = false;
+          auto_offboard_ = false;
+          RCLCPP_ERROR(get_logger(),
+                       "PHYSICAL_COLLISION offboard_crash_latched=true reason='%s'"
+                       " drone_collision='%s' obstacle_collision='%s'",
+                       state->reason.c_str(), state->drone_collision.c_str(),
+                       state->obstacle_collision.c_str());
+        });
     offboard_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>(
         declare_parameter<std::string>("offboard_control_mode_topic",
                                        "/fmu/in/offboard_control_mode"),
@@ -304,9 +322,21 @@ private:
   }
 
   void controlTick() {
-    if (crashed_) {
-      publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
-                     0.0F);
+    const bool armed = vehicle_status_.arming_state ==
+                       px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+    const CrashDisarmUpdate crash_disarm = crash_disarm_lifecycle_->update(
+        now().nanoseconds(), vehicle_status_seen_, armed);
+    if (crash_disarm.latched) {
+      if (crash_disarm.force_disarm_requested) {
+        publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
+                       0.0F, kPx4ForceDisarmMagicParam2);
+        RCLCPP_ERROR(get_logger(), "PHYSICAL_COLLISION force_disarm_sent=true armed=%s",
+                     armed ? "true" : "unknown_or_false");
+      }
+      if (crash_disarm.confirmed && !crash_disarm_confirmed_logged_) {
+        crash_disarm_confirmed_logged_ = true;
+        RCLCPP_ERROR(get_logger(), "PHYSICAL_COLLISION force_disarm_confirmed=true");
+      }
       return;
     }
     const bool navigating =
@@ -491,9 +521,11 @@ private:
   bool auto_offboard_{true};
   bool rviz_drone_follow_tf_enabled_{true};
   bool position_valid_{false};
-  bool crashed_{false};
+  bool vehicle_status_seen_{false};
+  bool crash_disarm_confirmed_logged_{false};
   Point2 px4_local_origin_{54.0, 54.0};
   VehicleCommandEndpoint endpoint_{};
+  std::unique_ptr<CrashDisarmLifecycle> crash_disarm_lifecycle_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;

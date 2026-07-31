@@ -91,4 +91,15 @@ TEST(Px4OffboardSetpointIo, BuildsVehicleCommandEndpoint) {
                "velocity_cruise");
 }
 
+TEST(Px4OffboardSetpointIo, BuildsPx4ForceDisarmCommand) {
+  const VehicleCommandEndpoint endpoint;
+
+  const auto msg = buildVehicleCommand(
+      301U, px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0F,
+      kPx4ForceDisarmMagicParam2, endpoint);
+
+  EXPECT_FLOAT_EQ(msg.param1, 0.0F);
+  EXPECT_FLOAT_EQ(msg.param2, 21196.0F);
+}
+
 } // namespace drone_city_nav

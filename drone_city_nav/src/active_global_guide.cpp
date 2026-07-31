@@ -233,10 +233,7 @@ ActiveGlobalGuideUpdate ActiveGlobalGuideLifecycle::update(
       status_.release_reason = GlobalGuideReleaseReason::kBlocked;
     } else if (release_generation > consumed_stall_generation_) {
       consumed_stall_generation_ = release_generation;
-      status_.release_reason =
-          release_reason == GlobalGuideReleaseReason::kPersistentSafetyRejection
-              ? GlobalGuideReleaseReason::kPersistentSafetyRejection
-              : GlobalGuideReleaseReason::kStalled;
+      status_.release_reason = release_reason;
     } else if (!reaches_mission_goal_ &&
                status_.projection.remaining_m < config_.minimum_remaining_m) {
       status_.active = true;
@@ -477,6 +474,8 @@ globalGuideReleaseReasonName(const GlobalGuideReleaseReason reason) noexcept {
       return "stalled";
     case GlobalGuideReleaseReason::kPersistentSafetyRejection:
       return "persistent_safety_rejection";
+    case GlobalGuideReleaseReason::kNoEligibleRollouts:
+      return "no_eligible_rollouts";
     case GlobalGuideReleaseReason::kDiverged:
       return "diverged";
   }

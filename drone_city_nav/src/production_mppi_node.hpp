@@ -169,6 +169,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   MppiSpeedPolicyResult speed_policy{};
   PassageCoordinatorResult passage_coordinator{};
   GlobalGuideProgressUpdate guide_progress{};
+  MppiEligibleRolloutUpdate no_eligible_recovery{};
   MissionGoalCaptureResult goal_capture{};
   ProductionMppiExecutionPublication execution{};
   ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
@@ -208,6 +209,7 @@ private:
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
+  void requestGuideRelease(GlobalGuideReleaseReason reason) noexcept;
   void esdfWorker(std::stop_token stop_token);
   void guideWorker(std::stop_token stop_token);
   void diagnosticsWorker(std::stop_token stop_token);

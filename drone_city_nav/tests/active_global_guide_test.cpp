@@ -466,5 +466,20 @@ TEST(ActiveGlobalGuideTest, UsesPersistentSafetyRejectionReleaseReason) {
             GlobalGuideReleaseReason::kPersistentSafetyRejection);
 }
 
+TEST(ActiveGlobalGuideTest, UsesNoEligibleRolloutsReleaseReason) {
+  ActiveGlobalGuideLifecycle lifecycle;
+  const std::vector<float> esdf = clearEsdf();
+  ASSERT_TRUE(lifecycle.accept(straightGuide(), false, grid(), esdf, Point2{2.5, 10.5})
+                  .accepted);
+
+  const ActiveGlobalGuideUpdate update =
+      lifecycle.update(grid(), esdf, Point2{8.5, 10.5}, 1U,
+                       GlobalGuideReleaseReason::kNoEligibleRollouts);
+
+  EXPECT_FALSE(update.active);
+  EXPECT_TRUE(update.requires_replan);
+  EXPECT_EQ(update.release_reason, GlobalGuideReleaseReason::kNoEligibleRollouts);
+}
+
 } // namespace
 } // namespace drone_city_nav

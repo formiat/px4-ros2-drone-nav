@@ -14,8 +14,13 @@ MppiRiskEscalation::MppiRiskEscalation(const MppiRiskEscalationConfig& config)
 MppiRiskEscalationResult
 MppiRiskEscalation::update(const MppiRiskEscalationObservation& observation) noexcept {
   const mppi::RiskTier previous = maximum_eligible_tier_;
-  if (observation.reseed_generation > last_reseed_generation_) {
+  const bool recovery_requested =
+      observation.reseed_generation > last_reseed_generation_ ||
+      observation.no_eligible_recovery_generation >
+          last_no_eligible_recovery_generation_;
+  if (recovery_requested) {
     last_reseed_generation_ = observation.reseed_generation;
+    last_no_eligible_recovery_generation_ = observation.no_eligible_recovery_generation;
     recovery_cycles_ = 0U;
     maximum_eligible_tier_ = maximum_eligible_tier_ == mppi::RiskTier::kPreferred
                                  ? mppi::RiskTier::kPlanning

@@ -13,6 +13,7 @@ struct MppiRiskEscalationConfig {
 
 struct MppiRiskEscalationObservation {
   std::uint64_t reseed_generation{0U};
+  std::uint64_t no_eligible_recovery_generation{0U};
   bool stable_progress{false};
 };
 
@@ -31,6 +32,7 @@ public:
 private:
   MppiRiskEscalationConfig config_{};
   std::uint64_t last_reseed_generation_{0U};
+  std::uint64_t last_no_eligible_recovery_generation_{0U};
   std::size_t recovery_cycles_{0U};
   mppi::RiskTier maximum_eligible_tier_{mppi::RiskTier::kPreferred};
 };

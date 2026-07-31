@@ -17,6 +17,7 @@ enum class GlobalGuideReleaseReason : std::uint8_t {
   kExhausted,
   kStalled,
   kPersistentSafetyRejection,
+  kNoEligibleRollouts,
   kDiverged,
 };
 

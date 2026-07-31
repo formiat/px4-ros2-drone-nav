@@ -788,20 +788,6 @@ void ProductionMppiNode::planningTick() {
             previous_result_.has_value() ? previous_result_->terminal_progress_m : 0.0,
     });
   }
-  if (risk_escalation_) {
-    const bool stable_progress = previous_result_.has_value() &&
-                                 previous_result_->head_progress_m >=
-                                     liveness_config_.minimum_actual_displacement_m &&
-                                 std::hypot(navigation.state.vx, navigation.state.vy) >=
-                                     liveness_config_.minimum_actual_displacement_m;
-    maximum_eligible_risk_tier_ =
-        risk_escalation_
-            ->update(MppiRiskEscalationObservation{
-                .reseed_generation = liveness.reseed_generation,
-                .stable_progress = stable_progress,
-            })
-            .maximum_eligible_tier;
-  }
   GlobalGuideProgressUpdate guide_progress;
   if (guide_progress_tracker_) {
     const GlobalGuideProjection projection =
@@ -824,13 +810,9 @@ void ProductionMppiNode::planningTick() {
             control_feedback_fresh && applied_control.emergency_braking,
     });
     if (guide_progress.stalled) {
-      guide_release_reason_.store(
-          guide_progress.persistent_safety_rejection
-              ? GlobalGuideReleaseReason::kPersistentSafetyRejection
-              : GlobalGuideReleaseReason::kStalled,
-          std::memory_order_relaxed);
-      guide_release_generation_.store(guide_progress.stall_generation,
-                                      std::memory_order_release);
+      requestGuideRelease(guide_progress.persistent_safety_rejection
+                              ? GlobalGuideReleaseReason::kPersistentSafetyRejection
+                              : GlobalGuideReleaseReason::kStalled);
     }
   }
   const MppiNominalReseedUpdate nominal_reseed =
@@ -842,6 +824,23 @@ void ProductionMppiNode::planningTick() {
                                              ? guide_progress.stall_generation
                                              : 0U,
       });
+  if (risk_escalation_) {
+    const bool stable_progress = previous_result_.has_value() &&
+                                 previous_result_->eligible_risk_contract.available &&
+                                 previous_result_->head_progress_m >=
+                                     liveness_config_.minimum_actual_displacement_m &&
+                                 std::hypot(navigation.state.vx, navigation.state.vy) >=
+                                     liveness_config_.minimum_actual_displacement_m;
+    maximum_eligible_risk_tier_ =
+        risk_escalation_
+            ->update(MppiRiskEscalationObservation{
+                .reseed_generation = liveness.reseed_generation,
+                .no_eligible_recovery_generation =
+                    nominal_reseed.no_eligible_recovery_generation,
+                .stable_progress = stable_progress,
+            })
+            .maximum_eligible_tier;
+  }
   mppi::MppiTickInput input{
       .initial_state = navigation.state,
       .target = target,
@@ -870,6 +869,10 @@ void ProductionMppiNode::planningTick() {
                                  std::chrono::steady_clock::now() - snapshot_started)
                                  .count();
   mppi::MppiTickResult result;
+  MppiEligibleRolloutUpdate no_eligible_recovery{
+      .no_eligible_recovery_generation = nominal_reseed.no_eligible_recovery_generation,
+      .phase = nominal_reseed.no_eligible_phase,
+  };
   if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
     const MppiHorizonSafetyResult fallback =
         buildMppiBrakingFallback(input.initial_state, safety_config_);
@@ -900,8 +903,11 @@ void ProductionMppiNode::planningTick() {
       RCLCPP_ERROR(get_logger(), "PRODUCTION_MPPI_TICK failed: %s", error.what());
       return;
     }
-    nominal_reseed_tracker_.observeEligibleRolloutResult(
-        result.eligible_risk_contract.available);
+    no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
+        result.eligible_risk_contract.available, result.nominal_reseeded);
+    if (no_eligible_recovery.guide_replan_requested) {
+      requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts);
+    }
   }
   ++tick_sequence_;
   recordTickStatistics(result, passage_result, planning_state,
@@ -963,6 +969,7 @@ void ProductionMppiNode::planningTick() {
       .speed_policy = speed_policy,
       .passage_coordinator = passage_result,
       .guide_progress = guide_progress,
+      .no_eligible_recovery = no_eligible_recovery,
       .goal_capture = goal_capture,
       .execution = std::move(execution),
       .planning_state = planning_state,
@@ -987,6 +994,12 @@ void ProductionMppiNode::planningTick() {
     }
   }
   previous_result_ = result;
+}
+
+void ProductionMppiNode::requestGuideRelease(
+    const GlobalGuideReleaseReason reason) noexcept {
+  guide_release_reason_.store(reason, std::memory_order_relaxed);
+  guide_release_generation_.fetch_add(1U, std::memory_order_release);
 }
 
 ProductionMppiStability

@@ -29,5 +29,16 @@ TEST(MppiRiskEscalationTest, DoesNotCountRepeatedObservationAsAnotherStall) {
             mppi::RiskTier::kPlanning);
 }
 
+TEST(MppiRiskEscalationTest, EscalatesForNoEligibleRecovery) {
+  MppiRiskEscalation escalation;
+
+  EXPECT_EQ(
+      escalation.update({.no_eligible_recovery_generation = 1U}).maximum_eligible_tier,
+      mppi::RiskTier::kPlanning);
+  EXPECT_EQ(
+      escalation.update({.no_eligible_recovery_generation = 2U}).maximum_eligible_tier,
+      mppi::RiskTier::kCritical);
+}
+
 } // namespace
 } // namespace drone_city_nav
