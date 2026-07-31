@@ -12,7 +12,9 @@
 namespace drone_city_nav {
 namespace {
 
-constexpr std::string_view kMppiNamespace{"mppi"};
+constexpr std::string_view kMppiCandidateNamespace{"mppi_candidate"};
+constexpr std::string_view kMppiExecutionNamespace{"mppi_execution"};
+constexpr std::string_view kLegacyMppiNamespace{"mppi"};
 constexpr std::string_view kMppiTargetNamespace{"mppi_target"};
 constexpr std::string_view kGlobalGuideNamespace{"global_lattice_guide"};
 constexpr std::string_view kSelectedPassageNamespace{"selected_passage"};
@@ -39,12 +41,32 @@ deleteMarker(const std_msgs::msg::Header& header,
 
 [[nodiscard]] visualization_msgs::msg::Marker
 horizonMarker(const MppiDebugMarkerInput& input) {
-  visualization_msgs::msg::Marker marker = makeMarker(
-      input.header, kMppiNamespace, 0, visualization_msgs::msg::Marker::LINE_STRIP);
+  visualization_msgs::msg::Marker marker =
+      makeMarker(input.header, kMppiCandidateNamespace, 0,
+                 visualization_msgs::msg::Marker::LINE_STRIP);
   marker.scale.x = 0.45;
   marker.color = riskColor(input.selected_tier);
   marker.points.reserve(input.horizon.size());
   for (const mppi::State& state : input.horizon) {
+    marker.points.push_back(
+        gazeboAlignedRvizMarkerPoint(Point3{state.x, state.y, state.z}));
+  }
+  return marker;
+}
+
+[[nodiscard]] visualization_msgs::msg::Marker
+executionHorizonMarker(const MppiDebugMarkerInput& input) {
+  if (input.execution_horizon.empty()) {
+    return deleteMarker(input.header, kMppiExecutionNamespace, 0,
+                        visualization_msgs::msg::Marker::LINE_STRIP);
+  }
+  visualization_msgs::msg::Marker marker =
+      makeMarker(input.header, kMppiExecutionNamespace, 0,
+                 visualization_msgs::msg::Marker::LINE_STRIP);
+  marker.scale.x = 0.32;
+  marker.color = rgba(0.15F, 0.55F, 1.0F, 1.0F);
+  marker.points.reserve(input.execution_horizon.size());
+  for (const mppi::State& state : input.execution_horizon) {
     marker.points.push_back(
         gazeboAlignedRvizMarkerPoint(Point3{state.x, state.y, state.z}));
   }
@@ -81,8 +103,9 @@ missionMarker(const MppiDebugMarkerInput& input, const bool start) {
 
 [[nodiscard]] visualization_msgs::msg::Marker
 previousHorizonMarker(const MppiDebugMarkerInput& input) {
-  visualization_msgs::msg::Marker marker = makeMarker(
-      input.header, kMppiNamespace, 2, visualization_msgs::msg::Marker::LINE_STRIP);
+  visualization_msgs::msg::Marker marker =
+      makeMarker(input.header, kMppiCandidateNamespace, 2,
+                 visualization_msgs::msg::Marker::LINE_STRIP);
   marker.scale.x = 0.18;
   marker.color = riskColor(input.selected_tier);
   marker.color.a = 0.25F;
@@ -159,20 +182,26 @@ void appendSelectedPassageMarkers(visualization_msgs::msg::MarkerArray& markers,
 visualization_msgs::msg::MarkerArray
 buildMppiDebugMarkers(const MppiDebugMarkerInput& input) {
   visualization_msgs::msg::MarkerArray markers;
-  markers.markers.reserve(10U);
+  markers.markers.reserve(13U);
   markers.markers.push_back(horizonMarker(input));
+  markers.markers.push_back(executionHorizonMarker(input));
   markers.markers.push_back(targetMarker(input));
   markers.markers.push_back(missionMarker(input, true));
   markers.markers.push_back(missionMarker(input, false));
   markers.markers.push_back(globalGuideMarker(input));
-  markers.markers.push_back(deleteMarker(input.header, kMppiNamespace, 1,
+  markers.markers.push_back(deleteMarker(input.header, kMppiCandidateNamespace, 1,
                                          visualization_msgs::msg::Marker::SPHERE));
   if (input.previous_horizon.empty()) {
-    markers.markers.push_back(deleteMarker(
-        input.header, kMppiNamespace, 2, visualization_msgs::msg::Marker::LINE_STRIP));
+    markers.markers.push_back(
+        deleteMarker(input.header, kMppiCandidateNamespace, 2,
+                     visualization_msgs::msg::Marker::LINE_STRIP));
   } else {
     markers.markers.push_back(previousHorizonMarker(input));
   }
+  markers.markers.push_back(deleteMarker(input.header, kLegacyMppiNamespace, 0,
+                                         visualization_msgs::msg::Marker::LINE_STRIP));
+  markers.markers.push_back(deleteMarker(input.header, kLegacyMppiNamespace, 2,
+                                         visualization_msgs::msg::Marker::LINE_STRIP));
   appendSelectedPassageMarkers(markers, input);
   return markers;
 }

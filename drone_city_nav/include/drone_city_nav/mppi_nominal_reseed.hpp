@@ -29,7 +29,8 @@ private:
   std::uint64_t local_liveness_generation_{0U};
   std::uint64_t guide_liveness_generation_{0U};
   std::uint64_t safety_rejection_generation_{0U};
-  bool no_eligible_rollout_pending_{false};
+  bool no_eligible_episode_active_{false};
+  bool no_eligible_episode_reseed_pending_{false};
 };
 
 } // namespace drone_city_nav

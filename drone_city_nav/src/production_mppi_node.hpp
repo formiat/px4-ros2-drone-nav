@@ -124,9 +124,32 @@ struct ProductionMppiAppliedControl {
 };
 
 struct ProductionMppiRvizSnapshot {
-  std::vector<mppi::State> horizon;
+  std::vector<mppi::State> candidate_horizon;
   std::vector<mppi::State> previous_horizon;
+  std::vector<mppi::State> execution_horizon;
   std::shared_ptr<const SemanticPortalRoute> semantic_route;
+};
+
+enum class ProductionMppiExecutionMode : std::uint8_t {
+  kPlanned,
+  kBraking,
+  kPositionHold,
+};
+
+enum class ProductionMppiExecutionReason : std::uint8_t {
+  kNone,
+  kHorizonSafety,
+  kPassageAlignment,
+  kGoalCapture,
+  kNoGuide,
+  kUnavailableWorld,
+};
+
+struct ProductionMppiExecutionPublication {
+  std::vector<mppi::State> horizon;
+  ProductionMppiExecutionMode mode{ProductionMppiExecutionMode::kPlanned};
+  ProductionMppiExecutionReason reason{ProductionMppiExecutionReason::kNone};
+  bool published{false};
 };
 
 enum class ProductionMppiPlanningState {
@@ -147,6 +170,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   PassageCoordinatorResult passage_coordinator{};
   GlobalGuideProgressUpdate guide_progress{};
   MissionGoalCaptureResult goal_capture{};
+  ProductionMppiExecutionPublication execution{};
   ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
   std::optional<ProductionMppiRvizSnapshot> rviz;
   std::string target_source;
@@ -164,6 +188,10 @@ struct ProductionMppiDiagnosticsSnapshot {
 
 [[nodiscard]] const char*
 productionMppiPlanningStateName(ProductionMppiPlanningState state) noexcept;
+[[nodiscard]] const char*
+productionMppiExecutionModeName(ProductionMppiExecutionMode mode) noexcept;
+[[nodiscard]] const char*
+productionMppiExecutionReasonName(ProductionMppiExecutionReason reason) noexcept;
 
 class ProductionMppiNode final : public rclcpp::Node {
 public:
@@ -192,12 +220,11 @@ private:
                             ProductionMppiPlanningState planning_state,
                             bool liveness_reseed_requested);
   void publishSummary();
-  void publishExecutionHorizon(const mppi::MppiTickInput& input,
-                               const mppi::MppiTickResult& result,
-                               const ProductionMppiPreparedEsdf& esdf,
-                               const PassageCoordinatorResult& passage_coordinator,
-                               ProductionMppiPlanningState planning_state,
-                               std::int64_t now_ns);
+  [[nodiscard]] ProductionMppiExecutionPublication publishExecutionHorizon(
+      const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
+      const ProductionMppiPreparedEsdf& esdf,
+      const PassageCoordinatorResult& passage_coordinator,
+      ProductionMppiPlanningState planning_state, std::int64_t now_ns);
 
   [[nodiscard]] mppi::State selectTarget(const ProductionMppiNavigation& navigation,
                                          const ProductionMppiPreparedEsdf& esdf,

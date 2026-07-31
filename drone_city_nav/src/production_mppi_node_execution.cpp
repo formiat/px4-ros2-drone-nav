@@ -29,16 +29,19 @@ void appendStationaryHoldPoint(msg::MppiTrajectoryHorizon& horizon,
 
 } // namespace
 
-void ProductionMppiNode::publishExecutionHorizon(
+ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
     const ProductionMppiPreparedEsdf& esdf,
     const PassageCoordinatorResult& passage_coordinator,
     const ProductionMppiPlanningState planning_state, const std::int64_t now_ns) {
+  ProductionMppiExecutionPublication publication;
   if (!execution_horizon_pub_) {
-    return;
+    return publication;
   }
 
-  const auto make_horizon = [&](const std::int64_t valid_until_ns) {
+  const auto make_horizon = [&](const std::int64_t valid_until_ns,
+                                const ProductionMppiExecutionMode mode,
+                                const ProductionMppiExecutionReason reason) {
     msg::MppiTrajectoryHorizon horizon;
     horizon.header.stamp = now();
     horizon.header.frame_id = frame_id_;
@@ -48,6 +51,8 @@ void ProductionMppiNode::publishExecutionHorizon(
     horizon.pose_revision = input.pose_revision;
     horizon.obstacle_revision = input.obstacle_revision;
     horizon.risk_tier = static_cast<std::uint8_t>(result.selected_tier);
+    horizon.execution_mode = static_cast<std::uint8_t>(mode);
+    horizon.execution_reason = static_cast<std::uint8_t>(reason);
     horizon.passage_constrained = input.passage.has_value();
     const bool goal_hold =
         planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
@@ -72,17 +77,34 @@ void ProductionMppiNode::publishExecutionHorizon(
                                                     passage_coordinator.preferred_z_m};
     const auto hold_duration_ns = static_cast<std::int64_t>(
         std::max(0.2, 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) * 1.0e9);
-    msg::MppiTrajectoryHorizon horizon = make_horizon(now_ns + hold_duration_ns);
+    const ProductionMppiExecutionReason reason =
+        goal_hold ? ProductionMppiExecutionReason::kGoalCapture
+                  : ProductionMppiExecutionReason::kPassageAlignment;
+    msg::MppiTrajectoryHorizon horizon = make_horizon(
+        now_ns + hold_duration_ns, ProductionMppiExecutionMode::kPositionHold, reason);
     horizon.points.reserve(2U);
     appendStationaryHoldPoint(horizon, hold_position, 0.0F, input.initial_state.yaw);
     appendStationaryHoldPoint(horizon, hold_position, mppi_config_.dynamics.dt_s,
                               input.initial_state.yaw);
     execution_horizon_pub_->publish(horizon);
-    return;
+    publication.horizon = {
+        mppi::State{.x = static_cast<float>(hold_position.x),
+                    .y = static_cast<float>(hold_position.y),
+                    .z = static_cast<float>(hold_position.z),
+                    .yaw = input.initial_state.yaw},
+        mppi::State{.x = static_cast<float>(hold_position.x),
+                    .y = static_cast<float>(hold_position.y),
+                    .z = static_cast<float>(hold_position.z),
+                    .yaw = input.initial_state.yaw},
+    };
+    publication.mode = ProductionMppiExecutionMode::kPositionHold;
+    publication.reason = reason;
+    publication.published = true;
+    return publication;
   }
 
   if (result.horizon.size() < 2U) {
-    return;
+    return publication;
   }
   const bool forced_braking_hold =
       planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ||
@@ -91,7 +113,7 @@ void ProductionMppiNode::publishExecutionHorizon(
   MppiSafetyInterventionUpdate intervention;
   if (!forced_braking_hold) {
     if (!esdf.distances_m) {
-      return;
+      return publication;
     }
     safety = evaluateMppiHorizonSafety(input.initial_state, result.horizon,
                                        *esdf.distances_m, esdf.grid, safety_config_,
@@ -107,10 +129,20 @@ void ProductionMppiNode::publishExecutionHorizon(
        intervention.decision != MppiHorizonSafetyDecision::kExecuteUntilDeadline);
   const MppiBrakeHoldUpdate brake_hold = brake_hold_lifecycle_.update(
       braking, input.initial_state, safety_config_.position_hold_capture_speed_mps);
+  ProductionMppiExecutionReason fallback_reason =
+      ProductionMppiExecutionReason::kHorizonSafety;
+  if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
+    fallback_reason = ProductionMppiExecutionReason::kNoGuide;
+  } else if (planning_state ==
+             ProductionMppiPlanningState::kUnavailableWorldBrakingHold) {
+    fallback_reason = ProductionMppiExecutionReason::kUnavailableWorld;
+  }
   if (brake_hold.position_hold) {
     const auto hold_duration_ns = static_cast<std::int64_t>(
         std::max(0.2, 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) * 1.0e9);
-    msg::MppiTrajectoryHorizon horizon = make_horizon(now_ns + hold_duration_ns);
+    msg::MppiTrajectoryHorizon horizon =
+        make_horizon(now_ns + hold_duration_ns,
+                     ProductionMppiExecutionMode::kPositionHold, fallback_reason);
     horizon.stationary_position_hold = true;
     horizon.stationary_hold_position.x = brake_hold.hold_state.x;
     horizon.stationary_hold_position.y = brake_hold.hold_state.y;
@@ -123,7 +155,11 @@ void ProductionMppiNode::publishExecutionHorizon(
     appendStationaryHoldPoint(horizon, hold_position, mppi_config_.dynamics.dt_s,
                               brake_hold.hold_state.yaw);
     execution_horizon_pub_->publish(horizon);
-    return;
+    publication.horizon = {brake_hold.hold_state, brake_hold.hold_state};
+    publication.mode = ProductionMppiExecutionMode::kPositionHold;
+    publication.reason = fallback_reason;
+    publication.published = true;
+    return publication;
   }
   std::span<const mppi::State> states{result.horizon};
   std::span<const mppi::Control> controls{result.controls};
@@ -132,13 +168,19 @@ void ProductionMppiNode::publishExecutionHorizon(
     controls = safety.fallback_controls;
   }
   if (states.size() < 2U || controls.empty()) {
-    return;
+    return publication;
   }
 
+  const ProductionMppiExecutionMode execution_mode =
+      braking ? ProductionMppiExecutionMode::kBraking
+              : ProductionMppiExecutionMode::kPlanned;
+  const ProductionMppiExecutionReason execution_reason =
+      braking ? fallback_reason : ProductionMppiExecutionReason::kNone;
   msg::MppiTrajectoryHorizon horizon = make_horizon(
       now_ns + static_cast<std::int64_t>(
                    static_cast<double>(controls.size()) *
-                   static_cast<double>(mppi_config_.dynamics.dt_s) * 1.0e9));
+                   static_cast<double>(mppi_config_.dynamics.dt_s) * 1.0e9),
+      execution_mode, execution_reason);
   horizon.emergency_braking = braking;
   horizon.points.reserve(states.size());
   for (std::size_t index = 0U; index < states.size(); ++index) {
@@ -160,6 +202,11 @@ void ProductionMppiNode::publishExecutionHorizon(
     horizon.points.push_back(point);
   }
   execution_horizon_pub_->publish(horizon);
+  publication.horizon.assign(states.begin(), states.end());
+  publication.mode = execution_mode;
+  publication.reason = execution_reason;
+  publication.published = true;
+  return publication;
 }
 
 } // namespace drone_city_nav

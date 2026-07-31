@@ -39,6 +39,8 @@ struct LatticeKeyHash {
 struct Record {
   double cost{std::numeric_limits<double>::infinity()};
   std::optional<LatticeKey> parent;
+  std::array<Point2, 4U> edge_points{};
+  std::size_t edge_point_count{0U};
 };
 
 struct QueueEntry {
@@ -60,6 +62,8 @@ struct Successor {
   Point2 endpoint{};
   double length_m{0.0};
   double edge_cost{0.0};
+  std::array<Point2, 4U> edge_points{};
+  std::size_t edge_point_count{0U};
 };
 
 struct FrontierEvaluation {
@@ -269,12 +273,16 @@ struct PortalSuccessor {
   Point2 endpoint{};
   int heading_bin{0};
   double length_m{0.0};
+  double center_preference_cost{0.0};
+  std::array<Point2, 4U> edge_points{};
+  std::size_t edge_point_count{0U};
 };
 
-[[nodiscard]] std::optional<PortalSuccessor>
-portalSuccessor(const Point2 current, const int current_heading,
-                const SemanticPortalPrimitive& portal, const int direction,
-                const RiskAwareLatticeConfig& config) {
+[[nodiscard]] std::vector<PortalSuccessor>
+portalSuccessors(const Point2 current, const int current_heading,
+                 const SemanticPortalPrimitive& portal, const int direction,
+                 const RiskAwareLatticeConfig& config) {
+  std::vector<PortalSuccessor> successors;
   const Point2 lateral_axis{-portal.normal_xy.y, portal.normal_xy.x};
   const Point2 offset{current.x - portal.center.x, current.y - portal.center.y};
   const double longitudinal =
@@ -287,7 +295,7 @@ portalSuccessor(const Point2 current, const int current_heading,
   if (!(usable_half_width_m > 0.0) || std::abs(lateral) > usable_half_width_m ||
       directed_longitudinal < -half_depth_m - config.portal_entry_capture_distance_m ||
       directed_longitudinal >= half_depth_m) {
-    return std::nullopt;
+    return successors;
   }
   const double heading =
       std::atan2(static_cast<double>(direction) * portal.normal_xy.y,
@@ -295,19 +303,86 @@ portalSuccessor(const Point2 current, const int current_heading,
   const int heading_bin = nearestHeadingBin(heading, config.heading_bins);
   if (headingBinDistance(current_heading, heading_bin, config.heading_bins) >
       config.portal_maximum_heading_delta_bins) {
-    return std::nullopt;
+    return successors;
   }
-  const double exit_longitudinal =
-      static_cast<double>(direction) * (half_depth_m + config.portal_exit_extension_m);
-  const Point2 endpoint{
-      portal.center.x + exit_longitudinal * portal.normal_xy.x,
-      portal.center.y + exit_longitudinal * portal.normal_xy.y,
+  const Point2 travel_normal{
+      static_cast<double>(direction) * portal.normal_xy.x,
+      static_cast<double>(direction) * portal.normal_xy.y,
   };
-  return PortalSuccessor{
-      .endpoint = endpoint,
-      .heading_bin = heading_bin,
-      .length_m = distance(current, endpoint),
+  const Point2 center_approach{
+      portal.center.x -
+          (half_depth_m + config.portal_entry_capture_distance_m) * travel_normal.x,
+      portal.center.y -
+          (half_depth_m + config.portal_entry_capture_distance_m) * travel_normal.y,
   };
+  const Point2 center_entry{portal.center.x - half_depth_m * travel_normal.x,
+                            portal.center.y - half_depth_m * travel_normal.y};
+  const Point2 center_exit{portal.center.x + half_depth_m * travel_normal.x,
+                           portal.center.y + half_depth_m * travel_normal.y};
+  const Point2 center_departure{
+      portal.center.x +
+          (half_depth_m + config.portal_exit_extension_m) * travel_normal.x,
+      portal.center.y +
+          (half_depth_m + config.portal_exit_extension_m) * travel_normal.y,
+  };
+
+  const auto shifted = [&](const Point2 point, const double lateral_offset_m) {
+    return Point2{point.x + lateral_offset_m * lateral_axis.x,
+                  point.y + lateral_offset_m * lateral_axis.y};
+  };
+  const bool starts_inside = directed_longitudinal >= -half_depth_m;
+  const auto append_successor = [&](const double lateral_offset_m) {
+    if (std::ranges::any_of(successors, [&](const PortalSuccessor& successor) {
+          const Point2 endpoint_offset{
+              successor.endpoint.x - center_departure.x,
+              successor.endpoint.y - center_departure.y,
+          };
+          const double successor_lateral =
+              endpoint_offset.x * lateral_axis.x + endpoint_offset.y * lateral_axis.y;
+          return std::abs(successor_lateral - lateral_offset_m) <= 1.0e-6;
+        })) {
+      return;
+    }
+    PortalSuccessor successor{
+        .endpoint = shifted(center_departure, lateral_offset_m),
+        .heading_bin = heading_bin,
+        .center_preference_cost = config.portal_center_preference_cost *
+                                  std::abs(lateral_offset_m / usable_half_width_m),
+    };
+    if (starts_inside) {
+      successor.edge_points = {shifted(center_exit, lateral_offset_m),
+                               successor.endpoint, Point2{}, Point2{}};
+      successor.edge_point_count = 2U;
+    } else {
+      const Point2 approach = shifted(center_approach, lateral_offset_m);
+      if (distance(current, approach) > config.portal_entry_capture_distance_m) {
+        return;
+      }
+      successor.edge_points = {
+          approach,
+          shifted(center_entry, lateral_offset_m),
+          shifted(center_exit, lateral_offset_m),
+          successor.endpoint,
+      };
+      successor.edge_point_count = 4U;
+    }
+    Point2 previous = current;
+    for (std::size_t index = 0U; index < successor.edge_point_count; ++index) {
+      successor.length_m += distance(previous, successor.edge_points.at(index));
+      previous = successor.edge_points.at(index);
+    }
+    successors.push_back(successor);
+  };
+
+  if (starts_inside) {
+    append_successor(lateral);
+    return successors;
+  }
+  append_successor(0.0);
+  append_successor(lateral);
+  append_successor(-0.5 * usable_half_width_m);
+  append_successor(0.5 * usable_half_width_m);
+  return successors;
 }
 
 [[nodiscard]] Point2 recedingGoal(const Point2 start, const Point2 mission_goal,
@@ -461,6 +536,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       !(config.portal_lateral_margin_m >= 0.0) ||
       !(config.portal_entry_capture_distance_m > 0.0) ||
       !(config.portal_exit_extension_m > 0.0) ||
+      !std::isfinite(config.portal_center_preference_cost) ||
+      config.portal_center_preference_cost < 0.0 ||
       !(config.maximum_search_roi_halo_m > 0.0) ||
       !(config.maximum_search_time_ms > 0.0) ||
       config.maximum_frontier_candidates == 0U ||
@@ -578,49 +655,71 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     }
     for (const SemanticPortalPrimitive& portal : portals) {
       for (const int direction : {-1, 1}) {
-        const std::optional<PortalSuccessor> portal_successor =
-            portalSuccessor(current, current_key.heading, portal, direction, config);
-        if (!portal_successor.has_value()) {
-          continue;
-        }
-        if (!inside_roi(portal_successor->endpoint)) {
-          roi_boundary_seen = true;
+        for (const PortalSuccessor& portal_successor : portalSuccessors(
+                 current, current_key.heading, portal, direction, config)) {
+          if (!inside_roi(portal_successor.endpoint)) {
+            roi_boundary_seen = true;
+            if (diagnostics != nullptr) {
+              ++diagnostics->generated;
+              ++diagnostics->rejected_outside_roi;
+            }
+            continue;
+          }
           if (diagnostics != nullptr) {
             ++diagnostics->generated;
-            ++diagnostics->rejected_outside_roi;
           }
-          continue;
-        }
-        if (diagnostics != nullptr) {
-          ++diagnostics->generated;
-        }
-        const SegmentEvaluation segment =
-            evaluateSegment(grid, esdf_m, current, portal_successor->endpoint, config,
-                            portals, true, stage);
-        if (!segment.valid) {
+          SegmentEvaluation portal_path{.valid = true};
+          Point2 segment_start = current;
+          for (std::size_t index = 0U; index < portal_successor.edge_point_count;
+               ++index) {
+            const SegmentEvaluation segment = evaluateSegment(
+                grid, esdf_m, segment_start, portal_successor.edge_points.at(index),
+                config, portals, true, stage);
+            if (!segment.valid) {
+              portal_path = segment;
+              break;
+            }
+            portal_path.critical_exposure_m += segment.critical_exposure_m;
+            portal_path.planning_exposure_m += segment.planning_exposure_m;
+            portal_path.worst_tier =
+                std::max(portal_path.worst_tier, segment.worst_tier);
+            portal_path.risk_cost += segment.risk_cost;
+            segment_start = portal_successor.edge_points.at(index);
+          }
+          if (!portal_path.valid) {
+            if (diagnostics != nullptr) {
+              recordSegmentRejection(portal_path, *diagnostics);
+            }
+            continue;
+          }
+          std::array<Point2, 5U> candidate_path{};
+          candidate_path[0U] = current;
+          std::copy_n(portal_successor.edge_points.begin(),
+                      portal_successor.edge_point_count, candidate_path.begin() + 1);
+          if (repeatsBlacklistedFailure(
+                  std::span<const Point2>{candidate_path.data(),
+                                          portal_successor.edge_point_count + 1U},
+                  frontier_blacklist, config)) {
+            if (diagnostics != nullptr) {
+              ++diagnostics->rejected_blacklisted_failure;
+            }
+            continue;
+          }
+          const int heading_delta = headingBinDistance(
+              current_key.heading, portal_successor.heading_bin, config.heading_bins);
+          successors.push_back(Successor{
+              .key = makeKey(portal_successor.endpoint, portal_successor.heading_bin),
+              .endpoint = portal_successor.endpoint,
+              .length_m = portal_successor.length_m,
+              .edge_cost = portal_successor.length_m + portal_path.risk_cost +
+                           portal_successor.center_preference_cost +
+                           config.turn_cost * static_cast<double>(heading_delta),
+              .edge_points = portal_successor.edge_points,
+              .edge_point_count = portal_successor.edge_point_count,
+          });
           if (diagnostics != nullptr) {
-            recordSegmentRejection(segment, *diagnostics);
+            ++diagnostics->accepted;
           }
-          continue;
-        }
-        const std::array candidate_segment{current, portal_successor->endpoint};
-        if (repeatsBlacklistedFailure(candidate_segment, frontier_blacklist, config)) {
-          if (diagnostics != nullptr) {
-            ++diagnostics->rejected_blacklisted_failure;
-          }
-          continue;
-        }
-        const int heading_delta = headingBinDistance(
-            current_key.heading, portal_successor->heading_bin, config.heading_bins);
-        successors.push_back(Successor{
-            .key = makeKey(portal_successor->endpoint, portal_successor->heading_bin),
-            .endpoint = portal_successor->endpoint,
-            .length_m = portal_successor->length_m,
-            .edge_cost = portal_successor->length_m + segment.risk_cost +
-                         config.turn_cost * static_cast<double>(heading_delta),
-        });
-        if (diagnostics != nullptr) {
-          ++diagnostics->accepted;
         }
       }
     }
@@ -691,6 +790,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         }
         next_record.cost = next_cost;
         next_record.parent = entry.key;
+        next_record.edge_points = successor.edge_points;
+        next_record.edge_point_count = successor.edge_point_count;
         const double heuristic = distance(result.planning_goal, successor.endpoint);
         outcome.open.push(QueueEntry{
             .key = successor.key,
@@ -719,12 +820,28 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
 
   const auto reconstruct = [&](const StageOutcome& outcome,
                                const LatticeKey& terminal) {
-    std::vector<Point2> guide;
-    for (std::optional<LatticeKey> key = terminal; key.has_value();) {
-      guide.push_back(cellCenter(grid, *key));
-      key = outcome.records.at(*key).parent;
+    std::vector<LatticeKey> chain;
+    for (std::optional<LatticeKey> key = terminal; key.has_value();
+         key = outcome.records.at(*key).parent) {
+      chain.push_back(*key);
     }
-    std::ranges::reverse(guide);
+    std::ranges::reverse(chain);
+    std::vector<Point2> guide;
+    guide.reserve(chain.size() + 4U);
+    const auto append_distinct = [&guide](const Point2 point) {
+      if (guide.empty() || distance(guide.back(), point) > 1.0e-6) {
+        guide.push_back(point);
+      }
+    };
+    append_distinct(cellCenter(grid, chain.front()));
+    for (std::size_t chain_index = 1U; chain_index < chain.size(); ++chain_index) {
+      const Record& record = outcome.records.at(chain[chain_index]);
+      for (std::size_t edge_index = 0U; edge_index < record.edge_point_count;
+           ++edge_index) {
+        append_distinct(record.edge_points.at(edge_index));
+      }
+      append_distinct(cellCenter(grid, chain[chain_index]));
+    }
     return guide;
   };
 

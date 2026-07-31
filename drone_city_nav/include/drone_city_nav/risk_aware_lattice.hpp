@@ -80,6 +80,7 @@ struct RiskAwareLatticeConfig {
   double portal_lateral_margin_m{0.5};
   double portal_entry_capture_distance_m{6.0};
   double portal_exit_extension_m{4.0};
+  double portal_center_preference_cost{2.0};
   int portal_maximum_heading_delta_bins{4};
 };
 

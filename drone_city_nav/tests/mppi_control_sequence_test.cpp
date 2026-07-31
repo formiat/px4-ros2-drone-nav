@@ -36,22 +36,48 @@ TEST(MppiControlSequenceTest, ShiftBeyondHorizonDropsStaleNominal) {
   EXPECT_FLOAT_EQ(shifted[1].ax, 0.0F);
 }
 
-TEST(MppiControlSequenceTest, ReseedAlternatesLateralBias) {
+TEST(MppiControlSequenceTest, ReseedFollowsRouteWithoutAlternatingLateralBias) {
   DynamicsConfig dynamics;
   const State initial{};
   const State target{.x = 10.0F};
+  const std::array route{
+      RoutePoint{.x_m = 0.0F, .y_m = 0.0F, .station_m = 0.0F},
+      RoutePoint{.x_m = 10.0F, .y_m = 0.0F, .station_m = 10.0F},
+  };
 
-  const std::vector<Control> left =
-      buildGuideDirectedNominalSeed(initial, target, dynamics, 8U, 1U);
-  const std::vector<Control> right =
-      buildGuideDirectedNominalSeed(initial, target, dynamics, 8U, 2U);
+  const std::vector<Control> seed = buildGuideDirectedNominalSeed(
+      initial, target, route, 0.0F, std::nullopt, 5.0F, dynamics, 8U, Control{});
 
-  ASSERT_FALSE(left.empty());
-  ASSERT_EQ(left.size(), right.size());
-  EXPECT_GT(left.front().ay, 0.0F);
-  EXPECT_LT(right.front().ay, 0.0F);
-  EXPECT_GT(left.front().ax, 0.0F);
-  EXPECT_GT(right.front().ax, 0.0F);
+  ASSERT_FALSE(seed.empty());
+  EXPECT_GT(seed.front().ax, 0.0F);
+  EXPECT_NEAR(seed.front().ay, 0.0F, 1.0e-6F);
+}
+
+TEST(MppiControlSequenceTest, PassageReseedUsesCurrentRouteAltitudeProfile) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  const State initial{.x = 5.0F, .z = 5.0F};
+  const State distant_target{.x = 30.0F, .z = 18.0F};
+  const std::array route{
+      RoutePoint{.x_m = 0.0F, .y_m = 0.0F, .station_m = 0.0F},
+      RoutePoint{.x_m = 30.0F, .y_m = 0.0F, .station_m = 30.0F},
+  };
+  const PassageConstraint passage{
+      .preferred_z_m = 5.0F,
+      .normal_flight_z_m = 18.0F,
+      .approach_station_m = 0.0F,
+      .alignment_station_m = 4.0F,
+      .entry_station_m = 5.0F,
+      .exit_station_m = 20.0F,
+      .departure_station_m = 25.0F,
+      .phase = PassagePhase::kTraversal,
+  };
+
+  const std::vector<Control> seed = buildGuideDirectedNominalSeed(
+      initial, distant_target, route, 5.0F, passage, 5.0F, dynamics, 8U, Control{});
+
+  ASSERT_FALSE(seed.empty());
+  EXPECT_NEAR(seed.front().az, 0.0F, 1.0e-6F);
 }
 
 TEST(MppiControlSequenceTest, HostLimiterMatchesAccelerationAndJerkContract) {

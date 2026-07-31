@@ -43,6 +43,38 @@ productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcep
   return "unknown";
 }
 
+const char*
+productionMppiExecutionModeName(const ProductionMppiExecutionMode mode) noexcept {
+  switch (mode) {
+    case ProductionMppiExecutionMode::kPlanned:
+      return "planned";
+    case ProductionMppiExecutionMode::kBraking:
+      return "braking";
+    case ProductionMppiExecutionMode::kPositionHold:
+      return "position_hold";
+  }
+  return "unknown";
+}
+
+const char*
+productionMppiExecutionReasonName(const ProductionMppiExecutionReason reason) noexcept {
+  switch (reason) {
+    case ProductionMppiExecutionReason::kNone:
+      return "none";
+    case ProductionMppiExecutionReason::kHorizonSafety:
+      return "horizon_safety";
+    case ProductionMppiExecutionReason::kPassageAlignment:
+      return "passage_alignment";
+    case ProductionMppiExecutionReason::kGoalCapture:
+      return "goal_capture";
+    case ProductionMppiExecutionReason::kNoGuide:
+      return "no_guide";
+    case ProductionMppiExecutionReason::kUnavailableWorld:
+      return "unavailable_world";
+  }
+  return "unknown";
+}
+
 ProductionMppiNode::ProductionMppiNode()
     : Node{"production_mppi_node"} {
   tick_rate_hz_ = declare_parameter<double>("tick_rate_hz", 50.0);
@@ -295,6 +327,8 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("portal_lattice_entry_capture_distance_m", 6.0);
   lattice_config_.portal_exit_extension_m =
       declare_parameter<double>("portal_lattice_exit_extension_m", 4.0);
+  lattice_config_.portal_center_preference_cost =
+      declare_parameter<double>("portal_lattice_center_preference_cost", 2.0);
   lattice_config_.portal_maximum_heading_delta_bins = static_cast<int>(
       declare_parameter<std::int64_t>("portal_lattice_maximum_heading_delta_bins", 4));
   active_guide_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;

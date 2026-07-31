@@ -99,8 +99,8 @@ void ProductionMppiNode::publishRviz(
   nav_msgs::msg::Path path;
   path.header.frame_id = frame_id_;
   path.header.stamp = stamp;
-  path.poses.reserve(rviz.horizon.size());
-  for (const mppi::State& state : rviz.horizon) {
+  path.poses.reserve(rviz.candidate_horizon.size());
+  for (const mppi::State& state : rviz.candidate_horizon) {
     geometry_msgs::msg::PoseStamped pose;
     pose.header = path.header;
     pose.pose.position.x = state.x;
@@ -112,15 +112,17 @@ void ProductionMppiNode::publishRviz(
   path_pub_->publish(path);
 
   const std::span<const mppi::State> previous_horizon{rviz.previous_horizon};
+  const std::span<const mppi::State> execution_horizon{rviz.execution_horizon};
   const std::span<const Point2> global_guide =
       rviz.semantic_route && rviz.semantic_route->polyline
           ? std::span<const Point2>{*rviz.semantic_route->polyline}
           : std::span<const Point2>{};
   const visualization_msgs::msg::MarkerArray markers =
       buildMppiDebugMarkers(MppiDebugMarkerInput{
-          path.header, rviz.horizon, previous_horizon, global_guide,
-          snapshot.input.initial_state, snapshot.input.target, mission_start_,
-          mission_goal_, snapshot.input.passage, snapshot.result.selected_tier});
+          path.header, rviz.candidate_horizon, previous_horizon, execution_horizon,
+          global_guide, snapshot.input.initial_state, snapshot.input.target,
+          mission_start_, mission_goal_, snapshot.input.passage,
+          snapshot.result.selected_tier});
   markers_pub_->publish(markers);
 }
 
@@ -220,6 +222,10 @@ void ProductionMppiNode::processDiagnostics(
        << " planning_mode="
        << (passage_speed_policy_.use_static_map ? "static" : "no_static")
        << " planning_state=" << productionMppiPlanningStateName(planning_state)
+       << " execution_mode=" << productionMppiExecutionModeName(snapshot.execution.mode)
+       << " execution_reason="
+       << productionMppiExecutionReasonName(snapshot.execution.reason)
+       << " execution_published=" << (snapshot.execution.published ? "true" : "false")
        << " horizon_s="
        << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
        << " target_source=" << target_source << " target=(" << input.target.x << ','
@@ -395,7 +401,13 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"planning_mode\":\""
         << (passage_speed_policy_.use_static_map ? "static" : "no_static") << '"'
         << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
-        << '"' << ",\"target_source\":\"" << target_source << '"' << ",\"horizon_s\":"
+        << '"' << ",\"execution_mode\":\""
+        << productionMppiExecutionModeName(snapshot.execution.mode) << '"'
+        << ",\"execution_reason\":\""
+        << productionMppiExecutionReasonName(snapshot.execution.reason) << '"'
+        << ",\"execution_published\":"
+        << (snapshot.execution.published ? "true" : "false") << ",\"target_source\":\""
+        << target_source << '"' << ",\"horizon_s\":"
         << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
         << ",\"speed_cap_mps\":" << mppi_config_.dynamics.maximum_horizontal_speed_mps
         << ",\"acceleration_cap_mps2\":"

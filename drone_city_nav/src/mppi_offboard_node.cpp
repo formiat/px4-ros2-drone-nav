@@ -48,6 +48,38 @@ namespace {
   return first + (second - first) * ratio;
 }
 
+[[nodiscard]] const char* executionModeName(const std::uint8_t mode) noexcept {
+  switch (mode) {
+    case msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED:
+      return "planned";
+    case msg::MppiTrajectoryHorizon::EXECUTION_MODE_BRAKING:
+      return "braking";
+    case msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD:
+      return "position_hold";
+    default:
+      return "invalid";
+  }
+}
+
+[[nodiscard]] const char* executionReasonName(const std::uint8_t reason) noexcept {
+  switch (reason) {
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE:
+      return "none";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_HORIZON_SAFETY:
+      return "horizon_safety";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_PASSAGE_ALIGNMENT:
+      return "passage_alignment";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE:
+      return "goal_capture";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_GUIDE:
+      return "no_guide";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD:
+      return "unavailable_world";
+    default:
+      return "invalid";
+  }
+}
+
 } // namespace
 
 class MppiOffboardNode final : public rclcpp::Node {
@@ -226,25 +258,32 @@ private:
     } else if (horizon.stationary_position_hold &&
                !finitePoint(horizon.stationary_hold_position)) {
       rejection_reason = "non_finite_hold_target";
+    } else if (horizon.execution_mode >
+               msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD) {
+      rejection_reason = "invalid_execution_mode";
+    } else if (horizon.execution_reason >
+               msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD) {
+      rejection_reason = "invalid_execution_reason";
     }
     if (rejection_reason != nullptr) {
-      if (horizon.stationary_position_hold) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                             "PASSAGE_POSITION_HOLD horizon_rejected sequence=%" PRIu64
-                             " previous=%" PRIu64 " reason=%s",
-                             horizon.sequence, horizon_sequence_, rejection_reason);
-      }
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "EXECUTION_HORIZON rejected sequence=%" PRIu64
+                           " previous=%" PRIu64 " reason=%s",
+                           horizon.sequence, horizon_sequence_, rejection_reason);
       return;
     }
-    const bool previous_hold =
-        horizon_.has_value() && horizon_.value().stationary_position_hold;
+    const bool execution_changed =
+        !horizon_.has_value() || horizon_->execution_mode != horizon.execution_mode ||
+        horizon_->execution_reason != horizon.execution_reason;
     horizon_ = horizon;
     horizon_sequence_ = horizon.sequence;
-    if (previous_hold != horizon.stationary_position_hold) {
+    if (execution_changed) {
       RCLCPP_INFO(get_logger(),
-                  "PASSAGE_POSITION_HOLD active=%s sequence=%" PRIu64
+                  "EXECUTION_HORIZON mode=%s reason=%s sequence=%" PRIu64 " hold=%s"
                   " target=(%.3f,%.3f,%.3f)",
-                  horizon.stationary_position_hold ? "true" : "false", horizon.sequence,
+                  executionModeName(horizon.execution_mode),
+                  executionReasonName(horizon.execution_reason), horizon.sequence,
+                  horizon.stationary_position_hold ? "true" : "false",
                   horizon.stationary_hold_position.x,
                   horizon.stationary_hold_position.y,
                   horizon.stationary_hold_position.z);
@@ -260,7 +299,7 @@ private:
            now_ns < timeNanoseconds(horizon_->valid_until);
   }
 
-  [[nodiscard]] bool stationaryPassageHoldActive() const noexcept {
+  [[nodiscard]] bool stationaryPositionHoldActive() const noexcept {
     return horizon_.has_value() && horizon_->stationary_position_hold;
   }
 
@@ -273,8 +312,8 @@ private:
     const bool navigating =
         position_valid_ && takeoff_complete_stamp_.has_value() &&
         (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
-    const bool stationary_passage_hold = navigating && stationaryPassageHoldActive();
-    const OffboardSetpointMode mode = navigating && !stationary_passage_hold
+    const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
+    const OffboardSetpointMode mode = navigating && !stationary_position_hold
                                           ? OffboardSetpointMode::kVelocityCruise
                                           : OffboardSetpointMode::kPositionHold;
     offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
@@ -284,8 +323,8 @@ private:
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
       }
-    } else if (stationary_passage_hold) {
-      publishStationaryPassageHoldSetpoint();
+    } else if (stationary_position_hold) {
+      publishStationaryPositionHoldSetpoint();
     } else if (!publishHorizonSetpoint()) {
       publishBrakingSetpoint();
     }
@@ -317,7 +356,7 @@ private:
         nowMicros(), Point2{local_x_, local_y_}, initial_altitude_m_, heading_rad_));
   }
 
-  void publishStationaryPassageHoldSetpoint() {
+  void publishStationaryPositionHoldSetpoint() {
     if (!horizon_.has_value()) {
       return;
     }

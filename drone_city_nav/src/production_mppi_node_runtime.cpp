@@ -613,8 +613,19 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiPlanningState::kUnavailableWorldBrakingHold;
     ++tick_sequence_;
     recordTickStatistics(result, passage_result, planning_state, false);
-    publishExecutionHorizon(input, result, stale_esdf, passage_result, planning_state,
-                            now_ns);
+    ProductionMppiExecutionPublication execution = publishExecutionHorizon(
+        input, result, stale_esdf, passage_result, planning_state, now_ns);
+    std::optional<ProductionMppiRvizSnapshot> rviz;
+    if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
+      rviz = ProductionMppiRvizSnapshot{
+          .candidate_horizon = result.horizon,
+          .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
+                                                           : std::vector<mppi::State>{},
+          .execution_horizon = execution.horizon,
+          .semantic_route = stale_esdf.semantic_route,
+      };
+      last_rviz_stamp_ns_ = now_ns;
+    }
     ProductionMppiPreparedEsdf diagnostic_esdf = stale_esdf;
     diagnostic_esdf.distances_m.reset();
     diagnostic_esdf.semantic_route.reset();
@@ -630,8 +641,9 @@ void ProductionMppiNode::planningTick() {
         .passage_coordinator = {},
         .guide_progress = {},
         .goal_capture = {},
+        .execution = std::move(execution),
         .planning_state = planning_state,
-        .rviz = std::nullopt,
+        .rviz = std::move(rviz),
         .target_source = "unavailable_world_braking",
         .tick_sequence = tick_sequence_,
         .memory_sequence = memory_sequence,
@@ -895,7 +907,8 @@ void ProductionMppiNode::planningTick() {
   recordTickStatistics(result, passage_result, planning_state,
                        liveness.reseed_requested ||
                            guide_progress.local_reseed_requested);
-  publishExecutionHorizon(input, result, *esdf, passage_result, planning_state, now_ns);
+  ProductionMppiExecutionPublication execution = publishExecutionHorizon(
+      input, result, *esdf, passage_result, planning_state, now_ns);
 
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);
@@ -905,9 +918,10 @@ void ProductionMppiNode::planningTick() {
   std::optional<ProductionMppiRvizSnapshot> rviz;
   if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
     rviz = ProductionMppiRvizSnapshot{
-        .horizon = result.horizon,
+        .candidate_horizon = result.horizon,
         .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
                                                          : std::vector<mppi::State>{},
+        .execution_horizon = execution.horizon,
         .semantic_route = esdf->semantic_route,
     };
     last_rviz_stamp_ns_ = now_ns;
@@ -950,6 +964,7 @@ void ProductionMppiNode::planningTick() {
       .passage_coordinator = passage_result,
       .guide_progress = guide_progress,
       .goal_capture = goal_capture,
+      .execution = std::move(execution),
       .planning_state = planning_state,
       .rviz = std::move(rviz),
       .target_source = target_source,

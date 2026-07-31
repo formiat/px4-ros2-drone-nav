@@ -50,7 +50,7 @@ TEST(RiskAwareLattice, RejectsRawCollisionAndRoutesAroundWall) {
   }));
 }
 
-TEST(RiskAwareLattice, UsesDedicatedLongPrimitiveToTraversePortal) {
+TEST(RiskAwareLattice, EmitsTypedCenterlinePointsForPortalTraversal) {
   const mppi::EsdfGrid grid = makeGrid();
   const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
                                 20.0F);
@@ -63,23 +63,25 @@ TEST(RiskAwareLattice, UsesDedicatedLongPrimitiveToTraversePortal) {
           .depth_m = 8.0,
       },
   };
+  const RiskAwareLatticeConfig config{};
 
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
-      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{36.5, 10.5}, RiskAwareLatticeConfig{},
-      portals);
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{36.5, 10.5}, config, portals);
 
   ASSERT_TRUE(result.valid);
   ASSERT_TRUE(result.planning_goal_reached);
-  bool long_portal_segment_seen = false;
-  for (std::size_t index = 1U; index < result.guide.size(); ++index) {
-    if (distance(result.guide[index - 1U], result.guide[index]) > 8.0) {
-      long_portal_segment_seen = true;
-    }
-  }
-  EXPECT_TRUE(long_portal_segment_seen);
+  const auto contains = [&result](const Point2 expected) {
+    return std::ranges::any_of(result.guide, [expected](const Point2 point) {
+      return distance(point, expected) < 1.0e-6;
+    });
+  };
+  EXPECT_TRUE(contains(Point2{10.0, 10.5}));
+  EXPECT_TRUE(contains(Point2{16.0, 10.5}));
+  EXPECT_TRUE(contains(Point2{24.0, 10.5}));
+  EXPECT_TRUE(contains(Point2{24.0 + config.portal_exit_extension_m, 10.5}));
 }
 
-TEST(RiskAwareLattice, CentersPortalTraversalFromLateralApproach) {
+TEST(RiskAwareLattice, TraversesPortalStraightAfterLateralApproach) {
   const mppi::EsdfGrid grid = makeGrid();
   const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
                                 20.0F);
@@ -98,14 +100,51 @@ TEST(RiskAwareLattice, CentersPortalTraversalFromLateralApproach) {
       portals);
 
   ASSERT_TRUE(result.valid);
-  bool centered_portal_exit_seen = false;
+  bool straight_traversal_seen = false;
   for (std::size_t index = 1U; index < result.guide.size(); ++index) {
-    if (distance(result.guide[index - 1U], result.guide[index]) > 8.0 &&
-        std::abs(result.guide[index].y - portals.front().center.y) < 1.0e-9) {
-      centered_portal_exit_seen = true;
+    const Point2& first = result.guide[index - 1U];
+    const Point2& second = result.guide[index];
+    if (std::abs(first.x - 16.0) < 1.0e-6 && std::abs(second.x - 24.0) < 1.0e-6 &&
+        std::abs(first.y - second.y) < 1.0e-6 &&
+        std::abs(first.y - portals.front().center.y) < 0.5 * portals.front().width_m) {
+      straight_traversal_seen = true;
     }
   }
-  EXPECT_TRUE(centered_portal_exit_seen);
+  EXPECT_TRUE(straight_traversal_seen);
+}
+
+TEST(RiskAwareLattice, UsesOffCenterTraversalWhenPortalCenterlineIsBlocked) {
+  const mppi::EsdfGrid grid = makeGrid();
+  std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height), 20.0F);
+  for (std::size_t x = 16U; x <= 24U; ++x) {
+    esdf[10U * static_cast<std::size_t>(grid.width) + x] = 0.0F;
+  }
+  const std::vector<SemanticPortalPrimitive> portals{
+      SemanticPortalPrimitive{
+          .id = "portal",
+          .center = Point2{20.0, 10.5},
+          .normal_xy = Point2{1.0, 0.0},
+          .width_m = 8.0,
+          .depth_m = 8.0,
+      },
+  };
+
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{36.5, 10.5}, RiskAwareLatticeConfig{},
+      portals);
+
+  ASSERT_TRUE(result.valid);
+  const bool off_center_straight_traversal =
+      std::ranges::any_of(std::views::iota(std::size_t{1U}, result.guide.size()),
+                          [&result](const std::size_t index) {
+                            const Point2& first = result.guide[index - 1U];
+                            const Point2& second = result.guide[index];
+                            return std::abs(first.x - 16.0) < 1.0e-6 &&
+                                   std::abs(second.x - 24.0) < 1.0e-6 &&
+                                   std::abs(first.y - second.y) < 1.0e-6 &&
+                                   std::abs(first.y - 10.5) > 0.5;
+                          });
+  EXPECT_TRUE(off_center_straight_traversal);
 }
 
 TEST(RiskAwareLattice, FailsWhenStartIsOutsideWorldModel) {

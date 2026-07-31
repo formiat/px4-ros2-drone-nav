@@ -331,6 +331,25 @@ __device__ State integrate(State state, Control control, DynamicsConfig config) 
   return state;
 }
 
+__device__ Control limitControlStep(Control control, const Control previous,
+                                    const DynamicsConfig config,
+                                    const float interval_s) {
+  clampHorizontal(control.ax, control.ay, config.maximum_horizontal_acceleration_mps2);
+  control.az = clampValue(control.az, -config.maximum_vertical_acceleration_mps2,
+                          config.maximum_vertical_acceleration_mps2);
+  control.yaw_accel =
+      clampValue(control.yaw_accel, -config.maximum_yaw_acceleration_radps2,
+                 config.maximum_yaw_acceleration_radps2);
+  const float maximum_delta = config.maximum_control_jerk_mps3 * interval_s;
+  control.ax =
+      clampValue(control.ax, previous.ax - maximum_delta, previous.ax + maximum_delta);
+  control.ay =
+      clampValue(control.ay, previous.ay - maximum_delta, previous.ay + maximum_delta);
+  control.az =
+      clampValue(control.az, previous.az - maximum_delta, previous.az + maximum_delta);
+  return control;
+}
+
 __device__ bool intersectsSolid(const State& state, const KnownSolid& solid) {
   if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
     return false;
@@ -462,7 +481,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          const KnownSolid* solids, std::size_t solid_count, PassageConstraint passage,
          bool passage_active, const RoutePoint* route_points,
          std::size_t route_point_count, float initial_route_station_m,
-         Control previous_applied_control, float reference_speed_mps, bool early_exit) {
+         Control previous_applied_control, float first_control_interval_s,
+         float reference_speed_mps, bool early_exit) {
   const std::size_t rollout =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (rollout >= rollouts) {
@@ -496,6 +516,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     Control control{
         nominal[step].ax + noise_ax[index], nominal[step].ay + noise_ay[index],
         nominal[step].az + noise_az[index], nominal[step].yaw_accel + noise_yaw[index]};
+    control = limitControlStep(
+        control, previous, dynamics, step == 0U ? first_control_interval_s : dynamics.dt_s);
     const State previous_state = state;
     state = integrate(state, control, dynamics);
     const float segment_length_m =
@@ -952,16 +974,6 @@ public:
         elapsed_s = config_.dynamics.dt_s;
       }
     }
-    const bool nominal_reseeded =
-        input.nominal_reseed_generation > nominal_reseed_generation_;
-    if (nominal_reseeded) {
-      nominal_ = buildGuideDirectedNominalSeed(input.initial_state, input.target,
-                                               config_.dynamics, config_.steps,
-                                               input.nominal_reseed_generation);
-      nominal_reseed_generation_ = input.nominal_reseed_generation;
-    } else if (has_updated_) {
-      nominal_ = shiftControlSequence(updated_, config_.dynamics.dt_s, elapsed_s);
-    }
     const Control previous_applied_control = input.previous_applied_control.value_or(
         last_output_control_.value_or(Control{}));
     const float first_control_interval_s =
@@ -970,6 +982,21 @@ public:
             : config_.dynamics.dt_s;
     const bool route_active = input.route.has_value() && input.route->points &&
                               input.route->points->size() >= 2U;
+    const bool nominal_reseeded =
+        input.nominal_reseed_generation > nominal_reseed_generation_;
+    if (nominal_reseeded) {
+      const std::span<const RoutePoint> route =
+          route_active ? std::span<const RoutePoint>{*input.route->points}
+                       : std::span<const RoutePoint>{};
+      nominal_ = buildGuideDirectedNominalSeed(
+          input.initial_state, input.target, route,
+          route_active ? input.route->initial_station_m : 0.0F, input.passage,
+          input.reference_speed_mps, config_.dynamics, config_.steps,
+          previous_applied_control);
+      nominal_reseed_generation_ = input.nominal_reseed_generation;
+    } else if (has_updated_) {
+      nominal_ = shiftControlSequence(updated_, config_.dynamics.dt_s, elapsed_s);
+    }
     if (route_active) {
       if (input.route->points->size() > kMaximumRoutePoints) {
         throw std::invalid_argument{"MPPI route exceeds device route capacity"};
@@ -1011,7 +1038,8 @@ public:
         input.passage.value_or(PassageConstraint{}), input.passage.has_value(),
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
         route_active ? input.route->initial_station_m : 0.0F, previous_applied_control,
-        input.reference_speed_mps, config_.early_exit_on_collision);
+        first_control_interval_s, input.reference_speed_mps,
+        config_.early_exit_on_collision);
     simulation_done_.record(stream_);
     initializeReduction<<<1, 1, 0U, stream_>>>(
         buffers_.best_tier.get(), buffers_.best_critical.get(),

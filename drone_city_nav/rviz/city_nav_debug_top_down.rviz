@@ -57,7 +57,7 @@ Visualization Manager:
       Enabled: true
       Line Style: Lines
       Line Width: 0.18
-      Name: MPPI Horizon
+      Name: MPPI Candidate Horizon
       Topic:
         Value: /drone_city_nav/mppi/path
     - Class: rviz_default_plugins/MarkerArray
@@ -65,7 +65,8 @@ Visualization Manager:
       Name: MPPI Markers
       Namespaces:
         global_lattice_guide: true
-        mppi: true
+        mppi_candidate: true
+        mppi_execution: true
         mppi_target: true
         mission_goal: true
         mission_start: true

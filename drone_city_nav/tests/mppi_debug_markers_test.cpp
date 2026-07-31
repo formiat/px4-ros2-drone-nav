@@ -64,6 +64,32 @@ TEST(MppiDebugMarkers, UsesSeparateCurrentTargetNamespace) {
   EXPECT_DOUBLE_EQ(marker.pose.position.z, -18.0);
 }
 
+TEST(MppiDebugMarkers, SeparatesCandidateAndPublishedExecutionHorizons) {
+  const std::vector<mppi::State> candidate{
+      mppi::State{.x = 10.0F, .y = 20.0F, .z = 18.0F},
+      mppi::State{.x = 30.0F, .y = 40.0F, .z = 18.0F},
+  };
+  const std::vector<mppi::State> execution{
+      mppi::State{.x = 10.0F, .y = 20.0F, .z = 18.0F},
+      mppi::State{.x = 12.0F, .y = 20.0F, .z = 18.0F},
+  };
+  MppiDebugMarkerInput input = markerInput();
+  input.horizon = candidate;
+  input.execution_horizon = execution;
+  input.selected_tier = mppi::RiskTier::kCollision;
+
+  const auto markers = buildMppiDebugMarkers(input);
+
+  const auto& candidate_marker = findMarker(markers, "mppi_candidate", 0);
+  const auto& execution_marker = findMarker(markers, "mppi_execution", 0);
+  ASSERT_EQ(candidate_marker.points.size(), candidate.size());
+  ASSERT_EQ(execution_marker.points.size(), execution.size());
+  EXPECT_FLOAT_EQ(candidate_marker.color.r, 1.0F);
+  EXPECT_FLOAT_EQ(candidate_marker.color.g, 0.0F);
+  EXPECT_FLOAT_EQ(execution_marker.color.b, 1.0F);
+  EXPECT_DOUBLE_EQ(execution_marker.points.back().x, 12.0);
+}
+
 TEST(MppiDebugMarkers, HighlightsSelectedPassageAndTraversalDirection) {
   MppiDebugMarkerInput input = markerInput();
   input.passage = mppi::PassageConstraint{

@@ -15,6 +15,7 @@ struct MppiDebugMarkerInput {
   std_msgs::msg::Header header;
   std::span<const mppi::State> horizon;
   std::span<const mppi::State> previous_horizon;
+  std::span<const mppi::State> execution_horizon;
   std::span<const Point2> global_guide;
   mppi::State initial_state{};
   mppi::State target{};
