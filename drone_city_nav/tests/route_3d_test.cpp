@@ -161,5 +161,78 @@ TEST(Route3DTest, LatticeTraversesLShapedChannel) {
   EXPECT_NEAR(result.points.back().y, 15.5, 1.0e-6);
 }
 
+TEST(Route3DTest, FullPlanningRouteBeatsPreferredFrontier) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 13, 4}};
+  for (int y = 0; y < 13; ++y) {
+    if (y >= 5 && y <= 7) {
+      continue;
+    }
+    for (int z = 0; z < 4; ++z) {
+      occupancy.setOccupied(GridIndex3D{10, y, z});
+    }
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 20.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 1.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 2.0;
+  config.critical_distance_m = 0.1;
+  config.maximum_search_time_ms = 1000.0;
+
+  const RiskAwareLattice3DResult result =
+      planRiskAwareLattice3D(grid, field.distancesM(), Point3{2.5, 6.5, 1.5},
+                             Vec3{1.0, 0.0, 0.0}, Point3{17.5, 6.5, 1.5}, config);
+
+  EXPECT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_EQ(result.risk_stage, Lattice3DRiskStage::kPlanningAllowed);
+  EXPECT_TRUE(result.reached_mission_goal);
+}
+
+TEST(Route3DTest, FartherPlanningFrontierBeatsBlockedPreferredFrontier) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 13, 4}};
+  for (int y = 0; y < 13; ++y) {
+    if (y >= 5 && y <= 7) {
+      continue;
+    }
+    for (int z = 0; z < 4; ++z) {
+      occupancy.setOccupied(GridIndex3D{10, y, z});
+    }
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 40.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 1.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 2.0;
+  config.critical_distance_m = 0.1;
+  config.maximum_search_time_ms = 1000.0;
+
+  const RiskAwareLattice3DResult result =
+      planRiskAwareLattice3D(grid, field.distancesM(), Point3{2.5, 6.5, 1.5},
+                             Vec3{1.0, 0.0, 0.0}, Point3{30.5, 6.5, 1.5}, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier);
+  EXPECT_EQ(result.risk_stage, Lattice3DRiskStage::kPlanningAllowed);
+  ASSERT_FALSE(result.points.empty());
+  EXPECT_GT(result.points.back().x, 10.0);
+}
+
 } // namespace
 } // namespace drone_city_nav

@@ -1,0 +1,120 @@
+#include "drone_city_nav/static_route_extension.hpp"
+
+#include <gtest/gtest.h>
+
+#include <limits>
+#include <vector>
+
+namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] std::vector<RouteSample3D> route(const double endpoint_x) {
+  return {
+      RouteSample3D{.position = Point3{1.5, 1.5, 1.5}},
+      RouteSample3D{.position = Point3{endpoint_x, 1.5, 1.5}},
+  };
+}
+
+TEST(StaticRouteExtensionTest, RequestsResidentExtensionUsingSearchLatency) {
+  const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
+      StaticRouteExtensionConfig{},
+      StaticRouteExtensionObservation{.route_generation = 4U,
+                                      .route_station_m = 70.0,
+                                      .route_remaining_m = 55.0,
+                                      .horizontal_speed_mps = 20.0,
+                                      .guide_search_latency_ms = 100.0,
+                                      .esdf_build_latency_ms = 6000.0});
+
+  EXPECT_TRUE(decision.request_extension);
+  EXPECT_FALSE(decision.request_roi_refresh);
+  EXPECT_DOUBLE_EQ(decision.extension_trigger_remaining_m, 57.0);
+}
+
+TEST(StaticRouteExtensionTest, RequestsEarlyRoiRefreshOnlyWhenGoalLeavesEsdf) {
+  StaticRouteExtensionObservation observation{
+      .route_generation = 4U,
+      .route_station_m = 10.0,
+      .route_remaining_m = 120.0,
+      .horizontal_speed_mps = 15.0,
+      .guide_search_latency_ms = 100.0,
+      .esdf_build_latency_ms = 6000.0,
+      .next_planning_goal_inside_esdf = false,
+  };
+  StaticRouteExtensionDecision decision =
+      evaluateStaticRouteExtension(StaticRouteExtensionConfig{}, observation);
+  EXPECT_TRUE(decision.request_roi_refresh);
+  EXPECT_FALSE(decision.request_extension);
+
+  observation.next_planning_goal_inside_esdf = true;
+  decision = evaluateStaticRouteExtension(StaticRouteExtensionConfig{}, observation);
+  EXPECT_FALSE(decision.request_roi_refresh);
+  EXPECT_FALSE(decision.request_extension);
+}
+
+TEST(StaticRouteExtensionTest, DoesNotDuplicateRequestForSameGenerationAndStation) {
+  const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
+      StaticRouteExtensionConfig{},
+      StaticRouteExtensionObservation{.route_generation = 4U,
+                                      .route_station_m = 80.0,
+                                      .route_remaining_m = 10.0,
+                                      .last_request_generation = 4U,
+                                      .last_request_station_m = 70.0});
+  EXPECT_FALSE(decision.request_extension);
+  EXPECT_FALSE(decision.request_roi_refresh);
+}
+
+TEST(StaticRouteExtensionTest, MissionTerminalRouteIsNeverExtended) {
+  const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
+      StaticRouteExtensionConfig{},
+      StaticRouteExtensionObservation{.route_generation = 4U,
+                                      .route_remaining_m = 0.0,
+                                      .route_reaches_mission_goal = true});
+  EXPECT_FALSE(decision.request_extension);
+  EXPECT_FALSE(decision.request_roi_refresh);
+}
+
+TEST(StaticRouteExtensionTest, DefersLifecycleReleaseButNeverRawBlockedRelease) {
+  EXPECT_TRUE(deferStaticRouteReleaseDuringExtension(
+      true, GlobalGuideReleaseReason::kExhausted));
+  EXPECT_TRUE(deferStaticRouteReleaseDuringExtension(
+      true, GlobalGuideReleaseReason::kPersistentSafetyRejection));
+  EXPECT_FALSE(
+      deferStaticRouteReleaseDuringExtension(true, GlobalGuideReleaseReason::kBlocked));
+  EXPECT_FALSE(deferStaticRouteReleaseDuringExtension(
+      false, GlobalGuideReleaseReason::kStalled));
+}
+
+TEST(StaticRouteExtensionTest, CandidateMustImproveEndpointAndAvoidRawOccupancy) {
+  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
+                          std::numeric_limits<float>::infinity());
+  const std::vector<RouteSample3D> active = route(5.5);
+  const std::vector<RouteSample3D> improved = route(8.5);
+
+  EXPECT_TRUE(validateStaticRouteCandidate(active, improved, grid, esdf,
+                                           Point3{11.5, 1.5, 1.5}, 2.0, false)
+                  .accepted);
+  EXPECT_EQ(validateStaticRouteCandidate(active, route(6.5), grid, esdf,
+                                         Point3{11.5, 1.5, 1.5}, 2.0, false)
+                .status,
+            StaticRouteCandidateStatus::kNoEndpointImprovement);
+
+  const std::size_t occupied_index = (1U * 4U + 1U) * 12U + 8U;
+  esdf[occupied_index] = 0.0F;
+  EXPECT_EQ(validateStaticRouteCandidate(active, improved, grid, esdf,
+                                         Point3{11.5, 1.5, 1.5}, 2.0, false)
+                .status,
+            StaticRouteCandidateStatus::kRawCollision);
+}
+
+TEST(StaticRouteExtensionTest, PlanningGoalAndEsdfBoundaryAreExplicit) {
+  const Point3 planning_goal =
+      staticRoutePlanningGoal(Point3{0.0, 0.0, 2.0}, Point3{100.0, 0.0, 2.0}, 40.0);
+  EXPECT_DOUBLE_EQ(planning_goal.x, 40.0);
+  const mppi::EsdfGrid grid{40, 20, 1.0F, 0.0F, -10.0F, 10, 0.0F};
+  EXPECT_FALSE(staticRoutePointInsideEsdf(grid, planning_goal));
+  EXPECT_TRUE(staticRoutePointInsideEsdf(grid, Point3{39.5, 0.0, 2.0}));
+}
+
+} // namespace
+} // namespace drone_city_nav

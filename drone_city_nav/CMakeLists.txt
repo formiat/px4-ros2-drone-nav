@@ -143,6 +143,7 @@ add_library(
   src/risk_aware_lattice.cpp
   src/risk_aware_lattice_3d.cpp
   src/route_3d.cpp
+  src/static_route_extension.cpp
   src/lidar_snapshot_writer.cpp
   src/mppi/mppi_post_update_classification.cpp
   src/mppi_horizon_safety.cpp
@@ -447,6 +448,11 @@ if(BUILD_TESTING)
   target_compile_features(route_3d_test PRIVATE cxx_std_20)
   target_link_libraries(route_3d_test drone_city_nav_core)
   enable_project_warnings(route_3d_test)
+
+  ament_add_gtest(static_route_extension_test tests/static_route_extension_test.cpp)
+  target_compile_features(static_route_extension_test PRIVATE cxx_std_20)
+  target_link_libraries(static_route_extension_test drone_city_nav_core)
+  enable_project_warnings(static_route_extension_test)
 
   ament_add_gtest(static_map_debug_3d_test tests/static_map_debug_3d_test.cpp)
   target_compile_features(static_map_debug_3d_test PRIVATE cxx_std_20)

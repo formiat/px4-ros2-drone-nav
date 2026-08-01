@@ -271,21 +271,28 @@ planRiskAwareLattice3D(const mppi::EsdfGrid& grid, const std::span<const float> 
                            : 1.0;
   const Point3 planning_goal{std::lerp(start.x, mission_goal.x, ratio),
                              std::lerp(start.y, mission_goal.y, ratio), mission_goal.z};
+  std::optional<RiskAwareLattice3DResult> best_frontier;
+  RiskAwareLattice3DResult last_result;
   for (const Lattice3DRiskStage stage :
        {Lattice3DRiskStage::kPreferredOnly, Lattice3DRiskStage::kPlanningAllowed,
         Lattice3DRiskStage::kCriticalAllowed}) {
     RiskAwareLattice3DResult result =
         searchStage(grid, esdf_m, start, preferred_direction, planning_goal,
                     mission_goal, stage, config);
-    if (result.status == Lattice3DStatus::kReachedPlanningGoal ||
-        result.status == Lattice3DStatus::kViableFrontier) {
+    if (result.status == Lattice3DStatus::kReachedPlanningGoal) {
       return result;
     }
-    if (stage == Lattice3DRiskStage::kCriticalAllowed) {
-      return result;
+    if (result.status == Lattice3DStatus::kViableFrontier &&
+        (!best_frontier.has_value() ||
+         result.achieved_progress_m > best_frontier->achieved_progress_m + 1.0e-6)) {
+      best_frontier = result;
     }
+    last_result = std::move(result);
   }
-  return {};
+  if (best_frontier.has_value()) {
+    return std::move(*best_frontier);
+  }
+  return last_result;
 }
 
 const char* lattice3DStatusName(const Lattice3DStatus status) noexcept {

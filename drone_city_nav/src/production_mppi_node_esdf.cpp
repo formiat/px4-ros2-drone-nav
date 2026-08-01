@@ -79,8 +79,26 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     if (use_static_map_ && static_occupancy_3d_) {
       const std::uint64_t release_generation =
           guide_release_generation_.load(std::memory_order_acquire);
+      const std::uint64_t roi_refresh_generation =
+          static_roi_refresh_request_generation_.load(std::memory_order_acquire);
+      std::optional<ProductionMppiPreparedEsdf> active_prepared;
+      {
+        const std::scoped_lock lock{esdf_state_mutex_};
+        active_prepared = prepared_esdf_;
+      }
+      bool proactive_roi_refresh =
+          roi_refresh_generation > static_roi_refresh_completed_generation_ &&
+          release_generation == static_guide_release_generation_ && active_prepared &&
+          active_prepared->global_guide_generation == roi_refresh_generation;
+      double static_build_ms = active_prepared ? active_prepared->build_ms : 0.0;
+      if (roi_refresh_generation > static_roi_refresh_completed_generation_ &&
+          !proactive_roi_refresh) {
+        static_roi_refresh_completed_generation_ = roi_refresh_generation;
+        finishStaticRouteExtension(roi_refresh_generation);
+      }
       if (static_esdf_3d_) {
-        if (release_generation == static_guide_release_generation_) {
+        if (release_generation == static_guide_release_generation_ &&
+            !proactive_roi_refresh) {
           const std::scoped_lock lock{esdf_state_mutex_};
           if (prepared_esdf_) {
             prepared_esdf_->ready_stamp_ns = source_stamp_ns;
@@ -89,9 +107,12 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           }
           continue;
         }
-        static_esdf_3d_.reset();
+        if (!proactive_roi_refresh) {
+          static_esdf_3d_.reset();
+          active_prepared.reset();
+        }
       }
-      if (!static_esdf_3d_) {
+      if (!static_esdf_3d_ || proactive_roi_refresh) {
         ProductionMppiNavigation navigation;
         {
           const std::scoped_lock lock{input_mutex_};
@@ -118,25 +139,39 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         static_esdf_3d_ = std::make_shared<const std::vector<float>>(
             field.distancesM().begin(), field.distancesM().end());
         static_guide_release_generation_ = release_generation;
+        static_build_ms = field.stats().duration_ms;
         RCLCPP_INFO(get_logger(),
-                    "STATIC_ESDF3D_READY build_ms=%.2f voxels=%zu dimensions=%dx%dx%d",
+                    "STATIC_ESDF3D_READY build_ms=%.2f voxels=%zu "
+                    "dimensions=%dx%dx%d proactive_extension=%s "
+                    "base_generation=%" PRIu64,
                     field.stats().duration_ms, field.stats().voxel_count,
                     local_bounds.width_cells, local_bounds.height_cells,
-                    local_bounds.depth_cells);
+                    local_bounds.depth_cells, proactive_roi_refresh ? "true" : "false",
+                    proactive_roi_refresh ? roi_refresh_generation : 0U);
       }
       const mppi::EsdfUploadResult upload = engine_->updateEsdf(mppi::EsdfSnapshot{
           static_esdf_grid_, *static_esdf_3d_, static_occupancy_3d_->fingerprint()});
       if (!upload.accepted) {
         continue;
       }
+      if (proactive_roi_refresh) {
+        static_roi_refresh_completed_generation_ = roi_refresh_generation;
+      }
       ProductionMppiPreparedEsdf prepared;
+      if (proactive_roi_refresh && active_prepared) {
+        prepared = *active_prepared;
+      }
       prepared.producer_instance_id = snapshot->producer_instance_id;
       prepared.revision = static_occupancy_3d_->fingerprint();
       prepared.source_stamp_ns = source_stamp_ns;
       prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
+      prepared.build_ms = static_build_ms;
       prepared.upload_ms = upload.upload_ms;
       prepared.grid = static_esdf_grid_;
       prepared.distances_m = static_esdf_3d_;
+      prepared.static_route_extension_request = proactive_roi_refresh;
+      prepared.static_route_extension_base_generation =
+          proactive_roi_refresh ? roi_refresh_generation : 0U;
       {
         const std::scoped_lock lock{esdf_state_mutex_};
         prepared_esdf_ = prepared;

@@ -275,6 +275,16 @@ ProductionMppiNode::ProductionMppiNode()
   active_guide_config_.minimum_remaining_m = use_static_map_
                                                  ? static_guide_replan_remaining_m
                                                  : no_static_guide_replan_remaining_m;
+  static_route_extension_config_.minimum_remaining_m = static_guide_replan_remaining_m;
+  static_route_extension_config_.latency_margin_s =
+      declare_parameter<double>("static_global_guide_extension_latency_margin_s", 0.5);
+  static_route_extension_config_.maximum_latency_s =
+      declare_parameter<double>("static_global_guide_extension_maximum_latency_s", 8.0);
+  static_route_extension_config_.minimum_retry_progress_m =
+      declare_parameter<double>("static_global_guide_extension_retry_progress_m", 15.0);
+  static_route_extension_config_.minimum_endpoint_improvement_m =
+      declare_parameter<double>(
+          "static_global_guide_extension_minimum_endpoint_improvement_m", 5.0);
   active_guide_config_.maximum_cross_track_m =
       declare_parameter<double>("global_guide_maximum_cross_track_m", 15.0);
   active_guide_config_.velocity_heading_low_speed_mps =

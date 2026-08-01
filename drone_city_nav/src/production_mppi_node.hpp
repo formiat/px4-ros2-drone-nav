@@ -18,6 +18,7 @@
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/path.hpp>
@@ -56,6 +57,7 @@ struct ProductionMppiPreparedEsdf {
   double build_ms{0.0};
   double conversion_ms{0.0};
   double upload_ms{0.0};
+  double global_guide_search_ms{0.0};
   mppi::EsdfGrid grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
@@ -94,6 +96,8 @@ struct ProductionMppiPreparedEsdf {
   LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
   std::size_t lattice_continuation_attempt{0U};
   bool lattice_search_session_resumed{false};
+  bool static_route_extension_request{false};
+  std::uint64_t static_route_extension_base_generation{0U};
 };
 
 struct ProductionMppiStability {
@@ -207,6 +211,10 @@ private:
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void requestGuideRelease(GlobalGuideReleaseReason reason) noexcept;
+  void maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
+                                        const ProductionMppiNavigation& navigation,
+                                        const GlobalGuideProjection& route_projection);
+  void finishStaticRouteExtension(std::uint64_t base_generation) noexcept;
   void esdfWorker(std::stop_token stop_token);
   void guideWorker(std::stop_token stop_token);
   void diagnosticsWorker(std::stop_token stop_token);
@@ -276,6 +284,7 @@ private:
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
   RouteEnvelopeConfig route_envelope_config_{};
+  StaticRouteExtensionConfig static_route_extension_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
@@ -284,6 +293,13 @@ private:
   std::uint64_t static_route_generation_{0U};
   std::uint64_t tracked_route_generation_{0U};
   double tracked_route_station_m_{0.0};
+  std::mutex static_route_extension_mutex_;
+  bool static_route_extension_request_in_flight_{false};
+  std::uint64_t static_route_extension_in_flight_generation_{0U};
+  std::uint64_t static_route_extension_last_request_generation_{0U};
+  double static_route_extension_last_request_station_m_{0.0};
+  std::atomic<std::uint64_t> static_roi_refresh_request_generation_{0U};
+  std::uint64_t static_roi_refresh_completed_generation_{0U};
 
   mutable std::mutex input_mutex_;
   ProductionMppiNavigation navigation_{};

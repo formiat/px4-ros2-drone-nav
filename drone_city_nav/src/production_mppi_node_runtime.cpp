@@ -108,6 +108,81 @@ projectRouteTo2D(const std::span<const RouteSample3D> route) {
 
 } // namespace
 
+void ProductionMppiNode::maybeRequestStaticRouteExtension(
+    const ProductionMppiPreparedEsdf& esdf, const ProductionMppiNavigation& navigation,
+    const GlobalGuideProjection& route_projection) {
+  if (!esdf.route_3d || esdf.route_3d->size() < 2U ||
+      esdf.global_guide_generation == 0U) {
+    return;
+  }
+  const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
+  const Point3 next_planning_goal = staticRoutePlanningGoal(
+      current, mission_goal_, lattice_3d_config_.planning_goal_distance_m);
+
+  std::scoped_lock extension_lock{static_route_extension_mutex_};
+  const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
+      static_route_extension_config_,
+      StaticRouteExtensionObservation{
+          .route_generation = esdf.global_guide_generation,
+          .route_station_m = route_projection.station_m,
+          .route_remaining_m = route_projection.remaining_m,
+          .horizontal_speed_mps = std::hypot(navigation.state.vx, navigation.state.vy),
+          .guide_search_latency_ms = esdf.global_guide_search_ms,
+          .esdf_build_latency_ms = esdf.build_ms,
+          .route_reaches_mission_goal = esdf.global_guide_reaches_mission_goal,
+          .next_planning_goal_inside_esdf =
+              staticRoutePointInsideEsdf(esdf.grid, next_planning_goal),
+          .request_in_flight = static_route_extension_request_in_flight_,
+          .last_request_generation = static_route_extension_last_request_generation_,
+          .last_request_station_m = static_route_extension_last_request_station_m_,
+      });
+  if (!decision.request_extension && !decision.request_roi_refresh) {
+    return;
+  }
+
+  if (decision.request_extension) {
+    auto request = std::make_shared<ProductionMppiPreparedEsdf>(esdf);
+    request->static_route_extension_request = true;
+    request->static_route_extension_base_generation = esdf.global_guide_generation;
+    {
+      const std::scoped_lock queue_lock{guide_queue_mutex_};
+      if (pending_guide_world_) {
+        return;
+      }
+      pending_guide_world_ = std::move(request);
+    }
+    guide_queue_condition_.notify_all();
+  } else {
+    static_roi_refresh_request_generation_.store(esdf.global_guide_generation,
+                                                 std::memory_order_release);
+  }
+
+  static_route_extension_request_in_flight_ = true;
+  static_route_extension_in_flight_generation_ = esdf.global_guide_generation;
+  static_route_extension_last_request_generation_ = esdf.global_guide_generation;
+  static_route_extension_last_request_station_m_ = route_projection.station_m;
+  RCLCPP_INFO(get_logger(),
+              "STATIC_ROUTE_EXTENSION_REQUEST generation=%" PRIu64
+              " station_m=%.2f remaining_m=%.2f mode=%s extension_trigger_m=%.2f "
+              "roi_trigger_m=%.2f search_latency_ms=%.2f build_latency_ms=%.2f",
+              esdf.global_guide_generation, route_projection.station_m,
+              route_projection.remaining_m,
+              decision.request_roi_refresh ? "roi_refresh" : "resident_esdf",
+              decision.extension_trigger_remaining_m,
+              decision.roi_refresh_trigger_remaining_m, esdf.global_guide_search_ms,
+              esdf.build_ms);
+}
+
+void ProductionMppiNode::finishStaticRouteExtension(
+    const std::uint64_t base_generation) noexcept {
+  const std::scoped_lock lock{static_route_extension_mutex_};
+  if (static_route_extension_request_in_flight_ &&
+      static_route_extension_in_flight_generation_ == base_generation) {
+    static_route_extension_request_in_flight_ = false;
+    static_route_extension_in_flight_generation_ = 0U;
+  }
+}
+
 void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
   std::size_t active_guide_expansions = 0U;
   double active_guide_cost = 0.0;
@@ -156,24 +231,36 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                                    mission_goal_.y - navigation.state.y,
                                    mission_goal_.z - navigation.state.z};
       }
+      const auto search_started = std::chrono::steady_clock::now();
       const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
           world->grid, *world->distances_m,
           Point3{navigation.state.x, navigation.state.y, navigation.state.z},
           preferred_direction, mission_goal_, lattice_3d_config_);
+      const double search_ms = std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - search_started)
+                                   .count();
       ProductionMppiPreparedEsdf prepared = *world;
+      prepared.global_guide_search_ms = search_ms;
       prepared.lattice_search_performed = true;
       prepared.lattice_executable =
           lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
           lattice.status == Lattice3DStatus::kViableFrontier;
       prepared.global_guide_expansions = lattice.expansions;
-      prepared.global_guide_generation = ++static_route_generation_;
       prepared.global_guide_reaches_mission_goal = lattice.reached_mission_goal;
+      StaticRouteCandidateValidation candidate_validation{
+          .status = StaticRouteCandidateStatus::kEmpty};
       if (prepared.lattice_executable) {
         auto route = std::make_shared<const std::vector<RouteSample3D>>(lattice.route);
+        candidate_validation = validateStaticRouteCandidate(
+            world->route_3d ? std::span<const RouteSample3D>{*world->route_3d}
+                            : std::span<const RouteSample3D>{},
+            *route, world->grid, *world->distances_m, mission_goal_,
+            static_route_extension_config_.minimum_endpoint_improvement_m,
+            lattice.reached_mission_goal);
+        const std::uint64_t candidate_generation = static_route_generation_ + 1U;
         auto spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
             analyzeConstrainedRouteSpans(*route, world->grid, *world->distances_m,
-                                         prepared.global_guide_generation,
-                                         route_envelope_config_));
+                                         candidate_generation, route_envelope_config_));
         prepared.route_3d = route;
         prepared.route_2d_projection = projectRouteTo2D(*route);
         prepared.constrained_spans = spans;
@@ -187,20 +274,40 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       bool activated = false;
       {
         const std::scoped_lock lock{esdf_state_mutex_};
-        if (prepared_esdf_ && prepared_esdf_->revision == prepared.revision) {
+        const bool generation_matches =
+            !world->static_route_extension_request ||
+            (prepared_esdf_ && prepared_esdf_->global_guide_generation ==
+                                   world->static_route_extension_base_generation);
+        if (candidate_validation.accepted && prepared_esdf_ &&
+            prepared_esdf_->revision == prepared.revision && generation_matches) {
+          prepared.global_guide_generation = ++static_route_generation_;
+          prepared.static_route_extension_request = false;
+          prepared.static_route_extension_base_generation = 0U;
           prepared_esdf_ = prepared;
           activated = true;
         }
       }
-      RCLCPP_INFO(get_logger(),
-                  "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
-                  " activated=%s status=%s points=%zu samples=%zu spans=%zu "
-                  "expansions=%zu risk_stage=%u",
-                  prepared.revision, activated ? "true" : "false",
-                  lattice3DStatusName(lattice.status), lattice.points.size(),
-                  lattice.route.size(),
-                  prepared.constrained_spans ? prepared.constrained_spans->size() : 0U,
-                  lattice.expansions, static_cast<unsigned>(lattice.risk_stage));
+      RCLCPP_INFO(
+          get_logger(),
+          "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
+          " activated=%s extension=%s base_generation=%" PRIu64
+          " validation=%.*s endpoint_improvement_m=%.2f status=%s "
+          "points=%zu samples=%zu spans=%zu expansions=%zu "
+          "risk_stage=%u search_ms=%.2f",
+          prepared.revision, activated ? "true" : "false",
+          world->static_route_extension_request ? "true" : "false",
+          world->static_route_extension_base_generation,
+          static_cast<int>(
+              staticRouteCandidateStatusName(candidate_validation.status).size()),
+          staticRouteCandidateStatusName(candidate_validation.status).data(),
+          candidate_validation.endpoint_improvement_m,
+          lattice3DStatusName(lattice.status), lattice.points.size(),
+          lattice.route.size(),
+          prepared.constrained_spans ? prepared.constrained_spans->size() : 0U,
+          lattice.expansions, static_cast<unsigned>(lattice.risk_stage), search_ms);
+      if (world->static_route_extension_request) {
+        finishStaticRouteExtension(world->static_route_extension_base_generation);
+      }
       world.reset();
       search_navigation.reset();
       continuation_attempt = 0U;
@@ -661,6 +768,9 @@ void ProductionMppiNode::planningTick() {
         std::max(0.0, route_projection.station_m + route_projection.remaining_m -
                           tracked_route_station_m_);
   }
+  if (use_static_map_ && route_projection.valid) {
+    maybeRequestStaticRouteExtension(*esdf, navigation, route_projection);
+  }
   const MissionGoalCaptureResult goal_capture =
       mission_goal_capture_latch_
           ? mission_goal_capture_latch_->update(MissionGoalCaptureObservation{
@@ -923,6 +1033,13 @@ void ProductionMppiNode::planningTick() {
 
 void ProductionMppiNode::requestGuideRelease(
     const GlobalGuideReleaseReason reason) noexcept {
+  if (use_static_map_) {
+    const std::scoped_lock lock{static_route_extension_mutex_};
+    if (deferStaticRouteReleaseDuringExtension(
+            static_route_extension_request_in_flight_, reason)) {
+      return;
+    }
+  }
   guide_release_reason_.store(reason, std::memory_order_relaxed);
   guide_release_generation_.fetch_add(1U, std::memory_order_release);
 }
