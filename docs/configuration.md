@@ -95,6 +95,9 @@ Safety and liveness:
 `world_visualization_node` owns static and raw world debug topics.
 `static_map_visualization_stride_cells` controls only the density of the RViz
 static point cloud. It does not change Occupancy3D or ESDF3D resolution.
+`route_constraint_diagnostics_distance_m` controls how far before entry and
+after exit constrained-route lifecycle diagnostics report approach/departure.
+It is observational and does not alter planning or speed policy.
 `mission_monitor_node` owns mission success and crash metrics.
 `lidar_debug_node` owns snapshot cadence, projection diagnostics, and point
 cloud topics.

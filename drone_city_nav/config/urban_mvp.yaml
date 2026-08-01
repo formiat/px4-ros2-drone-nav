@@ -133,6 +133,7 @@ production_mppi_node:
     static_goal_braking_margin_m: 2.0
     static_curvature_preview_distance_m: 100.0
     constrained_route_speed_limit_mps: 10.0
+    route_constraint_diagnostics_distance_m: 30.0
     maximum_vertical_acceleration_mps2: 4.0
     critical_distance_m: 1.0
     preferred_distance_m: 6.0

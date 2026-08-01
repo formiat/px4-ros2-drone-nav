@@ -129,6 +129,19 @@ void ProductionMppiNode::processDiagnostics(
   const ProductionMppiPredictionError& prediction = snapshot.prediction;
   const MppiLivenessResult& liveness = snapshot.liveness;
   const MppiSpeedPolicyResult& speed_policy = snapshot.speed_policy;
+  const std::span<const RouteSample3D> route =
+      snapshot.route_projection_valid && esdf.route_3d
+          ? std::span<const RouteSample3D>{*esdf.route_3d}
+          : std::span<const RouteSample3D>{};
+  const std::span<const ConstrainedRouteSpan> spans =
+      esdf.constrained_spans
+          ? std::span<const ConstrainedRouteSpan>{*esdf.constrained_spans}
+          : std::span<const ConstrainedRouteSpan>{};
+  const ConstrainedRouteObservation route_constraint = observeConstrainedRoute(
+      route, spans, esdf.global_guide_generation, snapshot.route_station_m,
+      Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
+      Vec3{input.initial_state.vx, input.initial_state.vy, input.initial_state.vz},
+      route_envelope_config_, route_constraint_diagnostics_distance_m_);
   const ProductionMppiPlanningState planning_state = snapshot.planning_state;
   const std::string_view target_source = snapshot.target_source;
   const auto rviz_started = std::chrono::steady_clock::now();
@@ -210,6 +223,58 @@ void ProductionMppiNode::processDiagnostics(
                 snapshot.goal_capture.horizontal_distance_m);
   }
 
+  const bool constraint_transition =
+      !last_route_constraint_observation_.has_value() ||
+      last_route_constraint_observation_->route_generation !=
+          route_constraint.route_generation ||
+      last_route_constraint_observation_->phase != route_constraint.phase ||
+      last_route_constraint_observation_->span_available !=
+          route_constraint.span_available ||
+      (route_constraint.span_available &&
+       last_route_constraint_observation_->span_index != route_constraint.span_index);
+  const bool constraint_event_relevant =
+      route_constraint.span_available ||
+      (last_route_constraint_observation_.has_value() &&
+       last_route_constraint_observation_->span_available);
+  if (constraint_transition && constraint_event_relevant) {
+    RCLCPP_INFO(
+        get_logger(),
+        "ROUTE_CONSTRAINT_EVENT route_generation=%" PRIu64
+        " phase=%s span_index=%zd span_count=%zu station_m=%.2f "
+        "span_station_m=(%.2f,%.2f) distance_m=(entry:%.2f,exit:%.2f) "
+        "entry=(%.2f,%.2f,%.2f) exit=(%.2f,%.2f,%.2f) "
+        "z=(actual:%.2f,reference:%.2f,min:%.2f,max:%.2f,error:%.2f,ok:%s) "
+        "free_space=(left:%.2f,right:%.2f,lateral_width:%.2f,vertical_height:%.2f) "
+        "constraint=(lateral:%s,vertical:%s) "
+        "cross_track_m=%.2f speed_mps=%.2f vz_mps=%.2f reference_speed_mps=%.2f "
+        "execution_mode=%s execution_reason=%s",
+        route_constraint.route_generation,
+        constrainedRoutePhaseName(route_constraint.phase).data(),
+        route_constraint.span_available
+            ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
+            : static_cast<std::ptrdiff_t>(-1),
+        route_constraint.span_count, route_constraint.station_m,
+        route_constraint.begin_station_m, route_constraint.end_station_m,
+        route_constraint.distance_to_entry_m, route_constraint.distance_to_exit_m,
+        route_constraint.entry_position.x, route_constraint.entry_position.y,
+        route_constraint.entry_position.z, route_constraint.exit_position.x,
+        route_constraint.exit_position.y, route_constraint.exit_position.z,
+        input.initial_state.z, route_constraint.reference_z_m, route_constraint.min_z_m,
+        route_constraint.max_z_m, route_constraint.vertical_error_m,
+        route_constraint.within_vertical_window ? "true" : "false",
+        route_constraint.lateral_free_left_m, route_constraint.lateral_free_right_m,
+        route_constraint.lateral_width_m, route_constraint.vertical_height_m,
+        route_constraint.lateral_constrained ? "true" : "false",
+        route_constraint.vertical_constrained ? "true" : "false",
+        route_constraint.cross_track_error_m,
+        route_constraint.actual_horizontal_speed_mps,
+        route_constraint.actual_vertical_speed_mps,
+        route_constraint.reference_speed_mps,
+        productionMppiExecutionModeName(snapshot.execution.mode),
+        productionMppiExecutionReasonName(snapshot.execution.reason));
+  }
+  last_route_constraint_observation_ = route_constraint;
+
   std::ostringstream line;
   line << std::fixed << std::setprecision(3)
        << "PRODUCTION_MPPI_TICK tick=" << snapshot.tick_sequence
@@ -243,8 +308,30 @@ void ProductionMppiNode::processDiagnostics(
        << " guide_risk=" << globalGuideRiskTierName(esdf.global_guide_risk)
        << " guide_acceptance="
        << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason)
-       << " guide_station_m=" << esdf.global_guide_projection.station_m
-       << " guide_remaining_m=" << esdf.global_guide_projection.remaining_m
+       << " guide_station_m=" << snapshot.route_station_m
+       << " guide_remaining_m=" << snapshot.route_remaining_m
+       << " route_constraint_phase="
+       << constrainedRoutePhaseName(route_constraint.phase)
+       << " route_constraint_span_index="
+       << (route_constraint.span_available
+               ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
+               : static_cast<std::ptrdiff_t>(-1))
+       << " route_constraint_span_count=" << route_constraint.span_count
+       << " route_constraint_distance_to_entry_m="
+       << route_constraint.distance_to_entry_m
+       << " route_constraint_distance_to_exit_m=" << route_constraint.distance_to_exit_m
+       << " route_constraint_reference_z_m=" << route_constraint.reference_z_m
+       << " route_constraint_vertical_error_m=" << route_constraint.vertical_error_m
+       << " route_constraint_lateral_width_m=" << route_constraint.lateral_width_m
+       << " route_constraint_vertical_height_m=" << route_constraint.vertical_height_m
+       << " route_constraint_lateral="
+       << (route_constraint.lateral_constrained ? "true" : "false")
+       << " route_constraint_vertical="
+       << (route_constraint.vertical_constrained ? "true" : "false")
+       << " route_constraint_cross_track_error_m="
+       << route_constraint.cross_track_error_m
+       << " route_constraint_vertical_window_ok="
+       << (route_constraint.within_vertical_window ? "true" : "false")
        << " guide_progress_action="
        << globalGuideProgressActionName(snapshot.guide_progress.action)
        << " guide_local_reseed_generation="
@@ -382,9 +469,55 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"guide_risk\":\"" << globalGuideRiskTierName(esdf.global_guide_risk)
         << '"' << ",\"guide_acceptance\":\""
         << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason) << '"'
-        << ",\"guide_station_m\":" << esdf.global_guide_projection.station_m
-        << ",\"guide_remaining_m\":" << esdf.global_guide_projection.remaining_m
-        << ",\"guide_progress_action\":\""
+        << ",\"guide_station_m\":" << snapshot.route_station_m
+        << ",\"guide_remaining_m\":" << snapshot.route_remaining_m
+        << ",\"route_constraint_phase\":\""
+        << constrainedRoutePhaseName(route_constraint.phase) << '"'
+        << ",\"route_constraint_span_available\":"
+        << (route_constraint.span_available ? "true" : "false")
+        << ",\"route_constraint_span_index\":"
+        << (route_constraint.span_available
+                ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
+                : static_cast<std::ptrdiff_t>(-1))
+        << ",\"route_constraint_span_count\":" << route_constraint.span_count
+        << ",\"route_constraint_station_m\":" << route_constraint.station_m
+        << ",\"route_constraint_begin_station_m\":" << route_constraint.begin_station_m
+        << ",\"route_constraint_end_station_m\":" << route_constraint.end_station_m
+        << ",\"route_constraint_distance_to_entry_m\":"
+        << route_constraint.distance_to_entry_m
+        << ",\"route_constraint_distance_to_exit_m\":"
+        << route_constraint.distance_to_exit_m
+        << ",\"route_constraint_entry_x_m\":" << route_constraint.entry_position.x
+        << ",\"route_constraint_entry_y_m\":" << route_constraint.entry_position.y
+        << ",\"route_constraint_entry_z_m\":" << route_constraint.entry_position.z
+        << ",\"route_constraint_exit_x_m\":" << route_constraint.exit_position.x
+        << ",\"route_constraint_exit_y_m\":" << route_constraint.exit_position.y
+        << ",\"route_constraint_exit_z_m\":" << route_constraint.exit_position.z
+        << ",\"route_constraint_reference_z_m\":" << route_constraint.reference_z_m
+        << ",\"route_constraint_min_z_m\":" << route_constraint.min_z_m
+        << ",\"route_constraint_max_z_m\":" << route_constraint.max_z_m
+        << ",\"route_constraint_lateral_free_left_m\":"
+        << route_constraint.lateral_free_left_m
+        << ",\"route_constraint_lateral_free_right_m\":"
+        << route_constraint.lateral_free_right_m
+        << ",\"route_constraint_lateral_width_m\":" << route_constraint.lateral_width_m
+        << ",\"route_constraint_vertical_height_m\":"
+        << route_constraint.vertical_height_m << ",\"route_constraint_lateral\":"
+        << (route_constraint.lateral_constrained ? "true" : "false")
+        << ",\"route_constraint_vertical\":"
+        << (route_constraint.vertical_constrained ? "true" : "false")
+        << ",\"route_constraint_vertical_error_m\":"
+        << route_constraint.vertical_error_m
+        << ",\"route_constraint_cross_track_error_m\":"
+        << route_constraint.cross_track_error_m
+        << ",\"route_constraint_vertical_window_ok\":"
+        << (route_constraint.within_vertical_window ? "true" : "false")
+        << ",\"route_constraint_reference_speed_mps\":"
+        << route_constraint.reference_speed_mps
+        << ",\"route_constraint_actual_horizontal_speed_mps\":"
+        << route_constraint.actual_horizontal_speed_mps
+        << ",\"route_constraint_actual_vertical_speed_mps\":"
+        << route_constraint.actual_vertical_speed_mps << ",\"guide_progress_action\":\""
         << globalGuideProgressActionName(snapshot.guide_progress.action) << '"'
         << ",\"guide_local_reseed_generation\":"
         << snapshot.guide_progress.local_reseed_generation

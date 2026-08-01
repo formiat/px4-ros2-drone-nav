@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace drone_city_nav {
@@ -42,6 +43,54 @@ struct RouteEnvelopeConfig {
   double unconstrained_speed_mps{20.0};
   double constrained_speed_mps{10.0};
 };
+
+enum class ConstrainedRoutePhase : std::uint8_t {
+  kUnavailable,
+  kUnconstrained,
+  kApproach,
+  kTraversal,
+  kDeparture,
+};
+
+struct ConstrainedRouteObservation {
+  ConstrainedRoutePhase phase{ConstrainedRoutePhase::kUnavailable};
+  std::uint64_t route_generation{0U};
+  std::size_t span_index{0U};
+  std::size_t span_count{0U};
+  bool span_available{false};
+  bool within_vertical_window{false};
+  double station_m{0.0};
+  double begin_station_m{0.0};
+  double end_station_m{0.0};
+  double distance_to_entry_m{0.0};
+  double distance_to_exit_m{0.0};
+  Point3 entry_position{};
+  Point3 exit_position{};
+  double reference_z_m{0.0};
+  double min_z_m{0.0};
+  double max_z_m{0.0};
+  double lateral_free_left_m{0.0};
+  double lateral_free_right_m{0.0};
+  double lateral_width_m{0.0};
+  double vertical_height_m{0.0};
+  double vertical_error_m{0.0};
+  double cross_track_error_m{0.0};
+  double reference_speed_mps{0.0};
+  double actual_horizontal_speed_mps{0.0};
+  double actual_vertical_speed_mps{0.0};
+  bool lateral_constrained{false};
+  bool vertical_constrained{false};
+};
+
+[[nodiscard]] std::string_view
+constrainedRoutePhaseName(ConstrainedRoutePhase phase) noexcept;
+
+[[nodiscard]] ConstrainedRouteObservation
+observeConstrainedRoute(std::span<const RouteSample3D> route,
+                        std::span<const ConstrainedRouteSpan> spans,
+                        std::uint64_t route_generation, double current_station_m,
+                        const Point3& actual_position, const Vec3& actual_velocity,
+                        const RouteEnvelopeConfig& config, double event_distance_m);
 
 [[nodiscard]] std::vector<RouteSample3D> sampleRoute3D(std::span<const Point3> points,
                                                        double sample_step_m,

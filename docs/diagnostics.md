@@ -24,7 +24,7 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 - target source and target position;
 - active guide generation, status, and remaining length;
 - static/no-static speed-policy limits;
-- constrained route span and channel id;
+- constrained-route phase, route generation, and span index;
 - GPU and host stage timings;
 - selected tier and risk exposure;
 - raw and known-solid collision flags;
@@ -85,16 +85,30 @@ horizon, not successful navigation.
 
 ## Constrained Route Diagnostics
 
-Inspect:
+`ROUTE_CONSTRAINT_EVENT` is emitted on observable lifecycle transitions:
 
-- active constrained route span and channel id;
-- approach/traversal/departure station;
-- vertical and lateral errors;
-- capture and retention counters;
-- active altitude and speed limits;
-- actual channel entry and minimum margins from the mission monitor.
+```text
+approach -> traversal -> departure -> unconstrained
+```
 
-Route activation is not proof that the drone entered the channel.
+The event and `mppi_ticks.jsonl` expose:
+
+- route generation plus constrained-span index and count;
+- current, entry, and exit route stations;
+- signed distance to entry and exit;
+- entry and exit positions;
+- actual, reference, minimum, and maximum Z;
+- free distance left/right plus lateral width and vertical height;
+- whether lateral clearance, vertical clearance, or both caused classification;
+- vertical-window validity, vertical error, and horizontal cross-track error;
+- actual horizontal/vertical speed and constrained reference speed;
+- execution mode and reason at every lifecycle transition.
+
+The architecture intentionally has no semantic channel id: constrained spans
+are inferred from physical 3D occupancy and are identified by
+`route_generation + span_index`. Entry and exit coordinates provide stable
+spatial correlation with the canonical world. `approach` is not proof of entry;
+only `traversal` means the measured route station crossed the span boundary.
 
 ## Offboard Diagnostics
 

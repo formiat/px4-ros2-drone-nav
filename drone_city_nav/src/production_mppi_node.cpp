@@ -80,6 +80,8 @@ ProductionMppiNode::ProductionMppiNode()
       static_cast<std::size_t>(risk_recovery_stable_cycles);
   constrained_route_speed_limit_mps_ = static_cast<float>(
       declare_parameter<double>("constrained_route_speed_limit_mps", 10.0));
+  route_constraint_diagnostics_distance_m_ =
+      declare_parameter<double>("route_constraint_diagnostics_distance_m", 30.0);
   target_mode_ = declare_parameter<std::string>("target_mode", "active_route_guide");
   frame_id_ = declare_parameter<std::string>("frame_id", "map");
   diagnostics_output_dir_ =
@@ -330,6 +332,7 @@ ProductionMppiNode::ProductionMppiNode()
       !(maximum_control_feedback_age_ms_ > 0.0) ||
       !std::isfinite(constrained_route_speed_limit_mps_) ||
       constrained_route_speed_limit_mps_ < 0.0F ||
+      !(route_constraint_diagnostics_distance_m_ >= 0.0) ||
       !(safety_config_.swept_validation_step_m > 0.0) ||
       !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
       !(frontier_blacklist_ttl_s_ > 0.0)) {

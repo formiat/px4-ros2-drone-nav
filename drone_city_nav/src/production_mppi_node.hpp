@@ -174,8 +174,11 @@ struct ProductionMppiDiagnosticsSnapshot {
   double pose_age_ms{0.0};
   double esdf_age_ms{0.0};
   double control_feedback_age_ms{0.0};
+  double route_station_m{0.0};
+  double route_remaining_m{0.0};
   double snapshot_ms{0.0};
   double stability_ms{0.0};
+  bool route_projection_valid{false};
   bool liveness_reseed_requested{false};
   bool pose_predicted{false};
   mppi::RiskTier maximum_eligible_risk_tier{mppi::RiskTier::kPreferred};
@@ -247,12 +250,14 @@ private:
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
   float constrained_route_speed_limit_mps_{10.0F};
+  double route_constraint_diagnostics_distance_m_{30.0};
   std::string frame_id_{"map"};
   std::filesystem::path diagnostics_output_dir_{"log/mppi"};
   std::int64_t rviz_period_ns_{100000000};
   std::int64_t diagnostics_info_period_ns_{200000000};
   std::int64_t last_rviz_stamp_ns_{0};
   std::int64_t last_diagnostics_info_stamp_ns_{0};
+  std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
 
   mppi::BenchmarkConfig mppi_config_{};
   MppiHorizonSafetyConfig safety_config_{};
