@@ -22,7 +22,23 @@
     "y_centers_m": [27.0, 81.0, 135.0, 189.0, 243.0, 297.0, 351.0, 405.0],
     "size_m": [24.0, 24.0, 32.0]
   },
-  "channels": [],
+  "channels": [
+    {
+      "id": "channel_11_19_l",
+      "kind": "l_shaped",
+      "intersection_center_m": [108.0, 162.0],
+      "intersection_size_m": [30.0, 30.0, 32.0],
+      "bridges": [
+        {"id": "west", "center_m": [81.0, 162.0], "size_m": [24.0, 30.0, 32.0], "blocked": true},
+        {"id": "east", "center_m": [135.0, 162.0], "size_m": [24.0, 30.0, 32.0], "blocked": false},
+        {"id": "south", "center_m": [108.0, 135.0], "size_m": [30.0, 24.0, 32.0], "blocked": false},
+        {"id": "north", "center_m": [108.0, 189.0], "size_m": [30.0, 24.0, 32.0], "blocked": true}
+      ],
+      "centerline_m": [[108.0, 135.0, 5.0], [108.0, 162.0, 5.0], [135.0, 162.0, 5.0]],
+      "width_m": 24.0,
+      "height_m": 7.0
+    }
+  ],
   "mission": {
     "start_m": [54.0, 54.0, 0.0],
     "goal_m": [216.0, 378.0, 18.0]

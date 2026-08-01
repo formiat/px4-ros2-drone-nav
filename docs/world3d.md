@@ -11,9 +11,10 @@ source of static geometry. It declares:
 - an optional array of generated air-channel structures;
 - mission start and goal positions.
 
-The current city keeps that optional array empty. It is a clean `5 x 8`
-Manhattan grid containing 40 ordinary buildings and no connector structures,
-openings, channel masses, or lidar occluders.
+The current city contains 40 ordinary buildings plus one horizontal L-shaped
+channel between the buildings surrounding `(108, 162)`. Approaching from the
+mission start, the channel enters from the south and exits to the left in RViz,
+which corresponds to east in map coordinates.
 
 `scripts/generate_canonical_world.py` deterministically emits two committed
 artifacts from that specification:
@@ -37,9 +38,9 @@ Run the generator through the repository container workflow:
 ```
 
 `make test-scripts` regenerates both artifacts in a temporary directory and
-checks byte-for-byte equality with the committed files. It also verifies that
-the current world contains exactly the regular Manhattan buildings and no
-channel or occluder models.
+checks byte-for-byte equality with the committed files. It also verifies the
+L-channel cross-section, orientation, horizontal geometry, and lidar visibility
+contract.
 
 ## Occupancy3D
 
@@ -66,10 +67,8 @@ not rebuilt on every tick.
 
 ## Optional Channel Geometry
 
-The canonical `channels` array can describe physical world construction, but it
-is empty in the current city. A channel identifier, when present in another
-world specification, is a generator identifier rather than a runtime navigation
-event id.
+The canonical `channels` array describes physical world construction. A channel
+identifier is a generator identifier rather than a runtime navigation event id.
 
 ### Straight
 
@@ -80,10 +79,10 @@ free opening around the centerline reference Z.
 ### L-Shaped
 
 The L-shaped channel is one intersection between four neighboring buildings
-plus four bridge volumes. An optional left-turn declaration can use:
+plus four bridge volumes. The current left turn uses:
 
-- open west and south bridges;
-- blocked east and north bridges with physical middle masses;
+- open east and south bridges;
+- blocked west and north bridges with physical middle masses;
 - lower and upper physical masses on every bridge;
 - one lower and one upper physical mass across the central intersection.
 
@@ -138,11 +137,10 @@ No-static mode intentionally remains 2D:
 - it does not identify, infer, or traverse semantic passages;
 - it has no 3D lidar or 3D channel perception.
 
-For world specifications that contain channels, the generated SDF gives their
-lower/upper/middle masses one dedicated visibility flag and adds transparent,
-collisionless lidar occluders across openings. Before each run,
-`scripts/configure_lidar_visibility.py` changes the GPU lidar mask. The current
-city generates none of these models because its `channels` array is empty:
+The generated SDF gives channel lower/upper/middle masses one dedicated
+visibility flag and adds transparent, collisionless lidar occluders across the
+south entrance, central intersection, and east exit. Before each run,
+`scripts/configure_lidar_visibility.py` changes the GPU lidar mask:
 
 - static mode hides both channel masses and no-static occluders from the 2D
   lidar because Occupancy3D is authoritative;

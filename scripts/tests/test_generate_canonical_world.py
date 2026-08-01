@@ -41,9 +41,11 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             }
             self.assertIn("building_001", collision_models)
             self.assertIn("building_040", collision_models)
-            self.assertFalse(
-                any(name.startswith("channel_") for name in collision_models)
-            )
+            self.assertIn("channel_11_19_l_intersection_lower", collision_models)
+            self.assertIn("channel_11_19_l_west_middle", collision_models)
+            self.assertIn("channel_11_19_l_north_middle", collision_models)
+            self.assertNotIn("channel_11_19_l_east_middle", collision_models)
+            self.assertNotIn("channel_11_19_l_south_middle", collision_models)
 
             header_format = "<8sII4f3IQI"
             with occupancy_path.open("rb") as stream:
@@ -56,16 +58,55 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             self.assertEqual((690, 1050, 80), header[7:10])
             self.assertGreater(header[11], 0)
 
-    def test_spec_describes_clean_manhattan_without_channels(self) -> None:
+    def test_spec_describes_one_left_turn_channel(self) -> None:
         with SPEC_PATH.open(encoding="utf-8") as stream:
             spec = json.load(stream)
-        self.assertEqual([], spec["channels"])
         self.assertEqual(5, len(spec["building_grid"]["x_centers_m"]))
         self.assertEqual(8, len(spec["building_grid"]["y_centers_m"]))
+        self.assertEqual(1, len(spec["channels"]))
+        channel = spec["channels"][0]
+        self.assertEqual("channel_11_19_l", channel["id"])
+        self.assertEqual("l_shaped", channel["kind"])
+        self.assertEqual(
+            {"west", "north"},
+            {bridge["id"] for bridge in channel["bridges"] if bridge["blocked"]},
+        )
 
         boxes = generator.physical_boxes(spec)
-        self.assertEqual(40, len(boxes))
-        self.assertTrue(all(box.id.startswith("building_") for box in boxes))
+        self.assertEqual(52, len(boxes))
+        self.assertEqual(
+            40, sum(box.id.startswith("building_") for box in boxes)
+        )
+
+    def test_l_channel_cross_sections_match_left_turn_as_seen_from_start(self) -> None:
+        spec = generator.load_spec(SPEC_PATH)
+        boxes = generator.physical_boxes(spec)
+
+        def occupied(x: float, y: float, z: float) -> bool:
+            return any(
+                abs(x - box.center[0]) < 0.5 * box.size[0]
+                and abs(y - box.center[1]) < 0.5 * box.size[1]
+                and abs(z - box.center[2]) < 0.5 * box.size[2]
+                for box in boxes
+            )
+
+        # RViz left-to-right is descending map X; top-to-bottom is descending map Y.
+        sample_xy = (
+            ((135.0, 189.0), (108.0, 189.0), (81.0, 189.0)),
+            ((135.0, 162.0), (108.0, 162.0), (81.0, 162.0)),
+            ((135.0, 135.0), (108.0, 135.0), (81.0, 135.0)),
+        )
+        self.assertEqual(
+            ((True, True, True), (False, False, True), (True, False, True)),
+            tuple(
+                tuple(occupied(x, y, 5.0) for x, y in row)
+                for row in sample_xy
+            ),
+        )
+        for z in (1.0, 10.0):
+            self.assertTrue(
+                all(occupied(x, y, z) for row in sample_xy for x, y in row)
+            )
 
     def test_committed_artifacts_are_deterministic_and_current(self) -> None:
         spec = generator.load_spec(SPEC_PATH)

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -13,6 +14,7 @@ WRAPPER_SDF = REPO_ROOT / "drone_city_nav/models/x500_lidar_2d/model.sdf"
 LIDAR_SDF = REPO_ROOT / "drone_city_nav/models/lidar_2d_v2/model.sdf"
 NAV_CONFIG = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
 WORLD_SDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.sdf"
+WORLD_SPEC = REPO_ROOT / "drone_city_nav/worlds/canonical_city.world3d.json"
 
 GZ_VISIBILITY_ALL = 0x0FFFFFFF
 STATIC_CHANNEL_MASS_VISIBILITY_FLAG = 0x08000000
@@ -85,7 +87,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
             f"lidar model must not own drone visibility visuals: {sorted(visuals)}",
         )
 
-    def test_current_world_contains_no_channel_masses_or_occluders(self) -> None:
+    def test_static_lidar_default_excludes_channel_masses_and_occluders(self) -> None:
         lidar_root = parse_sdf(LIDAR_SDF)
         world_root = parse_sdf(WORLD_SDF)
         sensor = next(
@@ -104,13 +106,43 @@ class DroneModelSdfContractTest(unittest.TestCase):
             if int(visual.findtext("visibility_flags", "0"))
             & STATIC_CHANNEL_MASS_VISIBILITY_FLAG
         ]
-        self.assertEqual([], flagged_visuals)
+        self.assertGreater(len(flagged_visuals), 0)
+        for visual in flagged_visuals:
+            self.assertEqual(
+                STATIC_CHANNEL_MASS_VISIBILITY_FLAG,
+                int(visual.findtext("visibility_flags", "")),
+            )
+            self.assertEqual(0, lidar_mask & STATIC_CHANNEL_MASS_VISIBILITY_FLAG)
+
+    def test_l_channel_has_collisionless_no_static_lidar_occluders(self) -> None:
+        world_root = parse_sdf(WORLD_SDF)
+        spec = json.loads(WORLD_SPEC.read_text(encoding="utf-8"))
+        channel = spec["channels"][0]
+        expected_names = {
+            f"{channel['id']}_intersection_no_static_occluder",
+            f"{channel['id']}_east_no_static_occluder",
+            f"{channel['id']}_south_no_static_occluder",
+        }
         occluder_models = {
-            model.attrib["name"]
+            model.attrib["name"]: model
             for model in world_root.iter("model")
             if model.attrib.get("name", "").endswith("_no_static_occluder")
         }
-        self.assertEqual(set(), occluder_models)
+        self.assertEqual(expected_names, set(occluder_models))
+        for model_name in expected_names:
+            with self.subTest(occluder=model_name):
+                occluder = occluder_models[model_name].find(
+                    "./link[@name='no_static_lidar_occluder']"
+                )
+                self.assertIsNotNone(occluder)
+                self.assertIsNone(occluder.find("collision"))
+                visual = occluder.find("visual")
+                self.assertIsNotNone(visual)
+                self.assertEqual("0.999", visual.findtext("transparency"))
+                self.assertEqual(
+                    NO_STATIC_OCCLUDER_VISIBILITY_FLAG,
+                    int(visual.findtext("visibility_flags", "")),
+                )
 
     def test_lidar_sensor_pose_matches_configured_full_extrinsic(self) -> None:
         wrapper_root = parse_sdf(WRAPPER_SDF)
