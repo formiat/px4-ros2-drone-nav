@@ -58,7 +58,9 @@ RViz markers.
 - Raw occupied cells are the merged planner evidence.
 - Static points are a downsampled visualization generated from canonical
   Occupancy3D. The default four-cell stride keeps RViz responsive while the
-  planner continues using the full 0.5 m map.
+  planner continues using the full 0.5 m map. A deterministic muted eight-color
+  palette separates neighboring city blocks without connected-component or
+  adjacency analysis. The translucent square rendering is visualization-only.
 
 The static 3D cloud applies the same debug-only Z sign compensation as the
 other navigation markers before the legacy `gazebo_map -> map` visualization

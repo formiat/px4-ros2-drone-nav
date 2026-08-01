@@ -59,5 +59,28 @@ TEST(StaticMapDebug3D, CompensatesGazeboAlignedVisualizationZ) {
   EXPECT_FLOAT_EQ(point[2], -0.75F);
 }
 
+TEST(StaticMapDebug3D, PublishesStableMutedBuildingColors) {
+  OccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 0.5, 170, 54, 1}};
+  grid.setOccupied(GridIndex3D{53, 53, 0});
+  grid.setOccupied(GridIndex3D{55, 53, 0});
+  grid.setOccupied(GridIndex3D{161, 53, 0});
+
+  const sensor_msgs::msg::PointCloud2 cloud =
+      staticMapPointCloud3D(grid, StaticMapDebugConfig{header(), 1U});
+
+  ASSERT_EQ(cloud.width, 3U);
+  ASSERT_EQ(cloud.fields.size(), 4U);
+  EXPECT_EQ(cloud.fields[3U].name, "rgb");
+  EXPECT_EQ(cloud.fields[3U].datatype, sensor_msgs::msg::PointField::UINT32);
+  std::array<std::uint32_t, 3U> colors{};
+  for (std::size_t index = 0U; index < colors.size(); ++index) {
+    std::memcpy(&colors.at(index),
+                &cloud.data[index * static_cast<std::size_t>(cloud.point_step) + 12U],
+                sizeof(colors.at(index)));
+  }
+  EXPECT_EQ(colors[0U], colors[1U]);
+  EXPECT_NE(colors[1U], colors[2U]);
+}
+
 } // namespace
 } // namespace drone_city_nav
