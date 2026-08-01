@@ -78,9 +78,8 @@ layers represent different lifecycle stages.
 
 - A short blue horizon is expected; MPPI executes receding horizons.
 - A distant global guide is not the command currently sent to PX4.
-- Static air channels are free volumes in Occupancy3D and physical Gazebo space;
-  constrained samples are inferred from route clearance and have no legacy
-  passage marker or semantic channel id.
+- The current static city contains no authored air channels or passage markers;
+  constrained samples, if any, are inferred only from route clearance.
 - RViz path publication can be throttled below MPPI tick rate.
 - A follow-camera failure is a visualization problem unless vehicle state or
   control diagnostics are also stale.

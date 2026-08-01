@@ -1,4 +1,4 @@
-# Canonical 3D World And Air Channels
+# Canonical 3D World
 
 ## Source Of Truth
 
@@ -8,8 +8,12 @@ source of static geometry. It declares:
 - the `map` frame and the map-to-SDF coordinate transform;
 - Occupancy3D origin, dimensions, resolution, and chunk size;
 - ground and regular building geometry;
-- horizontal straight and L-shaped air channels;
+- an optional array of generated air-channel structures;
 - mission start and goal positions.
+
+The current city keeps that optional array empty. It is a clean `5 x 8`
+Manhattan grid containing 40 ordinary buildings and no connector structures,
+openings, channel masses, or lidar occluders.
 
 `scripts/generate_canonical_world.py` deterministically emits two committed
 artifacts from that specification:
@@ -33,9 +37,9 @@ Run the generator through the repository container workflow:
 ```
 
 `make test-scripts` regenerates both artifacts in a temporary directory and
-checks byte-for-byte equality with the committed files. It also verifies the
-L-channel cross-sections, horizontal channel geometry, and lidar visibility
-contracts.
+checks byte-for-byte equality with the committed files. It also verifies that
+the current world contains exactly the regular Manhattan buildings and no
+channel or occluder models.
 
 ## Occupancy3D
 
@@ -60,10 +64,12 @@ Around the current vehicle-to-planning-goal region it materializes an immutable
 local dense ESDF3D and uploads that field to MPPI. The full global 3D array is
 not rebuilt on every tick.
 
-## Channel Geometry
+## Optional Channel Geometry
 
-The canonical `channels` array describes physical world construction. A channel
-identifier is a generator identifier, not a runtime navigation event id.
+The canonical `channels` array can describe physical world construction, but it
+is empty in the current city. A channel identifier, when present in another
+world specification, is a generator identifier rather than a runtime navigation
+event id.
 
 ### Straight
 
@@ -74,7 +80,7 @@ free opening around the centerline reference Z.
 ### L-Shaped
 
 The L-shaped channel is one intersection between four neighboring buildings
-plus four bridge volumes. The current left-turn channel has:
+plus four bridge volumes. An optional left-turn declaration can use:
 
 - open west and south bridges;
 - blocked east and north bridges with physical middle masses;
@@ -132,10 +138,11 @@ No-static mode intentionally remains 2D:
 - it does not identify, infer, or traverse semantic passages;
 - it has no 3D lidar or 3D channel perception.
 
-The generated SDF gives channel lower/upper/middle masses one dedicated
-visibility flag. It also adds transparent, collisionless lidar occluder visuals
-across every opening. Before each run,
-`scripts/configure_lidar_visibility.py` changes the GPU lidar mask:
+For world specifications that contain channels, the generated SDF gives their
+lower/upper/middle masses one dedicated visibility flag and adds transparent,
+collisionless lidar occluders across openings. Before each run,
+`scripts/configure_lidar_visibility.py` changes the GPU lidar mask. The current
+city generates none of these models because its `channels` array is empty:
 
 - static mode hides both channel masses and no-static occluders from the 2D
   lidar because Occupancy3D is authoritative;
@@ -161,12 +168,13 @@ publish legacy passage markers.
 
 ## Change Checklist
 
-When changing static geometry or channels:
+When changing static geometry or optional channels:
 
 1. Edit only `canonical_city.world3d.json`.
 2. Regenerate both committed artifacts.
 3. Run `make test-scripts` and `make quality` in the container.
 4. Check Occupancy3D points against Gazebo geometry in RViz.
-5. Verify static route Z and constrained-span diagnostics through the changed
-   channel.
-6. Verify no-static lidar sees the opening as blocked and routes around it.
+5. If channels are present, verify static route Z and constrained-span
+   diagnostics through each changed channel.
+6. If channels are present, verify no-static lidar sees each opening as blocked
+   and routes around it.
