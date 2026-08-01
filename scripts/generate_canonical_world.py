@@ -27,6 +27,8 @@ class Box:
     size: tuple[float, float, float]
     color: tuple[float, float, float, float] = (0.48, 0.50, 0.53, 1.0)
     visibility_flags: int | None = None
+    map_rotation_rpy: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    sdf_rotation_rpy: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,9 +48,6 @@ def load_spec(path: Path) -> dict:
 
 
 def channel_boxes(channel: dict) -> list[Box]:
-    center_x, center_y = map(float, channel["structure_center_m"])
-    size_x, size_y, size_z = map(float, channel["structure_size_m"])
-    width = float(channel["width_m"])
     height = float(channel["height_m"])
     points = [tuple(map(float, point)) for point in channel["centerline_m"]]
     kind = channel["kind"]
@@ -67,47 +66,106 @@ def channel_boxes(channel: dict) -> list[Box]:
         ))
 
     if kind == "straight":
+        center_x, center_y = map(float, channel["structure_center_m"])
+        size_x, size_y, size_z = map(float, channel["structure_size_m"])
         z_reference = points[len(points) // 2][2]
         opening_min = z_reference - 0.5 * height
         opening_max = z_reference + 0.5 * height
         append_box("lower", center_x, center_y, 0.0, opening_min, size_x, size_y)
         append_box("upper", center_x, center_y, opening_max, size_z, size_x, size_y)
     elif kind == "l_shaped":
+        center_x, center_y = map(float, channel["intersection_center_m"])
+        size_x, size_y, size_z = map(float, channel["intersection_size_m"])
         z_reference = points[1][2]
         opening_min = z_reference - 0.5 * height
         opening_max = z_reference + 0.5 * height
-        append_box("lower", center_x, center_y, 0.0, opening_min, size_x, size_y)
-        append_box("upper", center_x, center_y, opening_max, size_z, size_x, size_y)
-        x_min, x_max = center_x - 0.5 * size_x, center_x + 0.5 * size_x
-        y_min, y_max = center_y - 0.5 * size_y, center_y + 0.5 * size_y
-        half = 0.5 * width
-        corner_x, corner_y = points[1][0], points[1][1]
-        append_box("middle_west", 0.5 * (x_min + corner_x - half), center_y,
-                   opening_min, opening_max, corner_x - half - x_min, size_y)
-        append_box("middle_southeast", 0.5 * (corner_x + half + x_max),
-                   0.5 * (y_min + corner_y - half), opening_min, opening_max,
-                   x_max - corner_x - half, corner_y - half - y_min)
-        append_box("middle_north", 0.5 * (corner_x + half + x_max),
-                   0.5 * (corner_y + half + y_max), opening_min, opening_max,
-                   x_max - corner_x - half, y_max - corner_y - half)
+        append_box("intersection_lower", center_x, center_y, 0.0, opening_min,
+                   size_x, size_y)
+        append_box("intersection_upper", center_x, center_y, opening_max, size_z,
+                   size_x, size_y)
+        for bridge in channel["bridges"]:
+            bridge_x, bridge_y = map(float, bridge["center_m"])
+            bridge_size_x, bridge_size_y, bridge_size_z = map(
+                float, bridge["size_m"])
+            bridge_id = bridge["id"]
+            append_box(f"{bridge_id}_lower", bridge_x, bridge_y, 0.0,
+                       opening_min, bridge_size_x, bridge_size_y)
+            append_box(f"{bridge_id}_upper", bridge_x, bridge_y, opening_max,
+                       bridge_size_z, bridge_size_x, bridge_size_y)
+            if bridge["blocked"]:
+                append_box(f"{bridge_id}_middle", bridge_x, bridge_y,
+                           opening_min, opening_max, bridge_size_x, bridge_size_y)
     elif kind == "z_profile":
-        slices = int(channel.get("slices", 6))
+        center_x, center_y = map(float, channel["structure_center_m"])
+        _, _, structure_height = map(float, channel["structure_size_m"])
         first, last = points[0], points[-1]
-        along_x = abs(last[0] - first[0]) >= abs(last[1] - first[1])
-        length = size_x if along_x else size_y
-        for index in range(slices):
-            ratio = (index + 0.5) / slices
-            cx = center_x - 0.5 * size_x + (index + 0.5) * size_x / slices if along_x else center_x
-            cy = center_y if along_x else center_y - 0.5 * size_y + (index + 0.5) * size_y / slices
-            z_reference = first[2] + ratio * (last[2] - first[2])
-            opening_min = z_reference - 0.5 * height
-            opening_max = z_reference + 0.5 * height
-            slice_x = length / slices if along_x else size_x
-            slice_y = size_y if along_x else length / slices
-            append_box(f"lower_{index}", cx, cy, 0.0, opening_min, slice_x, slice_y)
-            append_box(f"upper_{index}", cx, cy, opening_max, size_z, slice_x, slice_y)
+        dx = last[0] - first[0]
+        dy = last[1] - first[1]
+        dz = last[2] - first[2]
+        horizontal_length = math.hypot(dx, dy)
+        if horizontal_length <= 1.0e-6:
+            raise ValueError("z_profile channel must have horizontal extent")
+        slope_angle = math.atan2(dz, horizontal_length)
+        slab_length = math.hypot(horizontal_length, dz)
+        z_reference = 0.5 * (first[2] + last[2])
+        along_x = abs(dx) >= abs(dy)
+        if along_x:
+            map_rotation = (0.0, -slope_angle, 0.0)
+            sdf_rotation = (slope_angle, 0.0, 0.0)
+            normal = (-math.sin(slope_angle), 0.0, math.cos(slope_angle))
+            slab_size = (slab_length, float(channel["width_m"]), structure_height)
+        else:
+            map_rotation = (slope_angle, 0.0, 0.0)
+            sdf_rotation = (0.0, -slope_angle, 0.0)
+            normal = (0.0, -math.sin(slope_angle), math.cos(slope_angle))
+            slab_size = (float(channel["width_m"]), slab_length, structure_height)
+        for suffix, surface_z, direction in (
+            ("lower", z_reference - 0.5 * height, -1.0),
+            ("upper", z_reference + 0.5 * height, 1.0),
+        ):
+            offset = 0.5 * structure_height * direction
+            boxes.append(Box(
+                id=f"{channel['id']}_{suffix}",
+                center=(center_x + normal[0] * offset,
+                        center_y + normal[1] * offset,
+                        surface_z + normal[2] * offset),
+                size=slab_size,
+                color=(0.43, 0.47, 0.55, 1.0),
+                visibility_flags=NO_STATIC_SOLID_VISIBILITY,
+                map_rotation_rpy=map_rotation,
+                sdf_rotation_rpy=sdf_rotation,
+            ))
     else:
         raise ValueError(f"unsupported channel kind: {kind}")
+    return boxes
+
+
+def channel_occluder_boxes(channel: dict) -> list[Box]:
+    points = [tuple(map(float, point)) for point in channel["centerline_m"]]
+    height = float(channel["height_m"])
+    z_min = min(point[2] for point in points) - 0.5 * height
+    z_max = max(point[2] for point in points) + 0.5 * height
+    if channel["kind"] != "l_shaped":
+        center_x, center_y = map(float, channel["structure_center_m"])
+        size_x, size_y, _ = map(float, channel["structure_size_m"])
+        return [Box(f"{channel['id']}_no_static_occluder",
+                    (center_x, center_y, 0.5 * (z_min + z_max)),
+                    (size_x, size_y, z_max - z_min))]
+
+    boxes = []
+    center_x, center_y = map(float, channel["intersection_center_m"])
+    size_x, size_y, _ = map(float, channel["intersection_size_m"])
+    boxes.append(Box(f"{channel['id']}_intersection_no_static_occluder",
+                     (center_x, center_y, 0.5 * (z_min + z_max)),
+                     (size_x, size_y, z_max - z_min)))
+    for bridge in channel["bridges"]:
+        if bridge["blocked"]:
+            continue
+        bridge_x, bridge_y = map(float, bridge["center_m"])
+        bridge_size_x, bridge_size_y, _ = map(float, bridge["size_m"])
+        boxes.append(Box(f"{channel['id']}_{bridge['id']}_no_static_occluder",
+                         (bridge_x, bridge_y, 0.5 * (z_min + z_max)),
+                         (bridge_size_x, bridge_size_y, z_max - z_min)))
     return boxes
 
 
@@ -142,7 +200,10 @@ def add_box_model(world: ET.Element, spec: dict, box: Box) -> None:
     model = ET.SubElement(world, "model", {"name": box.id})
     add_text(model, "static", "true")
     px, py, pz = sdf_pose(spec, box.center)
-    add_text(model, "pose", f"{px:.3f} {py:.3f} {pz:.3f} 0 0 0")
+    roll, pitch, yaw = box.sdf_rotation_rpy
+    add_text(model, "pose",
+             f"{px:.3f} {py:.3f} {pz:.3f} "
+             f"{roll:.6f} {pitch:.6f} {yaw:.6f}")
     link = ET.SubElement(model, "link", {"name": "link"})
     collision = ET.SubElement(link, "collision", {"name": "collision"})
     geometry = ET.SubElement(collision, "geometry")
@@ -173,6 +234,52 @@ def add_visual_box(world: ET.Element, spec: dict, name: str,
     add_text(box, "size", f"{size[1]:.3f} {size[0]:.3f} {size[2]:.3f}")
     material = ET.SubElement(visual, "material")
     add_text(material, "diffuse", " ".join(str(value) for value in color))
+
+
+def rotation_matrix_rpy(
+        rotation: tuple[float, float, float]
+) -> tuple[tuple[float, float, float], ...]:
+    roll, pitch, yaw = rotation
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    return (
+        (cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr),
+        (sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr),
+        (-sp, cp * sr, cp * cr),
+    )
+
+
+def rotated_box_bounds(box: Box) -> tuple[tuple[float, float, float],
+                                          tuple[float, float, float]]:
+    rotation = rotation_matrix_rpy(box.map_rotation_rpy)
+    half_size = tuple(0.5 * value for value in box.size)
+    corners = []
+    for local_x in (-half_size[0], half_size[0]):
+        for local_y in (-half_size[1], half_size[1]):
+            for local_z in (-half_size[2], half_size[2]):
+                local = (local_x, local_y, local_z)
+                corners.append(tuple(
+                    box.center[axis]
+                    + sum(rotation[axis][column] * local[column]
+                          for column in range(3))
+                    for axis in range(3)
+                ))
+    return (
+        tuple(min(corner[axis] for corner in corners) for axis in range(3)),
+        tuple(max(corner[axis] for corner in corners) for axis in range(3)),
+    )
+
+
+def point_in_box(point: tuple[float, float, float], box: Box) -> bool:
+    rotation = rotation_matrix_rpy(box.map_rotation_rpy)
+    delta = tuple(point[axis] - box.center[axis] for axis in range(3))
+    local = tuple(
+        sum(rotation[axis][local_axis] * delta[axis] for axis in range(3))
+        for local_axis in range(3)
+    )
+    return all(abs(local[axis]) <= 0.5 * box.size[axis] + 1.0e-9
+               for axis in range(3))
 
 
 def generate_sdf(spec: dict, boxes: Iterable[Box], output: Path) -> None:
@@ -233,23 +340,20 @@ def generate_sdf(spec: dict, boxes: Iterable[Box], output: Path) -> None:
         add_box_model(world, spec, box)
 
     for channel in spec["channels"]:
-        center_x, center_y = map(float, channel["structure_center_m"])
-        size_x, size_y, _ = map(float, channel["structure_size_m"])
-        z_values = [float(point[2]) for point in channel["centerline_m"]]
-        z_min = min(z_values) - 0.5 * float(channel["height_m"])
-        z_max = max(z_values) + 0.5 * float(channel["height_m"])
-        model = ET.SubElement(world, "model", {"name": f"{channel['id']}_no_static_occluder"})
-        add_text(model, "static", "true")
-        px, py, pz = sdf_pose(spec, (center_x, center_y, 0.5 * (z_min + z_max)))
-        add_text(model, "pose", f"{px:.3f} {py:.3f} {pz:.3f} 0 0 0")
-        link = ET.SubElement(model, "link", {"name": "no_static_lidar_occluder"})
-        visual = ET.SubElement(link, "visual", {"name": "visual"})
-        add_text(visual, "cast_shadows", "false")
-        add_text(visual, "transparency", "0.999")
-        add_text(visual, "visibility_flags", str(NO_STATIC_OCCLUDER_VISIBILITY))
-        geometry = ET.SubElement(visual, "geometry")
-        add_text(ET.SubElement(geometry, "box"), "size",
-                 f"{size_x:.3f} {size_y:.3f} {z_max - z_min:.3f}")
+        for occluder in channel_occluder_boxes(channel):
+            model = ET.SubElement(world, "model", {"name": occluder.id})
+            add_text(model, "static", "true")
+            px, py, pz = sdf_pose(spec, occluder.center)
+            add_text(model, "pose", f"{px:.3f} {py:.3f} {pz:.3f} 0 0 0")
+            link = ET.SubElement(model, "link", {"name": "no_static_lidar_occluder"})
+            visual = ET.SubElement(link, "visual", {"name": "visual"})
+            add_text(visual, "cast_shadows", "false")
+            add_text(visual, "transparency", "0.999")
+            add_text(visual, "visibility_flags", str(NO_STATIC_OCCLUDER_VISIBILITY))
+            geometry = ET.SubElement(visual, "geometry")
+            add_text(ET.SubElement(geometry, "box"), "size",
+                     f"{occluder.size[1]:.3f} {occluder.size[0]:.3f} "
+                     f"{occluder.size[2]:.3f}")
 
     mission = spec["mission"]
     for name, point, color in (
@@ -284,8 +388,9 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
     chunks: dict[tuple[int, int, int], int] = {}
     physical = list(boxes)
     for box in physical:
-        minimum = tuple(box.center[axis] - 0.5 * box.size[axis] for axis in range(3))
-        maximum = tuple(box.center[axis] + 0.5 * box.size[axis] for axis in range(3))
+        rotated = any(abs(angle) > 1.0e-12 for angle in box.map_rotation_rpy)
+        rotation = rotation_matrix_rpy(box.map_rotation_rpy) if rotated else None
+        minimum, maximum = rotated_box_bounds(box)
         starts = tuple(max(0, int(math.ceil((minimum[axis] - origin[axis]) / resolution - 0.5)))
                        for axis in range(3))
         ends = tuple(min(dimensions[axis],
@@ -294,6 +399,21 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
         for z in range(starts[2], ends[2]):
             for y in range(starts[1], ends[1]):
                 for x in range(starts[0], ends[0]):
+                    if rotation is not None:
+                        center = tuple(
+                            origin[axis] + (index + 0.5) * resolution
+                            for axis, index in enumerate((x, y, z))
+                        )
+                        delta = tuple(center[axis] - box.center[axis]
+                                      for axis in range(3))
+                        local = tuple(
+                            sum(rotation[axis][local_axis] * delta[axis]
+                                for axis in range(3))
+                            for local_axis in range(3)
+                        )
+                        if any(abs(local[axis]) > 0.5 * box.size[axis] + 1.0e-9
+                               for axis in range(3)):
+                            continue
                     chunk = (x // chunk_size, y // chunk_size, z // chunk_size)
                     local = ((z % chunk_size) * chunk_size + y % chunk_size) * chunk_size + x % chunk_size
                     chunks[chunk] = chunks.get(chunk, 0) | (1 << local)

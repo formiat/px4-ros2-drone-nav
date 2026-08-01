@@ -39,8 +39,30 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                 for model in root.findall("./world/model")
                 if model.find("./link/collision") is not None
             }
-            self.assertIn("channel_11_19_l_middle_west", collision_models)
-            self.assertIn("channel_22_30_z_lower_0", collision_models)
+            self.assertIn("channel_11_19_l_intersection_lower", collision_models)
+            self.assertIn("channel_11_19_l_east_middle", collision_models)
+            self.assertIn("channel_11_19_l_north_middle", collision_models)
+            self.assertNotIn("channel_11_19_l_west_middle", collision_models)
+            self.assertNotIn("channel_11_19_l_south_middle", collision_models)
+            self.assertIn("channel_22_30_z_lower", collision_models)
+            self.assertIn("channel_22_30_z_upper", collision_models)
+            self.assertFalse(
+                any(name.startswith("channel_22_30_z_lower_")
+                    for name in collision_models)
+            )
+            z_channel_poses = {
+                model.attrib["name"]: tuple(
+                    map(float, model.findtext("pose", default="").split())
+                )
+                for model in root.findall("./world/model")
+                if model.attrib["name"] in {
+                    "channel_22_30_z_lower",
+                    "channel_22_30_z_upper",
+                }
+            }
+            self.assertEqual(2, len(z_channel_poses))
+            for pose in z_channel_poses.values():
+                self.assertNotEqual((0.0, 0.0, 0.0), pose[3:6])
             self.assertIn("building_001", collision_models)
 
             header_format = "<8sII4f3IQI"
@@ -59,6 +81,93 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             spec = json.load(stream)
         kinds = {channel["kind"] for channel in spec["channels"]}
         self.assertEqual({"straight", "l_shaped", "z_profile"}, kinds)
+
+    def test_l_channel_has_four_bridges_and_two_physical_middle_masses(self) -> None:
+        spec = generator.load_spec(SPEC_PATH)
+        channel = next(
+            channel for channel in spec["channels"]
+            if channel["kind"] == "l_shaped"
+        )
+        self.assertEqual(4, len(channel["bridges"]))
+        self.assertEqual(
+            {"east", "north"},
+            {bridge["id"] for bridge in channel["bridges"] if bridge["blocked"]},
+        )
+        boxes = {box.id for box in generator.channel_boxes(channel)}
+        self.assertEqual(
+            {
+                "channel_11_19_l_intersection_lower",
+                "channel_11_19_l_intersection_upper",
+                "channel_11_19_l_west_lower",
+                "channel_11_19_l_west_upper",
+                "channel_11_19_l_east_lower",
+                "channel_11_19_l_east_upper",
+                "channel_11_19_l_east_middle",
+                "channel_11_19_l_south_lower",
+                "channel_11_19_l_south_upper",
+                "channel_11_19_l_north_lower",
+                "channel_11_19_l_north_upper",
+                "channel_11_19_l_north_middle",
+            },
+            boxes,
+        )
+
+    def test_l_channel_cross_sections_match_left_turn_volume(self) -> None:
+        spec = generator.load_spec(SPEC_PATH)
+        boxes = generator.physical_boxes(spec)
+
+        def occupied(x: float, y: float, z: float) -> bool:
+            return any(
+                abs(x - box.center[0]) < 0.5 * box.size[0]
+                and abs(y - box.center[1]) < 0.5 * box.size[1]
+                and abs(z - box.center[2]) < 0.5 * box.size[2]
+                for box in boxes
+            )
+
+        sample_xy = (
+            ((81.0, 189.0), (108.0, 189.0), (135.0, 189.0)),
+            ((81.0, 162.0), (108.0, 162.0), (135.0, 162.0)),
+            ((81.0, 135.0), (108.0, 135.0), (135.0, 135.0)),
+        )
+        self.assertEqual(
+            ((True, True, True), (False, False, True), (True, False, True)),
+            tuple(tuple(occupied(x, y, 5.0) for x, y in row)
+                  for row in sample_xy),
+        )
+        for z in (1.0, 10.0):
+            self.assertTrue(
+                all(occupied(x, y, z) for row in sample_xy for x, y in row)
+            )
+
+    def test_z_profile_is_one_continuous_floor_and_roof_pair(self) -> None:
+        spec = generator.load_spec(SPEC_PATH)
+        channel = next(
+            channel for channel in spec["channels"]
+            if channel["kind"] == "z_profile"
+        )
+        boxes = generator.channel_boxes(channel)
+        self.assertEqual(
+            {"channel_22_30_z_lower", "channel_22_30_z_upper"},
+            {box.id for box in boxes},
+        )
+        self.assertTrue(
+            all(any(abs(angle) > 1.0e-6 for angle in box.map_rotation_rpy)
+                for box in boxes)
+        )
+        self.assertTrue(
+            all(generator.point_in_box(box.center, box) for box in boxes)
+        )
+        for point in channel["centerline_m"]:
+            sample = tuple(map(float, point))
+            self.assertFalse(
+                any(generator.point_in_box(sample, box) for box in boxes)
+            )
+        self.assertTrue(generator.point_in_box((162.0, 297.0, 10.0), boxes[0]))
+        self.assertFalse(
+            any(generator.point_in_box((162.0, 297.0, 21.5), box)
+                for box in boxes)
+        )
+        self.assertTrue(generator.point_in_box((162.0, 297.0, 35.0), boxes[1]))
 
     def test_committed_artifacts_are_deterministic_and_current(self) -> None:
         spec = generator.load_spec(SPEC_PATH)

@@ -34,11 +34,14 @@ staticMapPointCloud3D(const OccupancyGrid3D& grid, const StaticMapDebugConfig& c
     cloud.fields[index].count = 1U;
   }
   const GridBounds3D& bounds = grid.bounds();
-  cloud.data.reserve(grid.occupiedVoxelCount() *
+  const std::size_t stride = std::max<std::size_t>(1U, config.voxel_stride);
+  const std::size_t stride_volume = stride * stride * stride;
+  cloud.data.reserve((grid.occupiedVoxelCount() / stride_volume + 1U) *
                      static_cast<std::size_t>(cloud.point_step));
-  for (int z = 0; z < bounds.depth_cells; ++z) {
-    for (int y = 0; y < bounds.height_cells; ++y) {
-      for (int x = 0; x < bounds.width_cells; ++x) {
+  const int cell_stride = static_cast<int>(stride);
+  for (int z = 0; z < bounds.depth_cells; z += cell_stride) {
+    for (int y = 0; y < bounds.height_cells; y += cell_stride) {
+      for (int x = 0; x < bounds.width_cells; x += cell_stride) {
         const GridIndex3D cell{x, y, z};
         if (!grid.isOccupied(cell)) {
           continue;

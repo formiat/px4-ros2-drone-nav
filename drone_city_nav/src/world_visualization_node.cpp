@@ -8,6 +8,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -73,12 +74,19 @@ private:
     }
     try {
       const OccupancyGrid3D occupancy = OccupancyGrid3D::load(path);
-      const StaticMapDebugConfig debug{header(), 0.05F, 0.62F};
-      static_points_pub_->publish(staticMapPointCloud3D(occupancy, debug));
+      const std::int64_t configured_stride =
+          declare_parameter<std::int64_t>("static_map_visualization_stride_cells", 4);
+      const std::size_t stride =
+          static_cast<std::size_t>(std::max<std::int64_t>(1, configured_stride));
+      const StaticMapDebugConfig debug{header(), 0.05F, 0.62F, stride};
+      const sensor_msgs::msg::PointCloud2 points =
+          staticMapPointCloud3D(occupancy, debug);
+      static_points_pub_->publish(points);
       static_buildings_pub_->publish(staticMapBuildingDeleteMarkers(debug.header));
       RCLCPP_INFO(get_logger(),
-                  "Static 3D world visualization loaded: path='%s' voxels=%zu",
-                  path.c_str(), occupancy.occupiedVoxelCount());
+                  "Static 3D world visualization loaded: path='%s' voxels=%zu "
+                  "published_points=%u stride=%zu",
+                  path.c_str(), occupancy.occupiedVoxelCount(), points.width, stride);
     } catch (const std::exception& error) {
       RCLCPP_ERROR(get_logger(), "Static 3D visualization failed: %s", error.what());
     }

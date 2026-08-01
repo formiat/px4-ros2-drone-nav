@@ -39,9 +39,9 @@ Visualization Manager:
       Enabled: true
       Name: Static City Map Points
       Position Transformer: XYZ
-      Size (Pixels): 3
+      Size (Pixels): 2
       Size (m): 0.35
-      Style: Spheres
+      Style: Points
       Topic:
         Value: /drone_city_nav/static_map_points
     - Class: rviz_default_plugins/MarkerArray

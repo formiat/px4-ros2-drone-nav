@@ -117,9 +117,19 @@ class DroneModelSdfContractTest(unittest.TestCase):
     def test_all_channels_have_collisionless_no_static_lidar_occluders(self) -> None:
         world_root = parse_sdf(WORLD_SDF)
         spec = json.loads(WORLD_SPEC.read_text(encoding="utf-8"))
-        expected_names = {
-            f"{channel['id']}_no_static_occluder" for channel in spec["channels"]
-        }
+        expected_names = set()
+        for channel in spec["channels"]:
+            if channel["kind"] != "l_shaped":
+                expected_names.add(f"{channel['id']}_no_static_occluder")
+                continue
+            expected_names.add(
+                f"{channel['id']}_intersection_no_static_occluder"
+            )
+            expected_names.update(
+                f"{channel['id']}_{bridge['id']}_no_static_occluder"
+                for bridge in channel["bridges"]
+                if not bridge["blocked"]
+            )
         occluder_models = {
             model.attrib["name"]: model
             for model in world_root.iter("model")
@@ -127,9 +137,8 @@ class DroneModelSdfContractTest(unittest.TestCase):
         }
 
         self.assertEqual(expected_names, set(occluder_models))
-        for channel in spec["channels"]:
-            model_name = f"{channel['id']}_no_static_occluder"
-            with self.subTest(channel=channel["id"]):
+        for model_name in expected_names:
+            with self.subTest(occluder=model_name):
                 occluders = [
                     link
                     for link in occluder_models[model_name].findall("link")

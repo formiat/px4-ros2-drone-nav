@@ -16,5 +16,22 @@ Straight openings, L-shaped channels, and altitude-changing channels therefore
 use the same route contract. MPPI consumes route position, altitude, tangent,
 and reference speed directly.
 
+An L-shaped channel is authored as one intersection between four neighboring
+buildings plus four bridge volumes. Every bridge has lower and upper physical
+masses; two bridges additionally have a solid middle mass, while the other two
+form the entrance and exit. The intersection itself has one lower and one upper
+mass. This creates one continuous turn volume rather than carving a bend inside
+a single connector.
+
+Altitude-changing channels use continuous inclined lower and upper physical
+masses. The free opening and its `RouteSample3D` reference Z rise continuously;
+neither Gazebo geometry nor planning occupancy approximates the channel with
+stair-step slices.
+
+Planning occupancy remains at `0.5 m`. RViz intentionally samples that map with
+`static_map_visualization_stride_cells=4`, producing a `2 m` diagnostic point
+spacing. This visualization reduction does not affect planning or collision
+queries.
+
 No-static mode intentionally does not load semantic channel metadata. Its 2D
 lidar sees connector occluders as ordinary obstacles, so it routes around them.

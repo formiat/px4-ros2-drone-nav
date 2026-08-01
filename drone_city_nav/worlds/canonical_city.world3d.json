@@ -53,10 +53,16 @@
     {
       "id": "channel_11_19_l",
       "kind": "l_shaped",
-      "structure_center_m": [108.0, 135.0],
-      "structure_size_m": [30.0, 24.0, 32.0],
-      "centerline_m": [[108.0, 119.0, 5.0], [108.0, 135.0, 5.0], [127.0, 135.0, 5.0]],
-      "width_m": 7.0,
+      "intersection_center_m": [108.0, 162.0],
+      "intersection_size_m": [30.0, 30.0, 32.0],
+      "bridges": [
+        {"id": "west", "center_m": [81.0, 162.0], "size_m": [24.0, 30.0, 32.0], "blocked": false},
+        {"id": "east", "center_m": [135.0, 162.0], "size_m": [24.0, 30.0, 32.0], "blocked": true},
+        {"id": "south", "center_m": [108.0, 135.0], "size_m": [30.0, 24.0, 32.0], "blocked": false},
+        {"id": "north", "center_m": [108.0, 189.0], "size_m": [30.0, 24.0, 32.0], "blocked": true}
+      ],
+      "centerline_m": [[108.0, 135.0, 5.0], [108.0, 162.0, 5.0], [81.0, 162.0, 5.0]],
+      "width_m": 24.0,
       "height_m": 7.0
     },
     {
@@ -75,8 +81,7 @@
       "structure_size_m": [30.0, 24.0, 32.0],
       "centerline_m": [[144.0, 297.0, 18.0], [162.0, 297.0, 21.5], [180.0, 297.0, 25.0]],
       "width_m": 24.0,
-      "height_m": 7.0,
-      "slices": 6
+      "height_m": 7.0
     }
   ],
   "mission": {

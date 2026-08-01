@@ -55,7 +55,9 @@ trajectory.
 - Raw lidar returns are sensor-frame observations projected into map space.
 - Remembered hits persist after the obstacle leaves the current scan.
 - Raw occupied cells are the merged planner evidence.
-- Static points are visualization generated from canonical Occupancy3D.
+- Static points are a downsampled visualization generated from canonical
+  Occupancy3D. The default four-cell stride keeps RViz responsive while the
+  planner continues using the full 0.5 m map.
 
 A point visible in one layer but absent in another can be correct because the
 layers represent different lifecycle stages.

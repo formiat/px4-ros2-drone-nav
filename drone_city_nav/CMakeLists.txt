@@ -448,6 +448,11 @@ if(BUILD_TESTING)
   target_link_libraries(route_3d_test drone_city_nav_core)
   enable_project_warnings(route_3d_test)
 
+  ament_add_gtest(static_map_debug_3d_test tests/static_map_debug_3d_test.cpp)
+  target_compile_features(static_map_debug_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(static_map_debug_3d_test drone_city_nav_ros_adapters)
+  enable_project_warnings(static_map_debug_3d_test)
+
   ament_add_gtest(grid_overlay_test_current tests/grid_overlay_test.cpp)
   target_compile_features(grid_overlay_test_current PRIVATE cxx_std_20)
   target_link_libraries(grid_overlay_test_current drone_city_nav_core)
