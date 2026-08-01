@@ -39,7 +39,7 @@ Visualization Manager:
       Enabled: true
       Name: Static City Map Points
       Position Transformer: XYZ
-      Size (Pixels): 2
+      Size (Pixels): 5
       Size (m): 0.35
       Style: Points
       Topic:
