@@ -18,7 +18,10 @@ PASSAGES_3D = REPO_ROOT / "drone_city_nav/worlds/known_passages.passages3d"
 
 GZ_VISIBILITY_ALL = 0x0FFFFFFF
 PASSAGE_MASS_VISIBILITY_FLAG = 0x08000000
-LIDAR_VISIBILITY_MASK = GZ_VISIBILITY_ALL & ~PASSAGE_MASS_VISIBILITY_FLAG
+NO_STATIC_OCCLUDER_VISIBILITY_FLAG = 0x04000000
+LIDAR_VISIBILITY_MASK = GZ_VISIBILITY_ALL & ~(
+    PASSAGE_MASS_VISIBILITY_FLAG | NO_STATIC_OCCLUDER_VISIBILITY_FLAG
+)
 
 
 def parse_sdf(path: Path) -> ET.Element:
@@ -144,6 +147,33 @@ class DroneModelSdfContractTest(unittest.TestCase):
                     visual_flags = int(visual.findtext("visibility_flags", ""))
                     self.assertEqual(PASSAGE_MASS_VISIBILITY_FLAG, visual_flags)
                     self.assertEqual(0, lidar_mask & visual_flags)
+
+    def test_first_route_passage_has_collisionless_no_static_lidar_occluder(
+        self,
+    ) -> None:
+        world_root = parse_sdf(WORLD_SDF)
+        connector = next(
+            model
+            for model in world_root.iter("model")
+            if model.attrib.get("name") == "physical_building_connector_11_19"
+        )
+        occluder = next(
+            link
+            for link in connector.findall("link")
+            if link.attrib.get("name") == "no_static_lidar_occluder"
+        )
+        visual = occluder.find("visual")
+
+        self.assertIsNotNone(visual)
+        self.assertIsNone(occluder.find("collision"))
+        self.assertEqual("0.00 0.00 5.00 0.00 0.00 0.00", occluder.findtext("pose"))
+        self.assertEqual("24.00 30.00 7.00", visual.findtext("geometry/box/size"))
+        self.assertEqual("0.999", visual.findtext("transparency"))
+        self.assertEqual(
+            NO_STATIC_OCCLUDER_VISIBILITY_FLAG,
+            int(visual.findtext("visibility_flags", "")),
+        )
+        self.assertEqual(0, LIDAR_VISIBILITY_MASK & NO_STATIC_OCCLUDER_VISIBILITY_FLAG)
 
     def test_physical_connectors_match_known_passage_annotations(self) -> None:
         world_root = parse_sdf(WORLD_SDF)

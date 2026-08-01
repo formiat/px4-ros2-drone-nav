@@ -319,8 +319,16 @@ prepare_runtime_resources() {
 
   ln -s "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
     "${runtime_models_dir}/x500_lidar_2d"
-  ln -s "${repo_root}/drone_city_nav/models/lidar_2d_v2" \
+  cp -a "${repo_root}/drone_city_nav/models/lidar_2d_v2" \
     "${runtime_models_dir}/lidar_2d_v2"
+
+  local lidar_visibility_mode="no-static"
+  if bool_is_true "${active_static_map}"; then
+    lidar_visibility_mode="static"
+  fi
+  python3 "${repo_root}/scripts/configure_lidar_visibility.py" \
+    "${runtime_models_dir}/lidar_2d_v2/model.sdf" \
+    --mode "${lidar_visibility_mode}"
 }
 
 prepare_runtime_resources

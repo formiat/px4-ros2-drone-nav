@@ -169,6 +169,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.launch_text,
         )
 
+    def test_runtime_lidar_visibility_follows_resolved_static_map_mode(self) -> None:
+        self.assertIn('lidar_visibility_mode="no-static"', self.text)
+        self.assertIn('lidar_visibility_mode="static"', self.text)
+        self.assertIn("configure_lidar_visibility.py", self.text)
+        self.assertIn('--mode "${lidar_visibility_mode}"', self.text)
+        self.assertIn(
+            'cp -a "${repo_root}/drone_city_nav/models/lidar_2d_v2"',
+            self.text,
+        )
+
     def test_frontier_blacklist_is_explicit_and_disabled_by_default(self) -> None:
         parameter = "global_lattice_frontier_blacklist_enabled"
         self.assertIn(f"{parameter}: false", self.nav_config_text)

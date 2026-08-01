@@ -96,8 +96,8 @@
             <mean>0.0</mean>
             <stddev>0.001</stddev>
           </noise>
-          <!-- Exclude connector lower/upper mass visuals flagged with 0x08000000. -->
-          <visibility_mask>134217727</visibility_mask>
+          <!-- Static-mode default: exclude passage masses and virtual lidar occluders. -->
+          <visibility_mask>67108863</visibility_mask>
         </ray>
         <always_on>true</always_on>
         <update_rate>15</update_rate>

@@ -618,6 +618,19 @@
         <collision name="collision"><geometry><box><size>24.00 30.00 23.50</size></box></geometry></collision>
         <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 23.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
       </link>
+      <link name="no_static_lidar_occluder">
+        <pose>0.00 0.00 5.00 0.00 0.00 0.00</pose>
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry><box><size>24.00 30.00 7.00</size></box></geometry>
+          <material>
+            <ambient>0.00 0.00 0.00 0.00</ambient>
+            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+          </material>
+        </visual>
+      </link>
     </model>
     <model name="physical_building_connector_20_21">
       <static>true</static>
