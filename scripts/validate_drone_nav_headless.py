@@ -79,13 +79,13 @@ def main() -> int:
     require(
         "ESDF is available",
         ros_log,
-        r"PRODUCTION_MPPI_ESDF .*revision=",
+        r"PRODUCTION_MPPI_ESDF(?:3D)? .*revision=",
         errors,
     )
     require(
         "global guide is available",
         ros_log,
-        r"PRODUCTION_MPPI_GUIDE .*guide_valid=true",
+        r"PRODUCTION_MPPI_GUIDE .*guide_valid=true|target_source=global_route_3d",
         errors,
     )
     require(
@@ -118,8 +118,8 @@ def main() -> int:
         require(
             "static map contributes to raw occupancy",
             ros_log,
-            r"Static city map loaded:|Published static world visualization:|"
-            r"use_static_map=true",
+            r"STATIC_WORLD_3D .*\.occupancy3d|"
+            r"Published static world visualization:|use_static_map=true",
             errors,
         )
     elif expected_static is False and re.search(r"use_static_map=true", ros_log):

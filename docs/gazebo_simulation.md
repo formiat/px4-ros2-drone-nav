@@ -9,10 +9,11 @@ navigation stack is not tied to a city scenario.
 World and map assets live under `drone_city_nav/worlds/`:
 
 - `generated_city.sdf`
-- `generated_city.map2d`
+- `generated_city.occupancy3d`
+- `canonical_city.world3d.json`
 
-The `.sdf` world describes the simulator scene. The `.map2d` file is the optional
-static obstacle source loaded by `obstacle_memory_node`.
+The SDF and sparse Occupancy3D are generated from the canonical JSON world spec.
+Static planning loads Occupancy3D directly; no-static planning uses lidar only.
 
 ## Drone Model
 
@@ -65,26 +66,24 @@ heuristic: Gazebo physics contact is the source of truth for a crash.
 
 When changing the scenario, keep these values consistent across nodes.
 
-## Static Map Generation
+## Static World Generation
 
 The planner static obstacle source is configured with:
 
 ```yaml
 use_static_map: true
-static_map_path: worlds/generated_city.map2d
-static_map_min_blocking_height_m: 0.0
+static_occupancy_3d_path: worlds/generated_city.occupancy3d
 ```
 
-The static map is a raw obstacle source. It must not contain planner inflation.
-The planner derives non-collision risk bands from its ESDF without inflating
-hard occupancy.
+Regenerate both artifacts with `scripts/generate_canonical_world.py`. Occupied
+voxels are physical geometry only. Clearance bands remain ranking costs.
 
 ## Changing The Environment
 
 When changing the world:
 
-1. Update or add the Gazebo `.sdf` world.
-2. Update or add the matching `.map2d` static map.
+1. Update `canonical_city.world3d.json`.
+2. Regenerate the SDF and Occupancy3D artifacts.
 3. Update grid bounds in `urban_mvp.yaml` if the navigable area changes.
 4. Update start/goal/origin values consistently.
 5. Check RViz overlays against Gazebo geometry.
@@ -141,35 +140,23 @@ Gazebo problem. A shifted lidar point cloud can be a Gazebo frame, TF, origin,
 or compensation problem. A drone that refuses offboard control may be PX4 state
 or arming rather than planner geometry.
 
-## World And Static Map Consistency
+## World Artifact Consistency
 
-For ordinary buildings, the `.sdf` world and `.map2d` static map must describe
-the same obstacle layout. Gazebo uses the world for rendering and collision. The
-planner uses the static map as raw obstacle evidence. If they drift apart, RViz
-can show a planner-valid route through a building, or the planner can avoid
-empty space.
-
-Known architectural passage buildings are the deliberate exception: they exist
-physically in `generated_city.sdf`, but they are intentionally absent from
-`generated_city.map2d` so the 2D raw occupancy does not block the complete
-connector footprint. Their 3D geometry is represented by
-`known_passages.passages3d`; the lattice guide, MPPI known-solid checks, and
-passage coordinator handle the actual traversal.
-
-The SDF and annotation file are separate but coupled artifacts. Update both in
-the same change, keep passage structures out of `.map2d`, and run the passage
-contract test. `known_passages.md` describes the exact physical, planning,
-lidar, and collision semantics.
+`canonical_city.world3d.json` is the only hand-edited geometry source. The
+generator derives both Gazebo SDF and sparse Occupancy3D from it, so rendering,
+physics, and static planning cannot encode different buildings or channels.
+Air channels are free voxel volumes in the same physical map, not exceptions to
+a 2D obstacle map and not separately annotated passages.
 
 When editing a world, verify:
 
 - ordinary building positions and sizes in Gazebo;
-- matching static map cells for ordinary buildings;
-- known architectural passage buildings stay out of `generated_city.map2d`;
+- regenerated SDF and Occupancy3D match the canonical specification;
+- channel openings and constrained envelopes are represented in Occupancy3D;
 - map origin relative to PX4 local origin;
 - grid bounds cover the full mission;
 - spawn and goal are inside navigable area;
-- RViz static map and static building volume markers overlay the visible city.
+- RViz static Occupancy3D points overlay the visible city.
 
 The static map should remain raw. Do not pre-inflate buildings in the map to
 "help" the planner. MPPI derives categorical risk bands from the occupied

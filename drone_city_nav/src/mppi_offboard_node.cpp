@@ -68,8 +68,6 @@ namespace {
       return "none";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_HORIZON_SAFETY:
       return "horizon_safety";
-    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_PASSAGE_ALIGNMENT:
-      return "passage_alignment";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE:
       return "goal_capture";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_GUIDE:

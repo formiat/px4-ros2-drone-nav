@@ -14,7 +14,6 @@ ros2 bag record \
   /drone_city_nav/raw_memory_obstacle_points \
   /drone_city_nav/raw_memory_obstacle_points_3d \
   /drone_city_nav/static_building_markers \
-  /drone_city_nav/known_passage_markers \
   /drone_city_nav/obstacle_memory_grid \
   /drone_city_nav/obstacle_memory_provenance \
   /drone_city_nav/obstacle_memory_snapshot \

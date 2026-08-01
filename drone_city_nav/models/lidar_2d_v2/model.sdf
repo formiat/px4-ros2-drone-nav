@@ -96,7 +96,7 @@
             <mean>0.0</mean>
             <stddev>0.001</stddev>
           </noise>
-          <!-- Static-mode default: exclude passage masses and virtual lidar occluders. -->
+          <!-- Static mode excludes channel masses and no-static lidar occluders. -->
           <visibility_mask>67108863</visibility_mask>
         </ray>
         <always_on>true</always_on>

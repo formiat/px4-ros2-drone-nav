@@ -1,5 +1,4 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
-#include "drone_city_nav/mppi/passage_speed_policy.hpp"
 
 #include <gtest/gtest.h>
 
@@ -158,14 +157,6 @@ TEST(MppiReferenceTest, ReferenceSpeedAddsTrackingCost) {
   EXPECT_FLOAT_EQ(disabled.costs.speed_tracking, 0.0F);
   EXPECT_LT(matched.costs.speed_tracking, faster.costs.speed_tracking);
   EXPECT_LT(matched.soft_cost, faster.soft_cost);
-}
-
-TEST(MppiReferenceTest, PassageSpeedPolicyPreservesMapModeContract) {
-  PassageSpeedPolicy policy{};
-
-  EXPECT_FLOAT_EQ(activePassageSpeedLimitMps(policy), 10.0F);
-  policy.use_static_map = false;
-  EXPECT_FLOAT_EQ(activePassageSpeedLimitMps(policy), 5.0F);
 }
 
 } // namespace

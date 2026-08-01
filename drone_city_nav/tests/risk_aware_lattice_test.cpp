@@ -50,103 +50,6 @@ TEST(RiskAwareLattice, RejectsRawCollisionAndRoutesAroundWall) {
   }));
 }
 
-TEST(RiskAwareLattice, EmitsTypedCenterlinePointsForPortalTraversal) {
-  const mppi::EsdfGrid grid = makeGrid();
-  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
-                                20.0F);
-  const std::vector<SemanticPortalPrimitive> portals{
-      SemanticPortalPrimitive{
-          .id = "portal",
-          .center = Point2{20.0, 10.5},
-          .normal_xy = Point2{1.0, 0.0},
-          .width_m = 8.0,
-          .depth_m = 8.0,
-      },
-  };
-  const RiskAwareLatticeConfig config{};
-
-  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
-      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{36.5, 10.5}, config, portals);
-
-  ASSERT_TRUE(result.valid);
-  ASSERT_TRUE(result.planning_goal_reached);
-  const auto contains = [&result](const Point2 expected) {
-    return std::ranges::any_of(result.guide, [expected](const Point2 point) {
-      return distance(point, expected) < 1.0e-6;
-    });
-  };
-  EXPECT_TRUE(contains(Point2{10.0, 10.5}));
-  EXPECT_TRUE(contains(Point2{16.0, 10.5}));
-  EXPECT_TRUE(contains(Point2{24.0, 10.5}));
-  EXPECT_TRUE(contains(Point2{24.0 + config.portal_exit_extension_m, 10.5}));
-}
-
-TEST(RiskAwareLattice, TraversesPortalStraightAfterLateralApproach) {
-  const mppi::EsdfGrid grid = makeGrid();
-  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
-                                20.0F);
-  const std::vector<SemanticPortalPrimitive> portals{
-      SemanticPortalPrimitive{
-          .id = "portal",
-          .center = Point2{20.0, 10.5},
-          .normal_xy = Point2{1.0, 0.0},
-          .width_m = 8.0,
-          .depth_m = 8.0,
-      },
-  };
-
-  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
-      grid, esdf, Point2{2.5, 13.0}, 0.0, Point2{36.5, 13.0}, RiskAwareLatticeConfig{},
-      portals);
-
-  ASSERT_TRUE(result.valid);
-  bool straight_traversal_seen = false;
-  for (std::size_t index = 1U; index < result.guide.size(); ++index) {
-    const Point2& first = result.guide[index - 1U];
-    const Point2& second = result.guide[index];
-    if (std::abs(first.x - 16.0) < 1.0e-6 && std::abs(second.x - 24.0) < 1.0e-6 &&
-        std::abs(first.y - second.y) < 1.0e-6 &&
-        std::abs(first.y - portals.front().center.y) < 0.5 * portals.front().width_m) {
-      straight_traversal_seen = true;
-    }
-  }
-  EXPECT_TRUE(straight_traversal_seen);
-}
-
-TEST(RiskAwareLattice, UsesOffCenterTraversalWhenPortalCenterlineIsBlocked) {
-  const mppi::EsdfGrid grid = makeGrid();
-  std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height), 20.0F);
-  for (std::size_t x = 16U; x <= 24U; ++x) {
-    esdf[10U * static_cast<std::size_t>(grid.width) + x] = 0.0F;
-  }
-  const std::vector<SemanticPortalPrimitive> portals{
-      SemanticPortalPrimitive{
-          .id = "portal",
-          .center = Point2{20.0, 10.5},
-          .normal_xy = Point2{1.0, 0.0},
-          .width_m = 8.0,
-          .depth_m = 8.0,
-      },
-  };
-
-  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
-      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{36.5, 10.5}, RiskAwareLatticeConfig{},
-      portals);
-
-  ASSERT_TRUE(result.valid);
-  const bool off_center_straight_traversal =
-      std::ranges::any_of(std::views::iota(std::size_t{1U}, result.guide.size()),
-                          [&result](const std::size_t index) {
-                            const Point2& first = result.guide[index - 1U];
-                            const Point2& second = result.guide[index];
-                            return std::abs(first.x - 16.0) < 1.0e-6 &&
-                                   std::abs(second.x - 24.0) < 1.0e-6 &&
-                                   std::abs(first.y - second.y) < 1.0e-6 &&
-                                   std::abs(first.y - 10.5) > 0.5;
-                          });
-  EXPECT_TRUE(off_center_straight_traversal);
-}
-
 TEST(RiskAwareLattice, FailsWhenStartIsOutsideWorldModel) {
   const mppi::EsdfGrid grid = makeGrid();
   const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
@@ -240,22 +143,19 @@ TEST(RiskAwareLattice, ResumesPersistentSearchSessionAcrossBudgetSlices) {
   config.maximum_expansions = 3U;
   RiskAwareLatticeSearchSession session;
 
-  const RiskAwareLatticeResult first =
-      planRiskAwareMotionPrimitiveGuide(grid, esdf, Point2{2.5, 10.5}, 0.0,
-                                        Point2{150.5, 10.5}, config, {}, {}, &session);
+  const RiskAwareLatticeResult first = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config, {}, &session);
   config.maximum_expansions = 12U;
-  const RiskAwareLatticeResult resumed =
-      planRiskAwareMotionPrimitiveGuide(grid, esdf, Point2{2.5, 10.5}, 0.0,
-                                        Point2{150.5, 10.5}, config, {}, {}, &session);
+  const RiskAwareLatticeResult resumed = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config, {}, &session);
 
   EXPECT_FALSE(first.search_session_resumed);
   EXPECT_TRUE(resumed.search_session_resumed);
   EXPECT_GT(resumed.expansions, first.expansions);
 
   session.reset();
-  const RiskAwareLatticeResult restarted =
-      planRiskAwareMotionPrimitiveGuide(grid, esdf, Point2{2.5, 10.5}, 0.0,
-                                        Point2{150.5, 10.5}, config, {}, {}, &session);
+  const RiskAwareLatticeResult restarted = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config, {}, &session);
   EXPECT_FALSE(restarted.search_session_resumed);
 }
 
@@ -345,7 +245,7 @@ TEST(RiskAwareLattice, FailurePointBlocksOnlyRepeatedApproach) {
   };
 
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
-      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{100.0, 10.5}, config, {}, blacklist);
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{100.0, 10.5}, config, blacklist);
 
   ASSERT_TRUE(result.valid);
   ASSERT_GE(result.guide.size(), 2U);

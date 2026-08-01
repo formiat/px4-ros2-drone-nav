@@ -26,13 +26,14 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
 struct RouteSample {
   float x_m{0.0F};
   float y_m{0.0F};
+  float z_m{0.0F};
   float tangent_x{1.0F};
   float tangent_y{0.0F};
   float station_m{0.0F};
   bool valid{false};
 };
 
-[[nodiscard]] RouteSample sampleRoute(const std::span<const RoutePoint> route,
+[[nodiscard]] RouteSample sampleRoute(const std::span<const RouteSample3D> route,
                                       const float requested_station_m) noexcept {
   if (route.size() < 2U) {
     return {};
@@ -40,8 +41,8 @@ struct RouteSample {
   const float station_m =
       std::clamp(requested_station_m, route.front().station_m, route.back().station_m);
   for (std::size_t index = 0U; index + 1U < route.size(); ++index) {
-    const RoutePoint& first = route[index];
-    const RoutePoint& second = route[index + 1U];
+    const RouteSample3D& first = route[index];
+    const RouteSample3D& second = route[index + 1U];
     if (station_m > second.station_m && index + 2U < route.size()) {
       continue;
     }
@@ -59,6 +60,7 @@ struct RouteSample {
     return RouteSample{
         .x_m = std::lerp(first.x_m, second.x_m, ratio),
         .y_m = std::lerp(first.y_m, second.y_m, ratio),
+        .z_m = std::lerp(first.z_m, second.z_m, ratio),
         .tangent_x = dx / length_m,
         .tangent_y = dy / length_m,
         .station_m = station_m,
@@ -66,36 +68,6 @@ struct RouteSample {
     };
   }
   return {};
-}
-
-[[nodiscard]] float smoothStep(const float ratio) noexcept {
-  const float value = std::clamp(ratio, 0.0F, 1.0F);
-  return value * value * value * (value * (value * 6.0F - 15.0F) + 10.0F);
-}
-
-[[nodiscard]] float passageReferenceZ(const PassageConstraint& passage,
-                                      const float station_m) noexcept {
-  if (station_m < passage.approach_station_m ||
-      station_m > passage.departure_station_m) {
-    return passage.normal_flight_z_m;
-  }
-  if (passage.phase == PassagePhase::kVerticalAlignment &&
-      station_m <= passage.exit_station_m) {
-    return passage.preferred_z_m;
-  }
-  if (station_m < passage.alignment_station_m) {
-    const float length_m =
-        std::max(1.0e-3F, passage.alignment_station_m - passage.approach_station_m);
-    return std::lerp(passage.normal_flight_z_m, passage.preferred_z_m,
-                     smoothStep((station_m - passage.approach_station_m) / length_m));
-  }
-  if (station_m <= passage.exit_station_m) {
-    return passage.preferred_z_m;
-  }
-  const float length_m =
-      std::max(1.0e-3F, passage.departure_station_m - passage.exit_station_m);
-  return std::lerp(passage.preferred_z_m, passage.normal_flight_z_m,
-                   smoothStep((station_m - passage.exit_station_m) / length_m));
 }
 
 } // namespace
@@ -169,11 +141,10 @@ void limitControlSequence(const std::span<Control> controls,
 }
 
 std::vector<Control> buildGuideDirectedNominalSeed(
-    const State& initial, const State& target, const std::span<const RoutePoint> route,
-    const float initial_route_station_m,
-    const std::optional<PassageConstraint>& passage, const float reference_speed_mps,
-    const DynamicsConfig& dynamics, const std::size_t steps,
-    const Control previous_applied_control) {
+    const State& initial, const State& target,
+    const std::span<const RouteSample3D> route, const float initial_route_station_m,
+    const float reference_speed_mps, const DynamicsConfig& dynamics,
+    const std::size_t steps, const Control previous_applied_control) {
   std::vector<Control> seed(steps);
   const float dx = target.x - initial.x;
   const float dy = target.y - initial.y;
@@ -196,9 +167,7 @@ std::vector<Control> buildGuideDirectedNominalSeed(
         (route_sample.valid ? route_sample.y_m : target.y) - predicted.y;
     const float desired_vx = requested_speed_mps * tangent_x;
     const float desired_vy = requested_speed_mps * tangent_y;
-    const float desired_z = passage.has_value() && route_sample.valid
-                                ? passageReferenceZ(*passage, route_sample.station_m)
-                                : target.z;
+    const float desired_z = route_sample.valid ? route_sample.z_m : target.z;
     seed[index] = Control{
         .ax = 0.8F * (desired_vx - predicted.vx) + 0.35F * position_error_x,
         .ay = 0.8F * (desired_vy - predicted.vy) + 0.35F * position_error_y,

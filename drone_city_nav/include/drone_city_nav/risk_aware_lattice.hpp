@@ -1,7 +1,6 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_types.hpp"
-#include "drone_city_nav/semantic_portal_route.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -48,7 +47,6 @@ struct LatticeSuccessorDiagnostics {
   std::size_t rejected_outside_grid{0U};
   std::size_t rejected_invalid_clearance{0U};
   std::size_t rejected_raw_collision{0U};
-  std::size_t rejected_portal_footprint{0U};
   std::size_t rejected_risk_stage{0U};
   std::size_t rejected_blacklisted_failure{0U};
   std::size_t rejected_no_cost_improvement{0U};
@@ -77,11 +75,6 @@ struct RiskAwareLatticeConfig {
   double minimum_frontier_reachable_depth_m{8.0};
   double frontier_blacklist_radius_m{6.0};
   int frontier_blacklist_heading_tolerance_bins{1};
-  double portal_lateral_margin_m{0.5};
-  double portal_entry_capture_distance_m{6.0};
-  double portal_exit_extension_m{4.0};
-  double portal_center_preference_cost{2.0};
-  int portal_maximum_heading_delta_bins{4};
 };
 
 struct RiskAwareLatticeResult {
@@ -129,15 +122,14 @@ private:
 
   friend RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const mppi::EsdfGrid&, std::span<const float>, Point2, double, Point2,
-      const RiskAwareLatticeConfig&, std::span<const SemanticPortalPrimitive>,
-      std::span<const LatticeFrontierBlacklistEntry>, RiskAwareLatticeSearchSession*);
+      const RiskAwareLatticeConfig&, std::span<const LatticeFrontierBlacklistEntry>,
+      RiskAwareLatticeSearchSession*);
 };
 
 [[nodiscard]] RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     const mppi::EsdfGrid& grid, std::span<const float> esdf_m, Point2 start,
     double preferred_heading_rad, Point2 mission_goal,
     const RiskAwareLatticeConfig& config,
-    std::span<const SemanticPortalPrimitive> portals = {},
     std::span<const LatticeFrontierBlacklistEntry> frontier_blacklist = {},
     RiskAwareLatticeSearchSession* session = nullptr);
 

@@ -47,7 +47,8 @@ TEST(EsdfQueryTest, PreservesPositiveInfinityAndRejectsInvalidSamples) {
   EXPECT_EQ(invalid.status, EsdfQueryStatus::kInvalidDistance);
   EXPECT_TRUE(invalid.raw_occupied);
   EXPECT_EQ(outside.status, EsdfQueryStatus::kOutsideGrid);
-  EXPECT_TRUE(outside.raw_occupied);
+  EXPECT_FALSE(outside.raw_occupied);
+  EXPECT_TRUE(std::isinf(outside.clearance_m));
 }
 
 TEST(EsdfQueryTest, SeparatesRawOccupancyFromConservativeRiskClearance) {
@@ -62,6 +63,30 @@ TEST(EsdfQueryTest, SeparatesRawOccupancyFromConservativeRiskClearance) {
   EXPECT_FLOAT_EQ(free_near_wall.clearance_m, 0.0F);
   ASSERT_EQ(occupied.status, EsdfQueryStatus::kValid);
   EXPECT_TRUE(occupied.raw_occupied);
+}
+
+TEST(EsdfQueryTest, QueriesThreeDimensionalGridUsingZMajorStorage) {
+  mppi::EsdfGrid grid{2, 2, 1.0F, 10.0F, 20.0F};
+  grid.depth = 2;
+  grid.origin_z_m = 30.0F;
+  const std::vector<float> esdf{
+      4.0F, 4.0F, 4.0F, 4.0F, 3.0F, 2.0F, 1.0F, 0.0F,
+  };
+
+  const EsdfQueryResult free = queryConservativeEsdf3D(grid, esdf, 10.5F, 20.5F, 31.5F);
+  const EsdfQueryResult occupied =
+      queryConservativeEsdf3D(grid, esdf, 11.5F, 21.5F, 31.5F);
+  const EsdfQueryResult outside =
+      queryConservativeEsdf3D(grid, esdf, 10.5F, 20.5F, 32.5F);
+
+  ASSERT_EQ(free.status, EsdfQueryStatus::kValid);
+  EXPECT_FALSE(free.raw_occupied);
+  EXPECT_NEAR(free.clearance_m, 3.0F - 0.8660254F, 1.0e-5F);
+  ASSERT_EQ(occupied.status, EsdfQueryStatus::kValid);
+  EXPECT_TRUE(occupied.raw_occupied);
+  EXPECT_EQ(outside.status, EsdfQueryStatus::kOutsideGrid);
+  EXPECT_FALSE(outside.raw_occupied);
+  EXPECT_TRUE(std::isinf(outside.clearance_m));
 }
 
 } // namespace

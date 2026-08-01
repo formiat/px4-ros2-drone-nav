@@ -43,12 +43,11 @@ If no fresh horizon exists:
 
 The old horizon is not extended beyond its validity deadline.
 
-## Passage Position Hold
+## Constrained Route Execution
 
-During required vertical alignment, the horizon requests a stationary position
-hold. Offboard switches to position mode at the coordinator's XY hold point and
-preferred Z. It returns to ordinary horizon execution when a subsequent
-horizon releases the request.
+Static `RouteSample3D` references carry altitude and speed constraints along
+canonical air-channel spans. MPPI follows the same typed route continuously;
+there is no separate passage hold or nearest-opening selector.
 
 ## Crash Handling
 

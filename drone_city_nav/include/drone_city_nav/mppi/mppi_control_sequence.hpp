@@ -19,10 +19,11 @@ void limitControlSequence(std::span<Control> controls, const DynamicsConfig& dyn
                           Control previous_applied_control,
                           float first_control_interval_s) noexcept;
 
-[[nodiscard]] std::vector<Control> buildGuideDirectedNominalSeed(
-    const State& initial, const State& target, std::span<const RoutePoint> route,
-    float initial_route_station_m, const std::optional<PassageConstraint>& passage,
-    float reference_speed_mps, const DynamicsConfig& dynamics, std::size_t steps,
-    Control previous_applied_control);
+[[nodiscard]] std::vector<Control>
+buildGuideDirectedNominalSeed(const State& initial, const State& target,
+                              std::span<const RouteSample3D> route,
+                              float initial_route_station_m, float reference_speed_mps,
+                              const DynamicsConfig& dynamics, std::size_t steps,
+                              Control previous_applied_control);
 
 } // namespace drone_city_nav::mppi

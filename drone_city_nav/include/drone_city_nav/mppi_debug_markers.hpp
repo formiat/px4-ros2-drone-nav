@@ -6,7 +6,6 @@
 #include <std_msgs/msg/header.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include <optional>
 #include <span>
 
 namespace drone_city_nav {
@@ -16,12 +15,11 @@ struct MppiDebugMarkerInput {
   std::span<const mppi::State> horizon;
   std::span<const mppi::State> previous_horizon;
   std::span<const mppi::State> execution_horizon;
-  std::span<const Point2> global_guide;
+  std::span<const mppi::RouteSample3D> global_route;
   mppi::State initial_state{};
   mppi::State target{};
   Point3 mission_start{};
   Point3 mission_goal{};
-  std::optional<mppi::PassageConstraint> passage;
   mppi::RiskTier selected_tier{mppi::RiskTier::kCollision};
 };
 

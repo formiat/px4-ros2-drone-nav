@@ -41,40 +41,30 @@ TEST(MppiControlSequenceTest, ReseedFollowsRouteWithoutAlternatingLateralBias) {
   const State initial{};
   const State target{.x = 10.0F};
   const std::array route{
-      RoutePoint{.x_m = 0.0F, .y_m = 0.0F, .station_m = 0.0F},
-      RoutePoint{.x_m = 10.0F, .y_m = 0.0F, .station_m = 10.0F},
+      RouteSample3D{.x_m = 0.0F, .y_m = 0.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 10.0F, .y_m = 0.0F, .station_m = 10.0F},
   };
 
   const std::vector<Control> seed = buildGuideDirectedNominalSeed(
-      initial, target, route, 0.0F, std::nullopt, 5.0F, dynamics, 8U, Control{});
+      initial, target, route, 0.0F, 5.0F, dynamics, 8U, Control{});
 
   ASSERT_FALSE(seed.empty());
   EXPECT_GT(seed.front().ax, 0.0F);
   EXPECT_NEAR(seed.front().ay, 0.0F, 1.0e-6F);
 }
 
-TEST(MppiControlSequenceTest, PassageReseedUsesCurrentRouteAltitudeProfile) {
+TEST(MppiControlSequenceTest, ReseedUsesCurrentRouteAltitudeProfile) {
   DynamicsConfig dynamics;
   dynamics.dt_s = 0.1F;
   const State initial{.x = 5.0F, .z = 5.0F};
   const State distant_target{.x = 30.0F, .z = 18.0F};
   const std::array route{
-      RoutePoint{.x_m = 0.0F, .y_m = 0.0F, .station_m = 0.0F},
-      RoutePoint{.x_m = 30.0F, .y_m = 0.0F, .station_m = 30.0F},
-  };
-  const PassageConstraint passage{
-      .preferred_z_m = 5.0F,
-      .normal_flight_z_m = 18.0F,
-      .approach_station_m = 0.0F,
-      .alignment_station_m = 4.0F,
-      .entry_station_m = 5.0F,
-      .exit_station_m = 20.0F,
-      .departure_station_m = 25.0F,
-      .phase = PassagePhase::kTraversal,
+      RouteSample3D{.x_m = 0.0F, .y_m = 0.0F, .z_m = 5.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 30.0F, .y_m = 0.0F, .z_m = 5.0F, .station_m = 30.0F},
   };
 
   const std::vector<Control> seed = buildGuideDirectedNominalSeed(
-      initial, distant_target, route, 5.0F, passage, 5.0F, dynamics, 8U, Control{});
+      initial, distant_target, route, 5.0F, 5.0F, dynamics, 8U, Control{});
 
   ASSERT_FALSE(seed.empty());
   EXPECT_NEAR(seed.front().az, 0.0F, 1.0e-6F);

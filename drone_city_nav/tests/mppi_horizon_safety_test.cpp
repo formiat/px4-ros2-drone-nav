@@ -128,7 +128,7 @@ TEST(MppiHorizonSafetyTest, StaticFallbackStopsFromTwentyMetersPerSecond) {
   EXPECT_NEAR(result.fallback_horizon.back().vx, 0.0F, 1.0e-4F);
 }
 
-TEST(MppiHorizonSafetyTest, TreatsOutsideGridAsCollision) {
+TEST(MppiHorizonSafetyTest, DoesNotTreatComputationalGridBoundaryAsCollision) {
   const mppi::EsdfGrid grid{2, 2, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf(4U, 10.0F);
   const std::vector<mppi::State> horizon{mppi::State{1.0F, 1.0F},
@@ -137,7 +137,21 @@ TEST(MppiHorizonSafetyTest, TreatsOutsideGridAsCollision) {
   const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
       mppi::State{1.0F, 1.0F}, horizon, esdf, grid, MppiHorizonSafetyConfig{});
 
-  EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
+}
+
+TEST(MppiHorizonSafetyTest, UsesAltitudeForThreeDimensionalCollision) {
+  mppi::EsdfGrid grid{2, 2, 1.0F, 0.0F, 0.0F};
+  grid.depth = 2;
+  grid.origin_z_m = 0.0F;
+  const std::vector<float> esdf{0.0F, 4.0F, 4.0F, 4.0F, 4.0F, 4.0F, 4.0F, 4.0F};
+  const mppi::State above_obstacle{0.5F, 0.5F, 1.5F};
+  const std::vector<mppi::State> horizon{above_obstacle, above_obstacle};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      above_obstacle, horizon, esdf, grid, MppiHorizonSafetyConfig{});
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
 }
 
 TEST(MppiHorizonSafetyTest, ExplicitFallbackBrakesWithoutAPlannedHorizon) {

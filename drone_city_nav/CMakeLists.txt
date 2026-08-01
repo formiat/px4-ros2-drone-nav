@@ -124,12 +124,10 @@ add_library(
   src/crash_disarm_lifecycle.cpp
   src/debug_image.cpp
   src/distance_field.cpp
+  src/distance_field_3d.cpp
   src/esdf_query.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
-  src/known_passage_map.cpp
-  src/known_passage_geometry.cpp
-  src/known_passage_solid_volumes.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_debug_snapshot_pipeline.cpp
@@ -143,6 +141,8 @@ add_library(
   src/lidar_projection.cpp
   src/px4_ros_time_mapper.cpp
   src/risk_aware_lattice.cpp
+  src/risk_aware_lattice_3d.cpp
+  src/route_3d.cpp
   src/lidar_snapshot_writer.cpp
   src/mppi/mppi_post_update_classification.cpp
   src/mppi_horizon_safety.cpp
@@ -154,11 +154,8 @@ add_library(
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
-  src/passage_coordinator.cpp
-  src/passage_traversal_monitor.cpp
-  src/semantic_portal_occupancy.cpp
-  src/semantic_portal_route.cpp
-  src/static_city_map.cpp)
+  src/occupancy_grid_3d.cpp
+  )
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
 target_include_directories(
   drone_city_nav_core
@@ -188,9 +185,7 @@ add_library(
   src/lidar_debug_pointclouds.cpp
   src/mppi_debug_markers.cpp
   src/ros_conversions.cpp
-  src/known_passage_debug_markers.cpp
   src/static_map_debug.cpp
-  src/static_map_source.cpp
   src/visualization_marker_helpers.cpp)
 target_compile_features(drone_city_nav_ros_adapters PUBLIC cxx_std_20)
 target_link_libraries(drone_city_nav_ros_adapters drone_city_nav_core)
@@ -293,6 +288,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_executable(
     production_mppi_node
     src/production_mppi_node.cpp
+    src/production_mppi_node_esdf.cpp
     src/production_mppi_node_inputs.cpp
     src/production_mppi_node_runtime.cpp
     src/production_mppi_node_diagnostics.cpp
@@ -400,54 +396,6 @@ if(BUILD_TESTING)
   target_link_libraries(mppi_speed_policy_test_current drone_city_nav_core)
   enable_project_warnings(mppi_speed_policy_test_current)
 
-  ament_add_gtest(semantic_portal_route_test
-                  tests/semantic_portal_route_test.cpp)
-  target_compile_features(semantic_portal_route_test PRIVATE cxx_std_20)
-  target_link_libraries(semantic_portal_route_test drone_city_nav_core)
-  enable_project_warnings(semantic_portal_route_test)
-
-  ament_add_gtest(semantic_portal_occupancy_test
-                  tests/semantic_portal_occupancy_test.cpp)
-  target_compile_features(semantic_portal_occupancy_test PRIVATE cxx_std_20)
-  target_link_libraries(semantic_portal_occupancy_test drone_city_nav_core)
-  enable_project_warnings(semantic_portal_occupancy_test)
-
-  ament_add_gtest(passage_coordinator_test tests/passage_coordinator_test.cpp)
-  target_compile_features(passage_coordinator_test PRIVATE cxx_std_20)
-  target_link_libraries(passage_coordinator_test drone_city_nav_core)
-  enable_project_warnings(passage_coordinator_test)
-
-  ament_add_gtest(passage_mode_test tests/passage_mode_test.cpp)
-  target_compile_features(passage_mode_test PRIVATE cxx_std_20)
-  target_include_directories(passage_mode_test PRIVATE include)
-  enable_project_warnings(passage_mode_test)
-
-  ament_add_gtest(passage_traversal_monitor_test
-                  tests/passage_traversal_monitor_test.cpp)
-  target_compile_features(passage_traversal_monitor_test PRIVATE cxx_std_20)
-  target_link_libraries(passage_traversal_monitor_test drone_city_nav_core)
-  enable_project_warnings(passage_traversal_monitor_test)
-
-  ament_add_gtest(known_passage_map_test tests/known_passage_map_test.cpp)
-  target_compile_features(known_passage_map_test PRIVATE cxx_std_20)
-  target_link_libraries(known_passage_map_test drone_city_nav_core)
-  enable_project_warnings(known_passage_map_test)
-
-  ament_add_gtest(known_passage_solid_volumes_test
-                  tests/known_passage_solid_volumes_test.cpp)
-  target_compile_features(known_passage_solid_volumes_test PRIVATE cxx_std_20)
-  target_link_libraries(known_passage_solid_volumes_test drone_city_nav_core)
-  enable_project_warnings(known_passage_solid_volumes_test)
-
-  ament_add_gtest(known_passage_debug_markers_test
-                  tests/known_passage_debug_markers_test.cpp)
-  target_compile_features(known_passage_debug_markers_test PRIVATE cxx_std_20)
-  target_link_libraries(known_passage_debug_markers_test
-                        drone_city_nav_ros_adapters)
-  ament_target_dependencies(known_passage_debug_markers_test geometry_msgs
-                            std_msgs visualization_msgs)
-  enable_project_warnings(known_passage_debug_markers_test)
-
   if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     ament_add_gtest(mppi_control_sequence_test_current
                     tests/mppi_control_sequence_test.cpp)
@@ -485,6 +433,21 @@ if(BUILD_TESTING)
   target_link_libraries(distance_field_test_current drone_city_nav_core)
   enable_project_warnings(distance_field_test_current)
 
+  ament_add_gtest(occupancy_grid_3d_test tests/occupancy_grid_3d_test.cpp)
+  target_compile_features(occupancy_grid_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(occupancy_grid_3d_test drone_city_nav_core)
+  enable_project_warnings(occupancy_grid_3d_test)
+
+  ament_add_gtest(distance_field_3d_test tests/distance_field_3d_test.cpp)
+  target_compile_features(distance_field_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(distance_field_3d_test drone_city_nav_core)
+  enable_project_warnings(distance_field_3d_test)
+
+  ament_add_gtest(route_3d_test tests/route_3d_test.cpp)
+  target_compile_features(route_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(route_3d_test drone_city_nav_core)
+  enable_project_warnings(route_3d_test)
+
   ament_add_gtest(grid_overlay_test_current tests/grid_overlay_test.cpp)
   target_compile_features(grid_overlay_test_current PRIVATE cxx_std_20)
   target_link_libraries(grid_overlay_test_current drone_city_nav_core)
@@ -498,12 +461,6 @@ if(BUILD_TESTING)
   ament_target_dependencies(px4_offboard_setpoint_io_test_current px4_msgs)
   enable_project_warnings(px4_offboard_setpoint_io_test_current)
 
-  ament_add_gtest(static_map_debug_test_current
-                  tests/static_map_debug_test.cpp)
-  target_compile_features(static_map_debug_test_current PRIVATE cxx_std_20)
-  target_link_libraries(static_map_debug_test_current
-                        drone_city_nav_ros_adapters)
-  enable_project_warnings(static_map_debug_test_current)
 
   ament_add_gtest(mppi_debug_markers_test_current
                   tests/mppi_debug_markers_test.cpp)

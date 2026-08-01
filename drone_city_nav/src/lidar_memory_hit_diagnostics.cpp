@@ -1,7 +1,5 @@
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
 
-#include "drone_city_nav/known_passage_solid_volumes.hpp"
-
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -12,6 +10,21 @@
 
 namespace drone_city_nav {
 namespace {
+
+[[nodiscard]] const char*
+legacyStaticPartName(const LegacyStaticPartKind part) noexcept {
+  switch (part) {
+    case LegacyStaticPartKind::kLeft:
+      return "left";
+    case LegacyStaticPartKind::kRight:
+      return "right";
+    case LegacyStaticPartKind::kLower:
+      return "lower";
+    case LegacyStaticPartKind::kUpper:
+      return "upper";
+  }
+  return "unknown";
+}
 
 void writeNumberOrNull(std::ostream& stream, const double value) {
   if (std::isfinite(value)) {
@@ -97,7 +110,7 @@ void writeKnownSurface(std::ostream& stream,
   writeNumberOrNull(stream, value.range_m);
   stream << ",\"intersection_map_m\":";
   writePoint3(stream, value.intersection_map_m);
-  stream << ",\"part\":\"" << knownPassageSolidPartKindName(value.part_kind)
+  stream << ",\"part\":\"" << legacyStaticPartName(value.part_kind)
          << "\",\"structure_id\":\"" << value.structure_id << "\",\"opening_id\":\""
          << value.opening_id << "\",\"part_id\":\"" << value.part_id
          << "\",\"volume\":{\"center_xy\":";

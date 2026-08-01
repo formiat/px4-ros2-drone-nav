@@ -7,7 +7,7 @@ into a timestamped local trajectory horizon.
 
 `obstacle_memory_node` combines:
 
-- the optional static city map;
+- the static Occupancy3D world in static mode;
 - accumulated lidar obstacle memory;
 - current sensor updates and provenance.
 
@@ -32,8 +32,8 @@ not duplicate YAML as a second parameter source of truth.
 
 ## 3. Global Lattice Guide
 
-The risk-aware lattice searches motion primitives over position and heading.
-It produces a bounded guide polyline toward the mission goal.
+Static mode uses a 3D lattice over physical free voxels and produces
+`RouteSample3D` samples. No-static retains the 2D lidar-driven lattice.
 
 Lattice output is classified as reached-goal, viable frontier, or dead end for
 diagnostics. The current classification is observational and does not by itself
@@ -47,7 +47,7 @@ Initial search heading uses a cascade:
 
 1. velocity heading at normal speed;
 2. previous accepted-guide tangent at low speed;
-3. yaw or mission direction when no accepted guide exists.
+3. mission direction when no accepted guide exists.
 
 ## 4. Target And Speed Policy
 
@@ -61,19 +61,17 @@ Reference speed is bounded by:
 - curvature preview;
 - observed-space/braking constraints;
 - goal approach;
-- an active passage limit.
+- constrained-route span limits.
 
 When no guide exists in no-static mode, direct flight to the distant mission
 goal is forbidden. The planner publishes braking/hold behavior instead.
 
-## 5. Passage Coordination
+## 5. Constrained Route Spans
 
-If the guide crosses a known opening, the passage coordinator can activate an
-approach, stationary vertical alignment, traversal, or partial-from-inside
-phase. It supplies MPPI with known 3D constraints and can request an explicit
-XY position hold while altitude is captured.
-
-See `known_passages.md` for the detailed contract.
+Static air channels are ordinary physical free space. The accepted 3D route is
+analysed against local clearance and produces constrained station intervals.
+Those intervals carry speed and tracking envelopes directly; no nearest-opening
+selection or separate passage lifecycle exists.
 
 ## 6. GPU MPPI
 
@@ -82,7 +80,7 @@ Each planning tick:
 1. shifts the previous nominal controls by elapsed time;
 2. generates CUDA control perturbations;
 3. simulates thousands of point-mass rollouts;
-4. queries ESDF and known-solid geometry;
+4. queries the 3D ESDF;
 5. selects the best eligible risk class;
 6. computes the weighted control update;
 7. limits the first control relative to applied-control feedback;
@@ -94,7 +92,7 @@ path for open-loop execution.
 ## 7. Post-Update Checks And Braking
 
 The reconstructed horizon receives an observational post-update
-classification. Raw or known-solid collision causes execution to switch to the
+classification. Raw physical collision causes execution to switch to the
 braking fallback. The independent horizon safety check estimates
 time-to-collision and stopping capability against the current ESDF.
 

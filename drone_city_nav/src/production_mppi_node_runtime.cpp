@@ -2,7 +2,6 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
-#include "drone_city_nav/semantic_portal_occupancy.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -52,139 +51,68 @@ namespace {
                           source - static_cast<double>(lower));
 }
 
-[[nodiscard]] std::shared_ptr<const std::vector<mppi::RoutePoint>>
-makeMppiRoute(const SemanticPortalRoute& route) {
-  auto points = std::make_shared<std::vector<mppi::RoutePoint>>();
-  points->reserve(route.polyline ? route.polyline->size() : 0U);
-  if (!route.polyline || route.polyline->size() != route.point_stations_m.size()) {
-    return points;
+[[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
+makeMppiRoute3D(std::span<const RouteSample3D> route,
+                std::span<const ConstrainedRouteSpan> spans,
+                double unconstrained_speed_mps, double constrained_speed_mps);
+
+[[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
+makeMppiRoute2D(const std::span<const Point2> route, const double z_m,
+                const double reference_speed_mps) {
+  std::vector<Point3> points;
+  points.reserve(route.size());
+  for (const Point2 point : route) {
+    points.push_back(Point3{point.x, point.y, z_m});
   }
-  for (std::size_t index = 0U; index < route.polyline->size(); ++index) {
-    points->push_back(mppi::RoutePoint{
-        .x_m = static_cast<float>((*route.polyline)[index].x),
-        .y_m = static_cast<float>((*route.polyline)[index].y),
-        .station_m = static_cast<float>(route.point_stations_m[index]),
+  return makeMppiRoute3D(sampleRoute3D(points, 0.5, reference_speed_mps), {},
+                         reference_speed_mps, reference_speed_mps);
+}
+
+[[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
+makeMppiRoute3D(const std::span<const RouteSample3D> route,
+                const std::span<const ConstrainedRouteSpan> spans,
+                const double unconstrained_speed_mps,
+                const double constrained_speed_mps) {
+  auto points = std::make_shared<std::vector<mppi::RouteSample3D>>();
+  points->reserve(route.size());
+  for (const RouteSample3D& sample : route) {
+    const bool constrained =
+        std::ranges::any_of(spans, [&sample](const ConstrainedRouteSpan& span) {
+          return sample.station_m >= span.begin_station_m &&
+                 sample.station_m <= span.end_station_m;
+        });
+    points->push_back(mppi::RouteSample3D{
+        .x_m = static_cast<float>(sample.position.x),
+        .y_m = static_cast<float>(sample.position.y),
+        .z_m = static_cast<float>(sample.position.z),
+        .tangent_x = static_cast<float>(sample.tangent.x),
+        .tangent_y = static_cast<float>(sample.tangent.y),
+        .tangent_z = static_cast<float>(sample.tangent.z),
+        .station_m = static_cast<float>(sample.station_m),
+        .reference_speed_mps = static_cast<float>(
+            constrained ? constrained_speed_mps : unconstrained_speed_mps),
     });
+  }
+  return points;
+}
+
+[[nodiscard]] std::shared_ptr<const std::vector<Point2>>
+projectRouteTo2D(const std::span<const RouteSample3D> route) {
+  auto points = std::make_shared<std::vector<Point2>>();
+  points->reserve(route.size());
+  for (const RouteSample3D& sample : route) {
+    points->push_back(Point2{sample.position.x, sample.position.y});
   }
   return points;
 }
 
 } // namespace
 
-void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
-  while (!stop_token.stop_requested()) {
-    msg::RawObstacleSnapshot::ConstSharedPtr snapshot;
-    {
-      std::unique_lock lock{raw_queue_mutex_};
-      raw_queue_condition_.wait(lock, stop_token,
-                                [this]() { return pending_raw_snapshot_ != nullptr; });
-      if (stop_token.stop_requested()) {
-        return;
-      }
-      snapshot = std::exchange(pending_raw_snapshot_, nullptr);
-    }
-    if (!snapshot) {
-      continue;
-    }
-    const std::int64_t source_stamp_ns = get_clock()->now().nanoseconds();
-    RawOccupancyGridFromRosResult conversion =
-        rawOccupancyGridFromRos(snapshot->grid, RawOccupancyGridFromRosConfig{100, 0});
-    if (!conversion.grid.has_value()) {
-      RCLCPP_WARN(get_logger(),
-                  "PRODUCTION_MPPI_ESDF rejected revision=%" PRIu64
-                  " reason=invalid_raw_grid",
-                  snapshot->obstacle_snapshot_revision);
-      continue;
-    }
-    const SemanticPortalOccupancyResult semantic_occupancy =
-        known_passages_.has_value()
-            ? overlaySemanticPortalSideSolids(*conversion.grid, *known_passages_)
-            : SemanticPortalOccupancyResult{};
-    const auto build_started = std::chrono::steady_clock::now();
-    const DistanceField2D field = DistanceField2D::build(
-        *conversion.grid,
-        static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
-        DistanceFieldSource::kOccupied);
-    const double build_ms = std::chrono::duration<double, std::milli>(
-                                std::chrono::steady_clock::now() - build_started)
-                                .count();
-    const auto conversion_started = std::chrono::steady_clock::now();
-    std::vector<float> distances;
-    distances.reserve(field.distancesM().size());
-    for (const double distance_m : field.distancesM()) {
-      distances.push_back(static_cast<float>(distance_m));
-    }
-    const double conversion_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  conversion_started)
-            .count();
-    const GridBounds& bounds = field.bounds();
-    const mppi::EsdfGrid grid{bounds.width_cells, bounds.height_cells,
-                              static_cast<float>(bounds.resolution_m),
-                              static_cast<float>(bounds.origin_x),
-                              static_cast<float>(bounds.origin_y)};
-    const mppi::EsdfUploadResult upload = engine_->updateEsdf(
-        mppi::EsdfSnapshot{grid, distances, snapshot->obstacle_snapshot_revision});
-    if (!upload.accepted) {
-      continue;
-    }
-
-    ProductionMppiPreparedEsdf prepared;
-    {
-      const std::scoped_lock lock{esdf_state_mutex_};
-      if (prepared_esdf_.has_value()) {
-        prepared = *prepared_esdf_;
-      }
-    }
-    prepared.producer_instance_id = snapshot->producer_instance_id;
-    prepared.revision = snapshot->obstacle_snapshot_revision;
-    prepared.source_stamp_ns = source_stamp_ns;
-    prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
-    prepared.build_ms = build_ms;
-    prepared.conversion_ms = conversion_ms;
-    prepared.upload_ms = upload.upload_ms;
-    prepared.grid = grid;
-    prepared.distances_m =
-        std::make_shared<const std::vector<float>>(std::move(distances));
-    prepared.semantic_side_volumes = semantic_occupancy.side_volumes_considered;
-    prepared.semantic_side_cells = semantic_occupancy.cells_marked_occupied;
-    prepared.lattice_search_performed = false;
-    prepared.lattice_continuation_attempt = 0U;
-
-    {
-      const std::scoped_lock lock{esdf_state_mutex_};
-      prepared_esdf_ = prepared;
-    }
-    auto guide_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
-    {
-      const std::scoped_lock lock{guide_queue_mutex_};
-      if (pending_guide_world_) {
-        dropped_guide_worlds_.fetch_add(1U, std::memory_order_relaxed);
-      }
-      pending_guide_world_ = std::move(guide_world);
-    }
-    guide_queue_condition_.notify_all();
-
-    RCLCPP_INFO(
-        get_logger(),
-        "PRODUCTION_MPPI_ESDF revision=%" PRIu64
-        " build_ms=%.2f conversion_ms=%.2f upload_ms=%.2f "
-        "raw_to_ready_ms=%.2f dropped_raw=%" PRIu64 " dropped_guide_worlds=%" PRIu64,
-        prepared.revision, prepared.build_ms, prepared.conversion_ms,
-        prepared.upload_ms,
-        static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
-        dropped_raw_snapshots_.load(std::memory_order_relaxed),
-        dropped_guide_worlds_.load(std::memory_order_relaxed));
-  }
-}
-
 void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
   std::size_t active_guide_expansions = 0U;
   double active_guide_cost = 0.0;
-  std::shared_ptr<const SemanticPortalRoute> semantic_route;
-  std::shared_ptr<const std::vector<mppi::RoutePoint>> mppi_route;
-  std::shared_ptr<const std::vector<Point2>> semantic_route_source;
-  SemanticPortalRouteBuildResult semantic_route_build;
+  std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
+  std::shared_ptr<const std::vector<Point2>> route_source;
   std::shared_ptr<const ProductionMppiPreparedEsdf> world;
   RiskAwareLatticeSearchSession search_session;
   std::optional<ProductionMppiNavigation> search_navigation;
@@ -208,6 +136,74 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     }
     if (!world || !world->distances_m) {
       world.reset();
+      continue;
+    }
+    if (use_static_map_ && world->grid.depth > 1) {
+      ProductionMppiNavigation navigation;
+      {
+        const std::scoped_lock lock{input_mutex_};
+        navigation = navigation_;
+      }
+      if (!navigation.valid) {
+        world.reset();
+        continue;
+      }
+      Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
+                               static_cast<double>(navigation.state.vy),
+                               static_cast<double>(navigation.state.vz)};
+      if (std::hypot(preferred_direction.x, preferred_direction.y) < 0.5) {
+        preferred_direction = Vec3{mission_goal_.x - navigation.state.x,
+                                   mission_goal_.y - navigation.state.y,
+                                   mission_goal_.z - navigation.state.z};
+      }
+      const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
+          world->grid, *world->distances_m,
+          Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+          preferred_direction, mission_goal_, lattice_3d_config_);
+      ProductionMppiPreparedEsdf prepared = *world;
+      prepared.lattice_search_performed = true;
+      prepared.lattice_executable =
+          lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
+          lattice.status == Lattice3DStatus::kViableFrontier;
+      prepared.global_guide_expansions = lattice.expansions;
+      prepared.global_guide_generation = ++static_route_generation_;
+      prepared.global_guide_reaches_mission_goal = lattice.reached_mission_goal;
+      if (prepared.lattice_executable) {
+        auto route = std::make_shared<const std::vector<RouteSample3D>>(lattice.route);
+        auto spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
+            analyzeConstrainedRouteSpans(*route, world->grid, *world->distances_m,
+                                         prepared.global_guide_generation,
+                                         route_envelope_config_));
+        prepared.route_3d = route;
+        prepared.route_2d_projection = projectRouteTo2D(*route);
+        prepared.constrained_spans = spans;
+        prepared.mppi_route =
+            makeMppiRoute3D(*route, *spans, speed_policy_config_.cruise_speed_mps,
+                            constrained_route_speed_limit_mps_);
+        prepared.global_guide_projection =
+            projectOntoGlobalGuide(*prepared.route_2d_projection,
+                                   Point2{navigation.state.x, navigation.state.y});
+      }
+      bool activated = false;
+      {
+        const std::scoped_lock lock{esdf_state_mutex_};
+        if (prepared_esdf_ && prepared_esdf_->revision == prepared.revision) {
+          prepared_esdf_ = prepared;
+          activated = true;
+        }
+      }
+      RCLCPP_INFO(get_logger(),
+                  "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
+                  " activated=%s status=%s points=%zu samples=%zu spans=%zu "
+                  "expansions=%zu risk_stage=%u",
+                  prepared.revision, activated ? "true" : "false",
+                  lattice3DStatusName(lattice.status), lattice.points.size(),
+                  lattice.route.size(),
+                  prepared.constrained_spans ? prepared.constrained_spans->size() : 0U,
+                  lattice.expansions, static_cast<unsigned>(lattice.risk_stage));
+      world.reset();
+      search_navigation.reset();
+      continuation_attempt = 0U;
       continue;
     }
     const mppi::EsdfGrid& grid = world->grid;
@@ -276,7 +272,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
               Point2{mission_goal_.x, mission_goal_.y}, search_config,
-              semantic_portal_primitives_, frontier_blacklist_, &search_session);
+              frontier_blacklist_, &search_session);
           lattice_search_performed = true;
           const auto candidate =
               std::make_shared<const std::vector<Point2>>(lattice_observation.guide);
@@ -328,7 +324,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
               Point2{mission_goal_.x, mission_goal_.y}, search_config,
-              semantic_portal_primitives_, frontier_blacklist_, &search_session);
+              frontier_blacklist_, &search_session);
           lattice_search_performed = true;
           const auto candidate = std::make_shared<const std::vector<Point2>>(
               std::move(lattice_observation.guide));
@@ -365,25 +361,16 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         active_guide_lifecycle_ ? active_guide_lifecycle_->status()
                                 : ActiveGlobalGuideUpdate{};
     if (!guide) {
-      semantic_route.reset();
       mppi_route.reset();
-      semantic_route_source.reset();
-      semantic_route_build = {};
-    } else if (guide.get() != semantic_route_source.get() || !semantic_route ||
-               semantic_route->generation != active_status.generation) {
-      semantic_route_build = buildSemanticPortalRoute(
-          guide, active_status.generation, known_passages_.value_or(KnownPassageMap{}),
-          activePassageSpeedLimitMps(passage_speed_policy_), semantic_route_config_);
-      semantic_route = semantic_route_build.route;
-      mppi_route = semantic_route ? makeMppiRoute(*semantic_route) : nullptr;
-      semantic_route_source = guide;
+      route_source.reset();
+    } else if (guide.get() != route_source.get()) {
+      mppi_route = makeMppiRoute2D(*guide, mission_goal_.z,
+                                   speed_policy_config_.cruise_speed_mps);
+      route_source = guide;
     }
     ProductionMppiPreparedEsdf prepared = *world;
-    prepared.semantic_route = semantic_route;
     prepared.mppi_route = mppi_route;
-    prepared.portal_events = semantic_route_build.portal_events_created;
-    prepared.rejected_portal_route_misses = semantic_route_build.rejected_route_miss;
-    prepared.rejected_portal_overlaps = semantic_route_build.rejected_overlap;
+    prepared.route_2d_projection = guide;
     prepared.global_guide_expansions = active_guide_expansions;
     prepared.global_guide_cost = active_guide_cost;
     prepared.global_guide_generation = active_status.generation;
@@ -432,8 +419,6 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         " activated=%s continuation_attempt=%zu search_session_resumed=%s "
         "dropped_guide_worlds=%" PRIu64
         " guide_valid=%s guide_points=%zu guide_expansions=%zu guide_cost=%.2f "
-        "portal_events=%zu portal_route_misses=%zu portal_overlaps=%zu "
-        "semantic_side_volumes=%zu semantic_side_cells=%zu "
         "guide_generation=%" PRIu64
         " guide_reused=%s guide_reaches_mission_goal=%s guide_release=%s "
         "guide_heading_source=%s guide_risk=%s guide_acceptance=%s "
@@ -446,7 +431,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         "lattice_terminal_successors=%zu successor_generated=%zu "
         "successor_accepted=%zu successor_reject_roi=%zu "
         "successor_reject_grid=%zu successor_reject_invalid=%zu "
-        "successor_reject_collision=%zu successor_reject_portal=%zu "
+        "successor_reject_collision=%zu "
         "successor_reject_risk=%zu successor_reject_blacklist=%zu "
         "successor_reject_cost=%zu",
         prepared.revision, activated ? "true" : "false", continuation_attempt,
@@ -454,9 +439,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         dropped_guide_worlds_.load(std::memory_order_relaxed),
         guide && guide->size() >= 2U ? "true" : "false", guide ? guide->size() : 0U,
         prepared.global_guide_expansions, prepared.global_guide_cost,
-        prepared.portal_events, prepared.rejected_portal_route_misses,
-        prepared.rejected_portal_overlaps, prepared.semantic_side_volumes,
-        prepared.semantic_side_cells, prepared.global_guide_generation,
+        prepared.global_guide_generation,
         prepared.global_guide_reused ? "true" : "false",
         prepared.global_guide_reaches_mission_goal ? "true" : "false",
         globalGuideReleaseReasonName(prepared.global_guide_release_reason),
@@ -480,7 +463,6 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         prepared.lattice_successor_diagnostics.rejected_outside_grid,
         prepared.lattice_successor_diagnostics.rejected_invalid_clearance,
         prepared.lattice_successor_diagnostics.rejected_raw_collision,
-        prepared.lattice_successor_diagnostics.rejected_portal_footprint,
         prepared.lattice_successor_diagnostics.rejected_risk_stage,
         prepared.lattice_successor_diagnostics.rejected_blacklisted_failure,
         prepared.lattice_successor_diagnostics.rejected_no_cost_improvement);
@@ -504,8 +486,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
   }
 }
 
-mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& navigation,
-                                             const ProductionMppiPreparedEsdf& esdf,
+mppi::State ProductionMppiNode::selectTarget(const ProductionMppiPreparedEsdf& esdf,
+                                             const double current_station_m,
                                              const double lookahead_m,
                                              std::string& target_source,
                                              double& target_station_m) const {
@@ -514,23 +496,20 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiNavigation& nav
                      static_cast<float>(mission_goal_.z)};
   target_source = "mission_goal_direct";
   target_station_m = 0.0;
-  if (!esdf.semantic_route || !esdf.semantic_route->polyline ||
-      esdf.semantic_route->polyline->empty()) {
+  if (esdf.mppi_route && !esdf.mppi_route->empty()) {
+    const float desired_station =
+        static_cast<float>(current_station_m + std::max(0.0, lookahead_m));
+    const auto selected = std::ranges::lower_bound(*esdf.mppi_route, desired_station,
+                                                   {}, &mppi::RouteSample3D::station_m);
+    const mppi::RouteSample3D& sample =
+        selected == esdf.mppi_route->end() ? esdf.mppi_route->back() : *selected;
+    target.x = sample.x_m;
+    target.y = sample.y_m;
+    target.z = sample.z_m;
+    target_station_m = sample.station_m;
+    target_source = "global_route_3d";
     return target;
   }
-  const GlobalGuideProjection projection = projectOntoGlobalGuide(
-      *esdf.semantic_route->polyline, Point2{navigation.state.x, navigation.state.y},
-      esdf.global_guide_projection.station_m);
-  if (!projection.valid) {
-    return target;
-  }
-  target_station_m = std::min(esdf.semantic_route->total_length_m,
-                              projection.station_m + std::max(0.0, lookahead_m));
-  const Point2 selected =
-      sampleGlobalGuide(*esdf.semantic_route->polyline, target_station_m);
-  target.x = static_cast<float>(selected.x);
-  target.y = static_cast<float>(selected.y);
-  target_source = "motion_primitive_guide";
   return target;
 }
 
@@ -586,7 +565,6 @@ void ProductionMppiNode::planningTick() {
     mppi::MppiTickInput input{
         .initial_state = navigation.state,
         .target = navigation.state,
-        .passage = std::nullopt,
         .pose_revision = navigation.revision,
         .obstacle_revision = stale_esdf.revision,
         .planning_stamp_ns = now_ns,
@@ -608,13 +586,12 @@ void ProductionMppiNode::planningTick() {
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   snapshot_started)
             .count();
-    const PassageCoordinatorResult passage_result;
     const ProductionMppiPlanningState planning_state =
         ProductionMppiPlanningState::kUnavailableWorldBrakingHold;
     ++tick_sequence_;
-    recordTickStatistics(result, passage_result, planning_state, false);
-    ProductionMppiExecutionPublication execution = publishExecutionHorizon(
-        input, result, stale_esdf, passage_result, planning_state, now_ns);
+    recordTickStatistics(result, planning_state, false);
+    ProductionMppiExecutionPublication execution =
+        publishExecutionHorizon(input, result, stale_esdf, planning_state, now_ns);
     std::optional<ProductionMppiRvizSnapshot> rviz;
     if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
       rviz = ProductionMppiRvizSnapshot{
@@ -622,13 +599,12 @@ void ProductionMppiNode::planningTick() {
           .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
                                                            : std::vector<mppi::State>{},
           .execution_horizon = execution.horizon,
-          .semantic_route = stale_esdf.semantic_route,
+          .route = stale_esdf.mppi_route,
       };
       last_rviz_stamp_ns_ = now_ns;
     }
     ProductionMppiPreparedEsdf diagnostic_esdf = stale_esdf;
     diagnostic_esdf.distances_m.reset();
-    diagnostic_esdf.semantic_route.reset();
     diagnostic_esdf.mppi_route.reset();
     enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot{
         .input = input,
@@ -638,7 +614,6 @@ void ProductionMppiNode::planningTick() {
         .prediction = prediction,
         .liveness = {},
         .speed_policy = {},
-        .passage_coordinator = {},
         .guide_progress = {},
         .goal_capture = {},
         .execution = std::move(execution),
@@ -663,9 +638,29 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const std::span<const Point2> guide =
-      esdf->semantic_route && esdf->semantic_route->polyline
-          ? std::span<const Point2>{*esdf->semantic_route->polyline}
-          : std::span<const Point2>{};
+      esdf->route_2d_projection ? std::span<const Point2>{*esdf->route_2d_projection}
+                                : std::span<const Point2>{};
+  if (tracked_route_generation_ != esdf->global_guide_generation) {
+    tracked_route_generation_ = esdf->global_guide_generation;
+    tracked_route_station_m_ = 0.0;
+  }
+  const GlobalGuideProjection measured_route_projection =
+      guide.empty()
+          ? GlobalGuideProjection{}
+          : projectOntoGlobalGuide(guide,
+                                   Point2{navigation.state.x, navigation.state.y},
+                                   tracked_route_station_m_);
+  if (measured_route_projection.valid) {
+    tracked_route_station_m_ =
+        std::max(tracked_route_station_m_, measured_route_projection.station_m);
+  }
+  GlobalGuideProjection route_projection = measured_route_projection;
+  if (route_projection.valid) {
+    route_projection.station_m = tracked_route_station_m_;
+    route_projection.remaining_m =
+        std::max(0.0, route_projection.station_m + route_projection.remaining_m -
+                          tracked_route_station_m_);
+  }
   const MissionGoalCaptureResult goal_capture =
       mission_goal_capture_latch_
           ? mission_goal_capture_latch_->update(MissionGoalCaptureObservation{
@@ -679,57 +674,13 @@ void ProductionMppiNode::planningTick() {
                                 .state = navigation.state,
                                 .mission_goal = mission_goal_,
                                 .guide = guide,
-                                .passage_speed_limit_mps = std::nullopt,
+                                .route_constraint_speed_limit_mps = std::nullopt,
                             });
   std::string target_source;
   double target_station_m = 0.0;
-  mppi::State target = selectTarget(navigation, *esdf, speed_policy.target_lookahead_m,
-                                    target_source, target_station_m);
-  PassageCoordinatorResult passage_result;
-  const GlobalGuideProjection route_projection =
-      guide.empty()
-          ? GlobalGuideProjection{}
-          : projectOntoGlobalGuide(guide,
-                                   Point2{navigation.state.x, navigation.state.y},
-                                   esdf->global_guide_projection.station_m);
-  if (passage_coordinator_) {
-    passage_result = passage_coordinator_->update(PassageCoordinatorInput{
-        .state = navigation.state,
-        .route = esdf->semantic_route,
-        .route_station_m = route_projection.valid ? route_projection.station_m : 0.0,
-        .normal_flight_z_m = mission_goal_.z,
-        .approach_speed_mps = speed_policy.reference_speed_mps,
-    });
-  }
-  std::optional<mppi::PassageConstraint> passage = passage_result.constraint;
-  if (passage.has_value()) {
-    speed_policy = evaluateMppiSpeedPolicy(
-        speed_policy_config_,
-        MppiSpeedPolicyInput{
-            .state = navigation.state,
-            .mission_goal = mission_goal_,
-            .guide = guide,
-            .passage_speed_limit_mps =
-                passage_result.speed_limit_active
-                    ? std::optional<double>{passage->speed_limit_mps}
-                    : std::nullopt,
-        });
-    target = selectTarget(navigation, *esdf, speed_policy.target_lookahead_m,
-                          target_source, target_station_m);
-  }
-  if (esdf->semantic_route) {
-    if (passage_result.active && passage_result.route_event_index <
-                                     esdf->semantic_route->passage_events.size()) {
-      target.z = static_cast<float>(routePassageZReference(
-          esdf->semantic_route->passage_events[passage_result.route_event_index],
-          target_station_m, mission_goal_.z,
-          passage_result.effective_approach_station_m,
-          passage_result.alignment_completion_station_m));
-    } else {
-      target.z = static_cast<float>(semanticRouteZReference(
-          *esdf->semantic_route, target_station_m, mission_goal_.z));
-    }
-  }
+  mppi::State target =
+      selectTarget(*esdf, tracked_route_station_m_, speed_policy.target_lookahead_m,
+                   target_source, target_station_m);
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
   if (goal_capture.latched) {
     planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
@@ -739,36 +690,15 @@ void ProductionMppiNode::planningTick() {
         .z = static_cast<float>(mission_goal_.z),
         .yaw = navigation.state.yaw,
     };
-    if (passage_coordinator_) {
-      passage_coordinator_->reset();
-    }
-    passage_result = {};
-    passage.reset();
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "mission_goal_position_hold";
   } else if (target_source == "mission_goal_direct") {
     planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
     target = navigation.state;
-    if (passage_coordinator_) {
-      passage_coordinator_->reset();
-    }
-    passage_result = {};
-    passage.reset();
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "no_guide_braking_hold";
-  } else if (passage.has_value()) {
-    if (passage_result.hold_xy) {
-      target.x = static_cast<float>(passage_result.hold_position.x);
-      target.y = static_cast<float>(passage_result.hold_position.y);
-      target.z = static_cast<float>(passage_result.preferred_z_m);
-      speed_policy.reference_speed_mps = 0.0;
-      speed_policy.target_lookahead_m = 0.0;
-      target_source = "passage_vertical_alignment";
-    } else {
-      target_source = "semantic_portal_route";
-    }
   }
   const bool control_feedback_fresh =
       applied_control.valid && control_feedback_age_ms >= 0.0 &&
@@ -778,7 +708,7 @@ void ProductionMppiNode::planningTick() {
     liveness = liveness_supervisor_->evaluate(MppiLivenessObservation{
         .stamp_ns = now_ns,
         .actual_state = navigation.state,
-        .controller_active = control_feedback_fresh && !passage_result.hold_xy &&
+        .controller_active = control_feedback_fresh &&
                              planning_state == ProductionMppiPlanningState::kPlanned,
         .emergency_braking =
             control_feedback_fresh && applied_control.emergency_braking,
@@ -790,12 +720,7 @@ void ProductionMppiNode::planningTick() {
   }
   GlobalGuideProgressUpdate guide_progress;
   if (guide_progress_tracker_) {
-    const GlobalGuideProjection projection =
-        guide.empty()
-            ? GlobalGuideProjection{}
-            : projectOntoGlobalGuide(guide,
-                                     Point2{navigation.state.x, navigation.state.y},
-                                     esdf->global_guide_projection.station_m);
+    const GlobalGuideProjection& projection = route_projection;
     guide_progress = guide_progress_tracker_->evaluate(GlobalGuideProgressObservation{
         .stamp_ns = now_ns,
         .guide_generation =
@@ -805,7 +730,7 @@ void ProductionMppiNode::planningTick() {
         .station_m = projection.station_m,
         .predicted_head_progress_m =
             previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
-        .controller_active = control_feedback_fresh && !passage_result.hold_xy,
+        .controller_active = control_feedback_fresh,
         .emergency_braking =
             control_feedback_fresh && applied_control.emergency_braking,
     });
@@ -844,7 +769,6 @@ void ProductionMppiNode::planningTick() {
   mppi::MppiTickInput input{
       .initial_state = navigation.state,
       .target = target,
-      .passage = passage,
       .pose_revision = navigation.revision,
       .obstacle_revision = esdf->revision,
       .planning_stamp_ns = now_ns,
@@ -910,11 +834,11 @@ void ProductionMppiNode::planningTick() {
     }
   }
   ++tick_sequence_;
-  recordTickStatistics(result, passage_result, planning_state,
+  recordTickStatistics(result, planning_state,
                        liveness.reseed_requested ||
                            guide_progress.local_reseed_requested);
-  ProductionMppiExecutionPublication execution = publishExecutionHorizon(
-      input, result, *esdf, passage_result, planning_state, now_ns);
+  ProductionMppiExecutionPublication execution =
+      publishExecutionHorizon(input, result, *esdf, planning_state, now_ns);
 
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);
@@ -928,7 +852,7 @@ void ProductionMppiNode::planningTick() {
         .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
                                                          : std::vector<mppi::State>{},
         .execution_horizon = execution.horizon,
-        .semantic_route = esdf->semantic_route,
+        .route = esdf->mppi_route,
     };
     last_rviz_stamp_ns_ = now_ns;
   }
@@ -956,7 +880,6 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiPreparedEsdf diagnostic_esdf = *esdf;
   diagnostic_esdf.distances_m.reset();
   if (!rviz.has_value()) {
-    diagnostic_esdf.semantic_route.reset();
     diagnostic_esdf.mppi_route.reset();
   }
   enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot{
@@ -967,7 +890,6 @@ void ProductionMppiNode::planningTick() {
       .prediction = prediction,
       .liveness = liveness,
       .speed_policy = speed_policy,
-      .passage_coordinator = passage_result,
       .guide_progress = guide_progress,
       .no_eligible_recovery = no_eligible_recovery,
       .goal_capture = goal_capture,

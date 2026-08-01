@@ -70,7 +70,6 @@ Visualization Manager:
         mppi_target: true
         mission_goal: true
         mission_start: true
-        selected_passage: true
       Topic:
         Value: /drone_city_nav/mppi/markers
     - Class: rviz_default_plugins/Marker
@@ -80,21 +79,6 @@ Visualization Manager:
         drone: true
       Topic:
         Value: /drone_city_nav/drone_marker
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: Known Passages
-      Namespaces:
-        known_passage_approach: true
-        known_passage_exit: true
-        known_passage_opening_frame: true
-        known_passage_opening_center: true
-        known_passage_structure: true
-      Topic:
-        Depth: 1
-        Durability Policy: Transient Local
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /drone_city_nav/known_passage_markers
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

@@ -1,8 +1,6 @@
 #pragma once
 
 #include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
-#include "drone_city_nav/known_passage_map.hpp"
-#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
@@ -51,10 +49,6 @@ makeObstacleMemoryOccupancyGridMessage(const OccupancyGrid2D& grid,
                                        const rclcpp::Time& stamp,
                                        const std::string& frame_id);
 
-[[nodiscard]] const PassageStructure*
-passageStructureNearPoint(const std::optional<KnownPassageMap>& map, Point2 point,
-                          double margin_m) noexcept;
-
 [[nodiscard]] AmbiguousLidarHitTrackerConfig
 declareAmbiguousLidarHitTrackerConfig(rclcpp::Node& node);
 
@@ -66,22 +60,6 @@ struct LidarMappingYawConfig {
 };
 
 [[nodiscard]] LidarMappingYawConfig declareLidarMappingYawConfig(rclcpp::Node& node);
-
-struct KnownStaticLidarSetup {
-  std::optional<KnownPassageMap> passage_map;
-  std::optional<KnownStaticLidarHitClassifier> classifier;
-  std::filesystem::path resolved_path;
-  bool passages_enabled{false};
-  bool classifier_enabled{false};
-  double closer_range_tolerance_m{0.5};
-  double farther_range_tolerance_m{1.5};
-  double endpoint_volume_tolerance_m{0.75};
-  double opening_boundary_tolerance_m{0.50};
-};
-
-[[nodiscard]] KnownStaticLidarSetup
-declareKnownStaticLidarSetup(rclcpp::Node& node, const std::string& frame_id,
-                             bool use_static_map);
 
 [[nodiscard]] GroundLidarRejectionConfig
 declareGroundLidarRejectionConfig(rclcpp::Node& node, double max_lidar_range_m);

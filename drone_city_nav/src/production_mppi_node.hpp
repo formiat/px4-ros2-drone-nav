@@ -1,11 +1,10 @@
 #pragma once
 
 #include "drone_city_nav/active_global_guide.hpp"
-#include "drone_city_nav/known_passage_map.hpp"
+#include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
-#include "drone_city_nav/mppi/passage_speed_policy.hpp"
 #include "drone_city_nav/mppi_horizon_safety.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
 #include "drone_city_nav/mppi_nominal_reseed.hpp"
@@ -16,9 +15,9 @@
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
-#include "drone_city_nav/passage_coordinator.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
-#include "drone_city_nav/semantic_portal_route.hpp"
+#include "drone_city_nav/risk_aware_lattice_3d.hpp"
+#include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/path.hpp>
@@ -59,13 +58,10 @@ struct ProductionMppiPreparedEsdf {
   double upload_ms{0.0};
   mppi::EsdfGrid grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
-  std::shared_ptr<const SemanticPortalRoute> semantic_route;
-  std::shared_ptr<const std::vector<mppi::RoutePoint>> mppi_route;
-  std::size_t portal_events{0U};
-  std::size_t rejected_portal_route_misses{0U};
-  std::size_t rejected_portal_overlaps{0U};
-  std::size_t semantic_side_volumes{0U};
-  std::size_t semantic_side_cells{0U};
+  std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
+  std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
+  std::shared_ptr<const std::vector<Point2>> route_2d_projection;
+  std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::size_t global_guide_expansions{0U};
   double global_guide_cost{0.0};
   std::uint64_t global_guide_generation{0U};
@@ -127,7 +123,7 @@ struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> candidate_horizon;
   std::vector<mppi::State> previous_horizon;
   std::vector<mppi::State> execution_horizon;
-  std::shared_ptr<const SemanticPortalRoute> semantic_route;
+  std::shared_ptr<const std::vector<mppi::RouteSample3D>> route;
 };
 
 enum class ProductionMppiExecutionMode : std::uint8_t {
@@ -139,7 +135,6 @@ enum class ProductionMppiExecutionMode : std::uint8_t {
 enum class ProductionMppiExecutionReason : std::uint8_t {
   kNone,
   kHorizonSafety,
-  kPassageAlignment,
   kGoalCapture,
   kNoGuide,
   kUnavailableWorld,
@@ -167,7 +162,6 @@ struct ProductionMppiDiagnosticsSnapshot {
   ProductionMppiPredictionError prediction{};
   MppiLivenessResult liveness{};
   MppiSpeedPolicyResult speed_policy{};
-  PassageCoordinatorResult passage_coordinator{};
   GlobalGuideProgressUpdate guide_progress{};
   MppiEligibleRolloutUpdate no_eligible_recovery{};
   MissionGoalCaptureResult goal_capture{};
@@ -218,19 +212,17 @@ private:
   void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot snapshot);
   void recordTickStatistics(const mppi::MppiTickResult& result,
-                            const PassageCoordinatorResult& passage_coordinator,
                             ProductionMppiPlanningState planning_state,
                             bool liveness_reseed_requested);
   void publishSummary();
   [[nodiscard]] ProductionMppiExecutionPublication publishExecutionHorizon(
       const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
       const ProductionMppiPreparedEsdf& esdf,
-      const PassageCoordinatorResult& passage_coordinator,
       ProductionMppiPlanningState planning_state, std::int64_t now_ns);
 
-  [[nodiscard]] mppi::State selectTarget(const ProductionMppiNavigation& navigation,
-                                         const ProductionMppiPreparedEsdf& esdf,
-                                         double lookahead_m, std::string& target_source,
+  [[nodiscard]] mppi::State selectTarget(const ProductionMppiPreparedEsdf& esdf,
+                                         double current_station_m, double lookahead_m,
+                                         std::string& target_source,
                                          double& target_station_m) const;
   [[nodiscard]] ProductionMppiStability
   compareWithPrevious(const mppi::MppiTickResult& result) const;
@@ -249,11 +241,12 @@ private:
   double frontier_blacklist_ttl_s_{15.0};
   std::size_t lattice_maximum_continuation_attempts_{4U};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
-  SemanticPortalRouteConfig semantic_route_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
   Point3 mission_start_{54.0, 54.0, 0.0};
   Point3 mission_goal_{216.0, 378.0, 18.0};
   std::string target_mode_{"active_route_guide"};
+  bool use_static_map_{true};
+  float constrained_route_speed_limit_mps_{10.0F};
   std::string frame_id_{"map"};
   std::filesystem::path diagnostics_output_dir_{"log/mppi"};
   std::int64_t rviz_period_ns_{100000000};
@@ -262,13 +255,11 @@ private:
   std::int64_t last_diagnostics_info_stamp_ns_{0};
 
   mppi::BenchmarkConfig mppi_config_{};
-  mppi::PassageSpeedPolicy passage_speed_policy_{};
   MppiHorizonSafetyConfig safety_config_{};
   MppiSafetyInterventionTracker safety_intervention_tracker_{};
   MppiBrakeHoldLifecycle brake_hold_lifecycle_{};
   MppiLivenessConfig liveness_config_{};
   MppiSpeedPolicyConfig speed_policy_config_{};
-  PassageCoordinatorConfig passage_coordinator_config_{};
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
@@ -277,12 +268,17 @@ private:
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
   std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
-  std::unique_ptr<PassageCoordinator> passage_coordinator_;
   RiskAwareLatticeConfig lattice_config_{};
+  RiskAwareLattice3DConfig lattice_3d_config_{};
+  RouteEnvelopeConfig route_envelope_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
-  std::optional<KnownPassageMap> known_passages_;
-  std::vector<SemanticPortalPrimitive> semantic_portal_primitives_;
-  std::vector<mppi::KnownSolid> known_solids_;
+  std::optional<OccupancyGrid3D> static_occupancy_3d_;
+  std::shared_ptr<const std::vector<float>> static_esdf_3d_;
+  mppi::EsdfGrid static_esdf_grid_{};
+  std::uint64_t static_guide_release_generation_{0U};
+  std::uint64_t static_route_generation_{0U};
+  std::uint64_t tracked_route_generation_{0U};
+  double tracked_route_station_m_{0.0};
 
   mutable std::mutex input_mutex_;
   ProductionMppiNavigation navigation_{};
@@ -326,8 +322,6 @@ private:
   std::uint64_t no_guide_braking_hold_ticks_{0U};
   std::uint64_t unavailable_world_braking_hold_ticks_{0U};
   std::uint64_t mission_goal_position_hold_ticks_{0U};
-  std::uint64_t passage_vertical_alignment_ticks_{0U};
-  std::uint64_t passage_traversal_ticks_{0U};
   std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
   mutable std::mutex statistics_mutex_;

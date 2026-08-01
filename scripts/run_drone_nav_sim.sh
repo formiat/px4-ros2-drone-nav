@@ -81,11 +81,6 @@ enable_static_map_override=""
 if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
   enable_static_map_override="$(normalize_bool "${ENABLE_STATIC_MAP}")"
 fi
-static_city_map_path="${STATIC_CITY_MAP_PATH:-${repo_root}/drone_city_nav/worlds/${world_name}.map2d}"
-static_city_map_path_override=false
-if [[ -n "${STATIC_CITY_MAP_PATH+x}" ]]; then
-  static_city_map_path_override=true
-fi
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 allow_mission_failure="$(normalize_bool "${ALLOW_MISSION_FAILURE:-false}")"
@@ -302,8 +297,6 @@ prepare_runtime_resources() {
   mkdir -p "${runtime_models_dir}" "${runtime_worlds_dir}"
   install -D "${repo_root}/drone_city_nav/worlds/${world_name}.sdf" \
     "${runtime_worlds_dir}/${world_name}.sdf"
-  install -D "${repo_root}/drone_city_nav/worlds/${world_name}.map2d" \
-    "${runtime_worlds_dir}/${world_name}.map2d"
 
   local px4_model
   local model_name
@@ -491,7 +484,7 @@ echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always current_lidar=always"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
-echo "Static city map: ${static_city_map_path}"
+echo "Static world: ${repo_root}/drone_city_nav/worlds/${world_name}.occupancy3d"
 echo "Gazebo resources: ${runtime_dir}"
 (
   gz_server_pid=""
@@ -659,9 +652,6 @@ ros_launch_args=(
 )
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")
-fi
-if [[ "${static_city_map_path_override}" == "true" ]]; then
-  ros_launch_args+=(static_map_path:="${static_city_map_path}")
 fi
 echo "ROS launch log: ${ros_log_file}"
 echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"

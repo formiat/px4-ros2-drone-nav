@@ -2,7 +2,6 @@
 
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
-#include "drone_city_nav/static_map_source.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -17,19 +16,10 @@ namespace drone_city_nav {
 std::optional<OccupancyGrid2D>
 declareStaticRawWorldGrid(rclcpp::Node& node, const std::string_view frame_id,
                           const std::filesystem::path& package_share) {
-  const StaticMapSourceResult source = loadStaticMapSource(StaticMapSourceConfig{
-      .enabled = node.declare_parameter<bool>("use_static_map", true),
-      .configured_path = node.declare_parameter<std::string>(
-          "static_map_path", "worlds/generated_city.map2d"),
-      .package_share_directory = package_share,
-      .expected_frame_id = std::string{frame_id},
-      .min_blocking_height_m =
-          node.declare_parameter<double>("static_map_min_blocking_height_m", 0.0)});
-  if (source.status == StaticMapSourceStatus::kLoadFailed) {
-    throw std::runtime_error{"failed to load raw static world map: " +
-                             source.error_message};
-  }
-  return source.grid;
+  (void)frame_id;
+  (void)package_share;
+  (void)node.declare_parameter<bool>("use_static_map", true);
+  return std::nullopt;
 }
 
 std::optional<msg::RawObstacleSnapshot>

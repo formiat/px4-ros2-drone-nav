@@ -135,34 +135,33 @@ classificationFromMessage(const std::uint8_t value) noexcept {
   }
 }
 
-[[nodiscard]] std::uint8_t
-partKindToMessage(const KnownPassageSolidPartKind kind) noexcept {
+[[nodiscard]] std::uint8_t partKindToMessage(const LegacyStaticPartKind kind) noexcept {
   using Observation = msg::ObstacleMemoryHitObservation;
   switch (kind) {
-    case KnownPassageSolidPartKind::kLeft:
+    case LegacyStaticPartKind::kLeft:
       return Observation::KNOWN_PART_LEFT;
-    case KnownPassageSolidPartKind::kRight:
+    case LegacyStaticPartKind::kRight:
       return Observation::KNOWN_PART_RIGHT;
-    case KnownPassageSolidPartKind::kLower:
+    case LegacyStaticPartKind::kLower:
       return Observation::KNOWN_PART_LOWER;
-    case KnownPassageSolidPartKind::kUpper:
+    case LegacyStaticPartKind::kUpper:
       return Observation::KNOWN_PART_UPPER;
   }
   return Observation::KNOWN_PART_LEFT;
 }
 
-[[nodiscard]] std::optional<KnownPassageSolidPartKind>
+[[nodiscard]] std::optional<LegacyStaticPartKind>
 partKindFromMessage(const std::uint8_t value) noexcept {
   using Observation = msg::ObstacleMemoryHitObservation;
   switch (value) {
     case Observation::KNOWN_PART_LEFT:
-      return KnownPassageSolidPartKind::kLeft;
+      return LegacyStaticPartKind::kLeft;
     case Observation::KNOWN_PART_RIGHT:
-      return KnownPassageSolidPartKind::kRight;
+      return LegacyStaticPartKind::kRight;
     case Observation::KNOWN_PART_LOWER:
-      return KnownPassageSolidPartKind::kLower;
+      return LegacyStaticPartKind::kLower;
     case Observation::KNOWN_PART_UPPER:
-      return KnownPassageSolidPartKind::kUpper;
+      return LegacyStaticPartKind::kUpper;
     default:
       return std::nullopt;
   }

@@ -180,10 +180,10 @@ Record a debug rosbag while the simulation is running:
 
 The container targets use `build/`, `install/`, and `log/`.
 
-The simulation uses three planner obstacle sources by default: the static
-`generated_city.map2d` city map, accumulated lidar obstacle memory, and the
-current lidar hit overlay. Source toggles and map format details are documented
-in `docs/obstacle_mapping.md` and `docs/configuration.md`.
+Static mode loads `generated_city.occupancy3d`, generated from the same canonical
+world specification as the Gazebo SDF. No-static mode uses accumulated lidar
+memory and the current lidar hit overlay. Source contracts are documented in
+`docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
 
 Obstacle topics follow a strict raw/runtime/debug contract. Raw sources such as
 the grid carried by `/drone_city_nav/obstacle_memory_snapshot` contain only
@@ -197,8 +197,7 @@ After a headless run, validate lidar projection snapshots without GUI:
 
 ```bash
 python3 scripts/analyze_lidar_projection_snapshots.py \
-  log/lidar_debug/snapshots.jsonl \
-  --static-map drone_city_nav/worlds/generated_city.map2d
+  log/lidar_debug/snapshots.jsonl
 ```
 
 Production MPPI diagnostics are written as JSON Lines under `log/mppi/`.
@@ -260,7 +259,7 @@ Key pages:
 - `docs/gazebo_simulation.md`
 - `docs/architecture.md`
 - `docs/navigation_pipeline.md`
-- `docs/known_passages.md`
+- `docs/world3d.md`
 - `docs/trajectory_optimization.md`
 - `docs/drone_control.md`
 - `docs/terminal_capture.md`

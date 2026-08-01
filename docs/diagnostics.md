@@ -24,7 +24,7 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 - target source and target position;
 - active guide generation, status, and remaining length;
 - static/no-static speed-policy limits;
-- passage phase and opening id;
+- constrained route span and channel id;
 - GPU and host stage timings;
 - selected tier and risk exposure;
 - raw and known-solid collision flags;
@@ -83,19 +83,18 @@ Compare:
 High terminal progress with no actual displacement indicates an ineffective
 horizon, not successful navigation.
 
-## Passage Diagnostics
+## Constrained Route Diagnostics
 
 Inspect:
 
-- active semantic portal and route event;
-- approach/alignment/traversal phase;
+- active constrained route span and channel id;
+- approach/traversal/departure station;
 - vertical and lateral errors;
 - capture and retention counters;
-- stationary hold activation and target;
-- known-solid collision;
-- actual opening entry and minimum margins from the mission monitor.
+- active altitude and speed limits;
+- actual channel entry and minimum margins from the mission monitor.
 
-Planner activation is not proof that the drone entered the opening.
+Route activation is not proof that the drone entered the channel.
 
 ## Offboard Diagnostics
 
@@ -104,7 +103,7 @@ Important events:
 - horizon rejection reason;
 - `MPPI_HORIZON_DEADLINE_MISSED`;
 - dynamic braking activation;
-- stationary passage hold activation;
+- safety or mission hold activation;
 - applied-control feedback age;
 - PX4 mode/arming state.
 
@@ -120,7 +119,7 @@ Use lidar snapshots to verify:
 - raw returns and map-frame points agree;
 - memory contains plausible retained evidence;
 - static/no-static source selection is correct;
-- optional known-static classifier decisions are explainable.
+- no-static lidar returns are independent of static channel metadata.
 
 ## Run Analysis Order
 
@@ -129,6 +128,6 @@ Use lidar snapshots to verify:
 3. Inspect active global guide and target source.
 4. Inspect selected MPPI tier and collision flags.
 5. Inspect head progress, actual motion, and liveness.
-6. Inspect passage state if active.
+6. Inspect the constrained span if the route enters an air channel.
 7. Inspect offboard deadline/braking behavior.
 8. Only then tune costs or dynamics.

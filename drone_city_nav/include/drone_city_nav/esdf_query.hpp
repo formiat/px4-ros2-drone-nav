@@ -22,4 +22,9 @@ struct EsdfQueryResult {
                                                     std::span<const float> esdf_m,
                                                     float x_m, float y_m) noexcept;
 
+[[nodiscard]] EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
+                                                      std::span<const float> esdf_m,
+                                                      float x_m, float y_m,
+                                                      float z_m) noexcept;
+
 } // namespace drone_city_nav

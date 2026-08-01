@@ -1,34 +1,15 @@
 #include "production_mppi_node.hpp"
 
-#include "drone_city_nav/known_passage_solid_volumes.hpp"
-#include "drone_city_nav/passage_mode.hpp"
+#include "drone_city_nav/occupancy_grid_3d.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <filesystem>
 #include <stdexcept>
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] mppi::KnownSolid toMppiSolid(const KnownPassageSolidVolume& solid) {
-  return mppi::KnownSolid{
-      .center_x_m = static_cast<float>(solid.center.x),
-      .center_y_m = static_cast<float>(solid.center.y),
-      .normal_x = static_cast<float>(solid.normal_xy.x),
-      .normal_y = static_cast<float>(solid.normal_xy.y),
-      .lateral_x = static_cast<float>(solid.lateral_xy.x),
-      .lateral_y = static_cast<float>(solid.lateral_xy.y),
-      .half_depth_m = static_cast<float>(0.5 * solid.depth_m),
-      .half_width_m = static_cast<float>(0.5 * solid.width_m),
-      .min_z_m = static_cast<float>(solid.min_z_m),
-      .max_z_m = static_cast<float>(solid.max_z_m),
-  };
-}
-
-} // namespace
-
 const char*
 productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcept {
   switch (state) {
@@ -64,8 +45,6 @@ productionMppiExecutionReasonName(const ProductionMppiExecutionReason reason) no
       return "none";
     case ProductionMppiExecutionReason::kHorizonSafety:
       return "horizon_safety";
-    case ProductionMppiExecutionReason::kPassageAlignment:
-      return "passage_alignment";
     case ProductionMppiExecutionReason::kGoalCapture:
       return "goal_capture";
     case ProductionMppiExecutionReason::kNoGuide:
@@ -89,12 +68,7 @@ ProductionMppiNode::ProductionMppiNode()
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
   maximum_control_feedback_age_ms_ =
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
-  semantic_route_config_.crossing_lateral_margin_m =
-      declare_parameter<double>("portal_crossing_lateral_margin_m", 0.5);
-  semantic_route_config_.minimum_normal_alignment =
-      declare_parameter<double>("portal_minimum_route_normal_alignment", 0.35);
-  passage_speed_policy_.use_static_map =
-      declare_parameter<bool>("use_static_map", true);
+  use_static_map_ = declare_parameter<bool>("use_static_map", true);
   no_static_guide_lookahead_m_ =
       declare_parameter<double>("no_static_guide_lookahead_m", 30.0);
   const std::int64_t risk_recovery_stable_cycles =
@@ -104,10 +78,8 @@ ProductionMppiNode::ProductionMppiNode()
   }
   const std::size_t risk_recovery_cycles =
       static_cast<std::size_t>(risk_recovery_stable_cycles);
-  passage_speed_policy_.static_limit_mps = static_cast<float>(
-      declare_parameter<double>("static_passage_speed_limit_mps", 10.0));
-  passage_speed_policy_.no_static_limit_mps = static_cast<float>(
-      declare_parameter<double>("no_static_passage_speed_limit_mps", 5.0));
+  constrained_route_speed_limit_mps_ = static_cast<float>(
+      declare_parameter<double>("constrained_route_speed_limit_mps", 10.0));
   target_mode_ = declare_parameter<std::string>("target_mode", "active_route_guide");
   frame_id_ = declare_parameter<std::string>("frame_id", "map");
   diagnostics_output_dir_ =
@@ -130,17 +102,15 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("static_horizon_duration_s", 6.0);
   const double no_static_horizon_duration_s =
       declare_parameter<double>("no_static_horizon_duration_s", 4.0);
-  const double active_horizon_duration_s = passage_speed_policy_.use_static_map
-                                               ? static_horizon_duration_s
-                                               : no_static_horizon_duration_s;
+  const double active_horizon_duration_s =
+      use_static_map_ ? static_horizon_duration_s : no_static_horizon_duration_s;
   const double static_stale_esdf_execution_window_s = declare_parameter<double>(
       "static_stale_esdf_execution_window_s", static_horizon_duration_s);
   const double no_static_stale_esdf_execution_window_s = declare_parameter<double>(
       "no_static_stale_esdf_execution_window_s", no_static_horizon_duration_s);
   stale_esdf_execution_window_ms_ =
-      1000.0 * (passage_speed_policy_.use_static_map
-                    ? static_stale_esdf_execution_window_s
-                    : no_static_stale_esdf_execution_window_s);
+      1000.0 * (use_static_map_ ? static_stale_esdf_execution_window_s
+                                : no_static_stale_esdf_execution_window_s);
   mppi_config_.steps = static_cast<std::size_t>(
       std::ceil(active_horizon_duration_s / mppi_config_.dynamics.dt_s));
   MppiSpeedPolicyConfig static_speed_policy_config;
@@ -191,59 +161,20 @@ ProductionMppiNode::ProductionMppiNode()
       no_static_guide_lookahead_m_;
   no_static_speed_policy_config.maximum_target_lookahead_m =
       no_static_guide_lookahead_m_;
-  speed_policy_config_ = passage_speed_policy_.use_static_map
-                             ? static_speed_policy_config
-                             : no_static_speed_policy_config;
+  speed_policy_config_ =
+      use_static_map_ ? static_speed_policy_config : no_static_speed_policy_config;
   mppi_config_.dynamics.maximum_horizontal_speed_mps =
       static_cast<float>(speed_policy_config_.absolute_speed_limit_mps);
-  mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 =
-      static_cast<float>(passage_speed_policy_.use_static_map
-                             ? static_maximum_horizontal_acceleration_mps2
-                             : no_static_maximum_horizontal_acceleration_mps2);
-  mppi_config_.dynamics.maximum_control_jerk_mps3 = static_cast<float>(
-      passage_speed_policy_.use_static_map ? static_maximum_control_jerk_mps3
-                                           : no_static_maximum_control_jerk_mps3);
+  mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 = static_cast<float>(
+      use_static_map_ ? static_maximum_horizontal_acceleration_mps2
+                      : no_static_maximum_horizontal_acceleration_mps2);
+  mppi_config_.dynamics.maximum_control_jerk_mps3 =
+      static_cast<float>(use_static_map_ ? static_maximum_control_jerk_mps3
+                                         : no_static_maximum_control_jerk_mps3);
   mppi_config_.dynamics.maximum_vertical_acceleration_mps2 = static_cast<float>(
       declare_parameter<double>("maximum_vertical_acceleration_mps2", 4.0));
   mppi_config_.dynamics.maximum_vertical_speed_mps =
       static_cast<float>(declare_parameter<double>("maximum_vertical_speed_mps", 5.0));
-  passage_coordinator_config_.vertical_clearance_margin_m =
-      declare_parameter<double>("passage_vertical_clearance_margin_m", 1.0);
-  passage_coordinator_config_.vertical_capture_hysteresis_m =
-      declare_parameter<double>("passage_vertical_capture_hysteresis_m", 0.25);
-  passage_coordinator_config_.preferred_z_capture_tolerance_m =
-      declare_parameter<double>("passage_preferred_z_capture_tolerance_m", 0.5);
-  passage_coordinator_config_.maximum_capture_vertical_speed_mps =
-      declare_parameter<double>("passage_vertical_capture_maximum_speed_mps", 0.5);
-  const std::int64_t passage_capture_stable_cycles =
-      declare_parameter<std::int64_t>("passage_capture_stable_cycles", 3);
-  const std::int64_t passage_retention_violation_cycles =
-      declare_parameter<std::int64_t>("passage_retention_violation_cycles", 3);
-  if (passage_capture_stable_cycles <= 0 || passage_retention_violation_cycles <= 0) {
-    throw std::invalid_argument{"passage stability cycles must be positive"};
-  }
-  passage_coordinator_config_.capture_stable_cycles =
-      static_cast<std::size_t>(passage_capture_stable_cycles);
-  passage_coordinator_config_.retention_violation_cycles =
-      static_cast<std::size_t>(passage_retention_violation_cycles);
-  passage_coordinator_config_.alignment_time_margin_s =
-      declare_parameter<double>("passage_alignment_time_margin_s", 1.5);
-  passage_coordinator_config_.stationary_hold_clearance_m =
-      declare_parameter<double>("passage_stationary_hold_clearance_m", 2.0);
-  passage_coordinator_config_.minimum_continuous_speed_mps =
-      declare_parameter<double>("passage_minimum_continuous_speed_mps", 0.5);
-  passage_coordinator_config_.prediction_time_step_s =
-      declare_parameter<double>("passage_prediction_time_step_s", 0.02);
-  passage_coordinator_config_.maximum_vertical_acceleration_mps2 =
-      mppi_config_.dynamics.maximum_vertical_acceleration_mps2;
-  passage_coordinator_config_.maximum_vertical_speed_mps =
-      mppi_config_.dynamics.maximum_vertical_speed_mps;
-  passage_coordinator_config_.maximum_horizontal_braking_acceleration_mps2 =
-      speed_policy_config_.maximum_braking_acceleration_mps2;
-  passage_coordinator_config_.reaction_latency_s =
-      speed_policy_config_.reaction_latency_s;
-  passage_coordinator_config_.exit_station_hysteresis_m =
-      declare_parameter<double>("portal_exit_station_hysteresis_m", 0.5);
   mppi_config_.costs.head_progress_horizon_s =
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
@@ -253,8 +184,7 @@ ProductionMppiNode::ProductionMppiNode()
   const double no_static_speed_tracking_weight =
       declare_parameter<double>("no_static_speed_tracking_weight", 1.0);
   mppi_config_.costs.speed_tracking_weight = static_cast<float>(
-      passage_speed_policy_.use_static_map ? static_speed_tracking_weight
-                                           : no_static_speed_tracking_weight);
+      use_static_map_ ? static_speed_tracking_weight : no_static_speed_tracking_weight);
   mppi_config_.risk.critical_distance_m =
       static_cast<float>(declare_parameter<double>("critical_distance_m", 1.0));
   mppi_config_.risk.preferred_distance_m =
@@ -270,30 +200,26 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("static_global_lattice_window_m", 180.0);
   const double no_static_lattice_distance =
       declare_parameter<double>("no_static_global_lattice_window_m", 60.0);
-  lattice_config_.receding_goal_distance_m = passage_speed_policy_.use_static_map
-                                                 ? static_lattice_distance
-                                                 : no_static_lattice_distance;
+  lattice_config_.receding_goal_distance_m =
+      use_static_map_ ? static_lattice_distance : no_static_lattice_distance;
   const std::int64_t static_lattice_expansions = declare_parameter<std::int64_t>(
       "static_global_lattice_maximum_expansions", 120000);
   const std::int64_t no_static_lattice_expansions = declare_parameter<std::int64_t>(
       "no_static_global_lattice_maximum_expansions", 60000);
   lattice_config_.maximum_expansions = static_cast<std::size_t>(
-      passage_speed_policy_.use_static_map ? static_lattice_expansions
-                                           : no_static_lattice_expansions);
+      use_static_map_ ? static_lattice_expansions : no_static_lattice_expansions);
   const double static_lattice_deadline_ms =
       declare_parameter<double>("static_global_lattice_deadline_ms", 250.0);
   const double no_static_lattice_deadline_ms =
       declare_parameter<double>("no_static_global_lattice_deadline_ms", 100.0);
-  lattice_config_.maximum_search_time_ms = passage_speed_policy_.use_static_map
-                                               ? static_lattice_deadline_ms
-                                               : no_static_lattice_deadline_ms;
+  lattice_config_.maximum_search_time_ms =
+      use_static_map_ ? static_lattice_deadline_ms : no_static_lattice_deadline_ms;
   const double static_lattice_roi_halo_m =
       declare_parameter<double>("static_global_lattice_roi_halo_m", 90.0);
   const double no_static_lattice_roi_halo_m =
       declare_parameter<double>("no_static_global_lattice_roi_halo_m", 45.0);
-  lattice_config_.maximum_search_roi_halo_m = passage_speed_policy_.use_static_map
-                                                  ? static_lattice_roi_halo_m
-                                                  : no_static_lattice_roi_halo_m;
+  lattice_config_.maximum_search_roi_halo_m =
+      use_static_map_ ? static_lattice_roi_halo_m : no_static_lattice_roi_halo_m;
   lattice_config_.maximum_frontier_candidates = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("global_lattice_frontier_candidates", 64));
   lattice_config_.minimum_frontier_reachable_depth_m =
@@ -322,16 +248,20 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("global_lattice_critical_tie_break_per_m", 10.0);
   lattice_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
-  lattice_config_.portal_lateral_margin_m =
-      semantic_route_config_.crossing_lateral_margin_m;
-  lattice_config_.portal_entry_capture_distance_m =
-      declare_parameter<double>("portal_lattice_entry_capture_distance_m", 6.0);
-  lattice_config_.portal_exit_extension_m =
-      declare_parameter<double>("portal_lattice_exit_extension_m", 4.0);
-  lattice_config_.portal_center_preference_cost =
-      declare_parameter<double>("portal_lattice_center_preference_cost", 2.0);
-  lattice_config_.portal_maximum_heading_delta_bins = static_cast<int>(
-      declare_parameter<std::int64_t>("portal_lattice_maximum_heading_delta_bins", 4));
+  lattice_3d_config_.horizontal_step_m =
+      declare_parameter<double>("global_lattice_3d_horizontal_step_m", 2.0);
+  lattice_3d_config_.vertical_step_m =
+      declare_parameter<double>("global_lattice_3d_vertical_step_m", 1.0);
+  lattice_3d_config_.sample_step_m =
+      declare_parameter<double>("global_lattice_3d_sample_step_m", 0.5);
+  lattice_3d_config_.planning_goal_distance_m = static_lattice_distance;
+  lattice_3d_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
+  lattice_3d_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
+  lattice_3d_config_.vertical_cost_per_m =
+      declare_parameter<double>("global_lattice_3d_vertical_cost_per_m", 4.0);
+  lattice_3d_config_.maximum_expansions =
+      static_cast<std::size_t>(static_lattice_expansions);
+  lattice_3d_config_.maximum_search_time_ms = static_lattice_deadline_ms;
   active_guide_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   active_guide_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
   active_guide_config_.validation_sample_step_m =
@@ -340,7 +270,7 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("static_global_guide_replan_remaining_m", 45.0);
   const double no_static_guide_replan_remaining_m =
       declare_parameter<double>("no_static_global_guide_replan_remaining_m", 15.0);
-  active_guide_config_.minimum_remaining_m = passage_speed_policy_.use_static_map
+  active_guide_config_.minimum_remaining_m = use_static_map_
                                                  ? static_guide_replan_remaining_m
                                                  : no_static_guide_replan_remaining_m;
   active_guide_config_.maximum_cross_track_m =
@@ -374,8 +304,8 @@ ProductionMppiNode::ProductionMppiNode()
   const double no_static_safety_fallback_duration_s =
       declare_parameter<double>("no_static_safety_fallback_duration_s", 3.0);
   const double configured_fallback_duration_s =
-      passage_speed_policy_.use_static_map ? static_safety_fallback_duration_s
-                                           : no_static_safety_fallback_duration_s;
+      use_static_map_ ? static_safety_fallback_duration_s
+                      : no_static_safety_fallback_duration_s;
   const double minimum_fallback_duration_s =
       safety_config_.reaction_latency_s +
       speed_policy_config_.absolute_speed_limit_mps /
@@ -398,16 +328,11 @@ ProductionMppiNode::ProductionMppiNode()
   if (!(tick_rate_hz_ > 0.0) || !(rviz_rate_hz_ > 0.0) ||
       !(diagnostics_info_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
       !(maximum_control_feedback_age_ms_ > 0.0) ||
-      !std::isfinite(passage_speed_policy_.static_limit_mps) ||
-      passage_speed_policy_.static_limit_mps < 0.0F ||
-      !std::isfinite(passage_speed_policy_.no_static_limit_mps) ||
-      passage_speed_policy_.no_static_limit_mps < 0.0F ||
-      !(semantic_route_config_.crossing_lateral_margin_m >= 0.0) ||
+      !std::isfinite(constrained_route_speed_limit_mps_) ||
+      constrained_route_speed_limit_mps_ < 0.0F ||
       !(safety_config_.swept_validation_step_m > 0.0) ||
       !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
-      !(frontier_blacklist_ttl_s_ > 0.0) ||
-      !(semantic_route_config_.minimum_normal_alignment >= 0.0) ||
-      !(semantic_route_config_.minimum_normal_alignment <= 1.0)) {
+      !(frontier_blacklist_ttl_s_ > 0.0)) {
     throw std::invalid_argument{"invalid production MPPI configuration"};
   }
 
@@ -421,30 +346,24 @@ ProductionMppiNode::ProductionMppiNode()
   mission_goal_capture_latch_ =
       std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
-  const bool passages_configured =
-      declare_parameter<bool>("known_passages_enabled", true);
-  const bool passages_enabled = semanticPassagesEnabled(
-      passages_configured, passage_speed_policy_.use_static_map);
-  const std::string passages_path = declare_parameter<std::string>(
-      "known_passages_path", "worlds/known_passages.passages3d");
-  if (passages_enabled) {
-    passage_coordinator_ =
-        std::make_unique<PassageCoordinator>(passage_coordinator_config_);
+  if (use_static_map_) {
     const auto package_share = std::filesystem::path{
         ament_index_cpp::get_package_share_directory("drone_city_nav")};
-    const KnownPassageSourceResult passage_source = loadKnownPassageMapSource(
-        KnownPassageSourceConfig{true, passages_path, package_share, frame_id_});
-    if (passage_source.map.has_value()) {
-      known_passages_ = passage_source.map;
-      semantic_portal_primitives_ = semanticPortalPrimitives(*known_passages_);
-      for (const KnownPassageSolidVolume& solid :
-           knownPassageSolidVolumes(*known_passages_)) {
-        known_solids_.push_back(toMppiSolid(solid));
-      }
-      engine_->updateKnownSolids(known_solids_);
+    std::filesystem::path occupancy_path = declare_parameter<std::string>(
+        "static_occupancy_3d_path", "worlds/generated_city.occupancy3d");
+    if (occupancy_path.is_relative()) {
+      occupancy_path = package_share / occupancy_path;
     }
+    static_occupancy_3d_ = OccupancyGrid3D::load(occupancy_path);
+    RCLCPP_INFO(get_logger(),
+                "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
+                " occupied_voxels=%zu dimensions=%dx%dx%d",
+                occupancy_path.c_str(), static_occupancy_3d_->fingerprint(),
+                static_occupancy_3d_->occupiedVoxelCount(),
+                static_occupancy_3d_->bounds().width_cells,
+                static_occupancy_3d_->bounds().height_cells,
+                static_occupancy_3d_->bounds().depth_cells);
   }
-
   std::filesystem::create_directories(diagnostics_output_dir_);
   diagnostics_stream_.open(diagnostics_output_dir_ / "mppi_ticks.jsonl", std::ios::app);
   const auto sensor_qos = rclcpp::SensorDataQoS{};
@@ -496,38 +415,30 @@ ProductionMppiNode::ProductionMppiNode()
       std::jthread([this](const std::stop_token token) { guideWorker(token); });
   planning_timer_ = create_wall_timer(
       std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); });
-  RCLCPP_INFO(
-      get_logger(),
-      "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
-      "deadline=%.1fms known_solids=%zu static_map=%s semantic_passages=%s "
-      "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
-      "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
-      "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
-      "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
-      "guide_heading_blend=(%.1f,%.1f)mps passage_vertical_margin=%.2fm "
-      "passage_capture_hysteresis=%.2fm passage_capture_max_vz=%.2fmps "
-      "passage_hold_clearance=%.2fm passage_minimum_continuous_speed=%.2fmps",
-      mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
-      known_solids_.size(), passage_speed_policy_.use_static_map ? "true" : "false",
-      passages_enabled ? "true" : "false",
-      static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
-      lattice_config_.receding_goal_distance_m, speed_policy_config_.cruise_speed_mps,
-      mppi_config_.dynamics.maximum_horizontal_speed_mps,
-      mppi_config_.dynamics.maximum_horizontal_acceleration_mps2,
-      mppi_config_.dynamics.maximum_control_jerk_mps3,
-      mppi_config_.costs.speed_tracking_weight,
-      activePassageSpeedLimitMps(passage_speed_policy_),
-      mppi_config_.costs.head_progress_horizon_s,
-      liveness_config_.enabled ? "true" : "false",
-      frontier_blacklist_enabled_ ? "true" : "false",
-      active_guide_config_.minimum_remaining_m,
-      active_guide_config_.velocity_heading_low_speed_mps,
-      active_guide_config_.velocity_heading_high_speed_mps,
-      passage_coordinator_config_.vertical_clearance_margin_m,
-      passage_coordinator_config_.vertical_capture_hysteresis_m,
-      passage_coordinator_config_.maximum_capture_vertical_speed_mps,
-      passage_coordinator_config_.stationary_hold_clearance_m,
-      passage_coordinator_config_.minimum_continuous_speed_mps);
+  RCLCPP_INFO(get_logger(),
+              "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
+              "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
+              "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
+              "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
+              "constrained_route_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
+              "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
+              "guide_heading_blend=(%.1f,%.1f)mps",
+              mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
+              0UL, use_static_map_ ? "true" : "false", "false",
+              static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
+              lattice_config_.receding_goal_distance_m,
+              speed_policy_config_.cruise_speed_mps,
+              mppi_config_.dynamics.maximum_horizontal_speed_mps,
+              mppi_config_.dynamics.maximum_horizontal_acceleration_mps2,
+              mppi_config_.dynamics.maximum_control_jerk_mps3,
+              mppi_config_.costs.speed_tracking_weight,
+              use_static_map_ ? constrained_route_speed_limit_mps_ : 0.0F,
+              mppi_config_.costs.head_progress_horizon_s,
+              liveness_config_.enabled ? "true" : "false",
+              frontier_blacklist_enabled_ ? "true" : "false",
+              active_guide_config_.minimum_remaining_m,
+              active_guide_config_.velocity_heading_low_speed_mps,
+              active_guide_config_.velocity_heading_high_speed_mps);
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

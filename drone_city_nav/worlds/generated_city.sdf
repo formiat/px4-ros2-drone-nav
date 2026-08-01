@@ -1,20 +1,19 @@
-<?xml version="1.0" ?>
+<?xml version='1.0' encoding='utf-8'?>
 <sdf version="1.9">
   <world name="generated_city">
-    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
-    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
-    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
-    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
-    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
-    <plugin filename="gz-sim-air-pressure-system" name="gz::sim::systems::AirPressure"/>
-    <plugin filename="gz-sim-air-speed-system" name="gz::sim::systems::AirSpeed"/>
-    <plugin filename="gz-sim-apply-link-wrench-system" name="gz::sim::systems::ApplyLinkWrench"/>
-    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
-    <plugin filename="gz-sim-magnetometer-system" name="gz::sim::systems::Magnetometer"/>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact" />
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
+    <plugin filename="gz-sim-air-pressure-system" name="gz::sim::systems::AirPressure" />
+    <plugin filename="gz-sim-air-speed-system" name="gz::sim::systems::AirSpeed" />
+    <plugin filename="gz-sim-apply-link-wrench-system" name="gz::sim::systems::ApplyLinkWrench" />
+    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat" />
+    <plugin filename="gz-sim-magnetometer-system" name="gz::sim::systems::Magnetometer" />
     <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
-
     <physics type="ode">
       <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
@@ -22,7 +21,7 @@
     </physics>
     <gravity>0 0 -9.8</gravity>
     <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
-    <atmosphere type="adiabatic"/>
+    <atmosphere type="adiabatic" />
     <spherical_coordinates>
       <surface_model>EARTH_WGS84</surface_model>
       <world_frame_orientation>ENU</world_frame_orientation>
@@ -30,722 +29,1944 @@
       <longitude_deg>8.546163739800146</longitude_deg>
       <elevation>0</elevation>
     </spherical_coordinates>
-
     <scene>
       <ambient>0.55 0.58 0.62 1</ambient>
       <background>0.72 0.80 0.92 1</background>
       <shadows>true</shadows>
     </scene>
-
     <light name="sun" type="directional">
       <cast_shadows>true</cast_shadows>
-      <pose>0.00 0.00 80.00 0.00 0.00 0.00</pose>
+      <pose>0 0 80 0 0 0</pose>
       <diffuse>0.9 0.86 0.78 1</diffuse>
       <specular>0.25 0.25 0.25 1</specular>
       <direction>-0.5 0.2 -1</direction>
     </light>
-
     <model name="ground">
       <static>true</static>
-      <link name="ground_link">
+      <pose>0.000 0.000 -0.050 0 0 0</pose>
+      <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>570.00 390.00 0.10</size>
+              <size>570.000 390.000 0.100</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>570.00 390.00 0.10</size>
+              <size>570.000 390.000 0.100</size>
             </box>
           </geometry>
           <material>
-            <diffuse>0.30 0.34 0.34 1</diffuse>
+            <diffuse>0.3 0.34 0.34 1.0</diffuse>
           </material>
         </visual>
       </link>
     </model>
-
     <model name="street_01">
       <static>true</static>
-      <pose>0.00 -135.00 0.04 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>0.000 -135.000 0.040 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>510.00 18.00 0.04</size></box></geometry>
-          <material><diffuse>0.08 0.08 0.08 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>510.000 18.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.08 0.08 0.08 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="street_02">
       <static>true</static>
-      <pose>0.00 -81.00 0.04 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>0.000 -81.000 0.040 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>510.00 18.00 0.04</size></box></geometry>
-          <material><diffuse>0.08 0.08 0.08 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>510.000 18.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.08 0.08 0.08 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="street_03">
       <static>true</static>
-      <pose>0.00 -27.00 0.04 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>0.000 -27.000 0.040 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>510.00 18.00 0.04</size></box></geometry>
-          <material><diffuse>0.08 0.08 0.08 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>510.000 18.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.08 0.08 0.08 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="street_04">
       <static>true</static>
-      <pose>0.00 27.00 0.04 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>0.000 27.000 0.040 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>510.00 18.00 0.04</size></box></geometry>
-          <material><diffuse>0.08 0.08 0.08 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>510.000 18.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.08 0.08 0.08 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="street_05">
       <static>true</static>
-      <pose>0.00 81.00 0.04 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>0.000 81.000 0.040 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>510.00 18.00 0.04</size></box></geometry>
-          <material><diffuse>0.08 0.08 0.08 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>510.000 18.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.08 0.08 0.08 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="street_06">
       <static>true</static>
-      <pose>0.00 135.00 0.04 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>0.000 135.000 0.040 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>510.00 18.00 0.04</size></box></geometry>
-          <material><diffuse>0.08 0.08 0.08 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>510.000 18.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.08 0.08 0.08 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_01">
       <static>true</static>
-      <pose>-225.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>-225.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_02">
       <static>true</static>
-      <pose>-171.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>-171.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_03">
       <static>true</static>
-      <pose>-117.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>-117.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_04">
       <static>true</static>
-      <pose>-63.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>-63.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_05">
       <static>true</static>
-      <pose>-9.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>-9.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_06">
       <static>true</static>
-      <pose>45.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>45.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_07">
       <static>true</static>
-      <pose>99.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>99.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_08">
       <static>true</static>
-      <pose>153.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>153.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_09">
       <static>true</static>
-      <pose>207.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>207.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
     <model name="avenue_10">
       <static>true</static>
-      <pose>225.00 0.00 0.05 0.00 0.00 0.00</pose>
-      <link name="road_link">
+      <pose>225.000 0.000 0.050 0 0 0</pose>
+      <link name="link">
         <visual name="visual">
-          <geometry><box><size>18.00 330.00 0.04</size></box></geometry>
-          <material><diffuse>0.10 0.10 0.10 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
-
-    <model name="manhattan_building_01">
-      <static>true</static>
-      <pose>-198.00 -108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_02">
-      <static>true</static>
-      <pose>-144.00 -108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_03">
-      <static>true</static>
-      <pose>-90.00 -108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_04">
-      <static>true</static>
-      <pose>-36.00 -108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_05">
-      <static>true</static>
-      <pose>18.00 -108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_06">
-      <static>true</static>
-      <pose>72.00 -108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_07">
-      <static>true</static>
-      <pose>126.00 -108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_08">
-      <static>true</static>
-      <pose>180.00 -108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_09">
-      <static>true</static>
-      <pose>-198.00 -54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_10">
-      <static>true</static>
-      <pose>-144.00 -54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_11">
-      <static>true</static>
-      <pose>-90.00 -54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_12">
-      <static>true</static>
-      <pose>-36.00 -54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_13">
-      <static>true</static>
-      <pose>18.00 -54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_14">
-      <static>true</static>
-      <pose>72.00 -54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_15">
-      <static>true</static>
-      <pose>126.00 -54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_16">
-      <static>true</static>
-      <pose>180.00 -54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_17">
-      <static>true</static>
-      <pose>-198.00 0.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_18">
-      <static>true</static>
-      <pose>-144.00 0.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_19">
-      <static>true</static>
-      <pose>-90.00 0.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_20">
-      <static>true</static>
-      <pose>-36.00 0.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_21">
-      <static>true</static>
-      <pose>18.00 0.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_22">
-      <static>true</static>
-      <pose>72.00 0.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_23">
-      <static>true</static>
-      <pose>126.00 0.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_24">
-      <static>true</static>
-      <pose>180.00 0.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_25">
-      <static>true</static>
-      <pose>-198.00 54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_26">
-      <static>true</static>
-      <pose>-144.00 54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_27">
-      <static>true</static>
-      <pose>-90.00 54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_28">
-      <static>true</static>
-      <pose>-36.00 54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_29">
-      <static>true</static>
-      <pose>18.00 54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_30">
-      <static>true</static>
-      <pose>72.00 54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_31">
-      <static>true</static>
-      <pose>126.00 54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_32">
-      <static>true</static>
-      <pose>180.00 54.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_33">
-      <static>true</static>
-      <pose>-198.00 108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_34">
-      <static>true</static>
-      <pose>-144.00 108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_35">
-      <static>true</static>
-      <pose>-90.00 108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_36">
-      <static>true</static>
-      <pose>-36.00 108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_37">
-      <static>true</static>
-      <pose>18.00 108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_38">
-      <static>true</static>
-      <pose>72.00 108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_39">
-      <static>true</static>
-      <pose>126.00 108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="manhattan_building_40">
-      <static>true</static>
-      <pose>180.00 108.00 16.00 0.00 0.00 0.00</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
-      </link>
-    </model>
-
-    <!--
-      Physical Gazebo-only connector buildings across the straight evasive=false
-      corridor. Each connector keeps the same XY footprint as the former solid
-      bridge, but it is split into lower and upper masses with a 7m vertical
-      opening. The opening heights intentionally vary from low to high so the
-      drone has to exercise vertical maneuvering. These are real SDF
-      collision/visual objects, not known-passage annotations and not RViz
-      markers. Do not add them to generated_city.map2d here: the static 2D
-      planner map is deliberately kept unchanged while we verify the physical
-      3D world geometry in Gazebo. Their visuals use visibility bit 0x08000000:
-      static-mode lidar excludes that bit, while no-static lidar includes it.
-      Each opening also contains a transparent visual-only occluder on bit
-      0x04000000. No-static therefore observes a continuous wall without
-      introducing collision geometry; static excludes both visibility bits.
-    -->
-    <model name="physical_building_connector_22_23">
-      <static>true</static>
-      <pose>99.00 0.00 0.00 0.00 0.00 0.00</pose>
-      <link name="lower_mass">
-        <pose>0.00 0.00 0.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>30.00 24.00 1.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>30.00 24.00 1.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
-      </link>
-      <link name="upper_mass">
-        <pose>0.00 0.00 20.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>30.00 24.00 23.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>30.00 24.00 23.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
-      </link>
-      <link name="no_static_lidar_occluder">
-        <pose>0.00 0.00 5.00 0.00 0.00 0.00</pose>
-        <visual name="visual">
-          <cast_shadows>false</cast_shadows>
-          <transparency>0.999</transparency>
-          <visibility_flags>67108864</visibility_flags>
-          <geometry><box><size>30.00 24.00 7.00</size></box></geometry>
+          <geometry>
+            <box>
+              <size>18.000 330.000 0.040</size>
+            </box>
+          </geometry>
           <material>
-            <ambient>0.00 0.00 0.00 0.00</ambient>
-            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
           </material>
         </visual>
       </link>
     </model>
-    <model name="physical_building_connector_04_12">
+    <model name="building_001">
       <static>true</static>
-      <pose>-36.00 -81.00 0.00 0.00 0.00 0.00</pose>
-      <link name="lower_mass">
-        <pose>0.00 0.00 5.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 11.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 11.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
-      </link>
-      <link name="upper_mass">
-        <pose>0.00 0.00 25.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 13.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 13.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
-      </link>
-      <link name="no_static_lidar_occluder">
-        <pose>0.00 0.00 15.00 0.00 0.00 0.00</pose>
+      <pose>-198.000 -108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
         <visual name="visual">
-          <cast_shadows>false</cast_shadows>
-          <transparency>0.999</transparency>
-          <visibility_flags>67108864</visibility_flags>
-          <geometry><box><size>24.00 30.00 7.00</size></box></geometry>
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
           <material>
-            <ambient>0.00 0.00 0.00 0.00</ambient>
-            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
           </material>
         </visual>
       </link>
     </model>
-    <model name="physical_building_connector_06_14">
+    <model name="building_002">
       <static>true</static>
-      <pose>72.00 -81.00 0.00 0.00 0.00 0.00</pose>
-      <link name="lower_mass">
-        <pose>0.00 0.00 10.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 21.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 21.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
-      </link>
-      <link name="upper_mass">
-        <pose>0.00 0.00 30.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 3.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 3.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
-      </link>
-      <link name="no_static_lidar_occluder">
-        <pose>0.00 0.00 25.00 0.00 0.00 0.00</pose>
+      <pose>-144.000 -108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
         <visual name="visual">
-          <cast_shadows>false</cast_shadows>
-          <transparency>0.999</transparency>
-          <visibility_flags>67108864</visibility_flags>
-          <geometry><box><size>24.00 30.00 7.00</size></box></geometry>
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
           <material>
-            <ambient>0.00 0.00 0.00 0.00</ambient>
-            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
           </material>
         </visual>
       </link>
     </model>
-    <model name="physical_building_connector_11_19">
+    <model name="building_003">
       <static>true</static>
-      <pose>-90.00 -27.00 0.00 0.00 0.00 0.00</pose>
-      <link name="lower_mass">
-        <pose>0.00 0.00 0.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 1.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 1.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
-      </link>
-      <link name="upper_mass">
-        <pose>0.00 0.00 20.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 23.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 23.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
-      </link>
-      <link name="no_static_lidar_occluder">
-        <pose>0.00 0.00 5.00 0.00 0.00 0.00</pose>
+      <pose>-90.000 -108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
         <visual name="visual">
-          <cast_shadows>false</cast_shadows>
-          <transparency>0.999</transparency>
-          <visibility_flags>67108864</visibility_flags>
-          <geometry><box><size>24.00 30.00 7.00</size></box></geometry>
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
           <material>
-            <ambient>0.00 0.00 0.00 0.00</ambient>
-            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
           </material>
         </visual>
       </link>
     </model>
-    <model name="physical_building_connector_20_21">
+    <model name="building_004">
       <static>true</static>
-      <pose>-9.00 0.00 0.00 0.00 0.00 0.00</pose>
-      <link name="lower_mass">
-        <pose>0.00 0.00 5.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>30.00 24.00 11.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>30.00 24.00 11.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
-      </link>
-      <link name="upper_mass">
-        <pose>0.00 0.00 25.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>30.00 24.00 13.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>30.00 24.00 13.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
-      </link>
-      <link name="no_static_lidar_occluder">
-        <pose>0.00 0.00 15.00 0.00 0.00 0.00</pose>
+      <pose>-36.000 -108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
         <visual name="visual">
-          <cast_shadows>false</cast_shadows>
-          <transparency>0.999</transparency>
-          <visibility_flags>67108864</visibility_flags>
-          <geometry><box><size>30.00 24.00 7.00</size></box></geometry>
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
           <material>
-            <ambient>0.00 0.00 0.00 0.00</ambient>
-            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
           </material>
         </visual>
       </link>
     </model>
-    <model name="physical_building_connector_22_30">
+    <model name="building_005">
       <static>true</static>
-      <pose>72.00 27.00 0.00 0.00 0.00 0.00</pose>
-      <link name="lower_mass">
-        <pose>0.00 0.00 10.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 21.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 21.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
-      </link>
-      <link name="upper_mass">
-        <pose>0.00 0.00 30.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 3.50</size></box></geometry></collision>
-        <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 3.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
-      </link>
-      <link name="no_static_lidar_occluder">
-        <pose>0.00 0.00 25.00 0.00 0.00 0.00</pose>
+      <pose>18.000 -108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
         <visual name="visual">
-          <cast_shadows>false</cast_shadows>
-          <transparency>0.999</transparency>
-          <visibility_flags>67108864</visibility_flags>
-          <geometry><box><size>24.00 30.00 7.00</size></box></geometry>
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
           <material>
-            <ambient>0.00 0.00 0.00 0.00</ambient>
-            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
           </material>
         </visual>
       </link>
     </model>
-
+    <model name="building_006">
+      <static>true</static>
+      <pose>72.000 -108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_007">
+      <static>true</static>
+      <pose>126.000 -108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_008">
+      <static>true</static>
+      <pose>180.000 -108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_009">
+      <static>true</static>
+      <pose>-198.000 -54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_010">
+      <static>true</static>
+      <pose>-144.000 -54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_011">
+      <static>true</static>
+      <pose>-90.000 -54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_012">
+      <static>true</static>
+      <pose>-36.000 -54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_013">
+      <static>true</static>
+      <pose>18.000 -54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_014">
+      <static>true</static>
+      <pose>72.000 -54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_015">
+      <static>true</static>
+      <pose>126.000 -54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_016">
+      <static>true</static>
+      <pose>180.000 -54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_017">
+      <static>true</static>
+      <pose>-198.000 0.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_018">
+      <static>true</static>
+      <pose>-144.000 0.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_019">
+      <static>true</static>
+      <pose>-90.000 0.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_020">
+      <static>true</static>
+      <pose>-36.000 0.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_021">
+      <static>true</static>
+      <pose>18.000 0.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_022">
+      <static>true</static>
+      <pose>72.000 0.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_023">
+      <static>true</static>
+      <pose>126.000 0.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_024">
+      <static>true</static>
+      <pose>180.000 0.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_025">
+      <static>true</static>
+      <pose>-198.000 54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_026">
+      <static>true</static>
+      <pose>-144.000 54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_027">
+      <static>true</static>
+      <pose>-90.000 54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_028">
+      <static>true</static>
+      <pose>-36.000 54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_029">
+      <static>true</static>
+      <pose>18.000 54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_030">
+      <static>true</static>
+      <pose>72.000 54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_031">
+      <static>true</static>
+      <pose>126.000 54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_032">
+      <static>true</static>
+      <pose>180.000 54.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_033">
+      <static>true</static>
+      <pose>-198.000 108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_034">
+      <static>true</static>
+      <pose>-144.000 108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_035">
+      <static>true</static>
+      <pose>-90.000 108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_036">
+      <static>true</static>
+      <pose>-36.000 108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_037">
+      <static>true</static>
+      <pose>18.000 108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_038">
+      <static>true</static>
+      <pose>72.000 108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_039">
+      <static>true</static>
+      <pose>126.000 108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="building_040">
+      <static>true</static>
+      <pose>180.000 108.000 16.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>24.000 24.000 32.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.48 0.5 0.53 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_23_lower">
+      <static>true</static>
+      <pose>99.000 0.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_23_upper">
+      <static>true</static>
+      <pose>99.000 0.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_04_12_lower">
+      <static>true</static>
+      <pose>-36.000 -81.000 5.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 11.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 11.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_04_12_upper">
+      <static>true</static>
+      <pose>-36.000 -81.000 25.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 13.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 13.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_06_14_lower">
+      <static>true</static>
+      <pose>72.000 -81.000 10.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 21.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 21.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_06_14_upper">
+      <static>true</static>
+      <pose>72.000 -81.000 30.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 3.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 3.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_11_19_l_lower">
+      <static>true</static>
+      <pose>-90.000 -27.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_11_19_l_upper">
+      <static>true</static>
+      <pose>-90.000 -27.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_11_19_l_middle_west">
+      <static>true</static>
+      <pose>-90.000 -36.250 5.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 11.500 7.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 11.500 7.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_11_19_l_middle_southeast">
+      <static>true</static>
+      <pose>-97.750 -17.750 5.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>8.500 11.500 7.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>8.500 11.500 7.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_11_19_l_middle_north">
+      <static>true</static>
+      <pose>-82.250 -17.750 5.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>8.500 11.500 7.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>8.500 11.500 7.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_20_21_lower">
+      <static>true</static>
+      <pose>-9.000 0.000 5.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 11.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 11.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_20_21_upper">
+      <static>true</static>
+      <pose>-9.000 0.000 25.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 13.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 13.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_lower_0">
+      <static>true</static>
+      <pose>72.000 14.500 7.542 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 15.083</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 15.083</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_upper_0">
+      <static>true</static>
+      <pose>72.000 14.500 27.042 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 9.917</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 9.917</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_lower_1">
+      <static>true</static>
+      <pose>72.000 19.500 8.125 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 16.250</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 16.250</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_upper_1">
+      <static>true</static>
+      <pose>72.000 19.500 27.625 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 8.750</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 8.750</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_lower_2">
+      <static>true</static>
+      <pose>72.000 24.500 8.708 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 17.417</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 17.417</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_upper_2">
+      <static>true</static>
+      <pose>72.000 24.500 28.208 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 7.583</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 7.583</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_lower_3">
+      <static>true</static>
+      <pose>72.000 29.500 9.292 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 18.583</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 18.583</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_upper_3">
+      <static>true</static>
+      <pose>72.000 29.500 28.792 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 6.417</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 6.417</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_lower_4">
+      <static>true</static>
+      <pose>72.000 34.500 9.875 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 19.750</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 19.750</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_upper_4">
+      <static>true</static>
+      <pose>72.000 34.500 29.375 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 5.250</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 5.250</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_lower_5">
+      <static>true</static>
+      <pose>72.000 39.500 10.458 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 20.917</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 20.917</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_upper_5">
+      <static>true</static>
+      <pose>72.000 39.500 29.958 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 5.000 4.083</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 5.000 4.083</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_23_no_static_occluder">
+      <static>true</static>
+      <pose>99.000 0.000 5.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_04_12_no_static_occluder">
+      <static>true</static>
+      <pose>-36.000 -81.000 15.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_06_14_no_static_occluder">
+      <static>true</static>
+      <pose>72.000 -81.000 25.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_11_19_l_no_static_occluder">
+      <static>true</static>
+      <pose>-90.000 -27.000 5.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_20_21_no_static_occluder">
+      <static>true</static>
+      <pose>-9.000 0.000 15.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_22_30_z_no_static_occluder">
+      <static>true</static>
+      <pose>72.000 27.000 21.500 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 14.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
     <model name="start_marker">
       <static>true</static>
-      <pose>-171.00 -81.00 0.05 0.00 0.00 0.00</pose>
+      <pose>-171.000 -81.000 0.05 0 0 0</pose>
       <link name="link">
         <visual name="visual">
-          <geometry><cylinder><radius>4.80</radius><length>0.08</length></cylinder></geometry>
-          <material><diffuse>0.0 0.55 0.25 1</diffuse></material>
+          <geometry>
+            <cylinder>
+              <radius>4.8</radius>
+              <length>0.08</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <diffuse>0.0 0.55 0.25 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
-
     <model name="goal_marker">
       <static>true</static>
-      <pose>153.00 81.00 0.05 0.00 0.00 0.00</pose>
+      <pose>153.000 81.000 0.05 0 0 0</pose>
       <link name="link">
         <visual name="visual">
-          <geometry><cylinder><radius>4.80</radius><length>0.08</length></cylinder></geometry>
-          <material><diffuse>0.8 0.1 0.1 1</diffuse></material>
+          <geometry>
+            <cylinder>
+              <radius>4.8</radius>
+              <length>0.08</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <diffuse>0.8 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>

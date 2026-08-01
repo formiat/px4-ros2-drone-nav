@@ -14,7 +14,7 @@ default.
 
 World inputs:
 
-- `use_static_map`, `static_map_path`;
+- `use_static_map`;
 - `grid_*`, `initial_*`, `px4_local_origin_*`;
 - `risk_critical_distance_m`, `risk_preferred_distance_m`.
 
@@ -33,16 +33,6 @@ Memory:
 - debug/snapshot publication periods;
 - provenance transport limits.
 
-Known-static filtering:
-
-- `known_passages_enabled`, `known_passages_path`;
-- `known_static_lidar_hit_classifier_enabled`;
-- endpoint/range tolerances;
-- ambiguous-evidence confirmation and retention.
-
-The classifier is disabled by default. Enabling it changes how new lidar
-evidence enters memory; it does not change static-map cells.
-
 ## `production_mppi_node`
 
 Execution cadence:
@@ -57,7 +47,7 @@ Mode policy:
 - static/no-static cruise and absolute speed;
 - acceleration, lateral acceleration, braking, and jerk limits;
 - mode-specific lookahead and curvature preview;
-- mode-specific observation, goal, and passage limits.
+- mode-specific observation and goal limits.
 
 Risk:
 
@@ -77,13 +67,11 @@ Global guide:
 - cross-track and stall thresholds;
 - velocity/previous-guide heading cascade thresholds.
 
-Passages:
+Static world:
 
-- selection distance, lateral margin, and normal alignment;
-- vertical clearance and capture hysteresis;
-- capture and retention cycles;
-- lateral staging and approach speed;
-- stationary-trigger and dynamics estimates.
+- `static_occupancy_3d_path` selects the generated Occupancy3D artifact;
+- route-envelope parameters control constrained span extraction;
+- constrained-span speed is encoded in 3D route samples.
 
 Safety and liveness:
 
@@ -104,8 +92,8 @@ Safety and liveness:
 
 ## Other Nodes
 
-`world_visualization_node` owns world and passage debug topics.
-`mission_monitor_node` owns mission success, crash, and actual passage metrics.
+`world_visualization_node` owns static and raw world debug topics.
+`mission_monitor_node` owns mission success and crash metrics.
 `lidar_debug_node` owns snapshot cadence, projection diagnostics, and point
 cloud topics.
 

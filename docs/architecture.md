@@ -38,7 +38,7 @@ Gazebo contact involving the drone
 - optionally merges the static city map;
 - publishes `/drone_city_nav/obstacle_memory_snapshot`;
 - publishes `/drone_city_nav/raw_obstacle_snapshot`;
-- owns the optional known-static lidar fallback classifier.
+- keeps no-static lidar ingestion independent from static-world semantics.
 
 ### `production_mppi_node`
 
@@ -47,7 +47,7 @@ Gazebo contact involving the drone
 - builds and maintains the active global lattice guide;
 - selects local lookahead targets;
 - runs the persistent CUDA MPPI engine;
-- coordinates known-passage approach, vertical alignment, and traversal;
+- follows typed 3D route samples and constrained channel spans;
 - validates the reconstructed horizon;
 - publishes `/drone_city_nav/mppi/execution_horizon`;
 - publishes MPPI RViz and diagnostic outputs.
@@ -59,15 +59,15 @@ This node has no direct PX4 command publisher.
 - consumes only fresh `MppiTrajectoryHorizon` messages;
 - applies timestamp lookahead to the current horizon;
 - emits PX4 velocity or position setpoints;
-- executes passage stationary-position hold when explicitly requested;
+- executes safety and mission position holds when explicitly requested;
 - falls back to braking when no fresh executable horizon is available;
 - publishes the applied-control feedback used by MPPI continuity logic;
 - publishes the RViz drone marker and follow TF.
 
 ### Visualization And Observation
 
-`world_visualization_node` publishes static-map, raw-world, building, and
-known-passage visualization. The production MPPI markers include mission start,
+`world_visualization_node` publishes static-world, raw-world, and building
+visualization. The production MPPI markers include mission start,
 mission goal, global guide, and local target. `lidar_debug_node` writes
 synchronized diagnostic snapshots. `mission_monitor_node` and
 `collision_crash_node` observe the mission without participating in route
@@ -77,11 +77,10 @@ selection.
 
 The production planner uses:
 
-- raw 2D occupied cells;
-- an ESDF resident on the GPU;
+- sparse physical 3D occupancy generated from the canonical world;
+- a local dense ESDF3D resident on the GPU;
 - preferred, planning, critical, and collision risk tiers;
-- known 3D solid volumes for passage buildings;
-- passage opening metadata.
+- typed 3D routes with constrained channel spans.
 
 There are no separately materialized planner/prohibited inflated grids,
 hard collision envelopes around raw cells, inflation relaxation, or escape
@@ -106,9 +105,9 @@ motion and continuously warm-starts from its previous control sequence.
 - sequence and obstacle/pose revisions;
 - `valid_from` and `valid_until`;
 - risk and braking state;
-- optional passage constraint state;
+- optional constrained-route speed and altitude state;
 - time-indexed position, velocity, acceleration, yaw, and yaw rate;
-- an explicit stationary position-hold request used during passage alignment.
+- an explicit stationary position-hold request used by safety or goal capture.
 
 Offboard executes only the current fresh horizon. There is no legacy path-id,
 suffix ACK, partial-replan, safe-truncation, or moving/after-hold protocol.
@@ -135,8 +134,8 @@ horizon has been published.
 - The lattice is not incremental AD*.
 - MPPI follows a lookahead target rather than a full GPU-resident guide
   polyline.
-- Passage selection is inferred from guide/opening intersection.
-- Stationary passage hold shares the execution-horizon message.
+- Static planning is not incremental AD* yet.
+- No-static perception remains 2D and intentionally has no channel semantics.
 - Collision validation intentionally uses the drone state point against raw
   occupied cells and exact known-solid volumes; vehicle footprint inflation is
   not part of the planning contract.

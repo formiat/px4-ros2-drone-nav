@@ -30,40 +30,19 @@ struct KnownSolid {
   float max_z_m{0.0F};
 };
 
-enum class PassagePhase : std::uint8_t {
-  kUpcoming,
-  kVerticalAlignment,
-  kReady,
-  kTraversal,
-};
-
-struct PassageConstraint {
-  float center_x_m{0.0F};
-  float center_y_m{0.0F};
-  float normal_x{1.0F};
-  float normal_y{0.0F};
-  float half_depth_m{0.0F};
-  float min_z_m{0.0F};
-  float max_z_m{0.0F};
-  float preferred_z_m{0.0F};
-  float normal_flight_z_m{0.0F};
-  float approach_station_m{0.0F};
-  float alignment_station_m{0.0F};
-  float entry_station_m{0.0F};
-  float exit_station_m{0.0F};
-  float departure_station_m{0.0F};
-  float speed_limit_mps{0.0F};
-  PassagePhase phase{PassagePhase::kUpcoming};
-};
-
-struct RoutePoint {
+struct RouteSample3D {
   float x_m{0.0F};
   float y_m{0.0F};
+  float z_m{0.0F};
+  float tangent_x{0.0F};
+  float tangent_y{0.0F};
+  float tangent_z{0.0F};
   float station_m{0.0F};
+  float reference_speed_mps{0.0F};
 };
 
 struct RouteReference {
-  std::shared_ptr<const std::vector<RoutePoint>> points;
+  std::shared_ptr<const std::vector<RouteSample3D>> points;
   std::uint64_t generation{0U};
   float initial_station_m{0.0F};
 };
@@ -71,7 +50,6 @@ struct RouteReference {
 struct MppiTickInput {
   State initial_state{};
   State target{};
-  std::optional<PassageConstraint> passage;
   std::uint64_t pose_revision{0U};
   std::uint64_t obstacle_revision{0U};
   std::int64_t planning_stamp_ns{0};

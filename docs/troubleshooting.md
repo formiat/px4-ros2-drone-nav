@@ -33,7 +33,7 @@ Inspect in this order:
 5. braking decision and time-to-collision;
 6. offboard deadline and applied command.
 
-For passage structures, inspect known-solid collision separately from 2D ESDF.
+For air channels, inspect the 3D route samples and constrained route spans.
 
 ## Drone Stalls At A Wall
 
@@ -56,20 +56,17 @@ guide release reasons. If the guide remains stable but the blue MPPI horizon
 flaps, inspect warm-start shift, first-control delta, horizon stability, and
 local cost hierarchy.
 
-## Passage Alignment Does Not Release
+## Constrained Channel Traversal Stalls
 
 Check:
 
-- active semantic portal id and route generation;
-- current phase;
-- vertical/lateral error;
-- capture window and vertical speed;
-- stable capture cycles;
-- offboard `PASSAGE_POSITION_HOLD` activation;
+- active route generation and constrained span stations;
+- current route station and 3D reference sample;
+- vertical/lateral tracking error and reference speed;
 - fresh horizon reception;
-- actual opening coordinates and travel direction.
+- physical channel occupancy around the route.
 
-Passage activation alone does not mean the global guide truly traversed the
+The constraint must come from the accepted 3D route, never from proximity to an
 opening.
 
 ## No-Static Flight Is Too Fast
@@ -95,10 +92,9 @@ Check the actual topics:
 - `/drone_city_nav/raw_obstacle_grid`;
 - `/drone_city_nav/mppi/path`;
 - `/drone_city_nav/mppi/markers`;
-- `/drone_city_nav/known_passage_markers`;
 - `/drone_city_nav/drone_marker`.
 
-Verify reliable/transient-local QoS for durable world and passage markers.
+Verify reliable/transient-local QoS for durable world markers.
 
 ## Gazebo Camera Does Not Follow
 

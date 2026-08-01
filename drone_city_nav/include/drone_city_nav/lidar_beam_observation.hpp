@@ -44,7 +44,7 @@ struct KnownStaticClassificationSnapshot {
   bool volume_matched{false};
   bool confident_face_interior{false};
   bool part_kind_valid{false};
-  KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
+  LegacyStaticPartKind part_kind{LegacyStaticPartKind::kLeft};
   std::string structure_id;
   std::string opening_id;
   std::string part_id;

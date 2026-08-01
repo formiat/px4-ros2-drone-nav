@@ -4,23 +4,23 @@ Obstacle mapping combines static obstacles, current lidar hits, and accumulated
 memory into planner inputs. The main rule is that raw sources stay raw. The
 planner derives distance-based risk tiers without inflating hard occupancy.
 
-## Static Map
+## Static World
 
 The static map is loaded from:
 
 ```text
-drone_city_nav/worlds/generated_city.map2d
+drone_city_nav/worlds/generated_city.occupancy3d
 ```
 
 Configured by:
 
 ```yaml
 use_static_map: true
-static_map_path: worlds/generated_city.map2d
-static_map_min_blocking_height_m: 0.0
+static_occupancy_3d_path: worlds/generated_city.occupancy3d
 ```
 
-The static map is cached and reused when possible.
+The sparse static world is generated from the same canonical specification as
+Gazebo SDF and is used only in static mode.
 
 ## Current Lidar Overlay
 
@@ -35,22 +35,9 @@ Important parameters:
 - `range_hit_epsilon_m`
 - lidar pose latency and attitude compensation settings.
 
-When `known_static_lidar_hit_classifier_enabled=true`, the optional 3D
-known-static fallback classifier runs before a current lidar hit is written
-into the overlay. It compares the map-frame ray, measured range, and endpoint
-XYZ with the known passage-building solids and opening volumes. A confident
-physical-solid hit is suppressed. A hit clearly separated from the solid or
-inside a free opening remains in the overlay immediately. A near-surface, edge,
-or otherwise ambiguous known-static hit remains pending and does not change the
-overlay until independent viewpoints resolve its geometry. This decision is
-independent of the current trajectory and distance to a passage.
-
-The same decision is applied before a hit changes obstacle-memory scores. It is
-not a blanket spatial exclusion around an opening, so an unknown object clearly
-in front of a known wall or anywhere inside free opening space remains obstacle
-evidence. Pending observations perform neither hit integration nor free-space
-clearing. `known_passages.md` documents the 3D ray construction, endpoint
-relations, viewpoint confirmation, and memory-reset behavior.
+Lidar evidence is never filtered against hand-authored passage geometry. Static
+planning reads Occupancy3D; no-static uses the physical 2D lidar returns and
+treats connector occluders as ordinary obstacles.
 
 ## Obstacle Memory
 
@@ -68,18 +55,12 @@ Memory uses hit/miss scoring:
 
 Mapping starts only above `min_mapping_altitude_m`.
 
-For passage debugging, every first transition of a nearby memory cell to
-occupied is logged as `PASSAGE_MEMORY_HIT` with endpoint XYZ, beam/range,
-attitude, score transition, occupied threshold, independent trigger scans, and
-known-static classification. The event is diagnostic only and does not alter
-hit scoring or filtering.
-
 All first occupied transitions are additionally written to a bounded JSONL dump
 configured by `lidar_memory_hit_dump_enabled`, `lidar_memory_hit_dump_path`,
 and `lidar_memory_hit_dump_max_records`. The default runner supplies a distinct
 `log/lidar_memory_hits/<run-id>.jsonl` file. A row preserves the complete 3D
 ray, scan and callback timestamps, pose/attitude inputs, motion compensation,
-both ground and known-static range candidates, and the decision that retained
+the ground range candidate and the decision that retained
 the hit. It is a post-run diagnostic artifact, not a planner input.
 
 Every active occupied memory cell also owns sparse 3D diagnostic provenance:
@@ -174,15 +155,10 @@ lidar debug configuration.
 Obstacle memory and the planner current-lidar overlay share one immutable
 `LidarBeamObservation` and one ingestion decision before either path changes a
 grid. The decision compares the measured range with the nearest expected 3D
-surface along the map-frame ray. Providers currently include known passage
-solids and the configured flat ground plane.
+surface along the map-frame ray. The configured flat ground plane is the only
+expected-surface provider.
 
 Expected ray intersections are bounded by the beam's effective sensor range.
-The measured endpoint is also compared directly with the known 3D volumes, so
-a return within the configured spatial tolerance of a known surface is not
-misclassified merely because the analytic entry plane lies just beyond that
-range.
-
 Ground rejection is range based, not endpoint-distance based and not a global
 vehicle-tilt cutoff. A fast level-flight attitude therefore does not disable
 lidar mapping. For a downward ray, the expected flat-ground range is computed
@@ -330,25 +306,12 @@ recently observed obstacles available after they leave the instantaneous scan.
 Memory is especially important when the drone turns away from an obstacle but
 the planner still needs to avoid it.
 
-When enabled, the same known-static classifier is applied before a hit changes
-obstacle-memory scores. It suppresses only new confident physical-solid hits;
-it does not remove older cells selectively or create a temporary memory copy.
-When classifier geometry is installed or changed, obstacle memory and its
-associated provenance are reset together so no cell survives under a different
-geometry contract.
-
 These sources are complementary:
 
 - static map gives persistent structure;
 - current lidar gives fresh evidence;
 - memory gives temporal continuity;
 - the occupied distance field turns merged evidence into risk tiers.
-
-Known-passage geometry is used consistently by both lidar ingestion paths. The
-optional classifier never filters static-map cells and never changes lattice-guide
-selection. When enabled, it only prevents known physical masses from becoming
-new dynamic evidence; a real object before a wall or inside an opening still
-follows normal raw obstacle snapshot and receding-horizon behavior.
 
 The ground provider follows the same shared decision path but does not add a 3D
 planning layer. Obstacle memory remains a 2D scored grid. Accepted occupied cells
@@ -398,8 +361,7 @@ For an unexpected replan, inspect:
 4. Did planning clearance get mistaken for hard prohibited space?
 5. Did pose or attitude compensation shift the lidar overlay?
 6. Did obstacle memory keep an old obstacle longer than expected?
-7. Did the known-static classifier suppress known solids, keep opening/detached
-   obstacles, and leave unresolved static-attached evidence non-mutating?
+7. Did both lidar ingestion paths retain the same projected obstacle return?
 8. Did the planner retain the previous trajectory while rebuilding?
 
 Answering these questions usually separates a real obstacle from a mapping

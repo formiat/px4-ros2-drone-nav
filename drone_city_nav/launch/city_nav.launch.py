@@ -47,7 +47,7 @@ def generate_launch_description():
         "rviz_drone_follow_tf_enabled"
     )
     use_static_map = LaunchConfiguration("use_static_map")
-    static_map_path = LaunchConfiguration("static_map_path")
+    static_occupancy_3d_path = LaunchConfiguration("static_occupancy_3d_path")
     scan_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -84,9 +84,11 @@ def generate_launch_description():
         if static_map_override is not None:
             obstacle_memory_overrides["use_static_map"] = static_map_override
 
-        static_map_path_override = static_map_path.perform(context).strip()
-        if static_map_path_override:
-            obstacle_memory_overrides["static_map_path"] = static_map_path_override
+        static_world_path_override = static_occupancy_3d_path.perform(context).strip()
+        if static_world_path_override:
+            obstacle_memory_overrides["static_occupancy_3d_path"] = (
+                static_world_path_override
+            )
         obstacle_memory_parameters = [params_file.perform(context)]
         if obstacle_memory_overrides:
             obstacle_memory_parameters.append(obstacle_memory_overrides)
@@ -104,6 +106,10 @@ def generate_launch_description():
             )
             mission_monitor_parameters.append(
                 {"use_static_map": static_map_override}
+            )
+        if static_world_path_override:
+            production_mppi_parameters.append(
+                {"static_occupancy_3d_path": static_world_path_override}
             )
         return [
             Node(
@@ -184,7 +190,7 @@ def generate_launch_description():
     # quaternion below applies the legacy Gazebo-aligned visualization mapping
     # that swaps the horizontal X/Y axes and flips Z for RViz overlays. That looks
     # unusual in isolation, especially now that we publish 3D buildings and
-    # passage markers, but it is a deliberate compatibility shim for matching the
+    # 3D world points, but it is a deliberate compatibility shim for matching the
     # visual world that operators inspect in Gazebo. Do not remove this transform
     # or change the RViz fixed frame to "map" unless the Gazebo world convention,
     # static map coordinates, and all debug overlays are migrated together.
@@ -292,10 +298,10 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument(
-                "static_map_path",
+                "static_occupancy_3d_path",
                 default_value="",
                 description=(
-                    "Optional static city map2d path override. Leave empty to use "
+                    "Optional canonical static occupancy3d path override. Leave empty to use "
                     "params_file."
                 ),
             ),

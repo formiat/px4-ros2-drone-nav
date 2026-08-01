@@ -14,8 +14,9 @@ namespace {
 [[nodiscard]] bool rawCollisionAt(const mppi::State& state,
                                   const std::span<const float> esdf_m,
                                   const mppi::EsdfGrid& grid) {
-  const EsdfQueryResult query = queryConservativeEsdf(grid, esdf_m, state.x, state.y);
-  return query.status != EsdfQueryStatus::kValid || query.raw_occupied;
+  const EsdfQueryResult query =
+      queryConservativeEsdf3D(grid, esdf_m, state.x, state.y, state.z);
+  return query.raw_occupied;
 }
 
 [[nodiscard]] bool

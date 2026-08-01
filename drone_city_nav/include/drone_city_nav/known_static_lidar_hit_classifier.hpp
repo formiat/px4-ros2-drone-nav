@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/known_passage_solid_volumes.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -11,6 +10,15 @@
 #include <vector>
 
 namespace drone_city_nav {
+
+// Retained only for provenance schema compatibility. Static geometry is no
+// longer classified in the lidar ingestion path.
+enum class LegacyStaticPartKind {
+  kLeft,
+  kRight,
+  kLower,
+  kUpper,
+};
 
 enum class KnownStaticLidarHitClassification {
   kExpectedStatic,
@@ -42,7 +50,7 @@ struct KnownStaticLidarHitResult {
       KnownStaticLidarHitClassification::kAmbiguous};
   double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
   double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
-  KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
+  LegacyStaticPartKind part_kind{LegacyStaticPartKind::kLeft};
   std::string_view structure_id;
   std::string_view opening_id;
   std::string_view part_id;
@@ -64,7 +72,7 @@ struct KnownStaticExpectedSurface {
   double range_m{std::numeric_limits<double>::quiet_NaN()};
   double exit_range_m{std::numeric_limits<double>::quiet_NaN()};
   Point3 intersection_map_m{};
-  KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
+  LegacyStaticPartKind part_kind{LegacyStaticPartKind::kLeft};
   std::string_view structure_id;
   std::string_view opening_id;
   std::string_view part_id;
@@ -127,8 +135,8 @@ struct KnownStaticBeamEvaluation {
 
 class KnownStaticLidarHitClassifier {
 public:
-  KnownStaticLidarHitClassifier(std::vector<KnownPassageSolidVolume> volumes,
-                                const KnownStaticLidarHitClassifierConfig& config = {});
+  explicit KnownStaticLidarHitClassifier(
+      const KnownStaticLidarHitClassifierConfig& config = {});
 
   [[nodiscard]] KnownStaticLidarHitResult
   classify(const Point3& ray_origin_map_m, const Point3& ray_direction_map,
@@ -150,7 +158,6 @@ public:
   [[nodiscard]] double openingBoundaryToleranceM() const noexcept;
 
 private:
-  std::vector<KnownPassageSolidVolume> volumes_;
   KnownStaticLidarHitClassifierConfig config_{};
 };
 

@@ -52,11 +52,11 @@ TEST(MppiSpeedPolicyTest, UpcomingTurnReducesReferenceSpeedBeforeTurn) {
   EXPECT_LT(result.reference_speed_mps, config.cruise_speed_mps);
 }
 
-TEST(MppiSpeedPolicyTest, PassageAndGoalApplyIndependentCaps) {
+TEST(MppiSpeedPolicyTest, RouteConstraintAndGoalApplyIndependentCaps) {
   MppiSpeedPolicyConfig config;
   MppiSpeedPolicyInput passage_input;
   passage_input.mission_goal = Point3{200.0, 0.0, 18.0};
-  passage_input.passage_speed_limit_mps = 10.0;
+  passage_input.route_constraint_speed_limit_mps = 10.0;
   const MppiSpeedPolicyResult passage = evaluateMppiSpeedPolicy(config, passage_input);
   EXPECT_DOUBLE_EQ(passage.reference_speed_mps, 10.0);
 
@@ -90,7 +90,7 @@ TEST(MppiSpeedPolicyTest, NoStaticProfileTracksTenMetersPerSecondAtFixedLookahea
   EXPECT_DOUBLE_EQ(result.target_lookahead_m, 30.0);
 }
 
-TEST(MppiSpeedPolicyTest, NoStaticPassageLimitOverridesCruiseSpeed) {
+TEST(MppiSpeedPolicyTest, RouteConstraintLimitOverridesCruiseSpeed) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 10.0;
   config.absolute_speed_limit_mps = 10.0;
@@ -99,12 +99,12 @@ TEST(MppiSpeedPolicyTest, NoStaticPassageLimitOverridesCruiseSpeed) {
   config.maximum_target_lookahead_m = 30.0;
   MppiSpeedPolicyInput input;
   input.mission_goal = Point3{300.0, 0.0, 18.0};
-  input.passage_speed_limit_mps = 5.0;
+  input.route_constraint_speed_limit_mps = 5.0;
 
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
 
   EXPECT_DOUBLE_EQ(result.reference_speed_mps, 5.0);
-  EXPECT_DOUBLE_EQ(result.passage_limit_mps, 5.0);
+  EXPECT_DOUBLE_EQ(result.route_constraint_limit_mps, 5.0);
 }
 
 } // namespace

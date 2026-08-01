@@ -32,7 +32,6 @@ void appendStationaryHoldPoint(msg::MppiTrajectoryHorizon& horizon,
 ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
     const ProductionMppiPreparedEsdf& esdf,
-    const PassageCoordinatorResult& passage_coordinator,
     const ProductionMppiPlanningState planning_state, const std::int64_t now_ns) {
   ProductionMppiExecutionPublication publication;
   if (!execution_horizon_pub_) {
@@ -53,33 +52,27 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     horizon.risk_tier = static_cast<std::uint8_t>(result.selected_tier);
     horizon.execution_mode = static_cast<std::uint8_t>(mode);
     horizon.execution_reason = static_cast<std::uint8_t>(reason);
-    horizon.passage_constrained = input.passage.has_value();
+    horizon.route_constrained =
+        esdf.constrained_spans != nullptr && !esdf.constrained_spans->empty();
     const bool goal_hold =
         planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
-    horizon.stationary_position_hold = passage_coordinator.hold_xy || goal_hold;
-    horizon.stationary_hold_position.x =
-        goal_hold ? mission_goal_.x : passage_coordinator.hold_position.x;
-    horizon.stationary_hold_position.y =
-        goal_hold ? mission_goal_.y : passage_coordinator.hold_position.y;
-    horizon.stationary_hold_position.z =
-        goal_hold ? mission_goal_.z : passage_coordinator.preferred_z_m;
+    horizon.stationary_position_hold = goal_hold;
+    horizon.stationary_hold_position.x = mission_goal_.x;
+    horizon.stationary_hold_position.y = mission_goal_.y;
+    horizon.stationary_hold_position.z = mission_goal_.z;
     return horizon;
   };
 
   const bool goal_hold =
       planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
-  if (passage_coordinator.hold_xy || goal_hold) {
+  if (goal_hold) {
     safety_intervention_tracker_.reset();
     brake_hold_lifecycle_.reset();
-    const Point3 hold_position = goal_hold ? mission_goal_
-                                           : Point3{passage_coordinator.hold_position.x,
-                                                    passage_coordinator.hold_position.y,
-                                                    passage_coordinator.preferred_z_m};
+    const Point3 hold_position = mission_goal_;
     const auto hold_duration_ns = static_cast<std::int64_t>(
         std::max(0.2, 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) * 1.0e9);
     const ProductionMppiExecutionReason reason =
-        goal_hold ? ProductionMppiExecutionReason::kGoalCapture
-                  : ProductionMppiExecutionReason::kPassageAlignment;
+        ProductionMppiExecutionReason::kGoalCapture;
     msg::MppiTrajectoryHorizon horizon = make_horizon(
         now_ns + hold_duration_ns, ProductionMppiExecutionMode::kPositionHold, reason);
     horizon.points.reserve(2U);
@@ -117,7 +110,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     }
     safety = evaluateMppiHorizonSafety(input.initial_state, result.horizon,
                                        *esdf.distances_m, esdf.grid, safety_config_,
-                                       false, known_solids_);
+                                       false, {});
     intervention = safety_intervention_tracker_.update(now_ns, safety);
   } else {
     safety_intervention_tracker_.reset();

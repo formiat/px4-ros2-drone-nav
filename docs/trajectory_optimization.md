@@ -32,7 +32,7 @@ limits from the active static or no-static profile.
 shift nominal controls by elapsed time
 -> generate counter-based control noise
 -> simulate rollouts on CUDA
--> query ESDF and known solids
+-> query local ESDF3D against physical Occupancy3D
 -> choose eligible categorical risk class
 -> compute MPPI weights
 -> update controls

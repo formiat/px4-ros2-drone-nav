@@ -1,6 +1,4 @@
 #include "drone_city_nav/grid_config.hpp"
-#include "drone_city_nav/known_passage_map.hpp"
-#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
@@ -45,7 +43,6 @@
 #include "raw_world_snapshot.hpp"
 
 namespace drone_city_nav {
-constexpr double kPassageMemoryDiagnosticMarginM{2.0};
 constexpr std::int64_t kLidarDiagnosticsInfoThrottleMs{200};
 
 struct LidarMemoryHitDiagnosticBatch {
@@ -144,22 +141,7 @@ public:
         declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
     max_projected_lidar_altitude_m_ =
         declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
-    KnownStaticLidarSetup known_static_setup =
-        declareKnownStaticLidarSetup(*this, frame_id_, use_static_map);
-    known_passage_map_ = std::move(known_static_setup.passage_map);
-    known_static_lidar_classifier_ = std::move(known_static_setup.classifier);
-    known_passages_resolved_path_ = std::move(known_static_setup.resolved_path);
-    known_static_lidar_hit_closer_range_tolerance_m_ =
-        known_static_setup.closer_range_tolerance_m;
-    known_static_lidar_hit_farther_range_tolerance_m_ =
-        known_static_setup.farther_range_tolerance_m;
-    known_static_lidar_hit_endpoint_volume_tolerance_m_ =
-        known_static_setup.endpoint_volume_tolerance_m;
-    known_static_opening_boundary_tolerance_m_ =
-        known_static_setup.opening_boundary_tolerance_m;
-    if (known_static_lidar_classifier_.has_value()) {
-      memory_->reset();
-    }
+    (void)use_static_map;
     memory_->configureAmbiguousHitTracking(
         declareAmbiguousLidarHitTrackerConfig(*this));
     ground_lidar_rejection_config_ =
@@ -534,10 +516,7 @@ private:
                            alignment_diagnostic.c_str());
     }
     ObstacleMemoryStats stats = memory_->integrateScan(
-        scan_pose, scan_view, memory_config_,
-        known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
-                                                   : nullptr,
-        &ground_lidar_rejection_config_);
+        scan_pose, scan_view, memory_config_, nullptr, &ground_lidar_rejection_config_);
 
     if (!scan_seen_) {
       scan_seen_ = true;
@@ -574,11 +553,7 @@ private:
         "hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
         "occupied_updates=%zu newly_occupied=%zu "
-        "known_static[ignored=%zu endpoint_fallback=%zu unexpected=%zu "
-        "ambiguous=%zu pending=%zu confirmed=%zu "
-        "parts[left=%zu right=%zu lower=%zu upper=%zu] "
-        "first_ignored=%s/%s/%s delta=%.3f "
-        "first_ambiguous=%s/%s/%s delta=%.3f] "
+        "pending=%zu confirmed=%zu "
         "raw[occupied=%zu free=%zu unknown=%zu]",
         current_pose_.pose.position.x, current_pose_.pose.position.y,
         current_pose_.altitude_m, current_pose_.pose.yaw_rad, scan_pose.position.x,
@@ -591,53 +566,9 @@ private:
         stats.timestamp_aligned_beams, stats.hit_beams, stats.invalid_ranges,
         stats.altitude_rejected_beams, stats.clipped_rays, stats.outside_hit_endpoints,
         stats.free_cells_updated, stats.occupied_cells_updated,
-        stats.newly_occupied_cells,
-        stats.known_static_lidar.expected_static_hits_ignored,
-        stats.known_static_lidar.endpoint_volume_fallback_hits_ignored,
-        stats.known_static_lidar.unexpected_hits_kept,
-        stats.known_static_lidar.ambiguous_hits_kept,
-        stats.ambiguous_hits_pending_confirmation, stats.ambiguous_hits_confirmed,
-        stats.known_static_lidar.expected_static_by_part.left,
-        stats.known_static_lidar.expected_static_by_part.right,
-        stats.known_static_lidar.expected_static_by_part.lower,
-        stats.known_static_lidar.expected_static_by_part.upper,
-        stats.known_static_lidar.first_ignored.available
-            ? stats.known_static_lidar.first_ignored.structure_id.c_str()
-            : "<none>",
-        stats.known_static_lidar.first_ignored.available
-            ? stats.known_static_lidar.first_ignored.opening_id.c_str()
-            : "<none>",
-        stats.known_static_lidar.first_ignored.available
-            ? stats.known_static_lidar.first_ignored.part_id.c_str()
-            : "<none>",
-        stats.known_static_lidar.first_ignored.range_delta_m,
-        stats.known_static_lidar.first_ambiguous.available
-            ? stats.known_static_lidar.first_ambiguous.structure_id.c_str()
-            : "<none>",
-        stats.known_static_lidar.first_ambiguous.available
-            ? stats.known_static_lidar.first_ambiguous.opening_id.c_str()
-            : "<none>",
-        stats.known_static_lidar.first_ambiguous.available
-            ? stats.known_static_lidar.first_ambiguous.part_id.c_str()
-            : "<none>",
-        stats.known_static_lidar.first_ambiguous.range_delta_m,
-        raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells);
-    if (!stats.retained_known_static_hits.empty()) {
-      const KnownStaticLidarHitProvenance& provenance =
-          stats.retained_known_static_hits.front();
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Obstacle memory retained known-static lidar hit: classification=%s "
-          "structure=%s opening=%s part=%s cell=(%d, %d) endpoint=(%.2f, %.2f, %.2f) "
-          "measured_range=%.3f expected_range=%.3f delta=%.3f diagnostics=%zu",
-          knownStaticLidarHitClassificationName(provenance.classification),
-          provenance.structure_id.c_str(), provenance.opening_id.c_str(),
-          provenance.part_id.c_str(), provenance.cell_x, provenance.cell_y,
-          provenance.endpoint_map_m.x, provenance.endpoint_map_m.y,
-          provenance.endpoint_map_m.z, provenance.measured_range_m,
-          provenance.expected_range_m, provenance.range_delta_m,
-          stats.retained_known_static_hits.size());
-    }
+        stats.newly_occupied_cells, stats.ambiguous_hits_pending_confirmation,
+        stats.ambiguous_hits_confirmed, raw_counts.occupied_cells,
+        raw_counts.free_cells, raw_counts.unknown_cells);
     const std::string decision_summary =
         formatLidarIngestionDecisionStatsSummary(stats.ingestion_decisions);
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
@@ -705,14 +636,6 @@ private:
                 .lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_,
             },
         .ground_config = ground_lidar_rejection_config_,
-        .known_static_closer_range_tolerance_m =
-            known_static_lidar_hit_closer_range_tolerance_m_,
-        .known_static_farther_range_tolerance_m =
-            known_static_lidar_hit_farther_range_tolerance_m_,
-        .known_static_endpoint_volume_tolerance_m =
-            known_static_lidar_hit_endpoint_volume_tolerance_m_,
-        .known_static_opening_boundary_tolerance_m =
-            known_static_opening_boundary_tolerance_m_,
     };
   }
 
@@ -752,7 +675,6 @@ private:
   }
 
   void processLidarDiagnostics(const LidarMemoryHitDiagnosticBatch& batch) {
-    std::size_t passage_hits{0U};
     std::size_t retained_expected_surface_hits{0U};
     for (const ObstacleMemoryOccupiedTransition& transition : batch.transitions) {
       LidarMemoryHitDiagnosticContext context = batch.common_context;
@@ -778,21 +700,12 @@ private:
       }
       retained_expected_surface_hits +=
           isRetainedExpectedSurfaceHit(record.transition.trigger_decision) ? 1U : 0U;
-      const LidarBeamProjection& projection =
-          record.transition.provenance.occupancy_trigger.beam.projection;
-      passage_hits +=
-          passageStructureNearPoint(
-              known_passage_map_,
-              Point2{projection.endpoint_map_m.x, projection.endpoint_map_m.y},
-              kPassageMemoryDiagnosticMarginM) != nullptr
-              ? 1U
-              : 0U;
     }
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), kLidarDiagnosticsInfoThrottleMs,
-        "LIDAR_MEMORY_HIT_DIAGNOSTICS records=%zu passage_hits=%zu "
+        "LIDAR_MEMORY_HIT_DIAGNOSTICS records=%zu "
         "retained_expected_surface_hits=%zu dropped_batches=%" PRIu64,
-        batch.transitions.size(), passage_hits, retained_expected_surface_hits,
+        batch.transitions.size(), retained_expected_surface_hits,
         dropped_lidar_diagnostic_batches_.load(std::memory_order_relaxed));
   }
 
@@ -940,8 +853,6 @@ private:
   std::unique_ptr<ObstacleMemoryGrid> memory_;
   std::unique_ptr<MappingLifecycle> mapping_lifecycle_;
   std::optional<OccupancyGrid2D> static_grid_;
-  std::optional<KnownPassageMap> known_passage_map_;
-  std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
   ObstacleMemoryConfig memory_config_{};
   GroundLidarRejectionConfig ground_lidar_rejection_config_{};
   Px4LocalPoseConfig px4_local_pose_config_{};
@@ -953,11 +864,6 @@ private:
   LidarPoseHistory lidar_pose_history_;
   Px4RosTimeMapper px4_ros_time_mapper_;
   std::string frame_id_{"map"};
-  std::filesystem::path known_passages_resolved_path_;
-  double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
-  double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
-  double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.75};
-  double known_static_opening_boundary_tolerance_m_{0.50};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};

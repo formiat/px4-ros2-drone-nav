@@ -4,7 +4,6 @@ uint8 EXECUTION_MODE_BRAKING=1
 uint8 EXECUTION_MODE_POSITION_HOLD=2
 uint8 EXECUTION_REASON_NONE=0
 uint8 EXECUTION_REASON_HORIZON_SAFETY=1
-uint8 EXECUTION_REASON_PASSAGE_ALIGNMENT=2
 uint8 EXECUTION_REASON_GOAL_CAPTURE=3
 uint8 EXECUTION_REASON_NO_GUIDE=4
 uint8 EXECUTION_REASON_UNAVAILABLE_WORLD=5
@@ -17,7 +16,7 @@ uint8 risk_tier
 uint8 execution_mode
 uint8 execution_reason
 bool emergency_braking
-bool passage_constrained
+bool route_constrained
 bool stationary_position_hold
 geometry_msgs/Point stationary_hold_position
 MppiHorizonPoint[] points

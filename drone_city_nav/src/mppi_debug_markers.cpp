@@ -17,7 +17,6 @@ constexpr std::string_view kMppiExecutionNamespace{"mppi_execution"};
 constexpr std::string_view kLegacyMppiNamespace{"mppi"};
 constexpr std::string_view kMppiTargetNamespace{"mppi_target"};
 constexpr std::string_view kGlobalGuideNamespace{"global_lattice_guide"};
-constexpr std::string_view kSelectedPassageNamespace{"selected_passage"};
 
 [[nodiscard]] std_msgs::msg::ColorRGBA riskColor(const mppi::RiskTier tier) {
   if (tier == mppi::RiskTier::kPreferred) {
@@ -119,7 +118,7 @@ previousHorizonMarker(const MppiDebugMarkerInput& input) {
 
 [[nodiscard]] visualization_msgs::msg::Marker
 globalGuideMarker(const MppiDebugMarkerInput& input) {
-  if (input.global_guide.empty()) {
+  if (input.global_route.empty()) {
     return deleteMarker(input.header, kGlobalGuideNamespace, 0,
                         visualization_msgs::msg::Marker::LINE_STRIP);
   }
@@ -128,53 +127,12 @@ globalGuideMarker(const MppiDebugMarkerInput& input) {
                  visualization_msgs::msg::Marker::LINE_STRIP);
   marker.scale.x = 0.28;
   marker.color = rgba(1.0F, 0.52F, 0.08F, 0.95F);
-  marker.points.reserve(input.global_guide.size());
-  for (const Point2 point : input.global_guide) {
-    marker.points.push_back(gazeboAlignedRvizMarkerPoint(
-        point, static_cast<double>(input.initial_state.z)));
+  marker.points.reserve(input.global_route.size());
+  for (const mppi::RouteSample3D& sample : input.global_route) {
+    marker.points.push_back(
+        gazeboAlignedRvizMarkerPoint(Point3{sample.x_m, sample.y_m, sample.z_m}));
   }
   return marker;
-}
-
-void appendSelectedPassageMarkers(visualization_msgs::msg::MarkerArray& markers,
-                                  const MppiDebugMarkerInput& input) {
-  if (!input.passage.has_value()) {
-    markers.markers.push_back(deleteMarker(input.header, kSelectedPassageNamespace, 0,
-                                           visualization_msgs::msg::Marker::SPHERE));
-    markers.markers.push_back(deleteMarker(input.header, kSelectedPassageNamespace, 1,
-                                           visualization_msgs::msg::Marker::ARROW));
-    return;
-  }
-  const mppi::PassageConstraint& passage = *input.passage;
-  visualization_msgs::msg::Marker center =
-      makeMarker(input.header, kSelectedPassageNamespace, 0,
-                 visualization_msgs::msg::Marker::SPHERE);
-  center.pose.position = gazeboAlignedRvizMarkerPoint(
-      Point3{passage.center_x_m, passage.center_y_m, passage.preferred_z_m});
-  center.scale.x = 1.8;
-  center.scale.y = 1.8;
-  center.scale.z = 1.8;
-  center.color = rgba(1.0F, 0.15F, 0.65F, 1.0F);
-  markers.markers.push_back(center);
-
-  const Point2 normal{passage.normal_x, passage.normal_y};
-  const Point2 center_xy{passage.center_x_m, passage.center_y_m};
-  const Point2 start{center_xy.x - normal.x * passage.half_depth_m,
-                     center_xy.y - normal.y * passage.half_depth_m};
-  const Point2 end{center_xy.x + normal.x * passage.half_depth_m,
-                   center_xy.y + normal.y * passage.half_depth_m};
-  visualization_msgs::msg::Marker direction_marker =
-      makeMarker(input.header, kSelectedPassageNamespace, 1,
-                 visualization_msgs::msg::Marker::ARROW);
-  direction_marker.scale.x = 0.28;
-  direction_marker.scale.y = 0.75;
-  direction_marker.scale.z = 0.85;
-  direction_marker.color = rgba(1.0F, 0.25F, 0.7F, 0.95F);
-  direction_marker.points.push_back(
-      gazeboAlignedRvizMarkerPoint(start, passage.preferred_z_m));
-  direction_marker.points.push_back(
-      gazeboAlignedRvizMarkerPoint(end, passage.preferred_z_m));
-  markers.markers.push_back(direction_marker);
 }
 
 } // namespace
@@ -202,7 +160,6 @@ buildMppiDebugMarkers(const MppiDebugMarkerInput& input) {
                                          visualization_msgs::msg::Marker::LINE_STRIP));
   markers.markers.push_back(deleteMarker(input.header, kLegacyMppiNamespace, 2,
                                          visualization_msgs::msg::Marker::LINE_STRIP));
-  appendSelectedPassageMarkers(markers, input);
   return markers;
 }
 

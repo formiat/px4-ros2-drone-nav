@@ -125,19 +125,21 @@ public:
   double upload(const EsdfSnapshot& snapshot, cudaStream_t stream) {
     const auto started = std::chrono::steady_clock::now();
     if (array_ == nullptr || grid_.width != snapshot.grid.width ||
-        grid_.height != snapshot.grid.height) {
+        grid_.height != snapshot.grid.height || grid_.depth != snapshot.grid.depth) {
       reset();
       const cudaChannelFormatDesc channel = cudaCreateChannelDesc<float>();
-      checkCuda(cudaMallocArray(&array_, &channel,
-                                static_cast<std::size_t>(snapshot.grid.width),
-                                static_cast<std::size_t>(snapshot.grid.height)),
-                "cudaMallocArray");
+      const cudaExtent extent =
+          make_cudaExtent(static_cast<std::size_t>(snapshot.grid.width),
+                          static_cast<std::size_t>(snapshot.grid.height),
+                          static_cast<std::size_t>(std::max(1, snapshot.grid.depth)));
+      checkCuda(cudaMalloc3DArray(&array_, &channel, extent), "cudaMalloc3DArray");
       cudaResourceDesc resource{};
       resource.resType = cudaResourceTypeArray;
       resource.res.array.array = array_;
       cudaTextureDesc texture_description{};
       texture_description.addressMode[0] = cudaAddressModeBorder;
       texture_description.addressMode[1] = cudaAddressModeBorder;
+      texture_description.addressMode[2] = cudaAddressModeBorder;
       texture_description.filterMode = cudaFilterModePoint;
       texture_description.readMode = cudaReadModeElementType;
       texture_description.normalizedCoords = 0;
@@ -145,13 +147,19 @@ public:
           cudaCreateTextureObject(&texture_, &resource, &texture_description, nullptr),
           "cudaCreateTextureObject");
     }
-    checkCuda(cudaMemcpy2DToArrayAsync(
-                  array_, 0U, 0U, snapshot.distances_m.data(),
-                  static_cast<std::size_t>(snapshot.grid.width) * sizeof(float),
-                  static_cast<std::size_t>(snapshot.grid.width) * sizeof(float),
-                  static_cast<std::size_t>(snapshot.grid.height),
-                  cudaMemcpyHostToDevice, stream),
-              "cudaMemcpy2DToArrayAsync");
+    cudaMemcpy3DParms copy{};
+    copy.srcPtr = make_cudaPitchedPtr(
+        const_cast<float*>(snapshot.distances_m.data()),
+        static_cast<std::size_t>(snapshot.grid.width) * sizeof(float),
+        static_cast<std::size_t>(snapshot.grid.width),
+        static_cast<std::size_t>(snapshot.grid.height));
+    copy.dstArray = array_;
+    copy.extent = make_cudaExtent(
+        static_cast<std::size_t>(snapshot.grid.width),
+        static_cast<std::size_t>(snapshot.grid.height),
+        static_cast<std::size_t>(std::max(1, snapshot.grid.depth)));
+    copy.kind = cudaMemcpyHostToDevice;
+    checkCuda(cudaMemcpy3DAsync(&copy, stream), "cudaMemcpy3DAsync");
     checkCuda(cudaStreamSynchronize(stream), "synchronize ESDF upload");
     grid_ = snapshot.grid;
     revision_ = snapshot.revision;
@@ -217,7 +225,7 @@ struct DeviceBuffers {
   DeviceBuffer<float> minimum_soft;
   DeviceBuffer<float> weight_sum;
   DeviceBuffer<KnownSolid> solids{kMaximumKnownSolids};
-  DeviceBuffer<RoutePoint> route_points{kMaximumRoutePoints};
+  DeviceBuffer<RouteSample3D> route_points{kMaximumRoutePoints};
 
   DeviceBuffers(const std::size_t rollouts, const std::size_t steps)
       : noise_ax{rollouts * steps},
@@ -364,18 +372,20 @@ __device__ bool intersectsSolid(const State& state, const KnownSolid& solid) {
 struct RouteProjection {
   float station_m{0.0F};
   float cross_track_m{0.0F};
+  float reference_z_m{0.0F};
+  float reference_speed_mps{0.0F};
   bool valid{false};
 };
 
 __device__ RouteProjection projectOntoRoute(const State& state,
-                                            const RoutePoint* route_points,
+                                            const RouteSample3D* route_points,
                                             const std::size_t route_point_count,
                                             const float minimum_station_m) {
   RouteProjection result;
   float best_squared_distance = kInfinity;
   for (std::size_t index = 0U; index + 1U < route_point_count; ++index) {
-    const RoutePoint first = route_points[index];
-    const RoutePoint second = route_points[index + 1U];
+    const RouteSample3D first = route_points[index];
+    const RouteSample3D second = route_points[index + 1U];
     if (second.station_m + 2.0F < minimum_station_m) {
       continue;
     }
@@ -397,6 +407,10 @@ __device__ RouteProjection projectOntoRoute(const State& state,
       best_squared_distance = squared_distance;
       result.station_m = first.station_m + ratio * (second.station_m - first.station_m);
       result.cross_track_m = sqrtf(squared_distance);
+      result.reference_z_m = first.z_m + ratio * (second.z_m - first.z_m);
+      result.reference_speed_mps =
+          first.reference_speed_mps +
+          ratio * (second.reference_speed_mps - first.reference_speed_mps);
       result.valid = true;
     }
   }
@@ -415,12 +429,19 @@ queryEsdf(const State& state, const EsdfGrid grid,
   const float cell_y_float = (state.y - grid.origin_y_m) / grid.resolution_m;
   const int cell_x = static_cast<int>(floorf(cell_x_float));
   const int cell_y = static_cast<int>(floorf(cell_y_float));
-  if (cell_x < 0 || cell_y < 0 || cell_x >= grid.width || cell_y >= grid.height) {
-    return {0.0F, true};
+  const int depth = max(1, grid.depth);
+  const int cell_z = depth > 1
+                         ? static_cast<int>(floorf((state.z - grid.origin_z_m) /
+                                                   grid.resolution_m))
+                         : 0;
+  if (cell_x < 0 || cell_y < 0 || cell_z < 0 || cell_x >= grid.width ||
+      cell_y >= grid.height || cell_z >= depth) {
+    return {kInfinity, false};
   }
   const float center_distance_m =
-      tex2D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
-                   static_cast<float>(cell_y) + 0.5F);
+      tex3D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
+                   static_cast<float>(cell_y) + 0.5F,
+                   static_cast<float>(cell_z) + 0.5F);
   if (isinf(center_distance_m) && center_distance_m > 0.0F) {
     return {center_distance_m, false};
   }
@@ -431,43 +452,17 @@ queryEsdf(const State& state, const EsdfGrid grid,
       grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
   const float center_y_m =
       grid.origin_y_m + (static_cast<float>(cell_y) + 0.5F) * grid.resolution_m;
-  constexpr float kHalfDiagonalScale{0.70710678118654752440F};
-  const float correction_m =
-      hypotf(state.x - center_x_m, state.y - center_y_m) +
-      kHalfDiagonalScale * grid.resolution_m;
+  const float center_z_m =
+      grid.origin_z_m + (static_cast<float>(cell_z) + 0.5F) * grid.resolution_m;
+  const float dx = state.x - center_x_m;
+  const float dy = state.y - center_y_m;
+  const float dz = depth > 1 ? state.z - center_z_m : 0.0F;
+  const float half_diagonal_scale = depth > 1 ? 0.86602540378443864676F
+                                               : 0.70710678118654752440F;
+  const float correction_m = sqrtf(dx * dx + dy * dy + dz * dz) +
+                             half_diagonal_scale * grid.resolution_m;
   return {fmaxf(0.0F, center_distance_m - correction_m),
           center_distance_m == 0.0F};
-}
-
-__device__ float passageZReference(const PassageConstraint& passage,
-                                   const float station_m) {
-  if (station_m < passage.approach_station_m ||
-      station_m > passage.departure_station_m) {
-    return passage.normal_flight_z_m;
-  }
-  if (passage.phase == PassagePhase::kVerticalAlignment &&
-      station_m <= passage.exit_station_m) {
-    return passage.preferred_z_m;
-  }
-  const auto smooth_step = [](const float ratio) {
-    const float value = fminf(1.0F, fmaxf(0.0F, ratio));
-    return value * value * value * (value * (value * 6.0F - 15.0F) + 10.0F);
-  };
-  if (station_m < passage.alignment_station_m) {
-    const float length =
-        fmaxf(1.0e-3F, passage.alignment_station_m - passage.approach_station_m);
-    const float ratio = smooth_step((station_m - passage.approach_station_m) / length);
-    return passage.normal_flight_z_m +
-           ratio * (passage.preferred_z_m - passage.normal_flight_z_m);
-  }
-  if (station_m <= passage.exit_station_m) {
-    return passage.preferred_z_m;
-  }
-  const float length =
-      fmaxf(1.0e-3F, passage.departure_station_m - passage.exit_station_m);
-  const float ratio = smooth_step((station_m - passage.exit_station_m) / length);
-  return passage.preferred_z_m +
-         ratio * (passage.normal_flight_z_m - passage.preferred_z_m);
 }
 
 __global__ void
@@ -478,8 +473,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          std::uint8_t* solid_collision, std::size_t rollouts, std::size_t steps,
          State initial, State target, DynamicsConfig dynamics, RiskConfig risk,
          CostConfig costs, EsdfGrid grid, cudaTextureObject_t esdf_texture,
-         const KnownSolid* solids, std::size_t solid_count, PassageConstraint passage,
-         bool passage_active, const RoutePoint* route_points,
+         const KnownSolid* solids, std::size_t solid_count,
+         const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
          Control previous_applied_control, float first_control_interval_s,
          float reference_speed_mps, bool early_exit) {
@@ -542,17 +537,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
            ++solid_index) {
         solid_hit = intersectsSolid(swept_state, solids[solid_index]);
       }
-      if (passage_active) {
-        const float passage_dx = swept_state.x - passage.center_x_m;
-        const float passage_dy = swept_state.y - passage.center_y_m;
-        const float longitudinal =
-            passage_dx * passage.normal_x + passage_dy * passage.normal_y;
-        const bool inside_opening = fabsf(longitudinal) <= passage.half_depth_m;
-        if (inside_opening &&
-            (swept_state.z < passage.min_z_m || swept_state.z > passage.max_z_m)) {
-          solid_hit = true;
-        }
-      }
     }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
     raw_hit = raw_hit || segment_raw_hit;
@@ -561,20 +545,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
             ? projectOntoRoute(state, route_points, route_point_count,
                                initial_route_station_m)
             : RouteProjection{};
-    if (passage_active) {
-      if (route_projection.valid &&
-          route_projection.station_m >= passage.approach_station_m &&
-          route_projection.station_m <= passage.departure_station_m) {
-        const float altitude_error =
-            state.z - passageZReference(passage, route_projection.station_m);
-        guide_cost += altitude_error * altitude_error;
-        const float speed = hypotf(state.vx, state.vy);
-        if (passage.speed_limit_mps > 0.0F && speed > passage.speed_limit_mps) {
-          const float speed_error = speed - passage.speed_limit_mps;
-          acceleration_cost += speed_error * speed_error;
-        }
-      }
-    }
     const float segment_m = dynamics.dt_s * hypotf(state.vx, state.vy);
     if (raw_hit || solid_hit) {
       tier = static_cast<std::uint8_t>(RiskTier::kCollision);
@@ -596,9 +566,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       guide_cost += (guide_cross / guide_length) * (guide_cross / guide_length);
     }
     const float z_reference =
-        passage_active && route_projection.valid
-            ? passageZReference(passage, route_projection.station_m)
-            : target.z;
+        route_projection.valid ? route_projection.reference_z_m : target.z;
     const float altitude_error = state.z - z_reference;
     altitude_cost += altitude_error * altitude_error;
     if (step + 1U == head_steps) {
@@ -609,8 +577,13 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
-    if (reference_speed_mps >= 0.0F) {
-      const float speed_error = hypotf(state.vx, state.vy) - reference_speed_mps;
+    const float active_reference_speed_mps =
+        route_projection.valid && route_projection.reference_speed_mps > 0.0F
+            ? fminf(reference_speed_mps, route_projection.reference_speed_mps)
+            : reference_speed_mps;
+    if (active_reference_speed_mps >= 0.0F) {
+      const float speed_error =
+          hypotf(state.vx, state.vy) - active_reference_speed_mps;
       speed_tracking_cost += speed_error * speed_error;
     }
     jerk_cost += (control.ax - previous.ax) * (control.ax - previous.ax) +
@@ -921,7 +894,8 @@ public:
   EsdfUploadResult updateEsdf(const EsdfSnapshot& snapshot) {
     std::scoped_lock lock{mutex_};
     const std::size_t expected = static_cast<std::size_t>(snapshot.grid.width) *
-                                 static_cast<std::size_t>(snapshot.grid.height);
+                                 static_cast<std::size_t>(snapshot.grid.height) *
+                                 static_cast<std::size_t>(std::max(1, snapshot.grid.depth));
     if (snapshot.grid.width <= 1 || snapshot.grid.height <= 1 ||
         !(snapshot.grid.resolution_m > 0.0F) ||
         snapshot.distances_m.size() != expected) {
@@ -985,12 +959,12 @@ public:
     const bool nominal_reseeded =
         input.nominal_reseed_generation > nominal_reseed_generation_;
     if (nominal_reseeded) {
-      const std::span<const RoutePoint> route =
-          route_active ? std::span<const RoutePoint>{*input.route->points}
-                       : std::span<const RoutePoint>{};
+      const std::span<const RouteSample3D> route =
+          route_active ? std::span<const RouteSample3D>{*input.route->points}
+                       : std::span<const RouteSample3D>{};
       nominal_ = buildGuideDirectedNominalSeed(
           input.initial_state, input.target, route,
-          route_active ? input.route->initial_station_m : 0.0F, input.passage,
+          route_active ? input.route->initial_station_m : 0.0F,
           input.reference_speed_mps, config_.dynamics, config_.steps,
           previous_applied_control);
       nominal_reseed_generation_ = input.nominal_reseed_generation;
@@ -1005,7 +979,8 @@ public:
           route_points_host_.get() != input.route->points.get()) {
         checkCuda(cudaMemcpyAsync(buffers_.route_points.get(),
                                   input.route->points->data(),
-                                  input.route->points->size() * sizeof(RoutePoint),
+                                  input.route->points->size() *
+                                      sizeof(RouteSample3D),
                                   cudaMemcpyHostToDevice, stream_),
                   "upload semantic route");
         route_points_host_ = input.route->points;
@@ -1035,7 +1010,6 @@ public:
         config_.steps, input.initial_state, input.target, config_.dynamics,
         config_.risk, config_.costs, textures_[active_texture_].grid(),
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
-        input.passage.value_or(PassageConstraint{}), input.passage.has_value(),
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
         route_active ? input.route->initial_station_m : 0.0F, previous_applied_control,
         first_control_interval_s, input.reference_speed_mps,
@@ -1231,8 +1205,8 @@ public:
       const auto& points = *input.route->points;
       for (std::size_t route_index = 0U; route_index + 1U < points.size();
            ++route_index) {
-        const RoutePoint& first = points[route_index];
-        const RoutePoint& second = points[route_index + 1U];
+        const RouteSample3D& first = points[route_index];
+        const RouteSample3D& second = points[route_index + 1U];
         if (second.station_m + 2.0F < input.route->initial_station_m) {
           continue;
         }
@@ -1357,7 +1331,7 @@ private:
   std::size_t active_texture_{0U};
   std::vector<KnownSolid> known_solids_;
   std::size_t solid_count_{0U};
-  std::shared_ptr<const std::vector<RoutePoint>> route_points_host_;
+  std::shared_ptr<const std::vector<RouteSample3D>> route_points_host_;
   std::size_t route_point_count_{0U};
   std::uint64_t route_generation_{0U};
   bool route_uploaded_{false};

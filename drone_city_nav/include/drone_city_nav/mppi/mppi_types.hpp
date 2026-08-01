@@ -58,6 +58,8 @@ struct EsdfGrid {
   float resolution_m{0.0F};
   float origin_x_m{0.0F};
   float origin_y_m{0.0F};
+  int depth{1};
+  float origin_z_m{0.0F};
 };
 
 } // namespace drone_city_nav::mppi

@@ -1049,8 +1049,10 @@ BenchmarkResult runPersistentCudaBenchmark(const BenchmarkConfig& config) {
   const State target{scenario.target_x_m, scenario.target_y_m, scenario.initial.z};
   const std::size_t total_ticks = config.warmup_ticks + config.measured_ticks;
   for (std::size_t tick = 0U; tick < total_ticks; ++tick) {
-    selected = engine.plan(MppiTickInput{scenario.initial, target, std::nullopt,
-                                         static_cast<std::uint64_t>(tick), 1U, 0});
+    selected = engine.plan(MppiTickInput{.initial_state = scenario.initial,
+                                         .target = target,
+                                         .pose_revision = static_cast<std::uint64_t>(tick),
+                                         .obstacle_revision = 1U});
     if (tick < config.warmup_ticks) {
       continue;
     }
@@ -1091,7 +1093,9 @@ BenchmarkResult runPersistentCudaBenchmark(const BenchmarkConfig& config) {
   if (!replay_upload.accepted) {
     throw std::runtime_error{"persistent replay engine rejected synthetic ESDF"};
   }
-  const MppiTickInput replay_input{scenario.initial, target, std::nullopt, 0U, 1U, 0};
+  const MppiTickInput replay_input{.initial_state = scenario.initial,
+                                   .target = target,
+                                   .obstacle_revision = 1U};
   MppiCudaEngine first_engine{config};
   const EsdfUploadResult first_upload =
       first_engine.updateEsdf(EsdfSnapshot{scenario.grid, scenario.esdf, 1U});

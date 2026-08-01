@@ -168,51 +168,5 @@ class LidarProjectionSnapshotAnalyzerTest(unittest.TestCase):
             any("projection yaw diverges" in error for error in result.errors)
         )
 
-    def test_static_map_hit_alignment_fails_for_rotated_hits(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            static_map_path = Path(temp_dir) / "generated_city.map2d"
-            static_map_path.write_text(
-                "drone_city_nav_static_map_v1\n"
-                "rect building_001 0 0 2 2 20\n",
-                encoding="utf-8",
-            )
-            records = [
-                make_record(
-                    altitude_m=18.0,
-                    hit_points=[{"x": 10.0, "y": 10.0}, {"x": 11.0, "y": 10.0}],
-                )
-            ]
-
-            result = analyzer.analyze_snapshots(
-                records, static_map_path=static_map_path
-            )
-
-        self.assertFalse(result.ok)
-        self.assertTrue(
-            any("lidar hit points do not align" in error for error in result.errors)
-        )
-
-    def test_cli_accepts_static_map_rectangles(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            snapshots_path = temp_path / "snapshots.jsonl"
-            static_map_path = temp_path / "generated_city.map2d"
-            snapshots_path.write_text(
-                json.dumps(make_record(altitude_m=18.0)) + "\n", encoding="utf-8"
-            )
-            static_map_path.write_text(
-                "drone_city_nav_static_map_v1\n"
-                "rect building_001 0 0 1 1 20\n",
-                encoding="utf-8",
-            )
-
-            with redirect_stdout(StringIO()):
-                exit_code = analyzer.main(
-                    [str(snapshots_path), "--static-map", str(static_map_path)]
-                )
-
-        self.assertEqual(exit_code, 0)
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -20,19 +20,19 @@ real-aircraft operation.
 - Static and no-static speed policies.
 - Timestamped execution horizons consumed by the MPPI offboard node.
 - Braking fallback when the selected horizon is not executable.
-- Known 3D architectural passages and physical solid validation.
+- Canonical 3D static world with straight, L-shaped, and altitude-changing channels.
 - Gazebo contact-based crash detection.
 - RViz, JSONL, lidar snapshots, and mission diagnostics.
 
 ## Main Runtime Nodes
 
 - `obstacle_memory_node` owns lidar ingestion, memory, and raw world snapshots.
-- `world_visualization_node` publishes static/raw world and passage markers.
-- `production_mppi_node` owns ESDF preparation, the lattice guide, MPPI, passage
-  coordination, and horizon publication.
+- `world_visualization_node` publishes static and raw world geometry.
+- `production_mppi_node` owns ESDF preparation, 3D lattice routes, MPPI, and
+  horizon publication.
 - `mppi_offboard_node` executes fresh timestamped horizons through PX4.
 - `collision_crash_node` converts Gazebo contacts into a latched crash state.
-- `mission_monitor_node` observes mission completion and passage traversal.
+- `mission_monitor_node` observes mission completion and physical crashes.
 - `lidar_debug_node` records map-frame lidar and navigation snapshots.
 
 ## Main Run Modes
@@ -61,17 +61,14 @@ repository container workflow.
 - **MPPI horizon**: the short dynamically simulated trajectory recomputed on
   every planning tick.
 - **Execution horizon**: a timestamped MPPI horizon published to offboard.
-- **Known passage**: an annotated 3D opening plus its surrounding known solids
-  and traversal policy.
+- **Constrained route span**: a section of the 3D route whose free-space envelope
+  limits altitude or speed. It is derived from occupancy, not annotations.
 
 ## Explicit Non-Capabilities
 
 - The lattice search is recomputed; it is not AD*, LPA*, or D* Lite.
 - No persistent no-static topological memory exists yet.
-- Known passages are selected from guide geometry; they are not full lattice
-  portal primitives yet.
-- Known-solid collision currently evaluates the drone state point, not a full
-  rotor/body footprint.
+- No-static does not infer 3D channels because the vehicle has a 2D lidar.
 - The braking fallback is an approximate reachable braking trajectory, not a
   full reachable-set solver.
 
@@ -79,7 +76,7 @@ repository container workflow.
 
 - `architecture.md`: node ownership and data flow.
 - `navigation_pipeline.md`: current world-to-control pipeline.
-- `known_passages.md`: passage geometry, selection, coordination, and limits.
+- `world3d.md`: canonical world generation, Occupancy3D, and constrained spans.
 - `trajectory_optimization.md`: GPU MPPI optimization.
 - `replanning.md`: receding-horizon updates, guide replacement, and liveness.
 - `obstacle_mapping.md`: static, lidar, memory, and raw snapshot sources.

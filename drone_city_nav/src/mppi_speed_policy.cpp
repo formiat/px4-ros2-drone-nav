@@ -86,8 +86,9 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.goal_limit_mps =
       stoppingLimitedSpeed(goal_distance, 0.0, config.reaction_latency_s,
                            config.maximum_braking_acceleration_mps2);
-  if (input.passage_speed_limit_mps.has_value()) {
-    result.passage_limit_mps = std::max(0.0, *input.passage_speed_limit_mps);
+  if (input.route_constraint_speed_limit_mps.has_value()) {
+    result.route_constraint_limit_mps =
+        std::max(0.0, *input.route_constraint_speed_limit_mps);
   }
 
   if (input.guide.size() >= 3U) {
@@ -114,9 +115,10 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     }
   }
 
-  result.reference_speed_mps = std::min(
-      {result.cruise_limit_mps, result.absolute_limit_mps, result.curvature_limit_mps,
-       result.observation_limit_mps, result.goal_limit_mps, result.passage_limit_mps});
+  result.reference_speed_mps =
+      std::min({result.cruise_limit_mps, result.absolute_limit_mps,
+                result.curvature_limit_mps, result.observation_limit_mps,
+                result.goal_limit_mps, result.route_constraint_limit_mps});
   result.target_lookahead_m =
       std::clamp(result.reference_speed_mps * config.horizon_duration_s,
                  config.minimum_target_lookahead_m, config.maximum_target_lookahead_m);

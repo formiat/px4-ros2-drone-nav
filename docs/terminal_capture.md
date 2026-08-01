@@ -32,7 +32,8 @@ Mission monitoring does not send control commands.
 
 - **Goal hold**: normal low-speed MPPI behavior near the mission goal.
 - **No-guide hold**: braking/hold because no safe no-static guide exists.
-- **Passage hold**: explicit XY position hold while capturing passage altitude.
+- **Safety hold**: explicit position hold after braking or when no executable
+  route is available.
 - **Deadline hold**: offboard fallback after the execution horizon expires.
 
 These states should be distinguished in logs before changing goal parameters.
