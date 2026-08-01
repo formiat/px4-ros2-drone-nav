@@ -1,37 +1,175 @@
-# Canonical 3D World
+# Canonical 3D World And Air Channels
 
-`drone_city_nav/worlds/canonical_city.world3d.json` is the source of truth for
-static geometry. `scripts/generate_canonical_world.py` deterministically emits:
+## Source Of Truth
 
-- `generated_city.sdf` for Gazebo;
-- `generated_city.occupancy3d` for static planning.
+`drone_city_nav/worlds/canonical_city.world3d.json` is the only hand-edited
+source of static geometry. It declares:
 
-The binary map is sparse and chunked. The planner materializes an immutable
-dense ESDF3D view for GPU collision and risk queries. Occupied voxels represent
-physical geometry only; no inflated or prohibited layer is generated.
+- the `map` frame and the map-to-SDF coordinate transform;
+- Occupancy3D origin, dimensions, resolution, and chunk size;
+- ground and regular building geometry;
+- straight, L-shaped, and altitude-changing air channels;
+- mission start and goal positions.
 
-The static lattice searches `(x, y, z)` and returns `RouteSample3D` values.
-Route-envelope analysis derives `ConstrainedRouteSpan` sections from clearance.
-Straight openings, L-shaped channels, and altitude-changing channels therefore
-use the same route contract. MPPI consumes route position, altitude, tangent,
-and reference speed directly.
+`scripts/generate_canonical_world.py` deterministically emits two committed
+artifacts from that specification:
 
-An L-shaped channel is authored as one intersection between four neighboring
-buildings plus four bridge volumes. Every bridge has lower and upper physical
-masses; two bridges additionally have a solid middle mass, while the other two
-form the entrance and exit. The intersection itself has one lower and one upper
-mass. This creates one continuous turn volume rather than carving a bend inside
-a single connector.
+- `drone_city_nav/worlds/generated_city.sdf` for Gazebo rendering and physics;
+- `drone_city_nav/worlds/generated_city.occupancy3d` for static planning.
 
-Altitude-changing channels use continuous inclined lower and upper physical
-masses. The free opening and its `RouteSample3D` reference Z rise continuously;
-neither Gazebo geometry nor planning occupancy approximates the channel with
-stair-step slices.
+The old `.map2d` and `.passages3d` sources no longer exist. There is no runtime
+portal database, nearest-opening selector, or separate hand-authored passage
+lifecycle.
 
-Planning occupancy remains at `0.5 m`. RViz intentionally samples that map with
-`static_map_visualization_stride_cells=4`, producing a `2 m` diagnostic point
-spacing. This visualization reduction does not affect planning or collision
-queries.
+## Regeneration
 
-No-static mode intentionally does not load semantic channel metadata. Its 2D
-lidar sees connector occluders as ordinary obstacles, so it routes around them.
+Run the generator through the repository container workflow:
+
+```bash
+./scripts/dev_shell.sh python3 scripts/generate_canonical_world.py \
+  --spec drone_city_nav/worlds/canonical_city.world3d.json \
+  --sdf drone_city_nav/worlds/generated_city.sdf \
+  --occupancy drone_city_nav/worlds/generated_city.occupancy3d
+```
+
+`make test-scripts` regenerates both artifacts in a temporary directory and
+checks byte-for-byte equality with the committed files. It also verifies the
+L-channel cross-sections, continuous Z-profile slabs, and lidar visibility
+contracts.
+
+## Occupancy3D
+
+The binary map uses schema version 1 with a sparse chunked bitset. Its header
+stores grid bounds, resolution, chunk size, a fingerprint of the canonical JSON,
+and the number of occupied chunks. The current world uses:
+
+```text
+origin:       (-30, -30, 0) m
+size:         (345, 525, 40) m
+resolution:   0.5 m
+dimensions:   690 x 1050 x 80 cells
+chunk size:   16 cells
+```
+
+Only physical collision geometry is voxelized. No clearance inflation,
+prohibited grid, portal mask, or no-static lidar occluder is stored in
+Occupancy3D.
+
+`production_mppi_node` loads this file directly when `use_static_map=true`.
+Around the current vehicle-to-planning-goal region it materializes an immutable
+local dense ESDF3D and uploads that field to MPPI. The full global 3D array is
+not rebuilt on every tick.
+
+## Channel Geometry
+
+The canonical `channels` array describes physical world construction. A channel
+identifier is a generator identifier, not a runtime navigation event id.
+
+### Straight
+
+A straight channel contains one structure volume plus a 3D centerline. The
+generator creates a physical lower mass and upper mass, leaving one continuous
+free opening around the centerline reference Z.
+
+### L-Shaped
+
+The L-shaped channel is one intersection between four neighboring buildings
+plus four bridge volumes. The current left-turn channel has:
+
+- open west and south bridges;
+- blocked east and north bridges with physical middle masses;
+- lower and upper physical masses on every bridge;
+- one lower and one upper physical mass across the central intersection.
+
+This produces a continuous L-shaped free volume. It is not a staircase and is
+not two independent openings selected by a passage coordinator.
+
+### Z-Profile
+
+An altitude-changing channel has a 3D centerline with different endpoint Z
+values. The generator creates one continuously inclined lower slab and one
+continuously inclined upper slab. Both Gazebo physics and Occupancy3D represent
+the slope continuously at map resolution; no stepped slice approximation is
+used.
+
+## Static Planning Contract
+
+Static lattice search operates on `(x, y, z)` against the local ESDF3D. It uses
+staged preferred, planning, and critical risk admission while physical occupied
+voxels remain the only hard geometry. The accepted lattice points are sampled
+as `RouteSample3D` values containing:
+
+- 3D position;
+- route tangent;
+- cumulative route station;
+- a reference-speed field populated for MPPI route execution.
+
+The accepted route is then probed laterally and vertically against ESDF3D.
+Sections narrower than the configured lateral or vertical thresholds become
+`ConstrainedRouteSpan` values. A span contains station-indexed free-space and
+reference data, not a semantic portal id:
+
+- free distance left and right;
+- minimum, maximum, and reference Z;
+- constrained reference speed;
+- begin and end route stations.
+
+MPPI follows the complete typed route and applies the span speed/reference data.
+The observable lifecycle is derived from route station:
+
+```text
+approach -> traversal -> departure -> unconstrained
+```
+
+Because classification is geometric, a constrained span can represent an
+authored air channel or any other narrow section of the accepted route. Use
+`route_generation + span_index` plus entry/exit coordinates to correlate a
+diagnostic event with canonical geometry.
+
+## No-Static Contract
+
+No-static mode intentionally remains 2D:
+
+- it does not load Occupancy3D for planning;
+- it does not create `RouteSample3D` channel routes or constrained spans;
+- it does not identify, infer, or traverse semantic passages;
+- it has no 3D lidar or 3D channel perception.
+
+The generated SDF gives channel lower/upper/middle masses one dedicated
+visibility flag. It also adds transparent, collisionless lidar occluder visuals
+across every opening. Before each run,
+`scripts/configure_lidar_visibility.py` changes the GPU lidar mask:
+
+- static mode hides both channel masses and no-static occluders from the 2D
+  lidar because Occupancy3D is authoritative;
+- no-static mode exposes both sets, making every connector appear as an ordinary
+  obstacle to lidar memory.
+
+Occluders have no Gazebo collision element and are not written to Occupancy3D.
+They are a simulation-only sensor contract used to disable channel traversal in
+no-static mode. Physical channel masses remain real Gazebo collisions in both
+modes.
+
+## Visualization
+
+Planning occupancy remains at `0.5 m`. RViz samples the static map with
+`static_map_visualization_stride_cells=4`, producing `2 m` point spacing. This
+reduces rendering load only; it does not change Occupancy3D, ESDF3D, lattice, or
+collision resolution.
+
+RViz shows the accepted route at its planned Z through the MPPI marker array.
+Constrained-span boundaries and envelope values are available in logs, not as a
+separate marker layer. RViz does not reconstruct authored channel ids or
+publish legacy passage markers.
+
+## Change Checklist
+
+When changing static geometry or channels:
+
+1. Edit only `canonical_city.world3d.json`.
+2. Regenerate both committed artifacts.
+3. Run `make test-scripts` and `make quality` in the container.
+4. Check Occupancy3D points against Gazebo geometry in RViz.
+5. Verify static route Z and constrained-span diagnostics through the changed
+   channel.
+6. Verify no-static lidar sees the opening as blocked and routes around it.

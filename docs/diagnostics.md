@@ -27,7 +27,8 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 - constrained-route phase, route generation, and span index;
 - GPU and host stage timings;
 - selected tier and risk exposure;
-- raw and known-solid collision flags;
+- raw collision and compatibility known-solid flags; the latter remains false
+  in the canonical Occupancy3D production path;
 - head and terminal progress;
 - horizon stability and first-control delta;
 - liveness action;

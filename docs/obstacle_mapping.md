@@ -1,8 +1,9 @@
 # Obstacle Mapping
 
-Obstacle mapping combines static obstacles, current lidar hits, and accumulated
-memory into planner inputs. The main rule is that raw sources stay raw. The
-planner derives distance-based risk tiers without inflating hard occupancy.
+Obstacle mapping owns the 2D lidar-memory input used by no-static planning.
+Static Occupancy3D is a separate source loaded directly by the production
+planner. The main rule is that raw sources stay raw: distance-based risk tiers
+do not inflate hard occupancy.
 
 ## Static World
 
@@ -20,24 +21,26 @@ static_occupancy_3d_path: worlds/generated_city.occupancy3d
 ```
 
 The sparse static world is generated from the same canonical specification as
-Gazebo SDF and is used only in static mode.
+Gazebo SDF and is used only in static mode. `production_mppi_node`, not
+`obstacle_memory_node`, owns this map. The current static path does not fuse 2D
+lidar memory into Occupancy3D.
 
-## Current Lidar Overlay
+## Lidar Input
 
-The planner can project the current `/scan` into a raw dynamic overlay. Current
-lidar overlay is useful for obstacles that are visible now but not yet stable
-in memory.
+`obstacle_memory_node` projects `/scan`, immediately integrates each accepted
+beam into its scored memory, and publishes the resulting atomic snapshot. There
+is no separate production current-lidar overlay.
 
 Important parameters:
 
-- `max_current_lidar_staleness_s`
 - `max_lidar_range_m`
 - `range_hit_epsilon_m`
 - lidar pose latency and attitude compensation settings.
 
 Lidar evidence is never filtered against hand-authored passage geometry. Static
-planning reads Occupancy3D; no-static uses the physical 2D lidar returns and
-treats connector occluders as ordinary obstacles.
+planning reads Occupancy3D. No-static uses the 2D lidar-memory result, and its
+runtime sensor mask exposes channel masses plus collisionless connector
+occluders as ordinary obstacles. See `world3d.md` for that mode contract.
 
 ## Obstacle Memory
 
@@ -53,7 +56,9 @@ Memory uses hit/miss scoring:
 - `occupied_score`
 - `free_score`
 
-Mapping starts only above `min_mapping_altitude_m`.
+Mapping activates after the vehicle first reaches `min_mapping_altitude_m` and
+remains latched for the airborne mission. Descending through a low channel does
+not freeze lidar snapshots.
 
 All first occupied transitions are additionally written to a bounded JSONL dump
 configured by `lidar_memory_hit_dump_enabled`, `lidar_memory_hit_dump_path`,
@@ -144,19 +149,18 @@ to the map Z-up convention.
 `lidar_z_offset_m` and mount RPY remain only as a compatibility fallback when
 `use_full_lidar_extrinsic=false`. The normal configuration uses
 `lidar_extrinsic_translation_body_frd_m` and
-`lidar_extrinsic_quaternion_lidar_flu_to_body_frd` in obstacle memory, planner
-current-lidar overlay, and lidar debug alike.
+`lidar_extrinsic_quaternion_lidar_flu_to_body_frd` in obstacle memory and lidar
+debug alike.
 
-The same concepts appear in obstacle memory, planner current lidar overlay, and
-lidar debug configuration.
+The same concepts appear in obstacle-memory and lidar-debug configuration.
 
 ## Per-Beam Expected-Surface Rejection
 
-Obstacle memory and the planner current-lidar overlay share one immutable
-`LidarBeamObservation` and one ingestion decision before either path changes a
-grid. The decision compares the measured range with the nearest expected 3D
-surface along the map-frame ray. The configured flat ground plane is the only
-expected-surface provider.
+Obstacle memory creates one immutable `LidarBeamObservation` and one ingestion
+decision before changing its grid. The decision compares the measured range
+with the nearest configured expected surface along the map-frame ray. In the
+current production configuration, the flat ground plane is the only enabled
+expected-surface provider; no legacy passage/known-solid classifier is loaded.
 
 Expected ray intersections are bounded by the beam's effective sensor range.
 Ground rejection is range based, not endpoint-distance based and not a global
@@ -186,13 +190,12 @@ The last rule is essential. A downward 3D ray passes through air before reaching
 the ground, but its XY projection does not prove that the same cells are free at
 the executable trajectory altitude.
 
-Before either 2D grid is updated, a shared confidence stage separates certain
-obstacles from uncertain candidates. Confident obstacles before an expected
-surface and obstacles inside a free opening are integrated immediately with the
-normal memory hit weight. Known-static boundaries, low contradictory ground
-returns, and unknown returns with uncertain timestamp alignment or range-limit
-geometry remain pending. A pending candidate performs no hit update, no
-free-space clearing, and no current-lidar overlay update.
+Before the 2D grid is updated, a confidence stage separates certain obstacles
+from uncertain candidates. Confident obstacles before the expected ground
+surface are integrated immediately with the normal memory hit weight. Low
+contradictory ground returns and unknown returns with uncertain timestamp
+alignment or range-limit geometry remain pending. A pending candidate performs
+no hit update and no free-space clearing.
 
 Candidates are keyed by hypothesis kind, associated surface, and 3D endpoint
 voxel. Multiple beams from one scan provide only one vote. Confirmation requires
@@ -205,15 +208,14 @@ creating a replan blocker.
 
 Provider failures are isolated. Disabling ground rejection is reported as
 `disabled`; invalid ground parameters or missing required 3D attitude geometry
-are reported as `unavailable`. In either case known-static classification still
-runs when independently enabled. When multiple expected surfaces have
-effectively equal nearest ranges, a hit is retained only if it is clearly
-before every tied candidate; otherwise no grid update is applied.
+are reported as `unavailable`. The generic ingestion library can represent
+multiple expected-surface providers, but production does not configure a static
+channel provider.
 
-The projected-altitude filter remains a final non-mutating veto. Ground and
-known-static classification happens first for diagnostics, including beams
-whose endpoint is below `min_projected_lidar_altitude_m`, but an
-`altitude_rejected` beam still cannot mutate either grid.
+The projected-altitude filter remains a final non-mutating veto. Ground
+classification happens first for diagnostics, including beams whose endpoint
+is below `min_projected_lidar_altitude_m`, but an `altitude_rejected` beam still
+cannot mutate the grid.
 
 ## Raw Occupancy And Soft Risk
 
@@ -254,9 +256,7 @@ debug-only raw grid mirror is published for visualization.
 
 Useful visualization topics:
 
-- `/drone_city_nav/static_map_grid`
 - `/drone_city_nav/static_map_points`
-- `/drone_city_nav/static_building_markers`
 - `/drone_city_nav/obstacle_memory_grid`
 - `/drone_city_nav/obstacle_memory_provenance`
 - `/drone_city_nav/obstacle_memory_snapshot`
@@ -265,7 +265,7 @@ Useful visualization topics:
 - `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/raw_lidar_hit_points_3d`
 - `/drone_city_nav/remembered_lidar_points`
-- `/drone_city_nav/prohibited_obstacle_points`
+- `/drone_city_nav/raw_occupied_cells`
 - `/drone_city_nav/raw_memory_obstacle_points`
 - `/drone_city_nav/raw_memory_obstacle_points_3d`
 
@@ -294,24 +294,17 @@ reachability.
 
 ## Static, Dynamic, And Memory Roles
 
-Static map data represents known world geometry. It should be stable across
-the run and is the best candidate for caching or preprocessing.
+Static Occupancy3D represents known world geometry and remains stable across a
+static run. No-static obstacle memory integrates fresh sensor evidence and
+keeps observed obstacles available after they leave the instantaneous scan.
 
-Current lidar overlay represents the most recent sensor evidence. It is useful
-for quick reaction, but it can be sparse or noisy because a lidar scan sees only
-what the current pose exposes.
+These are alternative production planning sources, selected by mode:
 
-Obstacle memory bridges the gap between static map and current scan. It keeps
-recently observed obstacles available after they leave the instantaneous scan.
-Memory is especially important when the drone turns away from an obstacle but
-the planner still needs to avoid it.
+- static: canonical Occupancy3D -> local ESDF3D;
+- no-static: accumulated 2D lidar memory -> ESDF2D.
 
-These sources are complementary:
-
-- static map gives persistent structure;
-- current lidar gives fresh evidence;
-- memory gives temporal continuity;
-- the occupied distance field turns merged evidence into risk tiers.
+They are not merged in the current implementation. Each occupied distance
+field turns its selected raw source into risk tiers.
 
 The ground provider follows the same shared decision path but does not add a 3D
 planning layer. Obstacle memory remains a 2D scored grid. Accepted occupied cells

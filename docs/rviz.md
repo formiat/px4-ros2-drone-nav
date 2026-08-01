@@ -43,12 +43,13 @@ The marker array includes:
 - active global lattice guide;
 - current MPPI target;
 - mission start and goal;
-- constrained 3D route spans where applicable;
 - risk and collision annotations.
 
 The global lattice guide is a route-direction polyline, not a complete
 topological street graph. The MPPI horizon is the short executable local
-trajectory.
+trajectory. In static mode the guide is rendered at its planned Z. Constrained
+span boundaries are currently exposed through diagnostics rather than separate
+RViz markers.
 
 ## Reading Lidar Layers
 
@@ -66,7 +67,9 @@ layers represent different lifecycle stages.
 
 - A short blue horizon is expected; MPPI executes receding horizons.
 - A distant global guide is not the command currently sent to PX4.
-- Static air channels are free volumes in Occupancy3D and physical Gazebo space.
+- Static air channels are free volumes in Occupancy3D and physical Gazebo space;
+  constrained samples are inferred from route clearance and have no legacy
+  passage marker or semantic channel id.
 - RViz path publication can be throttled below MPPI tick rate.
 - A follow-camera failure is a visualization problem unless vehicle state or
   control diagnostics are also stale.

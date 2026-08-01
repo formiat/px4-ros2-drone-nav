@@ -5,20 +5,24 @@ into a timestamped local trajectory horizon.
 
 ## 1. Raw World Snapshot
 
-`obstacle_memory_node` combines:
+`obstacle_memory_node` integrates accepted lidar returns into a scored 2D
+memory grid. `/drone_city_nav/obstacle_memory_snapshot` carries that grid and
+its provenance atomically; `/drone_city_nav/raw_obstacle_snapshot` carries the
+validated raw runtime grid and risk-policy fingerprint. The matching RViz
+occupancy grid is debug-only and is never used as planner input.
 
-- the static Occupancy3D world in static mode;
-- accumulated lidar obstacle memory;
-- current sensor updates and provenance.
-
-It publishes one atomic `/drone_city_nav/raw_obstacle_snapshot`. The matching
-RViz occupancy grid is debug-only and is never used as planner input.
+In no-static mode this snapshot is the planning world. In static mode it keeps
+sensor diagnostics and snapshot freshness alive, but the planner loads
+canonical Occupancy3D directly and does not merge this 2D grid into the static
+3D map.
 
 ## 2. ESDF Preparation
 
-The production MPPI node builds an occupied-distance field for each accepted
-raw snapshot. ESDF construction is asynchronous. MPPI continues using the last
-complete immutable ESDF until a newer revision is ready.
+The production MPPI node builds a mode-specific occupied-distance field
+asynchronously. Static mode materializes a local dense ESDF3D from canonical
+Occupancy3D. No-static mode builds an ESDF2D from the latest raw lidar-memory
+snapshot. MPPI continues using the last complete immutable field until a newer
+revision is ready.
 
 Distance classifications are:
 
@@ -35,9 +39,10 @@ not duplicate YAML as a second parameter source of truth.
 Static mode uses a 3D lattice over physical free voxels and produces
 `RouteSample3D` samples. No-static retains the 2D lidar-driven lattice.
 
-Lattice output is classified as reached-goal, viable frontier, or dead end for
-diagnostics. The current classification is observational and does not by itself
-change runtime acceptance.
+Lattice output is classified as reached-goal, viable frontier, search
+incomplete, or exhausted. Only reached-goal and viable-frontier results are
+executable. Incomplete search is continued when possible; exhausted output is
+not accepted as a guide.
 
 An accepted guide is sticky. It is retained across ESDF revisions while its
 remaining portion is valid and useful. Replacement reasons include blocking,

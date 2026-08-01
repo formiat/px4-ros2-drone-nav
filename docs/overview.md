@@ -46,6 +46,10 @@ real-aircraft operation.
 profile. `ENABLE_STATIC_MAP=false` uses lidar memory as the world source and the
 shorter, conservative no-static profile.
 
+Only static mode executes canonical air channels. No-static has no channel
+semantics or 3D perception; its 2D lidar visibility profile presents all
+connector openings as obstacles.
+
 All build, test, quality, and simulation commands must run through the
 repository container workflow.
 

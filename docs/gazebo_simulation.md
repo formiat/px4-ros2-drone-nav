@@ -75,8 +75,9 @@ use_static_map: true
 static_occupancy_3d_path: worlds/generated_city.occupancy3d
 ```
 
-Regenerate both artifacts with `scripts/generate_canonical_world.py`. Occupied
-voxels are physical geometry only. Clearance bands remain ranking costs.
+Regenerate both artifacts with the exact container command documented in
+`world3d.md`. Occupied voxels are physical geometry only. Clearance bands remain
+ranking costs.
 
 ## Changing The Environment
 
@@ -146,7 +147,9 @@ or arming rather than planner geometry.
 generator derives both Gazebo SDF and sparse Occupancy3D from it, so rendering,
 physics, and static planning cannot encode different buildings or channels.
 Air channels are free voxel volumes in the same physical map, not exceptions to
-a 2D obstacle map and not separately annotated passages.
+a 2D obstacle map and not separately annotated passages. The only generated SDF
+geometry not mirrored into Occupancy3D is the collisionless no-static lidar
+occluder layer; it changes sensor visibility, not physics or static planning.
 
 When editing a world, verify:
 
@@ -157,6 +160,12 @@ When editing a world, verify:
 - grid bounds cover the full mission;
 - spawn and goal are inside navigable area;
 - RViz static Occupancy3D points overlay the visible city.
+
+The runner configures the lidar visibility mask from the resolved
+`ENABLE_STATIC_MAP` mode. Static lidar excludes channel masses and no-static
+occluders because Occupancy3D owns channel geometry. No-static lidar includes
+both so every channel opening is observed as blocked. This is a deliberate
+simulation contract, not semantic passage detection.
 
 The static map should remain raw. Do not pre-inflate buildings in the map to
 "help" the planner. MPPI derives categorical risk bands from the occupied

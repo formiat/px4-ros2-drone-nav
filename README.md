@@ -180,18 +180,26 @@ Record a debug rosbag while the simulation is running:
 
 The container targets use `build/`, `install/`, and `log/`.
 
-Static mode loads `generated_city.occupancy3d`, generated from the same canonical
-world specification as the Gazebo SDF. No-static mode uses accumulated lidar
-memory and the current lidar hit overlay. Source contracts are documented in
-`docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
+Static mode loads `generated_city.occupancy3d` directly in
+`production_mppi_node`. The map and `generated_city.sdf` are generated from the
+same canonical world specification. Static air channels are physical free
+volumes in that map; runtime constraints are inferred from the accepted 3D
+route, with no separate passage file or portal selector. No-static mode uses
+the accumulated 2D lidar-memory snapshot and intentionally has no channel
+semantics. Its lidar visibility profile makes channel solids and collisionless
+opening occluders observable, so those openings are routed around. Source
+contracts are documented in `docs/world3d.md`, `docs/obstacle_mapping.md`, and
+`docs/configuration.md`.
 
 Obstacle topics follow a strict raw/runtime/debug contract. Raw sources such as
 the grid carried by `/drone_city_nav/obstacle_memory_snapshot` contain only
-direct obstacle evidence. The planner overlays those sources once, builds a
-distance-derived risk field without materializing inflated grids, and publishes
-the atomic `/drone_city_nav/raw_obstacle_snapshot` runtime contract. The
-`/drone_city_nav/raw_obstacle_grid` topic is visualization-only and must not be
-wired back into planner or offboard validation.
+direct obstacle evidence. In no-static mode the planner builds a
+distance-derived risk field from that raw 2D world without materializing
+inflated grids. Static mode instead loads canonical Occupancy3D directly. The
+atomic `/drone_city_nav/raw_obstacle_snapshot` remains the runtime sensor-world
+contract and freshness trigger. The `/drone_city_nav/raw_obstacle_grid` topic is
+visualization-only and must not be wired back into planner or offboard
+validation.
 
 After a headless run, validate lidar projection snapshots without GUI:
 

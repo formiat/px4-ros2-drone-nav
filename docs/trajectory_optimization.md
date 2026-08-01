@@ -5,9 +5,11 @@ on CUDA. There is no corridor-constrained post-processing optimizer.
 
 ## Persistent Engine
 
-`MppiCudaEngine` owns persistent CUDA buffers, the resident ESDF texture,
-known-solid geometry, and the nominal control sequence. Per-tick planning does
-not recreate CUDA allocations.
+`MppiCudaEngine` owns persistent CUDA buffers, the resident ESDF texture, and
+the nominal control sequence. Per-tick planning does not recreate CUDA
+allocations. A generic known-solid API remains in the engine, but the production
+3D-world path does not populate it; canonical physical solids are encoded in
+Occupancy3D.
 
 ## State And Control
 
@@ -49,7 +51,7 @@ executed by PX4.
 
 Rollout eligibility is hierarchical:
 
-1. raw and known-solid collision;
+1. physical occupied-cell collision;
 2. worst risk tier;
 3. critical exposure;
 4. planning exposure;
@@ -61,8 +63,7 @@ and control effort.
 
 Risk tiers are not a continuously varying clearance penalty. Conservative ESDF
 distance classifies the critical and planning bands. Hard raw collision is
-reported only when the sampled state enters an occupied cell; known-solid
-collision uses the exact semantic volume.
+reported only when the sampled state enters a physical occupied cell.
 
 ## Static And No-Static Profiles
 
@@ -79,7 +80,7 @@ Exact defaults live in `config/urban_mvp.yaml`.
 
 The weighted control update can produce a nominal horizon different from every
 individual sampled rollout. The reconstructed horizon is therefore classified
-again for raw collision, known-solid collision, and risk exposure.
+again for physical occupied-cell collision and risk exposure.
 
 Collision results activate the braking fallback. The post-update
 classification also remains available in diagnostics to expose invalid updates

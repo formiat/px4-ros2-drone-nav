@@ -8,9 +8,15 @@ PX4 orchestration scripts, and container tooling.
 ```text
 Gazebo GPU lidar + PX4 pose
   -> obstacle_memory_node
-  -> obstacle memory + atomic raw obstacle snapshot
-  -> production_mppi_node ESDF worker
-  -> sticky risk-aware lattice guide
+  -> 2D obstacle memory + atomic raw obstacle snapshot
+
+static:
+  canonical Occupancy3D -> local dense ESDF3D -> 3D lattice route
+
+no-static:
+  raw obstacle snapshot -> dense ESDF2D -> sticky 2D lattice guide
+
+selected route/guide
   -> GPU MPPI local horizon
   -> post-update classification + braking supervisor
   -> timestamped execution horizon
@@ -34,16 +40,16 @@ Gazebo contact involving the drone
 
 - projects lidar scans into `map`;
 - waits for a valid PX4 heading before accepting scan geometry;
-- maintains occupancy memory and sparse 3D provenance;
-- optionally merges the static city map;
+- maintains 2D occupancy memory and sparse 3D diagnostic provenance;
 - publishes `/drone_city_nav/obstacle_memory_snapshot`;
 - publishes `/drone_city_nav/raw_obstacle_snapshot`;
-- keeps no-static lidar ingestion independent from static-world semantics.
+- does not load or merge the canonical static map.
 
 ### `production_mppi_node`
 
 - consumes PX4 state and immutable obstacle snapshots;
-- builds ESDF snapshots asynchronously;
+- loads canonical Occupancy3D directly in static mode;
+- builds mode-specific ESDF snapshots asynchronously;
 - builds and maintains the active global lattice guide;
 - selects local lookahead targets;
 - runs the persistent CUDA MPPI engine;
@@ -66,21 +72,24 @@ This node has no direct PX4 command publisher.
 
 ### Visualization And Observation
 
-`world_visualization_node` publishes static-world, raw-world, and building
-visualization. The production MPPI markers include mission start,
-mission goal, global guide, and local target. `lidar_debug_node` writes
-synchronized diagnostic snapshots. `mission_monitor_node` and
-`collision_crash_node` observe the mission without participating in route
-selection.
+`world_visualization_node` publishes downsampled static Occupancy3D points, the
+raw 2D world grid, and stale legacy-marker cleanup. The production MPPI markers
+include mission start, mission goal, global guide, and local target.
+`lidar_debug_node` writes synchronized diagnostic snapshots.
+`mission_monitor_node` and `collision_crash_node` observe the mission without
+participating in route selection.
 
 ## World Representation
 
-The production planner uses:
+Static production planning uses:
 
 - sparse physical 3D occupancy generated from the canonical world;
 - a local dense ESDF3D resident on the GPU;
 - preferred, planning, critical, and collision risk tiers;
-- typed 3D routes with constrained channel spans.
+- typed 3D routes with constrained spans inferred from the route envelope.
+
+No-static production planning uses the raw 2D obstacle-memory snapshot and a
+2D distance field. It does not load channel metadata or the canonical 3D map.
 
 There are no separately materialized planner/prohibited inflated grids,
 hard collision envelopes around raw cells, inflation relaxation, or escape
@@ -90,10 +99,12 @@ falls to zero.
 
 ## Global And Local Planning
 
-The risk-aware lattice produces a guide polyline from motion primitives. The
-active guide is sticky: new snapshots validate the accepted guide instead of
-replacing it solely because another route scores slightly better. Blocked,
-exhausted, or stalled guides can be replaced.
+The risk-aware lattice produces a route from motion primitives. Static mode
+searches `(x, y, z)` against the local ESDF3D and samples the accepted result as
+`RouteSample3D`. No-static mode produces a 2D guide. Its active guide is sticky:
+new snapshots validate the accepted guide instead of replacing it solely
+because another route scores slightly better. Blocked, exhausted, or stalled
+guides can be replaced.
 
 The lattice guide chooses route direction. GPU MPPI owns the executable local
 motion and continuously warm-starts from its previous control sequence.
@@ -114,7 +125,8 @@ suffix ACK, partial-replan, safe-truncation, or moving/after-hold protocol.
 
 ## Safety Boundaries
 
-- Raw occupancy and known-solid intersections are hard collision results.
+- Entering a physical occupied cell in the active map is a hard collision
+  result.
 - Risk-band exposure ranks candidates but is not physical crash detection.
 - The braking supervisor evaluates the selected horizon and can publish a
   dynamically generated fallback.
@@ -132,10 +144,10 @@ horizon has been published.
 ## Current Architectural Limits
 
 - The lattice is not incremental AD*.
-- MPPI follows a lookahead target rather than a full GPU-resident guide
-  polyline.
 - Static planning is not incremental AD* yet.
+- Static mode currently plans only against canonical Occupancy3D; lidar memory
+  is not fused into its 3D collision map.
 - No-static perception remains 2D and intentionally has no channel semantics.
-- Collision validation intentionally uses the drone state point against raw
-  occupied cells and exact known-solid volumes; vehicle footprint inflation is
-  not part of the planning contract.
+- Collision validation intentionally uses the drone state point against
+  physical occupied cells; vehicle footprint inflation is not part of the
+  planning contract.

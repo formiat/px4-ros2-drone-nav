@@ -7,7 +7,7 @@ The main runtime costs are ESDF preparation and CUDA MPPI.
 Per-tick GPU stages are:
 
 - noise generation;
-- rollout simulation and ESDF/known-solid queries;
+- rollout simulation and ESDF queries;
 - risk reduction;
 - weight calculation;
 - control update;

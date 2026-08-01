@@ -14,9 +14,12 @@ default.
 
 World inputs:
 
-- `use_static_map`;
 - `grid_*`, `initial_*`, `px4_local_origin_*`;
 - `risk_critical_distance_m`, `risk_preferred_distance_m`.
+
+`use_static_map` is still declared on this node for launch compatibility, but
+it does not load or merge static geometry. Static Occupancy3D belongs to
+`production_mppi_node` and `world_visualization_node`.
 
 Lidar projection:
 

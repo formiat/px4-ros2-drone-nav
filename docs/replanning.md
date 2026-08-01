@@ -30,9 +30,9 @@ The active guide can be released when it is:
 - stalled according to along-guide progress;
 - superseded by mission-goal completion.
 
-Heading for a replacement guide comes from velocity at speed, the previous
-accepted-guide tangent at low speed, or yaw/goal direction as the final
-fallback.
+Heading bias for a replacement guide comes from velocity at speed, the previous
+accepted-guide tangent at low speed, or mission-goal direction as the final
+fallback. Vehicle yaw is not a global-search direction constraint.
 
 ## Liveness
 
@@ -55,7 +55,7 @@ route around the obstacle.
 There is no prefix/suffix stitch or safe truncation. Safety comes from:
 
 - short overlapping horizons;
-- ESDF and known-solid collision evaluation;
+- collision evaluation against the active raw occupancy/ESDF contract;
 - first-control continuity relative to the command actually sent;
 - time-to-collision and braking fallback;
 - horizon validity deadlines.
