@@ -47,9 +47,9 @@ staticMapPointCloud3D(const OccupancyGrid3D& grid, const StaticMapDebugConfig& c
           continue;
         }
         const Point3 center = grid.cellCenter(cell);
-        const std::array<float, 3> point{static_cast<float>(center.x),
-                                         static_cast<float>(center.y),
-                                         static_cast<float>(center.z)};
+        const std::array<float, 3> point{
+            static_cast<float>(center.x), static_cast<float>(center.y),
+            static_cast<float>(gazeboAlignedRvizZ(center.z))};
         const std::size_t offset = cloud.data.size();
         cloud.data.resize(offset + static_cast<std::size_t>(cloud.point_step));
         std::memcpy(&cloud.data[offset], point.data(), cloud.point_step);

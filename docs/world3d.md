@@ -8,7 +8,7 @@ source of static geometry. It declares:
 - the `map` frame and the map-to-SDF coordinate transform;
 - Occupancy3D origin, dimensions, resolution, and chunk size;
 - ground and regular building geometry;
-- straight, L-shaped, and altitude-changing air channels;
+- horizontal straight and L-shaped air channels;
 - mission start and goal positions.
 
 `scripts/generate_canonical_world.py` deterministically emits two committed
@@ -34,7 +34,7 @@ Run the generator through the repository container workflow:
 
 `make test-scripts` regenerates both artifacts in a temporary directory and
 checks byte-for-byte equality with the committed files. It also verifies the
-L-channel cross-sections, continuous Z-profile slabs, and lidar visibility
+L-channel cross-sections, horizontal channel geometry, and lidar visibility
 contracts.
 
 ## Occupancy3D
@@ -84,13 +84,10 @@ plus four bridge volumes. The current left-turn channel has:
 This produces a continuous L-shaped free volume. It is not a staircase and is
 not two independent openings selected by a passage coordinator.
 
-### Z-Profile
-
-An altitude-changing channel has a 3D centerline with different endpoint Z
-values. The generator creates one continuously inclined lower slab and one
-continuously inclined upper slab. Both Gazebo physics and Occupancy3D represent
-the slope continuously at map resolution; no stepped slice approximation is
-used.
+All channel centerlines have one constant reference Z. Every generated lower,
+upper, and middle mass is an axis-aligned box whose floor and roof are parallel
+to the ground. The generator does not support inclined slabs, stepped vertical
+profiles, or curved vertical passages.
 
 ## Static Planning Contract
 

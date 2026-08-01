@@ -78,7 +78,7 @@ private:
           declare_parameter<std::int64_t>("static_map_visualization_stride_cells", 4);
       const std::size_t stride =
           static_cast<std::size_t>(std::max<std::int64_t>(1, configured_stride));
-      const StaticMapDebugConfig debug{header(), 0.05F, 0.62F, stride};
+      const StaticMapDebugConfig debug{header(), stride};
       const sensor_msgs::msg::PointCloud2 points =
           staticMapPointCloud3D(occupancy, debug);
       static_points_pub_->publish(points);

@@ -60,6 +60,11 @@ RViz markers.
   Occupancy3D. The default four-cell stride keeps RViz responsive while the
   planner continues using the full 0.5 m map.
 
+The static 3D cloud applies the same debug-only Z sign compensation as the
+other navigation markers before the legacy `gazebo_map -> map` visualization
+transform flips Z. Removing that compensation places the entire city below the
+RViz ground plane even though publication and planning remain healthy.
+
 A point visible in one layer but absent in another can be correct because the
 layers represent different lifecycle stages.
 

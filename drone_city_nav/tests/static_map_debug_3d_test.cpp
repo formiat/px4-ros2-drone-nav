@@ -2,6 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cstring>
+
 namespace drone_city_nav {
 namespace {
 
@@ -22,9 +25,9 @@ TEST(StaticMapDebug3D, VisualizationStrideReducesPublishedVoxelCount) {
   }
 
   const sensor_msgs::msg::PointCloud2 full =
-      staticMapPointCloud3D(grid, StaticMapDebugConfig{header(), 0.05F, 0.62F, 1U});
+      staticMapPointCloud3D(grid, StaticMapDebugConfig{header(), 1U});
   const sensor_msgs::msg::PointCloud2 reduced =
-      staticMapPointCloud3D(grid, StaticMapDebugConfig{header(), 0.05F, 0.62F, 4U});
+      staticMapPointCloud3D(grid, StaticMapDebugConfig{header(), 4U});
 
   EXPECT_EQ(full.width, 512U);
   EXPECT_EQ(reduced.width, 8U);
@@ -37,9 +40,23 @@ TEST(StaticMapDebug3D, ZeroStrideFallsBackToOne) {
   grid.setOccupied(GridIndex3D{1, 1, 1});
 
   const sensor_msgs::msg::PointCloud2 cloud =
-      staticMapPointCloud3D(grid, StaticMapDebugConfig{header(), 0.05F, 0.62F, 0U});
+      staticMapPointCloud3D(grid, StaticMapDebugConfig{header(), 0U});
 
   EXPECT_EQ(cloud.width, 1U);
+}
+
+TEST(StaticMapDebug3D, CompensatesGazeboAlignedVisualizationZ) {
+  OccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 0.5, 1, 1, 2}};
+  grid.setOccupied(GridIndex3D{0, 0, 1});
+
+  const sensor_msgs::msg::PointCloud2 cloud =
+      staticMapPointCloud3D(grid, StaticMapDebugConfig{header(), 1U});
+
+  ASSERT_EQ(cloud.width, 1U);
+  std::array<float, 3> point{};
+  ASSERT_GE(cloud.data.size(), sizeof(point));
+  std::memcpy(point.data(), cloud.data.data(), sizeof(point));
+  EXPECT_FLOAT_EQ(point[2], -0.75F);
 }
 
 } // namespace

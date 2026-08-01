@@ -75,11 +75,11 @@
       "height_m": 7.0
     },
     {
-      "id": "channel_22_30_z",
-      "kind": "z_profile",
+      "id": "channel_22_30",
+      "kind": "straight",
       "structure_center_m": [162.0, 297.0],
       "structure_size_m": [30.0, 24.0, 32.0],
-      "centerline_m": [[144.0, 297.0, 18.0], [162.0, 297.0, 21.5], [180.0, 297.0, 25.0]],
+      "centerline_m": [[144.0, 297.0, 25.0], [180.0, 297.0, 25.0]],
       "width_m": 24.0,
       "height_m": 7.0
     }

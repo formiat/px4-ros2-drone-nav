@@ -44,25 +44,19 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             self.assertIn("channel_11_19_l_north_middle", collision_models)
             self.assertNotIn("channel_11_19_l_west_middle", collision_models)
             self.assertNotIn("channel_11_19_l_south_middle", collision_models)
-            self.assertIn("channel_22_30_z_lower", collision_models)
-            self.assertIn("channel_22_30_z_upper", collision_models)
-            self.assertFalse(
-                any(name.startswith("channel_22_30_z_lower_")
-                    for name in collision_models)
-            )
-            z_channel_poses = {
+            self.assertIn("channel_22_30_lower", collision_models)
+            self.assertIn("channel_22_30_upper", collision_models)
+            channel_poses = {
                 model.attrib["name"]: tuple(
                     map(float, model.findtext("pose", default="").split())
                 )
                 for model in root.findall("./world/model")
-                if model.attrib["name"] in {
-                    "channel_22_30_z_lower",
-                    "channel_22_30_z_upper",
-                }
+                if model.attrib["name"].startswith("channel_")
+                and model.find("./link/collision") is not None
             }
-            self.assertEqual(2, len(z_channel_poses))
-            for pose in z_channel_poses.values():
-                self.assertNotEqual((0.0, 0.0, 0.0), pose[3:6])
+            self.assertGreater(len(channel_poses), 2)
+            for pose in channel_poses.values():
+                self.assertEqual((0.0, 0.0, 0.0), pose[3:6])
             self.assertIn("building_001", collision_models)
 
             header_format = "<8sII4f3IQI"
@@ -76,11 +70,11 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             self.assertEqual((690, 1050, 80), header[7:10])
             self.assertGreater(header[11], 0)
 
-    def test_spec_contains_straight_l_and_z_profile_channels(self) -> None:
+    def test_spec_contains_only_straight_and_l_shaped_channels(self) -> None:
         with SPEC_PATH.open(encoding="utf-8") as stream:
             spec = json.load(stream)
         kinds = {channel["kind"] for channel in spec["channels"]}
-        self.assertEqual({"straight", "l_shaped", "z_profile"}, kinds)
+        self.assertEqual({"straight", "l_shaped"}, kinds)
 
     def test_l_channel_has_four_bridges_and_two_physical_middle_masses(self) -> None:
         spec = generator.load_spec(SPEC_PATH)
@@ -139,35 +133,27 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                 all(occupied(x, y, z) for row in sample_xy for x, y in row)
             )
 
-    def test_z_profile_is_one_continuous_floor_and_roof_pair(self) -> None:
+    def test_all_channels_are_horizontal(self) -> None:
         spec = generator.load_spec(SPEC_PATH)
-        channel = next(
+        for channel in spec["channels"]:
+            with self.subTest(channel=channel["id"]):
+                reference_heights = {
+                    float(point[2]) for point in channel["centerline_m"]
+                }
+                self.assertEqual(1, len(reference_heights))
+
+        converted = next(
             channel for channel in spec["channels"]
-            if channel["kind"] == "z_profile"
+            if channel["id"] == "channel_22_30"
         )
-        boxes = generator.channel_boxes(channel)
+        self.assertEqual("straight", converted["kind"])
+        boxes = generator.channel_boxes(converted)
         self.assertEqual(
-            {"channel_22_30_z_lower", "channel_22_30_z_upper"},
+            {"channel_22_30_lower", "channel_22_30_upper"},
             {box.id for box in boxes},
         )
-        self.assertTrue(
-            all(any(abs(angle) > 1.0e-6 for angle in box.map_rotation_rpy)
-                for box in boxes)
-        )
-        self.assertTrue(
-            all(generator.point_in_box(box.center, box) for box in boxes)
-        )
-        for point in channel["centerline_m"]:
-            sample = tuple(map(float, point))
-            self.assertFalse(
-                any(generator.point_in_box(sample, box) for box in boxes)
-            )
-        self.assertTrue(generator.point_in_box((162.0, 297.0, 10.0), boxes[0]))
-        self.assertFalse(
-            any(generator.point_in_box((162.0, 297.0, 21.5), box)
-                for box in boxes)
-        )
-        self.assertTrue(generator.point_in_box((162.0, 297.0, 35.0), boxes[1]))
+        self.assertEqual((162.0, 297.0, 10.75), boxes[0].center)
+        self.assertEqual((162.0, 297.0, 30.25), boxes[1].center)
 
     def test_committed_artifacts_are_deterministic_and_current(self) -> None:
         spec = generator.load_spec(SPEC_PATH)

@@ -20,7 +20,7 @@ real-aircraft operation.
 - Static and no-static speed policies.
 - Timestamped execution horizons consumed by the MPPI offboard node.
 - Braking fallback when the selected horizon is not executable.
-- Canonical 3D static world with straight, L-shaped, and altitude-changing channels.
+- Canonical 3D static world with horizontal straight and L-shaped channels.
 - Gazebo contact-based crash detection.
 - RViz, JSONL, lidar snapshots, and mission diagnostics.
 

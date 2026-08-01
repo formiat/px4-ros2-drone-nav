@@ -12,8 +12,6 @@ namespace drone_city_nav {
 
 struct StaticMapDebugConfig {
   std_msgs::msg::Header header;
-  float point_z_m{0.05F};
-  float building_alpha{0.62F};
   std::size_t voxel_stride{1U};
 };
 
