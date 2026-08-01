@@ -133,6 +133,18 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("rviz_drone_follow_tf_enabled:=", self.text)
         self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA", self.container_text)
 
+    def test_rviz_static_map_receives_latched_point_cloud(self) -> None:
+        for config_path in RVIZ_CONFIGS:
+            with self.subTest(config=config_path.name):
+                config = config_path.read_text(encoding="utf-8")
+                display = config.split("Name: Static City Map Points", 1)[1].split(
+                    "Name: Static Building Volumes", 1
+                )[0]
+                self.assertIn("Durability Policy: Transient Local", display)
+                self.assertIn("Reliability Policy: Reliable", display)
+                self.assertIn("History Policy: Keep Last", display)
+                self.assertIn("Depth: 1", display)
+
     def test_launch_uses_offboard_flight_control_backend(self) -> None:
         self.assertIn('executable="mppi_offboard_node"', self.launch_text)
         self.assertIn("mppi_offboard,", self.launch_text)

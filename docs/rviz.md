@@ -65,6 +65,10 @@ other navigation markers before the legacy `gazebo_map -> map` visualization
 transform flips Z. Removing that compensation places the entire city below the
 RViz ground plane even though publication and planning remain healthy.
 
+The static cloud is published once with transient-local durability. Both RViz
+profiles request the same durability so a display started after the world
+visualization node still receives the retained map sample.
+
 A point visible in one layer but absent in another can be correct because the
 layers represent different lifecycle stages.
 
