@@ -76,6 +76,7 @@ public:
     const auto package_share = std::filesystem::path{
         ament_index_cpp::get_package_share_directory("drone_city_nav")};
     static_grid_ = declareStaticRawWorldGrid(*this, frame_id_, package_share);
+    const bool use_static_map = get_parameter("use_static_map").as_bool();
     const LidarMappingYawConfig mapping_yaw_config =
         declareLidarMappingYawConfig(*this);
     use_px4_heading_for_scan_ = mapping_yaw_config.use_px4_heading;
@@ -144,7 +145,7 @@ public:
     max_projected_lidar_altitude_m_ =
         declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
     KnownStaticLidarSetup known_static_setup =
-        declareKnownStaticLidarSetup(*this, frame_id_);
+        declareKnownStaticLidarSetup(*this, frame_id_, use_static_map);
     known_passage_map_ = std::move(known_static_setup.passage_map);
     known_static_lidar_classifier_ = std::move(known_static_setup.classifier);
     known_passages_resolved_path_ = std::move(known_static_setup.resolved_path);

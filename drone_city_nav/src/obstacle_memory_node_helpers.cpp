@@ -1,6 +1,7 @@
 #include "obstacle_memory_node_helpers.hpp"
 
 #include "drone_city_nav/known_passage_solid_volumes.hpp"
+#include "drone_city_nav/passage_mode.hpp"
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
@@ -195,13 +196,18 @@ LidarMappingYawConfig declareLidarMappingYawConfig(rclcpp::Node& node) {
 }
 
 KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
-                                                   const std::string& frame_id) {
+                                                   const std::string& frame_id,
+                                                   const bool use_static_map) {
   KnownStaticLidarSetup setup;
-  const bool enabled = node.declare_parameter<bool>("known_passages_enabled", true);
+  const bool configured_enabled =
+      node.declare_parameter<bool>("known_passages_enabled", true);
+  setup.passages_enabled = semanticPassagesEnabled(configured_enabled, use_static_map);
   const std::string source_path = node.declare_parameter<std::string>(
       "known_passages_path", "worlds/known_passages.passages3d");
-  setup.classifier_enabled =
+  setup.resolved_path = source_path;
+  const bool classifier_configured =
       node.declare_parameter<bool>("known_static_lidar_hit_classifier_enabled", false);
+  setup.classifier_enabled = setup.passages_enabled && classifier_configured;
   setup.closer_range_tolerance_m =
       std::clamp(node.declare_parameter<double>(
                      "known_static_lidar_hit_closer_range_tolerance_m", 0.5),
@@ -218,6 +224,15 @@ KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
       node.declare_parameter<double>("known_static_opening_boundary_tolerance_m", 0.50),
       0.0, 10.0);
 
+  if (!setup.passages_enabled) {
+    RCLCPP_INFO(node.get_logger(),
+                "Known passage functionality: node=obstacle_memory "
+                "configured=%s static_map=%s effective=false",
+                configured_enabled ? "true" : "false",
+                use_static_map ? "true" : "false");
+    return setup;
+  }
+
   std::filesystem::path package_share_directory;
   try {
     package_share_directory =
@@ -228,9 +243,8 @@ KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
                  "fail-open: error='%s'",
                  error.what());
   }
-  const KnownPassageSourceResult source =
-      loadKnownPassageMapSource(KnownPassageSourceConfig{
-          enabled, source_path, package_share_directory, frame_id});
+  const KnownPassageSourceResult source = loadKnownPassageMapSource(
+      KnownPassageSourceConfig{true, source_path, package_share_directory, frame_id});
   setup.resolved_path = source.resolved_path;
   if (source.status == KnownPassageSourceStatus::kLoaded && source.map.has_value() &&
       source.frame_matches) {

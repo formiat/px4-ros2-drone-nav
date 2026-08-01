@@ -71,6 +71,7 @@ struct KnownStaticLidarSetup {
   std::optional<KnownPassageMap> passage_map;
   std::optional<KnownStaticLidarHitClassifier> classifier;
   std::filesystem::path resolved_path;
+  bool passages_enabled{false};
   bool classifier_enabled{false};
   double closer_range_tolerance_m{0.5};
   double farther_range_tolerance_m{1.5};
@@ -79,7 +80,8 @@ struct KnownStaticLidarSetup {
 };
 
 [[nodiscard]] KnownStaticLidarSetup
-declareKnownStaticLidarSetup(rclcpp::Node& node, const std::string& frame_id);
+declareKnownStaticLidarSetup(rclcpp::Node& node, const std::string& frame_id,
+                             bool use_static_map);
 
 [[nodiscard]] GroundLidarRejectionConfig
 declareGroundLidarRejectionConfig(rclcpp::Node& node, double max_lidar_range_m);

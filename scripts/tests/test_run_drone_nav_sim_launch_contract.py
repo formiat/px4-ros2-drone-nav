@@ -169,6 +169,21 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.launch_text,
         )
 
+    def test_static_map_override_reaches_mission_monitor(self) -> None:
+        self.assertIn("mission_monitor_parameters", self.launch_text)
+        self.assertIn(
+            'mission_monitor_parameters.append(\n'
+            '                {"use_static_map": static_map_override}',
+            self.launch_text,
+        )
+
+    def test_production_mppi_gates_passages_by_world_mode(self) -> None:
+        self.assertIn(
+            "semanticPassagesEnabled(\n"
+            "      passages_configured, passage_speed_policy_.use_static_map)",
+            self.production_mppi_source_text,
+        )
+
     def test_runtime_lidar_visibility_follows_resolved_static_map_mode(self) -> None:
         self.assertIn('lidar_visibility_mode="no-static"', self.text)
         self.assertIn('lidar_visibility_mode="static"', self.text)

@@ -94,8 +94,15 @@ def generate_launch_description():
             params_file.perform(context),
             {"use_sim_time": True},
         ]
+        mission_monitor_parameters = [
+            params_file.perform(context),
+            {"use_sim_time": True},
+        ]
         if static_map_override is not None:
             production_mppi_parameters.append(
+                {"use_static_map": static_map_override}
+            )
+            mission_monitor_parameters.append(
                 {"use_static_map": static_map_override}
             )
         return [
@@ -120,6 +127,14 @@ def generate_launch_description():
                 output="screen",
                 parameters=production_mppi_parameters,
             ),
+            Node(
+                package="drone_city_nav",
+                executable="mission_monitor_node",
+                name="mission_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_mission_monitor),
+                parameters=mission_monitor_parameters,
+            ),
         ]
 
     mppi_offboard = Node(
@@ -143,15 +158,6 @@ def generate_launch_description():
         executable="collision_crash_node",
         name="collision_crash_node",
         output="screen",
-        parameters=[params_file, {"use_sim_time": True}],
-    )
-
-    mission_monitor = Node(
-        package="drone_city_nav",
-        executable="mission_monitor_node",
-        name="mission_monitor_node",
-        output="screen",
-        condition=IfCondition(enable_mission_monitor),
         parameters=[params_file, {"use_sim_time": True}],
     )
 
@@ -297,7 +303,6 @@ def generate_launch_description():
             OpaqueFunction(function=source_nodes),
             collision_crash,
             mppi_offboard,
-            mission_monitor,
             lidar_debug,
             gazebo_aligned_map_tf,
             rviz,

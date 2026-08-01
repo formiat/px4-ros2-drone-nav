@@ -417,6 +417,11 @@ if(BUILD_TESTING)
   target_link_libraries(passage_coordinator_test drone_city_nav_core)
   enable_project_warnings(passage_coordinator_test)
 
+  ament_add_gtest(passage_mode_test tests/passage_mode_test.cpp)
+  target_compile_features(passage_mode_test PRIVATE cxx_std_20)
+  target_include_directories(passage_mode_test PRIVATE include)
+  enable_project_warnings(passage_mode_test)
+
   ament_add_gtest(passage_traversal_monitor_test
                   tests/passage_traversal_monitor_test.cpp)
   target_compile_features(passage_traversal_monitor_test PRIVATE cxx_std_20)

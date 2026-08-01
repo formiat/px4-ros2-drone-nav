@@ -87,7 +87,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
             f"lidar model must not own drone visibility visuals: {sorted(visuals)}",
         )
 
-    def test_gpu_lidar_ignores_only_physical_connector_mass_visuals(self) -> None:
+    def test_static_lidar_default_excludes_connector_masses_and_occluders(self) -> None:
         lidar_root = parse_sdf(LIDAR_SDF)
         world_root = parse_sdf(WORLD_SDF)
         sensor = next(
@@ -148,32 +148,70 @@ class DroneModelSdfContractTest(unittest.TestCase):
                     self.assertEqual(PASSAGE_MASS_VISIBILITY_FLAG, visual_flags)
                     self.assertEqual(0, lidar_mask & visual_flags)
 
-    def test_first_route_passage_has_collisionless_no_static_lidar_occluder(
-        self,
-    ) -> None:
+    def test_all_passages_have_collisionless_no_static_lidar_occluders(self) -> None:
         world_root = parse_sdf(WORLD_SDF)
-        connector = next(
-            model
+        expected_geometry = {
+            "physical_building_connector_22_23": (
+                "0.00 0.00 5.00 0.00 0.00 0.00",
+                "30.00 24.00 7.00",
+            ),
+            "physical_building_connector_04_12": (
+                "0.00 0.00 15.00 0.00 0.00 0.00",
+                "24.00 30.00 7.00",
+            ),
+            "physical_building_connector_06_14": (
+                "0.00 0.00 25.00 0.00 0.00 0.00",
+                "24.00 30.00 7.00",
+            ),
+            "physical_building_connector_11_19": (
+                "0.00 0.00 5.00 0.00 0.00 0.00",
+                "24.00 30.00 7.00",
+            ),
+            "physical_building_connector_20_21": (
+                "0.00 0.00 15.00 0.00 0.00 0.00",
+                "30.00 24.00 7.00",
+            ),
+            "physical_building_connector_22_30": (
+                "0.00 0.00 25.00 0.00 0.00 0.00",
+                "24.00 30.00 7.00",
+            ),
+        }
+        connectors = {
+            model.attrib["name"]: model
             for model in world_root.iter("model")
-            if model.attrib.get("name") == "physical_building_connector_11_19"
-        )
-        occluder = next(
-            link
-            for link in connector.findall("link")
-            if link.attrib.get("name") == "no_static_lidar_occluder"
-        )
-        visual = occluder.find("visual")
+            if model.attrib.get("name", "").startswith(
+                "physical_building_connector_"
+            )
+        }
 
-        self.assertIsNotNone(visual)
-        self.assertIsNone(occluder.find("collision"))
-        self.assertEqual("0.00 0.00 5.00 0.00 0.00 0.00", occluder.findtext("pose"))
-        self.assertEqual("24.00 30.00 7.00", visual.findtext("geometry/box/size"))
-        self.assertEqual("0.999", visual.findtext("transparency"))
-        self.assertEqual(
-            NO_STATIC_OCCLUDER_VISIBILITY_FLAG,
-            int(visual.findtext("visibility_flags", "")),
-        )
-        self.assertEqual(0, LIDAR_VISIBILITY_MASK & NO_STATIC_OCCLUDER_VISIBILITY_FLAG)
+        self.assertEqual(set(expected_geometry), set(connectors))
+        for connector_name, (expected_pose, expected_size) in expected_geometry.items():
+            with self.subTest(connector=connector_name):
+                occluders = [
+                    link
+                    for link in connectors[connector_name].findall("link")
+                    if link.attrib.get("name") == "no_static_lidar_occluder"
+                ]
+                self.assertEqual(1, len(occluders))
+                occluder = occluders[0]
+                visual = occluder.find("visual")
+
+                self.assertIsNotNone(visual)
+                self.assertIsNone(occluder.find("collision"))
+                self.assertEqual(expected_pose, occluder.findtext("pose"))
+                self.assertEqual(
+                    expected_size, visual.findtext("geometry/box/size")
+                )
+                self.assertEqual("0.999", visual.findtext("transparency"))
+                self.assertEqual(
+                    NO_STATIC_OCCLUDER_VISIBILITY_FLAG,
+                    int(visual.findtext("visibility_flags", "")),
+                )
+                self.assertEqual(
+                    0,
+                    LIDAR_VISIBILITY_MASK
+                    & NO_STATIC_OCCLUDER_VISIBILITY_FLAG,
+                )
 
     def test_physical_connectors_match_known_passage_annotations(self) -> None:
         world_root = parse_sdf(WORLD_SDF)

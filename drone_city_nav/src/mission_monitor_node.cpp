@@ -2,6 +2,7 @@
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/known_passage_solid_volumes.hpp"
 #include "drone_city_nav/msg/crash_state.hpp"
+#include "drone_city_nav/passage_mode.hpp"
 #include "drone_city_nav/passage_traversal_monitor.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -253,8 +254,11 @@ public:
     applyUniformBuildingHeight(buildings_, uniform_building_height_m_);
     const std::size_t configured_building_count = buildings_.size();
 
-    const bool known_passages_enabled =
+    const bool use_static_map = declare_parameter<bool>("use_static_map", true);
+    const bool known_passages_configured =
         declare_parameter<bool>("known_passages_enabled", true);
+    const bool known_passages_enabled =
+        semanticPassagesEnabled(known_passages_configured, use_static_map);
     const std::string known_passages_path = declare_parameter<std::string>(
         "known_passages_path", "worlds/known_passages.passages3d");
     KnownPassageSourceConfig known_passage_config{};

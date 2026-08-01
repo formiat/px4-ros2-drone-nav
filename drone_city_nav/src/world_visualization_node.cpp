@@ -1,6 +1,7 @@
 #include "drone_city_nav/known_passage_debug_markers.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
+#include "drone_city_nav/passage_mode.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
 #include "drone_city_nav/static_map_source.hpp"
 
@@ -54,8 +55,9 @@ public:
 
     const auto package_share = std::filesystem::path{
         ament_index_cpp::get_package_share_directory("drone_city_nav")};
-    publishStaticMap(package_share);
-    publishKnownPassages(package_share);
+    const bool use_static_map = declare_parameter<bool>("use_static_map", true);
+    publishStaticMap(package_share, use_static_map);
+    publishKnownPassages(package_share, use_static_map);
   }
 
 private:
@@ -66,9 +68,10 @@ private:
     return result;
   }
 
-  void publishStaticMap(const std::filesystem::path& package_share) {
+  void publishStaticMap(const std::filesystem::path& package_share,
+                        const bool use_static_map) {
     const StaticMapSourceResult source = loadStaticMapSource(StaticMapSourceConfig{
-        .enabled = declare_parameter<bool>("use_static_map", true),
+        .enabled = use_static_map,
         .configured_path = declare_parameter<std::string>(
             "static_map_path", "worlds/generated_city.map2d"),
         .package_share_directory = package_share,
@@ -98,13 +101,23 @@ private:
                 source.occupied_cells);
   }
 
-  void publishKnownPassages(const std::filesystem::path& package_share) {
-    const KnownPassageSourceResult source =
-        loadKnownPassageMapSource(KnownPassageSourceConfig{
-            declare_parameter<bool>("known_passages_enabled", true),
-            declare_parameter<std::string>("known_passages_path",
-                                           "worlds/known_passages.passages3d"),
-            package_share, frame_id_});
+  void publishKnownPassages(const std::filesystem::path& package_share,
+                            const bool use_static_map) {
+    const bool configured_enabled =
+        declare_parameter<bool>("known_passages_enabled", true);
+    const std::string configured_path = declare_parameter<std::string>(
+        "known_passages_path", "worlds/known_passages.passages3d");
+    if (!semanticPassagesEnabled(configured_enabled, use_static_map)) {
+      passage_markers_pub_->publish(buildKnownPassageDeleteMarkers(header()));
+      RCLCPP_INFO(get_logger(),
+                  "Known passage visualization disabled: configured=%s "
+                  "static_map=%s",
+                  configured_enabled ? "true" : "false",
+                  use_static_map ? "true" : "false");
+      return;
+    }
+    const KnownPassageSourceResult source = loadKnownPassageMapSource(
+        KnownPassageSourceConfig{true, configured_path, package_share, frame_id_});
     if (!source.map.has_value()) {
       passage_markers_pub_->publish(buildKnownPassageDeleteMarkers(header()));
       RCLCPP_WARN(get_logger(), "Known passage visualization unavailable: path='%s'",

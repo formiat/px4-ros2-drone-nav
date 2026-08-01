@@ -316,6 +316,7 @@ lidar_debug_node:
 
 mission_monitor_node:
   ros__parameters:
+    use_static_map: true
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     start_x_m: 54.0

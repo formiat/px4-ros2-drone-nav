@@ -1,6 +1,7 @@
 #include "production_mppi_node.hpp"
 
 #include "drone_city_nav/known_passage_solid_volumes.hpp"
+#include "drone_city_nav/passage_mode.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
@@ -419,25 +420,29 @@ ProductionMppiNode::ProductionMppiNode()
       std::make_unique<GlobalGuideProgressTracker>(guide_progress_config_);
   mission_goal_capture_latch_ =
       std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
-  passage_coordinator_ =
-      std::make_unique<PassageCoordinator>(passage_coordinator_config_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
-  const bool passages_enabled = declare_parameter<bool>("known_passages_enabled", true);
+  const bool passages_configured =
+      declare_parameter<bool>("known_passages_enabled", true);
+  const bool passages_enabled = semanticPassagesEnabled(
+      passages_configured, passage_speed_policy_.use_static_map);
   const std::string passages_path = declare_parameter<std::string>(
       "known_passages_path", "worlds/known_passages.passages3d");
-  const auto package_share = std::filesystem::path{
-      ament_index_cpp::get_package_share_directory("drone_city_nav")};
-  const KnownPassageSourceResult passage_source =
-      loadKnownPassageMapSource(KnownPassageSourceConfig{
-          passages_enabled, passages_path, package_share, frame_id_});
-  if (passage_source.map.has_value()) {
-    known_passages_ = passage_source.map;
-    semantic_portal_primitives_ = semanticPortalPrimitives(*known_passages_);
-    for (const KnownPassageSolidVolume& solid :
-         knownPassageSolidVolumes(*known_passages_)) {
-      known_solids_.push_back(toMppiSolid(solid));
+  if (passages_enabled) {
+    passage_coordinator_ =
+        std::make_unique<PassageCoordinator>(passage_coordinator_config_);
+    const auto package_share = std::filesystem::path{
+        ament_index_cpp::get_package_share_directory("drone_city_nav")};
+    const KnownPassageSourceResult passage_source = loadKnownPassageMapSource(
+        KnownPassageSourceConfig{true, passages_path, package_share, frame_id_});
+    if (passage_source.map.has_value()) {
+      known_passages_ = passage_source.map;
+      semantic_portal_primitives_ = semanticPortalPrimitives(*known_passages_);
+      for (const KnownPassageSolidVolume& solid :
+           knownPassageSolidVolumes(*known_passages_)) {
+        known_solids_.push_back(toMppiSolid(solid));
+      }
+      engine_->updateKnownSolids(known_solids_);
     }
-    engine_->updateKnownSolids(known_solids_);
   }
 
   std::filesystem::create_directories(diagnostics_output_dir_);
@@ -494,7 +499,7 @@ ProductionMppiNode::ProductionMppiNode()
   RCLCPP_INFO(
       get_logger(),
       "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
-      "deadline=%.1fms known_solids=%zu static_map=%s "
+      "deadline=%.1fms known_solids=%zu static_map=%s semantic_passages=%s "
       "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
       "passage_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
@@ -504,6 +509,7 @@ ProductionMppiNode::ProductionMppiNode()
       "passage_hold_clearance=%.2fm passage_minimum_continuous_speed=%.2fmps",
       mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
       known_solids_.size(), passage_speed_policy_.use_static_map ? "true" : "false",
+      passages_enabled ? "true" : "false",
       static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
       lattice_config_.receding_goal_distance_m, speed_policy_config_.cruise_speed_mps,
       mppi_config_.dynamics.maximum_horizontal_speed_mps,

@@ -559,9 +559,11 @@
       collision/visual objects, not known-passage annotations and not RViz
       markers. Do not add them to generated_city.map2d here: the static 2D
       planner map is deliberately kept unchanged while we verify the physical
-      3D world geometry in Gazebo. Their visuals use visibility bit 0x08000000
-      so the GPU lidar can ignore them while Gazebo still renders them and
-      their collision geometry remains active.
+      3D world geometry in Gazebo. Their visuals use visibility bit 0x08000000:
+      static-mode lidar excludes that bit, while no-static lidar includes it.
+      Each opening also contains a transparent visual-only occluder on bit
+      0x04000000. No-static therefore observes a continuous wall without
+      introducing collision geometry; static excludes both visibility bits.
     -->
     <model name="physical_building_connector_22_23">
       <static>true</static>
@@ -575,6 +577,19 @@
         <pose>0.00 0.00 20.25 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>30.00 24.00 23.50</size></box></geometry></collision>
         <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>30.00 24.00 23.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
+      </link>
+      <link name="no_static_lidar_occluder">
+        <pose>0.00 0.00 5.00 0.00 0.00 0.00</pose>
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry><box><size>30.00 24.00 7.00</size></box></geometry>
+          <material>
+            <ambient>0.00 0.00 0.00 0.00</ambient>
+            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+          </material>
+        </visual>
       </link>
     </model>
     <model name="physical_building_connector_04_12">
@@ -590,6 +605,19 @@
         <collision name="collision"><geometry><box><size>24.00 30.00 13.50</size></box></geometry></collision>
         <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 13.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
       </link>
+      <link name="no_static_lidar_occluder">
+        <pose>0.00 0.00 15.00 0.00 0.00 0.00</pose>
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry><box><size>24.00 30.00 7.00</size></box></geometry>
+          <material>
+            <ambient>0.00 0.00 0.00 0.00</ambient>
+            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+          </material>
+        </visual>
+      </link>
     </model>
     <model name="physical_building_connector_06_14">
       <static>true</static>
@@ -603,6 +631,19 @@
         <pose>0.00 0.00 30.25 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>24.00 30.00 3.50</size></box></geometry></collision>
         <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 3.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
+      </link>
+      <link name="no_static_lidar_occluder">
+        <pose>0.00 0.00 25.00 0.00 0.00 0.00</pose>
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry><box><size>24.00 30.00 7.00</size></box></geometry>
+          <material>
+            <ambient>0.00 0.00 0.00 0.00</ambient>
+            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+          </material>
+        </visual>
       </link>
     </model>
     <model name="physical_building_connector_11_19">
@@ -645,6 +686,19 @@
         <collision name="collision"><geometry><box><size>30.00 24.00 13.50</size></box></geometry></collision>
         <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>30.00 24.00 13.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
       </link>
+      <link name="no_static_lidar_occluder">
+        <pose>0.00 0.00 15.00 0.00 0.00 0.00</pose>
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry><box><size>30.00 24.00 7.00</size></box></geometry>
+          <material>
+            <ambient>0.00 0.00 0.00 0.00</ambient>
+            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+          </material>
+        </visual>
+      </link>
     </model>
     <model name="physical_building_connector_22_30">
       <static>true</static>
@@ -658,6 +712,19 @@
         <pose>0.00 0.00 30.25 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>24.00 30.00 3.50</size></box></geometry></collision>
         <visual name="visual"><visibility_flags>134217728</visibility_flags><geometry><box><size>24.00 30.00 3.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
+      </link>
+      <link name="no_static_lidar_occluder">
+        <pose>0.00 0.00 25.00 0.00 0.00 0.00</pose>
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry><box><size>24.00 30.00 7.00</size></box></geometry>
+          <material>
+            <ambient>0.00 0.00 0.00 0.00</ambient>
+            <diffuse>0.00 0.00 0.00 0.00</diffuse>
+          </material>
+        </visual>
       </link>
     </model>
 
