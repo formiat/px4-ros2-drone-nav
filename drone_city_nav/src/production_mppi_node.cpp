@@ -55,6 +55,40 @@ productionMppiExecutionReasonName(const ProductionMppiExecutionReason reason) no
   return "unknown";
 }
 
+const char*
+productionPlanningSearchKindName(const ProductionPlanningSearchKind kind) noexcept {
+  switch (kind) {
+    case ProductionPlanningSearchKind::kNone:
+      return "none";
+    case ProductionPlanningSearchKind::kLattice2D:
+      return "lattice_2d";
+    case ProductionPlanningSearchKind::kLattice3D:
+      return "lattice_3d";
+  }
+  return "unknown";
+}
+
+const char* productionGuideCandidateValidationStatusName(
+    const ProductionGuideCandidateValidationStatus status) noexcept {
+  switch (status) {
+    case ProductionGuideCandidateValidationStatus::kNotAttempted:
+      return "not_attempted";
+    case ProductionGuideCandidateValidationStatus::kAccepted:
+      return "accepted";
+    case ProductionGuideCandidateValidationStatus::kUnavailableLatestWorld:
+      return "unavailable_latest_world";
+    case ProductionGuideCandidateValidationStatus::kInvalidProjection:
+      return "invalid_projection";
+    case ProductionGuideCandidateValidationStatus::kExcessiveCrossTrack:
+      return "excessive_cross_track";
+    case ProductionGuideCandidateValidationStatus::kRawValidationRejected:
+      return "raw_validation_rejected";
+    case ProductionGuideCandidateValidationStatus::kLifecycleRejected:
+      return "lifecycle_rejected";
+  }
+  return "unknown";
+}
+
 ProductionMppiNode::ProductionMppiNode()
     : Node{"production_mppi_node"} {
   tick_rate_hz_ = declare_parameter<double>("tick_rate_hz", 50.0);

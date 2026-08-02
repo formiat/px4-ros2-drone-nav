@@ -156,5 +156,17 @@ TEST(StaticRouteExtensionTest, CoalescesReplanForOneRouteGeneration) {
   EXPECT_TRUE(gate.tryBegin(7U));
 }
 
+TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
+  EXPECT_EQ(staticRouteActivationStatusName(
+                StaticRouteActivationStatus::kCandidateValidationRejected),
+            "candidate_validation_rejected");
+  EXPECT_EQ(
+      staticRouteActivationStatusName(StaticRouteActivationStatus::kStaleWorldRevision),
+      "stale_world_revision");
+  EXPECT_EQ(staticRouteActivationStatusName(
+                StaticRouteActivationStatus::kStaleRouteGeneration),
+            "stale_route_generation");
+}
+
 } // namespace
 } // namespace drone_city_nav

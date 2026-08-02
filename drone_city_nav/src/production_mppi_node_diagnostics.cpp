@@ -31,6 +31,27 @@ namespace {
   return std::isfinite(value) ? value : -1.0;
 }
 
+[[nodiscard]] const char*
+planningStatusName(const ProductionMppiPreparedEsdf& esdf) noexcept {
+  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
+             ? lattice3DStatusName(esdf.lattice_3d_status)
+             : latticePlanStatusName(esdf.lattice_status);
+}
+
+[[nodiscard]] const char*
+planningTerminationName(const ProductionMppiPreparedEsdf& esdf) noexcept {
+  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
+             ? lattice3DSearchTerminationName(esdf.lattice_3d_termination)
+             : latticeSearchTerminationName(esdf.lattice_termination);
+}
+
+[[nodiscard]] const char*
+planningRiskStageName(const ProductionMppiPreparedEsdf& esdf) noexcept {
+  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
+             ? lattice3DRiskStageName(esdf.lattice_3d_risk_stage)
+             : latticeRiskStageName(esdf.lattice_risk_stage);
+}
+
 } // namespace
 
 void ProductionMppiNode::diagnosticsWorker(const std::stop_token stop_token) {
@@ -208,8 +229,7 @@ void ProductionMppiNode::processDiagnostics(
                          "PRODUCTION_MPPI_NO_GUIDE mode=%s action=braking_hold "
                          "lattice_status=%s lattice_termination=%s speed_mps=%.2f",
                          use_static_map_ ? "static" : "no_static",
-                         latticePlanStatusName(esdf.lattice_status),
-                         latticeSearchTerminationName(esdf.lattice_termination),
+                         planningStatusName(esdf), planningTerminationName(esdf),
                          std::hypot(input.initial_state.vx, input.initial_state.vy));
   }
   if (planning_state == ProductionMppiPlanningState::kUnavailableWorldBrakingHold) {
@@ -348,12 +368,23 @@ void ProductionMppiNode::processDiagnostics(
        << " guide_progress_action="
        << globalGuideProgressActionName(snapshot.guide_progress.action)
        << " guide_local_reseed_generation="
-       << snapshot.guide_progress.local_reseed_generation
+       << snapshot.guide_progress.local_reseed_generation << " planning_search_kind="
+       << productionPlanningSearchKindName(esdf.planning_search_kind)
+       << " planning_search_start=(" << esdf.planning_search_start.x << ','
+       << esdf.planning_search_start.y << ',' << esdf.planning_search_start.z << ')'
+       << " planning_search_goal=(" << esdf.planning_search_goal.x << ','
+       << esdf.planning_search_goal.y << ',' << esdf.planning_search_goal.z << ')'
+       << " planning_candidate_endpoint=(" << esdf.planning_candidate_endpoint.x << ','
+       << esdf.planning_candidate_endpoint.y << ','
+       << esdf.planning_candidate_endpoint.z << ')' << " planning_search_direction=("
+       << esdf.planning_search_direction.x << ',' << esdf.planning_search_direction.y
+       << ',' << esdf.planning_search_direction.z << ')'
+       << " planning_candidate_points=" << esdf.planning_candidate_points
+       << " planning_candidate_samples=" << esdf.planning_candidate_samples
        << " lattice_search_performed="
        << (esdf.lattice_search_performed ? "true" : "false")
-       << " lattice_status=" << latticePlanStatusName(esdf.lattice_status)
-       << " lattice_termination="
-       << latticeSearchTerminationName(esdf.lattice_termination)
+       << " lattice_status=" << planningStatusName(esdf)
+       << " lattice_termination=" << planningTerminationName(esdf)
        << " lattice_continuation_attempt=" << esdf.lattice_continuation_attempt
        << " lattice_search_session_resumed="
        << (esdf.lattice_search_session_resumed ? "true" : "false")
@@ -363,7 +394,19 @@ void ProductionMppiNode::processDiagnostics(
        << " lattice_validation_revision=" << esdf.lattice_validation_revision
        << " lattice_raw_validation="
        << rawGuideValidationStatusName(esdf.lattice_raw_validation_status)
-       << " lattice_risk_stage=" << latticeRiskStageName(esdf.lattice_risk_stage)
+       << " guide_candidate_validation="
+       << productionGuideCandidateValidationStatusName(
+              esdf.guide_candidate_validation_status)
+       << " lattice_risk_stage=" << planningRiskStageName(esdf)
+       << " lattice_3d_minimum_clearance_m=" << esdf.lattice_3d_minimum_clearance_m
+       << " static_route_candidate="
+       << staticRouteCandidateStatusName(esdf.static_route_candidate_status)
+       << " static_route_activation="
+       << staticRouteActivationStatusName(esdf.static_route_activation_status)
+       << " static_route_revision_matches="
+       << (esdf.static_route_revision_matches ? "true" : "false")
+       << " static_route_generation_matches="
+       << (esdf.static_route_generation_matches ? "true" : "false")
        << " topology_objective=" << esdf.topology_objective_cost
        << " topology_route_length_m=" << esdf.topology_route_length_m
        << " topology_travel_time_s=" << esdf.topology_travel_time_s
@@ -381,6 +424,42 @@ void ProductionMppiNode::processDiagnostics(
        << " lattice_frontier_endpoint_displacement_m="
        << esdf.lattice_frontier_endpoint_displacement_m
        << " lattice_frontier_selection_score=" << esdf.lattice_frontier_selection_score
+       << " lattice_3d_successor_generated="
+       << esdf.lattice_3d_successor_diagnostics.lattice_generated
+       << " lattice_3d_successor_accepted="
+       << esdf.lattice_3d_successor_diagnostics.lattice_accepted
+       << " lattice_3d_successor_reject_edge="
+       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
+       << " lattice_3d_successor_reject_zero="
+       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
+       << " lattice_3d_successor_reject_grid="
+       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
+       << " lattice_3d_successor_reject_invalid="
+       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
+       << " lattice_3d_successor_reject_collision="
+       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_raw_collision
+       << " lattice_3d_successor_reject_risk="
+       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
+       << " lattice_3d_successor_reject_cost="
+       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
+       << " channel_successor_generated="
+       << esdf.lattice_3d_successor_diagnostics.channel_generated
+       << " channel_successor_accepted="
+       << esdf.lattice_3d_successor_diagnostics.channel_accepted
+       << " channel_successor_rejected="
+       << esdf.lattice_3d_successor_diagnostics.channel_rejected
+       << " channel_successor_reject_connection="
+       << esdf.lattice_3d_successor_diagnostics.channel_rejected_connection_distance
+       << " channel_successor_reject_grid="
+       << esdf.lattice_3d_successor_diagnostics.channel_rejected_outside_grid
+       << " channel_successor_reject_invalid="
+       << esdf.lattice_3d_successor_diagnostics.channel_rejected_invalid_esdf
+       << " channel_successor_reject_collision="
+       << esdf.lattice_3d_successor_diagnostics.channel_rejected_raw_collision
+       << " channel_successor_reject_risk="
+       << esdf.lattice_3d_successor_diagnostics.channel_rejected_risk_stage
+       << " channel_successor_reject_cost="
+       << esdf.lattice_3d_successor_diagnostics.channel_rejected_no_cost_improvement
        << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
        << " maximum_eligible_risk_tier="
        << mppi::mppiRiskTierName(snapshot.maximum_eligible_risk_tier)
@@ -559,12 +638,27 @@ void ProductionMppiNode::processDiagnostics(
         << globalGuideProgressActionName(snapshot.guide_progress.action) << '"'
         << ",\"guide_local_reseed_generation\":"
         << snapshot.guide_progress.local_reseed_generation
+        << ",\"planning_search_kind\":\""
+        << productionPlanningSearchKindName(esdf.planning_search_kind) << '"'
+        << ",\"planning_search_start_x\":" << esdf.planning_search_start.x
+        << ",\"planning_search_start_y\":" << esdf.planning_search_start.y
+        << ",\"planning_search_start_z\":" << esdf.planning_search_start.z
+        << ",\"planning_search_goal_x\":" << esdf.planning_search_goal.x
+        << ",\"planning_search_goal_y\":" << esdf.planning_search_goal.y
+        << ",\"planning_search_goal_z\":" << esdf.planning_search_goal.z
+        << ",\"planning_candidate_endpoint_x\":" << esdf.planning_candidate_endpoint.x
+        << ",\"planning_candidate_endpoint_y\":" << esdf.planning_candidate_endpoint.y
+        << ",\"planning_candidate_endpoint_z\":" << esdf.planning_candidate_endpoint.z
+        << ",\"planning_search_direction_x\":" << esdf.planning_search_direction.x
+        << ",\"planning_search_direction_y\":" << esdf.planning_search_direction.y
+        << ",\"planning_search_direction_z\":" << esdf.planning_search_direction.z
+        << ",\"planning_candidate_points\":" << esdf.planning_candidate_points
+        << ",\"planning_candidate_samples\":" << esdf.planning_candidate_samples
         << ",\"lattice_search_performed\":"
         << (esdf.lattice_search_performed ? "true" : "false")
         << ",\"lattice_executable\":" << (esdf.lattice_executable ? "true" : "false")
-        << ",\"lattice_status\":\"" << latticePlanStatusName(esdf.lattice_status) << '"'
-        << ",\"lattice_termination\":\""
-        << latticeSearchTerminationName(esdf.lattice_termination) << '"'
+        << ",\"lattice_status\":\"" << planningStatusName(esdf) << '"'
+        << ",\"lattice_termination\":\"" << planningTerminationName(esdf) << '"'
         << ",\"lattice_continuation_attempt\":" << esdf.lattice_continuation_attempt
         << ",\"lattice_search_session_resumed\":"
         << (esdf.lattice_search_session_resumed ? "true" : "false")
@@ -574,8 +668,20 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_validation_revision\":" << esdf.lattice_validation_revision
         << ",\"lattice_raw_validation\":\""
         << rawGuideValidationStatusName(esdf.lattice_raw_validation_status) << '"'
-        << ",\"lattice_risk_stage\":\"" << latticeRiskStageName(esdf.lattice_risk_stage)
-        << '"' << ",\"topology_objective\":" << esdf.topology_objective_cost
+        << ",\"guide_candidate_validation\":\""
+        << productionGuideCandidateValidationStatusName(
+               esdf.guide_candidate_validation_status)
+        << '"' << ",\"lattice_risk_stage\":\"" << planningRiskStageName(esdf) << '"'
+        << ",\"lattice_3d_minimum_clearance_m\":" << esdf.lattice_3d_minimum_clearance_m
+        << ",\"static_route_candidate\":\""
+        << staticRouteCandidateStatusName(esdf.static_route_candidate_status) << '"'
+        << ",\"static_route_activation\":\""
+        << staticRouteActivationStatusName(esdf.static_route_activation_status) << '"'
+        << ",\"static_route_revision_matches\":"
+        << (esdf.static_route_revision_matches ? "true" : "false")
+        << ",\"static_route_generation_matches\":"
+        << (esdf.static_route_generation_matches ? "true" : "false")
+        << ",\"topology_objective\":" << esdf.topology_objective_cost
         << ",\"topology_route_length_m\":" << esdf.topology_route_length_m
         << ",\"topology_travel_time_s\":" << esdf.topology_travel_time_s
         << ",\"topology_vertical_alignment_time_s\":"
@@ -614,6 +720,42 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.lattice_successor_diagnostics.rejected_blacklisted_failure
         << ",\"lattice_successors_rejected_no_cost_improvement\":"
         << esdf.lattice_successor_diagnostics.rejected_no_cost_improvement
+        << ",\"lattice_3d_successors_generated\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_generated
+        << ",\"lattice_3d_successors_accepted\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_accepted
+        << ",\"lattice_3d_successors_rejected_edge\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
+        << ",\"lattice_3d_successors_rejected_zero_length\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
+        << ",\"lattice_3d_successors_rejected_outside_grid\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
+        << ",\"lattice_3d_successors_rejected_invalid_esdf\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
+        << ",\"lattice_3d_successors_rejected_raw_collision\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_raw_collision
+        << ",\"lattice_3d_successors_rejected_risk_stage\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
+        << ",\"lattice_3d_successors_rejected_no_cost_improvement\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
+        << ",\"channel_successors_generated\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_generated
+        << ",\"channel_successors_accepted\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_accepted
+        << ",\"channel_successors_rejected\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_rejected
+        << ",\"channel_successors_rejected_connection_distance\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_rejected_connection_distance
+        << ",\"channel_successors_rejected_outside_grid\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_rejected_outside_grid
+        << ",\"channel_successors_rejected_invalid_esdf\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_rejected_invalid_esdf
+        << ",\"channel_successors_rejected_raw_collision\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_rejected_raw_collision
+        << ",\"channel_successors_rejected_risk_stage\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_rejected_risk_stage
+        << ",\"channel_successors_rejected_no_cost_improvement\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_rejected_no_cost_improvement
         << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
         << ",\"maximum_eligible_risk_tier\":\""
         << mppi::mppiRiskTierName(snapshot.maximum_eligible_risk_tier) << '"'

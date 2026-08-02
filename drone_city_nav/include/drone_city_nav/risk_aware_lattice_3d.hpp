@@ -27,6 +27,35 @@ enum class Lattice3DRiskStage : std::uint8_t {
   kCriticalAllowed,
 };
 
+enum class Lattice3DSearchTermination : std::uint8_t {
+  kInvalidInput,
+  kPlanningGoalReached,
+  kOpenSetExhausted,
+  kExpansionBudgetExhausted,
+  kDeadlineReached,
+};
+
+struct Lattice3DSuccessorDiagnostics {
+  std::size_t lattice_generated{0U};
+  std::size_t lattice_accepted{0U};
+  std::size_t lattice_rejected_edge{0U};
+  std::size_t lattice_rejected_zero_length{0U};
+  std::size_t lattice_rejected_outside_grid{0U};
+  std::size_t lattice_rejected_invalid_esdf{0U};
+  std::size_t lattice_rejected_raw_collision{0U};
+  std::size_t lattice_rejected_risk_stage{0U};
+  std::size_t lattice_rejected_no_cost_improvement{0U};
+  std::size_t channel_generated{0U};
+  std::size_t channel_accepted{0U};
+  std::size_t channel_rejected{0U};
+  std::size_t channel_rejected_connection_distance{0U};
+  std::size_t channel_rejected_outside_grid{0U};
+  std::size_t channel_rejected_invalid_esdf{0U};
+  std::size_t channel_rejected_raw_collision{0U};
+  std::size_t channel_rejected_risk_stage{0U};
+  std::size_t channel_rejected_no_cost_improvement{0U};
+};
+
 struct RiskAwareLattice3DConfig {
   double horizontal_step_m{2.0};
   double vertical_step_m{1.0};
@@ -53,6 +82,7 @@ struct Lattice3DTopologyCandidate {
   std::string topology;
   Lattice3DRiskStage risk_stage{Lattice3DRiskStage::kPreferredOnly};
   Lattice3DStatus status{Lattice3DStatus::kInvalidInput};
+  Lattice3DSearchTermination termination{Lattice3DSearchTermination::kInvalidInput};
   double objective_cost{0.0};
   double route_length_m{0.0};
   double estimated_travel_time_s{0.0};
@@ -60,6 +90,15 @@ struct Lattice3DTopologyCandidate {
   double planning_exposure_m{0.0};
   double critical_exposure_m{0.0};
   double turn_cost{0.0};
+  double achieved_progress_m{0.0};
+  double minimum_clearance_m{0.0};
+  std::size_t expansions{0U};
+  std::size_t stale_queue_pops{0U};
+  std::size_t open_peak{0U};
+  std::size_t records_peak{0U};
+  std::size_t terminal_successor_count{0U};
+  std::size_t continuation_reachable_states{0U};
+  double continuation_reachable_depth_m{0.0};
   std::string decision_reason;
   bool selected{false};
 };
@@ -67,11 +106,14 @@ struct Lattice3DTopologyCandidate {
 struct RiskAwareLattice3DResult {
   Lattice3DStatus status{Lattice3DStatus::kInvalidInput};
   Lattice3DRiskStage risk_stage{Lattice3DRiskStage::kPreferredOnly};
+  Lattice3DSearchTermination termination{Lattice3DSearchTermination::kInvalidInput};
   std::vector<Point3> points;
   std::vector<RouteSample3D> route;
+  Point3 planning_goal{};
   std::size_t expansions{0U};
   std::size_t stale_queue_pops{0U};
   std::size_t open_peak{0U};
+  std::size_t records_peak{0U};
   std::size_t terminal_successor_count{0U};
   std::size_t continuation_reachable_states{0U};
   double continuation_reachable_depth_m{0.0};
@@ -85,6 +127,7 @@ struct RiskAwareLattice3DResult {
   double planning_exposure_m{0.0};
   double critical_exposure_m{0.0};
   double turn_cost{0.0};
+  Lattice3DSuccessorDiagnostics successor_diagnostics{};
   std::vector<SelectedChannelTraversal> selected_channels;
   std::vector<Lattice3DTopologyCandidate> topology_candidates;
 };
@@ -97,5 +140,10 @@ planRiskAwareLattice3D(const mppi::EsdfGrid& grid, std::span<const float> esdf_m
                        const RiskAwareLattice3DConfig& config);
 
 [[nodiscard]] const char* lattice3DStatusName(Lattice3DStatus status) noexcept;
+
+[[nodiscard]] const char* lattice3DRiskStageName(Lattice3DRiskStage stage) noexcept;
+
+[[nodiscard]] const char*
+lattice3DSearchTerminationName(Lattice3DSearchTermination termination) noexcept;
 
 } // namespace drone_city_nav

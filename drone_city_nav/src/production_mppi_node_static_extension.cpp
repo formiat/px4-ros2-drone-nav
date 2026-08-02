@@ -49,6 +49,12 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
     {
       const std::scoped_lock queue_lock{guide_queue_mutex_};
       if (pending_guide_world_) {
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "STATIC_ROUTE_EXTENSION_REQUEST status=deferred_guide_queue_busy "
+            "generation=%" PRIu64 " station_m=%.2f remaining_m=%.2f",
+            esdf.global_guide_generation, route_projection.station_m,
+            route_projection.remaining_m);
         return;
       }
       pending_guide_world_ = std::move(request);
@@ -65,7 +71,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   static_route_extension_last_request_station_m_ = route_projection.station_m;
   static_route_extension_last_request_stamp_ns_ = now_ns;
   RCLCPP_INFO(get_logger(),
-              "STATIC_ROUTE_EXTENSION_REQUEST generation=%" PRIu64
+              "STATIC_ROUTE_EXTENSION_REQUEST status=queued generation=%" PRIu64
               " station_m=%.2f remaining_m=%.2f mode=%s extension_trigger_m=%.2f "
               "roi_trigger_m=%.2f search_latency_ms=%.2f build_latency_ms=%.2f",
               esdf.global_guide_generation, route_projection.station_m,

@@ -190,9 +190,56 @@ TEST(Route3DTest, LatticeUsesVerticalFreeOpeningWithoutYawConstraint) {
                              Vec3{-1.0, 0.0, 0.0}, Point3{9.5, 5.5, 4.5}, {}, config);
 
   ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_EQ(result.termination, Lattice3DSearchTermination::kPlanningGoalReached);
+  EXPECT_GT(result.records_peak, 0U);
+  EXPECT_GT(result.successor_diagnostics.lattice_generated, 0U);
   ASSERT_FALSE(result.points.empty());
   EXPECT_NEAR(result.points.back().x, 9.5, 1.0e-6);
   EXPECT_TRUE(result.reached_mission_goal);
+}
+
+TEST(Route3DTest, ReportsExpansionBudgetWithoutCallingItGraphExhaustion) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 12, 4}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 20.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.maximum_expansions = 0U;
+  config.maximum_search_time_ms = 1000.0;
+
+  const RiskAwareLattice3DResult result =
+      planRiskAwareLattice3D(grid, field.distancesM(), Point3{1.5, 1.5, 1.5},
+                             Vec3{1.0, 0.0, 0.0}, Point3{10.5, 10.5, 1.5}, {}, config);
+
+  EXPECT_EQ(result.status, Lattice3DStatus::kSearchIncomplete);
+  EXPECT_EQ(result.termination, Lattice3DSearchTermination::kExpansionBudgetExhausted);
+  EXPECT_STREQ(lattice3DSearchTerminationName(result.termination),
+               "expansion_budget_exhausted");
+}
+
+TEST(Route3DTest, ReportsRawCollisionSuccessorRejectionsWhenGraphIsExhausted) {
+  const mppi::EsdfGrid grid{6, 6, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  const std::vector<float> occupied(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth), 0.0F);
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 1.0;
+  config.vertical_step_m = 1.0;
+  config.maximum_search_time_ms = 1000.0;
+
+  const RiskAwareLattice3DResult result =
+      planRiskAwareLattice3D(grid, occupied, Point3{2.5, 2.5, 1.5}, Vec3{1.0, 0.0, 0.0},
+                             Point3{4.5, 4.5, 1.5}, {}, config);
+
+  EXPECT_EQ(result.status, Lattice3DStatus::kMotionGraphExhausted);
+  EXPECT_EQ(result.termination, Lattice3DSearchTermination::kOpenSetExhausted);
+  EXPECT_GT(result.successor_diagnostics.lattice_rejected_raw_collision, 0U);
+  EXPECT_EQ(lattice3DRiskStageName(result.risk_stage), std::string_view{"critical"});
 }
 
 TEST(Route3DTest, LatticeTraversesLShapedChannel) {

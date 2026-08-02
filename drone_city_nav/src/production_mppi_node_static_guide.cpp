@@ -14,6 +14,7 @@ namespace drone_city_nav {
 void ProductionMppiNode::processStaticGuideSearch(
     const ProductionMppiPreparedEsdf& world,
     const ProductionMppiNavigation& navigation) {
+  const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
                            static_cast<double>(navigation.state.vy),
                            static_cast<double>(navigation.state.vz)};
@@ -28,20 +29,45 @@ void ProductionMppiNode::processStaticGuideSearch(
           ? std::span<const ConstrainedFreeSpaceEdge>{*world.channel_edges}
           : std::span<const ConstrainedFreeSpaceEdge>{};
   const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
-      world.grid, *world.distances_m,
-      Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-      preferred_direction, mission_goal_, channel_edges, lattice_3d_config_);
+      world.grid, *world.distances_m, search_start, preferred_direction, mission_goal_,
+      channel_edges, lattice_3d_config_);
   const double search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
   ProductionMppiPreparedEsdf prepared = world;
   prepared.global_guide_search_ms = search_ms;
+  prepared.planning_search_kind = ProductionPlanningSearchKind::kLattice3D;
+  prepared.planning_search_start = search_start;
+  prepared.planning_search_goal = lattice.planning_goal;
+  prepared.planning_candidate_endpoint =
+      lattice.points.empty() ? search_start : lattice.points.back();
+  prepared.planning_search_direction = preferred_direction;
+  prepared.planning_candidate_points = lattice.points.size();
+  prepared.planning_candidate_samples = lattice.route.size();
   prepared.lattice_search_performed = true;
   prepared.lattice_executable =
       lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
       lattice.status == Lattice3DStatus::kViableFrontier;
   prepared.global_guide_expansions = lattice.expansions;
+  prepared.lattice_3d_status = lattice.status;
+  prepared.lattice_3d_risk_stage = lattice.risk_stage;
+  prepared.lattice_3d_termination = lattice.termination;
+  prepared.lattice_3d_minimum_clearance_m = lattice.minimum_clearance_m;
+  prepared.lattice_3d_successor_diagnostics = lattice.successor_diagnostics;
+  prepared.lattice_search_session_complete =
+      lattice.status != Lattice3DStatus::kSearchIncomplete;
+  prepared.lattice_search_revision = world.revision;
+  prepared.lattice_validation_revision = world.revision;
+  prepared.lattice_planning_goal_reached =
+      lattice.status == Lattice3DStatus::kReachedPlanningGoal;
+  prepared.lattice_achieved_progress_m = lattice.achieved_progress_m;
+  prepared.lattice_guide_length_m = lattice.route_length_m;
+  prepared.lattice_remaining_goal_distance_m =
+      distance3D(prepared.planning_candidate_endpoint, lattice.planning_goal);
   prepared.lattice_terminal_successor_count = lattice.terminal_successor_count;
+  prepared.lattice_stale_queue_pops = lattice.stale_queue_pops;
+  prepared.lattice_open_peak = lattice.open_peak;
+  prepared.lattice_records_peak = lattice.records_peak;
   prepared.lattice_continuation_reachable_states =
       lattice.continuation_reachable_states;
   prepared.lattice_reachable_depth_m = lattice.continuation_reachable_depth_m;
@@ -100,6 +126,14 @@ void ProductionMppiNode::processStaticGuideSearch(
         *prepared.route_2d_projection, Point2{navigation.state.x, navigation.state.y});
   }
 
+  prepared.static_route_candidate_status = validation.status;
+  StaticRouteActivationStatus activation_status =
+      prepared.lattice_executable
+          ? StaticRouteActivationStatus::kCandidateValidationRejected
+          : StaticRouteActivationStatus::kCandidateNotExecutable;
+  bool revision_matches = false;
+  bool generation_matches = false;
+
   bool activated = false;
   {
     const std::scoped_lock lock{esdf_state_mutex_};
@@ -107,12 +141,16 @@ void ProductionMppiNode::processStaticGuideSearch(
         world.static_route_replan_request
             ? world.static_route_replan_base_generation
             : world.static_route_extension_base_generation;
-    const bool generation_matches =
+    generation_matches =
         (!world.static_route_extension_request && !world.static_route_replan_request) ||
         (prepared_esdf_ &&
          prepared_esdf_->global_guide_generation == required_base_generation);
-    if (validation.accepted && prepared_esdf_ &&
-        prepared_esdf_->revision == prepared.revision && generation_matches) {
+    revision_matches = prepared_esdf_ && prepared_esdf_->revision == prepared.revision;
+    if (validation.accepted && revision_matches && generation_matches) {
+      activation_status = StaticRouteActivationStatus::kActivated;
+      prepared.static_route_activation_status = activation_status;
+      prepared.static_route_revision_matches = true;
+      prepared.static_route_generation_matches = true;
       prepared.global_guide_generation = ++static_route_generation_;
       prepared.global_guide_release_reason = GlobalGuideReleaseReason::kNone;
       prepared.static_route_extension_request = false;
@@ -122,19 +160,43 @@ void ProductionMppiNode::processStaticGuideSearch(
       prepared.static_route_replan_reason = GlobalGuideReleaseReason::kNone;
       prepared_esdf_ = prepared;
       activated = true;
+    } else if (validation.accepted && !revision_matches) {
+      activation_status = StaticRouteActivationStatus::kStaleWorldRevision;
+    } else if (validation.accepted && !generation_matches) {
+      activation_status = StaticRouteActivationStatus::kStaleRouteGeneration;
     }
   }
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
-      " activated=%s extension=%s replan=%s base_generation=%" PRIu64
+      " activated=%s activation_status=%.*s revision_matches=%s "
+      "generation_matches=%s extension=%s replan=%s base_generation=%" PRIu64
       " replan_reason=%s"
-      " validation=%.*s endpoint_improvement_m=%.2f status=%s "
-      "points=%zu samples=%zu spans=%zu expansions=%zu "
-      "risk_stage=%u objective=%.3f route_length_m=%.2f travel_time_s=%.2f "
+      " validation=%.*s endpoint_improvement_m=%.2f status=%s termination=%s "
+      "points=%zu samples=%zu spans=%zu expansions=%zu expansion_limit=%zu "
+      "deadline_ms=%.2f "
+      "risk_stage=%s start=(%.2f,%.2f,%.2f) planning_goal=(%.2f,%.2f,%.2f) "
+      "endpoint=(%.2f,%.2f,%.2f) direction=(%.3f,%.3f,%.3f) "
+      "achieved_progress_m=%.2f minimum_clearance_m=%.2f stale_pops=%zu "
+      "open_peak=%zu records_peak=%zu terminal_successors=%zu "
+      "continuation_states=%zu continuation_depth_m=%.2f "
+      "lattice_successor_generated=%zu lattice_successor_accepted=%zu "
+      "lattice_successor_reject_edge=%zu lattice_successor_reject_zero=%zu "
+      "lattice_successor_reject_grid=%zu lattice_successor_reject_invalid=%zu "
+      "lattice_successor_reject_collision=%zu lattice_successor_reject_risk=%zu "
+      "lattice_successor_reject_cost=%zu "
+      "channel_successor_generated=%zu channel_successor_accepted=%zu "
+      "channel_successor_rejected=%zu channel_successor_reject_connection=%zu "
+      "channel_successor_reject_grid=%zu channel_successor_reject_invalid=%zu "
+      "channel_successor_reject_collision=%zu channel_successor_reject_risk=%zu "
+      "channel_successor_reject_cost=%zu "
+      "objective=%.3f route_length_m=%.2f travel_time_s=%.2f "
       "vertical_alignment_time_s=%.2f planning_exposure_m=%.2f "
       "critical_exposure_m=%.2f selected_channels=%zu search_ms=%.2f",
       prepared.revision, activated ? "true" : "false",
+      static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
+      staticRouteActivationStatusName(activation_status).data(),
+      revision_matches ? "true" : "false", generation_matches ? "true" : "false",
       world.static_route_extension_request ? "true" : "false",
       world.static_route_replan_request ? "true" : "false",
       world.static_route_replan_request ? world.static_route_replan_base_generation
@@ -143,22 +205,61 @@ void ProductionMppiNode::processStaticGuideSearch(
       static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
       staticRouteCandidateStatusName(validation.status).data(),
       validation.endpoint_improvement_m, lattice3DStatusName(lattice.status),
-      lattice.points.size(), lattice.route.size(),
+      lattice3DSearchTerminationName(lattice.termination), lattice.points.size(),
+      lattice.route.size(),
       prepared.constrained_spans ? prepared.constrained_spans->size() : 0U,
-      lattice.expansions, static_cast<unsigned>(lattice.risk_stage),
+      lattice.expansions, lattice_3d_config_.maximum_expansions,
+      lattice_3d_config_.maximum_search_time_ms,
+      lattice3DRiskStageName(lattice.risk_stage), search_start.x, search_start.y,
+      search_start.z, lattice.planning_goal.x, lattice.planning_goal.y,
+      lattice.planning_goal.z, prepared.planning_candidate_endpoint.x,
+      prepared.planning_candidate_endpoint.y, prepared.planning_candidate_endpoint.z,
+      preferred_direction.x, preferred_direction.y, preferred_direction.z,
+      lattice.achieved_progress_m, lattice.minimum_clearance_m,
+      lattice.stale_queue_pops, lattice.open_peak, lattice.records_peak,
+      lattice.terminal_successor_count, lattice.continuation_reachable_states,
+      lattice.continuation_reachable_depth_m,
+      lattice.successor_diagnostics.lattice_generated,
+      lattice.successor_diagnostics.lattice_accepted,
+      lattice.successor_diagnostics.lattice_rejected_edge,
+      lattice.successor_diagnostics.lattice_rejected_zero_length,
+      lattice.successor_diagnostics.lattice_rejected_outside_grid,
+      lattice.successor_diagnostics.lattice_rejected_invalid_esdf,
+      lattice.successor_diagnostics.lattice_rejected_raw_collision,
+      lattice.successor_diagnostics.lattice_rejected_risk_stage,
+      lattice.successor_diagnostics.lattice_rejected_no_cost_improvement,
+      lattice.successor_diagnostics.channel_generated,
+      lattice.successor_diagnostics.channel_accepted,
+      lattice.successor_diagnostics.channel_rejected,
+      lattice.successor_diagnostics.channel_rejected_connection_distance,
+      lattice.successor_diagnostics.channel_rejected_outside_grid,
+      lattice.successor_diagnostics.channel_rejected_invalid_esdf,
+      lattice.successor_diagnostics.channel_rejected_raw_collision,
+      lattice.successor_diagnostics.channel_rejected_risk_stage,
+      lattice.successor_diagnostics.channel_rejected_no_cost_improvement,
       lattice.objective_cost, lattice.route_length_m, lattice.estimated_travel_time_s,
       lattice.vertical_alignment_time_s, lattice.planning_exposure_m,
       lattice.critical_exposure_m, lattice.selected_channels.size(), search_ms);
   for (const Lattice3DTopologyCandidate& candidate : lattice.topology_candidates) {
     RCLCPP_INFO(get_logger(),
                 "PRODUCTION_MPPI_TOPOLOGY_CANDIDATE revision=%" PRIu64
-                " topology=%s risk_stage=%u status=%s objective=%.3f "
+                " topology=%s risk_stage=%s status=%s termination=%s "
+                "achieved_progress_m=%.2f minimum_clearance_m=%.2f "
+                "expansions=%zu stale_pops=%zu open_peak=%zu records_peak=%zu "
+                "terminal_successors=%zu continuation_states=%zu "
+                "continuation_depth_m=%.2f objective=%.3f "
                 "route_length_m=%.2f travel_time_s=%.2f "
                 "vertical_alignment_time_s=%.2f planning_exposure_m=%.2f "
                 "critical_exposure_m=%.2f turn_cost=%.3f selected=%s reason=%s",
                 prepared.revision, candidate.topology.c_str(),
-                static_cast<unsigned>(candidate.risk_stage),
-                lattice3DStatusName(candidate.status), candidate.objective_cost,
+                lattice3DRiskStageName(candidate.risk_stage),
+                lattice3DStatusName(candidate.status),
+                lattice3DSearchTerminationName(candidate.termination),
+                candidate.achieved_progress_m, candidate.minimum_clearance_m,
+                candidate.expansions, candidate.stale_queue_pops, candidate.open_peak,
+                candidate.records_peak, candidate.terminal_successor_count,
+                candidate.continuation_reachable_states,
+                candidate.continuation_reachable_depth_m, candidate.objective_cost,
                 candidate.route_length_m, candidate.estimated_travel_time_s,
                 candidate.vertical_alignment_time_s, candidate.planning_exposure_m,
                 candidate.critical_exposure_m, candidate.turn_cost,

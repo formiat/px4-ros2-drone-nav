@@ -179,4 +179,23 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
   return "unknown";
 }
 
+std::string_view
+staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexcept {
+  switch (status) {
+    case StaticRouteActivationStatus::kNotAttempted:
+      return "not_attempted";
+    case StaticRouteActivationStatus::kActivated:
+      return "activated";
+    case StaticRouteActivationStatus::kCandidateNotExecutable:
+      return "candidate_not_executable";
+    case StaticRouteActivationStatus::kCandidateValidationRejected:
+      return "candidate_validation_rejected";
+    case StaticRouteActivationStatus::kStaleWorldRevision:
+      return "stale_world_revision";
+    case StaticRouteActivationStatus::kStaleRouteGeneration:
+      return "stale_route_generation";
+  }
+  return "unknown";
+}
+
 } // namespace drone_city_nav

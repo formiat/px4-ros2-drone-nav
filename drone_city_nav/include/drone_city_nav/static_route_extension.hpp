@@ -64,6 +64,15 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
   kNoEndpointImprovement,
 };
 
+enum class StaticRouteActivationStatus : std::uint8_t {
+  kNotAttempted,
+  kActivated,
+  kCandidateNotExecutable,
+  kCandidateValidationRejected,
+  kStaleWorldRevision,
+  kStaleRouteGeneration,
+};
+
 struct StaticRouteCandidateValidation {
   StaticRouteCandidateStatus status{StaticRouteCandidateStatus::kEmpty};
   double endpoint_improvement_m{0.0};
@@ -94,5 +103,8 @@ deferStaticRouteReleaseDuringExtension(bool request_in_flight,
 
 [[nodiscard]] std::string_view
 staticRouteCandidateStatusName(StaticRouteCandidateStatus status) noexcept;
+
+[[nodiscard]] std::string_view
+staticRouteActivationStatusName(StaticRouteActivationStatus status) noexcept;
 
 } // namespace drone_city_nav

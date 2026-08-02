@@ -128,6 +128,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     std::shared_ptr<const std::vector<Point2>> guide;
     std::shared_ptr<const ProductionMppiPreparedEsdf> publication_world = world;
     RawGuideValidationResult raw_validation;
+    ProductionGuideCandidateValidationStatus candidate_validation_status{
+        ProductionGuideCandidateValidationStatus::kNotAttempted};
     std::uint64_t validation_revision = 0U;
     bool latest_world_rejected_candidate = false;
     if (navigation.valid && active_guide_lifecycle_) {
@@ -156,6 +158,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
             }
             if (!validation_world || !validation_world->distances_m ||
                 !validation_world->raw_occupancy || !validation_navigation.valid) {
+              candidate_validation_status =
+                  ProductionGuideCandidateValidationStatus::kUnavailableLatestWorld;
               latest_world_rejected_candidate = true;
               return false;
             }
@@ -164,9 +168,16 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                 Point2{validation_navigation.state.x, validation_navigation.state.y};
             const GlobalGuideProjection candidate_projection =
                 projectOntoGlobalGuide(*candidate, candidate_validation_position);
-            if (!candidate_projection.valid ||
-                candidate_projection.cross_track_m >
-                    active_guide_config_.maximum_cross_track_m) {
+            if (!candidate_projection.valid) {
+              candidate_validation_status =
+                  ProductionGuideCandidateValidationStatus::kInvalidProjection;
+              latest_world_rejected_candidate = true;
+              return false;
+            }
+            if (candidate_projection.cross_track_m >
+                active_guide_config_.maximum_cross_track_m) {
+              candidate_validation_status =
+                  ProductionGuideCandidateValidationStatus::kExcessiveCrossTrack;
               latest_world_rejected_candidate = true;
               return false;
             }
@@ -175,6 +186,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                 active_guide_config_.validation_sample_step_m,
                 candidate_projection.station_m);
             if (!raw_validation.accepted) {
+              candidate_validation_status =
+                  ProductionGuideCandidateValidationStatus::kRawValidationRejected;
               latest_world_rejected_candidate = true;
               return false;
             }
@@ -184,9 +197,13 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                              *validation_world->distances_m,
                              candidate_validation_position)
                      .accepted) {
+              candidate_validation_status =
+                  ProductionGuideCandidateValidationStatus::kLifecycleRejected;
               latest_world_rejected_candidate = true;
               return false;
             }
+            candidate_validation_status =
+                ProductionGuideCandidateValidationStatus::kAccepted;
             publication_world = std::move(validation_world);
             return true;
           };
@@ -347,6 +364,24 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     prepared.global_guide_risk = active_status.current_risk;
     prepared.global_guide_acceptance_reason = guide_acceptance.reason;
     prepared.global_guide_projection = active_status.projection;
+    if (lattice_search_performed) {
+      prepared.planning_search_kind = ProductionPlanningSearchKind::kLattice2D;
+      prepared.planning_search_start =
+          Point3{navigation.state.x, navigation.state.y, navigation.state.z};
+      prepared.planning_search_goal =
+          Point3{lattice_observation.planning_goal.x,
+                 lattice_observation.planning_goal.y, mission_goal_.z};
+      prepared.planning_candidate_endpoint =
+          lattice_observation.guide.empty()
+              ? prepared.planning_search_start
+              : Point3{lattice_observation.guide.back().x,
+                       lattice_observation.guide.back().y, mission_goal_.z};
+      prepared.planning_search_direction =
+          Vec3{std::cos(guide_heading.heading_rad), std::sin(guide_heading.heading_rad),
+               0.0};
+      prepared.planning_candidate_points = lattice_observation.guide.size();
+      prepared.planning_candidate_samples = lattice_observation.guide.size();
+    }
     prepared.lattice_search_performed = lattice_search_performed;
     prepared.lattice_executable = lattice_observation.valid;
     prepared.lattice_status = lattice_observation.status;
@@ -380,6 +415,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     prepared.lattice_search_revision = world->revision;
     prepared.lattice_validation_revision = validation_revision;
     prepared.lattice_raw_validation_status = raw_validation.status;
+    prepared.guide_candidate_validation_status = candidate_validation_status;
     bool activated = false;
     {
       const std::scoped_lock lock{esdf_state_mutex_};
@@ -392,22 +428,30 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         get_logger(),
         "PRODUCTION_MPPI_GUIDE revision=%" PRIu64 " search_revision=%" PRIu64
         " validation_revision=%" PRIu64
-        " raw_validation=%s activated=%s continuation_attempt=%zu "
+        " candidate_validation=%s raw_validation=%s activated=%s "
+        "continuation_attempt=%zu "
         "search_session_resumed=%s search_session_complete=%s "
         "dropped_guide_worlds=%" PRIu64
         " guide_valid=%s guide_points=%zu guide_expansions=%zu guide_cost=%.2f "
+        "search_start=(%.2f,%.2f,%.2f) planning_goal=(%.2f,%.2f,%.2f) "
+        "endpoint=(%.2f,%.2f,%.2f) direction=(%.3f,%.3f,%.3f) "
         "guide_generation=%" PRIu64
         " guide_reused=%s guide_reaches_mission_goal=%s guide_release=%s "
         "guide_heading_source=%s guide_risk=%s guide_acceptance=%s "
         "guide_station_m=%.2f "
         "guide_remaining_m=%.2f guide_cross_track_m=%.2f "
         "lattice_search_performed=%s lattice_executable=%s lattice_status=%s "
-        "lattice_termination=%s lattice_planning_goal_reached=%s "
+        "lattice_termination=%s lattice_risk_stage=%s "
+        "lattice_expansion_limit=%zu lattice_deadline_ms=%.2f "
+        "lattice_planning_goal_reached=%s "
         "lattice_achieved_progress_m=%.2f lattice_guide_length_m=%.2f "
         "lattice_remaining_goal_distance_m=%.2f "
+        "lattice_stale_pops=%zu lattice_open_peak=%zu lattice_records_peak=%zu "
+        "lattice_continuation_states=%zu lattice_reachable_depth_m=%.2f "
         "lattice_frontier_endpoint_displacement_m=%.2f "
         "lattice_frontier_selection_score=%.2f "
-        "lattice_terminal_successors=%zu successor_generated=%zu "
+        "lattice_frontier_candidates=%zu lattice_terminal_successors=%zu "
+        "successor_generated=%zu "
         "successor_accepted=%zu successor_reject_roi=%zu "
         "successor_reject_grid=%zu successor_reject_invalid=%zu "
         "successor_reject_collision=%zu "
@@ -415,6 +459,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         "successor_reject_cost=%zu",
         prepared.revision, prepared.lattice_search_revision,
         prepared.lattice_validation_revision,
+        productionGuideCandidateValidationStatusName(
+            prepared.guide_candidate_validation_status),
         rawGuideValidationStatusName(prepared.lattice_raw_validation_status),
         activated ? "true" : "false", continuation_attempt,
         prepared.lattice_search_session_resumed ? "true" : "false",
@@ -422,6 +468,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         dropped_guide_worlds_.load(std::memory_order_relaxed),
         guide && guide->size() >= 2U ? "true" : "false", guide ? guide->size() : 0U,
         prepared.global_guide_expansions, prepared.global_guide_cost,
+        prepared.planning_search_start.x, prepared.planning_search_start.y,
+        prepared.planning_search_start.z, prepared.planning_search_goal.x,
+        prepared.planning_search_goal.y, prepared.planning_search_goal.z,
+        prepared.planning_candidate_endpoint.x, prepared.planning_candidate_endpoint.y,
+        prepared.planning_candidate_endpoint.z, prepared.planning_search_direction.x,
+        prepared.planning_search_direction.y, prepared.planning_search_direction.z,
         prepared.global_guide_generation,
         prepared.global_guide_reused ? "true" : "false",
         prepared.global_guide_reaches_mission_goal ? "true" : "false",
@@ -436,11 +488,17 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         prepared.lattice_executable ? "true" : "false",
         latticePlanStatusName(prepared.lattice_status),
         latticeSearchTerminationName(prepared.lattice_termination),
+        latticeRiskStageName(prepared.lattice_risk_stage),
+        search_config.maximum_expansions, search_config.maximum_search_time_ms,
         prepared.lattice_planning_goal_reached ? "true" : "false",
         prepared.lattice_achieved_progress_m, prepared.lattice_guide_length_m,
-        prepared.lattice_remaining_goal_distance_m,
+        prepared.lattice_remaining_goal_distance_m, prepared.lattice_stale_queue_pops,
+        prepared.lattice_open_peak, prepared.lattice_records_peak,
+        prepared.lattice_continuation_reachable_states,
+        prepared.lattice_reachable_depth_m,
         prepared.lattice_frontier_endpoint_displacement_m,
         prepared.lattice_frontier_selection_score,
+        prepared.lattice_frontier_candidates_considered,
         prepared.lattice_terminal_successor_count,
         prepared.lattice_successor_diagnostics.generated,
         prepared.lattice_successor_diagnostics.accepted,
@@ -980,11 +1038,24 @@ void ProductionMppiNode::requestGuideRelease(const GlobalGuideReleaseReason reas
   if (use_static_map_) {
     std::shared_ptr<ProductionMppiPreparedEsdf> request;
     std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
+    const bool replan_in_flight = static_route_replan_gate_.inFlight();
     if (deferStaticRouteReleaseDuringExtension(
-            static_route_extension_request_in_flight_ ||
-                static_route_replan_gate_.inFlight(),
-            reason) ||
-        static_route_replan_gate_.inFlight()) {
+            static_route_extension_request_in_flight_ || replan_in_flight, reason)) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "STATIC_ROUTE_REPLAN_REQUEST status=deferred_active_request "
+                           "in_flight_generation=%" PRIu64
+                           " requested_generation=%" PRIu64 " reason=%s",
+                           static_route_replan_gate_.generation(), guide_generation,
+                           globalGuideReleaseReasonName(reason));
+      return;
+    }
+    if (replan_in_flight) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "STATIC_ROUTE_REPLAN_REQUEST status=coalesced_replan_in_flight "
+          "in_flight_generation=%" PRIu64 " requested_generation=%" PRIu64 " reason=%s",
+          static_route_replan_gate_.generation(), guide_generation,
+          globalGuideReleaseReasonName(reason));
       return;
     }
     {
@@ -992,6 +1063,13 @@ void ProductionMppiNode::requestGuideRelease(const GlobalGuideReleaseReason reas
       if (!prepared_esdf_ || prepared_esdf_->global_guide_generation == 0U ||
           (guide_generation != 0U &&
            prepared_esdf_->global_guide_generation != guide_generation)) {
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "
+            "resident_generation=%" PRIu64 " requested_generation=%" PRIu64
+            " reason=%s",
+            prepared_esdf_ ? prepared_esdf_->global_guide_generation : 0U,
+            guide_generation, globalGuideReleaseReasonName(reason));
         return;
       }
       request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
@@ -1003,16 +1081,33 @@ void ProductionMppiNode::requestGuideRelease(const GlobalGuideReleaseReason reas
     }
     {
       const std::scoped_lock queue_lock{guide_queue_mutex_};
-      if (pending_guide_world_ || !static_route_replan_gate_.tryBegin(
-                                      request->static_route_replan_base_generation)) {
+      if (pending_guide_world_) {
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "STATIC_ROUTE_REPLAN_REQUEST status=deferred_guide_queue_busy "
+            "generation=%" PRIu64 " reason=%s",
+            request->static_route_replan_base_generation,
+            globalGuideReleaseReasonName(reason));
+        return;
+      }
+      if (!static_route_replan_gate_.tryBegin(
+              request->static_route_replan_base_generation)) {
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "STATIC_ROUTE_REPLAN_REQUEST status=coalesced_gate_rejected "
+            "generation=%" PRIu64 " in_flight_generation=%" PRIu64 " reason=%s",
+            request->static_route_replan_base_generation,
+            static_route_replan_gate_.generation(),
+            globalGuideReleaseReasonName(reason));
         return;
       }
       pending_guide_world_ = request;
     }
     guide_queue_condition_.notify_all();
     RCLCPP_INFO(get_logger(),
-                "STATIC_ROUTE_REPLAN_REQUEST generation=%" PRIu64 " reason=%s",
-                request->static_route_replan_base_generation,
+                "STATIC_ROUTE_REPLAN_REQUEST status=queued generation=%" PRIu64
+                " resident_esdf_revision=%" PRIu64 " reason=%s",
+                request->static_route_replan_base_generation, request->revision,
                 globalGuideReleaseReasonName(reason));
     return;
   }

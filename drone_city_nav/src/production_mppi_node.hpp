@@ -50,6 +50,22 @@ struct ProductionMppiNavigation {
   bool valid{false};
 };
 
+enum class ProductionPlanningSearchKind : std::uint8_t {
+  kNone,
+  kLattice2D,
+  kLattice3D,
+};
+
+enum class ProductionGuideCandidateValidationStatus : std::uint8_t {
+  kNotAttempted,
+  kAccepted,
+  kUnavailableLatestWorld,
+  kInvalidProjection,
+  kExcessiveCrossTrack,
+  kRawValidationRejected,
+  kLifecycleRejected,
+};
+
 struct ProductionMppiPreparedEsdf {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t revision{0U};
@@ -88,6 +104,14 @@ struct ProductionMppiPreparedEsdf {
   GlobalGuideAcceptanceReason global_guide_acceptance_reason{
       GlobalGuideAcceptanceReason::kNotAttempted};
   GlobalGuideProjection global_guide_projection{};
+  ProductionPlanningSearchKind planning_search_kind{
+      ProductionPlanningSearchKind::kNone};
+  Point3 planning_search_start{};
+  Point3 planning_search_goal{};
+  Point3 planning_candidate_endpoint{};
+  Vec3 planning_search_direction{};
+  std::size_t planning_candidate_points{0U};
+  std::size_t planning_candidate_samples{0U};
   bool lattice_search_performed{false};
   bool lattice_executable{false};
   LatticePlanStatus lattice_status{LatticePlanStatus::kInvalidInput};
@@ -107,6 +131,12 @@ struct ProductionMppiPreparedEsdf {
   double lattice_frontier_selection_score{0.0};
   std::size_t lattice_frontier_candidates_considered{0U};
   LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
+  Lattice3DStatus lattice_3d_status{Lattice3DStatus::kInvalidInput};
+  Lattice3DRiskStage lattice_3d_risk_stage{Lattice3DRiskStage::kPreferredOnly};
+  Lattice3DSearchTermination lattice_3d_termination{
+      Lattice3DSearchTermination::kInvalidInput};
+  double lattice_3d_minimum_clearance_m{0.0};
+  Lattice3DSuccessorDiagnostics lattice_3d_successor_diagnostics{};
   std::size_t lattice_continuation_attempt{0U};
   bool lattice_search_session_resumed{false};
   bool lattice_search_session_complete{true};
@@ -114,11 +144,19 @@ struct ProductionMppiPreparedEsdf {
   std::uint64_t lattice_validation_revision{0U};
   RawGuideValidationStatus lattice_raw_validation_status{
       RawGuideValidationStatus::kInvalidGuide};
+  ProductionGuideCandidateValidationStatus guide_candidate_validation_status{
+      ProductionGuideCandidateValidationStatus::kNotAttempted};
   bool static_route_extension_request{false};
   std::uint64_t static_route_extension_base_generation{0U};
   bool static_route_replan_request{false};
   std::uint64_t static_route_replan_base_generation{0U};
   GlobalGuideReleaseReason static_route_replan_reason{GlobalGuideReleaseReason::kNone};
+  StaticRouteCandidateStatus static_route_candidate_status{
+      StaticRouteCandidateStatus::kEmpty};
+  StaticRouteActivationStatus static_route_activation_status{
+      StaticRouteActivationStatus::kNotAttempted};
+  bool static_route_revision_matches{false};
+  bool static_route_generation_matches{false};
 };
 
 struct ProductionMppiStability {
@@ -218,6 +256,10 @@ productionMppiPlanningStateName(ProductionMppiPlanningState state) noexcept;
 productionMppiExecutionModeName(ProductionMppiExecutionMode mode) noexcept;
 [[nodiscard]] const char*
 productionMppiExecutionReasonName(ProductionMppiExecutionReason reason) noexcept;
+[[nodiscard]] const char*
+productionPlanningSearchKindName(ProductionPlanningSearchKind kind) noexcept;
+[[nodiscard]] const char* productionGuideCandidateValidationStatusName(
+    ProductionGuideCandidateValidationStatus status) noexcept;
 
 class ProductionMppiNode final : public rclcpp::Node {
 public:
