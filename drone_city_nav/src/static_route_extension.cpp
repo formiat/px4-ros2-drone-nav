@@ -17,6 +17,28 @@ namespace {
 
 } // namespace
 
+bool StaticRouteReplanGate::tryBegin(const std::uint64_t route_generation) noexcept {
+  if (route_generation == 0U || generation_ != 0U) {
+    return false;
+  }
+  generation_ = route_generation;
+  return true;
+}
+
+void StaticRouteReplanGate::finish(const std::uint64_t route_generation) noexcept {
+  if (generation_ == route_generation) {
+    generation_ = 0U;
+  }
+}
+
+bool StaticRouteReplanGate::inFlight() const noexcept {
+  return generation_ != 0U;
+}
+
+std::uint64_t StaticRouteReplanGate::generation() const noexcept {
+  return generation_;
+}
+
 StaticRouteExtensionDecision evaluateStaticRouteExtension(
     const StaticRouteExtensionConfig& config,
     const StaticRouteExtensionObservation& observation) noexcept {

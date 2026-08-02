@@ -31,7 +31,8 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
           .route_reaches_mission_goal = esdf.global_guide_reaches_mission_goal,
           .next_planning_goal_inside_esdf =
               staticRoutePointInsideEsdf(esdf.grid, next_planning_goal),
-          .request_in_flight = static_route_extension_request_in_flight_,
+          .request_in_flight = static_route_extension_request_in_flight_ ||
+                               static_route_replan_gate_.inFlight(),
           .last_request_generation = static_route_extension_last_request_generation_,
           .last_request_station_m = static_route_extension_last_request_station_m_,
           .request_stamp_ns = now_ns,
@@ -83,6 +84,12 @@ void ProductionMppiNode::finishStaticRouteExtension(
     static_route_extension_request_in_flight_ = false;
     static_route_extension_in_flight_generation_ = 0U;
   }
+}
+
+void ProductionMppiNode::finishStaticRouteReplan(
+    const std::uint64_t base_generation) noexcept {
+  const std::scoped_lock lock{static_route_extension_mutex_};
+  static_route_replan_gate_.finish(base_generation);
 }
 
 } // namespace drone_city_nav

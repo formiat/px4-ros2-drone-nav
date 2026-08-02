@@ -95,6 +95,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         navigation = navigation_;
       }
       if (!navigation.valid) {
+        if (world->static_route_extension_request) {
+          finishStaticRouteExtension(world->static_route_extension_base_generation);
+        }
+        if (world->static_route_replan_request) {
+          finishStaticRouteReplan(world->static_route_replan_base_generation);
+        }
         world.reset();
         continue;
       }
@@ -736,13 +742,17 @@ void ProductionMppiNode::planningTick() {
         .stamp_ns = now_ns,
         .actual_state = navigation.state,
         .controller_active = control_feedback_fresh &&
-                             planning_state == ProductionMppiPlanningState::kPlanned,
+                             planning_state == ProductionMppiPlanningState::kPlanned &&
+                             !route_control.hold_xy && route_projection.valid,
         .emergency_braking =
             control_feedback_fresh && applied_control.emergency_braking,
         .predicted_head_progress_m =
             previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
         .predicted_terminal_progress_m =
             previous_result_.has_value() ? previous_result_->terminal_progress_m : 0.0,
+        .route_generation = esdf->global_guide_generation,
+        .route_station_m = route_projection.station_m,
+        .route_station_valid = route_projection.valid,
     });
   }
   GlobalGuideProgressUpdate guide_progress;
@@ -757,14 +767,15 @@ void ProductionMppiNode::planningTick() {
         .station_m = projection.station_m,
         .predicted_head_progress_m =
             previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
-        .controller_active = control_feedback_fresh,
+        .controller_active = control_feedback_fresh && !route_control.hold_xy,
         .emergency_braking =
             control_feedback_fresh && applied_control.emergency_braking,
     });
     if (guide_progress.stalled) {
       requestGuideRelease(guide_progress.persistent_safety_rejection
                               ? GlobalGuideReleaseReason::kPersistentSafetyRejection
-                              : GlobalGuideReleaseReason::kStalled);
+                              : GlobalGuideReleaseReason::kStalled,
+                          esdf->global_guide_generation);
     }
   }
   const MppiNominalReseedUpdate nominal_reseed =
@@ -779,19 +790,31 @@ void ProductionMppiNode::planningTick() {
   if (risk_escalation_) {
     const bool stable_progress = previous_result_.has_value() &&
                                  previous_result_->eligible_risk_contract.available &&
-                                 previous_result_->head_progress_m >=
-                                     liveness_config_.minimum_actual_displacement_m &&
-                                 std::hypot(navigation.state.vx, navigation.state.vy) >=
-                                     liveness_config_.minimum_actual_displacement_m;
+                                 guide_progress.progress_m > 1.0e-3;
     maximum_eligible_risk_tier_ =
         risk_escalation_
             ->update(MppiRiskEscalationObservation{
-                .reseed_generation = liveness.reseed_generation,
+                .reseed_generation =
+                    liveness.reseed_generation + guide_progress.local_reseed_generation,
                 .no_eligible_recovery_generation =
                     nominal_reseed.no_eligible_recovery_generation,
                 .stable_progress = stable_progress,
             })
             .maximum_eligible_tier;
+  }
+  mppi::RiskTier route_required_risk_tier = mppi::RiskTier::kPreferred;
+  if (esdf->mppi_route && route_projection.valid) {
+    const double horizon_distance_m = std::max(
+        target_station_m - route_projection.station_m,
+        speed_policy.reference_speed_mps * static_cast<double>(mppi_config_.steps) *
+            static_cast<double>(mppi_config_.dynamics.dt_s));
+    route_required_risk_tier = mppi::maximumRequiredRiskTier(
+        *esdf->mppi_route, static_cast<float>(route_projection.station_m),
+        static_cast<float>(route_projection.station_m +
+                           std::max(0.0, horizon_distance_m)));
+    maximum_eligible_risk_tier_ = static_cast<mppi::RiskTier>(
+        std::max(static_cast<std::uint8_t>(maximum_eligible_risk_tier_),
+                 static_cast<std::uint8_t>(route_required_risk_tier)));
   }
   mppi::MppiTickInput input{
       .initial_state = navigation.state,
@@ -857,7 +880,8 @@ void ProductionMppiNode::planningTick() {
     no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
         result.eligible_risk_contract.available, result.nominal_reseeded);
     if (no_eligible_recovery.guide_replan_requested) {
-      requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts);
+      requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts,
+                          esdf->global_guide_generation);
     }
   }
   ++tick_sequence_;
@@ -938,6 +962,7 @@ void ProductionMppiNode::planningTick() {
       .route_projection_valid = route_projection.valid,
       .liveness_reseed_requested = liveness.reseed_requested,
       .pose_predicted = pose_predicted,
+      .route_required_risk_tier = route_required_risk_tier,
       .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
   });
   {
@@ -950,14 +975,46 @@ void ProductionMppiNode::planningTick() {
   previous_result_ = result;
 }
 
-void ProductionMppiNode::requestGuideRelease(
-    const GlobalGuideReleaseReason reason) noexcept {
+void ProductionMppiNode::requestGuideRelease(const GlobalGuideReleaseReason reason,
+                                             const std::uint64_t guide_generation) {
   if (use_static_map_) {
-    const std::scoped_lock lock{static_route_extension_mutex_};
+    std::shared_ptr<ProductionMppiPreparedEsdf> request;
+    std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
     if (deferStaticRouteReleaseDuringExtension(
-            static_route_extension_request_in_flight_, reason)) {
+            static_route_extension_request_in_flight_ ||
+                static_route_replan_gate_.inFlight(),
+            reason) ||
+        static_route_replan_gate_.inFlight()) {
       return;
     }
+    {
+      const std::scoped_lock esdf_lock{esdf_state_mutex_};
+      if (!prepared_esdf_ || prepared_esdf_->global_guide_generation == 0U ||
+          (guide_generation != 0U &&
+           prepared_esdf_->global_guide_generation != guide_generation)) {
+        return;
+      }
+      request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
+      request->global_guide_release_reason = reason;
+      request->static_route_replan_request = true;
+      request->static_route_replan_base_generation =
+          prepared_esdf_->global_guide_generation;
+      request->static_route_replan_reason = reason;
+    }
+    {
+      const std::scoped_lock queue_lock{guide_queue_mutex_};
+      if (pending_guide_world_ || !static_route_replan_gate_.tryBegin(
+                                      request->static_route_replan_base_generation)) {
+        return;
+      }
+      pending_guide_world_ = request;
+    }
+    guide_queue_condition_.notify_all();
+    RCLCPP_INFO(get_logger(),
+                "STATIC_ROUTE_REPLAN_REQUEST generation=%" PRIu64 " reason=%s",
+                request->static_route_replan_base_generation,
+                globalGuideReleaseReasonName(reason));
+    return;
   }
   guide_release_reason_.store(reason, std::memory_order_relaxed);
   guide_release_generation_.fetch_add(1U, std::memory_order_release);

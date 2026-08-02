@@ -43,6 +43,17 @@ struct StaticRouteExtensionDecision {
   double roi_refresh_trigger_remaining_m{0.0};
 };
 
+class StaticRouteReplanGate {
+public:
+  [[nodiscard]] bool tryBegin(std::uint64_t route_generation) noexcept;
+  void finish(std::uint64_t route_generation) noexcept;
+  [[nodiscard]] bool inFlight() const noexcept;
+  [[nodiscard]] std::uint64_t generation() const noexcept;
+
+private:
+  std::uint64_t generation_{0U};
+};
+
 enum class StaticRouteCandidateStatus : std::uint8_t {
   kAccepted,
   kEmpty,

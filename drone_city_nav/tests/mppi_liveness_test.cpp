@@ -69,6 +69,48 @@ TEST(MppiLivenessTest, VerticalAlignmentCountsAsMovement) {
   EXPECT_EQ(result.state, MppiLivenessState::kMoving);
 }
 
+TEST(MppiLivenessTest, LateralAndVerticalMotionDoNotMaskMissingRouteProgress) {
+  MppiLivenessSupervisor supervisor;
+  MppiLivenessObservation first = observation(1'000'000'000LL);
+  first.route_generation = 4U;
+  first.route_station_m = 10.0;
+  first.route_station_valid = true;
+  (void)supervisor.evaluate(first);
+
+  mppi::State moved;
+  moved.y = 2.0F;
+  moved.z = 1.0F;
+  MppiLivenessObservation second = observation(2'100'000'000LL, moved);
+  second.route_generation = 4U;
+  second.route_station_m = 10.1;
+  second.route_station_valid = true;
+  const MppiLivenessResult result = supervisor.evaluate(second);
+
+  EXPECT_TRUE(result.reseed_requested);
+  EXPECT_TRUE(result.used_route_progress);
+  EXPECT_NEAR(result.actual_route_progress_m, 0.1, 1.0e-9);
+  EXPECT_GT(result.actual_displacement_m, 2.0);
+}
+
+TEST(MppiLivenessTest, AlongRouteProgressCountsAsUsefulMovement) {
+  MppiLivenessSupervisor supervisor;
+  MppiLivenessObservation first = observation(1'000'000'000LL);
+  first.route_generation = 4U;
+  first.route_station_m = 10.0;
+  first.route_station_valid = true;
+  (void)supervisor.evaluate(first);
+
+  MppiLivenessObservation second = observation(2'100'000'000LL);
+  second.route_generation = 4U;
+  second.route_station_m = 10.6;
+  second.route_station_valid = true;
+  const MppiLivenessResult result = supervisor.evaluate(second);
+
+  EXPECT_FALSE(result.reseed_requested);
+  EXPECT_EQ(result.state, MppiLivenessState::kMoving);
+  EXPECT_NEAR(result.actual_route_progress_m, 0.6, 1.0e-9);
+}
+
 TEST(MppiLivenessTest, VelocityWithoutNetDisplacementRequestsReseed) {
   MppiLivenessSupervisor supervisor;
   (void)supervisor.evaluate(observation(1'000'000'000LL));

@@ -116,6 +116,9 @@ struct ProductionMppiPreparedEsdf {
       RawGuideValidationStatus::kInvalidGuide};
   bool static_route_extension_request{false};
   std::uint64_t static_route_extension_base_generation{0U};
+  bool static_route_replan_request{false};
+  std::uint64_t static_route_replan_base_generation{0U};
+  GlobalGuideReleaseReason static_route_replan_reason{GlobalGuideReleaseReason::kNone};
 };
 
 struct ProductionMppiStability {
@@ -205,6 +208,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   bool route_projection_valid{false};
   bool liveness_reseed_requested{false};
   bool pose_predicted{false};
+  mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
   mppi::RiskTier maximum_eligible_risk_tier{mppi::RiskTier::kPreferred};
 };
 
@@ -230,12 +234,14 @@ private:
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
-  void requestGuideRelease(GlobalGuideReleaseReason reason) noexcept;
+  void requestGuideRelease(GlobalGuideReleaseReason reason,
+                           std::uint64_t guide_generation = 0U);
   void maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
                                         const ProductionMppiNavigation& navigation,
                                         const GlobalGuideProjection& route_projection,
                                         std::int64_t now_ns);
   void finishStaticRouteExtension(std::uint64_t base_generation) noexcept;
+  void finishStaticRouteReplan(std::uint64_t base_generation) noexcept;
   void esdfWorker(std::stop_token stop_token);
   void guideWorker(std::stop_token stop_token);
   void processStaticGuideSearch(const ProductionMppiPreparedEsdf& world,
@@ -315,7 +321,6 @@ private:
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
-  std::uint64_t static_guide_release_generation_{0U};
   std::uint64_t static_route_generation_{0U};
   std::uint64_t tracked_route_generation_{0U};
   double tracked_route_station_m_{0.0};
@@ -325,6 +330,7 @@ private:
   std::uint64_t static_route_extension_last_request_generation_{0U};
   double static_route_extension_last_request_station_m_{0.0};
   std::int64_t static_route_extension_last_request_stamp_ns_{0};
+  StaticRouteReplanGate static_route_replan_gate_{};
   std::atomic<std::uint64_t> static_roi_refresh_request_generation_{0U};
   std::uint64_t static_roi_refresh_completed_generation_{0U};
 

@@ -50,6 +50,9 @@ namespace {
       .station_m = std::lerp(first.station_m, second.station_m, ratio),
       .reference_speed_mps =
           std::lerp(first.reference_speed_mps, second.reference_speed_mps, ratio),
+      .required_risk_tier = static_cast<mppi::RiskTier>(
+          std::max(static_cast<std::uint8_t>(first.required_risk_tier),
+                   static_cast<std::uint8_t>(second.required_risk_tier))),
   };
 }
 
@@ -301,6 +304,29 @@ std::vector<RouteSample3D> sampleRoute3D(const std::span<const Point3> points,
     result.front().tangent = result[1U].tangent;
   }
   return result;
+}
+
+bool assignRouteRiskTiers(const std::span<RouteSample3D> route,
+                          const mppi::EsdfGrid& grid,
+                          const std::span<const float> esdf_m,
+                          const double critical_distance_m,
+                          const double preferred_distance_m) noexcept {
+  for (RouteSample3D& sample : route) {
+    const EsdfQueryResult query = queryConservativeEsdf3D(
+        grid, esdf_m, static_cast<float>(sample.position.x),
+        static_cast<float>(sample.position.y), static_cast<float>(sample.position.z));
+    if (query.status != EsdfQueryStatus::kValid || query.raw_occupied) {
+      return false;
+    }
+    if (query.clearance_m < critical_distance_m) {
+      sample.required_risk_tier = mppi::RiskTier::kCritical;
+    } else if (query.clearance_m < preferred_distance_m) {
+      sample.required_risk_tier = mppi::RiskTier::kPlanning;
+    } else {
+      sample.required_risk_tier = mppi::RiskTier::kPreferred;
+    }
+  }
+  return true;
 }
 
 RouteProjection3D projectOntoRoute3D(const std::span<const RouteSample3D> route,

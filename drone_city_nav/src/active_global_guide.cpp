@@ -423,6 +423,15 @@ GlobalGuideProgressUpdate GlobalGuideProgressTracker::evaluate(
 
   if (observation.predicted_head_progress_m <
       config_.minimum_predicted_head_progress_m) {
+    if (!local_reseed_pending_) {
+      ++local_reseed_generation_;
+      update.action = GlobalGuideProgressAction::kReseedLocalMppi;
+      update.local_reseed_requested = true;
+      update.local_reseed_generation = local_reseed_generation_;
+      local_reseed_pending_ = true;
+      resetAnchor(observation);
+      return update;
+    }
     ++stall_generation_;
     update.action = GlobalGuideProgressAction::kReleaseLowPredictedProgress;
     update.stalled = true;

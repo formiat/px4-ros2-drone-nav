@@ -4,6 +4,7 @@
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -25,5 +26,13 @@ buildGuideDirectedNominalSeed(const State& initial, const State& target,
                               float initial_route_station_m, float reference_speed_mps,
                               const DynamicsConfig& dynamics, std::size_t steps,
                               Control previous_applied_control);
+
+[[nodiscard]] std::optional<float>
+projectForwardRouteStation(std::span<const RouteSample3D> route, const State& state,
+                           float minimum_station_m) noexcept;
+
+[[nodiscard]] RiskTier maximumRequiredRiskTier(std::span<const RouteSample3D> route,
+                                               float begin_station_m,
+                                               float end_station_m) noexcept;
 
 } // namespace drone_city_nav::mppi

@@ -58,13 +58,22 @@ void ProductionMppiNode::processStaticGuideSearch(
   StaticRouteCandidateValidation validation{.status =
                                                 StaticRouteCandidateStatus::kEmpty};
   if (prepared.lattice_executable) {
-    auto route = std::make_shared<const std::vector<RouteSample3D>>(lattice.route);
-    validation = validateStaticRouteCandidate(
-        world.route_3d ? std::span<const RouteSample3D>{*world.route_3d}
-                       : std::span<const RouteSample3D>{},
-        *route, world.grid, *world.distances_m, mission_goal_,
-        static_route_extension_config_.minimum_endpoint_improvement_m,
-        lattice.reached_mission_goal, world.static_route_extension_request);
+    auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(lattice.route);
+    if (assignRouteRiskTiers(*mutable_route, world.grid, *world.distances_m,
+                             mppi_config_.risk.critical_distance_m,
+                             mppi_config_.risk.preferred_distance_m)) {
+      validation = validateStaticRouteCandidate(
+          world.route_3d ? std::span<const RouteSample3D>{*world.route_3d}
+                         : std::span<const RouteSample3D>{},
+          *mutable_route, world.grid, *world.distances_m, mission_goal_,
+          static_route_extension_config_.minimum_endpoint_improvement_m,
+          lattice.reached_mission_goal,
+          world.static_route_extension_request || world.static_route_replan_request);
+    } else {
+      validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidEsdf};
+    }
+    const std::shared_ptr<const std::vector<RouteSample3D>> route = mutable_route;
     const std::uint64_t candidate_generation = static_route_generation_ + 1U;
     auto spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
         makeConstrainedRouteSpans(*route, lattice.selected_channels,
@@ -94,15 +103,23 @@ void ProductionMppiNode::processStaticGuideSearch(
   bool activated = false;
   {
     const std::scoped_lock lock{esdf_state_mutex_};
+    const std::uint64_t required_base_generation =
+        world.static_route_replan_request
+            ? world.static_route_replan_base_generation
+            : world.static_route_extension_base_generation;
     const bool generation_matches =
-        !world.static_route_extension_request ||
-        (prepared_esdf_ && prepared_esdf_->global_guide_generation ==
-                               world.static_route_extension_base_generation);
+        (!world.static_route_extension_request && !world.static_route_replan_request) ||
+        (prepared_esdf_ &&
+         prepared_esdf_->global_guide_generation == required_base_generation);
     if (validation.accepted && prepared_esdf_ &&
         prepared_esdf_->revision == prepared.revision && generation_matches) {
       prepared.global_guide_generation = ++static_route_generation_;
+      prepared.global_guide_release_reason = GlobalGuideReleaseReason::kNone;
       prepared.static_route_extension_request = false;
       prepared.static_route_extension_base_generation = 0U;
+      prepared.static_route_replan_request = false;
+      prepared.static_route_replan_base_generation = 0U;
+      prepared.static_route_replan_reason = GlobalGuideReleaseReason::kNone;
       prepared_esdf_ = prepared;
       activated = true;
     }
@@ -110,7 +127,8 @@ void ProductionMppiNode::processStaticGuideSearch(
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
-      " activated=%s extension=%s base_generation=%" PRIu64
+      " activated=%s extension=%s replan=%s base_generation=%" PRIu64
+      " replan_reason=%s"
       " validation=%.*s endpoint_improvement_m=%.2f status=%s "
       "points=%zu samples=%zu spans=%zu expansions=%zu "
       "risk_stage=%u objective=%.3f route_length_m=%.2f travel_time_s=%.2f "
@@ -118,7 +136,10 @@ void ProductionMppiNode::processStaticGuideSearch(
       "critical_exposure_m=%.2f selected_channels=%zu search_ms=%.2f",
       prepared.revision, activated ? "true" : "false",
       world.static_route_extension_request ? "true" : "false",
-      world.static_route_extension_base_generation,
+      world.static_route_replan_request ? "true" : "false",
+      world.static_route_replan_request ? world.static_route_replan_base_generation
+                                        : world.static_route_extension_base_generation,
+      globalGuideReleaseReasonName(world.static_route_replan_reason),
       static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
       staticRouteCandidateStatusName(validation.status).data(),
       validation.endpoint_improvement_m, lattice3DStatusName(lattice.status),
@@ -146,6 +167,9 @@ void ProductionMppiNode::processStaticGuideSearch(
   }
   if (world.static_route_extension_request) {
     finishStaticRouteExtension(world.static_route_extension_base_generation);
+  }
+  if (world.static_route_replan_request) {
+    finishStaticRouteReplan(world.static_route_replan_base_generation);
   }
 }
 

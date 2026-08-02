@@ -162,11 +162,13 @@ void ProductionMppiNode::processDiagnostics(
   if (snapshot.liveness_reseed_requested) {
     RCLCPP_WARN(get_logger(),
                 "MPPI_LIVENESS_RESEED generation=%" PRIu64
-                " observation_age_s=%.3f actual_displacement_m=%.3f speed_mps=%.3f "
+                " observation_age_s=%.3f actual_displacement_m=%.3f "
+                "along_route_progress_m=%.3f route_progress_used=%s speed_mps=%.3f "
                 "predicted_head_progress_m=%.3f predicted_terminal_progress_m=%.3f",
                 liveness.reseed_generation, liveness.observation_age_s,
-                liveness.actual_displacement_m, liveness.actual_speed_mps,
-                liveness.predicted_head_progress_m,
+                liveness.actual_displacement_m, liveness.actual_route_progress_m,
+                liveness.used_route_progress ? "true" : "false",
+                liveness.actual_speed_mps, liveness.predicted_head_progress_m,
                 liveness.predicted_terminal_progress_m);
   }
   if (snapshot.guide_progress.local_reseed_requested) {
@@ -439,7 +441,12 @@ void ProductionMppiNode::processDiagnostics(
        << " liveness_state=" << mppiLivenessStateName(liveness.state)
        << " liveness_window_s=" << liveness.observation_age_s
        << " liveness_actual_displacement_m=" << liveness.actual_displacement_m
+       << " liveness_actual_route_progress_m=" << liveness.actual_route_progress_m
+       << " liveness_route_progress_used="
+       << (liveness.used_route_progress ? "true" : "false")
        << " liveness_reseed_generation=" << liveness.reseed_generation
+       << " route_required_risk_tier="
+       << mppi::mppiRiskTierName(snapshot.route_required_risk_tier)
        << " maximum_acceleration_mps2=" << result.maximum_acceleration_mps2
        << " maximum_jerk_mps3=" << result.maximum_jerk_mps3
        << " first_control_delta=" << result.first_control_delta
@@ -668,7 +675,12 @@ void ProductionMppiNode::processDiagnostics(
         << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
         << ",\"liveness_state\":\"" << mppiLivenessStateName(liveness.state) << '"'
         << ",\"liveness_actual_displacement_m\":" << liveness.actual_displacement_m
+        << ",\"liveness_actual_route_progress_m\":" << liveness.actual_route_progress_m
+        << ",\"liveness_route_progress_used\":"
+        << (liveness.used_route_progress ? "true" : "false")
         << ",\"liveness_reseed_generation\":" << liveness.reseed_generation
+        << ",\"route_required_risk_tier\":\""
+        << mppi::mppiRiskTierName(snapshot.route_required_risk_tier) << '"'
         << ",\"maximum_acceleration_mps2\":" << result.maximum_acceleration_mps2
         << ",\"maximum_jerk_mps3\":" << result.maximum_jerk_mps3
         << ",\"first_control_delta\":" << result.first_control_delta

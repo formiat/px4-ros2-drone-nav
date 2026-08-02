@@ -44,6 +44,7 @@ makeMppiRoute3D(const std::span<const RouteSample3D> route,
         .tangent_z = static_cast<float>(sample.tangent.z),
         .station_m = static_cast<float>(sample.station_m),
         .reference_speed_mps = static_cast<float>(reference_speed_mps),
+        .required_risk_tier = sample.required_risk_tier,
     });
   }
   return points;

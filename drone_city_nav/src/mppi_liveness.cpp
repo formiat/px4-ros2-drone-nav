@@ -1,5 +1,6 @@
 #include "drone_city_nav/mppi_liveness.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -56,8 +57,16 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
     return result;
   }
   emergency_braking_started_ns_.reset();
-  if (!anchor_.has_value() || observation.stamp_ns <= anchor_->stamp_ns) {
-    anchor_ = Anchor{observation.stamp_ns, observation.actual_state};
+  const bool route_progress_available = observation.route_station_valid &&
+                                        observation.route_generation != 0U &&
+                                        std::isfinite(observation.route_station_m);
+  if (!anchor_.has_value() || observation.stamp_ns <= anchor_->stamp_ns ||
+      (route_progress_available &&
+       (!anchor_->route_station_valid ||
+        anchor_->route_generation != observation.route_generation))) {
+    anchor_ = Anchor{observation.stamp_ns, observation.actual_state,
+                     observation.route_generation, observation.route_station_m,
+                     route_progress_available};
     result.state = MppiLivenessState::kMonitoring;
     return result;
   }
@@ -65,18 +74,30 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
   result.observation_age_s =
       static_cast<double>(observation.stamp_ns - anchor_->stamp_ns) / 1.0e9;
   result.actual_displacement_m = distance3(observation.actual_state, anchor_->state);
+  result.used_route_progress = route_progress_available && anchor_->route_station_valid;
+  if (result.used_route_progress) {
+    result.actual_route_progress_m =
+        std::max(0.0, observation.route_station_m - anchor_->route_station_m);
+  }
   if (result.observation_age_s < config_.observation_window_s) {
     result.state = MppiLivenessState::kMonitoring;
     return result;
   }
-  if (result.actual_displacement_m >= config_.minimum_actual_displacement_m) {
-    anchor_ = Anchor{observation.stamp_ns, observation.actual_state};
+  const double useful_progress_m = result.used_route_progress
+                                       ? result.actual_route_progress_m
+                                       : result.actual_displacement_m;
+  if (useful_progress_m >= config_.minimum_actual_displacement_m) {
+    anchor_ = Anchor{observation.stamp_ns, observation.actual_state,
+                     observation.route_generation, observation.route_station_m,
+                     route_progress_available};
     result.state = MppiLivenessState::kMoving;
     return result;
   }
 
   ++reseed_generation_;
-  anchor_ = Anchor{observation.stamp_ns, observation.actual_state};
+  anchor_ = Anchor{observation.stamp_ns, observation.actual_state,
+                   observation.route_generation, observation.route_station_m,
+                   route_progress_available};
   result.state = MppiLivenessState::kReseedRequested;
   result.reseed_requested = true;
   result.reseed_generation = reseed_generation_;

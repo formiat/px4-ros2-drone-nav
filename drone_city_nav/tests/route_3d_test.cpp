@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 namespace drone_city_nav {
@@ -142,6 +143,21 @@ TEST(Route3DTest, ReportsUnavailableWithoutRoute) {
   EXPECT_EQ(observation.phase, ConstrainedRoutePhase::kUnavailable);
   EXPECT_FALSE(observation.span_available);
   EXPECT_EQ(constrainedRoutePhaseName(observation.phase), "unavailable");
+}
+
+TEST(Route3DTest, AssignsRequiredRiskTierFromRawEsdfClearance) {
+  const mppi::EsdfGrid grid{3, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
+  const std::vector<float> esdf{std::numeric_limits<float>::infinity(), 4.0F, 1.5F};
+  std::vector<RouteSample3D> route{
+      RouteSample3D{.position = Point3{0.5, 0.5, 0.5}},
+      RouteSample3D{.position = Point3{1.5, 0.5, 0.5}},
+      RouteSample3D{.position = Point3{2.5, 0.5, 0.5}},
+  };
+
+  ASSERT_TRUE(assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0));
+  EXPECT_EQ(route[0].required_risk_tier, mppi::RiskTier::kPreferred);
+  EXPECT_EQ(route[1].required_risk_tier, mppi::RiskTier::kPlanning);
+  EXPECT_EQ(route[2].required_risk_tier, mppi::RiskTier::kCritical);
 }
 
 TEST(Route3DTest, LatticeUsesVerticalFreeOpeningWithoutYawConstraint) {

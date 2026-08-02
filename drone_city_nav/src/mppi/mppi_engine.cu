@@ -386,18 +386,21 @@ __device__ RouteProjection projectOntoRoute(const State& state,
   for (std::size_t index = 0U; index + 1U < route_point_count; ++index) {
     const RouteSample3D first = route_points[index];
     const RouteSample3D second = route_points[index + 1U];
-    if (second.station_m + 2.0F < minimum_station_m) {
+    if (second.station_m + 1.0e-5F < minimum_station_m) {
       continue;
     }
     const float dx = second.x_m - first.x_m;
     const float dy = second.y_m - first.y_m;
     const float squared_length = dx * dx + dy * dy;
-    if (!(squared_length > 1.0e-8F)) {
+    const float station_length_m = second.station_m - first.station_m;
+    if (!(squared_length > 1.0e-8F) || !(station_length_m > 1.0e-5F)) {
       continue;
     }
+    const float minimum_ratio = clampValue(
+        (minimum_station_m - first.station_m) / station_length_m, 0.0F, 1.0F);
     const float ratio = clampValue(
         ((state.x - first.x_m) * dx + (state.y - first.y_m) * dy) / squared_length,
-        0.0F, 1.0F);
+        minimum_ratio, 1.0F);
     const float projected_x = first.x_m + ratio * dx;
     const float projected_y = first.y_m + ratio * dy;
     const float offset_x = state.x - projected_x;
@@ -405,7 +408,7 @@ __device__ RouteProjection projectOntoRoute(const State& state,
     const float squared_distance = offset_x * offset_x + offset_y * offset_y;
     if (squared_distance < best_squared_distance) {
       best_squared_distance = squared_distance;
-      result.station_m = first.station_m + ratio * (second.station_m - first.station_m);
+      result.station_m = first.station_m + ratio * station_length_m;
       result.cross_track_m = sqrtf(squared_distance);
       result.reference_z_m = first.z_m + ratio * (second.z_m - first.z_m);
       result.reference_speed_mps =
@@ -500,6 +503,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   const float initial_distance = hypotf(target.x - initial.x, target.y - initial.y);
   float head_progress = 0.0F;
   float terminal_route_progress = 0.0F;
+  float rollout_route_station_m = initial_route_station_m;
   const std::size_t requested_head_steps =
       static_cast<std::size_t>(ceilf(costs.head_progress_horizon_s / dynamics.dt_s));
   const std::size_t head_steps =
@@ -543,7 +547,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     const RouteProjection route_projection =
         route_point_count >= 2U
             ? projectOntoRoute(state, route_points, route_point_count,
-                               initial_route_station_m)
+                               rollout_route_station_m)
             : RouteProjection{};
     const float segment_m = dynamics.dt_s * hypotf(state.vx, state.vy);
     if (raw_hit || solid_hit) {
@@ -556,6 +560,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       planning_m += segment_m;
     }
     if (route_projection.valid) {
+      rollout_route_station_m = route_projection.station_m;
       guide_cost += route_projection.cross_track_m * route_projection.cross_track_m;
       terminal_route_progress = route_projection.station_m - initial_route_station_m;
     } else {
@@ -1194,43 +1199,9 @@ public:
     result.horizon.push_back(state);
     const float initial_distance =
         std::hypot(input.target.x - state.x, input.target.y - state.y);
-    const auto hostRouteProjection =
-        [&input](const State& candidate) -> std::optional<float> {
-      if (!input.route.has_value() || !input.route->points ||
-          input.route->points->size() < 2U) {
-        return std::nullopt;
-      }
-      float best_squared_distance = kInfinity;
-      float best_station = input.route->initial_station_m;
-      const auto& points = *input.route->points;
-      for (std::size_t route_index = 0U; route_index + 1U < points.size();
-           ++route_index) {
-        const RouteSample3D& first = points[route_index];
-        const RouteSample3D& second = points[route_index + 1U];
-        if (second.station_m + 2.0F < input.route->initial_station_m) {
-          continue;
-        }
-        const float dx = second.x_m - first.x_m;
-        const float dy = second.y_m - first.y_m;
-        const float squared_length = dx * dx + dy * dy;
-        if (!(squared_length > 1.0e-8F)) {
-          continue;
-        }
-        const float ratio = std::clamp(
-            ((candidate.x - first.x_m) * dx + (candidate.y - first.y_m) * dy) /
-                squared_length,
-            0.0F, 1.0F);
-        const float offset_x = candidate.x - (first.x_m + ratio * dx);
-        const float offset_y = candidate.y - (first.y_m + ratio * dy);
-        const float squared_distance = offset_x * offset_x + offset_y * offset_y;
-        if (squared_distance < best_squared_distance) {
-          best_squared_distance = squared_distance;
-          best_station = first.station_m + ratio * (second.station_m - first.station_m);
-        }
-      }
-      return best_squared_distance < kInfinity ? std::optional<float>{best_station}
-                                               : std::nullopt;
-    };
+    float reconstruction_route_station_m =
+        input.route.has_value() ? input.route->initial_station_m : 0.0F;
+    std::optional<float> latest_route_station;
     result.minimum_esdf_distance_m = kInfinity;
     result.selected_tier = RiskTier::kPreferred;
     Control previous_control = previous_applied_control;
@@ -1258,11 +1229,17 @@ public:
       previous_control = control;
       state = integrateReference(state, control, config_.dynamics);
       result.horizon.push_back(state);
+      if (input.route.has_value() && input.route->points) {
+        latest_route_station = projectForwardRouteStation(
+            *input.route->points, state, reconstruction_route_station_m);
+        if (latest_route_station.has_value()) {
+          reconstruction_route_station_m = *latest_route_station;
+        }
+      }
       if (index + 1U == head_steps) {
-        const std::optional<float> route_station = hostRouteProjection(state);
         result.head_progress_m =
-            route_station.has_value()
-                ? *route_station - input.route->initial_station_m
+            latest_route_station.has_value()
+                ? *latest_route_station - input.route->initial_station_m
                 : initial_distance -
                       std::hypot(input.target.x - state.x, input.target.y - state.y);
       }
@@ -1290,10 +1267,9 @@ public:
             .critical_exposure_m = result.critical_exposure_m,
             .planning_exposure_m = result.planning_exposure_m,
         });
-    const std::optional<float> terminal_route_station = hostRouteProjection(state);
     result.terminal_progress_m =
-        terminal_route_station.has_value()
-            ? *terminal_route_station - input.route->initial_station_m
+        latest_route_station.has_value()
+            ? *latest_route_station - input.route->initial_station_m
             : initial_distance -
                   std::hypot(input.target.x - state.x, input.target.y - state.y);
     result.timings.horizon_reconstruction_ms =

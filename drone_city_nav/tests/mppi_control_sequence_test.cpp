@@ -91,5 +91,30 @@ TEST(MppiControlSequenceTest, HostLimiterMatchesAccelerationAndJerkContract) {
   EXPECT_NEAR(controls[1].az, -0.5F, 1.0e-6F);
 }
 
+TEST(MppiControlSequenceTest, RouteProjectionNeverMovesBehindPreviousStation) {
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 10.0F, .station_m = 10.0F},
+      RouteSample3D{.x_m = 0.0F, .station_m = 20.0F},
+  };
+
+  const std::optional<float> station =
+      projectForwardRouteStation(route, State{.x = 2.0F}, 15.0F);
+
+  EXPECT_EQ(station, std::optional<float>{18.0F});
+}
+
+TEST(MppiControlSequenceTest, RequiredRiskTierIsLocalToRouteInterval) {
+  const std::array route{
+      RouteSample3D{.station_m = 0.0F, .required_risk_tier = RiskTier::kPreferred},
+      RouteSample3D{.station_m = 10.0F, .required_risk_tier = RiskTier::kPlanning},
+      RouteSample3D{.station_m = 20.0F, .required_risk_tier = RiskTier::kCritical},
+      RouteSample3D{.station_m = 30.0F, .required_risk_tier = RiskTier::kPreferred},
+  };
+
+  EXPECT_EQ(maximumRequiredRiskTier(route, 0.0F, 8.0F), RiskTier::kPlanning);
+  EXPECT_EQ(maximumRequiredRiskTier(route, 12.0F, 25.0F), RiskTier::kCritical);
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 
@@ -180,6 +181,66 @@ std::vector<Control> buildGuideDirectedNominalSeed(
     predicted = integrateReference(predicted, seed[index], dynamics);
   }
   return seed;
+}
+
+std::optional<float>
+projectForwardRouteStation(const std::span<const RouteSample3D> route,
+                           const State& state, const float minimum_station_m) noexcept {
+  if (route.size() < 2U || !std::isfinite(minimum_station_m)) {
+    return std::nullopt;
+  }
+  float best_squared_distance = std::numeric_limits<float>::infinity();
+  float best_station_m = minimum_station_m;
+  for (std::size_t index = 0U; index + 1U < route.size(); ++index) {
+    const RouteSample3D& first = route[index];
+    const RouteSample3D& second = route[index + 1U];
+    if (second.station_m + 1.0e-5F < minimum_station_m) {
+      continue;
+    }
+    const float dx = second.x_m - first.x_m;
+    const float dy = second.y_m - first.y_m;
+    const float squared_length = dx * dx + dy * dy;
+    const float station_length_m = second.station_m - first.station_m;
+    if (!(squared_length > 1.0e-8F) || !(station_length_m > 1.0e-5F)) {
+      continue;
+    }
+    const float minimum_ratio = std::clamp(
+        (minimum_station_m - first.station_m) / station_length_m, 0.0F, 1.0F);
+    const float ratio = std::clamp(
+        ((state.x - first.x_m) * dx + (state.y - first.y_m) * dy) / squared_length,
+        minimum_ratio, 1.0F);
+    const float offset_x = state.x - (first.x_m + ratio * dx);
+    const float offset_y = state.y - (first.y_m + ratio * dy);
+    const float squared_distance = offset_x * offset_x + offset_y * offset_y;
+    if (squared_distance < best_squared_distance) {
+      best_squared_distance = squared_distance;
+      best_station_m = first.station_m + ratio * station_length_m;
+    }
+  }
+  return std::isfinite(best_squared_distance)
+             ? std::optional<float>{std::max(best_station_m, minimum_station_m)}
+             : std::nullopt;
+}
+
+RiskTier maximumRequiredRiskTier(const std::span<const RouteSample3D> route,
+                                 const float begin_station_m,
+                                 const float end_station_m) noexcept {
+  const float begin = std::min(begin_station_m, end_station_m);
+  const float end = std::max(begin_station_m, end_station_m);
+  RiskTier result = RiskTier::kPreferred;
+  for (std::size_t index = 0U; index < route.size(); ++index) {
+    const float previous_station =
+        index == 0U ? route[index].station_m : route[index - 1U].station_m;
+    const float next_station = index + 1U < route.size() ? route[index + 1U].station_m
+                                                         : route[index].station_m;
+    if (next_station < begin || previous_station > end) {
+      continue;
+    }
+    result = static_cast<RiskTier>(
+        std::max(static_cast<std::uint8_t>(result),
+                 static_cast<std::uint8_t>(route[index].required_risk_tier)));
+  }
+  return result == RiskTier::kCollision ? RiskTier::kCritical : result;
 }
 
 } // namespace drone_city_nav::mppi

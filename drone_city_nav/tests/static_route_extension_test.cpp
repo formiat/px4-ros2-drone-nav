@@ -140,5 +140,21 @@ TEST(StaticRouteExtensionTest, PlanningGoalAndEsdfBoundaryAreExplicit) {
   EXPECT_TRUE(staticRoutePointInsideEsdf(grid, Point3{39.5, 0.0, 2.0}));
 }
 
+TEST(StaticRouteExtensionTest, CoalescesReplanForOneRouteGeneration) {
+  StaticRouteReplanGate gate;
+
+  EXPECT_TRUE(gate.tryBegin(7U));
+  EXPECT_FALSE(gate.tryBegin(7U));
+  EXPECT_FALSE(gate.tryBegin(8U));
+  EXPECT_TRUE(gate.inFlight());
+  EXPECT_EQ(gate.generation(), 7U);
+
+  gate.finish(8U);
+  EXPECT_TRUE(gate.inFlight());
+  gate.finish(7U);
+  EXPECT_FALSE(gate.inFlight());
+  EXPECT_TRUE(gate.tryBegin(7U));
+}
+
 } // namespace
 } // namespace drone_city_nav

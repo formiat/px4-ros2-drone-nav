@@ -29,6 +29,9 @@ struct MppiLivenessObservation {
   bool emergency_braking{false};
   double predicted_head_progress_m{0.0};
   double predicted_terminal_progress_m{0.0};
+  std::uint64_t route_generation{0U};
+  double route_station_m{0.0};
+  bool route_station_valid{false};
 };
 
 struct MppiLivenessResult {
@@ -36,6 +39,8 @@ struct MppiLivenessResult {
   bool reseed_requested{false};
   double observation_age_s{0.0};
   double actual_displacement_m{0.0};
+  double actual_route_progress_m{0.0};
+  bool used_route_progress{false};
   double actual_speed_mps{0.0};
   double predicted_head_progress_m{0.0};
   double predicted_terminal_progress_m{0.0};
@@ -54,6 +59,9 @@ private:
   struct Anchor {
     std::int64_t stamp_ns{0};
     mppi::State state{};
+    std::uint64_t route_generation{0U};
+    double route_station_m{0.0};
+    bool route_station_valid{false};
   };
 
   MppiLivenessConfig config_;

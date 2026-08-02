@@ -16,6 +16,7 @@ struct RouteSample3D {
   Vec3 tangent{};
   double station_m{0.0};
   double reference_speed_mps{0.0};
+  mppi::RiskTier required_risk_tier{mppi::RiskTier::kPreferred};
 };
 
 struct RouteProjection3D {
@@ -149,6 +150,12 @@ observeConstrainedRoute(std::span<const RouteSample3D> route,
 [[nodiscard]] std::vector<RouteSample3D> sampleRoute3D(std::span<const Point3> points,
                                                        double sample_step_m,
                                                        double reference_speed_mps);
+
+[[nodiscard]] bool assignRouteRiskTiers(std::span<RouteSample3D> route,
+                                        const mppi::EsdfGrid& grid,
+                                        std::span<const float> esdf_m,
+                                        double critical_distance_m,
+                                        double preferred_distance_m) noexcept;
 
 [[nodiscard]] RouteProjection3D
 projectOntoRoute3D(std::span<const RouteSample3D> route, const Point3& position,

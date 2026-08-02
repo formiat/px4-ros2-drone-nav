@@ -39,6 +39,7 @@ struct RouteSample3D {
   float tangent_z{0.0F};
   float station_m{0.0F};
   float reference_speed_mps{0.0F};
+  RiskTier required_risk_tier{RiskTier::kPreferred};
 };
 
 struct RouteReference {

@@ -327,7 +327,7 @@ TEST(GlobalGuideProgressTrackerTest, ReseedsThenReleasesPredictionMismatch) {
   EXPECT_NEAR(release.progress_m, 0.1, 1.0e-9);
 }
 
-TEST(GlobalGuideProgressTrackerTest, ReleasesLowPredictedProgressAfterWindow) {
+TEST(GlobalGuideProgressTrackerTest, ReseedsThenReleasesLowPredictedProgress) {
   GlobalGuideProgressTracker tracker;
   (void)tracker.evaluate(GlobalGuideProgressObservation{
       .stamp_ns = 1'000'000'000LL,
@@ -337,7 +337,7 @@ TEST(GlobalGuideProgressTrackerTest, ReleasesLowPredictedProgressAfterWindow) {
       .controller_active = true,
   });
 
-  const GlobalGuideProgressUpdate update =
+  const GlobalGuideProgressUpdate reseed =
       tracker.evaluate(GlobalGuideProgressObservation{
           .stamp_ns = 2'100'000'000LL,
           .guide_generation = 3U,
@@ -346,10 +346,22 @@ TEST(GlobalGuideProgressTrackerTest, ReleasesLowPredictedProgressAfterWindow) {
           .controller_active = true,
       });
 
-  EXPECT_TRUE(update.stalled);
-  EXPECT_FALSE(update.local_reseed_requested);
-  EXPECT_EQ(update.action, GlobalGuideProgressAction::kReleaseLowPredictedProgress);
-  EXPECT_EQ(update.stall_generation, 1U);
+  EXPECT_FALSE(reseed.stalled);
+  EXPECT_TRUE(reseed.local_reseed_requested);
+  EXPECT_EQ(reseed.action, GlobalGuideProgressAction::kReseedLocalMppi);
+
+  const GlobalGuideProgressUpdate release =
+      tracker.evaluate(GlobalGuideProgressObservation{
+          .stamp_ns = 3'200'000'000LL,
+          .guide_generation = 3U,
+          .station_m = 5.3,
+          .predicted_head_progress_m = 0.1,
+          .controller_active = true,
+      });
+  EXPECT_TRUE(release.stalled);
+  EXPECT_FALSE(release.local_reseed_requested);
+  EXPECT_EQ(release.action, GlobalGuideProgressAction::kReleaseLowPredictedProgress);
+  EXPECT_EQ(release.stall_generation, 1U);
 }
 
 TEST(GlobalGuideProgressTrackerTest, ResetsAfterUsefulProgress) {

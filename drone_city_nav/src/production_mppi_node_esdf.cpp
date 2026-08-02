@@ -77,8 +77,6 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     }
     const std::int64_t source_stamp_ns = get_clock()->now().nanoseconds();
     if (use_static_map_ && static_occupancy_3d_) {
-      const std::uint64_t release_generation =
-          guide_release_generation_.load(std::memory_order_acquire);
       const std::uint64_t roi_refresh_generation =
           static_roi_refresh_request_generation_.load(std::memory_order_acquire);
       std::optional<ProductionMppiPreparedEsdf> active_prepared;
@@ -88,7 +86,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       }
       bool proactive_roi_refresh =
           roi_refresh_generation > static_roi_refresh_completed_generation_ &&
-          release_generation == static_guide_release_generation_ && active_prepared &&
+          active_prepared &&
           active_prepared->global_guide_generation == roi_refresh_generation;
       double static_build_ms = active_prepared ? active_prepared->build_ms : 0.0;
       if (roi_refresh_generation > static_roi_refresh_completed_generation_ &&
@@ -97,8 +95,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         finishStaticRouteExtension(roi_refresh_generation);
       }
       if (static_esdf_3d_) {
-        if (release_generation == static_guide_release_generation_ &&
-            !proactive_roi_refresh) {
+        if (!proactive_roi_refresh) {
           const std::scoped_lock lock{esdf_state_mutex_};
           if (prepared_esdf_) {
             prepared_esdf_->ready_stamp_ns = source_stamp_ns;
@@ -106,10 +103,6 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             prepared_esdf_->producer_instance_id = snapshot->producer_instance_id;
           }
           continue;
-        }
-        if (!proactive_roi_refresh) {
-          static_esdf_3d_.reset();
-          active_prepared.reset();
         }
       }
       if (!static_esdf_3d_ || proactive_roi_refresh) {
@@ -138,7 +131,6 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                                            static_cast<float>(bounds.origin_z)};
         static_esdf_3d_ = std::make_shared<const std::vector<float>>(
             field.distancesM().begin(), field.distancesM().end());
-        static_guide_release_generation_ = release_generation;
         static_build_ms = field.stats().duration_ms;
         RCLCPP_INFO(get_logger(),
                     "STATIC_ESDF3D_READY build_ms=%.2f voxels=%zu "
