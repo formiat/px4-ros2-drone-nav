@@ -146,9 +146,9 @@ or arming rather than planner geometry.
 `canonical_city.world3d.json` is the only hand-edited geometry source. The
 generator derives both Gazebo SDF and sparse Occupancy3D from it, so rendering,
 physics, and static planning cannot encode different buildings. The current
-world adds two L-shaped channels and one straight-through channel between
-neighboring Manhattan buildings. Every open bridge and intersection receives a
-collisionless no-static lidar occluder.
+world adds two L-shaped channels, one straight-through channel, and one T
+junction between neighboring Manhattan buildings. Every open bridge and
+intersection receives a collisionless no-static lidar occluder.
 
 When editing a world, verify:
 

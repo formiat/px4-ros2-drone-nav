@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <optional>
 
 namespace drone_city_nav {
@@ -104,6 +105,7 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
       .station_m = current_station_m,
       .actual_horizontal_speed_mps = std::hypot(actual_velocity.x, actual_velocity.y),
       .actual_vertical_speed_mps = actual_velocity.z,
+      .actual_z_m = actual_position.z,
   };
   if (route.empty() || spans.empty() || !(event_distance_m >= 0.0)) {
     return observation;
@@ -179,6 +181,88 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
   return observation;
 }
 
+ConstrainedRouteControl ConstrainedRouteCoordinator::update(
+    const ConstrainedRouteObservation& observation,
+    const double unconstrained_speed_mps,
+    const ConstrainedRouteControlConfig& config) noexcept {
+  if (!observation.span_available ||
+      observation.phase == ConstrainedRoutePhase::kUnavailable ||
+      observation.phase == ConstrainedRoutePhase::kUnconstrained ||
+      observation.phase == ConstrainedRoutePhase::kDeparture) {
+    reset();
+    return {};
+  }
+  if (route_generation_ != observation.route_generation ||
+      span_index_ != observation.span_index) {
+    route_generation_ = observation.route_generation;
+    span_index_ = observation.span_index;
+    vertical_ready_latched_ = false;
+  }
+  const double capture_margin = std::max(0.0, config.vertical_capture_margin_m);
+  const double capture_min = observation.min_z_m + capture_margin;
+  const double capture_max = observation.max_z_m - capture_margin;
+  const bool inside_capture_window = capture_max >= capture_min &&
+                                     observation.actual_z_m >= capture_min &&
+                                     observation.actual_z_m <= capture_max;
+  if (inside_capture_window && std::abs(observation.actual_vertical_speed_mps) <=
+                                   std::max(0.0, config.vertical_capture_speed_mps)) {
+    vertical_ready_latched_ = true;
+  }
+
+  const double acceleration =
+      std::max(1.0e-6, config.maximum_vertical_acceleration_mps2);
+  const double maximum_speed = std::max(1.0e-6, config.maximum_vertical_speed_mps);
+  const double distance = std::max(0.0, observation.vertical_error_m);
+  const double acceleration_distance = maximum_speed * maximum_speed / acceleration;
+  const double motion_time_s =
+      distance <= acceleration_distance
+          ? 2.0 * std::sqrt(distance / acceleration)
+          : 2.0 * maximum_speed / acceleration +
+                (distance - acceleration_distance) / maximum_speed;
+  const double settle_time_s =
+      std::abs(observation.actual_vertical_speed_mps) / acceleration;
+  const double required_time_s = motion_time_s + settle_time_s;
+  const double cruise_speed = std::max(0.0, unconstrained_speed_mps);
+  const double traversal_speed =
+      observation.reference_speed_mps > 0.0
+          ? std::min(cruise_speed, observation.reference_speed_mps)
+          : cruise_speed;
+  const double alignment_start_distance_m =
+      cruise_speed * required_time_s +
+      std::max(0.0, config.alignment_distance_buffer_m);
+  const double entry_distance_m = std::max(0.0, observation.distance_to_entry_m);
+  const bool alignment_active =
+      observation.phase == ConstrainedRoutePhase::kTraversal ||
+      entry_distance_m <= alignment_start_distance_m;
+  if (!alignment_active) {
+    return {};
+  }
+  const double hold_distance = std::max(0.0, config.stationary_hold_distance_m);
+  const bool hold_xy = !vertical_ready_latched_ && entry_distance_m <= hold_distance;
+  double speed_limit_mps = observation.phase == ConstrainedRoutePhase::kTraversal
+                               ? traversal_speed
+                               : cruise_speed;
+  if (!vertical_ready_latched_ && required_time_s > 1.0e-6) {
+    speed_limit_mps = std::clamp((entry_distance_m - hold_distance) / required_time_s,
+                                 0.0, cruise_speed);
+  }
+  return ConstrainedRouteControl{
+      .active = true,
+      .vertical_ready = vertical_ready_latched_,
+      .hold_xy = hold_xy,
+      .required_alignment_time_s = required_time_s,
+      .alignment_start_distance_m = alignment_start_distance_m,
+      .reference_z_m = observation.reference_z_m,
+      .speed_limit_mps = speed_limit_mps,
+  };
+}
+
+void ConstrainedRouteCoordinator::reset() noexcept {
+  route_generation_ = 0U;
+  span_index_ = 0U;
+  vertical_ready_latched_ = false;
+}
+
 std::vector<RouteSample3D> sampleRoute3D(const std::span<const Point3> points,
                                          const double sample_step_m,
                                          const double reference_speed_mps) {
@@ -217,6 +301,59 @@ std::vector<RouteSample3D> sampleRoute3D(const std::span<const Point3> points,
     result.front().tangent = result[1U].tangent;
   }
   return result;
+}
+
+RouteProjection3D projectOntoRoute3D(const std::span<const RouteSample3D> route,
+                                     const Point3& position,
+                                     const double minimum_station_m) noexcept {
+  RouteProjection3D best;
+  if (route.empty()) {
+    return best;
+  }
+  best.distance_m = std::numeric_limits<double>::infinity();
+  if (route.size() == 1U) {
+    best.valid = true;
+    best.station_m = route.front().station_m;
+    best.point = route.front().position;
+    best.distance_m = distance3D(position, best.point);
+    return best;
+  }
+  for (std::size_t index = 0U; index + 1U < route.size(); ++index) {
+    const RouteSample3D& first = route[index];
+    const RouteSample3D& second = route[index + 1U];
+    if (second.station_m + 2.0 < minimum_station_m) {
+      continue;
+    }
+    const Vec3 segment{second.position.x - first.position.x,
+                       second.position.y - first.position.y,
+                       second.position.z - first.position.z};
+    const double squared_length =
+        segment.x * segment.x + segment.y * segment.y + segment.z * segment.z;
+    const Vec3 offset{position.x - first.position.x, position.y - first.position.y,
+                      position.z - first.position.z};
+    const double ratio = squared_length > 1.0e-12
+                             ? std::clamp((offset.x * segment.x + offset.y * segment.y +
+                                           offset.z * segment.z) /
+                                              squared_length,
+                                          0.0, 1.0)
+                             : 0.0;
+    const Point3 projected{first.position.x + ratio * segment.x,
+                           first.position.y + ratio * segment.y,
+                           first.position.z + ratio * segment.z};
+    const double distance_m = distance3D(position, projected);
+    const double station_m = std::lerp(first.station_m, second.station_m, ratio);
+    if (station_m + 2.0 < minimum_station_m || distance_m >= best.distance_m) {
+      continue;
+    }
+    best.valid = true;
+    best.station_m = station_m;
+    best.distance_m = distance_m;
+    best.point = projected;
+  }
+  if (best.valid) {
+    best.remaining_m = std::max(0.0, route.back().station_m - best.station_m);
+  }
+  return best;
 }
 
 std::vector<ConstrainedRouteSpan>

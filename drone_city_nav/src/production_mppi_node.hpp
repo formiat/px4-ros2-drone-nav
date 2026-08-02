@@ -224,7 +224,8 @@ private:
   void requestGuideRelease(GlobalGuideReleaseReason reason) noexcept;
   void maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
                                         const ProductionMppiNavigation& navigation,
-                                        const GlobalGuideProjection& route_projection);
+                                        const GlobalGuideProjection& route_projection,
+                                        std::int64_t now_ns);
   void finishStaticRouteExtension(std::uint64_t base_generation) noexcept;
   void esdfWorker(std::stop_token stop_token);
   void guideWorker(std::stop_token stop_token);
@@ -297,6 +298,8 @@ private:
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
   RouteEnvelopeConfig route_envelope_config_{};
+  ConstrainedRouteControlConfig constrained_route_control_config_{};
+  ConstrainedRouteCoordinator constrained_route_coordinator_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
@@ -312,6 +315,7 @@ private:
   std::uint64_t static_route_extension_in_flight_generation_{0U};
   std::uint64_t static_route_extension_last_request_generation_{0U};
   double static_route_extension_last_request_station_m_{0.0};
+  std::int64_t static_route_extension_last_request_stamp_ns_{0};
   std::atomic<std::uint64_t> static_roi_refresh_request_generation_{0U};
   std::uint64_t static_roi_refresh_completed_generation_{0U};
 

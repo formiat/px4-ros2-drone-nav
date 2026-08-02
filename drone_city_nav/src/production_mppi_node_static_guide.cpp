@@ -41,6 +41,9 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
       lattice.status == Lattice3DStatus::kViableFrontier;
   prepared.global_guide_expansions = lattice.expansions;
+  prepared.lattice_terminal_successor_count = lattice.terminal_successor_count;
+  prepared.lattice_two_step_reachable_states = lattice.continuation_reachable_states;
+  prepared.lattice_reachable_depth_m = lattice.continuation_reachable_depth_m;
   prepared.global_guide_cost = lattice.objective_cost;
   prepared.global_guide_reaches_mission_goal = lattice.reached_mission_goal;
   prepared.topology_candidates = lattice.topology_candidates;
@@ -60,7 +63,7 @@ void ProductionMppiNode::processStaticGuideSearch(
                        : std::span<const RouteSample3D>{},
         *route, world.grid, *world.distances_m, mission_goal_,
         static_route_extension_config_.minimum_endpoint_improvement_m,
-        lattice.reached_mission_goal);
+        lattice.reached_mission_goal, world.static_route_extension_request);
     const std::uint64_t candidate_generation = static_route_generation_ + 1U;
     auto spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
         makeConstrainedRouteSpans(*route, lattice.selected_channels,

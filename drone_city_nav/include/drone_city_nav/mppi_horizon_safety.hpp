@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -16,6 +17,8 @@ struct MppiHorizonSafetyConfig {
   double fallback_duration_s{2.0};
   double dt_s{0.05};
   double swept_validation_step_m{0.25};
+  double physical_footprint_radius_m{0.82};
+  std::size_t physical_footprint_samples{12U};
   double position_hold_capture_speed_mps{0.20};
 };
 

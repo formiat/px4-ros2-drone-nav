@@ -38,6 +38,28 @@ class ChannelEdge:
     speed_limit_mps: float
 
 
+def external_portal_point(channel: dict,
+                          point: tuple[float, float, float]) -> tuple[float, float, float]:
+    intersection_x, intersection_y = map(float, channel["intersection_center_m"])
+    for bridge in channel["bridges"]:
+        bridge_x, bridge_y = map(float, bridge["center_m"])
+        if bridge.get("blocked", False) or abs(point[0] - bridge_x) > 1.0e-6 or \
+                abs(point[1] - bridge_y) > 1.0e-6:
+            continue
+        size_x, size_y, _ = map(float, bridge["size_m"])
+        delta_x = bridge_x - intersection_x
+        delta_y = bridge_y - intersection_y
+        if abs(delta_x) > abs(delta_y):
+            return (bridge_x + math.copysign(0.5 * size_x, delta_x), bridge_y,
+                    point[2])
+        if abs(delta_y) > 1.0e-6:
+            return (bridge_x, bridge_y + math.copysign(0.5 * size_y, delta_y),
+                    point[2])
+    raise ValueError(
+        f"channel {channel['id']} centerline endpoint {point} must match an open bridge center"
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--spec", type=Path, required=True)
@@ -76,7 +98,11 @@ def channel_edges(channel: dict) -> list[ChannelEdge]:
             raise ValueError(f"channel edge {edge_id} needs at least two points")
         if width <= 0.0 or height <= 0.0 or speed_limit <= 0.0:
             raise ValueError(f"channel edge {edge_id} has invalid constraints")
-        edges.append(ChannelEdge(edge_id, centerline, width, height, speed_limit))
+        entry = external_portal_point(channel, centerline[0])
+        exit = external_portal_point(channel, centerline[-1])
+        generated_centerline = (entry, *centerline, exit)
+        edges.append(ChannelEdge(edge_id, generated_centerline, width, height,
+                                 speed_limit))
     if len({edge.id for edge in edges}) != len(edges):
         raise ValueError(f"channel {channel['id']} has duplicate edge ids")
     return edges

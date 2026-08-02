@@ -43,6 +43,8 @@ struct RiskAwareLattice3DConfig {
   double planning_exposure_cost_per_m{0.05};
   double critical_exposure_cost_per_m{0.50};
   double channel_connection_distance_m{3.0};
+  double frontier_minimum_reachable_depth_m{8.0};
+  std::size_t frontier_validation_maximum_states{2048U};
   std::size_t maximum_expansions{200000U};
   double maximum_search_time_ms{250.0};
 };
@@ -70,6 +72,9 @@ struct RiskAwareLattice3DResult {
   std::size_t expansions{0U};
   std::size_t stale_queue_pops{0U};
   std::size_t open_peak{0U};
+  std::size_t terminal_successor_count{0U};
+  std::size_t continuation_reachable_states{0U};
+  double continuation_reachable_depth_m{0.0};
   bool reached_mission_goal{false};
   double achieved_progress_m{0.0};
   double minimum_clearance_m{0.0};

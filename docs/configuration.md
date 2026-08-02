@@ -80,10 +80,19 @@ Static world:
   preference and is intentionally `0.0` during channel development;
 - planning/critical exposure and turn-cost parameters rank complete route
   candidates with finite costs;
-- `global_lattice_3d_channel_connection_distance_m` connects locally reachable
-  lattice states to generated channel entries;
+- `global_lattice_3d_channel_connection_distance_m` connects ordinary lattice
+  states to generated channel entries; root topology candidates also evaluate a
+  collision-free direct connection from the current start to each external
+  portal plane;
+- frontier continuation-depth parameters reject short endpoints that have no
+  locally reachable continuation;
 - route-envelope parameters control typed constrained-span execution data;
 - constrained-span speed is encoded in 3D route samples.
+
+Constrained route execution uses 3D route station. Vertical alignment begins at
+a distance derived from measured `z`/`vz` and configured vertical dynamics. XY
+hold is reserved for the final configured distance before the entry plane when
+the measured altitude has not reached the retained capture window.
 
 Safety and liveness:
 

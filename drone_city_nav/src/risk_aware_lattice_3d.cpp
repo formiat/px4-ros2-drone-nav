@@ -12,6 +12,7 @@
 #include <ranges>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -93,6 +94,12 @@ struct EdgeEvaluation {
   double minimum_clearance_m{std::numeric_limits<double>::infinity()};
   double planning_exposure_m{0.0};
   double critical_exposure_m{0.0};
+};
+
+struct ContinuationMetrics {
+  std::size_t immediate_successors{0U};
+  std::size_t reachable_states{0U};
+  double reachable_depth_m{0.0};
 };
 
 struct ReconstructedPath {
@@ -182,6 +189,78 @@ struct ReconstructedPath {
       result.critical_exposure_m += exposure_per_sample;
     } else if (query.clearance_m < config.preferred_distance_m) {
       result.planning_exposure_m += exposure_per_sample;
+    }
+  }
+  return result;
+}
+
+[[nodiscard]] ContinuationMetrics
+evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+                     const Point3& terminal, const Vec3& incoming_direction,
+                     const Lattice3DRiskStage stage,
+                     const RiskAwareLattice3DConfig& config) {
+  struct Candidate {
+    Key key{};
+    Point3 point{};
+  };
+
+  constexpr std::array<int, 3> kOffsets{-1, 0, 1};
+  const std::size_t maximum_states =
+      std::max<std::size_t>(1U, config.frontier_validation_maximum_states);
+  std::queue<Candidate> pending;
+  std::unordered_set<Key, KeyHash> visited;
+  const Key origin{};
+  pending.push(Candidate{.key = origin, .point = terminal});
+  visited.insert(origin);
+  ContinuationMetrics result;
+  while (!pending.empty() && result.reachable_states < maximum_states &&
+         result.reachable_depth_m + 1.0e-9 <
+             config.frontier_minimum_reachable_depth_m) {
+    const Candidate current = pending.front();
+    pending.pop();
+    for (const int dx : kOffsets) {
+      for (const int dy : kOffsets) {
+        for (const int dz : kOffsets) {
+          if (dx == 0 && dy == 0 && dz == 0) {
+            continue;
+          }
+          const Key next{.kind = NodeKind::kLattice,
+                         .x = current.key.x + dx,
+                         .y = current.key.y + dy,
+                         .z = current.key.z + dz};
+          if (visited.contains(next)) {
+            continue;
+          }
+          visited.insert(next);
+          const Point3 successor{
+              terminal.x + static_cast<double>(next.x) * config.horizontal_step_m,
+              terminal.y + static_cast<double>(next.y) * config.horizontal_step_m,
+              terminal.z + static_cast<double>(next.z) * config.vertical_step_m};
+          if (current.key == origin) {
+            const double departure_length = distance3D(terminal, successor);
+            const Vec3 departure{(successor.x - terminal.x) / departure_length,
+                                 (successor.y - terminal.y) / departure_length,
+                                 (successor.z - terminal.z) / departure_length};
+            const double alignment = departure.x * incoming_direction.x +
+                                     departure.y * incoming_direction.y +
+                                     departure.z * incoming_direction.z;
+            if (alignment < -1.0e-6) {
+              continue;
+            }
+          }
+          if (!evaluateEdge(grid, esdf_m, current.point, successor, stage, config)
+                   .valid) {
+            continue;
+          }
+          if (current.key == origin) {
+            ++result.immediate_successors;
+          }
+          ++result.reachable_states;
+          result.reachable_depth_m =
+              std::max(result.reachable_depth_m, distance3D(terminal, successor));
+          pending.push(Candidate{.key = next, .point = successor});
+        }
+      }
     }
   }
   return result;
@@ -286,9 +365,10 @@ channelSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
                        const ConstrainedFreeSpaceEdge& channel,
                        const std::size_t channel_index, const bool reversed,
                        const Lattice3DRiskStage stage, const Vec3& preferred_direction,
-                       const RiskAwareLattice3DConfig& config) {
+                       const RiskAwareLattice3DConfig& config,
+                       const double maximum_connection_distance_m) {
   const Point3 entry = channelEntry(channel, reversed);
-  if (distance3D(current, entry) > config.channel_connection_distance_m) {
+  if (distance3D(current, entry) > maximum_connection_distance_m) {
     return std::nullopt;
   }
   Record candidate = current_record;
@@ -423,6 +503,29 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
                        .g_at_insert = 0.0,
                        .sequence = sequence++,
                        .key = root});
+  for (std::size_t channel_index = 0U; channel_index < channels.size();
+       ++channel_index) {
+    for (const bool reversed : {false, true}) {
+      const std::optional<Record> candidate = channelSuccessorRecord(
+          grid, esdf_m, start, records.at(root), channels[channel_index], channel_index,
+          reversed, stage, preferred_direction, config,
+          std::numeric_limits<double>::infinity());
+      if (!candidate.has_value()) {
+        continue;
+      }
+      const Key next{.kind = NodeKind::kChannelExit,
+                     .channel_index = static_cast<int>(channel_index),
+                     .reversed = reversed};
+      records[next] = *candidate;
+      records[next].parent = root;
+      const Point3 successor = channelExit(channels[channel_index], reversed);
+      open.push(QueueEntry{.f = candidate->g +
+                                1.5 * heuristicCost(successor, planning_goal, config),
+                           .g_at_insert = candidate->g,
+                           .sequence = sequence++,
+                           .key = next});
+    }
+  }
   Key best = root;
   double best_remaining = distance3D(start, planning_goal);
   std::size_t expansions = 0U;
@@ -518,7 +621,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
       for (const bool reversed : {false, true}) {
         const std::optional<Record> candidate = channelSuccessorRecord(
             grid, esdf_m, current, found->second, channels[channel_index],
-            channel_index, reversed, stage, preferred_direction, config);
+            channel_index, reversed, stage, preferred_direction, config,
+            config.channel_connection_distance_m);
         if (!candidate.has_value()) {
           continue;
         }
@@ -577,6 +681,21 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   result.planning_exposure_m = metrics.planning_exposure_m;
   result.critical_exposure_m = metrics.critical_exposure_m;
   result.turn_cost = metrics.turn_cost;
+  if (!reached) {
+    const ContinuationMetrics continuation =
+        evaluateContinuation(grid, esdf_m, pointFor(best, start, channels, config),
+                             records.at(best).incoming_direction, stage, config);
+    result.terminal_successor_count = continuation.immediate_successors;
+    result.continuation_reachable_states = continuation.reachable_states;
+    result.continuation_reachable_depth_m = continuation.reachable_depth_m;
+    if (result.status == Lattice3DStatus::kViableFrontier &&
+        (continuation.immediate_successors == 0U ||
+         continuation.reachable_depth_m + 1.0e-9 <
+             config.frontier_minimum_reachable_depth_m)) {
+      result.status = timed_out ? Lattice3DStatus::kSearchIncomplete
+                                : Lattice3DStatus::kMotionGraphExhausted;
+    }
+  }
   result.route = sampleRoute3D(result.points, config.sample_step_m,
                                config.nominal_horizontal_speed_mps);
   result.topology_candidates.reserve(channels.size());

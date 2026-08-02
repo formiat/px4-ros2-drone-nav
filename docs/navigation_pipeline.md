@@ -73,10 +73,12 @@ goal is forbidden. The planner publishes braking/hold behavior instead.
 
 ## 5. Constrained Route Spans
 
-Static air channels are ordinary physical free space. The accepted 3D route is
-analysed against local clearance and produces constrained station intervals.
-Those intervals carry speed and tracking envelopes directly; no nearest-opening
-selection or separate passage lifecycle exists.
+Static air channels are ordinary physical free space represented by generated
+constrained graph edges. Global search explicitly evaluates
+`start -> entry -> channel -> exit -> planning goal` topology candidates. A
+selected channel edge creates its constrained station interval directly; local
+clearance analysis remains a validation step rather than a nearest-opening
+selector or separate passage lifecycle.
 
 ## 6. GPU MPPI
 

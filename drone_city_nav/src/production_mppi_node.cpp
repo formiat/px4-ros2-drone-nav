@@ -177,6 +177,22 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("maximum_vertical_acceleration_mps2", 4.0));
   mppi_config_.dynamics.maximum_vertical_speed_mps =
       static_cast<float>(declare_parameter<double>("maximum_vertical_speed_mps", 5.0));
+  constrained_route_control_config_.maximum_vertical_acceleration_mps2 =
+      mppi_config_.dynamics.maximum_vertical_acceleration_mps2;
+  constrained_route_control_config_.maximum_vertical_speed_mps =
+      mppi_config_.dynamics.maximum_vertical_speed_mps;
+  constrained_route_control_config_.alignment_distance_buffer_m =
+      declare_parameter<double>("constrained_route_alignment_distance_buffer_m", 5.0);
+  constrained_route_control_config_.stationary_hold_distance_m =
+      declare_parameter<double>("constrained_route_stationary_hold_distance_m", 2.0);
+  constrained_route_control_config_.vertical_capture_margin_m =
+      declare_parameter<double>("constrained_route_vertical_capture_margin_m", 0.5);
+  constrained_route_control_config_.vertical_capture_speed_mps =
+      declare_parameter<double>("constrained_route_vertical_capture_speed_mps", 0.75);
+  safety_config_.physical_footprint_radius_m =
+      declare_parameter<double>("physical_footprint_radius_m", 0.82);
+  safety_config_.physical_footprint_samples = static_cast<std::size_t>(
+      declare_parameter<std::int64_t>("physical_footprint_samples", 12));
   mppi_config_.costs.head_progress_horizon_s =
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
@@ -273,6 +289,11 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("global_lattice_3d_critical_exposure_cost_per_m", 0.50);
   lattice_3d_config_.channel_connection_distance_m =
       declare_parameter<double>("global_lattice_3d_channel_connection_distance_m", 3.0);
+  lattice_3d_config_.frontier_minimum_reachable_depth_m =
+      declare_parameter<double>("global_lattice_3d_frontier_reachable_depth_m", 8.0);
+  lattice_3d_config_.frontier_validation_maximum_states =
+      static_cast<std::size_t>(declare_parameter<std::int64_t>(
+          "global_lattice_3d_frontier_validation_maximum_states", 2048));
   lattice_3d_config_.maximum_expansions =
       static_cast<std::size_t>(static_lattice_expansions);
   lattice_3d_config_.maximum_search_time_ms = static_lattice_deadline_ms;
@@ -294,6 +315,8 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("static_global_guide_extension_maximum_latency_s", 8.0);
   static_route_extension_config_.minimum_retry_progress_m =
       declare_parameter<double>("static_global_guide_extension_retry_progress_m", 15.0);
+  static_route_extension_config_.minimum_retry_interval_s =
+      declare_parameter<double>("static_global_guide_extension_retry_interval_s", 1.0);
   static_route_extension_config_.minimum_endpoint_improvement_m =
       declare_parameter<double>(
           "static_global_guide_extension_minimum_endpoint_improvement_m", 5.0);
@@ -362,7 +385,11 @@ ProductionMppiNode::ProductionMppiNode()
       !(lattice_3d_config_.planning_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.critical_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.channel_connection_distance_m > 0.0) ||
+      !(lattice_3d_config_.frontier_minimum_reachable_depth_m > 0.0) ||
+      lattice_3d_config_.frontier_validation_maximum_states == 0U ||
       !(safety_config_.swept_validation_step_m > 0.0) ||
+      !(safety_config_.physical_footprint_radius_m >= 0.0) ||
+      safety_config_.physical_footprint_samples == 0U ||
       !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
       !(frontier_blacklist_ttl_s_ > 0.0)) {
     throw std::invalid_argument{"invalid production MPPI configuration"};

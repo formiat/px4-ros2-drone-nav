@@ -55,6 +55,8 @@ stores grid bounds, resolution, chunk size, a fingerprint of the canonical JSON,
 and the number of occupied chunks. The chunk payload is followed by the generated
 constrained free-space graph. Each channel edge stores its identifier, sampled 3D
 centerline, entry and exit, vertical window, minimum clearance, and speed limit.
+Entry and exit are generated on the exterior portal planes, not at bridge
+centers, so approach and departure route segments remain outside solid geometry.
 This metadata is compiled from the same canonical JSON; it is not a separate
 hand-authored passage source. The current world uses:
 
@@ -124,6 +126,11 @@ ordinary omnidirectional 3D lattice edges
 ```
 
 Every edge is validated against the current raw Occupancy3D/ESDF3D before use.
+At the root, search explicitly evaluates collision-free
+`start -> entry -> channel -> exit` candidates for every channel direction;
+ordinary lattice expansion remains available for entries that cannot be reached
+directly. Partial lattice frontiers require measured continuation depth beyond
+their endpoint before they can be executed.
 Physical occupied voxels remain the only hard geometry. Preferred, planning, and
 critical stages all run, and all complete routes are compared by finite objective
 cost instead of returning the first preferred route. The objective records travel

@@ -105,11 +105,11 @@ The event and `mppi_ticks.jsonl` expose:
 - actual horizontal/vertical speed and constrained reference speed;
 - execution mode and reason at every lifecycle transition.
 
-The architecture intentionally has no semantic channel id: constrained spans
-are inferred from physical 3D occupancy and are identified by
-`route_generation + span_index`. Entry and exit coordinates provide stable
-spatial correlation with the canonical world. `approach` is not proof of entry;
-only `traversal` means the measured route station crossed the span boundary.
+Generated channel edges retain their semantic channel id. Selected edges create
+constrained spans directly and are correlated by
+`route_generation + channel_id + span_index`. Entry and exit coordinates lie on
+the exterior portal planes. `approach` is not proof of entry; only `traversal`
+means the measured 3D route station crossed the span boundary.
 
 ## Offboard Diagnostics
 

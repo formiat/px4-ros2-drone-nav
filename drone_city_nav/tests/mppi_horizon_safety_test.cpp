@@ -20,6 +20,24 @@ TEST(MppiHorizonSafetyTest, ExecutesCollisionFreeHorizon) {
   EXPECT_TRUE(result.fallback_horizon.empty());
 }
 
+TEST(MppiHorizonSafetyTest, RejectsRotorFootprintContactWhenCenterCellIsFree) {
+  const mppi::EsdfGrid grid{10, 10, 1.0F, 0.0F, 0.0F};
+  std::vector<float> esdf(100U, 10.0F);
+  esdf[2U * 10U + 3U] = 0.0F;
+  const mppi::State state{2.5F, 2.5F};
+  const std::vector<mppi::State> horizon{state, state};
+
+  const MppiHorizonSafetyResult point_result = evaluateMppiHorizonSafety(
+      state, horizon, esdf, grid,
+      MppiHorizonSafetyConfig{.physical_footprint_radius_m = 0.0});
+  const MppiHorizonSafetyResult footprint_result = evaluateMppiHorizonSafety(
+      state, horizon, esdf, grid,
+      MppiHorizonSafetyConfig{.physical_footprint_radius_m = 0.82});
+
+  EXPECT_EQ(point_result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_NE(footprint_result.decision, MppiHorizonSafetyDecision::kExecute);
+}
+
 TEST(MppiHorizonSafetyTest, DelaysInterventionForDistantCollision) {
   const mppi::EsdfGrid grid{20, 20, 1.0F, 0.0F, 0.0F};
   std::vector<float> esdf(400U, 10.0F);
@@ -202,14 +220,15 @@ TEST(MppiHorizonSafetyTest, SweptValidationFindsCollisionBetweenHorizonStates) {
   EXPECT_LT(result.time_to_collision_s, 1.0);
 }
 
-TEST(MppiHorizonSafetyTest, DoesNotTreatNearWallFreeCellAsHardCollision) {
+TEST(MppiHorizonSafetyTest, PointModelDoesNotTreatNearWallFreeCellAsCollision) {
   const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf{1.0F, 0.0F};
   const mppi::State current{0.5F, 0.5F};
   const std::vector<mppi::State> horizon{current, mppi::State{0.99F, 0.5F}};
 
   const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
-      current, horizon, esdf, grid, MppiHorizonSafetyConfig{});
+      current, horizon, esdf, grid,
+      MppiHorizonSafetyConfig{.physical_footprint_radius_m = 0.0});
 
   EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
 }

@@ -21,6 +21,59 @@ TEST(Route3DTest, SamplesContinuousAltitudeProfile) {
   EXPECT_EQ(route.back().reference_speed_mps, 10.0);
 }
 
+TEST(Route3DTest, ProjectsProgressUsingThreeDimensionalStation) {
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 10.0}, {0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}}, 1.0,
+      10.0);
+
+  const RouteProjection3D projection = projectOntoRoute3D(route, Point3{5.0, 0.0, 0.0});
+
+  ASSERT_TRUE(projection.valid);
+  EXPECT_NEAR(projection.station_m, 15.0, 1.0e-6);
+  EXPECT_NEAR(projection.remaining_m, 5.0, 1.0e-6);
+}
+
+TEST(Route3DTest, CoordinatesVerticalAlignmentBeforeChannelEntry) {
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 18.0}, {80.0, 0.0, 5.0}, {100.0, 0.0, 5.0}}, 1.0,
+      20.0);
+  const double entry_station = route[route.size() - 21U].station_m;
+  const std::vector<ConstrainedRouteSpan> spans{ConstrainedRouteSpan{
+      .channel_id = "channel",
+      .route_generation = 4U,
+      .begin_station_m = entry_station,
+      .end_station_m = route.back().station_m,
+      .envelope = {RouteEnvelopeSample{.station_m = entry_station,
+                                       .min_z_m = 1.5,
+                                       .max_z_m = 8.5,
+                                       .reference_z_m = 5.0,
+                                       .reference_speed_mps = 10.0}},
+  }};
+  ConstrainedRouteCoordinator coordinator;
+  const ConstrainedRouteObservation approach = observeConstrainedRoute(
+      route, spans, 4U, entry_station - 40.0, Point3{40.0, 0.0, 18.0},
+      Vec3{20.0, 0.0, 0.0}, RouteEnvelopeConfig{}, 180.0);
+  const ConstrainedRouteControl control =
+      coordinator.update(approach, 20.0, ConstrainedRouteControlConfig{});
+
+  EXPECT_TRUE(control.active);
+  EXPECT_FALSE(control.vertical_ready);
+  EXPECT_FALSE(control.hold_xy);
+  EXPECT_LT(control.speed_limit_mps, 20.0);
+  EXPECT_DOUBLE_EQ(control.reference_z_m, 5.0);
+
+  ConstrainedRouteObservation at_entry = approach;
+  at_entry.distance_to_entry_m = 1.0;
+  EXPECT_TRUE(
+      coordinator.update(at_entry, 20.0, ConstrainedRouteControlConfig{}).hold_xy);
+  at_entry.actual_z_m = 5.0;
+  at_entry.actual_vertical_speed_mps = 0.1;
+  const ConstrainedRouteControl ready =
+      coordinator.update(at_entry, 20.0, ConstrainedRouteControlConfig{});
+  EXPECT_TRUE(ready.vertical_ready);
+  EXPECT_FALSE(ready.hold_xy);
+}
+
 TEST(Route3DTest, ObservesConstrainedSpanLifecycleAndMotionMetrics) {
   const std::vector<Point3> route_points{{0.0, 0.0, 0.0}, {100.0, 0.0, 10.0}};
   const std::vector<RouteSample3D> route = sampleRoute3D(route_points, 5.0, 20.0);
@@ -342,6 +395,47 @@ TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
   EXPECT_EQ(result.selected_channels.front().channel_id, "direct_channel");
   EXPECT_GT(result.selected_channels.front().end_station_m,
             result.selected_channels.front().begin_station_m);
+}
+
+TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 8, 10}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
+      .id = "far_channel",
+      .centerline = sampleRoute3D(
+          std::vector<Point3>{{8.5, 2.5, 5.5}, {18.5, 2.5, 5.5}}, 0.5, 10.0),
+      .entry = Point3{8.5, 2.5, 5.5},
+      .exit = Point3{18.5, 2.5, 5.5},
+      .min_z_m = 1.5,
+      .max_z_m = 8.5,
+      .minimum_clearance_m = 3.5,
+      .speed_limit_mps = 10.0}};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 4.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.heading_bias_cost_per_rad = 0.0;
+  config.turn_cost_per_rad = 0.0;
+  config.channel_connection_distance_m = 1.0;
+  config.maximum_search_time_ms = 1000.0;
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      grid, field.distancesM(), Point3{0.5, 2.5, 8.5}, Vec3{1.0, 0.0, 0.0},
+      Point3{22.5, 2.5, 5.5}, channels, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  ASSERT_EQ(result.selected_channels.size(), 1U);
+  EXPECT_EQ(result.selected_channels.front().channel_id, "far_channel");
 }
 
 } // namespace

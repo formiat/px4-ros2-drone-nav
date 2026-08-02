@@ -37,11 +37,20 @@ StaticRouteExtensionDecision evaluateStaticRouteExtension(
       observation.route_remaining_m < 0.0) {
     return decision;
   }
-  if (observation.last_request_generation == observation.route_generation &&
-      observation.route_station_m <
-          observation.last_request_station_m +
-              std::max(0.0, config.minimum_retry_progress_m)) {
-    return decision;
+  if (observation.last_request_generation == observation.route_generation) {
+    const bool enough_progress = observation.route_station_m >=
+                                 observation.last_request_station_m +
+                                     std::max(0.0, config.minimum_retry_progress_m);
+    const double elapsed_s =
+        observation.request_stamp_ns > observation.last_request_stamp_ns
+            ? static_cast<double>(observation.request_stamp_ns -
+                                  observation.last_request_stamp_ns) /
+                  1.0e9
+            : 0.0;
+    if (!enough_progress &&
+        elapsed_s < std::max(0.0, config.minimum_retry_interval_s)) {
+      return decision;
+    }
   }
   if (!observation.next_planning_goal_inside_esdf &&
       observation.route_remaining_m <= decision.roi_refresh_trigger_remaining_m) {
@@ -93,8 +102,8 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
     const std::span<const RouteSample3D> active_route,
     const std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
     const std::span<const float> esdf_m, const Point3& mission_goal,
-    const double minimum_endpoint_improvement_m,
-    const bool reaches_mission_goal) noexcept {
+    const double minimum_endpoint_improvement_m, const bool reaches_mission_goal,
+    const bool required_continuation) noexcept {
   if (candidate_route.size() < 2U) {
     return {.status = StaticRouteCandidateStatus::kEmpty};
   }
@@ -116,7 +125,7 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
   if (!active_route.empty()) {
     improvement_m = distance3D(active_route.back().position, mission_goal) -
                     distance3D(candidate_route.back().position, mission_goal);
-    if (!reaches_mission_goal &&
+    if (!required_continuation && !reaches_mission_goal &&
         improvement_m + 1.0e-9 < std::max(0.0, minimum_endpoint_improvement_m)) {
       return {.status = StaticRouteCandidateStatus::kNoEndpointImprovement,
               .endpoint_improvement_m = improvement_m};

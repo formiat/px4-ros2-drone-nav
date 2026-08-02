@@ -56,7 +56,7 @@ namespace {
 
 void ProductionMppiNode::maybeRequestStaticRouteExtension(
     const ProductionMppiPreparedEsdf& esdf, const ProductionMppiNavigation& navigation,
-    const GlobalGuideProjection& route_projection) {
+    const GlobalGuideProjection& route_projection, const std::int64_t now_ns) {
   if (!esdf.route_3d || esdf.route_3d->size() < 2U ||
       esdf.global_guide_generation == 0U) {
     return;
@@ -81,6 +81,8 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
           .request_in_flight = static_route_extension_request_in_flight_,
           .last_request_generation = static_route_extension_last_request_generation_,
           .last_request_station_m = static_route_extension_last_request_station_m_,
+          .request_stamp_ns = now_ns,
+          .last_request_stamp_ns = static_route_extension_last_request_stamp_ns_,
       });
   if (!decision.request_extension && !decision.request_roi_refresh) {
     return;
@@ -107,6 +109,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   static_route_extension_in_flight_generation_ = esdf.global_guide_generation;
   static_route_extension_last_request_generation_ = esdf.global_guide_generation;
   static_route_extension_last_request_station_m_ = route_projection.station_m;
+  static_route_extension_last_request_stamp_ns_ = now_ns;
   RCLCPP_INFO(get_logger(),
               "STATIC_ROUTE_EXTENSION_REQUEST generation=%" PRIu64
               " station_m=%.2f remaining_m=%.2f mode=%s extension_trigger_m=%.2f "
@@ -615,12 +618,22 @@ void ProductionMppiNode::planningTick() {
     tracked_route_generation_ = esdf->global_guide_generation;
     tracked_route_station_m_ = 0.0;
   }
-  const GlobalGuideProjection measured_route_projection =
-      guide.empty()
-          ? GlobalGuideProjection{}
-          : projectOntoGlobalGuide(guide,
-                                   Point2{navigation.state.x, navigation.state.y},
-                                   tracked_route_station_m_);
+  const RouteProjection3D measured_route_3d =
+      esdf->route_3d ? projectOntoRoute3D(*esdf->route_3d,
+                                          Point3{navigation.state.x, navigation.state.y,
+                                                 navigation.state.z},
+                                          tracked_route_station_m_)
+                     : RouteProjection3D{};
+  const GlobalGuideProjection measured_route_projection{
+      .valid = measured_route_3d.valid,
+      .station_m = measured_route_3d.station_m,
+      .total_length_m = esdf->route_3d && !esdf->route_3d->empty()
+                            ? esdf->route_3d->back().station_m
+                            : 0.0,
+      .remaining_m = measured_route_3d.remaining_m,
+      .cross_track_m = measured_route_3d.distance_m,
+      .point = Point2{measured_route_3d.point.x, measured_route_3d.point.y},
+  };
   if (measured_route_projection.valid) {
     tracked_route_station_m_ =
         std::max(tracked_route_station_m_, measured_route_projection.station_m);
@@ -633,8 +646,24 @@ void ProductionMppiNode::planningTick() {
                           tracked_route_station_m_);
   }
   if (use_static_map_ && route_projection.valid) {
-    maybeRequestStaticRouteExtension(*esdf, navigation, route_projection);
+    maybeRequestStaticRouteExtension(*esdf, navigation, route_projection, now_ns);
   }
+  const std::span<const RouteSample3D> route_3d =
+      esdf->route_3d ? std::span<const RouteSample3D>{*esdf->route_3d}
+                     : std::span<const RouteSample3D>{};
+  const std::span<const ConstrainedRouteSpan> constrained_spans =
+      esdf->constrained_spans
+          ? std::span<const ConstrainedRouteSpan>{*esdf->constrained_spans}
+          : std::span<const ConstrainedRouteSpan>{};
+  const ConstrainedRouteObservation route_constraint = observeConstrainedRoute(
+      route_3d, constrained_spans, esdf->global_guide_generation,
+      route_projection.station_m,
+      Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+      Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
+      route_envelope_config_, lattice_3d_config_.planning_goal_distance_m);
+  const ConstrainedRouteControl route_control = constrained_route_coordinator_.update(
+      route_constraint, speed_policy_config_.cruise_speed_mps,
+      constrained_route_control_config_);
   const MissionGoalCaptureResult goal_capture =
       mission_goal_capture_latch_
           ? mission_goal_capture_latch_->update(MissionGoalCaptureObservation{
@@ -644,17 +673,37 @@ void ProductionMppiNode::planningTick() {
             })
           : MissionGoalCaptureResult{};
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
-      speed_policy_config_, MppiSpeedPolicyInput{
-                                .state = navigation.state,
-                                .mission_goal = mission_goal_,
-                                .guide = guide,
-                                .route_constraint_speed_limit_mps = std::nullopt,
-                            });
+      speed_policy_config_,
+      MppiSpeedPolicyInput{
+          .state = navigation.state,
+          .mission_goal = mission_goal_,
+          .guide = guide,
+          .route_constraint_speed_limit_mps =
+              route_control.active
+                  ? std::optional<double>{route_control.speed_limit_mps}
+                  : std::nullopt,
+      });
   std::string target_source;
   double target_station_m = 0.0;
   mppi::State target =
       selectTarget(*esdf, tracked_route_station_m_, speed_policy.target_lookahead_m,
                    target_source, target_station_m);
+  if (route_control.active) {
+    target.z = static_cast<float>(route_control.reference_z_m);
+    if (route_control.hold_xy) {
+      target_source = "channel_vertical_alignment_hold";
+    } else if (route_control.vertical_ready) {
+      target_source = "channel_traversal";
+    } else {
+      target_source = "channel_vertical_alignment";
+    }
+    if (route_control.hold_xy) {
+      target.x = navigation.state.x;
+      target.y = navigation.state.y;
+      speed_policy.reference_speed_mps = 0.0;
+      speed_policy.target_lookahead_m = 0.0;
+    }
+  }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
   if (goal_capture.latched) {
     planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
@@ -755,7 +804,7 @@ void ProductionMppiNode::planningTick() {
                                  : -1.0F,
       .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
       .route =
-          esdf->mppi_route && route_projection.valid
+          esdf->mppi_route && route_projection.valid && !route_control.hold_xy
               ? std::optional<mppi::RouteReference>{mppi::RouteReference{
                     .points = esdf->mppi_route,
                     .generation = esdf->global_guide_generation,

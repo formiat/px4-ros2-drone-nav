@@ -18,6 +18,14 @@ struct RouteSample3D {
   double reference_speed_mps{0.0};
 };
 
+struct RouteProjection3D {
+  bool valid{false};
+  double station_m{0.0};
+  double remaining_m{0.0};
+  double distance_m{0.0};
+  Point3 point{};
+};
+
 struct RouteEnvelopeSample {
   double station_m{0.0};
   double lateral_free_left_m{0.0};
@@ -91,8 +99,41 @@ struct ConstrainedRouteObservation {
   double reference_speed_mps{0.0};
   double actual_horizontal_speed_mps{0.0};
   double actual_vertical_speed_mps{0.0};
+  double actual_z_m{0.0};
   bool lateral_constrained{false};
   bool vertical_constrained{false};
+};
+
+struct ConstrainedRouteControlConfig {
+  double maximum_vertical_acceleration_mps2{4.0};
+  double maximum_vertical_speed_mps{5.0};
+  double alignment_distance_buffer_m{5.0};
+  double stationary_hold_distance_m{2.0};
+  double vertical_capture_margin_m{0.5};
+  double vertical_capture_speed_mps{0.75};
+};
+
+struct ConstrainedRouteControl {
+  bool active{false};
+  bool vertical_ready{false};
+  bool hold_xy{false};
+  double required_alignment_time_s{0.0};
+  double alignment_start_distance_m{0.0};
+  double reference_z_m{0.0};
+  double speed_limit_mps{0.0};
+};
+
+class ConstrainedRouteCoordinator {
+public:
+  [[nodiscard]] ConstrainedRouteControl
+  update(const ConstrainedRouteObservation& observation, double unconstrained_speed_mps,
+         const ConstrainedRouteControlConfig& config) noexcept;
+  void reset() noexcept;
+
+private:
+  std::uint64_t route_generation_{0U};
+  std::size_t span_index_{0U};
+  bool vertical_ready_latched_{false};
 };
 
 [[nodiscard]] std::string_view
@@ -108,6 +149,10 @@ observeConstrainedRoute(std::span<const RouteSample3D> route,
 [[nodiscard]] std::vector<RouteSample3D> sampleRoute3D(std::span<const Point3> points,
                                                        double sample_step_m,
                                                        double reference_speed_mps);
+
+[[nodiscard]] RouteProjection3D
+projectOntoRoute3D(std::span<const RouteSample3D> route, const Point3& position,
+                   double minimum_station_m = 0.0) noexcept;
 
 [[nodiscard]] std::vector<ConstrainedRouteSpan>
 makeConstrainedRouteSpans(std::span<const RouteSample3D> route,

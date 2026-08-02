@@ -138,6 +138,24 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             },
             {edge.id for edge in generator.channel_edges(channels["channel_108_108_t"])},
         )
+        straight_edge = generator.channel_edges(
+            channels["channel_54_162_straight"]
+        )[0]
+        self.assertEqual((54.0, 123.0, 5.0), straight_edge.centerline[0])
+        self.assertEqual((54.0, 201.0, 5.0), straight_edge.centerline[-1])
+        t_edges = {
+            edge.id: edge for edge in generator.channel_edges(
+                channels["channel_108_108_t"]
+            )
+        }
+        self.assertEqual(
+            (69.0, 108.0, 5.0),
+            t_edges["channel_108_108_t:west_north"].centerline[0],
+        )
+        self.assertEqual(
+            (108.0, 147.0, 5.0),
+            t_edges["channel_108_108_t:west_north"].centerline[-1],
+        )
 
         boxes = generator.physical_boxes(spec)
         self.assertEqual(79, len(boxes))

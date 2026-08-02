@@ -63,6 +63,19 @@ TEST(StaticRouteExtensionTest, DoesNotDuplicateRequestForSameGenerationAndStatio
   EXPECT_FALSE(decision.request_roi_refresh);
 }
 
+TEST(StaticRouteExtensionTest, RetriesAfterIntervalWithoutVehicleProgress) {
+  const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
+      StaticRouteExtensionConfig{.minimum_retry_interval_s = 1.0},
+      StaticRouteExtensionObservation{.route_generation = 4U,
+                                      .route_station_m = 80.0,
+                                      .route_remaining_m = 10.0,
+                                      .last_request_generation = 4U,
+                                      .last_request_station_m = 80.0,
+                                      .request_stamp_ns = 2'000'000'000,
+                                      .last_request_stamp_ns = 500'000'000});
+  EXPECT_TRUE(decision.request_extension);
+}
+
 TEST(StaticRouteExtensionTest, MissionTerminalRouteIsNeverExtended) {
   const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
       StaticRouteExtensionConfig{},
@@ -105,6 +118,17 @@ TEST(StaticRouteExtensionTest, CandidateMustImproveEndpointAndAvoidRawOccupancy)
                                          Point3{11.5, 1.5, 1.5}, 2.0, false)
                 .status,
             StaticRouteCandidateStatus::kRawCollision);
+}
+
+TEST(StaticRouteExtensionTest, RequiredContinuationMayTemporarilyLoseGoalProgress) {
+  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
+                                std::numeric_limits<float>::infinity());
+
+  const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
+      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false, true);
+
+  EXPECT_TRUE(result.accepted);
 }
 
 TEST(StaticRouteExtensionTest, PlanningGoalAndEsdfBoundaryAreExplicit) {
