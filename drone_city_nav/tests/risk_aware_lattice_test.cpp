@@ -1,9 +1,13 @@
+#include "drone_city_nav/distance_field.hpp"
+#include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <numbers>
 #include <ranges>
 #include <vector>
 
@@ -117,7 +121,7 @@ TEST(RiskAwareLattice, ClassifiesUsefulBudgetLimitedGuideAsViableFrontier) {
   EXPECT_GE(result.frontier_endpoint_displacement_m,
             config.minimum_frontier_endpoint_displacement_m);
   EXPECT_GT(result.terminal_successor_count, 0U);
-  EXPECT_GT(result.two_step_reachable_states, 0U);
+  EXPECT_GT(result.continuation_reachable_states, 0U);
   EXPECT_GE(result.reachable_depth_m, config.minimum_frontier_reachable_depth_m);
 }
 
@@ -147,7 +151,7 @@ TEST(RiskAwareLattice, AcceptsViableFrontierWithTemporaryNegativeGoalProgress) {
   }));
 }
 
-TEST(RiskAwareLattice, ReportsIncompleteWhenBudgetEndsWithoutViableFrontier) {
+TEST(RiskAwareLattice, ReturnsRawSafeDetourPrefixWhenBudgetEndsEarly) {
   const mppi::EsdfGrid grid{200, 30, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
                                 20.0F);
@@ -157,9 +161,11 @@ TEST(RiskAwareLattice, ReportsIncompleteWhenBudgetEndsWithoutViableFrontier) {
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config);
 
-  EXPECT_FALSE(result.valid);
-  EXPECT_EQ(result.status, LatticePlanStatus::kSearchIncomplete);
+  EXPECT_TRUE(result.valid);
+  EXPECT_EQ(result.status, LatticePlanStatus::kRawSafeDetourPrefix);
   EXPECT_EQ(result.termination, LatticeSearchTermination::kExpansionBudgetExhausted);
+  EXPECT_FALSE(result.search_session_complete);
+  EXPECT_GE(result.guide.size(), 2U);
 }
 
 TEST(RiskAwareLattice, ResumesPersistentSearchSessionAcrossBudgetSlices) {
@@ -184,6 +190,87 @@ TEST(RiskAwareLattice, ResumesPersistentSearchSessionAcrossBudgetSlices) {
   const RiskAwareLatticeResult restarted = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config, {}, &session);
   EXPECT_FALSE(restarted.search_session_resumed);
+}
+
+TEST(RiskAwareLattice, BoundedContinuationProvesDepthBeyondTwoPrimitives) {
+  const mppi::EsdfGrid grid{100, 60, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                20.0F);
+  RiskAwareLatticeConfig config;
+  config.maximum_expansions = 30U;
+  config.minimum_frontier_reachable_depth_m = 20.0;
+  config.frontier_validation_maximum_states = 2048U;
+
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 20.5}, 0.0, Point2{90.5, 20.5}, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.status, LatticePlanStatus::kViableFrontier);
+  EXPECT_GE(result.reachable_depth_m, 20.0);
+  EXPECT_GT(result.continuation_reachable_states, 0U);
+  EXPECT_FALSE(result.search_session_complete);
+}
+
+TEST(RiskAwareLattice, DetoursAroundObservedCornerAt69By123) {
+  const mppi::EsdfGrid grid{180, 220, 1.0F, 0.0F, 0.0F};
+  OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 1.0, grid.width, grid.height}};
+  occupancy.reset(CellState::kFree);
+  for (int y = 123; y < 147; ++y) {
+    for (int x = 69; x < 93; ++x) {
+      occupancy.setOccupied(GridIndex{x, y});
+    }
+  }
+  const DistanceField2D field =
+      DistanceField2D::build(occupancy, 26.0, DistanceFieldSource::kOccupied);
+  std::vector<float> esdf;
+  esdf.reserve(field.distancesM().size());
+  std::ranges::transform(field.distancesM(), std::back_inserter(esdf),
+                         [](const double value) { return static_cast<float>(value); });
+  RiskAwareLatticeConfig config;
+  config.maximum_expansions = 3000U;
+  config.maximum_search_time_ms = 1000.0;
+  config.minimum_frontier_reachable_depth_m = 20.0;
+
+  const Point2 start{68.5, 122.5};
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, start, std::numbers::pi / 4.0, Point2{120.5, 180.5}, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.status, LatticePlanStatus::kReachedPlanningGoal);
+  ASSERT_GE(result.guide.size(), 2U);
+  EXPECT_TRUE(validateGuideAgainstRawOccupancy(result.guide, occupancy, 0.5).accepted);
+  EXPECT_TRUE(std::ranges::any_of(result.guide, [](const Point2 point) {
+    return (point.x < 69.0 && point.y > 147.0) || (point.y < 123.0 && point.x > 93.0);
+  }));
+}
+
+TEST(RawGuideValidation, RejectsCandidateBlockedByNewRawSnapshot) {
+  const GridBounds bounds{0.0, 0.0, 1.0, 40, 30};
+  OccupancyGrid2D search_snapshot{bounds};
+  search_snapshot.reset(CellState::kFree);
+  OccupancyGrid2D latest_snapshot = search_snapshot;
+  latest_snapshot.setOccupied(GridIndex{10, 10});
+  const std::vector<Point2> candidate{{2.5, 10.5}, {20.5, 10.5}};
+
+  EXPECT_TRUE(
+      validateGuideAgainstRawOccupancy(candidate, search_snapshot, 0.5).accepted);
+  const RawGuideValidationResult latest =
+      validateGuideAgainstRawOccupancy(candidate, latest_snapshot, 0.5);
+  EXPECT_FALSE(latest.accepted);
+  EXPECT_EQ(latest.status, RawGuideValidationStatus::kRawCollision);
+  EXPECT_NEAR(latest.failure_point.x, 10.0, 0.5);
+  EXPECT_NEAR(latest.failure_point.y, 10.5, 0.5);
+}
+
+TEST(RawGuideValidation, IgnoresBlockedPrefixBehindCurrentStation) {
+  OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 1.0, 40, 30}};
+  occupancy.reset(CellState::kFree);
+  occupancy.setOccupied(GridIndex{5, 10});
+  const std::vector<Point2> candidate{{2.5, 10.5}, {20.5, 10.5}};
+
+  EXPECT_FALSE(validateGuideAgainstRawOccupancy(candidate, occupancy, 0.5).accepted);
+  EXPECT_TRUE(
+      validateGuideAgainstRawOccupancy(candidate, occupancy, 0.5, 8.0).accepted);
 }
 
 TEST(RiskAwareLattice, EscalatesToPlanningStageForCompleteRoute) {

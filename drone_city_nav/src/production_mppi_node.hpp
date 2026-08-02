@@ -15,6 +15,7 @@
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
+#include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
@@ -60,6 +61,7 @@ struct ProductionMppiPreparedEsdf {
   double global_guide_search_ms{0.0};
   mppi::EsdfGrid grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
+  std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
@@ -99,7 +101,7 @@ struct ProductionMppiPreparedEsdf {
   std::size_t lattice_stale_queue_pops{0U};
   std::size_t lattice_open_peak{0U};
   std::size_t lattice_records_peak{0U};
-  std::size_t lattice_two_step_reachable_states{0U};
+  std::size_t lattice_continuation_reachable_states{0U};
   double lattice_reachable_depth_m{0.0};
   double lattice_frontier_endpoint_displacement_m{0.0};
   double lattice_frontier_selection_score{0.0};
@@ -107,6 +109,11 @@ struct ProductionMppiPreparedEsdf {
   LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
   std::size_t lattice_continuation_attempt{0U};
   bool lattice_search_session_resumed{false};
+  bool lattice_search_session_complete{true};
+  std::uint64_t lattice_search_revision{0U};
+  std::uint64_t lattice_validation_revision{0U};
+  RawGuideValidationStatus lattice_raw_validation_status{
+      RawGuideValidationStatus::kInvalidGuide};
   bool static_route_extension_request{false};
   std::uint64_t static_route_extension_base_generation{0U};
 };

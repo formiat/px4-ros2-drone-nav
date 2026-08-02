@@ -197,7 +197,8 @@ production_mppi_node:
     no_static_global_lattice_roi_halo_m: 45.0
     global_lattice_frontier_candidates: 64
     global_lattice_frontier_minimum_endpoint_displacement_m: 4.0
-    global_lattice_frontier_reachable_depth_m: 8.0
+    global_lattice_frontier_reachable_depth_m: 20.0
+    global_lattice_frontier_validation_maximum_states: 2048
     global_lattice_frontier_goal_distance_weight: 0.25
     global_lattice_frontier_blacklist_enabled: false
     global_lattice_frontier_blacklist_radius_m: 6.0

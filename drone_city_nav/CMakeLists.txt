@@ -140,7 +140,9 @@ add_library(
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/px4_ros_time_mapper.cpp
+  src/raw_guide_validation.cpp
   src/risk_aware_lattice.cpp
+  src/risk_aware_lattice_names.cpp
   src/risk_aware_lattice_3d.cpp
   src/route_3d.cpp
   src/static_route_extension.cpp
@@ -291,9 +293,10 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node.cpp
     src/production_mppi_node_esdf.cpp
     src/production_mppi_node_inputs.cpp
-  src/production_mppi_node_runtime.cpp
-  src/production_mppi_route_helpers.cpp
-  src/production_mppi_node_static_guide.cpp
+    src/production_mppi_node_runtime.cpp
+    src/production_mppi_route_helpers.cpp
+    src/production_mppi_node_static_extension.cpp
+    src/production_mppi_node_static_guide.cpp
     src/production_mppi_node_diagnostics.cpp
     src/production_mppi_node_execution.cpp)
   target_compile_features(production_mppi_node PRIVATE cxx_std_20)

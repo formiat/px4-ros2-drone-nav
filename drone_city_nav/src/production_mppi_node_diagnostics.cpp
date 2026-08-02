@@ -355,6 +355,12 @@ void ProductionMppiNode::processDiagnostics(
        << " lattice_continuation_attempt=" << esdf.lattice_continuation_attempt
        << " lattice_search_session_resumed="
        << (esdf.lattice_search_session_resumed ? "true" : "false")
+       << " lattice_search_session_complete="
+       << (esdf.lattice_search_session_complete ? "true" : "false")
+       << " lattice_search_revision=" << esdf.lattice_search_revision
+       << " lattice_validation_revision=" << esdf.lattice_validation_revision
+       << " lattice_raw_validation="
+       << rawGuideValidationStatusName(esdf.lattice_raw_validation_status)
        << " lattice_risk_stage=" << latticeRiskStageName(esdf.lattice_risk_stage)
        << " topology_objective=" << esdf.topology_objective_cost
        << " topology_route_length_m=" << esdf.topology_route_length_m
@@ -368,7 +374,7 @@ void ProductionMppiNode::processDiagnostics(
        << " lattice_stale_pops=" << esdf.lattice_stale_queue_pops
        << " lattice_open_peak=" << esdf.lattice_open_peak
        << " lattice_records_peak=" << esdf.lattice_records_peak
-       << " lattice_two_step_states=" << esdf.lattice_two_step_reachable_states
+       << " lattice_continuation_states=" << esdf.lattice_continuation_reachable_states
        << " lattice_reachable_depth_m=" << esdf.lattice_reachable_depth_m
        << " lattice_frontier_endpoint_displacement_m="
        << esdf.lattice_frontier_endpoint_displacement_m
@@ -555,6 +561,12 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_continuation_attempt\":" << esdf.lattice_continuation_attempt
         << ",\"lattice_search_session_resumed\":"
         << (esdf.lattice_search_session_resumed ? "true" : "false")
+        << ",\"lattice_search_session_complete\":"
+        << (esdf.lattice_search_session_complete ? "true" : "false")
+        << ",\"lattice_search_revision\":" << esdf.lattice_search_revision
+        << ",\"lattice_validation_revision\":" << esdf.lattice_validation_revision
+        << ",\"lattice_raw_validation\":\""
+        << rawGuideValidationStatusName(esdf.lattice_raw_validation_status) << '"'
         << ",\"lattice_risk_stage\":\"" << latticeRiskStageName(esdf.lattice_risk_stage)
         << '"' << ",\"topology_objective\":" << esdf.topology_objective_cost
         << ",\"topology_route_length_m\":" << esdf.topology_route_length_m
@@ -568,8 +580,8 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
         << ",\"lattice_open_peak\":" << esdf.lattice_open_peak
         << ",\"lattice_records_peak\":" << esdf.lattice_records_peak
-        << ",\"lattice_two_step_reachable_states\":"
-        << esdf.lattice_two_step_reachable_states
+        << ",\"lattice_continuation_reachable_states\":"
+        << esdf.lattice_continuation_reachable_states
         << ",\"lattice_reachable_depth_m\":" << esdf.lattice_reachable_depth_m
         << ",\"lattice_frontier_endpoint_displacement_m\":"
         << esdf.lattice_frontier_endpoint_displacement_m

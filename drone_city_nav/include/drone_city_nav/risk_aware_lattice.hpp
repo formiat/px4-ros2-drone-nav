@@ -15,6 +15,7 @@ enum class LatticePlanStatus : std::uint8_t {
   kInvalidInput,
   kReachedPlanningGoal,
   kViableFrontier,
+  kRawSafeDetourPrefix,
   kSearchIncomplete,
   kMotionGraphExhausted,
 };
@@ -72,7 +73,8 @@ struct RiskAwareLatticeConfig {
   std::size_t minimum_frontier_guide_points{3U};
   double minimum_frontier_guide_length_m{8.0};
   double minimum_frontier_endpoint_displacement_m{4.0};
-  double minimum_frontier_reachable_depth_m{8.0};
+  double minimum_frontier_reachable_depth_m{20.0};
+  std::size_t frontier_validation_maximum_states{2048U};
   double frontier_goal_distance_weight{0.25};
   double frontier_blacklist_radius_m{6.0};
   int frontier_blacklist_heading_tolerance_bins{1};
@@ -99,11 +101,12 @@ struct RiskAwareLatticeResult {
   double frontier_endpoint_displacement_m{0.0};
   double frontier_selection_score{0.0};
   std::size_t terminal_successor_count{0U};
-  std::size_t two_step_reachable_states{0U};
+  std::size_t continuation_reachable_states{0U};
   double reachable_depth_m{0.0};
   std::size_t frontier_candidates_considered{0U};
   LatticeSuccessorDiagnostics successor_diagnostics{};
   bool search_session_resumed{false};
+  bool search_session_complete{true};
 };
 
 class RiskAwareLatticeSearchSession final {

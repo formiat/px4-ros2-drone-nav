@@ -203,8 +203,10 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       continue;
     }
     const auto build_started = std::chrono::steady_clock::now();
+    auto raw_occupancy =
+        std::make_shared<const OccupancyGrid2D>(std::move(*conversion.grid));
     const DistanceField2D field = DistanceField2D::build(
-        *conversion.grid,
+        *raw_occupancy,
         static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
         DistanceFieldSource::kOccupied);
     const double build_ms = std::chrono::duration<double, std::milli>(
@@ -248,6 +250,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     prepared.grid = grid;
     prepared.distances_m =
         std::make_shared<const std::vector<float>>(std::move(distances));
+    prepared.raw_occupancy = std::move(raw_occupancy);
     prepared.lattice_search_performed = false;
     prepared.lattice_continuation_attempt = 0U;
 

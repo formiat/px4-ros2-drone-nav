@@ -77,9 +77,24 @@ struct FrontierEvaluation {
   double selection_score{0.0};
   double cost{0.0};
   std::size_t immediate_successors{0U};
-  std::size_t two_step_states{0U};
+  std::size_t continuation_states{0U};
   double reachable_depth_m{0.0};
   LatticeRiskStage stage{LatticeRiskStage::kPreferredOnly};
+};
+
+struct ContinuationEvaluation {
+  std::size_t immediate_successors{0U};
+  std::size_t reachable_states{0U};
+  double reachable_depth_m{0.0};
+};
+
+struct ContinuationQueueEntry {
+  LatticeKey key{};
+  double depth_m{0.0};
+
+  bool operator<(const ContinuationQueueEntry& other) const noexcept {
+    return depth_m < other.depth_m;
+  }
 };
 
 struct FrontierPoolCandidate {
@@ -392,6 +407,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       config.maximum_frontier_candidates == 0U ||
       !(config.minimum_frontier_endpoint_displacement_m >= 0.0) ||
       !(config.minimum_frontier_reachable_depth_m > 0.0) ||
+      config.frontier_validation_maximum_states == 0U ||
       !(config.frontier_goal_distance_weight >= 0.0) ||
       !std::isfinite(config.frontier_goal_distance_weight) ||
       !(config.frontier_blacklist_radius_m >= 0.0) ||
@@ -524,7 +540,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     outcome.deadline_reached = false;
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::duration<double, std::milli>{stage_time_ms};
-    while (!outcome.open.empty() && outcome.expansions < expansion_budget &&
+    const std::size_t slice_start_expansions = outcome.expansions;
+    while (!outcome.open.empty() &&
+           outcome.expansions - slice_start_expansions < expansion_budget &&
            std::chrono::steady_clock::now() < deadline) {
       const QueueEntry entry = outcome.open.top();
       outcome.open.pop();
@@ -578,7 +596,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       outcome.deadline_reached =
           !outcome.open.empty() && std::chrono::steady_clock::now() >= deadline;
       outcome.budget_exhausted =
-          !outcome.open.empty() && outcome.expansions >= expansion_budget;
+          !outcome.open.empty() &&
+          outcome.expansions - slice_start_expansions >= expansion_budget;
       if (outcome.deadline_reached) {
         outcome.termination = LatticeSearchTermination::kDeadlineReached;
       } else if (outcome.budget_exhausted) {
@@ -631,16 +650,11 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     std::unordered_map<std::uint64_t, FrontierPoolCandidate> best_by_cell;
     best_by_cell.reserve(outcome.records.size());
     for (const auto& [key, record] : outcome.records) {
-      if (!record.parent.has_value() ||
-          record.path_length_m + 1.0e-9 < config.minimum_frontier_guide_length_m) {
+      if (!record.parent.has_value()) {
         continue;
       }
       const Point2 endpoint = cellCenter(grid, key);
       const double endpoint_displacement_m = distance(start, endpoint);
-      if (endpoint_displacement_m + 1.0e-9 <
-          config.minimum_frontier_endpoint_displacement_m) {
-        continue;
-      }
       const double remaining_m = distance(endpoint, result.planning_goal);
       FrontierPoolCandidate candidate{
           .key = key,
@@ -717,6 +731,52 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     return selected;
   };
 
+  const auto evaluate_continuation = [&](const Point2 terminal,
+                                         const LatticeKey terminal_key,
+                                         const LatticeRiskStage stage) {
+    ContinuationEvaluation evaluation;
+    std::priority_queue<ContinuationQueueEntry> open;
+    std::unordered_set<std::uint64_t> visited_cells;
+    const auto cell_id = [](const LatticeKey& key) {
+      const std::uint64_t x = static_cast<std::uint32_t>(key.x);
+      const std::uint64_t y = static_cast<std::uint32_t>(key.y);
+      return (x << 32U) | y;
+    };
+    visited_cells.insert(cell_id(terminal_key));
+    open.push(ContinuationQueueEntry{terminal_key, 0.0});
+    std::size_t expanded_states = 0U;
+    while (!open.empty() &&
+           expanded_states < config.frontier_validation_maximum_states) {
+      const ContinuationQueueEntry current = open.top();
+      open.pop();
+      if (current.depth_m + 1.0e-9 >= config.minimum_frontier_reachable_depth_m) {
+        break;
+      }
+      ++expanded_states;
+      bool roi_boundary_seen = false;
+      const Point2 current_point =
+          current.depth_m > 0.0 ? cellCenter(grid, current.key) : terminal;
+      const std::vector<Successor> successors = collect_successors(
+          current_point, current.key, stage, roi_boundary_seen, nullptr);
+      static_cast<void>(roi_boundary_seen);
+      if (current.depth_m == 0.0) {
+        evaluation.immediate_successors = successors.size();
+      }
+      for (const Successor& successor : successors) {
+        const std::uint64_t id = cell_id(successor.key);
+        if (!visited_cells.insert(id).second) {
+          continue;
+        }
+        const double reachable_depth_m = current.depth_m + successor.length_m;
+        evaluation.reachable_depth_m =
+            std::max(evaluation.reachable_depth_m, reachable_depth_m);
+        open.push(ContinuationQueueEntry{successor.key, reachable_depth_m});
+      }
+    }
+    evaluation.reachable_states = visited_cells.size() - 1U;
+    return evaluation;
+  };
+
   const std::array stage_runs{
       std::pair{LatticeRiskStage::kPreferredOnly, &outcomes.at(0U)},
       std::pair{LatticeRiskStage::kPlanningAllowed, &outcomes.at(1U)},
@@ -727,6 +787,17 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
   const double stage_time_ms =
       config.maximum_search_time_ms / static_cast<double>(stage_runs.size());
   std::optional<FrontierEvaluation> best_frontier;
+  std::optional<FrontierEvaluation> best_fallback;
+  const auto fallback_rank = [](const FrontierEvaluation& value) {
+    return std::tuple{
+        value.immediate_successors == 0U,
+        -value.reachable_depth_m,
+        -static_cast<double>(value.continuation_states),
+        static_cast<int>(value.stage),
+        value.selection_score,
+        -value.endpoint_displacement_m,
+    };
+  };
   bool search_incomplete = false;
   LatticeSearchTermination incomplete_termination{
       LatticeSearchTermination::kOpenSetExhausted};
@@ -792,38 +863,12 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       if (repeatsBlacklistedFailure(guide, frontier_blacklist, config)) {
         continue;
       }
-      bool roi_boundary_seen = false;
-      const std::vector<Successor> immediate =
-          collect_successors(terminal, key, stage, roi_boundary_seen, nullptr);
-      static_cast<void>(roi_boundary_seen);
-      std::size_t two_step_states = 0U;
-      double reachable_depth_m = 0.0;
-      for (const Successor& successor : immediate) {
-        bool second_roi_boundary_seen = false;
-        const std::vector<Successor> second =
-            collect_successors(successor.endpoint, successor.key, stage,
-                               second_roi_boundary_seen, nullptr);
-        static_cast<void>(second_roi_boundary_seen);
-        two_step_states += second.size();
-        if (!second.empty()) {
-          const double deepest_second =
-              std::ranges::max(second, {}, &Successor::length_m).length_m;
-          reachable_depth_m =
-              std::max(reachable_depth_m, successor.length_m + deepest_second);
-        }
-      }
+      const ContinuationEvaluation continuation =
+          evaluate_continuation(terminal, key, stage);
       const double guide_length_m = guideLength(guide);
       const double remaining_m = distance(terminal, result.planning_goal);
       const double progress_m = distance(start, result.planning_goal) - remaining_m;
       const double endpoint_displacement_m = distance(start, terminal);
-      if (guide.size() < config.minimum_frontier_guide_points ||
-          guide_length_m < config.minimum_frontier_guide_length_m ||
-          endpoint_displacement_m + 1.0e-9 <
-              config.minimum_frontier_endpoint_displacement_m ||
-          immediate.empty() || two_step_states == 0U ||
-          reachable_depth_m < config.minimum_frontier_reachable_depth_m) {
-        continue;
-      }
       FrontierEvaluation candidate{
           .key = key,
           .guide = std::move(guide),
@@ -833,16 +878,33 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           .endpoint_displacement_m = endpoint_displacement_m,
           .selection_score = pooled.selection_score,
           .cost = outcome.records.at(key).cost,
-          .immediate_successors = immediate.size(),
-          .two_step_states = two_step_states,
-          .reachable_depth_m = reachable_depth_m,
+          .immediate_successors = continuation.immediate_successors,
+          .continuation_states = continuation.reachable_states,
+          .reachable_depth_m = continuation.reachable_depth_m,
           .stage = stage,
       };
+      if (candidate.guide.size() >= 2U && endpoint_displacement_m > 1.0e-9 &&
+          (!best_fallback.has_value() ||
+           fallback_rank(candidate) < fallback_rank(*best_fallback))) {
+        best_fallback = candidate;
+      }
+      if (candidate.guide.size() < config.minimum_frontier_guide_points ||
+          guide_length_m < config.minimum_frontier_guide_length_m ||
+          endpoint_displacement_m + 1.0e-9 <
+              config.minimum_frontier_endpoint_displacement_m ||
+          continuation.immediate_successors == 0U ||
+          continuation.reachable_states == 0U ||
+          continuation.reachable_depth_m + 1.0e-9 <
+              config.minimum_frontier_reachable_depth_m) {
+        continue;
+      }
       const auto rank = [](const FrontierEvaluation& value) {
-        return std::tuple{
-            -value.reachable_depth_m,       -static_cast<double>(value.two_step_states),
-            static_cast<int>(value.stage),  value.selection_score,
-            -value.endpoint_displacement_m, value.remaining_m};
+        return std::tuple{-value.reachable_depth_m,
+                          -static_cast<double>(value.continuation_states),
+                          static_cast<int>(value.stage),
+                          value.selection_score,
+                          -value.endpoint_displacement_m,
+                          value.remaining_m};
       };
       if (!best_frontier.has_value() || rank(candidate) < rank(*best_frontier)) {
         best_frontier = std::move(candidate);
@@ -864,8 +926,69 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     result.frontier_endpoint_displacement_m = best_frontier->endpoint_displacement_m;
     result.frontier_selection_score = best_frontier->selection_score;
     result.terminal_successor_count = best_frontier->immediate_successors;
-    result.two_step_reachable_states = best_frontier->two_step_states;
+    result.continuation_reachable_states = best_frontier->continuation_states;
     result.reachable_depth_m = best_frontier->reachable_depth_m;
+    result.search_session_complete = !search_incomplete;
+    result.valid = true;
+    return result;
+  }
+
+  if (search_incomplete && !best_fallback.has_value()) {
+    bool roi_boundary_seen = false;
+    const Point2 search_start = cellCenter(grid, start_key);
+    const std::vector<Successor> immediate =
+        collect_successors(search_start, start_key, LatticeRiskStage::kCriticalAllowed,
+                           roi_boundary_seen, nullptr);
+    static_cast<void>(roi_boundary_seen);
+    for (const Successor& successor : immediate) {
+      const SegmentEvaluation from_actual_start =
+          evaluateSegment(grid, esdf_m, start, successor.endpoint, config,
+                          LatticeRiskStage::kCriticalAllowed);
+      const std::array fallback_guide{start, successor.endpoint};
+      if (!from_actual_start.valid ||
+          repeatsBlacklistedFailure(fallback_guide, frontier_blacklist, config)) {
+        continue;
+      }
+      const ContinuationEvaluation continuation = evaluate_continuation(
+          successor.endpoint, successor.key, LatticeRiskStage::kCriticalAllowed);
+      const double remaining_m = distance(successor.endpoint, result.planning_goal);
+      FrontierEvaluation candidate{
+          .key = successor.key,
+          .guide = {start, successor.endpoint},
+          .guide_length_m = distance(start, successor.endpoint),
+          .progress_m = distance(start, result.planning_goal) - remaining_m,
+          .remaining_m = remaining_m,
+          .endpoint_displacement_m = distance(start, successor.endpoint),
+          .selection_score =
+              successor.edge_cost + config.frontier_goal_distance_weight * remaining_m,
+          .cost = successor.edge_cost,
+          .immediate_successors = continuation.immediate_successors,
+          .continuation_states = continuation.reachable_states,
+          .reachable_depth_m = continuation.reachable_depth_m,
+          .stage = LatticeRiskStage::kCriticalAllowed,
+      };
+      if (!best_fallback.has_value() ||
+          fallback_rank(candidate) < fallback_rank(*best_fallback)) {
+        best_fallback = std::move(candidate);
+      }
+    }
+  }
+
+  if (search_incomplete && best_fallback.has_value()) {
+    result.guide = std::move(best_fallback->guide);
+    result.cost = best_fallback->cost;
+    result.status = LatticePlanStatus::kRawSafeDetourPrefix;
+    result.termination = incomplete_termination;
+    result.risk_stage = best_fallback->stage;
+    result.guide_length_m = best_fallback->guide_length_m;
+    result.achieved_progress_m = best_fallback->progress_m;
+    result.remaining_goal_distance_m = best_fallback->remaining_m;
+    result.frontier_endpoint_displacement_m = best_fallback->endpoint_displacement_m;
+    result.frontier_selection_score = best_fallback->selection_score;
+    result.terminal_successor_count = best_fallback->immediate_successors;
+    result.continuation_reachable_states = best_fallback->continuation_states;
+    result.reachable_depth_m = best_fallback->reachable_depth_m;
+    result.search_session_complete = false;
     result.valid = true;
     return result;
   }
@@ -874,54 +997,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
                                     : LatticePlanStatus::kMotionGraphExhausted;
   result.termination = search_incomplete ? incomplete_termination
                                          : LatticeSearchTermination::kOpenSetExhausted;
+  result.search_session_complete = !search_incomplete;
   return result;
-}
-
-const char* latticePlanStatusName(const LatticePlanStatus status) noexcept {
-  switch (status) {
-    case LatticePlanStatus::kInvalidInput:
-      return "invalid_input";
-    case LatticePlanStatus::kReachedPlanningGoal:
-      return "reached_planning_goal";
-    case LatticePlanStatus::kViableFrontier:
-      return "viable_frontier";
-    case LatticePlanStatus::kSearchIncomplete:
-      return "search_incomplete";
-    case LatticePlanStatus::kMotionGraphExhausted:
-      return "motion_graph_exhausted";
-  }
-  return "unknown";
-}
-
-const char* latticeRiskStageName(const LatticeRiskStage stage) noexcept {
-  switch (stage) {
-    case LatticeRiskStage::kPreferredOnly:
-      return "preferred";
-    case LatticeRiskStage::kPlanningAllowed:
-      return "planning";
-    case LatticeRiskStage::kCriticalAllowed:
-      return "critical";
-  }
-  return "unknown";
-}
-
-const char*
-latticeSearchTerminationName(const LatticeSearchTermination termination) noexcept {
-  switch (termination) {
-    case LatticeSearchTermination::kInvalidInput:
-      return "invalid_input";
-    case LatticeSearchTermination::kPlanningGoalReached:
-      return "planning_goal_reached";
-    case LatticeSearchTermination::kOpenSetExhausted:
-      return "open_set_exhausted";
-    case LatticeSearchTermination::kExpansionBudgetExhausted:
-      return "expansion_budget_exhausted";
-    case LatticeSearchTermination::kDeadlineReached:
-      return "deadline_reached";
-    case LatticeSearchTermination::kRoiBoundaryReached:
-      return "roi_boundary_reached";
-  }
-  return "unknown";
 }
 
 } // namespace drone_city_nav

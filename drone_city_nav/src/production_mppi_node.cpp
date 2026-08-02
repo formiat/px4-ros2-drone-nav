@@ -243,7 +243,16 @@ ProductionMppiNode::ProductionMppiNode()
   lattice_config_.minimum_frontier_endpoint_displacement_m = declare_parameter<double>(
       "global_lattice_frontier_minimum_endpoint_displacement_m", 4.0);
   lattice_config_.minimum_frontier_reachable_depth_m =
-      declare_parameter<double>("global_lattice_frontier_reachable_depth_m", 8.0);
+      declare_parameter<double>("global_lattice_frontier_reachable_depth_m", 20.0);
+  const std::int64_t frontier_validation_maximum_states =
+      declare_parameter<std::int64_t>(
+          "global_lattice_frontier_validation_maximum_states", 2048);
+  if (frontier_validation_maximum_states <= 0) {
+    throw std::invalid_argument{
+        "global lattice frontier validation maximum states must be positive"};
+  }
+  lattice_config_.frontier_validation_maximum_states =
+      static_cast<std::size_t>(frontier_validation_maximum_states);
   lattice_config_.frontier_goal_distance_weight =
       declare_parameter<double>("global_lattice_frontier_goal_distance_weight", 0.25);
   frontier_blacklist_enabled_ =

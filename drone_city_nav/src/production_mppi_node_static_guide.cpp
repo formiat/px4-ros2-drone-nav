@@ -42,7 +42,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.status == Lattice3DStatus::kViableFrontier;
   prepared.global_guide_expansions = lattice.expansions;
   prepared.lattice_terminal_successor_count = lattice.terminal_successor_count;
-  prepared.lattice_two_step_reachable_states = lattice.continuation_reachable_states;
+  prepared.lattice_continuation_reachable_states =
+      lattice.continuation_reachable_states;
   prepared.lattice_reachable_depth_m = lattice.continuation_reachable_depth_m;
   prepared.global_guide_cost = lattice.objective_cost;
   prepared.global_guide_reaches_mission_goal = lattice.reached_mission_goal;
