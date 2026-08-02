@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -28,10 +29,21 @@ struct RouteEnvelopeSample {
 };
 
 struct ConstrainedRouteSpan {
+  std::string channel_id;
   std::uint64_t route_generation{0U};
   double begin_station_m{0.0};
   double end_station_m{0.0};
   std::vector<RouteEnvelopeSample> envelope;
+};
+
+struct SelectedChannelTraversal {
+  std::string channel_id;
+  double begin_station_m{0.0};
+  double end_station_m{0.0};
+  double min_z_m{0.0};
+  double max_z_m{0.0};
+  double minimum_clearance_m{0.0};
+  double speed_limit_mps{0.0};
 };
 
 struct RouteEnvelopeConfig {
@@ -58,6 +70,7 @@ struct ConstrainedRouteObservation {
   std::size_t span_index{0U};
   std::size_t span_count{0U};
   bool span_available{false};
+  std::string channel_id;
   bool within_vertical_window{false};
   double station_m{0.0};
   double begin_station_m{0.0};
@@ -97,9 +110,13 @@ observeConstrainedRoute(std::span<const RouteSample3D> route,
                                                        double reference_speed_mps);
 
 [[nodiscard]] std::vector<ConstrainedRouteSpan>
-analyzeConstrainedRouteSpans(std::span<const RouteSample3D> route,
-                             const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
-                             std::uint64_t route_generation,
-                             const RouteEnvelopeConfig& config);
+makeConstrainedRouteSpans(std::span<const RouteSample3D> route,
+                          std::span<const SelectedChannelTraversal> traversals,
+                          std::uint64_t route_generation,
+                          const RouteEnvelopeConfig& config);
+
+[[nodiscard]] bool validateConstrainedRouteSpans(
+    std::span<const RouteSample3D> route, std::span<const ConstrainedRouteSpan> spans,
+    const mppi::EsdfGrid& grid, std::span<const float> esdf_m) noexcept;
 
 } // namespace drone_city_nav

@@ -64,6 +64,15 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
+  std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> channel_edges;
+  std::shared_ptr<const std::vector<std::string>> selected_channel_ids;
+  std::vector<Lattice3DTopologyCandidate> topology_candidates;
+  double topology_objective_cost{0.0};
+  double topology_route_length_m{0.0};
+  double topology_travel_time_s{0.0};
+  double topology_vertical_alignment_time_s{0.0};
+  double topology_planning_exposure_m{0.0};
+  double topology_critical_exposure_m{0.0};
   std::size_t global_guide_expansions{0U};
   double global_guide_cost{0.0};
   std::uint64_t global_guide_generation{0U};
@@ -128,6 +137,8 @@ struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> previous_horizon;
   std::vector<mppi::State> execution_horizon;
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> route;
+  std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> channel_edges;
+  std::shared_ptr<const std::vector<std::string>> selected_channel_ids;
 };
 
 enum class ProductionMppiExecutionMode : std::uint8_t {
@@ -217,6 +228,8 @@ private:
   void finishStaticRouteExtension(std::uint64_t base_generation) noexcept;
   void esdfWorker(std::stop_token stop_token);
   void guideWorker(std::stop_token stop_token);
+  void processStaticGuideSearch(const ProductionMppiPreparedEsdf& world,
+                                const ProductionMppiNavigation& navigation);
   void diagnosticsWorker(std::stop_token stop_token);
   void planningTick();
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
@@ -287,6 +300,7 @@ private:
   StaticRouteExtensionConfig static_route_extension_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
+  std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   std::uint64_t static_guide_release_generation_{0U};

@@ -49,9 +49,13 @@ shared bridge masses, and lidar visibility contract.
 
 ## Occupancy3D
 
-The binary map uses schema version 1 with a sparse chunked bitset. Its header
+The binary map uses schema version 2 with a sparse chunked bitset. Its header
 stores grid bounds, resolution, chunk size, a fingerprint of the canonical JSON,
-and the number of occupied chunks. The current world uses:
+and the number of occupied chunks. The chunk payload is followed by the generated
+constrained free-space graph. Each channel edge stores its identifier, sampled 3D
+centerline, entry and exit, vertical window, minimum clearance, and speed limit.
+This metadata is compiled from the same canonical JSON; it is not a separate
+hand-authored passage source. The current world uses:
 
 ```text
 origin:       (-30, -30, 0) m
@@ -70,10 +74,11 @@ Around the current vehicle-to-planning-goal region it materializes an immutable
 local dense ESDF3D and uploads that field to MPPI. The full global 3D array is
 not rebuilt on every tick.
 
-## Optional Channel Geometry
+## Generated Channel Geometry And Graph
 
-The canonical `channels` array describes physical world construction. A channel
-identifier is a generator identifier rather than a runtime navigation event id.
+The canonical `channels` array describes physical world construction and the
+corresponding constrained free-space edge. A channel identifier is stable across
+the generated SDF and Occupancy3D graph.
 
 ### Straight
 
@@ -105,25 +110,43 @@ profiles, or curved vertical passages.
 
 ## Static Planning Contract
 
-Static lattice search operates on `(x, y, z)` against the local ESDF3D. It uses
-staged preferred, planning, and critical risk admission while physical occupied
-voxels remain the only hard geometry. The accepted lattice points are sampled
-as `RouteSample3D` values containing:
+Static global search operates on a hybrid graph:
+
+```text
+ordinary omnidirectional 3D lattice edges
++ generated bidirectional constrained channel edges
+```
+
+Every edge is validated against the current raw Occupancy3D/ESDF3D before use.
+Physical occupied voxels remain the only hard geometry. Preferred, planning, and
+critical stages all run, and all complete routes are compared by finite objective
+cost instead of returning the first preferred route. The objective records travel
+time, vertical-alignment time, risk exposure, and turn cost. The extra vertical
+alignment weight is intentionally `0.0` during channel development; vertical
+motion still contributes through physical travel time.
+
+No channel is mandatory and there is no required channel sequence. A channel is
+selected only when its validated route has the better objective cost. The accepted
+points are sampled as `RouteSample3D` values containing:
 
 - 3D position;
 - route tangent;
 - cumulative route station;
 - a reference-speed field populated for MPPI route execution.
 
-The accepted route is then probed laterally and vertically against ESDF3D.
-Sections narrower than the configured lateral or vertical thresholds become
-`ConstrainedRouteSpan` values. A span contains station-indexed free-space and
-reference data, not a semantic portal id:
+When the selected graph path traverses a channel edge, that transition directly
+creates a typed `ConstrainedRouteSpan` with `approach -> traversal -> departure`
+station semantics. The complete route and span are revalidated against the latest
+raw ESDF before atomic activation. A span contains:
 
 - free distance left and right;
 - minimum, maximum, and reference Z;
 - constrained reference speed;
 - begin and end route stations.
+
+The channel identifier is retained for lifecycle diagnostics and RViz. Geometric
+ESDF queries validate the selected edge; they no longer infer passage lifecycle
+postfactum from arbitrary narrow route samples.
 
 MPPI follows the complete typed route and applies the span speed/reference data.
 The observable lifecycle is derived from route station:
@@ -132,10 +155,8 @@ The observable lifecycle is derived from route station:
 approach -> traversal -> departure -> unconstrained
 ```
 
-Because classification is geometric, a constrained span can represent an
-authored air channel or any other narrow section of the accepted route. Use
-`route_generation + span_index` plus entry/exit coordinates to correlate a
-diagnostic event with canonical geometry.
+Use `route_generation + channel_id + span_index` to correlate a diagnostic event
+with canonical geometry.
 
 ## No-Static Contract
 
@@ -169,9 +190,10 @@ reduces rendering load only; it does not change Occupancy3D, ESDF3D, lattice, or
 collision resolution.
 
 RViz shows the accepted route at its planned Z through the MPPI marker array.
-Constrained-span boundaries and envelope values are available in logs, not as a
-separate marker layer. RViz does not reconstruct authored channel ids or
-publish legacy passage markers.
+Generated candidate channel edges are thin translucent blue lines; channel edges
+selected by the active route are thicker green lines. Tick JSONL and guide logs
+include selected topology, objective cost, route length, travel time, vertical
+alignment time, risk exposure, channel id, and acceptance/rejection reason.
 
 ## Change Checklist
 

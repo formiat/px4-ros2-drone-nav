@@ -1,9 +1,11 @@
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -12,7 +14,9 @@ namespace drone_city_nav {
 namespace {
 
 constexpr std::array<char, 8U> kMagic{'D', 'C', 'N', 'O', 'C', 'C', '3', 'D'};
-constexpr std::uint32_t kVersion{1U};
+constexpr std::uint32_t kVersion{2U};
+constexpr std::uint32_t kMaximumChannelCount{10000U};
+constexpr std::uint32_t kMaximumChannelPointCount{100000U};
 
 template<typename Value>
 [[nodiscard]] Value readValue(std::istream& stream, const char* description) {
@@ -27,6 +31,25 @@ template<typename Value>
                              description};
   }
   return value;
+}
+
+[[nodiscard]] std::string readString(std::istream& stream, const char* description) {
+  const std::uint16_t size = readValue<std::uint16_t>(stream, description);
+  if (size == 0U) {
+    throw std::runtime_error{std::string{"empty Occupancy3D "} + description};
+  }
+  std::string value(size, '\0');
+  stream.read(value.data(), static_cast<std::streamsize>(value.size()));
+  if (!stream) {
+    throw std::runtime_error{std::string{"truncated Occupancy3D "} + description};
+  }
+  return value;
+}
+
+[[nodiscard]] Point3 readPoint(std::istream& stream, const char* description) {
+  return Point3{static_cast<double>(readValue<float>(stream, description)),
+                static_cast<double>(readValue<float>(stream, description)),
+                static_cast<double>(readValue<float>(stream, description))};
 }
 
 [[nodiscard]] int floorDiv(const int value, const int divisor) noexcept {
@@ -117,6 +140,36 @@ OccupancyGrid3D OccupancyGrid3D::load(const std::filesystem::path& path) {
       throw std::runtime_error{"duplicate Occupancy3D chunk"};
     }
   }
+  const std::uint32_t channel_count = readValue<std::uint32_t>(stream, "channel count");
+  if (channel_count > kMaximumChannelCount) {
+    throw std::runtime_error{"Occupancy3D channel count exceeds supported range"};
+  }
+  grid.channel_edges_.reserve(channel_count);
+  for (std::uint32_t channel_number = 0U; channel_number < channel_count;
+       ++channel_number) {
+    ConstrainedFreeSpaceEdge edge;
+    edge.id = readString(stream, "channel id");
+    const std::uint32_t point_count =
+        readValue<std::uint32_t>(stream, "channel point count");
+    if (point_count < 2U || point_count > kMaximumChannelPointCount) {
+      throw std::runtime_error{"invalid Occupancy3D channel point count"};
+    }
+    std::vector<Point3> points;
+    points.reserve(point_count);
+    for (std::uint32_t point_number = 0U; point_number < point_count; ++point_number) {
+      points.push_back(readPoint(stream, "channel centerline point"));
+    }
+    edge.min_z_m = static_cast<double>(readValue<float>(stream, "channel min z"));
+    edge.max_z_m = static_cast<double>(readValue<float>(stream, "channel max z"));
+    edge.minimum_clearance_m =
+        static_cast<double>(readValue<float>(stream, "channel minimum clearance"));
+    edge.speed_limit_mps =
+        static_cast<double>(readValue<float>(stream, "channel speed limit"));
+    edge.centerline = sampleRoute3D(points, bounds.resolution_m, edge.speed_limit_mps);
+    edge.entry = edge.centerline.front().position;
+    edge.exit = edge.centerline.back().position;
+    grid.addChannelEdge(std::move(edge));
+  }
   if (stream.peek() != std::char_traits<char>::eof()) {
     throw std::runtime_error{"trailing data in Occupancy3D artifact"};
   }
@@ -137,6 +190,11 @@ std::size_t OccupancyGrid3D::occupiedChunkCount() const noexcept {
 
 std::size_t OccupancyGrid3D::occupiedVoxelCount() const noexcept {
   return occupied_voxels_;
+}
+
+const std::vector<ConstrainedFreeSpaceEdge>&
+OccupancyGrid3D::channelEdges() const noexcept {
+  return channel_edges_;
 }
 
 bool OccupancyGrid3D::contains(const GridIndex3D index) const noexcept {
@@ -204,6 +262,22 @@ void OccupancyGrid3D::setOccupied(const GridIndex3D index) {
     word |= mask;
     ++occupied_voxels_;
   }
+}
+
+void OccupancyGrid3D::addChannelEdge(ConstrainedFreeSpaceEdge edge) {
+  const bool duplicate = std::ranges::any_of(
+      channel_edges_, [&edge](const ConstrainedFreeSpaceEdge& existing) {
+        return existing.id == edge.id;
+      });
+  if (edge.id.empty() || edge.centerline.size() < 2U || duplicate ||
+      !std::isfinite(edge.min_z_m) || !std::isfinite(edge.max_z_m) ||
+      !(edge.max_z_m > edge.min_z_m) || !(edge.minimum_clearance_m > 0.0) ||
+      !(edge.speed_limit_mps > 0.0)) {
+    throw std::invalid_argument{"invalid Occupancy3D constrained free-space edge"};
+  }
+  edge.entry = edge.centerline.front().position;
+  edge.exit = edge.centerline.back().position;
+  channel_edges_.push_back(std::move(edge));
 }
 
 } // namespace drone_city_nav

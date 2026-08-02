@@ -291,7 +291,9 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node.cpp
     src/production_mppi_node_esdf.cpp
     src/production_mppi_node_inputs.cpp
-    src/production_mppi_node_runtime.cpp
+  src/production_mppi_node_runtime.cpp
+  src/production_mppi_route_helpers.cpp
+  src/production_mppi_node_static_guide.cpp
     src/production_mppi_node_diagnostics.cpp
     src/production_mppi_node_execution.cpp)
   target_compile_features(production_mppi_node PRIVATE cxx_std_20)
@@ -437,6 +439,9 @@ if(BUILD_TESTING)
   ament_add_gtest(occupancy_grid_3d_test tests/occupancy_grid_3d_test.cpp)
   target_compile_features(occupancy_grid_3d_test PRIVATE cxx_std_20)
   target_link_libraries(occupancy_grid_3d_test drone_city_nav_core)
+  target_compile_definitions(
+    occupancy_grid_3d_test
+    PRIVATE TEST_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.occupancy3d")
   enable_project_warnings(occupancy_grid_3d_test)
 
   ament_add_gtest(distance_field_3d_test tests/distance_field_3d_test.cpp)

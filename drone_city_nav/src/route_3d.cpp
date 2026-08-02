@@ -17,27 +17,6 @@ namespace {
   return length > 1.0e-9 ? Vec3{dx / length, dy / length, dz / length} : Vec3{};
 }
 
-[[nodiscard]] double probeFreeDistance(const mppi::EsdfGrid& grid,
-                                       const std::span<const float> esdf_m,
-                                       const Point3& origin, const Vec3& direction,
-                                       const RouteEnvelopeConfig& config) {
-  double distance_m = 0.0;
-  const std::size_t sample_count = static_cast<std::size_t>(
-      std::floor(config.maximum_probe_distance_m / config.sample_step_m));
-  for (std::size_t sample = 1U; sample <= sample_count; ++sample) {
-    const double probe_m = static_cast<double>(sample) * config.sample_step_m;
-    const EsdfQueryResult query = queryConservativeEsdf3D(
-        grid, esdf_m, static_cast<float>(origin.x + direction.x * probe_m),
-        static_cast<float>(origin.y + direction.y * probe_m),
-        static_cast<float>(origin.z + direction.z * probe_m));
-    if (query.status != EsdfQueryStatus::kValid || query.raw_occupied) {
-      break;
-    }
-    distance_m = probe_m;
-  }
-  return distance_m;
-}
-
 [[nodiscard]] RouteSample3D sampleAtStation(const std::span<const RouteSample3D> route,
                                             const double station_m) {
   if (route.empty()) {
@@ -121,6 +100,7 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
                              : ConstrainedRoutePhase::kUnconstrained,
       .route_generation = route_generation,
       .span_count = spans.size(),
+      .channel_id = {},
       .station_m = current_station_m,
       .actual_horizontal_speed_mps = std::hypot(actual_velocity.x, actual_velocity.y),
       .actual_vertical_speed_mps = actual_velocity.z,
@@ -170,6 +150,7 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
   observation.phase = selected_phase;
   observation.span_index = *selected_index;
   observation.span_available = true;
+  observation.channel_id = span.channel_id;
   observation.begin_station_m = span.begin_station_m;
   observation.end_station_m = span.end_station_m;
   observation.distance_to_entry_m = span.begin_station_m - current_station_m;
@@ -238,59 +219,83 @@ std::vector<RouteSample3D> sampleRoute3D(const std::span<const Point3> points,
   return result;
 }
 
-std::vector<ConstrainedRouteSpan> analyzeConstrainedRouteSpans(
-    const std::span<const RouteSample3D> route, const mppi::EsdfGrid& grid,
-    const std::span<const float> esdf_m, const std::uint64_t route_generation,
-    const RouteEnvelopeConfig& config) {
+std::vector<ConstrainedRouteSpan>
+makeConstrainedRouteSpans(const std::span<const RouteSample3D> route,
+                          const std::span<const SelectedChannelTraversal> traversals,
+                          const std::uint64_t route_generation,
+                          const RouteEnvelopeConfig& config) {
   std::vector<ConstrainedRouteSpan> spans;
-  std::optional<ConstrainedRouteSpan> active;
-  for (const RouteSample3D& sample : route) {
-    const double horizontal_norm = std::hypot(sample.tangent.x, sample.tangent.y);
-    const Vec3 left = horizontal_norm > 1.0e-9
-                          ? Vec3{-sample.tangent.y / horizontal_norm,
-                                 sample.tangent.x / horizontal_norm, 0.0}
-                          : Vec3{1.0, 0.0, 0.0};
-    RouteEnvelopeSample envelope{
-        .station_m = sample.station_m,
-        .lateral_free_left_m =
-            probeFreeDistance(grid, esdf_m, sample.position, left, config),
-        .lateral_free_right_m = probeFreeDistance(grid, esdf_m, sample.position,
-                                                  Vec3{-left.x, -left.y, 0.0}, config),
-        .min_z_m = sample.position.z - probeFreeDistance(grid, esdf_m, sample.position,
-                                                         Vec3{0.0, 0.0, -1.0}, config),
-        .max_z_m = sample.position.z + probeFreeDistance(grid, esdf_m, sample.position,
-                                                         Vec3{0.0, 0.0, 1.0}, config),
-        .reference_z_m = sample.position.z,
-        .reference_speed_mps = config.unconstrained_speed_mps,
-    };
-    const double lateral_width =
-        envelope.lateral_free_left_m + envelope.lateral_free_right_m;
-    const double vertical_height = envelope.max_z_m - envelope.min_z_m;
-    const bool constrained = lateral_width <= config.constrained_lateral_width_m ||
-                             vertical_height <= config.constrained_vertical_height_m;
-    if (constrained) {
-      envelope.reference_speed_mps = config.constrained_speed_mps;
-      if (!active.has_value()) {
-        active = ConstrainedRouteSpan{.route_generation = route_generation,
-                                      .begin_station_m = sample.station_m,
-                                      .end_station_m = sample.station_m,
-                                      .envelope = {}};
-      }
-      active->end_station_m = sample.station_m;
-      active->envelope.push_back(envelope);
-    } else if (active.has_value()) {
-      if (active->end_station_m - active->begin_station_m >=
-          config.minimum_span_length_m) {
-        spans.push_back(std::move(*active));
-      }
-      active.reset();
+  spans.reserve(traversals.size());
+  for (const SelectedChannelTraversal& traversal : traversals) {
+    if (traversal.end_station_m - traversal.begin_station_m <
+        config.minimum_span_length_m) {
+      continue;
     }
-  }
-  if (active.has_value() &&
-      active->end_station_m - active->begin_station_m >= config.minimum_span_length_m) {
-    spans.push_back(std::move(*active));
+    ConstrainedRouteSpan span{.channel_id = traversal.channel_id,
+                              .route_generation = route_generation,
+                              .begin_station_m = traversal.begin_station_m,
+                              .end_station_m = traversal.end_station_m,
+                              .envelope = {}};
+    for (const RouteSample3D& sample : route) {
+      if (sample.station_m + 1.0e-6 < span.begin_station_m ||
+          sample.station_m - 1.0e-6 > span.end_station_m) {
+        continue;
+      }
+      span.envelope.push_back(RouteEnvelopeSample{
+          .station_m = sample.station_m,
+          .lateral_free_left_m = traversal.minimum_clearance_m,
+          .lateral_free_right_m = traversal.minimum_clearance_m,
+          .min_z_m = traversal.min_z_m,
+          .max_z_m = traversal.max_z_m,
+          .reference_z_m = sample.position.z,
+          .reference_speed_mps = traversal.speed_limit_mps,
+      });
+    }
+    if (span.envelope.empty()) {
+      const RouteSample3D entry = sampleAtStation(route, span.begin_station_m);
+      span.envelope.push_back(RouteEnvelopeSample{
+          .station_m = span.begin_station_m,
+          .lateral_free_left_m = traversal.minimum_clearance_m,
+          .lateral_free_right_m = traversal.minimum_clearance_m,
+          .min_z_m = traversal.min_z_m,
+          .max_z_m = traversal.max_z_m,
+          .reference_z_m = entry.position.z,
+          .reference_speed_mps = traversal.speed_limit_mps,
+      });
+    }
+    spans.push_back(std::move(span));
   }
   return spans;
+}
+
+bool validateConstrainedRouteSpans(const std::span<const RouteSample3D> route,
+                                   const std::span<const ConstrainedRouteSpan> spans,
+                                   const mppi::EsdfGrid& grid,
+                                   const std::span<const float> esdf_m) noexcept {
+  for (const ConstrainedRouteSpan& span : spans) {
+    if (span.envelope.empty() || !(span.end_station_m > span.begin_station_m)) {
+      return false;
+    }
+    for (const RouteSample3D& sample : route) {
+      if (sample.station_m + 1.0e-6 < span.begin_station_m ||
+          sample.station_m - 1.0e-6 > span.end_station_m) {
+        continue;
+      }
+      const RouteEnvelopeSample& envelope =
+          nearestEnvelopeSample(span, sample.station_m);
+      if (sample.position.z < envelope.min_z_m ||
+          sample.position.z > envelope.max_z_m) {
+        return false;
+      }
+      const EsdfQueryResult query = queryConservativeEsdf3D(
+          grid, esdf_m, static_cast<float>(sample.position.x),
+          static_cast<float>(sample.position.y), static_cast<float>(sample.position.z));
+      if (query.status != EsdfQueryStatus::kValid || query.raw_occupied) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 } // namespace drone_city_nav

@@ -53,10 +53,33 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                     header_format, stream.read(struct.calcsize(header_format))
                 )
             self.assertEqual(b"DCNOCC3D", header[0])
-            self.assertEqual(1, header[1])
+            self.assertEqual(2, header[1])
             self.assertEqual(16, header[2])
             self.assertEqual((690, 1050, 80), header[7:10])
             self.assertGreater(header[11], 0)
+
+            chunk_payload_size = 12 + (16 ** 3 // 64) * 8
+            with occupancy_path.open("rb") as stream:
+                stream.seek(struct.calcsize(header_format) +
+                            header[11] * chunk_payload_size)
+                channel_count = struct.unpack("<I", stream.read(4))[0]
+                channel_ids = []
+                for _ in range(channel_count):
+                    id_size = struct.unpack("<H", stream.read(2))[0]
+                    channel_ids.append(stream.read(id_size).decode("utf-8"))
+                    point_count = struct.unpack("<I", stream.read(4))[0]
+                    stream.seek(point_count * struct.calcsize("<3f"), 1)
+                    min_z, max_z, clearance, speed_limit = struct.unpack(
+                        "<4f", stream.read(struct.calcsize("<4f"))
+                    )
+                    self.assertAlmostEqual(1.5, min_z)
+                    self.assertAlmostEqual(8.5, max_z)
+                    self.assertAlmostEqual(3.5, clearance)
+                    self.assertAlmostEqual(10.0, speed_limit)
+                self.assertEqual(
+                    [channel["id"] for channel in spec["channels"]], channel_ids
+                )
+                self.assertEqual(b"", stream.read())
 
     def test_spec_describes_two_left_turns_and_one_straight_channel(self) -> None:
         with SPEC_PATH.open(encoding="utf-8") as stream:

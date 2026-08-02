@@ -178,7 +178,12 @@ production_mppi_node:
     global_lattice_3d_horizontal_step_m: 2.0
     global_lattice_3d_vertical_step_m: 1.0
     global_lattice_3d_sample_step_m: 0.5
-    global_lattice_3d_vertical_cost_per_m: 4.0
+    global_lattice_3d_nominal_vertical_speed_mps: 4.0
+    global_lattice_3d_vertical_alignment_cost_weight: 0.0
+    global_lattice_3d_turn_cost_per_rad: 0.10
+    global_lattice_3d_planning_exposure_cost_per_m: 0.05
+    global_lattice_3d_critical_exposure_cost_per_m: 0.50
+    global_lattice_3d_channel_connection_distance_m: 3.0
     no_static_global_lattice_deadline_ms: 100.0
     static_global_lattice_roi_halo_m: 90.0
     no_static_global_lattice_roi_halo_m: 45.0

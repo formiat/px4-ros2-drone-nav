@@ -15,7 +15,7 @@ from xml.etree import ElementTree as ET
 
 
 OCCUPANCY_MAGIC = b"DCNOCC3D"
-OCCUPANCY_VERSION = 1
+OCCUPANCY_VERSION = 2
 NO_STATIC_SOLID_VISIBILITY = 0x08000000
 NO_STATIC_OCCLUDER_VISIBILITY = 0x04000000
 
@@ -345,6 +345,31 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
             stream.write(struct.pack("<3i", *chunk))
             stream.write(b"".join(struct.pack("<Q", (bits >> (64 * word)) & ((1 << 64) - 1))
                                   for word in range(words_per_chunk)))
+        stream.write(struct.pack("<I", len(spec["channels"])))
+        for channel in spec["channels"]:
+            channel_id = channel["id"].encode("utf-8")
+            if not channel_id or len(channel_id) > 0xFFFF:
+                raise ValueError("channel id must contain 1..65535 UTF-8 bytes")
+            centerline = [tuple(map(float, point))
+                          for point in channel["centerline_m"]]
+            if len(centerline) < 2:
+                raise ValueError(f"channel {channel['id']} needs at least two points")
+            height = float(channel["height_m"])
+            width = float(channel["width_m"])
+            reference_z = centerline[len(centerline) // 2][2]
+            min_z = reference_z - 0.5 * height
+            max_z = reference_z + 0.5 * height
+            minimum_clearance = 0.5 * min(width, height)
+            speed_limit = float(channel.get("speed_limit_mps", 10.0))
+            if height <= 0.0 or width <= 0.0 or speed_limit <= 0.0:
+                raise ValueError(f"channel {channel['id']} has invalid constraints")
+            stream.write(struct.pack("<H", len(channel_id)))
+            stream.write(channel_id)
+            stream.write(struct.pack("<I", len(centerline)))
+            for point in centerline:
+                stream.write(struct.pack("<3f", *point))
+            stream.write(struct.pack("<4f", min_z, max_z,
+                                     minimum_clearance, speed_limit))
 
 
 def main() -> None:

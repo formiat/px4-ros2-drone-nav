@@ -73,7 +73,16 @@ Global guide:
 Static world:
 
 - `static_occupancy_3d_path` selects the generated Occupancy3D artifact;
-- route-envelope parameters control constrained span extraction;
+- Occupancy3D embeds the generated constrained channel graph;
+- `global_lattice_3d_nominal_vertical_speed_mps` participates in physical travel
+  time estimation;
+- `global_lattice_3d_vertical_alignment_cost_weight` is the additional vertical
+  preference and is intentionally `0.0` during channel development;
+- planning/critical exposure and turn-cost parameters rank complete route
+  candidates with finite costs;
+- `global_lattice_3d_channel_connection_distance_m` connects locally reachable
+  lattice states to generated channel entries;
+- route-envelope parameters control typed constrained-span execution data;
 - constrained-span speed is encoded in 3D route samples.
 
 Safety and liveness:

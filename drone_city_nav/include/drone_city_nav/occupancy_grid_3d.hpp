@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <array>
@@ -7,10 +8,24 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace drone_city_nav {
+
+using ChannelId = std::string;
+
+struct ConstrainedFreeSpaceEdge {
+  ChannelId id;
+  std::vector<RouteSample3D> centerline;
+  Point3 entry{};
+  Point3 exit{};
+  double min_z_m{0.0};
+  double max_z_m{0.0};
+  double minimum_clearance_m{0.0};
+  double speed_limit_mps{0.0};
+};
 
 struct OccupancyChunkIndex3D {
   int x{0};
@@ -41,6 +56,8 @@ public:
   [[nodiscard]] std::uint64_t fingerprint() const noexcept;
   [[nodiscard]] std::size_t occupiedChunkCount() const noexcept;
   [[nodiscard]] std::size_t occupiedVoxelCount() const noexcept;
+  [[nodiscard]] const std::vector<ConstrainedFreeSpaceEdge>&
+  channelEdges() const noexcept;
   [[nodiscard]] bool contains(GridIndex3D index) const noexcept;
   [[nodiscard]] std::optional<GridIndex3D>
   worldToCell(const Point3& point) const noexcept;
@@ -48,6 +65,7 @@ public:
   [[nodiscard]] bool isOccupied(GridIndex3D index) const noexcept;
 
   void setOccupied(GridIndex3D index);
+  void addChannelEdge(ConstrainedFreeSpaceEdge edge);
 
 private:
   [[nodiscard]] static OccupancyChunkIndex3D chunkIndex(GridIndex3D index) noexcept;
@@ -57,6 +75,7 @@ private:
   std::uint64_t fingerprint_{0U};
   std::size_t occupied_voxels_{0U};
   std::unordered_map<OccupancyChunkIndex3D, Chunk, OccupancyChunkIndex3DHash> chunks_;
+  std::vector<ConstrainedFreeSpaceEdge> channel_edges_;
 };
 
 } // namespace drone_city_nav

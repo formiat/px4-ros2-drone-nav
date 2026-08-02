@@ -36,7 +36,8 @@
       ],
       "centerline_m": [[108.0, 135.0, 5.0], [108.0, 162.0, 5.0], [135.0, 162.0, 5.0]],
       "width_m": 24.0,
-      "height_m": 7.0
+      "height_m": 7.0,
+      "speed_limit_mps": 10.0
     },
     {
       "id": "channel_54_162_straight",
@@ -51,7 +52,8 @@
       ],
       "centerline_m": [[54.0, 135.0, 5.0], [54.0, 162.0, 5.0], [54.0, 189.0, 5.0]],
       "width_m": 24.0,
-      "height_m": 7.0
+      "height_m": 7.0,
+      "speed_limit_mps": 10.0
     },
     {
       "id": "channel_108_216_l",
@@ -66,7 +68,8 @@
       ],
       "centerline_m": [[81.0, 216.0, 5.0], [108.0, 216.0, 5.0], [108.0, 243.0, 5.0]],
       "width_m": 24.0,
-      "height_m": 7.0
+      "height_m": 7.0,
+      "speed_limit_mps": 10.0
     }
   ],
   "mission": {

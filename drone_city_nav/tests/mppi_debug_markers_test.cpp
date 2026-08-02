@@ -92,5 +92,39 @@ TEST(MppiDebugMarkers, SeparatesCandidateAndPublishedExecutionHorizons) {
   EXPECT_DOUBLE_EQ(execution_marker.points.back().x, 12.0);
 }
 
+TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedChannelEdges) {
+  const std::vector<ConstrainedFreeSpaceEdge> channels{
+      ConstrainedFreeSpaceEdge{
+          .id = "selected",
+          .centerline = sampleRoute3D(
+              std::vector<Point3>{{1.0, 2.0, 5.0}, {3.0, 2.0, 5.0}}, 0.5, 10.0),
+          .min_z_m = 1.5,
+          .max_z_m = 8.5,
+          .minimum_clearance_m = 3.5,
+          .speed_limit_mps = 10.0},
+      ConstrainedFreeSpaceEdge{
+          .id = "candidate",
+          .centerline = sampleRoute3D(
+              std::vector<Point3>{{4.0, 2.0, 5.0}, {6.0, 2.0, 5.0}}, 0.5, 10.0),
+          .min_z_m = 1.5,
+          .max_z_m = 8.5,
+          .minimum_clearance_m = 3.5,
+          .speed_limit_mps = 10.0}};
+  const std::vector<std::string> selected{"selected"};
+  MppiDebugMarkerInput input = markerInput();
+  input.channel_edges = channels;
+  input.selected_channel_ids = selected;
+
+  const auto markers = buildMppiDebugMarkers(input);
+
+  const auto& candidate = findMarker(markers, "channel_candidate_edges", 0);
+  const auto& selected_marker = findMarker(markers, "selected_channel_edges", 0);
+  const auto& unselected_marker = findMarker(markers, "selected_channel_edges", 1);
+  EXPECT_EQ(candidate.action, visualization_msgs::msg::Marker::ADD);
+  EXPECT_EQ(selected_marker.action, visualization_msgs::msg::Marker::ADD);
+  EXPECT_GT(selected_marker.scale.x, candidate.scale.x);
+  EXPECT_EQ(unselected_marker.action, visualization_msgs::msg::Marker::DELETE);
+}
+
 } // namespace
 } // namespace drone_city_nav

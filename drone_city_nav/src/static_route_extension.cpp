@@ -140,6 +140,8 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
       return "invalid_esdf";
     case StaticRouteCandidateStatus::kRawCollision:
       return "raw_collision";
+    case StaticRouteCandidateStatus::kInvalidChannelSpan:
+      return "invalid_channel_span";
     case StaticRouteCandidateStatus::kNoEndpointImprovement:
       return "no_endpoint_improvement";
   }

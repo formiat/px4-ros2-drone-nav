@@ -259,8 +259,20 @@ ProductionMppiNode::ProductionMppiNode()
   lattice_3d_config_.planning_goal_distance_m = static_lattice_distance;
   lattice_3d_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_3d_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
-  lattice_3d_config_.vertical_cost_per_m =
-      declare_parameter<double>("global_lattice_3d_vertical_cost_per_m", 4.0);
+  lattice_3d_config_.nominal_horizontal_speed_mps =
+      speed_policy_config_.cruise_speed_mps;
+  lattice_3d_config_.nominal_vertical_speed_mps =
+      declare_parameter<double>("global_lattice_3d_nominal_vertical_speed_mps", 4.0);
+  lattice_3d_config_.vertical_alignment_cost_weight = declare_parameter<double>(
+      "global_lattice_3d_vertical_alignment_cost_weight", 0.0);
+  lattice_3d_config_.turn_cost_per_rad =
+      declare_parameter<double>("global_lattice_3d_turn_cost_per_rad", 0.10);
+  lattice_3d_config_.planning_exposure_cost_per_m =
+      declare_parameter<double>("global_lattice_3d_planning_exposure_cost_per_m", 0.05);
+  lattice_3d_config_.critical_exposure_cost_per_m =
+      declare_parameter<double>("global_lattice_3d_critical_exposure_cost_per_m", 0.50);
+  lattice_3d_config_.channel_connection_distance_m =
+      declare_parameter<double>("global_lattice_3d_channel_connection_distance_m", 3.0);
   lattice_3d_config_.maximum_expansions =
       static_cast<std::size_t>(static_lattice_expansions);
   lattice_3d_config_.maximum_search_time_ms = static_lattice_deadline_ms;
@@ -343,6 +355,13 @@ ProductionMppiNode::ProductionMppiNode()
       !std::isfinite(constrained_route_speed_limit_mps_) ||
       constrained_route_speed_limit_mps_ < 0.0F ||
       !(route_constraint_diagnostics_distance_m_ >= 0.0) ||
+      !(lattice_3d_config_.nominal_horizontal_speed_mps > 0.0) ||
+      !(lattice_3d_config_.nominal_vertical_speed_mps > 0.0) ||
+      !(lattice_3d_config_.vertical_alignment_cost_weight >= 0.0) ||
+      !(lattice_3d_config_.turn_cost_per_rad >= 0.0) ||
+      !(lattice_3d_config_.planning_exposure_cost_per_m >= 0.0) ||
+      !(lattice_3d_config_.critical_exposure_cost_per_m >= 0.0) ||
+      !(lattice_3d_config_.channel_connection_distance_m > 0.0) ||
       !(safety_config_.swept_validation_step_m > 0.0) ||
       !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
       !(frontier_blacklist_ttl_s_ > 0.0)) {
@@ -368,11 +387,15 @@ ProductionMppiNode::ProductionMppiNode()
       occupancy_path = package_share / occupancy_path;
     }
     static_occupancy_3d_ = OccupancyGrid3D::load(occupancy_path);
+    static_channel_edges_ =
+        std::make_shared<const std::vector<ConstrainedFreeSpaceEdge>>(
+            static_occupancy_3d_->channelEdges());
     RCLCPP_INFO(get_logger(),
                 "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
-                " occupied_voxels=%zu dimensions=%dx%dx%d",
+                " occupied_voxels=%zu channels=%zu dimensions=%dx%dx%d",
                 occupancy_path.c_str(), static_occupancy_3d_->fingerprint(),
                 static_occupancy_3d_->occupiedVoxelCount(),
+                static_channel_edges_->size(),
                 static_occupancy_3d_->bounds().width_cells,
                 static_occupancy_3d_->bounds().height_cells,
                 static_occupancy_3d_->bounds().depth_cells);

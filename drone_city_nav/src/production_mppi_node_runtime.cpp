@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "production_mppi_node.hpp"
+#include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -49,61 +50,6 @@ namespace {
   const std::size_t upper = std::min(lower + 1U, states.size() - 1U);
   return interpolateState(states[lower], states[upper],
                           source - static_cast<double>(lower));
-}
-
-[[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
-makeMppiRoute3D(std::span<const RouteSample3D> route,
-                std::span<const ConstrainedRouteSpan> spans,
-                double unconstrained_speed_mps, double constrained_speed_mps);
-
-[[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
-makeMppiRoute2D(const std::span<const Point2> route, const double z_m,
-                const double reference_speed_mps) {
-  std::vector<Point3> points;
-  points.reserve(route.size());
-  for (const Point2 point : route) {
-    points.push_back(Point3{point.x, point.y, z_m});
-  }
-  return makeMppiRoute3D(sampleRoute3D(points, 0.5, reference_speed_mps), {},
-                         reference_speed_mps, reference_speed_mps);
-}
-
-[[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
-makeMppiRoute3D(const std::span<const RouteSample3D> route,
-                const std::span<const ConstrainedRouteSpan> spans,
-                const double unconstrained_speed_mps,
-                const double constrained_speed_mps) {
-  auto points = std::make_shared<std::vector<mppi::RouteSample3D>>();
-  points->reserve(route.size());
-  for (const RouteSample3D& sample : route) {
-    const bool constrained =
-        std::ranges::any_of(spans, [&sample](const ConstrainedRouteSpan& span) {
-          return sample.station_m >= span.begin_station_m &&
-                 sample.station_m <= span.end_station_m;
-        });
-    points->push_back(mppi::RouteSample3D{
-        .x_m = static_cast<float>(sample.position.x),
-        .y_m = static_cast<float>(sample.position.y),
-        .z_m = static_cast<float>(sample.position.z),
-        .tangent_x = static_cast<float>(sample.tangent.x),
-        .tangent_y = static_cast<float>(sample.tangent.y),
-        .tangent_z = static_cast<float>(sample.tangent.z),
-        .station_m = static_cast<float>(sample.station_m),
-        .reference_speed_mps = static_cast<float>(
-            constrained ? constrained_speed_mps : unconstrained_speed_mps),
-    });
-  }
-  return points;
-}
-
-[[nodiscard]] std::shared_ptr<const std::vector<Point2>>
-projectRouteTo2D(const std::span<const RouteSample3D> route) {
-  auto points = std::make_shared<std::vector<Point2>>();
-  points->reserve(route.size());
-  for (const RouteSample3D& sample : route) {
-    points->push_back(Point2{sample.position.x, sample.position.y});
-  }
-  return points;
 }
 
 } // namespace
@@ -223,91 +169,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         world.reset();
         continue;
       }
-      Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
-                               static_cast<double>(navigation.state.vy),
-                               static_cast<double>(navigation.state.vz)};
-      if (std::hypot(preferred_direction.x, preferred_direction.y) < 0.5) {
-        preferred_direction = Vec3{mission_goal_.x - navigation.state.x,
-                                   mission_goal_.y - navigation.state.y,
-                                   mission_goal_.z - navigation.state.z};
-      }
-      const auto search_started = std::chrono::steady_clock::now();
-      const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
-          world->grid, *world->distances_m,
-          Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-          preferred_direction, mission_goal_, lattice_3d_config_);
-      const double search_ms = std::chrono::duration<double, std::milli>(
-                                   std::chrono::steady_clock::now() - search_started)
-                                   .count();
-      ProductionMppiPreparedEsdf prepared = *world;
-      prepared.global_guide_search_ms = search_ms;
-      prepared.lattice_search_performed = true;
-      prepared.lattice_executable =
-          lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
-          lattice.status == Lattice3DStatus::kViableFrontier;
-      prepared.global_guide_expansions = lattice.expansions;
-      prepared.global_guide_reaches_mission_goal = lattice.reached_mission_goal;
-      StaticRouteCandidateValidation candidate_validation{
-          .status = StaticRouteCandidateStatus::kEmpty};
-      if (prepared.lattice_executable) {
-        auto route = std::make_shared<const std::vector<RouteSample3D>>(lattice.route);
-        candidate_validation = validateStaticRouteCandidate(
-            world->route_3d ? std::span<const RouteSample3D>{*world->route_3d}
-                            : std::span<const RouteSample3D>{},
-            *route, world->grid, *world->distances_m, mission_goal_,
-            static_route_extension_config_.minimum_endpoint_improvement_m,
-            lattice.reached_mission_goal);
-        const std::uint64_t candidate_generation = static_route_generation_ + 1U;
-        auto spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
-            analyzeConstrainedRouteSpans(*route, world->grid, *world->distances_m,
-                                         candidate_generation, route_envelope_config_));
-        prepared.route_3d = route;
-        prepared.route_2d_projection = projectRouteTo2D(*route);
-        prepared.constrained_spans = spans;
-        prepared.mppi_route =
-            makeMppiRoute3D(*route, *spans, speed_policy_config_.cruise_speed_mps,
-                            constrained_route_speed_limit_mps_);
-        prepared.global_guide_projection =
-            projectOntoGlobalGuide(*prepared.route_2d_projection,
-                                   Point2{navigation.state.x, navigation.state.y});
-      }
-      bool activated = false;
-      {
-        const std::scoped_lock lock{esdf_state_mutex_};
-        const bool generation_matches =
-            !world->static_route_extension_request ||
-            (prepared_esdf_ && prepared_esdf_->global_guide_generation ==
-                                   world->static_route_extension_base_generation);
-        if (candidate_validation.accepted && prepared_esdf_ &&
-            prepared_esdf_->revision == prepared.revision && generation_matches) {
-          prepared.global_guide_generation = ++static_route_generation_;
-          prepared.static_route_extension_request = false;
-          prepared.static_route_extension_base_generation = 0U;
-          prepared_esdf_ = prepared;
-          activated = true;
-        }
-      }
-      RCLCPP_INFO(
-          get_logger(),
-          "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
-          " activated=%s extension=%s base_generation=%" PRIu64
-          " validation=%.*s endpoint_improvement_m=%.2f status=%s "
-          "points=%zu samples=%zu spans=%zu expansions=%zu "
-          "risk_stage=%u search_ms=%.2f",
-          prepared.revision, activated ? "true" : "false",
-          world->static_route_extension_request ? "true" : "false",
-          world->static_route_extension_base_generation,
-          static_cast<int>(
-              staticRouteCandidateStatusName(candidate_validation.status).size()),
-          staticRouteCandidateStatusName(candidate_validation.status).data(),
-          candidate_validation.endpoint_improvement_m,
-          lattice3DStatusName(lattice.status), lattice.points.size(),
-          lattice.route.size(),
-          prepared.constrained_spans ? prepared.constrained_spans->size() : 0U,
-          lattice.expansions, static_cast<unsigned>(lattice.risk_stage), search_ms);
-      if (world->static_route_extension_request) {
-        finishStaticRouteExtension(world->static_route_extension_base_generation);
-      }
+      processStaticGuideSearch(*world, navigation);
       world.reset();
       search_navigation.reset();
       continuation_attempt = 0U;
@@ -707,6 +569,8 @@ void ProductionMppiNode::planningTick() {
                                                            : std::vector<mppi::State>{},
           .execution_horizon = execution.horizon,
           .route = stale_esdf.mppi_route,
+          .channel_edges = stale_esdf.channel_edges,
+          .selected_channel_ids = stale_esdf.selected_channel_ids,
       };
       last_rviz_stamp_ns_ = now_ns;
     }
@@ -963,6 +827,8 @@ void ProductionMppiNode::planningTick() {
                                                          : std::vector<mppi::State>{},
         .execution_horizon = execution.horizon,
         .route = esdf->mppi_route,
+        .channel_edges = esdf->channel_edges,
+        .selected_channel_ids = esdf->selected_channel_ids,
     };
     last_rviz_stamp_ns_ = now_ns;
   }

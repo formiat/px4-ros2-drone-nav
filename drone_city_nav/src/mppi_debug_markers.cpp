@@ -7,6 +7,7 @@
 #include <visualization_msgs/msg/marker.hpp>
 
 #include <cmath>
+#include <ranges>
 #include <string_view>
 
 namespace drone_city_nav {
@@ -17,6 +18,8 @@ constexpr std::string_view kMppiExecutionNamespace{"mppi_execution"};
 constexpr std::string_view kLegacyMppiNamespace{"mppi"};
 constexpr std::string_view kMppiTargetNamespace{"mppi_target"};
 constexpr std::string_view kGlobalGuideNamespace{"global_lattice_guide"};
+constexpr std::string_view kChannelCandidateNamespace{"channel_candidate_edges"};
+constexpr std::string_view kSelectedChannelNamespace{"selected_channel_edges"};
 
 [[nodiscard]] std_msgs::msg::ColorRGBA riskColor(const mppi::RiskTier tier) {
   if (tier == mppi::RiskTier::kPreferred) {
@@ -135,6 +138,29 @@ globalGuideMarker(const MppiDebugMarkerInput& input) {
   return marker;
 }
 
+[[nodiscard]] bool isSelectedChannel(const MppiDebugMarkerInput& input,
+                                     const std::string& channel_id) {
+  return std::ranges::find(input.selected_channel_ids, channel_id) !=
+         input.selected_channel_ids.end();
+}
+
+[[nodiscard]] visualization_msgs::msg::Marker
+channelMarker(const MppiDebugMarkerInput& input,
+              const ConstrainedFreeSpaceEdge& channel, const int marker_id,
+              const bool selected) {
+  visualization_msgs::msg::Marker marker = makeMarker(
+      input.header, selected ? kSelectedChannelNamespace : kChannelCandidateNamespace,
+      marker_id, visualization_msgs::msg::Marker::LINE_STRIP);
+  marker.scale.x = selected ? 0.70 : 0.30;
+  marker.color =
+      selected ? rgba(0.15F, 1.0F, 0.25F, 1.0F) : rgba(0.35F, 0.65F, 1.0F, 0.55F);
+  marker.points.reserve(channel.centerline.size());
+  for (const RouteSample3D& sample : channel.centerline) {
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(sample.position));
+  }
+  return marker;
+}
+
 } // namespace
 
 visualization_msgs::msg::MarkerArray
@@ -147,6 +173,18 @@ buildMppiDebugMarkers(const MppiDebugMarkerInput& input) {
   markers.markers.push_back(missionMarker(input, true));
   markers.markers.push_back(missionMarker(input, false));
   markers.markers.push_back(globalGuideMarker(input));
+  for (std::size_t index = 0U; index < input.channel_edges.size(); ++index) {
+    const int marker_id = static_cast<int>(index);
+    const ConstrainedFreeSpaceEdge& channel = input.channel_edges[index];
+    markers.markers.push_back(channelMarker(input, channel, marker_id, false));
+    if (isSelectedChannel(input, channel.id)) {
+      markers.markers.push_back(channelMarker(input, channel, marker_id, true));
+    } else {
+      markers.markers.push_back(
+          deleteMarker(input.header, kSelectedChannelNamespace, marker_id,
+                       visualization_msgs::msg::Marker::LINE_STRIP));
+    }
+  }
   markers.markers.push_back(deleteMarker(input.header, kMppiCandidateNamespace, 1,
                                          visualization_msgs::msg::Marker::SPHERE));
   if (input.previous_horizon.empty()) {

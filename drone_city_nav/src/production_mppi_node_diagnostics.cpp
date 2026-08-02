@@ -112,11 +112,20 @@ void ProductionMppiNode::publishRviz(
   const std::span<const mppi::RouteSample3D> global_route =
       rviz.route ? std::span<const mppi::RouteSample3D>{*rviz.route}
                  : std::span<const mppi::RouteSample3D>{};
+  const std::span<const ConstrainedFreeSpaceEdge> channel_edges =
+      rviz.channel_edges
+          ? std::span<const ConstrainedFreeSpaceEdge>{*rviz.channel_edges}
+          : std::span<const ConstrainedFreeSpaceEdge>{};
+  const std::span<const std::string> selected_channel_ids =
+      rviz.selected_channel_ids
+          ? std::span<const std::string>{*rviz.selected_channel_ids}
+          : std::span<const std::string>{};
   const visualization_msgs::msg::MarkerArray markers =
       buildMppiDebugMarkers(MppiDebugMarkerInput{
           path.header, rviz.candidate_horizon, previous_horizon, execution_horizon,
-          global_route, snapshot.input.initial_state, snapshot.input.target,
-          mission_start_, mission_goal_, snapshot.result.selected_tier});
+          global_route, channel_edges, selected_channel_ids,
+          snapshot.input.initial_state, snapshot.input.target, mission_start_,
+          mission_goal_, snapshot.result.selected_tier});
   markers_pub_->publish(markers);
 }
 
@@ -312,6 +321,8 @@ void ProductionMppiNode::processDiagnostics(
        << " guide_remaining_m=" << snapshot.route_remaining_m
        << " route_constraint_phase="
        << constrainedRoutePhaseName(route_constraint.phase)
+       << " route_constraint_channel="
+       << (route_constraint.channel_id.empty() ? "none" : route_constraint.channel_id)
        << " route_constraint_span_index="
        << (route_constraint.span_available
                ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
@@ -345,6 +356,15 @@ void ProductionMppiNode::processDiagnostics(
        << " lattice_search_session_resumed="
        << (esdf.lattice_search_session_resumed ? "true" : "false")
        << " lattice_risk_stage=" << latticeRiskStageName(esdf.lattice_risk_stage)
+       << " topology_objective=" << esdf.topology_objective_cost
+       << " topology_route_length_m=" << esdf.topology_route_length_m
+       << " topology_travel_time_s=" << esdf.topology_travel_time_s
+       << " topology_vertical_alignment_time_s="
+       << esdf.topology_vertical_alignment_time_s
+       << " topology_planning_exposure_m=" << esdf.topology_planning_exposure_m
+       << " topology_critical_exposure_m=" << esdf.topology_critical_exposure_m
+       << " topology_selected_channels="
+       << (esdf.selected_channel_ids ? esdf.selected_channel_ids->size() : 0U)
        << " lattice_stale_pops=" << esdf.lattice_stale_queue_pops
        << " lattice_open_peak=" << esdf.lattice_open_peak
        << " lattice_records_peak=" << esdf.lattice_records_peak
@@ -473,7 +493,9 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"guide_remaining_m\":" << snapshot.route_remaining_m
         << ",\"route_constraint_phase\":\""
         << constrainedRoutePhaseName(route_constraint.phase) << '"'
-        << ",\"route_constraint_span_available\":"
+        << ",\"route_constraint_channel\":\""
+        << (route_constraint.channel_id.empty() ? "none" : route_constraint.channel_id)
+        << '"' << ",\"route_constraint_span_available\":"
         << (route_constraint.span_available ? "true" : "false")
         << ",\"route_constraint_span_index\":"
         << (route_constraint.span_available
@@ -531,7 +553,16 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_search_session_resumed\":"
         << (esdf.lattice_search_session_resumed ? "true" : "false")
         << ",\"lattice_risk_stage\":\"" << latticeRiskStageName(esdf.lattice_risk_stage)
-        << '"' << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
+        << '"' << ",\"topology_objective\":" << esdf.topology_objective_cost
+        << ",\"topology_route_length_m\":" << esdf.topology_route_length_m
+        << ",\"topology_travel_time_s\":" << esdf.topology_travel_time_s
+        << ",\"topology_vertical_alignment_time_s\":"
+        << esdf.topology_vertical_alignment_time_s
+        << ",\"topology_planning_exposure_m\":" << esdf.topology_planning_exposure_m
+        << ",\"topology_critical_exposure_m\":" << esdf.topology_critical_exposure_m
+        << ",\"topology_selected_channel_count\":"
+        << (esdf.selected_channel_ids ? esdf.selected_channel_ids->size() : 0U)
+        << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
         << ",\"lattice_open_peak\":" << esdf.lattice_open_peak
         << ",\"lattice_records_peak\":" << esdf.lattice_records_peak
         << ",\"lattice_two_step_reachable_states\":"

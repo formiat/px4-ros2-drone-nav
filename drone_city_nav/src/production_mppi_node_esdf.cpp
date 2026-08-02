@@ -169,6 +169,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.upload_ms = upload.upload_ms;
       prepared.grid = static_esdf_grid_;
       prepared.distances_m = static_esdf_3d_;
+      prepared.channel_edges = static_channel_edges_;
       prepared.static_route_extension_request = proactive_roi_refresh;
       prepared.static_route_extension_base_generation =
           proactive_roi_refresh ? roi_refresh_generation : 0U;

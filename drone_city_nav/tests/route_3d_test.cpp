@@ -26,6 +26,7 @@ TEST(Route3DTest, ObservesConstrainedSpanLifecycleAndMotionMetrics) {
   const std::vector<RouteSample3D> route = sampleRoute3D(route_points, 5.0, 20.0);
   const std::vector<ConstrainedRouteSpan> spans{
       ConstrainedRouteSpan{
+          .channel_id = "test_channel",
           .route_generation = 7U,
           .begin_station_m = 40.0,
           .end_station_m = 50.0,
@@ -117,7 +118,7 @@ TEST(Route3DTest, LatticeUsesVerticalFreeOpeningWithoutYawConstraint) {
   config.maximum_search_time_ms = 1000.0;
   const RiskAwareLattice3DResult result =
       planRiskAwareLattice3D(grid, field.distancesM(), Point3{2.5, 5.5, 2.5},
-                             Vec3{-1.0, 0.0, 0.0}, Point3{9.5, 5.5, 4.5}, config);
+                             Vec3{-1.0, 0.0, 0.0}, Point3{9.5, 5.5, 4.5}, {}, config);
 
   ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
   ASSERT_FALSE(result.points.empty());
@@ -151,7 +152,7 @@ TEST(Route3DTest, LatticeTraversesLShapedChannel) {
   config.maximum_search_time_ms = 1000.0;
   const RiskAwareLattice3DResult result =
       planRiskAwareLattice3D(grid, field.distancesM(), Point3{3.5, 3.5, 1.5},
-                             Vec3{1.0, 0.0, 0.0}, Point3{15.5, 15.5, 1.5}, config);
+                             Vec3{1.0, 0.0, 0.0}, Point3{15.5, 15.5, 1.5}, {}, config);
 
   ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
   ASSERT_FALSE(result.points.empty());
@@ -190,7 +191,7 @@ TEST(Route3DTest, FullPlanningRouteBeatsPreferredFrontier) {
 
   const RiskAwareLattice3DResult result =
       planRiskAwareLattice3D(grid, field.distancesM(), Point3{2.5, 6.5, 1.5},
-                             Vec3{1.0, 0.0, 0.0}, Point3{17.5, 6.5, 1.5}, config);
+                             Vec3{1.0, 0.0, 0.0}, Point3{17.5, 6.5, 1.5}, {}, config);
 
   EXPECT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
   EXPECT_EQ(result.risk_stage, Lattice3DRiskStage::kPlanningAllowed);
@@ -226,12 +227,121 @@ TEST(Route3DTest, FartherPlanningFrontierBeatsBlockedPreferredFrontier) {
 
   const RiskAwareLattice3DResult result =
       planRiskAwareLattice3D(grid, field.distancesM(), Point3{2.5, 6.5, 1.5},
-                             Vec3{1.0, 0.0, 0.0}, Point3{30.5, 6.5, 1.5}, config);
+                             Vec3{1.0, 0.0, 0.0}, Point3{30.5, 6.5, 1.5}, {}, config);
 
   ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier);
   EXPECT_EQ(result.risk_stage, Lattice3DRiskStage::kPlanningAllowed);
   ASSERT_FALSE(result.points.empty());
   EXPECT_GT(result.points.back().x, 10.0);
+}
+
+TEST(Route3DTest, BuildsTypedSpanFromSelectedChannelTraversal) {
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 5.0}, {5.0, 0.0, 5.0}, {10.0, 0.0, 5.0}}, 0.5,
+      20.0);
+  const std::vector<SelectedChannelTraversal> traversals{
+      SelectedChannelTraversal{.channel_id = "test_channel",
+                               .begin_station_m = 2.0,
+                               .end_station_m = 8.0,
+                               .min_z_m = 1.5,
+                               .max_z_m = 8.5,
+                               .minimum_clearance_m = 3.5,
+                               .speed_limit_mps = 10.0}};
+
+  const std::vector<ConstrainedRouteSpan> spans =
+      makeConstrainedRouteSpans(route, traversals, 12U, RouteEnvelopeConfig{});
+
+  ASSERT_EQ(spans.size(), 1U);
+  EXPECT_EQ(spans.front().channel_id, "test_channel");
+  EXPECT_EQ(spans.front().route_generation, 12U);
+  ASSERT_FALSE(spans.front().envelope.empty());
+  EXPECT_DOUBLE_EQ(spans.front().envelope.front().min_z_m, 1.5);
+  EXPECT_DOUBLE_EQ(spans.front().envelope.front().max_z_m, 8.5);
+  EXPECT_DOUBLE_EQ(spans.front().envelope.front().reference_speed_mps, 10.0);
+}
+
+TEST(Route3DTest, ComparesReachedRoutesAcrossAllRiskStages) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 20, 4}};
+  for (int y = 2; y <= 16; ++y) {
+    if (y >= 8 && y <= 10) {
+      continue;
+    }
+    for (int z = 0; z < 4; ++z) {
+      occupancy.setOccupied(GridIndex3D{11, y, z});
+    }
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 1.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 2.0;
+  config.critical_distance_m = 0.1;
+  config.maximum_search_time_ms = 3000.0;
+  config.maximum_expansions = 500000U;
+  config.heading_bias_cost_per_rad = 0.0;
+
+  const RiskAwareLattice3DResult result =
+      planRiskAwareLattice3D(grid, field.distancesM(), Point3{2.5, 9.5, 1.5},
+                             Vec3{1.0, 0.0, 0.0}, Point3{21.5, 9.5, 1.5}, {}, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_EQ(result.topology_candidates.size(), 3U);
+  EXPECT_TRUE(
+      std::ranges::any_of(result.topology_candidates,
+                          [](const auto& candidate) { return candidate.selected; }));
+  EXPECT_NE(result.risk_stage, Lattice3DRiskStage::kPreferredOnly);
+}
+
+TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 20, 10}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
+      .id = "direct_channel",
+      .centerline = sampleRoute3D(
+          std::vector<Point3>{{0.5, 0.5, 5.5}, {12.5, 8.5, 5.5}}, 0.5, 10.0),
+      .entry = Point3{0.5, 0.5, 5.5},
+      .exit = Point3{12.5, 8.5, 5.5},
+      .min_z_m = 1.5,
+      .max_z_m = 8.5,
+      .minimum_clearance_m = 3.5,
+      .speed_limit_mps = 10.0}};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 4.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.heading_bias_cost_per_rad = 0.0;
+  config.turn_cost_per_rad = 0.0;
+  config.channel_connection_distance_m = 1.0;
+  config.maximum_search_time_ms = 1000.0;
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      grid, field.distancesM(), Point3{0.5, 0.5, 5.5}, Vec3{1.0, 0.0, 0.0},
+      Point3{12.5, 8.5, 5.5}, channels, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  ASSERT_EQ(result.selected_channels.size(), 1U);
+  EXPECT_EQ(result.selected_channels.front().channel_id, "direct_channel");
+  EXPECT_GT(result.selected_channels.front().end_station_m,
+            result.selected_channels.front().begin_station_m);
 }
 
 } // namespace

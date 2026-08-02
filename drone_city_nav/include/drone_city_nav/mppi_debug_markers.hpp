@@ -1,12 +1,14 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_engine.hpp"
+#include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <std_msgs/msg/header.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <span>
+#include <string>
 
 namespace drone_city_nav {
 
@@ -16,6 +18,8 @@ struct MppiDebugMarkerInput {
   std::span<const mppi::State> previous_horizon;
   std::span<const mppi::State> execution_horizon;
   std::span<const mppi::RouteSample3D> global_route;
+  std::span<const ConstrainedFreeSpaceEdge> channel_edges;
+  std::span<const std::string> selected_channel_ids;
   mppi::State initial_state{};
   mppi::State target{};
   Point3 mission_start{};
