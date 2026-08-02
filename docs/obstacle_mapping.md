@@ -40,9 +40,8 @@ Important parameters:
 Lidar evidence is never filtered against hand-authored passage geometry. Static
 planning reads Occupancy3D. No-static uses the 2D lidar-memory result, and its
 runtime sensor mask exposes channel masses plus collisionless connector
-occluders as ordinary obstacles. The current L-channel has occluders across its
-south entrance, central intersection, and east exit. See `world3d.md` for that
-mode contract.
+occluders as ordinary obstacles. Every current channel has an occluder across
+its intersection and each open bridge. See `world3d.md` for that mode contract.
 
 ## Obstacle Memory
 

@@ -25,7 +25,7 @@
   "channels": [
     {
       "id": "channel_11_19_l",
-      "kind": "l_shaped",
+      "kind": "intersection",
       "intersection_center_m": [108.0, 162.0],
       "intersection_size_m": [30.0, 30.0, 32.0],
       "bridges": [
@@ -35,6 +35,36 @@
         {"id": "north", "center_m": [108.0, 189.0], "size_m": [30.0, 24.0, 32.0], "blocked": true}
       ],
       "centerline_m": [[108.0, 135.0, 5.0], [108.0, 162.0, 5.0], [135.0, 162.0, 5.0]],
+      "width_m": 24.0,
+      "height_m": 7.0
+    },
+    {
+      "id": "channel_54_162_straight",
+      "kind": "intersection",
+      "intersection_center_m": [54.0, 162.0],
+      "intersection_size_m": [30.0, 30.0, 32.0],
+      "bridges": [
+        {"id": "west", "center_m": [27.0, 162.0], "size_m": [24.0, 30.0, 32.0], "blocked": true},
+        {"id": "east", "center_m": [81.0, 162.0], "size_m": [24.0, 30.0, 32.0], "blocked": true},
+        {"id": "south", "center_m": [54.0, 135.0], "size_m": [30.0, 24.0, 32.0], "blocked": false},
+        {"id": "north", "center_m": [54.0, 189.0], "size_m": [30.0, 24.0, 32.0], "blocked": false}
+      ],
+      "centerline_m": [[54.0, 135.0, 5.0], [54.0, 162.0, 5.0], [54.0, 189.0, 5.0]],
+      "width_m": 24.0,
+      "height_m": 7.0
+    },
+    {
+      "id": "channel_108_216_l",
+      "kind": "intersection",
+      "intersection_center_m": [108.0, 216.0],
+      "intersection_size_m": [30.0, 30.0, 32.0],
+      "bridges": [
+        {"id": "west", "center_m": [81.0, 216.0], "size_m": [24.0, 30.0, 32.0], "blocked": false},
+        {"id": "east", "center_m": [135.0, 216.0], "size_m": [24.0, 30.0, 32.0], "blocked": true},
+        {"id": "south", "center_m": [108.0, 189.0], "size_m": [30.0, 24.0, 32.0], "blocked": true},
+        {"id": "north", "center_m": [108.0, 243.0], "size_m": [30.0, 24.0, 32.0], "blocked": false}
+      ],
+      "centerline_m": [[81.0, 216.0, 5.0], [108.0, 216.0, 5.0], [108.0, 243.0, 5.0]],
       "width_m": 24.0,
       "height_m": 7.0
     }

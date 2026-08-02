@@ -20,8 +20,8 @@ real-aircraft operation.
 - Static and no-static speed policies.
 - Timestamped execution horizons consumed by the MPPI offboard node.
 - Braking fallback when the selected horizon is not executable.
-- Canonical 3D static world with a `5 x 8` Manhattan grid and one L-shaped
-  horizontal air channel.
+- Canonical 3D static world with a `5 x 8` Manhattan grid, two L-shaped channels,
+  and one straight-through channel.
 - Gazebo contact-based crash detection.
 - RViz, JSONL, lidar snapshots, and mission diagnostics.
 
@@ -47,9 +47,9 @@ real-aircraft operation.
 profile. `ENABLE_STATIC_MAP=false` uses lidar memory as the world source and the
 shorter, conservative no-static profile.
 
-Only static mode can execute the canonical L-shaped air channel. No-static has
-no channel semantics or 3D perception; collisionless lidar occluders make its
-entrance, intersection, and exit appear occupied.
+Only static mode can execute the canonical air channels. No-static has no
+channel semantics or 3D perception; collisionless lidar occluders make every
+open bridge and intersection appear occupied.
 
 All build, test, quality, and simulation commands must run through the
 repository container workflow.

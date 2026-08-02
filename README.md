@@ -183,12 +183,12 @@ The container targets use `build/`, `install/`, and `log/`.
 Static mode loads `generated_city.occupancy3d` directly in
 `production_mppi_node`. The map and `generated_city.sdf` are generated from the
 same canonical world specification. The current city is a `5 x 8` Manhattan
-building grid with one horizontal L-shaped air channel. Static constrained-route
-logic remains geometry-derived and does not use a separate passage file or
-portal selector. No-static mode uses the accumulated 2D lidar-memory snapshot;
-collisionless lidar occluders make the channel appear closed in that mode.
-Source contracts are documented in `docs/world3d.md`, `docs/obstacle_mapping.md`,
-and `docs/configuration.md`.
+building grid with two horizontal L-shaped air channels and one straight-through
+channel. Static constrained-route logic remains geometry-derived and does not
+use a separate passage file or portal selector. No-static mode uses the
+accumulated 2D lidar-memory snapshot; collisionless lidar occluders make all
+three channels appear closed in that mode. Source contracts are documented in
+`docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
 
 Obstacle topics follow a strict raw/runtime/debug contract. Raw sources such as
 the grid carried by `/drone_city_nav/obstacle_memory_snapshot` contain only

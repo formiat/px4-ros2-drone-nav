@@ -1528,6 +1528,438 @@
         </visual>
       </link>
     </model>
+    <model name="channel_54_162_straight_intersection_lower">
+      <static>true</static>
+      <pose>-63.000 -81.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 30.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 30.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_intersection_upper">
+      <static>true</static>
+      <pose>-63.000 -81.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 30.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 30.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_west_lower">
+      <static>true</static>
+      <pose>-63.000 -108.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_west_upper">
+      <static>true</static>
+      <pose>-63.000 -108.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_west_middle">
+      <static>true</static>
+      <pose>-63.000 -108.000 5.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 7.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 7.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_south_lower">
+      <static>true</static>
+      <pose>-90.000 -81.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_south_upper">
+      <static>true</static>
+      <pose>-90.000 -81.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_north_lower">
+      <static>true</static>
+      <pose>-36.000 -81.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_north_upper">
+      <static>true</static>
+      <pose>-36.000 -81.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_intersection_lower">
+      <static>true</static>
+      <pose>-9.000 -27.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 30.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 30.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_intersection_upper">
+      <static>true</static>
+      <pose>-9.000 -27.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 30.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 30.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_west_lower">
+      <static>true</static>
+      <pose>-9.000 -54.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_west_upper">
+      <static>true</static>
+      <pose>-9.000 -54.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_east_lower">
+      <static>true</static>
+      <pose>-9.000 0.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_east_upper">
+      <static>true</static>
+      <pose>-9.000 0.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_east_middle">
+      <static>true</static>
+      <pose>-9.000 0.000 5.000 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>30.000 24.000 7.000</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 7.000</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_north_lower">
+      <static>true</static>
+      <pose>18.000 -27.000 0.750 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 1.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 1.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_north_upper">
+      <static>true</static>
+      <pose>18.000 -27.000 20.250 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24.000 30.000 23.500</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <visibility_flags>134217728</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 23.500</size>
+            </box>
+          </geometry>
+          <material>
+            <diffuse>0.43 0.47 0.55 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
     <model name="channel_11_19_l_intersection_no_static_occluder">
       <static>true</static>
       <pose>-63.000 -27.000 5.000 0 0 0</pose>
@@ -1563,6 +1995,102 @@
     <model name="channel_11_19_l_south_no_static_occluder">
       <static>true</static>
       <pose>-90.000 -27.000 5.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_intersection_no_static_occluder">
+      <static>true</static>
+      <pose>-63.000 -81.000 5.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 30.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_south_no_static_occluder">
+      <static>true</static>
+      <pose>-90.000 -81.000 5.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_54_162_straight_north_no_static_occluder">
+      <static>true</static>
+      <pose>-36.000 -81.000 5.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>24.000 30.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_intersection_no_static_occluder">
+      <static>true</static>
+      <pose>-9.000 -27.000 5.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 30.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_west_no_static_occluder">
+      <static>true</static>
+      <pose>-9.000 -54.000 5.000 0 0 0</pose>
+      <link name="no_static_lidar_occluder">
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <transparency>0.999</transparency>
+          <visibility_flags>67108864</visibility_flags>
+          <geometry>
+            <box>
+              <size>30.000 24.000 7.000</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <model name="channel_108_216_l_north_no_static_occluder">
+      <static>true</static>
+      <pose>18.000 -27.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
         <visual name="visual">
           <cast_shadows>false</cast_shadows>

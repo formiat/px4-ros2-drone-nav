@@ -71,7 +71,7 @@ def channel_boxes(channel: dict) -> list[Box]:
         opening_max = z_reference + 0.5 * height
         append_box("lower", center_x, center_y, 0.0, opening_min, size_x, size_y)
         append_box("upper", center_x, center_y, opening_max, size_z, size_x, size_y)
-    elif kind == "l_shaped":
+    elif kind == "intersection":
         center_x, center_y = map(float, channel["intersection_center_m"])
         size_x, size_y, size_z = map(float, channel["intersection_size_m"])
         z_reference = points[1][2]
@@ -103,7 +103,7 @@ def channel_occluder_boxes(channel: dict) -> list[Box]:
     height = float(channel["height_m"])
     z_min = min(point[2] for point in points) - 0.5 * height
     z_max = max(point[2] for point in points) + 0.5 * height
-    if channel["kind"] != "l_shaped":
+    if channel["kind"] != "intersection":
         center_x, center_y = map(float, channel["structure_center_m"])
         size_x, size_y, _ = map(float, channel["structure_size_m"])
         return [Box(f"{channel['id']}_no_static_occluder",
@@ -139,7 +139,18 @@ def physical_boxes(spec: dict) -> list[Box]:
             index += 1
     for channel in spec["channels"]:
         boxes.extend(channel_boxes(channel))
-    return boxes
+
+    unique: list[Box] = []
+    seen_geometry: set[
+        tuple[tuple[float, float, float], tuple[float, float, float], int | None]
+    ] = set()
+    for box in boxes:
+        geometry = (box.center, box.size, box.visibility_flags)
+        if geometry in seen_geometry:
+            continue
+        seen_geometry.add(geometry)
+        unique.append(box)
+    return unique
 
 
 def sdf_pose(spec: dict, center: tuple[float, float, float]) -> tuple[float, float, float]:

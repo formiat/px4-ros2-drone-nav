@@ -11,10 +11,15 @@ source of static geometry. It declares:
 - an optional array of generated air-channel structures;
 - mission start and goal positions.
 
-The current city contains 40 ordinary buildings plus one horizontal L-shaped
-channel between the buildings surrounding `(108, 162)`. Approaching from the
-mission start, the channel enters from the south and exits to the left in RViz,
-which corresponds to east in map coordinates.
+The current city contains 40 ordinary buildings plus three horizontal channels:
+
+- straight-through at `(54, 162)`, open south/north;
+- left turn at `(108, 162)`, open south/east;
+- left turn at `(108, 216)`, open west/north.
+
+RViz reverses the visual X direction relative to map X. The map directions above
+therefore produce the screen-space cross-sections requested for a vehicle
+approaching from the lower-right mission start.
 
 `scripts/generate_canonical_world.py` deterministically emits two committed
 artifacts from that specification:
@@ -38,9 +43,9 @@ Run the generator through the repository container workflow:
 ```
 
 `make test-scripts` regenerates both artifacts in a temporary directory and
-checks byte-for-byte equality with the committed files. It also verifies the
-L-channel cross-section, orientation, horizontal geometry, and lidar visibility
-contract.
+checks byte-for-byte equality with the committed files. It also verifies all
+three channel cross-sections, orientation, horizontal geometry, deduplicated
+shared bridge masses, and lidar visibility contract.
 
 ## Occupancy3D
 
@@ -76,18 +81,22 @@ A straight channel contains one structure volume plus a 3D centerline. The
 generator creates a physical lower mass and upper mass, leaving one continuous
 free opening around the centerline reference Z.
 
-### L-Shaped
+### Four-Building Intersection
 
-The L-shaped channel is one intersection between four neighboring buildings
-plus four bridge volumes. The current left turn uses:
+An `intersection` channel contains one center volume plus four bridge volumes
+between four neighboring buildings. The `blocked` state of each bridge defines
+the route shape:
 
-- open east and south bridges;
-- blocked west and north bridges with physical middle masses;
+- opposite open bridges produce a straight-through channel;
+- adjacent open bridges produce an L-shaped channel;
+- blocked bridges receive physical middle masses;
 - lower and upper physical masses on every bridge;
 - one lower and one upper physical mass across the central intersection.
 
-This produces a continuous L-shaped free volume. It is not a staircase and is
-not two independent openings selected by a passage coordinator.
+This produces one continuous free volume. It is not a staircase and is not a
+set of independent openings selected by a passage coordinator. Shared bridge
+masses between adjacent channel declarations are deduplicated by physical
+geometry before SDF and Occupancy3D generation.
 
 All channel centerlines have one constant reference Z. Every generated lower,
 upper, and middle mass is an axis-aligned box whose floor and roof are parallel
@@ -138,8 +147,8 @@ No-static mode intentionally remains 2D:
 - it has no 3D lidar or 3D channel perception.
 
 The generated SDF gives channel lower/upper/middle masses one dedicated
-visibility flag and adds transparent, collisionless lidar occluders across the
-south entrance, central intersection, and east exit. Before each run,
+visibility flag and adds transparent, collisionless lidar occluders across each
+intersection and open bridge. Before each run,
 `scripts/configure_lidar_visibility.py` changes the GPU lidar mask:
 
 - static mode hides both channel masses and no-static occluders from the 2D

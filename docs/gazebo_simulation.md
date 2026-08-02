@@ -146,14 +146,15 @@ or arming rather than planner geometry.
 `canonical_city.world3d.json` is the only hand-edited geometry source. The
 generator derives both Gazebo SDF and sparse Occupancy3D from it, so rendering,
 physics, and static planning cannot encode different buildings. The current
-world adds one L-shaped channel between four Manhattan buildings. Its three
-open volumes receive collisionless no-static lidar occluders.
+world adds two L-shaped channels and one straight-through channel between
+neighboring Manhattan buildings. Every open bridge and intersection receives a
+collisionless no-static lidar occluder.
 
 When editing a world, verify:
 
 - ordinary building positions and sizes in Gazebo;
 - regenerated SDF and Occupancy3D match the canonical specification;
-- the L-channel orientation and constrained envelope are represented in
+- all channel orientations and constrained envelopes are represented in
   Occupancy3D;
 - map origin relative to PX4 local origin;
 - grid bounds cover the full mission;
@@ -163,7 +164,7 @@ When editing a world, verify:
 The runner configures the lidar visibility mask from the resolved
 `ENABLE_STATIC_MAP` mode. Static lidar excludes channel masses and no-static
 occluders because Occupancy3D is authoritative. No-static lidar includes both,
-so the L-channel is observed as an ordinary obstacle rather than traversed.
+so every channel is observed as an ordinary obstacle rather than traversed.
 
 The static map should remain raw. Do not pre-inflate buildings in the map to
 "help" the planner. MPPI derives categorical risk bands from the occupied

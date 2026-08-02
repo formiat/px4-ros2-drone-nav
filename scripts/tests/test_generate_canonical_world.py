@@ -58,25 +58,46 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             self.assertEqual((690, 1050, 80), header[7:10])
             self.assertGreater(header[11], 0)
 
-    def test_spec_describes_one_left_turn_channel(self) -> None:
+    def test_spec_describes_two_left_turns_and_one_straight_channel(self) -> None:
         with SPEC_PATH.open(encoding="utf-8") as stream:
             spec = json.load(stream)
         self.assertEqual(5, len(spec["building_grid"]["x_centers_m"]))
         self.assertEqual(8, len(spec["building_grid"]["y_centers_m"]))
-        self.assertEqual(1, len(spec["channels"]))
-        channel = spec["channels"][0]
-        self.assertEqual("channel_11_19_l", channel["id"])
-        self.assertEqual("l_shaped", channel["kind"])
+        self.assertEqual(3, len(spec["channels"]))
+        channels = {channel["id"]: channel for channel in spec["channels"]}
+        self.assertTrue(
+            all(channel["kind"] == "intersection" for channel in channels.values())
+        )
         self.assertEqual(
             {"west", "north"},
-            {bridge["id"] for bridge in channel["bridges"] if bridge["blocked"]},
+            {
+                bridge["id"]
+                for bridge in channels["channel_11_19_l"]["bridges"]
+                if bridge["blocked"]
+            },
+        )
+        self.assertEqual(
+            {"west", "east"},
+            {
+                bridge["id"]
+                for bridge in channels["channel_54_162_straight"]["bridges"]
+                if bridge["blocked"]
+            },
+        )
+        self.assertEqual(
+            {"east", "south"},
+            {
+                bridge["id"]
+                for bridge in channels["channel_108_216_l"]["bridges"]
+                if bridge["blocked"]
+            },
         )
 
         boxes = generator.physical_boxes(spec)
-        self.assertEqual(52, len(boxes))
-        self.assertEqual(
-            40, sum(box.id.startswith("building_") for box in boxes)
-        )
+        self.assertEqual(70, len(boxes))
+        self.assertEqual(40, sum(box.id.startswith("building_") for box in boxes))
+        geometry = {(box.center, box.size, box.visibility_flags) for box in boxes}
+        self.assertEqual(len(boxes), len(geometry))
 
     def test_l_channel_cross_sections_match_left_turn_as_seen_from_start(self) -> None:
         spec = generator.load_spec(SPEC_PATH)
@@ -107,6 +128,38 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             self.assertTrue(
                 all(occupied(x, y, z) for row in sample_xy for x, y in row)
             )
+
+    def test_new_channel_cross_sections_match_rviz_annotations(self) -> None:
+        spec = generator.load_spec(SPEC_PATH)
+        boxes = generator.physical_boxes(spec)
+
+        def occupied(x: float, y: float, z: float) -> bool:
+            return any(
+                abs(x - box.center[0]) < 0.5 * box.size[0]
+                and abs(y - box.center[1]) < 0.5 * box.size[1]
+                and abs(z - box.center[2]) < 0.5 * box.size[2]
+                for box in boxes
+            )
+
+        def cross_section(
+            center_x: float, center_y: float
+        ) -> tuple[tuple[bool, ...], ...]:
+            return tuple(
+                tuple(
+                    occupied(center_x + dx, center_y + dy, 5.0)
+                    for dx in (27.0, 0.0, -27.0)
+                )
+                for dy in (27.0, 0.0, -27.0)
+            )
+
+        self.assertEqual(
+            ((True, False, True), (True, False, True), (True, False, True)),
+            cross_section(54.0, 162.0),
+        )
+        self.assertEqual(
+            ((True, False, True), (True, False, False), (True, True, True)),
+            cross_section(108.0, 216.0),
+        )
 
     def test_committed_artifacts_are_deterministic_and_current(self) -> None:
         spec = generator.load_spec(SPEC_PATH)
