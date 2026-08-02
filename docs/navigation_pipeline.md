@@ -44,6 +44,12 @@ incomplete, or exhausted. Only reached-goal and viable-frontier results are
 executable. Incomplete search is continued when possible; exhausted output is
 not accepted as a guide.
 
+No-static frontier selection keeps candidates from distinct departure
+directions before evaluating continuation depth. Temporary zero or negative
+Euclidean progress toward the mission goal is allowed when it provides a
+locally viable detour. Goal distance is a soft ranking term, not a frontier
+eligibility condition.
+
 An accepted guide is sticky. It is retained across ESDF revisions while its
 remaining portion is valid and useful. Replacement reasons include blocking,
 exhaustion, excessive cross-track error, and observed stall.

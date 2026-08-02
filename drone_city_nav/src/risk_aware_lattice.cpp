@@ -38,6 +38,7 @@ struct LatticeKeyHash {
 
 struct Record {
   double cost{std::numeric_limits<double>::infinity()};
+  double path_length_m{0.0};
   std::optional<LatticeKey> parent;
   std::array<Point2, 4U> edge_points{};
   std::size_t edge_point_count{0U};
@@ -72,11 +73,21 @@ struct FrontierEvaluation {
   double guide_length_m{0.0};
   double progress_m{0.0};
   double remaining_m{0.0};
+  double endpoint_displacement_m{0.0};
+  double selection_score{0.0};
   double cost{0.0};
   std::size_t immediate_successors{0U};
   std::size_t two_step_states{0U};
   double reachable_depth_m{0.0};
   LatticeRiskStage stage{LatticeRiskStage::kPreferredOnly};
+};
+
+struct FrontierPoolCandidate {
+  LatticeKey key{};
+  double path_length_m{0.0};
+  double endpoint_displacement_m{0.0};
+  double remaining_m{0.0};
+  double selection_score{0.0};
 };
 
 struct StageOutcome {
@@ -89,7 +100,6 @@ struct StageOutcome {
   LatticeSearchTermination termination{LatticeSearchTermination::kOpenSetExhausted};
   std::unordered_map<LatticeKey, Record, LatticeKeyHash> records;
   std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<>> open;
-  std::vector<std::pair<double, LatticeKey>> frontier_pool;
   std::optional<LatticeKey> terminal;
   double terminal_connector_cost{0.0};
   std::uint64_t insertion_sequence{0U};
@@ -380,7 +390,10 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       !(config.maximum_search_roi_halo_m > 0.0) ||
       !(config.maximum_search_time_ms > 0.0) ||
       config.maximum_frontier_candidates == 0U ||
+      !(config.minimum_frontier_endpoint_displacement_m >= 0.0) ||
       !(config.minimum_frontier_reachable_depth_m > 0.0) ||
+      !(config.frontier_goal_distance_weight >= 0.0) ||
+      !std::isfinite(config.frontier_goal_distance_weight) ||
       !(config.frontier_blacklist_radius_m >= 0.0) ||
       config.frontier_blacklist_heading_tolerance_bins < 0 ||
       config.frontier_blacklist_heading_tolerance_bins > config.heading_bins / 2) {
@@ -506,7 +519,6 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
                                    .insertion_sequence = outcome.insertion_sequence++});
       outcome.open_peak = 1U;
       outcome.records_peak = 1U;
-      outcome.frontier_pool.reserve(config.maximum_frontier_candidates + 1U);
     }
     outcome.budget_exhausted = false;
     outcome.deadline_reached = false;
@@ -524,15 +536,6 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       }
       const Point2 current = cellCenter(grid, entry.key);
       const double goal_distance = distance(current, result.planning_goal);
-      const double progress = distance(start, result.planning_goal) - goal_distance;
-      if (progress >= config.minimum_frontier_progress_m) {
-        outcome.frontier_pool.emplace_back(goal_distance, entry.key);
-        std::ranges::sort(outcome.frontier_pool, {},
-                          &std::pair<double, LatticeKey>::first);
-        if (outcome.frontier_pool.size() > config.maximum_frontier_candidates) {
-          outcome.frontier_pool.pop_back();
-        }
-      }
       if (goal_distance <= config.goal_tolerance_m) {
         const SegmentEvaluation connector =
             evaluateSegment(grid, esdf_m, current, result.planning_goal, config, stage);
@@ -556,6 +559,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           continue;
         }
         next_record.cost = next_cost;
+        next_record.path_length_m = record->second.path_length_m + successor.length_m;
         next_record.parent = entry.key;
         next_record.edge_points = successor.edge_points;
         next_record.edge_point_count = successor.edge_point_count;
@@ -610,6 +614,107 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       append_distinct(cellCenter(grid, chain[chain_index]));
     }
     return guide;
+  };
+
+  const auto collect_frontier_pool = [&](const StageOutcome& outcome) {
+    const auto objective_rank = [](const FrontierPoolCandidate& candidate) {
+      return std::tuple{candidate.selection_score, -candidate.path_length_m,
+                        candidate.remaining_m,     candidate.key.x,
+                        candidate.key.y,           candidate.key.heading};
+    };
+    const auto cell_id = [](const LatticeKey& key) {
+      const std::uint64_t x = static_cast<std::uint32_t>(key.x);
+      const std::uint64_t y = static_cast<std::uint32_t>(key.y);
+      return (x << 32U) | y;
+    };
+
+    std::unordered_map<std::uint64_t, FrontierPoolCandidate> best_by_cell;
+    best_by_cell.reserve(outcome.records.size());
+    for (const auto& [key, record] : outcome.records) {
+      if (!record.parent.has_value() ||
+          record.path_length_m + 1.0e-9 < config.minimum_frontier_guide_length_m) {
+        continue;
+      }
+      const Point2 endpoint = cellCenter(grid, key);
+      const double endpoint_displacement_m = distance(start, endpoint);
+      if (endpoint_displacement_m + 1.0e-9 <
+          config.minimum_frontier_endpoint_displacement_m) {
+        continue;
+      }
+      const double remaining_m = distance(endpoint, result.planning_goal);
+      FrontierPoolCandidate candidate{
+          .key = key,
+          .path_length_m = record.path_length_m,
+          .endpoint_displacement_m = endpoint_displacement_m,
+          .remaining_m = remaining_m,
+          .selection_score =
+              record.cost + config.frontier_goal_distance_weight * remaining_m,
+      };
+      const std::uint64_t id = cell_id(key);
+      const auto existing = best_by_cell.find(id);
+      if (existing == best_by_cell.end() ||
+          objective_rank(candidate) < objective_rank(existing->second)) {
+        best_by_cell.insert_or_assign(id, candidate);
+      }
+    }
+
+    const std::size_t sector_count =
+        std::min(config.maximum_frontier_candidates,
+                 static_cast<std::size_t>(config.heading_bins));
+    std::vector<std::vector<FrontierPoolCandidate>> sectors(sector_count);
+    std::vector<FrontierPoolCandidate> all_candidates;
+    all_candidates.reserve(best_by_cell.size());
+    for (const auto& [unused_id, candidate] : best_by_cell) {
+      static_cast<void>(unused_id);
+      const Point2 endpoint = cellCenter(grid, candidate.key);
+      const double bearing = std::atan2(endpoint.y - start.y, endpoint.x - start.x);
+      const std::size_t sector = static_cast<std::size_t>(
+          nearestHeadingBin(bearing, static_cast<int>(sector_count)));
+      sectors.at(sector).push_back(candidate);
+      all_candidates.push_back(candidate);
+    }
+
+    std::vector<FrontierPoolCandidate> selected;
+    selected.reserve(
+        std::min(config.maximum_frontier_candidates, all_candidates.size()));
+    std::unordered_set<LatticeKey, LatticeKeyHash> selected_keys;
+    const auto append_candidate = [&](const FrontierPoolCandidate& candidate) {
+      if (selected.size() < config.maximum_frontier_candidates &&
+          selected_keys.insert(candidate.key).second) {
+        selected.push_back(candidate);
+      }
+    };
+    const std::size_t base_quota = config.maximum_frontier_candidates / sector_count;
+    const std::size_t extra_sectors = config.maximum_frontier_candidates % sector_count;
+    for (std::size_t sector_index = 0U; sector_index < sectors.size(); ++sector_index) {
+      std::vector<FrontierPoolCandidate>& sector = sectors[sector_index];
+      if (sector.empty()) {
+        continue;
+      }
+      std::ranges::sort(sector, {}, objective_rank);
+      const std::size_t quota = base_quota + (sector_index < extra_sectors ? 1U : 0U);
+      const std::size_t selected_before_sector = selected.size();
+      append_candidate(sector.front());
+      if (quota > 1U && sector.size() > 1U) {
+        const auto furthest =
+            std::ranges::max_element(sector, {}, &FrontierPoolCandidate::path_length_m);
+        append_candidate(*furthest);
+      }
+      for (const FrontierPoolCandidate& candidate : sector) {
+        if (selected.size() - selected_before_sector >= quota) {
+          break;
+        }
+        append_candidate(candidate);
+      }
+    }
+    if (selected.size() < config.maximum_frontier_candidates) {
+      std::ranges::sort(all_candidates, {}, objective_rank);
+      for (const FrontierPoolCandidate& candidate : all_candidates) {
+        append_candidate(candidate);
+      }
+    }
+    std::ranges::sort(selected, {}, objective_rank);
+    return selected;
   };
 
   const std::array stage_runs{
@@ -679,9 +784,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         incomplete_termination = LatticeSearchTermination::kRoiBoundaryReached;
       }
     }
-    for (const auto& [unused_distance, key] : outcome.frontier_pool) {
-      static_cast<void>(unused_distance);
+    for (const FrontierPoolCandidate& pooled : collect_frontier_pool(outcome)) {
       ++result.frontier_candidates_considered;
+      const LatticeKey& key = pooled.key;
       const Point2 terminal = cellCenter(grid, key);
       std::vector<Point2> guide = reconstruct(outcome, key);
       if (repeatsBlacklistedFailure(guide, frontier_blacklist, config)) {
@@ -710,10 +815,12 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const double guide_length_m = guideLength(guide);
       const double remaining_m = distance(terminal, result.planning_goal);
       const double progress_m = distance(start, result.planning_goal) - remaining_m;
+      const double endpoint_displacement_m = distance(start, terminal);
       if (guide.size() < config.minimum_frontier_guide_points ||
           guide_length_m < config.minimum_frontier_guide_length_m ||
-          progress_m < config.minimum_frontier_progress_m || immediate.empty() ||
-          two_step_states == 0U ||
+          endpoint_displacement_m + 1.0e-9 <
+              config.minimum_frontier_endpoint_displacement_m ||
+          immediate.empty() || two_step_states == 0U ||
           reachable_depth_m < config.minimum_frontier_reachable_depth_m) {
         continue;
       }
@@ -723,6 +830,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           .guide_length_m = guide_length_m,
           .progress_m = progress_m,
           .remaining_m = remaining_m,
+          .endpoint_displacement_m = endpoint_displacement_m,
+          .selection_score = pooled.selection_score,
           .cost = outcome.records.at(key).cost,
           .immediate_successors = immediate.size(),
           .two_step_states = two_step_states,
@@ -730,12 +839,10 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           .stage = stage,
       };
       const auto rank = [](const FrontierEvaluation& value) {
-        return std::tuple{-value.reachable_depth_m,
-                          -value.progress_m,
-                          static_cast<int>(value.stage),
-                          -static_cast<double>(value.two_step_states),
-                          value.remaining_m,
-                          value.cost};
+        return std::tuple{
+            -value.reachable_depth_m,       -static_cast<double>(value.two_step_states),
+            static_cast<int>(value.stage),  value.selection_score,
+            -value.endpoint_displacement_m, value.remaining_m};
       };
       if (!best_frontier.has_value() || rank(candidate) < rank(*best_frontier)) {
         best_frontier = std::move(candidate);
@@ -754,6 +861,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     result.guide_length_m = best_frontier->guide_length_m;
     result.achieved_progress_m = best_frontier->progress_m;
     result.remaining_goal_distance_m = best_frontier->remaining_m;
+    result.frontier_endpoint_displacement_m = best_frontier->endpoint_displacement_m;
+    result.frontier_selection_score = best_frontier->selection_score;
     result.terminal_successor_count = best_frontier->immediate_successors;
     result.two_step_reachable_states = best_frontier->two_step_states;
     result.reachable_depth_m = best_frontier->reachable_depth_m;

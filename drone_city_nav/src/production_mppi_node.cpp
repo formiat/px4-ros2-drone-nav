@@ -240,8 +240,12 @@ ProductionMppiNode::ProductionMppiNode()
       use_static_map_ ? static_lattice_roi_halo_m : no_static_lattice_roi_halo_m;
   lattice_config_.maximum_frontier_candidates = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("global_lattice_frontier_candidates", 64));
+  lattice_config_.minimum_frontier_endpoint_displacement_m = declare_parameter<double>(
+      "global_lattice_frontier_minimum_endpoint_displacement_m", 4.0);
   lattice_config_.minimum_frontier_reachable_depth_m =
       declare_parameter<double>("global_lattice_frontier_reachable_depth_m", 8.0);
+  lattice_config_.frontier_goal_distance_weight =
+      declare_parameter<double>("global_lattice_frontier_goal_distance_weight", 0.25);
   frontier_blacklist_enabled_ =
       declare_parameter<bool>("global_lattice_frontier_blacklist_enabled", false);
   lattice_config_.frontier_blacklist_radius_m =

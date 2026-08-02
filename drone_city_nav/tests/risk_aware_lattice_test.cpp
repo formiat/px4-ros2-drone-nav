@@ -114,10 +114,37 @@ TEST(RiskAwareLattice, ClassifiesUsefulBudgetLimitedGuideAsViableFrontier) {
   EXPECT_EQ(result.termination, LatticeSearchTermination::kExpansionBudgetExhausted);
   EXPECT_GE(result.guide.size(), config.minimum_frontier_guide_points);
   EXPECT_GE(result.guide_length_m, config.minimum_frontier_guide_length_m);
-  EXPECT_GE(result.achieved_progress_m, config.minimum_frontier_progress_m);
+  EXPECT_GE(result.frontier_endpoint_displacement_m,
+            config.minimum_frontier_endpoint_displacement_m);
   EXPECT_GT(result.terminal_successor_count, 0U);
   EXPECT_GT(result.two_step_reachable_states, 0U);
   EXPECT_GE(result.reachable_depth_m, config.minimum_frontier_reachable_depth_m);
+}
+
+TEST(RiskAwareLattice, AcceptsViableFrontierWithTemporaryNegativeGoalProgress) {
+  const mppi::EsdfGrid grid{100, 80, 1.0F, 0.0F, 0.0F};
+  std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height), 20.0F);
+  for (int y = 5; y <= 75; ++y) {
+    esdf[static_cast<std::size_t>(y) * static_cast<std::size_t>(grid.width) + 30U] =
+        0.0F;
+  }
+  RiskAwareLatticeConfig config;
+  config.maximum_expansions = 60U;
+  config.maximum_search_time_ms = 1000.0;
+
+  const Point2 start{29.5, 40.5};
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, start, 0.0, Point2{80.5, 40.5}, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.status, LatticePlanStatus::kViableFrontier);
+  EXPECT_LT(result.achieved_progress_m, 0.0);
+  EXPECT_GE(result.frontier_endpoint_displacement_m,
+            config.minimum_frontier_endpoint_displacement_m);
+  EXPECT_GE(result.reachable_depth_m, config.minimum_frontier_reachable_depth_m);
+  EXPECT_TRUE(std::ranges::any_of(result.guide, [&start](const Point2 point) {
+    return std::abs(point.y - start.y) >= 4.0 || point.x < start.x - 1.0;
+  }));
 }
 
 TEST(RiskAwareLattice, ReportsIncompleteWhenBudgetEndsWithoutViableFrontier) {

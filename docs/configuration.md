@@ -65,6 +65,8 @@ Global guide:
 
 - heading bins and primitive length;
 - static/no-static lattice window and expansion limits;
+- frontier endpoint displacement, continuation depth, candidate count, and the
+  soft goal-distance ranking weight;
 - validation sampling;
 - remaining-distance replacement thresholds;
 - cross-track and stall thresholds;

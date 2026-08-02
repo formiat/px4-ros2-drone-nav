@@ -371,6 +371,10 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     prepared.lattice_two_step_reachable_states =
         lattice_observation.two_step_reachable_states;
     prepared.lattice_reachable_depth_m = lattice_observation.reachable_depth_m;
+    prepared.lattice_frontier_endpoint_displacement_m =
+        lattice_observation.frontier_endpoint_displacement_m;
+    prepared.lattice_frontier_selection_score =
+        lattice_observation.frontier_selection_score;
     prepared.lattice_frontier_candidates_considered =
         lattice_observation.frontier_candidates_considered;
     prepared.lattice_successor_diagnostics = lattice_observation.successor_diagnostics;
@@ -400,6 +404,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         "lattice_termination=%s lattice_planning_goal_reached=%s "
         "lattice_achieved_progress_m=%.2f lattice_guide_length_m=%.2f "
         "lattice_remaining_goal_distance_m=%.2f "
+        "lattice_frontier_endpoint_displacement_m=%.2f "
+        "lattice_frontier_selection_score=%.2f "
         "lattice_terminal_successors=%zu successor_generated=%zu "
         "successor_accepted=%zu successor_reject_roi=%zu "
         "successor_reject_grid=%zu successor_reject_invalid=%zu "
@@ -428,6 +434,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         prepared.lattice_planning_goal_reached ? "true" : "false",
         prepared.lattice_achieved_progress_m, prepared.lattice_guide_length_m,
         prepared.lattice_remaining_goal_distance_m,
+        prepared.lattice_frontier_endpoint_displacement_m,
+        prepared.lattice_frontier_selection_score,
         prepared.lattice_terminal_successor_count,
         prepared.lattice_successor_diagnostics.generated,
         prepared.lattice_successor_diagnostics.accepted,

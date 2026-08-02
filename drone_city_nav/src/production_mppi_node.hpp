@@ -101,6 +101,8 @@ struct ProductionMppiPreparedEsdf {
   std::size_t lattice_records_peak{0U};
   std::size_t lattice_two_step_reachable_states{0U};
   double lattice_reachable_depth_m{0.0};
+  double lattice_frontier_endpoint_displacement_m{0.0};
+  double lattice_frontier_selection_score{0.0};
   std::size_t lattice_frontier_candidates_considered{0U};
   LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
   std::size_t lattice_continuation_attempt{0U};

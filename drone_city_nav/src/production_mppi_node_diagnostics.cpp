@@ -370,6 +370,9 @@ void ProductionMppiNode::processDiagnostics(
        << " lattice_records_peak=" << esdf.lattice_records_peak
        << " lattice_two_step_states=" << esdf.lattice_two_step_reachable_states
        << " lattice_reachable_depth_m=" << esdf.lattice_reachable_depth_m
+       << " lattice_frontier_endpoint_displacement_m="
+       << esdf.lattice_frontier_endpoint_displacement_m
+       << " lattice_frontier_selection_score=" << esdf.lattice_frontier_selection_score
        << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
        << " maximum_eligible_risk_tier="
        << mppi::mppiRiskTierName(snapshot.maximum_eligible_risk_tier)
@@ -568,6 +571,10 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_two_step_reachable_states\":"
         << esdf.lattice_two_step_reachable_states
         << ",\"lattice_reachable_depth_m\":" << esdf.lattice_reachable_depth_m
+        << ",\"lattice_frontier_endpoint_displacement_m\":"
+        << esdf.lattice_frontier_endpoint_displacement_m
+        << ",\"lattice_frontier_selection_score\":"
+        << esdf.lattice_frontier_selection_score
         << ",\"lattice_frontier_candidates_considered\":"
         << esdf.lattice_frontier_candidates_considered
         << ",\"lattice_successors_generated\":"
