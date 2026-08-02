@@ -183,13 +183,13 @@ The container targets use `build/`, `install/`, and `log/`.
 Static mode loads `generated_city.occupancy3d` directly in
 `production_mppi_node`. The map and `generated_city.sdf` are generated from the
 same canonical world specification. The current city is a `5 x 8` Manhattan
-building grid with two horizontal L-shaped air channels and one straight-through
-channel. Static planning loads the generated constrained free-space graph embedded
-in Occupancy3D and objectively compares ordinary and channel routes; no channel is
-mandatory. Selected channel edges directly create typed route spans. There is no
-separate passage file or nearest-portal selector. No-static mode uses the
-accumulated 2D lidar-memory snapshot; collisionless lidar occluders make all
-three channels appear closed in that mode. Source contracts are documented in
+building grid with two horizontal L-shaped air channels, one straight-through
+channel, and one T junction. Static planning loads the generated constrained
+free-space graph embedded in Occupancy3D and objectively compares ordinary and
+channel routes; no channel is mandatory. Selected channel edges directly create
+typed route spans. There is no separate passage file or nearest-portal selector.
+No-static mode uses the accumulated 2D lidar-memory snapshot; collisionless lidar
+occluders make all four channels appear closed in that mode. Source contracts are documented in
 `docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
 
 Obstacle topics follow a strict raw/runtime/debug contract. Raw sources such as

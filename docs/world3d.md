@@ -11,11 +11,12 @@ source of static geometry. It declares:
 - an optional array of generated air-channel structures;
 - mission start and goal positions.
 
-The current city contains 40 ordinary buildings plus three horizontal channels:
+The current city contains 40 ordinary buildings plus four horizontal channels:
 
 - straight-through at `(54, 162)`, open south/north;
 - left turn at `(108, 162)`, open south/east;
 - left turn at `(108, 216)`, open west/north.
+- T junction at `(108, 108)`, open west/east/north and physically closed south.
 
 RViz reverses the visual X direction relative to map X. The map directions above
 therefore produce the screen-space cross-sections requested for a vehicle
@@ -44,7 +45,7 @@ Run the generator through the repository container workflow:
 
 `make test-scripts` regenerates both artifacts in a temporary directory and
 checks byte-for-byte equality with the committed files. It also verifies all
-three channel cross-sections, orientation, horizontal geometry, deduplicated
+four channel cross-sections, orientation, horizontal geometry, deduplicated
 shared bridge masses, and lidar visibility contract.
 
 ## Occupancy3D
@@ -76,9 +77,9 @@ not rebuilt on every tick.
 
 ## Generated Channel Geometry And Graph
 
-The canonical `channels` array describes physical world construction and the
-corresponding constrained free-space edge. A channel identifier is stable across
-the generated SDF and Occupancy3D graph.
+The canonical `channels` array describes physical world construction and one or
+more corresponding constrained free-space edges. A channel identifier is stable
+across the generated SDF and Occupancy3D graph.
 
 ### Straight
 
@@ -94,6 +95,7 @@ the route shape:
 
 - opposite open bridges produce a straight-through channel;
 - adjacent open bridges produce an L-shaped channel;
+- three open bridges produce a T junction;
 - blocked bridges receive physical middle masses;
 - lower and upper physical masses on every bridge;
 - one lower and one upper physical mass across the central intersection.
@@ -102,6 +104,10 @@ This produces one continuous free volume. It is not a staircase and is not a
 set of independent openings selected by a passage coordinator. Shared bridge
 masses between adjacent channel declarations are deduplicated by physical
 geometry before SDF and Occupancy3D generation.
+
+A T junction compiles three pairwise graph edges through one physical center:
+west/east, west/north, and east/north. This keeps every traversal bidirectional
+without duplicating collision geometry.
 
 All channel centerlines have one constant reference Z. Every generated lower,
 upper, and middle mass is an axis-aligned box whose floor and roof are parallel

@@ -70,6 +70,26 @@
       "width_m": 24.0,
       "height_m": 7.0,
       "speed_limit_mps": 10.0
+    },
+    {
+      "id": "channel_108_108_t",
+      "kind": "intersection",
+      "intersection_center_m": [108.0, 108.0],
+      "intersection_size_m": [30.0, 30.0, 32.0],
+      "bridges": [
+        {"id": "west", "center_m": [81.0, 108.0], "size_m": [24.0, 30.0, 32.0], "blocked": false},
+        {"id": "east", "center_m": [135.0, 108.0], "size_m": [24.0, 30.0, 32.0], "blocked": false},
+        {"id": "south", "center_m": [108.0, 81.0], "size_m": [30.0, 24.0, 32.0], "blocked": true},
+        {"id": "north", "center_m": [108.0, 135.0], "size_m": [30.0, 24.0, 32.0], "blocked": false}
+      ],
+      "edges": [
+        {"id": "west_east", "centerline_m": [[81.0, 108.0, 5.0], [108.0, 108.0, 5.0], [135.0, 108.0, 5.0]]},
+        {"id": "west_north", "centerline_m": [[81.0, 108.0, 5.0], [108.0, 108.0, 5.0], [108.0, 135.0, 5.0]]},
+        {"id": "east_north", "centerline_m": [[135.0, 108.0, 5.0], [108.0, 108.0, 5.0], [108.0, 135.0, 5.0]]}
+      ],
+      "width_m": 24.0,
+      "height_m": 7.0,
+      "speed_limit_mps": 10.0
     }
   ],
   "mission": {

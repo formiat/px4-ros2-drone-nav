@@ -46,6 +46,10 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             self.assertIn("channel_11_19_l_north_middle", collision_models)
             self.assertNotIn("channel_11_19_l_east_middle", collision_models)
             self.assertNotIn("channel_11_19_l_south_middle", collision_models)
+            self.assertIn("channel_108_108_t_south_middle", collision_models)
+            self.assertNotIn("channel_108_108_t_west_middle", collision_models)
+            self.assertNotIn("channel_108_108_t_east_middle", collision_models)
+            self.assertNotIn("channel_108_108_t_north_middle", collision_models)
 
             header_format = "<8sII4f3IQI"
             with occupancy_path.open("rb") as stream:
@@ -76,17 +80,20 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                     self.assertAlmostEqual(8.5, max_z)
                     self.assertAlmostEqual(3.5, clearance)
                     self.assertAlmostEqual(10.0, speed_limit)
-                self.assertEqual(
-                    [channel["id"] for channel in spec["channels"]], channel_ids
-                )
+                expected_edge_ids = [
+                    edge.id
+                    for channel in spec["channels"]
+                    for edge in generator.channel_edges(channel)
+                ]
+                self.assertEqual(expected_edge_ids, channel_ids)
                 self.assertEqual(b"", stream.read())
 
-    def test_spec_describes_two_left_turns_and_one_straight_channel(self) -> None:
+    def test_spec_describes_left_straight_and_t_channels(self) -> None:
         with SPEC_PATH.open(encoding="utf-8") as stream:
             spec = json.load(stream)
         self.assertEqual(5, len(spec["building_grid"]["x_centers_m"]))
         self.assertEqual(8, len(spec["building_grid"]["y_centers_m"]))
-        self.assertEqual(3, len(spec["channels"]))
+        self.assertEqual(4, len(spec["channels"]))
         channels = {channel["id"]: channel for channel in spec["channels"]}
         self.assertTrue(
             all(channel["kind"] == "intersection" for channel in channels.values())
@@ -115,9 +122,25 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                 if bridge["blocked"]
             },
         )
+        self.assertEqual(
+            {"south"},
+            {
+                bridge["id"]
+                for bridge in channels["channel_108_108_t"]["bridges"]
+                if bridge["blocked"]
+            },
+        )
+        self.assertEqual(
+            {
+                "channel_108_108_t:west_east",
+                "channel_108_108_t:west_north",
+                "channel_108_108_t:east_north",
+            },
+            {edge.id for edge in generator.channel_edges(channels["channel_108_108_t"])},
+        )
 
         boxes = generator.physical_boxes(spec)
-        self.assertEqual(70, len(boxes))
+        self.assertEqual(79, len(boxes))
         self.assertEqual(40, sum(box.id.startswith("building_") for box in boxes))
         geometry = {(box.center, box.size, box.visibility_flags) for box in boxes}
         self.assertEqual(len(boxes), len(geometry))
@@ -182,6 +205,10 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
         self.assertEqual(
             ((True, False, True), (True, False, False), (True, True, True)),
             cross_section(108.0, 216.0),
+        )
+        self.assertEqual(
+            ((True, False, True), (False, False, False), (True, True, True)),
+            cross_section(108.0, 108.0),
         )
 
     def test_committed_artifacts_are_deterministic_and_current(self) -> None:

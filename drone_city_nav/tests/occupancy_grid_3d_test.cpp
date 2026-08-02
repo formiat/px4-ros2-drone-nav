@@ -62,10 +62,13 @@ TEST(OccupancyGrid3D, StoresGeneratedConstrainedFreeSpaceEdges) {
 TEST(OccupancyGrid3D, LoadsChannelGraphFromGeneratedArtifact) {
   const OccupancyGrid3D grid = OccupancyGrid3D::load(TEST_OCCUPANCY3D_PATH);
 
-  ASSERT_EQ(grid.channelEdges().size(), 3U);
+  ASSERT_EQ(grid.channelEdges().size(), 6U);
   EXPECT_EQ(grid.channelEdges()[0].id, "channel_11_19_l");
   EXPECT_EQ(grid.channelEdges()[1].id, "channel_54_162_straight");
   EXPECT_EQ(grid.channelEdges()[2].id, "channel_108_216_l");
+  EXPECT_EQ(grid.channelEdges()[3].id, "channel_108_108_t:west_east");
+  EXPECT_EQ(grid.channelEdges()[4].id, "channel_108_108_t:west_north");
+  EXPECT_EQ(grid.channelEdges()[5].id, "channel_108_108_t:east_north");
   for (const ConstrainedFreeSpaceEdge& edge : grid.channelEdges()) {
     EXPECT_GT(edge.centerline.size(), 2U);
     EXPECT_DOUBLE_EQ(edge.min_z_m, 1.5);

@@ -29,6 +29,15 @@ class Box:
     visibility_flags: int | None = None
 
 
+@dataclass(frozen=True)
+class ChannelEdge:
+    id: str
+    centerline: tuple[tuple[float, float, float], ...]
+    width_m: float
+    height_m: float
+    speed_limit_mps: float
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--spec", type=Path, required=True)
@@ -45,9 +54,45 @@ def load_spec(path: Path) -> dict:
     return spec
 
 
+def channel_edges(channel: dict) -> list[ChannelEdge]:
+    edge_specs = channel.get("edges")
+    if edge_specs is None:
+        edge_specs = [{"id": None, "centerline_m": channel["centerline_m"]}]
+    if not edge_specs:
+        raise ValueError(f"channel {channel['id']} needs at least one edge")
+
+    width = float(channel["width_m"])
+    height = float(channel["height_m"])
+    default_speed_limit = float(channel.get("speed_limit_mps", 10.0))
+    edges: list[ChannelEdge] = []
+    for edge_spec in edge_specs:
+        suffix = edge_spec.get("id")
+        edge_id = channel["id"] if suffix is None else f"{channel['id']}:{suffix}"
+        centerline = tuple(
+            tuple(map(float, point)) for point in edge_spec["centerline_m"]
+        )
+        speed_limit = float(edge_spec.get("speed_limit_mps", default_speed_limit))
+        if not edge_id or len(centerline) < 2:
+            raise ValueError(f"channel edge {edge_id} needs at least two points")
+        if width <= 0.0 or height <= 0.0 or speed_limit <= 0.0:
+            raise ValueError(f"channel edge {edge_id} has invalid constraints")
+        edges.append(ChannelEdge(edge_id, centerline, width, height, speed_limit))
+    if len({edge.id for edge in edges}) != len(edges):
+        raise ValueError(f"channel {channel['id']} has duplicate edge ids")
+    return edges
+
+
+def channel_points(channel: dict) -> list[tuple[float, float, float]]:
+    points = [point for edge in channel_edges(channel) for point in edge.centerline]
+    reference_z = points[0][2]
+    if any(abs(point[2] - reference_z) > 1.0e-6 for point in points):
+        raise ValueError(f"channel {channel['id']} centerlines must have constant Z")
+    return points
+
+
 def channel_boxes(channel: dict) -> list[Box]:
     height = float(channel["height_m"])
-    points = [tuple(map(float, point)) for point in channel["centerline_m"]]
+    points = channel_points(channel)
     kind = channel["kind"]
     boxes: list[Box] = []
 
@@ -99,7 +144,7 @@ def channel_boxes(channel: dict) -> list[Box]:
 
 
 def channel_occluder_boxes(channel: dict) -> list[Box]:
-    points = [tuple(map(float, point)) for point in channel["centerline_m"]]
+    points = channel_points(channel)
     height = float(channel["height_m"])
     z_min = min(point[2] for point in points) - 0.5 * height
     z_max = max(point[2] for point in points) + 0.5 * height
@@ -345,31 +390,26 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
             stream.write(struct.pack("<3i", *chunk))
             stream.write(b"".join(struct.pack("<Q", (bits >> (64 * word)) & ((1 << 64) - 1))
                                   for word in range(words_per_chunk)))
-        stream.write(struct.pack("<I", len(spec["channels"])))
-        for channel in spec["channels"]:
-            channel_id = channel["id"].encode("utf-8")
+        generated_edges = [
+            edge for channel in spec["channels"] for edge in channel_edges(channel)
+        ]
+        stream.write(struct.pack("<I", len(generated_edges)))
+        for edge in generated_edges:
+            channel_id = edge.id.encode("utf-8")
             if not channel_id or len(channel_id) > 0xFFFF:
                 raise ValueError("channel id must contain 1..65535 UTF-8 bytes")
-            centerline = [tuple(map(float, point))
-                          for point in channel["centerline_m"]]
-            if len(centerline) < 2:
-                raise ValueError(f"channel {channel['id']} needs at least two points")
-            height = float(channel["height_m"])
-            width = float(channel["width_m"])
+            centerline = edge.centerline
             reference_z = centerline[len(centerline) // 2][2]
-            min_z = reference_z - 0.5 * height
-            max_z = reference_z + 0.5 * height
-            minimum_clearance = 0.5 * min(width, height)
-            speed_limit = float(channel.get("speed_limit_mps", 10.0))
-            if height <= 0.0 or width <= 0.0 or speed_limit <= 0.0:
-                raise ValueError(f"channel {channel['id']} has invalid constraints")
+            min_z = reference_z - 0.5 * edge.height_m
+            max_z = reference_z + 0.5 * edge.height_m
+            minimum_clearance = 0.5 * min(edge.width_m, edge.height_m)
             stream.write(struct.pack("<H", len(channel_id)))
             stream.write(channel_id)
             stream.write(struct.pack("<I", len(centerline)))
             for point in centerline:
                 stream.write(struct.pack("<3f", *point))
             stream.write(struct.pack("<4f", min_z, max_z,
-                                     minimum_clearance, speed_limit))
+                                     minimum_clearance, edge.speed_limit_mps))
 
 
 def main() -> None:
