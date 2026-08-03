@@ -151,6 +151,12 @@ observeConstrainedRoute(std::span<const RouteSample3D> route,
                                                        double sample_step_m,
                                                        double reference_speed_mps);
 
+[[nodiscard]] std::uint64_t
+routeFingerprint(std::span<const RouteSample3D> route,
+                 std::span<const SelectedChannelTraversal> traversals = {}) noexcept;
+
+[[nodiscard]] std::uint64_t routeFingerprint(std::span<const Point2> route) noexcept;
+
 [[nodiscard]] bool assignRouteRiskTiers(std::span<RouteSample3D> route,
                                         const mppi::EsdfGrid& grid,
                                         std::span<const float> esdf_m,

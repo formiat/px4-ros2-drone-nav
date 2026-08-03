@@ -535,8 +535,17 @@ void ProductionMppiNode::processDiagnostics(
        << (stability.valid ? stability.first_control_delta : -1.0)
        << " prediction_position_error_m="
        << (prediction.valid ? prediction.position_m : -1.0)
-       << " esdf_build_ms=" << esdf.build_ms << " esdf_upload_ms=" << esdf.upload_ms
-       << " dropped_diagnostics="
+       << " esdf_build_ms=" << esdf.build_ms
+       << " esdf_x_pass_ms=" << esdf.esdf_x_pass_ms
+       << " esdf_y_pass_ms=" << esdf.esdf_y_pass_ms
+       << " esdf_z_pass_ms=" << esdf.esdf_z_pass_ms
+       << " esdf_finalize_ms=" << esdf.esdf_finalize_ms
+       << " guide_search_ms=" << esdf.global_guide_search_ms
+       << " continuation_validation_ms=" << esdf.continuation_validation_ms
+       << " route_smoothing_ms=" << esdf.route_smoothing_ms
+       << " candidate_validation_ms=" << esdf.candidate_validation_ms
+       << " route_fingerprint=" << esdf.route_fingerprint
+       << " esdf_upload_ms=" << esdf.upload_ms << " dropped_diagnostics="
        << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed);
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   if (now_ns - last_diagnostics_info_stamp_ns_ >= diagnostics_info_period_ns_) {
@@ -556,6 +565,16 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"esdf_age_ms\":" << snapshot.esdf_age_ms
         << ",\"control_feedback_age_ms\":" << snapshot.control_feedback_age_ms
         << ",\"planning_mode\":\"" << (use_static_map_ ? "static" : "no_static") << '"'
+        << ",\"esdf_build_ms\":" << esdf.build_ms
+        << ",\"esdf_x_pass_ms\":" << esdf.esdf_x_pass_ms
+        << ",\"esdf_y_pass_ms\":" << esdf.esdf_y_pass_ms
+        << ",\"esdf_z_pass_ms\":" << esdf.esdf_z_pass_ms
+        << ",\"esdf_finalize_ms\":" << esdf.esdf_finalize_ms
+        << ",\"guide_search_ms\":" << esdf.global_guide_search_ms
+        << ",\"continuation_validation_ms\":" << esdf.continuation_validation_ms
+        << ",\"route_smoothing_ms\":" << esdf.route_smoothing_ms
+        << ",\"candidate_validation_ms\":" << esdf.candidate_validation_ms
+        << ",\"route_fingerprint\":" << esdf.route_fingerprint
         << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
         << '"' << ",\"execution_mode\":\""
         << productionMppiExecutionModeName(snapshot.execution.mode) << '"'

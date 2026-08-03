@@ -1,6 +1,7 @@
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
+#include "drone_city_nav/route_3d.hpp"
 
 #include <gtest/gtest.h>
 
@@ -242,6 +243,10 @@ TEST(RiskAwareLattice, DetoursAroundObservedCornerAt69By123) {
   EXPECT_TRUE(std::ranges::any_of(result.guide, [](const Point2 point) {
     return (point.x < 69.0 && point.y > 147.0) || (point.y < 123.0 && point.x > 93.0);
   }));
+  const RiskAwareLatticeResult repeated = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, start, std::numbers::pi / 4.0, Point2{120.5, 180.5}, config);
+  ASSERT_EQ(repeated.status, LatticePlanStatus::kReachedPlanningGoal);
+  EXPECT_EQ(routeFingerprint(result.guide), routeFingerprint(repeated.guide));
 }
 
 TEST(RawGuideValidation, RejectsCandidateBlockedByNewRawSnapshot) {

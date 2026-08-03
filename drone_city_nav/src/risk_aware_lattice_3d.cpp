@@ -11,6 +11,7 @@
 #include <queue>
 #include <ranges>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -768,12 +769,17 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   result.critical_exposure_m = metrics.critical_exposure_m;
   result.turn_cost = metrics.turn_cost;
   if (!reached) {
+    const auto continuation_started = std::chrono::steady_clock::now();
     const ContinuationMetrics continuation =
         evaluateContinuation(grid, esdf_m, pointFor(best, start, channels, config),
                              records.at(best).incoming_direction, stage, config);
     result.terminal_successor_count = continuation.immediate_successors;
     result.continuation_reachable_states = continuation.reachable_states;
     result.continuation_reachable_depth_m = continuation.reachable_depth_m;
+    result.continuation_validation_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  continuation_started)
+            .count();
     if (result.status == Lattice3DStatus::kViableFrontier &&
         (continuation.immediate_successors == 0U ||
          continuation.reachable_depth_m + 1.0e-9 <
@@ -878,6 +884,7 @@ planRiskAwareLattice3D(const mppi::EsdfGrid& grid, const std::span<const float> 
                        const Point3& mission_goal,
                        const std::span<const ConstrainedFreeSpaceEdge> channel_edges,
                        const RiskAwareLattice3DConfig& config) {
+  const auto search_started = std::chrono::steady_clock::now();
   if (grid.depth <= 1 ||
       esdf_m.size() != static_cast<std::size_t>(grid.width) *
                            static_cast<std::size_t>(grid.height) *
@@ -969,9 +976,28 @@ planRiskAwareLattice3D(const mppi::EsdfGrid& grid, const std::span<const float> 
         .selected = is_selected,
     });
   }
+  std::ranges::stable_sort(diagnostics, [](const Lattice3DTopologyCandidate& lhs,
+                                           const Lattice3DTopologyCandidate& rhs) {
+    const auto lhs_key =
+        std::tuple{lhs.status != Lattice3DStatus::kReachedPlanningGoal,
+                   lhs.status != Lattice3DStatus::kViableFrontier, lhs.objective_cost,
+                   lhs.topology, static_cast<unsigned>(lhs.risk_stage)};
+    const auto rhs_key =
+        std::tuple{rhs.status != Lattice3DStatus::kReachedPlanningGoal,
+                   rhs.status != Lattice3DStatus::kViableFrontier, rhs.objective_cost,
+                   rhs.topology, static_cast<unsigned>(rhs.risk_stage)};
+    return lhs_key < rhs_key;
+  });
+  for (std::size_t rank = 0U; rank < diagnostics.size(); ++rank) {
+    diagnostics[rank].candidate_rank = rank;
+  }
   RiskAwareLattice3DResult result = std::move(stage_results[*selected]);
   result.planning_goal = planning_goal;
   result.topology_candidates = std::move(diagnostics);
+  result.route_fingerprint = routeFingerprint(result.route, result.selected_channels);
+  result.search_ms = std::chrono::duration<double, std::milli>(
+                         std::chrono::steady_clock::now() - search_started)
+                         .count();
   return result;
 }
 

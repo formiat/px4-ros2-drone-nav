@@ -4,11 +4,35 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <optional>
+#include <string_view>
 
 namespace drone_city_nav {
 namespace {
+
+constexpr std::uint64_t kFnvOffsetBasis = 14695981039346656037ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+void hashByte(std::uint64_t& hash, const std::uint8_t value) noexcept {
+  hash ^= value;
+  hash *= kFnvPrime;
+}
+
+void hashSigned(std::uint64_t& hash, const std::int64_t value) noexcept {
+  const auto bits = static_cast<std::uint64_t>(value);
+  for (unsigned shift = 0U; shift < 64U; shift += 8U) {
+    hashByte(hash, static_cast<std::uint8_t>((bits >> shift) & 0xffU));
+  }
+}
+
+void hashText(std::uint64_t& hash, const std::string_view text) noexcept {
+  for (const char character : text) {
+    hashByte(hash, static_cast<std::uint8_t>(character));
+  }
+  hashByte(hash, 0U);
+}
 
 [[nodiscard]] Vec3 normalized(const Point3& from, const Point3& to) noexcept {
   const double dx = to.x - from.x;
@@ -75,6 +99,38 @@ nearestEnvelopeSample(const ConstrainedRouteSpan& span, const double station_m) 
 }
 
 } // namespace
+
+std::uint64_t
+routeFingerprint(const std::span<const RouteSample3D> route,
+                 const std::span<const SelectedChannelTraversal> traversals) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  for (const RouteSample3D& sample : route) {
+    hashSigned(hash,
+               static_cast<std::int64_t>(std::llround(sample.position.x * 1000.0)));
+    hashSigned(hash,
+               static_cast<std::int64_t>(std::llround(sample.position.y * 1000.0)));
+    hashSigned(hash,
+               static_cast<std::int64_t>(std::llround(sample.position.z * 1000.0)));
+    hashByte(hash, static_cast<std::uint8_t>(sample.required_risk_tier));
+  }
+  for (const SelectedChannelTraversal& traversal : traversals) {
+    hashText(hash, traversal.channel_id);
+    hashSigned(hash, static_cast<std::int64_t>(
+                         std::llround(traversal.begin_station_m * 1000.0)));
+    hashSigned(hash, static_cast<std::int64_t>(
+                         std::llround(traversal.end_station_m * 1000.0)));
+  }
+  return hash;
+}
+
+std::uint64_t routeFingerprint(const std::span<const Point2> route) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  for (const Point2 point : route) {
+    hashSigned(hash, static_cast<std::int64_t>(std::llround(point.x * 1000.0)));
+    hashSigned(hash, static_cast<std::int64_t>(std::llround(point.y * 1000.0)));
+  }
+  return hash;
+}
 
 std::string_view constrainedRoutePhaseName(const ConstrainedRoutePhase phase) noexcept {
   switch (phase) {

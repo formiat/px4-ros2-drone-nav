@@ -123,6 +123,7 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
   std::vector<double> column_output(height, kLargeSquaredDistance);
   std::vector<double> x_pass(grid.cellCount(), kLargeSquaredDistance);
 
+  const auto x_pass_started = std::chrono::steady_clock::now();
   for (int y = 0; y < grid.height(); ++y) {
     std::fill(row_input.begin(), row_input.end(), kLargeSquaredDistance);
     for (int x = 0; x < grid.width(); ++x) {
@@ -138,6 +139,7 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
           row_output[static_cast<std::size_t>(x)];
     }
   }
+  field.stats_.x_pass_ms = elapsedMilliseconds(x_pass_started);
 
   if (field.stats_.source_cells == 0U) {
     field.stats_.duration_ms = elapsedMilliseconds(started_at);
@@ -146,6 +148,7 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
 
   const double resolution_m = grid.resolution();
   const bool has_max_distance = field.max_distance_m_ > 0.0;
+  const auto y_pass_started = std::chrono::steady_clock::now();
   for (int x = 0; x < grid.width(); ++x) {
     for (int y = 0; y < grid.height(); ++y) {
       column_input[static_cast<std::size_t>(y)] =
@@ -163,8 +166,11 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
                                                                    : kInfinity;
     }
   }
+  field.stats_.y_pass_ms = elapsedMilliseconds(y_pass_started);
 
+  const auto finalize_started = std::chrono::steady_clock::now();
   field.stats_.duration_ms = elapsedMilliseconds(started_at);
+  field.stats_.finalize_ms = elapsedMilliseconds(finalize_started);
   return field;
 }
 

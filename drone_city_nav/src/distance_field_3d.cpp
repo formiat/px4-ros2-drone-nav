@@ -113,6 +113,7 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
                             kLargeSquaredDistance);
   std::vector<double> output;
 
+  const auto x_pass_started = std::chrono::steady_clock::now();
   input.resize(static_cast<std::size_t>(width));
   for (int z = 0; z < depth; ++z) {
     for (int y = 0; y < height; ++y) {
@@ -136,7 +137,11 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
       }
     }
   }
+  field.stats_.x_pass_ms = std::chrono::duration<double, std::milli>(
+                               std::chrono::steady_clock::now() - x_pass_started)
+                               .count();
 
+  const auto y_pass_started = std::chrono::steady_clock::now();
   input.resize(static_cast<std::size_t>(height));
   for (int z = 0; z < depth; ++z) {
     for (int x = 0; x < width; ++x) {
@@ -151,7 +156,11 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
       }
     }
   }
+  field.stats_.y_pass_ms = std::chrono::duration<double, std::milli>(
+                               std::chrono::steady_clock::now() - y_pass_started)
+                               .count();
 
+  const auto z_pass_started = std::chrono::steady_clock::now();
   input.resize(static_cast<std::size_t>(depth));
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
@@ -166,7 +175,11 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
       }
     }
   }
+  field.stats_.z_pass_ms = std::chrono::duration<double, std::milli>(
+                               std::chrono::steady_clock::now() - z_pass_started)
+                               .count();
 
+  const auto finalize_started = std::chrono::steady_clock::now();
   field.distances_m_.resize(voxel_count);
   const bool capped = std::isfinite(maximum_distance_m) && maximum_distance_m > 0.0;
   for (std::size_t voxel = 0U; voxel < voxel_count; ++voxel) {
@@ -181,6 +194,9 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
                                     ? std::numeric_limits<float>::infinity()
                                     : static_cast<float>(distance_m);
   }
+  field.stats_.finalize_ms = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - finalize_started)
+                                 .count();
   field.stats_.duration_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - started)
                                  .count();

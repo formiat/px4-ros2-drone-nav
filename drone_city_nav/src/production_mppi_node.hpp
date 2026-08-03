@@ -72,9 +72,17 @@ struct ProductionMppiPreparedEsdf {
   std::int64_t source_stamp_ns{0};
   std::int64_t ready_stamp_ns{0};
   double build_ms{0.0};
+  double esdf_x_pass_ms{0.0};
+  double esdf_y_pass_ms{0.0};
+  double esdf_z_pass_ms{0.0};
+  double esdf_finalize_ms{0.0};
   double conversion_ms{0.0};
   double upload_ms{0.0};
   double global_guide_search_ms{0.0};
+  double continuation_validation_ms{0.0};
+  double route_smoothing_ms{0.0};
+  double candidate_validation_ms{0.0};
+  std::uint64_t route_fingerprint{0U};
   mppi::EsdfGrid grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const OccupancyGrid2D> raw_occupancy;

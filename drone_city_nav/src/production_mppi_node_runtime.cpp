@@ -416,6 +416,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     prepared.lattice_validation_revision = validation_revision;
     prepared.lattice_raw_validation_status = raw_validation.status;
     prepared.guide_candidate_validation_status = candidate_validation_status;
+    prepared.route_fingerprint = guide ? routeFingerprint(*guide) : 0U;
     bool activated = false;
     {
       const std::scoped_lock lock{esdf_state_mutex_};

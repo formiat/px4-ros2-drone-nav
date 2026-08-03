@@ -22,6 +22,16 @@ TEST(Route3DTest, SamplesContinuousAltitudeProfile) {
   EXPECT_EQ(route.back().reference_speed_mps, 10.0);
 }
 
+TEST(Route3DTest, RouteFingerprintIsStableAndGeometrySensitive) {
+  const std::vector<RouteSample3D> first =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 2.0}, {4.0, 0.0, 2.0}}, 1.0, 10.0);
+  std::vector<RouteSample3D> changed = first;
+  changed.back().position.y = 0.01;
+
+  EXPECT_EQ(routeFingerprint(first), routeFingerprint(first));
+  EXPECT_NE(routeFingerprint(first), routeFingerprint(changed));
+}
+
 TEST(Route3DTest, ProjectsProgressUsingThreeDimensionalStation) {
   const std::vector<RouteSample3D> route = sampleRoute3D(
       std::vector<Point3>{{0.0, 0.0, 10.0}, {0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}}, 1.0,
@@ -414,6 +424,11 @@ TEST(Route3DTest, ComparesReachedRoutesAcrossAllRiskStages) {
   EXPECT_TRUE(
       std::ranges::any_of(result.topology_candidates,
                           [](const auto& candidate) { return candidate.selected; }));
+  for (std::size_t rank = 0U; rank < result.topology_candidates.size(); ++rank) {
+    EXPECT_EQ(result.topology_candidates[rank].candidate_rank, rank);
+  }
+  EXPECT_NE(result.route_fingerprint, 0U);
+  EXPECT_GE(result.search_ms, 0.0);
   EXPECT_NE(result.risk_stage, Lattice3DRiskStage::kPreferredOnly);
 }
 

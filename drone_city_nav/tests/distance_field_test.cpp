@@ -24,6 +24,11 @@ TEST(DistanceField2D, MeasuresExactMetricDistanceFromOccupiedCells) {
 
   EXPECT_EQ(field.source(), DistanceFieldSource::kOccupied);
   EXPECT_EQ(field.stats().source_cells, 1U);
+  EXPECT_GE(field.stats().x_pass_ms, 0.0);
+  EXPECT_GE(field.stats().y_pass_ms, 0.0);
+  EXPECT_GE(field.stats().finalize_ms, 0.0);
+  EXPECT_GE(field.stats().duration_ms,
+            field.stats().x_pass_ms + field.stats().y_pass_ms);
   EXPECT_DOUBLE_EQ(field.distanceAt(GridIndex{2, 2}), 0.0);
   EXPECT_DOUBLE_EQ(field.distanceAt(GridIndex{3, 2}), 1.0);
   EXPECT_NEAR(field.distanceAt(GridIndex{3, 3}), std::numbers::sqrt2, 1.0e-9);

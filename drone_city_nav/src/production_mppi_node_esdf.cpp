@@ -89,6 +89,11 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           active_prepared &&
           active_prepared->global_guide_generation == roi_refresh_generation;
       double static_build_ms = active_prepared ? active_prepared->build_ms : 0.0;
+      double static_x_pass_ms = active_prepared ? active_prepared->esdf_x_pass_ms : 0.0;
+      double static_y_pass_ms = active_prepared ? active_prepared->esdf_y_pass_ms : 0.0;
+      double static_z_pass_ms = active_prepared ? active_prepared->esdf_z_pass_ms : 0.0;
+      double static_finalize_ms =
+          active_prepared ? active_prepared->esdf_finalize_ms : 0.0;
       if (roi_refresh_generation > static_roi_refresh_completed_generation_ &&
           !proactive_roi_refresh) {
         static_roi_refresh_completed_generation_ = roi_refresh_generation;
@@ -132,6 +137,10 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         static_esdf_3d_ = std::make_shared<const std::vector<float>>(
             field.distancesM().begin(), field.distancesM().end());
         static_build_ms = field.stats().duration_ms;
+        static_x_pass_ms = field.stats().x_pass_ms;
+        static_y_pass_ms = field.stats().y_pass_ms;
+        static_z_pass_ms = field.stats().z_pass_ms;
+        static_finalize_ms = field.stats().finalize_ms;
         RCLCPP_INFO(get_logger(),
                     "STATIC_ESDF3D_READY build_ms=%.2f voxels=%zu "
                     "dimensions=%dx%dx%d proactive_extension=%s "
@@ -158,6 +167,10 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.source_stamp_ns = source_stamp_ns;
       prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
       prepared.build_ms = static_build_ms;
+      prepared.esdf_x_pass_ms = static_x_pass_ms;
+      prepared.esdf_y_pass_ms = static_y_pass_ms;
+      prepared.esdf_z_pass_ms = static_z_pass_ms;
+      prepared.esdf_finalize_ms = static_finalize_ms;
       prepared.upload_ms = upload.upload_ms;
       prepared.grid = static_esdf_grid_;
       prepared.distances_m = static_esdf_3d_;
@@ -237,6 +250,10 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     prepared.source_stamp_ns = source_stamp_ns;
     prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
     prepared.build_ms = build_ms;
+    prepared.esdf_x_pass_ms = field.stats().x_pass_ms;
+    prepared.esdf_y_pass_ms = field.stats().y_pass_ms;
+    prepared.esdf_z_pass_ms = 0.0;
+    prepared.esdf_finalize_ms = field.stats().finalize_ms;
     prepared.conversion_ms = conversion_ms;
     prepared.upload_ms = upload.upload_ms;
     prepared.grid = grid;

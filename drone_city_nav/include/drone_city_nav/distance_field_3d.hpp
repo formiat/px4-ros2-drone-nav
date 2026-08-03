@@ -12,6 +12,10 @@ struct DistanceField3DBuildStats {
   std::size_t source_voxels{0U};
   std::size_t voxel_count{0U};
   double duration_ms{0.0};
+  double x_pass_ms{0.0};
+  double y_pass_ms{0.0};
+  double z_pass_ms{0.0};
+  double finalize_ms{0.0};
 };
 
 class DistanceField3D {

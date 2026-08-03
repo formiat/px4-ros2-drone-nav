@@ -79,6 +79,7 @@ struct RiskAwareLattice3DConfig {
 };
 
 struct Lattice3DTopologyCandidate {
+  std::size_t candidate_rank{0U};
   std::string topology;
   Lattice3DRiskStage risk_stage{Lattice3DRiskStage::kPreferredOnly};
   Lattice3DStatus status{Lattice3DStatus::kInvalidInput};
@@ -127,6 +128,9 @@ struct RiskAwareLattice3DResult {
   double planning_exposure_m{0.0};
   double critical_exposure_m{0.0};
   double turn_cost{0.0};
+  double search_ms{0.0};
+  double continuation_validation_ms{0.0};
+  std::uint64_t route_fingerprint{0U};
   Lattice3DSuccessorDiagnostics successor_diagnostics{};
   std::vector<SelectedChannelTraversal> selected_channels;
   std::vector<Lattice3DTopologyCandidate> topology_candidates;

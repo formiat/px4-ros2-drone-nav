@@ -16,6 +16,13 @@ TEST(DistanceField3D, ComputesEuclideanDistanceInThreeAxes) {
   EXPECT_FLOAT_EQ(field.distanceAt({2, 1, 1}), 1.0F);
   EXPECT_NEAR(field.distanceAt({2, 2, 2}), std::sqrt(3.0F), 1.0e-5F);
   EXPECT_EQ(field.stats().source_voxels, 1U);
+  EXPECT_GE(field.stats().x_pass_ms, 0.0);
+  EXPECT_GE(field.stats().y_pass_ms, 0.0);
+  EXPECT_GE(field.stats().z_pass_ms, 0.0);
+  EXPECT_GE(field.stats().finalize_ms, 0.0);
+  EXPECT_GE(field.stats().duration_ms, field.stats().x_pass_ms +
+                                           field.stats().y_pass_ms +
+                                           field.stats().z_pass_ms);
 }
 
 TEST(DistanceField3D, KeepsFarAndSourceFreeWorldAtInfinity) {

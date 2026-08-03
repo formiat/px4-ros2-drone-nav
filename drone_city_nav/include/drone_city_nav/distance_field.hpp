@@ -18,6 +18,9 @@ struct DistanceFieldBuildStats {
   std::size_t width_cells{0U};
   std::size_t height_cells{0U};
   double duration_ms{0.0};
+  double x_pass_ms{0.0};
+  double y_pass_ms{0.0};
+  double finalize_ms{0.0};
   std::string_view algorithm{"edt"};
 };
 
