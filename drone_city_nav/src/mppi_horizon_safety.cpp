@@ -1,6 +1,6 @@
 #include "drone_city_nav/mppi_horizon_safety.hpp"
 
-#include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,34 +10,6 @@
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] bool rawCollisionAt(const mppi::State& state,
-                                  const std::span<const float> esdf_m,
-                                  const mppi::EsdfGrid& grid,
-                                  const MppiHorizonSafetyConfig& config) {
-  const auto occupied = [&](const double offset_x, const double offset_y) {
-    return queryConservativeEsdf3D(grid, esdf_m, static_cast<float>(state.x + offset_x),
-                                   static_cast<float>(state.y + offset_y), state.z)
-        .raw_occupied;
-  };
-  if (occupied(0.0, 0.0)) {
-    return true;
-  }
-  const double radius = std::max(0.0, config.physical_footprint_radius_m);
-  const std::size_t samples = config.physical_footprint_samples;
-  if (!(radius > 0.0) || samples == 0U) {
-    return false;
-  }
-  constexpr double kTwoPi{6.28318530717958647692};
-  for (std::size_t sample = 0U; sample < samples; ++sample) {
-    const double angle =
-        kTwoPi * static_cast<double>(sample) / static_cast<double>(samples);
-    if (occupied(radius * std::cos(angle), radius * std::sin(angle))) {
-      return true;
-    }
-  }
-  return false;
-}
 
 [[nodiscard]] bool
 intersectsKnownSolid(const mppi::State& state,
@@ -157,7 +129,13 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
       const double ratio =
           static_cast<double>(sample) / static_cast<double>(sample_count);
       const mppi::State state = interpolateState(previous, next, ratio);
-      if (rawCollisionAt(state, esdf_m, grid, config) ||
+      const SweptFootprintConfig footprint{
+          .radius_m = config.physical_footprint_radius_m,
+          .perimeter_samples = config.physical_footprint_samples,
+          .sweep_step_m = config.swept_validation_step_m};
+      if (validateFootprintAt(grid, esdf_m, Point3{state.x, state.y, state.z},
+                              footprint)
+                  .status == SweptFootprintStatus::kRawCollision ||
           intersectsKnownSolid(state, known_solids)) {
         result.time_to_collision_s =
             index == 0U ? 0.0 : (static_cast<double>(index - 1U) + ratio) * config.dt_s;

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 
 namespace drone_city_nav {
 namespace {
@@ -120,26 +121,42 @@ bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid,
          point.z >= grid.origin_z_m && point.z < maximum_z;
 }
 
+bool staticRouteHasProtectedConstrainedSuffix(
+    const std::span<const RouteSample3D> route,
+    const std::span<const ConstrainedRouteSpan> constrained_spans,
+    const Point3& current_position, const double protected_departure_m) noexcept {
+  const RouteProjection3D projection = projectOntoRoute3D(route, current_position);
+  if (!projection.valid) {
+    return false;
+  }
+  const double departure_m = std::max(0.0, protected_departure_m);
+  return std::ranges::any_of(constrained_spans, [&](const ConstrainedRouteSpan& span) {
+    return projection.station_m + 1.0e-9 >= span.begin_station_m - departure_m &&
+           projection.station_m <= span.end_station_m + departure_m;
+  });
+}
+
 StaticRouteCandidateValidation validateStaticRouteCandidate(
     const std::span<const RouteSample3D> active_route,
     const std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
     const std::span<const float> esdf_m, const Point3& mission_goal,
     const double minimum_endpoint_improvement_m, const bool reaches_mission_goal,
-    const bool required_continuation) noexcept {
+    const bool required_continuation,
+    const SweptFootprintConfig& footprint_config) noexcept {
   if (candidate_route.size() < 2U) {
     return {.status = StaticRouteCandidateStatus::kEmpty};
   }
-  for (const RouteSample3D& sample : candidate_route) {
-    const EsdfQueryResult query = queryConservativeEsdf3D(
-        grid, esdf_m, static_cast<float>(sample.position.x),
-        static_cast<float>(sample.position.y), static_cast<float>(sample.position.z));
-    if (query.status == EsdfQueryStatus::kOutsideGrid) {
+  for (std::size_t index = 1U; index < candidate_route.size(); ++index) {
+    const SweptFootprintResult footprint =
+        validateSweptFootprint(grid, esdf_m, candidate_route[index - 1U].position,
+                               candidate_route[index].position, footprint_config);
+    if (footprint.status == SweptFootprintStatus::kOutsideGrid) {
       return {.status = StaticRouteCandidateStatus::kOutsideEsdf};
     }
-    if (query.status != EsdfQueryStatus::kValid) {
+    if (footprint.status == SweptFootprintStatus::kInvalidEsdf) {
       return {.status = StaticRouteCandidateStatus::kInvalidEsdf};
     }
-    if (query.raw_occupied) {
+    if (footprint.status == SweptFootprintStatus::kRawCollision) {
       return {.status = StaticRouteCandidateStatus::kRawCollision};
     }
   }
@@ -173,6 +190,8 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
       return "raw_collision";
     case StaticRouteCandidateStatus::kInvalidChannelSpan:
       return "invalid_channel_span";
+    case StaticRouteCandidateStatus::kProtectedConstrainedSuffix:
+      return "protected_constrained_suffix";
     case StaticRouteCandidateStatus::kNoEndpointImprovement:
       return "no_endpoint_improvement";
   }

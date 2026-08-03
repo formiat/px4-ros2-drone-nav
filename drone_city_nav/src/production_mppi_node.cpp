@@ -391,6 +391,14 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("safety_minimum_time_to_collision_s", 0.50);
   safety_config_.swept_validation_step_m =
       declare_parameter<double>("safety_swept_validation_step_m", 0.25);
+  lattice_config_.physical_footprint_radius_m =
+      safety_config_.physical_footprint_radius_m;
+  lattice_config_.physical_footprint_samples =
+      safety_config_.physical_footprint_samples;
+  lattice_3d_config_.physical_footprint_radius_m =
+      safety_config_.physical_footprint_radius_m;
+  lattice_3d_config_.physical_footprint_samples =
+      safety_config_.physical_footprint_samples;
   safety_config_.position_hold_capture_speed_mps =
       declare_parameter<double>("safety_position_hold_capture_speed_mps", 0.20);
   const double static_safety_fallback_duration_s =

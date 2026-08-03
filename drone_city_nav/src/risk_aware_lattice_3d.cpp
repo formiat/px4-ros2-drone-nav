@@ -1,6 +1,7 @@
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 
 #include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <array>
@@ -175,6 +176,23 @@ struct ReconstructedPath {
   const double length = distance3D(first, second);
   if (!(length > 1.0e-9)) {
     return EdgeEvaluation{.status = EdgeEvaluationStatus::kValid};
+  }
+  const SweptFootprintResult footprint = validateSweptFootprint(
+      grid, esdf_m, first, second,
+      SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
+                           .perimeter_samples = config.physical_footprint_samples,
+                           .sweep_step_m = config.sample_step_m});
+  if (!footprint.accepted()) {
+    switch (footprint.status) {
+      case SweptFootprintStatus::kOutsideGrid:
+        return EdgeEvaluation{.status = EdgeEvaluationStatus::kOutsideGrid};
+      case SweptFootprintStatus::kInvalidEsdf:
+        return EdgeEvaluation{.status = EdgeEvaluationStatus::kInvalidEsdf};
+      case SweptFootprintStatus::kRawCollision:
+        return EdgeEvaluation{.status = EdgeEvaluationStatus::kRawCollision};
+      case SweptFootprintStatus::kValid:
+        break;
+    }
   }
   const std::size_t samples = std::max<std::size_t>(
       1U, static_cast<std::size_t>(std::ceil(length / config.sample_step_m)));

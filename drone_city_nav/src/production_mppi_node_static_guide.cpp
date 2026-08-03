@@ -97,7 +97,11 @@ void ProductionMppiNode::processStaticGuideSearch(
           *mutable_route, world.grid, *world.distances_m, mission_goal_,
           static_route_extension_config_.minimum_endpoint_improvement_m,
           lattice.reached_mission_goal,
-          world.static_route_extension_request || world.static_route_replan_request);
+          world.static_route_extension_request || world.static_route_replan_request,
+          SweptFootprintConfig{.radius_m = safety_config_.physical_footprint_radius_m,
+                               .perimeter_samples =
+                                   safety_config_.physical_footprint_samples,
+                               .sweep_step_m = safety_config_.swept_validation_step_m});
     } else {
       validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kInvalidEsdf};
@@ -111,6 +115,16 @@ void ProductionMppiNode::processStaticGuideSearch(
                                    *route, *spans, world.grid, *world.distances_m)) {
       validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kInvalidChannelSpan};
+    }
+    const bool protected_suffix =
+        (world.static_route_extension_request || world.static_route_replan_request) &&
+        world.route_3d && world.constrained_spans &&
+        staticRouteHasProtectedConstrainedSuffix(
+            *world.route_3d, *world.constrained_spans, search_start,
+            static_route_extension_config_.protected_departure_m);
+    if (validation.accepted && protected_suffix) {
+      validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kProtectedConstrainedSuffix};
     }
     std::vector<std::string> selected_channel_ids;
     selected_channel_ids.reserve(lattice.selected_channels.size());
@@ -127,6 +141,7 @@ void ProductionMppiNode::processStaticGuideSearch(
                         constrained_route_speed_limit_mps_);
     prepared.global_guide_projection = projectOntoGlobalGuide(
         *prepared.route_2d_projection, Point2{navigation.state.x, navigation.state.y});
+    prepared.route_fingerprint = routeFingerprint(*route, lattice.selected_channels);
     prepared.candidate_validation_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   validation_started)
@@ -140,6 +155,19 @@ void ProductionMppiNode::processStaticGuideSearch(
           : StaticRouteActivationStatus::kCandidateNotExecutable;
   bool revision_matches = false;
   bool generation_matches = false;
+  const StaticRouteCandidate route_candidate{
+      .search_revision = prepared.revision,
+      .base_route_generation = world.static_route_replan_request
+                                   ? world.static_route_replan_base_generation
+                                   : world.static_route_extension_base_generation,
+      .candidate_route_generation = static_route_generation_ + 1U,
+      .fingerprint = prepared.route_fingerprint,
+      .executable = prepared.lattice_executable,
+      .reaches_mission_goal = prepared.global_guide_reaches_mission_goal,
+      .validation = validation,
+      .route = prepared.route_3d,
+      .constrained_spans = prepared.constrained_spans,
+  };
 
   bool activated = false;
   {
@@ -153,7 +181,9 @@ void ProductionMppiNode::processStaticGuideSearch(
         (prepared_esdf_ &&
          prepared_esdf_->global_guide_generation == required_base_generation);
     revision_matches = prepared_esdf_ && prepared_esdf_->revision == prepared.revision;
-    if (validation.accepted && revision_matches && generation_matches) {
+    if (route_candidate.executable && route_candidate.validation.accepted &&
+        route_candidate.route && route_candidate.constrained_spans &&
+        revision_matches && generation_matches) {
       activation_status = StaticRouteActivationStatus::kActivated;
       prepared.static_route_activation_status = activation_status;
       prepared.static_route_revision_matches = true;
@@ -167,9 +197,9 @@ void ProductionMppiNode::processStaticGuideSearch(
       prepared.static_route_replan_reason = GlobalGuideReleaseReason::kNone;
       prepared_esdf_ = prepared;
       activated = true;
-    } else if (validation.accepted && !revision_matches) {
+    } else if (route_candidate.validation.accepted && !revision_matches) {
       activation_status = StaticRouteActivationStatus::kStaleWorldRevision;
-    } else if (validation.accepted && !generation_matches) {
+    } else if (route_candidate.validation.accepted && !generation_matches) {
       activation_status = StaticRouteActivationStatus::kStaleRouteGeneration;
     }
   }

@@ -60,6 +60,8 @@ struct RiskAwareLattice3DConfig {
   double horizontal_step_m{2.0};
   double vertical_step_m{1.0};
   double sample_step_m{0.5};
+  double physical_footprint_radius_m{0.82};
+  std::size_t physical_footprint_samples{12U};
   double planning_goal_distance_m{180.0};
   double goal_tolerance_m{2.0};
   double critical_distance_m{1.0};

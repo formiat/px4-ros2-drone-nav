@@ -156,6 +156,25 @@ TEST(StaticRouteExtensionTest, CoalescesReplanForOneRouteGeneration) {
   EXPECT_TRUE(gate.tryBegin(7U));
 }
 
+TEST(StaticRouteExtensionTest, ProtectsConstrainedSuffixThroughDeparture) {
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 10.0);
+  const std::vector<ConstrainedRouteSpan> spans{ConstrainedRouteSpan{
+      .channel_id = "channel",
+      .route_generation = 3U,
+      .begin_station_m = 5.0,
+      .end_station_m = 12.0,
+      .envelope = {},
+  }};
+
+  EXPECT_TRUE(staticRouteHasProtectedConstrainedSuffix(active, spans,
+                                                       Point3{8.0, 0.0, 5.0}, 3.0));
+  EXPECT_TRUE(staticRouteHasProtectedConstrainedSuffix(active, spans,
+                                                       Point3{14.0, 0.0, 5.0}, 3.0));
+  EXPECT_FALSE(staticRouteHasProtectedConstrainedSuffix(active, spans,
+                                                        Point3{16.0, 0.0, 5.0}, 3.0));
+}
+
 TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kCandidateValidationRejected),

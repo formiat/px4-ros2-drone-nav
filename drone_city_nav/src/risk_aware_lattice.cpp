@@ -1,6 +1,7 @@
 #include "drone_city_nav/risk_aware_lattice.hpp"
 
 #include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <array>
@@ -195,6 +196,28 @@ evaluateSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
                 const Point2 start, const Point2 endpoint,
                 const RiskAwareLatticeConfig& config, const LatticeRiskStage stage) {
   SegmentEvaluation result{.valid = true};
+  const SweptFootprintResult footprint = validateSweptFootprint(
+      grid, esdf_m, Point3{start.x, start.y, 0.0}, Point3{endpoint.x, endpoint.y, 0.0},
+      SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
+                           .perimeter_samples = config.physical_footprint_samples,
+                           .sweep_step_m = config.primitive_sample_step_m});
+  if (!footprint.accepted()) {
+    result.valid = false;
+    switch (footprint.status) {
+      case SweptFootprintStatus::kOutsideGrid:
+        result.rejection_reason = SegmentEvaluation::RejectionReason::kOutsideGrid;
+        break;
+      case SweptFootprintStatus::kInvalidEsdf:
+        result.rejection_reason = SegmentEvaluation::RejectionReason::kInvalidClearance;
+        break;
+      case SweptFootprintStatus::kRawCollision:
+        result.rejection_reason = SegmentEvaluation::RejectionReason::kRawCollision;
+        break;
+      case SweptFootprintStatus::kValid:
+        break;
+    }
+    return result;
+  }
   const double length_m = distance(start, endpoint);
   const int sample_count =
       static_cast<int>(std::ceil(length_m / config.primitive_sample_step_m));

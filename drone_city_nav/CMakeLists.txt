@@ -146,6 +146,7 @@ add_library(
   src/risk_aware_lattice_3d.cpp
   src/route_3d.cpp
   src/static_route_extension.cpp
+  src/swept_footprint.cpp
   src/lidar_snapshot_writer.cpp
   src/mppi/mppi_post_update_classification.cpp
   src/mppi_horizon_safety.cpp
@@ -357,6 +358,11 @@ if(BUILD_TESTING)
   target_compile_features(esdf_query_test PRIVATE cxx_std_20)
   target_link_libraries(esdf_query_test drone_city_nav_core)
   enable_project_warnings(esdf_query_test)
+
+  ament_add_gtest(swept_footprint_test tests/swept_footprint_test.cpp)
+  target_compile_features(swept_footprint_test PRIVATE cxx_std_20)
+  target_link_libraries(swept_footprint_test drone_city_nav_core)
+  enable_project_warnings(swept_footprint_test)
 
   ament_add_gtest(mppi_liveness_test_current tests/mppi_liveness_test.cpp)
   target_compile_features(mppi_liveness_test_current PRIVATE cxx_std_20)

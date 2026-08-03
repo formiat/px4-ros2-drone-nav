@@ -136,6 +136,8 @@ TEST(RiskAwareLattice, AcceptsViableFrontierWithTemporaryNegativeGoalProgress) {
   RiskAwareLatticeConfig config;
   config.maximum_expansions = 60U;
   config.maximum_search_time_ms = 1000.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
 
   const Point2 start{29.5, 40.5};
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(

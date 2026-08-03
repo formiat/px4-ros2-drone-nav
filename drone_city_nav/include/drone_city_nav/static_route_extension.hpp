@@ -3,11 +3,14 @@
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -18,6 +21,7 @@ struct StaticRouteExtensionConfig {
   double minimum_retry_progress_m{15.0};
   double minimum_retry_interval_s{1.0};
   double minimum_endpoint_improvement_m{5.0};
+  double protected_departure_m{5.0};
 };
 
 struct StaticRouteExtensionObservation {
@@ -61,6 +65,7 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
   kInvalidEsdf,
   kRawCollision,
   kInvalidChannelSpan,
+  kProtectedConstrainedSuffix,
   kNoEndpointImprovement,
 };
 
@@ -79,6 +84,18 @@ struct StaticRouteCandidateValidation {
   bool accepted{false};
 };
 
+struct StaticRouteCandidate {
+  std::uint64_t search_revision{0U};
+  std::uint64_t base_route_generation{0U};
+  std::uint64_t candidate_route_generation{0U};
+  std::uint64_t fingerprint{0U};
+  bool executable{false};
+  bool reaches_mission_goal{false};
+  StaticRouteCandidateValidation validation{};
+  std::shared_ptr<const std::vector<RouteSample3D>> route;
+  std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
+};
+
 [[nodiscard]] StaticRouteExtensionDecision evaluateStaticRouteExtension(
     const StaticRouteExtensionConfig& config,
     const StaticRouteExtensionObservation& observation) noexcept;
@@ -94,12 +111,18 @@ deferStaticRouteReleaseDuringExtension(bool request_in_flight,
 [[nodiscard]] bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid,
                                               const Point3& point) noexcept;
 
+[[nodiscard]] bool staticRouteHasProtectedConstrainedSuffix(
+    std::span<const RouteSample3D> route,
+    std::span<const ConstrainedRouteSpan> constrained_spans,
+    const Point3& current_position, double protected_departure_m) noexcept;
+
 [[nodiscard]] StaticRouteCandidateValidation validateStaticRouteCandidate(
     std::span<const RouteSample3D> active_route,
     std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
     std::span<const float> esdf_m, const Point3& mission_goal,
     double minimum_endpoint_improvement_m, bool reaches_mission_goal,
-    bool required_continuation = false) noexcept;
+    bool required_continuation = false,
+    const SweptFootprintConfig& footprint_config = {}) noexcept;
 
 [[nodiscard]] std::string_view
 staticRouteCandidateStatusName(StaticRouteCandidateStatus status) noexcept;

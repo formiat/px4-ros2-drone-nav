@@ -463,6 +463,8 @@ TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
   config.turn_cost_per_rad = 0.0;
   config.channel_connection_distance_m = 1.0;
   config.maximum_search_time_ms = 1000.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
 
   const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
       grid, field.distancesM(), Point3{0.5, 0.5, 5.5}, Vec3{1.0, 0.0, 0.0},
@@ -506,6 +508,8 @@ TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
   config.turn_cost_per_rad = 0.0;
   config.channel_connection_distance_m = 1.0;
   config.maximum_search_time_ms = 1000.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
 
   const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
       grid, field.distancesM(), Point3{0.5, 2.5, 8.5}, Vec3{1.0, 0.0, 0.0},
