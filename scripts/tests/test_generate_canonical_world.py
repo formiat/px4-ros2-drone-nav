@@ -51,6 +51,21 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             self.assertNotIn("channel_108_108_t_east_middle", collision_models)
             self.assertNotIn("channel_108_108_t_north_middle", collision_models)
 
+            building_diffuse = {
+                model.attrib["name"]: tuple(
+                    map(float, model.findtext("./link/visual/material/diffuse").split())
+                )
+                for model in root.findall("./world/model")
+                if model.attrib["name"].startswith("building_")
+            }
+            self.assertEqual(generator.building_color(27.0, 27.0),
+                             building_diffuse["building_001"])
+            self.assertEqual(generator.building_color(81.0, 27.0),
+                             building_diffuse["building_009"])
+            self.assertNotEqual(
+                building_diffuse["building_001"], building_diffuse["building_009"]
+            )
+
             header_format = "<8sII4f3IQI"
             with occupancy_path.open("rb") as stream:
                 header = struct.unpack(
@@ -162,6 +177,20 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
         self.assertEqual(40, sum(box.id.startswith("building_") for box in boxes))
         geometry = {(box.center, box.size, box.visibility_flags) for box in boxes}
         self.assertEqual(len(boxes), len(geometry))
+
+    def test_building_palette_matches_rviz_coordinate_rule(self) -> None:
+        self.assertEqual(
+            (148 / 255.0, 158 / 255.0, 164 / 255.0, 1.0),
+            generator.building_color(27.0, 27.0),
+        )
+        self.assertEqual(
+            generator.building_color(27.0, 27.0),
+            generator.building_color(27.0 + 8 * 54.0, 27.0),
+        )
+        self.assertNotEqual(
+            generator.building_color(27.0, 27.0),
+            generator.building_color(81.0, 27.0),
+        )
 
     def test_l_channel_cross_sections_match_left_turn_as_seen_from_start(self) -> None:
         spec = generator.load_spec(SPEC_PATH)

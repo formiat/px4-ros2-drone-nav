@@ -18,6 +18,18 @@ OCCUPANCY_MAGIC = b"DCNOCC3D"
 OCCUPANCY_VERSION = 2
 NO_STATIC_SOLID_VISIBILITY = 0x08000000
 NO_STATIC_OCCLUDER_VISIBILITY = 0x04000000
+BUILDING_GRID_CENTER_M = 27.0
+BUILDING_GRID_SPACING_M = 54.0
+BUILDING_PALETTE_RGB = (
+    (148, 158, 164),
+    (126, 151, 168),
+    (140, 157, 145),
+    (164, 151, 134),
+    (154, 142, 159),
+    (132, 158, 158),
+    (169, 148, 148),
+    (146, 148, 170),
+)
 
 
 @dataclass(frozen=True)
@@ -36,6 +48,16 @@ class ChannelEdge:
     width_m: float
     height_m: float
     speed_limit_mps: float
+
+
+def building_color(x: float, y: float) -> tuple[float, float, float, float]:
+    """Return the deterministic color used by the RViz static-map palette."""
+    building_x = round((x - BUILDING_GRID_CENTER_M) / BUILDING_GRID_SPACING_M)
+    building_y = round((y - BUILDING_GRID_CENTER_M) / BUILDING_GRID_SPACING_M)
+    red, green, blue = BUILDING_PALETTE_RGB[
+        (building_x + 3 * building_y) % len(BUILDING_PALETTE_RGB)
+    ]
+    return red / 255.0, green / 255.0, blue / 255.0, 1.0
 
 
 def external_portal_point(channel: dict,
@@ -206,7 +228,7 @@ def physical_boxes(spec: dict) -> list[Box]:
     for x in map(float, grid["x_centers_m"]):
         for y in map(float, grid["y_centers_m"]):
             boxes.append(Box(f"building_{index:03d}", (x, y, 0.5 * size_z),
-                             (size_x, size_y, size_z)))
+                             (size_x, size_y, size_z), building_color(x, y)))
             index += 1
     for channel in spec["channels"]:
         boxes.extend(channel_boxes(channel))

@@ -32,6 +32,11 @@ The old `.map2d` and `.passages3d` sources no longer exist. There is no runtime
 portal database, nearest-opening selector, or separate hand-authored passage
 lifecycle.
 
+Building visuals use the same deterministic eight-color muted palette in Gazebo
+and RViz. The palette index is derived from the building grid coordinates, so a
+building keeps the same color in both views and across regenerated worlds. RViz
+controls its own transparency; Gazebo building materials remain opaque.
+
 ## Regeneration
 
 Run the generator through the repository container workflow:
