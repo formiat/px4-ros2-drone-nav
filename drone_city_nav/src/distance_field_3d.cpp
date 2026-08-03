@@ -1,9 +1,12 @@
 #include "drone_city_nav/distance_field_3d.hpp"
 
+#include "drone_city_nav/bounded_worker_pool.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <vector>
 
@@ -80,13 +83,15 @@ void transform1D(const std::vector<double>& input, std::vector<double>& output) 
 } // namespace
 
 DistanceField3D DistanceField3D::build(const OccupancyGrid3D& occupancy,
-                                       const double maximum_distance_m) {
-  return buildLocal(occupancy, occupancy.bounds(), maximum_distance_m);
+                                       const double maximum_distance_m,
+                                       BoundedWorkerPool* const worker_pool) {
+  return buildLocal(occupancy, occupancy.bounds(), maximum_distance_m, worker_pool);
 }
 
 DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
                                             const GridBounds3D& local_bounds,
-                                            const double maximum_distance_m) {
+                                            const double maximum_distance_m,
+                                            BoundedWorkerPool* const worker_pool) {
   const auto started = std::chrono::steady_clock::now();
   DistanceField3D field;
   if (!(local_bounds.resolution_m > 0.0) || local_bounds.width_cells <= 0 ||
@@ -108,52 +113,67 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
                static_cast<std::size_t>(width) +
            static_cast<std::size_t>(x);
   };
-  const int maximum_axis = std::max({width, height, depth});
-  std::vector<double> input(static_cast<std::size_t>(maximum_axis),
-                            kLargeSquaredDistance);
-  std::vector<double> output;
-
   const auto x_pass_started = std::chrono::steady_clock::now();
-  input.resize(static_cast<std::size_t>(width));
-  for (int z = 0; z < depth; ++z) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        const std::optional<GridIndex3D> source_cell = occupancy.worldToCell(
-            Point3{field.bounds_.origin_x +
-                       (static_cast<double>(x) + 0.5) * field.bounds_.resolution_m,
-                   field.bounds_.origin_y +
-                       (static_cast<double>(y) + 0.5) * field.bounds_.resolution_m,
-                   field.bounds_.origin_z +
-                       (static_cast<double>(z) + 0.5) * field.bounds_.resolution_m});
-        const bool occupied =
-            source_cell.has_value() && occupancy.isOccupied(*source_cell);
-        input[static_cast<std::size_t>(x)] = occupied ? 0.0 : kLargeSquaredDistance;
-        field.stats_.source_voxels += occupied ? 1U : 0U;
-      }
-      transform1D(input, output);
-      for (int x = 0; x < width; ++x) {
-        squared[index(x, y, z)] =
-            static_cast<float>(output[static_cast<std::size_t>(x)]);
-      }
+  const std::size_t x_line_count =
+      static_cast<std::size_t>(height) * static_cast<std::size_t>(depth);
+  std::vector<std::size_t> source_counts(x_line_count, 0U);
+  const auto transform_x_line = [&](const std::size_t line_index) {
+    const int z = static_cast<int>(line_index / static_cast<std::size_t>(height));
+    const int y = static_cast<int>(line_index % static_cast<std::size_t>(height));
+    std::vector<double> input(static_cast<std::size_t>(width), kLargeSquaredDistance);
+    std::vector<double> output;
+    for (int x = 0; x < width; ++x) {
+      const std::optional<GridIndex3D> source_cell = occupancy.worldToCell(
+          Point3{field.bounds_.origin_x +
+                     (static_cast<double>(x) + 0.5) * field.bounds_.resolution_m,
+                 field.bounds_.origin_y +
+                     (static_cast<double>(y) + 0.5) * field.bounds_.resolution_m,
+                 field.bounds_.origin_z +
+                     (static_cast<double>(z) + 0.5) * field.bounds_.resolution_m});
+      const bool occupied =
+          source_cell.has_value() && occupancy.isOccupied(*source_cell);
+      input[static_cast<std::size_t>(x)] = occupied ? 0.0 : kLargeSquaredDistance;
+      source_counts[line_index] += occupied ? 1U : 0U;
+    }
+    transform1D(input, output);
+    for (int x = 0; x < width; ++x) {
+      squared[index(x, y, z)] = static_cast<float>(output[static_cast<std::size_t>(x)]);
+    }
+  };
+  if (worker_pool != nullptr) {
+    worker_pool->parallelFor(x_line_count, transform_x_line);
+  } else {
+    for (std::size_t line_index = 0U; line_index < x_line_count; ++line_index) {
+      transform_x_line(line_index);
     }
   }
+  field.stats_.source_voxels =
+      std::accumulate(source_counts.begin(), source_counts.end(), std::size_t{0U});
   field.stats_.x_pass_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - x_pass_started)
                                .count();
 
   const auto y_pass_started = std::chrono::steady_clock::now();
-  input.resize(static_cast<std::size_t>(height));
-  for (int z = 0; z < depth; ++z) {
-    for (int x = 0; x < width; ++x) {
-      for (int y = 0; y < height; ++y) {
-        input[static_cast<std::size_t>(y)] =
-            static_cast<double>(squared[index(x, y, z)]);
-      }
-      transform1D(input, output);
-      for (int y = 0; y < height; ++y) {
-        squared[index(x, y, z)] =
-            static_cast<float>(output[static_cast<std::size_t>(y)]);
-      }
+  const std::size_t y_line_count =
+      static_cast<std::size_t>(width) * static_cast<std::size_t>(depth);
+  const auto transform_y_line = [&](const std::size_t line_index) {
+    const int z = static_cast<int>(line_index / static_cast<std::size_t>(width));
+    const int x = static_cast<int>(line_index % static_cast<std::size_t>(width));
+    std::vector<double> input(static_cast<std::size_t>(height), kLargeSquaredDistance);
+    std::vector<double> output;
+    for (int y = 0; y < height; ++y) {
+      input[static_cast<std::size_t>(y)] = static_cast<double>(squared[index(x, y, z)]);
+    }
+    transform1D(input, output);
+    for (int y = 0; y < height; ++y) {
+      squared[index(x, y, z)] = static_cast<float>(output[static_cast<std::size_t>(y)]);
+    }
+  };
+  if (worker_pool != nullptr) {
+    worker_pool->parallelFor(y_line_count, transform_y_line);
+  } else {
+    for (std::size_t line_index = 0U; line_index < y_line_count; ++line_index) {
+      transform_y_line(line_index);
     }
   }
   field.stats_.y_pass_ms = std::chrono::duration<double, std::milli>(
@@ -161,18 +181,26 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
                                .count();
 
   const auto z_pass_started = std::chrono::steady_clock::now();
-  input.resize(static_cast<std::size_t>(depth));
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      for (int z = 0; z < depth; ++z) {
-        input[static_cast<std::size_t>(z)] =
-            static_cast<double>(squared[index(x, y, z)]);
-      }
-      transform1D(input, output);
-      for (int z = 0; z < depth; ++z) {
-        squared[index(x, y, z)] =
-            static_cast<float>(output[static_cast<std::size_t>(z)]);
-      }
+  const std::size_t z_line_count =
+      static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+  const auto transform_z_line = [&](const std::size_t line_index) {
+    const int y = static_cast<int>(line_index / static_cast<std::size_t>(width));
+    const int x = static_cast<int>(line_index % static_cast<std::size_t>(width));
+    std::vector<double> input(static_cast<std::size_t>(depth), kLargeSquaredDistance);
+    std::vector<double> output;
+    for (int z = 0; z < depth; ++z) {
+      input[static_cast<std::size_t>(z)] = static_cast<double>(squared[index(x, y, z)]);
+    }
+    transform1D(input, output);
+    for (int z = 0; z < depth; ++z) {
+      squared[index(x, y, z)] = static_cast<float>(output[static_cast<std::size_t>(z)]);
+    }
+  };
+  if (worker_pool != nullptr) {
+    worker_pool->parallelFor(z_line_count, transform_z_line);
+  } else {
+    for (std::size_t line_index = 0U; line_index < z_line_count; ++line_index) {
+      transform_z_line(line_index);
     }
   }
   field.stats_.z_pass_ms = std::chrono::duration<double, std::milli>(

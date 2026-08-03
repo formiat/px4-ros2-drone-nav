@@ -8,6 +8,8 @@
 
 namespace drone_city_nav {
 
+class BoundedWorkerPool;
+
 struct DistanceField3DBuildStats {
   std::size_t source_voxels{0U};
   std::size_t voxel_count{0U};
@@ -21,10 +23,11 @@ struct DistanceField3DBuildStats {
 class DistanceField3D {
 public:
   [[nodiscard]] static DistanceField3D build(const OccupancyGrid3D& occupancy,
-                                             double maximum_distance_m);
-  [[nodiscard]] static DistanceField3D buildLocal(const OccupancyGrid3D& occupancy,
-                                                  const GridBounds3D& local_bounds,
-                                                  double maximum_distance_m);
+                                             double maximum_distance_m,
+                                             BoundedWorkerPool* worker_pool = nullptr);
+  [[nodiscard]] static DistanceField3D
+  buildLocal(const OccupancyGrid3D& occupancy, const GridBounds3D& local_bounds,
+             double maximum_distance_m, BoundedWorkerPool* worker_pool = nullptr);
 
   [[nodiscard]] const GridBounds3D& bounds() const noexcept;
   [[nodiscard]] double maximumDistanceM() const noexcept;

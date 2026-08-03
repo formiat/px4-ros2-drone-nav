@@ -121,6 +121,7 @@ add_library(
   drone_city_nav_core
   src/active_global_guide.cpp
   src/ambiguous_lidar_hit_tracker.cpp
+  src/bounded_worker_pool.cpp
   src/crash_disarm_lifecycle.cpp
   src/debug_image.cpp
   src/distance_field.cpp

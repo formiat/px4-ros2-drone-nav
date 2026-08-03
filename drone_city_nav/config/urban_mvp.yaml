@@ -95,6 +95,7 @@ production_mppi_node:
     tick_rate_hz: 50.0
     rviz_rate_hz: 10.0
     diagnostics_info_rate_hz: 5.0
+    planner_worker_count: 4
     rollouts: 8192
     dt_s: 0.05
     static_horizon_duration_s: 6.0

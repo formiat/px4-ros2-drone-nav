@@ -1,3 +1,4 @@
+#include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 
 #include <gtest/gtest.h>
@@ -47,6 +48,22 @@ TEST(DistanceField3D, BuildsAlignedDenseLocalRegionFromSparseWorld) {
   EXPECT_FLOAT_EQ(field.distanceAt({3, 2, 1}), 1.0F);
   EXPECT_EQ(field.stats().source_voxels, 1U);
   EXPECT_EQ(field.stats().voxel_count, 144U);
+}
+
+TEST(DistanceField3D, ParallelBuildMatchesSerialBuildExactly) {
+  OccupancyGrid3D occupancy{GridBounds3D{-2.0, -2.0, 0.0, 0.5, 9, 8, 7}};
+  occupancy.setOccupied({1, 2, 3});
+  occupancy.setOccupied({7, 5, 1});
+  const DistanceField3D serial = DistanceField3D::build(occupancy, 10.0);
+  BoundedWorkerPool worker_pool{4U};
+  const DistanceField3D parallel =
+      DistanceField3D::build(occupancy, 10.0, &worker_pool);
+
+  ASSERT_EQ(serial.distancesM().size(), parallel.distancesM().size());
+  for (std::size_t index = 0U; index < serial.distancesM().size(); ++index) {
+    EXPECT_EQ(serial.distancesM()[index], parallel.distancesM()[index]);
+  }
+  EXPECT_EQ(serial.stats().source_voxels, parallel.stats().source_voxels);
 }
 
 } // namespace

@@ -125,7 +125,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             mission_goal_, lattice_3d_config_.planning_goal_distance_m, 40.0);
         const DistanceField3D field = DistanceField3D::buildLocal(
             *static_occupancy_3d_, local_bounds,
-            static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0);
+            static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
+            planning_worker_pool_.get());
         const GridBounds3D& bounds = field.bounds();
         static_esdf_grid_ = mppi::EsdfGrid{bounds.width_cells,
                                            bounds.height_cells,
@@ -213,7 +214,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     const DistanceField2D field = DistanceField2D::build(
         *raw_occupancy,
         static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
-        DistanceFieldSource::kOccupied);
+        DistanceFieldSource::kOccupied, planning_worker_pool_.get());
     const double build_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - build_started)
                                 .count();

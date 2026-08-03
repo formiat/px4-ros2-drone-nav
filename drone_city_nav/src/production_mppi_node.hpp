@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/active_global_guide.hpp"
+#include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
@@ -350,6 +351,7 @@ private:
   double no_static_soft_tabu_penalty_{40.0};
   double no_static_adaptive_reachable_depth_m_{40.0};
   std::size_t no_static_adaptive_validation_states_{8192U};
+  std::size_t planner_worker_count_{4U};
   NoStaticRouteCycleConfig no_static_cycle_config_{};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
@@ -389,6 +391,7 @@ private:
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};
+  std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;

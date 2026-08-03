@@ -9,6 +9,8 @@
 
 namespace drone_city_nav {
 
+class BoundedWorkerPool;
+
 enum class DistanceFieldSource {
   kOccupied,
 };
@@ -26,8 +28,10 @@ struct DistanceFieldBuildStats {
 
 class DistanceField2D {
 public:
-  [[nodiscard]] static DistanceField2D
-  build(const OccupancyGrid2D& grid, double max_distance_m, DistanceFieldSource source);
+  [[nodiscard]] static DistanceField2D build(const OccupancyGrid2D& grid,
+                                             double max_distance_m,
+                                             DistanceFieldSource source,
+                                             BoundedWorkerPool* worker_pool = nullptr);
 
   [[nodiscard]] const GridBounds& bounds() const noexcept;
   [[nodiscard]] double maxDistanceM() const noexcept;

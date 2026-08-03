@@ -294,7 +294,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
               Point2{mission_goal_.x, mission_goal_.y}, search_config,
-              frontier_blacklist_, &search_session);
+              frontier_blacklist_, &search_session, planning_worker_pool_.get());
           lattice_search_performed = true;
           const auto candidate =
               std::make_shared<const std::vector<Point2>>(lattice_observation.guide);
@@ -381,7 +381,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
               Point2{mission_goal_.x, mission_goal_.y}, search_config,
-              frontier_blacklist_, &search_session);
+              frontier_blacklist_, &search_session, planning_worker_pool_.get());
           lattice_search_performed = true;
           const auto candidate = std::make_shared<const std::vector<Point2>>(
               std::move(lattice_observation.guide));
@@ -516,6 +516,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         lattice_observation.frontier_selection_score;
     prepared.lattice_frontier_candidates_considered =
         lattice_observation.frontier_candidates_considered;
+    prepared.continuation_validation_ms =
+        lattice_observation.continuation_validation_ms;
     prepared.lattice_successor_diagnostics = lattice_observation.successor_diagnostics;
     prepared.lattice_continuation_attempt = continuation_attempt;
     prepared.lattice_search_session_age_ms =

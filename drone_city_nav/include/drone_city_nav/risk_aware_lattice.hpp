@@ -11,6 +11,8 @@
 
 namespace drone_city_nav {
 
+class BoundedWorkerPool;
+
 enum class LatticePlanStatus : std::uint8_t {
   kInvalidInput,
   kReachedPlanningGoal,
@@ -108,6 +110,7 @@ struct RiskAwareLatticeResult {
   std::size_t continuation_reachable_states{0U};
   double reachable_depth_m{0.0};
   std::size_t frontier_candidates_considered{0U};
+  double continuation_validation_ms{0.0};
   LatticeSuccessorDiagnostics successor_diagnostics{};
   bool search_session_resumed{false};
   bool search_session_complete{true};
@@ -133,7 +136,7 @@ private:
   friend RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const mppi::EsdfGrid&, std::span<const float>, Point2, double, Point2,
       const RiskAwareLatticeConfig&, std::span<const LatticeFrontierBlacklistEntry>,
-      RiskAwareLatticeSearchSession*);
+      RiskAwareLatticeSearchSession*, BoundedWorkerPool*);
 };
 
 [[nodiscard]] RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
@@ -141,7 +144,8 @@ private:
     double preferred_heading_rad, Point2 mission_goal,
     const RiskAwareLatticeConfig& config,
     std::span<const LatticeFrontierBlacklistEntry> frontier_blacklist = {},
-    RiskAwareLatticeSearchSession* session = nullptr);
+    RiskAwareLatticeSearchSession* session = nullptr,
+    BoundedWorkerPool* worker_pool = nullptr);
 
 [[nodiscard]] const char* latticePlanStatusName(LatticePlanStatus status) noexcept;
 

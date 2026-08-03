@@ -1,9 +1,12 @@
 #include "drone_city_nav/distance_field.hpp"
 
+#include "drone_city_nav/bounded_worker_pool.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <vector>
 
@@ -99,7 +102,8 @@ void distanceTransform1D(const std::vector<double>& f, std::vector<double>& d) {
 
 DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
                                        const double max_distance_m,
-                                       const DistanceFieldSource source) {
+                                       const DistanceFieldSource source,
+                                       BoundedWorkerPool* const worker_pool) {
   const auto started_at = std::chrono::steady_clock::now();
   DistanceField2D field{};
   field.bounds_ = grid.bounds();
@@ -117,20 +121,19 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
 
   const std::size_t width = static_cast<std::size_t>(grid.width());
   const std::size_t height = static_cast<std::size_t>(grid.height());
-  std::vector<double> row_input(width, kLargeSquaredDistance);
-  std::vector<double> row_output(width, kLargeSquaredDistance);
-  std::vector<double> column_input(height, kLargeSquaredDistance);
-  std::vector<double> column_output(height, kLargeSquaredDistance);
   std::vector<double> x_pass(grid.cellCount(), kLargeSquaredDistance);
+  std::vector<std::size_t> row_source_counts(height, 0U);
 
   const auto x_pass_started = std::chrono::steady_clock::now();
-  for (int y = 0; y < grid.height(); ++y) {
-    std::fill(row_input.begin(), row_input.end(), kLargeSquaredDistance);
+  const auto transform_row = [&](const std::size_t row) {
+    const int y = static_cast<int>(row);
+    std::vector<double> row_input(width, kLargeSquaredDistance);
+    std::vector<double> row_output(width, kLargeSquaredDistance);
     for (int x = 0; x < grid.width(); ++x) {
       const GridIndex cell{x, y};
       if (isSourceCell(grid, cell, source)) {
         row_input[static_cast<std::size_t>(x)] = 0.0;
-        ++field.stats_.source_cells;
+        ++row_source_counts[row];
       }
     }
     distanceTransform1D(row_input, row_output);
@@ -138,7 +141,16 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
       x_pass[grid.linearIndex(GridIndex{x, y})] =
           row_output[static_cast<std::size_t>(x)];
     }
+  };
+  if (worker_pool != nullptr) {
+    worker_pool->parallelFor(height, transform_row);
+  } else {
+    for (std::size_t row = 0U; row < height; ++row) {
+      transform_row(row);
+    }
   }
+  field.stats_.source_cells = std::accumulate(row_source_counts.begin(),
+                                              row_source_counts.end(), std::size_t{0U});
   field.stats_.x_pass_ms = elapsedMilliseconds(x_pass_started);
 
   if (field.stats_.source_cells == 0U) {
@@ -149,7 +161,10 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
   const double resolution_m = grid.resolution();
   const bool has_max_distance = field.max_distance_m_ > 0.0;
   const auto y_pass_started = std::chrono::steady_clock::now();
-  for (int x = 0; x < grid.width(); ++x) {
+  const auto transform_column = [&](const std::size_t column) {
+    const int x = static_cast<int>(column);
+    std::vector<double> column_input(height, kLargeSquaredDistance);
+    std::vector<double> column_output(height, kLargeSquaredDistance);
     for (int y = 0; y < grid.height(); ++y) {
       column_input[static_cast<std::size_t>(y)] =
           x_pass[grid.linearIndex(GridIndex{x, y})];
@@ -164,6 +179,13 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
       field.distance_m_[grid.linearIndex(GridIndex{x, y})] =
           !has_max_distance || distance_m <= field.max_distance_m_ ? distance_m
                                                                    : kInfinity;
+    }
+  };
+  if (worker_pool != nullptr) {
+    worker_pool->parallelFor(width, transform_column);
+  } else {
+    for (std::size_t column = 0U; column < width; ++column) {
+      transform_column(column);
     }
   }
   field.stats_.y_pass_ms = elapsedMilliseconds(y_pass_started);

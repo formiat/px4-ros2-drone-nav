@@ -1,3 +1,4 @@
+#include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
@@ -398,6 +399,33 @@ TEST(RiskAwareLattice, SoftTabuChangesCostWithoutRemovingReachability) {
   EXPECT_TRUE(result.valid);
   EXPECT_GT(result.successor_diagnostics.soft_tabu_penalties_applied, 0U);
   EXPECT_EQ(result.successor_diagnostics.rejected_blacklisted_failure, 0U);
+}
+
+TEST(RiskAwareLattice, ParallelFrontierValidationPreservesDeterministicResult) {
+  const mppi::EsdfGrid grid{80, 60, 1.0F, 0.0F, 0.0F};
+  std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height), 20.0F);
+  for (int y = 10; y <= 42; ++y) {
+    esdf[static_cast<std::size_t>(y) * static_cast<std::size_t>(grid.width) + 28U] =
+        0.0F;
+  }
+  RiskAwareLatticeConfig config;
+  config.maximum_expansions = 300U;
+  config.maximum_search_time_ms = 1000.0;
+  config.maximum_frontier_candidates = 32U;
+
+  const RiskAwareLatticeResult serial = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{20.5, 26.5}, 0.0, Point2{70.5, 26.5}, config);
+  BoundedWorkerPool worker_pool{4U};
+  const RiskAwareLatticeResult parallel = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{20.5, 26.5}, 0.0, Point2{70.5, 26.5}, config, {}, nullptr,
+      &worker_pool);
+
+  EXPECT_EQ(parallel.status, serial.status);
+  EXPECT_EQ(parallel.risk_stage, serial.risk_stage);
+  EXPECT_EQ(routeFingerprint(parallel.guide), routeFingerprint(serial.guide));
+  EXPECT_EQ(parallel.frontier_candidates_considered,
+            serial.frontier_candidates_considered);
+  EXPECT_GE(parallel.continuation_validation_ms, 0.0);
 }
 
 } // namespace

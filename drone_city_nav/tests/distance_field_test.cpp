@@ -1,3 +1,4 @@
+#include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field.hpp"
 
 #include <gtest/gtest.h>
@@ -68,6 +69,23 @@ TEST(DistanceField2D, UsesOnlyRawOccupiedSources) {
   EXPECT_DOUBLE_EQ(field.distanceAt(GridIndex{2, 2}), 0.0);
   EXPECT_DOUBLE_EQ(field.distanceAt(GridIndex{6, 4}), 0.0);
   EXPECT_DOUBLE_EQ(field.distanceAt(GridIndex{3, 2}), 1.0);
+}
+
+TEST(DistanceField2D, ParallelBuildMatchesSerialBuildExactly) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{1, 1});
+  grid.setOccupied(GridIndex{6, 5});
+  const DistanceField2D serial =
+      DistanceField2D::build(grid, 8.0, DistanceFieldSource::kOccupied);
+  BoundedWorkerPool worker_pool{4U};
+  const DistanceField2D parallel =
+      DistanceField2D::build(grid, 8.0, DistanceFieldSource::kOccupied, &worker_pool);
+
+  ASSERT_EQ(serial.distancesM().size(), parallel.distancesM().size());
+  for (std::size_t index = 0U; index < serial.distancesM().size(); ++index) {
+    EXPECT_EQ(serial.distancesM()[index], parallel.distancesM()[index]);
+  }
+  EXPECT_EQ(serial.stats().source_cells, parallel.stats().source_cells);
 }
 
 } // namespace drone_city_nav

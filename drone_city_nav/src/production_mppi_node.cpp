@@ -102,6 +102,12 @@ ProductionMppiNode::ProductionMppiNode()
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
   maximum_control_feedback_age_ms_ =
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
+  const std::int64_t planner_worker_count =
+      declare_parameter<std::int64_t>("planner_worker_count", 4);
+  if (planner_worker_count < 1 || planner_worker_count > 8) {
+    throw std::invalid_argument{"planner worker count must be in [1, 8]"};
+  }
+  planner_worker_count_ = static_cast<std::size_t>(planner_worker_count);
   use_static_map_ = declare_parameter<bool>("use_static_map", true);
   no_static_guide_lookahead_m_ =
       declare_parameter<double>("no_static_guide_lookahead_m", 30.0);
@@ -491,6 +497,7 @@ ProductionMppiNode::ProductionMppiNode()
       std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
   no_static_cycle_detector_ =
       std::make_unique<NoStaticRouteCycleDetector>(no_static_cycle_config_);
+  planning_worker_pool_ = std::make_unique<BoundedWorkerPool>(planner_worker_count_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
   if (use_static_map_) {
     const auto package_share = std::filesystem::path{
@@ -565,30 +572,30 @@ ProductionMppiNode::ProductionMppiNode()
       std::jthread([this](const std::stop_token token) { guideWorker(token); });
   planning_timer_ = create_wall_timer(
       std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); });
-  RCLCPP_INFO(get_logger(),
-              "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
-              "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
-              "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
-              "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
-              "constrained_route_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
-              "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
-              "guide_heading_blend=(%.1f,%.1f)mps",
-              mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_,
-              0UL, use_static_map_ ? "true" : "false", "false",
-              static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
-              lattice_config_.receding_goal_distance_m,
-              speed_policy_config_.cruise_speed_mps,
-              mppi_config_.dynamics.maximum_horizontal_speed_mps,
-              mppi_config_.dynamics.maximum_horizontal_acceleration_mps2,
-              mppi_config_.dynamics.maximum_control_jerk_mps3,
-              mppi_config_.costs.speed_tracking_weight,
-              use_static_map_ ? constrained_route_speed_limit_mps_ : 0.0F,
-              mppi_config_.costs.head_progress_horizon_s,
-              liveness_config_.enabled ? "true" : "false",
-              frontier_blacklist_enabled_ ? "true" : "false",
-              active_guide_config_.minimum_remaining_m,
-              active_guide_config_.velocity_heading_low_speed_mps,
-              active_guide_config_.velocity_heading_high_speed_mps);
+  RCLCPP_INFO(
+      get_logger(),
+      "Production MPPI ready: rollouts=%zu steps=%zu rate=%.1fHz "
+      "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
+      "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
+      "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
+      "constrained_route_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
+      "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
+      "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu",
+      mppi_config_.rollouts, mppi_config_.steps, tick_rate_hz_, deadline_ms_, 0UL,
+      use_static_map_ ? "true" : "false", "false",
+      static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
+      lattice_config_.receding_goal_distance_m, speed_policy_config_.cruise_speed_mps,
+      mppi_config_.dynamics.maximum_horizontal_speed_mps,
+      mppi_config_.dynamics.maximum_horizontal_acceleration_mps2,
+      mppi_config_.dynamics.maximum_control_jerk_mps3,
+      mppi_config_.costs.speed_tracking_weight,
+      use_static_map_ ? constrained_route_speed_limit_mps_ : 0.0F,
+      mppi_config_.costs.head_progress_horizon_s,
+      liveness_config_.enabled ? "true" : "false",
+      frontier_blacklist_enabled_ ? "true" : "false",
+      active_guide_config_.minimum_remaining_m,
+      active_guide_config_.velocity_heading_low_speed_mps,
+      active_guide_config_.velocity_heading_high_speed_mps, planner_worker_count_);
 }
 
 ProductionMppiNode::~ProductionMppiNode() {
