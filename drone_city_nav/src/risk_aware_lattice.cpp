@@ -2,16 +2,13 @@
 
 #include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/esdf_query.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <numbers>
 #include <optional>
 #include <queue>
 #include <ranges>
@@ -19,8 +16,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "risk_aware_lattice_geometry.hpp"
+
 namespace drone_city_nav {
 namespace {
+
+using detail::SegmentEvaluation;
 
 struct LatticeKey {
   int x{0};
@@ -165,249 +166,6 @@ struct StageOutcome {
       grid.origin_y_m + (static_cast<double>(key.y) + 0.5) * grid.resolution_m};
 }
 
-[[nodiscard]] EsdfQueryResult queryAt(const mppi::EsdfGrid& grid,
-                                      const std::span<const float> esdf_m,
-                                      const Point2 point) {
-  return queryConservativeEsdf(grid, esdf_m, static_cast<float>(point.x),
-                               static_cast<float>(point.y));
-}
-
-[[nodiscard]] double headingForBin(const int bin, const int bins) {
-  return 2.0 * std::numbers::pi * static_cast<double>(bin) / static_cast<double>(bins);
-}
-
-[[nodiscard]] int wrapHeading(const int heading, const int bins) {
-  const int wrapped = heading % bins;
-  return wrapped < 0 ? wrapped + bins : wrapped;
-}
-
-[[nodiscard]] int nearestHeadingBin(const double heading_rad, const int bins) {
-  return wrapHeading(
-      static_cast<int>(std::lround(heading_rad * static_cast<double>(bins) /
-                                   (2.0 * std::numbers::pi))),
-      bins);
-}
-
-[[nodiscard]] int headingBinDistance(const int first, const int second,
-                                     const int bins) noexcept {
-  const int direct = std::abs(first - second);
-  return std::min(direct, bins - direct);
-}
-
-struct SegmentEvaluation {
-  enum class RejectionReason : std::uint8_t {
-    kNone,
-    kOutsideGrid,
-    kInvalidClearance,
-    kRawCollision,
-    kRiskStage,
-  };
-
-  bool valid{false};
-  RejectionReason rejection_reason{RejectionReason::kNone};
-  double critical_exposure_m{0.0};
-  double planning_exposure_m{0.0};
-  mppi::RiskTier worst_tier{mppi::RiskTier::kPreferred};
-  double risk_cost{0.0};
-};
-
-[[nodiscard]] bool riskAllowed(const mppi::RiskTier tier,
-                               const LatticeRiskStage stage) noexcept {
-  switch (stage) {
-    case LatticeRiskStage::kPreferredOnly:
-      return tier == mppi::RiskTier::kPreferred;
-    case LatticeRiskStage::kPlanningAllowed:
-      return tier <= mppi::RiskTier::kPlanning;
-    case LatticeRiskStage::kCriticalAllowed:
-      return tier <= mppi::RiskTier::kCritical;
-  }
-  return false;
-}
-
-[[nodiscard]] SegmentEvaluation
-evaluateSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-                const Point2 start, const Point2 endpoint,
-                const RiskAwareLatticeConfig& config, const LatticeRiskStage stage) {
-  SegmentEvaluation result{.valid = true};
-  const SweptFootprintResult footprint = validateSweptFootprint(
-      grid, esdf_m, Point3{start.x, start.y, 0.0}, Point3{endpoint.x, endpoint.y, 0.0},
-      SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
-                           .perimeter_samples = config.physical_footprint_samples,
-                           .sweep_step_m = config.primitive_sample_step_m});
-  if (!footprint.accepted()) {
-    result.valid = false;
-    switch (footprint.status) {
-      case SweptFootprintStatus::kOutsideGrid:
-        result.rejection_reason = SegmentEvaluation::RejectionReason::kOutsideGrid;
-        break;
-      case SweptFootprintStatus::kInvalidEsdf:
-        result.rejection_reason = SegmentEvaluation::RejectionReason::kInvalidClearance;
-        break;
-      case SweptFootprintStatus::kRawCollision:
-        result.rejection_reason = SegmentEvaluation::RejectionReason::kRawCollision;
-        break;
-      case SweptFootprintStatus::kValid:
-        break;
-    }
-    return result;
-  }
-  const double length_m = distance(start, endpoint);
-  const int sample_count =
-      static_cast<int>(std::ceil(length_m / config.primitive_sample_step_m));
-  for (int sample_index = 1; sample_index <= sample_count; ++sample_index) {
-    const double sample_distance = std::min(
-        length_m, static_cast<double>(sample_index) * config.primitive_sample_step_m);
-    const double ratio = length_m > 0.0 ? sample_distance / length_m : 1.0;
-    const Point2 sample{std::lerp(start.x, endpoint.x, ratio),
-                        std::lerp(start.y, endpoint.y, ratio)};
-    const EsdfQueryResult query = queryAt(grid, esdf_m, sample);
-    if (query.status == EsdfQueryStatus::kOutsideGrid) {
-      result.valid = false;
-      result.rejection_reason = SegmentEvaluation::RejectionReason::kOutsideGrid;
-      return result;
-    }
-    if (query.status != EsdfQueryStatus::kValid) {
-      result.valid = false;
-      result.rejection_reason = SegmentEvaluation::RejectionReason::kInvalidClearance;
-      return result;
-    }
-    if (query.raw_occupied) {
-      result.valid = false;
-      result.rejection_reason = SegmentEvaluation::RejectionReason::kRawCollision;
-      return result;
-    }
-    const float clearance = query.clearance_m;
-    if (std::isinf(clearance) && clearance > 0.0F) {
-      continue;
-    }
-    if (clearance < config.critical_distance_m) {
-      result.worst_tier = mppi::RiskTier::kCritical;
-      result.critical_exposure_m += config.primitive_sample_step_m;
-    } else if (clearance < config.preferred_distance_m) {
-      result.worst_tier = std::max(result.worst_tier, mppi::RiskTier::kPlanning);
-      result.planning_exposure_m += config.primitive_sample_step_m;
-    }
-  }
-  if (!riskAllowed(result.worst_tier, stage)) {
-    result.valid = false;
-    result.rejection_reason = SegmentEvaluation::RejectionReason::kRiskStage;
-    return result;
-  }
-  result.risk_cost =
-      result.critical_exposure_m * config.critical_exposure_tie_break_per_m +
-      result.planning_exposure_m * config.planning_exposure_tie_break_per_m;
-  return result;
-}
-
-void recordSegmentRejection(const SegmentEvaluation& segment,
-                            LatticeSuccessorDiagnostics& diagnostics) noexcept {
-  switch (segment.rejection_reason) {
-    case SegmentEvaluation::RejectionReason::kNone:
-      break;
-    case SegmentEvaluation::RejectionReason::kOutsideGrid:
-      ++diagnostics.rejected_outside_grid;
-      break;
-    case SegmentEvaluation::RejectionReason::kInvalidClearance:
-      ++diagnostics.rejected_invalid_clearance;
-      break;
-    case SegmentEvaluation::RejectionReason::kRawCollision:
-      ++diagnostics.rejected_raw_collision;
-      break;
-    case SegmentEvaluation::RejectionReason::kRiskStage:
-      ++diagnostics.rejected_risk_stage;
-      break;
-  }
-}
-
-[[nodiscard]] Point2 recedingGoal(const Point2 start, const Point2 mission_goal,
-                                  const RiskAwareLatticeConfig& config,
-                                  bool& reached_mission_goal) {
-  const double distance =
-      std::hypot(mission_goal.x - start.x, mission_goal.y - start.y);
-  reached_mission_goal = distance <= config.receding_goal_distance_m;
-  if (reached_mission_goal || distance <= 1.0e-6) {
-    return mission_goal;
-  }
-  const double ratio = config.receding_goal_distance_m / distance;
-  return Point2{start.x + (mission_goal.x - start.x) * ratio,
-                start.y + (mission_goal.y - start.y) * ratio};
-}
-
-[[nodiscard]] double guideLength(const std::span<const Point2> guide) noexcept {
-  double length_m = 0.0;
-  for (std::size_t index = 1U; index < guide.size(); ++index) {
-    length_m += std::hypot(guide[index].x - guide[index - 1U].x,
-                           guide[index].y - guide[index - 1U].y);
-  }
-  return length_m;
-}
-
-struct FailureMemoryEvaluation {
-  bool hard_rejected{false};
-  double soft_penalty_cost{0.0};
-};
-
-[[nodiscard]] std::uint64_t failureMemoryFingerprint(
-    const std::span<const LatticeFrontierBlacklistEntry> entries) noexcept {
-  std::uint64_t hash = 14695981039346656037ULL;
-  const auto append = [&hash](const std::uint64_t value) {
-    hash ^= value;
-    hash *= 1099511628211ULL;
-  };
-  for (const LatticeFrontierBlacklistEntry& entry : entries) {
-    append(std::bit_cast<std::uint64_t>(entry.failure_point.x));
-    append(std::bit_cast<std::uint64_t>(entry.failure_point.y));
-    append(std::bit_cast<std::uint64_t>(entry.approach_heading_rad));
-    append(static_cast<std::uint64_t>(entry.expires_at_ns));
-    append(std::bit_cast<std::uint64_t>(entry.soft_penalty_cost));
-  }
-  return hash;
-}
-
-[[nodiscard]] FailureMemoryEvaluation
-evaluateFailureMemory(const std::span<const Point2> guide,
-                      const std::span<const LatticeFrontierBlacklistEntry> blacklist,
-                      const RiskAwareLatticeConfig& config) {
-  FailureMemoryEvaluation result;
-  for (std::size_t index = 1U; index < guide.size(); ++index) {
-    const Point2& from = guide[index - 1U];
-    const Point2& to = guide[index];
-    const double segment_heading = std::atan2(to.y - from.y, to.x - from.x);
-    const int segment_heading_bin =
-        nearestHeadingBin(segment_heading, config.heading_bins);
-    for (const LatticeFrontierBlacklistEntry& entry : blacklist) {
-      const int failed_heading_bin =
-          nearestHeadingBin(entry.approach_heading_rad, config.heading_bins);
-      if (headingBinDistance(segment_heading_bin, failed_heading_bin,
-                             config.heading_bins) >
-          config.frontier_blacklist_heading_tolerance_bins) {
-        continue;
-      }
-      const double segment_length = distance(from, to);
-      const int sample_count = std::max(
-          1,
-          static_cast<int>(std::ceil(segment_length / config.primitive_sample_step_m)));
-      for (int sample = 1; sample <= sample_count; ++sample) {
-        const double ratio =
-            static_cast<double>(sample) / static_cast<double>(sample_count);
-        const Point2 point{std::lerp(from.x, to.x, ratio),
-                           std::lerp(from.y, to.y, ratio)};
-        if (distance(point, entry.failure_point) <=
-            config.frontier_blacklist_radius_m) {
-          if (entry.soft_penalty_cost > 0.0) {
-            result.soft_penalty_cost =
-                std::max(result.soft_penalty_cost, entry.soft_penalty_cost);
-          } else {
-            result.hard_rejected = true;
-          }
-          break;
-        }
-      }
-    }
-  }
-  return result;
-}
-
 } // namespace
 
 struct RiskAwareLatticeSearchSession::Impl {
@@ -440,7 +198,8 @@ struct RiskAwareLatticeSearchSession::Impl {
            preferred_heading_rad == candidate_heading &&
            blacklist_data == candidate_blacklist.data() &&
            blacklist_size == candidate_blacklist.size() &&
-           failure_memory_fingerprint == failureMemoryFingerprint(candidate_blacklist);
+           failure_memory_fingerprint ==
+               detail::latticeFailureMemoryFingerprint(candidate_blacklist);
   }
 
   void
@@ -457,7 +216,8 @@ struct RiskAwareLatticeSearchSession::Impl {
     preferred_heading_rad = candidate_heading;
     blacklist_data = candidate_blacklist.data();
     blacklist_size = candidate_blacklist.size();
-    failure_memory_fingerprint = failureMemoryFingerprint(candidate_blacklist);
+    failure_memory_fingerprint =
+        detail::latticeFailureMemoryFingerprint(candidate_blacklist);
     outcomes = {};
   }
 };
@@ -504,17 +264,19 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       config.frontier_blacklist_heading_tolerance_bins > config.heading_bins / 2) {
     return result;
   }
-  result.planning_goal =
-      recedingGoal(start, mission_goal, config, result.reached_mission_goal);
+  result.planning_goal = detail::recedingLatticeGoal(start, mission_goal, config,
+                                                     result.reached_mission_goal);
   const auto makeKey = [&grid, &config](const Point2 point, const int heading) {
     return LatticeKey{
         static_cast<int>(std::floor((point.x - grid.origin_x_m) / grid.resolution_m)),
         static_cast<int>(std::floor((point.y - grid.origin_y_m) / grid.resolution_m)),
-        wrapHeading(heading, config.heading_bins)};
+        detail::wrapLatticeHeading(heading, config.heading_bins)};
   };
   const LatticeKey start_key =
-      makeKey(start, nearestHeadingBin(preferred_heading_rad, config.heading_bins));
-  if (queryAt(grid, esdf_m, start).status == EsdfQueryStatus::kOutsideGrid) {
+      makeKey(start, detail::nearestLatticeHeadingBin(preferred_heading_rad,
+                                                      config.heading_bins));
+  if (detail::queryLatticeEsdf(grid, esdf_m, start).status ==
+      EsdfQueryStatus::kOutsideGrid) {
     return result;
   }
   std::unique_ptr<RiskAwareLatticeSearchSession> local_session;
@@ -558,7 +320,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       if (diagnostics != nullptr) {
         ++diagnostics->generated;
       }
-      const double heading = headingForBin(next_heading, config.heading_bins);
+      const double heading =
+          detail::latticeHeadingForBin(next_heading, config.heading_bins);
       const Point2 endpoint{current.x + std::cos(heading) * length_m,
                             current.y + std::sin(heading) * length_m};
       if (!inside_roi(endpoint)) {
@@ -568,17 +331,18 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         }
         return;
       }
-      const SegmentEvaluation segment =
-          evaluateSegment(grid, esdf_m, current, endpoint, config, stage);
+      const SegmentEvaluation segment = detail::evaluateLatticeSegment(
+          grid, esdf_m, current, endpoint, config, stage);
       if (!segment.valid) {
         if (diagnostics != nullptr) {
-          recordSegmentRejection(segment, *diagnostics);
+          detail::recordLatticeSegmentRejection(segment, *diagnostics);
         }
         return;
       }
       const std::array candidate_segment{current, endpoint};
-      const FailureMemoryEvaluation failure_memory =
-          evaluateFailureMemory(candidate_segment, frontier_blacklist, config);
+      const detail::FailureMemoryEvaluation failure_memory =
+          detail::evaluateLatticeFailureMemory(candidate_segment, frontier_blacklist,
+                                               config);
       if (failure_memory.hard_rejected) {
         if (diagnostics != nullptr) {
           ++diagnostics->rejected_blacklisted_failure;
@@ -589,8 +353,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       if (!emitted.insert(key).second) {
         return;
       }
-      const int heading_change =
-          headingBinDistance(current_key.heading, next_heading, config.heading_bins);
+      const int heading_change = detail::latticeHeadingBinDistance(
+          current_key.heading, next_heading, config.heading_bins);
       successors.push_back(Successor{
           .key = key,
           .endpoint = endpoint,
@@ -612,7 +376,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     constexpr std::array normal_heading_offsets{-4, -2, -1, 0, 1, 2, 4, 8};
     for (const int heading_offset : normal_heading_offsets) {
       add_motion_successor(
-          wrapHeading(current_key.heading + heading_offset, config.heading_bins),
+          detail::wrapLatticeHeading(current_key.heading + heading_offset,
+                                     config.heading_bins),
           config.primitive_length_m);
     }
     if (profile != nullptr) {
@@ -662,8 +427,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const Point2 current = cellCenter(grid, entry.key);
       const double goal_distance = distance(current, result.planning_goal);
       if (goal_distance <= config.goal_tolerance_m) {
-        const SegmentEvaluation connector =
-            evaluateSegment(grid, esdf_m, current, result.planning_goal, config, stage);
+        const SegmentEvaluation connector = detail::evaluateLatticeSegment(
+            grid, esdf_m, current, result.planning_goal, config, stage);
         if (connector.valid) {
           outcome.goal_reached = true;
           outcome.terminal = entry.key;
@@ -790,7 +555,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const Point2 endpoint = cellCenter(grid, candidate.key);
       const double bearing = std::atan2(endpoint.y - start.y, endpoint.x - start.x);
       const std::size_t sector = static_cast<std::size_t>(
-          nearestHeadingBin(bearing, static_cast<int>(sector_count)));
+          detail::nearestLatticeHeadingBin(bearing, static_cast<int>(sector_count)));
       sectors.at(sector).push_back(candidate);
       all_candidates.push_back(candidate);
     }
@@ -983,7 +748,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       result.risk_stage = stage;
       result.planning_goal_reached = true;
       result.exact_terminal_connector = true;
-      result.guide_length_m = guideLength(result.guide);
+      result.guide_length_m = detail::latticeGuideLength(result.guide);
       result.achieved_progress_m = distance(start, result.planning_goal);
       result.remaining_goal_distance_m = 0.0;
       result.valid = true;
@@ -1020,7 +785,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const LatticeKey& key = pooled.key;
       const Point2 terminal = cellCenter(grid, key);
       std::vector<Point2> guide = reconstruct(outcome, key);
-      if (evaluateFailureMemory(guide, frontier_blacklist, config).hard_rejected) {
+      if (detail::evaluateLatticeFailureMemory(guide, frontier_blacklist, config)
+              .hard_rejected) {
         return;
       }
       const ContinuationEvaluation continuation =
@@ -1030,7 +796,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           guide.push_back(point);
         }
       }
-      const double guide_length_m = guideLength(guide);
+      const double guide_length_m = detail::latticeGuideLength(guide);
       const Point2 endpoint = guide.empty() ? terminal : guide.back();
       const double remaining_m = distance(endpoint, result.planning_goal);
       const double progress_m = distance(start, result.planning_goal) - remaining_m;
@@ -1133,12 +899,12 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     static_cast<void>(roi_boundary_seen);
     for (const Successor& successor : immediate) {
       const SegmentEvaluation from_actual_start =
-          evaluateSegment(grid, esdf_m, start, successor.endpoint, config,
-                          LatticeRiskStage::kCriticalAllowed);
+          detail::evaluateLatticeSegment(grid, esdf_m, start, successor.endpoint,
+                                         config, LatticeRiskStage::kCriticalAllowed);
       const std::array validation_guide{start, successor.endpoint};
-      if (!from_actual_start.valid ||
-          evaluateFailureMemory(validation_guide, frontier_blacklist, config)
-              .hard_rejected) {
+      if (!from_actual_start.valid || detail::evaluateLatticeFailureMemory(
+                                          validation_guide, frontier_blacklist, config)
+                                          .hard_rejected) {
         continue;
       }
       const ContinuationEvaluation continuation = evaluate_continuation(
@@ -1147,7 +913,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       fallback_guide.insert(fallback_guide.end(), continuation.extension.begin(),
                             continuation.extension.end());
       const Point2 endpoint = fallback_guide.back();
-      const double guide_length_m = guideLength(fallback_guide);
+      const double guide_length_m = detail::latticeGuideLength(fallback_guide);
       const double remaining_m = distance(endpoint, result.planning_goal);
       FrontierEvaluation candidate{
           .key = successor.key,

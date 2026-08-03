@@ -144,8 +144,10 @@ add_library(
   src/px4_ros_time_mapper.cpp
   src/raw_guide_validation.cpp
   src/risk_aware_lattice.cpp
+  src/risk_aware_lattice_geometry.cpp
   src/risk_aware_lattice_names.cpp
   src/risk_aware_lattice_3d.cpp
+  src/risk_aware_lattice_3d_result.cpp
   src/route_3d.cpp
   src/static_route_extension.cpp
   src/static_route_geometry.cpp
@@ -298,6 +300,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node.cpp
     src/production_mppi_node_esdf.cpp
     src/production_mppi_node_inputs.cpp
+    src/production_mppi_node_planning_tick.cpp
     src/production_mppi_node_runtime.cpp
     src/production_mppi_route_helpers.cpp
     src/production_mppi_node_static_extension.cpp
