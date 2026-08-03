@@ -145,12 +145,14 @@ struct ProductionMppiPreparedEsdf {
   double lattice_frontier_selection_score{0.0};
   std::size_t lattice_frontier_candidates_considered{0U};
   LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
+  LatticeSuccessorProfiling lattice_successor_profiling{};
   Lattice3DStatus lattice_3d_status{Lattice3DStatus::kInvalidInput};
   Lattice3DRiskStage lattice_3d_risk_stage{Lattice3DRiskStage::kPreferredOnly};
   Lattice3DSearchTermination lattice_3d_termination{
       Lattice3DSearchTermination::kInvalidInput};
   double lattice_3d_minimum_clearance_m{0.0};
   Lattice3DSuccessorDiagnostics lattice_3d_successor_diagnostics{};
+  Lattice3DSuccessorProfiling lattice_3d_successor_profiling{};
   std::size_t lattice_continuation_attempt{0U};
   double lattice_search_session_age_ms{0.0};
   bool no_static_cycle_detected{false};

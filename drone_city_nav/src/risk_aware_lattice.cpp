@@ -83,6 +83,7 @@ struct FrontierEvaluation {
   std::size_t continuation_states{0U};
   double reachable_depth_m{0.0};
   LatticeRiskStage stage{LatticeRiskStage::kPreferredOnly};
+  LatticeSuccessorBatchProfile successor_profile{};
 };
 
 struct ContinuationEvaluation {
@@ -90,7 +91,17 @@ struct ContinuationEvaluation {
   std::size_t reachable_states{0U};
   double reachable_depth_m{0.0};
   std::vector<Point2> extension;
+  LatticeSuccessorBatchProfile successor_profile{};
 };
+
+void accumulateSuccessorProfile(LatticeSuccessorBatchProfile& target,
+                                const LatticeSuccessorBatchProfile& addition) noexcept {
+  target.collection_calls += addition.collection_calls;
+  target.candidates += addition.candidates;
+  target.maximum_candidates =
+      std::max(target.maximum_candidates, addition.maximum_candidates);
+  target.worker_ms += addition.worker_ms;
+}
 
 struct ContinuationQueueEntry {
   LatticeKey key{};
@@ -536,7 +547,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
                                       const LatticeKey& current_key,
                                       const LatticeRiskStage stage,
                                       bool& roi_boundary_seen,
-                                      LatticeSuccessorDiagnostics* diagnostics) {
+                                      LatticeSuccessorDiagnostics* diagnostics,
+                                      LatticeSuccessorBatchProfile* profile) {
+    const auto collection_started = std::chrono::steady_clock::now();
     std::vector<Successor> successors;
     successors.reserve(static_cast<std::size_t>(config.heading_bins) + 8U);
     std::unordered_set<LatticeKey, LatticeKeyHash> emitted;
@@ -602,6 +615,17 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           wrapHeading(current_key.heading + heading_offset, config.heading_bins),
           config.primitive_length_m);
     }
+    if (profile != nullptr) {
+      ++profile->collection_calls;
+      const std::size_t candidate_count =
+          static_cast<std::size_t>(config.heading_bins) + normal_heading_offsets.size();
+      profile->candidates += candidate_count;
+      profile->maximum_candidates =
+          std::max(profile->maximum_candidates, candidate_count);
+      profile->worker_ms += std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - collection_started)
+                                .count();
+    }
     return successors;
   };
 
@@ -649,9 +673,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         }
       }
       ++outcome.expansions;
-      const std::vector<Successor> successors =
-          collect_successors(current, entry.key, stage, outcome.roi_boundary_seen,
-                             &outcome.successor_diagnostics);
+      const std::vector<Successor> successors = collect_successors(
+          current, entry.key, stage, outcome.roi_boundary_seen,
+          &outcome.successor_diagnostics, &result.successor_profiling.search);
       for (const Successor& successor : successors) {
         const double next_cost = record->second.cost + successor.edge_cost;
         Record& next_record = outcome.records[successor.key];
@@ -848,8 +872,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       bool roi_boundary_seen = false;
       const Point2 current_point =
           current.path_depth_m > 0.0 ? cellCenter(grid, current.key) : terminal;
-      const std::vector<Successor> successors = collect_successors(
-          current_point, current.key, stage, roi_boundary_seen, nullptr);
+      const std::vector<Successor> successors =
+          collect_successors(current_point, current.key, stage, roi_boundary_seen,
+                             nullptr, &evaluation.successor_profile);
       static_cast<void>(roi_boundary_seen);
       if (current.path_depth_m == 0.0) {
         evaluation.immediate_successors = successors.size();
@@ -1024,6 +1049,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           .continuation_states = continuation.reachable_states,
           .reachable_depth_m = continuation.reachable_depth_m,
           .stage = stage,
+          .successor_profile = continuation.successor_profile,
       };
       evaluated[candidate_index] = std::move(candidate);
     };
@@ -1044,6 +1070,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         continue;
       }
       FrontierEvaluation candidate = std::move(*evaluated_candidate);
+      accumulateSuccessorProfile(result.successor_profiling.continuation,
+                                 candidate.successor_profile);
       const double guide_length_m = candidate.guide_length_m;
       const double endpoint_displacement_m = candidate.endpoint_displacement_m;
       if (candidate.guide.size() >= 2U && endpoint_displacement_m > 1.0e-9 &&
@@ -1099,9 +1127,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       !best_fallback.has_value()) {
     bool roi_boundary_seen = false;
     const Point2 search_start = cellCenter(grid, start_key);
-    const std::vector<Successor> immediate =
-        collect_successors(search_start, start_key, LatticeRiskStage::kCriticalAllowed,
-                           roi_boundary_seen, nullptr);
+    const std::vector<Successor> immediate = collect_successors(
+        search_start, start_key, LatticeRiskStage::kCriticalAllowed, roi_boundary_seen,
+        nullptr, &result.successor_profiling.continuation);
     static_cast<void>(roi_boundary_seen);
     for (const Successor& successor : immediate) {
       const SegmentEvaluation from_actual_start =

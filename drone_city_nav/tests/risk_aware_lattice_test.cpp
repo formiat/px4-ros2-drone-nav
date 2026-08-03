@@ -37,6 +37,10 @@ TEST(RiskAwareLattice, BuildsGuideThroughOpenSpace) {
   EXPECT_DOUBLE_EQ(result.guide.back().x, 34.5);
   EXPECT_DOUBLE_EQ(result.guide.back().y, 10.5);
   EXPECT_NEAR(result.guide.front().y, 10.5, 1.0);
+  EXPECT_GT(result.successor_profiling.search.collection_calls, 0U);
+  EXPECT_GT(result.successor_profiling.search.candidates, 0U);
+  EXPECT_GT(result.successor_profiling.search.maximum_candidates, 0U);
+  EXPECT_GE(result.successor_profiling.search.worker_ms, 0.0);
 }
 
 TEST(RiskAwareLattice, RejectsRawCollisionAndRoutesAroundWall) {
@@ -125,6 +129,10 @@ TEST(RiskAwareLattice, ClassifiesUsefulBudgetLimitedGuideAsViableFrontier) {
   EXPECT_GT(result.terminal_successor_count, 0U);
   EXPECT_GT(result.continuation_reachable_states, 0U);
   EXPECT_GE(result.reachable_depth_m, config.minimum_frontier_reachable_depth_m);
+  EXPECT_GT(result.successor_profiling.continuation.collection_calls, 0U);
+  EXPECT_GT(result.successor_profiling.continuation.candidates, 0U);
+  EXPECT_GT(result.successor_profiling.continuation.maximum_candidates, 0U);
+  EXPECT_GE(result.successor_profiling.continuation.worker_ms, 0.0);
 }
 
 TEST(RiskAwareLattice, IncludesValidatedContinuationInExecutableFrontier) {

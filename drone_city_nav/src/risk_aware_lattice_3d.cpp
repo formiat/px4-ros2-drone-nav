@@ -110,7 +110,18 @@ struct ContinuationMetrics {
   std::size_t immediate_successors{0U};
   std::size_t reachable_states{0U};
   double reachable_depth_m{0.0};
+  Lattice3DSuccessorBatchProfile successor_profile{};
 };
+
+void accumulateSuccessorProfile(
+    Lattice3DSuccessorBatchProfile& target,
+    const Lattice3DSuccessorBatchProfile& addition) noexcept {
+  target.collection_calls += addition.collection_calls;
+  target.candidates += addition.candidates;
+  target.maximum_candidates =
+      std::max(target.maximum_candidates, addition.maximum_candidates);
+  target.worker_ms += addition.worker_ms;
+}
 
 struct ReconstructedPath {
   std::vector<Point3> points;
@@ -253,6 +264,8 @@ evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> es
              config.frontier_minimum_reachable_depth_m) {
     const Candidate current = pending.front();
     pending.pop();
+    const auto collection_started = std::chrono::steady_clock::now();
+    std::size_t candidate_count = 0U;
     for (const int dx : kOffsets) {
       for (const int dy : kOffsets) {
         for (const int dz : kOffsets) {
@@ -283,6 +296,7 @@ evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> es
               continue;
             }
           }
+          ++candidate_count;
           if (evaluateEdge(grid, esdf_m, current.point, successor, stage, config)
                   .status != EdgeEvaluationStatus::kValid) {
             continue;
@@ -297,6 +311,14 @@ evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> es
         }
       }
     }
+    ++result.successor_profile.collection_calls;
+    result.successor_profile.candidates += candidate_count;
+    result.successor_profile.maximum_candidates =
+        std::max(result.successor_profile.maximum_candidates, candidate_count);
+    result.successor_profile.worker_ms +=
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  collection_started)
+            .count();
   }
   return result;
 }
@@ -579,6 +601,9 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
                        .sequence = sequence++,
                        .key = root});
   Lattice3DSuccessorDiagnostics successor_diagnostics;
+  Lattice3DSuccessorProfiling successor_profiling;
+  const auto root_successors_started = Clock::now();
+  const std::size_t root_generated_before = successor_diagnostics.channel_generated;
   for (std::size_t channel_index = 0U; channel_index < channels.size();
        ++channel_index) {
     for (const bool reversed : {false, true}) {
@@ -604,6 +629,17 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
                            .key = next});
       ++successor_diagnostics.channel_accepted;
     }
+  }
+  if (successor_diagnostics.channel_generated > root_generated_before) {
+    const std::size_t candidate_count =
+        successor_diagnostics.channel_generated - root_generated_before;
+    ++successor_profiling.search.collection_calls;
+    successor_profiling.search.candidates += candidate_count;
+    successor_profiling.search.maximum_candidates =
+        std::max(successor_profiling.search.maximum_candidates, candidate_count);
+    successor_profiling.search.worker_ms += std::chrono::duration<double, std::milli>(
+                                                Clock::now() - root_successors_started)
+                                                .count();
   }
   Key best = root;
   double best_remaining = distance3D(start, planning_goal);
@@ -655,6 +691,12 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
         break;
       }
     }
+
+    const auto successors_started = Clock::now();
+    const std::size_t lattice_generated_before =
+        successor_diagnostics.lattice_generated;
+    const std::size_t channel_generated_before =
+        successor_diagnostics.channel_generated;
 
     const Key lattice_base = entry.key.kind == NodeKind::kLattice
                                  ? entry.key
@@ -746,6 +788,16 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
         records_peak = std::max(records_peak, records.size());
       }
     }
+    const std::size_t candidate_count =
+        successor_diagnostics.lattice_generated - lattice_generated_before +
+        successor_diagnostics.channel_generated - channel_generated_before;
+    ++successor_profiling.search.collection_calls;
+    successor_profiling.search.candidates += candidate_count;
+    successor_profiling.search.maximum_candidates =
+        std::max(successor_profiling.search.maximum_candidates, candidate_count);
+    successor_profiling.search.worker_ms +=
+        std::chrono::duration<double, std::milli>(Clock::now() - successors_started)
+            .count();
   }
 
   RiskAwareLattice3DResult result;
@@ -757,6 +809,7 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   result.open_peak = open_peak;
   result.records_peak = records_peak;
   result.successor_diagnostics = successor_diagnostics;
+  result.successor_profiling = successor_profiling;
   ReconstructedPath reconstructed = reconstruct(best, start, channels, config, records);
   result.points = std::move(reconstructed.points);
   result.selected_channels = std::move(reconstructed.traversals);
@@ -798,6 +851,7 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     result.terminal_successor_count = continuation.immediate_successors;
     result.continuation_reachable_states = continuation.reachable_states;
     result.continuation_reachable_depth_m = continuation.reachable_depth_m;
+    result.successor_profiling.continuation = continuation.successor_profile;
     result.continuation_validation_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   continuation_started)
@@ -1013,7 +1067,18 @@ planRiskAwareLattice3D(const mppi::EsdfGrid& grid, const std::span<const float> 
   for (std::size_t rank = 0U; rank < diagnostics.size(); ++rank) {
     diagnostics[rank].candidate_rank = rank;
   }
+  Lattice3DSuccessorProfiling aggregate_successor_profiling;
+  double aggregate_continuation_validation_ms = 0.0;
+  for (const RiskAwareLattice3DResult& stage_result : stage_results) {
+    accumulateSuccessorProfile(aggregate_successor_profiling.search,
+                               stage_result.successor_profiling.search);
+    accumulateSuccessorProfile(aggregate_successor_profiling.continuation,
+                               stage_result.successor_profiling.continuation);
+    aggregate_continuation_validation_ms += stage_result.continuation_validation_ms;
+  }
   RiskAwareLattice3DResult result = std::move(stage_results[*selected]);
+  result.successor_profiling = aggregate_successor_profiling;
+  result.continuation_validation_ms = aggregate_continuation_validation_ms;
   result.planning_goal = planning_goal;
   result.topology_candidates = std::move(diagnostics);
   result.route_fingerprint = routeFingerprint(result.route, result.selected_channels);

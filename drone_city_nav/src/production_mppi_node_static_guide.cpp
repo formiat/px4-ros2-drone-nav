@@ -54,6 +54,7 @@ void ProductionMppiNode::processStaticGuideSearch(
   prepared.lattice_3d_termination = lattice.termination;
   prepared.lattice_3d_minimum_clearance_m = lattice.minimum_clearance_m;
   prepared.lattice_3d_successor_diagnostics = lattice.successor_diagnostics;
+  prepared.lattice_3d_successor_profiling = lattice.successor_profiling;
   prepared.lattice_search_session_complete =
       lattice.status != Lattice3DStatus::kSearchIncomplete;
   prepared.lattice_search_revision = world.revision;
@@ -255,6 +256,12 @@ void ProductionMppiNode::processStaticGuideSearch(
       "channel_successor_reject_grid=%zu channel_successor_reject_invalid=%zu "
       "channel_successor_reject_collision=%zu channel_successor_reject_risk=%zu "
       "channel_successor_reject_cost=%zu "
+      "successor_search_batches=%zu successor_search_candidates=%zu "
+      "successor_search_batch_max=%zu successor_search_worker_ms=%.3f "
+      "successor_continuation_batches=%zu "
+      "successor_continuation_candidates=%zu "
+      "successor_continuation_batch_max=%zu "
+      "successor_continuation_worker_ms=%.3f "
       "objective=%.3f route_length_m=%.2f travel_time_s=%.2f "
       "vertical_alignment_time_s=%.2f planning_exposure_m=%.2f "
       "critical_exposure_m=%.2f selected_channels=%zu search_ms=%.2f "
@@ -304,7 +311,15 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.successor_diagnostics.channel_rejected_raw_collision,
       lattice.successor_diagnostics.channel_rejected_risk_stage,
       lattice.successor_diagnostics.channel_rejected_no_cost_improvement,
-      lattice.objective_cost, lattice.route_length_m, lattice.estimated_travel_time_s,
+      lattice.successor_profiling.search.collection_calls,
+      lattice.successor_profiling.search.candidates,
+      lattice.successor_profiling.search.maximum_candidates,
+      lattice.successor_profiling.search.worker_ms,
+      lattice.successor_profiling.continuation.collection_calls,
+      lattice.successor_profiling.continuation.candidates,
+      lattice.successor_profiling.continuation.maximum_candidates,
+      lattice.successor_profiling.continuation.worker_ms, lattice.objective_cost,
+      lattice.route_length_m, lattice.estimated_travel_time_s,
       lattice.vertical_alignment_time_s, lattice.planning_exposure_m,
       lattice.critical_exposure_m, lattice.selected_channels.size(), search_ms,
       prepared.continuation_validation_ms, prepared.candidate_validation_ms,

@@ -56,6 +56,18 @@ struct Lattice3DSuccessorDiagnostics {
   std::size_t channel_rejected_no_cost_improvement{0U};
 };
 
+struct Lattice3DSuccessorBatchProfile {
+  std::size_t collection_calls{0U};
+  std::size_t candidates{0U};
+  std::size_t maximum_candidates{0U};
+  double worker_ms{0.0};
+};
+
+struct Lattice3DSuccessorProfiling {
+  Lattice3DSuccessorBatchProfile search{};
+  Lattice3DSuccessorBatchProfile continuation{};
+};
+
 struct RiskAwareLattice3DConfig {
   double horizontal_step_m{2.0};
   double vertical_step_m{1.0};
@@ -135,6 +147,7 @@ struct RiskAwareLattice3DResult {
   double continuation_validation_ms{0.0};
   std::uint64_t route_fingerprint{0U};
   Lattice3DSuccessorDiagnostics successor_diagnostics{};
+  Lattice3DSuccessorProfiling successor_profiling{};
   std::vector<SelectedChannelTraversal> selected_channels;
   std::vector<Lattice3DTopologyCandidate> topology_candidates;
 };

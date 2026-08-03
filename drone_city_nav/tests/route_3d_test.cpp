@@ -203,6 +203,10 @@ TEST(Route3DTest, LatticeUsesVerticalFreeOpeningWithoutYawConstraint) {
   EXPECT_EQ(result.termination, Lattice3DSearchTermination::kPlanningGoalReached);
   EXPECT_GT(result.records_peak, 0U);
   EXPECT_GT(result.successor_diagnostics.lattice_generated, 0U);
+  EXPECT_GT(result.successor_profiling.search.collection_calls, 0U);
+  EXPECT_GT(result.successor_profiling.search.candidates, 0U);
+  EXPECT_GT(result.successor_profiling.search.maximum_candidates, 0U);
+  EXPECT_GE(result.successor_profiling.search.worker_ms, 0.0);
   ASSERT_FALSE(result.points.empty());
   EXPECT_NEAR(result.points.back().x, 9.5, 1.0e-6);
   EXPECT_TRUE(result.reached_mission_goal);
@@ -359,6 +363,10 @@ TEST(Route3DTest, FartherPlanningFrontierBeatsBlockedPreferredFrontier) {
   EXPECT_EQ(result.risk_stage, Lattice3DRiskStage::kPlanningAllowed);
   ASSERT_FALSE(result.points.empty());
   EXPECT_GT(result.points.back().x, 10.0);
+  EXPECT_GT(result.successor_profiling.continuation.collection_calls, 0U);
+  EXPECT_GT(result.successor_profiling.continuation.candidates, 0U);
+  EXPECT_GT(result.successor_profiling.continuation.maximum_candidates, 0U);
+  EXPECT_GE(result.successor_profiling.continuation.worker_ms, 0.0);
 }
 
 TEST(Route3DTest, BuildsTypedSpanFromSelectedChannelTraversal) {

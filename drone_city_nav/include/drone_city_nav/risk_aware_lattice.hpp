@@ -57,6 +57,18 @@ struct LatticeSuccessorDiagnostics {
   std::size_t rejected_no_cost_improvement{0U};
 };
 
+struct LatticeSuccessorBatchProfile {
+  std::size_t collection_calls{0U};
+  std::size_t candidates{0U};
+  std::size_t maximum_candidates{0U};
+  double worker_ms{0.0};
+};
+
+struct LatticeSuccessorProfiling {
+  LatticeSuccessorBatchProfile search{};
+  LatticeSuccessorBatchProfile continuation{};
+};
+
 struct RiskAwareLatticeConfig {
   int heading_bins{16};
   double primitive_length_m{4.0};
@@ -113,6 +125,7 @@ struct RiskAwareLatticeResult {
   std::size_t frontier_candidates_considered{0U};
   double continuation_validation_ms{0.0};
   LatticeSuccessorDiagnostics successor_diagnostics{};
+  LatticeSuccessorProfiling successor_profiling{};
   bool search_session_resumed{false};
   bool search_session_complete{true};
 };

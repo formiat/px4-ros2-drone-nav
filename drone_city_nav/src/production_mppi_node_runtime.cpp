@@ -585,6 +585,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     prepared.continuation_validation_ms =
         lattice_observation.continuation_validation_ms;
     prepared.lattice_successor_diagnostics = lattice_observation.successor_diagnostics;
+    prepared.lattice_successor_profiling = lattice_observation.successor_profiling;
     prepared.lattice_continuation_attempt = continuation_attempt;
     prepared.lattice_search_session_age_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
@@ -647,6 +648,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         "successor_reject_collision=%zu "
         "successor_reject_risk=%zu successor_reject_blacklist=%zu "
         "successor_reject_cost=%zu successor_soft_tabu=%zu "
+        "successor_search_batches=%zu successor_search_candidates=%zu "
+        "successor_search_batch_max=%zu successor_search_worker_ms=%.3f "
+        "successor_continuation_batches=%zu "
+        "successor_continuation_candidates=%zu "
+        "successor_continuation_batch_max=%zu "
+        "successor_continuation_worker_ms=%.3f "
         "search_session_age_ms=%.2f cycle_detected=%s adaptive_search=%s "
         "soft_tabu_entries=%zu selected_candidate_status=%s "
         "selected_candidate_base_generation=%" PRIu64
@@ -706,6 +713,14 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         prepared.lattice_successor_diagnostics.rejected_blacklisted_failure,
         prepared.lattice_successor_diagnostics.rejected_no_cost_improvement,
         prepared.lattice_successor_diagnostics.soft_tabu_penalties_applied,
+        prepared.lattice_successor_profiling.search.collection_calls,
+        prepared.lattice_successor_profiling.search.candidates,
+        prepared.lattice_successor_profiling.search.maximum_candidates,
+        prepared.lattice_successor_profiling.search.worker_ms,
+        prepared.lattice_successor_profiling.continuation.collection_calls,
+        prepared.lattice_successor_profiling.continuation.candidates,
+        prepared.lattice_successor_profiling.continuation.maximum_candidates,
+        prepared.lattice_successor_profiling.continuation.worker_ms,
         prepared.lattice_search_session_age_ms,
         prepared.no_static_cycle_detected ? "true" : "false",
         prepared.no_static_adaptive_search ? "true" : "false",
