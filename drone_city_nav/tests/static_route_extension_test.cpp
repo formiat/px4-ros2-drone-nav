@@ -156,6 +156,20 @@ TEST(StaticRouteExtensionTest, CoalescesReplanForOneRouteGeneration) {
   EXPECT_TRUE(gate.tryBegin(7U));
 }
 
+TEST(StaticRouteExtensionTest, RepeatedRoiRefreshUsesUniqueRequestSequence) {
+  StaticRouteRoiRefreshLifecycle lifecycle;
+
+  const StaticRouteRoiRefreshRequest first = lifecycle.queue(7U);
+  EXPECT_TRUE(lifecycle.pending(first));
+  lifecycle.complete(first.sequence);
+  EXPECT_FALSE(lifecycle.pending(first));
+
+  const StaticRouteRoiRefreshRequest second = lifecycle.queue(7U);
+  EXPECT_GT(second.sequence, first.sequence);
+  EXPECT_EQ(second.base_route_generation, first.base_route_generation);
+  EXPECT_TRUE(lifecycle.pending(second));
+}
+
 TEST(StaticRouteExtensionTest, ProtectsConstrainedSuffixThroughDeparture) {
   const std::vector<RouteSample3D> active =
       sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 10.0);

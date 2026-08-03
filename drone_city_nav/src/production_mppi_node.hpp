@@ -407,8 +407,7 @@ private:
   double static_route_extension_last_request_station_m_{0.0};
   std::int64_t static_route_extension_last_request_stamp_ns_{0};
   StaticRouteReplanGate static_route_replan_gate_{};
-  std::atomic<std::uint64_t> static_roi_refresh_request_generation_{0U};
-  std::uint64_t static_roi_refresh_completed_generation_{0U};
+  StaticRouteRoiRefreshLifecycle static_roi_refresh_lifecycle_{};
 
   mutable std::mutex input_mutex_;
   ProductionMppiNavigation navigation_{};

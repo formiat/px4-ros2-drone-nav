@@ -6,6 +6,7 @@
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -56,6 +57,27 @@ public:
 
 private:
   std::uint64_t generation_{0U};
+};
+
+struct StaticRouteRoiRefreshRequest {
+  std::uint64_t sequence{0U};
+  std::uint64_t base_route_generation{0U};
+};
+
+class StaticRouteRoiRefreshLifecycle final {
+public:
+  [[nodiscard]] StaticRouteRoiRefreshRequest
+  queue(std::uint64_t base_route_generation) noexcept;
+  [[nodiscard]] StaticRouteRoiRefreshRequest latest() const noexcept;
+  [[nodiscard]] bool
+  pending(const StaticRouteRoiRefreshRequest& request) const noexcept;
+  void complete(std::uint64_t sequence) noexcept;
+
+private:
+  std::atomic<std::uint64_t> next_sequence_{0U};
+  std::atomic<std::uint64_t> requested_sequence_{0U};
+  std::atomic<std::uint64_t> requested_base_route_generation_{0U};
+  std::atomic<std::uint64_t> completed_sequence_{0U};
 };
 
 enum class StaticRouteCandidateStatus : std::uint8_t {

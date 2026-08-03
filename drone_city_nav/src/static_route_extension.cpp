@@ -40,6 +40,40 @@ std::uint64_t StaticRouteReplanGate::generation() const noexcept {
   return generation_;
 }
 
+StaticRouteRoiRefreshRequest StaticRouteRoiRefreshLifecycle::queue(
+    const std::uint64_t base_route_generation) noexcept {
+  if (base_route_generation == 0U) {
+    return {};
+  }
+  const std::uint64_t sequence =
+      next_sequence_.fetch_add(1U, std::memory_order_relaxed) + 1U;
+  requested_base_route_generation_.store(base_route_generation,
+                                         std::memory_order_relaxed);
+  requested_sequence_.store(sequence, std::memory_order_release);
+  return {.sequence = sequence, .base_route_generation = base_route_generation};
+}
+
+StaticRouteRoiRefreshRequest StaticRouteRoiRefreshLifecycle::latest() const noexcept {
+  const std::uint64_t sequence = requested_sequence_.load(std::memory_order_acquire);
+  return {.sequence = sequence,
+          .base_route_generation =
+              requested_base_route_generation_.load(std::memory_order_relaxed)};
+}
+
+bool StaticRouteRoiRefreshLifecycle::pending(
+    const StaticRouteRoiRefreshRequest& request) const noexcept {
+  return request.sequence != 0U &&
+         request.sequence > completed_sequence_.load(std::memory_order_acquire);
+}
+
+void StaticRouteRoiRefreshLifecycle::complete(const std::uint64_t sequence) noexcept {
+  std::uint64_t completed = completed_sequence_.load(std::memory_order_relaxed);
+  while (completed < sequence && !completed_sequence_.compare_exchange_weak(
+                                     completed, sequence, std::memory_order_release,
+                                     std::memory_order_relaxed)) {
+  }
+}
+
 StaticRouteExtensionDecision evaluateStaticRouteExtension(
     const StaticRouteExtensionConfig& config,
     const StaticRouteExtensionObservation& observation) noexcept {

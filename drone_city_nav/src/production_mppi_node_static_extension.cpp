@@ -42,6 +42,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
     return;
   }
 
+  std::uint64_t roi_refresh_sequence = 0U;
   if (decision.request_extension) {
     auto request = std::make_shared<ProductionMppiPreparedEsdf>(esdf);
     request->static_route_extension_request = true;
@@ -61,8 +62,8 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
     }
     guide_queue_condition_.notify_all();
   } else {
-    static_roi_refresh_request_generation_.store(esdf.global_guide_generation,
-                                                 std::memory_order_release);
+    roi_refresh_sequence =
+        static_roi_refresh_lifecycle_.queue(esdf.global_guide_generation).sequence;
   }
 
   static_route_extension_request_in_flight_ = true;
@@ -73,13 +74,14 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   RCLCPP_INFO(get_logger(),
               "STATIC_ROUTE_EXTENSION_REQUEST status=queued generation=%" PRIu64
               " station_m=%.2f remaining_m=%.2f mode=%s extension_trigger_m=%.2f "
-              "roi_trigger_m=%.2f search_latency_ms=%.2f build_latency_ms=%.2f",
+              "roi_trigger_m=%.2f roi_request_sequence=%" PRIu64
+              " search_latency_ms=%.2f build_latency_ms=%.2f",
               esdf.global_guide_generation, route_projection.station_m,
               route_projection.remaining_m,
               decision.request_roi_refresh ? "roi_refresh" : "resident_esdf",
               decision.extension_trigger_remaining_m,
-              decision.roi_refresh_trigger_remaining_m, esdf.global_guide_search_ms,
-              esdf.build_ms);
+              decision.roi_refresh_trigger_remaining_m, roi_refresh_sequence,
+              esdf.global_guide_search_ms, esdf.build_ms);
 }
 
 void ProductionMppiNode::finishStaticRouteExtension(

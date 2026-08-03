@@ -77,27 +77,27 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     }
     const std::int64_t source_stamp_ns = get_clock()->now().nanoseconds();
     if (use_static_map_ && static_occupancy_3d_) {
-      const std::uint64_t roi_refresh_generation =
-          static_roi_refresh_request_generation_.load(std::memory_order_acquire);
+      const StaticRouteRoiRefreshRequest roi_refresh =
+          static_roi_refresh_lifecycle_.latest();
       std::optional<ProductionMppiPreparedEsdf> active_prepared;
       {
         const std::scoped_lock lock{esdf_state_mutex_};
         active_prepared = prepared_esdf_;
       }
+      const bool roi_refresh_pending =
+          static_roi_refresh_lifecycle_.pending(roi_refresh);
       bool proactive_roi_refresh =
-          roi_refresh_generation > static_roi_refresh_completed_generation_ &&
-          active_prepared &&
-          active_prepared->global_guide_generation == roi_refresh_generation;
+          roi_refresh_pending && active_prepared &&
+          active_prepared->global_guide_generation == roi_refresh.base_route_generation;
       double static_build_ms = active_prepared ? active_prepared->build_ms : 0.0;
       double static_x_pass_ms = active_prepared ? active_prepared->esdf_x_pass_ms : 0.0;
       double static_y_pass_ms = active_prepared ? active_prepared->esdf_y_pass_ms : 0.0;
       double static_z_pass_ms = active_prepared ? active_prepared->esdf_z_pass_ms : 0.0;
       double static_finalize_ms =
           active_prepared ? active_prepared->esdf_finalize_ms : 0.0;
-      if (roi_refresh_generation > static_roi_refresh_completed_generation_ &&
-          !proactive_roi_refresh) {
-        static_roi_refresh_completed_generation_ = roi_refresh_generation;
-        finishStaticRouteExtension(roi_refresh_generation);
+      if (roi_refresh_pending && !proactive_roi_refresh) {
+        static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
+        finishStaticRouteExtension(roi_refresh.base_route_generation);
       }
       if (static_esdf_3d_) {
         if (!proactive_roi_refresh) {
@@ -149,7 +149,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                     field.stats().duration_ms, field.stats().voxel_count,
                     local_bounds.width_cells, local_bounds.height_cells,
                     local_bounds.depth_cells, proactive_roi_refresh ? "true" : "false",
-                    proactive_roi_refresh ? roi_refresh_generation : 0U);
+                    proactive_roi_refresh ? roi_refresh.base_route_generation : 0U);
       }
       const mppi::EsdfUploadResult upload = engine_->updateEsdf(mppi::EsdfSnapshot{
           static_esdf_grid_, *static_esdf_3d_, static_occupancy_3d_->fingerprint()});
@@ -157,7 +157,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         continue;
       }
       if (proactive_roi_refresh) {
-        static_roi_refresh_completed_generation_ = roi_refresh_generation;
+        static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
       }
       ProductionMppiPreparedEsdf prepared;
       if (proactive_roi_refresh && active_prepared) {
@@ -178,7 +178,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.channel_edges = static_channel_edges_;
       prepared.static_route_extension_request = proactive_roi_refresh;
       prepared.static_route_extension_base_generation =
-          proactive_roi_refresh ? roi_refresh_generation : 0U;
+          proactive_roi_refresh ? roi_refresh.base_route_generation : 0U;
       {
         const std::scoped_lock lock{esdf_state_mutex_};
         prepared_esdf_ = prepared;
