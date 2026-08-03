@@ -9,7 +9,6 @@
 #include <cmath>
 #include <limits>
 #include <span>
-#include <tuple>
 #include <utility>
 
 #include "production_mppi_node.hpp"
@@ -17,6 +16,8 @@
 
 namespace drone_city_nav {
 namespace {
+
+constexpr std::size_t kMaximumFailureMemoryEntries{64U};
 
 [[nodiscard]] double distance3(const mppi::State& first, const mppi::State& second) {
   return std::hypot(std::hypot(static_cast<double>(first.x - second.x),
@@ -51,36 +52,6 @@ namespace {
   const std::size_t upper = std::min(lower + 1U, states.size() - 1U);
   return interpolateState(states[lower], states[upper],
                           source - static_cast<double>(lower));
-}
-
-[[nodiscard]] int pendingGuideStatusRank(const LatticePlanStatus status) noexcept {
-  switch (status) {
-    case LatticePlanStatus::kReachedPlanningGoal:
-      return 0;
-    case LatticePlanStatus::kViableFrontier:
-      return 1;
-    case LatticePlanStatus::kRawSafeDetourPrefix:
-      return 2;
-    case LatticePlanStatus::kSearchIncomplete:
-    case LatticePlanStatus::kMotionGraphExhausted:
-    case LatticePlanStatus::kInvalidInput:
-      return 3;
-  }
-  return 3;
-}
-
-[[nodiscard]] bool betterPendingGuide(
-    const ProductionPendingGlobalGuide& candidate,
-    const std::optional<ProductionPendingGlobalGuide>& current) noexcept {
-  if (!current.has_value()) {
-    return true;
-  }
-  return std::tuple{pendingGuideStatusRank(candidate.status),
-                    candidate.remaining_goal_distance_m, candidate.cost,
-                    candidate.fingerprint} <
-         std::tuple{pendingGuideStatusRank(current->status),
-                    current->remaining_goal_distance_m, current->cost,
-                    current->fingerprint};
 }
 
 } // namespace
@@ -149,6 +120,9 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     const std::shared_ptr<const std::vector<float>>& host_distances =
         world->distances_m;
     RiskAwareLatticeConfig search_config = lattice_config_;
+    search_config.minimum_frontier_guide_length_m = std::max(
+        search_config.minimum_frontier_guide_length_m,
+        active_guide_config_.minimum_remaining_m + search_config.primitive_length_m);
     const std::int64_t worker_now_ns = get_clock()->now().nanoseconds();
     if (worker_now_ns < adaptive_search_until_ns) {
       search_config.minimum_frontier_reachable_depth_m =
@@ -181,6 +155,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     RawGuideValidationResult raw_validation;
     ProductionGuideCandidateValidationStatus candidate_validation_status{
         ProductionGuideCandidateValidationStatus::kNotAttempted};
+    std::optional<GlobalGuideCandidate> activated_candidate;
     std::uint64_t validation_revision = 0U;
     bool latest_world_rejected_candidate = false;
     if (navigation.valid && active_guide_lifecycle_) {
@@ -264,6 +239,33 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           grid, *host_distances, position,
           guide_release_generation_.load(std::memory_order_acquire),
           guide_release_reason_.load(std::memory_order_relaxed));
+      if (!guide_update.active && previous_active_guide &&
+          previous_active_guide->size() >= 2U &&
+          guide_update.release_reason == GlobalGuideReleaseReason::kBlocked &&
+          world->raw_occupancy) {
+        const GlobalGuideProjection release_projection =
+            projectOntoGlobalGuide(*previous_active_guide, position);
+        const double validation_station_m =
+            release_projection.valid ? release_projection.station_m : 0.0;
+        const RawGuideValidationResult blocked_validation =
+            validateGuideAgainstRawOccupancy(
+                *previous_active_guide, *world->raw_occupancy,
+                active_guide_config_.validation_sample_step_m, validation_station_m);
+        const Point2 failure_point =
+            blocked_validation.accepted ? position : blocked_validation.failure_point;
+        const GlobalGuideProjection failure_projection =
+            projectOntoGlobalGuide(*previous_active_guide, failure_point);
+        const Point2 failure_tangent =
+            failure_projection.valid ? failure_projection.tangent
+                                     : Point2{navigation.state.vx, navigation.state.vy};
+        frontier_blacklist_.push_back(LatticeFrontierBlacklistEntry{
+            .failure_point = failure_point,
+            .approach_heading_rad = std::atan2(failure_tangent.y, failure_tangent.x),
+            .expires_at_ns = blacklist_now_ns + static_cast<std::int64_t>(
+                                                    frontier_blacklist_ttl_s_ * 1.0e9),
+            .soft_penalty_cost = no_static_soft_tabu_penalty_,
+        });
+      }
       if (frontier_blacklist_enabled_ && !guide_update.active &&
           previous_active_guide && previous_active_guide->size() >= 2U &&
           (guide_update.release_reason == GlobalGuideReleaseReason::kStalled ||
@@ -287,6 +289,13 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         if (frontier_blacklist_.size() > kMaximumFrontierBlacklistEntries) {
           frontier_blacklist_.erase(frontier_blacklist_.begin());
         }
+      }
+      if (frontier_blacklist_.size() > kMaximumFailureMemoryEntries) {
+        frontier_blacklist_.erase(
+            frontier_blacklist_.begin(),
+            frontier_blacklist_.begin() +
+                static_cast<std::ptrdiff_t>(frontier_blacklist_.size() -
+                                            kMaximumFailureMemoryEntries));
       }
       if (guide_update.active) {
         guide = active_guide_lifecycle_->guide();
@@ -316,64 +325,72 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               lattice_observation.status == LatticePlanStatus::kRawSafeDetourPrefix;
           if (executable &&
               validate_candidate_on_latest_world(candidate, reaches_mission_goal)) {
+            const GlobalGuideCandidate pending{
+                .guide = candidate,
+                .base_generation = guide_update.generation,
+                .search_revision = world->revision,
+                .reaches_mission_goal = reaches_mission_goal,
+                .status = lattice_observation.status,
+                .expansions = lattice_observation.expansions,
+                .guide_length_m = lattice_observation.guide_length_m,
+                .endpoint_displacement_m =
+                    lattice_observation.frontier_endpoint_displacement_m,
+                .reachable_depth_m = lattice_observation.reachable_depth_m,
+                .remaining_goal_distance_m =
+                    lattice_observation.remaining_goal_distance_m,
+                .cost = lattice_observation.cost,
+                .fingerprint = routeFingerprint(*candidate),
+            };
+            if (!pending_global_guide_ ||
+                pending_global_guide_->base_generation != guide_update.generation ||
+                betterGlobalGuideCandidate(pending, *pending_global_guide_)) {
+              pending_global_guide_ = pending;
+            }
             if (guide_update.release_reason == GlobalGuideReleaseReason::kExhausted) {
-              const double session_age_ms =
-                  std::chrono::duration<double, std::milli>(
-                      std::chrono::steady_clock::now() - search_session_started)
-                      .count();
-              if (!lattice_observation.search_session_complete &&
-                  previous_active_guide &&
-                  session_age_ms < lattice_search_session_maximum_ms_) {
-                const ProductionPendingGlobalGuide pending{
-                    .guide = candidate,
-                    .reaches_mission_goal = reaches_mission_goal,
-                    .status = lattice_observation.status,
-                    .remaining_goal_distance_m =
-                        lattice_observation.remaining_goal_distance_m,
-                    .cost = lattice_observation.cost,
-                    .fingerprint = routeFingerprint(*candidate),
-                };
-                if (betterPendingGuide(pending, pending_global_guide_)) {
-                  pending_global_guide_ = pending;
+              const GlobalGuideCandidate selected = *pending_global_guide_;
+              if (globalGuideCandidateReadyForActivation(
+                      selected, false, search_config.minimum_frontier_guide_length_m,
+                      search_config.minimum_frontier_endpoint_displacement_m)) {
+                if (validate_candidate_on_latest_world(selected.guide,
+                                                       selected.reaches_mission_goal)) {
+                  guide_acceptance = active_guide_lifecycle_->accept(
+                      selected.guide, selected.reaches_mission_goal,
+                      publication_world->grid, *publication_world->distances_m,
+                      candidate_validation_position);
                 }
-              } else {
-                guide_acceptance = active_guide_lifecycle_->accept(
-                    candidate, reaches_mission_goal, publication_world->grid,
-                    *publication_world->distances_m, candidate_validation_position);
+                pending_global_guide_.reset();
                 if (guide_acceptance.accepted) {
+                  activated_candidate = selected;
                   guide = active_guide_lifecycle_->guide();
                   guide_update = active_guide_lifecycle_->status();
-                  active_guide_expansions = lattice_observation.expansions;
-                  active_guide_cost = lattice_observation.cost;
+                  active_guide_expansions = selected.expansions;
+                  active_guide_cost = selected.cost;
                 }
-              }
-            } else {
-              const ProductionPendingGlobalGuide pending{
-                  .guide = candidate,
-                  .reaches_mission_goal = reaches_mission_goal,
-                  .status = lattice_observation.status,
-                  .remaining_goal_distance_m =
-                      lattice_observation.remaining_goal_distance_m,
-                  .cost = lattice_observation.cost,
-                  .fingerprint = routeFingerprint(*candidate),
-              };
-              if (betterPendingGuide(pending, pending_global_guide_)) {
-                pending_global_guide_ = pending;
               }
             }
           }
         }
       } else {
         if (pending_global_guide_ && pending_global_guide_->guide) {
-          if (validate_candidate_on_latest_world(
-                  pending_global_guide_->guide,
-                  pending_global_guide_->reaches_mission_goal)) {
+          const GlobalGuideCandidate selected = *pending_global_guide_;
+          const bool ready = globalGuideCandidateReadyForActivation(
+              selected, true, search_config.minimum_frontier_guide_length_m,
+              search_config.minimum_frontier_endpoint_displacement_m);
+          if (selected.base_generation == guide_update.generation && ready &&
+              validate_candidate_on_latest_world(selected.guide,
+                                                 selected.reaches_mission_goal)) {
             guide_acceptance = active_guide_lifecycle_->accept(
-                pending_global_guide_->guide,
-                pending_global_guide_->reaches_mission_goal, publication_world->grid,
+                selected.guide, selected.reaches_mission_goal, publication_world->grid,
                 *publication_world->distances_m, candidate_validation_position);
+            if (guide_acceptance.accepted) {
+              activated_candidate = selected;
+              active_guide_expansions = selected.expansions;
+              active_guide_cost = selected.cost;
+            }
           }
-          pending_global_guide_.reset();
+          if (selected.base_generation != guide_update.generation || ready) {
+            pending_global_guide_.reset();
+          }
         }
         if (guide_acceptance.accepted) {
           guide = active_guide_lifecycle_->guide();
@@ -397,21 +414,56 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               lattice_observation.exact_terminal_connector && !candidate->empty() &&
               distance(candidate->back(), Point2{mission_goal_.x, mission_goal_.y}) <=
                   1.0e-6;
-          const bool executable =
+          const bool candidate_available =
               lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal ||
               lattice_observation.status == LatticePlanStatus::kViableFrontier ||
               lattice_observation.status == LatticePlanStatus::kRawSafeDetourPrefix;
-          if (executable &&
+          if (candidate_available &&
               validate_candidate_on_latest_world(candidate, reaches_mission_goal)) {
-            guide_acceptance = active_guide_lifecycle_->accept(
-                candidate, reaches_mission_goal, publication_world->grid,
-                *publication_world->distances_m, candidate_validation_position);
+            const GlobalGuideCandidate pending{
+                .guide = candidate,
+                .base_generation = guide_update.generation,
+                .search_revision = world->revision,
+                .reaches_mission_goal = reaches_mission_goal,
+                .status = lattice_observation.status,
+                .expansions = lattice_observation.expansions,
+                .guide_length_m = lattice_observation.guide_length_m,
+                .endpoint_displacement_m =
+                    lattice_observation.frontier_endpoint_displacement_m,
+                .reachable_depth_m = lattice_observation.reachable_depth_m,
+                .remaining_goal_distance_m =
+                    lattice_observation.remaining_goal_distance_m,
+                .cost = lattice_observation.cost,
+                .fingerprint = routeFingerprint(*candidate),
+            };
+            if (!pending_global_guide_ ||
+                pending_global_guide_->base_generation != guide_update.generation ||
+                betterGlobalGuideCandidate(pending, *pending_global_guide_)) {
+              pending_global_guide_ = pending;
+            }
+            if (globalGuideCandidateReadyForActivation(
+                    *pending_global_guide_, true,
+                    search_config.minimum_frontier_guide_length_m,
+                    search_config.minimum_frontier_endpoint_displacement_m)) {
+              const GlobalGuideCandidate selected = *pending_global_guide_;
+              if (validate_candidate_on_latest_world(selected.guide,
+                                                     selected.reaches_mission_goal)) {
+                guide_acceptance = active_guide_lifecycle_->accept(
+                    selected.guide, selected.reaches_mission_goal,
+                    publication_world->grid, *publication_world->distances_m,
+                    candidate_validation_position);
+              }
+              pending_global_guide_.reset();
+              if (guide_acceptance.accepted) {
+                activated_candidate = selected;
+                active_guide_expansions = selected.expansions;
+                active_guide_cost = selected.cost;
+              }
+            }
           }
           if (guide_acceptance.accepted) {
             guide = active_guide_lifecycle_->guide();
             guide_update = active_guide_lifecycle_->status();
-            active_guide_expansions = lattice_observation.expansions;
-            active_guide_cost = lattice_observation.cost;
           } else {
             active_guide_expansions = 0U;
             active_guide_cost = 0.0;
@@ -453,7 +505,6 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               .soft_penalty_cost = no_static_soft_tabu_penalty_,
           });
         }
-        constexpr std::size_t kMaximumFailureMemoryEntries{64U};
         if (frontier_blacklist_.size() > kMaximumFailureMemoryEntries) {
           frontier_blacklist_.erase(
               frontier_blacklist_.begin(),
@@ -597,7 +648,11 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         "successor_reject_risk=%zu successor_reject_blacklist=%zu "
         "successor_reject_cost=%zu successor_soft_tabu=%zu "
         "search_session_age_ms=%.2f cycle_detected=%s adaptive_search=%s "
-        "soft_tabu_entries=%zu",
+        "soft_tabu_entries=%zu selected_candidate_status=%s "
+        "selected_candidate_base_generation=%" PRIu64
+        " selected_candidate_search_revision=%" PRIu64
+        " selected_candidate_guide_length_m=%.2f "
+        "selected_candidate_endpoint_displacement_m=%.2f",
         prepared.revision, prepared.lattice_search_revision,
         prepared.lattice_validation_revision,
         productionGuideCandidateValidationStatusName(
@@ -654,16 +709,18 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         prepared.lattice_search_session_age_ms,
         prepared.no_static_cycle_detected ? "true" : "false",
         prepared.no_static_adaptive_search ? "true" : "false",
-        prepared.no_static_soft_tabu_entries);
+        prepared.no_static_soft_tabu_entries,
+        latticePlanStatusName(activated_candidate ? activated_candidate->status
+                                                  : LatticePlanStatus::kInvalidInput),
+        activated_candidate ? activated_candidate->base_generation : 0U,
+        activated_candidate ? activated_candidate->search_revision : 0U,
+        activated_candidate ? activated_candidate->guide_length_m : 0.0,
+        activated_candidate ? activated_candidate->endpoint_displacement_m : 0.0);
 
     const bool search_incomplete =
         lattice_search_performed && !lattice_observation.search_session_complete;
-    const double search_session_age_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  search_session_started)
-            .count();
-    if (search_incomplete && !latest_world_rejected_candidate &&
-        search_session_age_ms < lattice_search_session_maximum_ms_) {
+    if (search_incomplete && !guide_acceptance.accepted &&
+        !latest_world_rejected_candidate) {
       ++continuation_attempt;
       search_session_in_progress = true;
       continue;
@@ -836,22 +893,26 @@ void ProductionMppiNode::planningTick() {
     tracked_route_generation_ = esdf->global_guide_generation;
     tracked_route_station_m_ = 0.0;
   }
-  const RouteProjection3D measured_route_3d =
-      esdf->route_3d ? projectOntoRoute3D(*esdf->route_3d,
-                                          Point3{navigation.state.x, navigation.state.y,
-                                                 navigation.state.z},
-                                          tracked_route_station_m_)
-                     : RouteProjection3D{};
-  const GlobalGuideProjection measured_route_projection{
-      .valid = measured_route_3d.valid,
-      .station_m = measured_route_3d.station_m,
-      .total_length_m = esdf->route_3d && !esdf->route_3d->empty()
-                            ? esdf->route_3d->back().station_m
-                            : 0.0,
-      .remaining_m = measured_route_3d.remaining_m,
-      .cross_track_m = measured_route_3d.distance_m,
-      .point = Point2{measured_route_3d.point.x, measured_route_3d.point.y},
-  };
+  GlobalGuideProjection measured_route_projection;
+  if (esdf->route_3d) {
+    const RouteProjection3D measured_route_3d = projectOntoRoute3D(
+        *esdf->route_3d,
+        Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+        tracked_route_station_m_);
+    measured_route_projection = GlobalGuideProjection{
+        .valid = measured_route_3d.valid,
+        .station_m = measured_route_3d.station_m,
+        .total_length_m =
+            esdf->route_3d->empty() ? 0.0 : esdf->route_3d->back().station_m,
+        .remaining_m = measured_route_3d.remaining_m,
+        .cross_track_m = measured_route_3d.distance_m,
+        .point = Point2{measured_route_3d.point.x, measured_route_3d.point.y},
+    };
+  } else if (esdf->route_2d_projection) {
+    measured_route_projection = projectOntoGlobalGuide(
+        *esdf->route_2d_projection, Point2{navigation.state.x, navigation.state.y},
+        tracked_route_station_m_);
+  }
   if (measured_route_projection.valid) {
     tracked_route_station_m_ =
         std::max(tracked_route_station_m_, measured_route_projection.station_m);

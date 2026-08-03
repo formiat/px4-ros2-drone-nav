@@ -295,6 +295,15 @@ ProductionMppiNode::ProductionMppiNode()
   }
   lattice_config_.frontier_validation_maximum_states =
       static_cast<std::size_t>(frontier_validation_maximum_states);
+  const std::int64_t frontier_validation_expansion_interval =
+      declare_parameter<std::int64_t>(
+          "global_lattice_frontier_validation_expansion_interval", 256);
+  if (frontier_validation_expansion_interval <= 0) {
+    throw std::invalid_argument{
+        "global lattice frontier validation expansion interval must be positive"};
+  }
+  lattice_config_.frontier_validation_expansion_interval =
+      static_cast<std::size_t>(frontier_validation_expansion_interval);
   lattice_config_.frontier_goal_distance_weight =
       declare_parameter<double>("global_lattice_frontier_goal_distance_weight", 0.25);
   frontier_blacklist_enabled_ =
@@ -306,8 +315,6 @@ ProductionMppiNode::ProductionMppiNode()
           "global_lattice_frontier_blacklist_heading_bins", 1));
   frontier_blacklist_ttl_s_ =
       declare_parameter<double>("global_lattice_frontier_blacklist_ttl_s", 15.0);
-  lattice_search_session_maximum_ms_ =
-      declare_parameter<double>("global_lattice_search_session_maximum_ms", 2000.0);
   no_static_soft_tabu_penalty_ =
       declare_parameter<double>("global_lattice_soft_tabu_penalty", 40.0);
   no_static_soft_tabu_sample_spacing_m_ =
@@ -483,9 +490,7 @@ ProductionMppiNode::ProductionMppiNode()
       !(safety_config_.physical_footprint_radius_m >= 0.0) ||
       safety_config_.physical_footprint_samples == 0U ||
       !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
-      !(frontier_blacklist_ttl_s_ > 0.0) ||
-      !(lattice_search_session_maximum_ms_ > 0.0) ||
-      !(no_static_soft_tabu_penalty_ >= 0.0) ||
+      !(frontier_blacklist_ttl_s_ > 0.0) || !(no_static_soft_tabu_penalty_ >= 0.0) ||
       !(no_static_soft_tabu_sample_spacing_m_ > 0.0) ||
       !(no_static_adaptive_reachable_depth_m_ > 0.0) ||
       !(no_static_adaptive_minimum_guide_length_m_ > 0.0) ||

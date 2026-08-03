@@ -205,20 +205,20 @@ production_mppi_node:
     global_lattice_frontier_minimum_endpoint_displacement_m: 4.0
     global_lattice_frontier_reachable_depth_m: 20.0
     global_lattice_frontier_validation_maximum_states: 2048
+    global_lattice_frontier_validation_expansion_interval: 256
     global_lattice_frontier_goal_distance_weight: 0.25
     global_lattice_frontier_blacklist_enabled: false
     global_lattice_frontier_blacklist_radius_m: 6.0
     global_lattice_frontier_blacklist_heading_bins: 1
-    global_lattice_frontier_blacklist_ttl_s: 15.0
-    global_lattice_search_session_maximum_ms: 2000.0
+    global_lattice_frontier_blacklist_ttl_s: 120.0
     global_lattice_soft_tabu_penalty: 40.0
     global_lattice_soft_tabu_sample_spacing_m: 4.0
     global_lattice_adaptive_reachable_depth_m: 40.0
     global_lattice_adaptive_minimum_guide_length_m: 24.0
     global_lattice_adaptive_minimum_endpoint_displacement_m: 12.0
     global_lattice_adaptive_validation_states: 8192
-    global_lattice_cycle_observation_window_s: 20.0
-    global_lattice_cycle_minimum_generations: 6
+    global_lattice_cycle_observation_window_s: 60.0
+    global_lattice_cycle_minimum_generations: 4
     global_lattice_cycle_endpoint_radius_m: 6.0
     global_lattice_cycle_maximum_vehicle_displacement_m: 12.0
     global_lattice_cycle_maximum_mission_progress_m: 4.0

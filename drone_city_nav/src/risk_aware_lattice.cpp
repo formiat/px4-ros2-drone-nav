@@ -89,15 +89,33 @@ struct ContinuationEvaluation {
   std::size_t immediate_successors{0U};
   std::size_t reachable_states{0U};
   double reachable_depth_m{0.0};
+  std::vector<Point2> extension;
 };
 
 struct ContinuationQueueEntry {
   LatticeKey key{};
-  double depth_m{0.0};
+  double path_depth_m{0.0};
+  double endpoint_displacement_m{0.0};
+  double remaining_goal_distance_m{0.0};
 
   bool operator<(const ContinuationQueueEntry& other) const noexcept {
-    return depth_m < other.depth_m;
+    return std::tuple{endpoint_displacement_m,
+                      -remaining_goal_distance_m,
+                      path_depth_m,
+                      -key.x,
+                      -key.y,
+                      -key.heading} < std::tuple{other.endpoint_displacement_m,
+                                                 -other.remaining_goal_distance_m,
+                                                 other.path_depth_m,
+                                                 -other.key.x,
+                                                 -other.key.y,
+                                                 -other.key.heading};
   }
+};
+
+struct ContinuationRecord {
+  LatticeKey key{};
+  std::optional<std::uint64_t> parent;
 };
 
 struct FrontierPoolCandidate {
@@ -125,6 +143,8 @@ struct StageOutcome {
   std::size_t stale_pops{0U};
   std::size_t open_peak{0U};
   std::size_t records_peak{0U};
+  std::size_t last_frontier_validation_expansions{0U};
+  bool frontier_validation_started{false};
   LatticeSuccessorDiagnostics successor_diagnostics{};
 };
 
@@ -465,6 +485,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       !(config.minimum_frontier_endpoint_displacement_m >= 0.0) ||
       !(config.minimum_frontier_reachable_depth_m > 0.0) ||
       config.frontier_validation_maximum_states == 0U ||
+      config.frontier_validation_expansion_interval == 0U ||
       !(config.frontier_goal_distance_weight >= 0.0) ||
       !std::isfinite(config.frontier_goal_distance_weight) ||
       !(config.frontier_blacklist_radius_m >= 0.0) ||
@@ -798,44 +819,77 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
                                          const LatticeRiskStage stage) {
     ContinuationEvaluation evaluation;
     std::priority_queue<ContinuationQueueEntry> open;
-    std::unordered_set<std::uint64_t> visited_cells;
     const auto cell_id = [](const LatticeKey& key) {
       const std::uint64_t x = static_cast<std::uint32_t>(key.x);
       const std::uint64_t y = static_cast<std::uint32_t>(key.y);
       return (x << 32U) | y;
     };
-    visited_cells.insert(cell_id(terminal_key));
-    open.push(ContinuationQueueEntry{terminal_key, 0.0});
+    const std::uint64_t start_id = cell_id(terminal_key);
+    std::unordered_map<std::uint64_t, ContinuationRecord> records;
+    records.emplace(start_id,
+                    ContinuationRecord{.key = terminal_key, .parent = std::nullopt});
+    open.push(ContinuationQueueEntry{
+        .key = terminal_key,
+        .path_depth_m = 0.0,
+        .endpoint_displacement_m = 0.0,
+        .remaining_goal_distance_m = distance(terminal, result.planning_goal),
+    });
+    std::uint64_t best_id = start_id;
+    double best_remaining_goal_distance_m = distance(terminal, result.planning_goal);
+    double best_path_depth_m = 0.0;
     std::size_t expanded_states = 0U;
     while (!open.empty() &&
-           expanded_states < config.frontier_validation_maximum_states) {
+           expanded_states < config.frontier_validation_maximum_states &&
+           evaluation.reachable_depth_m + 1.0e-9 <
+               config.minimum_frontier_reachable_depth_m) {
       const ContinuationQueueEntry current = open.top();
       open.pop();
-      if (current.depth_m + 1.0e-9 >= config.minimum_frontier_reachable_depth_m) {
-        break;
-      }
       ++expanded_states;
       bool roi_boundary_seen = false;
       const Point2 current_point =
-          current.depth_m > 0.0 ? cellCenter(grid, current.key) : terminal;
+          current.path_depth_m > 0.0 ? cellCenter(grid, current.key) : terminal;
       const std::vector<Successor> successors = collect_successors(
           current_point, current.key, stage, roi_boundary_seen, nullptr);
       static_cast<void>(roi_boundary_seen);
-      if (current.depth_m == 0.0) {
+      if (current.path_depth_m == 0.0) {
         evaluation.immediate_successors = successors.size();
       }
+      const std::uint64_t current_id = cell_id(current.key);
       for (const Successor& successor : successors) {
         const std::uint64_t id = cell_id(successor.key);
-        if (!visited_cells.insert(id).second) {
+        if (records.contains(id)) {
           continue;
         }
-        const double reachable_depth_m = current.depth_m + successor.length_m;
-        evaluation.reachable_depth_m =
-            std::max(evaluation.reachable_depth_m, reachable_depth_m);
-        open.push(ContinuationQueueEntry{successor.key, reachable_depth_m});
+        records.emplace(id,
+                        ContinuationRecord{.key = successor.key, .parent = current_id});
+        const double path_depth_m = current.path_depth_m + successor.length_m;
+        const double endpoint_displacement_m = distance(terminal, successor.endpoint);
+        const double remaining_goal_distance_m =
+            distance(successor.endpoint, result.planning_goal);
+        if (std::tuple{endpoint_displacement_m, -remaining_goal_distance_m,
+                       path_depth_m} > std::tuple{evaluation.reachable_depth_m,
+                                                  -best_remaining_goal_distance_m,
+                                                  best_path_depth_m}) {
+          evaluation.reachable_depth_m = endpoint_displacement_m;
+          best_remaining_goal_distance_m = remaining_goal_distance_m;
+          best_path_depth_m = path_depth_m;
+          best_id = id;
+        }
+        open.push(ContinuationQueueEntry{
+            .key = successor.key,
+            .path_depth_m = path_depth_m,
+            .endpoint_displacement_m = endpoint_displacement_m,
+            .remaining_goal_distance_m = remaining_goal_distance_m,
+        });
       }
     }
-    evaluation.reachable_states = visited_cells.size() - 1U;
+    evaluation.reachable_states = records.size() - 1U;
+    for (std::uint64_t id = best_id; id != start_id;) {
+      const ContinuationRecord& record = records.at(id);
+      evaluation.extension.push_back(cellCenter(grid, record.key));
+      id = *record.parent;
+    }
+    std::ranges::reverse(evaluation.extension);
     return evaluation;
   };
 
@@ -861,6 +915,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     };
   };
   bool search_incomplete = false;
+  bool frontier_validation_performed = false;
   LatticeSearchTermination incomplete_termination{
       LatticeSearchTermination::kOpenSetExhausted};
 
@@ -920,6 +975,16 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         incomplete_termination = LatticeSearchTermination::kRoiBoundaryReached;
       }
     }
+    const bool validate_frontiers =
+        !outcome.frontier_validation_started || outcome.open.empty() ||
+        outcome.expansions - outcome.last_frontier_validation_expansions >=
+            config.frontier_validation_expansion_interval;
+    if (!validate_frontiers) {
+      continue;
+    }
+    outcome.frontier_validation_started = true;
+    outcome.last_frontier_validation_expansions = outcome.expansions;
+    frontier_validation_performed = true;
     const std::vector<FrontierPoolCandidate> frontier_pool =
         collect_frontier_pool(outcome);
     result.frontier_candidates_considered += frontier_pool.size();
@@ -935,10 +1000,17 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       }
       const ContinuationEvaluation continuation =
           evaluate_continuation(terminal, key, stage);
+      for (const Point2 point : continuation.extension) {
+        if (guide.empty() || distance(guide.back(), point) > 1.0e-6) {
+          guide.push_back(point);
+        }
+      }
       const double guide_length_m = guideLength(guide);
-      const double remaining_m = distance(terminal, result.planning_goal);
+      const Point2 endpoint = guide.empty() ? terminal : guide.back();
+      const double remaining_m = distance(endpoint, result.planning_goal);
       const double progress_m = distance(start, result.planning_goal) - remaining_m;
-      const double endpoint_displacement_m = distance(start, terminal);
+      const double endpoint_displacement_m = distance(start, endpoint);
+      const double extension_length_m = guide_length_m - pooled.path_length_m;
       FrontierEvaluation candidate{
           .key = key,
           .guide = std::move(guide),
@@ -946,8 +1018,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           .progress_m = progress_m,
           .remaining_m = remaining_m,
           .endpoint_displacement_m = endpoint_displacement_m,
-          .selection_score = pooled.selection_score,
-          .cost = outcome.records.at(key).cost,
+          .selection_score = pooled.selection_score + extension_length_m,
+          .cost = outcome.records.at(key).cost + extension_length_m,
           .immediate_successors = continuation.immediate_successors,
           .continuation_states = continuation.reachable_states,
           .reachable_depth_m = continuation.reachable_depth_m,
@@ -1023,7 +1095,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     return result;
   }
 
-  if (search_incomplete && !best_fallback.has_value()) {
+  if (search_incomplete && frontier_validation_performed &&
+      !best_fallback.has_value()) {
     bool roi_boundary_seen = false;
     const Point2 search_start = cellCenter(grid, start_key);
     const std::vector<Successor> immediate =
@@ -1034,25 +1107,30 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const SegmentEvaluation from_actual_start =
           evaluateSegment(grid, esdf_m, start, successor.endpoint, config,
                           LatticeRiskStage::kCriticalAllowed);
-      const std::array fallback_guide{start, successor.endpoint};
+      const std::array validation_guide{start, successor.endpoint};
       if (!from_actual_start.valid ||
-          evaluateFailureMemory(fallback_guide, frontier_blacklist, config)
+          evaluateFailureMemory(validation_guide, frontier_blacklist, config)
               .hard_rejected) {
         continue;
       }
       const ContinuationEvaluation continuation = evaluate_continuation(
           successor.endpoint, successor.key, LatticeRiskStage::kCriticalAllowed);
-      const double remaining_m = distance(successor.endpoint, result.planning_goal);
+      std::vector<Point2> fallback_guide{start, successor.endpoint};
+      fallback_guide.insert(fallback_guide.end(), continuation.extension.begin(),
+                            continuation.extension.end());
+      const Point2 endpoint = fallback_guide.back();
+      const double guide_length_m = guideLength(fallback_guide);
+      const double remaining_m = distance(endpoint, result.planning_goal);
       FrontierEvaluation candidate{
           .key = successor.key,
-          .guide = {start, successor.endpoint},
-          .guide_length_m = distance(start, successor.endpoint),
+          .guide = std::move(fallback_guide),
+          .guide_length_m = guide_length_m,
           .progress_m = distance(start, result.planning_goal) - remaining_m,
           .remaining_m = remaining_m,
-          .endpoint_displacement_m = distance(start, successor.endpoint),
+          .endpoint_displacement_m = distance(start, endpoint),
           .selection_score =
-              successor.edge_cost + config.frontier_goal_distance_weight * remaining_m,
-          .cost = successor.edge_cost,
+              guide_length_m + config.frontier_goal_distance_weight * remaining_m,
+          .cost = guide_length_m,
           .immediate_successors = continuation.immediate_successors,
           .continuation_states = continuation.reachable_states,
           .reachable_depth_m = continuation.reachable_depth_m,

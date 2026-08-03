@@ -127,6 +127,7 @@ add_library(
   src/distance_field.cpp
   src/distance_field_3d.cpp
   src/esdf_query.cpp
+  src/global_guide_candidate.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/known_static_lidar_hit_classifier.cpp
@@ -437,6 +438,12 @@ if(BUILD_TESTING)
   target_compile_features(active_global_guide_test PRIVATE cxx_std_20)
   target_link_libraries(active_global_guide_test drone_city_nav_core)
   enable_project_warnings(active_global_guide_test)
+
+  ament_add_gtest(global_guide_candidate_test
+                  tests/global_guide_candidate_test.cpp)
+  target_compile_features(global_guide_candidate_test PRIVATE cxx_std_20)
+  target_link_libraries(global_guide_candidate_test drone_city_nav_core)
+  enable_project_warnings(global_guide_candidate_test)
 
   ament_add_gtest(planning_contract_test tests/planning_contract_test.cpp)
   target_compile_features(planning_contract_test PRIVATE cxx_std_20)

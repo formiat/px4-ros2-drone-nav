@@ -81,6 +81,7 @@ struct RiskAwareLatticeConfig {
   double minimum_frontier_endpoint_displacement_m{4.0};
   double minimum_frontier_reachable_depth_m{20.0};
   std::size_t frontier_validation_maximum_states{2048U};
+  std::size_t frontier_validation_expansion_interval{256U};
   double frontier_goal_distance_weight{0.25};
   double frontier_blacklist_radius_m{6.0};
   int frontier_blacklist_heading_tolerance_bins{1};

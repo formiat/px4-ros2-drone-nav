@@ -29,23 +29,22 @@ NoStaticRouteCycleDetector::observe(const NoStaticRouteCycleObservation& observa
     return {.generation_changes = observations_.size()};
   }
 
-  const NoStaticRouteCycleObservation& oldest = observations_.front();
-  const double vehicle_displacement =
-      distance(oldest.vehicle_position, observation.vehicle_position);
-  const double mission_progress =
-      oldest.mission_distance_m - observation.mission_distance_m;
   const auto repeated = std::find_if(
       observations_.begin(), std::prev(observations_.end()),
       [&](const NoStaticRouteCycleObservation& previous) {
+        const double vehicle_displacement =
+            distance(previous.vehicle_position, observation.vehicle_position);
+        const double mission_progress =
+            previous.mission_distance_m - observation.mission_distance_m;
         return distance(previous.guide_endpoint, observation.guide_endpoint) <=
-               config_.repeated_endpoint_radius_m;
+                   config_.repeated_endpoint_radius_m &&
+               vehicle_displacement <= config_.maximum_vehicle_displacement_m &&
+               mission_progress <= config_.maximum_mission_progress_m;
       });
   const bool cooldown_elapsed =
       last_detection_stamp_ns_ == 0 ||
       observation.stamp_ns - last_detection_stamp_ns_ > window_ns / 2;
-  if (repeated == std::prev(observations_.end()) ||
-      vehicle_displacement > config_.maximum_vehicle_displacement_m ||
-      mission_progress > config_.maximum_mission_progress_m || !cooldown_elapsed) {
+  if (repeated == std::prev(observations_.end()) || !cooldown_elapsed) {
     return {.generation_changes = observations_.size()};
   }
   last_detection_stamp_ns_ = observation.stamp_ns;

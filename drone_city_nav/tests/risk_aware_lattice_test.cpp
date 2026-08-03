@@ -127,6 +127,25 @@ TEST(RiskAwareLattice, ClassifiesUsefulBudgetLimitedGuideAsViableFrontier) {
   EXPECT_GE(result.reachable_depth_m, config.minimum_frontier_reachable_depth_m);
 }
 
+TEST(RiskAwareLattice, IncludesValidatedContinuationInExecutableFrontier) {
+  const mppi::EsdfGrid grid{200, 30, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                20.0F);
+  RiskAwareLatticeConfig config;
+  config.maximum_expansions = 3U;
+
+  const Point2 start{2.5, 10.5};
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, start, 0.0, Point2{150.5, 10.5}, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.status, LatticePlanStatus::kViableFrontier);
+  EXPECT_GE(result.guide_length_m,
+            config.primitive_length_m + config.minimum_frontier_reachable_depth_m);
+  EXPECT_GE(distance(start, result.guide.back()),
+            config.minimum_frontier_reachable_depth_m);
+}
+
 TEST(RiskAwareLattice, AcceptsViableFrontierWithTemporaryNegativeGoalProgress) {
   const mppi::EsdfGrid grid{100, 80, 1.0F, 0.0F, 0.0F};
   std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height), 20.0F);
@@ -161,6 +180,7 @@ TEST(RiskAwareLattice, ReturnsRawSafeDetourPrefixWhenBudgetEndsEarly) {
                                 20.0F);
   RiskAwareLatticeConfig config;
   config.maximum_expansions = 3U;
+  config.minimum_frontier_guide_length_m = 100.0;
 
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config);
@@ -194,6 +214,26 @@ TEST(RiskAwareLattice, ResumesPersistentSearchSessionAcrossBudgetSlices) {
   const RiskAwareLatticeResult restarted = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config, {}, &session);
   EXPECT_FALSE(restarted.search_session_resumed);
+}
+
+TEST(RiskAwareLattice, DoesNotRepeatFrontierValidationWithoutNewSearchWork) {
+  const mppi::EsdfGrid grid{200, 30, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                20.0F);
+  RiskAwareLatticeConfig config;
+  config.maximum_expansions = 3U;
+  config.frontier_validation_expansion_interval = 256U;
+  RiskAwareLatticeSearchSession session;
+
+  const RiskAwareLatticeResult first = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config, {}, &session);
+  const RiskAwareLatticeResult resumed = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{150.5, 10.5}, config, {}, &session);
+
+  EXPECT_GT(first.continuation_validation_ms, 0.0);
+  EXPECT_DOUBLE_EQ(resumed.continuation_validation_ms, 0.0);
+  EXPECT_EQ(resumed.status, LatticePlanStatus::kSearchIncomplete);
+  EXPECT_TRUE(resumed.search_session_resumed);
 }
 
 TEST(RiskAwareLattice, BoundedContinuationProvesDepthBeyondTwoPrimitives) {

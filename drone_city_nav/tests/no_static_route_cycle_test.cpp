@@ -53,6 +53,52 @@ TEST(NoStaticRouteCycleTest, DoesNotFlagRealMissionProgress) {
   EXPECT_FALSE(result.cycle_detected);
 }
 
+TEST(NoStaticRouteCycleTest, MatchesDisplacementToRepeatedGeneration) {
+  NoStaticRouteCycleDetector detector{NoStaticRouteCycleConfig{
+      .observation_window_s = 60.0,
+      .minimum_generation_changes = 4U,
+      .repeated_endpoint_radius_m = 2.0,
+      .maximum_vehicle_displacement_m = 5.0,
+      .maximum_mission_progress_m = 2.0,
+  }};
+  EXPECT_FALSE(detector
+                   .observe(NoStaticRouteCycleObservation{
+                       .guide_generation = 1U,
+                       .stamp_ns = 1'000'000'000LL,
+                       .vehicle_position = {0.0, 0.0},
+                       .guide_endpoint = {0.0, 20.0},
+                       .mission_distance_m = 100.0,
+                   })
+                   .cycle_detected);
+  EXPECT_FALSE(detector
+                   .observe(NoStaticRouteCycleObservation{
+                       .guide_generation = 2U,
+                       .stamp_ns = 2'000'000'000LL,
+                       .vehicle_position = {20.0, 0.0},
+                       .guide_endpoint = {20.0, 20.0},
+                       .mission_distance_m = 99.0,
+                   })
+                   .cycle_detected);
+  EXPECT_FALSE(detector
+                   .observe(NoStaticRouteCycleObservation{
+                       .guide_generation = 3U,
+                       .stamp_ns = 3'000'000'000LL,
+                       .vehicle_position = {21.0, 1.0},
+                       .guide_endpoint = {30.0, 20.0},
+                       .mission_distance_m = 99.5,
+                   })
+                   .cycle_detected);
+  EXPECT_TRUE(detector
+                  .observe(NoStaticRouteCycleObservation{
+                      .guide_generation = 4U,
+                      .stamp_ns = 4'000'000'000LL,
+                      .vehicle_position = {21.0, 0.5},
+                      .guide_endpoint = {20.5, 20.0},
+                      .mission_distance_m = 99.2,
+                  })
+                  .cycle_detected);
+}
+
 TEST(NoStaticRouteCycleTest, SamplesDirectedEdgesAcrossFailedGuide) {
   const std::vector<Point2> guide{{0.0, 0.0}, {8.0, 0.0}, {8.0, 4.0}};
 

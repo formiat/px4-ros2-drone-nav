@@ -3,6 +3,7 @@
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
+#include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
@@ -176,15 +177,6 @@ struct ProductionMppiPreparedEsdf {
   bool static_route_generation_matches{false};
 };
 
-struct ProductionPendingGlobalGuide {
-  std::shared_ptr<const std::vector<Point2>> guide;
-  bool reaches_mission_goal{false};
-  LatticePlanStatus status{LatticePlanStatus::kInvalidInput};
-  double remaining_goal_distance_m{0.0};
-  double cost{0.0};
-  std::uint64_t fingerprint{0U};
-};
-
 struct ProductionMppiStability {
   double first_control_delta{0.0};
   double position_rms_m{0.0};
@@ -347,7 +339,6 @@ private:
   double no_static_guide_lookahead_m_{30.0};
   bool frontier_blacklist_enabled_{false};
   double frontier_blacklist_ttl_s_{15.0};
-  double lattice_search_session_maximum_ms_{2000.0};
   double no_static_soft_tabu_penalty_{40.0};
   double no_static_soft_tabu_sample_spacing_m_{4.0};
   double no_static_adaptive_reachable_depth_m_{40.0};
@@ -431,7 +422,7 @@ private:
   std::atomic<std::uint64_t> guide_release_generation_{0U};
   std::atomic<GlobalGuideReleaseReason> guide_release_reason_{
       GlobalGuideReleaseReason::kStalled};
-  std::optional<ProductionPendingGlobalGuide> pending_global_guide_;
+  std::optional<GlobalGuideCandidate> pending_global_guide_;
   std::vector<LatticeFrontierBlacklistEntry> frontier_blacklist_;
 
   mutable std::mutex esdf_state_mutex_;
