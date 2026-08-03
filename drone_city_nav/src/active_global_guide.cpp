@@ -487,6 +487,8 @@ globalGuideReleaseReasonName(const GlobalGuideReleaseReason reason) noexcept {
       return "no_eligible_rollouts";
     case GlobalGuideReleaseReason::kDiverged:
       return "diverged";
+    case GlobalGuideReleaseReason::kObjectiveChanged:
+      return "objective_changed";
   }
   return "unknown";
 }

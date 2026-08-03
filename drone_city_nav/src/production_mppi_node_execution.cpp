@@ -37,6 +37,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   if (!execution_horizon_pub_) {
     return publication;
   }
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      navigationObjective();
+  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
 
   const auto make_horizon = [&](const std::int64_t valid_until_ns,
                                 const ProductionMppiExecutionMode mode,
@@ -57,9 +60,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     const bool goal_hold =
         planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
     horizon.stationary_position_hold = goal_hold;
-    horizon.stationary_hold_position.x = mission_goal_.x;
-    horizon.stationary_hold_position.y = mission_goal_.y;
-    horizon.stationary_hold_position.z = mission_goal_.z;
+    horizon.stationary_hold_position.x = mission_goal.x;
+    horizon.stationary_hold_position.y = mission_goal.y;
+    horizon.stationary_hold_position.z = mission_goal.z;
     return horizon;
   };
 
@@ -68,7 +71,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   if (goal_hold) {
     safety_intervention_tracker_.reset();
     brake_hold_lifecycle_.reset();
-    const Point3 hold_position = mission_goal_;
+    const Point3 hold_position = mission_goal;
     const auto hold_duration_ns = static_cast<std::int64_t>(
         std::max(0.2, 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) * 1.0e9);
     const ProductionMppiExecutionReason reason =

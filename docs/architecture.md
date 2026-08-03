@@ -109,6 +109,25 @@ guides can be replaced.
 The lattice guide chooses route direction. GPU MPPI owns the executable local
 motion and continuously warm-starts from its previous control sequence.
 
+## Mission Layer
+
+Point-to-point navigation remains the default mission and uses the configured
+fixed position objective and terminal goal capture.
+
+The intercept mission runs two complete navigation stacks with separate PX4 DDS
+namespaces, lidar memory, planners, offboard nodes, and crash state. A mission
+coordinator waits until both vehicles are armed and airborne, publishes the
+evader's fixed position objective, and streams the evader state as the
+interceptor's continuous objective. Continuous objectives retain replanning and
+collision validation but disable terminal goal capture. Swept relative-motion
+evaluation detects a 5 m intercept between state samples and requests bounded
+force-disarm for both vehicles.
+
+Each lidar pipeline filters returns belonging to the other tracked vehicle
+before obstacle-memory integration. This prevents a moving agent from becoming
+a persistent environmental obstacle; it does not introduce a prohibited zone
+or relax collision checks against raw physical occupancy.
+
 ## Execution Contract
 
 `MppiTrajectoryHorizon` contains:

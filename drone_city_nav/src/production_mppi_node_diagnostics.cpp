@@ -112,6 +112,9 @@ void ProductionMppiNode::publishRviz(
   if (!snapshot.rviz.has_value()) {
     return;
   }
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      navigationObjective();
+  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const ProductionMppiRvizSnapshot& rviz = *snapshot.rviz;
   const auto stamp = now();
   nav_msgs::msg::Path path;
@@ -147,12 +150,15 @@ void ProductionMppiNode::publishRviz(
           path.header, rviz.candidate_horizon, previous_horizon, execution_horizon,
           global_route, channel_edges, selected_channel_ids,
           snapshot.input.initial_state, snapshot.input.target, mission_start_,
-          mission_goal_, snapshot.result.selected_tier});
+          mission_goal, snapshot.result.selected_tier});
   markers_pub_->publish(markers);
 }
 
 void ProductionMppiNode::processDiagnostics(
     const ProductionMppiDiagnosticsSnapshot& snapshot) {
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      navigationObjective();
+  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const mppi::MppiTickInput& input = snapshot.input;
   const mppi::MppiTickResult& result = snapshot.result;
   const ProductionMppiPreparedEsdf& esdf = snapshot.esdf;
@@ -251,7 +257,7 @@ void ProductionMppiNode::processDiagnostics(
     RCLCPP_INFO(get_logger(),
                 "MISSION_GOAL_CAPTURE state=latched goal=(%.2f, %.2f, %.2f) "
                 "distance_m=%.3f action=position_hold",
-                mission_goal_.x, mission_goal_.y, mission_goal_.z,
+                mission_goal.x, mission_goal.y, mission_goal.z,
                 snapshot.goal_capture.horizontal_distance_m);
   }
 

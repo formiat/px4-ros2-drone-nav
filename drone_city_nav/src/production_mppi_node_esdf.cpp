@@ -119,10 +119,13 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         if (!navigation.valid) {
           continue;
         }
+        const std::shared_ptr<const ProductionNavigationObjective> objective =
+            navigationObjective();
+        const Point3 mission_goal = objective ? objective->goal : mission_goal_;
         const GridBounds3D local_bounds = localStaticEsdfBounds(
             *static_occupancy_3d_,
             Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-            mission_goal_, lattice_3d_config_.planning_goal_distance_m, 40.0);
+            mission_goal, lattice_3d_config_.planning_goal_distance_m, 40.0);
         const DistanceField3D field = DistanceField3D::buildLocal(
             *static_occupancy_3d_, local_bounds,
             static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,

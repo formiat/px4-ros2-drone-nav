@@ -2,6 +2,8 @@
 #include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
+#include "drone_city_nav/msg/vehicle_navigation_state.hpp"
+#include "drone_city_nav/msg/vehicle_termination.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
@@ -11,6 +13,7 @@
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 
 #include <algorithm>
@@ -115,6 +118,18 @@ public:
         declare_parameter<std::string>("rviz_drone_marker_topic",
                                        "/drone_city_nav/drone_marker"),
         rclcpp::QoS{1}.reliable());
+    rviz_drone_marker_id_ = static_cast<std::int32_t>(
+        declare_parameter<std::int64_t>("rviz_drone_marker_id", 0));
+    rviz_drone_marker_color_r_ =
+        declare_parameter<double>("rviz_drone_marker_color_r", 0.15);
+    rviz_drone_marker_color_g_ =
+        declare_parameter<double>("rviz_drone_marker_color_g", 0.65);
+    rviz_drone_marker_color_b_ =
+        declare_parameter<double>("rviz_drone_marker_color_b", 1.0);
+    navigation_state_pub_ = create_publisher<msg::VehicleNavigationState>(
+        declare_parameter<std::string>("vehicle_navigation_state_topic",
+                                       "/drone_city_nav/vehicle_state"),
+        rclcpp::QoS{10}.best_effort());
     applied_control_feedback_frame_id_ =
         declare_parameter<std::string>("applied_control_feedback_frame_id", "map");
     applied_control_feedback_pub_ = create_publisher<msg::MppiControlFeedback>(
@@ -153,7 +168,8 @@ public:
           vehicle_status_seen_ = true;
         });
     crash_state_sub_ = create_subscription<msg::CrashState>(
-        "/drone_city_nav/crash_state",
+        declare_parameter<std::string>("crash_state_topic",
+                                       "/drone_city_nav/crash_state"),
         rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
         [this](const msg::CrashState::SharedPtr state) {
           if (!state->crashed || crash_disarm_lifecycle_->latched()) {
@@ -168,6 +184,36 @@ public:
                        " drone_collision='%s' obstacle_collision='%s'",
                        state->reason.c_str(), state->drone_collision.c_str(),
                        state->obstacle_collision.c_str());
+        });
+    termination_sub_ = create_subscription<msg::VehicleTermination>(
+        declare_parameter<std::string>("vehicle_termination_topic",
+                                       "/drone_city_nav/termination"),
+        rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const msg::VehicleTermination::SharedPtr termination) {
+          if (crash_disarm_lifecycle_->latched()) {
+            return;
+          }
+          termination_reason_ =
+              termination->detail.empty() ? "mission_termination" : termination->detail;
+          crash_disarm_lifecycle_->latch(now().nanoseconds());
+          horizon_.reset();
+          auto_arm_ = false;
+          auto_offboard_ = false;
+          RCLCPP_INFO(get_logger(),
+                      "VEHICLE_TERMINATION latched=true mission_epoch=%" PRIu64
+                      " reason=%u detail='%s'",
+                      termination->mission_epoch,
+                      static_cast<unsigned>(termination->reason),
+                      termination_reason_.c_str());
+        });
+    require_mission_start_signal_ =
+        declare_parameter<bool>("require_mission_start_signal", false);
+    mission_start_sub_ = create_subscription<std_msgs::msg::Bool>(
+        declare_parameter<std::string>("mission_start_topic",
+                                       "/drone_city_nav/mission_start"),
+        rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const std_msgs::msg::Bool::SharedPtr start) {
+          mission_started_ = start->data;
         });
     offboard_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>(
         declare_parameter<std::string>("offboard_control_mode_topic",
@@ -204,8 +250,33 @@ private:
     velocity_up_mps_ = -static_cast<double>(state.vz);
     heading_rad_ = std::isfinite(state.heading) ? state.heading : heading_rad_;
     position_valid_ = true;
+    publishNavigationState();
     publishRvizDroneFollowTransform();
     publishRvizDroneMarker();
+  }
+
+  void publishNavigationState() {
+    if (!navigation_state_pub_) {
+      return;
+    }
+    msg::VehicleNavigationState state;
+    state.stamp = now();
+    state.position.x = local_x_ + px4_local_origin_.x;
+    state.position.y = local_y_ + px4_local_origin_.y;
+    state.position.z = altitude_m_;
+    state.velocity.x = velocity_x_;
+    state.velocity.y = velocity_y_;
+    state.velocity.z = velocity_up_mps_;
+    state.position_valid = position_valid_;
+    state.velocity_valid = position_valid_;
+    state.armed =
+        vehicle_status_seen_ && vehicle_status_.arming_state ==
+                                    px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+    state.airborne = state.armed && altitude_m_ >= 1.0;
+    state.navigation_ready =
+        state.airborne && takeoff_complete_stamp_.has_value() &&
+        (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
+    navigation_state_pub_->publish(state);
   }
 
   void publishRvizDroneFollowTransform() {
@@ -232,7 +303,7 @@ private:
     marker.header.stamp = now();
     marker.header.frame_id = rviz_drone_follow_parent_frame_;
     marker.ns = "drone";
-    marker.id = 0;
+    marker.id = rviz_drone_marker_id_;
     marker.type = visualization_msgs::msg::Marker::SPHERE;
     marker.action = visualization_msgs::msg::Marker::ADD;
     const Point3 position = rvizDronePosition();
@@ -243,9 +314,9 @@ private:
     marker.scale.x = 1.0;
     marker.scale.y = 1.0;
     marker.scale.z = 0.45;
-    marker.color.r = 0.15F;
-    marker.color.g = 0.65F;
-    marker.color.b = 1.0F;
+    marker.color.r = static_cast<float>(rviz_drone_marker_color_r_);
+    marker.color.g = static_cast<float>(rviz_drone_marker_color_g_);
+    marker.color.b = static_cast<float>(rviz_drone_marker_color_b_);
     marker.color.a = 1.0F;
     rviz_drone_marker_pub_->publish(marker);
   }
@@ -328,18 +399,23 @@ private:
       if (crash_disarm.force_disarm_requested) {
         publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
                        0.0F, kPx4ForceDisarmMagicParam2);
-        RCLCPP_ERROR(get_logger(), "PHYSICAL_COLLISION force_disarm_sent=true armed=%s",
-                     armed ? "true" : "unknown_or_false");
+        RCLCPP_INFO(get_logger(),
+                    "VEHICLE_TERMINATION force_disarm_sent=true armed=%s detail='%s'",
+                    armed ? "true" : "unknown_or_false", termination_reason_.c_str());
       }
       if (crash_disarm.confirmed && !crash_disarm_confirmed_logged_) {
         crash_disarm_confirmed_logged_ = true;
-        RCLCPP_ERROR(get_logger(), "PHYSICAL_COLLISION force_disarm_confirmed=true");
+        RCLCPP_INFO(get_logger(),
+                    "VEHICLE_TERMINATION force_disarm_confirmed=true detail='%s'",
+                    termination_reason_.c_str());
       }
       return;
     }
-    const bool navigating =
+    const bool takeoff_ready =
         position_valid_ && takeoff_complete_stamp_.has_value() &&
         (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
+    const bool navigating =
+        takeoff_ready && (!require_mission_start_signal_ || mission_started_);
     const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
     const OffboardSetpointMode mode = navigating && !stationary_position_hold
                                           ? OffboardSetpointMode::kVelocityCruise
@@ -513,14 +589,20 @@ private:
   double velocity_y_{0.0};
   double velocity_up_mps_{0.0};
   double heading_rad_{0.0};
+  double rviz_drone_marker_color_r_{0.15};
+  double rviz_drone_marker_color_g_{0.65};
+  double rviz_drone_marker_color_b_{1.0};
   int warmup_setpoints_{20};
   int warmup_count_{0};
+  std::int32_t rviz_drone_marker_id_{0};
   bool auto_arm_{true};
   bool auto_offboard_{true};
   bool rviz_drone_follow_tf_enabled_{true};
   bool position_valid_{false};
   bool vehicle_status_seen_{false};
   bool crash_disarm_confirmed_logged_{false};
+  bool require_mission_start_signal_{false};
+  bool mission_started_{false};
   Point2 px4_local_origin_{54.0, 54.0};
   VehicleCommandEndpoint endpoint_{};
   std::unique_ptr<CrashDisarmLifecycle> crash_disarm_lifecycle_;
@@ -532,14 +614,18 @@ private:
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   std::string rviz_drone_follow_frame_{"drone_follow"};
   std::string applied_control_feedback_frame_id_{"map"};
+  std::string termination_reason_{"physical_collision"};
   std::unique_ptr<tf2_ros::TransformBroadcaster> rviz_drone_follow_tf_broadcaster_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr rviz_drone_marker_pub_;
   rclcpp::Publisher<msg::MppiControlFeedback>::SharedPtr applied_control_feedback_pub_;
+  rclcpp::Publisher<msg::VehicleNavigationState>::SharedPtr navigation_state_pub_;
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<msg::CrashState>::SharedPtr crash_state_sub_;
+  rclcpp::Subscription<msg::VehicleTermination>::SharedPtr termination_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_start_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoint_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr command_pub_;

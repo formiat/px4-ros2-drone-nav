@@ -49,6 +49,9 @@ rosidl_generate_interfaces(
   "msg/MppiHorizonPoint.msg"
   "msg/MppiTrajectoryHorizon.msg"
   "msg/MppiControlFeedback.msg"
+  "msg/NavigationObjective.msg"
+  "msg/VehicleNavigationState.msg"
+  "msg/VehicleTermination.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
                               rosidl_typesupport_cpp)
@@ -130,6 +133,7 @@ add_library(
   src/global_guide_candidate.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
+  src/intercept_mission.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_debug_snapshot_pipeline.cpp
@@ -156,6 +160,7 @@ add_library(
   src/static_route_geometry.cpp
   src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
+  src/tracked_agent_lidar_filter.cpp
   src/lidar_snapshot_writer.cpp
   src/mppi/mppi_post_update_classification.cpp
   src/mppi_horizon_safety.cpp
@@ -280,6 +285,13 @@ ament_target_dependencies(
   rclcpp)
 enable_project_warnings(mission_monitor_node)
 
+add_executable(intercept_mission_node src/intercept_mission_node.cpp)
+target_compile_features(intercept_mission_node PRIVATE cxx_std_20)
+target_link_libraries(intercept_mission_node drone_city_nav_core
+                      ${cpp_typesupport_target})
+ament_target_dependencies(intercept_mission_node rclcpp std_msgs)
+enable_project_warnings(intercept_mission_node)
+
 add_executable(
   lidar_debug_node
   src/lidar_debug_node.cpp
@@ -342,6 +354,7 @@ install(
     mppi_offboard_node
     world_visualization_node
     mission_monitor_node
+    intercept_mission_node
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -352,6 +365,17 @@ install(DIRECTORY config launch models rviz worlds DESTINATION share/${PROJECT_N
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(intercept_mission_test tests/intercept_mission_test.cpp)
+  target_compile_features(intercept_mission_test PRIVATE cxx_std_20)
+  target_link_libraries(intercept_mission_test drone_city_nav_core)
+  enable_project_warnings(intercept_mission_test)
+
+  ament_add_gtest(tracked_agent_lidar_filter_test
+                  tests/tracked_agent_lidar_filter_test.cpp)
+  target_compile_features(tracked_agent_lidar_filter_test PRIVATE cxx_std_20)
+  target_link_libraries(tracked_agent_lidar_filter_test drone_city_nav_core)
+  enable_project_warnings(tracked_agent_lidar_filter_test)
+
   ament_add_gtest(mppi_reference_test_current tests/mppi_reference_test.cpp
                   src/mppi/mppi_reference.cpp)
   target_compile_features(mppi_reference_test_current PRIVATE cxx_std_20)

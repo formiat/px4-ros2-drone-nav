@@ -43,3 +43,11 @@ sim-gui: build
 .PHONY: sim-headless
 sim-headless: build
 	HEADLESS=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-90}" ./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-intercept-gui
+sim-intercept-gui: build
+	MISSION_TYPE=intercept ./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-intercept-headless
+sim-intercept-headless: build
+	MISSION_TYPE=intercept HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-120}" ./scripts/run_drone_nav_sim.sh

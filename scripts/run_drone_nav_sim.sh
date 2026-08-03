@@ -60,10 +60,16 @@ colcon_log_base="$(make_abs_path "${COLCON_LOG_BASE:-log}")"
 run_log_dir="$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")"
 run_id="${DRONE_GAZEBO_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 world_name="generated_city"
+mission_type="${MISSION_TYPE:-point_to_point}"
+if [[ "${mission_type}" != "point_to_point" && "${mission_type}" != "intercept" ]]; then
+  echo "Unsupported MISSION_TYPE=${mission_type}; expected point_to_point or intercept" >&2
+  exit 1
+fi
 px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
 smoke_duration_s="${SMOKE_DURATION_S:-0}"
 px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_drone_nav.log}"
+evader_px4_log_file="${EVADER_PX4_LOG_FILE:-${run_log_dir}/px4_evader_nav.log}"
 uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${run_log_dir}/uxrce_agent_drone_nav.log}"
 ros_log_file="${ROS_LOG_FILE:-${run_log_dir}/ros_drone_nav.log}"
 gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_drone_nav.log}"
@@ -92,6 +98,7 @@ elif [[ -n "${headless}" ]]; then
 else
   enable_rviz="true"
 fi
+evader_speed_scale="${EVADER_SPEED_SCALE:-0.6}"
 enable_gazebo_gui_follow_camera="$(
   normalize_bool "${ENABLE_GZ_GUI_FOLLOW_CAMERA:-true}"
 )"
@@ -121,6 +128,10 @@ spawn_x_m="${SIM_START_X_M:--171.0}"
 spawn_y_m="${SIM_START_Y_M:--81.0}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
 spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
+evader_spawn_x_m="${EVADER_SIM_START_X_M:--171.0}"
+evader_spawn_y_m="${EVADER_SIM_START_Y_M:-135.0}"
+evader_spawn_z_m="${EVADER_SIM_START_Z_M:-0.3}"
+evader_spawn_yaw_rad="${EVADER_SIM_START_YAW_RAD:-0}"
 runtime_dir="${colcon_build_base}/gazebo_drone_nav"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
@@ -131,6 +142,11 @@ px4_server_config="${px4_dir}/src/modules/simulation/gz_bridge/server.config"
 if [[ ! -d "${px4_dir}" ]]; then
   echo "PX4-Autopilot was not found at ${px4_dir}" >&2
   echo "Run scripts/setup_px4_autopilot.sh first or set PX4_AUTOPILOT_DIR." >&2
+  exit 1
+fi
+if [[ "${mission_type}" == "intercept" && ! -x "${px4_build_dir}/bin/px4" ]]; then
+  echo "PX4 SITL binary was not found: ${px4_build_dir}/bin/px4" >&2
+  echo "Build PX4 SITL before running the intercept mission." >&2
   exit 1
 fi
 if [[ ! -f "${ros_setup_file}" ]]; then
@@ -248,6 +264,14 @@ else
   )"
   px4_active_maximum_jerk_mps3="${px4_no_static_maximum_jerk_mps3}"
 fi
+evader_px4_max_horizontal_speed_mps="$(
+  python3 -c 'import sys; print(float(sys.argv[1]) * float(sys.argv[2]))' \
+    "${px4_active_max_horizontal_speed_mps}" "${evader_speed_scale}"
+)"
+evader_px4_cruise_speed_mps="$(
+  python3 -c 'import sys; print(float(sys.argv[1]) * float(sys.argv[2]))' \
+    "${px4_active_cruise_speed_mps}" "${evader_speed_scale}"
+)"
 
 format_override_value() {
   local value="$1"
@@ -337,6 +361,10 @@ if [[ "${enable_gz_scene_diagnostics}" == "true" ||
   mkdir -p "${gz_scene_diagnostics_dir}"
 fi
 : > "${px4_log_file}"
+if [[ "${mission_type}" == "intercept" ]]; then
+  mkdir -p "$(dirname "${evader_px4_log_file}")"
+  : > "${evader_px4_log_file}"
+fi
 : > "${uxrce_log_file}"
 : > "${ros_log_file}"
 
@@ -416,6 +444,12 @@ trap 'exit 143' TERM
 
 run_px4_sitl() {
   make -C "${px4_dir}" px4_sitl "${px4_model_target}"
+}
+
+run_px4_instance() {
+  local instance="$1"
+  cd "${px4_dir}"
+  exec "${px4_build_dir}/bin/px4" -i "${instance}"
 }
 
 configure_gazebo_gui_follow_camera() {
@@ -556,43 +590,86 @@ echo "Gazebo resources: ${runtime_dir}"
 echo "MicroXRCEAgent log: ${uxrce_log_file}"
 MicroXRCEAgent udp4 -p 8888 > "${uxrce_log_file}" 2>&1 &
 
+px4_parameter_stream() {
+  local cruise_speed="$1"
+  local maximum_speed="$2"
+  sleep "${px4_param_delay_s}"
+  echo "param set CBRK_SUPPLY_CHK 894281"
+  echo "param set NAV_DLL_ACT 0"
+  echo "param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}"
+  echo "param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}"
+  echo "param set MPC_XY_CRUISE ${cruise_speed}"
+  echo "param set MPC_XY_VEL_MAX ${maximum_speed}"
+  echo "param set MPC_ACC_HOR_MAX ${px4_active_max_horizontal_acceleration_mps2}"
+  echo "param set MPC_ACC_HOR ${px4_active_max_horizontal_acceleration_mps2}"
+  echo "param set MPC_JERK_AUTO ${px4_active_maximum_jerk_mps3}"
+  echo "param show MPC_XY_CRUISE"
+  echo "param show MPC_XY_VEL_MAX"
+  echo "param show MPC_ACC_HOR_MAX"
+  echo "param show MPC_ACC_HOR"
+  echo "param show MPC_JERK_AUTO"
+  echo "param show MPC_Z_VEL_MAX_UP"
+  echo "param show MPC_Z_VEL_MAX_DN"
+  while true; do
+    sleep 3600
+  done
+}
+
 echo "PX4 SITL log: ${px4_log_file}"
 echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}"
-(
-  {
-    sleep "${px4_param_delay_s}"
-    echo "param set CBRK_SUPPLY_CHK 894281"
-    echo "param set NAV_DLL_ACT 0"
-    echo "param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}"
-    echo "param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}"
-    echo "param set MPC_XY_CRUISE ${px4_active_cruise_speed_mps}"
-    echo "param set MPC_XY_VEL_MAX ${px4_active_max_horizontal_speed_mps}"
-    echo "param set MPC_ACC_HOR_MAX ${px4_active_max_horizontal_acceleration_mps2}"
-    echo "param set MPC_ACC_HOR ${px4_active_max_horizontal_acceleration_mps2}"
-    echo "param set MPC_JERK_AUTO ${px4_active_maximum_jerk_mps3}"
-    echo "param show MPC_XY_CRUISE"
-    echo "param show MPC_XY_VEL_MAX"
-    echo "param show MPC_ACC_HOR_MAX"
-    echo "param show MPC_ACC_HOR"
-    echo "param show MPC_JERK_AUTO"
-    echo "param show MPC_Z_VEL_MAX_DN"
-    echo "param show MPC_Z_VEL_MAX_UP"
-    while true; do
-      sleep 3600
-    done
-  } | PX4_GZ_WORLD="${world_name}" \
-      PX4_GZ_STANDALONE=1 \
-      PX4_GZ_MODEL_POSE="${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}" \
-      HEADLESS="${headless}" \
+if [[ "${mission_type}" == "intercept" ]]; then
+  echo "Evader PX4 SITL log: ${evader_px4_log_file}"
+  echo "Evader Gazebo spawn pose: ${evader_spawn_x_m},${evader_spawn_y_m},${evader_spawn_z_m},0,0,${evader_spawn_yaw_rad}"
+  (
+    px4_parameter_stream "${px4_active_cruise_speed_mps}" \
+      "${px4_active_max_horizontal_speed_mps}" |
+      PX4_GZ_WORLD="${world_name}" \
+        PX4_GZ_STANDALONE=1 \
+        PX4_GZ_MODEL_POSE="${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}" \
+        PX4_SIM_MODEL="${px4_model_target}" \
+        PX4_UXRCE_DDS_NS=interceptor \
+        PX4_SYS_AUTOSTART=4013 \
+        HEADLESS="${headless}" \
+        run_px4_instance 0
+  ) > "${px4_log_file}" 2>&1 &
+  px4_pid=$!
+  (
+    px4_parameter_stream "${evader_px4_cruise_speed_mps}" \
+      "${evader_px4_max_horizontal_speed_mps}" |
+      PX4_GZ_WORLD="${world_name}" \
+        PX4_GZ_STANDALONE=1 \
+        PX4_GZ_MODEL_POSE="${evader_spawn_x_m},${evader_spawn_y_m},${evader_spawn_z_m},0,0,${evader_spawn_yaw_rad}" \
+        PX4_SIM_MODEL="${px4_model_target}" \
+        PX4_UXRCE_DDS_NS=evader \
+        PX4_SYS_AUTOSTART=4013 \
+        HEADLESS="${headless}" \
+        run_px4_instance 1
+  ) > "${evader_px4_log_file}" 2>&1 &
+  evader_px4_pid=$!
+else
+  (
+    px4_parameter_stream "${px4_active_cruise_speed_mps}" \
+      "${px4_active_max_horizontal_speed_mps}" |
+      PX4_GZ_WORLD="${world_name}" \
+        PX4_GZ_STANDALONE=1 \
+        PX4_GZ_MODEL_POSE="${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}" \
+        HEADLESS="${headless}" \
         run_px4_sitl
-) > "${px4_log_file}" 2>&1 &
-px4_pid=$!
+  ) > "${px4_log_file}" 2>&1 &
+  px4_pid=$!
+fi
 
 sleep "${startup_sleep_s}"
 
 if ! kill -0 "${px4_pid}" 2>/dev/null; then
   echo "PX4 SITL exited before ROS launch. Last PX4 log lines:" >&2
   tail -n 80 "${px4_log_file}" >&2
+  exit 1
+fi
+if [[ "${mission_type}" == "intercept" ]] &&
+  ! kill -0 "${evader_px4_pid}" 2>/dev/null; then
+  echo "Evader PX4 SITL exited before ROS launch. Last log lines:" >&2
+  tail -n 80 "${evader_px4_log_file}" >&2
   exit 1
 fi
 
@@ -616,12 +693,16 @@ check_headless_run() {
   local validation_args=(
     --ros-log "${ros_log_file}"
     --px4-log "${px4_log_file}"
+    --mission-type "${mission_type}"
     --expected-static "${expected_static_map}"
     --expected-memory "${expected_obstacle_memory}"
     --expected-current-lidar "${expected_current_lidar}"
     --enable-lidar-debug "${enable_lidar_debug}"
   )
-  if [[ -n "${mission_check}" ]]; then
+  if [[ "${mission_type}" == "intercept" ]]; then
+    validation_args+=(--px4-log "${evader_px4_log_file}")
+  fi
+  if [[ -n "${mission_check}" || "${mission_type}" == "intercept" ]]; then
     validation_args+=(--mission-check)
   fi
   if bool_is_true "${allow_mission_failure}"; then
@@ -632,6 +713,9 @@ check_headless_run() {
     "${validation_args[@]}"; then
     print_log_tail "Gazebo" "${gz_log_file}"
     print_log_tail "PX4 SITL" "${px4_log_file}"
+    if [[ "${mission_type}" == "intercept" ]]; then
+      print_log_tail "Evader PX4 SITL" "${evader_px4_log_file}"
+    fi
     print_log_tail "ROS launch" "${ros_log_file}"
     return 1
   fi
@@ -639,24 +723,35 @@ check_headless_run() {
   return 0
 }
 
-ros_launch_args=(
-  params_file:="${city_nav_params_file}"
-  lidar_debug_output_dir:="${lidar_debug_dir}"
-  lidar_memory_hit_dump_path:="${lidar_memory_hit_dump_path}"
-  enable_gazebo_bridge:=true
-  enable_mission_monitor:=true
-  enable_lidar_debug:="${enable_lidar_debug}"
-  enable_rviz:="${enable_rviz}"
-  rviz_config:="${rviz_config_file}"
-  rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
-)
+launch_file="city_nav.launch.py"
+if [[ "${mission_type}" == "intercept" ]]; then
+  launch_file="intercept.launch.py"
+  ros_launch_args=(
+    params_file:="${city_nav_params_file}"
+    enable_lidar_debug:="${enable_lidar_debug}"
+    enable_rviz:="${enable_rviz}"
+    evader_speed_scale:="${evader_speed_scale}"
+  )
+else
+  ros_launch_args=(
+    params_file:="${city_nav_params_file}"
+    lidar_debug_output_dir:="${lidar_debug_dir}"
+    lidar_memory_hit_dump_path:="${lidar_memory_hit_dump_path}"
+    enable_gazebo_bridge:=true
+    enable_mission_monitor:=true
+    enable_lidar_debug:="${enable_lidar_debug}"
+    enable_rviz:="${enable_rviz}"
+    rviz_config:="${rviz_config_file}"
+    rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
+  )
+fi
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")
 fi
 echo "ROS launch log: ${ros_log_file}"
 echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"
 if [[ "${smoke_duration_s}" != "0" ]]; then
-  timeout "${smoke_duration_s}" ros2 launch drone_city_nav city_nav.launch.py \
+  timeout "${smoke_duration_s}" ros2 launch drone_city_nav "${launch_file}" \
     "${ros_launch_args[@]}" \
     > "${ros_log_file}" 2>&1 || {
     exit_code=$?
@@ -672,8 +767,11 @@ if [[ "${smoke_duration_s}" != "0" ]]; then
     print_log_tail "ROS launch" "${ros_log_file}"
     exit "${exit_code}"
   }
+  if [[ -n "${headless}" ]]; then
+    check_headless_run
+  fi
 else
-  ros2 launch drone_city_nav city_nav.launch.py \
+  ros2 launch drone_city_nav "${launch_file}" \
     "${ros_launch_args[@]}" \
     2>&1 | tee "${ros_log_file}"
 fi

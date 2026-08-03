@@ -37,6 +37,8 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/test.sh
 ./scripts/sim_gui.sh
 ./scripts/sim_headless.sh
+./scripts/sim_intercept_gui.sh
+./scripts/sim_intercept_headless.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -53,6 +55,8 @@ make quality
 make format
 make sim-gui
 make sim-headless
+make sim-intercept-gui
+make sim-intercept-headless
 ```
 
 Build and run the isolated CUDA MPPI benchmark:
@@ -107,6 +111,22 @@ Run the GUI simulation:
 ```bash
 ./scripts/sim_gui.sh
 ```
+
+Run the two-vehicle intercept mission:
+
+```bash
+./scripts/sim_intercept_gui.sh
+./scripts/sim_intercept_headless.sh
+```
+
+The point-to-point mission remains the default. The intercept mission launches
+isolated interceptor and evader PX4/ROS namespaces. The evader flies to its
+fixed goal at 60% of the interceptor speed policy, while the interceptor tracks
+the evader through a continuous navigation objective without terminal goal
+hold. A swept separation of 5 m terminates and disarms both vehicles as a
+successful intercept. Evader goal arrival is an intercept failure but still a
+technically successful simulation outcome. RViz and Gazebo follow the
+interceptor.
 
 Stop all running simulation leftovers, including related Gazebo/PX4/ROS
 processes and simulation containers:

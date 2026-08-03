@@ -12,6 +12,8 @@ Run these from the repository root:
 ./scripts/test.sh
 ./scripts/sim_gui.sh
 ./scripts/sim_headless.sh
+./scripts/sim_intercept_gui.sh
+./scripts/sim_intercept_headless.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -41,6 +43,8 @@ make quality
 make format
 make sim-gui
 make sim-headless
+make sim-intercept-gui
+make sim-intercept-headless
 ```
 
 `make build` runs `colcon build` for `drone_city_nav` with build, install, and
@@ -75,6 +79,17 @@ Headless smoke run:
 ```bash
 ./scripts/sim_headless.sh
 ```
+
+Two-vehicle intercept mission:
+
+```bash
+./scripts/sim_intercept_gui.sh
+./scripts/sim_intercept_headless.sh
+```
+
+Set `EVADER_SPEED_SCALE` to override the default `0.6` evader speed multiplier.
+The headless command requires a terminal intercept outcome and validates both
+PX4 instance logs.
 
 Stop simulator leftovers:
 

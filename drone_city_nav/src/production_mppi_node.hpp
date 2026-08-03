@@ -14,6 +14,7 @@
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
+#include "drone_city_nav/msg/navigation_objective.hpp"
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
@@ -52,6 +53,14 @@ struct ProductionMppiNavigation {
   std::int64_t receive_stamp_ns{0};
   std::uint64_t revision{0U};
   bool valid{false};
+};
+
+struct ProductionNavigationObjective {
+  Point3 goal{};
+  std::uint64_t mission_epoch{0U};
+  std::uint64_t sample_sequence{0U};
+  std::int64_t stamp_ns{0};
+  bool continuous_tracking{false};
 };
 
 enum class ProductionPlanningSearchKind : std::uint8_t {
@@ -302,6 +311,9 @@ private:
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
+  void onNavigationObjective(const msg::NavigationObjective& message);
+  [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
+  navigationObjective() const;
   void requestGuideRelease(GlobalGuideReleaseReason reason,
                            std::uint64_t guide_generation = 0U);
   void maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
@@ -359,6 +371,8 @@ private:
   Point2 px4_local_origin_{54.0, 54.0};
   Point3 mission_start_{54.0, 54.0, 0.0};
   Point3 mission_goal_{216.0, 378.0, 18.0};
+  double dynamic_objective_replan_distance_m_{5.0};
+  double dynamic_objective_replan_period_s_{0.25};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
   float constrained_route_speed_limit_mps_{10.0F};
@@ -416,6 +430,11 @@ private:
   ProductionMppiAppliedControl applied_control_{};
   std::uint64_t memory_sequence_{0U};
   std::int64_t memory_receive_stamp_ns_{0};
+  std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
+      navigation_objective_;
+  std::mutex objective_replan_mutex_;
+  Point3 objective_replan_anchor_{};
+  std::int64_t objective_replan_stamp_ns_{0};
 
   std::mutex raw_queue_mutex_;
   std::condition_variable_any raw_queue_condition_;
@@ -465,6 +484,7 @@ private:
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
   rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
+  rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;

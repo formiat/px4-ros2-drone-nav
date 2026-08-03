@@ -29,6 +29,8 @@ public:
         "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
     const std::string status_topic = declare_parameter<std::string>(
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status");
+    drone_collision_filter_ =
+        declare_parameter<std::string>("drone_collision_filter", "");
 
     crash_state_pub_ = create_publisher<msg::CrashState>(
         crash_state_topic,
@@ -103,6 +105,10 @@ private:
     }
 
     for (const auto& contact : contacts.contacts) {
+      if (!drone_collision_filter_.empty() &&
+          contact.collision1.name.find(drone_collision_filter_) == std::string::npos) {
+        continue;
+      }
       msg::CrashState state;
       state.stamp = contacts.header.stamp;
       if (state.stamp.sec == 0 && state.stamp.nanosec == 0U) {
@@ -149,6 +155,7 @@ private:
   bool armed_{false};
   bool airborne_seen_{false};
   bool crashed_{false};
+  std::string drone_collision_filter_;
 
   rclcpp::Publisher<msg::CrashState>::SharedPtr crash_state_pub_;
   rclcpp::Subscription<ros_gz_interfaces::msg::Contacts>::SharedPtr contacts_sub_;

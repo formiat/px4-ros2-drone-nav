@@ -14,9 +14,12 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
       esdf.global_guide_generation == 0U) {
     return;
   }
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      navigationObjective();
+  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
   const Point3 next_planning_goal = staticRoutePlanningGoal(
-      current, mission_goal_, lattice_3d_config_.planning_goal_distance_m);
+      current, mission_goal, lattice_3d_config_.planning_goal_distance_m);
 
   std::scoped_lock extension_lock{static_route_extension_mutex_};
   const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(

@@ -134,6 +134,18 @@ ProductionMppiNode::ProductionMppiNode()
   mission_goal_.x = declare_parameter<double>("goal_x_m", 216.0);
   mission_goal_.y = declare_parameter<double>("goal_y_m", 378.0);
   mission_goal_.z = declare_parameter<double>("goal_z_m", 18.0);
+  dynamic_objective_replan_distance_m_ =
+      declare_parameter<double>("dynamic_objective_replan_distance_m", 5.0);
+  dynamic_objective_replan_period_s_ =
+      declare_parameter<double>("dynamic_objective_replan_period_s", 0.25);
+  if (!(dynamic_objective_replan_distance_m_ > 0.0) ||
+      !(dynamic_objective_replan_period_s_ > 0.0)) {
+    throw std::invalid_argument{"dynamic objective replan thresholds must be positive"};
+  }
+  navigation_objective_.store(std::make_shared<const ProductionNavigationObjective>(
+                                  ProductionNavigationObjective{.goal = mission_goal_}),
+                              std::memory_order_release);
+  objective_replan_anchor_ = mission_goal_;
   mission_goal_capture_config_.capture_radius_m =
       declare_parameter<double>("mission_goal_capture_radius_m", 2.0);
   mppi_config_.rollouts =
@@ -564,6 +576,13 @@ ProductionMppiNode::ProductionMppiNode()
       rclcpp::QoS{10}.reliable(),
       [this](const msg::MppiControlFeedback::SharedPtr message) {
         onAppliedControl(*message);
+      });
+  navigation_objective_sub_ = create_subscription<msg::NavigationObjective>(
+      declare_parameter<std::string>("navigation_objective_topic",
+                                     "/drone_city_nav/navigation_objective"),
+      rclcpp::QoS{1}.reliable().transient_local(),
+      [this](const msg::NavigationObjective::SharedPtr message) {
+        onNavigationObjective(*message);
       });
   path_pub_ = create_publisher<nav_msgs::msg::Path>(
       declare_parameter<std::string>("path_topic", "/drone_city_nav/mppi/path"),

@@ -15,6 +15,12 @@ LAUNCH_FILE = (
     / "launch"
     / "city_nav.launch.py"
 )
+INTERCEPT_LAUNCH_FILE = (
+    Path(__file__).resolve().parents[2]
+    / "drone_city_nav"
+    / "launch"
+    / "intercept.launch.py"
+)
 NAV_CONFIG = (
     Path(__file__).resolve().parents[2]
     / "drone_city_nav"
@@ -51,6 +57,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         cls.text = RUNNER.read_text(encoding="utf-8")
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
         cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
+        cls.intercept_launch_text = INTERCEPT_LAUNCH_FILE.read_text(encoding="utf-8")
         cls.nav_config_text = NAV_CONFIG.read_text(encoding="utf-8")
         cls.production_mppi_source_text = PRODUCTION_MPPI_SOURCE.read_text(
             encoding="utf-8"
@@ -246,13 +253,15 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.text,
         )
         self.assertIn(
-            'param set MPC_XY_CRUISE ${px4_active_cruise_speed_mps}',
+            'echo "param set MPC_XY_CRUISE ${cruise_speed}"',
             self.text,
         )
         self.assertIn(
-            'param set MPC_XY_VEL_MAX ${px4_active_max_horizontal_speed_mps}',
+            'echo "param set MPC_XY_VEL_MAX ${maximum_speed}"',
             self.text,
         )
+        self.assertIn('px4_parameter_stream "${px4_active_cruise_speed_mps}"', self.text)
+        self.assertIn('px4_parameter_stream "${evader_px4_cruise_speed_mps}"', self.text)
         self.assertIn(
             "param set MPC_ACC_HOR_MAX "
             "${px4_active_max_horizontal_acceleration_mps2}",
@@ -267,6 +276,22 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             'param set MPC_JERK_AUTO ${px4_active_maximum_jerk_mps3}',
             self.text,
         )
+
+    def test_intercept_mode_launches_isolated_px4_instances(self) -> None:
+        self.assertIn('mission_type="${MISSION_TYPE:-point_to_point}"', self.text)
+        self.assertIn("PX4_UXRCE_DDS_NS=interceptor", self.text)
+        self.assertIn("PX4_UXRCE_DDS_NS=evader", self.text)
+        self.assertIn("run_px4_instance 0", self.text)
+        self.assertIn("run_px4_instance 1", self.text)
+        self.assertIn('--px4-log "${evader_px4_log_file}"', self.text)
+
+    def test_intercept_launch_keeps_vehicle_state_isolated(self) -> None:
+        self.assertIn('"/vehicles/interceptor/state"', self.intercept_launch_text)
+        self.assertIn('"/vehicles/evader/state"', self.intercept_launch_text)
+        self.assertIn('px4_namespace": "interceptor"', self.intercept_launch_text)
+        self.assertIn('px4_namespace": "evader"', self.intercept_launch_text)
+        self.assertIn('"require_mission_start_signal": True', self.intercept_launch_text)
+        self.assertIn('"rviz_drone_follow_tf_enabled": primary', self.intercept_launch_text)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ enum class GlobalGuideReleaseReason : std::uint8_t {
   kPersistentSafetyRejection,
   kNoEligibleRollouts,
   kDiverged,
+  kObjectiveChanged,
 };
 
 enum class GlobalGuideHeadingSource : std::uint8_t {

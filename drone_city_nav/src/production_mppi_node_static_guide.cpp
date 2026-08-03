@@ -14,14 +14,17 @@ namespace drone_city_nav {
 void ProductionMppiNode::processStaticGuideSearch(
     const ProductionMppiPreparedEsdf& world,
     const ProductionMppiNavigation& navigation) {
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      navigationObjective();
+  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
                            static_cast<double>(navigation.state.vy),
                            static_cast<double>(navigation.state.vz)};
   if (std::hypot(preferred_direction.x, preferred_direction.y) < 0.5) {
     preferred_direction =
-        Vec3{mission_goal_.x - navigation.state.x, mission_goal_.y - navigation.state.y,
-             mission_goal_.z - navigation.state.z};
+        Vec3{mission_goal.x - navigation.state.x, mission_goal.y - navigation.state.y,
+             mission_goal.z - navigation.state.z};
   }
   const auto search_started = std::chrono::steady_clock::now();
   const std::span<const ConstrainedFreeSpaceEdge> channel_edges =
@@ -29,7 +32,7 @@ void ProductionMppiNode::processStaticGuideSearch(
           ? std::span<const ConstrainedFreeSpaceEdge>{*world.channel_edges}
           : std::span<const ConstrainedFreeSpaceEdge>{};
   const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
-      world.grid, *world.distances_m, search_start, preferred_direction, mission_goal_,
+      world.grid, *world.distances_m, search_start, preferred_direction, mission_goal,
       channel_edges, lattice_3d_config_, planning_worker_pool_.get());
   const double search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
@@ -128,7 +131,7 @@ void ProductionMppiNode::processStaticGuideSearch(
       validation = validateStaticRouteCandidate(
           world.route_3d ? std::span<const RouteSample3D>{*world.route_3d}
                          : std::span<const RouteSample3D>{},
-          *mutable_route, world.grid, *world.distances_m, mission_goal_,
+          *mutable_route, world.grid, *world.distances_m, mission_goal,
           static_route_extension_config_.minimum_endpoint_improvement_m,
           lattice.reached_mission_goal,
           world.static_route_extension_request || world.static_route_replan_request,

@@ -1,0 +1,8 @@
+uint8 TERMINAL_POLICY_POSITION_HOLD=0
+uint8 TERMINAL_POLICY_CONTINUOUS_TRACKING=1
+
+builtin_interfaces/Time stamp
+uint64 mission_epoch
+uint64 sample_sequence
+geometry_msgs/Point position
+uint8 terminal_policy

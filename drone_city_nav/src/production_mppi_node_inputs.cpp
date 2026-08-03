@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cinttypes>
 #include <cmath>
 #include <numbers>
 #include <utility>
@@ -6,6 +7,24 @@
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] std::int64_t
+timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
+  return static_cast<std::int64_t>(stamp.sec) * 1'000'000'000LL +
+         static_cast<std::int64_t>(stamp.nanosec);
+}
+
+[[nodiscard]] bool finitePoint(const geometry_msgs::msg::Point& point) noexcept {
+  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
+}
+
+[[nodiscard]] double pointDistance(const Point3& first, const Point3& second) noexcept {
+  return std::hypot(std::hypot(first.x - second.x, first.y - second.y),
+                    first.z - second.z);
+}
+
+} // namespace
 
 void ProductionMppiNode::onLocalPosition(
     const px4_msgs::msg::VehicleLocalPosition& message) {
@@ -81,6 +100,75 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
   }
   const std::scoped_lock lock{input_mutex_};
   applied_control_ = feedback;
+}
+
+std::shared_ptr<const ProductionNavigationObjective>
+ProductionMppiNode::navigationObjective() const {
+  return navigation_objective_.load(std::memory_order_acquire);
+}
+
+void ProductionMppiNode::onNavigationObjective(
+    const msg::NavigationObjective& message) {
+  if (!finitePoint(message.position) ||
+      message.terminal_policy >
+          msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING) {
+    RCLCPP_WARN(get_logger(),
+                "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
+                " sample=%" PRIu64 " reason=invalid_payload",
+                message.mission_epoch, message.sample_sequence);
+    return;
+  }
+  const std::shared_ptr<const ProductionNavigationObjective> previous =
+      navigationObjective();
+  if (previous && message.mission_epoch < previous->mission_epoch) {
+    return;
+  }
+  if (previous && message.mission_epoch == previous->mission_epoch &&
+      message.sample_sequence <= previous->sample_sequence) {
+    return;
+  }
+
+  const Point3 goal{message.position.x, message.position.y, message.position.z};
+  const auto objective = std::make_shared<const ProductionNavigationObjective>(
+      ProductionNavigationObjective{
+          .goal = goal,
+          .mission_epoch = message.mission_epoch,
+          .sample_sequence = message.sample_sequence,
+          .stamp_ns = timeNanoseconds(message.stamp),
+          .continuous_tracking =
+              message.terminal_policy ==
+              msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING,
+      });
+  navigation_objective_.store(objective, std::memory_order_release);
+
+  bool request_replan = false;
+  const std::int64_t now_ns = get_clock()->now().nanoseconds();
+  {
+    const std::scoped_lock lock{objective_replan_mutex_};
+    const bool epoch_changed =
+        !previous || previous->mission_epoch != message.mission_epoch;
+    const bool moved = pointDistance(goal, objective_replan_anchor_) >=
+                       dynamic_objective_replan_distance_m_;
+    const bool period_elapsed =
+        objective_replan_stamp_ns_ <= 0 ||
+        static_cast<double>(now_ns - objective_replan_stamp_ns_) * 1.0e-9 >=
+            dynamic_objective_replan_period_s_;
+    request_replan = epoch_changed || (moved && period_elapsed);
+    if (request_replan) {
+      objective_replan_anchor_ = goal;
+      objective_replan_stamp_ns_ = now_ns;
+    }
+  }
+  if (request_replan) {
+    requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
+  }
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
+      " goal=(%.2f,%.2f,%.2f) policy=%s replan=%s",
+      message.mission_epoch, message.sample_sequence, goal.x, goal.y, goal.z,
+      objective->continuous_tracking ? "continuous_tracking" : "position_hold",
+      request_replan ? "true" : "false");
 }
 
 } // namespace drone_city_nav

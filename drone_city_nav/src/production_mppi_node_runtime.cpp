@@ -145,6 +145,9 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       search_navigation = navigation_;
     }
     const ProductionMppiNavigation navigation = *search_navigation;
+    const std::shared_ptr<const ProductionNavigationObjective> objective =
+        navigationObjective();
+    const Point3 mission_goal = objective ? objective->goal : mission_goal_;
     ActiveGlobalGuideUpdate guide_update;
     GlobalGuideHeading guide_heading;
     RiskAwareLatticeResult lattice_observation;
@@ -303,12 +306,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         if (guide_update.requires_replan || search_session_in_progress) {
           if (!search_heading.has_value()) {
             search_heading = active_guide_lifecycle_->selectPlanningHeading(
-                navigation.state, Point2{mission_goal_.x, mission_goal_.y});
+                navigation.state, Point2{mission_goal.x, mission_goal.y});
           }
           guide_heading = *search_heading;
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
-              Point2{mission_goal_.x, mission_goal_.y}, search_config,
+              Point2{mission_goal.x, mission_goal.y}, search_config,
               frontier_blacklist_, &search_session, planning_worker_pool_.get());
           lattice_search_performed = true;
           const auto candidate =
@@ -317,7 +320,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal &&
               lattice_observation.reached_mission_goal &&
               lattice_observation.exact_terminal_connector && !candidate->empty() &&
-              distance(candidate->back(), Point2{mission_goal_.x, mission_goal_.y}) <=
+              distance(candidate->back(), Point2{mission_goal.x, mission_goal.y}) <=
                   1.0e-6;
           const bool executable =
               lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal ||
@@ -398,12 +401,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         } else {
           if (!search_heading.has_value()) {
             search_heading = active_guide_lifecycle_->selectPlanningHeading(
-                navigation.state, Point2{mission_goal_.x, mission_goal_.y});
+                navigation.state, Point2{mission_goal.x, mission_goal.y});
           }
           guide_heading = *search_heading;
           lattice_observation = planRiskAwareMotionPrimitiveGuide(
               grid, *host_distances, position, guide_heading.heading_rad,
-              Point2{mission_goal_.x, mission_goal_.y}, search_config,
+              Point2{mission_goal.x, mission_goal.y}, search_config,
               frontier_blacklist_, &search_session, planning_worker_pool_.get());
           lattice_search_performed = true;
           const auto candidate = std::make_shared<const std::vector<Point2>>(
@@ -412,7 +415,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal &&
               lattice_observation.reached_mission_goal &&
               lattice_observation.exact_terminal_connector && !candidate->empty() &&
-              distance(candidate->back(), Point2{mission_goal_.x, mission_goal_.y}) <=
+              distance(candidate->back(), Point2{mission_goal.x, mission_goal.y}) <=
                   1.0e-6;
           const bool candidate_available =
               lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal ||
@@ -490,7 +493,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           .approach_heading_rad = std::atan2(endpoint.y - before_endpoint.y,
                                              endpoint.x - before_endpoint.x),
           .mission_distance_m = distance(Point2{navigation.state.x, navigation.state.y},
-                                         Point2{mission_goal_.x, mission_goal_.y}),
+                                         Point2{mission_goal.x, mission_goal.y}),
       });
       if (cycle_result.cycle_detected) {
         const std::int64_t expires_at_ns =
@@ -523,7 +526,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       mppi_route.reset();
       route_source.reset();
     } else if (guide.get() != route_source.get()) {
-      mppi_route = makeMppiRoute2D(*guide, mission_goal_.z,
+      mppi_route = makeMppiRoute2D(*guide, mission_goal.z,
                                    speed_policy_config_.cruise_speed_mps);
       route_source = guide;
     }
@@ -546,12 +549,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           Point3{navigation.state.x, navigation.state.y, navigation.state.z};
       prepared.planning_search_goal =
           Point3{lattice_observation.planning_goal.x,
-                 lattice_observation.planning_goal.y, mission_goal_.z};
+                 lattice_observation.planning_goal.y, mission_goal.z};
       prepared.planning_candidate_endpoint =
           lattice_observation.guide.empty()
               ? prepared.planning_search_start
               : Point3{lattice_observation.guide.back().x,
-                       lattice_observation.guide.back().y, mission_goal_.z};
+                       lattice_observation.guide.back().y, mission_goal.z};
       prepared.planning_search_direction =
           Vec3{std::cos(guide_heading.heading_rad), std::sin(guide_heading.heading_rad),
                0.0};
@@ -763,9 +766,12 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiPreparedEsdf& e
                                              const double lookahead_m,
                                              std::string& target_source,
                                              double& target_station_m) const {
-  mppi::State target{static_cast<float>(mission_goal_.x),
-                     static_cast<float>(mission_goal_.y),
-                     static_cast<float>(mission_goal_.z)};
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      navigationObjective();
+  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
+  mppi::State target{static_cast<float>(mission_goal.x),
+                     static_cast<float>(mission_goal.y),
+                     static_cast<float>(mission_goal.z)};
   target_source = "mission_goal_direct";
   target_station_m = 0.0;
   if (esdf.mppi_route && !esdf.mppi_route->empty()) {

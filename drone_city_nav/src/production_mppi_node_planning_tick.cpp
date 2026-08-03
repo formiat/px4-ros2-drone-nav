@@ -18,6 +18,10 @@ void ProductionMppiNode::planningTick() {
   if (!engine_) {
     return;
   }
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      navigationObjective();
+  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
+  const bool terminal_hold_enabled = !objective || !objective->continuous_tracking;
   const auto snapshot_started = std::chrono::steady_clock::now();
   ProductionMppiNavigation navigation;
   ProductionMppiPredictionError prediction;
@@ -198,9 +202,9 @@ void ProductionMppiNode::planningTick() {
       route_constraint, speed_policy_config_.cruise_speed_mps,
       constrained_route_control_config_);
   const MissionGoalCaptureResult goal_capture =
-      mission_goal_capture_latch_
+      mission_goal_capture_latch_ && terminal_hold_enabled
           ? mission_goal_capture_latch_->update(MissionGoalCaptureObservation{
-                .mission_goal = mission_goal_,
+                .mission_goal = mission_goal,
                 .state = navigation.state,
                 .terminal_route_available = esdf->global_guide_reaches_mission_goal,
             })
@@ -209,7 +213,7 @@ void ProductionMppiNode::planningTick() {
       speed_policy_config_,
       MppiSpeedPolicyInput{
           .state = navigation.state,
-          .mission_goal = mission_goal_,
+          .mission_goal = mission_goal,
           .guide = guide,
           .route_constraint_speed_limit_mps =
               route_control.active
@@ -241,9 +245,9 @@ void ProductionMppiNode::planningTick() {
   if (goal_capture.latched) {
     planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
     target = mppi::State{
-        .x = static_cast<float>(mission_goal_.x),
-        .y = static_cast<float>(mission_goal_.y),
-        .z = static_cast<float>(mission_goal_.z),
+        .x = static_cast<float>(mission_goal.x),
+        .y = static_cast<float>(mission_goal.y),
+        .z = static_cast<float>(mission_goal.z),
         .yaw = navigation.state.yaw,
     };
     speed_policy.reference_speed_mps = 0.0;

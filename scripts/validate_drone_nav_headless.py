@@ -33,8 +33,29 @@ def require(label: str, text: str, pattern: str, errors: list[str]) -> None:
         errors.append(f"FAIL: {label}")
 
 
+def require_count(
+    label: str, text: str, pattern: str, minimum: int, errors: list[str]
+) -> None:
+    count = len(re.findall(pattern, text))
+    if count >= minimum:
+        print(f"OK: {label} ({count})")
+    else:
+        errors.append(f"FAIL: {label} ({count} < {minimum})")
+
+
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def safety_relevant_ros_log(ros_log: str, mission_type: str) -> str:
+    if mission_type != "intercept":
+        return ros_log
+    terminal_result = re.search(
+        r"MISSION_RESULT success=true mission=intercept "
+        r"outcome=(?:intercepted|evader_reached_goal).*",
+        ros_log,
+    )
+    return ros_log[: terminal_result.end()] if terminal_result else ros_log
 
 
 def main() -> int:
@@ -42,7 +63,12 @@ def main() -> int:
         description="Validate production MPPI headless run logs."
     )
     parser.add_argument("--ros-log", required=True, type=Path)
-    parser.add_argument("--px4-log", required=True, type=Path)
+    parser.add_argument("--px4-log", required=True, action="append", type=Path)
+    parser.add_argument(
+        "--mission-type",
+        choices=("point_to_point", "intercept"),
+        default="point_to_point",
+    )
     parser.add_argument("--expected-static", default="")
     parser.add_argument("--expected-memory", default="")
     parser.add_argument("--expected-current-lidar", default="")
@@ -52,12 +78,21 @@ def main() -> int:
     args = parser.parse_args()
 
     ros_log = read_text(args.ros_log)
-    px4_log = read_text(args.px4_log)
+    px4_logs = [read_text(path) for path in args.px4_log]
+    px4_log = "\n".join(px4_logs)
     expected_static = parse_bool(args.expected_static)
     enable_lidar_debug = parse_bool(args.enable_lidar_debug) is not False
     errors: list[str] = []
+    safety_ros_log = safety_relevant_ros_log(ros_log, args.mission_type)
 
-    require("Gazebo world is ready", px4_log, r"Gazebo world is ready", errors)
+    expected_vehicles = 2 if args.mission_type == "intercept" else 1
+    require_count(
+        "PX4 instances report Gazebo ready",
+        px4_log,
+        r"Gazebo world is ready",
+        expected_vehicles,
+        errors,
+    )
     require(
         "obstacle memory receives lidar",
         ros_log,
@@ -101,16 +136,18 @@ def main() -> int:
         r"Production MPPI offboard ready:",
         errors,
     )
-    require(
-        "vehicle is armed by production offboard",
+    require_count(
+        "vehicles are armed by production offboard",
         px4_log,
         r"Armed by external command",
+        expected_vehicles,
         errors,
     )
-    require(
-        "vehicle takes off under production MPPI",
+    require_count(
+        "vehicles take off under production MPPI",
         px4_log,
         r"Takeoff detected",
+        expected_vehicles,
         errors,
     )
 
@@ -135,7 +172,7 @@ def main() -> int:
             errors,
         )
 
-    if re.search(r"CRASH_EVENT|crashed=true", ros_log):
+    if re.search(r"CRASH_EVENT|crashed=true", safety_ros_log):
         errors.append("FAIL: crash was reported")
     else:
         print("OK: no crash was reported")
@@ -148,6 +185,14 @@ def main() -> int:
             r"MISSION_RESULT success=true",
             errors,
         )
+        if args.mission_type == "intercept":
+            require(
+                "intercept mission reports a technical outcome",
+                ros_log,
+                r"MISSION_RESULT success=true mission=intercept "
+                r"outcome=(?:intercepted|evader_reached_goal)",
+                errors,
+            )
     elif mission_failed:
         print("WARN: mission failure was allowed")
 
