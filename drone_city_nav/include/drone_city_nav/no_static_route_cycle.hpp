@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <span>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -32,6 +34,11 @@ struct NoStaticRouteCycleResult {
   double approach_heading_rad{0.0};
 };
 
+struct NoStaticDirectedTabuSample {
+  Point2 point{};
+  double approach_heading_rad{0.0};
+};
+
 class NoStaticRouteCycleDetector {
 public:
   explicit NoStaticRouteCycleDetector(const NoStaticRouteCycleConfig& config);
@@ -46,5 +53,8 @@ private:
   std::uint64_t last_generation_{0U};
   std::int64_t last_detection_stamp_ns_{0};
 };
+
+[[nodiscard]] std::vector<NoStaticDirectedTabuSample>
+sampleNoStaticDirectedTabu(std::span<const Point2> guide, double sample_spacing_m);
 
 } // namespace drone_city_nav

@@ -349,7 +349,10 @@ private:
   double frontier_blacklist_ttl_s_{15.0};
   double lattice_search_session_maximum_ms_{2000.0};
   double no_static_soft_tabu_penalty_{40.0};
+  double no_static_soft_tabu_sample_spacing_m_{4.0};
   double no_static_adaptive_reachable_depth_m_{40.0};
+  double no_static_adaptive_minimum_guide_length_m_{24.0};
+  double no_static_adaptive_minimum_endpoint_displacement_m_{12.0};
   std::size_t no_static_adaptive_validation_states_{8192U};
   std::size_t planner_worker_count_{4U};
   NoStaticRouteCycleConfig no_static_cycle_config_{};

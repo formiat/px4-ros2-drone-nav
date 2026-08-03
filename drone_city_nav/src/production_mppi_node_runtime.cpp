@@ -154,6 +154,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       search_config.minimum_frontier_reachable_depth_m =
           std::max(search_config.minimum_frontier_reachable_depth_m,
                    no_static_adaptive_reachable_depth_m_);
+      search_config.minimum_frontier_guide_length_m =
+          std::max(search_config.minimum_frontier_guide_length_m,
+                   no_static_adaptive_minimum_guide_length_m_);
+      search_config.minimum_frontier_endpoint_displacement_m =
+          std::max(search_config.minimum_frontier_endpoint_displacement_m,
+                   no_static_adaptive_minimum_endpoint_displacement_m_);
       search_config.frontier_validation_maximum_states =
           std::max(search_config.frontier_validation_maximum_states,
                    no_static_adaptive_validation_states_);
@@ -435,16 +441,25 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                                          Point2{mission_goal_.x, mission_goal_.y}),
       });
       if (cycle_result.cycle_detected) {
-        frontier_blacklist_.push_back(LatticeFrontierBlacklistEntry{
-            .failure_point = cycle_result.repeated_endpoint,
-            .approach_heading_rad = cycle_result.approach_heading_rad,
-            .expires_at_ns = worker_now_ns + static_cast<std::int64_t>(
-                                                 frontier_blacklist_ttl_s_ * 1.0e9),
-            .soft_penalty_cost = no_static_soft_tabu_penalty_,
-        });
-        constexpr std::size_t kMaximumFailureMemoryEntries{16U};
+        const std::int64_t expires_at_ns =
+            worker_now_ns +
+            static_cast<std::int64_t>(frontier_blacklist_ttl_s_ * 1.0e9);
+        for (const NoStaticDirectedTabuSample& sample : sampleNoStaticDirectedTabu(
+                 *guide, no_static_soft_tabu_sample_spacing_m_)) {
+          frontier_blacklist_.push_back(LatticeFrontierBlacklistEntry{
+              .failure_point = sample.point,
+              .approach_heading_rad = sample.approach_heading_rad,
+              .expires_at_ns = expires_at_ns,
+              .soft_penalty_cost = no_static_soft_tabu_penalty_,
+          });
+        }
+        constexpr std::size_t kMaximumFailureMemoryEntries{64U};
         if (frontier_blacklist_.size() > kMaximumFailureMemoryEntries) {
-          frontier_blacklist_.erase(frontier_blacklist_.begin());
+          frontier_blacklist_.erase(
+              frontier_blacklist_.begin(),
+              frontier_blacklist_.begin() +
+                  static_cast<std::ptrdiff_t>(frontier_blacklist_.size() -
+                                              kMaximumFailureMemoryEntries));
         }
         adaptive_search_until_ns =
             worker_now_ns + static_cast<std::int64_t>(

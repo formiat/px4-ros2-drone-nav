@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <numbers>
+
 namespace drone_city_nav {
 namespace {
 
@@ -49,6 +51,20 @@ TEST(NoStaticRouteCycleTest, DoesNotFlagRealMissionProgress) {
   }
 
   EXPECT_FALSE(result.cycle_detected);
+}
+
+TEST(NoStaticRouteCycleTest, SamplesDirectedEdgesAcrossFailedGuide) {
+  const std::vector<Point2> guide{{0.0, 0.0}, {8.0, 0.0}, {8.0, 4.0}};
+
+  const std::vector<NoStaticDirectedTabuSample> samples =
+      sampleNoStaticDirectedTabu(guide, 4.0);
+
+  ASSERT_EQ(samples.size(), 3U);
+  EXPECT_DOUBLE_EQ(samples[0U].point.x, 4.0);
+  EXPECT_DOUBLE_EQ(samples[1U].point.x, 8.0);
+  EXPECT_NEAR(samples[0U].approach_heading_rad, 0.0, 1.0e-9);
+  EXPECT_DOUBLE_EQ(samples[2U].point.y, 4.0);
+  EXPECT_NEAR(samples[2U].approach_heading_rad, std::numbers::pi / 2.0, 1.0e-9);
 }
 
 } // namespace

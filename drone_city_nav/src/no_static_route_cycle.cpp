@@ -61,4 +61,32 @@ void NoStaticRouteCycleDetector::reset() noexcept {
   last_detection_stamp_ns_ = 0;
 }
 
+std::vector<NoStaticDirectedTabuSample>
+sampleNoStaticDirectedTabu(const std::span<const Point2> guide,
+                           const double sample_spacing_m) {
+  std::vector<NoStaticDirectedTabuSample> samples;
+  const double spacing_m = std::max(0.1, sample_spacing_m);
+  for (std::size_t index = 1U; index < guide.size(); ++index) {
+    const Point2& from = guide[index - 1U];
+    const Point2& to = guide[index];
+    const double segment_length_m = distance(from, to);
+    if (!(segment_length_m > 1.0e-9)) {
+      continue;
+    }
+    const std::size_t sample_count = static_cast<std::size_t>(
+        std::max(1.0, std::ceil(segment_length_m / spacing_m)));
+    const double heading_rad = std::atan2(to.y - from.y, to.x - from.x);
+    for (std::size_t sample = 1U; sample <= sample_count; ++sample) {
+      const double ratio =
+          static_cast<double>(sample) / static_cast<double>(sample_count);
+      samples.push_back(NoStaticDirectedTabuSample{
+          .point =
+              Point2{std::lerp(from.x, to.x, ratio), std::lerp(from.y, to.y, ratio)},
+          .approach_heading_rad = heading_rad,
+      });
+    }
+  }
+  return samples;
+}
+
 } // namespace drone_city_nav
