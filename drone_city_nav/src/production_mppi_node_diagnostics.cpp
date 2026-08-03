@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "production_mppi_node.hpp"
+#include "successor_profiling_diagnostics.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -544,14 +545,20 @@ void ProductionMppiNode::processDiagnostics(
        << " continuation_validation_ms=" << esdf.continuation_validation_ms
        << " successor_search_batches="
        << esdf.lattice_successor_profiling.search.collection_calls
+       << " successor_search_parallel_batches="
+       << esdf.lattice_successor_profiling.search.parallel_collection_calls
        << " successor_search_candidates="
        << esdf.lattice_successor_profiling.search.candidates
+       << " successor_search_parallel_candidates="
+       << esdf.lattice_successor_profiling.search.parallel_candidates
        << " successor_search_batch_max="
        << esdf.lattice_successor_profiling.search.maximum_candidates
        << " successor_search_worker_ms="
        << esdf.lattice_successor_profiling.search.worker_ms
        << " successor_continuation_batches="
        << esdf.lattice_successor_profiling.continuation.collection_calls
+       << " successor_continuation_parallel_batches="
+       << esdf.lattice_successor_profiling.continuation.parallel_collection_calls
        << " successor_continuation_candidates="
        << esdf.lattice_successor_profiling.continuation.candidates
        << " successor_continuation_batch_max="
@@ -560,6 +567,8 @@ void ProductionMppiNode::processDiagnostics(
        << esdf.lattice_successor_profiling.continuation.worker_ms
        << " successor_3d_search_batches="
        << esdf.lattice_3d_successor_profiling.search.collection_calls
+       << " successor_3d_search_parallel_batches="
+       << esdf.lattice_3d_successor_profiling.search.parallel_collection_calls
        << " successor_3d_search_candidates="
        << esdf.lattice_3d_successor_profiling.search.candidates
        << " successor_3d_search_batch_max="
@@ -568,6 +577,8 @@ void ProductionMppiNode::processDiagnostics(
        << esdf.lattice_3d_successor_profiling.search.worker_ms
        << " successor_3d_continuation_batches="
        << esdf.lattice_3d_successor_profiling.continuation.collection_calls
+       << " successor_3d_continuation_parallel_batches="
+       << esdf.lattice_3d_successor_profiling.continuation.parallel_collection_calls
        << " successor_3d_continuation_candidates="
        << esdf.lattice_3d_successor_profiling.continuation.candidates
        << " successor_3d_continuation_batch_max="
@@ -612,38 +623,8 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"esdf_finalize_ms\":" << esdf.esdf_finalize_ms
         << ",\"guide_search_ms\":" << esdf.global_guide_search_ms
         << ",\"continuation_validation_ms\":" << esdf.continuation_validation_ms
-        << ",\"successor_search_batches\":"
-        << esdf.lattice_successor_profiling.search.collection_calls
-        << ",\"successor_search_candidates\":"
-        << esdf.lattice_successor_profiling.search.candidates
-        << ",\"successor_search_batch_max\":"
-        << esdf.lattice_successor_profiling.search.maximum_candidates
-        << ",\"successor_search_worker_ms\":"
-        << esdf.lattice_successor_profiling.search.worker_ms
-        << ",\"successor_continuation_batches\":"
-        << esdf.lattice_successor_profiling.continuation.collection_calls
-        << ",\"successor_continuation_candidates\":"
-        << esdf.lattice_successor_profiling.continuation.candidates
-        << ",\"successor_continuation_batch_max\":"
-        << esdf.lattice_successor_profiling.continuation.maximum_candidates
-        << ",\"successor_continuation_worker_ms\":"
-        << esdf.lattice_successor_profiling.continuation.worker_ms
-        << ",\"successor_3d_search_batches\":"
-        << esdf.lattice_3d_successor_profiling.search.collection_calls
-        << ",\"successor_3d_search_candidates\":"
-        << esdf.lattice_3d_successor_profiling.search.candidates
-        << ",\"successor_3d_search_batch_max\":"
-        << esdf.lattice_3d_successor_profiling.search.maximum_candidates
-        << ",\"successor_3d_search_worker_ms\":"
-        << esdf.lattice_3d_successor_profiling.search.worker_ms
-        << ",\"successor_3d_continuation_batches\":"
-        << esdf.lattice_3d_successor_profiling.continuation.collection_calls
-        << ",\"successor_3d_continuation_candidates\":"
-        << esdf.lattice_3d_successor_profiling.continuation.candidates
-        << ",\"successor_3d_continuation_batch_max\":"
-        << esdf.lattice_3d_successor_profiling.continuation.maximum_candidates
-        << ",\"successor_3d_continuation_worker_ms\":"
-        << esdf.lattice_3d_successor_profiling.continuation.worker_ms
+        << detail::successorProfilingJsonFields(esdf.lattice_successor_profiling,
+                                                esdf.lattice_3d_successor_profiling)
         << ",\"route_smoothing_ms\":" << esdf.route_smoothing_ms
         << ",\"route_shortcuts_applied\":" << esdf.route_shortcuts_applied
         << ",\"route_corners_smoothed\":" << esdf.route_corners_smoothed

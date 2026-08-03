@@ -1,3 +1,4 @@
+#include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
@@ -235,6 +236,48 @@ TEST(Route3DTest, ReportsExpansionBudgetWithoutCallingItGraphExhaustion) {
   EXPECT_EQ(result.termination, Lattice3DSearchTermination::kExpansionBudgetExhausted);
   EXPECT_STREQ(lattice3DSearchTerminationName(result.termination),
                "expansion_budget_exhausted");
+}
+
+TEST(Route3DTest, ParallelSuccessorEvaluationPreservesDeterministicRoute) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 20, 8}};
+  for (int z = 0; z < 8; ++z) {
+    for (int y = 5; y <= 14; ++y) {
+      occupancy.setOccupied(GridIndex3D{10, y, z});
+    }
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 1.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.maximum_search_time_ms = 3000.0;
+  const Point3 start{2.5, 9.5, 3.5};
+  const Point3 goal{17.5, 9.5, 3.5};
+
+  const RiskAwareLattice3DResult serial = planRiskAwareLattice3D(
+      grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, {}, config);
+  BoundedWorkerPool worker_pool{4U};
+  const RiskAwareLattice3DResult parallel =
+      planRiskAwareLattice3D(grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal,
+                             {}, config, &worker_pool);
+
+  EXPECT_EQ(parallel.status, serial.status);
+  EXPECT_EQ(parallel.risk_stage, serial.risk_stage);
+  EXPECT_EQ(parallel.route_fingerprint, serial.route_fingerprint);
+  EXPECT_EQ(parallel.successor_diagnostics.lattice_generated,
+            serial.successor_diagnostics.lattice_generated);
+  EXPECT_GT(parallel.successor_profiling.search.parallel_collection_calls, 0U);
+  EXPECT_GT(parallel.successor_profiling.search.parallel_candidates, 0U);
 }
 
 TEST(Route3DTest, ReportsRawCollisionSuccessorRejectionsWhenGraphIsExhausted) {

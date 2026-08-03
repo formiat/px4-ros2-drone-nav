@@ -27,6 +27,7 @@ public:
   BoundedWorkerPool& operator=(BoundedWorkerPool&&) = delete;
 
   [[nodiscard]] std::size_t workerCount() const noexcept;
+  [[nodiscard]] bool canParallelizeFromCurrentThread() const noexcept;
 
   template<typename Function>
   [[nodiscard]] auto
@@ -54,6 +55,12 @@ public:
     if (count == 0U) {
       return;
     }
+    if (current_pool_ == this) {
+      for (std::size_t index = 0U; index < count; ++index) {
+        function(index);
+      }
+      return;
+    }
     const std::size_t task_count = std::min(count, workerCount());
     const std::size_t chunk_size = 1U + (count - 1U) / task_count;
     std::vector<std::future<void>> futures;
@@ -77,6 +84,8 @@ public:
 
 private:
   void workerLoop();
+
+  static thread_local const BoundedWorkerPool* current_pool_;
 
   std::size_t maximum_pending_tasks_{0U};
   mutable std::mutex mutex_;

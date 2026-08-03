@@ -1,7 +1,6 @@
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 
-#include "drone_city_nav/esdf_query.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
+#include "drone_city_nav/bounded_worker_pool.hpp"
 
 #include <algorithm>
 #include <array>
@@ -18,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "risk_aware_lattice_3d_geometry.hpp"
 #include "risk_aware_lattice_3d_result.hpp"
 
 namespace drone_city_nav {
@@ -93,20 +93,8 @@ struct Greater {
   }
 };
 
-enum class EdgeEvaluationStatus : std::uint8_t {
-  kValid,
-  kOutsideGrid,
-  kInvalidEsdf,
-  kRawCollision,
-  kRiskStageRejected,
-};
-
-struct EdgeEvaluation {
-  EdgeEvaluationStatus status{EdgeEvaluationStatus::kInvalidEsdf};
-  double minimum_clearance_m{std::numeric_limits<double>::infinity()};
-  double planning_exposure_m{0.0};
-  double critical_exposure_m{0.0};
-};
+using detail::Lattice3DEdgeEvaluation;
+using detail::Lattice3DEdgeEvaluationStatus;
 
 struct ContinuationMetrics {
   std::size_t immediate_successors{0U};
@@ -114,16 +102,6 @@ struct ContinuationMetrics {
   double reachable_depth_m{0.0};
   Lattice3DSuccessorBatchProfile successor_profile{};
 };
-
-void accumulateSuccessorProfile(
-    Lattice3DSuccessorBatchProfile& target,
-    const Lattice3DSuccessorBatchProfile& addition) noexcept {
-  target.collection_calls += addition.collection_calls;
-  target.candidates += addition.candidates;
-  target.maximum_candidates =
-      std::max(target.maximum_candidates, addition.maximum_candidates);
-  target.worker_ms += addition.worker_ms;
-}
 
 struct ReconstructedPath {
   std::vector<Point3> points;
@@ -168,85 +146,12 @@ struct ReconstructedPath {
                  std::llround((point.z - origin.z) / config.vertical_step_m))};
 }
 
-[[nodiscard]] bool stageAllows(const Lattice3DRiskStage stage, const double clearance_m,
-                               const RiskAwareLattice3DConfig& config) noexcept {
-  switch (stage) {
-    case Lattice3DRiskStage::kPreferredOnly:
-      return clearance_m >= config.preferred_distance_m;
-    case Lattice3DRiskStage::kPlanningAllowed:
-      return clearance_m >= config.critical_distance_m;
-    case Lattice3DRiskStage::kCriticalAllowed:
-      return true;
-  }
-  return false;
-}
-
-[[nodiscard]] EdgeEvaluation evaluateEdge(const mppi::EsdfGrid& grid,
-                                          const std::span<const float> esdf_m,
-                                          const Point3& first, const Point3& second,
-                                          const Lattice3DRiskStage stage,
-                                          const RiskAwareLattice3DConfig& config) {
-  const double length = distance3D(first, second);
-  if (!(length > 1.0e-9)) {
-    return EdgeEvaluation{.status = EdgeEvaluationStatus::kValid};
-  }
-  const SweptFootprintResult footprint = validateSweptFootprint(
-      grid, esdf_m, first, second,
-      SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
-                           .perimeter_samples = config.physical_footprint_samples,
-                           .sweep_step_m = config.sample_step_m});
-  if (!footprint.accepted()) {
-    switch (footprint.status) {
-      case SweptFootprintStatus::kOutsideGrid:
-        return EdgeEvaluation{.status = EdgeEvaluationStatus::kOutsideGrid};
-      case SweptFootprintStatus::kInvalidEsdf:
-        return EdgeEvaluation{.status = EdgeEvaluationStatus::kInvalidEsdf};
-      case SweptFootprintStatus::kRawCollision:
-        return EdgeEvaluation{.status = EdgeEvaluationStatus::kRawCollision};
-      case SweptFootprintStatus::kValid:
-        break;
-    }
-  }
-  const std::size_t samples = std::max<std::size_t>(
-      1U, static_cast<std::size_t>(std::ceil(length / config.sample_step_m)));
-  EdgeEvaluation result{.status = EdgeEvaluationStatus::kValid};
-  const double exposure_per_sample = length / static_cast<double>(samples);
-  for (std::size_t sample = 1U; sample <= samples; ++sample) {
-    const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
-    const Point3 point{std::lerp(first.x, second.x, ratio),
-                       std::lerp(first.y, second.y, ratio),
-                       std::lerp(first.z, second.z, ratio)};
-    const EsdfQueryResult query = queryConservativeEsdf3D(
-        grid, esdf_m, static_cast<float>(point.x), static_cast<float>(point.y),
-        static_cast<float>(point.z));
-    if (query.status == EsdfQueryStatus::kOutsideGrid) {
-      return EdgeEvaluation{.status = EdgeEvaluationStatus::kOutsideGrid};
-    }
-    if (query.status != EsdfQueryStatus::kValid) {
-      return EdgeEvaluation{.status = EdgeEvaluationStatus::kInvalidEsdf};
-    }
-    if (query.raw_occupied) {
-      return EdgeEvaluation{.status = EdgeEvaluationStatus::kRawCollision};
-    }
-    if (!stageAllows(stage, query.clearance_m, config)) {
-      return EdgeEvaluation{.status = EdgeEvaluationStatus::kRiskStageRejected};
-    }
-    result.minimum_clearance_m =
-        std::min(result.minimum_clearance_m, static_cast<double>(query.clearance_m));
-    if (query.clearance_m < config.critical_distance_m) {
-      result.critical_exposure_m += exposure_per_sample;
-    } else if (query.clearance_m < config.preferred_distance_m) {
-      result.planning_exposure_m += exposure_per_sample;
-    }
-  }
-  return result;
-}
-
 [[nodiscard]] ContinuationMetrics
 evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
                      const Point3& terminal, const Vec3& incoming_direction,
                      const Lattice3DRiskStage stage,
-                     const RiskAwareLattice3DConfig& config) {
+                     const RiskAwareLattice3DConfig& config,
+                     BoundedWorkerPool* const worker_pool) {
   struct Candidate {
     Key key{};
     Point3 point{};
@@ -267,7 +172,14 @@ evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> es
     const Candidate current = pending.front();
     pending.pop();
     const auto collection_started = std::chrono::steady_clock::now();
-    std::size_t candidate_count = 0U;
+
+    struct NeighborEvaluation {
+      Candidate candidate{};
+      Lattice3DEdgeEvaluation edge{};
+    };
+
+    std::vector<NeighborEvaluation> evaluations;
+    evaluations.reserve(26U);
     for (const int dx : kOffsets) {
       for (const int dy : kOffsets) {
         for (const int dz : kOffsets) {
@@ -298,25 +210,47 @@ evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> es
               continue;
             }
           }
-          ++candidate_count;
-          if (evaluateEdge(grid, esdf_m, current.point, successor, stage, config)
-                  .status != EdgeEvaluationStatus::kValid) {
-            continue;
-          }
-          if (current.key == origin) {
-            ++result.immediate_successors;
-          }
-          ++result.reachable_states;
-          result.reachable_depth_m =
-              std::max(result.reachable_depth_m, distance3D(terminal, successor));
-          pending.push(Candidate{.key = next, .point = successor});
+          evaluations.push_back(NeighborEvaluation{
+              .candidate = Candidate{.key = next, .point = successor}});
         }
       }
     }
+    const auto evaluate_neighbor = [&](const std::size_t candidate_index) {
+      NeighborEvaluation& evaluation = evaluations[candidate_index];
+      evaluation.edge = detail::evaluateLattice3DEdge(
+          grid, esdf_m, current.point, evaluation.candidate.point, stage, config);
+    };
+    const bool parallel = worker_pool != nullptr &&
+                          worker_pool->canParallelizeFromCurrentThread() &&
+                          evaluations.size() > 1U;
+    if (parallel) {
+      worker_pool->parallelFor(evaluations.size(), evaluate_neighbor);
+    } else {
+      for (std::size_t candidate_index = 0U; candidate_index < evaluations.size();
+           ++candidate_index) {
+        evaluate_neighbor(candidate_index);
+      }
+    }
+    for (const NeighborEvaluation& evaluation : evaluations) {
+      if (evaluation.edge.status != Lattice3DEdgeEvaluationStatus::kValid) {
+        continue;
+      }
+      if (current.key == origin) {
+        ++result.immediate_successors;
+      }
+      ++result.reachable_states;
+      result.reachable_depth_m = std::max(
+          result.reachable_depth_m, distance3D(terminal, evaluation.candidate.point));
+      pending.push(evaluation.candidate);
+    }
     ++result.successor_profile.collection_calls;
-    result.successor_profile.candidates += candidate_count;
+    result.successor_profile.candidates += evaluations.size();
+    if (parallel) {
+      ++result.successor_profile.parallel_collection_calls;
+      result.successor_profile.parallel_candidates += evaluations.size();
+    }
     result.successor_profile.maximum_candidates =
-        std::max(result.successor_profile.maximum_candidates, candidate_count);
+        std::max(result.successor_profile.maximum_candidates, evaluations.size());
     result.successor_profile.worker_ms +=
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   collection_started)
@@ -349,7 +283,7 @@ evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> es
 [[nodiscard]] CostMetrics edgeCost(const Point3& first, const Point3& second,
                                    const Vec3& incoming_direction,
                                    const Vec3& preferred_direction,
-                                   const EdgeEvaluation& exposure,
+                                   const Lattice3DEdgeEvaluation& exposure,
                                    const RiskAwareLattice3DConfig& config,
                                    const bool charge_shape_turn = true) noexcept {
   CostMetrics result;
@@ -401,16 +335,18 @@ void accumulate(CostMetrics& target, const CostMetrics& addition) noexcept {
                   vertical_m / std::max(1.0e-6, config.nominal_vertical_speed_mps));
 }
 
-[[nodiscard]] bool appendEvaluatedSegment(
-    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const Point3& first, const Point3& second, const Lattice3DRiskStage stage,
-    const Vec3& preferred_direction, const RiskAwareLattice3DConfig& config,
-    Vec3& incoming_direction, CostMetrics& metrics, double& minimum_clearance_m,
-    EdgeEvaluationStatus& evaluation_status, const bool charge_shape_turn = true) {
-  const EdgeEvaluation evaluation =
-      evaluateEdge(grid, esdf_m, first, second, stage, config);
+[[nodiscard]] bool
+appendEvaluatedSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+                       const Point3& first, const Point3& second,
+                       const Lattice3DRiskStage stage, const Vec3& preferred_direction,
+                       const RiskAwareLattice3DConfig& config, Vec3& incoming_direction,
+                       CostMetrics& metrics, double& minimum_clearance_m,
+                       Lattice3DEdgeEvaluationStatus& evaluation_status,
+                       const bool charge_shape_turn = true) {
+  const Lattice3DEdgeEvaluation evaluation =
+      detail::evaluateLattice3DEdge(grid, esdf_m, first, second, stage, config);
   evaluation_status = evaluation.status;
-  if (evaluation.status != EdgeEvaluationStatus::kValid) {
+  if (evaluation.status != Lattice3DEdgeEvaluationStatus::kValid) {
     return false;
   }
   accumulate(metrics, edgeCost(first, second, incoming_direction, preferred_direction,
@@ -420,33 +356,6 @@ void accumulate(CostMetrics& target, const CostMetrics& addition) noexcept {
     incoming_direction = directionBetween(first, second);
   }
   return true;
-}
-
-void recordRejectedEdge(Lattice3DSuccessorDiagnostics& diagnostics,
-                        const EdgeEvaluationStatus status,
-                        const bool channel) noexcept {
-  std::size_t* counter = nullptr;
-  switch (status) {
-    case EdgeEvaluationStatus::kValid:
-      return;
-    case EdgeEvaluationStatus::kOutsideGrid:
-      counter = channel ? &diagnostics.channel_rejected_outside_grid
-                        : &diagnostics.lattice_rejected_outside_grid;
-      break;
-    case EdgeEvaluationStatus::kInvalidEsdf:
-      counter = channel ? &diagnostics.channel_rejected_invalid_esdf
-                        : &diagnostics.lattice_rejected_invalid_esdf;
-      break;
-    case EdgeEvaluationStatus::kRawCollision:
-      counter = channel ? &diagnostics.channel_rejected_raw_collision
-                        : &diagnostics.lattice_rejected_raw_collision;
-      break;
-    case EdgeEvaluationStatus::kRiskStageRejected:
-      counter = channel ? &diagnostics.channel_rejected_risk_stage
-                        : &diagnostics.lattice_rejected_risk_stage;
-      break;
-  }
-  ++(*counter);
 }
 
 [[nodiscard]] std::optional<Record>
@@ -469,11 +378,12 @@ channelSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
       ChannelTransition{.channel_index = channel_index, .reversed = reversed};
   candidate.metrics.objective_cost += config.channel_topology_transition_cost;
   Vec3 incoming = current_record.incoming_direction;
-  EdgeEvaluationStatus evaluation_status{EdgeEvaluationStatus::kValid};
+  Lattice3DEdgeEvaluationStatus evaluation_status{
+      Lattice3DEdgeEvaluationStatus::kValid};
   if (!appendEvaluatedSegment(grid, esdf_m, current, entry, stage, preferred_direction,
                               config, incoming, candidate.metrics,
                               candidate.minimum_clearance_m, evaluation_status)) {
-    recordRejectedEdge(diagnostics, evaluation_status, true);
+    detail::recordLattice3DRejectedEdge(diagnostics, evaluation_status, true);
     return std::nullopt;
   }
   if (reversed) {
@@ -484,7 +394,7 @@ channelSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
                                   preferred_direction, config, incoming,
                                   candidate.metrics, candidate.minimum_clearance_m,
                                   evaluation_status, false)) {
-        recordRejectedEdge(diagnostics, evaluation_status, true);
+        detail::recordLattice3DRejectedEdge(diagnostics, evaluation_status, true);
         return std::nullopt;
       }
     }
@@ -495,7 +405,7 @@ channelSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
                                   preferred_direction, config, incoming,
                                   candidate.metrics, candidate.minimum_clearance_m,
                                   evaluation_status, false)) {
-        recordRejectedEdge(diagnostics, evaluation_status, true);
+        detail::recordLattice3DRejectedEdge(diagnostics, evaluation_status, true);
         return std::nullopt;
       }
     }
@@ -574,7 +484,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
             const Point3& start, const Vec3& preferred_direction,
             const Point3& planning_goal, const Point3& mission_goal,
             const std::span<const ConstrainedFreeSpaceEdge> channels,
-            const Lattice3DRiskStage stage, const RiskAwareLattice3DConfig& config) {
+            const Lattice3DRiskStage stage, const RiskAwareLattice3DConfig& config,
+            BoundedWorkerPool* const worker_pool) {
   using Clock = std::chrono::steady_clock;
   const auto deadline = Clock::now() + std::chrono::duration<double, std::milli>(
                                            config.maximum_search_time_ms / 3.0);
@@ -590,40 +501,69 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   Lattice3DSuccessorDiagnostics successor_diagnostics;
   Lattice3DSuccessorProfiling successor_profiling;
   const auto root_successors_started = Clock::now();
-  const std::size_t root_generated_before = successor_diagnostics.channel_generated;
-  for (std::size_t channel_index = 0U; channel_index < channels.size();
-       ++channel_index) {
-    for (const bool reversed : {false, true}) {
-      ++successor_diagnostics.channel_generated;
-      const std::optional<Record> candidate = channelSuccessorRecord(
-          grid, esdf_m, start, records.at(root), channels[channel_index], channel_index,
-          reversed, stage, preferred_direction, config,
-          std::numeric_limits<double>::infinity(), successor_diagnostics);
-      if (!candidate.has_value()) {
-        ++successor_diagnostics.channel_rejected;
-        continue;
-      }
-      const Key next{.kind = NodeKind::kChannelExit,
-                     .channel_index = static_cast<int>(channel_index),
-                     .reversed = reversed};
-      records[next] = *candidate;
-      records[next].parent = root;
-      const Point3 successor = channelExit(channels[channel_index], reversed);
-      open.push(QueueEntry{.f = candidate->g +
-                                1.5 * heuristicCost(successor, planning_goal, config),
-                           .g_at_insert = candidate->g,
-                           .sequence = sequence++,
-                           .key = next});
-      ++successor_diagnostics.channel_accepted;
+
+  struct ChannelEvaluation {
+    std::optional<Record> candidate;
+    Lattice3DSuccessorDiagnostics diagnostics{};
+  };
+
+  const std::size_t root_candidate_count = channels.size() * 2U;
+  std::vector<ChannelEvaluation> root_evaluations(root_candidate_count);
+  const auto evaluate_root_channel = [&](const std::size_t candidate_index) {
+    const std::size_t channel_index = candidate_index / 2U;
+    const bool reversed = candidate_index % 2U != 0U;
+    ChannelEvaluation evaluation;
+    evaluation.candidate = channelSuccessorRecord(
+        grid, esdf_m, start, records.at(root), channels[channel_index], channel_index,
+        reversed, stage, preferred_direction, config,
+        std::numeric_limits<double>::infinity(), evaluation.diagnostics);
+    root_evaluations[candidate_index] = evaluation;
+  };
+  const bool root_parallel = worker_pool != nullptr &&
+                             worker_pool->canParallelizeFromCurrentThread() &&
+                             root_candidate_count > 1U;
+  if (root_parallel) {
+    worker_pool->parallelFor(root_candidate_count, evaluate_root_channel);
+  } else {
+    for (std::size_t candidate_index = 0U; candidate_index < root_candidate_count;
+         ++candidate_index) {
+      evaluate_root_channel(candidate_index);
     }
   }
-  if (successor_diagnostics.channel_generated > root_generated_before) {
-    const std::size_t candidate_count =
-        successor_diagnostics.channel_generated - root_generated_before;
+  for (std::size_t candidate_index = 0U; candidate_index < root_candidate_count;
+       ++candidate_index) {
+    const std::size_t channel_index = candidate_index / 2U;
+    const bool reversed = candidate_index % 2U != 0U;
+    ChannelEvaluation& evaluation = root_evaluations[candidate_index];
+    ++successor_diagnostics.channel_generated;
+    detail::accumulateLattice3DSuccessorDiagnostics(successor_diagnostics,
+                                                    evaluation.diagnostics);
+    if (!evaluation.candidate.has_value()) {
+      ++successor_diagnostics.channel_rejected;
+      continue;
+    }
+    const Key next{.kind = NodeKind::kChannelExit,
+                   .channel_index = static_cast<int>(channel_index),
+                   .reversed = reversed};
+    records[next] = *evaluation.candidate;
+    records[next].parent = root;
+    const Point3 successor = channelExit(channels[channel_index], reversed);
+    open.push(QueueEntry{.f = evaluation.candidate->g +
+                              1.5 * heuristicCost(successor, planning_goal, config),
+                         .g_at_insert = evaluation.candidate->g,
+                         .sequence = sequence++,
+                         .key = next});
+    ++successor_diagnostics.channel_accepted;
+  }
+  if (root_candidate_count > 0U) {
     ++successor_profiling.search.collection_calls;
-    successor_profiling.search.candidates += candidate_count;
+    successor_profiling.search.candidates += root_candidate_count;
+    if (root_parallel) {
+      ++successor_profiling.search.parallel_collection_calls;
+      successor_profiling.search.parallel_candidates += root_candidate_count;
+    }
     successor_profiling.search.maximum_candidates =
-        std::max(successor_profiling.search.maximum_candidates, candidate_count);
+        std::max(successor_profiling.search.maximum_candidates, root_candidate_count);
     successor_profiling.search.worker_ms += std::chrono::duration<double, std::milli>(
                                                 Clock::now() - root_successors_started)
                                                 .count();
@@ -666,7 +606,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
       CostMetrics connector;
       Vec3 incoming = found->second.incoming_direction;
       double clearance = found->second.minimum_clearance_m;
-      EdgeEvaluationStatus connector_status{EdgeEvaluationStatus::kValid};
+      Lattice3DEdgeEvaluationStatus connector_status{
+          Lattice3DEdgeEvaluationStatus::kValid};
       if (appendEvaluatedSegment(grid, esdf_m, current, planning_goal, stage,
                                  preferred_direction, config, incoming, connector,
                                  clearance, connector_status)) {
@@ -688,98 +629,158 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const Key lattice_base = entry.key.kind == NodeKind::kLattice
                                  ? entry.key
                                  : latticeKeyNear(current, start, config);
+
+    struct LatticeEvaluation {
+      Key next{};
+      Point3 successor{};
+      Lattice3DEdgeEvaluation edge{};
+      bool zero_length{false};
+    };
+
+    std::vector<LatticeEvaluation> lattice_evaluations;
+    lattice_evaluations.reserve(26U);
     for (const int dx : kOffsets) {
       for (const int dy : kOffsets) {
         for (const int dz : kOffsets) {
           if (entry.key.kind == NodeKind::kLattice && dx == 0 && dy == 0 && dz == 0) {
             continue;
           }
-          ++successor_diagnostics.lattice_generated;
           const Key next{.kind = NodeKind::kLattice,
                          .x = lattice_base.x + dx,
                          .y = lattice_base.y + dy,
                          .z = lattice_base.z + dz};
-          const Point3 successor = latticePoint(next, start, config);
-          const EdgeEvaluation edge =
-              evaluateEdge(grid, esdf_m, current, successor, stage, config);
-          if (distance3D(current, successor) <= 1.0e-9) {
-            ++successor_diagnostics.lattice_rejected_edge;
-            ++successor_diagnostics.lattice_rejected_zero_length;
-            continue;
-          }
-          if (edge.status != EdgeEvaluationStatus::kValid) {
-            ++successor_diagnostics.lattice_rejected_edge;
-            recordRejectedEdge(successor_diagnostics, edge.status, false);
-            continue;
-          }
-          Record candidate = found->second;
-          candidate.parent = entry.key;
-          candidate.has_parent = true;
-          candidate.channel_transition.reset();
-          const CostMetrics addition =
-              edgeCost(current, successor, found->second.incoming_direction,
-                       preferred_direction, edge, config);
-          accumulate(candidate.metrics, addition);
-          candidate.g = candidate.metrics.objective_cost;
-          candidate.minimum_clearance_m =
-              std::min(found->second.minimum_clearance_m, edge.minimum_clearance_m);
-          candidate.incoming_direction = directionBetween(current, successor);
-          Record& stored = records[next];
-          if (!(candidate.g + 1.0e-9 < stored.g)) {
-            ++successor_diagnostics.lattice_rejected_no_cost_improvement;
-            continue;
-          }
-          stored = candidate;
-          open.push(QueueEntry{
-              .f = candidate.g + 1.5 * heuristicCost(successor, planning_goal, config),
-              .g_at_insert = candidate.g,
-              .sequence = sequence++,
-              .key = next});
-          ++successor_diagnostics.lattice_accepted;
-          open_peak = std::max(open_peak, open.size());
-          records_peak = std::max(records_peak, records.size());
+          lattice_evaluations.push_back(LatticeEvaluation{
+              .next = next,
+              .successor = latticePoint(next, start, config),
+          });
         }
       }
     }
-
-    for (std::size_t channel_index = 0U; channel_index < channels.size();
-         ++channel_index) {
-      for (const bool reversed : {false, true}) {
-        ++successor_diagnostics.channel_generated;
-        const std::optional<Record> candidate = channelSuccessorRecord(
-            grid, esdf_m, current, found->second, channels[channel_index],
-            channel_index, reversed, stage, preferred_direction, config,
-            config.channel_connection_distance_m, successor_diagnostics);
-        if (!candidate.has_value()) {
-          ++successor_diagnostics.channel_rejected;
-          continue;
-        }
-        const Key next{.kind = NodeKind::kChannelExit,
-                       .channel_index = static_cast<int>(channel_index),
-                       .reversed = reversed};
-        Record& stored = records[next];
-        if (!(candidate->g + 1.0e-9 < stored.g)) {
-          ++successor_diagnostics.channel_rejected_no_cost_improvement;
-          continue;
-        }
-        stored = *candidate;
-        stored.parent = entry.key;
-        const Point3 successor = channelExit(channels[channel_index], reversed);
-        open.push(QueueEntry{.f = stored.g +
-                                  1.5 * heuristicCost(successor, planning_goal, config),
-                             .g_at_insert = stored.g,
-                             .sequence = sequence++,
-                             .key = next});
-        ++successor_diagnostics.channel_accepted;
-        open_peak = std::max(open_peak, open.size());
-        records_peak = std::max(records_peak, records.size());
+    const auto evaluate_lattice = [&](const std::size_t candidate_index) {
+      LatticeEvaluation& evaluation = lattice_evaluations[candidate_index];
+      evaluation.edge = detail::evaluateLattice3DEdge(
+          grid, esdf_m, current, evaluation.successor, stage, config);
+      evaluation.zero_length = distance3D(current, evaluation.successor) <= 1.0e-9;
+    };
+    const bool lattice_parallel = worker_pool != nullptr &&
+                                  worker_pool->canParallelizeFromCurrentThread() &&
+                                  lattice_evaluations.size() > 1U;
+    if (lattice_parallel) {
+      worker_pool->parallelFor(lattice_evaluations.size(), evaluate_lattice);
+    } else {
+      for (std::size_t candidate_index = 0U;
+           candidate_index < lattice_evaluations.size(); ++candidate_index) {
+        evaluate_lattice(candidate_index);
       }
+    }
+    for (const LatticeEvaluation& evaluation : lattice_evaluations) {
+      ++successor_diagnostics.lattice_generated;
+      if (evaluation.zero_length) {
+        ++successor_diagnostics.lattice_rejected_edge;
+        ++successor_diagnostics.lattice_rejected_zero_length;
+        continue;
+      }
+      if (evaluation.edge.status != Lattice3DEdgeEvaluationStatus::kValid) {
+        ++successor_diagnostics.lattice_rejected_edge;
+        detail::recordLattice3DRejectedEdge(successor_diagnostics,
+                                            evaluation.edge.status, false);
+        continue;
+      }
+      Record candidate = found->second;
+      candidate.parent = entry.key;
+      candidate.has_parent = true;
+      candidate.channel_transition.reset();
+      const CostMetrics addition =
+          edgeCost(current, evaluation.successor, found->second.incoming_direction,
+                   preferred_direction, evaluation.edge, config);
+      accumulate(candidate.metrics, addition);
+      candidate.g = candidate.metrics.objective_cost;
+      candidate.minimum_clearance_m = std::min(found->second.minimum_clearance_m,
+                                               evaluation.edge.minimum_clearance_m);
+      candidate.incoming_direction = directionBetween(current, evaluation.successor);
+      Record& stored = records[evaluation.next];
+      if (!(candidate.g + 1.0e-9 < stored.g)) {
+        ++successor_diagnostics.lattice_rejected_no_cost_improvement;
+        continue;
+      }
+      stored = candidate;
+      open.push(
+          QueueEntry{.f = candidate.g + 1.5 * heuristicCost(evaluation.successor,
+                                                            planning_goal, config),
+                     .g_at_insert = candidate.g,
+                     .sequence = sequence++,
+                     .key = evaluation.next});
+      ++successor_diagnostics.lattice_accepted;
+      open_peak = std::max(open_peak, open.size());
+      records_peak = std::max(records_peak, records.size());
+    }
+
+    const std::size_t channel_candidate_count = channels.size() * 2U;
+    std::vector<ChannelEvaluation> channel_evaluations(channel_candidate_count);
+    const auto evaluate_channel = [&](const std::size_t candidate_index) {
+      const std::size_t channel_index = candidate_index / 2U;
+      const bool reversed = candidate_index % 2U != 0U;
+      ChannelEvaluation evaluation;
+      evaluation.candidate = channelSuccessorRecord(
+          grid, esdf_m, current, found->second, channels[channel_index], channel_index,
+          reversed, stage, preferred_direction, config,
+          config.channel_connection_distance_m, evaluation.diagnostics);
+      channel_evaluations[candidate_index] = evaluation;
+    };
+    const bool channel_parallel = worker_pool != nullptr &&
+                                  worker_pool->canParallelizeFromCurrentThread() &&
+                                  channel_candidate_count > 1U;
+    if (channel_parallel) {
+      worker_pool->parallelFor(channel_candidate_count, evaluate_channel);
+    } else {
+      for (std::size_t candidate_index = 0U; candidate_index < channel_candidate_count;
+           ++candidate_index) {
+        evaluate_channel(candidate_index);
+      }
+    }
+    for (std::size_t candidate_index = 0U; candidate_index < channel_candidate_count;
+         ++candidate_index) {
+      const std::size_t channel_index = candidate_index / 2U;
+      const bool reversed = candidate_index % 2U != 0U;
+      ChannelEvaluation& evaluation = channel_evaluations[candidate_index];
+      ++successor_diagnostics.channel_generated;
+      detail::accumulateLattice3DSuccessorDiagnostics(successor_diagnostics,
+                                                      evaluation.diagnostics);
+      if (!evaluation.candidate.has_value()) {
+        ++successor_diagnostics.channel_rejected;
+        continue;
+      }
+      const Key next{.kind = NodeKind::kChannelExit,
+                     .channel_index = static_cast<int>(channel_index),
+                     .reversed = reversed};
+      Record& stored = records[next];
+      if (!(evaluation.candidate->g + 1.0e-9 < stored.g)) {
+        ++successor_diagnostics.channel_rejected_no_cost_improvement;
+        continue;
+      }
+      stored = *evaluation.candidate;
+      stored.parent = entry.key;
+      const Point3 successor = channelExit(channels[channel_index], reversed);
+      open.push(QueueEntry{.f = stored.g +
+                                1.5 * heuristicCost(successor, planning_goal, config),
+                           .g_at_insert = stored.g,
+                           .sequence = sequence++,
+                           .key = next});
+      ++successor_diagnostics.channel_accepted;
+      open_peak = std::max(open_peak, open.size());
+      records_peak = std::max(records_peak, records.size());
     }
     const std::size_t candidate_count =
         successor_diagnostics.lattice_generated - lattice_generated_before +
         successor_diagnostics.channel_generated - channel_generated_before;
     ++successor_profiling.search.collection_calls;
     successor_profiling.search.candidates += candidate_count;
+    if (lattice_parallel || channel_parallel) {
+      ++successor_profiling.search.parallel_collection_calls;
+      successor_profiling.search.parallel_candidates +=
+          (lattice_parallel ? lattice_evaluations.size() : 0U) +
+          (channel_parallel ? channel_candidate_count : 0U);
+    }
     successor_profiling.search.maximum_candidates =
         std::max(successor_profiling.search.maximum_candidates, candidate_count);
     successor_profiling.search.worker_ms +=
@@ -832,9 +833,9 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   result.turn_cost = metrics.turn_cost;
   if (!reached) {
     const auto continuation_started = std::chrono::steady_clock::now();
-    const ContinuationMetrics continuation =
-        evaluateContinuation(grid, esdf_m, pointFor(best, start, channels, config),
-                             records.at(best).incoming_direction, stage, config);
+    const ContinuationMetrics continuation = evaluateContinuation(
+        grid, esdf_m, pointFor(best, start, channels, config),
+        records.at(best).incoming_direction, stage, config, worker_pool);
     result.terminal_successor_count = continuation.immediate_successors;
     result.continuation_reachable_states = continuation.reachable_states;
     result.continuation_reachable_depth_m = continuation.reachable_depth_m;
@@ -919,12 +920,11 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
 
 } // namespace
 
-RiskAwareLattice3DResult
-planRiskAwareLattice3D(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-                       const Point3& start, const Vec3& preferred_direction,
-                       const Point3& mission_goal,
-                       const std::span<const ConstrainedFreeSpaceEdge> channel_edges,
-                       const RiskAwareLattice3DConfig& config) {
+RiskAwareLattice3DResult planRiskAwareLattice3D(
+    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+    const Point3& start, const Vec3& preferred_direction, const Point3& mission_goal,
+    const std::span<const ConstrainedFreeSpaceEdge> channel_edges,
+    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool) {
   const auto search_started = std::chrono::steady_clock::now();
   if (grid.depth <= 1 ||
       esdf_m.size() != static_cast<std::size_t>(grid.width) *
@@ -949,7 +949,7 @@ planRiskAwareLattice3D(const mppi::EsdfGrid& grid, const std::span<const float> 
         Lattice3DRiskStage::kCriticalAllowed}) {
     stage_results.push_back(searchStage(grid, esdf_m, start, preferred_direction,
                                         planning_goal, mission_goal, channel_edges,
-                                        stage, config));
+                                        stage, config, worker_pool));
   }
 
   detail::Lattice3DStageSelection selection =
@@ -957,10 +957,11 @@ planRiskAwareLattice3D(const mppi::EsdfGrid& grid, const std::span<const float> 
   Lattice3DSuccessorProfiling aggregate_successor_profiling;
   double aggregate_continuation_validation_ms = 0.0;
   for (const RiskAwareLattice3DResult& stage_result : stage_results) {
-    accumulateSuccessorProfile(aggregate_successor_profiling.search,
-                               stage_result.successor_profiling.search);
-    accumulateSuccessorProfile(aggregate_successor_profiling.continuation,
-                               stage_result.successor_profiling.continuation);
+    detail::accumulateLattice3DSuccessorProfile(
+        aggregate_successor_profiling.search, stage_result.successor_profiling.search);
+    detail::accumulateLattice3DSuccessorProfile(
+        aggregate_successor_profiling.continuation,
+        stage_result.successor_profiling.continuation);
     aggregate_continuation_validation_ms += stage_result.continuation_validation_ms;
   }
   RiskAwareLattice3DResult result = std::move(stage_results[selection.selected_index]);

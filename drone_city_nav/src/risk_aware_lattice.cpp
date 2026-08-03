@@ -98,7 +98,9 @@ struct ContinuationEvaluation {
 void accumulateSuccessorProfile(LatticeSuccessorBatchProfile& target,
                                 const LatticeSuccessorBatchProfile& addition) noexcept {
   target.collection_calls += addition.collection_calls;
+  target.parallel_collection_calls += addition.parallel_collection_calls;
   target.candidates += addition.candidates;
+  target.parallel_candidates += addition.parallel_candidates;
   target.maximum_candidates =
       std::max(target.maximum_candidates, addition.maximum_candidates);
   target.worker_ms += addition.worker_ms;
@@ -312,79 +314,130 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
                                       LatticeSuccessorDiagnostics* diagnostics,
                                       LatticeSuccessorBatchProfile* profile) {
     const auto collection_started = std::chrono::steady_clock::now();
+    struct CandidateSpec {
+      int next_heading{0};
+      double length_m{0.0};
+    };
+    struct CandidateEvaluation {
+      Point2 endpoint{};
+      LatticeKey key{};
+      SegmentEvaluation segment{};
+      detail::FailureMemoryEvaluation failure_memory{};
+      bool inside_roi{false};
+    };
+
+    constexpr std::array normal_heading_offsets{-4, -2, -1, 0, 1, 2, 4, 8};
+    std::vector<CandidateSpec> candidate_specs;
+    candidate_specs.reserve(static_cast<std::size_t>(config.heading_bins) +
+                            normal_heading_offsets.size());
+    for (int next_heading = 0; next_heading < config.heading_bins; ++next_heading) {
+      candidate_specs.push_back(CandidateSpec{
+          .next_heading = next_heading,
+          .length_m = config.short_primitive_length_m,
+      });
+    }
+    for (const int heading_offset : normal_heading_offsets) {
+      candidate_specs.push_back(CandidateSpec{
+          .next_heading = detail::wrapLatticeHeading(
+              current_key.heading + heading_offset, config.heading_bins),
+          .length_m = config.primitive_length_m,
+      });
+    }
+
+    std::vector<CandidateEvaluation> evaluations(candidate_specs.size());
+    const auto evaluate_candidate = [&](const std::size_t candidate_index) {
+      const CandidateSpec& spec = candidate_specs[candidate_index];
+      const double heading =
+          detail::latticeHeadingForBin(spec.next_heading, config.heading_bins);
+      CandidateEvaluation evaluation;
+      evaluation.endpoint = Point2{current.x + std::cos(heading) * spec.length_m,
+                                   current.y + std::sin(heading) * spec.length_m};
+      evaluation.inside_roi = inside_roi(evaluation.endpoint);
+      if (!evaluation.inside_roi) {
+        evaluations[candidate_index] = evaluation;
+        return;
+      }
+      evaluation.segment = detail::evaluateLatticeSegment(
+          grid, esdf_m, current, evaluation.endpoint, config, stage);
+      if (!evaluation.segment.valid) {
+        evaluations[candidate_index] = evaluation;
+        return;
+      }
+      const std::array candidate_segment{current, evaluation.endpoint};
+      evaluation.failure_memory = detail::evaluateLatticeFailureMemory(
+          candidate_segment, frontier_blacklist, config);
+      evaluation.key = makeKey(evaluation.endpoint, spec.next_heading);
+      evaluations[candidate_index] = evaluation;
+    };
+    const bool parallel = worker_pool != nullptr &&
+                          worker_pool->canParallelizeFromCurrentThread() &&
+                          candidate_specs.size() > 1U;
+    if (parallel) {
+      worker_pool->parallelFor(candidate_specs.size(), evaluate_candidate);
+    } else {
+      for (std::size_t candidate_index = 0U; candidate_index < candidate_specs.size();
+           ++candidate_index) {
+        evaluate_candidate(candidate_index);
+      }
+    }
+
     std::vector<Successor> successors;
-    successors.reserve(static_cast<std::size_t>(config.heading_bins) + 8U);
+    successors.reserve(candidate_specs.size());
     std::unordered_set<LatticeKey, LatticeKeyHash> emitted;
-    const auto add_motion_successor = [&](const int next_heading,
-                                          const double length_m) {
+    for (std::size_t candidate_index = 0U; candidate_index < candidate_specs.size();
+         ++candidate_index) {
+      const CandidateSpec& spec = candidate_specs[candidate_index];
+      const CandidateEvaluation& evaluation = evaluations[candidate_index];
       if (diagnostics != nullptr) {
         ++diagnostics->generated;
       }
-      const double heading =
-          detail::latticeHeadingForBin(next_heading, config.heading_bins);
-      const Point2 endpoint{current.x + std::cos(heading) * length_m,
-                            current.y + std::sin(heading) * length_m};
-      if (!inside_roi(endpoint)) {
+      if (!evaluation.inside_roi) {
         roi_boundary_seen = true;
         if (diagnostics != nullptr) {
           ++diagnostics->rejected_outside_roi;
         }
-        return;
+        continue;
       }
-      const SegmentEvaluation segment = detail::evaluateLatticeSegment(
-          grid, esdf_m, current, endpoint, config, stage);
-      if (!segment.valid) {
+      if (!evaluation.segment.valid) {
         if (diagnostics != nullptr) {
-          detail::recordLatticeSegmentRejection(segment, *diagnostics);
+          detail::recordLatticeSegmentRejection(evaluation.segment, *diagnostics);
         }
-        return;
+        continue;
       }
-      const std::array candidate_segment{current, endpoint};
-      const detail::FailureMemoryEvaluation failure_memory =
-          detail::evaluateLatticeFailureMemory(candidate_segment, frontier_blacklist,
-                                               config);
-      if (failure_memory.hard_rejected) {
+      if (evaluation.failure_memory.hard_rejected) {
         if (diagnostics != nullptr) {
           ++diagnostics->rejected_blacklisted_failure;
         }
-        return;
+        continue;
       }
-      const LatticeKey key = makeKey(endpoint, next_heading);
-      if (!emitted.insert(key).second) {
-        return;
+      if (!emitted.insert(evaluation.key).second) {
+        continue;
       }
       const int heading_change = detail::latticeHeadingBinDistance(
-          current_key.heading, next_heading, config.heading_bins);
+          current_key.heading, spec.next_heading, config.heading_bins);
       successors.push_back(Successor{
-          .key = key,
-          .endpoint = endpoint,
-          .length_m = length_m,
-          .edge_cost = length_m + segment.risk_cost + failure_memory.soft_penalty_cost +
+          .key = evaluation.key,
+          .endpoint = evaluation.endpoint,
+          .length_m = spec.length_m,
+          .edge_cost = spec.length_m + evaluation.segment.risk_cost +
+                       evaluation.failure_memory.soft_penalty_cost +
                        config.turn_cost * static_cast<double>(heading_change),
       });
-      if (diagnostics != nullptr && failure_memory.soft_penalty_cost > 0.0) {
+      if (diagnostics != nullptr && evaluation.failure_memory.soft_penalty_cost > 0.0) {
         ++diagnostics->soft_tabu_penalties_applied;
       }
       if (diagnostics != nullptr) {
         ++diagnostics->accepted;
       }
-    };
-
-    for (int next_heading = 0; next_heading < config.heading_bins; ++next_heading) {
-      add_motion_successor(next_heading, config.short_primitive_length_m);
-    }
-    constexpr std::array normal_heading_offsets{-4, -2, -1, 0, 1, 2, 4, 8};
-    for (const int heading_offset : normal_heading_offsets) {
-      add_motion_successor(
-          detail::wrapLatticeHeading(current_key.heading + heading_offset,
-                                     config.heading_bins),
-          config.primitive_length_m);
     }
     if (profile != nullptr) {
       ++profile->collection_calls;
-      const std::size_t candidate_count =
-          static_cast<std::size_t>(config.heading_bins) + normal_heading_offsets.size();
+      const std::size_t candidate_count = candidate_specs.size();
       profile->candidates += candidate_count;
+      if (parallel) {
+        ++profile->parallel_collection_calls;
+        profile->parallel_candidates += candidate_count;
+      }
       profile->maximum_candidates =
           std::max(profile->maximum_candidates, candidate_count);
       profile->worker_ms += std::chrono::duration<double, std::milli>(

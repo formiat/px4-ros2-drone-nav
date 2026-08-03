@@ -4,6 +4,8 @@
 
 namespace drone_city_nav {
 
+thread_local const BoundedWorkerPool* BoundedWorkerPool::current_pool_{nullptr};
+
 BoundedWorkerPool::BoundedWorkerPool(const std::size_t worker_count,
                                      const std::size_t maximum_pending_tasks)
     : maximum_pending_tasks_{std::max<std::size_t>(1U, maximum_pending_tasks)} {
@@ -29,6 +31,10 @@ std::size_t BoundedWorkerPool::workerCount() const noexcept {
   return workers_.size();
 }
 
+bool BoundedWorkerPool::canParallelizeFromCurrentThread() const noexcept {
+  return workers_.size() > 1U && current_pool_ != this;
+}
+
 void BoundedWorkerPool::workerLoop() {
   while (true) {
     std::function<void()> task;
@@ -42,7 +48,10 @@ void BoundedWorkerPool::workerLoop() {
       tasks_.pop();
     }
     space_available_.notify_one();
+    const BoundedWorkerPool* const previous_pool = current_pool_;
+    current_pool_ = this;
     task();
+    current_pool_ = previous_pool;
   }
 }
 

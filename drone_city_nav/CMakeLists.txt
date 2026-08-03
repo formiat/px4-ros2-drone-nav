@@ -147,10 +147,12 @@ add_library(
   src/risk_aware_lattice_geometry.cpp
   src/risk_aware_lattice_names.cpp
   src/risk_aware_lattice_3d.cpp
+  src/risk_aware_lattice_3d_geometry.cpp
   src/risk_aware_lattice_3d_result.cpp
   src/route_3d.cpp
   src/static_route_extension.cpp
   src/static_route_geometry.cpp
+  src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
   src/lidar_snapshot_writer.cpp
   src/mppi/mppi_post_update_classification.cpp

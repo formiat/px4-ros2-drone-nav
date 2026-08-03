@@ -13,6 +13,8 @@
 
 namespace drone_city_nav {
 
+class BoundedWorkerPool;
+
 enum class Lattice3DStatus : std::uint8_t {
   kInvalidInput,
   kReachedPlanningGoal,
@@ -58,7 +60,9 @@ struct Lattice3DSuccessorDiagnostics {
 
 struct Lattice3DSuccessorBatchProfile {
   std::size_t collection_calls{0U};
+  std::size_t parallel_collection_calls{0U};
   std::size_t candidates{0U};
+  std::size_t parallel_candidates{0U};
   std::size_t maximum_candidates{0U};
   double worker_ms{0.0};
 };
@@ -152,12 +156,11 @@ struct RiskAwareLattice3DResult {
   std::vector<Lattice3DTopologyCandidate> topology_candidates;
 };
 
-[[nodiscard]] RiskAwareLattice3DResult
-planRiskAwareLattice3D(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
-                       const Point3& start, const Vec3& preferred_direction,
-                       const Point3& mission_goal,
-                       std::span<const ConstrainedFreeSpaceEdge> channel_edges,
-                       const RiskAwareLattice3DConfig& config);
+[[nodiscard]] RiskAwareLattice3DResult planRiskAwareLattice3D(
+    const mppi::EsdfGrid& grid, std::span<const float> esdf_m, const Point3& start,
+    const Vec3& preferred_direction, const Point3& mission_goal,
+    std::span<const ConstrainedFreeSpaceEdge> channel_edges,
+    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* worker_pool = nullptr);
 
 [[nodiscard]] const char* lattice3DStatusName(Lattice3DStatus status) noexcept;
 

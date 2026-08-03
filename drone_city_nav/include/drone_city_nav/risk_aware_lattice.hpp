@@ -59,7 +59,9 @@ struct LatticeSuccessorDiagnostics {
 
 struct LatticeSuccessorBatchProfile {
   std::size_t collection_calls{0U};
+  std::size_t parallel_collection_calls{0U};
   std::size_t candidates{0U};
+  std::size_t parallel_candidates{0U};
   std::size_t maximum_candidates{0U};
   double worker_ms{0.0};
 };

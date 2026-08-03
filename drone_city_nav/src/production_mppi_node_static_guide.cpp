@@ -30,7 +30,7 @@ void ProductionMppiNode::processStaticGuideSearch(
           : std::span<const ConstrainedFreeSpaceEdge>{};
   const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
       world.grid, *world.distances_m, search_start, preferred_direction, mission_goal_,
-      channel_edges, lattice_3d_config_);
+      channel_edges, lattice_3d_config_, planning_worker_pool_.get());
   const double search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
