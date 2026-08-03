@@ -39,6 +39,7 @@ struct LatticeFrontierBlacklistEntry {
   Point2 failure_point{};
   double approach_heading_rad{0.0};
   std::int64_t expires_at_ns{0};
+  double soft_penalty_cost{0.0};
 };
 
 struct LatticeSuccessorDiagnostics {
@@ -50,6 +51,7 @@ struct LatticeSuccessorDiagnostics {
   std::size_t rejected_raw_collision{0U};
   std::size_t rejected_risk_stage{0U};
   std::size_t rejected_blacklisted_failure{0U};
+  std::size_t soft_tabu_penalties_applied{0U};
   std::size_t rejected_no_cost_improvement{0U};
 };
 

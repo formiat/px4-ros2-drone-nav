@@ -298,15 +298,25 @@ ProductionMppiNode::ProductionMppiNode()
           "global_lattice_frontier_blacklist_heading_bins", 1));
   frontier_blacklist_ttl_s_ =
       declare_parameter<double>("global_lattice_frontier_blacklist_ttl_s", 15.0);
-  const std::int64_t lattice_maximum_continuation_attempts =
-      declare_parameter<std::int64_t>("global_lattice_maximum_continuation_attempts",
-                                      4);
-  if (lattice_maximum_continuation_attempts <= 0) {
-    throw std::invalid_argument{
-        "global lattice maximum continuation attempts must be positive"};
-  }
-  lattice_maximum_continuation_attempts_ =
-      static_cast<std::size_t>(lattice_maximum_continuation_attempts);
+  lattice_search_session_maximum_ms_ =
+      declare_parameter<double>("global_lattice_search_session_maximum_ms", 2000.0);
+  no_static_soft_tabu_penalty_ =
+      declare_parameter<double>("global_lattice_soft_tabu_penalty", 40.0);
+  no_static_adaptive_reachable_depth_m_ =
+      declare_parameter<double>("global_lattice_adaptive_reachable_depth_m", 40.0);
+  no_static_adaptive_validation_states_ =
+      static_cast<std::size_t>(declare_parameter<std::int64_t>(
+          "global_lattice_adaptive_validation_states", 8192));
+  no_static_cycle_config_.observation_window_s =
+      declare_parameter<double>("global_lattice_cycle_observation_window_s", 20.0);
+  no_static_cycle_config_.minimum_generation_changes = static_cast<std::size_t>(
+      declare_parameter<std::int64_t>("global_lattice_cycle_minimum_generations", 6));
+  no_static_cycle_config_.repeated_endpoint_radius_m =
+      declare_parameter<double>("global_lattice_cycle_endpoint_radius_m", 6.0);
+  no_static_cycle_config_.maximum_vehicle_displacement_m = declare_parameter<double>(
+      "global_lattice_cycle_maximum_vehicle_displacement_m", 12.0);
+  no_static_cycle_config_.maximum_mission_progress_m =
+      declare_parameter<double>("global_lattice_cycle_maximum_mission_progress_m", 4.0);
   lattice_config_.planning_exposure_tie_break_per_m =
       declare_parameter<double>("global_lattice_planning_tie_break_per_m", 1.0);
   lattice_config_.critical_exposure_tie_break_per_m =
@@ -446,7 +456,12 @@ ProductionMppiNode::ProductionMppiNode()
       !(safety_config_.physical_footprint_radius_m >= 0.0) ||
       safety_config_.physical_footprint_samples == 0U ||
       !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
-      !(frontier_blacklist_ttl_s_ > 0.0)) {
+      !(frontier_blacklist_ttl_s_ > 0.0) ||
+      !(lattice_search_session_maximum_ms_ > 0.0) ||
+      !(no_static_soft_tabu_penalty_ >= 0.0) ||
+      !(no_static_adaptive_reachable_depth_m_ > 0.0) ||
+      no_static_adaptive_validation_states_ == 0U ||
+      no_static_cycle_config_.minimum_generation_changes < 2U) {
     throw std::invalid_argument{"invalid production MPPI configuration"};
   }
 
@@ -459,6 +474,8 @@ ProductionMppiNode::ProductionMppiNode()
       std::make_unique<GlobalGuideProgressTracker>(guide_progress_config_);
   mission_goal_capture_latch_ =
       std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
+  no_static_cycle_detector_ =
+      std::make_unique<NoStaticRouteCycleDetector>(no_static_cycle_config_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
   if (use_static_map_) {
     const auto package_share = std::filesystem::path{

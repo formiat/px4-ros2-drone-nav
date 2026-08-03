@@ -9,6 +9,7 @@
 #include <cmath>
 #include <limits>
 #include <span>
+#include <tuple>
 #include <utility>
 
 #include "production_mppi_node.hpp"
@@ -52,6 +53,36 @@ namespace {
                           source - static_cast<double>(lower));
 }
 
+[[nodiscard]] int pendingGuideStatusRank(const LatticePlanStatus status) noexcept {
+  switch (status) {
+    case LatticePlanStatus::kReachedPlanningGoal:
+      return 0;
+    case LatticePlanStatus::kViableFrontier:
+      return 1;
+    case LatticePlanStatus::kRawSafeDetourPrefix:
+      return 2;
+    case LatticePlanStatus::kSearchIncomplete:
+    case LatticePlanStatus::kMotionGraphExhausted:
+    case LatticePlanStatus::kInvalidInput:
+      return 3;
+  }
+  return 3;
+}
+
+[[nodiscard]] bool betterPendingGuide(
+    const ProductionPendingGlobalGuide& candidate,
+    const std::optional<ProductionPendingGlobalGuide>& current) noexcept {
+  if (!current.has_value()) {
+    return true;
+  }
+  return std::tuple{pendingGuideStatusRank(candidate.status),
+                    candidate.remaining_goal_distance_m, candidate.cost,
+                    candidate.fingerprint} <
+         std::tuple{pendingGuideStatusRank(current->status),
+                    current->remaining_goal_distance_m, current->cost,
+                    current->fingerprint};
+}
+
 } // namespace
 
 void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
@@ -65,6 +96,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
   std::optional<GlobalGuideHeading> search_heading;
   std::size_t continuation_attempt = 0U;
   bool search_session_in_progress = false;
+  std::chrono::steady_clock::time_point search_session_started{};
+  std::int64_t adaptive_search_until_ns{0};
   while (!stop_token.stop_requested()) {
     {
       std::unique_lock lock{guide_queue_mutex_};
@@ -82,6 +115,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         search_heading.reset();
         continuation_attempt = 0U;
         search_session_in_progress = false;
+        search_session_started = std::chrono::steady_clock::now();
       }
     }
     if (!world || !world->distances_m) {
@@ -115,6 +149,17 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     const std::shared_ptr<const std::vector<float>>& host_distances =
         world->distances_m;
     RiskAwareLatticeConfig search_config = lattice_config_;
+    const std::int64_t worker_now_ns = get_clock()->now().nanoseconds();
+    if (worker_now_ns < adaptive_search_until_ns) {
+      search_config.minimum_frontier_reachable_depth_m =
+          std::max(search_config.minimum_frontier_reachable_depth_m,
+                   no_static_adaptive_reachable_depth_m_);
+      search_config.frontier_validation_maximum_states =
+          std::max(search_config.frontier_validation_maximum_states,
+                   no_static_adaptive_validation_states_);
+      search_config.maximum_expansions = std::max(
+          search_config.maximum_expansions, lattice_config_.maximum_expansions * 2U);
+    }
     if (!search_navigation.has_value()) {
       const std::scoped_lock lock{input_mutex_};
       search_navigation = navigation_;
@@ -230,6 +275,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
             .approach_heading_rad = std::atan2(failure_tangent.y, failure_tangent.x),
             .expires_at_ns = blacklist_now_ns + static_cast<std::int64_t>(
                                                     frontier_blacklist_ttl_s_ * 1.0e9),
+            .soft_penalty_cost = 0.0,
         });
         constexpr std::size_t kMaximumFrontierBlacklistEntries{8U};
         if (frontier_blacklist_.size() > kMaximumFrontierBlacklistEntries) {
@@ -265,32 +311,63 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           if (executable &&
               validate_candidate_on_latest_world(candidate, reaches_mission_goal)) {
             if (guide_update.release_reason == GlobalGuideReleaseReason::kExhausted) {
-              guide_acceptance = active_guide_lifecycle_->accept(
-                  candidate, reaches_mission_goal, publication_world->grid,
-                  *publication_world->distances_m, candidate_validation_position);
-              if (guide_acceptance.accepted) {
-                guide = active_guide_lifecycle_->guide();
-                guide_update = active_guide_lifecycle_->status();
-                active_guide_expansions = lattice_observation.expansions;
-                active_guide_cost = lattice_observation.cost;
+              const double session_age_ms =
+                  std::chrono::duration<double, std::milli>(
+                      std::chrono::steady_clock::now() - search_session_started)
+                      .count();
+              if (!lattice_observation.search_session_complete &&
+                  previous_active_guide &&
+                  session_age_ms < lattice_search_session_maximum_ms_) {
+                const ProductionPendingGlobalGuide pending{
+                    .guide = candidate,
+                    .reaches_mission_goal = reaches_mission_goal,
+                    .status = lattice_observation.status,
+                    .remaining_goal_distance_m =
+                        lattice_observation.remaining_goal_distance_m,
+                    .cost = lattice_observation.cost,
+                    .fingerprint = routeFingerprint(*candidate),
+                };
+                if (betterPendingGuide(pending, pending_global_guide_)) {
+                  pending_global_guide_ = pending;
+                }
+              } else {
+                guide_acceptance = active_guide_lifecycle_->accept(
+                    candidate, reaches_mission_goal, publication_world->grid,
+                    *publication_world->distances_m, candidate_validation_position);
+                if (guide_acceptance.accepted) {
+                  guide = active_guide_lifecycle_->guide();
+                  guide_update = active_guide_lifecycle_->status();
+                  active_guide_expansions = lattice_observation.expansions;
+                  active_guide_cost = lattice_observation.cost;
+                }
               }
             } else {
-              pending_global_guide_ = candidate;
-              pending_global_guide_reaches_mission_goal_ = reaches_mission_goal;
+              const ProductionPendingGlobalGuide pending{
+                  .guide = candidate,
+                  .reaches_mission_goal = reaches_mission_goal,
+                  .status = lattice_observation.status,
+                  .remaining_goal_distance_m =
+                      lattice_observation.remaining_goal_distance_m,
+                  .cost = lattice_observation.cost,
+                  .fingerprint = routeFingerprint(*candidate),
+              };
+              if (betterPendingGuide(pending, pending_global_guide_)) {
+                pending_global_guide_ = pending;
+              }
             }
           }
         }
       } else {
-        if (pending_global_guide_) {
+        if (pending_global_guide_ && pending_global_guide_->guide) {
           if (validate_candidate_on_latest_world(
-                  pending_global_guide_, pending_global_guide_reaches_mission_goal_)) {
+                  pending_global_guide_->guide,
+                  pending_global_guide_->reaches_mission_goal)) {
             guide_acceptance = active_guide_lifecycle_->accept(
-                pending_global_guide_, pending_global_guide_reaches_mission_goal_,
-                publication_world->grid, *publication_world->distances_m,
-                candidate_validation_position);
+                pending_global_guide_->guide,
+                pending_global_guide_->reaches_mission_goal, publication_world->grid,
+                *publication_world->distances_m, candidate_validation_position);
           }
           pending_global_guide_.reset();
-          pending_global_guide_reaches_mission_goal_ = false;
         }
         if (guide_acceptance.accepted) {
           guide = active_guide_lifecycle_->guide();
@@ -343,6 +420,39 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     const ActiveGlobalGuideUpdate active_status =
         active_guide_lifecycle_ ? active_guide_lifecycle_->status()
                                 : ActiveGlobalGuideUpdate{};
+    NoStaticRouteCycleResult cycle_result;
+    if (guide && guide->size() >= 2U && no_static_cycle_detector_) {
+      const Point2 endpoint = guide->back();
+      const Point2 before_endpoint = (*guide)[guide->size() - 2U];
+      cycle_result = no_static_cycle_detector_->observe(NoStaticRouteCycleObservation{
+          .guide_generation = active_status.generation,
+          .stamp_ns = worker_now_ns,
+          .vehicle_position = Point2{navigation.state.x, navigation.state.y},
+          .guide_endpoint = endpoint,
+          .approach_heading_rad = std::atan2(endpoint.y - before_endpoint.y,
+                                             endpoint.x - before_endpoint.x),
+          .mission_distance_m = distance(Point2{navigation.state.x, navigation.state.y},
+                                         Point2{mission_goal_.x, mission_goal_.y}),
+      });
+      if (cycle_result.cycle_detected) {
+        frontier_blacklist_.push_back(LatticeFrontierBlacklistEntry{
+            .failure_point = cycle_result.repeated_endpoint,
+            .approach_heading_rad = cycle_result.approach_heading_rad,
+            .expires_at_ns = worker_now_ns + static_cast<std::int64_t>(
+                                                 frontier_blacklist_ttl_s_ * 1.0e9),
+            .soft_penalty_cost = no_static_soft_tabu_penalty_,
+        });
+        constexpr std::size_t kMaximumFailureMemoryEntries{16U};
+        if (frontier_blacklist_.size() > kMaximumFailureMemoryEntries) {
+          frontier_blacklist_.erase(frontier_blacklist_.begin());
+        }
+        adaptive_search_until_ns =
+            worker_now_ns + static_cast<std::int64_t>(
+                                no_static_cycle_config_.observation_window_s * 1.0e9);
+        requestGuideRelease(GlobalGuideReleaseReason::kStalled,
+                            active_status.generation);
+      }
+    }
     if (!guide) {
       mppi_route.reset();
       route_source.reset();
@@ -408,6 +518,17 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         lattice_observation.frontier_candidates_considered;
     prepared.lattice_successor_diagnostics = lattice_observation.successor_diagnostics;
     prepared.lattice_continuation_attempt = continuation_attempt;
+    prepared.lattice_search_session_age_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  search_session_started)
+            .count();
+    prepared.no_static_cycle_detected = cycle_result.cycle_detected;
+    prepared.no_static_adaptive_search = worker_now_ns < adaptive_search_until_ns;
+    prepared.no_static_soft_tabu_entries =
+        static_cast<std::size_t>(std::ranges::count_if(
+            frontier_blacklist_, [](const LatticeFrontierBlacklistEntry& entry) {
+              return entry.soft_penalty_cost > 0.0;
+            }));
     prepared.lattice_search_session_resumed =
         lattice_observation.search_session_resumed;
     prepared.lattice_search_session_complete =
@@ -457,7 +578,9 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         "successor_reject_grid=%zu successor_reject_invalid=%zu "
         "successor_reject_collision=%zu "
         "successor_reject_risk=%zu successor_reject_blacklist=%zu "
-        "successor_reject_cost=%zu",
+        "successor_reject_cost=%zu successor_soft_tabu=%zu "
+        "search_session_age_ms=%.2f cycle_detected=%s adaptive_search=%s "
+        "soft_tabu_entries=%zu",
         prepared.revision, prepared.lattice_search_revision,
         prepared.lattice_validation_revision,
         productionGuideCandidateValidationStatusName(
@@ -509,12 +632,21 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         prepared.lattice_successor_diagnostics.rejected_raw_collision,
         prepared.lattice_successor_diagnostics.rejected_risk_stage,
         prepared.lattice_successor_diagnostics.rejected_blacklisted_failure,
-        prepared.lattice_successor_diagnostics.rejected_no_cost_improvement);
+        prepared.lattice_successor_diagnostics.rejected_no_cost_improvement,
+        prepared.lattice_successor_diagnostics.soft_tabu_penalties_applied,
+        prepared.lattice_search_session_age_ms,
+        prepared.no_static_cycle_detected ? "true" : "false",
+        prepared.no_static_adaptive_search ? "true" : "false",
+        prepared.no_static_soft_tabu_entries);
 
     const bool search_incomplete =
         lattice_search_performed && !lattice_observation.search_session_complete;
+    const double search_session_age_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  search_session_started)
+            .count();
     if (search_incomplete && !latest_world_rejected_candidate &&
-        continuation_attempt + 1U < lattice_maximum_continuation_attempts_) {
+        search_session_age_ms < lattice_search_session_maximum_ms_) {
       ++continuation_attempt;
       search_session_in_progress = true;
       continue;

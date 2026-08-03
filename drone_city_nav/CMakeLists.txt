@@ -155,6 +155,7 @@ add_library(
   src/mppi_risk_escalation.cpp
   src/mppi_speed_policy.cpp
   src/navigation_state_prediction.cpp
+  src/no_static_route_cycle.cpp
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
@@ -390,6 +391,12 @@ if(BUILD_TESTING)
   target_compile_features(navigation_state_prediction_test PRIVATE cxx_std_20)
   target_link_libraries(navigation_state_prediction_test drone_city_nav_core)
   enable_project_warnings(navigation_state_prediction_test)
+
+  ament_add_gtest(no_static_route_cycle_test
+                  tests/no_static_route_cycle_test.cpp)
+  target_compile_features(no_static_route_cycle_test PRIVATE cxx_std_20)
+  target_link_libraries(no_static_route_cycle_test drone_city_nav_core)
+  enable_project_warnings(no_static_route_cycle_test)
 
   ament_add_gtest(latest_value_mailbox_test
                   tests/latest_value_mailbox_test.cpp)

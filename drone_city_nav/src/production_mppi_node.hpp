@@ -15,6 +15,7 @@
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
+#include "drone_city_nav/no_static_route_cycle.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
@@ -146,6 +147,10 @@ struct ProductionMppiPreparedEsdf {
   double lattice_3d_minimum_clearance_m{0.0};
   Lattice3DSuccessorDiagnostics lattice_3d_successor_diagnostics{};
   std::size_t lattice_continuation_attempt{0U};
+  double lattice_search_session_age_ms{0.0};
+  bool no_static_cycle_detected{false};
+  bool no_static_adaptive_search{false};
+  std::size_t no_static_soft_tabu_entries{0U};
   bool lattice_search_session_resumed{false};
   bool lattice_search_session_complete{true};
   std::uint64_t lattice_search_revision{0U};
@@ -165,6 +170,15 @@ struct ProductionMppiPreparedEsdf {
       StaticRouteActivationStatus::kNotAttempted};
   bool static_route_revision_matches{false};
   bool static_route_generation_matches{false};
+};
+
+struct ProductionPendingGlobalGuide {
+  std::shared_ptr<const std::vector<Point2>> guide;
+  bool reaches_mission_goal{false};
+  LatticePlanStatus status{LatticePlanStatus::kInvalidInput};
+  double remaining_goal_distance_m{0.0};
+  double cost{0.0};
+  std::uint64_t fingerprint{0U};
 };
 
 struct ProductionMppiStability {
@@ -329,7 +343,11 @@ private:
   double no_static_guide_lookahead_m_{30.0};
   bool frontier_blacklist_enabled_{false};
   double frontier_blacklist_ttl_s_{15.0};
-  std::size_t lattice_maximum_continuation_attempts_{4U};
+  double lattice_search_session_maximum_ms_{2000.0};
+  double no_static_soft_tabu_penalty_{40.0};
+  double no_static_adaptive_reachable_depth_m_{40.0};
+  std::size_t no_static_adaptive_validation_states_{8192U};
+  NoStaticRouteCycleConfig no_static_cycle_config_{};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
   Point3 mission_start_{54.0, 54.0, 0.0};
@@ -360,6 +378,7 @@ private:
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
   std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
+  std::unique_ptr<NoStaticRouteCycleDetector> no_static_cycle_detector_;
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
   RouteEnvelopeConfig route_envelope_config_{};
@@ -403,8 +422,7 @@ private:
   std::atomic<std::uint64_t> guide_release_generation_{0U};
   std::atomic<GlobalGuideReleaseReason> guide_release_reason_{
       GlobalGuideReleaseReason::kStalled};
-  std::shared_ptr<const std::vector<Point2>> pending_global_guide_;
-  bool pending_global_guide_reaches_mission_goal_{false};
+  std::optional<ProductionPendingGlobalGuide> pending_global_guide_;
   std::vector<LatticeFrontierBlacklistEntry> frontier_blacklist_;
 
   mutable std::mutex esdf_state_mutex_;

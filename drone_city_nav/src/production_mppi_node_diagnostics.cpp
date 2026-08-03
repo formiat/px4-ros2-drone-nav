@@ -545,6 +545,12 @@ void ProductionMppiNode::processDiagnostics(
        << " route_smoothing_ms=" << esdf.route_smoothing_ms
        << " candidate_validation_ms=" << esdf.candidate_validation_ms
        << " route_fingerprint=" << esdf.route_fingerprint
+       << " search_session_age_ms=" << esdf.lattice_search_session_age_ms
+       << " no_static_cycle_detected="
+       << (esdf.no_static_cycle_detected ? "true" : "false")
+       << " no_static_adaptive_search="
+       << (esdf.no_static_adaptive_search ? "true" : "false")
+       << " no_static_soft_tabu_entries=" << esdf.no_static_soft_tabu_entries
        << " esdf_upload_ms=" << esdf.upload_ms << " dropped_diagnostics="
        << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed);
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
@@ -679,6 +685,12 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"lattice_status\":\"" << planningStatusName(esdf) << '"'
         << ",\"lattice_termination\":\"" << planningTerminationName(esdf) << '"'
         << ",\"lattice_continuation_attempt\":" << esdf.lattice_continuation_attempt
+        << ",\"lattice_search_session_age_ms\":" << esdf.lattice_search_session_age_ms
+        << ",\"no_static_cycle_detected\":"
+        << (esdf.no_static_cycle_detected ? "true" : "false")
+        << ",\"no_static_adaptive_search\":"
+        << (esdf.no_static_adaptive_search ? "true" : "false")
+        << ",\"no_static_soft_tabu_entries\":" << esdf.no_static_soft_tabu_entries
         << ",\"lattice_search_session_resumed\":"
         << (esdf.lattice_search_session_resumed ? "true" : "false")
         << ",\"lattice_search_session_complete\":"
@@ -739,6 +751,8 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.lattice_successor_diagnostics.rejected_blacklisted_failure
         << ",\"lattice_successors_rejected_no_cost_improvement\":"
         << esdf.lattice_successor_diagnostics.rejected_no_cost_improvement
+        << ",\"lattice_successor_soft_tabu_penalties\":"
+        << esdf.lattice_successor_diagnostics.soft_tabu_penalties_applied
         << ",\"lattice_3d_successors_generated\":"
         << esdf.lattice_3d_successor_diagnostics.lattice_generated
         << ",\"lattice_3d_successors_accepted\":"

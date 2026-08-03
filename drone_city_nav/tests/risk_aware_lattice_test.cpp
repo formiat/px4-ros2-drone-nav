@@ -362,6 +362,7 @@ TEST(RiskAwareLattice, FailurePointBlocksOnlyRepeatedApproach) {
           .failure_point = Point2{6.5, 10.5},
           .approach_heading_rad = 0.0,
           .expires_at_ns = 1000,
+          .soft_penalty_cost = 0.0,
       },
   };
 
@@ -374,6 +375,29 @@ TEST(RiskAwareLattice, FailurePointBlocksOnlyRepeatedApproach) {
       std::ranges::all_of(std::views::drop(result.guide, 1U), [](const Point2 point) {
         return std::abs(point.y - 10.5) < 0.1;
       }));
+}
+
+TEST(RiskAwareLattice, SoftTabuChangesCostWithoutRemovingReachability) {
+  const mppi::EsdfGrid grid{60, 40, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                20.0F);
+  RiskAwareLatticeConfig config;
+  config.maximum_search_time_ms = 1000.0;
+  config.maximum_expansions = 5000U;
+  config.frontier_blacklist_radius_m = 100.0;
+  config.frontier_blacklist_heading_tolerance_bins = config.heading_bins / 2;
+  const std::vector<LatticeFrontierBlacklistEntry> memory{
+      LatticeFrontierBlacklistEntry{.failure_point = Point2{2.5, 20.5},
+                                    .approach_heading_rad = 0.0,
+                                    .expires_at_ns = 1'000'000'000,
+                                    .soft_penalty_cost = 20.0}};
+
+  const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
+      grid, esdf, Point2{2.5, 20.5}, 0.0, Point2{50.5, 20.5}, config, memory);
+
+  EXPECT_TRUE(result.valid);
+  EXPECT_GT(result.successor_diagnostics.soft_tabu_penalties_applied, 0U);
+  EXPECT_EQ(result.successor_diagnostics.rejected_blacklisted_failure, 0U);
 }
 
 } // namespace

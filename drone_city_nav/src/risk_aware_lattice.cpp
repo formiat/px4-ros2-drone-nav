@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -309,10 +310,33 @@ void recordSegmentRejection(const SegmentEvaluation& segment,
   return length_m;
 }
 
-[[nodiscard]] bool repeatsBlacklistedFailure(
-    const std::span<const Point2> guide,
-    const std::span<const LatticeFrontierBlacklistEntry> blacklist,
-    const RiskAwareLatticeConfig& config) {
+struct FailureMemoryEvaluation {
+  bool hard_rejected{false};
+  double soft_penalty_cost{0.0};
+};
+
+[[nodiscard]] std::uint64_t failureMemoryFingerprint(
+    const std::span<const LatticeFrontierBlacklistEntry> entries) noexcept {
+  std::uint64_t hash = 14695981039346656037ULL;
+  const auto append = [&hash](const std::uint64_t value) {
+    hash ^= value;
+    hash *= 1099511628211ULL;
+  };
+  for (const LatticeFrontierBlacklistEntry& entry : entries) {
+    append(std::bit_cast<std::uint64_t>(entry.failure_point.x));
+    append(std::bit_cast<std::uint64_t>(entry.failure_point.y));
+    append(std::bit_cast<std::uint64_t>(entry.approach_heading_rad));
+    append(static_cast<std::uint64_t>(entry.expires_at_ns));
+    append(std::bit_cast<std::uint64_t>(entry.soft_penalty_cost));
+  }
+  return hash;
+}
+
+[[nodiscard]] FailureMemoryEvaluation
+evaluateFailureMemory(const std::span<const Point2> guide,
+                      const std::span<const LatticeFrontierBlacklistEntry> blacklist,
+                      const RiskAwareLatticeConfig& config) {
+  FailureMemoryEvaluation result;
   for (std::size_t index = 1U; index < guide.size(); ++index) {
     const Point2& from = guide[index - 1U];
     const Point2& to = guide[index];
@@ -338,12 +362,18 @@ void recordSegmentRejection(const SegmentEvaluation& segment,
                            std::lerp(from.y, to.y, ratio)};
         if (distance(point, entry.failure_point) <=
             config.frontier_blacklist_radius_m) {
-          return true;
+          if (entry.soft_penalty_cost > 0.0) {
+            result.soft_penalty_cost =
+                std::max(result.soft_penalty_cost, entry.soft_penalty_cost);
+          } else {
+            result.hard_rejected = true;
+          }
+          break;
         }
       }
     }
   }
-  return false;
+  return result;
 }
 
 } // namespace
@@ -358,6 +388,7 @@ struct RiskAwareLatticeSearchSession::Impl {
   double preferred_heading_rad{0.0};
   const LatticeFrontierBlacklistEntry* blacklist_data{nullptr};
   std::size_t blacklist_size{0U};
+  std::uint64_t failure_memory_fingerprint{0U};
   std::array<StageOutcome, 3U> outcomes{};
 
   [[nodiscard]] bool
@@ -376,7 +407,8 @@ struct RiskAwareLatticeSearchSession::Impl {
            mission_goal.x == candidate_goal.x && mission_goal.y == candidate_goal.y &&
            preferred_heading_rad == candidate_heading &&
            blacklist_data == candidate_blacklist.data() &&
-           blacklist_size == candidate_blacklist.size();
+           blacklist_size == candidate_blacklist.size() &&
+           failure_memory_fingerprint == failureMemoryFingerprint(candidate_blacklist);
   }
 
   void
@@ -393,6 +425,7 @@ struct RiskAwareLatticeSearchSession::Impl {
     preferred_heading_rad = candidate_heading;
     blacklist_data = candidate_blacklist.data();
     blacklist_size = candidate_blacklist.size();
+    failure_memory_fingerprint = failureMemoryFingerprint(candidate_blacklist);
     outcomes = {};
   }
 };
@@ -509,7 +542,9 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         return;
       }
       const std::array candidate_segment{current, endpoint};
-      if (repeatsBlacklistedFailure(candidate_segment, frontier_blacklist, config)) {
+      const FailureMemoryEvaluation failure_memory =
+          evaluateFailureMemory(candidate_segment, frontier_blacklist, config);
+      if (failure_memory.hard_rejected) {
         if (diagnostics != nullptr) {
           ++diagnostics->rejected_blacklisted_failure;
         }
@@ -525,9 +560,12 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           .key = key,
           .endpoint = endpoint,
           .length_m = length_m,
-          .edge_cost = length_m + segment.risk_cost +
+          .edge_cost = length_m + segment.risk_cost + failure_memory.soft_penalty_cost +
                        config.turn_cost * static_cast<double>(heading_change),
       });
+      if (diagnostics != nullptr && failure_memory.soft_penalty_cost > 0.0) {
+        ++diagnostics->soft_tabu_penalties_applied;
+      }
       if (diagnostics != nullptr) {
         ++diagnostics->accepted;
       }
@@ -846,6 +884,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         outcome.successor_diagnostics.rejected_risk_stage;
     result.successor_diagnostics.rejected_blacklisted_failure +=
         outcome.successor_diagnostics.rejected_blacklisted_failure;
+    result.successor_diagnostics.soft_tabu_penalties_applied +=
+        outcome.successor_diagnostics.soft_tabu_penalties_applied;
     result.successor_diagnostics.rejected_no_cost_improvement +=
         outcome.successor_diagnostics.rejected_no_cost_improvement;
     if (outcome.goal_reached && outcome.terminal.has_value()) {
@@ -883,7 +923,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const LatticeKey& key = pooled.key;
       const Point2 terminal = cellCenter(grid, key);
       std::vector<Point2> guide = reconstruct(outcome, key);
-      if (repeatsBlacklistedFailure(guide, frontier_blacklist, config)) {
+      if (evaluateFailureMemory(guide, frontier_blacklist, config).hard_rejected) {
         continue;
       }
       const ContinuationEvaluation continuation =
@@ -969,7 +1009,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
                           LatticeRiskStage::kCriticalAllowed);
       const std::array fallback_guide{start, successor.endpoint};
       if (!from_actual_start.valid ||
-          repeatsBlacklistedFailure(fallback_guide, frontier_blacklist, config)) {
+          evaluateFailureMemory(fallback_guide, frontier_blacklist, config)
+              .hard_rejected) {
         continue;
       }
       const ContinuationEvaluation continuation = evaluate_continuation(
