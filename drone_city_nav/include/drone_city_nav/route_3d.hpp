@@ -151,6 +151,9 @@ observeConstrainedRoute(std::span<const RouteSample3D> route,
                                                        double sample_step_m,
                                                        double reference_speed_mps);
 
+[[nodiscard]] RouteSample3D sampleRoute3DAtStation(std::span<const RouteSample3D> route,
+                                                   double station_m) noexcept;
+
 [[nodiscard]] std::uint64_t
 routeFingerprint(std::span<const RouteSample3D> route,
                  std::span<const SelectedChannelTraversal> traversals = {}) noexcept;

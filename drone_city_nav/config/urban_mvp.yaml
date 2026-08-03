@@ -132,6 +132,7 @@ production_mppi_node:
     static_observation_margin_m: 3.0
     static_goal_braking_margin_m: 2.0
     static_curvature_preview_distance_m: 100.0
+    route_curvature_measurement_window_m: 5.0
     constrained_route_speed_limit_mps: 10.0
     constrained_route_alignment_distance_buffer_m: 5.0
     constrained_route_stationary_hold_distance_m: 2.0
@@ -186,7 +187,11 @@ production_mppi_node:
     global_lattice_3d_sample_step_m: 0.5
     global_lattice_3d_nominal_vertical_speed_mps: 4.0
     global_lattice_3d_vertical_alignment_cost_weight: 0.0
-    global_lattice_3d_turn_cost_per_rad: 0.0
+    global_lattice_3d_route_shape_turn_cost_per_rad: 0.10
+    global_lattice_3d_channel_topology_transition_cost: 0.0
+    static_route_maximum_shortcut_length_m: 30.0
+    static_route_corner_smoothing_distance_m: 2.0
+    static_route_corner_curve_samples: 4
     global_lattice_3d_planning_exposure_cost_per_m: 0.0
     global_lattice_3d_critical_exposure_cost_per_m: 0.0
     global_lattice_3d_channel_connection_distance_m: 3.0

@@ -70,7 +70,8 @@ struct RiskAwareLattice3DConfig {
   double nominal_horizontal_speed_mps{20.0};
   double nominal_vertical_speed_mps{4.0};
   double vertical_alignment_cost_weight{0.0};
-  double turn_cost_per_rad{0.10};
+  double route_shape_turn_cost_per_rad{0.10};
+  double channel_topology_transition_cost{0.0};
   double planning_exposure_cost_per_m{0.05};
   double critical_exposure_cost_per_m{0.50};
   double channel_connection_distance_m{3.0};

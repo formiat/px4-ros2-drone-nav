@@ -169,6 +169,8 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("static_goal_braking_margin_m", 2.0);
   static_speed_policy_config.curvature_preview_distance_m =
       declare_parameter<double>("static_curvature_preview_distance_m", 100.0);
+  static_speed_policy_config.curvature_measurement_window_m =
+      declare_parameter<double>("route_curvature_measurement_window_m", 5.0);
   static_speed_policy_config.minimum_target_lookahead_m =
       declare_parameter<double>("static_minimum_target_lookahead_m", 30.0);
   static_speed_policy_config.maximum_target_lookahead_m =
@@ -338,8 +340,17 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("global_lattice_3d_nominal_vertical_speed_mps", 4.0);
   lattice_3d_config_.vertical_alignment_cost_weight = declare_parameter<double>(
       "global_lattice_3d_vertical_alignment_cost_weight", 0.0);
-  lattice_3d_config_.turn_cost_per_rad =
-      declare_parameter<double>("global_lattice_3d_turn_cost_per_rad", 0.10);
+  lattice_3d_config_.route_shape_turn_cost_per_rad = declare_parameter<double>(
+      "global_lattice_3d_route_shape_turn_cost_per_rad", 0.10);
+  lattice_3d_config_.channel_topology_transition_cost = declare_parameter<double>(
+      "global_lattice_3d_channel_topology_transition_cost", 0.0);
+  static_route_geometry_config_.sample_step_m = lattice_3d_config_.sample_step_m;
+  static_route_geometry_config_.maximum_shortcut_length_m =
+      declare_parameter<double>("static_route_maximum_shortcut_length_m", 30.0);
+  static_route_geometry_config_.corner_smoothing_distance_m =
+      declare_parameter<double>("static_route_corner_smoothing_distance_m", 2.0);
+  static_route_geometry_config_.corner_curve_samples = static_cast<std::size_t>(
+      declare_parameter<std::int64_t>("static_route_corner_curve_samples", 4));
   lattice_3d_config_.planning_exposure_cost_per_m =
       declare_parameter<double>("global_lattice_3d_planning_exposure_cost_per_m", 0.05);
   lattice_3d_config_.critical_exposure_cost_per_m =
@@ -446,7 +457,11 @@ ProductionMppiNode::ProductionMppiNode()
       !(lattice_3d_config_.nominal_horizontal_speed_mps > 0.0) ||
       !(lattice_3d_config_.nominal_vertical_speed_mps > 0.0) ||
       !(lattice_3d_config_.vertical_alignment_cost_weight >= 0.0) ||
-      !(lattice_3d_config_.turn_cost_per_rad >= 0.0) ||
+      !(lattice_3d_config_.route_shape_turn_cost_per_rad >= 0.0) ||
+      !(lattice_3d_config_.channel_topology_transition_cost >= 0.0) ||
+      !(static_route_geometry_config_.maximum_shortcut_length_m > 0.0) ||
+      !(static_route_geometry_config_.corner_smoothing_distance_m >= 0.0) ||
+      static_route_geometry_config_.corner_curve_samples < 2U ||
       !(lattice_3d_config_.planning_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.critical_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.channel_connection_distance_m > 0.0) ||

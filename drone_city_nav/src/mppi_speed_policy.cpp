@@ -37,6 +37,31 @@ namespace {
   return std::acos(dot) / (0.5 * (first_length + second_length));
 }
 
+[[nodiscard]] double windowedTurnCurvature(const std::span<const Point2> guide,
+                                           const std::size_t center_index,
+                                           const double measurement_window_m) noexcept {
+  if (center_index == 0U || center_index + 1U >= guide.size()) {
+    return 0.0;
+  }
+  const double half_window_m = 0.5 * measurement_window_m;
+  std::size_t first_index = center_index;
+  double first_distance_m = 0.0;
+  while (first_index > 0U && first_distance_m < half_window_m) {
+    first_distance_m += distance(guide[first_index], guide[first_index - 1U]);
+    --first_index;
+  }
+  std::size_t last_index = center_index;
+  double last_distance_m = 0.0;
+  while (last_index + 1U < guide.size() && last_distance_m < half_window_m) {
+    last_distance_m += distance(guide[last_index], guide[last_index + 1U]);
+    ++last_index;
+  }
+  if (first_index == center_index || last_index == center_index) {
+    return 0.0;
+  }
+  return turnCurvature(guide[first_index], guide[center_index], guide[last_index]);
+}
+
 void validateConfig(const MppiSpeedPolicyConfig& config) {
   if (!(config.cruise_speed_mps > 0.0) || !(config.absolute_speed_limit_mps > 0.0) ||
       !(config.maximum_lateral_acceleration_mps2 > 0.0) ||
@@ -45,6 +70,7 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.observation_distance_m > config.observation_margin_m) ||
       !(config.observation_margin_m >= 0.0) || !(config.goal_margin_m >= 0.0) ||
       !(config.curvature_preview_distance_m > 0.0) ||
+      !(config.curvature_measurement_window_m > 0.0) ||
       !(config.horizon_duration_s > 0.0) ||
       !(config.minimum_target_lookahead_m > 0.0) ||
       !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m)) {
@@ -99,8 +125,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
          distance_to_turn_m <= config.curvature_preview_distance_m;
          ++index) {
       distance_to_turn_m += distance(input.guide[index - 1U], input.guide[index]);
-      const double curvature = turnCurvature(
-          input.guide[index - 1U], input.guide[index], input.guide[index + 1U]);
+      const double curvature = windowedTurnCurvature(
+          input.guide, index, config.curvature_measurement_window_m);
       result.maximum_preview_curvature_1pm =
           std::max(result.maximum_preview_curvature_1pm, curvature);
       if (curvature <= 1.0e-6) {

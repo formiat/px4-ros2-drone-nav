@@ -20,6 +20,7 @@ struct MppiSpeedPolicyConfig {
   double observation_margin_m{2.0};
   double goal_margin_m{2.0};
   double curvature_preview_distance_m{100.0};
+  double curvature_measurement_window_m{5.0};
   double horizon_duration_s{6.0};
   double minimum_target_lookahead_m{30.0};
   double maximum_target_lookahead_m{100.0};

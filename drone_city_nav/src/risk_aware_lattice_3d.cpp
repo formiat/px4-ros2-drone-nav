@@ -326,7 +326,8 @@ evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> es
                                    const Vec3& incoming_direction,
                                    const Vec3& preferred_direction,
                                    const EdgeEvaluation& exposure,
-                                   const RiskAwareLattice3DConfig& config) noexcept {
+                                   const RiskAwareLattice3DConfig& config,
+                                   const bool charge_shape_turn = true) noexcept {
   CostMetrics result;
   result.route_length_m = distance3D(first, second);
   const double horizontal_m = std::hypot(second.x - first.x, second.y - first.y);
@@ -339,8 +340,10 @@ evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> es
   result.planning_exposure_m = exposure.planning_exposure_m;
   result.critical_exposure_m = exposure.critical_exposure_m;
   const Vec3 outgoing = directionBetween(first, second);
-  result.turn_cost =
-      config.turn_cost_per_rad * horizontalAngle(incoming_direction, outgoing);
+  result.turn_cost = charge_shape_turn
+                         ? config.route_shape_turn_cost_per_rad *
+                               horizontalAngle(incoming_direction, outgoing)
+                         : 0.0;
   const bool first_maneuver =
       std::hypot(incoming_direction.x, incoming_direction.y) <= 1.0e-9;
   const double heading_cost = first_maneuver
@@ -374,13 +377,12 @@ void accumulate(CostMetrics& target, const CostMetrics& addition) noexcept {
                   vertical_m / std::max(1.0e-6, config.nominal_vertical_speed_mps));
 }
 
-[[nodiscard]] bool
-appendEvaluatedSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-                       const Point3& first, const Point3& second,
-                       const Lattice3DRiskStage stage, const Vec3& preferred_direction,
-                       const RiskAwareLattice3DConfig& config, Vec3& incoming_direction,
-                       CostMetrics& metrics, double& minimum_clearance_m,
-                       EdgeEvaluationStatus& evaluation_status) {
+[[nodiscard]] bool appendEvaluatedSegment(
+    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+    const Point3& first, const Point3& second, const Lattice3DRiskStage stage,
+    const Vec3& preferred_direction, const RiskAwareLattice3DConfig& config,
+    Vec3& incoming_direction, CostMetrics& metrics, double& minimum_clearance_m,
+    EdgeEvaluationStatus& evaluation_status, const bool charge_shape_turn = true) {
   const EdgeEvaluation evaluation =
       evaluateEdge(grid, esdf_m, first, second, stage, config);
   evaluation_status = evaluation.status;
@@ -388,7 +390,7 @@ appendEvaluatedSegment(const mppi::EsdfGrid& grid, const std::span<const float> 
     return false;
   }
   accumulate(metrics, edgeCost(first, second, incoming_direction, preferred_direction,
-                               evaluation, config));
+                               evaluation, config, charge_shape_turn));
   minimum_clearance_m = std::min(minimum_clearance_m, evaluation.minimum_clearance_m);
   if (distance3D(first, second) > 1.0e-9) {
     incoming_direction = directionBetween(first, second);
@@ -441,6 +443,7 @@ channelSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
   candidate.has_parent = true;
   candidate.channel_transition =
       ChannelTransition{.channel_index = channel_index, .reversed = reversed};
+  candidate.metrics.objective_cost += config.channel_topology_transition_cost;
   Vec3 incoming = current_record.incoming_direction;
   EdgeEvaluationStatus evaluation_status{EdgeEvaluationStatus::kValid};
   if (!appendEvaluatedSegment(grid, esdf_m, current, entry, stage, preferred_direction,
@@ -453,9 +456,10 @@ channelSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
     for (std::size_t index = channel.centerline.size(); index > 1U; --index) {
       const Point3 first = channel.centerline[index - 1U].position;
       const Point3 second = channel.centerline[index - 2U].position;
-      if (!appendEvaluatedSegment(
-              grid, esdf_m, first, second, stage, preferred_direction, config, incoming,
-              candidate.metrics, candidate.minimum_clearance_m, evaluation_status)) {
+      if (!appendEvaluatedSegment(grid, esdf_m, first, second, stage,
+                                  preferred_direction, config, incoming,
+                                  candidate.metrics, candidate.minimum_clearance_m,
+                                  evaluation_status, false)) {
         recordRejectedEdge(diagnostics, evaluation_status, true);
         return std::nullopt;
       }
@@ -466,7 +470,7 @@ channelSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
                                   channel.centerline[index + 1U].position, stage,
                                   preferred_direction, config, incoming,
                                   candidate.metrics, candidate.minimum_clearance_m,
-                                  evaluation_status)) {
+                                  evaluation_status, false)) {
         recordRejectedEdge(diagnostics, evaluation_status, true);
         return std::nullopt;
       }

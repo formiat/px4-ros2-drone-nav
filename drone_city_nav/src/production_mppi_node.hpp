@@ -21,6 +21,7 @@
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
+#include "drone_city_nav/static_route_geometry.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/path.hpp>
@@ -82,6 +83,8 @@ struct ProductionMppiPreparedEsdf {
   double global_guide_search_ms{0.0};
   double continuation_validation_ms{0.0};
   double route_smoothing_ms{0.0};
+  std::size_t route_shortcuts_applied{0U};
+  std::size_t route_corners_smoothed{0U};
   double candidate_validation_ms{0.0};
   std::uint64_t route_fingerprint{0U};
   mppi::EsdfGrid grid{};
@@ -385,6 +388,7 @@ private:
   ConstrainedRouteControlConfig constrained_route_control_config_{};
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
+  StaticRouteGeometryConfig static_route_geometry_config_{};
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;

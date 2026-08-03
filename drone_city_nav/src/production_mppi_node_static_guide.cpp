@@ -88,6 +88,32 @@ void ProductionMppiNode::processStaticGuideSearch(
   if (prepared.lattice_executable) {
     const auto validation_started = std::chrono::steady_clock::now();
     auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(lattice.route);
+    const std::uint64_t candidate_generation = static_route_generation_ + 1U;
+    std::vector<ConstrainedRouteSpan> initial_spans =
+        makeConstrainedRouteSpans(*mutable_route, lattice.selected_channels,
+                                  candidate_generation, route_envelope_config_);
+    const auto smoothing_started = std::chrono::steady_clock::now();
+    StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
+        *mutable_route, initial_spans, world.grid, *world.distances_m,
+        SweptFootprintConfig{.radius_m = safety_config_.physical_footprint_radius_m,
+                             .perimeter_samples =
+                                 safety_config_.physical_footprint_samples,
+                             .sweep_step_m = safety_config_.swept_validation_step_m},
+        static_route_geometry_config_, route_envelope_config_);
+    prepared.route_smoothing_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  smoothing_started)
+            .count();
+    prepared.route_shortcuts_applied = geometry.shortcuts_applied;
+    prepared.route_corners_smoothed = geometry.corners_smoothed;
+    if (geometry.route.size() >= 2U) {
+      *mutable_route = std::move(geometry.route);
+    }
+    for (ConstrainedRouteSpan& span : geometry.constrained_spans) {
+      span.route_generation = candidate_generation;
+    }
+    auto mutable_spans = std::make_shared<std::vector<ConstrainedRouteSpan>>(
+        std::move(geometry.constrained_spans));
     if (assignRouteRiskTiers(*mutable_route, world.grid, *world.distances_m,
                              mppi_config_.risk.critical_distance_m,
                              mppi_config_.risk.preferred_distance_m)) {
@@ -107,10 +133,12 @@ void ProductionMppiNode::processStaticGuideSearch(
           .status = StaticRouteCandidateStatus::kInvalidEsdf};
     }
     const std::shared_ptr<const std::vector<RouteSample3D>> route = mutable_route;
-    const std::uint64_t candidate_generation = static_route_generation_ + 1U;
-    auto spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
-        makeConstrainedRouteSpans(*route, lattice.selected_channels,
-                                  candidate_generation, route_envelope_config_));
+    const std::shared_ptr<const std::vector<ConstrainedRouteSpan>> spans =
+        mutable_spans;
+    if (validation.accepted && spans->size() != initial_spans.size()) {
+      validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidChannelSpan};
+    }
     if (validation.accepted && !validateConstrainedRouteSpans(
                                    *route, *spans, world.grid, *world.distances_m)) {
       validation = StaticRouteCandidateValidation{
@@ -230,7 +258,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       "objective=%.3f route_length_m=%.2f travel_time_s=%.2f "
       "vertical_alignment_time_s=%.2f planning_exposure_m=%.2f "
       "critical_exposure_m=%.2f selected_channels=%zu search_ms=%.2f "
-      "continuation_ms=%.2f validation_ms=%.2f route_fingerprint=%" PRIu64,
+      "continuation_ms=%.2f validation_ms=%.2f smoothing_ms=%.2f "
+      "shortcuts=%zu smoothed_corners=%zu route_fingerprint=%" PRIu64,
       prepared.revision, activated ? "true" : "false",
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
       staticRouteActivationStatusName(activation_status).data(),
@@ -279,7 +308,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.vertical_alignment_time_s, lattice.planning_exposure_m,
       lattice.critical_exposure_m, lattice.selected_channels.size(), search_ms,
       prepared.continuation_validation_ms, prepared.candidate_validation_ms,
-      prepared.route_fingerprint);
+      prepared.route_smoothing_ms, prepared.route_shortcuts_applied,
+      prepared.route_corners_smoothed, prepared.route_fingerprint);
   for (const Lattice3DTopologyCandidate& candidate : lattice.topology_candidates) {
     RCLCPP_INFO(get_logger(),
                 "PRODUCTION_MPPI_TOPOLOGY_CANDIDATE revision=%" PRIu64

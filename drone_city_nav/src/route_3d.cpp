@@ -100,6 +100,11 @@ nearestEnvelopeSample(const ConstrainedRouteSpan& span, const double station_m) 
 
 } // namespace
 
+RouteSample3D sampleRoute3DAtStation(const std::span<const RouteSample3D> route,
+                                     const double station_m) noexcept {
+  return sampleAtStation(route, station_m);
+}
+
 std::uint64_t
 routeFingerprint(const std::span<const RouteSample3D> route,
                  const std::span<const SelectedChannelTraversal> traversals) noexcept {

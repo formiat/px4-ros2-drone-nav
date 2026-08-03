@@ -460,7 +460,7 @@ TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
   config.preferred_distance_m = 0.0;
   config.critical_distance_m = 0.0;
   config.heading_bias_cost_per_rad = 0.0;
-  config.turn_cost_per_rad = 0.0;
+  config.route_shape_turn_cost_per_rad = 0.0;
   config.channel_connection_distance_m = 1.0;
   config.maximum_search_time_ms = 1000.0;
   config.physical_footprint_radius_m = 0.0;
@@ -505,7 +505,7 @@ TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
   config.preferred_distance_m = 0.0;
   config.critical_distance_m = 0.0;
   config.heading_bias_cost_per_rad = 0.0;
-  config.turn_cost_per_rad = 0.0;
+  config.route_shape_turn_cost_per_rad = 0.0;
   config.channel_connection_distance_m = 1.0;
   config.maximum_search_time_ms = 1000.0;
   config.physical_footprint_radius_m = 0.0;

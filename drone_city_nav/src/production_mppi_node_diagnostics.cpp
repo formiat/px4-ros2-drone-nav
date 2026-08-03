@@ -543,6 +543,8 @@ void ProductionMppiNode::processDiagnostics(
        << " guide_search_ms=" << esdf.global_guide_search_ms
        << " continuation_validation_ms=" << esdf.continuation_validation_ms
        << " route_smoothing_ms=" << esdf.route_smoothing_ms
+       << " route_shortcuts_applied=" << esdf.route_shortcuts_applied
+       << " route_corners_smoothed=" << esdf.route_corners_smoothed
        << " candidate_validation_ms=" << esdf.candidate_validation_ms
        << " route_fingerprint=" << esdf.route_fingerprint
        << " search_session_age_ms=" << esdf.lattice_search_session_age_ms
@@ -579,6 +581,8 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"guide_search_ms\":" << esdf.global_guide_search_ms
         << ",\"continuation_validation_ms\":" << esdf.continuation_validation_ms
         << ",\"route_smoothing_ms\":" << esdf.route_smoothing_ms
+        << ",\"route_shortcuts_applied\":" << esdf.route_shortcuts_applied
+        << ",\"route_corners_smoothed\":" << esdf.route_corners_smoothed
         << ",\"candidate_validation_ms\":" << esdf.candidate_validation_ms
         << ",\"route_fingerprint\":" << esdf.route_fingerprint
         << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
