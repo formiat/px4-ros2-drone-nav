@@ -332,8 +332,19 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     while (!outcome.open.empty() &&
            outcome.expansions - slice_start_expansions < expansion_budget &&
            std::chrono::steady_clock::now() < deadline) {
+      const QueueEntry& pending_entry = outcome.open.top();
+      const auto pending_record = outcome.records.find(pending_entry.key);
+      const bool pending_entry_current =
+          pending_record != outcome.records.end() &&
+          std::abs(pending_entry.g_at_insert - pending_record->second.cost) <= 1.0e-9;
+      const auto pending_prefetch = outcome.prefetch_cache.find(pending_entry.key);
+      const bool pending_entry_prefetched =
+          pending_prefetch != outcome.prefetch_cache.end() &&
+          std::abs(pending_prefetch->second.g_at_insert - pending_entry.g_at_insert) <=
+              1.0e-9;
       if (worker_pool != nullptr && worker_pool->canParallelizeFromCurrentThread() &&
-          outcome.open.size() > 1U) {
+          outcome.open.size() > 1U && pending_entry_current &&
+          !pending_entry_prefetched) {
         const auto prefetch_started = std::chrono::steady_clock::now();
         std::vector<QueueEntry> preview;
         const std::size_t preview_count =
