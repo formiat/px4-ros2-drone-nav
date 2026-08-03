@@ -100,13 +100,20 @@ void ProductionMppiNode::processStaticGuideSearch(
                              .perimeter_samples =
                                  safety_config_.physical_footprint_samples,
                              .sweep_step_m = safety_config_.swept_validation_step_m},
-        static_route_geometry_config_, route_envelope_config_);
+        static_route_geometry_config_, route_envelope_config_,
+        planning_worker_pool_.get());
     prepared.route_smoothing_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   smoothing_started)
             .count();
     prepared.route_shortcuts_applied = geometry.shortcuts_applied;
     prepared.route_corners_smoothed = geometry.corners_smoothed;
+    prepared.route_shortcut_candidates = geometry.shortcut_candidates;
+    prepared.route_parallel_shortcut_candidates = geometry.parallel_shortcut_candidates;
+    prepared.route_corner_candidates = geometry.corner_candidates;
+    prepared.route_parallel_corner_candidates = geometry.parallel_corner_candidates;
+    prepared.route_shortcut_validation_ms = geometry.shortcut_validation_ms;
+    prepared.route_corner_validation_ms = geometry.corner_validation_ms;
     if (geometry.route.size() >= 2U) {
       *mutable_route = std::move(geometry.route);
     }
@@ -266,6 +273,9 @@ void ProductionMppiNode::processStaticGuideSearch(
       "vertical_alignment_time_s=%.2f planning_exposure_m=%.2f "
       "critical_exposure_m=%.2f selected_channels=%zu search_ms=%.2f "
       "continuation_ms=%.2f validation_ms=%.2f smoothing_ms=%.2f "
+      "shortcut_validation_ms=%.2f corner_validation_ms=%.2f "
+      "shortcut_candidates=%zu parallel_shortcut_candidates=%zu "
+      "corner_candidates=%zu parallel_corner_candidates=%zu "
       "shortcuts=%zu smoothed_corners=%zu route_fingerprint=%" PRIu64,
       prepared.revision, activated ? "true" : "false",
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
@@ -323,7 +333,10 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.vertical_alignment_time_s, lattice.planning_exposure_m,
       lattice.critical_exposure_m, lattice.selected_channels.size(), search_ms,
       prepared.continuation_validation_ms, prepared.candidate_validation_ms,
-      prepared.route_smoothing_ms, prepared.route_shortcuts_applied,
+      prepared.route_smoothing_ms, prepared.route_shortcut_validation_ms,
+      prepared.route_corner_validation_ms, prepared.route_shortcut_candidates,
+      prepared.route_parallel_shortcut_candidates, prepared.route_corner_candidates,
+      prepared.route_parallel_corner_candidates, prepared.route_shortcuts_applied,
       prepared.route_corners_smoothed, prepared.route_fingerprint);
   for (const Lattice3DTopologyCandidate& candidate : lattice.topology_candidates) {
     RCLCPP_INFO(get_logger(),

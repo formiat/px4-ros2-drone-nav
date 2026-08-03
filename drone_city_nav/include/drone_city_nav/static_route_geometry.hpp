@@ -9,6 +9,8 @@
 
 namespace drone_city_nav {
 
+class BoundedWorkerPool;
+
 struct StaticRouteGeometryConfig {
   double sample_step_m{0.5};
   double maximum_shortcut_length_m{30.0};
@@ -21,6 +23,12 @@ struct StaticRouteGeometryResult {
   std::vector<ConstrainedRouteSpan> constrained_spans;
   std::size_t shortcuts_applied{0U};
   std::size_t corners_smoothed{0U};
+  std::size_t shortcut_candidates{0U};
+  std::size_t parallel_shortcut_candidates{0U};
+  std::size_t corner_candidates{0U};
+  std::size_t parallel_corner_candidates{0U};
+  double shortcut_validation_ms{0.0};
+  double corner_validation_ms{0.0};
 };
 
 [[nodiscard]] StaticRouteGeometryResult
@@ -29,6 +37,7 @@ optimizeStaticRouteGeometry(std::span<const RouteSample3D> route,
                             const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
                             const SweptFootprintConfig& footprint_config,
                             const StaticRouteGeometryConfig& geometry_config,
-                            const RouteEnvelopeConfig& envelope_config);
+                            const RouteEnvelopeConfig& envelope_config,
+                            BoundedWorkerPool* worker_pool = nullptr);
 
 } // namespace drone_city_nav

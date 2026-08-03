@@ -85,8 +85,14 @@ struct ProductionMppiPreparedEsdf {
   double global_guide_search_ms{0.0};
   double continuation_validation_ms{0.0};
   double route_smoothing_ms{0.0};
+  double route_shortcut_validation_ms{0.0};
+  double route_corner_validation_ms{0.0};
   std::size_t route_shortcuts_applied{0U};
   std::size_t route_corners_smoothed{0U};
+  std::size_t route_shortcut_candidates{0U};
+  std::size_t route_parallel_shortcut_candidates{0U};
+  std::size_t route_corner_candidates{0U};
+  std::size_t route_parallel_corner_candidates{0U};
   double candidate_validation_ms{0.0};
   std::uint64_t route_fingerprint{0U};
   mppi::EsdfGrid grid{};
