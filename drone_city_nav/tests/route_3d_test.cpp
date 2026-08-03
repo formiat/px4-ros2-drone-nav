@@ -571,5 +571,58 @@ TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
   EXPECT_EQ(result.selected_channels.front().channel_id, "far_channel");
 }
 
+TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 20, 10}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  const auto channel = [](const std::string& id, const std::vector<Point3>& points) {
+    return ConstrainedFreeSpaceEdge{.id = id,
+                                    .centerline = sampleRoute3D(points, 0.5, 10.0),
+                                    .entry = points.front(),
+                                    .exit = points.back(),
+                                    .min_z_m = 1.5,
+                                    .max_z_m = 8.5,
+                                    .minimum_clearance_m = 3.5,
+                                    .speed_limit_mps = 10.0};
+  };
+  const std::vector<ConstrainedFreeSpaceEdge> channels{
+      channel("direct", {{0.5, 2.5, 5.5}, {18.5, 2.5, 5.5}}),
+      channel("detour", {{0.5, 2.5, 5.5}, {9.5, 15.5, 5.5}, {18.5, 2.5, 5.5}})};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.heading_bias_cost_per_rad = 0.0;
+  config.route_shape_turn_cost_per_rad = 0.0;
+  config.maximum_search_time_ms = 1000.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+  const Point3 start{0.5, 2.5, 5.5};
+  const Point3 goal{20.5, 2.5, 5.5};
+
+  const RiskAwareLattice3DResult serial = planRiskAwareLattice3D(
+      grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, channels, config);
+  BoundedWorkerPool worker_pool{4U};
+  const RiskAwareLattice3DResult parallel =
+      planRiskAwareLattice3D(grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal,
+                             channels, config, &worker_pool);
+
+  ASSERT_EQ(serial.status, Lattice3DStatus::kReachedPlanningGoal);
+  ASSERT_EQ(parallel.status, serial.status);
+  EXPECT_EQ(parallel.route_fingerprint, serial.route_fingerprint);
+  EXPECT_EQ(parallel.topology_searches, 3U);
+  EXPECT_EQ(parallel.parallel_topology_searches, parallel.topology_searches);
+  EXPECT_GT(parallel.topology_search_worker_ms, 0.0);
+}
+
 } // namespace
 } // namespace drone_city_nav

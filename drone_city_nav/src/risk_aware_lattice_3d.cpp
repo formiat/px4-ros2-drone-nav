@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "risk_aware_lattice_3d_continuation.hpp"
 #include "risk_aware_lattice_3d_geometry.hpp"
 #include "risk_aware_lattice_3d_result.hpp"
 
@@ -96,13 +97,6 @@ struct Greater {
 using detail::Lattice3DEdgeEvaluation;
 using detail::Lattice3DEdgeEvaluationStatus;
 
-struct ContinuationMetrics {
-  std::size_t immediate_successors{0U};
-  std::size_t reachable_states{0U};
-  double reachable_depth_m{0.0};
-  Lattice3DSuccessorBatchProfile successor_profile{};
-};
-
 struct ReconstructedPath {
   std::vector<Point3> points;
   std::vector<SelectedChannelTraversal> traversals;
@@ -144,119 +138,6 @@ struct ReconstructedPath {
                  std::llround((point.y - origin.y) / config.horizontal_step_m)),
              .z = static_cast<int>(
                  std::llround((point.z - origin.z) / config.vertical_step_m))};
-}
-
-[[nodiscard]] ContinuationMetrics
-evaluateContinuation(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-                     const Point3& terminal, const Vec3& incoming_direction,
-                     const Lattice3DRiskStage stage,
-                     const RiskAwareLattice3DConfig& config,
-                     BoundedWorkerPool* const worker_pool) {
-  struct Candidate {
-    Key key{};
-    Point3 point{};
-  };
-
-  constexpr std::array<int, 3> kOffsets{-1, 0, 1};
-  const std::size_t maximum_states =
-      std::max<std::size_t>(1U, config.frontier_validation_maximum_states);
-  std::queue<Candidate> pending;
-  std::unordered_set<Key, KeyHash> visited;
-  const Key origin{};
-  pending.push(Candidate{.key = origin, .point = terminal});
-  visited.insert(origin);
-  ContinuationMetrics result;
-  while (!pending.empty() && result.reachable_states < maximum_states &&
-         result.reachable_depth_m + 1.0e-9 <
-             config.frontier_minimum_reachable_depth_m) {
-    const Candidate current = pending.front();
-    pending.pop();
-    const auto collection_started = std::chrono::steady_clock::now();
-
-    struct NeighborEvaluation {
-      Candidate candidate{};
-      Lattice3DEdgeEvaluation edge{};
-    };
-
-    std::vector<NeighborEvaluation> evaluations;
-    evaluations.reserve(26U);
-    for (const int dx : kOffsets) {
-      for (const int dy : kOffsets) {
-        for (const int dz : kOffsets) {
-          if (dx == 0 && dy == 0 && dz == 0) {
-            continue;
-          }
-          const Key next{.kind = NodeKind::kLattice,
-                         .x = current.key.x + dx,
-                         .y = current.key.y + dy,
-                         .z = current.key.z + dz};
-          if (visited.contains(next)) {
-            continue;
-          }
-          visited.insert(next);
-          const Point3 successor{
-              terminal.x + static_cast<double>(next.x) * config.horizontal_step_m,
-              terminal.y + static_cast<double>(next.y) * config.horizontal_step_m,
-              terminal.z + static_cast<double>(next.z) * config.vertical_step_m};
-          if (current.key == origin) {
-            const double departure_length = distance3D(terminal, successor);
-            const Vec3 departure{(successor.x - terminal.x) / departure_length,
-                                 (successor.y - terminal.y) / departure_length,
-                                 (successor.z - terminal.z) / departure_length};
-            const double alignment = departure.x * incoming_direction.x +
-                                     departure.y * incoming_direction.y +
-                                     departure.z * incoming_direction.z;
-            if (alignment < -1.0e-6) {
-              continue;
-            }
-          }
-          evaluations.push_back(NeighborEvaluation{
-              .candidate = Candidate{.key = next, .point = successor}});
-        }
-      }
-    }
-    const auto evaluate_neighbor = [&](const std::size_t candidate_index) {
-      NeighborEvaluation& evaluation = evaluations[candidate_index];
-      evaluation.edge = detail::evaluateLattice3DEdge(
-          grid, esdf_m, current.point, evaluation.candidate.point, stage, config);
-    };
-    const bool parallel = worker_pool != nullptr &&
-                          worker_pool->canParallelizeFromCurrentThread() &&
-                          evaluations.size() > 1U;
-    if (parallel) {
-      worker_pool->parallelFor(evaluations.size(), evaluate_neighbor);
-    } else {
-      for (std::size_t candidate_index = 0U; candidate_index < evaluations.size();
-           ++candidate_index) {
-        evaluate_neighbor(candidate_index);
-      }
-    }
-    for (const NeighborEvaluation& evaluation : evaluations) {
-      if (evaluation.edge.status != Lattice3DEdgeEvaluationStatus::kValid) {
-        continue;
-      }
-      if (current.key == origin) {
-        ++result.immediate_successors;
-      }
-      ++result.reachable_states;
-      result.reachable_depth_m = std::max(
-          result.reachable_depth_m, distance3D(terminal, evaluation.candidate.point));
-      pending.push(evaluation.candidate);
-    }
-    ++result.successor_profile.collection_calls;
-    result.successor_profile.candidates += evaluations.size();
-    if (parallel) {
-      ++result.successor_profile.parallel_collection_calls;
-      result.successor_profile.parallel_candidates += evaluations.size();
-    }
-    result.successor_profile.maximum_candidates =
-        std::max(result.successor_profile.maximum_candidates, evaluations.size());
-    result.successor_profile.worker_ms +=
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  collection_started)
-            .count();
-  }
-  return result;
 }
 
 [[nodiscard]] Vec3 directionBetween(const Point3& first,
@@ -833,9 +714,10 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   result.turn_cost = metrics.turn_cost;
   if (!reached) {
     const auto continuation_started = std::chrono::steady_clock::now();
-    const ContinuationMetrics continuation = evaluateContinuation(
-        grid, esdf_m, pointFor(best, start, channels, config),
-        records.at(best).incoming_direction, stage, config, worker_pool);
+    const detail::Lattice3DContinuationMetrics continuation =
+        detail::evaluateLattice3DContinuation(
+            grid, esdf_m, pointFor(best, start, channels, config),
+            records.at(best).incoming_direction, stage, config, worker_pool);
     result.terminal_successor_count = continuation.immediate_successors;
     result.continuation_reachable_states = continuation.reachable_states;
     result.continuation_reachable_depth_m = continuation.reachable_depth_m;
@@ -942,14 +824,70 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
                            : 1.0;
   const Point3 planning_goal{std::lerp(start.x, mission_goal.x, ratio),
                              std::lerp(start.y, mission_goal.y, ratio), mission_goal.z};
+
+  struct TopologySearchBatch {
+    std::vector<ConstrainedFreeSpaceEdge> channels;
+    std::vector<RiskAwareLattice3DResult> stage_results;
+    double worker_ms{0.0};
+  };
+
+  std::vector<TopologySearchBatch> topology_searches;
+  topology_searches.push_back(TopologySearchBatch{
+      .channels = std::vector<ConstrainedFreeSpaceEdge>{channel_edges.begin(),
+                                                        channel_edges.end()},
+      .stage_results = {},
+      .worker_ms = 0.0,
+  });
+  const std::size_t topology_group_count =
+      worker_pool != nullptr && worker_pool->workerCount() > 1U &&
+              channel_edges.size() > 1U
+          ? std::min(channel_edges.size(), worker_pool->workerCount() - 1U)
+          : 0U;
+  topology_searches.resize(1U + topology_group_count);
+  for (std::size_t channel_index = 0U; channel_index < channel_edges.size();
+       ++channel_index) {
+    if (topology_group_count == 0U) {
+      break;
+    }
+    topology_searches[1U + channel_index % topology_group_count].channels.push_back(
+        channel_edges[channel_index]);
+  }
+  const auto run_topology_search = [&](const std::size_t search_index) {
+    const auto topology_started = std::chrono::steady_clock::now();
+    TopologySearchBatch& topology = topology_searches[search_index];
+    topology.stage_results.reserve(3U);
+    const std::span<const ConstrainedFreeSpaceEdge> topology_channels{
+        topology.channels};
+    for (const Lattice3DRiskStage stage :
+         {Lattice3DRiskStage::kPreferredOnly, Lattice3DRiskStage::kPlanningAllowed,
+          Lattice3DRiskStage::kCriticalAllowed}) {
+      topology.stage_results.push_back(
+          searchStage(grid, esdf_m, start, preferred_direction, planning_goal,
+                      mission_goal, topology_channels, stage, config, worker_pool));
+    }
+    topology.worker_ms = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - topology_started)
+                             .count();
+  };
+  const bool topology_parallel = worker_pool != nullptr &&
+                                 worker_pool->canParallelizeFromCurrentThread() &&
+                                 topology_searches.size() > 1U;
+  if (topology_parallel) {
+    worker_pool->parallelFor(topology_searches.size(), run_topology_search);
+  } else {
+    for (std::size_t search_index = 0U; search_index < topology_searches.size();
+         ++search_index) {
+      run_topology_search(search_index);
+    }
+  }
   std::vector<RiskAwareLattice3DResult> stage_results;
-  stage_results.reserve(3U);
-  for (const Lattice3DRiskStage stage :
-       {Lattice3DRiskStage::kPreferredOnly, Lattice3DRiskStage::kPlanningAllowed,
-        Lattice3DRiskStage::kCriticalAllowed}) {
-    stage_results.push_back(searchStage(grid, esdf_m, start, preferred_direction,
-                                        planning_goal, mission_goal, channel_edges,
-                                        stage, config, worker_pool));
+  stage_results.reserve(topology_searches.size() * 3U);
+  double topology_search_worker_ms = 0.0;
+  for (TopologySearchBatch& topology : topology_searches) {
+    topology_search_worker_ms += topology.worker_ms;
+    for (RiskAwareLattice3DResult& stage_result : topology.stage_results) {
+      stage_results.push_back(std::move(stage_result));
+    }
   }
 
   detail::Lattice3DStageSelection selection =
@@ -966,6 +904,9 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
   }
   RiskAwareLattice3DResult result = std::move(stage_results[selection.selected_index]);
   result.successor_profiling = aggregate_successor_profiling;
+  result.topology_searches = topology_searches.size();
+  result.parallel_topology_searches = topology_parallel ? topology_searches.size() : 0U;
+  result.topology_search_worker_ms = topology_search_worker_ms;
   result.continuation_validation_ms = aggregate_continuation_validation_ms;
   result.planning_goal = planning_goal;
   result.topology_candidates = std::move(selection.diagnostics);

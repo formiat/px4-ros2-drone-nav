@@ -148,6 +148,9 @@ struct RiskAwareLattice3DResult {
   double critical_exposure_m{0.0};
   double turn_cost{0.0};
   double search_ms{0.0};
+  std::size_t topology_searches{0U};
+  std::size_t parallel_topology_searches{0U};
+  double topology_search_worker_ms{0.0};
   double continuation_validation_ms{0.0};
   std::uint64_t route_fingerprint{0U};
   Lattice3DSuccessorDiagnostics successor_diagnostics{};
