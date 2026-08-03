@@ -146,6 +146,7 @@ add_library(
   src/risk_aware_lattice.cpp
   src/risk_aware_lattice_geometry.cpp
   src/risk_aware_lattice_names.cpp
+  src/risk_aware_lattice_successors.cpp
   src/risk_aware_lattice_3d.cpp
   src/risk_aware_lattice_3d_continuation.cpp
   src/risk_aware_lattice_3d_geometry.cpp

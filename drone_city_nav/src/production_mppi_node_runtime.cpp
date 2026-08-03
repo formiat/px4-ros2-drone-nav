@@ -650,6 +650,10 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         "successor_reject_cost=%zu successor_soft_tabu=%zu "
         "successor_search_batches=%zu successor_search_candidates=%zu "
         "successor_search_batch_max=%zu successor_search_worker_ms=%.3f "
+        "expansion_prefetch_batches=%zu expansion_prefetch_entries=%zu "
+        "expansion_prefetch_parallel_entries=%zu expansion_prefetch_cache_hits=%zu "
+        "expansion_prefetch_discarded_entries=%zu "
+        "expansion_prefetch_worker_ms=%.3f "
         "successor_continuation_batches=%zu "
         "successor_continuation_candidates=%zu "
         "successor_continuation_batch_max=%zu "
@@ -717,6 +721,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         prepared.lattice_successor_profiling.search.candidates,
         prepared.lattice_successor_profiling.search.maximum_candidates,
         prepared.lattice_successor_profiling.search.worker_ms,
+        prepared.lattice_successor_profiling.expansion_prefetch.batches,
+        prepared.lattice_successor_profiling.expansion_prefetch.entries,
+        prepared.lattice_successor_profiling.expansion_prefetch.parallel_entries,
+        prepared.lattice_successor_profiling.expansion_prefetch.cache_hits,
+        prepared.lattice_successor_profiling.expansion_prefetch.discarded_entries,
+        prepared.lattice_successor_profiling.expansion_prefetch.worker_ms,
         prepared.lattice_successor_profiling.continuation.collection_calls,
         prepared.lattice_successor_profiling.continuation.candidates,
         prepared.lattice_successor_profiling.continuation.maximum_candidates,

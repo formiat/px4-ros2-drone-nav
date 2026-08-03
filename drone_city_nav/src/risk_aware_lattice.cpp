@@ -17,28 +17,16 @@
 #include <unordered_set>
 
 #include "risk_aware_lattice_geometry.hpp"
+#include "risk_aware_lattice_successors.hpp"
 
 namespace drone_city_nav {
 namespace {
 
+using detail::LatticeKey;
+using detail::LatticeKeyHash;
 using detail::SegmentEvaluation;
-
-struct LatticeKey {
-  int x{0};
-  int y{0};
-  int heading{0};
-
-  bool operator==(const LatticeKey&) const = default;
-};
-
-struct LatticeKeyHash {
-  std::size_t operator()(const LatticeKey& key) const noexcept {
-    const std::uint64_t x = static_cast<std::uint32_t>(key.x);
-    const std::uint64_t y = static_cast<std::uint32_t>(key.y);
-    const std::uint64_t heading = static_cast<std::uint32_t>(key.heading);
-    return static_cast<std::size_t>((x << 32U) ^ (y << 8U) ^ heading);
-  }
-};
+using Successor = detail::LatticeSuccessor;
+using SuccessorCollection = detail::LatticeSuccessorCollection;
 
 struct Record {
   double cost{std::numeric_limits<double>::infinity()};
@@ -62,13 +50,9 @@ struct QueueEntry {
   }
 };
 
-struct Successor {
-  LatticeKey key{};
-  Point2 endpoint{};
-  double length_m{0.0};
-  double edge_cost{0.0};
-  std::array<Point2, 4U> edge_points{};
-  std::size_t edge_point_count{0U};
+struct PrefetchedExpansion {
+  double g_at_insert{0.0};
+  SuccessorCollection collection;
 };
 
 struct FrontierEvaluation {
@@ -104,6 +88,21 @@ void accumulateSuccessorProfile(LatticeSuccessorBatchProfile& target,
   target.maximum_candidates =
       std::max(target.maximum_candidates, addition.maximum_candidates);
   target.worker_ms += addition.worker_ms;
+}
+
+void accumulateSuccessorDiagnostics(
+    LatticeSuccessorDiagnostics& target,
+    const LatticeSuccessorDiagnostics& addition) noexcept {
+  target.generated += addition.generated;
+  target.accepted += addition.accepted;
+  target.rejected_outside_roi += addition.rejected_outside_roi;
+  target.rejected_outside_grid += addition.rejected_outside_grid;
+  target.rejected_invalid_clearance += addition.rejected_invalid_clearance;
+  target.rejected_raw_collision += addition.rejected_raw_collision;
+  target.rejected_risk_stage += addition.rejected_risk_stage;
+  target.rejected_blacklisted_failure += addition.rejected_blacklisted_failure;
+  target.soft_tabu_penalties_applied += addition.soft_tabu_penalties_applied;
+  target.rejected_no_cost_improvement += addition.rejected_no_cost_improvement;
 }
 
 struct ContinuationQueueEntry {
@@ -160,12 +159,12 @@ struct StageOutcome {
   std::size_t last_frontier_validation_expansions{0U};
   bool frontier_validation_started{false};
   LatticeSuccessorDiagnostics successor_diagnostics{};
+  std::unordered_map<LatticeKey, PrefetchedExpansion, LatticeKeyHash> prefetch_cache;
 };
 
-[[nodiscard]] Point2 cellCenter(const mppi::EsdfGrid& grid, const LatticeKey& key) {
-  return Point2{
-      grid.origin_x_m + (static_cast<double>(key.x) + 0.5) * grid.resolution_m,
-      grid.origin_y_m + (static_cast<double>(key.y) + 0.5) * grid.resolution_m};
+[[nodiscard]] Point2 cellCenter(const mppi::EsdfGrid& grid,
+                                const LatticeKey& key) noexcept {
+  return detail::latticeCellCenter(grid, key);
 }
 
 } // namespace
@@ -294,157 +293,21 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
                                      mission_goal, frontier_blacklist);
   }
   std::array<StageOutcome, 3U>& outcomes = active_session.impl_->outcomes;
-  const double roi_min_x =
-      std::min(start.x, result.planning_goal.x) - config.maximum_search_roi_halo_m;
-  const double roi_max_x =
-      std::max(start.x, result.planning_goal.x) + config.maximum_search_roi_halo_m;
-  const double roi_min_y =
-      std::min(start.y, result.planning_goal.y) - config.maximum_search_roi_halo_m;
-  const double roi_max_y =
-      std::max(start.y, result.planning_goal.y) + config.maximum_search_roi_halo_m;
-  const auto inside_roi = [&](const Point2 point) {
-    return point.x >= roi_min_x && point.x <= roi_max_x && point.y >= roi_min_y &&
-           point.y <= roi_max_y;
-  };
-
+  const detail::LatticeSearchRoi search_roi{
+      .minimum_x =
+          std::min(start.x, result.planning_goal.x) - config.maximum_search_roi_halo_m,
+      .maximum_x =
+          std::max(start.x, result.planning_goal.x) + config.maximum_search_roi_halo_m,
+      .minimum_y =
+          std::min(start.y, result.planning_goal.y) - config.maximum_search_roi_halo_m,
+      .maximum_y =
+          std::max(start.y, result.planning_goal.y) + config.maximum_search_roi_halo_m};
   const auto collect_successors = [&](const Point2 current,
                                       const LatticeKey& current_key,
-                                      const LatticeRiskStage stage,
-                                      bool& roi_boundary_seen,
-                                      LatticeSuccessorDiagnostics* diagnostics,
-                                      LatticeSuccessorBatchProfile* profile) {
-    const auto collection_started = std::chrono::steady_clock::now();
-    struct CandidateSpec {
-      int next_heading{0};
-      double length_m{0.0};
-    };
-    struct CandidateEvaluation {
-      Point2 endpoint{};
-      LatticeKey key{};
-      SegmentEvaluation segment{};
-      detail::FailureMemoryEvaluation failure_memory{};
-      bool inside_roi{false};
-    };
-
-    constexpr std::array normal_heading_offsets{-4, -2, -1, 0, 1, 2, 4, 8};
-    std::vector<CandidateSpec> candidate_specs;
-    candidate_specs.reserve(static_cast<std::size_t>(config.heading_bins) +
-                            normal_heading_offsets.size());
-    for (int next_heading = 0; next_heading < config.heading_bins; ++next_heading) {
-      candidate_specs.push_back(CandidateSpec{
-          .next_heading = next_heading,
-          .length_m = config.short_primitive_length_m,
-      });
-    }
-    for (const int heading_offset : normal_heading_offsets) {
-      candidate_specs.push_back(CandidateSpec{
-          .next_heading = detail::wrapLatticeHeading(
-              current_key.heading + heading_offset, config.heading_bins),
-          .length_m = config.primitive_length_m,
-      });
-    }
-
-    std::vector<CandidateEvaluation> evaluations(candidate_specs.size());
-    const auto evaluate_candidate = [&](const std::size_t candidate_index) {
-      const CandidateSpec& spec = candidate_specs[candidate_index];
-      const double heading =
-          detail::latticeHeadingForBin(spec.next_heading, config.heading_bins);
-      CandidateEvaluation evaluation;
-      evaluation.endpoint = Point2{current.x + std::cos(heading) * spec.length_m,
-                                   current.y + std::sin(heading) * spec.length_m};
-      evaluation.inside_roi = inside_roi(evaluation.endpoint);
-      if (!evaluation.inside_roi) {
-        evaluations[candidate_index] = evaluation;
-        return;
-      }
-      evaluation.segment = detail::evaluateLatticeSegment(
-          grid, esdf_m, current, evaluation.endpoint, config, stage);
-      if (!evaluation.segment.valid) {
-        evaluations[candidate_index] = evaluation;
-        return;
-      }
-      const std::array candidate_segment{current, evaluation.endpoint};
-      evaluation.failure_memory = detail::evaluateLatticeFailureMemory(
-          candidate_segment, frontier_blacklist, config);
-      evaluation.key = makeKey(evaluation.endpoint, spec.next_heading);
-      evaluations[candidate_index] = evaluation;
-    };
-    const bool parallel = worker_pool != nullptr &&
-                          worker_pool->canParallelizeFromCurrentThread() &&
-                          candidate_specs.size() > 1U;
-    if (parallel) {
-      worker_pool->parallelFor(candidate_specs.size(), evaluate_candidate);
-    } else {
-      for (std::size_t candidate_index = 0U; candidate_index < candidate_specs.size();
-           ++candidate_index) {
-        evaluate_candidate(candidate_index);
-      }
-    }
-
-    std::vector<Successor> successors;
-    successors.reserve(candidate_specs.size());
-    std::unordered_set<LatticeKey, LatticeKeyHash> emitted;
-    for (std::size_t candidate_index = 0U; candidate_index < candidate_specs.size();
-         ++candidate_index) {
-      const CandidateSpec& spec = candidate_specs[candidate_index];
-      const CandidateEvaluation& evaluation = evaluations[candidate_index];
-      if (diagnostics != nullptr) {
-        ++diagnostics->generated;
-      }
-      if (!evaluation.inside_roi) {
-        roi_boundary_seen = true;
-        if (diagnostics != nullptr) {
-          ++diagnostics->rejected_outside_roi;
-        }
-        continue;
-      }
-      if (!evaluation.segment.valid) {
-        if (diagnostics != nullptr) {
-          detail::recordLatticeSegmentRejection(evaluation.segment, *diagnostics);
-        }
-        continue;
-      }
-      if (evaluation.failure_memory.hard_rejected) {
-        if (diagnostics != nullptr) {
-          ++diagnostics->rejected_blacklisted_failure;
-        }
-        continue;
-      }
-      if (!emitted.insert(evaluation.key).second) {
-        continue;
-      }
-      const int heading_change = detail::latticeHeadingBinDistance(
-          current_key.heading, spec.next_heading, config.heading_bins);
-      successors.push_back(Successor{
-          .key = evaluation.key,
-          .endpoint = evaluation.endpoint,
-          .length_m = spec.length_m,
-          .edge_cost = spec.length_m + evaluation.segment.risk_cost +
-                       evaluation.failure_memory.soft_penalty_cost +
-                       config.turn_cost * static_cast<double>(heading_change),
-      });
-      if (diagnostics != nullptr && evaluation.failure_memory.soft_penalty_cost > 0.0) {
-        ++diagnostics->soft_tabu_penalties_applied;
-      }
-      if (diagnostics != nullptr) {
-        ++diagnostics->accepted;
-      }
-    }
-    if (profile != nullptr) {
-      ++profile->collection_calls;
-      const std::size_t candidate_count = candidate_specs.size();
-      profile->candidates += candidate_count;
-      if (parallel) {
-        ++profile->parallel_collection_calls;
-        profile->parallel_candidates += candidate_count;
-      }
-      profile->maximum_candidates =
-          std::max(profile->maximum_candidates, candidate_count);
-      profile->worker_ms += std::chrono::duration<double, std::milli>(
-                                std::chrono::steady_clock::now() - collection_started)
-                                .count();
-    }
-    return successors;
+                                      const LatticeRiskStage stage) {
+    return detail::collectLatticeSuccessors(grid, esdf_m, current, current_key, stage,
+                                            config, search_roi, frontier_blacklist,
+                                            worker_pool);
   };
 
   const auto run_stage = [&](StageOutcome& outcome, const LatticeRiskStage stage,
@@ -469,6 +332,67 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
     while (!outcome.open.empty() &&
            outcome.expansions - slice_start_expansions < expansion_budget &&
            std::chrono::steady_clock::now() < deadline) {
+      if (worker_pool != nullptr && worker_pool->canParallelizeFromCurrentThread() &&
+          outcome.open.size() > 1U) {
+        const auto prefetch_started = std::chrono::steady_clock::now();
+        std::vector<QueueEntry> preview;
+        const std::size_t preview_count =
+            std::min(worker_pool->workerCount(), outcome.open.size());
+        preview.reserve(preview_count);
+        while (preview.size() < preview_count && !outcome.open.empty()) {
+          preview.push_back(outcome.open.top());
+          outcome.open.pop();
+        }
+        for (const QueueEntry& candidate : preview) {
+          outcome.open.push(candidate);
+        }
+        std::vector<std::optional<SuccessorCollection>> prefetched(preview.size());
+        const auto evaluate_preview = [&](const std::size_t index) {
+          const QueueEntry& candidate = preview[index];
+          const auto record = outcome.records.find(candidate.key);
+          if (record == outcome.records.end() ||
+              std::abs(candidate.g_at_insert - record->second.cost) > 1.0e-9) {
+            return;
+          }
+          const auto cached = outcome.prefetch_cache.find(candidate.key);
+          if (cached != outcome.prefetch_cache.end() &&
+              std::abs(cached->second.g_at_insert - candidate.g_at_insert) <= 1.0e-9) {
+            return;
+          }
+          prefetched[index] =
+              collect_successors(cellCenter(grid, candidate.key), candidate.key, stage);
+        };
+        worker_pool->parallelFor(preview.size(), evaluate_preview);
+        std::unordered_set<LatticeKey, LatticeKeyHash> preview_keys;
+        preview_keys.reserve(preview.size());
+        std::size_t prefetched_count = 0U;
+        for (std::size_t index = 0U; index < preview.size(); ++index) {
+          preview_keys.insert(preview[index].key);
+          if (prefetched[index].has_value()) {
+            ++prefetched_count;
+            outcome.prefetch_cache.insert_or_assign(
+                preview[index].key,
+                PrefetchedExpansion{.g_at_insert = preview[index].g_at_insert,
+                                    .collection = std::move(*prefetched[index])});
+          }
+        }
+        for (auto cached = outcome.prefetch_cache.begin();
+             cached != outcome.prefetch_cache.end();) {
+          if (!preview_keys.contains(cached->first)) {
+            cached = outcome.prefetch_cache.erase(cached);
+            ++result.successor_profiling.expansion_prefetch.discarded_entries;
+          } else {
+            ++cached;
+          }
+        }
+        auto& profile = result.successor_profiling.expansion_prefetch;
+        ++profile.batches;
+        profile.entries += preview.size();
+        profile.parallel_entries += prefetched_count;
+        profile.worker_ms += std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - prefetch_started)
+                                 .count();
+      }
       const QueueEntry entry = outcome.open.top();
       outcome.open.pop();
       const auto record = outcome.records.find(entry.key);
@@ -491,10 +415,22 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
         }
       }
       ++outcome.expansions;
-      const std::vector<Successor> successors = collect_successors(
-          current, entry.key, stage, outcome.roi_boundary_seen,
-          &outcome.successor_diagnostics, &result.successor_profiling.search);
-      for (const Successor& successor : successors) {
+      SuccessorCollection collection;
+      const auto prefetched = outcome.prefetch_cache.find(entry.key);
+      if (prefetched != outcome.prefetch_cache.end() &&
+          std::abs(prefetched->second.g_at_insert - entry.g_at_insert) <= 1.0e-9) {
+        collection = std::move(prefetched->second.collection);
+        outcome.prefetch_cache.erase(prefetched);
+        ++result.successor_profiling.expansion_prefetch.cache_hits;
+      } else {
+        collection = collect_successors(current, entry.key, stage);
+      }
+      outcome.roi_boundary_seen =
+          outcome.roi_boundary_seen || collection.roi_boundary_seen;
+      accumulateSuccessorDiagnostics(outcome.successor_diagnostics,
+                                     collection.diagnostics);
+      accumulateSuccessorProfile(result.successor_profiling.search, collection.profile);
+      for (const Successor& successor : collection.successors) {
         const double next_cost = record->second.cost + successor.edge_cost;
         Record& next_record = outcome.records[successor.key];
         if (next_cost >= next_record.cost) {
@@ -687,18 +623,16 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       const ContinuationQueueEntry current = open.top();
       open.pop();
       ++expanded_states;
-      bool roi_boundary_seen = false;
       const Point2 current_point =
           current.path_depth_m > 0.0 ? cellCenter(grid, current.key) : terminal;
-      const std::vector<Successor> successors =
-          collect_successors(current_point, current.key, stage, roi_boundary_seen,
-                             nullptr, &evaluation.successor_profile);
-      static_cast<void>(roi_boundary_seen);
+      const SuccessorCollection collection =
+          collect_successors(current_point, current.key, stage);
+      accumulateSuccessorProfile(evaluation.successor_profile, collection.profile);
       if (current.path_depth_m == 0.0) {
-        evaluation.immediate_successors = successors.size();
+        evaluation.immediate_successors = collection.successors.size();
       }
       const std::uint64_t current_id = cell_id(current.key);
-      for (const Successor& successor : successors) {
+      for (const Successor& successor : collection.successors) {
         const std::uint64_t id = cell_id(successor.key);
         if (records.contains(id)) {
           continue;
@@ -944,13 +878,12 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
 
   if (search_incomplete && frontier_validation_performed &&
       !best_fallback.has_value()) {
-    bool roi_boundary_seen = false;
     const Point2 search_start = cellCenter(grid, start_key);
-    const std::vector<Successor> immediate = collect_successors(
-        search_start, start_key, LatticeRiskStage::kCriticalAllowed, roi_boundary_seen,
-        nullptr, &result.successor_profiling.continuation);
-    static_cast<void>(roi_boundary_seen);
-    for (const Successor& successor : immediate) {
+    const SuccessorCollection immediate =
+        collect_successors(search_start, start_key, LatticeRiskStage::kCriticalAllowed);
+    accumulateSuccessorProfile(result.successor_profiling.continuation,
+                               immediate.profile);
+    for (const Successor& successor : immediate.successors) {
       const SegmentEvaluation from_actual_start =
           detail::evaluateLatticeSegment(grid, esdf_m, start, successor.endpoint,
                                          config, LatticeRiskStage::kCriticalAllowed);

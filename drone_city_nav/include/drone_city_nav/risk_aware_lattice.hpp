@@ -66,9 +66,19 @@ struct LatticeSuccessorBatchProfile {
   double worker_ms{0.0};
 };
 
+struct LatticeExpansionPrefetchProfile {
+  std::size_t batches{0U};
+  std::size_t entries{0U};
+  std::size_t parallel_entries{0U};
+  std::size_t cache_hits{0U};
+  std::size_t discarded_entries{0U};
+  double worker_ms{0.0};
+};
+
 struct LatticeSuccessorProfiling {
   LatticeSuccessorBatchProfile search{};
   LatticeSuccessorBatchProfile continuation{};
+  LatticeExpansionPrefetchProfile expansion_prefetch{};
 };
 
 struct RiskAwareLatticeConfig {

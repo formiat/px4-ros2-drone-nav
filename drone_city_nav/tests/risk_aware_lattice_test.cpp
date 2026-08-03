@@ -475,8 +475,9 @@ TEST(RiskAwareLattice, ParallelFrontierValidationPreservesDeterministicResult) {
             serial.frontier_candidates_considered);
   EXPECT_EQ(parallel.successor_diagnostics.generated,
             serial.successor_diagnostics.generated);
-  EXPECT_GT(parallel.successor_profiling.search.parallel_collection_calls, 0U);
-  EXPECT_GT(parallel.successor_profiling.search.parallel_candidates, 0U);
+  EXPECT_GT(parallel.successor_profiling.expansion_prefetch.batches, 0U);
+  EXPECT_GT(parallel.successor_profiling.expansion_prefetch.parallel_entries, 0U);
+  EXPECT_GT(parallel.successor_profiling.expansion_prefetch.cache_hits, 0U);
   EXPECT_GE(parallel.continuation_validation_ms, 0.0);
 }
 

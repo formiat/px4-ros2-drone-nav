@@ -555,6 +555,18 @@ void ProductionMppiNode::processDiagnostics(
        << esdf.lattice_successor_profiling.search.maximum_candidates
        << " successor_search_worker_ms="
        << esdf.lattice_successor_profiling.search.worker_ms
+       << " expansion_prefetch_batches="
+       << esdf.lattice_successor_profiling.expansion_prefetch.batches
+       << " expansion_prefetch_entries="
+       << esdf.lattice_successor_profiling.expansion_prefetch.entries
+       << " expansion_prefetch_parallel_entries="
+       << esdf.lattice_successor_profiling.expansion_prefetch.parallel_entries
+       << " expansion_prefetch_cache_hits="
+       << esdf.lattice_successor_profiling.expansion_prefetch.cache_hits
+       << " expansion_prefetch_discarded_entries="
+       << esdf.lattice_successor_profiling.expansion_prefetch.discarded_entries
+       << " expansion_prefetch_worker_ms="
+       << esdf.lattice_successor_profiling.expansion_prefetch.worker_ms
        << " successor_continuation_batches="
        << esdf.lattice_successor_profiling.continuation.collection_calls
        << " successor_continuation_parallel_batches="
