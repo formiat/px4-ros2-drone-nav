@@ -133,7 +133,9 @@ the evader through a continuous navigation objective without terminal goal
 hold. A swept separation of 5 m terminates and disarms both vehicles as a
 successful intercept. Evader goal arrival is an intercept failure but still a
 technically successful simulation outcome. RViz and Gazebo follow the
-interceptor.
+interceptor. After a terminal outcome, the GUI workflow keeps the simulation
+open so the confirmed disarm and resulting fall remain visible. The headless
+workflow exits automatically after recording the mission result.
 
 Stop all running simulation leftovers, including related Gazebo/PX4/ROS
 processes and simulation containers:

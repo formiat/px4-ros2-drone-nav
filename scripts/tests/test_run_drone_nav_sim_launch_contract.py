@@ -293,6 +293,22 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('"require_mission_start_signal": True', self.intercept_launch_text)
         self.assertIn('"rviz_drone_follow_tf_enabled": primary', self.intercept_launch_text)
 
+    def test_intercept_gui_observes_terminal_fall_and_headless_exits(self) -> None:
+        self.assertIn(
+            'intercept_shutdown_on_terminal_outcome="false"', self.text
+        )
+        self.assertIn(
+            'intercept_shutdown_on_terminal_outcome="true"', self.text
+        )
+        self.assertIn(
+            'shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"',
+            self.text,
+        )
+        self.assertIn(
+            '"shutdown_on_terminal_outcome": shutdown_on_terminal_outcome',
+            self.intercept_launch_text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

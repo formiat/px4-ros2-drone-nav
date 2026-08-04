@@ -788,6 +788,9 @@ private:
         std::max(snapshot_max_assembly_since_report_ms_, assembly_ms);
     snapshot_max_publish_interval_since_report_ms_ =
         std::max(snapshot_max_publish_interval_since_report_ms_, publish_interval_ms);
+    if (!rclcpp::ok(get_node_base_interface()->get_context())) {
+      return;
+    }
     snapshot_pub_->publish(snapshot_message);
     publishRawWorldSnapshot(snapshot_message);
 

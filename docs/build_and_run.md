@@ -89,7 +89,9 @@ Two-vehicle intercept mission:
 
 Set `EVADER_SPEED_SCALE` to override the default `0.6` evader speed multiplier.
 The headless command requires a terminal intercept outcome and validates both
-PX4 instance logs.
+PX4 instance logs. It exits automatically after the result. The GUI command
+keeps Gazebo and RViz open after the confirmed disarm so the terminal fall can
+be observed; stop it explicitly when inspection is complete.
 
 Stop simulator leftovers:
 

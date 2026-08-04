@@ -123,6 +123,11 @@ collision validation but disable terminal goal capture. Swept relative-motion
 evaluation detects a 5 m intercept between state samples and requests bounded
 force-disarm for both vehicles.
 
+After both vehicles confirm disarm, the mission coordinator records the result.
+Headless runs then shut down the launch system deterministically. GUI runs keep
+the terminal world alive for visual inspection of the disarmed vehicles and
+their physical fall.
+
 Each lidar pipeline filters returns belonging to the other tracked vehicle
 before obstacle-memory integration. This prevents a moving agent from becoming
 a persistent environmental obstacle; it does not introduce a prohibited zone

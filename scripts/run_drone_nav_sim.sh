@@ -91,6 +91,15 @@ px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 allow_mission_failure="$(normalize_bool "${ALLOW_MISSION_FAILURE:-false}")"
 headless="${HEADLESS:-}"
+if [[ -n "${INTERCEPT_SHUTDOWN_ON_TERMINAL_OUTCOME+x}" ]]; then
+  intercept_shutdown_on_terminal_outcome="$(
+    normalize_bool "${INTERCEPT_SHUTDOWN_ON_TERMINAL_OUTCOME}"
+  )"
+elif [[ -n "${headless}" ]]; then
+  intercept_shutdown_on_terminal_outcome="true"
+else
+  intercept_shutdown_on_terminal_outcome="false"
+fi
 if [[ -n "${ENABLE_RVIZ+x}" ]]; then
   enable_rviz="${ENABLE_RVIZ}"
 elif [[ -n "${headless}" ]]; then
@@ -731,6 +740,7 @@ if [[ "${mission_type}" == "intercept" ]]; then
     enable_lidar_debug:="${enable_lidar_debug}"
     enable_rviz:="${enable_rviz}"
     evader_speed_scale:="${evader_speed_scale}"
+    shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"
   )
 else
   ros_launch_args=(

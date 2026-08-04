@@ -43,6 +43,9 @@ def generate_launch_description():
         use_static_map = _optional_bool(
             LaunchConfiguration("use_static_map").perform(context), configured_static
         )
+        shutdown_on_terminal_outcome = _optional_bool(
+            LaunchConfiguration("shutdown_on_terminal_outcome").perform(context), True
+        )
         static_path = LaunchConfiguration("static_occupancy_3d_path").perform(context)
         if not static_path:
             static_path = document["production_mppi_node"]["ros__parameters"][
@@ -335,6 +338,7 @@ def generate_launch_description():
                         "evader_goal_z_m": float(
                             LaunchConfiguration("evader_goal_z_m").perform(context)
                         ),
+                        "shutdown_on_terminal_outcome": shutdown_on_terminal_outcome,
                     }
                 ],
             )
@@ -389,6 +393,9 @@ def generate_launch_description():
             DeclareLaunchArgument("evader_goal_y_m", default_value="378.0"),
             DeclareLaunchArgument("evader_goal_z_m", default_value="18.0"),
             DeclareLaunchArgument("evader_speed_scale", default_value="0.6"),
+            DeclareLaunchArgument(
+                "shutdown_on_terminal_outcome", default_value="true"
+            ),
             OpaqueFunction(function=launch_nodes),
         ]
     )

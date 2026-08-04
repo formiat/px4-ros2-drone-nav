@@ -66,6 +66,8 @@ public:
         declare_parameter<double>("maximum_state_age_s", 1.0) * 1.0e9);
     termination_timeout_ns_ = static_cast<std::int64_t>(
         declare_parameter<double>("termination_timeout_s", 3.0) * 1.0e9);
+    shutdown_on_terminal_outcome_ =
+        declare_parameter<bool>("shutdown_on_terminal_outcome", true);
 
     const auto state_qos = rclcpp::QoS{10}.best_effort();
     interceptor_state_sub_ = create_subscription<msg::VehicleNavigationState>(
@@ -117,8 +119,9 @@ public:
     timer_ = create_wall_timer(std::chrono::milliseconds{50}, [this] { tick(); });
     RCLCPP_INFO(get_logger(),
                 "Intercept mission ready: epoch=%" PRIu64
-                " evader_goal=(%.2f,%.2f,%.2f)",
-                mission_epoch_, evader_goal_.x, evader_goal_.y, evader_goal_.z);
+                " evader_goal=(%.2f,%.2f,%.2f) shutdown_on_terminal_outcome=%s",
+                mission_epoch_, evader_goal_.x, evader_goal_.y, evader_goal_.z,
+                shutdown_on_terminal_outcome_ ? "true" : "false");
   }
 
 private:
@@ -196,7 +199,7 @@ private:
                 "intercept_success=%s mission_epoch=%" PRIu64,
                 interceptMissionOutcomeName(*terminal_outcome_),
                 intercepted ? "true" : "false", mission_epoch_);
-    rclcpp::shutdown();
+    completeResultLifecycle();
   }
 
   void failMission(const std::string& reason) {
@@ -215,7 +218,18 @@ private:
                  "MISSION_RESULT success=false mission=intercept "
                  "outcome=system_failure reason='%s' mission_epoch=%" PRIu64,
                  reason.c_str(), mission_epoch_);
-    rclcpp::shutdown();
+    completeResultLifecycle();
+  }
+
+  void completeResultLifecycle() {
+    if (shutdown_on_terminal_outcome_) {
+      rclcpp::shutdown();
+      return;
+    }
+    RCLCPP_INFO(get_logger(),
+                "INTERCEPT_MISSION state=terminal_observation "
+                "simulation_shutdown_requested=false epoch=%" PRIu64,
+                mission_epoch_);
   }
 
   [[nodiscard]] bool stateFresh(const TimedVehicleState& state,
@@ -277,6 +291,7 @@ private:
   std::int64_t termination_requested_ns_{0};
   bool mission_started_{false};
   bool result_reported_{false};
+  bool shutdown_on_terminal_outcome_{true};
 
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr interceptor_state_sub_;
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr evader_state_sub_;
