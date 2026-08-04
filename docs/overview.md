@@ -79,6 +79,7 @@ repository container workflow.
 
 ## Documentation Map
 
+- `roadmap.md`: planned interceptor, radar, multi-drone, and 3D passage work.
 - `architecture.md`: node ownership and data flow.
 - `navigation_pipeline.md`: current world-to-control pipeline.
 - `world3d.md`: canonical world generation, Occupancy3D, and constrained spans.

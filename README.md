@@ -14,6 +14,13 @@ The main package is `drone_city_nav`, an ament CMake package built with
 The videos demonstrate the static-map and sensor-driven operating modes as of
 July 2026.
 
+## Roadmap
+
+The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
+covers the interceptor mission, radar-derived target tracking, predictive
+guidance, multi-drone scenarios, cooperative air traffic, and future 3D passage
+work.
+
 ## Status And Safety
 
 This project is a simulation-oriented research and development stack. It is
@@ -287,6 +294,7 @@ Key pages:
 - `docs/build_and_run.md`
 - `docs/gazebo_simulation.md`
 - `docs/architecture.md`
+- `docs/roadmap.md`
 - `docs/navigation_pipeline.md`
 - `docs/world3d.md`
 - `docs/trajectory_optimization.md`
