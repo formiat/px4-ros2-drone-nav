@@ -62,5 +62,53 @@ TEST(InterceptMissionEvaluatorTest, DoesNotCaptureBeforeBothVehiclesAreAirborne)
             InterceptMissionOutcome::kRunning);
 }
 
+TEST(InterceptMissionEvaluatorTest, FirstTerminalOutcomeRemainsLatched) {
+  InterceptMissionEvaluator evaluator{
+      Point3{100.0, 0.0, 10.0},
+      InterceptMissionConfig{.capture_radius_m = 5.0,
+                             .evader_goal_radius_m = 2.0,
+                             .evader_goal_stop_speed_mps = 0.8,
+                             .evader_goal_hold_s = 2.0}};
+  EXPECT_EQ(evaluator
+                .update(state(Point3{0.0, 0.0, 10.0}, {}, 1'000'000'000LL),
+                        state(Point3{100.0, 0.0, 10.0}, {}, 1'000'000'000LL))
+                .outcome,
+            InterceptMissionOutcome::kRunning);
+  EXPECT_EQ(evaluator
+                .update(state(Point3{50.0, 0.0, 10.0}, {}, 3'100'000'000LL),
+                        state(Point3{100.0, 0.0, 10.0}, {}, 3'100'000'000LL))
+                .outcome,
+            InterceptMissionOutcome::kEvaderReachedGoal);
+
+  const InterceptMissionUpdate late_interceptor =
+      evaluator.update(state(Point3{100.0, 0.0, 10.0}, {}, 3'200'000'000LL),
+                       state(Point3{100.0, 0.0, 10.0}, {}, 3'200'000'000LL));
+  EXPECT_FALSE(late_interceptor.newly_terminal);
+  EXPECT_TRUE(late_interceptor.newly_captured);
+  EXPECT_TRUE(late_interceptor.capture_detected);
+  EXPECT_EQ(late_interceptor.outcome, InterceptMissionOutcome::kEvaderReachedGoal);
+}
+
+TEST(InterceptorHoldConfirmationTest, RequiresStablePositionAndSpeed) {
+  InterceptorHoldConfirmation confirmation{
+      Point3{10.0, 20.0, 15.0}, InterceptorHoldConfig{.position_tolerance_m = 2.0,
+                                                      .maximum_speed_mps = 0.8,
+                                                      .confirmation_duration_s = 1.0}};
+  EXPECT_FALSE(
+      confirmation
+          .update(state(Point3{10.0, 20.0, 15.0}, Vec3{2.0, 0.0, 0.0}, 1'000'000'000LL))
+          .confirmed);
+  EXPECT_FALSE(
+      confirmation
+          .update(state(Point3{10.5, 20.0, 15.0}, Vec3{0.2, 0.0, 0.0}, 2'000'000'000LL))
+          .confirmed);
+  const InterceptorHoldUpdate confirmed = confirmation.update(
+      state(Point3{10.4, 20.0, 15.0}, Vec3{0.1, 0.0, 0.0}, 3'100'000'000LL));
+  EXPECT_TRUE(confirmed.confirmed);
+  EXPECT_TRUE(confirmed.newly_confirmed);
+  EXPECT_NEAR(confirmed.position_error_m, 0.4, 1.0e-9);
+  EXPECT_NEAR(confirmed.speed_mps, 0.1, 1.0e-9);
+}
+
 } // namespace
 } // namespace drone_city_nav

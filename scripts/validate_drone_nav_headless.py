@@ -58,6 +58,68 @@ def safety_relevant_ros_log(ros_log: str, mission_type: str) -> str:
     return ros_log[: terminal_result.end()] if terminal_result else ros_log
 
 
+def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
+    result = re.search(
+        r"MISSION_RESULT success=true mission=intercept "
+        r"outcome=(intercepted|evader_reached_goal).*",
+        ros_log,
+    )
+    if result is None:
+        return
+    outcome = result.group(1)
+    settled_log = ros_log[: result.end()]
+    require(
+        "intercept first terminal event matches the result",
+        settled_log,
+        rf"INTERCEPT_OUTCOME outcome={outcome} first_terminal_event=true",
+        errors,
+    )
+    if outcome == "intercepted":
+        for role in ("interceptor", "evader"):
+            require(
+                f"intercept disarm is confirmed for {role}",
+                settled_log,
+                rf"\[vehicles\.{role}\.mppi_offboard_node\].*"
+                r"VEHICLE_TERMINATION force_disarm_confirmed=true "
+                r"detail='intercepted'",
+                errors,
+            )
+        return
+
+    require(
+        "interceptor hold is requested after evader goal arrival",
+        settled_log,
+        r"INTERCEPTOR_HOLD requested=true",
+        errors,
+    )
+    if "INTERCEPT_LATE_CAPTURE outcome_preserved=evader_reached_goal" in settled_log:
+        require(
+            "late capture aborts interceptor hold without changing the outcome",
+            settled_log,
+            r"INTERCEPTOR_HOLD_ABORTED reason=late_capture",
+            errors,
+        )
+        for role in ("interceptor", "evader"):
+            require(
+                f"late capture disarm is confirmed for {role}",
+                settled_log,
+                rf"\[vehicles\.{role}\.mppi_offboard_node\].*"
+                r"VEHICLE_TERMINATION force_disarm_confirmed=true "
+                r"detail='late_intercept_after_evader_goal'",
+                errors,
+            )
+    elif re.search(r"VEHICLE_TERMINATION (?:latched|force_disarm)", settled_log):
+        errors.append("FAIL: evader goal settlement must not disarm either vehicle")
+    else:
+        require(
+            "interceptor hold is physically confirmed",
+            settled_log,
+            r"INTERCEPTOR_HOLD_CONFIRMED position_error_m=.* speed_mps=",
+            errors,
+        )
+        print("OK: evader goal settlement keeps both vehicles armed")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate production MPPI headless run logs."
@@ -193,6 +255,7 @@ def main() -> int:
                 r"outcome=(?:intercepted|evader_reached_goal)",
                 errors,
             )
+            validate_intercept_settlement(ros_log, errors)
     elif mission_failed:
         print("WARN: mission failure was allowed")
 

@@ -89,9 +89,14 @@ Two-vehicle intercept mission:
 
 Set `EVADER_SPEED_SCALE` to override the default `0.6` evader speed multiplier.
 The headless command requires a terminal intercept outcome and validates both
-PX4 instance logs. It exits automatically after the result. The GUI command
-keeps Gazebo and RViz open after the confirmed disarm so the terminal fall can
-be observed; stop it explicitly when inspection is complete.
+PX4 instance logs. An intercept result requires confirmed disarm of both
+vehicles. An evader-goal result requires the interceptor to stop tracking and
+confirm a stable position hold without disarming either vehicle. The headless
+workflow exits after the corresponding settlement is recorded. If inertial
+motion causes a late capture after evader goal arrival, both disarms are required
+while the original evader-goal outcome remains unchanged. The GUI command keeps
+Gazebo and RViz open after either outcome; stop it explicitly when inspection is
+complete.
 
 Stop simulator leftovers:
 

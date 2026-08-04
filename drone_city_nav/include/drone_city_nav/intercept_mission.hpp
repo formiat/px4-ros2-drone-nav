@@ -34,7 +34,36 @@ enum class InterceptMissionOutcome : std::uint8_t {
 struct InterceptMissionUpdate {
   InterceptMissionOutcome outcome{InterceptMissionOutcome::kRunning};
   bool newly_terminal{false};
+  bool capture_detected{false};
+  bool newly_captured{false};
   double separation_m{0.0};
+};
+
+struct InterceptorHoldConfig {
+  double position_tolerance_m{2.0};
+  double maximum_speed_mps{0.8};
+  double confirmation_duration_s{1.0};
+};
+
+struct InterceptorHoldUpdate {
+  bool confirmed{false};
+  bool newly_confirmed{false};
+  double position_error_m{0.0};
+  double speed_mps{0.0};
+};
+
+class InterceptorHoldConfirmation final {
+public:
+  InterceptorHoldConfirmation(const Point3& hold_position,
+                              const InterceptorHoldConfig& config = {});
+
+  [[nodiscard]] InterceptorHoldUpdate update(const TimedVehicleState& interceptor);
+
+private:
+  Point3 hold_position_{};
+  InterceptorHoldConfig config_{};
+  std::optional<std::int64_t> stable_since_ns_;
+  bool confirmed_{false};
 };
 
 class InterceptMissionEvaluator final {
@@ -59,6 +88,7 @@ private:
   std::optional<TimedVehicleState> previous_evader_;
   std::optional<std::int64_t> evader_goal_hold_started_ns_;
   InterceptMissionOutcome outcome_{InterceptMissionOutcome::kRunning};
+  bool capture_detected_{false};
 };
 
 [[nodiscard]] const char*

@@ -20,7 +20,59 @@ namespace {
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
 
+[[nodiscard]] bool finite(const Vec3& vector) noexcept {
+  return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
+}
+
 } // namespace
+
+InterceptorHoldConfirmation::InterceptorHoldConfirmation(
+    const Point3& hold_position, const InterceptorHoldConfig& config)
+    : hold_position_{hold_position},
+      config_{config} {
+  if (!finite(hold_position_) || !(config_.position_tolerance_m > 0.0) ||
+      !(config_.maximum_speed_mps >= 0.0) ||
+      !(config_.confirmation_duration_s >= 0.0)) {
+    throw std::invalid_argument{"invalid interceptor hold configuration"};
+  }
+}
+
+InterceptorHoldUpdate
+InterceptorHoldConfirmation::update(const TimedVehicleState& interceptor) {
+  InterceptorHoldUpdate result;
+  result.position_error_m = interceptor.position_valid && finite(interceptor.position)
+                                ? norm(subtract(interceptor.position, hold_position_))
+                                : std::numeric_limits<double>::infinity();
+  result.speed_mps = interceptor.velocity_valid && finite(interceptor.velocity)
+                         ? norm(interceptor.velocity)
+                         : std::numeric_limits<double>::infinity();
+  if (confirmed_) {
+    result.confirmed = true;
+    return result;
+  }
+
+  const bool stable = interceptor.stamp_ns > 0 && interceptor.armed &&
+                      interceptor.airborne &&
+                      result.position_error_m <= config_.position_tolerance_m &&
+                      result.speed_mps <= config_.maximum_speed_mps;
+  if (!stable) {
+    stable_since_ns_.reset();
+    return result;
+  }
+  if (!stable_since_ns_ || interceptor.stamp_ns < *stable_since_ns_) {
+    stable_since_ns_ = interceptor.stamp_ns;
+    return result;
+  }
+
+  const double stable_duration_s =
+      static_cast<double>(interceptor.stamp_ns - *stable_since_ns_) * 1.0e-9;
+  if (stable_duration_s >= config_.confirmation_duration_s) {
+    confirmed_ = true;
+    result.confirmed = true;
+    result.newly_confirmed = true;
+  }
+  return result;
+}
 
 InterceptMissionEvaluator::InterceptMissionEvaluator(
     const Point3& evader_goal, const InterceptMissionConfig& config)
@@ -65,21 +117,29 @@ double InterceptMissionEvaluator::sweptSeparation(
 InterceptMissionUpdate
 InterceptMissionEvaluator::update(const TimedVehicleState& interceptor,
                                   const TimedVehicleState& evader) {
-  InterceptMissionUpdate result{.outcome = outcome_};
-  if (outcome_ != InterceptMissionOutcome::kRunning || !interceptor.position_valid ||
-      !evader.position_valid || !finite(interceptor.position) ||
-      !finite(evader.position)) {
+  InterceptMissionUpdate result{.outcome = outcome_,
+                                .capture_detected = capture_detected_};
+  if (!interceptor.position_valid || !evader.position_valid ||
+      !finite(interceptor.position) || !finite(evader.position)) {
     return result;
   }
 
   result.separation_m = sweptSeparation(interceptor, evader);
   const bool mission_active =
       interceptor.armed && evader.armed && interceptor.airborne && evader.airborne;
-  if (mission_active && result.separation_m <= config_.capture_radius_m) {
+  const bool captured_now =
+      mission_active && result.separation_m <= config_.capture_radius_m;
+  if (captured_now && !capture_detected_) {
+    capture_detected_ = true;
+    result.capture_detected = true;
+    result.newly_captured = true;
+  }
+
+  if (outcome_ == InterceptMissionOutcome::kRunning && captured_now) {
     outcome_ = InterceptMissionOutcome::kIntercepted;
     result.outcome = outcome_;
     result.newly_terminal = true;
-  } else {
+  } else if (outcome_ == InterceptMissionOutcome::kRunning) {
     const double goal_distance = norm(subtract(evader.position, evader_goal_));
     const double speed = evader.velocity_valid
                              ? norm(evader.velocity)

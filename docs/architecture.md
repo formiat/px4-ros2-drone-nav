@@ -123,10 +123,17 @@ collision validation but disable terminal goal capture. Swept relative-motion
 evaluation detects a 5 m intercept between state samples and requests bounded
 force-disarm for both vehicles.
 
-After both vehicles confirm disarm, the mission coordinator records the result.
-Headless runs then shut down the launch system deterministically. GUI runs keep
-the terminal world alive for visual inspection of the disarmed vehicles and
-their physical fall.
+The first terminal event is latched and cannot be reclassified by later inertial
+motion. An intercept requests force-disarm for both vehicles and records the
+result only after both confirmations. If the evader reaches its goal first, the
+coordinator freezes the interceptor objective at its current position and
+records the result only after position and speed remain inside the configured
+hold tolerances. No mission termination or disarm is requested in that branch.
+The capture detector remains active until settlement: a late inertial entry into
+the capture radius still disarms both vehicles but cannot overwrite the latched
+evader-goal outcome.
+Headless runs then shut down deterministically. GUI runs keep the terminal world
+alive after either result.
 
 Each lidar pipeline filters returns belonging to the other tracked vehicle
 before obstacle-memory integration. This prevents a moving agent from becoming

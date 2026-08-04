@@ -131,11 +131,15 @@ isolated interceptor and evader PX4/ROS namespaces. The evader flies to its
 fixed goal at 60% of the interceptor speed policy, while the interceptor tracks
 the evader through a continuous navigation objective without terminal goal
 hold. A swept separation of 5 m terminates and disarms both vehicles as a
-successful intercept. Evader goal arrival is an intercept failure but still a
+successful intercept. If the evader reaches its goal first, that outcome is
+latched, the interceptor stops tracking and enters a confirmed position hold,
+and neither vehicle is disarmed. A later inertial approach cannot change the
+first outcome, although entering the capture radius still applies the normal
+two-vehicle disarm. Evader goal arrival is an intercept failure but still a
 technically successful simulation outcome. RViz and Gazebo follow the
-interceptor. After a terminal outcome, the GUI workflow keeps the simulation
-open so the confirmed disarm and resulting fall remain visible. The headless
-workflow exits automatically after recording the mission result.
+interceptor. The GUI workflow remains open after either outcome. The headless
+workflow exits only after the applicable hold or disarm settlement is confirmed
+in the log.
 
 Stop all running simulation leftovers, including related Gazebo/PX4/ROS
 processes and simulation containers:
