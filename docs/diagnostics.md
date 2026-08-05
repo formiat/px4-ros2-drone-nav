@@ -138,7 +138,8 @@ Use lidar snapshots to verify:
 
 ## Run Analysis Order
 
-1. Confirm mission/crash result and final pose.
+1. Confirm mission outcome, typed destruction cause, disarm/hold settlement, and
+   final pose.
 2. Confirm pose, heading, raw snapshot, and ESDF freshness.
 3. Inspect active global guide and target source.
 4. Inspect selected MPPI tier and collision flags.

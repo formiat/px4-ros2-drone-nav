@@ -624,5 +624,41 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
   EXPECT_GT(parallel.topology_search_worker_ms, 0.0);
 }
 
+TEST(Route3DTest, EqualCostSearchKeepsLevelAltitudeBeforeVerticalAlternatives) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 30, 10, 10}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.heading_bias_cost_per_rad = 0.0;
+  config.route_shape_turn_cost_per_rad = 0.0;
+  config.maximum_search_time_ms = 1000.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+
+  const RiskAwareLattice3DResult result =
+      planRiskAwareLattice3D(grid, field.distancesM(), Point3{1.5, 4.5, 5.5},
+                             Vec3{1.0, 0.0, 0.0}, Point3{20.5, 4.5, 5.5}, {}, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  ASSERT_FALSE(result.route.empty());
+  for (const RouteSample3D& sample : result.route) {
+    EXPECT_DOUBLE_EQ(sample.position.z, 5.5);
+    EXPECT_GE(sample.position.z, config.flight_envelope.minimum_target_z_m);
+    EXPECT_LT(sample.position.z, config.flight_envelope.maximum_target_z_m);
+  }
+}
+
 } // namespace
 } // namespace drone_city_nav

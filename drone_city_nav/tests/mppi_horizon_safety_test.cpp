@@ -233,6 +233,30 @@ TEST(MppiHorizonSafetyTest, PointModelDoesNotTreatNearWallFreeCellAsCollision) {
   EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
 }
 
+TEST(MppiHorizonSafetyTest, RejectsAndRepairsHorizonBelowFlightEnvelope) {
+  const mppi::EsdfGrid grid{20, 20, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(400U, 10.0F);
+  mppi::State current{2.0F, 2.0F, 1.5F};
+  current.vz = -2.0F;
+  const std::vector<mppi::State> horizon{current, mppi::State{2.0F, 2.0F, 0.5F}};
+  const MppiHorizonSafetyConfig config{
+      .dt_s = 0.2,
+      .physical_footprint_radius_m = 0.0,
+      .flight_envelope =
+          FlightEnvelopeConfig{.minimum_target_z_m = 1.0, .maximum_target_z_m = 32.0}};
+
+  const MppiHorizonSafetyResult result =
+      evaluateMppiHorizonSafety(current, horizon, esdf, grid, config);
+
+  EXPECT_TRUE(result.flight_envelope_violation);
+  EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
+  ASSERT_FALSE(result.fallback_horizon.empty());
+  for (const mppi::State& state : result.fallback_horizon) {
+    EXPECT_GE(state.z, 1.0F);
+    EXPECT_LT(state.z, 32.0F);
+  }
+}
+
 TEST(MppiHorizonSafetyTest, BrakingLifecycleLatchesPositionAfterVehicleSlows) {
   MppiBrakeHoldLifecycle lifecycle;
   mppi::State moving{2.0F, 3.0F, 4.0F};

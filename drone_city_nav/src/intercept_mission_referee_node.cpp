@@ -1,15 +1,15 @@
 #include "drone_city_nav/intercept_mission.hpp"
-#include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/msg/intercept_mission_command.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
+#include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
-#include "drone_city_nav/msg/vehicle_termination.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -37,6 +37,35 @@ endpointIdentityKnown(const rclcpp::TopicEndpointInfo& endpoint) noexcept {
          endpoint.node_namespace() != "_NODE_NAMESPACE_UNKNOWN_";
 }
 
+[[nodiscard]] const char* vehicleRoleName(const std::uint8_t role) noexcept {
+  switch (role) {
+    case msg::VehicleDestroyed::ROLE_INTERCEPTOR:
+      return "interceptor";
+    case msg::VehicleDestroyed::ROLE_EVADER:
+      return "evader";
+    default:
+      return "unspecified";
+  }
+}
+
+[[nodiscard]] const char* deathCauseName(const std::uint8_t cause) noexcept {
+  switch (cause) {
+    case msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION:
+      return "physical_collision";
+    case msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT:
+      return "proximity_intercept";
+    default:
+      return "invalid";
+  }
+}
+
+[[nodiscard]] double speed(const TimedVehicleState& state) noexcept {
+  return state.velocity_valid ? std::sqrt(state.velocity.x * state.velocity.x +
+                                          state.velocity.y * state.velocity.y +
+                                          state.velocity.z * state.velocity.z)
+                              : 0.0;
+}
+
 } // namespace
 
 class InterceptMissionRefereeNode final : public rclcpp::Node {
@@ -50,10 +79,11 @@ public:
         declare_parameter<double>("evader_goal_y_m", 378.0),
         declare_parameter<double>("evader_goal_z_m", 18.0),
     };
+    evaluator_capture_radius_m_ = declare_parameter<double>("capture_radius_m", 5.0);
     evaluator_ = std::make_unique<InterceptMissionEvaluator>(
         target_goal,
         InterceptMissionConfig{
-            .capture_radius_m = declare_parameter<double>("capture_radius_m", 5.0),
+            .capture_radius_m = evaluator_capture_radius_m_,
             .evader_goal_radius_m =
                 declare_parameter<double>("evader_goal_radius_m", 2.0),
             .evader_goal_stop_speed_mps =
@@ -63,8 +93,8 @@ public:
     target_goal_ = target_goal;
     maximum_state_age_ns_ = static_cast<std::int64_t>(
         declare_parameter<double>("maximum_state_age_s", 1.0) * 1.0e9);
-    termination_timeout_ns_ = static_cast<std::int64_t>(
-        declare_parameter<double>("termination_timeout_s", 3.0) * 1.0e9);
+    destruction_settlement_timeout_ns_ = static_cast<std::int64_t>(
+        declare_parameter<double>("destruction_settlement_timeout_s", 5.0) * 1.0e9);
     hold_config_.position_tolerance_m =
         declare_parameter<double>("interceptor_hold_position_tolerance_m", 2.0);
     hold_config_.maximum_speed_mps =
@@ -81,7 +111,8 @@ public:
     if (!(hold_config_.position_tolerance_m > 0.0) ||
         !(hold_config_.maximum_speed_mps >= 0.0) ||
         !(hold_config_.confirmation_duration_s >= 0.0) || !(hold_timeout_ns_ > 0) ||
-        !(boundary_startup_timeout_ns_ > 0)) {
+        !(boundary_startup_timeout_ns_ > 0) ||
+        !(destruction_settlement_timeout_ns_ > 0)) {
       throw std::invalid_argument{"invalid intercept referee configuration"};
     }
 
@@ -102,14 +133,14 @@ public:
         [this](const msg::VehicleNavigationState::SharedPtr state) {
           target_state_ = detail::vehicleState(*state);
         });
-    ownship_crash_sub_ = makeCrashSubscription(
-        declare_parameter<std::string>("interceptor_crash_topic",
-                                       "/vehicles/interceptor/crash_state"),
-        "interceptor");
-    target_crash_sub_ =
-        makeCrashSubscription(declare_parameter<std::string>(
-                                  "evader_crash_topic", "/vehicles/evader/crash_state"),
-                              "evader");
+    ownship_destroyed_topic_ = declare_parameter<std::string>(
+        "interceptor_destroyed_topic", "/vehicles/interceptor/vehicle_destroyed");
+    target_destroyed_topic_ = declare_parameter<std::string>(
+        "evader_destroyed_topic", "/vehicles/evader/vehicle_destroyed");
+    ownship_destroyed_sub_ = makeDestroyedSubscription(
+        ownship_destroyed_topic_, msg::VehicleDestroyed::ROLE_INTERCEPTOR);
+    target_destroyed_sub_ = makeDestroyedSubscription(
+        target_destroyed_topic_, msg::VehicleDestroyed::ROLE_EVADER);
 
     target_objective_pub_ = create_publisher<msg::NavigationObjective>(
         declare_parameter<std::string>("evader_objective_topic",
@@ -123,14 +154,10 @@ public:
         declare_parameter<std::string>("evader_start_topic",
                                        "/vehicles/evader/mission_start"),
         rclcpp::QoS{1}.reliable().transient_local());
-    ownship_termination_pub_ = create_publisher<msg::VehicleTermination>(
-        declare_parameter<std::string>("interceptor_termination_topic",
-                                       "/vehicles/interceptor/termination"),
-        rclcpp::QoS{1}.reliable().transient_local());
-    target_termination_pub_ = create_publisher<msg::VehicleTermination>(
-        declare_parameter<std::string>("evader_termination_topic",
-                                       "/vehicles/evader/termination"),
-        rclcpp::QoS{1}.reliable().transient_local());
+    ownship_destroyed_pub_ = create_publisher<msg::VehicleDestroyed>(
+        ownship_destroyed_topic_, rclcpp::QoS{1}.reliable().transient_local());
+    target_destroyed_pub_ = create_publisher<msg::VehicleDestroyed>(
+        target_destroyed_topic_, rclcpp::QoS{1}.reliable().transient_local());
     mission_command_pub_ = create_publisher<msg::InterceptMissionCommand>(
         declare_parameter<std::string>("interceptor_mission_command_topic",
                                        "/vehicles/interceptor/mission_command"),
@@ -146,15 +173,66 @@ public:
   }
 
 private:
-  [[nodiscard]] rclcpp::Subscription<msg::CrashState>::SharedPtr
-  makeCrashSubscription(const std::string& topic, const std::string& role) {
-    return create_subscription<msg::CrashState>(
+  [[nodiscard]] rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr
+  makeDestroyedSubscription(const std::string& topic,
+                            const std::uint8_t expected_role) {
+    return create_subscription<msg::VehicleDestroyed>(
         topic, rclcpp::QoS{1}.reliable().transient_local(),
-        [this, role](const msg::CrashState::SharedPtr crash) {
-          if (crash->crashed && !terminal_outcome_) {
-            failMission("physical_collision_" + role);
+        [this, expected_role](const msg::VehicleDestroyed::SharedPtr destroyed) {
+          if (destroyed->vehicle_role != expected_role ||
+              (destroyed->mission_epoch != 0U &&
+               destroyed->mission_epoch != mission_epoch_)) {
+            RCLCPP_ERROR(get_logger(),
+                         "VEHICLE_DESTROYED referee_rejected=true expected_role=%s "
+                         "actual_role=%u event_epoch=%" PRIu64
+                         " mission_epoch=%" PRIu64,
+                         vehicleRoleName(expected_role),
+                         static_cast<unsigned>(destroyed->vehicle_role),
+                         destroyed->mission_epoch, mission_epoch_);
+            return;
           }
+          onVehicleDestroyed(*destroyed);
         });
+  }
+
+  void onVehicleDestroyed(const msg::VehicleDestroyed& destroyed) {
+    if (destroyed.death_cause != msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION &&
+        destroyed.death_cause != msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT) {
+      RCLCPP_ERROR(get_logger(),
+                   "VEHICLE_DESTROYED referee_rejected=true role=%s cause=%u "
+                   "reason=invalid_cause mission_epoch=%" PRIu64,
+                   vehicleRoleName(destroyed.vehicle_role),
+                   static_cast<unsigned>(destroyed.death_cause), mission_epoch_);
+      return;
+    }
+    const bool ownship =
+        destroyed.vehicle_role == msg::VehicleDestroyed::ROLE_INTERCEPTOR;
+    bool& role_destroyed = ownship ? ownship_destroyed_ : target_destroyed_;
+    std::uint8_t& role_cause = ownship ? ownship_death_cause_ : target_death_cause_;
+    if (role_destroyed) {
+      return;
+    }
+    role_destroyed = true;
+    role_cause = destroyed.death_cause;
+    RCLCPP_ERROR(get_logger(),
+                 "VEHICLE_DESTROYED referee_observed=true role=%s cause=%s "
+                 "mission_epoch=%" PRIu64 " detail='%s'",
+                 vehicleRoleName(destroyed.vehicle_role),
+                 deathCauseName(destroyed.death_cause), mission_epoch_,
+                 destroyed.detail.c_str());
+
+    if (destroyed.death_cause != msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
+        terminal_outcome_.has_value() || physical_death_pending_) {
+      return;
+    }
+    physical_death_pending_ = true;
+    physical_death_role_ = destroyed.vehicle_role;
+    physical_death_reason_ =
+        std::string{"physical_collision_"} + vehicleRoleName(destroyed.vehicle_role);
+    destruction_requested_ns_ = now().nanoseconds();
+    if (!ownship) {
+      requestHold("evader_destroyed");
+    }
   }
 
   void publishTargetObjective() {
@@ -224,7 +302,10 @@ private:
                 mission_epoch_);
   }
 
-  void requestHold() {
+  void requestHold(const std::string& reason) {
+    if (ownship_destroyed_ || hold_confirmation_) {
+      return;
+    }
     if (!ownship_state_.has_value() || !ownship_state_->position_valid) {
       failMission("interceptor_hold_position_unavailable");
       return;
@@ -237,7 +318,7 @@ private:
     command.stamp = now();
     command.mission_epoch = mission_epoch_;
     command.command = msg::InterceptMissionCommand::COMMAND_HOLD_CURRENT_POSITION;
-    command.reason = "evader_reached_goal";
+    command.reason = reason;
     mission_command_pub_->publish(command);
     RCLCPP_INFO(get_logger(),
                 "INTERCEPTOR_HOLD requested=true source=mission_command "
@@ -245,15 +326,37 @@ private:
                 hold_position_.x, hold_position_.y, hold_position_.z, mission_epoch_);
   }
 
-  void requestDisarm(const std::string& detail = "intercepted") {
-    msg::VehicleTermination termination;
-    termination.stamp = now();
-    termination.mission_epoch = mission_epoch_;
-    termination.reason = msg::VehicleTermination::REASON_INTERCEPT;
-    termination.detail = detail;
-    ownship_termination_pub_->publish(termination);
-    target_termination_pub_->publish(termination);
-    termination_requested_ns_ = now().nanoseconds();
+  [[nodiscard]] msg::VehicleDestroyed
+  makeProximityDestruction(const TimedVehicleState& state, const std::uint8_t role,
+                           const std::string& detail) const {
+    msg::VehicleDestroyed destroyed;
+    destroyed.stamp = now();
+    destroyed.mission_epoch = mission_epoch_;
+    destroyed.vehicle_role = role;
+    destroyed.death_cause = msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT;
+    destroyed.detail = detail;
+    destroyed.event_position.x = state.position.x;
+    destroyed.event_position.y = state.position.y;
+    destroyed.event_position.z = state.position.z;
+    destroyed.altitude_m = state.position.z;
+    destroyed.speed_mps = speed(state);
+    return destroyed;
+  }
+
+  void requestProximityDestruction(const std::string& detail = "intercepted") {
+    if (proximity_destruction_requested_ || !ownship_state_ || !target_state_) {
+      return;
+    }
+    proximity_destruction_requested_ = true;
+    ownship_destroyed_pub_->publish(makeProximityDestruction(
+        *ownship_state_, msg::VehicleDestroyed::ROLE_INTERCEPTOR, detail));
+    target_destroyed_pub_->publish(makeProximityDestruction(
+        *target_state_, msg::VehicleDestroyed::ROLE_EVADER, detail));
+    destruction_requested_ns_ = now().nanoseconds();
+    RCLCPP_ERROR(get_logger(),
+                 "PROXIMITY_INTERCEPT destruction_requested=true "
+                 "separation_threshold_m=%.3f mission_epoch=%" PRIu64 " detail='%s'",
+                 evaluator_capture_radius_m_, mission_epoch_, detail.c_str());
   }
 
   void handleLateCapture(const InterceptMissionUpdate& update) {
@@ -270,13 +373,13 @@ private:
     RCLCPP_INFO(get_logger(),
                 "INTERCEPTOR_HOLD_ABORTED reason=late_capture mission_epoch=%" PRIu64,
                 mission_epoch_);
-    requestDisarm("late_intercept_after_evader_goal");
+    requestProximityDestruction("late_intercept_after_evader_goal");
   }
 
-  void settleHold(const std::int64_t now_ns) {
+  [[nodiscard]] bool updateHoldConfirmation(const std::int64_t now_ns) {
     if (!hold_confirmation_ || !ownship_state_.has_value()) {
       failMission("interceptor_hold_not_initialized");
-      return;
+      return false;
     }
     const InterceptorHoldUpdate hold = hold_confirmation_->update(*ownship_state_);
     if (hold.newly_confirmed) {
@@ -284,11 +387,58 @@ private:
                   "INTERCEPTOR_HOLD_CONFIRMED position_error_m=%.3f speed_mps=%.3f "
                   "mission_epoch=%" PRIu64,
                   hold.position_error_m, hold.speed_mps, mission_epoch_);
-      finishMission();
-      return;
     }
     if (hold_requested_ns_ > 0 && now_ns - hold_requested_ns_ > hold_timeout_ns_) {
       failMission("interceptor_hold_not_confirmed");
+      return false;
+    }
+    return hold.confirmed;
+  }
+
+  void settleHold(const std::int64_t now_ns) {
+    if (updateHoldConfirmation(now_ns)) {
+      finishMission();
+    }
+  }
+
+  void settleProximityDestruction(const std::int64_t now_ns) {
+    const bool events_confirmed =
+        ownship_destroyed_ && target_destroyed_ &&
+        ownship_death_cause_ == msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT &&
+        target_death_cause_ == msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT;
+    const bool disarm_confirmed = ownship_state_ && target_state_ &&
+                                  !ownship_state_->armed && !target_state_->armed;
+    if (events_confirmed && disarm_confirmed) {
+      RCLCPP_INFO(get_logger(),
+                  "INTERCEPT_SETTLEMENT destruction_events=2 disarm_confirmations=2 "
+                  "mission_epoch=%" PRIu64,
+                  mission_epoch_);
+      finishMission();
+      return;
+    }
+    if (destruction_requested_ns_ > 0 &&
+        now_ns - destruction_requested_ns_ > destruction_settlement_timeout_ns_) {
+      failMission("proximity_destruction_not_confirmed");
+    }
+  }
+
+  void settlePhysicalDeath(const std::int64_t now_ns) {
+    if (!physical_death_pending_ || !ownship_state_ || !target_state_) {
+      return;
+    }
+    const bool evader_destroyed =
+        physical_death_role_ == msg::VehicleDestroyed::ROLE_EVADER;
+    const bool destroyed_vehicle_disarmed =
+        evader_destroyed ? !target_state_->armed : !ownship_state_->armed;
+    const bool survivor_settled =
+        !evader_destroyed || ownship_destroyed_ || updateHoldConfirmation(now_ns);
+    if (destroyed_vehicle_disarmed && survivor_settled) {
+      failMission(physical_death_reason_);
+      return;
+    }
+    if (destruction_requested_ns_ > 0 &&
+        now_ns - destruction_requested_ns_ > destruction_settlement_timeout_ns_) {
+      failMission(physical_death_reason_ + ":settlement_not_confirmed");
     }
   }
 
@@ -311,17 +461,11 @@ private:
     if (result_reported_) {
       return;
     }
-    msg::VehicleTermination termination;
-    termination.stamp = now();
-    termination.mission_epoch = mission_epoch_;
-    termination.reason = msg::VehicleTermination::REASON_UNSPECIFIED;
-    termination.detail = reason;
-    ownship_termination_pub_->publish(termination);
-    target_termination_pub_->publish(termination);
     result_reported_ = true;
     RCLCPP_ERROR(get_logger(),
                  "MISSION_RESULT success=false mission=intercept "
-                 "outcome=system_failure reason='%s' mission_epoch=%" PRIu64,
+                 "outcome=system_failure reason='%s' mission_epoch=%" PRIu64
+                 " disarm_requested=false",
                  reason.c_str(), mission_epoch_);
     completeResultLifecycle();
   }
@@ -361,6 +505,10 @@ private:
     if (!ownship_state_.has_value() || !target_state_.has_value()) {
       return;
     }
+    if (mission_started_ && physical_death_pending_) {
+      settlePhysicalDeath(now_ns);
+      return;
+    }
     if (mission_started_ &&
         (!stateFresh(*ownship_state_, now_ns) || !stateFresh(*target_state_, now_ns))) {
       failMission("stale_vehicle_state");
@@ -383,28 +531,17 @@ private:
                     interceptMissionOutcomeName(update.outcome), update.separation_m,
                     mission_epoch_);
         if (update.outcome == InterceptMissionOutcome::kIntercepted) {
-          requestDisarm();
+          requestProximityDestruction();
         } else {
-          requestHold();
+          requestHold("evader_reached_goal");
         }
       }
       return;
     }
     handleLateCapture(update);
-    if (*terminal_outcome_ == InterceptMissionOutcome::kIntercepted) {
-      if (!ownship_state_->armed && !target_state_->armed) {
-        finishMission();
-      } else if (termination_requested_ns_ > 0 &&
-                 now_ns - termination_requested_ns_ > termination_timeout_ns_) {
-        failMission("termination_not_confirmed");
-      }
-    } else if (late_capture_after_goal_) {
-      if (!ownship_state_->armed && !target_state_->armed) {
-        finishMission();
-      } else if (termination_requested_ns_ > 0 &&
-                 now_ns - termination_requested_ns_ > termination_timeout_ns_) {
-        failMission("late_intercept_termination_not_confirmed");
-      }
+    if (*terminal_outcome_ == InterceptMissionOutcome::kIntercepted ||
+        late_capture_after_goal_) {
+      settleProximityDestruction(now_ns);
     } else {
       settleHold(now_ns);
     }
@@ -420,30 +557,41 @@ private:
   std::optional<InterceptMissionOutcome> terminal_outcome_;
   std::string ownship_state_topic_;
   std::string target_state_topic_;
+  std::string ownship_destroyed_topic_;
+  std::string target_destroyed_topic_;
   std::string radar_simulator_node_fqn_;
+  std::string physical_death_reason_;
+  double evaluator_capture_radius_m_{5.0};
   std::uint64_t mission_epoch_{1U};
   std::int64_t maximum_state_age_ns_{1'000'000'000LL};
-  std::int64_t termination_timeout_ns_{3'000'000'000LL};
+  std::int64_t destruction_settlement_timeout_ns_{5'000'000'000LL};
   std::int64_t hold_timeout_ns_{20'000'000'000LL};
   std::int64_t boundary_startup_timeout_ns_{10'000'000'000LL};
-  std::int64_t termination_requested_ns_{0};
+  std::int64_t destruction_requested_ns_{0};
   std::int64_t hold_requested_ns_{0};
   std::int64_t boundary_check_started_ns_{0};
   std::int64_t last_boundary_check_ns_{0};
   bool mission_started_{false};
   bool result_reported_{false};
   bool late_capture_after_goal_{false};
+  bool proximity_destruction_requested_{false};
+  bool ownship_destroyed_{false};
+  bool target_destroyed_{false};
+  bool physical_death_pending_{false};
   bool shutdown_on_terminal_outcome_{true};
   bool boundary_verified_{false};
+  std::uint8_t ownship_death_cause_{0U};
+  std::uint8_t target_death_cause_{0U};
+  std::uint8_t physical_death_role_{msg::VehicleDestroyed::ROLE_UNSPECIFIED};
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr ownship_state_sub_;
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr target_state_sub_;
-  rclcpp::Subscription<msg::CrashState>::SharedPtr ownship_crash_sub_;
-  rclcpp::Subscription<msg::CrashState>::SharedPtr target_crash_sub_;
+  rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr ownship_destroyed_sub_;
+  rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr target_destroyed_sub_;
   rclcpp::Publisher<msg::NavigationObjective>::SharedPtr target_objective_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr ownship_start_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr target_start_pub_;
-  rclcpp::Publisher<msg::VehicleTermination>::SharedPtr ownship_termination_pub_;
-  rclcpp::Publisher<msg::VehicleTermination>::SharedPtr target_termination_pub_;
+  rclcpp::Publisher<msg::VehicleDestroyed>::SharedPtr ownship_destroyed_pub_;
+  rclcpp::Publisher<msg::VehicleDestroyed>::SharedPtr target_destroyed_pub_;
   rclcpp::Publisher<msg::InterceptMissionCommand>::SharedPtr mission_command_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

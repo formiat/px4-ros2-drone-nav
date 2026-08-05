@@ -33,6 +33,15 @@ struct RiskConfig {
   float planning_exposure_tolerance_m{1.0F};
 };
 
+struct FootprintConfig {
+  float radius_m{0.0F};
+  float lower_extent_m{0.0F};
+  float upper_extent_m{0.0F};
+  std::uint32_t perimeter_samples{0U};
+  std::uint32_t radial_rings{0U};
+  std::uint32_t axial_samples{0U};
+};
+
 struct CostConfig {
   float guide_deviation_weight{1.0F};
   float altitude_tracking_weight{4.0F};
@@ -62,6 +71,7 @@ struct BenchmarkConfig {
   DynamicsConfig dynamics{};
   NoiseConfig noise{};
   RiskConfig risk{};
+  FootprintConfig footprint{};
   CostConfig costs{};
 };
 

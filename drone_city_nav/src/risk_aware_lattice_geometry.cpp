@@ -63,7 +63,11 @@ SegmentEvaluation evaluateLatticeSegment(const mppi::EsdfGrid& grid,
   const SweptFootprintResult footprint = validateSweptFootprint(
       grid, esdf_m, Point3{start.x, start.y, 0.0}, Point3{endpoint.x, endpoint.y, 0.0},
       SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
+                           .lower_extent_m = config.physical_footprint_lower_extent_m,
+                           .upper_extent_m = config.physical_footprint_upper_extent_m,
                            .perimeter_samples = config.physical_footprint_samples,
+                           .radial_rings = config.physical_footprint_radial_rings,
+                           .axial_samples = config.physical_footprint_axial_samples,
                            .sweep_step_m = config.primitive_sample_step_m});
   if (!footprint.accepted()) {
     result.valid = false;

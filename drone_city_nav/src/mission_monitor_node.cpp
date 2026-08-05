@@ -1,4 +1,4 @@
-#include "drone_city_nav/msg/crash_state.hpp"
+#include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <px4_msgs/msg/vehicle_local_position.hpp>
@@ -64,19 +64,22 @@ public:
         px4_qos, [this](const px4_msgs::msg::VehicleStatus::SharedPtr message) {
           onVehicleStatus(*message);
         });
-    crash_state_sub_ = create_subscription<msg::CrashState>(
-        "/drone_city_nav/crash_state",
+    vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
+        declare_parameter<std::string>("vehicle_destroyed_topic",
+                                       "/drone_city_nav/vehicle_destroyed"),
         rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
-        [this](const msg::CrashState::SharedPtr message) {
-          if (message->crashed && !result_reported_) {
+        [this](const msg::VehicleDestroyed::SharedPtr message) {
+          if (!result_reported_) {
             RCLCPP_ERROR(get_logger(),
-                         "MISSION_CHECK physical_collision=true drone_collision='%s' "
-                         "obstacle_collision='%s' contact=(%.3f, %.3f, %.3f)",
+                         "MISSION_CHECK vehicle_destroyed=true role=%u cause=%u "
+                         "drone_collision='%s' obstacle_collision='%s' "
+                         "event_position=(%.3f, %.3f, %.3f)",
+                         static_cast<unsigned>(message->vehicle_role),
+                         static_cast<unsigned>(message->death_cause),
                          message->drone_collision.c_str(),
-                         message->obstacle_collision.c_str(),
-                         message->contact_position.x, message->contact_position.y,
-                         message->contact_position.z);
-            report(false, "physical_collision");
+                         message->obstacle_collision.c_str(), message->event_position.x,
+                         message->event_position.y, message->event_position.z);
+            report(false, "vehicle_destroyed");
           }
         });
     summary_timer_ =
@@ -202,7 +205,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
-  rclcpp::Subscription<msg::CrashState>::SharedPtr crash_state_sub_;
+  rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
 };
 

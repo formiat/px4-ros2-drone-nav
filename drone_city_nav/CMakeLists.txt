@@ -45,7 +45,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryProvenance.msg"
   "msg/ObstacleMemorySnapshot.msg"
   "msg/RawObstacleSnapshot.msg"
-  "msg/CrashState.msg"
+  "msg/VehicleDestroyed.msg"
   "msg/MppiHorizonPoint.msg"
   "msg/MppiTrajectoryHorizon.msg"
   "msg/MppiControlFeedback.msg"
@@ -55,7 +55,6 @@ rosidl_generate_interfaces(
   "msg/TargetTrack.msg"
   "msg/InterceptMissionCommand.msg"
   "msg/VehicleNavigationState.msg"
-  "msg/VehicleTermination.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
                               rosidl_typesupport_cpp)
@@ -129,11 +128,12 @@ add_library(
   src/active_global_guide.cpp
   src/ambiguous_lidar_hit_tracker.cpp
   src/bounded_worker_pool.cpp
-  src/crash_disarm_lifecycle.cpp
+  src/vehicle_destruction_disarm_lifecycle.cpp
   src/debug_image.cpp
   src/distance_field.cpp
   src/distance_field_3d.cpp
   src/esdf_query.cpp
+  src/flight_envelope.cpp
   src/global_guide_candidate.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
@@ -444,6 +444,11 @@ if(BUILD_TESTING)
   target_link_libraries(esdf_query_test drone_city_nav_core)
   enable_project_warnings(esdf_query_test)
 
+  ament_add_gtest(flight_envelope_test tests/flight_envelope_test.cpp)
+  target_compile_features(flight_envelope_test PRIVATE cxx_std_20)
+  target_link_libraries(flight_envelope_test drone_city_nav_core)
+  enable_project_warnings(flight_envelope_test)
+
   ament_add_gtest(swept_footprint_test tests/swept_footprint_test.cpp)
   target_compile_features(swept_footprint_test PRIVATE cxx_std_20)
   target_link_libraries(swept_footprint_test drone_city_nav_core)
@@ -531,11 +536,11 @@ if(BUILD_TESTING)
   target_link_libraries(planning_contract_test drone_city_nav_core)
   enable_project_warnings(planning_contract_test)
 
-  ament_add_gtest(crash_disarm_lifecycle_test
-                  tests/crash_disarm_lifecycle_test.cpp)
-  target_compile_features(crash_disarm_lifecycle_test PRIVATE cxx_std_20)
-  target_link_libraries(crash_disarm_lifecycle_test drone_city_nav_core)
-  enable_project_warnings(crash_disarm_lifecycle_test)
+  ament_add_gtest(vehicle_destruction_disarm_lifecycle_test
+                  tests/vehicle_destruction_disarm_lifecycle_test.cpp)
+  target_compile_features(vehicle_destruction_disarm_lifecycle_test PRIVATE cxx_std_20)
+  target_link_libraries(vehicle_destruction_disarm_lifecycle_test drone_city_nav_core)
+  enable_project_warnings(vehicle_destruction_disarm_lifecycle_test)
 
   ament_add_gtest(distance_field_test_current tests/distance_field_test.cpp)
   target_compile_features(distance_field_test_current PRIVATE cxx_std_20)

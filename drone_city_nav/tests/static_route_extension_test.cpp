@@ -105,17 +105,17 @@ TEST(StaticRouteExtensionTest, CandidateMustImproveEndpointAndAvoidRawOccupancy)
   const std::vector<RouteSample3D> improved = route(8.5);
 
   EXPECT_TRUE(validateStaticRouteCandidate(active, improved, grid, esdf,
-                                           Point3{11.5, 1.5, 1.5}, 2.0, false)
+                                           Point3{11.5, 1.5, 1.5}, 2.0, false, {})
                   .accepted);
   EXPECT_EQ(validateStaticRouteCandidate(active, route(6.5), grid, esdf,
-                                         Point3{11.5, 1.5, 1.5}, 2.0, false)
+                                         Point3{11.5, 1.5, 1.5}, 2.0, false, {})
                 .status,
             StaticRouteCandidateStatus::kNoEndpointImprovement);
 
   const std::size_t occupied_index = (1U * 4U + 1U) * 12U + 8U;
   esdf[occupied_index] = 0.0F;
   EXPECT_EQ(validateStaticRouteCandidate(active, improved, grid, esdf,
-                                         Point3{11.5, 1.5, 1.5}, 2.0, false)
+                                         Point3{11.5, 1.5, 1.5}, 2.0, false, {})
                 .status,
             StaticRouteCandidateStatus::kRawCollision);
 }
@@ -126,9 +126,22 @@ TEST(StaticRouteExtensionTest, RequiredContinuationMayTemporarilyLoseGoalProgres
                                 std::numeric_limits<float>::infinity());
 
   const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
-      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false, true);
+      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
+      FlightEnvelopeConfig{}, true);
 
   EXPECT_TRUE(result.accepted);
+}
+
+TEST(StaticRouteExtensionTest, RejectsRouteOutsideFlightEnvelope) {
+  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 40, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 40U,
+                                std::numeric_limits<float>::infinity());
+  std::vector<RouteSample3D> invalid = route(8.5);
+  invalid.back().position.z = 32.0;
+  EXPECT_EQ(validateStaticRouteCandidate({}, invalid, grid, esdf,
+                                         Point3{11.5, 1.5, 1.5}, 0.0, false, {})
+                .status,
+            StaticRouteCandidateStatus::kOutsideFlightEnvelope);
 }
 
 TEST(StaticRouteExtensionTest, PlanningGoalAndEsdfBoundaryAreExplicit) {

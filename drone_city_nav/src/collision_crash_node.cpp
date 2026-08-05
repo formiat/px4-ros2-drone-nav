@@ -1,5 +1,5 @@
 #include "drone_city_nav/lidar_projection.hpp"
-#include "drone_city_nav/msg/crash_state.hpp"
+#include "drone_city_nav/msg/vehicle_destroyed.hpp"
 
 #include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
@@ -10,6 +10,7 @@
 #include <limits>
 #include <memory>
 #include <ros_gz_interfaces/msg/contacts.hpp>
+#include <stdexcept>
 #include <string>
 
 namespace drone_city_nav {
@@ -21,8 +22,8 @@ public:
     airborne_altitude_m_ = declare_parameter<double>("airborne_altitude_m", 1.0);
     const std::string contacts_topic = declare_parameter<std::string>(
         "contacts_topic", "/drone_city_nav/drone_contacts");
-    const std::string crash_state_topic = declare_parameter<std::string>(
-        "crash_state_topic", "/drone_city_nav/crash_state");
+    const std::string vehicle_destroyed_topic = declare_parameter<std::string>(
+        "vehicle_destroyed_topic", "/drone_city_nav/vehicle_destroyed");
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
     const std::string attitude_topic = declare_parameter<std::string>(
@@ -31,10 +32,35 @@ public:
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status");
     drone_collision_filter_ =
         declare_parameter<std::string>("drone_collision_filter", "");
+    mission_epoch_ =
+        static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 0));
+    vehicle_role_ = static_cast<std::uint8_t>(declare_parameter<std::int64_t>(
+        "vehicle_role", msg::VehicleDestroyed::ROLE_UNSPECIFIED));
+    if (vehicle_role_ > msg::VehicleDestroyed::ROLE_EVADER) {
+      throw std::invalid_argument{"invalid collision detector vehicle role"};
+    }
 
-    crash_state_pub_ = create_publisher<msg::CrashState>(
-        crash_state_topic,
+    vehicle_destroyed_pub_ = create_publisher<msg::VehicleDestroyed>(
+        vehicle_destroyed_topic,
         rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local());
+    vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
+        vehicle_destroyed_topic,
+        rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
+        [this](const msg::VehicleDestroyed::SharedPtr destroyed) {
+          const bool valid_cause =
+              destroyed->death_cause ==
+                  msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
+              destroyed->death_cause ==
+                  msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT;
+          const bool matching_role =
+              destroyed->vehicle_role == vehicle_role_ ||
+              destroyed->vehicle_role == msg::VehicleDestroyed::ROLE_UNSPECIFIED;
+          const bool matching_epoch =
+              mission_epoch_ == 0U || destroyed->mission_epoch == mission_epoch_;
+          if (valid_cause && matching_role && matching_epoch) {
+            destroyed_ = true;
+          }
+        });
     contacts_sub_ = create_subscription<ros_gz_interfaces::msg::Contacts>(
         contacts_topic, rclcpp::QoS{rclcpp::KeepLast{10}}.reliable(),
         [this](const ros_gz_interfaces::msg::Contacts::SharedPtr contacts) {
@@ -63,16 +89,11 @@ public:
               status->arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
         });
 
-    msg::CrashState initial_state;
-    initial_state.stamp = now();
-    initial_state.crashed = false;
-    initial_state.reason = "none";
-    crash_state_pub_->publish(initial_state);
     RCLCPP_INFO(get_logger(),
-                "Physical collision detector ready: contacts='%s' crash_state='%s' "
-                "airborne_altitude=%.2fm",
-                contacts_topic.c_str(), crash_state_topic.c_str(),
-                airborne_altitude_m_);
+                "Physical collision detector ready: contacts='%s' "
+                "vehicle_destroyed='%s' role=%u airborne_altitude=%.2fm",
+                contacts_topic.c_str(), vehicle_destroyed_topic.c_str(),
+                static_cast<unsigned>(vehicle_role_), airborne_altitude_m_);
   }
 
 private:
@@ -93,7 +114,7 @@ private:
   }
 
   void onContacts(const ros_gz_interfaces::msg::Contacts& contacts) {
-    if (crashed_) {
+    if (destroyed_) {
       return;
     }
     if (!airborne_seen_) {
@@ -109,25 +130,27 @@ private:
           contact.collision1.name.find(drone_collision_filter_) == std::string::npos) {
         continue;
       }
-      msg::CrashState state;
-      state.stamp = contacts.header.stamp;
-      if (state.stamp.sec == 0 && state.stamp.nanosec == 0U) {
-        state.stamp = now();
+      msg::VehicleDestroyed event;
+      event.stamp = contacts.header.stamp;
+      if (event.stamp.sec == 0 && event.stamp.nanosec == 0U) {
+        event.stamp = now();
       }
-      state.crashed = true;
-      state.reason = "physical_collision";
-      state.drone_collision = contact.collision1.name;
-      state.obstacle_collision = contact.collision2.name;
-      state.altitude_m = altitude_m_;
-      state.speed_mps = speed_mps_;
+      event.mission_epoch = mission_epoch_;
+      event.vehicle_role = vehicle_role_;
+      event.death_cause = msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION;
+      event.detail = "gazebo_contact";
+      event.drone_collision = contact.collision1.name;
+      event.obstacle_collision = contact.collision2.name;
+      event.altitude_m = altitude_m_;
+      event.speed_mps = speed_mps_;
       if (!contact.positions.empty()) {
-        state.contact_position.x = contact.positions.front().x;
-        state.contact_position.y = contact.positions.front().y;
-        state.contact_position.z = contact.positions.front().z;
+        event.event_position.x = contact.positions.front().x;
+        event.event_position.y = contact.positions.front().y;
+        event.event_position.z = contact.positions.front().z;
       }
 
-      crashed_ = true;
-      crash_state_pub_->publish(state);
+      destroyed_ = true;
+      vehicle_destroyed_pub_->publish(event);
       const double roll = attitude_valid_ ? attitude_.roll_rad
                                           : std::numeric_limits<double>::quiet_NaN();
       const double pitch = attitude_valid_ ? attitude_.pitch_rad
@@ -135,13 +158,15 @@ private:
       const double yaw = attitude_valid_ ? attitude_.yaw_rad
                                          : std::numeric_limits<double>::quiet_NaN();
       RCLCPP_ERROR(get_logger(),
-                   "PHYSICAL_COLLISION crashed=true drone_collision='%s' "
+                   "VEHICLE_DESTROYED role=%u cause=physical_collision "
+                   "drone_collision='%s' "
                    "obstacle_collision='%s' contact=(%.3f, %.3f, %.3f) altitude=%.2f "
-                   "speed=%.2f attitude_rpy=(%.3f, %.3f, %.3f)",
-                   state.drone_collision.c_str(), state.obstacle_collision.c_str(),
-                   state.contact_position.x, state.contact_position.y,
-                   state.contact_position.z, state.altitude_m, state.speed_mps, roll,
-                   pitch, yaw);
+                   "speed=%.2f attitude_rpy=(%.3f, %.3f, %.3f) mission_epoch=%lu",
+                   static_cast<unsigned>(event.vehicle_role),
+                   event.drone_collision.c_str(), event.obstacle_collision.c_str(),
+                   event.event_position.x, event.event_position.y,
+                   event.event_position.z, event.altitude_m, event.speed_mps, roll,
+                   pitch, yaw, static_cast<unsigned long>(event.mission_epoch));
       return;
     }
   }
@@ -154,10 +179,13 @@ private:
   bool attitude_valid_{false};
   bool armed_{false};
   bool airborne_seen_{false};
-  bool crashed_{false};
+  bool destroyed_{false};
   std::string drone_collision_filter_;
+  std::uint64_t mission_epoch_{0U};
+  std::uint8_t vehicle_role_{msg::VehicleDestroyed::ROLE_UNSPECIFIED};
 
-  rclcpp::Publisher<msg::CrashState>::SharedPtr crash_state_pub_;
+  rclcpp::Publisher<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_pub_;
+  rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<ros_gz_interfaces::msg::Contacts>::SharedPtr contacts_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

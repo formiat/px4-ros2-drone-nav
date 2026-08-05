@@ -138,8 +138,9 @@ simulation radar adapter and mission referee may read evader ground truth.
 The continuous guidance objective has no terminal goal hold. It uses a
 latency-compensated 3 s lead and smoothly reduces it to 1 s when the interceptor
 is already ahead in the evader's motion corridor. The planner clips predictions
-at the first physical raw obstacle. A swept separation of 5 m terminates and
-disarms both vehicles as a successful intercept. If the evader reaches its goal
+at the first physical raw obstacle. A swept separation of 5 m publishes typed
+`VehicleDestroyed` events for both roles; their offboard nodes then force-disarm
+and confirm both deaths before reporting a successful intercept. If the evader reaches its goal
 first, that outcome is latched, the interceptor stops tracking and enters a
 confirmed position hold, and neither vehicle is disarmed. A later inertial
 approach cannot change the first outcome, although entering the capture radius
@@ -148,6 +149,12 @@ failure but still a technically successful simulation outcome. RViz and Gazebo
 follow the interceptor. The GUI workflow remains open after either outcome. The
 headless workflow exits only after the applicable hold or disarm settlement is
 confirmed in the log.
+
+Mission outcome and vehicle death are separate contracts. Mission failures never
+request disarm. Force-disarm is owned only by the latched death lifecycle and is
+accepted only for a physical Gazebo collision or a proximity intercept. If the
+evader physically crashes, its death/disarm is confirmed and a surviving
+interceptor is placed into a confirmed position hold.
 
 Stop all running simulation leftovers, including related Gazebo/PX4/ROS
 processes and simulation containers:
@@ -242,6 +249,12 @@ atomic `/drone_city_nav/raw_obstacle_snapshot` remains the runtime sensor-world
 contract and freshness trigger. The `/drone_city_nav/raw_obstacle_grid` topic is
 visualization-only and must not be wired back into planner or offboard
 validation.
+
+All published targets and execution horizons use the configured flight envelope
+`1.0 <= z < 32.0 m`. Raw collision checks use the drone's swept oriented 3D
+footprint, including horizontal radius and upper/lower body extents. This is
+physical vehicle geometry, not an inflated prohibited region; ESDF risk bands
+remain finite route-ranking costs.
 
 After a headless run, validate lidar projection snapshots without GUI:
 

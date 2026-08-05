@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 
 #include <cstddef>
@@ -18,8 +19,14 @@ struct MppiHorizonSafetyConfig {
   double dt_s{0.05};
   double swept_validation_step_m{0.25};
   double physical_footprint_radius_m{0.82};
+  double physical_footprint_lower_extent_m{0.23};
+  double physical_footprint_upper_extent_m{0.35};
   std::size_t physical_footprint_samples{12U};
+  std::size_t physical_footprint_radial_rings{2U};
+  std::size_t physical_footprint_axial_samples{3U};
   double position_hold_capture_speed_mps{0.20};
+  FlightEnvelopeConfig flight_envelope{.minimum_target_z_m = -1.0e9,
+                                       .maximum_target_z_m = 1.0e9};
 };
 
 enum class MppiHorizonSafetyDecision {
@@ -35,6 +42,7 @@ struct MppiHorizonSafetyResult {
   double stopping_time_s{0.0};
   double stopping_distance_m{0.0};
   double latest_safe_intervention_time_s{0.0};
+  bool flight_envelope_violation{false};
   std::vector<mppi::State> fallback_horizon;
   std::vector<mppi::Control> fallback_controls;
 };

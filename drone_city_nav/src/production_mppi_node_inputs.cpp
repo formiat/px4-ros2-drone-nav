@@ -131,6 +131,16 @@ void ProductionMppiNode::onNavigationObjective(
                         msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION;
   const std::optional<InterceptGuidanceMode> guidance_mode =
       guidanceMode(message.guidance_mode);
+  const FlightEnvelopeStatus target_altitude_status =
+      evaluateFlightEnvelopeAltitude(message.position.z, flight_envelope_config_);
+  if (target_altitude_status != FlightEnvelopeStatus::kValid) {
+    RCLCPP_WARN(get_logger(),
+                "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
+                " sample=%" PRIu64 " reason=flight_envelope_%s target_z=%.3f",
+                message.mission_epoch, message.sample_sequence,
+                flightEnvelopeStatusName(target_altitude_status), message.position.z);
+    return;
+  }
   if (!finitePoint(message.position) ||
       message.objective_type >
           msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION ||
@@ -139,6 +149,8 @@ void ProductionMppiNode::onNavigationObjective(
           msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING ||
       (tracking &&
        (!finitePoint(message.observed_target_position) ||
+        !insideFlightEnvelope(message.observed_target_position.z,
+                              flight_envelope_config_) ||
         !finiteVector(message.observed_target_velocity) ||
         !std::isfinite(message.prediction_horizon_s) ||
         message.prediction_horizon_s < 0.0 ||

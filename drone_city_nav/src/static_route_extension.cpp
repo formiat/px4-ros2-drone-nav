@@ -175,10 +175,15 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
     const std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
     const std::span<const float> esdf_m, const Point3& mission_goal,
     const double minimum_endpoint_improvement_m, const bool reaches_mission_goal,
-    const bool required_continuation,
+    const FlightEnvelopeConfig& flight_envelope, const bool required_continuation,
     const SweptFootprintConfig& footprint_config) noexcept {
   if (candidate_route.size() < 2U) {
     return {.status = StaticRouteCandidateStatus::kEmpty};
+  }
+  if (!std::ranges::all_of(candidate_route, [&](const RouteSample3D& sample) {
+        return insideFlightEnvelope(sample.position, flight_envelope);
+      })) {
+    return {.status = StaticRouteCandidateStatus::kOutsideFlightEnvelope};
   }
   for (std::size_t index = 1U; index < candidate_route.size(); ++index) {
     const SweptFootprintResult footprint =
@@ -222,6 +227,8 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
       return "invalid_esdf";
     case StaticRouteCandidateStatus::kRawCollision:
       return "raw_collision";
+    case StaticRouteCandidateStatus::kOutsideFlightEnvelope:
+      return "outside_flight_envelope";
     case StaticRouteCandidateStatus::kInvalidChannelSpan:
       return "invalid_channel_span";
     case StaticRouteCandidateStatus::kProtectedConstrainedSuffix:

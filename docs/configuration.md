@@ -90,6 +90,12 @@ Static world:
   locally reachable continuation;
 - route-envelope parameters control typed constrained-span execution data;
 - constrained-span speed is encoded in 3D route samples.
+- `minimum_target_z_m` and `maximum_target_z_m` define the half-open flight
+  envelope used by objectives, 3D successors, channel edges, smoothed routes,
+  activation, safety, and offboard publication;
+- `physical_footprint_radius_m`, `physical_footprint_lower_extent_m`, and
+  `physical_footprint_upper_extent_m` define the actual oriented drone volume;
+  radial, axial, and swept sampling parameters control raw-occupancy validation.
 
 Constrained route execution uses 3D route station. Vertical alignment begins at
 a distance derived from measured `z`/`vz` and configured vertical dynamics. XY
@@ -109,6 +115,9 @@ Safety and liveness:
 - maximum receive age and control lookahead;
 - fallback braking acceleration;
 - takeoff altitude and hover time;
+- the same minimum/maximum target altitude contract as the planner;
+- expected vehicle role, mission epoch, and destruction topic;
+- bounded death force-disarm retry period;
 - arm/offboard resend policy;
 - map origin;
 - RViz drone marker and follow TF.

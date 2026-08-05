@@ -30,8 +30,9 @@ Gazebo contacts follow an independent safety path:
 Gazebo contact involving the drone
   -> DroneContactSystem
   -> collision_crash_node
-  -> latched crash state
-  -> offboard force-disarm + mission failure
+  -> VehicleDestroyed(role, physical_collision)
+  -> latched offboard death lifecycle
+  -> bounded force-disarm retries until PX4 confirms disarmed
 ```
 
 ## Node Ownership
@@ -68,6 +69,8 @@ This node has no direct PX4 command publisher.
 - executes safety and mission position holds when explicitly requested;
 - falls back to braking when no fresh executable horizon is available;
 - publishes the applied-control feedback used by MPPI continuity logic;
+- accepts typed destruction events for its configured role and mission epoch;
+- owns the only force-disarm command path, after a valid destruction event;
 - publishes the RViz drone marker and follow TF.
 
 ### Visualization And Observation
@@ -92,10 +95,11 @@ No-static production planning uses the raw 2D obstacle-memory snapshot and a
 2D distance field. It does not load channel metadata or the canonical 3D map.
 
 There are no separately materialized planner/prohibited inflated grids,
-hard collision envelopes around raw cells, inflation relaxation, or escape
-tunnels. Conservative ESDF clearance is used only to classify the critical and
-planning risk bands. A free cell remains executable even when that clearance
-falls to zero.
+artificial hard collision envelopes around raw cells, inflation relaxation, or
+escape tunnels. Conservative ESDF clearance is used only to classify the
+critical and planning risk bands. A free center cell remains executable at zero
+clearance unless the drone's actual swept physical footprint intersects a raw
+occupied cell.
 
 ## Global And Local Planning
 
@@ -115,7 +119,7 @@ Point-to-point navigation remains the default mission and uses the configured
 fixed position objective and terminal goal capture.
 
 The intercept mission runs two complete navigation stacks with separate PX4 DDS
-namespaces, lidar memory, planners, offboard nodes, and crash state. Pursuit uses
+namespaces, lidar memory, planners, offboard nodes, and destruction state. Pursuit uses
 an explicit radar data boundary:
 
 ```text
@@ -149,12 +153,12 @@ retaining the last free sample as the ordinary planning goal. Unknown no-static
 space remains traversable, and no inflation or prohibited region is introduced.
 Continuous objectives retain the existing 5 m and 0.25 s route-replan gate and
 collision validation but disable terminal goal capture. Swept relative-motion
-evaluation detects a 5 m intercept between state samples and requests bounded
-force-disarm for both vehicles.
+evaluation detects a 5 m intercept between state samples and publishes one typed
+`VehicleDestroyed` event per role with cause `proximity_intercept`.
 
 The first terminal event is latched and cannot be reclassified by later inertial
-motion. An intercept requests force-disarm for both vehicles and records the
-result only after both confirmations. If the evader reaches its goal first, the
+motion. An intercept records the result only after both typed destruction events
+and both PX4 disarm confirmations. If the evader reaches its goal first, the
 coordinator freezes the interceptor objective at its current position and
 records the result only after position and speed remain inside the configured
 hold tolerances. No mission termination or disarm is requested in that branch.
@@ -163,6 +167,12 @@ the capture radius still disarms both vehicles but cannot overwrite the latched
 evader-goal outcome.
 Headless runs then shut down deterministically. GUI runs keep the terminal world
 alive after either result.
+
+Mission failure and vehicle death are independent. Generic system failures only
+produce a failed mission result. A physical Gazebo contact publishes cause
+`physical_collision`; a 5 m intercept publishes cause `proximity_intercept`.
+Only these causes can enter the force-disarm lifecycle. Physical evader death is
+settled after its disarm and a confirmed hold of a surviving interceptor.
 
 Each lidar pipeline filters returns belonging to the other tracked vehicle
 before obstacle-memory integration. This prevents a moving agent from becoming
@@ -187,6 +197,9 @@ suffix ACK, partial-replan, safe-truncation, or moving/after-hold protocol.
 
 - Entering a physical occupied cell in the active map is a hard collision
   result.
+- Intersecting a raw occupied cell with the swept oriented drone footprint is a
+  hard physical collision result.
+- Route targets and execution horizons must remain in `1.0 <= z < 32.0 m`.
 - Risk-band exposure ranks candidates but is not physical crash detection.
 - The braking supervisor evaluates the selected horizon and can publish a
   dynamically generated fallback.
@@ -208,6 +221,6 @@ horizon has been published.
 - Static mode currently plans only against canonical Occupancy3D; lidar memory
   is not fused into its 3D collision map.
 - No-static perception remains 2D and intentionally has no channel semantics.
-- Collision validation intentionally uses the drone state point against
-  physical occupied cells; vehicle footprint inflation is not part of the
+- Collision validation uses a swept oriented 3D footprint against physical raw
+  occupancy. No additional artificial footprint inflation is part of the
   planning contract.

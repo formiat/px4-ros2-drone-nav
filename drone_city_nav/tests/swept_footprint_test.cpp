@@ -4,7 +4,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
+#include <limits>
 #include <ranges>
 #include <vector>
 
@@ -43,6 +45,49 @@ TEST(SweptFootprintTest, ReportsOutsideGridSeparatelyFromPhysicalCollision) {
       SweptFootprintConfig{.radius_m = 0.5, .perimeter_samples = 8U});
 
   EXPECT_EQ(result.status, SweptFootprintStatus::kOutsideGrid);
+}
+
+TEST(SweptFootprintTest, DetectsCollisionAboveVehicleReferencePoint) {
+  const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
+  std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
+                          std::numeric_limits<float>::infinity());
+  esdf[(4U * 8U + 3U) * 8U + 3U] = 0.0F;
+  const Point3 position{3.5, 3.5, 3.5};
+
+  EXPECT_TRUE(validateFootprintAt(
+                  grid, esdf, position,
+                  SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U})
+                  .accepted());
+  EXPECT_EQ(validateFootprintAt(grid, esdf, position,
+                                SweptFootprintConfig{.radius_m = 0.2,
+                                                     .lower_extent_m = 0.2,
+                                                     .upper_extent_m = 1.0,
+                                                     .perimeter_samples = 8U,
+                                                     .radial_rings = 1U,
+                                                     .axial_samples = 3U})
+                .status,
+            SweptFootprintStatus::kRawCollision);
+}
+
+TEST(SweptFootprintTest, RotatesPhysicalVolumeWithBodyAxis) {
+  const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
+  std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
+                          std::numeric_limits<float>::infinity());
+  esdf[(3U * 8U + 3U) * 8U + 4U] = 0.0F;
+  const SweptFootprintConfig config{.radius_m = 0.2,
+                                    .lower_extent_m = 0.2,
+                                    .upper_extent_m = 1.0,
+                                    .perimeter_samples = 8U,
+                                    .radial_rings = 1U,
+                                    .axial_samples = 3U};
+  const Point3 position{3.5, 3.5, 3.5};
+
+  EXPECT_TRUE(validateFootprintAt(grid, esdf, position, FootprintBodyAxis{}, config)
+                  .accepted());
+  EXPECT_EQ(validateFootprintAt(grid, esdf, position, FootprintBodyAxis{1.0, 0.0, 0.0},
+                                config)
+                .status,
+            SweptFootprintStatus::kRawCollision);
 }
 
 } // namespace

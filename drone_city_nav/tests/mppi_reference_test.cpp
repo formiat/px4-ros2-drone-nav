@@ -87,6 +87,46 @@ TEST(MppiReferenceTest, NearWallFreeCellIsCriticalRatherThanCollision) {
   EXPECT_EQ(metrics.worst_tier, RiskTier::kCritical);
 }
 
+TEST(MppiReferenceTest, PhysicalFootprintRejectsAdjacentRawCell) {
+  const EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F};
+  std::vector<float> esdf(16U, 10.0F);
+  esdf[1U * 4U + 2U] = 0.0F;
+  const std::array<Control, 1> controls{};
+  const std::array<Control, 1> noise{};
+  const FootprintConfig footprint{.radius_m = 0.82F,
+                                  .lower_extent_m = 0.23F,
+                                  .upper_extent_m = 0.35F,
+                                  .perimeter_samples = 12U,
+                                  .radial_rings = 2U,
+                                  .axial_samples = 3U};
+
+  const RolloutMetrics metrics = simulateReference(
+      State{1.5F, 1.5F, 0.0F}, controls, noise, DynamicsConfig{}, RiskConfig{},
+      CostConfig{}, grid, esdf, 3.0F, 1.5F, false, Control{}, -1.0F, footprint);
+
+  EXPECT_TRUE(metrics.collision);
+  EXPECT_EQ(metrics.worst_tier, RiskTier::kCollision);
+}
+
+TEST(MppiReferenceTest, ComputationalBoundaryIsNotRawCollision) {
+  const EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(16U, 10.0F);
+  const std::array<Control, 1> controls{};
+  const std::array<Control, 1> noise{};
+  const FootprintConfig footprint{.radius_m = 0.82F,
+                                  .lower_extent_m = 0.23F,
+                                  .upper_extent_m = 0.35F,
+                                  .perimeter_samples = 12U,
+                                  .radial_rings = 2U,
+                                  .axial_samples = 3U};
+
+  const RolloutMetrics metrics = simulateReference(
+      State{0.1F, 1.5F, 0.0F}, controls, noise, DynamicsConfig{}, RiskConfig{},
+      CostConfig{}, grid, esdf, 3.0F, 1.5F, false, Control{}, -1.0F, footprint);
+
+  EXPECT_FALSE(metrics.collision);
+}
+
 TEST(MppiReferenceTest, HeadProgressIsMeasuredAtConfiguredEarlyHorizon) {
   constexpr int kWidth = 20;
   constexpr int kHeight = 20;

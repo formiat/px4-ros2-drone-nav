@@ -134,6 +134,10 @@ ProductionMppiNode::ProductionMppiNode()
   mission_goal_.x = declare_parameter<double>("goal_x_m", 216.0);
   mission_goal_.y = declare_parameter<double>("goal_y_m", 378.0);
   mission_goal_.z = declare_parameter<double>("goal_z_m", 18.0);
+  flight_envelope_config_.minimum_target_z_m =
+      declare_parameter<double>("minimum_target_z_m", 1.0);
+  flight_envelope_config_.maximum_target_z_m =
+      declare_parameter<double>("maximum_target_z_m", 32.0);
   dynamic_objective_replan_distance_m_ =
       declare_parameter<double>("dynamic_objective_replan_distance_m", 5.0);
   dynamic_objective_replan_period_s_ =
@@ -142,8 +146,9 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("tracking_objective_ray_sample_spacing_m", 0.25);
   if (!(dynamic_objective_replan_distance_m_ > 0.0) ||
       !(dynamic_objective_replan_period_s_ > 0.0) ||
-      !(tracking_objective_ray_sample_spacing_m_ > 0.0)) {
-    throw std::invalid_argument{"dynamic objective replan thresholds must be positive"};
+      !(tracking_objective_ray_sample_spacing_m_ > 0.0) ||
+      !insideFlightEnvelope(mission_goal_, flight_envelope_config_)) {
+    throw std::invalid_argument{"invalid navigation objective configuration"};
   }
   navigation_objective_.store(std::make_shared<const ProductionNavigationObjective>(
                                   ProductionNavigationObjective{
@@ -251,8 +256,29 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("constrained_route_vertical_capture_speed_mps", 0.75);
   safety_config_.physical_footprint_radius_m =
       declare_parameter<double>("physical_footprint_radius_m", 0.82);
+  safety_config_.physical_footprint_lower_extent_m =
+      declare_parameter<double>("physical_footprint_lower_extent_m", 0.23);
+  safety_config_.physical_footprint_upper_extent_m =
+      declare_parameter<double>("physical_footprint_upper_extent_m", 0.35);
   safety_config_.physical_footprint_samples = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("physical_footprint_samples", 12));
+  safety_config_.physical_footprint_radial_rings = static_cast<std::size_t>(
+      declare_parameter<std::int64_t>("physical_footprint_radial_rings", 2));
+  safety_config_.physical_footprint_axial_samples = static_cast<std::size_t>(
+      declare_parameter<std::int64_t>("physical_footprint_axial_samples", 3));
+  mppi_config_.footprint = mppi::FootprintConfig{
+      .radius_m = static_cast<float>(safety_config_.physical_footprint_radius_m),
+      .lower_extent_m =
+          static_cast<float>(safety_config_.physical_footprint_lower_extent_m),
+      .upper_extent_m =
+          static_cast<float>(safety_config_.physical_footprint_upper_extent_m),
+      .perimeter_samples =
+          static_cast<std::uint32_t>(safety_config_.physical_footprint_samples),
+      .radial_rings =
+          static_cast<std::uint32_t>(safety_config_.physical_footprint_radial_rings),
+      .axial_samples =
+          static_cast<std::uint32_t>(safety_config_.physical_footprint_axial_samples),
+  };
   mppi_config_.costs.head_progress_horizon_s =
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
@@ -368,6 +394,7 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("global_lattice_3d_vertical_step_m", 1.0);
   lattice_3d_config_.sample_step_m =
       declare_parameter<double>("global_lattice_3d_sample_step_m", 0.5);
+  lattice_3d_config_.flight_envelope = flight_envelope_config_;
   lattice_3d_config_.planning_goal_distance_m = static_lattice_distance;
   lattice_3d_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_3d_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
@@ -451,12 +478,28 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("safety_swept_validation_step_m", 0.25);
   lattice_config_.physical_footprint_radius_m =
       safety_config_.physical_footprint_radius_m;
+  lattice_config_.physical_footprint_lower_extent_m =
+      safety_config_.physical_footprint_lower_extent_m;
+  lattice_config_.physical_footprint_upper_extent_m =
+      safety_config_.physical_footprint_upper_extent_m;
   lattice_config_.physical_footprint_samples =
       safety_config_.physical_footprint_samples;
+  lattice_config_.physical_footprint_radial_rings =
+      safety_config_.physical_footprint_radial_rings;
+  lattice_config_.physical_footprint_axial_samples =
+      safety_config_.physical_footprint_axial_samples;
   lattice_3d_config_.physical_footprint_radius_m =
       safety_config_.physical_footprint_radius_m;
+  lattice_3d_config_.physical_footprint_lower_extent_m =
+      safety_config_.physical_footprint_lower_extent_m;
+  lattice_3d_config_.physical_footprint_upper_extent_m =
+      safety_config_.physical_footprint_upper_extent_m;
   lattice_3d_config_.physical_footprint_samples =
       safety_config_.physical_footprint_samples;
+  lattice_3d_config_.physical_footprint_radial_rings =
+      safety_config_.physical_footprint_radial_rings;
+  lattice_3d_config_.physical_footprint_axial_samples =
+      safety_config_.physical_footprint_axial_samples;
   safety_config_.position_hold_capture_speed_mps =
       declare_parameter<double>("safety_position_hold_capture_speed_mps", 0.20);
   const double static_safety_fallback_duration_s =
@@ -474,6 +517,7 @@ ProductionMppiNode::ProductionMppiNode()
   safety_config_.fallback_duration_s =
       std::max(configured_fallback_duration_s, minimum_fallback_duration_s);
   safety_config_.dt_s = mppi_config_.dynamics.dt_s;
+  safety_config_.flight_envelope = flight_envelope_config_;
   liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", true);
   liveness_config_.observation_window_s =
       declare_parameter<double>("liveness_observation_window_s", 1.0);
@@ -506,7 +550,11 @@ ProductionMppiNode::ProductionMppiNode()
       lattice_3d_config_.frontier_validation_maximum_states == 0U ||
       !(safety_config_.swept_validation_step_m > 0.0) ||
       !(safety_config_.physical_footprint_radius_m >= 0.0) ||
+      !(safety_config_.physical_footprint_lower_extent_m >= 0.0) ||
+      !(safety_config_.physical_footprint_upper_extent_m >= 0.0) ||
       safety_config_.physical_footprint_samples == 0U ||
+      safety_config_.physical_footprint_radial_rings == 0U ||
+      safety_config_.physical_footprint_axial_samples < 2U ||
       !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
       !(frontier_blacklist_ttl_s_ > 0.0) || !(no_static_soft_tabu_penalty_ >= 0.0) ||
       !(no_static_soft_tabu_sample_spacing_m_ > 0.0) ||

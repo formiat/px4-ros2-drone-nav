@@ -22,7 +22,9 @@ real-aircraft operation.
 - Braking fallback when the selected horizon is not executable.
 - Canonical 3D static world with a `5 x 8` Manhattan grid, two L-shaped channels,
   and one straight-through channel.
-- Gazebo contact-based crash detection.
+- Typed vehicle destruction from Gazebo contact or 5 m proximity intercept.
+- Swept oriented 3D drone-footprint collision checks.
+- A configured half-open flight envelope, currently `1.0 <= z < 32.0 m`.
 - RViz, JSONL, lidar snapshots, and mission diagnostics.
 
 ## Main Runtime Nodes
@@ -32,7 +34,8 @@ real-aircraft operation.
 - `production_mppi_node` owns ESDF preparation, 3D lattice routes, MPPI, and
   horizon publication.
 - `mppi_offboard_node` executes fresh timestamped horizons through PX4.
-- `collision_crash_node` converts Gazebo contacts into a latched crash state.
+- `collision_crash_node` converts Gazebo contacts into typed physical-destruction
+  events.
 - `mission_monitor_node` observes mission completion and physical crashes.
 - `lidar_debug_node` records map-frame lidar and navigation snapshots.
 

@@ -140,7 +140,11 @@ production_mppi_node:
     constrained_route_vertical_capture_margin_m: 0.5
     constrained_route_vertical_capture_speed_mps: 0.75
     physical_footprint_radius_m: 0.82
+    physical_footprint_lower_extent_m: 0.23
+    physical_footprint_upper_extent_m: 0.35
     physical_footprint_samples: 12
+    physical_footprint_radial_rings: 2
+    physical_footprint_axial_samples: 3
     route_constraint_diagnostics_distance_m: 30.0
     maximum_vertical_acceleration_mps2: 4.0
     critical_distance_m: 1.0
@@ -154,6 +158,8 @@ production_mppi_node:
     goal_x_m: 216.0
     goal_y_m: 378.0
     goal_z_m: 18.0
+    minimum_target_z_m: 1.0
+    maximum_target_z_m: 32.0
     navigation_objective_topic: /drone_city_nav/navigation_objective
     dynamic_objective_replan_distance_m: 5.0
     dynamic_objective_replan_period_s: 0.25
@@ -255,6 +261,8 @@ mppi_offboard_node:
     mppi_control_lookahead_s: 0.05
     mppi_fallback_braking_acceleration_mps2: 8.0
     initial_altitude_m: 18.0
+    minimum_target_z_m: 1.0
+    maximum_target_z_m: 32.0
     offboard_control_mode_topic: /fmu/in/offboard_control_mode
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
     vehicle_command_topic: /fmu/in/vehicle_command
@@ -268,7 +276,10 @@ mppi_offboard_node:
     rviz_drone_marker_topic: /drone_city_nav/drone_marker
     rviz_drone_marker_id: 0
     vehicle_navigation_state_topic: /drone_city_nav/vehicle_state
-    vehicle_termination_topic: /drone_city_nav/termination
+    vehicle_destroyed_topic: /drone_city_nav/vehicle_destroyed
+    vehicle_role: 0
+    mission_epoch: 0
+    death_force_disarm_retry_period_s: 0.2
     mission_start_topic: /drone_city_nav/mission_start
     require_mission_start_signal: false
     target_system: 1
@@ -279,7 +290,9 @@ mppi_offboard_node:
 collision_crash_node:
   ros__parameters:
     contacts_topic: /drone_city_nav/drone_contacts
-    crash_state_topic: /drone_city_nav/crash_state
+    vehicle_destroyed_topic: /drone_city_nav/vehicle_destroyed
+    vehicle_role: 0
+    mission_epoch: 0
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
@@ -339,6 +352,7 @@ lidar_debug_node:
 mission_monitor_node:
   ros__parameters:
     use_static_map: true
+    vehicle_destroyed_topic: /drone_city_nav/vehicle_destroyed
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     start_x_m: 54.0

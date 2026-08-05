@@ -1,10 +1,10 @@
-#include "drone_city_nav/crash_disarm_lifecycle.hpp"
-#include "drone_city_nav/msg/crash_state.hpp"
+#include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
+#include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
-#include "drone_city_nav/msg/vehicle_termination.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
+#include "drone_city_nav/vehicle_destruction_disarm_lifecycle.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <px4_msgs/msg/offboard_control_mode.hpp>
@@ -24,6 +24,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
 #include <tf2_ros/transform_broadcaster.h>
 
 namespace drone_city_nav {
@@ -82,6 +83,35 @@ namespace {
   }
 }
 
+[[nodiscard]] const char* vehicleRoleName(const std::uint8_t role) noexcept {
+  switch (role) {
+    case msg::VehicleDestroyed::ROLE_UNSPECIFIED:
+      return "unspecified";
+    case msg::VehicleDestroyed::ROLE_INTERCEPTOR:
+      return "interceptor";
+    case msg::VehicleDestroyed::ROLE_EVADER:
+      return "evader";
+    default:
+      return "invalid";
+  }
+}
+
+[[nodiscard]] const char* vehicleDeathCauseName(const std::uint8_t cause) noexcept {
+  switch (cause) {
+    case msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION:
+      return "physical_collision";
+    case msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT:
+      return "proximity_intercept";
+    default:
+      return "invalid";
+  }
+}
+
+[[nodiscard]] bool validVehicleDeathCause(const std::uint8_t cause) noexcept {
+  return cause == msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
+         cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT;
+}
+
 } // namespace
 
 class MppiOffboardNode final : public rclcpp::Node {
@@ -89,6 +119,13 @@ public:
   MppiOffboardNode()
       : Node{"mppi_offboard_node"} {
     initial_altitude_m_ = declare_parameter<double>("initial_altitude_m", 18.0);
+    flight_envelope_config_.minimum_target_z_m =
+        declare_parameter<double>("minimum_target_z_m", 1.0);
+    flight_envelope_config_.maximum_target_z_m =
+        declare_parameter<double>("maximum_target_z_m", 32.0);
+    if (!insideFlightEnvelope(initial_altitude_m_, flight_envelope_config_)) {
+      throw std::invalid_argument{"takeoff altitude is outside flight envelope"};
+    }
     takeoff_hover_s_ = declare_parameter<double>("takeoff_hover_s", 1.0);
     control_lookahead_s_ = declare_parameter<double>("mppi_control_lookahead_s", 0.05);
     fallback_braking_acceleration_mps2_ =
@@ -97,11 +134,18 @@ public:
         static_cast<int>(declare_parameter<std::int64_t>("warmup_setpoints", 20));
     command_resend_period_s_ =
         declare_parameter<double>("command_resend_period_s", 2.0);
-    crash_disarm_lifecycle_ = std::make_unique<CrashDisarmLifecycle>(
-        CrashDisarmLifecycleConfig{.retry_period_s = declare_parameter<double>(
-                                       "crash_force_disarm_retry_period_s", 0.2)});
+    destruction_disarm_lifecycle_ = std::make_unique<VehicleDestructionDisarmLifecycle>(
+        VehicleDestructionDisarmConfig{.retry_period_s = declare_parameter<double>(
+                                           "death_force_disarm_retry_period_s", 0.2)});
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
     auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
+    expected_vehicle_role_ = static_cast<std::uint8_t>(declare_parameter<std::int64_t>(
+        "vehicle_role", msg::VehicleDestroyed::ROLE_UNSPECIFIED));
+    mission_epoch_ =
+        static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 0));
+    if (expected_vehicle_role_ > msg::VehicleDestroyed::ROLE_EVADER) {
+      throw std::invalid_argument{"invalid offboard vehicle role"};
+    }
     rviz_drone_follow_tf_enabled_ =
         declare_parameter<bool>("rviz_drone_follow_tf_enabled", true);
     rviz_drone_follow_parent_frame_ =
@@ -167,44 +211,48 @@ public:
           vehicle_status_ = *status;
           vehicle_status_seen_ = true;
         });
-    crash_state_sub_ = create_subscription<msg::CrashState>(
-        declare_parameter<std::string>("crash_state_topic",
-                                       "/drone_city_nav/crash_state"),
+    vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
+        declare_parameter<std::string>("vehicle_destroyed_topic",
+                                       "/drone_city_nav/vehicle_destroyed"),
         rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
-        [this](const msg::CrashState::SharedPtr state) {
-          if (!state->crashed || crash_disarm_lifecycle_->latched()) {
+        [this](const msg::VehicleDestroyed::SharedPtr destroyed) {
+          const bool expected_role =
+              expected_vehicle_role_ == msg::VehicleDestroyed::ROLE_UNSPECIFIED ||
+              destroyed->vehicle_role == expected_vehicle_role_;
+          const bool expected_epoch =
+              mission_epoch_ == 0U || destroyed->mission_epoch == mission_epoch_;
+          if (!validVehicleDeathCause(destroyed->death_cause) || !expected_role ||
+              !expected_epoch) {
+            RCLCPP_ERROR(get_logger(),
+                         "VEHICLE_DESTROYED rejected=true reason=invalid_contract "
+                         "cause=%u role=%u mission_epoch=%" PRIu64
+                         " expected_role=%u expected_epoch=%" PRIu64,
+                         static_cast<unsigned>(destroyed->death_cause),
+                         static_cast<unsigned>(destroyed->vehicle_role),
+                         destroyed->mission_epoch,
+                         static_cast<unsigned>(expected_vehicle_role_), mission_epoch_);
             return;
           }
-          crash_disarm_lifecycle_->latch(now().nanoseconds());
+          if (destruction_disarm_lifecycle_->latched()) {
+            return;
+          }
+          destroyed_role_ = destroyed->vehicle_role;
+          destroyed_cause_ = destroyed->death_cause;
+          destruction_detail_ = destroyed->detail;
+          destruction_mission_epoch_ = destroyed->mission_epoch;
+          destruction_disarm_lifecycle_->latch(now().nanoseconds());
           horizon_.reset();
           auto_arm_ = false;
           auto_offboard_ = false;
           RCLCPP_ERROR(get_logger(),
-                       "PHYSICAL_COLLISION offboard_crash_latched=true reason='%s'"
-                       " drone_collision='%s' obstacle_collision='%s'",
-                       state->reason.c_str(), state->drone_collision.c_str(),
-                       state->obstacle_collision.c_str());
-        });
-    termination_sub_ = create_subscription<msg::VehicleTermination>(
-        declare_parameter<std::string>("vehicle_termination_topic",
-                                       "/drone_city_nav/termination"),
-        rclcpp::QoS{1}.reliable().transient_local(),
-        [this](const msg::VehicleTermination::SharedPtr termination) {
-          if (crash_disarm_lifecycle_->latched()) {
-            return;
-          }
-          termination_reason_ =
-              termination->detail.empty() ? "mission_termination" : termination->detail;
-          crash_disarm_lifecycle_->latch(now().nanoseconds());
-          horizon_.reset();
-          auto_arm_ = false;
-          auto_offboard_ = false;
-          RCLCPP_INFO(get_logger(),
-                      "VEHICLE_TERMINATION latched=true mission_epoch=%" PRIu64
-                      " reason=%u detail='%s'",
-                      termination->mission_epoch,
-                      static_cast<unsigned>(termination->reason),
-                      termination_reason_.c_str());
+                       "VEHICLE_DESTROYED latched=true role=%s cause=%s "
+                       "mission_epoch=%" PRIu64 " detail='%s' "
+                       "drone_collision='%s' obstacle_collision='%s'",
+                       vehicleRoleName(destroyed_role_),
+                       vehicleDeathCauseName(destroyed_cause_),
+                       destruction_mission_epoch_, destruction_detail_.c_str(),
+                       destroyed->drone_collision.c_str(),
+                       destroyed->obstacle_collision.c_str());
         });
     require_mission_start_signal_ =
         declare_parameter<bool>("require_mission_start_signal", false);
@@ -351,6 +399,16 @@ private:
     } else if (horizon.stationary_position_hold &&
                !finitePoint(horizon.stationary_hold_position)) {
       rejection_reason = "non_finite_hold_target";
+    } else if (!std::ranges::all_of(horizon.points,
+                                    [this](const msg::MppiHorizonPoint& point) {
+                                      return insideFlightEnvelope(
+                                          point.position.z, flight_envelope_config_);
+                                    })) {
+      rejection_reason = "point_outside_flight_envelope";
+    } else if (horizon.stationary_position_hold &&
+               !insideFlightEnvelope(horizon.stationary_hold_position.z,
+                                     flight_envelope_config_)) {
+      rejection_reason = "hold_target_outside_flight_envelope";
     } else if (horizon.execution_mode >
                msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD) {
       rejection_reason = "invalid_execution_mode";
@@ -399,21 +457,29 @@ private:
   void controlTick() {
     const bool armed = vehicle_status_.arming_state ==
                        px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
-    const CrashDisarmUpdate crash_disarm = crash_disarm_lifecycle_->update(
-        now().nanoseconds(), vehicle_status_seen_, armed);
-    if (crash_disarm.latched) {
-      if (crash_disarm.force_disarm_requested) {
+    const VehicleDestructionDisarmUpdate destruction_disarm =
+        destruction_disarm_lifecycle_->update(now().nanoseconds(), vehicle_status_seen_,
+                                              armed);
+    if (destruction_disarm.latched) {
+      if (destruction_disarm.force_disarm_requested) {
         publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
                        0.0F, kPx4ForceDisarmMagicParam2);
         RCLCPP_INFO(get_logger(),
-                    "VEHICLE_TERMINATION force_disarm_sent=true armed=%s detail='%s'",
-                    armed ? "true" : "unknown_or_false", termination_reason_.c_str());
+                    "VEHICLE_DESTROYED force_disarm_sent=true role=%s cause=%s "
+                    "armed=%s mission_epoch=%" PRIu64 " detail='%s'",
+                    vehicleRoleName(destroyed_role_),
+                    vehicleDeathCauseName(destroyed_cause_),
+                    armed ? "true" : "unknown_or_false", destruction_mission_epoch_,
+                    destruction_detail_.c_str());
       }
-      if (crash_disarm.confirmed && !crash_disarm_confirmed_logged_) {
-        crash_disarm_confirmed_logged_ = true;
+      if (destruction_disarm.confirmed && !destruction_disarm_confirmed_logged_) {
+        destruction_disarm_confirmed_logged_ = true;
         RCLCPP_INFO(get_logger(),
-                    "VEHICLE_TERMINATION force_disarm_confirmed=true detail='%s'",
-                    termination_reason_.c_str());
+                    "VEHICLE_DESTROYED disarm_confirmed=true role=%s cause=%s "
+                    "mission_epoch=%" PRIu64 " detail='%s'",
+                    vehicleRoleName(destroyed_role_),
+                    vehicleDeathCauseName(destroyed_cause_), destruction_mission_epoch_,
+                    destruction_detail_.c_str());
       }
       return;
     }
@@ -584,6 +650,7 @@ private:
   }
 
   double initial_altitude_m_{18.0};
+  FlightEnvelopeConfig flight_envelope_config_{};
   double takeoff_hover_s_{1.0};
   double control_lookahead_s_{0.05};
   double fallback_braking_acceleration_mps2_{8.0};
@@ -607,12 +674,12 @@ private:
   bool rviz_drone_follow_tf_enabled_{true};
   bool position_valid_{false};
   bool vehicle_status_seen_{false};
-  bool crash_disarm_confirmed_logged_{false};
+  bool destruction_disarm_confirmed_logged_{false};
   bool require_mission_start_signal_{false};
   bool mission_started_{false};
   Point2 px4_local_origin_{54.0, 54.0};
   VehicleCommandEndpoint endpoint_{};
-  std::unique_ptr<CrashDisarmLifecycle> crash_disarm_lifecycle_;
+  std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
@@ -621,7 +688,12 @@ private:
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   std::string rviz_drone_follow_frame_{"drone_follow"};
   std::string applied_control_feedback_frame_id_{"map"};
-  std::string termination_reason_{"physical_collision"};
+  std::string destruction_detail_;
+  std::uint64_t destruction_mission_epoch_{0U};
+  std::uint64_t mission_epoch_{0U};
+  std::uint8_t destroyed_role_{msg::VehicleDestroyed::ROLE_UNSPECIFIED};
+  std::uint8_t destroyed_cause_{0U};
+  std::uint8_t expected_vehicle_role_{msg::VehicleDestroyed::ROLE_UNSPECIFIED};
   std::unique_ptr<tf2_ros::TransformBroadcaster> rviz_drone_follow_tf_broadcaster_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr rviz_drone_marker_pub_;
   rclcpp::Publisher<msg::MppiControlFeedback>::SharedPtr applied_control_feedback_pub_;
@@ -630,8 +702,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
-  rclcpp::Subscription<msg::CrashState>::SharedPtr crash_state_sub_;
-  rclcpp::Subscription<msg::VehicleTermination>::SharedPtr termination_sub_;
+  rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_start_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoint_pub_;

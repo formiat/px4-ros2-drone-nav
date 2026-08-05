@@ -1,6 +1,7 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <array>
@@ -358,15 +359,69 @@ __device__ Control limitControlStep(Control control, const Control previous,
   return control;
 }
 
-__device__ bool intersectsSolid(const State& state, const KnownSolid& solid) {
-  if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
-    return false;
+struct DeviceBodyAxis {
+  float x{0.0F};
+  float y{0.0F};
+  float z{1.0F};
+};
+
+__device__ DeviceBodyAxis normalizeAxis(const DeviceBodyAxis axis) {
+  const float length = sqrtf(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
+  return length > 1.0e-6F && isfinite(length)
+             ? DeviceBodyAxis{axis.x / length, axis.y / length, axis.z / length}
+             : DeviceBodyAxis{};
+}
+
+__device__ DeviceBodyAxis bodyAxisFromControl(const Control control) {
+  constexpr float kGravityMps2{9.80665F};
+  return normalizeAxis(DeviceBodyAxis{control.ax, control.ay,
+                                      control.az + kGravityMps2});
+}
+
+__device__ bool cylinderProjectionOverlaps(
+    const float center_projection, const float axis_projection,
+    const float solid_min, const float solid_max,
+    const FootprintConfig footprint) {
+  const float projection = clampValue(axis_projection, -1.0F, 1.0F);
+  const float radial_projection =
+      footprint.radius_m * sqrtf(fmaxf(0.0F, 1.0F - projection * projection));
+  const float maximum_axial = projection >= 0.0F
+                                  ? footprint.upper_extent_m * projection
+                                  : -footprint.lower_extent_m * projection;
+  const float minimum_axial = projection >= 0.0F
+                                  ? -footprint.lower_extent_m * projection
+                                  : footprint.upper_extent_m * projection;
+  return center_projection + maximum_axial + radial_projection >= solid_min &&
+         center_projection + minimum_axial - radial_projection <= solid_max;
+}
+
+__device__ bool intersectsSolid(const State& state, const DeviceBodyAxis body_axis,
+                                const FootprintConfig footprint,
+                                const KnownSolid& solid) {
+  if (!(footprint.radius_m > 0.0F)) {
+    if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
+      return false;
+    }
+    const float dx = state.x - solid.center_x_m;
+    const float dy = state.y - solid.center_y_m;
+    return fabsf(dx * solid.normal_x + dy * solid.normal_y) <= solid.half_depth_m &&
+           fabsf(dx * solid.lateral_x + dy * solid.lateral_y) <=
+               solid.half_width_m;
   }
   const float dx = state.x - solid.center_x_m;
   const float dy = state.y - solid.center_y_m;
   const float depth = dx * solid.normal_x + dy * solid.normal_y;
   const float lateral = dx * solid.lateral_x + dy * solid.lateral_y;
-  return fabsf(depth) <= solid.half_depth_m && fabsf(lateral) <= solid.half_width_m;
+  const float axis_depth =
+      body_axis.x * solid.normal_x + body_axis.y * solid.normal_y;
+  const float axis_lateral =
+      body_axis.x * solid.lateral_x + body_axis.y * solid.lateral_y;
+  return cylinderProjectionOverlaps(depth, axis_depth, -solid.half_depth_m,
+                                    solid.half_depth_m, footprint) &&
+         cylinderProjectionOverlaps(lateral, axis_lateral, -solid.half_width_m,
+                                    solid.half_width_m, footprint) &&
+         cylinderProjectionOverlaps(state.z, body_axis.z, solid.min_z_m,
+                                    solid.max_z_m, footprint);
 }
 
 struct RouteProjection {
@@ -426,15 +481,15 @@ struct DeviceEsdfQuery {
 };
 
 __device__ DeviceEsdfQuery
-queryEsdf(const State& state, const EsdfGrid grid,
+queryEsdfPoint(const float x, const float y, const float z, const EsdfGrid grid,
           const cudaTextureObject_t esdf_texture) {
-  const float cell_x_float = (state.x - grid.origin_x_m) / grid.resolution_m;
-  const float cell_y_float = (state.y - grid.origin_y_m) / grid.resolution_m;
+  const float cell_x_float = (x - grid.origin_x_m) / grid.resolution_m;
+  const float cell_y_float = (y - grid.origin_y_m) / grid.resolution_m;
   const int cell_x = static_cast<int>(floorf(cell_x_float));
   const int cell_y = static_cast<int>(floorf(cell_y_float));
   const int depth = max(1, grid.depth);
   const int cell_z = depth > 1
-                         ? static_cast<int>(floorf((state.z - grid.origin_z_m) /
+                         ? static_cast<int>(floorf((z - grid.origin_z_m) /
                                                    grid.resolution_m))
                          : 0;
   if (cell_x < 0 || cell_y < 0 || cell_z < 0 || cell_x >= grid.width ||
@@ -457,15 +512,130 @@ queryEsdf(const State& state, const EsdfGrid grid,
       grid.origin_y_m + (static_cast<float>(cell_y) + 0.5F) * grid.resolution_m;
   const float center_z_m =
       grid.origin_z_m + (static_cast<float>(cell_z) + 0.5F) * grid.resolution_m;
-  const float dx = state.x - center_x_m;
-  const float dy = state.y - center_y_m;
-  const float dz = depth > 1 ? state.z - center_z_m : 0.0F;
+  const float dx = x - center_x_m;
+  const float dy = y - center_y_m;
+  const float dz = depth > 1 ? z - center_z_m : 0.0F;
   const float half_diagonal_scale = depth > 1 ? 0.86602540378443864676F
                                                : 0.70710678118654752440F;
   const float correction_m = sqrtf(dx * dx + dy * dy + dz * dz) +
                              half_diagonal_scale * grid.resolution_m;
   return {fmaxf(0.0F, center_distance_m - correction_m),
           center_distance_m == 0.0F};
+}
+
+__device__ DeviceBodyAxis crossAxis(const DeviceBodyAxis first,
+                                    const DeviceBodyAxis second) {
+  return DeviceBodyAxis{first.y * second.z - first.z * second.y,
+                        first.z * second.x - first.x * second.z,
+                        first.x * second.y - first.y * second.x};
+}
+
+__device__ DeviceEsdfQuery queryFootprint(
+    const State& state, const DeviceBodyAxis body_axis,
+    const FootprintConfig footprint, const EsdfGrid grid,
+    const cudaTextureObject_t esdf_texture) {
+  DeviceEsdfQuery result = queryEsdfPoint(state.x, state.y, state.z, grid,
+                                          esdf_texture);
+  if (result.raw_collision || !(footprint.radius_m > 0.0F) ||
+      footprint.perimeter_samples == 0U) {
+    return result;
+  }
+  if (grid.depth <= 1) {
+    const float minimum_x = state.x - footprint.radius_m;
+    const float maximum_x = state.x + footprint.radius_m;
+    const float minimum_y = state.y - footprint.radius_m;
+    const float maximum_y = state.y + footprint.radius_m;
+    const int minimum_cell_x = max(
+        0, static_cast<int>(floorf((minimum_x - grid.origin_x_m) / grid.resolution_m)));
+    const int maximum_cell_x = min(
+        grid.width - 1,
+        static_cast<int>(ceilf((maximum_x - grid.origin_x_m) / grid.resolution_m)) -
+            1);
+    const int minimum_cell_y = max(
+        0, static_cast<int>(floorf((minimum_y - grid.origin_y_m) / grid.resolution_m)));
+    const int maximum_cell_y = min(
+        grid.height - 1,
+        static_cast<int>(ceilf((maximum_y - grid.origin_y_m) / grid.resolution_m)) -
+            1);
+    const float radius_squared = footprint.radius_m * footprint.radius_m;
+    for (int cell_y = minimum_cell_y; cell_y <= maximum_cell_y; ++cell_y) {
+      for (int cell_x = minimum_cell_x; cell_x <= maximum_cell_x; ++cell_x) {
+        const float center_distance_m =
+            tex3D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
+                         static_cast<float>(cell_y) + 0.5F, 0.5F);
+        if ((!isfinite(center_distance_m) &&
+             !(isinf(center_distance_m) && center_distance_m > 0.0F)) ||
+            center_distance_m < 0.0F) {
+          result.raw_collision = true;
+          return result;
+        }
+        if (center_distance_m != 0.0F) {
+          continue;
+        }
+        const float cell_minimum_x =
+            grid.origin_x_m + static_cast<float>(cell_x) * grid.resolution_m;
+        const float cell_minimum_y =
+            grid.origin_y_m + static_cast<float>(cell_y) * grid.resolution_m;
+        const float nearest_x =
+            clampValue(state.x, cell_minimum_x, cell_minimum_x + grid.resolution_m);
+        const float nearest_y =
+            clampValue(state.y, cell_minimum_y, cell_minimum_y + grid.resolution_m);
+        const float dx = state.x - nearest_x;
+        const float dy = state.y - nearest_y;
+        if (dx * dx + dy * dy <= radius_squared) {
+          result.clearance_m = 0.0F;
+          result.raw_collision = true;
+          return result;
+        }
+      }
+    }
+    result.clearance_m = fmaxf(0.0F, result.clearance_m - footprint.radius_m);
+    return result;
+  }
+  const DeviceBodyAxis axis = normalizeAxis(body_axis);
+  const DeviceBodyAxis reference = fabsf(axis.z) < 0.9F
+                                       ? DeviceBodyAxis{0.0F, 0.0F, 1.0F}
+                                       : DeviceBodyAxis{1.0F, 0.0F, 0.0F};
+  const DeviceBodyAxis radial_x = normalizeAxis(crossAxis(axis, reference));
+  const DeviceBodyAxis radial_y = normalizeAxis(crossAxis(axis, radial_x));
+  const std::uint32_t axial_samples = max(2U, footprint.axial_samples);
+  const std::uint32_t radial_rings = max(1U, footprint.radial_rings);
+  for (std::uint32_t axial_sample = 0U; axial_sample < axial_samples;
+       ++axial_sample) {
+    const float axial_ratio = static_cast<float>(axial_sample) /
+                              static_cast<float>(axial_samples - 1U);
+    const float axial_offset =
+        -footprint.lower_extent_m +
+        axial_ratio * (footprint.lower_extent_m + footprint.upper_extent_m);
+    for (std::uint32_t ring = 0U; ring <= radial_rings; ++ring) {
+      const std::uint32_t angular_samples =
+          ring == 0U ? 1U : footprint.perimeter_samples;
+      const float radial_offset =
+          footprint.radius_m * static_cast<float>(ring) /
+          static_cast<float>(radial_rings);
+      for (std::uint32_t angular = 0U; angular < angular_samples; ++angular) {
+        const float angle = 2.0F * kPi * static_cast<float>(angular) /
+                            static_cast<float>(angular_samples);
+        const float radial_x_component = cosf(angle) * radial_x.x +
+                                         sinf(angle) * radial_y.x;
+        const float radial_y_component = cosf(angle) * radial_x.y +
+                                         sinf(angle) * radial_y.y;
+        const float radial_z_component = cosf(angle) * radial_x.z +
+                                         sinf(angle) * radial_y.z;
+        const DeviceEsdfQuery query = queryEsdfPoint(
+            state.x + axial_offset * axis.x + radial_offset * radial_x_component,
+            state.y + axial_offset * axis.y + radial_offset * radial_y_component,
+            state.z + axial_offset * axis.z + radial_offset * radial_z_component,
+            grid, esdf_texture);
+        result.clearance_m = fminf(result.clearance_m, query.clearance_m);
+        result.raw_collision = result.raw_collision || query.raw_collision;
+        if (result.raw_collision) {
+          return result;
+        }
+      }
+    }
+  }
+  return result;
 }
 
 __global__ void
@@ -475,7 +645,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          std::uint8_t* worst_tier, std::uint8_t* raw_collision,
          std::uint8_t* solid_collision, std::size_t rollouts, std::size_t steps,
          State initial, State target, DynamicsConfig dynamics, RiskConfig risk,
-         CostConfig costs, EsdfGrid grid, cudaTextureObject_t esdf_texture,
+         FootprintConfig footprint, CostConfig costs, EsdfGrid grid,
+         cudaTextureObject_t esdf_texture,
          const KnownSolid* solids, std::size_t solid_count,
          const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
@@ -526,6 +697,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
         max(1, static_cast<int>(ceilf(segment_length_m / validation_step_m)));
     float clearance = kInfinity;
     bool segment_raw_hit = false;
+    const DeviceBodyAxis body_axis = bodyAxisFromControl(control);
     for (int sample = 1; sample <= validation_samples; ++sample) {
       const float ratio =
           static_cast<float>(sample) / static_cast<float>(validation_samples);
@@ -534,12 +706,13 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       swept_state.y = previous_state.y + ratio * (state.y - previous_state.y);
       swept_state.z = previous_state.z + ratio * (state.z - previous_state.z);
       const DeviceEsdfQuery esdf_query =
-          queryEsdf(swept_state, grid, esdf_texture);
+          queryFootprint(swept_state, body_axis, footprint, grid, esdf_texture);
       clearance = fminf(clearance, esdf_query.clearance_m);
       segment_raw_hit = segment_raw_hit || esdf_query.raw_collision;
       for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;
            ++solid_index) {
-        solid_hit = intersectsSolid(swept_state, solids[solid_index]);
+        solid_hit =
+            intersectsSolid(swept_state, body_axis, footprint, solids[solid_index]);
       }
     }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
@@ -828,25 +1001,80 @@ __global__ void limitControls(Control* controls, std::size_t steps,
   }
 }
 
-[[nodiscard]] bool hostSolidCollision(const State& state,
-                                      std::span<const KnownSolid> solids) {
-  return std::ranges::any_of(solids, [&state](const KnownSolid& solid) {
-    if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
-      return false;
+[[nodiscard]] SweptFootprintConfig
+hostFootprintConfig(const FootprintConfig& footprint) noexcept {
+  return SweptFootprintConfig{
+      .radius_m = footprint.radius_m,
+      .lower_extent_m = footprint.lower_extent_m,
+      .upper_extent_m = footprint.upper_extent_m,
+      .perimeter_samples = footprint.perimeter_samples,
+      .radial_rings = footprint.radial_rings,
+      .axial_samples = footprint.axial_samples,
+  };
+}
+
+[[nodiscard]] FootprintBodyAxis
+hostBodyAxis(const Control& control) noexcept {
+  return bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
+}
+
+[[nodiscard]] bool hostSolidCollision(
+    const State& state, const FootprintBodyAxis& body_axis,
+    const FootprintConfig& footprint_config,
+    const std::span<const KnownSolid> solids) {
+  const SweptFootprintConfig footprint = hostFootprintConfig(footprint_config);
+  const auto overlaps_projection =
+      [&](const double center_projection, const double axis_projection,
+          const double solid_min, const double solid_max) {
+        const double projection = std::clamp(axis_projection, -1.0, 1.0);
+        const double radial_projection =
+            footprint.radius_m *
+            std::sqrt(std::max(0.0, 1.0 - projection * projection));
+        const double maximum_axial = projection >= 0.0
+                                         ? footprint.upper_extent_m * projection
+                                         : -footprint.lower_extent_m * projection;
+        const double minimum_axial = projection >= 0.0
+                                         ? -footprint.lower_extent_m * projection
+                                         : footprint.upper_extent_m * projection;
+        return center_projection + maximum_axial + radial_projection >= solid_min &&
+               center_projection + minimum_axial - radial_projection <= solid_max;
+      };
+  return std::ranges::any_of(solids, [&](const KnownSolid& solid) {
+    if (!(footprint.radius_m > 0.0)) {
+      if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
+        return false;
+      }
+      const float dx = state.x - solid.center_x_m;
+      const float dy = state.y - solid.center_y_m;
+      return std::abs(dx * solid.normal_x + dy * solid.normal_y) <=
+                 solid.half_depth_m &&
+             std::abs(dx * solid.lateral_x + dy * solid.lateral_y) <=
+                 solid.half_width_m;
     }
     const float dx = state.x - solid.center_x_m;
     const float dy = state.y - solid.center_y_m;
-    return std::abs(dx * solid.normal_x + dy * solid.normal_y) <= solid.half_depth_m &&
-           std::abs(dx * solid.lateral_x + dy * solid.lateral_y) <= solid.half_width_m;
+    const double depth = dx * solid.normal_x + dy * solid.normal_y;
+    const double lateral = dx * solid.lateral_x + dy * solid.lateral_y;
+    return overlaps_projection(
+               depth,
+               body_axis.x * solid.normal_x + body_axis.y * solid.normal_y,
+               -solid.half_depth_m, solid.half_depth_m) &&
+           overlaps_projection(
+               lateral,
+               body_axis.x * solid.lateral_x + body_axis.y * solid.lateral_y,
+               -solid.half_width_m, solid.half_width_m) &&
+           overlaps_projection(state.z, body_axis.z, solid.min_z_m, solid.max_z_m);
   });
 }
 
 [[nodiscard]] bool
 hostSweptSolidCollision(const State& initial, const std::span<const Control> controls,
                         const DynamicsConfig& dynamics,
+                        const FootprintConfig& footprint,
                         const std::span<const KnownSolid> solids) {
   State previous = initial;
   for (const Control& control : controls) {
+    const FootprintBodyAxis body_axis = hostBodyAxis(control);
     const State next = integrateReference(previous, control, dynamics);
     const float segment_length_m =
         std::hypot(next.x - previous.x, next.y - previous.y);
@@ -858,7 +1086,7 @@ hostSweptSolidCollision(const State& initial, const std::span<const Control> con
       state.x = std::lerp(previous.x, next.x, ratio);
       state.y = std::lerp(previous.y, next.y, ratio);
       state.z = std::lerp(previous.z, next.z, ratio);
-      if (hostSolidCollision(state, solids)) {
+      if (hostSolidCollision(state, body_axis, footprint, solids)) {
         return true;
       }
     }
@@ -1013,7 +1241,8 @@ public:
         buffers_.minimum_clearance.get(), buffers_.worst_tier.get(),
         buffers_.raw_collision.get(), buffers_.solid_collision.get(), config_.rollouts,
         config_.steps, input.initial_state, input.target, config_.dynamics,
-        config_.risk, config_.costs, textures_[active_texture_].grid(),
+        config_.risk, config_.footprint, config_.costs,
+        textures_[active_texture_].grid(),
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
         route_active ? input.route->initial_station_m : 0.0F, previous_applied_control,
@@ -1132,9 +1361,11 @@ public:
               input.initial_state, controls, zero_noise_, config_.dynamics, config_.risk,
               config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
               input.target.x, input.target.y, config_.early_exit_on_collision,
-              previous_applied_control, input.reference_speed_mps);
+              previous_applied_control, input.reference_speed_mps,
+              config_.footprint);
           const bool known_solid_collision = hostSweptSolidCollision(
-              input.initial_state, controls, config_.dynamics, known_solids_);
+              input.initial_state, controls, config_.dynamics, config_.footprint,
+              known_solids_);
           return classifyMppiPostUpdate(
               result.eligible_risk_contract,
               MppiPostUpdateObservation{
@@ -1243,7 +1474,8 @@ public:
                 : initial_distance -
                       std::hypot(input.target.x - state.x, input.target.y - state.y);
       }
-      if (hostSolidCollision(state, known_solids_)) {
+      if (hostSolidCollision(state, hostBodyAxis(control), config_.footprint,
+                             known_solids_)) {
         result.known_solid_collision = true;
       }
     }
@@ -1251,7 +1483,7 @@ public:
         input.initial_state, updated_, zero_noise_, config_.dynamics, config_.risk,
         config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
         input.target.x, input.target.y, config_.early_exit_on_collision,
-        previous_applied_control, input.reference_speed_mps);
+        previous_applied_control, input.reference_speed_mps, config_.footprint);
     result.raw_collision = metrics.collision;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;

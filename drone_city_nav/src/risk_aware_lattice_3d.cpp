@@ -119,6 +119,16 @@ struct ReconstructedPath {
   return reversed ? edge.entry : edge.exit;
 }
 
+[[nodiscard]] bool
+channelInsideFlightEnvelope(const ConstrainedFreeSpaceEdge& channel,
+                            const FlightEnvelopeConfig& envelope) noexcept {
+  return insideFlightEnvelope(channel.entry, envelope) &&
+         insideFlightEnvelope(channel.exit, envelope) &&
+         std::ranges::all_of(channel.centerline, [&](const RouteSample3D& sample) {
+           return insideFlightEnvelope(sample.position, envelope);
+         });
+}
+
 [[nodiscard]] Point3 pointFor(const Key& key, const Point3& origin,
                               const std::span<const ConstrainedFreeSpaceEdge> channels,
                               const RiskAwareLattice3DConfig& config) noexcept {
@@ -248,6 +258,10 @@ channelSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
                        const RiskAwareLattice3DConfig& config,
                        const double maximum_connection_distance_m,
                        Lattice3DSuccessorDiagnostics& diagnostics) {
+  if (!channelInsideFlightEnvelope(channel, config.flight_envelope)) {
+    ++diagnostics.channel_rejected_flight_envelope;
+    return std::nullopt;
+  }
   const Point3 entry = channelEntry(channel, reversed);
   if (distance3D(current, entry) > maximum_connection_distance_m) {
     ++diagnostics.channel_rejected_connection_distance;
@@ -459,7 +473,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   Lattice3DSearchTermination termination{Lattice3DSearchTermination::kOpenSetExhausted};
   std::optional<CostMetrics> goal_connector_metrics;
   double goal_connector_clearance = std::numeric_limits<double>::infinity();
-  constexpr std::array<int, 3> kOffsets{-1, 0, 1};
+  constexpr std::array<int, 3> kHorizontalOffsets{-1, 0, 1};
+  constexpr std::array<int, 3> kVerticalOffsets{0, 1, -1};
   while (!open.empty()) {
     if (expansions >= config.maximum_expansions) {
       termination = Lattice3DSearchTermination::kExpansionBudgetExhausted;
@@ -520,9 +535,9 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
 
     std::vector<LatticeEvaluation> lattice_evaluations;
     lattice_evaluations.reserve(26U);
-    for (const int dx : kOffsets) {
-      for (const int dy : kOffsets) {
-        for (const int dz : kOffsets) {
+    for (const int dx : kHorizontalOffsets) {
+      for (const int dy : kHorizontalOffsets) {
+        for (const int dz : kVerticalOffsets) {
           if (entry.key.kind == NodeKind::kLattice && dx == 0 && dy == 0 && dz == 0) {
             continue;
           }
@@ -815,7 +830,11 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
       !(config.horizontal_step_m > 0.0) || !(config.vertical_step_m > 0.0) ||
       !(config.sample_step_m > 0.0) || !(config.nominal_horizontal_speed_mps > 0.0) ||
       !(config.nominal_vertical_speed_mps > 0.0) ||
-      !(config.channel_connection_distance_m > 0.0)) {
+      !(config.channel_connection_distance_m > 0.0) ||
+      evaluateFlightEnvelopeAltitude(start.z, config.flight_envelope) !=
+          FlightEnvelopeStatus::kValid ||
+      evaluateFlightEnvelopeAltitude(mission_goal.z, config.flight_envelope) !=
+          FlightEnvelopeStatus::kValid) {
     return {};
   }
   const double full_distance = distance3D(start, mission_goal);

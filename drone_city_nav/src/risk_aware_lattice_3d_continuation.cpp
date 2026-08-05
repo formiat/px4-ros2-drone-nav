@@ -46,7 +46,8 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
     const Point3& terminal, const Vec3& incoming_direction,
     const Lattice3DRiskStage stage, const RiskAwareLattice3DConfig& config,
     BoundedWorkerPool* const worker_pool) {
-  constexpr std::array<int, 3> kOffsets{-1, 0, 1};
+  constexpr std::array<int, 3> kHorizontalOffsets{-1, 0, 1};
+  constexpr std::array<int, 3> kVerticalOffsets{0, 1, -1};
   const std::size_t maximum_states =
       std::max<std::size_t>(1U, config.frontier_validation_maximum_states);
   std::queue<Candidate> pending;
@@ -69,9 +70,9 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
 
     std::vector<NeighborEvaluation> evaluations;
     evaluations.reserve(26U);
-    for (const int dx : kOffsets) {
-      for (const int dy : kOffsets) {
-        for (const int dz : kOffsets) {
+    for (const int dx : kHorizontalOffsets) {
+      for (const int dy : kHorizontalOffsets) {
+        for (const int dz : kVerticalOffsets) {
           if (dx == 0 && dy == 0 && dz == 0) {
             continue;
           }

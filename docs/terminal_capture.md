@@ -24,7 +24,7 @@ Mission completion is determined by `mission_monitor_node`, using:
 - goal radius;
 - low-speed threshold;
 - stable hold duration;
-- absence of a latched crash.
+- absence of a latched `VehicleDestroyed` event.
 
 Mission monitoring does not send control commands.
 

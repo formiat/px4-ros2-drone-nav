@@ -283,7 +283,7 @@ TEST(RiskAwareLattice, DetoursAroundObservedCornerAt69By123) {
   config.maximum_search_time_ms = 1000.0;
   config.minimum_frontier_reachable_depth_m = 20.0;
 
-  const Point2 start{68.5, 122.5};
+  const Point2 start{67.5, 121.5};
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, start, std::numbers::pi / 4.0, Point2{120.5, 180.5}, config);
 

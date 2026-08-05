@@ -3,6 +3,7 @@
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
+#include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
@@ -387,6 +388,7 @@ private:
   Point2 px4_local_origin_{54.0, 54.0};
   Point3 mission_start_{54.0, 54.0, 0.0};
   Point3 mission_goal_{216.0, 378.0, 18.0};
+  FlightEnvelopeConfig flight_envelope_config_{};
   double dynamic_objective_replan_distance_m_{5.0};
   double dynamic_objective_replan_period_s_{0.25};
   double tracking_objective_ray_sample_spacing_m_{0.25};

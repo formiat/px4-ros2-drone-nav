@@ -99,10 +99,14 @@ void ProductionMppiNode::processStaticGuideSearch(
     const auto smoothing_started = std::chrono::steady_clock::now();
     StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
         *mutable_route, initial_spans, world.grid, *world.distances_m,
-        SweptFootprintConfig{.radius_m = safety_config_.physical_footprint_radius_m,
-                             .perimeter_samples =
-                                 safety_config_.physical_footprint_samples,
-                             .sweep_step_m = safety_config_.swept_validation_step_m},
+        SweptFootprintConfig{
+            .radius_m = safety_config_.physical_footprint_radius_m,
+            .lower_extent_m = safety_config_.physical_footprint_lower_extent_m,
+            .upper_extent_m = safety_config_.physical_footprint_upper_extent_m,
+            .perimeter_samples = safety_config_.physical_footprint_samples,
+            .radial_rings = safety_config_.physical_footprint_radial_rings,
+            .axial_samples = safety_config_.physical_footprint_axial_samples,
+            .sweep_step_m = safety_config_.swept_validation_step_m},
         static_route_geometry_config_, route_envelope_config_,
         planning_worker_pool_.get());
     prepared.route_smoothing_ms =
@@ -133,12 +137,16 @@ void ProductionMppiNode::processStaticGuideSearch(
                          : std::span<const RouteSample3D>{},
           *mutable_route, world.grid, *world.distances_m, mission_goal,
           static_route_extension_config_.minimum_endpoint_improvement_m,
-          lattice.reached_mission_goal,
+          lattice.reached_mission_goal, lattice_3d_config_.flight_envelope,
           world.static_route_extension_request || world.static_route_replan_request,
-          SweptFootprintConfig{.radius_m = safety_config_.physical_footprint_radius_m,
-                               .perimeter_samples =
-                                   safety_config_.physical_footprint_samples,
-                               .sweep_step_m = safety_config_.swept_validation_step_m});
+          SweptFootprintConfig{
+              .radius_m = safety_config_.physical_footprint_radius_m,
+              .lower_extent_m = safety_config_.physical_footprint_lower_extent_m,
+              .upper_extent_m = safety_config_.physical_footprint_upper_extent_m,
+              .perimeter_samples = safety_config_.physical_footprint_samples,
+              .radial_rings = safety_config_.physical_footprint_radial_rings,
+              .axial_samples = safety_config_.physical_footprint_axial_samples,
+              .sweep_step_m = safety_config_.swept_validation_step_m});
     } else {
       validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kInvalidEsdf};
@@ -258,12 +266,14 @@ void ProductionMppiNode::processStaticGuideSearch(
       "continuation_states=%zu continuation_depth_m=%.2f "
       "lattice_successor_generated=%zu lattice_successor_accepted=%zu "
       "lattice_successor_reject_edge=%zu lattice_successor_reject_zero=%zu "
-      "lattice_successor_reject_grid=%zu lattice_successor_reject_invalid=%zu "
+      "lattice_successor_reject_grid=%zu lattice_successor_reject_envelope=%zu "
+      "lattice_successor_reject_invalid=%zu "
       "lattice_successor_reject_collision=%zu lattice_successor_reject_risk=%zu "
       "lattice_successor_reject_cost=%zu "
       "channel_successor_generated=%zu channel_successor_accepted=%zu "
       "channel_successor_rejected=%zu channel_successor_reject_connection=%zu "
-      "channel_successor_reject_grid=%zu channel_successor_reject_invalid=%zu "
+      "channel_successor_reject_grid=%zu channel_successor_reject_envelope=%zu "
+      "channel_successor_reject_invalid=%zu "
       "channel_successor_reject_collision=%zu channel_successor_reject_risk=%zu "
       "channel_successor_reject_cost=%zu "
       "successor_search_batches=%zu successor_search_candidates=%zu "
@@ -313,6 +323,7 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.successor_diagnostics.lattice_rejected_edge,
       lattice.successor_diagnostics.lattice_rejected_zero_length,
       lattice.successor_diagnostics.lattice_rejected_outside_grid,
+      lattice.successor_diagnostics.lattice_rejected_flight_envelope,
       lattice.successor_diagnostics.lattice_rejected_invalid_esdf,
       lattice.successor_diagnostics.lattice_rejected_raw_collision,
       lattice.successor_diagnostics.lattice_rejected_risk_stage,
@@ -322,6 +333,7 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.successor_diagnostics.channel_rejected,
       lattice.successor_diagnostics.channel_rejected_connection_distance,
       lattice.successor_diagnostics.channel_rejected_outside_grid,
+      lattice.successor_diagnostics.channel_rejected_flight_envelope,
       lattice.successor_diagnostics.channel_rejected_invalid_esdf,
       lattice.successor_diagnostics.channel_rejected_raw_collision,
       lattice.successor_diagnostics.channel_rejected_risk_stage,

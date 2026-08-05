@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <builtin_interfaces/msg/time.hpp>
 #include <cmath>
+#include <ranges>
 
 #include "production_mppi_node.hpp"
 
@@ -69,6 +70,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const bool goal_hold =
       planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold;
   if (goal_hold) {
+    if (!insideFlightEnvelope(mission_goal, flight_envelope_config_)) {
+      RCLCPP_ERROR(get_logger(),
+                   "EXECUTION_HORIZON rejected reason=goal_outside_flight_envelope "
+                   "target_z=%.3f",
+                   mission_goal.z);
+      return publication;
+    }
     safety_intervention_tracker_.reset();
     brake_hold_lifecycle_.reset();
     const Point3 hold_position = mission_goal;
@@ -115,6 +123,14 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                                        *esdf.distances_m, esdf.grid, safety_config_,
                                        false, {});
     intervention = safety_intervention_tracker_.update(now_ns, safety);
+    if (safety.flight_envelope_violation) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "EXECUTION_HORIZON flight_envelope_violation=true action=safety_fallback "
+          "minimum_z=%.3f maximum_z_exclusive=%.3f",
+          flight_envelope_config_.minimum_target_z_m,
+          flight_envelope_config_.maximum_target_z_m);
+    }
   } else {
     safety_intervention_tracker_.reset();
   }
@@ -164,6 +180,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     controls = safety.fallback_controls;
   }
   if (states.size() < 2U || controls.empty()) {
+    return publication;
+  }
+  if (!std::ranges::all_of(states, [this](const mppi::State& state) {
+        return insideFlightEnvelope(state.z, flight_envelope_config_);
+      })) {
+    RCLCPP_ERROR(get_logger(),
+                 "EXECUTION_HORIZON rejected reason=post_safety_flight_envelope");
     return publication;
   }
 

@@ -108,6 +108,11 @@ while the original evader-goal outcome remains unchanged. The GUI command keeps
 Gazebo and RViz open after either outcome; stop it explicitly when inspection is
 complete.
 
+A mission error never requests disarm. Force-disarm occurs only after a typed
+physical-collision or proximity-intercept destruction event. A physical evader
+crash is a failed technical run and is settled only after evader disarm plus a
+confirmed interceptor hold.
+
 Stop simulator leftovers:
 
 ```bash

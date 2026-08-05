@@ -10,6 +10,7 @@ namespace drone_city_nav::detail {
 
 enum class Lattice3DEdgeEvaluationStatus : std::uint8_t {
   kValid,
+  kOutsideFlightEnvelope,
   kOutsideGrid,
   kInvalidEsdf,
   kRawCollision,

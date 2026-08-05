@@ -30,13 +30,21 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
                                               const Lattice3DRiskStage stage,
                                               const RiskAwareLattice3DConfig& config) {
   const double length = distance3D(first, second);
+  if (!segmentInsideFlightEnvelope(first, second, config.flight_envelope)) {
+    return Lattice3DEdgeEvaluation{
+        .status = Lattice3DEdgeEvaluationStatus::kOutsideFlightEnvelope};
+  }
   if (!(length > 1.0e-9)) {
     return Lattice3DEdgeEvaluation{.status = Lattice3DEdgeEvaluationStatus::kValid};
   }
   const SweptFootprintResult footprint = validateSweptFootprint(
       grid, esdf_m, first, second,
       SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
+                           .lower_extent_m = config.physical_footprint_lower_extent_m,
+                           .upper_extent_m = config.physical_footprint_upper_extent_m,
                            .perimeter_samples = config.physical_footprint_samples,
+                           .radial_rings = config.physical_footprint_radial_rings,
+                           .axial_samples = config.physical_footprint_axial_samples,
                            .sweep_step_m = config.sample_step_m});
   if (!footprint.accepted()) {
     switch (footprint.status) {
@@ -112,6 +120,7 @@ void accumulateLattice3DSuccessorDiagnostics(
   target.lattice_rejected_edge += addition.lattice_rejected_edge;
   target.lattice_rejected_zero_length += addition.lattice_rejected_zero_length;
   target.lattice_rejected_outside_grid += addition.lattice_rejected_outside_grid;
+  target.lattice_rejected_flight_envelope += addition.lattice_rejected_flight_envelope;
   target.lattice_rejected_invalid_esdf += addition.lattice_rejected_invalid_esdf;
   target.lattice_rejected_raw_collision += addition.lattice_rejected_raw_collision;
   target.lattice_rejected_risk_stage += addition.lattice_rejected_risk_stage;
@@ -123,6 +132,7 @@ void accumulateLattice3DSuccessorDiagnostics(
   target.channel_rejected_connection_distance +=
       addition.channel_rejected_connection_distance;
   target.channel_rejected_outside_grid += addition.channel_rejected_outside_grid;
+  target.channel_rejected_flight_envelope += addition.channel_rejected_flight_envelope;
   target.channel_rejected_invalid_esdf += addition.channel_rejected_invalid_esdf;
   target.channel_rejected_raw_collision += addition.channel_rejected_raw_collision;
   target.channel_rejected_risk_stage += addition.channel_rejected_risk_stage;
@@ -137,6 +147,10 @@ void recordLattice3DRejectedEdge(Lattice3DSuccessorDiagnostics& diagnostics,
   switch (status) {
     case Lattice3DEdgeEvaluationStatus::kValid:
       return;
+    case Lattice3DEdgeEvaluationStatus::kOutsideFlightEnvelope:
+      counter = channel ? &diagnostics.channel_rejected_flight_envelope
+                        : &diagnostics.lattice_rejected_flight_envelope;
+      break;
     case Lattice3DEdgeEvaluationStatus::kOutsideGrid:
       counter = channel ? &diagnostics.channel_rejected_outside_grid
                         : &diagnostics.lattice_rejected_outside_grid;

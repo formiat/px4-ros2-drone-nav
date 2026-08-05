@@ -1,8 +1,0 @@
-builtin_interfaces/Time stamp
-bool crashed
-string reason
-string drone_collision
-string obstacle_collision
-geometry_msgs/Point contact_position
-float64 altitude_m
-float64 speed_mps

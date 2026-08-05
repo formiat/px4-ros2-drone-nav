@@ -453,6 +453,8 @@ void ProductionMppiNode::processDiagnostics(
        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
        << " lattice_3d_successor_reject_grid="
        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
+       << " lattice_3d_successor_reject_envelope="
+       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
        << " lattice_3d_successor_reject_invalid="
        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
        << " lattice_3d_successor_reject_collision="
@@ -471,6 +473,8 @@ void ProductionMppiNode::processDiagnostics(
        << esdf.lattice_3d_successor_diagnostics.channel_rejected_connection_distance
        << " channel_successor_reject_grid="
        << esdf.lattice_3d_successor_diagnostics.channel_rejected_outside_grid
+       << " channel_successor_reject_envelope="
+       << esdf.lattice_3d_successor_diagnostics.channel_rejected_flight_envelope
        << " channel_successor_reject_invalid="
        << esdf.lattice_3d_successor_diagnostics.channel_rejected_invalid_esdf
        << " channel_successor_reject_collision="
@@ -844,6 +848,8 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
         << ",\"lattice_3d_successors_rejected_outside_grid\":"
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
+        << ",\"lattice_3d_successors_rejected_flight_envelope\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
         << ",\"lattice_3d_successors_rejected_invalid_esdf\":"
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
         << ",\"lattice_3d_successors_rejected_raw_collision\":"
@@ -862,6 +868,8 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.lattice_3d_successor_diagnostics.channel_rejected_connection_distance
         << ",\"channel_successors_rejected_outside_grid\":"
         << esdf.lattice_3d_successor_diagnostics.channel_rejected_outside_grid
+        << ",\"channel_successors_rejected_flight_envelope\":"
+        << esdf.lattice_3d_successor_diagnostics.channel_rejected_flight_envelope
         << ",\"channel_successors_rejected_invalid_esdf\":"
         << esdf.lattice_3d_successor_diagnostics.channel_rejected_invalid_esdf
         << ",\"channel_successors_rejected_raw_collision\":"

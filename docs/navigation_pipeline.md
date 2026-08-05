@@ -92,8 +92,8 @@ Each planning tick:
 
 1. shifts the previous nominal controls by elapsed time;
 2. generates CUDA control perturbations;
-3. simulates thousands of point-mass rollouts;
-4. queries the 3D ESDF;
+3. simulates thousands of dynamic-state rollouts;
+4. queries the 3D ESDF with the swept oriented physical footprint;
 5. selects the best eligible risk class;
 6. computes the weighted control update;
 7. limits the first control relative to applied-control feedback;
@@ -107,7 +107,8 @@ path for open-loop execution.
 The reconstructed horizon receives an observational post-update
 classification. Raw physical collision causes execution to switch to the
 braking fallback. The independent horizon safety check estimates
-time-to-collision and stopping capability against the current ESDF.
+time-to-collision and stopping capability against the current ESDF. Targets and
+all published horizon states must remain inside the configured flight envelope.
 
 The liveness monitor compares predicted and actual progress. Persistent
 prediction without real movement can reseed the MPPI nominal controls and

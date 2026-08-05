@@ -13,7 +13,7 @@ Occupancy3D.
 
 ## State And Control
 
-The benchmark and production engine use a 2.5D point-mass state:
+The benchmark and production engine use a 3D translational state with yaw:
 
 ```text
 x, y, z, vx, vy, vz, yaw, yaw_rate
@@ -63,7 +63,8 @@ and control effort.
 
 Risk tiers are not a continuously varying clearance penalty. Conservative ESDF
 distance classifies the critical and planning bands. Hard raw collision is
-reported only when the sampled state enters a physical occupied cell.
+reported when the swept oriented physical footprint intersects a raw occupied
+cell; there is no additional prohibited inflation layer.
 
 ## Static And No-Static Profiles
 

@@ -10,8 +10,18 @@ namespace drone_city_nav {
 
 struct SweptFootprintConfig {
   double radius_m{0.82};
+  double lower_extent_m{0.23};
+  double upper_extent_m{0.35};
   std::size_t perimeter_samples{12U};
+  std::size_t radial_rings{2U};
+  std::size_t axial_samples{3U};
   double sweep_step_m{0.25};
+};
+
+struct FootprintBodyAxis {
+  double x{0.0};
+  double y{0.0};
+  double z{1.0};
 };
 
 enum class SweptFootprintStatus {
@@ -37,8 +47,23 @@ validateFootprintAt(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
                     const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] SweptFootprintResult
+validateFootprintAt(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
+                    const Point3& position, const FootprintBodyAxis& body_axis,
+                    const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
 validateSweptFootprint(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
                        const Point3& first, const Point3& second,
                        const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
+validateSweptFootprint(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
+                       const Point3& first, const FootprintBodyAxis& first_body_axis,
+                       const Point3& second, const FootprintBodyAxis& second_body_axis,
+                       const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] FootprintBodyAxis
+bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,
+                              double gravity_mps2 = 9.80665) noexcept;
 
 } // namespace drone_city_nav

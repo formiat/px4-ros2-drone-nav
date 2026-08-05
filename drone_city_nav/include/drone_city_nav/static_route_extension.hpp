@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/active_global_guide.hpp"
+#include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -86,6 +87,7 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
   kOutsideEsdf,
   kInvalidEsdf,
   kRawCollision,
+  kOutsideFlightEnvelope,
   kInvalidChannelSpan,
   kProtectedConstrainedSuffix,
   kNoEndpointImprovement,
@@ -143,7 +145,7 @@ deferStaticRouteReleaseDuringExtension(bool request_in_flight,
     std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
     std::span<const float> esdf_m, const Point3& mission_goal,
     double minimum_endpoint_improvement_m, bool reaches_mission_goal,
-    bool required_continuation = false,
+    const FlightEnvelopeConfig& flight_envelope, bool required_continuation = false,
     const SweptFootprintConfig& footprint_config = {}) noexcept;
 
 [[nodiscard]] std::string_view

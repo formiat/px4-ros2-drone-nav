@@ -87,7 +87,11 @@ struct RiskAwareLatticeConfig {
   double short_primitive_length_m{2.0};
   double primitive_sample_step_m{0.5};
   double physical_footprint_radius_m{0.82};
+  double physical_footprint_lower_extent_m{0.23};
+  double physical_footprint_upper_extent_m{0.35};
   std::size_t physical_footprint_samples{12U};
+  std::size_t physical_footprint_radial_rings{2U};
+  std::size_t physical_footprint_axial_samples{3U};
   double goal_tolerance_m{5.0};
   double receding_goal_distance_m{60.0};
   double critical_distance_m{1.0};

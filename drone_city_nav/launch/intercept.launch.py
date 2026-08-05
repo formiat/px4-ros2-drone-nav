@@ -210,9 +210,10 @@ def generate_launch_description():
                     "source_system": config["target_system"],
                     "require_mission_start_signal": True,
                     "mission_start_topic": f"{prefix}/mission_start",
-                    "vehicle_termination_topic": f"{prefix}/termination",
+                    "vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed",
+                    "vehicle_role": 1 if primary else 2,
+                    "mission_epoch": 1,
                     "vehicle_navigation_state_topic": f"{prefix}/state",
-                    "crash_state_topic": f"{prefix}/crash_state",
                     "rviz_drone_follow_tf_enabled": primary,
                     "rviz_drone_follow_frame": "drone_follow",
                     "rviz_drone_marker_topic": "/drone_city_nav/drone_marker",
@@ -227,7 +228,9 @@ def generate_launch_description():
                 "collision_crash_node",
                 {
                     "contacts_topic": contacts_topic,
-                    "crash_state_topic": f"{prefix}/crash_state",
+                    "vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed",
+                    "vehicle_role": 1 if primary else 2,
+                    "mission_epoch": 1,
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
                     "px4_vehicle_attitude_topic": f"{px4}/out/vehicle_attitude",
                     "px4_vehicle_status_topic": f"{px4}/out/vehicle_status_v1",
@@ -487,6 +490,12 @@ def generate_launch_description():
                             "evader_state_topic": "/vehicles/evader/state",
                             "interceptor_mission_command_topic": (
                                 "/vehicles/interceptor/mission_command"
+                            ),
+                            "interceptor_destroyed_topic": (
+                                "/vehicles/interceptor/vehicle_destroyed"
+                            ),
+                            "evader_destroyed_topic": (
+                                "/vehicles/evader/vehicle_destroyed"
                             ),
                             "radar_simulator_node_fqn": "/radar_simulator_node",
                             "shutdown_on_terminal_outcome": (

@@ -17,6 +17,7 @@ Each accepted horizon is validated for:
 - `map` frame;
 - at least two finite points;
 - a valid time window;
+- every point and hold target inside `1.0 <= z < 32.0 m`;
 - a finite stationary-hold target when requested.
 
 At 50 Hz, offboard selects the horizon time at:
@@ -49,10 +50,14 @@ Static `RouteSample3D` references carry altitude and speed constraints along
 canonical air-channel spans. MPPI follows the same typed route continuously;
 there is no separate passage hold or nearest-opening selector.
 
-## Crash Handling
+## Vehicle Destruction
 
-A latched physical crash state stops setpoint execution and repeatedly requests
-PX4 disarm. Planner collision diagnostics do not declare a physical crash.
+A typed `VehicleDestroyed` event stops setpoint execution and latches bounded
+PX4 force-disarm retries until the vehicle status confirms disarmed. The only
+accepted causes are Gazebo `physical_collision` and mission-referee
+`proximity_intercept`; role and mission epoch must match the offboard instance.
+Mission failure, goal arrival, stale state, and planner collision diagnostics do
+not publish destruction and cannot request force-disarm.
 
 ## Removed Legacy Control
 

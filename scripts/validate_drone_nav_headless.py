@@ -65,6 +65,7 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
         ros_log,
     )
     if result is None:
+        validate_intercept_physical_destruction_settlement(ros_log, errors)
         return
     outcome = result.group(1)
     settled_log = ros_log[: result.end()]
@@ -80,8 +81,8 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
                 f"intercept disarm is confirmed for {role}",
                 settled_log,
                 rf"\[vehicles\.{role}\.mppi_offboard_node\].*"
-                r"VEHICLE_TERMINATION force_disarm_confirmed=true "
-                r"detail='intercepted'",
+                rf"VEHICLE_DESTROYED disarm_confirmed=true role={role} "
+                r"cause=proximity_intercept .*detail='intercepted'",
                 errors,
             )
         return
@@ -104,12 +105,15 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
                 f"late capture disarm is confirmed for {role}",
                 settled_log,
                 rf"\[vehicles\.{role}\.mppi_offboard_node\].*"
-                r"VEHICLE_TERMINATION force_disarm_confirmed=true "
-                r"detail='late_intercept_after_evader_goal'",
+                rf"VEHICLE_DESTROYED disarm_confirmed=true role={role} "
+                r"cause=proximity_intercept "
+                r".*detail='late_intercept_after_evader_goal'",
                 errors,
             )
-    elif re.search(r"VEHICLE_TERMINATION (?:latched|force_disarm)", settled_log):
-        errors.append("FAIL: evader goal settlement must not disarm either vehicle")
+    elif re.search(r"VEHICLE_DESTROYED .*cause=proximity_intercept", settled_log):
+        errors.append(
+            "FAIL: unreported late proximity intercept changed goal settlement"
+        )
     else:
         require(
             "interceptor hold is physically confirmed",
@@ -118,6 +122,48 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
             errors,
         )
         print("OK: evader goal settlement keeps both vehicles armed")
+
+
+def validate_intercept_physical_destruction_settlement(
+    ros_log: str, errors: list[str]
+) -> None:
+    result = re.search(
+        r"MISSION_RESULT success=false mission=intercept .*"
+        r"reason='physical_collision_(interceptor|evader)' .*",
+        ros_log,
+    )
+    if result is None:
+        return
+    role = result.group(1)
+    settled_log = ros_log[: result.end()]
+    require(
+        f"physical destruction is observed for {role}",
+        settled_log,
+        rf"VEHICLE_DESTROYED referee_observed=true role={role} "
+        r"cause=physical_collision",
+        errors,
+    )
+    require(
+        f"physical destruction disarm is confirmed for {role}",
+        settled_log,
+        rf"\[vehicles\.{role}\.mppi_offboard_node\].*"
+        rf"VEHICLE_DESTROYED disarm_confirmed=true role={role} "
+        r"cause=physical_collision",
+        errors,
+    )
+    if role == "evader":
+        require(
+            "interceptor hold is requested after evader destruction",
+            settled_log,
+            r"INTERCEPTOR_HOLD requested=true",
+            errors,
+        )
+        require(
+            "interceptor hold is confirmed after evader destruction",
+            settled_log,
+            r"INTERCEPTOR_HOLD_CONFIRMED position_error_m=.* speed_mps=",
+            errors,
+        )
 
 
 def validate_intercept_radar_pipeline(ros_log: str, errors: list[str]) -> None:
@@ -265,7 +311,7 @@ def main() -> int:
             errors,
         )
 
-    if re.search(r"CRASH_EVENT|crashed=true", safety_ros_log):
+    if re.search(r"CRASH_EVENT|cause=physical_collision", safety_ros_log):
         errors.append("FAIL: crash was reported")
     else:
         print("OK: no crash was reported")

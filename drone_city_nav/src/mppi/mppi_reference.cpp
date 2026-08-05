@@ -1,6 +1,7 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
 #include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -23,10 +24,17 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
   }
 }
 
-[[nodiscard]] EsdfQueryResult sampleEsdf(const EsdfGrid& grid,
-                                         const std::span<const float> esdf,
-                                         const float x, const float y) noexcept {
-  return queryConservativeEsdf(grid, esdf, x, y);
+[[nodiscard]] SweptFootprintConfig sweptConfig(const FootprintConfig& footprint,
+                                               const float sweep_step_m) noexcept {
+  return SweptFootprintConfig{
+      .radius_m = footprint.radius_m,
+      .lower_extent_m = footprint.lower_extent_m,
+      .upper_extent_m = footprint.upper_extent_m,
+      .perimeter_samples = footprint.perimeter_samples,
+      .radial_rings = footprint.radial_rings,
+      .axial_samples = footprint.axial_samples,
+      .sweep_step_m = sweep_step_m,
+  };
 }
 
 [[nodiscard]] float squared(const float value) noexcept {
@@ -47,6 +55,12 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.head_progress_weight >= 0.0F &&
          std::isfinite(config.costs.speed_tracking_weight) &&
          config.costs.speed_tracking_weight >= 0.0F &&
+         config.footprint.radius_m >= 0.0F && config.footprint.lower_extent_m >= 0.0F &&
+         config.footprint.upper_extent_m >= 0.0F &&
+         (config.footprint.radius_m == 0.0F ||
+          (config.footprint.perimeter_samples > 0U &&
+           config.footprint.radial_rings > 0U &&
+           config.footprint.axial_samples >= 2U)) &&
          config.risk.critical_distance_m > 0.0F &&
          config.risk.preferred_distance_m >= config.risk.critical_distance_m;
 }
@@ -81,7 +95,7 @@ RolloutMetrics simulateReference(
     const RiskConfig& risk, const CostConfig& costs, const EsdfGrid& grid,
     const std::span<const float> esdf, const float target_x_m, const float target_y_m,
     const bool early_exit_on_collision, const Control previous_applied_control,
-    const float reference_speed_mps) {
+    const float reference_speed_mps, const FootprintConfig& footprint) {
   RolloutMetrics metrics{};
   metrics.minimum_clearance_m = std::numeric_limits<float>::infinity();
   State state = initial_state;
@@ -101,23 +115,17 @@ RolloutMetrics simulateReference(
     };
     const State previous_state = state;
     state = integrateReference(state, control, dynamics);
-    const float segment_length_m =
-        std::hypot(state.x - previous_state.x, state.y - previous_state.y);
     const float validation_step_m = std::max(0.05F, 0.5F * grid.resolution_m);
-    const std::size_t validation_samples = std::max<std::size_t>(
-        1U, static_cast<std::size_t>(std::ceil(segment_length_m / validation_step_m)));
-    float clearance = std::numeric_limits<float>::infinity();
-    bool raw_collision = false;
-    for (std::size_t sample = 1U; sample <= validation_samples; ++sample) {
-      const float ratio =
-          static_cast<float>(sample) / static_cast<float>(validation_samples);
-      const EsdfQueryResult query =
-          sampleEsdf(grid, esdf, std::lerp(previous_state.x, state.x, ratio),
-                     std::lerp(previous_state.y, state.y, ratio));
-      raw_collision = raw_collision || query.status != EsdfQueryStatus::kValid ||
-                      query.raw_occupied;
-      clearance = std::min(clearance, query.clearance_m);
-    }
+    const FootprintBodyAxis body_axis =
+        bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
+    const SweptFootprintResult footprint_result = validateSweptFootprint(
+        grid, esdf, Point3{previous_state.x, previous_state.y, previous_state.z},
+        body_axis, Point3{state.x, state.y, state.z}, body_axis,
+        sweptConfig(footprint, validation_step_m));
+    const bool raw_collision =
+        footprint_result.status == SweptFootprintStatus::kRawCollision ||
+        footprint_result.status == SweptFootprintStatus::kInvalidEsdf;
+    const float clearance = static_cast<float>(footprint_result.minimum_clearance_m);
     metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
     const float segment_m = dynamics.dt_s * std::hypot(state.vx, state.vy);
     if (raw_collision) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
@@ -43,6 +44,7 @@ struct Lattice3DSuccessorDiagnostics {
   std::size_t lattice_rejected_edge{0U};
   std::size_t lattice_rejected_zero_length{0U};
   std::size_t lattice_rejected_outside_grid{0U};
+  std::size_t lattice_rejected_flight_envelope{0U};
   std::size_t lattice_rejected_invalid_esdf{0U};
   std::size_t lattice_rejected_raw_collision{0U};
   std::size_t lattice_rejected_risk_stage{0U};
@@ -52,6 +54,7 @@ struct Lattice3DSuccessorDiagnostics {
   std::size_t channel_rejected{0U};
   std::size_t channel_rejected_connection_distance{0U};
   std::size_t channel_rejected_outside_grid{0U};
+  std::size_t channel_rejected_flight_envelope{0U};
   std::size_t channel_rejected_invalid_esdf{0U};
   std::size_t channel_rejected_raw_collision{0U};
   std::size_t channel_rejected_risk_stage{0U};
@@ -77,7 +80,12 @@ struct RiskAwareLattice3DConfig {
   double vertical_step_m{1.0};
   double sample_step_m{0.5};
   double physical_footprint_radius_m{0.82};
+  double physical_footprint_lower_extent_m{0.23};
+  double physical_footprint_upper_extent_m{0.35};
   std::size_t physical_footprint_samples{12U};
+  std::size_t physical_footprint_radial_rings{2U};
+  std::size_t physical_footprint_axial_samples{3U};
+  FlightEnvelopeConfig flight_envelope{};
   double planning_goal_distance_m{180.0};
   double goal_tolerance_m{2.0};
   double critical_distance_m{1.0};

@@ -11,24 +11,87 @@
 namespace drone_city_nav {
 namespace {
 
+void constrainStateToFlightEnvelope(mppi::State& state,
+                                    const FlightEnvelopeConfig& envelope) noexcept {
+  if (state.z < static_cast<float>(envelope.minimum_target_z_m)) {
+    state.z = static_cast<float>(envelope.minimum_target_z_m);
+    state.vz = std::max(0.0F, state.vz);
+  }
+  const float maximum_target_z =
+      static_cast<float>(envelope.maximum_target_z_m - 1.0e-3);
+  if (state.z >= maximum_target_z) {
+    state.z = maximum_target_z;
+    state.vz = std::min(0.0F, state.vz);
+  }
+}
+
 [[nodiscard]] bool
-intersectsKnownSolid(const mppi::State& state,
+intersectsKnownSolid(const mppi::State& state, const FootprintBodyAxis& body_axis,
+                     const SweptFootprintConfig& footprint,
                      const std::span<const mppi::KnownSolid> known_solids) noexcept {
-  return std::ranges::any_of(known_solids, [&state](const mppi::KnownSolid& solid) {
-    if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
-      return false;
+  const auto overlaps_cylinder_projection =
+      [&](const double center_projection, const double axis_projection,
+          const double solid_min, const double solid_max) {
+        const double clamped_axis_projection = std::clamp(axis_projection, -1.0, 1.0);
+        const double radial_projection =
+            footprint.radius_m *
+            std::sqrt(
+                std::max(0.0, 1.0 - clamped_axis_projection * clamped_axis_projection));
+        const double maximum_axial =
+            clamped_axis_projection >= 0.0
+                ? footprint.upper_extent_m * clamped_axis_projection
+                : -footprint.lower_extent_m * clamped_axis_projection;
+        const double minimum_axial =
+            clamped_axis_projection >= 0.0
+                ? -footprint.lower_extent_m * clamped_axis_projection
+                : footprint.upper_extent_m * clamped_axis_projection;
+        const double body_min = center_projection + minimum_axial - radial_projection;
+        const double body_max = center_projection + maximum_axial + radial_projection;
+        return body_max >= solid_min && body_min <= solid_max;
+      };
+  return std::ranges::any_of(known_solids, [&](const mppi::KnownSolid& solid) {
+    if (!(footprint.radius_m > 0.0)) {
+      if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
+        return false;
+      }
+      const float dx = state.x - solid.center_x_m;
+      const float dy = state.y - solid.center_y_m;
+      return std::abs(dx * solid.normal_x + dy * solid.normal_y) <=
+                 solid.half_depth_m &&
+             std::abs(dx * solid.lateral_x + dy * solid.lateral_y) <=
+                 solid.half_width_m;
     }
     const float dx = state.x - solid.center_x_m;
     const float dy = state.y - solid.center_y_m;
-    return std::abs(dx * solid.normal_x + dy * solid.normal_y) <= solid.half_depth_m &&
-           std::abs(dx * solid.lateral_x + dy * solid.lateral_y) <= solid.half_width_m;
+    const double depth = dx * solid.normal_x + dy * solid.normal_y;
+    const double lateral = dx * solid.lateral_x + dy * solid.lateral_y;
+    const double axis_depth =
+        body_axis.x * solid.normal_x + body_axis.y * solid.normal_y;
+    const double axis_lateral =
+        body_axis.x * solid.lateral_x + body_axis.y * solid.lateral_y;
+    return overlaps_cylinder_projection(depth, axis_depth, -solid.half_depth_m,
+                                        solid.half_depth_m) &&
+           overlaps_cylinder_projection(lateral, axis_lateral, -solid.half_width_m,
+                                        solid.half_width_m) &&
+           overlaps_cylinder_projection(state.z, body_axis.z, solid.min_z_m,
+                                        solid.max_z_m);
   });
+}
+
+[[nodiscard]] FootprintBodyAxis bodyAxisForSegment(const mppi::State& first,
+                                                   const mppi::State& second,
+                                                   const double duration_s) noexcept {
+  const double safe_duration_s = std::max(1.0e-3, duration_s);
+  return bodyAxisFromWorldAcceleration(Vec3{(second.vx - first.vx) / safe_duration_s,
+                                            (second.vy - first.vy) / safe_duration_s,
+                                            (second.vz - first.vz) / safe_duration_s});
 }
 
 void populateBrakingFallback(const mppi::State& initial,
                              const MppiHorizonSafetyConfig& config,
                              MppiHorizonSafetyResult& result) {
   mppi::State state = initial;
+  constrainStateToFlightEnvelope(state, config.flight_envelope);
   const std::size_t steps =
       static_cast<std::size_t>(std::ceil(config.fallback_duration_s / config.dt_s));
   result.fallback_horizon.reserve(steps + 1U);
@@ -55,6 +118,7 @@ void populateBrakingFallback(const mppi::State& initial,
     state.x += state.vx * static_cast<float>(config.dt_s);
     state.y += state.vy * static_cast<float>(config.dt_s);
     state.z += state.vz * static_cast<float>(config.dt_s);
+    constrainStateToFlightEnvelope(state, config.flight_envelope);
     result.fallback_controls.push_back(control);
     result.fallback_horizon.push_back(state);
   }
@@ -116,8 +180,17 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
           (2.0 * std::max(1.0e-3, config.maximum_braking_acceleration_mps2));
   result.time_to_collision_s = std::numeric_limits<double>::infinity();
   mppi::State previous = current_state;
+  const SweptFootprintConfig footprint{
+      .radius_m = config.physical_footprint_radius_m,
+      .lower_extent_m = config.physical_footprint_lower_extent_m,
+      .upper_extent_m = config.physical_footprint_upper_extent_m,
+      .perimeter_samples = config.physical_footprint_samples,
+      .radial_rings = config.physical_footprint_radial_rings,
+      .axial_samples = config.physical_footprint_axial_samples,
+      .sweep_step_m = config.swept_validation_step_m};
   for (std::size_t index = 0U; index < horizon.size(); ++index) {
     const mppi::State& next = horizon[index];
+    const FootprintBodyAxis body_axis = bodyAxisForSegment(previous, next, config.dt_s);
     const double segment_length_m =
         std::hypot(std::hypot(static_cast<double>(next.x - previous.x),
                               static_cast<double>(next.y - previous.y)),
@@ -129,14 +202,19 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
       const double ratio =
           static_cast<double>(sample) / static_cast<double>(sample_count);
       const mppi::State state = interpolateState(previous, next, ratio);
-      const SweptFootprintConfig footprint{
-          .radius_m = config.physical_footprint_radius_m,
-          .perimeter_samples = config.physical_footprint_samples,
-          .sweep_step_m = config.swept_validation_step_m};
-      if (validateFootprintAt(grid, esdf_m, Point3{state.x, state.y, state.z},
-                              footprint)
-                  .status == SweptFootprintStatus::kRawCollision ||
-          intersectsKnownSolid(state, known_solids)) {
+      if (!insideFlightEnvelope(state.z, config.flight_envelope)) {
+        result.time_to_collision_s =
+            index == 0U ? 0.0 : (static_cast<double>(index - 1U) + ratio) * config.dt_s;
+        result.flight_envelope_violation = true;
+        break;
+      }
+      const SweptFootprintResult footprint_validation = validateFootprintAt(
+          grid, esdf_m, Point3{state.x, state.y, state.z}, body_axis, footprint);
+      const bool footprint_collision =
+          footprint_validation.status == SweptFootprintStatus::kRawCollision ||
+          footprint_validation.status == SweptFootprintStatus::kInvalidEsdf;
+      if (footprint_collision ||
+          intersectsKnownSolid(state, body_axis, footprint, known_solids)) {
         result.time_to_collision_s =
             index == 0U ? 0.0 : (static_cast<double>(index - 1U) + ratio) * config.dt_s;
         break;
