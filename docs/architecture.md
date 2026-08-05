@@ -115,21 +115,42 @@ Point-to-point navigation remains the default mission and uses the configured
 fixed position objective and terminal goal capture.
 
 The intercept mission runs two complete navigation stacks with separate PX4 DDS
-namespaces, lidar memory, planners, offboard nodes, and crash state. A mission
-coordinator waits until both vehicles are armed and airborne and publishes the
-evader's fixed position objective. `InterceptGuidance` converts the evader's
-timestamped position and velocity into a typed continuous tracking objective.
-It uses a smoothed 3 s to 1 s prediction horizon with hysteresis based on the
-interceptor's along-track and cross-track position; yaw is not used.
+namespaces, lidar memory, planners, offboard nodes, and crash state. Pursuit uses
+an explicit radar data boundary:
 
-The mission coordinator does not read occupancy. The production planner
-resolves the predicted segment against its immutable raw world, stopping at the
-first occupied cell and retaining the last free sample as the ordinary planning
-goal. Unknown no-static space remains traversable, and no inflation or
-prohibited region is introduced. Continuous objectives retain the existing
-5 m and 0.25 s route-replan gate and collision validation but disable terminal
-goal capture. Swept relative-motion evaluation detects a 5 m intercept between
-state samples and requests bounded force-disarm for both vehicles.
+```text
+evader ground truth -> mission referee -> outcome and settlement only
+evader ground truth -> radar simulator -> RadarScan
+interceptor state + RadarScan -> target tracker -> TargetTrack
+interceptor state + TargetTrack -> guidance -> NavigationObjective
+```
+
+The mission referee waits until both vehicles are armed and airborne, publishes
+the evader's fixed position objective, evaluates the terminal outcome, and owns
+hold or disarm settlement. It cannot publish an interceptor navigation
+objective. Only the referee and radar simulator subscribe to evader ground
+truth; the referee verifies this subscriber set through the ROS graph before
+starting the mission.
+
+`RadarScan` exposes only range, azimuth, elevation, and relative radial velocity.
+It contains no absolute target state or simulator identity. The ideal simulator
+publishes immediately at a deterministic correlated cadence between 0.1 s and
+3.0 s. The tracker reconstructs Cartesian position from the interceptor state
+at measurement time. Its first measurement has no full velocity estimate; later
+variable-dt corrections produce a constant-velocity `TargetTrack` that coasts
+between measurements. Interceptor guidance runs at 20 Hz and converts that
+track into a typed continuous objective. It uses a smoothed 3 s to 1 s
+prediction horizon with hysteresis based on along-track and cross-track
+position; vehicle yaw is not used to choose the global route.
+
+Guidance does not read occupancy. The production planner resolves the predicted
+segment against its immutable raw world, stopping at the first occupied cell and
+retaining the last free sample as the ordinary planning goal. Unknown no-static
+space remains traversable, and no inflation or prohibited region is introduced.
+Continuous objectives retain the existing 5 m and 0.25 s route-replan gate and
+collision validation but disable terminal goal capture. Swept relative-motion
+evaluation detects a 5 m intercept between state samples and requests bounded
+force-disarm for both vehicles.
 
 The first terminal event is latched and cannot be reclassified by later inertial
 motion. An intercept requests force-disarm for both vehicles and records the

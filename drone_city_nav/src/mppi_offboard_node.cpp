@@ -248,7 +248,11 @@ private:
     velocity_x_ = state.vx;
     velocity_y_ = state.vy;
     velocity_up_mps_ = -static_cast<double>(state.vz);
-    heading_rad_ = std::isfinite(state.heading) ? state.heading : heading_rad_;
+    const bool finite_heading = std::isfinite(state.heading);
+    if (finite_heading) {
+      heading_rad_ = state.heading;
+    }
+    heading_valid_ = state.heading_good_for_control && finite_heading;
     position_valid_ = true;
     publishNavigationState();
     publishRvizDroneFollowTransform();
@@ -267,8 +271,10 @@ private:
     state.velocity.x = velocity_x_;
     state.velocity.y = velocity_y_;
     state.velocity.z = velocity_up_mps_;
+    state.heading_rad = heading_rad_;
     state.position_valid = position_valid_;
     state.velocity_valid = position_valid_;
+    state.heading_valid = heading_valid_;
     state.armed =
         vehicle_status_seen_ && vehicle_status_.arming_state ==
                                     px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
@@ -589,6 +595,7 @@ private:
   double velocity_y_{0.0};
   double velocity_up_mps_{0.0};
   double heading_rad_{0.0};
+  bool heading_valid_{false};
   double rviz_drone_marker_color_r_{0.15};
   double rviz_drone_marker_color_g_{0.65};
   double rviz_drone_marker_color_b_{1.0};

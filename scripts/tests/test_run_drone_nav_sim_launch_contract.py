@@ -349,9 +349,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.text,
         )
         self.assertIn(
-            '"shutdown_on_terminal_outcome": shutdown_on_terminal_outcome',
+            '"shutdown_on_terminal_outcome": (',
             self.intercept_launch_text,
         )
+        self.assertIn("shutdown_on_terminal_outcome\n", self.intercept_launch_text)
 
 
 if __name__ == "__main__":

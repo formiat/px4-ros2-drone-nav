@@ -50,6 +50,10 @@ rosidl_generate_interfaces(
   "msg/MppiTrajectoryHorizon.msg"
   "msg/MppiControlFeedback.msg"
   "msg/NavigationObjective.msg"
+  "msg/RadarDetection.msg"
+  "msg/RadarScan.msg"
+  "msg/TargetTrack.msg"
+  "msg/InterceptMissionCommand.msg"
   "msg/VehicleNavigationState.msg"
   "msg/VehicleTermination.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
@@ -147,6 +151,9 @@ add_library(
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/px4_ros_time_mapper.cpp
+  src/radar_cadence.cpp
+  src/radar_model.cpp
+  src/radar_target_tracker.cpp
   src/raw_guide_validation.cpp
   src/risk_aware_lattice.cpp
   src/risk_aware_lattice_geometry.cpp
@@ -287,12 +294,34 @@ ament_target_dependencies(
   rclcpp)
 enable_project_warnings(mission_monitor_node)
 
-add_executable(intercept_mission_node src/intercept_mission_node.cpp)
-target_compile_features(intercept_mission_node PRIVATE cxx_std_20)
-target_link_libraries(intercept_mission_node drone_city_nav_core
+add_executable(intercept_mission_referee_node
+               src/intercept_mission_referee_node.cpp)
+target_compile_features(intercept_mission_referee_node PRIVATE cxx_std_20)
+target_link_libraries(intercept_mission_referee_node drone_city_nav_core
                       ${cpp_typesupport_target})
-ament_target_dependencies(intercept_mission_node rclcpp std_msgs)
-enable_project_warnings(intercept_mission_node)
+ament_target_dependencies(intercept_mission_referee_node rclcpp std_msgs)
+enable_project_warnings(intercept_mission_referee_node)
+
+add_executable(radar_simulator_node src/radar_simulator_node.cpp)
+target_compile_features(radar_simulator_node PRIVATE cxx_std_20)
+target_link_libraries(radar_simulator_node drone_city_nav_core
+                      ${cpp_typesupport_target})
+ament_target_dependencies(radar_simulator_node rclcpp)
+enable_project_warnings(radar_simulator_node)
+
+add_executable(radar_target_tracker_node src/radar_target_tracker_node.cpp)
+target_compile_features(radar_target_tracker_node PRIVATE cxx_std_20)
+target_link_libraries(radar_target_tracker_node drone_city_nav_core
+                      ${cpp_typesupport_target})
+ament_target_dependencies(radar_target_tracker_node rclcpp)
+enable_project_warnings(radar_target_tracker_node)
+
+add_executable(interceptor_guidance_node src/interceptor_guidance_node.cpp)
+target_compile_features(interceptor_guidance_node PRIVATE cxx_std_20)
+target_link_libraries(interceptor_guidance_node drone_city_nav_core
+                      ${cpp_typesupport_target})
+ament_target_dependencies(interceptor_guidance_node rclcpp)
+enable_project_warnings(interceptor_guidance_node)
 
 add_executable(
   lidar_debug_node
@@ -357,7 +386,10 @@ install(
     mppi_offboard_node
     world_visualization_node
     mission_monitor_node
-    intercept_mission_node
+    intercept_mission_referee_node
+    radar_simulator_node
+    radar_target_tracker_node
+    interceptor_guidance_node
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -382,6 +414,11 @@ if(BUILD_TESTING)
   target_compile_features(tracking_objective_test PRIVATE cxx_std_20)
   target_link_libraries(tracking_objective_test drone_city_nav_core)
   enable_project_warnings(tracking_objective_test)
+
+  ament_add_gtest(radar_tracking_test tests/radar_tracking_test.cpp)
+  target_compile_features(radar_tracking_test PRIVATE cxx_std_20)
+  target_link_libraries(radar_tracking_test drone_city_nav_core)
+  enable_project_warnings(radar_tracking_test)
 
   ament_add_gtest(tracked_agent_lidar_filter_test
                   tests/tracked_agent_lidar_filter_test.cpp)

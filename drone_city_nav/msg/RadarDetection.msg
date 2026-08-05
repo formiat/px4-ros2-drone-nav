@@ -1,0 +1,5 @@
+uint64 detection_id
+float64 range_m
+float64 azimuth_rad
+float64 elevation_rad
+float64 radial_velocity_mps

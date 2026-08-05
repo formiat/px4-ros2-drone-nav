@@ -7,16 +7,15 @@ drone using external target information.
 
 The current foundation launches one interceptor and one attacking drone in
 isolated PX4 and ROS namespaces. The attacker flies from a fixed start to a
-fixed goal. The interceptor receives the attacker's current ground-truth state,
-predicts its motion, and continuously updates a tracking objective without
-entering terminal goal hold. A separation of 5 m or less destroys both drones
-and records a successful intercept outcome.
+fixed goal. The interceptor receives a radar-derived target track, predicts its
+motion, and continuously updates a tracking objective without entering terminal
+goal hold. A separation of 5 m or less destroys both drones and records a
+successful intercept outcome.
 
-The remaining work is to replace direct ground-truth state access with the
-measurement and target-tracking stages described below and to tune predictive
-guidance from repeated mission runs.
+The remaining work is to validate and tune the radar tracking and predictive
+guidance pipeline over repeated mission runs.
 
-## 2. Radar Measurement Simulation
+## 2. Radar Measurement Simulation (In Progress)
 
 Replace direct access to the target's ground-truth coordinates with a more
 realistic radar measurement model.
@@ -28,11 +27,22 @@ The radar interface will provide only:
 - elevation;
 - radial velocity.
 
-The initial implementation will use ideal measurements without noise,
-interference, latency, or measurement errors.
+The initial implementation uses ideal measurements without noise,
+interference, latency, or measurement errors. Measurement cadence follows a
+deterministic correlated random walk between 0.1 s and 3.0 s. Guidance continues
+at 20 Hz by coasting the latest target track between scans.
 
 The physical radar will not be simulated. Only the radar measurement interface
-and its integration with the interceptor will be implemented.
+and its integration with the interceptor are implemented.
+
+The pursuit data path is split into a mission referee, radar simulator, target
+tracker, and interceptor guidance node. Only the referee and radar simulator may
+subscribe to attacker ground truth. The interceptor-facing `RadarScan` carries
+range, azimuth, elevation, and relative radial velocity, but no absolute target
+position, velocity, or simulator entity identity. The first detection supports
+direct pursuit; subsequent variable-dt updates estimate Cartesian velocity for
+predictive guidance. Runtime graph validation and source-contract tests enforce
+this boundary while integration validation is in progress.
 
 ## 3. Target Motion Prediction (Completed)
 
@@ -52,15 +62,15 @@ hysteresis and a smoothed prediction horizon. Slow or invalid target velocity
 falls back to the observed target position.
 
 Prediction starts at the measurement timestamp, so telemetry age is included
-in extrapolation. The mission coordinator publishes a typed tracking objective
-without reading a map. The planner clips the prediction segment at the first
-raw occupied cell and uses the last raw-free sample. It does not search for a
-nearest free point and does not add inflation or prohibited regions. RViz and
-JSONL diagnostics expose observed, predicted, and resolved target points.
+in extrapolation. Interceptor guidance publishes a typed tracking objective from
+the radar-derived target track without reading a map. The planner clips the
+prediction segment at the first raw occupied cell and uses the last raw-free
+sample. It does not search for a nearest free point and does not add inflation
+or prohibited regions. RViz and JSONL diagnostics expose observed, predicted,
+and resolved target points.
 
-The initial target-motion prediction scope is complete. Replacing direct
-ground-truth target state with radar measurements and a tracking pipeline
-remains a separate roadmap item described in section 2.
+The initial target-motion prediction scope is complete. It now consumes the
+target track produced by the radar pipeline described in section 2.
 
 ## 4. Multiple Interceptors Versus One Attacker
 

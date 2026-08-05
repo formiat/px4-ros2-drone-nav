@@ -120,6 +120,37 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
         print("OK: evader goal settlement keeps both vehicles armed")
 
 
+def validate_intercept_radar_pipeline(ros_log: str, errors: list[str]) -> None:
+    require(
+        "evader ground truth is restricted to the referee and radar simulator",
+        ros_log,
+        r"RADAR_DATA_BOUNDARY verified=true",
+        errors,
+    )
+    require(
+        "radar simulator publishes relative measurements",
+        ros_log,
+        r"RADAR_SCAN published=true .*source=ideal_truth_adapter",
+        errors,
+    )
+    require(
+        "radar tracker reaches velocity-tracking state",
+        ros_log,
+        r"RADAR_TRACK status=tracking .*velocity_valid=true",
+        errors,
+    )
+    require(
+        "interceptor guidance consumes radar-derived tracks",
+        ros_log,
+        r"INTERCEPT_GUIDANCE source=radar_track",
+        errors,
+    )
+    if "ground_truth_boundary_violation" in ros_log:
+        errors.append("FAIL: interceptor data path accessed evader ground truth")
+    else:
+        print("OK: no evader ground-truth boundary violation")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate production MPPI headless run logs."
@@ -248,6 +279,7 @@ def main() -> int:
             errors,
         )
         if args.mission_type == "intercept":
+            validate_intercept_radar_pipeline(ros_log, errors)
             require(
                 "intercept mission reports a technical outcome",
                 ros_log,

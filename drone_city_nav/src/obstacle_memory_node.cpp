@@ -7,7 +7,7 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/mapping_lifecycle.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
-#include "drone_city_nav/msg/vehicle_navigation_state.hpp"
+#include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
@@ -204,8 +204,8 @@ public:
         "px4_timesync_status_topic", "/fmu/out/timesync_status");
     const std::string vehicle_status_topic = declare_parameter<std::string>(
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status_v1");
-    const std::string tracked_agent_state_topic =
-        declare_parameter<std::string>("tracked_agent_state_topic", "");
+    const std::string tracked_agent_track_topic =
+        declare_parameter<std::string>("tracked_agent_track_topic", "");
     tracked_agent_filter_radius_m_ =
         declare_parameter<double>("tracked_agent_filter_radius_m", 1.0);
     tracked_agent_filter_vertical_tolerance_m_ =
@@ -259,14 +259,17 @@ public:
               msg->arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
           mapping_lifecycle_->updateArmed(armed);
         });
-    if (!tracked_agent_state_topic.empty()) {
-      tracked_agent_state_sub_ = create_subscription<msg::VehicleNavigationState>(
-          tracked_agent_state_topic, rclcpp::QoS{10}.best_effort(),
-          [this](const msg::VehicleNavigationState::SharedPtr state) {
+    if (!tracked_agent_track_topic.empty()) {
+      tracked_agent_track_sub_ = create_subscription<msg::TargetTrack>(
+          tracked_agent_track_topic, rclcpp::QoS{1}.reliable().transient_local(),
+          [this](const msg::TargetTrack::SharedPtr track) {
             tracked_agent_position_ =
-                Point3{state->position.x, state->position.y, state->position.z};
-            tracked_agent_position_valid_ = state->position_valid;
-            tracked_agent_receive_stamp_ns_ = get_clock()->now().nanoseconds();
+                Point3{track->position.x, track->position.y, track->position.z};
+            tracked_agent_velocity_ =
+                Vec3{track->velocity.x, track->velocity.y, track->velocity.z};
+            tracked_agent_position_valid_ = track->position_valid;
+            tracked_agent_velocity_valid_ = track->velocity_valid;
+            tracked_agent_stamp_ns_ = rclcpp::Time{track->header.stamp}.nanoseconds();
           });
     }
     RCLCPP_INFO(get_logger(),
@@ -478,9 +481,22 @@ private:
 
     std::vector<float> filtered_ranges;
     std::span<const float> scan_ranges{scan.ranges.data(), scan.ranges.size()};
-    if (tracked_agent_position_valid_ && tracked_agent_receive_stamp_ns_ > 0 &&
-        now_ns >= tracked_agent_receive_stamp_ns_ &&
-        now_ns - tracked_agent_receive_stamp_ns_ <= tracked_agent_maximum_age_ns_) {
+    if (tracked_agent_position_valid_ && tracked_agent_stamp_ns_ > 0 &&
+        now_ns >= tracked_agent_stamp_ns_ &&
+        now_ns - tracked_agent_stamp_ns_ <= tracked_agent_maximum_age_ns_) {
+      const double track_age_s =
+          static_cast<double>(now_ns - tracked_agent_stamp_ns_) * 1.0e-9;
+      const Point3 tracked_agent_position{
+          tracked_agent_position_.x + (tracked_agent_velocity_valid_
+                                           ? tracked_agent_velocity_.x * track_age_s
+                                           : 0.0),
+          tracked_agent_position_.y + (tracked_agent_velocity_valid_
+                                           ? tracked_agent_velocity_.y * track_age_s
+                                           : 0.0),
+          tracked_agent_position_.z + (tracked_agent_velocity_valid_
+                                           ? tracked_agent_velocity_.z * track_age_s
+                                           : 0.0),
+      };
       TrackedAgentLidarFilterResult filter = filterTrackedAgentLidarHits(
           scan_ranges,
           TrackedAgentLidarFilterInput{
@@ -489,7 +505,7 @@ private:
               .angle_min_rad = static_cast<double>(scan.angle_min),
               .angle_increment_rad = static_cast<double>(scan.angle_increment),
               .scan_yaw_offset_rad = scan_yaw_offset_rad_,
-              .agent_position = tracked_agent_position_,
+              .agent_position = tracked_agent_position,
               .agent_radius_m = tracked_agent_filter_radius_m_,
               .vertical_tolerance_m = tracked_agent_filter_vertical_tolerance_m_,
           });
@@ -497,8 +513,8 @@ private:
         RCLCPP_INFO_THROTTLE(
             get_logger(), *get_clock(), 1000,
             "TRACKED_AGENT_LIDAR_FILTER filtered_beams=%zu agent=(%.2f,%.2f,%.2f)",
-            filter.filtered_beams, tracked_agent_position_.x, tracked_agent_position_.y,
-            tracked_agent_position_.z);
+            filter.filtered_beams, tracked_agent_position.x, tracked_agent_position.y,
+            tracked_agent_position.z);
       }
       filtered_ranges = std::move(filter.ranges);
       scan_ranges = filtered_ranges;
@@ -943,9 +959,11 @@ private:
   double tracked_agent_filter_radius_m_{1.0};
   double tracked_agent_filter_vertical_tolerance_m_{1.0};
   std::int64_t tracked_agent_maximum_age_ns_{500'000'000LL};
-  std::int64_t tracked_agent_receive_stamp_ns_{0};
+  std::int64_t tracked_agent_stamp_ns_{0};
   Point3 tracked_agent_position_{};
+  Vec3 tracked_agent_velocity_{};
   bool tracked_agent_position_valid_{false};
+  bool tracked_agent_velocity_valid_{false};
   std::size_t snapshot_max_serialized_bytes_{4'500'000U};
   std::uint64_t snapshot_sequence_{0U};
   std::uint64_t snapshot_producer_instance_id_{0U};
@@ -978,7 +996,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
-  rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr tracked_agent_state_sub_;
+  rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_track_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       raw_memory_3d_pointcloud_pub_;

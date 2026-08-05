@@ -128,21 +128,26 @@ Run the two-vehicle intercept mission:
 
 The point-to-point mission remains the default. The intercept mission launches
 isolated interceptor and evader PX4/ROS namespaces. The evader flies to its
-fixed goal at 50% of the interceptor speed policy, while the interceptor tracks
-the evader through a continuous predictive objective without terminal goal
-hold. Guidance uses a latency-compensated 3 s lead and smoothly reduces it to
-1 s when the interceptor is already ahead in the evader's motion corridor. The
-planner clips predictions at the first physical raw obstacle. A swept
-separation of 5 m terminates and disarms both vehicles as a
-successful intercept. If the evader reaches its goal first, that outcome is
-latched, the interceptor stops tracking and enters a confirmed position hold,
-and neither vehicle is disarmed. A later inertial approach cannot change the
-first outcome, although entering the capture radius still applies the normal
-two-vehicle disarm. Evader goal arrival is an intercept failure but still a
-technically successful simulation outcome. RViz and Gazebo follow the
-interceptor. The GUI workflow remains open after either outcome. The headless
-workflow exits only after the applicable hold or disarm settlement is confirmed
-in the log.
+fixed goal at 50% of the interceptor speed policy. The interceptor receives
+only ideal radar measurements containing range, azimuth, elevation, and radial
+velocity; a variable-dt tracker derives the target state used by predictive
+guidance. Scan cadence follows a deterministic correlated random walk from
+0.1 s to 3.0 s, while tracker coasting and guidance continue at 20 Hz. Only the
+simulation radar adapter and mission referee may read evader ground truth.
+
+The continuous guidance objective has no terminal goal hold. It uses a
+latency-compensated 3 s lead and smoothly reduces it to 1 s when the interceptor
+is already ahead in the evader's motion corridor. The planner clips predictions
+at the first physical raw obstacle. A swept separation of 5 m terminates and
+disarms both vehicles as a successful intercept. If the evader reaches its goal
+first, that outcome is latched, the interceptor stops tracking and enters a
+confirmed position hold, and neither vehicle is disarmed. A later inertial
+approach cannot change the first outcome, although entering the capture radius
+still applies the normal two-vehicle disarm. Evader goal arrival is an intercept
+failure but still a technically successful simulation outcome. RViz and Gazebo
+follow the interceptor. The GUI workflow remains open after either outcome. The
+headless workflow exits only after the applicable hold or disarm settlement is
+confirmed in the log.
 
 Stop all running simulation leftovers, including related Gazebo/PX4/ROS
 processes and simulation containers:

@@ -18,6 +18,26 @@ SPEC.loader.exec_module(VALIDATOR)
 
 
 class SafetyRelevantRosLogTest(unittest.TestCase):
+    def test_intercept_requires_complete_radar_data_path(self) -> None:
+        log = (
+            "RADAR_DATA_BOUNDARY verified=true\n"
+            "RADAR_SCAN published=true sequence=2 detections=1 "
+            "source=ideal_truth_adapter\n"
+            "RADAR_TRACK status=tracking measurement_count=2 velocity_valid=true\n"
+            "INTERCEPT_GUIDANCE source=radar_track mode=far_lead\n"
+        )
+        errors: list[str] = []
+        VALIDATOR.validate_intercept_radar_pipeline(log, errors)
+        self.assertEqual(errors, [])
+
+    def test_intercept_rejects_ground_truth_boundary_violation(self) -> None:
+        log = "ground_truth_boundary_violation:/vehicles/interceptor/guidance\n"
+        errors: list[str] = []
+        VALIDATOR.validate_intercept_radar_pipeline(log, errors)
+        self.assertIn(
+            "FAIL: interceptor data path accessed evader ground truth", errors
+        )
+
     def test_intercept_ignores_contact_after_terminal_result(self) -> None:
         log = (
             "INTERCEPT_OUTCOME outcome=intercepted\n"
