@@ -368,24 +368,6 @@ def generate_sdf(spec: dict, boxes: Iterable[Box], output: Path) -> None:
                      f"{occluder.size[1]:.3f} {occluder.size[0]:.3f} "
                      f"{occluder.size[2]:.3f}")
 
-    mission = spec["mission"]
-    for name, point, color in (
-        ("start_marker", mission["start_m"], (0.0, 0.55, 0.25, 1.0)),
-        ("goal_marker", mission["goal_m"], (0.8, 0.1, 0.1, 1.0)),
-    ):
-        model = ET.SubElement(world, "model", {"name": name})
-        add_text(model, "static", "true")
-        px, py, _ = sdf_pose(spec, tuple(map(float, point)))
-        add_text(model, "pose", f"{px:.3f} {py:.3f} 0.05 0 0 0")
-        link = ET.SubElement(model, "link", {"name": "link"})
-        visual = ET.SubElement(link, "visual", {"name": "visual"})
-        geometry = ET.SubElement(visual, "geometry")
-        cylinder = ET.SubElement(geometry, "cylinder")
-        add_text(cylinder, "radius", "4.8")
-        add_text(cylinder, "length", "0.08")
-        material = ET.SubElement(visual, "material")
-        add_text(material, "diffuse", " ".join(str(value) for value in color))
-
     ET.indent(root, space="  ")
     output.parent.mkdir(parents=True, exist_ok=True)
     ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)

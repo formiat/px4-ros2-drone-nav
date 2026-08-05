@@ -34,6 +34,11 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             generator.generate_occupancy(spec, boxes, occupancy_path)
 
             root = ET.parse(sdf_path).getroot()
+            model_names = {
+                model.attrib["name"] for model in root.findall("./world/model")
+            }
+            self.assertNotIn("start_marker", model_names)
+            self.assertNotIn("goal_marker", model_names)
             collision_models = {
                 model.attrib["name"]
                 for model in root.findall("./world/model")

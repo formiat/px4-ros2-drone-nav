@@ -2384,39 +2384,5 @@
         </visual>
       </link>
     </model>
-    <model name="start_marker">
-      <static>true</static>
-      <pose>-171.000 -81.000 0.05 0 0 0</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <cylinder>
-              <radius>4.8</radius>
-              <length>0.08</length>
-            </cylinder>
-          </geometry>
-          <material>
-            <diffuse>0.0 0.55 0.25 1.0</diffuse>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="goal_marker">
-      <static>true</static>
-      <pose>153.000 81.000 0.05 0 0 0</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <cylinder>
-              <radius>4.8</radius>
-              <length>0.08</length>
-            </cylinder>
-          </geometry>
-          <material>
-            <diffuse>0.8 0.1 0.1 1.0</diffuse>
-          </material>
-        </visual>
-      </link>
-    </model>
   </world>
 </sdf>
