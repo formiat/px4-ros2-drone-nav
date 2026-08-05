@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <optional>
 
 namespace drone_city_nav {
 
@@ -28,6 +29,9 @@ evaluateFlightEnvelopeAltitude(double z_m, const FlightEnvelopeConfig& config) n
 
 [[nodiscard]] bool insideFlightEnvelope(const Point3& point,
                                         const FlightEnvelopeConfig& config) noexcept;
+
+[[nodiscard]] std::optional<double>
+clampToFlightEnvelope(double z_m, const FlightEnvelopeConfig& config) noexcept;
 
 [[nodiscard]] bool
 segmentInsideFlightEnvelope(const Point3& first, const Point3& second,

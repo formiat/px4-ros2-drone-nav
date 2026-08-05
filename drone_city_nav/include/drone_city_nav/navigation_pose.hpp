@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/types.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -56,18 +57,23 @@ class MappingYawTracker {
 public:
   MappingYawTracker() = default;
   MappingYawTracker(bool use_px4_heading, double initial_map_heading_rad,
-                    double alignment_tolerance_rad) noexcept;
+                    std::size_t stable_sample_count,
+                    double maximum_sample_delta_rad) noexcept;
 
   [[nodiscard]] MappingYawSelection update(bool px4_heading_ready,
                                            double px4_heading_rad) noexcept;
-  [[nodiscard]] bool px4Aligned() const noexcept;
+  [[nodiscard]] bool px4Stable() const noexcept;
+  [[nodiscard]] std::size_t stableSampleCount() const noexcept;
   void reset() noexcept;
 
 private:
   bool use_px4_heading_{true};
   double initial_map_heading_rad_{0.0};
-  double alignment_tolerance_rad_{0.15};
-  bool px4_aligned_{false};
+  std::size_t required_stable_sample_count_{5U};
+  double maximum_sample_delta_rad_{0.05};
+  std::optional<double> previous_px4_heading_rad_;
+  std::size_t stable_sample_count_{0U};
+  bool px4_stable_{false};
 };
 
 [[nodiscard]] double normalizeYaw(double yaw_rad) noexcept;

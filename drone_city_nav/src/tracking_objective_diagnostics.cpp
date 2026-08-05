@@ -128,6 +128,8 @@ trackingObjectiveJsonFields(const ProductionNavigationObjective* navigation_obje
          << ",\"tracking_predicted_x_m\":" << data.unconstrained_predicted_position.x
          << ",\"tracking_predicted_y_m\":" << data.unconstrained_predicted_position.y
          << ",\"tracking_predicted_z_m\":" << data.unconstrained_predicted_position.z
+         << ",\"tracking_vertical_prediction_clipped\":"
+         << (data.vertical_prediction_clipped ? "true" : "false")
          << ",\"tracking_resolved_x_m\":" << resolved_position.x
          << ",\"tracking_resolved_y_m\":" << resolved_position.y
          << ",\"tracking_resolved_z_m\":" << resolved_position.z

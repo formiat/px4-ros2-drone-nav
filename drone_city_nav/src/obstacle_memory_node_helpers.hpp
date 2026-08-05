@@ -12,6 +12,7 @@
 #include <rclcpp/time.hpp>
 
 #include <builtin_interfaces/msg/time.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -56,7 +57,8 @@ struct LidarMappingYawConfig {
   bool use_px4_heading{true};
   double initial_heading_rad{0.0};
   double maximum_heading_variance_rad2{0.05};
-  double startup_alignment_tolerance_rad{0.15};
+  std::size_t startup_stable_sample_count{5U};
+  double startup_maximum_sample_delta_rad{0.05};
 };
 
 [[nodiscard]] LidarMappingYawConfig declareLidarMappingYawConfig(rclcpp::Node& node);

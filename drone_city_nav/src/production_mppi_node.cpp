@@ -613,6 +613,13 @@ ProductionMppiNode::ProductionMppiNode()
       sensor_qos, [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr message) {
         onLocalPosition(*message);
       });
+  navigation_readiness_sub_ = create_subscription<std_msgs::msg::Bool>(
+      declare_parameter<std::string>("navigation_readiness_topic",
+                                     "/drone_city_nav/navigation_ready"),
+      rclcpp::QoS{1}.reliable().transient_local(),
+      [this](const std_msgs::msg::Bool::SharedPtr message) {
+        onNavigationReadiness(*message);
+      });
   raw_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot>(
       declare_parameter<std::string>("raw_obstacle_snapshot_topic",
                                      "/drone_city_nav/raw_obstacle_snapshot"),
@@ -650,10 +657,15 @@ ProductionMppiNode::ProductionMppiNode()
   status_pub_ = create_publisher<std_msgs::msg::String>(
       declare_parameter<std::string>("status_topic", "/drone_city_nav/mppi/status"),
       rclcpp::QoS{10}.best_effort());
+  world_readiness_pub_ = create_publisher<std_msgs::msg::Bool>(
+      declare_parameter<std::string>("world_readiness_topic",
+                                     "/drone_city_nav/mppi/world_ready"),
+      rclcpp::QoS{1}.reliable().transient_local());
   execution_horizon_pub_ = create_publisher<msg::MppiTrajectoryHorizon>(
       declare_parameter<std::string>("execution_horizon_topic",
                                      "/drone_city_nav/mppi/execution_horizon"),
       rclcpp::QoS{2}.reliable());
+  publishWorldReadiness(false);
   diagnostics_worker_ =
       std::jthread([this](const std::stop_token token) { diagnosticsWorker(token); });
   esdf_worker_ =

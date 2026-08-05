@@ -46,7 +46,7 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
                                    const float elapsed_s) noexcept {
   const float target_x = target.state.x + target.state.vx * elapsed_s;
   const float target_y = target.state.y + target.state.vy * elapsed_s;
-  const float target_z = target.state.z + target.state.vz * elapsed_s;
+  const float target_z = movingTargetAltitudeAt(target, elapsed_s);
   return std::hypot(std::hypot(target_x - state.x, target_y - state.y),
                     target_z - state.z);
 }

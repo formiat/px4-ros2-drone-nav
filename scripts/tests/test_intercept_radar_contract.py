@@ -77,6 +77,9 @@ class InterceptRadarContractTest(unittest.TestCase):
                 self.assertIn(f'executable="{executable}"', text)
         self.assertEqual(text.count('"/vehicles/evader/state"'), 2)
         self.assertIn('"tracked_agent_track_topic"', text)
+        self.assertIn('"target_track_readiness_topic"', text)
+        self.assertIn('"interceptor_world_readiness_topic"', text)
+        self.assertIn('"evader_world_readiness_topic"', text)
         self.assertNotIn("tracked_agent_state_topic", text)
         self.assertNotIn('executable="intercept_mission_node"', text)
 

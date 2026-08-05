@@ -26,6 +26,12 @@ namespace {
 
 } // namespace
 
+bool interceptMissionReady(const InterceptMissionReadiness& readiness) noexcept {
+  return readiness.interceptor_navigation_ready && readiness.evader_navigation_ready &&
+         readiness.interceptor_world_ready && readiness.evader_world_ready &&
+         readiness.target_track_ready;
+}
+
 InterceptorHoldConfirmation::InterceptorHoldConfirmation(
     const Point3& hold_position, const InterceptorHoldConfig& config)
     : hold_position_{hold_position},

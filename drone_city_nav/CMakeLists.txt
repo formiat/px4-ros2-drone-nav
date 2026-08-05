@@ -313,7 +313,7 @@ add_executable(radar_target_tracker_node src/radar_target_tracker_node.cpp)
 target_compile_features(radar_target_tracker_node PRIVATE cxx_std_20)
 target_link_libraries(radar_target_tracker_node drone_city_nav_core
                       ${cpp_typesupport_target})
-ament_target_dependencies(radar_target_tracker_node rclcpp)
+ament_target_dependencies(radar_target_tracker_node rclcpp std_msgs)
 enable_project_warnings(radar_target_tracker_node)
 
 add_executable(interceptor_guidance_node src/interceptor_guidance_node.cpp)

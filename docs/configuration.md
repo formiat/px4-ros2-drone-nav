@@ -24,7 +24,8 @@ it does not load or merge static geometry. Static Occupancy3D belongs to
 Lidar projection:
 
 - pose and heading topics;
-- heading variance and startup alignment gates;
+- heading variance, consecutive stable-sample count, and maximum sample-delta
+  gates;
 - scan latency and motion compensation;
 - lidar mount translation and quaternion;
 - accepted projected-altitude and range bounds.

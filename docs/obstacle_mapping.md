@@ -133,6 +133,11 @@ Lidar projection can account for:
 - attitude compensation;
 - a full rigid body-to-lidar extrinsic.
 
+When PX4 heading is enabled, projection and position-history insertion remain
+disabled until the configured consecutive heading samples are stable. The
+handoff starts a new pose-history generation, so interpolation cannot bridge
+startup or quality-loss samples into valid PX4-heading geometry.
+
 The transform is:
 
 ```text

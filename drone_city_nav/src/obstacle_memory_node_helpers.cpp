@@ -165,12 +165,16 @@ LidarMappingYawConfig declareLidarMappingYawConfig(rclcpp::Node& node) {
       maximum_heading_variance_rad2 >= 0.0) {
     config.maximum_heading_variance_rad2 = maximum_heading_variance_rad2;
   }
-  const double startup_alignment_tolerance_rad =
-      node.declare_parameter<double>("startup_heading_alignment_tolerance_rad", 0.15);
-  if (std::isfinite(startup_alignment_tolerance_rad) &&
-      startup_alignment_tolerance_rad >= 0.0) {
-    config.startup_alignment_tolerance_rad =
-        std::min(startup_alignment_tolerance_rad, std::numbers::pi);
+  config.startup_stable_sample_count = static_cast<std::size_t>(
+      std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                   "startup_heading_stable_sample_count", 5),
+                               1, 1000));
+  const double startup_maximum_sample_delta_rad =
+      node.declare_parameter<double>("startup_heading_maximum_sample_delta_rad", 0.05);
+  if (std::isfinite(startup_maximum_sample_delta_rad) &&
+      startup_maximum_sample_delta_rad >= 0.0) {
+    config.startup_maximum_sample_delta_rad =
+        std::min(startup_maximum_sample_delta_rad, std::numbers::pi);
   }
   return config;
 }

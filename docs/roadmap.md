@@ -67,7 +67,10 @@ in extrapolation. Interceptor guidance publishes a typed tracking objective from
 the radar-derived target track without reading a map. The planner clips the
 prediction segment at the first raw occupied cell and uses the last raw-free
 sample. It does not search for a nearest free point and does not add inflation
-or prohibited regions. A raw-clear interceptor-to-target segment activates
+or prohibited regions. Vertical prediction applies bounded deceleration until
+the target stops climbing or descending and clamps altitude to the configured
+flight envelope instead of rejecting the objective. A raw-clear
+interceptor-to-target segment activates
 direct moving-target MPPI pursuit; a blocked segment retains ordinary global
 planning. RViz and JSONL diagnostics expose observed, predicted, and resolved
 target points together with closing speed, commanded speed, active speed

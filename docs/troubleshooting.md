@@ -80,10 +80,13 @@ Confirm:
 
 ## Lidar Is Rotated At Startup
 
-Projection must remain gated until PX4 heading is valid and aligned with the
-configured startup heading. Inspect heading variance, alignment diagnostics,
-pose history, scan timestamp, and mount quaternion. Do not correct this with a
-fixed arbitrary yaw subtraction.
+Projection must remain gated until PX4 heading is valid and stable for the
+configured number of consecutive samples. The gate deliberately does not
+compare PX4 heading with `initial_heading_rad`; that value is not a lidar yaw
+fallback when `use_px4_heading_for_scan=true`. A transition to stable PX4
+heading starts a new pose-history generation. Inspect heading variance, stable
+sample diagnostics, pose-history generation, scan timestamp, and mount
+quaternion. Do not correct this with a fixed arbitrary yaw subtraction.
 
 ## RViz Is Empty
 

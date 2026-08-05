@@ -102,12 +102,14 @@ public:
     boundary_startup_timeout_ns_ = static_cast<std::int64_t>(
         declare_parameter<double>("ground_truth_boundary_startup_timeout_s", 10.0) *
         1.0e9);
+    mission_readiness_timeout_ns_ = static_cast<std::int64_t>(
+        declare_parameter<double>("mission_readiness_timeout_s", 20.0) * 1.0e9);
     shutdown_on_terminal_outcome_ =
         declare_parameter<bool>("shutdown_on_terminal_outcome", true);
     if (!(hold_config_.position_tolerance_m > 0.0) ||
         !(hold_config_.maximum_speed_mps >= 0.0) ||
         !(hold_config_.confirmation_duration_s >= 0.0) || !(hold_timeout_ns_ > 0) ||
-        !(boundary_startup_timeout_ns_ > 0) ||
+        !(boundary_startup_timeout_ns_ > 0) || !(mission_readiness_timeout_ns_ > 0) ||
         !(destruction_settlement_timeout_ns_ > 0)) {
       throw std::invalid_argument{"invalid intercept referee configuration"};
     }
@@ -128,6 +130,25 @@ public:
         target_state_topic_, state_qos,
         [this](const msg::VehicleNavigationState::SharedPtr state) {
           target_state_ = detail::vehicleState(*state);
+        });
+    const auto readiness_qos = rclcpp::QoS{1}.reliable().transient_local();
+    ownship_world_ready_sub_ = create_subscription<std_msgs::msg::Bool>(
+        declare_parameter<std::string>("interceptor_world_readiness_topic",
+                                       "/vehicles/interceptor/mppi/world_ready"),
+        readiness_qos, [this](const std_msgs::msg::Bool::SharedPtr ready) {
+          ownship_world_ready_ = ready->data;
+        });
+    target_world_ready_sub_ = create_subscription<std_msgs::msg::Bool>(
+        declare_parameter<std::string>("evader_world_readiness_topic",
+                                       "/vehicles/evader/mppi/world_ready"),
+        readiness_qos, [this](const std_msgs::msg::Bool::SharedPtr ready) {
+          target_world_ready_ = ready->data;
+        });
+    target_track_ready_sub_ = create_subscription<std_msgs::msg::Bool>(
+        declare_parameter<std::string>("target_track_readiness_topic",
+                                       "/vehicles/interceptor/target_track_ready"),
+        readiness_qos, [this](const std_msgs::msg::Bool::SharedPtr ready) {
+          target_track_ready_ = ready->data;
         });
     ownship_destroyed_topic_ = declare_parameter<std::string>(
         "interceptor_destroyed_topic", "/vehicles/interceptor/vehicle_destroyed");
@@ -511,8 +532,31 @@ private:
       return;
     }
     if (!mission_started_) {
-      if (ownship_state_->navigation_ready && target_state_->navigation_ready) {
+      const InterceptMissionReadiness readiness{
+          .interceptor_navigation_ready = ownship_state_->navigation_ready,
+          .evader_navigation_ready = target_state_->navigation_ready,
+          .interceptor_world_ready = ownship_world_ready_,
+          .evader_world_ready = target_world_ready_,
+          .target_track_ready = target_track_ready_,
+      };
+      const bool vehicles_ready =
+          readiness.interceptor_navigation_ready && readiness.evader_navigation_ready;
+      if (vehicles_ready && mission_readiness_started_ns_ <= 0) {
+        mission_readiness_started_ns_ = now_ns;
+      }
+      if (interceptMissionReady(readiness)) {
         publishMissionStart();
+      } else if (vehicles_ready) {
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                             "INTERCEPT_MISSION_READINESS vehicles_ready=true "
+                             "interceptor_world_ready=%s evader_world_ready=%s "
+                             "target_track_ready=%s",
+                             ownship_world_ready_ ? "true" : "false",
+                             target_world_ready_ ? "true" : "false",
+                             target_track_ready_ ? "true" : "false");
+        if (now_ns - mission_readiness_started_ns_ > mission_readiness_timeout_ns_) {
+          failMission("mission_readiness_timeout");
+        }
       }
       return;
     }
@@ -563,10 +607,12 @@ private:
   std::int64_t destruction_settlement_timeout_ns_{5'000'000'000LL};
   std::int64_t hold_timeout_ns_{20'000'000'000LL};
   std::int64_t boundary_startup_timeout_ns_{10'000'000'000LL};
+  std::int64_t mission_readiness_timeout_ns_{20'000'000'000LL};
   std::int64_t destruction_requested_ns_{0};
   std::int64_t hold_requested_ns_{0};
   std::int64_t boundary_check_started_ns_{0};
   std::int64_t last_boundary_check_ns_{0};
+  std::int64_t mission_readiness_started_ns_{0};
   bool mission_started_{false};
   bool result_reported_{false};
   bool late_capture_after_goal_{false};
@@ -576,11 +622,17 @@ private:
   bool physical_death_pending_{false};
   bool shutdown_on_terminal_outcome_{true};
   bool boundary_verified_{false};
+  bool ownship_world_ready_{false};
+  bool target_world_ready_{false};
+  bool target_track_ready_{false};
   std::uint8_t ownship_death_cause_{0U};
   std::uint8_t target_death_cause_{0U};
   std::uint8_t physical_death_role_{msg::VehicleDestroyed::ROLE_UNSPECIFIED};
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr ownship_state_sub_;
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr target_state_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr ownship_world_ready_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr target_world_ready_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr target_track_ready_sub_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr ownship_destroyed_sub_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr target_destroyed_sub_;
   rclcpp::Publisher<msg::NavigationObjective>::SharedPtr target_objective_pub_;

@@ -16,6 +16,7 @@ geometry_msgs/Point position
 geometry_msgs/Point observed_target_position
 geometry_msgs/Vector3 observed_target_velocity
 float64 prediction_horizon_s
+bool vertical_prediction_limited
 uint8 objective_type
 uint8 guidance_mode
 uint8 terminal_policy

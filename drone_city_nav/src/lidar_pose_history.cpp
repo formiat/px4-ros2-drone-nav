@@ -394,6 +394,15 @@ void LidarPoseHistory::clear() noexcept {
   attitudes_.clear();
 }
 
+void LidarPoseHistory::startNewGeneration() noexcept {
+  clear();
+  ++generation_;
+}
+
+std::uint64_t LidarPoseHistory::generation() const noexcept {
+  return generation_;
+}
+
 std::size_t LidarPoseHistory::positionSampleCount() const noexcept {
   return positions_.size();
 }

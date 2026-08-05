@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/intercept_mission.hpp"
 
 #include <cstdint>
@@ -25,6 +26,15 @@ struct InterceptGuidanceConfig {
   double ahead_corridor_enter_m{15.0};
   double ahead_corridor_exit_m{20.0};
   double horizon_smoothing_time_constant_s{0.5};
+  double target_vertical_deceleration_mps2{4.0};
+  FlightEnvelopeConfig target_flight_envelope{};
+};
+
+struct TargetVerticalPrediction {
+  double z_m{0.0};
+  double velocity_mps{0.0};
+  bool envelope_limited{false};
+  bool valid{false};
 };
 
 struct InterceptGuidanceResult {
@@ -40,7 +50,13 @@ struct InterceptGuidanceResult {
   double ahead_m{0.0};
   double cross_track_m{0.0};
   bool valid{false};
+  bool vertical_prediction_limited{false};
 };
+
+[[nodiscard]] TargetVerticalPrediction
+predictTargetVerticalMotion(double initial_z_m, double initial_velocity_mps,
+                            double elapsed_s, double deceleration_mps2,
+                            const FlightEnvelopeConfig& flight_envelope) noexcept;
 
 class InterceptGuidance final {
 public:

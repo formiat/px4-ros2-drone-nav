@@ -8,46 +8,61 @@ namespace drone_city_nav {
 
 MappingYawTracker::MappingYawTracker(const bool use_px4_heading,
                                      const double initial_map_heading_rad,
-                                     const double alignment_tolerance_rad) noexcept
+                                     const std::size_t stable_sample_count,
+                                     const double maximum_sample_delta_rad) noexcept
     : use_px4_heading_{use_px4_heading},
       initial_map_heading_rad_{normalizeYaw(initial_map_heading_rad)},
-      alignment_tolerance_rad_{std::isfinite(alignment_tolerance_rad) &&
-                                       alignment_tolerance_rad >= 0.0
-                                   ? std::min(alignment_tolerance_rad, std::numbers::pi)
-                                   : 0.15} {
+      required_stable_sample_count_{std::max<std::size_t>(1U, stable_sample_count)},
+      maximum_sample_delta_rad_{
+          std::isfinite(maximum_sample_delta_rad) && maximum_sample_delta_rad >= 0.0
+              ? std::min(maximum_sample_delta_rad, std::numbers::pi)
+              : 0.05} {
 }
 
 MappingYawSelection MappingYawTracker::update(const bool px4_heading_ready,
                                               const double px4_heading_rad) noexcept {
-  if (!std::isfinite(initial_map_heading_rad_)) {
-    return {};
-  }
   if (!use_px4_heading_) {
+    if (!std::isfinite(initial_map_heading_rad_)) {
+      return {};
+    }
     return MappingYawSelection{initial_map_heading_rad_,
                                MappingYawSource::kInitialMapHeading, true};
   }
-  if (!px4_aligned_) {
-    if (px4_heading_ready && std::isfinite(px4_heading_rad) &&
-        std::abs(normalizeYaw(px4_heading_rad - initial_map_heading_rad_)) <=
-            alignment_tolerance_rad_) {
-      px4_aligned_ = true;
-    } else {
-      return {};
-    }
-  }
   if (!px4_heading_ready || !std::isfinite(px4_heading_rad)) {
+    reset();
     return {};
   }
-  return MappingYawSelection{normalizeYaw(px4_heading_rad),
-                             MappingYawSource::kPx4Heading, true};
+
+  const double normalized_heading = normalizeYaw(px4_heading_rad);
+  if (px4_stable_) {
+    previous_px4_heading_rad_ = normalized_heading;
+    return MappingYawSelection{normalized_heading, MappingYawSource::kPx4Heading, true};
+  }
+  const bool stable_with_previous =
+      previous_px4_heading_rad_.has_value() &&
+      std::abs(normalizeYaw(normalized_heading - *previous_px4_heading_rad_)) <=
+          maximum_sample_delta_rad_;
+  stable_sample_count_ = stable_with_previous ? stable_sample_count_ + 1U : 1U;
+  previous_px4_heading_rad_ = normalized_heading;
+  px4_stable_ = stable_sample_count_ >= required_stable_sample_count_;
+  if (!px4_stable_) {
+    return {};
+  }
+  return MappingYawSelection{normalized_heading, MappingYawSource::kPx4Heading, true};
 }
 
-bool MappingYawTracker::px4Aligned() const noexcept {
-  return px4_aligned_;
+bool MappingYawTracker::px4Stable() const noexcept {
+  return px4_stable_;
+}
+
+std::size_t MappingYawTracker::stableSampleCount() const noexcept {
+  return stable_sample_count_;
 }
 
 void MappingYawTracker::reset() noexcept {
-  px4_aligned_ = false;
+  previous_px4_heading_rad_.reset();
+  stable_sample_count_ = 0U;
+  px4_stable_ = false;
 }
 
 double normalizeYaw(const double yaw_rad) noexcept {

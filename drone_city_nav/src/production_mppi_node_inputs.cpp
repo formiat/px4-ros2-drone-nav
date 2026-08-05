@@ -85,16 +85,68 @@ void ProductionMppiNode::onLocalPosition(
       latest_prediction_error_.valid = true;
     }
   }
+  if (navigation.valid && use_static_map_ && vehicle_navigation_ready_.load() &&
+      !world_ready_.load()) {
+    requestStaticEsdfWork();
+  }
+}
+
+void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& message) {
+  vehicle_navigation_ready_.store(message.data, std::memory_order_release);
+  if (message.data && use_static_map_ && navigationObjective() &&
+      !world_ready_.load(std::memory_order_acquire)) {
+    requestStaticEsdfWork();
+  }
 }
 
 void ProductionMppiNode::onRawObstacleSnapshot(
     msg::RawObstacleSnapshot::ConstSharedPtr message) {
+  if (use_static_map_) {
+    return;
+  }
   std::scoped_lock lock{raw_queue_mutex_};
   if (pending_raw_snapshot_) {
     ++dropped_raw_snapshots_;
   }
   pending_raw_snapshot_ = std::move(message);
   raw_queue_condition_.notify_all();
+}
+
+void ProductionMppiNode::requestStaticEsdfWork(const bool force_refresh) {
+  if (!use_static_map_ || !vehicle_navigation_ready_.load(std::memory_order_acquire) ||
+      !navigationObjective()) {
+    return;
+  }
+  {
+    const std::scoped_lock lock{raw_queue_mutex_};
+    if (!force_refresh &&
+        (world_ready_.load(std::memory_order_acquire) ||
+         static_esdf_work_in_progress_ || pending_static_esdf_work_)) {
+      return;
+    }
+    pending_static_esdf_work_ = true;
+  }
+  raw_queue_condition_.notify_all();
+}
+
+void ProductionMppiNode::completeStaticEsdfWork(const bool world_ready) noexcept {
+  {
+    const std::scoped_lock lock{raw_queue_mutex_};
+    static_esdf_work_in_progress_ = false;
+  }
+  if (world_ready) {
+    world_ready_.store(true, std::memory_order_release);
+  }
+}
+
+void ProductionMppiNode::publishWorldReadiness(const bool ready) {
+  world_ready_.store(ready, std::memory_order_release);
+  std_msgs::msg::Bool message;
+  message.data = ready;
+  world_readiness_pub_->publish(message);
+  RCLCPP_INFO(get_logger(), "PLANNER_WORLD_READY ready=%s source=%s",
+              ready ? "true" : "false",
+              use_static_map_ ? "resident_static_esdf" : "raw_snapshot_esdf");
 }
 
 void ProductionMppiNode::onMemorySnapshot(const msg::ObstacleMemorySnapshot& message) {
@@ -133,7 +185,7 @@ void ProductionMppiNode::onNavigationObjective(
       guidanceMode(message.guidance_mode);
   const FlightEnvelopeStatus target_altitude_status =
       evaluateFlightEnvelopeAltitude(message.position.z, flight_envelope_config_);
-  if (target_altitude_status != FlightEnvelopeStatus::kValid) {
+  if (!tracking && target_altitude_status != FlightEnvelopeStatus::kValid) {
     RCLCPP_WARN(get_logger(),
                 "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
                 " sample=%" PRIu64 " reason=flight_envelope_%s target_z=%.3f",
@@ -149,8 +201,6 @@ void ProductionMppiNode::onNavigationObjective(
           msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING ||
       (tracking &&
        (!finitePoint(message.observed_target_position) ||
-        !insideFlightEnvelope(message.observed_target_position.z,
-                              flight_envelope_config_) ||
         !finiteVector(message.observed_target_velocity) ||
         !std::isfinite(message.prediction_horizon_s) ||
         message.prediction_horizon_s < 0.0 ||
@@ -175,21 +225,40 @@ void ProductionMppiNode::onNavigationObjective(
 
   const Point3 unconstrained_goal{message.position.x, message.position.y,
                                   message.position.z};
-  Point3 goal = unconstrained_goal;
+  const std::optional<double> bounded_goal_z =
+      clampToFlightEnvelope(unconstrained_goal.z, flight_envelope_config_);
+  if (!bounded_goal_z.has_value()) {
+    RCLCPP_WARN(get_logger(),
+                "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
+                " sample=%" PRIu64 " reason=invalid_target_altitude target_z=%.3f",
+                message.mission_epoch, message.sample_sequence, unconstrained_goal.z);
+    return;
+  }
+  Point3 goal{unconstrained_goal.x, unconstrained_goal.y, *bounded_goal_z};
   std::optional<ProductionTrackingObjective> tracking_objective;
   TrackingLineOfSightUpdate line_of_sight;
   if (tracking) {
     const Point3 observed{message.observed_target_position.x,
                           message.observed_target_position.y,
                           message.observed_target_position.z};
+    const std::optional<double> bounded_observed_z =
+        clampToFlightEnvelope(observed.z, flight_envelope_config_);
+    if (!bounded_observed_z.has_value()) {
+      RCLCPP_WARN(get_logger(),
+                  "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
+                  " sample=%" PRIu64 " reason=invalid_observed_target_altitude",
+                  message.mission_epoch, message.sample_sequence);
+      return;
+    }
+    const Point3 resolution_origin{observed.x, observed.y, *bounded_observed_z};
     TrackingObjectiveResolution resolution{
-        .resolved_position = observed,
+        .resolved_position = resolution_origin,
         .status = TrackingObjectiveResolutionStatus::kWorldUnavailable,
         .resolved_fraction = 0.0,
     };
     if (use_static_map_ && static_occupancy_3d_) {
       resolution =
-          resolveTrackingObjective(*static_occupancy_3d_, observed, unconstrained_goal,
+          resolveTrackingObjective(*static_occupancy_3d_, resolution_origin, goal,
                                    tracking_objective_ray_sample_spacing_m_);
     } else if (!use_static_map_) {
       std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
@@ -200,9 +269,8 @@ void ProductionMppiNode::onNavigationObjective(
         }
       }
       if (raw_occupancy) {
-        resolution =
-            resolveTrackingObjective(*raw_occupancy, observed, unconstrained_goal,
-                                     tracking_objective_ray_sample_spacing_m_);
+        resolution = resolveTrackingObjective(*raw_occupancy, resolution_origin, goal,
+                                              tracking_objective_ray_sample_spacing_m_);
       }
     }
     if (resolution.status == TrackingObjectiveResolutionStatus::kInvalidInput) {
@@ -258,6 +326,9 @@ void ProductionMppiNode::onNavigationObjective(
         .resolved_fraction = resolution.resolved_fraction,
         .guidance_mode = *guidance_mode,
         .resolution_status = resolution.status,
+        .vertical_prediction_clipped =
+            message.vertical_prediction_limited ||
+            std::abs(*bounded_goal_z - unconstrained_goal.z) > 1.0e-9,
         .direct_line_of_sight = line_of_sight.active,
         .line_of_sight_generation = line_of_sight.generation,
     };
@@ -276,6 +347,10 @@ void ProductionMppiNode::onNavigationObjective(
               msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING,
       });
   navigation_objective_.store(objective, std::memory_order_release);
+  if (use_static_map_ && vehicle_navigation_ready_.load(std::memory_order_acquire) &&
+      !world_ready_.load(std::memory_order_acquire)) {
+    requestStaticEsdfWork();
+  }
 
   bool request_replan = false;
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
@@ -315,7 +390,8 @@ void ProductionMppiNode::onNavigationObjective(
         " type=tracking_prediction mode=%s horizon_s=%.3f "
         "observed=(%.2f,%.2f,%.2f) predicted=(%.2f,%.2f,%.2f) "
         "resolved=(%.2f,%.2f,%.2f) resolution=%s resolved_fraction=%.3f "
-        "direct_los=%s los_generation=%" PRIu64 " replan=%s",
+        "vertical_prediction_clipped=%s direct_los=%s los_generation=%" PRIu64
+        " replan=%s",
         message.mission_epoch, message.sample_sequence,
         interceptGuidanceModeName(tracking_data.guidance_mode),
         tracking_data.prediction_horizon_s, tracking_data.observed_position.x,
@@ -325,6 +401,7 @@ void ProductionMppiNode::onNavigationObjective(
         tracking_data.unconstrained_predicted_position.z, goal.x, goal.y, goal.z,
         trackingObjectiveResolutionStatusName(tracking_data.resolution_status),
         tracking_data.resolved_fraction,
+        tracking_data.vertical_prediction_clipped ? "true" : "false",
         tracking_data.direct_line_of_sight ? "true" : "false",
         tracking_data.line_of_sight_generation, request_replan ? "true" : "false");
   } else {

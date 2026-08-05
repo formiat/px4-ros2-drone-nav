@@ -19,7 +19,7 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
       use_px4_heading_for_scan_ &&
       mapping_yaw.source == MappingYawSource::kPx4Heading && !px4_heading_seen_;
   if (starts_new_px4_generation) {
-    lidar_pose_history_.clear();
+    lidar_pose_history_.startNewGeneration();
   }
   px4_heading_seen_ = mapping_yaw.source == MappingYawSource::kPx4Heading;
   if (mapping_yaw.valid) {

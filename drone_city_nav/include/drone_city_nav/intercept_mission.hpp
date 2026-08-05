@@ -39,6 +39,17 @@ struct InterceptMissionUpdate {
   double separation_m{0.0};
 };
 
+struct InterceptMissionReadiness {
+  bool interceptor_navigation_ready{false};
+  bool evader_navigation_ready{false};
+  bool interceptor_world_ready{false};
+  bool evader_world_ready{false};
+  bool target_track_ready{false};
+};
+
+[[nodiscard]] bool
+interceptMissionReady(const InterceptMissionReadiness& readiness) noexcept;
+
 struct InterceptorHoldConfig {
   double position_tolerance_m{2.0};
   double maximum_speed_mps{0.8};

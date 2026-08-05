@@ -227,5 +227,36 @@ TEST(MppiReferenceTest, MovingTargetUsesClosestApproachInsteadOfTerminalPoint) {
   EXPECT_LT(moving_target.soft_cost, terminal_point.soft_cost);
 }
 
+TEST(MppiReferenceTest, MovingTargetVerticalMotionStopsAndRespectsBounds) {
+  const MovingTargetReference stopping{
+      .state = State{.z = 18.0F, .vz = 4.0F},
+      .vertical_deceleration_mps2 = 4.0F,
+      .minimum_z_m = 1.0F,
+      .maximum_z_m = std::nextafter(32.0F, 1.0F),
+      .bounded_vertical_motion = true,
+  };
+  const MovingTargetReference bounded{
+      .state = State{.z = 31.0F, .vz = 10.0F},
+      .vertical_deceleration_mps2 = 1.0F,
+      .minimum_z_m = 1.0F,
+      .maximum_z_m = std::nextafter(32.0F, 1.0F),
+      .bounded_vertical_motion = true,
+  };
+
+  EXPECT_FLOAT_EQ(movingTargetAltitudeAt(stopping, 10.0F), 20.0F);
+  EXPECT_FLOAT_EQ(movingTargetAltitudeAt(bounded, 10.0F), bounded.maximum_z_m);
+  EXPECT_LT(movingTargetAltitudeAt(bounded, 10.0F), 32.0F);
+}
+
+TEST(MppiReferenceTest, FloatConversionCannotReopenHalfOpenUpperEnvelope) {
+  const float maximum_z = std::nextafter(32.0F, 1.0F);
+  const float rounded_double_boundary = static_cast<float>(std::nextafter(32.0, 1.0));
+
+  ASSERT_FLOAT_EQ(rounded_double_boundary, 32.0F);
+  EXPECT_FLOAT_EQ(clampMovingTargetAltitude(rounded_double_boundary, 1.0F, maximum_z),
+                  maximum_z);
+  EXPECT_LT(clampMovingTargetAltitude(rounded_double_boundary, 1.0F, maximum_z), 32.0F);
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

@@ -54,9 +54,12 @@ void ProductionMppiNode::planningTick() {
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const double pose_age_ms =
       static_cast<double>(now_ns - navigation.receive_stamp_ns) / 1.0e6;
-  const double esdf_age_ms =
-      esdf.has_value() ? static_cast<double>(now_ns - esdf->ready_stamp_ns) / 1.0e6
-                       : std::numeric_limits<double>::infinity();
+  double esdf_age_ms = std::numeric_limits<double>::infinity();
+  if (esdf.has_value()) {
+    esdf_age_ms = use_static_map_
+                      ? 0.0
+                      : static_cast<double>(now_ns - esdf->ready_stamp_ns) / 1.0e6;
+  }
   const double control_feedback_age_ms =
       applied_control.valid
           ? static_cast<double>(now_ns - applied_control.receive_stamp_ns) / 1.0e6
@@ -379,24 +382,40 @@ void ProductionMppiNode::planningTick() {
     const double observation_age_s = static_cast<double>(std::max<std::int64_t>(
                                          0, now_ns - tracking.observation_stamp_ns)) *
                                      1.0e-9;
-    moving_target = mppi::MovingTargetReference{
-        .state =
-            mppi::State{
-                .x = static_cast<float>(tracking.observed_position.x +
-                                        tracking.observed_velocity.x *
-                                            observation_age_s),
-                .y = static_cast<float>(tracking.observed_position.y +
-                                        tracking.observed_velocity.y *
-                                            observation_age_s),
-                .z = static_cast<float>(tracking.observed_position.z +
-                                        tracking.observed_velocity.z *
-                                            observation_age_s),
-                .vx = static_cast<float>(tracking.observed_velocity.x),
-                .vy = static_cast<float>(tracking.observed_velocity.y),
-                .vz = static_cast<float>(tracking.observed_velocity.z),
-            },
-        .capture_radius_m = static_cast<float>(tracking_capture_radius_m_),
-    };
+    const TargetVerticalPrediction vertical_prediction = predictTargetVerticalMotion(
+        tracking.observed_position.z, tracking.observed_velocity.z, observation_age_s,
+        mppi_config_.dynamics.maximum_vertical_acceleration_mps2,
+        flight_envelope_config_);
+    const float minimum_z =
+        static_cast<float>(flight_envelope_config_.minimum_target_z_m);
+    const float maximum_z = std::nextafter(
+        static_cast<float>(flight_envelope_config_.maximum_target_z_m), minimum_z);
+    if (vertical_prediction.valid && std::isfinite(minimum_z) &&
+        std::isfinite(maximum_z) && maximum_z > minimum_z) {
+      const float bounded_vertical_z = mppi::clampMovingTargetAltitude(
+          static_cast<float>(vertical_prediction.z_m), minimum_z, maximum_z);
+      moving_target = mppi::MovingTargetReference{
+          .state =
+              mppi::State{
+                  .x = static_cast<float>(tracking.observed_position.x +
+                                          tracking.observed_velocity.x *
+                                              observation_age_s),
+                  .y = static_cast<float>(tracking.observed_position.y +
+                                          tracking.observed_velocity.y *
+                                              observation_age_s),
+                  .z = bounded_vertical_z,
+                  .vx = static_cast<float>(tracking.observed_velocity.x),
+                  .vy = static_cast<float>(tracking.observed_velocity.y),
+                  .vz = static_cast<float>(vertical_prediction.velocity_mps),
+              },
+          .capture_radius_m = static_cast<float>(tracking_capture_radius_m_),
+          .vertical_deceleration_mps2 =
+              mppi_config_.dynamics.maximum_vertical_acceleration_mps2,
+          .minimum_z_m = minimum_z,
+          .maximum_z_m = maximum_z,
+          .bounded_vertical_motion = true,
+      };
+    }
   }
   mppi::MppiTickInput input{
       .initial_state = navigation.state,

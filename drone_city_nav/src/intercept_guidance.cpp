@@ -76,6 +76,45 @@ horizontalInterceptTime(const Point3& interceptor, const Point3& target,
 
 } // namespace
 
+TargetVerticalPrediction
+predictTargetVerticalMotion(const double initial_z_m, const double initial_velocity_mps,
+                            const double elapsed_s, const double deceleration_mps2,
+                            const FlightEnvelopeConfig& flight_envelope) noexcept {
+  if (!std::isfinite(initial_z_m) || !std::isfinite(initial_velocity_mps) ||
+      !std::isfinite(elapsed_s) || elapsed_s < 0.0 ||
+      !std::isfinite(deceleration_mps2) || !(deceleration_mps2 > 0.0)) {
+    return {};
+  }
+  const double speed_mps = std::abs(initial_velocity_mps);
+  const double stopping_time_s = speed_mps / deceleration_mps2;
+  const double motion_time_s = std::min(elapsed_s, stopping_time_s);
+  const double signed_deceleration_mps2 =
+      std::copysign(deceleration_mps2, initial_velocity_mps);
+  const double predicted_z_m =
+      initial_z_m + initial_velocity_mps * motion_time_s -
+      0.5 * signed_deceleration_mps2 * motion_time_s * motion_time_s;
+  const std::optional<double> bounded_z_m =
+      clampToFlightEnvelope(predicted_z_m, flight_envelope);
+  if (!bounded_z_m.has_value()) {
+    return {};
+  }
+  double remaining_velocity_mps = std::copysign(
+      std::max(0.0, speed_mps - deceleration_mps2 * elapsed_s), initial_velocity_mps);
+  const bool envelope_limited = std::abs(*bounded_z_m - predicted_z_m) > 1.0e-9;
+  if (envelope_limited &&
+      ((*bounded_z_m <= flight_envelope.minimum_target_z_m &&
+        remaining_velocity_mps < 0.0) ||
+       (*bounded_z_m >= std::nextafter(flight_envelope.maximum_target_z_m,
+                                       flight_envelope.minimum_target_z_m) &&
+        remaining_velocity_mps > 0.0))) {
+    remaining_velocity_mps = 0.0;
+  }
+  return TargetVerticalPrediction{.z_m = *bounded_z_m,
+                                  .velocity_mps = remaining_velocity_mps,
+                                  .envelope_limited = envelope_limited,
+                                  .valid = true};
+}
+
 InterceptGuidance::InterceptGuidance(const InterceptGuidanceConfig& config)
     : config_{config} {
   if (!(config_.interceptor_speed_mps > 0.0) ||
@@ -91,7 +130,11 @@ InterceptGuidance::InterceptGuidance(const InterceptGuidanceConfig& config)
       !(config_.ahead_enter_m > config_.ahead_exit_m) ||
       !(config_.ahead_corridor_enter_m > 0.0) ||
       !(config_.ahead_corridor_exit_m >= config_.ahead_corridor_enter_m) ||
-      !(config_.horizon_smoothing_time_constant_s > 0.0)) {
+      !(config_.horizon_smoothing_time_constant_s > 0.0) ||
+      !(config_.target_vertical_deceleration_mps2 > 0.0) ||
+      !clampToFlightEnvelope(config_.target_flight_envelope.minimum_target_z_m,
+                             config_.target_flight_envelope)
+           .has_value()) {
     throw std::invalid_argument{"invalid intercept guidance configuration"};
   }
 }
@@ -123,20 +166,41 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
 
   if (!target.velocity_valid || !finite(target.velocity)) {
     resetPredictionState();
+    const std::optional<double> bounded_z =
+        clampToFlightEnvelope(target.position.z, config_.target_flight_envelope);
+    if (!bounded_z.has_value()) {
+      result.valid = false;
+      return result;
+    }
+    result.predicted_position.z = *bounded_z;
+    result.vertical_prediction_limited =
+        std::abs(*bounded_z - target.position.z) > 1.0e-9;
     return result;
   }
-  const Point3 current_target =
+  Point3 current_target =
       extrapolate(target.position, result.observed_velocity, result.prediction_age_s);
-  result.target_speed_mps = norm(result.observed_velocity);
+  const TargetVerticalPrediction current_vertical = predictTargetVerticalMotion(
+      target.position.z, result.observed_velocity.z, result.prediction_age_s,
+      config_.target_vertical_deceleration_mps2, config_.target_flight_envelope);
+  if (!current_vertical.valid) {
+    resetPredictionState();
+    result.valid = false;
+    return result;
+  }
+  current_target.z = current_vertical.z_m;
+  Vec3 current_velocity = result.observed_velocity;
+  current_velocity.z = current_vertical.velocity_mps;
+  result.vertical_prediction_limited = current_vertical.envelope_limited;
+  result.target_speed_mps = norm(current_velocity);
   if (result.target_speed_mps < config_.minimum_target_speed_mps) {
     resetPredictionState();
     result.predicted_position = current_target;
     return result;
   }
 
-  const Vec3 direction{result.observed_velocity.x / result.target_speed_mps,
-                       result.observed_velocity.y / result.target_speed_mps,
-                       result.observed_velocity.z / result.target_speed_mps};
+  const Vec3 direction{current_velocity.x / result.target_speed_mps,
+                       current_velocity.y / result.target_speed_mps,
+                       current_velocity.z / result.target_speed_mps};
   if (interceptor.position_valid && finite(interceptor.position)) {
     const Vec3 relative = subtract(interceptor.position, current_target);
     result.ahead_m = dot(relative, direction);
@@ -190,10 +254,25 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
   result.predicted_position =
       extrapolate(target.position, result.observed_velocity,
                   result.prediction_age_s + result.prediction_horizon_s);
+  const TargetVerticalPrediction predicted_vertical = predictTargetVerticalMotion(
+      target.position.z, result.observed_velocity.z,
+      result.prediction_age_s + result.prediction_horizon_s,
+      config_.target_vertical_deceleration_mps2, config_.target_flight_envelope);
+  if (!predicted_vertical.valid) {
+    resetPredictionState();
+    result.valid = false;
+    return result;
+  }
+  result.predicted_position.z = predicted_vertical.z_m;
+  result.vertical_prediction_limited =
+      result.vertical_prediction_limited || predicted_vertical.envelope_limited;
   if (!finite(result.predicted_position)) {
     resetPredictionState();
     result.mode = InterceptGuidanceMode::kDirect;
     result.predicted_position = target.position;
+    result.predicted_position.z =
+        clampToFlightEnvelope(target.position.z, config_.target_flight_envelope)
+            .value_or(config_.target_flight_envelope.minimum_target_z_m);
     result.prediction_horizon_s = 0.0;
   }
   return result;

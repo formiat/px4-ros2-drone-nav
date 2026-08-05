@@ -67,6 +67,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   } else {
     roi_refresh_sequence =
         static_roi_refresh_lifecycle_.queue(esdf.global_guide_generation).sequence;
+    requestStaticEsdfWork(true);
   }
 
   static_route_extension_request_in_flight_ = true;

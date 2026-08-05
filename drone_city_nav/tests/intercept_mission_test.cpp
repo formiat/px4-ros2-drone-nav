@@ -94,5 +94,34 @@ TEST(InterceptorHoldConfirmationTest, RequiresStablePositionAndSpeed) {
   EXPECT_NEAR(confirmed.speed_mps, 0.1, 1.0e-9);
 }
 
+TEST(InterceptMissionReadinessTest, RequiresBothWorldsAndFirstTargetTrack) {
+  InterceptMissionReadiness readiness{
+      .interceptor_navigation_ready = true,
+      .evader_navigation_ready = true,
+      .interceptor_world_ready = true,
+      .evader_world_ready = true,
+      .target_track_ready = false,
+  };
+
+  EXPECT_FALSE(interceptMissionReady(readiness));
+  readiness.target_track_ready = true;
+  EXPECT_TRUE(interceptMissionReady(readiness));
+}
+
+TEST(InterceptMissionReadinessTest, RejectsAnyMissingPlannerReadiness) {
+  InterceptMissionReadiness readiness{
+      .interceptor_navigation_ready = true,
+      .evader_navigation_ready = true,
+      .interceptor_world_ready = false,
+      .evader_world_ready = true,
+      .target_track_ready = true,
+  };
+
+  EXPECT_FALSE(interceptMissionReady(readiness));
+  readiness.interceptor_world_ready = true;
+  readiness.evader_world_ready = false;
+  EXPECT_FALSE(interceptMissionReady(readiness));
+}
+
 } // namespace
 } // namespace drone_city_nav

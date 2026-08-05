@@ -174,6 +174,11 @@ public:
         declare_parameter<std::string>("vehicle_navigation_state_topic",
                                        "/drone_city_nav/vehicle_state"),
         rclcpp::QoS{10}.best_effort());
+    navigation_readiness_pub_ = create_publisher<std_msgs::msg::Bool>(
+        declare_parameter<std::string>("navigation_readiness_topic",
+                                       "/drone_city_nav/navigation_ready"),
+        rclcpp::QoS{1}.reliable().transient_local());
+    publishNavigationReadiness(false);
     applied_control_feedback_frame_id_ =
         declare_parameter<std::string>("applied_control_feedback_frame_id", "map");
     applied_control_feedback_pub_ = create_publisher<msg::MppiControlFeedback>(
@@ -331,6 +336,20 @@ private:
         state.airborne && takeoff_complete_stamp_.has_value() &&
         (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
     navigation_state_pub_->publish(state);
+    publishNavigationReadiness(state.navigation_ready);
+  }
+
+  void publishNavigationReadiness(const bool ready) {
+    if (last_navigation_readiness_.has_value() &&
+        *last_navigation_readiness_ == ready) {
+      return;
+    }
+    std_msgs::msg::Bool readiness;
+    readiness.data = ready;
+    navigation_readiness_pub_->publish(readiness);
+    last_navigation_readiness_ = ready;
+    RCLCPP_INFO(get_logger(), "NAVIGATION_READINESS ready=%s",
+                ready ? "true" : "false");
   }
 
   void publishRvizDroneFollowTransform() {
@@ -683,6 +702,7 @@ private:
   px4_msgs::msg::VehicleStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
+  std::optional<bool> last_navigation_readiness_;
   std::uint64_t horizon_sequence_{0U};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
@@ -698,6 +718,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr rviz_drone_marker_pub_;
   rclcpp::Publisher<msg::MppiControlFeedback>::SharedPtr applied_control_feedback_pub_;
   rclcpp::Publisher<msg::VehicleNavigationState>::SharedPtr navigation_state_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr navigation_readiness_pub_;
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

@@ -48,7 +48,8 @@ struct LidarDebugNodeConfig {
   double max_projected_lidar_altitude_m{100000.0};
   bool use_px4_heading_for_scan{true};
   double maximum_heading_variance_rad2{0.05};
-  double startup_heading_alignment_tolerance_rad{0.15};
+  std::size_t startup_heading_stable_sample_count{5U};
+  double startup_heading_maximum_sample_delta_rad{0.05};
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};

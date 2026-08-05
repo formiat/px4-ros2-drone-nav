@@ -40,7 +40,9 @@ Gazebo contact involving the drone
 ### `obstacle_memory_node`
 
 - projects lidar scans into `map`;
-- waits for a valid PX4 heading before accepting scan geometry;
+- requires a configured number of mutually stable PX4 heading samples before
+  accepting scan geometry;
+- starts a new pose-history generation at every valid PX4-heading handoff;
 - maintains 2D occupancy memory and sparse 3D diagnostic provenance;
 - publishes `/drone_city_nav/obstacle_memory_snapshot`;
 - publishes `/drone_city_nav/raw_obstacle_snapshot`;
@@ -50,7 +52,9 @@ Gazebo contact involving the drone
 
 - consumes PX4 state and immutable obstacle snapshots;
 - loads canonical Occupancy3D directly in static mode;
-- builds mode-specific ESDF snapshots asynchronously;
+- builds the resident static ESDF asynchronously as soon as navigation state and
+  the configured objective are ready, independently of lidar snapshots;
+- publishes latched planner-world readiness after successful ESDF activation;
 - builds and maintains the active global lattice guide;
 - selects local lookahead targets;
 - runs the persistent CUDA MPPI engine;
@@ -129,12 +133,13 @@ interceptor state + RadarScan -> target tracker -> TargetTrack
 interceptor state + TargetTrack -> guidance -> NavigationObjective
 ```
 
-The mission referee waits until both vehicles are armed and airborne, publishes
-the evader's fixed position objective, evaluates the terminal outcome, and owns
-hold or disarm settlement. It cannot publish an interceptor navigation
-objective. Only the referee and radar simulator subscribe to evader ground
-truth; the referee verifies this subscriber set through the ROS graph before
-starting the mission.
+The mission referee publishes the evader's fixed position objective, then waits
+until both vehicles are navigation-ready, both planners have activated a world,
+and the tracker has produced its first valid target position. It evaluates the
+terminal outcome and owns hold or disarm settlement. It cannot publish an
+interceptor navigation objective. Only the referee and radar simulator
+subscribe to evader ground truth; the referee verifies this subscriber set
+through the ROS graph before starting the mission.
 
 `RadarScan` exposes only range, azimuth, elevation, and relative radial velocity.
 It contains no absolute target state or simulator identity. The ideal simulator
@@ -146,8 +151,10 @@ later variable-dt corrections produce a constant-velocity `TargetTrack` that
 coasts between measurements. Interceptor guidance runs at 20 Hz and converts
 that track into a typed continuous objective. It solves the constant-velocity
 intercept equation, caps the result at 15 s, and caps the horizon at 1 s while
-ahead inside the target corridor. Vehicle yaw is not used to choose the global
-route.
+ahead inside the target corridor. Vertical coasting applies bounded
+deceleration until vertical speed reaches zero and clips altitude to the flight
+envelope instead of rejecting the complete tracking objective. Vehicle yaw is
+not used to choose the global route.
 
 Guidance does not read occupancy. The production planner resolves the predicted
 segment against its immutable raw world, stopping at the first occupied cell and

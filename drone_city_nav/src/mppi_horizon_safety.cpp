@@ -279,16 +279,23 @@ void MppiSafetyInterventionTracker::reset() noexcept {
 MppiBrakeHoldUpdate
 MppiBrakeHoldLifecycle::update(const bool braking_required,
                                const mppi::State& current_state,
-                               const double capture_speed_mps) noexcept {
+                               const double capture_speed_mps,
+                               const FlightEnvelopeConfig& flight_envelope) noexcept {
   if (!braking_required) {
     reset();
     return {};
+  }
+  if (hold_state_.has_value() &&
+      !insideFlightEnvelope(static_cast<double>(hold_state_->z), flight_envelope) &&
+      insideFlightEnvelope(static_cast<double>(current_state.z), flight_envelope)) {
+    hold_state_.reset();
   }
   if (!hold_state_.has_value()) {
     const double speed = std::hypot(std::hypot(static_cast<double>(current_state.vx),
                                                static_cast<double>(current_state.vy)),
                                     static_cast<double>(current_state.vz));
-    if (speed <= std::max(0.0, capture_speed_mps)) {
+    if (speed <= std::max(0.0, capture_speed_mps) &&
+        insideFlightEnvelope(static_cast<double>(current_state.z), flight_envelope)) {
       hold_state_ = current_state;
       hold_state_->vx = 0.0F;
       hold_state_->vy = 0.0F;

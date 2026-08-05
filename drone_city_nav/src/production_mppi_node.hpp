@@ -33,6 +33,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -68,6 +69,7 @@ struct ProductionTrackingObjective {
   InterceptGuidanceMode guidance_mode{InterceptGuidanceMode::kDirect};
   TrackingObjectiveResolutionStatus resolution_status{
       TrackingObjectiveResolutionStatus::kInvalidInput};
+  bool vertical_prediction_clipped{false};
   bool direct_line_of_sight{false};
   std::uint64_t line_of_sight_generation{0U};
 };
@@ -327,10 +329,14 @@ public:
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message);
+  void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void onNavigationObjective(const msg::NavigationObjective& message);
+  void requestStaticEsdfWork(bool force_refresh = false);
+  void completeStaticEsdfWork(bool world_ready) noexcept;
+  void publishWorldReadiness(bool ready);
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
   navigationObjective() const;
   void requestGuideRelease(GlobalGuideReleaseReason reason,
@@ -462,6 +468,10 @@ private:
   std::mutex raw_queue_mutex_;
   std::condition_variable_any raw_queue_condition_;
   msg::RawObstacleSnapshot::ConstSharedPtr pending_raw_snapshot_;
+  bool pending_static_esdf_work_{false};
+  bool static_esdf_work_in_progress_{false};
+  std::atomic_bool vehicle_navigation_ready_{false};
+  std::atomic_bool world_ready_{false};
   std::atomic<std::uint64_t> dropped_raw_snapshots_{0U};
   std::jthread esdf_worker_;
   std::mutex guide_queue_mutex_;
@@ -504,6 +514,7 @@ private:
 
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
   rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
@@ -511,6 +522,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr world_readiness_pub_;
   rclcpp::Publisher<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_pub_;
   rclcpp::TimerBase::SharedPtr planning_timer_;
 };

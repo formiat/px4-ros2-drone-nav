@@ -4,6 +4,7 @@
 #include "drone_city_nav/radar_target_tracker.hpp"
 
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 #include <cinttypes>
 #include <cstdint>
@@ -60,12 +61,24 @@ public:
         declare_parameter<std::string>("target_track_topic",
                                        "/vehicles/interceptor/target_track"),
         rclcpp::QoS{1}.reliable().transient_local());
+    track_readiness_pub_ = create_publisher<std_msgs::msg::Bool>(
+        declare_parameter<std::string>("target_track_readiness_topic",
+                                       "/vehicles/interceptor/target_track_ready"),
+        rclcpp::QoS{1}.reliable().transient_local());
+    publishTrackReadiness(false);
     RCLCPP_INFO(get_logger(),
                 "Radar target tracker ready: input_frame='%s' output_frame='%s'",
                 expected_radar_frame_.c_str(), output_frame_.c_str());
   }
 
 private:
+  void publishTrackReadiness(const bool ready) {
+    std_msgs::msg::Bool message;
+    message.data = ready;
+    track_readiness_pub_->publish(message);
+    RCLCPP_INFO(get_logger(), "RADAR_TRACK_READY ready=%s", ready ? "true" : "false");
+  }
+
   void onRadarScan(const msg::RadarScan& scan) {
     if (scan.header.frame_id != expected_radar_frame_ || scan.detections.empty()) {
       RCLCPP_WARN(get_logger(),
@@ -126,6 +139,10 @@ private:
     track.status = estimate.velocity_valid ? msg::TargetTrack::STATUS_TRACKING
                                            : msg::TargetTrack::STATUS_INITIALIZING;
     track_pub_->publish(track);
+    if (!track_ready_) {
+      track_ready_ = true;
+      publishTrackReadiness(true);
+    }
     last_scan_sequence_ = pending_scan_->scan_sequence;
     RCLCPP_INFO(get_logger(),
                 "RADAR_TRACK status=%s track_id=%" PRIu64 " scan_sequence=%" PRIu64
@@ -142,9 +159,11 @@ private:
   std::string expected_radar_frame_;
   std::string output_frame_;
   std::uint64_t last_scan_sequence_{0U};
+  bool track_ready_{false};
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr ownship_state_sub_;
   rclcpp::Subscription<msg::RadarScan>::SharedPtr radar_scan_sub_;
   rclcpp::Publisher<msg::TargetTrack>::SharedPtr track_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr track_readiness_pub_;
 };
 
 } // namespace drone_city_nav

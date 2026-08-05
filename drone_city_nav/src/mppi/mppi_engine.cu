@@ -761,8 +761,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                                 moving_target.state.vx * target_elapsed_s - state.x,
                             moving_target.state.y +
                                 moving_target.state.vy * target_elapsed_s - state.y),
-                     moving_target.state.z + moving_target.state.vz * target_elapsed_s -
-                         state.z)
+                     movingTargetAltitudeAt(moving_target, target_elapsed_s) - state.z)
             : hypotf(target.x - state.x, target.y - state.y);
     minimum_target_separation_m =
         fminf(minimum_target_separation_m, target_distance);
@@ -1197,7 +1196,15 @@ public:
           !std::isfinite(moving_target.state.vx) ||
           !std::isfinite(moving_target.state.vy) ||
           !std::isfinite(moving_target.state.vz) ||
-          !(moving_target.capture_radius_m > 0.0F)) {
+          !(moving_target.capture_radius_m > 0.0F) ||
+          (moving_target.bounded_vertical_motion &&
+           (!std::isfinite(moving_target.vertical_deceleration_mps2) ||
+            !(moving_target.vertical_deceleration_mps2 > 0.0F) ||
+            !std::isfinite(moving_target.minimum_z_m) ||
+            !std::isfinite(moving_target.maximum_z_m) ||
+            !(moving_target.maximum_z_m > moving_target.minimum_z_m) ||
+            moving_target.state.z < moving_target.minimum_z_m ||
+            moving_target.state.z > moving_target.maximum_z_m))) {
         throw std::invalid_argument{"invalid moving target reference"};
       }
     }

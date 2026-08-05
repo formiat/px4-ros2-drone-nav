@@ -129,6 +129,8 @@ public:
       LidarPoseTimeBasis time_basis = LidarPoseTimeBasis::kReceiveTime) const noexcept;
 
   void clear() noexcept;
+  void startNewGeneration() noexcept;
+  [[nodiscard]] std::uint64_t generation() const noexcept;
   [[nodiscard]] std::size_t positionSampleCount() const noexcept;
   [[nodiscard]] std::size_t attitudeSampleCount() const noexcept;
 
@@ -153,6 +155,7 @@ private:
   LidarPoseHistoryConfig config_{};
   std::deque<PositionSample> positions_;
   std::deque<AttitudeSample> attitudes_;
+  std::uint64_t generation_{0U};
 };
 
 [[nodiscard]] std::optional<std::vector<LidarProjectionPose>>

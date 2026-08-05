@@ -81,8 +81,10 @@ public:
     use_px4_heading_for_scan_ = mapping_yaw_config.use_px4_heading;
     initial_heading_rad_ = mapping_yaw_config.initial_heading_rad;
     maximum_heading_variance_rad2_ = mapping_yaw_config.maximum_heading_variance_rad2;
-    startup_heading_alignment_tolerance_rad_ =
-        mapping_yaw_config.startup_alignment_tolerance_rad;
+    startup_heading_stable_sample_count_ =
+        mapping_yaw_config.startup_stable_sample_count;
+    startup_heading_maximum_sample_delta_rad_ =
+        mapping_yaw_config.startup_maximum_sample_delta_rad;
     motion_compensate_lidar_pose_ =
         declare_parameter<bool>("motion_compensate_lidar_pose", true);
     lidar_pose_latency_s_ =
@@ -179,7 +181,8 @@ public:
         declare_parameter<bool>("use_initial_pose_until_px4", true);
     mapping_yaw_tracker_ =
         MappingYawTracker{use_px4_heading_for_scan_, initial_heading_rad_,
-                          startup_heading_alignment_tolerance_rad_};
+                          startup_heading_stable_sample_count_,
+                          startup_heading_maximum_sample_delta_rad_};
     px4_local_pose_config_ =
         Px4LocalPoseConfig{use_px4_heading_for_scan_, initial_heading_rad_,
                            declare_parameter<double>("px4_local_origin_x_m", 0.0),
@@ -280,29 +283,30 @@ public:
                 memory_->rawGrid().resolution(), memory_->rawGrid().originX(),
                 memory_->rawGrid().originY(), lidar_topic.c_str(),
                 attitude_topic.c_str(), timesync_status_topic.c_str());
-    RCLCPP_INFO(
-        get_logger(),
-        "Obstacle memory config: max_range=%.2f stride=%d "
-        "raw_memory_only=true "
-        "score[min=%d max=%d free<=%d occupied>=%d] "
-        "yaw_source=%s max_heading_variance=%.6frad2 "
-        "startup_alignment_tolerance=%.3frad "
-        "compensate_attitude=%s lidar_z_offset=%.2f "
-        "projected_altitude_range=[%.2f, %.2f] "
-        "motion_compensation=%s pose_latency=%.3fs "
-        "lidar_mount_rpy=(%.3f, %.3f, %.3f) full_extrinsic=%s "
-        "translation_body_frd=(%.3f, %.3f, %.3f)",
-        memory_config_.max_lidar_range_m, memory_config_.scan_stride,
-        memory_config_.min_score, memory_config_.max_score, memory_config_.free_score,
-        memory_config_.occupied_score,
-        use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
-        maximum_heading_variance_rad2_, startup_heading_alignment_tolerance_rad_,
-        compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
-        min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-        motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
-        lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
-        use_full_lidar_extrinsic_ ? "true" : "false", lidar_translation_body_frd_m_.x,
-        lidar_translation_body_frd_m_.y, lidar_translation_body_frd_m_.z);
+    RCLCPP_INFO(get_logger(),
+                "Obstacle memory config: max_range=%.2f stride=%d "
+                "raw_memory_only=true "
+                "score[min=%d max=%d free<=%d occupied>=%d] "
+                "yaw_source=%s max_heading_variance=%.6frad2 "
+                "startup_stable_samples=%zu startup_maximum_delta=%.3frad "
+                "compensate_attitude=%s lidar_z_offset=%.2f "
+                "projected_altitude_range=[%.2f, %.2f] "
+                "motion_compensation=%s pose_latency=%.3fs "
+                "lidar_mount_rpy=(%.3f, %.3f, %.3f) full_extrinsic=%s "
+                "translation_body_frd=(%.3f, %.3f, %.3f)",
+                memory_config_.max_lidar_range_m, memory_config_.scan_stride,
+                memory_config_.min_score, memory_config_.max_score,
+                memory_config_.free_score, memory_config_.occupied_score,
+                use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
+                maximum_heading_variance_rad2_, startup_heading_stable_sample_count_,
+                startup_heading_maximum_sample_delta_rad_,
+                compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
+                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
+                motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
+                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+                use_full_lidar_extrinsic_ ? "true" : "false",
+                lidar_translation_body_frd_m_.x, lidar_translation_body_frd_m_.y,
+                lidar_translation_body_frd_m_.z);
     openLidarMemoryHitDump();
     lidar_diagnostics_worker_ = std::jthread(
         [this](const std::stop_token token) { lidarDiagnosticsWorker(token); });
@@ -341,15 +345,19 @@ private:
         mapping_yaw.source == MappingYawSource::kPx4Heading &&
         last_mapping_yaw_source_ != MappingYawSource::kPx4Heading;
     if (starts_new_px4_generation) {
-      lidar_pose_history_.clear();
+      lidar_pose_history_.startNewGeneration();
     }
     if (mapping_yaw.source != last_mapping_yaw_source_) {
       RCLCPP_INFO(get_logger(),
                   "LIDAR_MAPPING_YAW source=%s yaw=%.3f px4_heading=%.3f "
-                  "px4_ready=%s alignment_tolerance=%.3f",
+                  "px4_ready=%s stable_samples=%zu required_samples=%zu "
+                  "maximum_sample_delta_rad=%.3f pose_history_generation=%" PRIu64,
                   mappingYawSourceName(mapping_yaw.source), mapping_yaw.yaw_rad,
                   static_cast<double>(msg.heading), heading_ready ? "true" : "false",
-                  startup_heading_alignment_tolerance_rad_);
+                  mapping_yaw_tracker_.stableSampleCount(),
+                  startup_heading_stable_sample_count_,
+                  startup_heading_maximum_sample_delta_rad_,
+                  lidar_pose_history_.generation());
       last_mapping_yaw_source_ = mapping_yaw.source;
     }
     const auto sample =
@@ -937,7 +945,8 @@ private:
   std::int64_t last_attitude_receive_ns_{0};
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
-  double startup_heading_alignment_tolerance_rad_{0.15};
+  std::size_t startup_heading_stable_sample_count_{5U};
+  double startup_heading_maximum_sample_delta_rad_{0.05};
   double lidar_z_offset_m_{0.0};
   double lidar_mount_roll_rad_{0.0};
   double lidar_mount_pitch_rad_{0.0};

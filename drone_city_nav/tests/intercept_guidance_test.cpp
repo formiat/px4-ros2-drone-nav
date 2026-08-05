@@ -42,9 +42,9 @@ TEST(InterceptGuidance, SolvesAnalyticInterceptAndCompensatesMeasurementAge) {
 TEST(InterceptGuidance, UsesAnalyticMeetingPointWhenInterceptorIsAheadInCorridor) {
   InterceptGuidance guidance;
   const TimedVehicleState interceptor =
-      state(Point3{6.0, 0.0, 0.0}, Vec3{}, 1'000'000'000LL);
+      state(Point3{6.0, 0.0, 5.0}, Vec3{}, 1'000'000'000LL);
   const TimedVehicleState target =
-      state(Point3{}, Vec3{10.0, 0.0, 0.0}, 1'000'000'000LL);
+      state(Point3{0.0, 0.0, 5.0}, Vec3{10.0, 0.0, 0.0}, 1'000'000'000LL);
 
   const InterceptGuidanceResult result =
       guidance.update(interceptor, target, 1'100'000'000LL);
@@ -138,6 +138,43 @@ TEST(InterceptGuidance, RejectsInvalidTargetPosition) {
   target.position_valid = false;
 
   EXPECT_FALSE(guidance.update(TimedVehicleState{}, target, 1'000'000'000LL).valid);
+}
+
+TEST(InterceptGuidance, StopsVerticalPredictionInsteadOfExtrapolatingForever) {
+  InterceptGuidance guidance{InterceptGuidanceConfig{
+      .target_vertical_deceleration_mps2 = 4.0,
+  }};
+  const TimedVehicleState interceptor =
+      state(Point3{0.0, 0.0, 18.0}, Vec3{}, 1'000'000'000LL);
+  const TimedVehicleState target =
+      state(Point3{100.0, 0.0, 18.0}, Vec3{10.0, 0.0, 4.0}, 1'000'000'000LL);
+
+  const InterceptGuidanceResult result =
+      guidance.update(interceptor, target, 1'000'000'000LL);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_NEAR(result.predicted_position.z, 20.0, 1.0e-9);
+  EXPECT_FALSE(result.vertical_prediction_limited);
+}
+
+TEST(InterceptGuidance, ClampsVerticalPredictionAtFlightEnvelopeBoundary) {
+  InterceptGuidance guidance{InterceptGuidanceConfig{
+      .target_vertical_deceleration_mps2 = 1.0,
+      .target_flight_envelope =
+          FlightEnvelopeConfig{.minimum_target_z_m = 1.0, .maximum_target_z_m = 32.0},
+  }};
+  const TimedVehicleState interceptor =
+      state(Point3{0.0, 0.0, 20.0}, Vec3{}, 1'000'000'000LL);
+  const TimedVehicleState target =
+      state(Point3{100.0, 0.0, 31.0}, Vec3{10.0, 0.0, 10.0}, 1'000'000'000LL);
+
+  const InterceptGuidanceResult result =
+      guidance.update(interceptor, target, 1'000'000'000LL);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_LT(result.predicted_position.z, 32.0);
+  EXPECT_GE(result.predicted_position.z, 1.0);
+  EXPECT_TRUE(result.vertical_prediction_limited);
 }
 
 } // namespace

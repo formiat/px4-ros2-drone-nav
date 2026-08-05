@@ -175,11 +175,13 @@ def generate_launch_description():
                     "start_x_m": config["origin_x"],
                     "start_y_m": config["origin_y"],
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
+                    "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "obstacle_memory_snapshot_topic": memory_snapshot,
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",
                     "execution_horizon_topic": f"{prefix}/mppi/execution_horizon",
                     "status_topic": f"{prefix}/mppi/status",
+                    "world_readiness_topic": f"{prefix}/mppi/world_ready",
                     "path_topic": path_topic,
                     "markers_topic": marker_topic,
                     "navigation_objective_topic": f"{prefix}/navigation_objective",
@@ -221,6 +223,7 @@ def generate_launch_description():
                     "vehicle_role": 1 if primary else 2,
                     "mission_epoch": 1,
                     "vehicle_navigation_state_topic": f"{prefix}/state",
+                    "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "rviz_drone_follow_tf_enabled": primary,
                     "rviz_drone_follow_frame": "drone_follow",
                     "rviz_drone_marker_topic": "/drone_city_nav/drone_marker",
@@ -421,6 +424,9 @@ def generate_launch_description():
                             "ownship_state_topic": "/vehicles/interceptor/state",
                             "radar_scan_topic": "/vehicles/interceptor/radar/scan",
                             "target_track_topic": "/vehicles/interceptor/target_track",
+                            "target_track_readiness_topic": (
+                                "/vehicles/interceptor/target_track_ready"
+                            ),
                             "maximum_update_interval_s": float(
                                 LaunchConfiguration(
                                     "radar_maximum_scan_interval_s"
@@ -504,6 +510,21 @@ def generate_launch_description():
                                     "intercept_horizon_smoothing_time_constant_s"
                                 ).perform(context)
                             ),
+                            "intercept_target_vertical_deceleration_mps2": float(
+                                document["production_mppi_node"]["ros__parameters"][
+                                    "maximum_vertical_acceleration_mps2"
+                                ]
+                            ),
+                            "minimum_target_z_m": float(
+                                document["production_mppi_node"]["ros__parameters"][
+                                    "minimum_target_z_m"
+                                ]
+                            ),
+                            "maximum_target_z_m": float(
+                                document["production_mppi_node"]["ros__parameters"][
+                                    "maximum_target_z_m"
+                                ]
+                            ),
                         }
                     ],
                 ),
@@ -523,6 +544,15 @@ def generate_launch_description():
                             "evader_state_topic": "/vehicles/evader/state",
                             "interceptor_mission_command_topic": (
                                 "/vehicles/interceptor/mission_command"
+                            ),
+                            "interceptor_world_readiness_topic": (
+                                "/vehicles/interceptor/mppi/world_ready"
+                            ),
+                            "evader_world_readiness_topic": (
+                                "/vehicles/evader/mppi/world_ready"
+                            ),
+                            "target_track_readiness_topic": (
+                                "/vehicles/interceptor/target_track_ready"
                             ),
                             "interceptor_destroyed_topic": (
                                 "/vehicles/interceptor/vehicle_destroyed"

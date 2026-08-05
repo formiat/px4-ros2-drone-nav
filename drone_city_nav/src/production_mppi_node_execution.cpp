@@ -140,7 +140,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
        intervention.decision != MppiHorizonSafetyDecision::kExecute &&
        intervention.decision != MppiHorizonSafetyDecision::kExecuteUntilDeadline);
   const MppiBrakeHoldUpdate brake_hold = brake_hold_lifecycle_.update(
-      braking, input.initial_state, safety_config_.position_hold_capture_speed_mps);
+      braking, input.initial_state, safety_config_.position_hold_capture_speed_mps,
+      flight_envelope_config_);
   ProductionMppiExecutionReason fallback_reason =
       ProductionMppiExecutionReason::kHorizonSafety;
   if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {

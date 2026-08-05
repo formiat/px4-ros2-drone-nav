@@ -69,9 +69,10 @@ struct MppiBrakeHoldUpdate {
 
 class MppiBrakeHoldLifecycle {
 public:
-  [[nodiscard]] MppiBrakeHoldUpdate update(bool braking_required,
-                                           const mppi::State& current_state,
-                                           double capture_speed_mps) noexcept;
+  [[nodiscard]] MppiBrakeHoldUpdate
+  update(bool braking_required, const mppi::State& current_state,
+         double capture_speed_mps,
+         const FlightEnvelopeConfig& flight_envelope) noexcept;
   void reset() noexcept;
 
 private:

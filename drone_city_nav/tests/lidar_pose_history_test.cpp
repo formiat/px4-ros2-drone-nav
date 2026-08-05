@@ -226,5 +226,17 @@ TEST(LidarPoseHistoryTest, DiagnosesMissingPoseHistory) {
   EXPECT_STREQ(lidarPoseAlignmentStatusName(result.status), "position_history_empty");
 }
 
+TEST(LidarPoseHistoryTest, NewGenerationDropsIncompatiblePoseSamples) {
+  LidarPoseHistory history;
+  ASSERT_TRUE(history.addPosition(1'000'000'000, Point3{1.0, 2.0, 3.0}, 0.5, true));
+  ASSERT_TRUE(history.addAttitude(1'000'000'000, pitchQuaternion(0.1)));
+
+  history.startNewGeneration();
+
+  EXPECT_EQ(history.generation(), 1U);
+  EXPECT_EQ(history.positionSampleCount(), 0U);
+  EXPECT_EQ(history.attitudeSampleCount(), 0U);
+}
+
 } // namespace
 } // namespace drone_city_nav

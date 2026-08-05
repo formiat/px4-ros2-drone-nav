@@ -63,20 +63,33 @@ namespace {
 void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
     msg::RawObstacleSnapshot::ConstSharedPtr snapshot;
+    bool static_work{false};
     {
       std::unique_lock lock{raw_queue_mutex_};
-      raw_queue_condition_.wait(lock, stop_token,
-                                [this]() { return pending_raw_snapshot_ != nullptr; });
+      raw_queue_condition_.wait(lock, stop_token, [this]() {
+        return pending_raw_snapshot_ != nullptr || pending_static_esdf_work_;
+      });
       if (stop_token.stop_requested()) {
         return;
       }
-      snapshot = std::exchange(pending_raw_snapshot_, nullptr);
+      if (use_static_map_) {
+        static_work = std::exchange(pending_static_esdf_work_, false);
+        static_esdf_work_in_progress_ = static_work;
+      } else {
+        snapshot = std::exchange(pending_raw_snapshot_, nullptr);
+      }
     }
-    if (!snapshot) {
+    if ((!use_static_map_ && !snapshot) || (use_static_map_ && !static_work)) {
       continue;
     }
     const std::int64_t source_stamp_ns = get_clock()->now().nanoseconds();
-    if (use_static_map_ && static_occupancy_3d_) {
+    if (use_static_map_ && !static_occupancy_3d_) {
+      RCLCPP_ERROR(get_logger(),
+                   "STATIC_ESDF3D rejected reason=resident_occupancy_unavailable");
+      completeStaticEsdfWork(false);
+      continue;
+    }
+    if (use_static_map_) {
       const StaticRouteRoiRefreshRequest roi_refresh =
           static_roi_refresh_lifecycle_.latest();
       std::optional<ProductionMppiPreparedEsdf> active_prepared;
@@ -99,16 +112,13 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
         finishStaticRouteExtension(roi_refresh.base_route_generation);
       }
-      if (static_esdf_3d_) {
-        if (!proactive_roi_refresh) {
-          const std::scoped_lock lock{esdf_state_mutex_};
-          if (prepared_esdf_) {
-            prepared_esdf_->ready_stamp_ns = source_stamp_ns;
-            prepared_esdf_->source_stamp_ns = source_stamp_ns;
-            prepared_esdf_->producer_instance_id = snapshot->producer_instance_id;
-          }
-          continue;
+      if (static_esdf_3d_ && !proactive_roi_refresh && active_prepared) {
+        const bool readiness_transition = !world_ready_.load(std::memory_order_acquire);
+        completeStaticEsdfWork(true);
+        if (readiness_transition) {
+          publishWorldReadiness(true);
         }
+        continue;
       }
       if (!static_esdf_3d_ || proactive_roi_refresh) {
         ProductionMppiNavigation navigation;
@@ -117,6 +127,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           navigation = navigation_;
         }
         if (!navigation.valid) {
+          completeStaticEsdfWork(false);
           continue;
         }
         const std::shared_ptr<const ProductionNavigationObjective> objective =
@@ -157,6 +168,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       const mppi::EsdfUploadResult upload = engine_->updateEsdf(mppi::EsdfSnapshot{
           static_esdf_grid_, *static_esdf_3d_, static_occupancy_3d_->fingerprint()});
       if (!upload.accepted) {
+        completeStaticEsdfWork(false);
         continue;
       }
       if (proactive_roi_refresh) {
@@ -166,7 +178,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       if (proactive_roi_refresh && active_prepared) {
         prepared = *active_prepared;
       }
-      prepared.producer_instance_id = snapshot->producer_instance_id;
+      prepared.producer_instance_id =
+          active_prepared ? active_prepared->producer_instance_id : 0U;
       prepared.revision = static_occupancy_3d_->fingerprint();
       prepared.source_stamp_ns = source_stamp_ns;
       prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
@@ -195,6 +208,11 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
       }
       guide_queue_condition_.notify_all();
+      const bool readiness_transition = !world_ready_.load(std::memory_order_acquire);
+      completeStaticEsdfWork(true);
+      if (readiness_transition) {
+        publishWorldReadiness(true);
+      }
       RCLCPP_INFO(get_logger(),
                   "PRODUCTION_MPPI_ESDF3D revision=%" PRIu64
                   " upload_ms=%.2f dimensions=%dx%dx%d",
@@ -280,6 +298,9 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       pending_guide_world_ = std::move(guide_world);
     }
     guide_queue_condition_.notify_all();
+    if (!world_ready_.exchange(true, std::memory_order_acq_rel)) {
+      publishWorldReadiness(true);
+    }
 
     RCLCPP_INFO(
         get_logger(),

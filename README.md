@@ -135,12 +135,15 @@ guidance. Scan cadence follows a deterministic correlated random walk from
 0.1 s to 3.0 s at long range. At 30 m the radar enters a 20 Hz track mode and
 stays there until range exceeds 40 m. Tracker coasting and guidance continue at
 20 Hz between scans. Only the simulation radar adapter and mission referee may
-read evader ground truth.
+read evader ground truth. Mission motion starts only after both planners report
+a resident world and the tracker has published its first valid target position.
 
 The continuous guidance objective has no terminal goal hold. It uses a
 latency-compensated analytic intercept solution, capped at 15 s, and smoothly
 caps the lead at 1 s when the interceptor is already ahead in the evader's
-motion corridor. The planner clips predictions at the first physical raw
+motion corridor. Vertical prediction models the target stopping its climb or
+descent under bounded acceleration and clamps the result to the configured
+half-open flight envelope. The planner clips predictions at the first physical raw
 obstacle. When the resulting interceptor-to-target segment is raw-clear, MPPI
 tracks the moving target directly without repeatedly rebuilding a global route.
 A swept separation of 5 m publishes typed

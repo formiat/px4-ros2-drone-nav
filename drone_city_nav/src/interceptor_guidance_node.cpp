@@ -75,6 +75,15 @@ public:
             declare_parameter<double>("intercept_ahead_corridor_exit_m", 20.0),
         .horizon_smoothing_time_constant_s = declare_parameter<double>(
             "intercept_horizon_smoothing_time_constant_s", 0.5),
+        .target_vertical_deceleration_mps2 = declare_parameter<double>(
+            "intercept_target_vertical_deceleration_mps2", 4.0),
+        .target_flight_envelope =
+            FlightEnvelopeConfig{
+                .minimum_target_z_m =
+                    declare_parameter<double>("minimum_target_z_m", 1.0),
+                .maximum_target_z_m =
+                    declare_parameter<double>("maximum_target_z_m", 32.0),
+            },
     });
 
     const auto state_qos = rclcpp::QoS{10}.best_effort();
@@ -186,6 +195,7 @@ private:
     objective.observed_target_velocity.y = guidance.observed_velocity.y;
     objective.observed_target_velocity.z = guidance.observed_velocity.z;
     objective.prediction_horizon_s = guidance.prediction_horizon_s;
+    objective.vertical_prediction_limited = guidance.vertical_prediction_limited;
     objective.objective_type =
         msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION;
     objective.guidance_mode = guidanceModeMessage(guidance.mode);
@@ -205,11 +215,12 @@ private:
         "INTERCEPT_GUIDANCE source=radar_track mode=%s track_id=%" PRIu64
         " scan_sequence=%" PRIu64 " target_speed_mps=%.3f horizon_s=%.3f "
         "analytic_intercept_time_s=%.3f measurement_age_s=%.3f ahead_m=%.3f "
-        "cross_track_m=%.3f",
+        "cross_track_m=%.3f vertical_prediction_limited=%s",
         interceptGuidanceModeName(guidance.mode), target_track_->track_id,
         target_track_->source_scan_sequence, guidance.target_speed_mps,
         guidance.prediction_horizon_s, guidance.analytic_intercept_time_s,
-        guidance.prediction_age_s, guidance.ahead_m, guidance.cross_track_m);
+        guidance.prediction_age_s, guidance.ahead_m, guidance.cross_track_m,
+        guidance.vertical_prediction_limited ? "true" : "false");
   }
 
   std::unique_ptr<InterceptGuidance> guidance_;

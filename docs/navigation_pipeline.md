@@ -109,6 +109,8 @@ classification. Raw physical collision causes execution to switch to the
 braking fallback. The independent horizon safety check estimates
 time-to-collision and stopping capability against the current ESDF. Targets and
 all published horizon states must remain inside the configured flight envelope.
+The braking hold cannot latch a ground position outside that envelope; after
+takeoff it captures the current admissible low-speed position instead.
 
 The liveness monitor compares predicted and actual progress. Persistent
 prediction without real movement can reseed the MPPI nominal controls and

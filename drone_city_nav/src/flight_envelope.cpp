@@ -1,5 +1,7 @@
 #include "drone_city_nav/flight_envelope.hpp"
 
+#include <algorithm>
+
 namespace drone_city_nav {
 
 FlightEnvelopeStatus
@@ -31,6 +33,18 @@ bool insideFlightEnvelope(const Point3& point,
                           const FlightEnvelopeConfig& config) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y) &&
          insideFlightEnvelope(point.z, config);
+}
+
+std::optional<double>
+clampToFlightEnvelope(const double z_m, const FlightEnvelopeConfig& config) noexcept {
+  if (!std::isfinite(z_m) ||
+      evaluateFlightEnvelopeAltitude(config.minimum_target_z_m, config) !=
+          FlightEnvelopeStatus::kValid) {
+    return std::nullopt;
+  }
+  const double maximum_valid_z =
+      std::nextafter(config.maximum_target_z_m, config.minimum_target_z_m);
+  return std::clamp(z_m, config.minimum_target_z_m, maximum_valid_z);
 }
 
 bool segmentInsideFlightEnvelope(const Point3& first, const Point3& second,

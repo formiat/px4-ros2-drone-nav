@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <vector>
 
 namespace drone_city_nav {
@@ -28,10 +29,14 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       config.maximum_heading_variance_rad2 < 0.0) {
     config.maximum_heading_variance_rad2 = 0.05;
   }
-  if (!std::isfinite(config.startup_heading_alignment_tolerance_rad) ||
-      config.startup_heading_alignment_tolerance_rad < 0.0) {
-    config.startup_heading_alignment_tolerance_rad = 0.15;
+  config.startup_heading_stable_sample_count =
+      std::clamp<std::size_t>(config.startup_heading_stable_sample_count, 1U, 1000U);
+  if (!std::isfinite(config.startup_heading_maximum_sample_delta_rad) ||
+      config.startup_heading_maximum_sample_delta_rad < 0.0) {
+    config.startup_heading_maximum_sample_delta_rad = 0.05;
   }
+  config.startup_heading_maximum_sample_delta_rad =
+      std::min(config.startup_heading_maximum_sample_delta_rad, std::numbers::pi);
 }
 
 [[nodiscard]] LidarDebugNodeConfig loadLidarDebugNodeConfig(rclcpp::Node& node) {
@@ -73,9 +78,15 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "use_px4_heading_for_scan", config.use_px4_heading_for_scan);
   config.maximum_heading_variance_rad2 = node.declare_parameter<double>(
       "maximum_heading_variance_rad2", config.maximum_heading_variance_rad2);
-  config.startup_heading_alignment_tolerance_rad =
-      node.declare_parameter<double>("startup_heading_alignment_tolerance_rad",
-                                     config.startup_heading_alignment_tolerance_rad);
+  config.startup_heading_stable_sample_count =
+      static_cast<std::size_t>(std::max<std::int64_t>(
+          node.declare_parameter<std::int64_t>(
+              "startup_heading_stable_sample_count",
+              static_cast<std::int64_t>(config.startup_heading_stable_sample_count)),
+          0));
+  config.startup_heading_maximum_sample_delta_rad =
+      node.declare_parameter<double>("startup_heading_maximum_sample_delta_rad",
+                                     config.startup_heading_maximum_sample_delta_rad);
   config.lidar_mount_roll_rad = node.declare_parameter<double>(
       "lidar_mount_roll_rad", config.lidar_mount_roll_rad);
   config.lidar_mount_pitch_rad = node.declare_parameter<double>(

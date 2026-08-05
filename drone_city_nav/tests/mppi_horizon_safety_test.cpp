@@ -259,21 +259,45 @@ TEST(MppiHorizonSafetyTest, RejectsAndRepairsHorizonBelowFlightEnvelope) {
 
 TEST(MppiHorizonSafetyTest, BrakingLifecycleLatchesPositionAfterVehicleSlows) {
   MppiBrakeHoldLifecycle lifecycle;
+  const FlightEnvelopeConfig flight_envelope{};
   mppi::State moving{2.0F, 3.0F, 4.0F};
   moving.vx = 1.0F;
-  EXPECT_FALSE(lifecycle.update(true, moving, 0.2).position_hold);
+  EXPECT_FALSE(lifecycle.update(true, moving, 0.2, flight_envelope).position_hold);
 
   mppi::State stopped = moving;
   stopped.x = 2.5F;
   stopped.vx = 0.1F;
-  const MppiBrakeHoldUpdate captured = lifecycle.update(true, stopped, 0.2);
+  const MppiBrakeHoldUpdate captured =
+      lifecycle.update(true, stopped, 0.2, flight_envelope);
   ASSERT_TRUE(captured.position_hold);
   EXPECT_FLOAT_EQ(captured.hold_state.x, 2.5F);
 
   stopped.x = 2.7F;
-  const MppiBrakeHoldUpdate retained = lifecycle.update(true, stopped, 0.2);
+  const MppiBrakeHoldUpdate retained =
+      lifecycle.update(true, stopped, 0.2, flight_envelope);
   EXPECT_FLOAT_EQ(retained.hold_state.x, 2.5F);
-  EXPECT_FALSE(lifecycle.update(false, stopped, 0.2).position_hold);
+  EXPECT_FALSE(lifecycle.update(false, stopped, 0.2, flight_envelope).position_hold);
+}
+
+TEST(MppiHorizonSafetyTest, BrakingLifecycleDoesNotRetainGroundHoldAfterTakeoff) {
+  MppiBrakeHoldLifecycle lifecycle;
+  const FlightEnvelopeConfig flight_envelope{};
+  mppi::State ground{2.0F, 3.0F, 0.0F};
+
+  EXPECT_FALSE(lifecycle.update(true, ground, 0.2, flight_envelope).position_hold);
+
+  mppi::State climbing = ground;
+  climbing.z = 2.0F;
+  climbing.vz = 1.0F;
+  EXPECT_FALSE(lifecycle.update(true, climbing, 0.2, flight_envelope).position_hold);
+
+  mppi::State airborne = climbing;
+  airborne.z = 18.0F;
+  airborne.vz = 0.1F;
+  const MppiBrakeHoldUpdate captured =
+      lifecycle.update(true, airborne, 0.2, flight_envelope);
+  ASSERT_TRUE(captured.position_hold);
+  EXPECT_FLOAT_EQ(captured.hold_state.z, 18.0F);
 }
 
 } // namespace
