@@ -389,7 +389,7 @@ def generate_launch_description():
             DeclareLaunchArgument("interceptor_origin_y_m", default_value="54.0"),
             DeclareLaunchArgument("evader_origin_x_m", default_value="270.0"),
             DeclareLaunchArgument("evader_origin_y_m", default_value="54.0"),
-            DeclareLaunchArgument("evader_goal_x_m", default_value="216.0"),
+            DeclareLaunchArgument("evader_goal_x_m", default_value="54.0"),
             DeclareLaunchArgument("evader_goal_y_m", default_value="378.0"),
             DeclareLaunchArgument("evader_goal_z_m", default_value="18.0"),
             DeclareLaunchArgument("evader_speed_scale", default_value="0.6"),

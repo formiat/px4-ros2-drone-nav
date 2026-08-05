@@ -157,6 +157,24 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("mppi_offboard,", self.launch_text)
         self.assertIn('executable="production_mppi_node"', self.launch_text)
 
+    def test_intercept_evader_route_crosses_city_diagonally(self) -> None:
+        self.assertIn(
+            'DeclareLaunchArgument("evader_origin_x_m", default_value="270.0")',
+            self.intercept_launch_text,
+        )
+        self.assertIn(
+            'DeclareLaunchArgument("evader_origin_y_m", default_value="54.0")',
+            self.intercept_launch_text,
+        )
+        self.assertIn(
+            'DeclareLaunchArgument("evader_goal_x_m", default_value="54.0")',
+            self.intercept_launch_text,
+        )
+        self.assertIn(
+            'DeclareLaunchArgument("evader_goal_y_m", default_value="378.0")',
+            self.intercept_launch_text,
+        )
+
     def test_navigation_nodes_use_gazebo_simulation_clock(self) -> None:
         self.assertIn(
             'obstacle_memory_overrides = {"use_sim_time": True}', self.launch_text

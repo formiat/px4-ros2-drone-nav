@@ -48,7 +48,7 @@ public:
     mission_epoch_ =
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 1));
     const Point3 evader_goal{
-        declare_parameter<double>("evader_goal_x_m", 216.0),
+        declare_parameter<double>("evader_goal_x_m", 54.0),
         declare_parameter<double>("evader_goal_y_m", 378.0),
         declare_parameter<double>("evader_goal_z_m", 18.0),
     };
