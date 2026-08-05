@@ -41,6 +41,16 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
   return value * value;
 }
 
+[[nodiscard]] float targetDistance(const State& state,
+                                   const MovingTargetReference& target,
+                                   const float elapsed_s) noexcept {
+  const float target_x = target.state.x + target.state.vx * elapsed_s;
+  const float target_y = target.state.y + target.state.vy * elapsed_s;
+  const float target_z = target.state.z + target.state.vz * elapsed_s;
+  return std::hypot(std::hypot(target_x - state.x, target_y - state.y),
+                    target_z - state.z);
+}
+
 } // namespace
 
 bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
@@ -95,13 +105,17 @@ RolloutMetrics simulateReference(
     const RiskConfig& risk, const CostConfig& costs, const EsdfGrid& grid,
     const std::span<const float> esdf, const float target_x_m, const float target_y_m,
     const bool early_exit_on_collision, const Control previous_applied_control,
-    const float reference_speed_mps, const FootprintConfig& footprint) {
+    const float reference_speed_mps, const FootprintConfig& footprint,
+    const std::optional<MovingTargetReference> moving_target) {
   RolloutMetrics metrics{};
   metrics.minimum_clearance_m = std::numeric_limits<float>::infinity();
   State state = initial_state;
   Control previous = previous_applied_control;
   const float initial_target_distance =
-      std::hypot(target_x_m - state.x, target_y_m - state.y);
+      moving_target.has_value()
+          ? targetDistance(state, *moving_target, 0.0F)
+          : std::hypot(target_x_m - state.x, target_y_m - state.y);
+  metrics.minimum_target_separation_m = initial_target_distance;
   const std::size_t head_steps =
       std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
                                   costs.head_progress_horizon_s / dynamics.dt_s)),
@@ -140,7 +154,17 @@ RolloutMetrics simulateReference(
     }
 
     const float target_distance =
-        std::hypot(target_x_m - state.x, target_y_m - state.y);
+        moving_target.has_value()
+            ? targetDistance(state, *moving_target,
+                             static_cast<float>(step + 1U) * dynamics.dt_s)
+            : std::hypot(target_x_m - state.x, target_y_m - state.y);
+    if (target_distance < metrics.minimum_target_separation_m) {
+      metrics.minimum_target_separation_m = target_distance;
+    }
+    if (moving_target.has_value() && metrics.predicted_capture_time_s < 0.0F &&
+        target_distance <= moving_target->capture_radius_m) {
+      metrics.predicted_capture_time_s = static_cast<float>(step + 1U) * dynamics.dt_s;
+    }
     if (step + 1U == head_steps) {
       metrics.costs.head_progress = initial_target_distance - target_distance;
     }
@@ -157,14 +181,20 @@ RolloutMetrics simulateReference(
       metrics.costs.speed_tracking +=
           squared(std::hypot(state.vx, state.vy) - reference_speed_mps);
     }
-    metrics.costs.terminal = target_distance;
+    metrics.costs.terminal = moving_target.has_value()
+                                 ? std::max(0.0F, metrics.minimum_target_separation_m -
+                                                      moving_target->capture_radius_m)
+                                 : target_distance;
     previous = control;
     if (metrics.collision && early_exit_on_collision) {
       break;
     }
   }
-  metrics.costs.progress = -(initial_target_distance -
-                             std::hypot(target_x_m - state.x, target_y_m - state.y));
+  metrics.costs.progress =
+      -(initial_target_distance -
+        (moving_target.has_value()
+             ? metrics.minimum_target_separation_m
+             : std::hypot(target_x_m - state.x, target_y_m - state.y)));
   metrics.soft_cost =
       costs.head_progress_weight * -metrics.costs.head_progress +
       costs.progress_weight * metrics.costs.progress +

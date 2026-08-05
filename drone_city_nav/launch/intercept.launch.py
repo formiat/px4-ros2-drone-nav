@@ -43,6 +43,13 @@ def generate_launch_description():
         use_static_map = _optional_bool(
             LaunchConfiguration("use_static_map").perform(context), configured_static
         )
+        interceptor_speed_mps = float(
+            document["production_mppi_node"]["ros__parameters"][
+                "static_cruise_speed_mps"
+                if use_static_map
+                else "no_static_cruise_speed_mps"
+            ]
+        )
         shutdown_on_terminal_outcome = _optional_bool(
             LaunchConfiguration("shutdown_on_terminal_outcome").perform(context), True
         )
@@ -379,6 +386,21 @@ def generate_launch_description():
                                     "radar_interval_step_correlation"
                                 ).perform(context)
                             ),
+                            "track_interval_s": float(
+                                LaunchConfiguration(
+                                    "radar_track_interval_s"
+                                ).perform(context)
+                            ),
+                            "track_enter_range_m": float(
+                                LaunchConfiguration(
+                                    "radar_track_enter_range_m"
+                                ).perform(context)
+                            ),
+                            "track_exit_range_m": float(
+                                LaunchConfiguration(
+                                    "radar_track_exit_range_m"
+                                ).perform(context)
+                            ),
                             "random_seed": int(
                                 LaunchConfiguration("radar_random_seed").perform(
                                     context
@@ -431,14 +453,25 @@ def generate_launch_description():
                                 ).perform(context)
                             )
                             + 0.5,
-                            "intercept_far_prediction_horizon_s": float(
+                            "intercept_interceptor_speed_mps": interceptor_speed_mps,
+                            "intercept_minimum_prediction_horizon_s": float(
                                 LaunchConfiguration(
-                                    "intercept_far_prediction_horizon_s"
+                                    "intercept_minimum_prediction_horizon_s"
                                 ).perform(context)
                             ),
-                            "intercept_ahead_prediction_horizon_s": float(
+                            "intercept_maximum_prediction_horizon_s": float(
                                 LaunchConfiguration(
-                                    "intercept_ahead_prediction_horizon_s"
+                                    "intercept_maximum_prediction_horizon_s"
+                                ).perform(context)
+                            ),
+                            "intercept_ahead_maximum_prediction_horizon_s": float(
+                                LaunchConfiguration(
+                                    "intercept_ahead_maximum_prediction_horizon_s"
+                                ).perform(context)
+                            ),
+                            "intercept_fallback_prediction_horizon_s": float(
+                                LaunchConfiguration(
+                                    "intercept_fallback_prediction_horizon_s"
                                 ).perform(context)
                             ),
                             "intercept_minimum_target_speed_mps": float(
@@ -556,10 +589,17 @@ def generate_launch_description():
             DeclareLaunchArgument("evader_goal_y_m", default_value="378.0"),
             DeclareLaunchArgument("evader_goal_z_m", default_value="18.0"),
             DeclareLaunchArgument(
-                "intercept_far_prediction_horizon_s", default_value="3.0"
+                "intercept_minimum_prediction_horizon_s", default_value="0.0"
             ),
             DeclareLaunchArgument(
-                "intercept_ahead_prediction_horizon_s", default_value="1.0"
+                "intercept_maximum_prediction_horizon_s", default_value="15.0"
+            ),
+            DeclareLaunchArgument(
+                "intercept_ahead_maximum_prediction_horizon_s",
+                default_value="1.0",
+            ),
+            DeclareLaunchArgument(
+                "intercept_fallback_prediction_horizon_s", default_value="1.0"
             ),
             DeclareLaunchArgument(
                 "intercept_minimum_target_speed_mps", default_value="0.5"
@@ -589,6 +629,13 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "radar_interval_step_correlation", default_value="0.85"
+            ),
+            DeclareLaunchArgument("radar_track_interval_s", default_value="0.05"),
+            DeclareLaunchArgument(
+                "radar_track_enter_range_m", default_value="30.0"
+            ),
+            DeclareLaunchArgument(
+                "radar_track_exit_range_m", default_value="40.0"
             ),
             DeclareLaunchArgument("radar_random_seed", default_value="42"),
             DeclareLaunchArgument("evader_speed_scale", default_value="0.5"),

@@ -58,6 +58,7 @@ struct MppiTickInput {
   std::uint64_t nominal_reseed_generation{0U};
   float reference_speed_mps{-1.0F};
   RiskTier maximum_eligible_risk_tier{RiskTier::kPreferred};
+  std::optional<MovingTargetReference> moving_target;
   std::optional<RouteReference> route;
 };
 
@@ -110,6 +111,8 @@ struct MppiTickResult {
   float minimum_esdf_distance_m{0.0F};
   float head_progress_m{0.0F};
   float terminal_progress_m{0.0F};
+  float minimum_target_separation_m{0.0F};
+  float predicted_capture_time_s{-1.0F};
   float maximum_acceleration_mps2{0.0F};
   float maximum_jerk_mps3{0.0F};
   float first_control_delta{0.0F};

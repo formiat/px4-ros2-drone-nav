@@ -186,8 +186,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_launch_configures_adaptive_predictive_guidance(self) -> None:
         expected_defaults = {
-            "intercept_far_prediction_horizon_s": "3.0",
-            "intercept_ahead_prediction_horizon_s": "1.0",
+            "intercept_minimum_prediction_horizon_s": "0.0",
+            "intercept_maximum_prediction_horizon_s": "15.0",
+            "intercept_ahead_maximum_prediction_horizon_s": "1.0",
+            "intercept_fallback_prediction_horizon_s": "1.0",
             "intercept_minimum_target_speed_mps": "0.5",
             "intercept_ahead_enter_m": "5.0",
             "intercept_ahead_exit_m": "0.0",
@@ -197,9 +199,26 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         }
         for name, default in expected_defaults.items():
             with self.subTest(parameter=name):
-                self.assertIn(f'"{name}", default_value="{default}"',
-                              self.intercept_launch_text)
+                self.assertRegex(
+                    self.intercept_launch_text,
+                    rf'"{name}",\s*default_value="{default}"',
+                )
                 self.assertIn(f'"{name}": float(', self.intercept_launch_text)
+
+    def test_intercept_launch_configures_close_range_radar_track_mode(self) -> None:
+        expected_defaults = {
+            "radar_track_interval_s": "0.05",
+            "radar_track_enter_range_m": "30.0",
+            "radar_track_exit_range_m": "40.0",
+        }
+        for name, default in expected_defaults.items():
+            with self.subTest(parameter=name):
+                self.assertRegex(
+                    self.intercept_launch_text,
+                    rf'"{name}",\s*default_value="{default}"',
+                )
+                self.assertIn(f'"{name.removeprefix("radar_")}": float(',
+                              self.intercept_launch_text)
 
     def test_navigation_nodes_use_gazebo_simulation_clock(self) -> None:
         self.assertIn(

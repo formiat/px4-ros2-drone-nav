@@ -24,10 +24,10 @@ guidanceModeMessage(const InterceptGuidanceMode mode) noexcept {
   switch (mode) {
     case InterceptGuidanceMode::kDirect:
       return msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
-    case InterceptGuidanceMode::kFarLead:
-      return msg::NavigationObjective::GUIDANCE_MODE_FAR_LEAD;
-    case InterceptGuidanceMode::kAheadLead:
-      return msg::NavigationObjective::GUIDANCE_MODE_AHEAD_LEAD;
+    case InterceptGuidanceMode::kAnalyticIntercept:
+      return msg::NavigationObjective::GUIDANCE_MODE_ANALYTIC_INTERCEPT;
+    case InterceptGuidanceMode::kAheadIntercept:
+      return msg::NavigationObjective::GUIDANCE_MODE_AHEAD_INTERCEPT;
   }
   return msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
 }
@@ -55,10 +55,16 @@ public:
     expected_maximum_measurement_age_s_ =
         declare_parameter<double>("expected_maximum_measurement_age_s", 3.5);
     guidance_ = std::make_unique<InterceptGuidance>(InterceptGuidanceConfig{
-        .far_prediction_horizon_s =
-            declare_parameter<double>("intercept_far_prediction_horizon_s", 3.0),
-        .ahead_prediction_horizon_s =
-            declare_parameter<double>("intercept_ahead_prediction_horizon_s", 1.0),
+        .interceptor_speed_mps =
+            declare_parameter<double>("intercept_interceptor_speed_mps", 20.0),
+        .minimum_prediction_horizon_s =
+            declare_parameter<double>("intercept_minimum_prediction_horizon_s", 0.0),
+        .maximum_prediction_horizon_s =
+            declare_parameter<double>("intercept_maximum_prediction_horizon_s", 15.0),
+        .ahead_maximum_prediction_horizon_s = declare_parameter<double>(
+            "intercept_ahead_maximum_prediction_horizon_s", 1.0),
+        .fallback_prediction_horizon_s =
+            declare_parameter<double>("intercept_fallback_prediction_horizon_s", 1.0),
         .minimum_target_speed_mps =
             declare_parameter<double>("intercept_minimum_target_speed_mps", 0.5),
         .ahead_enter_m = declare_parameter<double>("intercept_ahead_enter_m", 5.0),
@@ -198,11 +204,12 @@ private:
         get_logger(), *get_clock(), 1000,
         "INTERCEPT_GUIDANCE source=radar_track mode=%s track_id=%" PRIu64
         " scan_sequence=%" PRIu64 " target_speed_mps=%.3f horizon_s=%.3f "
-        "measurement_age_s=%.3f ahead_m=%.3f cross_track_m=%.3f",
+        "analytic_intercept_time_s=%.3f measurement_age_s=%.3f ahead_m=%.3f "
+        "cross_track_m=%.3f",
         interceptGuidanceModeName(guidance.mode), target_track_->track_id,
         target_track_->source_scan_sequence, guidance.target_speed_mps,
-        guidance.prediction_horizon_s, guidance.prediction_age_s, guidance.ahead_m,
-        guidance.cross_track_m);
+        guidance.prediction_horizon_s, guidance.analytic_intercept_time_s,
+        guidance.prediction_age_s, guidance.ahead_m, guidance.cross_track_m);
   }
 
   std::unique_ptr<InterceptGuidance> guidance_;

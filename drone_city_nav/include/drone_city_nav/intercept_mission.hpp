@@ -10,8 +10,6 @@ namespace drone_city_nav {
 struct InterceptMissionConfig {
   double capture_radius_m{5.0};
   double evader_goal_radius_m{2.0};
-  double evader_goal_stop_speed_mps{0.8};
-  double evader_goal_hold_s{2.0};
 };
 
 struct TimedVehicleState {
@@ -88,7 +86,6 @@ private:
   InterceptMissionConfig config_{};
   std::optional<TimedVehicleState> previous_interceptor_;
   std::optional<TimedVehicleState> previous_evader_;
-  std::optional<std::int64_t> evader_goal_hold_started_ns_;
   InterceptMissionOutcome outcome_{InterceptMissionOutcome::kRunning};
   bool capture_detected_{false};
 };

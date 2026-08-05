@@ -20,8 +20,20 @@ void ProductionMppiNode::planningTick() {
   }
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       navigationObjective();
+  const ProductionTrackingObjective* tracking_objective =
+      objective && objective->tracking.has_value() ? &objective->tracking.value()
+                                                   : nullptr;
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const bool terminal_hold_enabled = !objective || !objective->continuous_tracking;
+  const bool direct_tracking_line_of_sight =
+      objective && objective->continuous_tracking && tracking_objective != nullptr &&
+      tracking_objective->direct_line_of_sight;
+  const std::uint64_t line_of_sight_generation =
+      tracking_objective != nullptr ? tracking_objective->line_of_sight_generation : 0U;
+  const std::uint64_t effective_guide_generation =
+      direct_tracking_line_of_sight
+          ? (std::uint64_t{1} << 63U) | line_of_sight_generation
+          : 0U;
   const auto snapshot_started = std::chrono::steady_clock::now();
   ProductionMppiNavigation navigation;
   ProductionMppiPredictionError prediction;
@@ -76,6 +88,7 @@ void ProductionMppiNode::planningTick() {
         .previous_applied_control = std::nullopt,
         .nominal_reseed_generation = 0U,
         .reference_speed_mps = 0.0F,
+        .moving_target = std::nullopt,
         .route = std::nullopt,
     };
     const MppiHorizonSafetyResult fallback =
@@ -146,14 +159,15 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const std::span<const Point2> guide =
-      esdf->route_2d_projection ? std::span<const Point2>{*esdf->route_2d_projection}
-                                : std::span<const Point2>{};
+      !direct_tracking_line_of_sight && esdf->route_2d_projection
+          ? std::span<const Point2>{*esdf->route_2d_projection}
+          : std::span<const Point2>{};
   if (tracked_route_generation_ != esdf->global_guide_generation) {
     tracked_route_generation_ = esdf->global_guide_generation;
     tracked_route_station_m_ = 0.0;
   }
   GlobalGuideProjection measured_route_projection;
-  if (esdf->route_3d) {
+  if (!direct_tracking_line_of_sight && esdf->route_3d) {
     const RouteProjection3D measured_route_3d = projectOntoRoute3D(
         *esdf->route_3d,
         Point3{navigation.state.x, navigation.state.y, navigation.state.z},
@@ -167,7 +181,7 @@ void ProductionMppiNode::planningTick() {
         .cross_track_m = measured_route_3d.distance_m,
         .point = Point2{measured_route_3d.point.x, measured_route_3d.point.y},
     };
-  } else if (esdf->route_2d_projection) {
+  } else if (!direct_tracking_line_of_sight && esdf->route_2d_projection) {
     measured_route_projection = projectOntoGlobalGuide(
         *esdf->route_2d_projection, Point2{navigation.state.x, navigation.state.y},
         tracked_route_station_m_);
@@ -183,14 +197,15 @@ void ProductionMppiNode::planningTick() {
         std::max(0.0, route_projection.station_m + route_projection.remaining_m -
                           tracked_route_station_m_);
   }
-  if (use_static_map_ && route_projection.valid) {
+  if (use_static_map_ && !direct_tracking_line_of_sight && route_projection.valid) {
     maybeRequestStaticRouteExtension(*esdf, navigation, route_projection, now_ns);
   }
   const std::span<const RouteSample3D> route_3d =
-      esdf->route_3d ? std::span<const RouteSample3D>{*esdf->route_3d}
-                     : std::span<const RouteSample3D>{};
+      !direct_tracking_line_of_sight && esdf->route_3d
+          ? std::span<const RouteSample3D>{*esdf->route_3d}
+          : std::span<const RouteSample3D>{};
   const std::span<const ConstrainedRouteSpan> constrained_spans =
-      esdf->constrained_spans
+      !direct_tracking_line_of_sight && esdf->constrained_spans
           ? std::span<const ConstrainedRouteSpan>{*esdf->constrained_spans}
           : std::span<const ConstrainedRouteSpan>{};
   const ConstrainedRouteObservation route_constraint = observeConstrainedRoute(
@@ -220,12 +235,24 @@ void ProductionMppiNode::planningTick() {
               route_control.active
                   ? std::optional<double>{route_control.speed_limit_mps}
                   : std::nullopt,
+          .terminal_goal_limit_enabled = terminal_hold_enabled,
       });
   std::string target_source;
   double target_station_m = 0.0;
-  mppi::State target =
-      selectTarget(*esdf, tracked_route_station_m_, speed_policy.target_lookahead_m,
-                   target_source, target_station_m);
+  mppi::State target;
+  if (direct_tracking_line_of_sight) {
+    target = mppi::State{
+        .x = static_cast<float>(mission_goal.x),
+        .y = static_cast<float>(mission_goal.y),
+        .z = static_cast<float>(mission_goal.z),
+        .yaw = navigation.state.yaw,
+    };
+    target_source = "tracking_raw_clear_direct";
+  } else {
+    target =
+        selectTarget(*esdf, tracked_route_station_m_, speed_policy.target_lookahead_m,
+                     target_source, target_station_m);
+  }
   if (route_control.active) {
     target.z = static_cast<float>(route_control.reference_z_m);
     if (route_control.hold_xy) {
@@ -265,7 +292,7 @@ void ProductionMppiNode::planningTick() {
       applied_control.valid && control_feedback_age_ms >= 0.0 &&
       control_feedback_age_ms <= maximum_control_feedback_age_ms_;
   MppiLivenessResult liveness;
-  if (liveness_supervisor_) {
+  if (liveness_supervisor_ && !direct_tracking_line_of_sight) {
     liveness = liveness_supervisor_->evaluate(MppiLivenessObservation{
         .stamp_ns = now_ns,
         .actual_state = navigation.state,
@@ -284,7 +311,7 @@ void ProductionMppiNode::planningTick() {
     });
   }
   GlobalGuideProgressUpdate guide_progress;
-  if (guide_progress_tracker_) {
+  if (guide_progress_tracker_ && !direct_tracking_line_of_sight) {
     const GlobalGuideProjection& projection = route_projection;
     guide_progress = guide_progress_tracker_->evaluate(GlobalGuideProgressObservation{
         .stamp_ns = now_ns,
@@ -308,7 +335,9 @@ void ProductionMppiNode::planningTick() {
   }
   const MppiNominalReseedUpdate nominal_reseed =
       nominal_reseed_tracker_.update(MppiNominalReseedObservation{
-          .guide_generation = esdf->global_guide_generation,
+          .guide_generation = direct_tracking_line_of_sight
+                                  ? effective_guide_generation
+                                  : esdf->global_guide_generation,
           .local_liveness_generation = liveness.reseed_generation,
           .guide_liveness_generation = guide_progress.local_reseed_generation,
           .safety_rejection_generation = guide_progress.persistent_safety_rejection
@@ -331,7 +360,7 @@ void ProductionMppiNode::planningTick() {
             .maximum_eligible_tier;
   }
   mppi::RiskTier route_required_risk_tier = mppi::RiskTier::kPreferred;
-  if (esdf->mppi_route && route_projection.valid) {
+  if (!direct_tracking_line_of_sight && esdf->mppi_route && route_projection.valid) {
     const double horizon_distance_m = std::max(
         target_station_m - route_projection.station_m,
         speed_policy.reference_speed_mps * static_cast<double>(mppi_config_.steps) *
@@ -343,6 +372,31 @@ void ProductionMppiNode::planningTick() {
     maximum_eligible_risk_tier_ = static_cast<mppi::RiskTier>(
         std::max(static_cast<std::uint8_t>(maximum_eligible_risk_tier_),
                  static_cast<std::uint8_t>(route_required_risk_tier)));
+  }
+  std::optional<mppi::MovingTargetReference> moving_target;
+  if (objective && objective->continuous_tracking && objective->tracking.has_value()) {
+    const ProductionTrackingObjective& tracking = objective->tracking.value();
+    const double observation_age_s = static_cast<double>(std::max<std::int64_t>(
+                                         0, now_ns - tracking.observation_stamp_ns)) *
+                                     1.0e-9;
+    moving_target = mppi::MovingTargetReference{
+        .state =
+            mppi::State{
+                .x = static_cast<float>(tracking.observed_position.x +
+                                        tracking.observed_velocity.x *
+                                            observation_age_s),
+                .y = static_cast<float>(tracking.observed_position.y +
+                                        tracking.observed_velocity.y *
+                                            observation_age_s),
+                .z = static_cast<float>(tracking.observed_position.z +
+                                        tracking.observed_velocity.z *
+                                            observation_age_s),
+                .vx = static_cast<float>(tracking.observed_velocity.x),
+                .vy = static_cast<float>(tracking.observed_velocity.y),
+                .vz = static_cast<float>(tracking.observed_velocity.z),
+            },
+        .capture_radius_m = static_cast<float>(tracking_capture_radius_m_),
+    };
   }
   mppi::MppiTickInput input{
       .initial_state = navigation.state,
@@ -358,8 +412,10 @@ void ProductionMppiNode::planningTick() {
                                  ? static_cast<float>(speed_policy.reference_speed_mps)
                                  : -1.0F,
       .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
+      .moving_target = moving_target,
       .route =
-          esdf->mppi_route && route_projection.valid && !route_control.hold_xy
+          !direct_tracking_line_of_sight && esdf->mppi_route &&
+                  route_projection.valid && !route_control.hold_xy
               ? std::optional<mppi::RouteReference>{mppi::RouteReference{
                     .points = esdf->mppi_route,
                     .generation = esdf->global_guide_generation,
@@ -407,7 +463,7 @@ void ProductionMppiNode::planningTick() {
     }
     no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
         result.eligible_risk_contract.available, result.nominal_reseeded);
-    if (no_eligible_recovery.guide_replan_requested) {
+    if (no_eligible_recovery.guide_replan_requested && !direct_tracking_line_of_sight) {
       requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts,
                           esdf->global_guide_generation);
     }
@@ -426,12 +482,26 @@ void ProductionMppiNode::planningTick() {
                                   .count();
   std::optional<ProductionMppiRvizSnapshot> rviz;
   if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
+    std::shared_ptr<const std::vector<mppi::RouteSample3D>> rviz_route =
+        esdf->mppi_route;
+    if (direct_tracking_line_of_sight) {
+      const std::vector<Point3> direct_points{
+          Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+          mission_goal,
+      };
+      rviz_route = makeMppiRoute3D(
+          sampleRoute3D(
+              direct_points,
+              std::max(0.5, distance3D(direct_points.front(), direct_points.back())),
+              speed_policy.reference_speed_mps),
+          {}, speed_policy.reference_speed_mps, speed_policy.reference_speed_mps);
+    }
     rviz = ProductionMppiRvizSnapshot{
         .candidate_horizon = result.horizon,
         .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
                                                          : std::vector<mppi::State>{},
         .execution_horizon = execution.horizon,
-        .route = esdf->mppi_route,
+        .route = std::move(rviz_route),
         .channel_edges = esdf->channel_edges,
         .selected_channel_ids = esdf->selected_channel_ids,
     };
@@ -451,6 +521,8 @@ void ProductionMppiNode::planningTick() {
   diagnostic_result.minimum_esdf_distance_m = result.minimum_esdf_distance_m;
   diagnostic_result.head_progress_m = result.head_progress_m;
   diagnostic_result.terminal_progress_m = result.terminal_progress_m;
+  diagnostic_result.minimum_target_separation_m = result.minimum_target_separation_m;
+  diagnostic_result.predicted_capture_time_s = result.predicted_capture_time_s;
   diagnostic_result.maximum_acceleration_mps2 = result.maximum_acceleration_mps2;
   diagnostic_result.maximum_jerk_mps3 = result.maximum_jerk_mps3;
   diagnostic_result.first_control_delta = result.first_control_delta;

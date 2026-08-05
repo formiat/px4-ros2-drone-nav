@@ -56,6 +56,9 @@ public:
         .maximum_step_s = declare_parameter<double>("maximum_interval_step_s", 0.25),
         .step_correlation =
             declare_parameter<double>("interval_step_correlation", 0.85),
+        .track_interval_s = declare_parameter<double>("track_interval_s", 0.05),
+        .track_enter_range_m = declare_parameter<double>("track_enter_range_m", 30.0),
+        .track_exit_range_m = declare_parameter<double>("track_exit_range_m", 40.0),
         .random_seed = static_cast<std::uint64_t>(
             declare_parameter<std::int64_t>("random_seed", 42)),
     });
@@ -77,9 +80,13 @@ public:
                                        "/vehicles/interceptor/radar/scan"),
         rclcpp::QoS{10}.reliable());
     timer_ = create_wall_timer(std::chrono::milliseconds{20}, [this] { tick(); });
-    RCLCPP_INFO(get_logger(), "Radar simulator ready: frame='%s' cadence=[%.3f,%.3f]s",
+    RCLCPP_INFO(get_logger(),
+                "Radar simulator ready: frame='%s' cadence=[%.3f,%.3f]s "
+                "track_interval=%.3fs track_range=[%.1f,%.1f]m",
                 radar_frame_id_.c_str(), cadenceMinimumInterval(),
-                cadenceMaximumInterval());
+                cadenceMaximumInterval(), get_parameter("track_interval_s").as_double(),
+                get_parameter("track_enter_range_m").as_double(),
+                get_parameter("track_exit_range_m").as_double());
   }
 
 private:
@@ -125,7 +132,7 @@ private:
     scan.detections.push_back(radar_detection);
     scan_pub_->publish(scan);
 
-    const double next_interval_s = cadence_->nextIntervalSeconds();
+    const double next_interval_s = cadence_->nextIntervalSeconds(detection->range_m);
     next_scan_due_ns_ = now_ns + static_cast<std::int64_t>(next_interval_s * 1.0e9);
     const double actual_interval_s =
         previous_scan_stamp_ns_ > 0
@@ -136,9 +143,10 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "RADAR_SCAN published=true sequence=%lu detections=1 range_m=%.3f "
-        "actual_interval_s=%.3f next_interval_s=%.3f source=ideal_truth_adapter",
+        "actual_interval_s=%.3f next_interval_s=%.3f track_mode=%s "
+        "source=ideal_truth_adapter",
         static_cast<unsigned long>(scan.scan_sequence), detection->range_m,
-        actual_interval_s, next_interval_s);
+        actual_interval_s, next_interval_s, cadence_->trackMode() ? "true" : "false");
   }
 
   std::unique_ptr<CorrelatedRadarCadence> cadence_;

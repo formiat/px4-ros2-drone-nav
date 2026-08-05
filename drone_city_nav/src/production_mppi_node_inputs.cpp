@@ -28,10 +28,10 @@ guidanceMode(const std::uint8_t value) noexcept {
   switch (value) {
     case msg::NavigationObjective::GUIDANCE_MODE_DIRECT:
       return InterceptGuidanceMode::kDirect;
-    case msg::NavigationObjective::GUIDANCE_MODE_FAR_LEAD:
-      return InterceptGuidanceMode::kFarLead;
-    case msg::NavigationObjective::GUIDANCE_MODE_AHEAD_LEAD:
-      return InterceptGuidanceMode::kAheadLead;
+    case msg::NavigationObjective::GUIDANCE_MODE_ANALYTIC_INTERCEPT:
+      return InterceptGuidanceMode::kAnalyticIntercept;
+    case msg::NavigationObjective::GUIDANCE_MODE_AHEAD_INTERCEPT:
+      return InterceptGuidanceMode::kAheadIntercept;
     default:
       return std::nullopt;
   }
@@ -177,6 +177,7 @@ void ProductionMppiNode::onNavigationObjective(
                                   message.position.z};
   Point3 goal = unconstrained_goal;
   std::optional<ProductionTrackingObjective> tracking_objective;
+  TrackingLineOfSightUpdate line_of_sight;
   if (tracking) {
     const Point3 observed{message.observed_target_position.x,
                           message.observed_target_position.y,
@@ -212,6 +213,40 @@ void ProductionMppiNode::onNavigationObjective(
       return;
     }
     goal = resolution.resolved_position;
+    ProductionMppiNavigation navigation;
+    {
+      const std::scoped_lock lock{input_mutex_};
+      navigation = navigation_;
+    }
+    bool raw_clear = false;
+    if (navigation.valid) {
+      const Point3 current_position{navigation.state.x, navigation.state.y,
+                                    navigation.state.z};
+      if (use_static_map_ && static_occupancy_3d_) {
+        raw_clear =
+            trackingLineOfSightRawClear(*static_occupancy_3d_, current_position, goal,
+                                        tracking_objective_ray_sample_spacing_m_);
+      } else if (!use_static_map_) {
+        std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
+        {
+          const std::scoped_lock lock{esdf_state_mutex_};
+          if (prepared_esdf_) {
+            raw_occupancy = prepared_esdf_->raw_occupancy;
+          }
+        }
+        if (raw_occupancy) {
+          raw_clear =
+              trackingLineOfSightRawClear(*raw_occupancy, current_position, goal,
+                                          tracking_objective_ray_sample_spacing_m_);
+        }
+      }
+    }
+    const bool epoch_changed =
+        !previous || previous->mission_epoch != message.mission_epoch;
+    if (epoch_changed) {
+      tracking_line_of_sight_lifecycle_.reset();
+    }
+    line_of_sight = tracking_line_of_sight_lifecycle_.update(raw_clear);
     tracking_objective = ProductionTrackingObjective{
         .observed_position = observed,
         .unconstrained_predicted_position = unconstrained_goal,
@@ -223,7 +258,11 @@ void ProductionMppiNode::onNavigationObjective(
         .resolved_fraction = resolution.resolved_fraction,
         .guidance_mode = *guidance_mode,
         .resolution_status = resolution.status,
+        .direct_line_of_sight = line_of_sight.active,
+        .line_of_sight_generation = line_of_sight.generation,
     };
+  } else {
+    tracking_line_of_sight_lifecycle_.reset();
   }
   const auto objective = std::make_shared<const ProductionNavigationObjective>(
       ProductionNavigationObjective{
@@ -250,7 +289,15 @@ void ProductionMppiNode::onNavigationObjective(
         objective_replan_stamp_ns_ <= 0 ||
         static_cast<double>(now_ns - objective_replan_stamp_ns_) * 1.0e-9 >=
             dynamic_objective_replan_period_s_;
-    request_replan = epoch_changed || (moved && period_elapsed);
+    const bool previous_direct_line_of_sight =
+        previous &&
+        previous->tracking.value_or(ProductionTrackingObjective{}).direct_line_of_sight;
+    const bool current_direct_line_of_sight =
+        tracking_objective.value_or(ProductionTrackingObjective{}).direct_line_of_sight;
+    const bool direct_line_of_sight_lost =
+        previous_direct_line_of_sight && !current_direct_line_of_sight;
+    request_replan = epoch_changed || direct_line_of_sight_lost ||
+                     (!current_direct_line_of_sight && moved && period_elapsed);
     if (request_replan) {
       objective_replan_anchor_ = goal;
       objective_replan_stamp_ns_ = now_ns;
@@ -268,7 +315,7 @@ void ProductionMppiNode::onNavigationObjective(
         " type=tracking_prediction mode=%s horizon_s=%.3f "
         "observed=(%.2f,%.2f,%.2f) predicted=(%.2f,%.2f,%.2f) "
         "resolved=(%.2f,%.2f,%.2f) resolution=%s resolved_fraction=%.3f "
-        "replan=%s",
+        "direct_los=%s los_generation=%" PRIu64 " replan=%s",
         message.mission_epoch, message.sample_sequence,
         interceptGuidanceModeName(tracking_data.guidance_mode),
         tracking_data.prediction_horizon_s, tracking_data.observed_position.x,
@@ -277,7 +324,9 @@ void ProductionMppiNode::onNavigationObjective(
         tracking_data.unconstrained_predicted_position.y,
         tracking_data.unconstrained_predicted_position.z, goal.x, goal.y, goal.z,
         trackingObjectiveResolutionStatusName(tracking_data.resolution_status),
-        tracking_data.resolved_fraction, request_replan ? "true" : "false");
+        tracking_data.resolved_fraction,
+        tracking_data.direct_line_of_sight ? "true" : "false",
+        tracking_data.line_of_sight_generation, request_replan ? "true" : "false");
   } else {
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,

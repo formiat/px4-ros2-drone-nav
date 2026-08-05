@@ -65,6 +65,21 @@ TEST(MppiSpeedPolicyTest, RouteConstraintAndGoalApplyIndependentCaps) {
   const MppiSpeedPolicyResult goal = evaluateMppiSpeedPolicy(config, goal_input);
   EXPECT_LT(goal.goal_limit_mps, 12.0);
   EXPECT_DOUBLE_EQ(goal.reference_speed_mps, goal.goal_limit_mps);
+  EXPECT_EQ(goal.active_limiter, MppiSpeedLimiter::kGoal);
+}
+
+TEST(MppiSpeedPolicyTest, ContinuousTrackingDoesNotBrakeForMovingGoal) {
+  MppiSpeedPolicyConfig config;
+  MppiSpeedPolicyInput input;
+  input.mission_goal = Point3{1.0, 0.0, 18.0};
+  input.terminal_goal_limit_enabled = false;
+
+  const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
+
+  EXPECT_FALSE(result.terminal_goal_limit_enabled);
+  EXPECT_TRUE(std::isinf(result.goal_limit_mps));
+  EXPECT_DOUBLE_EQ(result.reference_speed_mps, config.cruise_speed_mps);
+  EXPECT_NE(result.active_limiter, MppiSpeedLimiter::kGoal);
 }
 
 TEST(MppiSpeedPolicyTest, NoStaticProfileTracksTenMetersPerSecondAtFixedLookahead) {

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <stdexcept>
 
 namespace drone_city_nav {
 namespace {
@@ -69,6 +70,46 @@ resolve(const Point3& observed_position, const Point3& predicted_position,
 
 } // namespace
 
+TrackingLineOfSightLifecycle::TrackingLineOfSightLifecycle(
+    const TrackingLineOfSightConfig& config)
+    : config_{config} {
+  if (config_.clear_confirmations == 0U) {
+    throw std::invalid_argument{"tracking LOS confirmations must be positive"};
+  }
+}
+
+TrackingLineOfSightUpdate
+TrackingLineOfSightLifecycle::update(const bool raw_clear) noexcept {
+  TrackingLineOfSightUpdate result{.active = active_, .generation = generation_};
+  if (!raw_clear) {
+    clear_count_ = 0U;
+    if (active_) {
+      active_ = false;
+      result.active = false;
+      result.newly_inactive = true;
+    }
+    return result;
+  }
+  if (active_) {
+    return result;
+  }
+  ++clear_count_;
+  if (clear_count_ >= config_.clear_confirmations) {
+    active_ = true;
+    clear_count_ = config_.clear_confirmations;
+    ++generation_;
+    result.active = true;
+    result.newly_active = true;
+    result.generation = generation_;
+  }
+  return result;
+}
+
+void TrackingLineOfSightLifecycle::reset() noexcept {
+  clear_count_ = 0U;
+  active_ = false;
+}
+
 TrackingObjectiveResolution resolveTrackingObjective(
     const OccupancyGrid2D& raw_occupancy, const Point3& observed_position,
     const Point3& predicted_position, const double maximum_sample_spacing_m) {
@@ -82,6 +123,20 @@ TrackingObjectiveResolution resolveTrackingObjective(
                        raw_occupancy.worldToCell(Point2{point.x, point.y});
                    return cell.has_value() && raw_occupancy.isOccupied(*cell);
                  });
+}
+
+bool trackingLineOfSightRawClear(const OccupancyGrid2D& raw_occupancy,
+                                 const Point3& from, const Point3& to,
+                                 const double maximum_sample_spacing_m) {
+  return resolveTrackingObjective(raw_occupancy, from, to, maximum_sample_spacing_m)
+             .status == TrackingObjectiveResolutionStatus::kUnchanged;
+}
+
+bool trackingLineOfSightRawClear(const OccupancyGrid3D& raw_occupancy,
+                                 const Point3& from, const Point3& to,
+                                 const double maximum_sample_spacing_m) {
+  return resolveTrackingObjective(raw_occupancy, from, to, maximum_sample_spacing_m)
+             .status == TrackingObjectiveResolutionStatus::kUnchanged;
 }
 
 TrackingObjectiveResolution resolveTrackingObjective(

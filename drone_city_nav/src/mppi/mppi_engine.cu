@@ -644,7 +644,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          float* critical_exposure, float* planning_exposure, float* minimum_clearance,
          std::uint8_t* worst_tier, std::uint8_t* raw_collision,
          std::uint8_t* solid_collision, std::size_t rollouts, std::size_t steps,
-         State initial, State target, DynamicsConfig dynamics, RiskConfig risk,
+         State initial, State target, MovingTargetReference moving_target,
+         bool moving_target_enabled, DynamicsConfig dynamics, RiskConfig risk,
          FootprintConfig footprint, CostConfig costs, EsdfGrid grid,
          cudaTextureObject_t esdf_texture,
          const KnownSolid* solids, std::size_t solid_count,
@@ -671,7 +672,13 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   bool raw_hit = false;
   bool solid_hit = false;
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
-  const float initial_distance = hypotf(target.x - initial.x, target.y - initial.y);
+  const float initial_distance =
+      moving_target_enabled
+          ? hypotf(hypotf(moving_target.state.x - initial.x,
+                          moving_target.state.y - initial.y),
+                   moving_target.state.z - initial.z)
+          : hypotf(target.x - initial.x, target.y - initial.y);
+  float minimum_target_separation_m = initial_distance;
   float head_progress = 0.0F;
   float terminal_route_progress = 0.0F;
   float rollout_route_station_m = initial_route_station_m;
@@ -747,9 +754,23 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
         route_projection.valid ? route_projection.reference_z_m : target.z;
     const float altitude_error = state.z - z_reference;
     altitude_cost += altitude_error * altitude_error;
+    const float target_elapsed_s = static_cast<float>(step + 1U) * dynamics.dt_s;
+    const float target_distance =
+        moving_target_enabled
+            ? hypotf(hypotf(moving_target.state.x +
+                                moving_target.state.vx * target_elapsed_s - state.x,
+                            moving_target.state.y +
+                                moving_target.state.vy * target_elapsed_s - state.y),
+                     moving_target.state.z + moving_target.state.vz * target_elapsed_s -
+                         state.z)
+            : hypotf(target.x - state.x, target.y - state.y);
+    minimum_target_separation_m =
+        fminf(minimum_target_separation_m, target_distance);
     if (step + 1U == head_steps) {
       head_progress =
-          route_projection.valid
+          moving_target_enabled
+              ? initial_distance - target_distance
+              : route_projection.valid
               ? route_projection.station_m - initial_route_station_m
               : initial_distance - hypotf(target.x - state.x, target.y - state.y);
     }
@@ -773,9 +794,15 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       break;
     }
   }
-  const float terminal_distance = hypotf(target.x - state.x, target.y - state.y);
-  const float progress = route_point_count >= 2U ? terminal_route_progress
-                                                 : initial_distance - terminal_distance;
+  const float terminal_distance =
+      moving_target_enabled
+          ? fmaxf(0.0F, minimum_target_separation_m - moving_target.capture_radius_m)
+          : hypotf(target.x - state.x, target.y - state.y);
+  const float progress =
+      moving_target_enabled
+          ? initial_distance - minimum_target_separation_m
+          : route_point_count >= 2U ? terminal_route_progress
+                                    : initial_distance - terminal_distance;
   soft_cost[rollout] =
       costs.head_progress_weight * -head_progress + costs.progress_weight * -progress +
       costs.speed_tracking_weight * dynamics.dt_s * speed_tracking_cost +
@@ -1162,6 +1189,18 @@ public:
     if (!textures_[active_texture_].ready()) {
       throw std::runtime_error{"MPPI engine has no ESDF"};
     }
+    if (input.moving_target.has_value()) {
+      const MovingTargetReference& moving_target = input.moving_target.value();
+      if (!std::isfinite(moving_target.state.x) ||
+          !std::isfinite(moving_target.state.y) ||
+          !std::isfinite(moving_target.state.z) ||
+          !std::isfinite(moving_target.state.vx) ||
+          !std::isfinite(moving_target.state.vy) ||
+          !std::isfinite(moving_target.state.vz) ||
+          !(moving_target.capture_radius_m > 0.0F)) {
+        throw std::invalid_argument{"invalid moving target reference"};
+      }
+    }
     const auto host_started = std::chrono::steady_clock::now();
     const std::size_t noise_count = config_.rollouts * config_.steps;
     const int noise_blocks =
@@ -1189,6 +1228,9 @@ public:
             : config_.dynamics.dt_s;
     const bool route_active = input.route.has_value() && input.route->points &&
                               input.route->points->size() >= 2U;
+    const MovingTargetReference moving_target =
+        input.moving_target.value_or(MovingTargetReference{});
+    const bool moving_target_enabled = input.moving_target.has_value();
     const bool nominal_reseeded =
         input.nominal_reseed_generation > nominal_reseed_generation_;
     if (nominal_reseeded) {
@@ -1240,8 +1282,9 @@ public:
         buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
         buffers_.minimum_clearance.get(), buffers_.worst_tier.get(),
         buffers_.raw_collision.get(), buffers_.solid_collision.get(), config_.rollouts,
-        config_.steps, input.initial_state, input.target, config_.dynamics,
-        config_.risk, config_.footprint, config_.costs,
+        config_.steps, input.initial_state, input.target, moving_target,
+        moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
+        config_.costs,
         textures_[active_texture_].grid(),
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
@@ -1362,7 +1405,7 @@ public:
               config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
               input.target.x, input.target.y, config_.early_exit_on_collision,
               previous_applied_control, input.reference_speed_mps,
-              config_.footprint);
+              config_.footprint, input.moving_target);
           const bool known_solid_collision = hostSweptSolidCollision(
               input.initial_state, controls, config_.dynamics, config_.footprint,
               known_solids_);
@@ -1483,11 +1526,14 @@ public:
         input.initial_state, updated_, zero_noise_, config_.dynamics, config_.risk,
         config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
         input.target.x, input.target.y, config_.early_exit_on_collision,
-        previous_applied_control, input.reference_speed_mps, config_.footprint);
+        previous_applied_control, input.reference_speed_mps, config_.footprint,
+        input.moving_target);
     result.raw_collision = metrics.collision;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;
     result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
+    result.minimum_target_separation_m = metrics.minimum_target_separation_m;
+    result.predicted_capture_time_s = metrics.predicted_capture_time_s;
     result.selected_tier =
         result.known_solid_collision ? RiskTier::kCollision : metrics.worst_tier;
     result.post_update_classification = classifyMppiPostUpdate(

@@ -9,13 +9,16 @@ namespace drone_city_nav {
 
 enum class InterceptGuidanceMode : std::uint8_t {
   kDirect,
-  kFarLead,
-  kAheadLead,
+  kAnalyticIntercept,
+  kAheadIntercept,
 };
 
 struct InterceptGuidanceConfig {
-  double far_prediction_horizon_s{3.0};
-  double ahead_prediction_horizon_s{1.0};
+  double interceptor_speed_mps{20.0};
+  double minimum_prediction_horizon_s{0.0};
+  double maximum_prediction_horizon_s{15.0};
+  double ahead_maximum_prediction_horizon_s{1.0};
+  double fallback_prediction_horizon_s{1.0};
   double minimum_target_speed_mps{0.5};
   double ahead_enter_m{5.0};
   double ahead_exit_m{0.0};
@@ -32,6 +35,7 @@ struct InterceptGuidanceResult {
   std::int64_t observation_stamp_ns{0};
   double prediction_age_s{0.0};
   double prediction_horizon_s{0.0};
+  double analytic_intercept_time_s{0.0};
   double target_speed_mps{0.0};
   double ahead_m{0.0};
   double cross_track_m{0.0};

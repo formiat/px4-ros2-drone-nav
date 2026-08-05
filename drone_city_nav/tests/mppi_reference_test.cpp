@@ -199,5 +199,33 @@ TEST(MppiReferenceTest, ReferenceSpeedAddsTrackingCost) {
   EXPECT_LT(matched.soft_cost, faster.soft_cost);
 }
 
+TEST(MppiReferenceTest, MovingTargetUsesClosestApproachInsteadOfTerminalPoint) {
+  constexpr int kWidth = 30;
+  constexpr int kHeight = 4;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 30.0F);
+  const std::array<Control, 20> controls{};
+  const std::array<Control, 20> noise{};
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.linear_drag_1ps = 0.0F;
+  const State initial{.x = 0.5F, .y = 1.5F, .vx = 10.0F};
+
+  const RolloutMetrics terminal_point =
+      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
+                        grid, esdf, 5.5F, 1.5F, false);
+  const RolloutMetrics moving_target = simulateReference(
+      initial, controls, noise, dynamics, RiskConfig{}, CostConfig{}, grid, esdf, 5.5F,
+      1.5F, false, Control{}, -1.0F, FootprintConfig{},
+      MovingTargetReference{.state = State{.x = 5.5F, .y = 1.5F},
+                            .capture_radius_m = 0.25F});
+
+  EXPECT_GT(terminal_point.costs.terminal, 10.0F);
+  EXPECT_NEAR(moving_target.minimum_target_separation_m, 0.0F, 1.0e-5F);
+  EXPECT_NEAR(moving_target.predicted_capture_time_s, 0.5F, 1.0e-5F);
+  EXPECT_FLOAT_EQ(moving_target.costs.terminal, 0.0F);
+  EXPECT_LT(moving_target.soft_cost, terminal_point.soft_cost);
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

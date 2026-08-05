@@ -79,8 +79,7 @@ InterceptMissionEvaluator::InterceptMissionEvaluator(
     : evader_goal_{evader_goal},
       config_{config} {
   if (!finite(evader_goal_) || !(config_.capture_radius_m > 0.0) ||
-      !(config_.evader_goal_radius_m > 0.0) ||
-      config_.evader_goal_stop_speed_mps < 0.0 || config_.evader_goal_hold_s < 0.0) {
+      !(config_.evader_goal_radius_m > 0.0)) {
     throw std::invalid_argument{"invalid intercept mission configuration"};
   }
 }
@@ -141,20 +140,7 @@ InterceptMissionEvaluator::update(const TimedVehicleState& interceptor,
     result.newly_terminal = true;
   } else if (outcome_ == InterceptMissionOutcome::kRunning) {
     const double goal_distance = norm(subtract(evader.position, evader_goal_));
-    const double speed = evader.velocity_valid
-                             ? norm(evader.velocity)
-                             : std::numeric_limits<double>::infinity();
-    const bool captured = mission_active &&
-                          goal_distance <= config_.evader_goal_radius_m &&
-                          speed <= config_.evader_goal_stop_speed_mps;
-    if (!captured) {
-      evader_goal_hold_started_ns_.reset();
-    } else if (!evader_goal_hold_started_ns_) {
-      evader_goal_hold_started_ns_ = evader.stamp_ns;
-    } else if (evader.stamp_ns >= *evader_goal_hold_started_ns_ &&
-               static_cast<double>(evader.stamp_ns - *evader_goal_hold_started_ns_) *
-                       1.0e-9 >=
-                   config_.evader_goal_hold_s) {
+    if (mission_active && goal_distance <= config_.evader_goal_radius_m) {
       outcome_ = InterceptMissionOutcome::kEvaderReachedGoal;
       result.outcome = outcome_;
       result.newly_terminal = true;

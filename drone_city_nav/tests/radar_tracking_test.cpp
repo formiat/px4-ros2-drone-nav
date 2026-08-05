@@ -66,6 +66,9 @@ TEST(RadarCadence, IsDeterministicCorrelatedAndBounded) {
       .initial_interval_s = 0.1,
       .maximum_step_s = 0.25,
       .step_correlation = 0.85,
+      .track_interval_s = 0.05,
+      .track_enter_range_m = 30.0,
+      .track_exit_range_m = 40.0,
       .random_seed = 1234U,
   };
   CorrelatedRadarCadence first{config};
@@ -84,6 +87,19 @@ TEST(RadarCadence, IsDeterministicCorrelatedAndBounded) {
     previous = interval;
   }
   EXPECT_TRUE(varied);
+}
+
+TEST(RadarCadence, UsesFastTrackModeWithRangeHysteresis) {
+  CorrelatedRadarCadence cadence;
+
+  EXPECT_GT(cadence.nextIntervalSeconds(50.0), 0.0);
+  EXPECT_FALSE(cadence.trackMode());
+  EXPECT_DOUBLE_EQ(cadence.nextIntervalSeconds(30.0), 0.05);
+  EXPECT_TRUE(cadence.trackMode());
+  EXPECT_DOUBLE_EQ(cadence.nextIntervalSeconds(35.0), 0.05);
+  EXPECT_TRUE(cadence.trackMode());
+  EXPECT_GT(cadence.nextIntervalSeconds(40.0), 0.0);
+  EXPECT_FALSE(cadence.trackMode());
 }
 
 TEST(RadarOwnshipHistory, InterpolatesPositionVelocityAndWrappedHeading) {

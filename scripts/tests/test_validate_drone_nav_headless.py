@@ -24,7 +24,7 @@ class SafetyRelevantRosLogTest(unittest.TestCase):
             "RADAR_SCAN published=true sequence=2 detections=1 "
             "source=ideal_truth_adapter\n"
             "RADAR_TRACK status=tracking measurement_count=2 velocity_valid=true\n"
-            "INTERCEPT_GUIDANCE source=radar_track mode=far_lead\n"
+            "INTERCEPT_GUIDANCE source=radar_track mode=analytic_intercept\n"
         )
         errors: list[str] = []
         VALIDATOR.validate_intercept_radar_pipeline(log, errors)
@@ -66,7 +66,7 @@ class SafetyRelevantRosLogTest(unittest.TestCase):
 
 
 class InterceptSettlementValidationTest(unittest.TestCase):
-    def test_intercept_requires_two_confirmed_disarms_before_result(self) -> None:
+    def test_intercept_requires_two_confirmed_disarms_in_completed_log(self) -> None:
         log = (
             "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true\n"
             "[vehicles.interceptor.mppi_offboard_node]: VEHICLE_DESTROYED "
@@ -76,6 +76,21 @@ class InterceptSettlementValidationTest(unittest.TestCase):
             "disarm_confirmed=true role=evader cause=proximity_intercept "
             "mission_epoch=1 detail='intercepted'\n"
             "MISSION_RESULT success=true mission=intercept outcome=intercepted\n"
+        )
+        errors: list[str] = []
+        VALIDATOR.validate_intercept_settlement(log, errors)
+        self.assertEqual(errors, [])
+
+    def test_intercept_accepts_confirmation_logged_during_shutdown(self) -> None:
+        log = (
+            "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true\n"
+            "[vehicles.interceptor.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=interceptor cause=proximity_intercept "
+            "mission_epoch=1 detail='intercepted'\n"
+            "MISSION_RESULT success=true mission=intercept outcome=intercepted\n"
+            "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=evader cause=proximity_intercept "
+            "mission_epoch=1 detail='intercepted'\n"
         )
         errors: list[str] = []
         VALIDATOR.validate_intercept_settlement(log, errors)

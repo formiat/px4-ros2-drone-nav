@@ -139,25 +139,33 @@ starting the mission.
 `RadarScan` exposes only range, azimuth, elevation, and relative radial velocity.
 It contains no absolute target state or simulator identity. The ideal simulator
 publishes immediately at a deterministic correlated cadence between 0.1 s and
-3.0 s. The tracker reconstructs Cartesian position from the interceptor state
-at measurement time. Its first measurement has no full velocity estimate; later
-variable-dt corrections produce a constant-velocity `TargetTrack` that coasts
-between measurements. Interceptor guidance runs at 20 Hz and converts that
-track into a typed continuous objective. It uses a smoothed 3 s to 1 s
-prediction horizon with hysteresis based on along-track and cross-track
-position; vehicle yaw is not used to choose the global route.
+3.0 s at long range, then enters a 20 Hz track mode at 30 m with a 40 m exit
+hysteresis. The tracker reconstructs Cartesian position from the interceptor
+state at measurement time. Its first measurement has no full velocity estimate;
+later variable-dt corrections produce a constant-velocity `TargetTrack` that
+coasts between measurements. Interceptor guidance runs at 20 Hz and converts
+that track into a typed continuous objective. It solves the constant-velocity
+intercept equation, caps the result at 15 s, and caps the horizon at 1 s while
+ahead inside the target corridor. Vehicle yaw is not used to choose the global
+route.
 
 Guidance does not read occupancy. The production planner resolves the predicted
 segment against its immutable raw world, stopping at the first occupied cell and
 retaining the last free sample as the ordinary planning goal. Unknown no-static
 space remains traversable, and no inflation or prohibited region is introduced.
-Continuous objectives retain the existing 5 m and 0.25 s route-replan gate and
-collision validation but disable terminal goal capture. Swept relative-motion
-evaluation detects a 5 m intercept between state samples and publishes one typed
-`VehicleDestroyed` event per role with cause `proximity_intercept`.
+After two raw-clear confirmations, continuous tracking bypasses repeated global
+replanning and gives MPPI a direct moving-target objective. Raw blockage exits
+that mode immediately and requests an ordinary global route. MPPI minimizes
+closest approach to the target trajectory over its horizon, while raw collision
+remains forbidden. Continuous objectives disable terminal goal capture. Swept
+relative-motion evaluation detects a 5 m intercept between state samples and
+publishes one typed `VehicleDestroyed` event per role with cause
+`proximity_intercept`.
 
 The first terminal event is latched and cannot be reclassified by later inertial
-motion. An intercept records the result only after both typed destruction events
+motion. Evader goal arrival is latched on the first airborne sample inside the
+configured goal radius, without a stop-speed or hold-time delay. An intercept
+records the result only after both typed destruction events
 and both PX4 disarm confirmations. If the evader reaches its goal first, the
 coordinator freezes the interceptor objective at its current position and
 records the result only after position and speed remain inside the configured

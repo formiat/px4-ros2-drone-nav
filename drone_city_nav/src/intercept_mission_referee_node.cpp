@@ -81,15 +81,11 @@ public:
     };
     evaluator_capture_radius_m_ = declare_parameter<double>("capture_radius_m", 5.0);
     evaluator_ = std::make_unique<InterceptMissionEvaluator>(
-        target_goal,
-        InterceptMissionConfig{
-            .capture_radius_m = evaluator_capture_radius_m_,
-            .evader_goal_radius_m =
-                declare_parameter<double>("evader_goal_radius_m", 2.0),
-            .evader_goal_stop_speed_mps =
-                declare_parameter<double>("evader_goal_stop_speed_mps", 0.8),
-            .evader_goal_hold_s = declare_parameter<double>("evader_goal_hold_s", 2.0),
-        });
+        target_goal, InterceptMissionConfig{
+                         .capture_radius_m = evaluator_capture_radius_m_,
+                         .evader_goal_radius_m =
+                             declare_parameter<double>("evader_goal_radius_m", 2.0),
+                     });
     target_goal_ = target_goal;
     maximum_state_age_ns_ = static_cast<std::int64_t>(
         declare_parameter<double>("maximum_state_age_s", 1.0) * 1.0e9);

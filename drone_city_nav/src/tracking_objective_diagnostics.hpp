@@ -7,9 +7,39 @@ namespace drone_city_nav {
 
 struct Point3;
 struct MppiDebugMarkerInput;
+struct MppiSpeedPolicyResult;
 struct ProductionNavigationObjective;
+struct ProductionMppiExecutionPublication;
+
+namespace mppi {
+struct MppiTickInput;
+struct MppiTickResult;
+} // namespace mppi
 
 namespace detail {
+
+struct TrackingPursuitDiagnostics {
+  double actual_speed_mps{0.0};
+  double commanded_speed_mps{0.0};
+  double target_separation_m{-1.0};
+  double closing_speed_mps{-1.0};
+  double radar_age_ms{-1.0};
+};
+
+[[nodiscard]] TrackingPursuitDiagnostics
+trackingPursuitDiagnostics(const ProductionNavigationObjective* navigation_objective,
+                           const mppi::MppiTickInput& input,
+                           const ProductionMppiExecutionPublication& execution);
+
+[[nodiscard]] std::string
+trackingPursuitInfoFields(const TrackingPursuitDiagnostics& diagnostics,
+                          const MppiSpeedPolicyResult& speed_policy,
+                          const mppi::MppiTickResult& result);
+
+[[nodiscard]] std::string
+trackingPursuitJsonFields(const TrackingPursuitDiagnostics& diagnostics,
+                          const MppiSpeedPolicyResult& speed_policy,
+                          const mppi::MppiTickResult& result);
 
 [[nodiscard]] std::string
 trackingObjectiveJsonFields(const ProductionNavigationObjective* navigation_objective,

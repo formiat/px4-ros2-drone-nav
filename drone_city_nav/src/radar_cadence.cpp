@@ -15,7 +15,9 @@ CorrelatedRadarCadence::CorrelatedRadarCadence(const RadarCadenceConfig& config)
       config_.initial_interval_s < config_.minimum_interval_s ||
       config_.initial_interval_s > config_.maximum_interval_s ||
       !(config_.maximum_step_s > 0.0) || config_.maximum_step_s > interval_range ||
-      config_.step_correlation < 0.0 || config_.step_correlation >= 1.0) {
+      config_.step_correlation < 0.0 || config_.step_correlation >= 1.0 ||
+      !(config_.track_interval_s > 0.0) || !(config_.track_enter_range_m > 0.0) ||
+      !(config_.track_exit_range_m > config_.track_enter_range_m)) {
     throw std::invalid_argument{"invalid radar cadence configuration"};
   }
   current_step_s_ = std::min(config_.maximum_step_s, interval_range * 0.1);
@@ -39,6 +41,19 @@ double CorrelatedRadarCadence::nextIntervalSeconds() {
   current_interval_s_ =
       std::clamp(candidate, config_.minimum_interval_s, config_.maximum_interval_s);
   return result;
+}
+
+double CorrelatedRadarCadence::nextIntervalSeconds(const double target_range_m) {
+  if (std::isfinite(target_range_m)) {
+    if (track_mode_) {
+      if (target_range_m >= config_.track_exit_range_m) {
+        track_mode_ = false;
+      }
+    } else if (target_range_m <= config_.track_enter_range_m) {
+      track_mode_ = true;
+    }
+  }
+  return track_mode_ ? config_.track_interval_s : nextIntervalSeconds();
 }
 
 } // namespace drone_city_nav

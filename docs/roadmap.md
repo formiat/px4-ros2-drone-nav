@@ -15,7 +15,7 @@ successful intercept outcome.
 The remaining work is to validate and tune the radar tracking and predictive
 guidance pipeline over repeated mission runs.
 
-## 2. Radar Measurement Simulation (In Progress)
+## 2. Radar Measurement Simulation (Completed)
 
 Replace direct access to the target's ground-truth coordinates with a more
 realistic radar measurement model.
@@ -30,7 +30,8 @@ The radar interface will provide only:
 The initial implementation uses ideal measurements without noise,
 interference, latency, or measurement errors. Measurement cadence follows a
 deterministic correlated random walk between 0.1 s and 3.0 s. Guidance continues
-at 20 Hz by coasting the latest target track between scans.
+at 20 Hz by coasting the latest target track between scans. At 30 m the radar
+enters a 20 Hz track mode and remains there until range exceeds 40 m.
 
 The physical radar will not be simulated. Only the radar measurement interface
 and its integration with the interceptor are implemented.
@@ -42,7 +43,7 @@ range, azimuth, elevation, and relative radial velocity, but no absolute target
 position, velocity, or simulator entity identity. The first detection supports
 direct pursuit; subsequent variable-dt updates estimate Cartesian velocity for
 predictive guidance. Runtime graph validation and source-contract tests enforce
-this boundary while integration validation is in progress.
+this boundary.
 
 ## 3. Target Motion Prediction (Completed)
 
@@ -55,19 +56,22 @@ remain simple:
 - intercept the predicted future position instead of chasing the current
   position.
 
-The first implementation uses a 3 s lead while the interceptor is behind or
-outside the target's flight corridor. When the interceptor is ahead and inside
-the corridor, the lead is reduced to 1 s. The transition uses spatial
-hysteresis and a smoothed prediction horizon. Slow or invalid target velocity
-falls back to the observed target position.
+The implementation solves the constant-velocity intercept equation using the
+configured interceptor speed. The solution is capped at 15 s. When the
+interceptor is ahead and inside the target corridor, the horizon is capped at
+1 s. The transition uses spatial hysteresis and a smoothed prediction horizon.
+Slow or invalid target velocity falls back to the observed target position.
 
 Prediction starts at the measurement timestamp, so telemetry age is included
 in extrapolation. Interceptor guidance publishes a typed tracking objective from
 the radar-derived target track without reading a map. The planner clips the
 prediction segment at the first raw occupied cell and uses the last raw-free
 sample. It does not search for a nearest free point and does not add inflation
-or prohibited regions. RViz and JSONL diagnostics expose observed, predicted,
-and resolved target points.
+or prohibited regions. A raw-clear interceptor-to-target segment activates
+direct moving-target MPPI pursuit; a blocked segment retains ordinary global
+planning. RViz and JSONL diagnostics expose observed, predicted, and resolved
+target points together with closing speed, commanded speed, active speed
+limiter, and radar age.
 
 The initial target-motion prediction scope is complete. It now consumes the
 target track produced by the radar pipeline described in section 2.

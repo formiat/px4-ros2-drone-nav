@@ -4,11 +4,21 @@
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <span>
 
 namespace drone_city_nav {
+
+enum class MppiSpeedLimiter : std::uint8_t {
+  kCruise,
+  kAbsolute,
+  kCurvature,
+  kObservation,
+  kGoal,
+  kRouteConstraint,
+};
 
 struct MppiSpeedPolicyConfig {
   double cruise_speed_mps{20.0};
@@ -31,6 +41,7 @@ struct MppiSpeedPolicyInput {
   Point3 mission_goal{};
   std::span<const Point2> guide;
   std::optional<double> route_constraint_speed_limit_mps;
+  bool terminal_goal_limit_enabled{true};
 };
 
 struct MppiSpeedPolicyResult {
@@ -44,6 +55,8 @@ struct MppiSpeedPolicyResult {
   double route_constraint_limit_mps{std::numeric_limits<double>::infinity()};
   double maximum_preview_curvature_1pm{0.0};
   double target_lookahead_m{0.0};
+  MppiSpeedLimiter active_limiter{MppiSpeedLimiter::kGoal};
+  bool terminal_goal_limit_enabled{true};
 };
 
 [[nodiscard]] double stoppingLimitedSpeed(double available_distance_m,
@@ -54,5 +67,7 @@ struct MppiSpeedPolicyResult {
 [[nodiscard]] MppiSpeedPolicyResult
 evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,
                         const MppiSpeedPolicyInput& input);
+
+[[nodiscard]] const char* mppiSpeedLimiterName(MppiSpeedLimiter limiter) noexcept;
 
 } // namespace drone_city_nav

@@ -1,8 +1,10 @@
 #include "drone_city_nav/mppi_speed_policy.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace drone_city_nav {
 namespace {
@@ -102,16 +104,19 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.enabled = true;
   result.cruise_limit_mps = config.cruise_speed_mps;
   result.absolute_limit_mps = config.absolute_speed_limit_mps;
+  result.terminal_goal_limit_enabled = input.terminal_goal_limit_enabled;
   result.observation_limit_mps = stoppingLimitedSpeed(
       config.observation_distance_m - config.observation_margin_m, 0.0,
       config.reaction_latency_s, config.maximum_braking_acceleration_mps2);
-  const double goal_distance =
-      std::max(0.0, std::hypot(input.mission_goal.x - input.state.x,
-                               input.mission_goal.y - input.state.y) -
-                        config.goal_margin_m);
-  result.goal_limit_mps =
-      stoppingLimitedSpeed(goal_distance, 0.0, config.reaction_latency_s,
-                           config.maximum_braking_acceleration_mps2);
+  if (input.terminal_goal_limit_enabled) {
+    const double goal_distance =
+        std::max(0.0, std::hypot(input.mission_goal.x - input.state.x,
+                                 input.mission_goal.y - input.state.y) -
+                          config.goal_margin_m);
+    result.goal_limit_mps =
+        stoppingLimitedSpeed(goal_distance, 0.0, config.reaction_latency_s,
+                             config.maximum_braking_acceleration_mps2);
+  }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =
         std::max(0.0, *input.route_constraint_speed_limit_mps);
@@ -145,10 +150,41 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       std::min({result.cruise_limit_mps, result.absolute_limit_mps,
                 result.curvature_limit_mps, result.observation_limit_mps,
                 result.goal_limit_mps, result.route_constraint_limit_mps});
+  const std::array limits{
+      std::pair{result.cruise_limit_mps, MppiSpeedLimiter::kCruise},
+      std::pair{result.absolute_limit_mps, MppiSpeedLimiter::kAbsolute},
+      std::pair{result.curvature_limit_mps, MppiSpeedLimiter::kCurvature},
+      std::pair{result.observation_limit_mps, MppiSpeedLimiter::kObservation},
+      std::pair{result.goal_limit_mps, MppiSpeedLimiter::kGoal},
+      std::pair{result.route_constraint_limit_mps, MppiSpeedLimiter::kRouteConstraint},
+  };
+  result.active_limiter = std::min_element(limits.begin(), limits.end(),
+                                           [](const auto& first, const auto& second) {
+                                             return first.first < second.first;
+                                           })
+                              ->second;
   result.target_lookahead_m =
       std::clamp(result.reference_speed_mps * config.horizon_duration_s,
                  config.minimum_target_lookahead_m, config.maximum_target_lookahead_m);
   return result;
+}
+
+const char* mppiSpeedLimiterName(const MppiSpeedLimiter limiter) noexcept {
+  switch (limiter) {
+    case MppiSpeedLimiter::kCruise:
+      return "cruise";
+    case MppiSpeedLimiter::kAbsolute:
+      return "absolute";
+    case MppiSpeedLimiter::kCurvature:
+      return "curvature";
+    case MppiSpeedLimiter::kObservation:
+      return "observation";
+    case MppiSpeedLimiter::kGoal:
+      return "goal";
+    case MppiSpeedLimiter::kRouteConstraint:
+      return "route_constraint";
+  }
+  return "unknown";
 }
 
 } // namespace drone_city_nav

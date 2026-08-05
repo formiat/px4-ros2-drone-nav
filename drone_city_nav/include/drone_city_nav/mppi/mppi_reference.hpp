@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/mppi/mppi_config.hpp"
 
+#include <optional>
 #include <span>
 
 namespace drone_city_nav::mppi {
@@ -15,6 +16,7 @@ namespace drone_city_nav::mppi {
     const RiskConfig& risk, const CostConfig& costs, const EsdfGrid& grid,
     std::span<const float> esdf, float target_x_m, float target_y_m,
     bool early_exit_on_collision, Control previous_applied_control = {},
-    float reference_speed_mps = -1.0F, const FootprintConfig& footprint = {});
+    float reference_speed_mps = -1.0F, const FootprintConfig& footprint = {},
+    std::optional<MovingTargetReference> moving_target = std::nullopt);
 
 } // namespace drone_city_nav::mppi

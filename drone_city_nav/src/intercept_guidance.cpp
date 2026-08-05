@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace drone_city_nav {
@@ -33,12 +34,59 @@ namespace {
                 position.z + velocity.z * time_s};
 }
 
+[[nodiscard]] std::optional<double>
+horizontalInterceptTime(const Point3& interceptor, const Point3& target,
+                        const Vec3& target_velocity,
+                        const double interceptor_speed_mps) noexcept {
+  const double relative_x = target.x - interceptor.x;
+  const double relative_y = target.y - interceptor.y;
+  const double a = target_velocity.x * target_velocity.x +
+                   target_velocity.y * target_velocity.y -
+                   interceptor_speed_mps * interceptor_speed_mps;
+  const double b =
+      2.0 * (relative_x * target_velocity.x + relative_y * target_velocity.y);
+  const double c = relative_x * relative_x + relative_y * relative_y;
+  if (c <= 1.0e-12) {
+    return 0.0;
+  }
+  constexpr double kEpsilon{1.0e-9};
+  if (std::abs(a) <= kEpsilon) {
+    if (std::abs(b) <= kEpsilon) {
+      return std::nullopt;
+    }
+    const double solution = -c / b;
+    return solution >= 0.0 ? std::optional<double>{solution} : std::nullopt;
+  }
+  const double discriminant = b * b - 4.0 * a * c;
+  if (discriminant < 0.0) {
+    return std::nullopt;
+  }
+  const double root = std::sqrt(discriminant);
+  const double first = (-b - root) / (2.0 * a);
+  const double second = (-b + root) / (2.0 * a);
+  double best = std::numeric_limits<double>::infinity();
+  if (first >= 0.0) {
+    best = first;
+  }
+  if (second >= 0.0) {
+    best = std::min(best, second);
+  }
+  return std::isfinite(best) ? std::optional<double>{best} : std::nullopt;
+}
+
 } // namespace
 
 InterceptGuidance::InterceptGuidance(const InterceptGuidanceConfig& config)
     : config_{config} {
-  if (!(config_.far_prediction_horizon_s >= config_.ahead_prediction_horizon_s) ||
-      !(config_.ahead_prediction_horizon_s >= 0.0) ||
+  if (!(config_.interceptor_speed_mps > 0.0) ||
+      !(config_.minimum_prediction_horizon_s >= 0.0) ||
+      !(config_.maximum_prediction_horizon_s >= config_.minimum_prediction_horizon_s) ||
+      !(config_.ahead_maximum_prediction_horizon_s >=
+        config_.minimum_prediction_horizon_s) ||
+      config_.ahead_maximum_prediction_horizon_s >
+          config_.maximum_prediction_horizon_s ||
+      config_.fallback_prediction_horizon_s < config_.minimum_prediction_horizon_s ||
+      config_.fallback_prediction_horizon_s > config_.maximum_prediction_horizon_s ||
       !(config_.minimum_target_speed_mps >= 0.0) ||
       !(config_.ahead_enter_m > config_.ahead_exit_m) ||
       !(config_.ahead_corridor_enter_m > 0.0) ||
@@ -77,17 +125,20 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
     resetPredictionState();
     return result;
   }
-  result.target_speed_mps = norm(target.velocity);
+  const Point3 current_target =
+      extrapolate(target.position, result.observed_velocity, result.prediction_age_s);
+  result.target_speed_mps = norm(result.observed_velocity);
   if (result.target_speed_mps < config_.minimum_target_speed_mps) {
     resetPredictionState();
+    result.predicted_position = current_target;
     return result;
   }
 
-  const Vec3 direction{target.velocity.x / result.target_speed_mps,
-                       target.velocity.y / result.target_speed_mps,
-                       target.velocity.z / result.target_speed_mps};
+  const Vec3 direction{result.observed_velocity.x / result.target_speed_mps,
+                       result.observed_velocity.y / result.target_speed_mps,
+                       result.observed_velocity.z / result.target_speed_mps};
   if (interceptor.position_valid && finite(interceptor.position)) {
-    const Vec3 relative = subtract(interceptor.position, target.position);
+    const Vec3 relative = subtract(interceptor.position, current_target);
     result.ahead_m = dot(relative, direction);
     const double relative_norm_squared = dot(relative, relative);
     result.cross_track_m = std::sqrt(
@@ -106,10 +157,23 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
     ahead_mode_ = false;
   }
 
-  result.mode =
-      ahead_mode_ ? InterceptGuidanceMode::kAheadLead : InterceptGuidanceMode::kFarLead;
-  const double desired_horizon_s = ahead_mode_ ? config_.ahead_prediction_horizon_s
-                                               : config_.far_prediction_horizon_s;
+  const std::optional<double> intercept_time =
+      interceptor.position_valid && finite(interceptor.position)
+          ? horizontalInterceptTime(interceptor.position, current_target,
+                                    result.observed_velocity,
+                                    config_.interceptor_speed_mps)
+          : std::nullopt;
+  result.analytic_intercept_time_s =
+      intercept_time.value_or(config_.fallback_prediction_horizon_s);
+  double desired_horizon_s =
+      std::clamp(result.analytic_intercept_time_s, config_.minimum_prediction_horizon_s,
+                 config_.maximum_prediction_horizon_s);
+  if (ahead_mode_) {
+    desired_horizon_s =
+        std::min(desired_horizon_s, config_.ahead_maximum_prediction_horizon_s);
+  }
+  result.mode = ahead_mode_ ? InterceptGuidanceMode::kAheadIntercept
+                            : InterceptGuidanceMode::kAnalyticIntercept;
   if (!smoothed_prediction_horizon_s_ || !previous_update_stamp_ns_ ||
       now_ns <= *previous_update_stamp_ns_) {
     smoothed_prediction_horizon_s_ = desired_horizon_s;
@@ -124,7 +188,7 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
   previous_update_stamp_ns_ = now_ns;
   result.prediction_horizon_s = *smoothed_prediction_horizon_s_;
   result.predicted_position =
-      extrapolate(target.position, target.velocity,
+      extrapolate(target.position, result.observed_velocity,
                   result.prediction_age_s + result.prediction_horizon_s);
   if (!finite(result.predicted_position)) {
     resetPredictionState();
@@ -139,10 +203,10 @@ const char* interceptGuidanceModeName(const InterceptGuidanceMode mode) noexcept
   switch (mode) {
     case InterceptGuidanceMode::kDirect:
       return "direct";
-    case InterceptGuidanceMode::kFarLead:
-      return "far_lead";
-    case InterceptGuidanceMode::kAheadLead:
-      return "ahead_lead";
+    case InterceptGuidanceMode::kAnalyticIntercept:
+      return "analytic_intercept";
+    case InterceptGuidanceMode::kAheadIntercept:
+      return "ahead_intercept";
   }
   return "unknown";
 }

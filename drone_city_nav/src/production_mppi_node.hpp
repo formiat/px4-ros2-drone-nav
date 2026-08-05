@@ -68,6 +68,8 @@ struct ProductionTrackingObjective {
   InterceptGuidanceMode guidance_mode{InterceptGuidanceMode::kDirect};
   TrackingObjectiveResolutionStatus resolution_status{
       TrackingObjectiveResolutionStatus::kInvalidInput};
+  bool direct_line_of_sight{false};
+  std::uint64_t line_of_sight_generation{0U};
 };
 
 struct ProductionNavigationObjective {
@@ -392,6 +394,8 @@ private:
   double dynamic_objective_replan_distance_m_{5.0};
   double dynamic_objective_replan_period_s_{0.25};
   double tracking_objective_ray_sample_spacing_m_{0.25};
+  double tracking_capture_radius_m_{5.0};
+  TrackingLineOfSightLifecycle tracking_line_of_sight_lifecycle_{};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
   float constrained_route_speed_limit_mps_{10.0F};

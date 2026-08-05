@@ -353,6 +353,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_static_extension.cpp
     src/production_mppi_node_static_guide.cpp
     src/production_mppi_node_diagnostics.cpp
+    src/production_mppi_node_summary.cpp
     src/tracking_objective_diagnostics.cpp
     src/production_mppi_node_execution.cpp)
   target_compile_features(production_mppi_node PRIVATE cxx_std_20)

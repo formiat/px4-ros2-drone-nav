@@ -22,6 +22,11 @@ struct State {
   float yaw_rate{0.0F};
 };
 
+struct MovingTargetReference {
+  State state{};
+  float capture_radius_m{5.0F};
+};
+
 struct Control {
   float ax{0.0F};
   float ay{0.0F};
@@ -48,6 +53,8 @@ struct RolloutMetrics {
   float critical_exposure_m{0.0F};
   float planning_exposure_m{0.0F};
   float minimum_clearance_m{0.0F};
+  float minimum_target_separation_m{0.0F};
+  float predicted_capture_time_s{-1.0F};
   RiskTier worst_tier{RiskTier::kPreferred};
   bool collision{false};
 };

@@ -79,7 +79,7 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
         for role in ("interceptor", "evader"):
             require(
                 f"intercept disarm is confirmed for {role}",
-                settled_log,
+                ros_log,
                 rf"\[vehicles\.{role}\.mppi_offboard_node\].*"
                 rf"VEHICLE_DESTROYED disarm_confirmed=true role={role} "
                 r"cause=proximity_intercept .*detail='intercepted'",
