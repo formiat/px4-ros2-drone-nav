@@ -34,7 +34,7 @@ interference, latency, or measurement errors.
 The physical radar will not be simulated. Only the radar measurement interface
 and its integration with the interceptor will be implemented.
 
-## 3. Target Motion Prediction (In Progress)
+## 3. Target Motion Prediction (Completed)
 
 Implement target trajectory prediction. The initial model will intentionally
 remain simple:
@@ -58,9 +58,9 @@ raw occupied cell and uses the last raw-free sample. It does not search for a
 nearest free point and does not add inflation or prohibited regions. RViz and
 JSONL diagnostics expose observed, predicted, and resolved target points.
 
-The remaining work is to validate and tune the model in repeated static and
-no-static intercept runs, then replace ground-truth target state with the radar
-measurement and tracking pipeline from item 2.
+The initial target-motion prediction scope is complete. Replacing direct
+ground-truth target state with radar measurements and a tracking pipeline
+remains a separate roadmap item described in section 2.
 
 ## 4. Multiple Interceptors Versus One Attacker
 
