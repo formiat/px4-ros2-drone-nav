@@ -452,7 +452,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "intercept_horizon_smoothing_time_constant_s", default_value="0.5"
             ),
-            DeclareLaunchArgument("evader_speed_scale", default_value="0.6"),
+            DeclareLaunchArgument("evader_speed_scale", default_value="0.5"),
             DeclareLaunchArgument(
                 "shutdown_on_terminal_outcome", default_value="true"
             ),

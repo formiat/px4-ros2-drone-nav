@@ -128,7 +128,7 @@ Run the two-vehicle intercept mission:
 
 The point-to-point mission remains the default. The intercept mission launches
 isolated interceptor and evader PX4/ROS namespaces. The evader flies to its
-fixed goal at 60% of the interceptor speed policy, while the interceptor tracks
+fixed goal at 50% of the interceptor speed policy, while the interceptor tracks
 the evader through a continuous predictive objective without terminal goal
 hold. Guidance uses a latency-compensated 3 s lead and smoothly reduces it to
 1 s when the interceptor is already ahead in the evader's motion corridor. The

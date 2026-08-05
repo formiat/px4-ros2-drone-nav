@@ -175,6 +175,15 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
         )
 
+    def test_intercept_evader_defaults_to_half_interceptor_speed(self) -> None:
+        self.assertIn(
+            'evader_speed_scale="${EVADER_SPEED_SCALE:-0.5}"', self.text
+        )
+        self.assertIn(
+            'DeclareLaunchArgument("evader_speed_scale", default_value="0.5")',
+            self.intercept_launch_text,
+        )
+
     def test_intercept_launch_configures_adaptive_predictive_guidance(self) -> None:
         expected_defaults = {
             "intercept_far_prediction_horizon_s": "3.0",

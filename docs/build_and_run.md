@@ -87,7 +87,7 @@ Two-vehicle intercept mission:
 ./scripts/sim_intercept_headless.sh
 ```
 
-Set `EVADER_SPEED_SCALE` to override the default `0.6` evader speed multiplier.
+Set `EVADER_SPEED_SCALE` to override the default `0.5` evader speed multiplier.
 By default, the evader flies diagonally across the city from map position
 `(270, 54)` to `(54, 378)` at `18 m` altitude.
 The interceptor uses adaptive target prediction: a 3 s lead while behind or
