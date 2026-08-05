@@ -90,6 +90,10 @@ Two-vehicle intercept mission:
 Set `EVADER_SPEED_SCALE` to override the default `0.6` evader speed multiplier.
 By default, the evader flies diagonally across the city from map position
 `(270, 54)` to `(54, 378)` at `18 m` altitude.
+The interceptor uses adaptive target prediction: a 3 s lead while behind or
+outside the target corridor and a smoothed 1 s lead while ahead inside it.
+Prediction includes target-state age and is clipped only by physical raw
+occupancy in the active static or sensor-derived map.
 The headless command requires a terminal intercept outcome and validates both
 PX4 instance logs. An intercept result requires confirmed disarm of both
 vehicles. An evader-goal result requires the interceptor to stop tracking and

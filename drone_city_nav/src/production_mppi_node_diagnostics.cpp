@@ -12,6 +12,7 @@
 
 #include "production_mppi_node.hpp"
 #include "successor_profiling_diagnostics.hpp"
+#include "tracking_objective_diagnostics.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -112,8 +113,8 @@ void ProductionMppiNode::publishRviz(
   if (!snapshot.rviz.has_value()) {
     return;
   }
-  const std::shared_ptr<const ProductionNavigationObjective> objective =
-      navigationObjective();
+  const std::shared_ptr<const ProductionNavigationObjective>& objective =
+      snapshot.objective;
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const ProductionMppiRvizSnapshot& rviz = *snapshot.rviz;
   const auto stamp = now();
@@ -145,19 +146,30 @@ void ProductionMppiNode::publishRviz(
       rviz.selected_channel_ids
           ? std::span<const std::string>{*rviz.selected_channel_ids}
           : std::span<const std::string>{};
+  MppiDebugMarkerInput marker_input{
+      .header = path.header,
+      .horizon = rviz.candidate_horizon,
+      .previous_horizon = previous_horizon,
+      .execution_horizon = execution_horizon,
+      .global_route = global_route,
+      .channel_edges = channel_edges,
+      .selected_channel_ids = selected_channel_ids,
+      .initial_state = snapshot.input.initial_state,
+      .target = snapshot.input.target,
+      .mission_start = mission_start_,
+      .mission_goal = mission_goal,
+      .selected_tier = snapshot.result.selected_tier,
+  };
+  detail::populateTrackingObjectiveMarkers(objective.get(), marker_input);
   const visualization_msgs::msg::MarkerArray markers =
-      buildMppiDebugMarkers(MppiDebugMarkerInput{
-          path.header, rviz.candidate_horizon, previous_horizon, execution_horizon,
-          global_route, channel_edges, selected_channel_ids,
-          snapshot.input.initial_state, snapshot.input.target, mission_start_,
-          mission_goal, snapshot.result.selected_tier});
+      buildMppiDebugMarkers(marker_input);
   markers_pub_->publish(markers);
 }
 
 void ProductionMppiNode::processDiagnostics(
     const ProductionMppiDiagnosticsSnapshot& snapshot) {
-  const std::shared_ptr<const ProductionNavigationObjective> objective =
-      navigationObjective();
+  const std::shared_ptr<const ProductionNavigationObjective>& objective =
+      snapshot.objective;
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const mppi::MppiTickInput& input = snapshot.input;
   const mppi::MppiTickResult& result = snapshot.result;
@@ -655,7 +667,9 @@ void ProductionMppiNode::processDiagnostics(
         << productionMppiExecutionReasonName(snapshot.execution.reason) << '"'
         << ",\"execution_published\":"
         << (snapshot.execution.published ? "true" : "false") << ",\"target_source\":\""
-        << target_source << '"' << ",\"horizon_s\":"
+        << target_source << '"'
+        << detail::trackingObjectiveJsonFields(objective.get(), mission_goal, now_ns)
+        << ",\"horizon_s\":"
         << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
         << ",\"speed_cap_mps\":" << mppi_config_.dynamics.maximum_horizontal_speed_mps
         << ",\"acceleration_cap_mps2\":"

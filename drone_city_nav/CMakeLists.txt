@@ -133,6 +133,7 @@ add_library(
   src/global_guide_candidate.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
+  src/intercept_guidance.cpp
   src/intercept_mission.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/lidar_debug_renderer.cpp
@@ -161,6 +162,7 @@ add_library(
   src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
   src/tracked_agent_lidar_filter.cpp
+  src/tracking_objective.cpp
   src/lidar_snapshot_writer.cpp
   src/mppi/mppi_post_update_classification.cpp
   src/mppi_horizon_safety.cpp
@@ -322,6 +324,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_static_extension.cpp
     src/production_mppi_node_static_guide.cpp
     src/production_mppi_node_diagnostics.cpp
+    src/tracking_objective_diagnostics.cpp
     src/production_mppi_node_execution.cpp)
   target_compile_features(production_mppi_node PRIVATE cxx_std_20)
   target_link_libraries(
@@ -369,6 +372,16 @@ if(BUILD_TESTING)
   target_compile_features(intercept_mission_test PRIVATE cxx_std_20)
   target_link_libraries(intercept_mission_test drone_city_nav_core)
   enable_project_warnings(intercept_mission_test)
+
+  ament_add_gtest(intercept_guidance_test tests/intercept_guidance_test.cpp)
+  target_compile_features(intercept_guidance_test PRIVATE cxx_std_20)
+  target_link_libraries(intercept_guidance_test drone_city_nav_core)
+  enable_project_warnings(intercept_guidance_test)
+
+  ament_add_gtest(tracking_objective_test tests/tracking_objective_test.cpp)
+  target_compile_features(tracking_objective_test PRIVATE cxx_std_20)
+  target_link_libraries(tracking_objective_test drone_city_nav_core)
+  enable_project_warnings(tracking_objective_test)
 
   ament_add_gtest(tracked_agent_lidar_filter_test
                   tests/tracked_agent_lidar_filter_test.cpp)

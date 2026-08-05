@@ -338,6 +338,46 @@ def generate_launch_description():
                         "evader_goal_z_m": float(
                             LaunchConfiguration("evader_goal_z_m").perform(context)
                         ),
+                        "intercept_far_prediction_horizon_s": float(
+                            LaunchConfiguration(
+                                "intercept_far_prediction_horizon_s"
+                            ).perform(context)
+                        ),
+                        "intercept_ahead_prediction_horizon_s": float(
+                            LaunchConfiguration(
+                                "intercept_ahead_prediction_horizon_s"
+                            ).perform(context)
+                        ),
+                        "intercept_minimum_target_speed_mps": float(
+                            LaunchConfiguration(
+                                "intercept_minimum_target_speed_mps"
+                            ).perform(context)
+                        ),
+                        "intercept_ahead_enter_m": float(
+                            LaunchConfiguration("intercept_ahead_enter_m").perform(
+                                context
+                            )
+                        ),
+                        "intercept_ahead_exit_m": float(
+                            LaunchConfiguration("intercept_ahead_exit_m").perform(
+                                context
+                            )
+                        ),
+                        "intercept_ahead_corridor_enter_m": float(
+                            LaunchConfiguration(
+                                "intercept_ahead_corridor_enter_m"
+                            ).perform(context)
+                        ),
+                        "intercept_ahead_corridor_exit_m": float(
+                            LaunchConfiguration(
+                                "intercept_ahead_corridor_exit_m"
+                            ).perform(context)
+                        ),
+                        "intercept_horizon_smoothing_time_constant_s": float(
+                            LaunchConfiguration(
+                                "intercept_horizon_smoothing_time_constant_s"
+                            ).perform(context)
+                        ),
                         "shutdown_on_terminal_outcome": shutdown_on_terminal_outcome,
                     }
                 ],
@@ -392,6 +432,26 @@ def generate_launch_description():
             DeclareLaunchArgument("evader_goal_x_m", default_value="54.0"),
             DeclareLaunchArgument("evader_goal_y_m", default_value="378.0"),
             DeclareLaunchArgument("evader_goal_z_m", default_value="18.0"),
+            DeclareLaunchArgument(
+                "intercept_far_prediction_horizon_s", default_value="3.0"
+            ),
+            DeclareLaunchArgument(
+                "intercept_ahead_prediction_horizon_s", default_value="1.0"
+            ),
+            DeclareLaunchArgument(
+                "intercept_minimum_target_speed_mps", default_value="0.5"
+            ),
+            DeclareLaunchArgument("intercept_ahead_enter_m", default_value="5.0"),
+            DeclareLaunchArgument("intercept_ahead_exit_m", default_value="0.0"),
+            DeclareLaunchArgument(
+                "intercept_ahead_corridor_enter_m", default_value="15.0"
+            ),
+            DeclareLaunchArgument(
+                "intercept_ahead_corridor_exit_m", default_value="20.0"
+            ),
+            DeclareLaunchArgument(
+                "intercept_horizon_smoothing_time_constant_s", default_value="0.5"
+            ),
             DeclareLaunchArgument("evader_speed_scale", default_value="0.6"),
             DeclareLaunchArgument(
                 "shutdown_on_terminal_outcome", default_value="true"

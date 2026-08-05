@@ -116,12 +116,20 @@ fixed position objective and terminal goal capture.
 
 The intercept mission runs two complete navigation stacks with separate PX4 DDS
 namespaces, lidar memory, planners, offboard nodes, and crash state. A mission
-coordinator waits until both vehicles are armed and airborne, publishes the
-evader's fixed position objective, and streams the evader state as the
-interceptor's continuous objective. Continuous objectives retain replanning and
-collision validation but disable terminal goal capture. Swept relative-motion
-evaluation detects a 5 m intercept between state samples and requests bounded
-force-disarm for both vehicles.
+coordinator waits until both vehicles are armed and airborne and publishes the
+evader's fixed position objective. `InterceptGuidance` converts the evader's
+timestamped position and velocity into a typed continuous tracking objective.
+It uses a smoothed 3 s to 1 s prediction horizon with hysteresis based on the
+interceptor's along-track and cross-track position; yaw is not used.
+
+The mission coordinator does not read occupancy. The production planner
+resolves the predicted segment against its immutable raw world, stopping at the
+first occupied cell and retaining the last free sample as the ordinary planning
+goal. Unknown no-static space remains traversable, and no inflation or
+prohibited region is introduced. Continuous objectives retain the existing
+5 m and 0.25 s route-replan gate and collision validation but disable terminal
+goal capture. Swept relative-motion evaluation detects a 5 m intercept between
+state samples and requests bounded force-disarm for both vehicles.
 
 The first terminal event is latched and cannot be reclassified by later inertial
 motion. An intercept requests force-disarm for both vehicles and records the

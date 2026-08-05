@@ -138,12 +138,18 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("dynamic_objective_replan_distance_m", 5.0);
   dynamic_objective_replan_period_s_ =
       declare_parameter<double>("dynamic_objective_replan_period_s", 0.25);
+  tracking_objective_ray_sample_spacing_m_ =
+      declare_parameter<double>("tracking_objective_ray_sample_spacing_m", 0.25);
   if (!(dynamic_objective_replan_distance_m_ > 0.0) ||
-      !(dynamic_objective_replan_period_s_ > 0.0)) {
+      !(dynamic_objective_replan_period_s_ > 0.0) ||
+      !(tracking_objective_ray_sample_spacing_m_ > 0.0)) {
     throw std::invalid_argument{"dynamic objective replan thresholds must be positive"};
   }
   navigation_objective_.store(std::make_shared<const ProductionNavigationObjective>(
-                                  ProductionNavigationObjective{.goal = mission_goal_}),
+                                  ProductionNavigationObjective{
+                                      .goal = mission_goal_,
+                                      .tracking = std::nullopt,
+                                  }),
                               std::memory_order_release);
   objective_replan_anchor_ = mission_goal_;
   mission_goal_capture_config_.capture_radius_m =

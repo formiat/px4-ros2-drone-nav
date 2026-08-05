@@ -17,6 +17,10 @@ constexpr std::string_view kMppiCandidateNamespace{"mppi_candidate"};
 constexpr std::string_view kMppiExecutionNamespace{"mppi_execution"};
 constexpr std::string_view kLegacyMppiNamespace{"mppi"};
 constexpr std::string_view kMppiTargetNamespace{"mppi_target"};
+constexpr std::string_view kObservedTrackingTargetNamespace{"tracking_target_observed"};
+constexpr std::string_view kPredictedTrackingTargetNamespace{
+    "tracking_target_predicted"};
+constexpr std::string_view kResolvedTrackingTargetNamespace{"tracking_target_resolved"};
 constexpr std::string_view kGlobalGuideNamespace{"global_lattice_guide"};
 constexpr std::string_view kChannelCandidateNamespace{"channel_candidate_edges"};
 constexpr std::string_view kSelectedChannelNamespace{"selected_channel_edges"};
@@ -85,6 +89,24 @@ targetMarker(const MppiDebugMarkerInput& input) {
   marker.scale.y = 1.2;
   marker.scale.z = 1.2;
   marker.color = rgba(0.2F, 0.7F, 1.0F, 0.9F);
+  return marker;
+}
+
+[[nodiscard]] visualization_msgs::msg::Marker
+trackingTargetMarker(const MppiDebugMarkerInput& input,
+                     const std::string_view marker_namespace, const Point3& position,
+                     const double scale, const std_msgs::msg::ColorRGBA& color) {
+  if (!input.tracking_objective_active) {
+    return deleteMarker(input.header, marker_namespace, 0,
+                        visualization_msgs::msg::Marker::SPHERE);
+  }
+  visualization_msgs::msg::Marker marker = makeMarker(
+      input.header, marker_namespace, 0, visualization_msgs::msg::Marker::SPHERE);
+  marker.pose.position = gazeboAlignedRvizMarkerPoint(position);
+  marker.scale.x = scale;
+  marker.scale.y = scale;
+  marker.scale.z = scale;
+  marker.color = color;
   return marker;
 }
 
@@ -166,10 +188,19 @@ channelMarker(const MppiDebugMarkerInput& input,
 visualization_msgs::msg::MarkerArray
 buildMppiDebugMarkers(const MppiDebugMarkerInput& input) {
   visualization_msgs::msg::MarkerArray markers;
-  markers.markers.reserve(13U);
+  markers.markers.reserve(16U);
   markers.markers.push_back(horizonMarker(input));
   markers.markers.push_back(executionHorizonMarker(input));
   markers.markers.push_back(targetMarker(input));
+  markers.markers.push_back(trackingTargetMarker(
+      input, kObservedTrackingTargetNamespace, input.observed_tracking_target, 1.6,
+      rgba(1.0F, 0.62F, 0.10F, 0.95F)));
+  markers.markers.push_back(trackingTargetMarker(
+      input, kPredictedTrackingTargetNamespace, input.predicted_tracking_target, 1.4,
+      rgba(0.90F, 0.20F, 1.0F, 0.95F)));
+  markers.markers.push_back(trackingTargetMarker(
+      input, kResolvedTrackingTargetNamespace, input.resolved_tracking_target, 1.0,
+      rgba(0.15F, 1.0F, 0.35F, 0.95F)));
   markers.markers.push_back(missionMarker(input, true));
   markers.markers.push_back(missionMarker(input, false));
   markers.markers.push_back(globalGuideMarker(input));

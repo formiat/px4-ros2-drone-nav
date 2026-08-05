@@ -129,8 +129,11 @@ Run the two-vehicle intercept mission:
 The point-to-point mission remains the default. The intercept mission launches
 isolated interceptor and evader PX4/ROS namespaces. The evader flies to its
 fixed goal at 60% of the interceptor speed policy, while the interceptor tracks
-the evader through a continuous navigation objective without terminal goal
-hold. A swept separation of 5 m terminates and disarms both vehicles as a
+the evader through a continuous predictive objective without terminal goal
+hold. Guidance uses a latency-compensated 3 s lead and smoothly reduces it to
+1 s when the interceptor is already ahead in the evader's motion corridor. The
+planner clips predictions at the first physical raw obstacle. A swept
+separation of 5 m terminates and disarms both vehicles as a
 successful intercept. If the evader reaches its goal first, that outcome is
 latched, the interceptor stops tracking and enters a confirmed position hold,
 and neither vehicle is disarmed. A later inertial approach cannot change the

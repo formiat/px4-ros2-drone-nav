@@ -66,6 +66,37 @@ TEST(MppiDebugMarkers, UsesSeparateCurrentTargetNamespace) {
   EXPECT_DOUBLE_EQ(marker.pose.position.z, -18.0);
 }
 
+TEST(MppiDebugMarkers, ShowsObservedPredictedAndResolvedTrackingTargets) {
+  MppiDebugMarkerInput input = markerInput();
+  input.tracking_objective_active = true;
+  input.observed_tracking_target = Point3{20.0, 30.0, 18.0};
+  input.predicted_tracking_target = Point3{50.0, 30.0, 18.0};
+  input.resolved_tracking_target = Point3{40.0, 30.0, 18.0};
+
+  const auto markers = buildMppiDebugMarkers(input);
+
+  const auto& observed = findMarker(markers, "tracking_target_observed", 0);
+  const auto& predicted = findMarker(markers, "tracking_target_predicted", 0);
+  const auto& resolved = findMarker(markers, "tracking_target_resolved", 0);
+  EXPECT_EQ(observed.action, visualization_msgs::msg::Marker::ADD);
+  EXPECT_EQ(predicted.action, visualization_msgs::msg::Marker::ADD);
+  EXPECT_EQ(resolved.action, visualization_msgs::msg::Marker::ADD);
+  EXPECT_DOUBLE_EQ(observed.pose.position.x, 20.0);
+  EXPECT_DOUBLE_EQ(predicted.pose.position.x, 50.0);
+  EXPECT_DOUBLE_EQ(resolved.pose.position.x, 40.0);
+}
+
+TEST(MppiDebugMarkers, DeletesTrackingTargetsForPositionObjective) {
+  const auto markers = buildMppiDebugMarkers(markerInput());
+
+  EXPECT_EQ(findMarker(markers, "tracking_target_observed", 0).action,
+            visualization_msgs::msg::Marker::DELETE);
+  EXPECT_EQ(findMarker(markers, "tracking_target_predicted", 0).action,
+            visualization_msgs::msg::Marker::DELETE);
+  EXPECT_EQ(findMarker(markers, "tracking_target_resolved", 0).action,
+            visualization_msgs::msg::Marker::DELETE);
+}
+
 TEST(MppiDebugMarkers, SeparatesCandidateAndPublishedExecutionHorizons) {
   const std::vector<mppi::State> candidate{
       mppi::State{.x = 10.0F, .y = 20.0F, .z = 18.0F},

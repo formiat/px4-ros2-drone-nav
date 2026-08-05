@@ -1,3 +1,4 @@
+#include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/intercept_mission.hpp"
 #include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
@@ -25,6 +26,27 @@ timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
          static_cast<std::int64_t>(stamp.nanosec);
 }
 
+[[nodiscard]] builtin_interfaces::msg::Time
+timeMessage(const std::int64_t stamp_ns) noexcept {
+  builtin_interfaces::msg::Time stamp;
+  stamp.sec = static_cast<std::int32_t>(stamp_ns / 1'000'000'000LL);
+  stamp.nanosec = static_cast<std::uint32_t>(stamp_ns % 1'000'000'000LL);
+  return stamp;
+}
+
+[[nodiscard]] std::uint8_t
+guidanceModeMessage(const InterceptGuidanceMode mode) noexcept {
+  switch (mode) {
+    case InterceptGuidanceMode::kDirect:
+      return msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
+    case InterceptGuidanceMode::kFarLead:
+      return msg::NavigationObjective::GUIDANCE_MODE_FAR_LEAD;
+    case InterceptGuidanceMode::kAheadLead:
+      return msg::NavigationObjective::GUIDANCE_MODE_AHEAD_LEAD;
+  }
+  return msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
+}
+
 [[nodiscard]] TimedVehicleState
 convertState(const msg::VehicleNavigationState& message) noexcept {
   return TimedVehicleState{
@@ -47,6 +69,23 @@ public:
       : Node{"intercept_mission_node"} {
     mission_epoch_ =
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 1));
+    guidance_config_ = InterceptGuidanceConfig{
+        .far_prediction_horizon_s =
+            declare_parameter<double>("intercept_far_prediction_horizon_s", 3.0),
+        .ahead_prediction_horizon_s =
+            declare_parameter<double>("intercept_ahead_prediction_horizon_s", 1.0),
+        .minimum_target_speed_mps =
+            declare_parameter<double>("intercept_minimum_target_speed_mps", 0.5),
+        .ahead_enter_m = declare_parameter<double>("intercept_ahead_enter_m", 5.0),
+        .ahead_exit_m = declare_parameter<double>("intercept_ahead_exit_m", 0.0),
+        .ahead_corridor_enter_m =
+            declare_parameter<double>("intercept_ahead_corridor_enter_m", 15.0),
+        .ahead_corridor_exit_m =
+            declare_parameter<double>("intercept_ahead_corridor_exit_m", 20.0),
+        .horizon_smoothing_time_constant_s = declare_parameter<double>(
+            "intercept_horizon_smoothing_time_constant_s", 0.5),
+    };
+    guidance_ = std::make_unique<InterceptGuidance>(guidance_config_);
     const Point3 evader_goal{
         declare_parameter<double>("evader_goal_x_m", 54.0),
         declare_parameter<double>("evader_goal_y_m", 378.0),
@@ -136,13 +175,23 @@ public:
                 "Intercept mission ready: epoch=%" PRIu64
                 " evader_goal=(%.2f,%.2f,%.2f) shutdown_on_terminal_outcome=%s "
                 "hold[position_tolerance_m=%.2f maximum_speed_mps=%.2f "
-                "confirmation_s=%.2f timeout_s=%.2f]",
+                "confirmation_s=%.2f timeout_s=%.2f] "
+                "guidance[horizon_s=(far:%.2f,ahead:%.2f) minimum_speed_mps=%.2f "
+                "ahead_m=(enter:%.2f,exit:%.2f) "
+                "corridor_m=(enter:%.2f,exit:%.2f) smoothing_tau_s=%.2f]",
                 mission_epoch_, evader_goal_.x, evader_goal_.y, evader_goal_.z,
                 shutdown_on_terminal_outcome_ ? "true" : "false",
                 interceptor_hold_config_.position_tolerance_m,
                 interceptor_hold_config_.maximum_speed_mps,
                 interceptor_hold_config_.confirmation_duration_s,
-                static_cast<double>(interceptor_hold_timeout_ns_) * 1.0e-9);
+                static_cast<double>(interceptor_hold_timeout_ns_) * 1.0e-9,
+                guidance_config_.far_prediction_horizon_s,
+                guidance_config_.ahead_prediction_horizon_s,
+                guidance_config_.minimum_target_speed_mps,
+                guidance_config_.ahead_enter_m, guidance_config_.ahead_exit_m,
+                guidance_config_.ahead_corridor_enter_m,
+                guidance_config_.ahead_corridor_exit_m,
+                guidance_config_.horizon_smoothing_time_constant_s);
   }
 
 private:
@@ -165,24 +214,55 @@ private:
     objective.position.x = evader_goal_.x;
     objective.position.y = evader_goal_.y;
     objective.position.z = evader_goal_.z;
+    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
+    objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
     objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
     evader_objective_pub_->publish(objective);
   }
 
   void publishInterceptorObjective() {
-    if (!evader_state_ || !evader_state_->position_valid) {
+    if (!interceptor_state_ || !interceptor_state_->position_valid || !evader_state_ ||
+        !evader_state_->position_valid) {
+      return;
+    }
+    const auto publication_stamp = now();
+    const InterceptGuidanceResult guidance = guidance_->update(
+        *interceptor_state_, *evader_state_, publication_stamp.nanoseconds());
+    if (!guidance.valid) {
       return;
     }
     msg::NavigationObjective objective;
-    objective.stamp = now();
+    objective.stamp = publication_stamp;
+    objective.observation_stamp = timeMessage(guidance.observation_stamp_ns);
     objective.mission_epoch = mission_epoch_;
     objective.sample_sequence = ++interceptor_objective_sequence_;
-    objective.position.x = evader_state_->position.x;
-    objective.position.y = evader_state_->position.y;
-    objective.position.z = evader_state_->position.z;
+    objective.position.x = guidance.predicted_position.x;
+    objective.position.y = guidance.predicted_position.y;
+    objective.position.z = guidance.predicted_position.z;
+    objective.observed_target_position.x = guidance.observed_position.x;
+    objective.observed_target_position.y = guidance.observed_position.y;
+    objective.observed_target_position.z = guidance.observed_position.z;
+    objective.observed_target_velocity.x = guidance.observed_velocity.x;
+    objective.observed_target_velocity.y = guidance.observed_velocity.y;
+    objective.observed_target_velocity.z = guidance.observed_velocity.z;
+    objective.prediction_horizon_s = guidance.prediction_horizon_s;
+    objective.objective_type =
+        msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION;
+    objective.guidance_mode = guidanceModeMessage(guidance.mode);
     objective.terminal_policy =
         msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING;
     interceptor_objective_pub_->publish(objective);
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "INTERCEPT_GUIDANCE mode=%s target_speed_mps=%.3f horizon_s=%.3f "
+        "measurement_age_s=%.3f ahead_m=%.3f cross_track_m=%.3f "
+        "observed=(%.3f,%.3f,%.3f) predicted=(%.3f,%.3f,%.3f)",
+        interceptGuidanceModeName(guidance.mode), guidance.target_speed_mps,
+        guidance.prediction_horizon_s, guidance.prediction_age_s, guidance.ahead_m,
+        guidance.cross_track_m, guidance.observed_position.x,
+        guidance.observed_position.y, guidance.observed_position.z,
+        guidance.predicted_position.x, guidance.predicted_position.y,
+        guidance.predicted_position.z);
   }
 
   void requestInterceptorHold() {
@@ -202,6 +282,8 @@ private:
     objective.position.x = interceptor_hold_position_.x;
     objective.position.y = interceptor_hold_position_.y;
     objective.position.z = interceptor_hold_position_.z;
+    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
+    objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
     objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
     interceptor_objective_pub_->publish(objective);
     RCLCPP_INFO(get_logger(),
@@ -382,6 +464,8 @@ private:
   }
 
   std::unique_ptr<InterceptMissionEvaluator> evaluator_;
+  std::unique_ptr<InterceptGuidance> guidance_;
+  InterceptGuidanceConfig guidance_config_{};
   Point3 evader_goal_{};
   std::optional<TimedVehicleState> interceptor_state_;
   std::optional<TimedVehicleState> evader_state_;

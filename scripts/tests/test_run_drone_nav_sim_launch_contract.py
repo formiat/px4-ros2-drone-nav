@@ -175,6 +175,23 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
         )
 
+    def test_intercept_launch_configures_adaptive_predictive_guidance(self) -> None:
+        expected_defaults = {
+            "intercept_far_prediction_horizon_s": "3.0",
+            "intercept_ahead_prediction_horizon_s": "1.0",
+            "intercept_minimum_target_speed_mps": "0.5",
+            "intercept_ahead_enter_m": "5.0",
+            "intercept_ahead_exit_m": "0.0",
+            "intercept_ahead_corridor_enter_m": "15.0",
+            "intercept_ahead_corridor_exit_m": "20.0",
+            "intercept_horizon_smoothing_time_constant_s": "0.5",
+        }
+        for name, default in expected_defaults.items():
+            with self.subTest(parameter=name):
+                self.assertIn(f'"{name}", default_value="{default}"',
+                              self.intercept_launch_text)
+                self.assertIn(f'"{name}": float(', self.intercept_launch_text)
+
     def test_navigation_nodes_use_gazebo_simulation_clock(self) -> None:
         self.assertIn(
             'obstacle_memory_overrides = {"use_sim_time": True}', self.launch_text

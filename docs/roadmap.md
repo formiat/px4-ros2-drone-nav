@@ -7,13 +7,14 @@ drone using external target information.
 
 The current foundation launches one interceptor and one attacking drone in
 isolated PX4 and ROS namespaces. The attacker flies from a fixed start to a
-fixed goal. The interceptor receives the attacker's current ground-truth state
-and continuously updates its navigation objective without entering terminal
-goal hold. A separation of 5 m or less destroys both drones and records a
-successful intercept outcome.
+fixed goal. The interceptor receives the attacker's current ground-truth state,
+predicts its motion, and continuously updates a tracking objective without
+entering terminal goal hold. A separation of 5 m or less destroys both drones
+and records a successful intercept outcome.
 
-The remaining work is to replace direct state access with the measurement and
-guidance stages described below.
+The remaining work is to replace direct ground-truth state access with the
+measurement and target-tracking stages described below and to tune predictive
+guidance from repeated mission runs.
 
 ## 2. Radar Measurement Simulation
 
@@ -33,7 +34,7 @@ interference, latency, or measurement errors.
 The physical radar will not be simulated. Only the radar measurement interface
 and its integration with the interceptor will be implemented.
 
-## 3. Target Motion Prediction
+## 3. Target Motion Prediction (In Progress)
 
 Implement target trajectory prediction. The initial model will intentionally
 remain simple:
@@ -44,11 +45,22 @@ remain simple:
 - intercept the predicted future position instead of chasing the current
   position.
 
-Predictive interception is not always appropriate at close range. When the
-interceptor is already very close to the target, or directly in front of it,
-the controller should switch to direct pursuit. The switching criteria and
-hysteresis between predictive guidance and direct pursuit remain to be
-designed.
+The first implementation uses a 3 s lead while the interceptor is behind or
+outside the target's flight corridor. When the interceptor is ahead and inside
+the corridor, the lead is reduced to 1 s. The transition uses spatial
+hysteresis and a smoothed prediction horizon. Slow or invalid target velocity
+falls back to the observed target position.
+
+Prediction starts at the measurement timestamp, so telemetry age is included
+in extrapolation. The mission coordinator publishes a typed tracking objective
+without reading a map. The planner clips the prediction segment at the first
+raw occupied cell and uses the last raw-free sample. It does not search for a
+nearest free point and does not add inflation or prohibited regions. RViz and
+JSONL diagnostics expose observed, predicted, and resolved target points.
+
+The remaining work is to validate and tune the model in repeated static and
+no-static intercept runs, then replace ground-truth target state with the radar
+measurement and tracking pipeline from item 2.
 
 ## 4. Multiple Interceptors Versus One Attacker
 

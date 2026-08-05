@@ -4,6 +4,7 @@
 #include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
+#include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
@@ -25,6 +26,7 @@
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
+#include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/path.hpp>
@@ -55,8 +57,21 @@ struct ProductionMppiNavigation {
   bool valid{false};
 };
 
+struct ProductionTrackingObjective {
+  Point3 observed_position{};
+  Point3 unconstrained_predicted_position{};
+  Vec3 observed_velocity{};
+  std::int64_t observation_stamp_ns{0};
+  double prediction_horizon_s{0.0};
+  double resolved_fraction{0.0};
+  InterceptGuidanceMode guidance_mode{InterceptGuidanceMode::kDirect};
+  TrackingObjectiveResolutionStatus resolution_status{
+      TrackingObjectiveResolutionStatus::kInvalidInput};
+};
+
 struct ProductionNavigationObjective {
   Point3 goal{};
+  std::optional<ProductionTrackingObjective> tracking;
   std::uint64_t mission_epoch{0U};
   std::uint64_t sample_sequence{0U};
   std::int64_t stamp_ns{0};
@@ -268,6 +283,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   ProductionMppiExecutionPublication execution{};
   ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
   std::optional<ProductionMppiRvizSnapshot> rviz;
+  std::shared_ptr<const ProductionNavigationObjective> objective;
   std::string target_source;
   std::uint64_t tick_sequence{0U};
   std::uint64_t memory_sequence{0U};
@@ -373,6 +389,7 @@ private:
   Point3 mission_goal_{216.0, 378.0, 18.0};
   double dynamic_objective_replan_distance_m_{5.0};
   double dynamic_objective_replan_period_s_{0.25};
+  double tracking_objective_ray_sample_spacing_m_{0.25};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
   float constrained_route_speed_limit_mps_{10.0F};

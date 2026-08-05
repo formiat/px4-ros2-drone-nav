@@ -19,6 +19,24 @@ timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
 
+[[nodiscard]] bool finiteVector(const geometry_msgs::msg::Vector3& vector) noexcept {
+  return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
+}
+
+[[nodiscard]] std::optional<InterceptGuidanceMode>
+guidanceMode(const std::uint8_t value) noexcept {
+  switch (value) {
+    case msg::NavigationObjective::GUIDANCE_MODE_DIRECT:
+      return InterceptGuidanceMode::kDirect;
+    case msg::NavigationObjective::GUIDANCE_MODE_FAR_LEAD:
+      return InterceptGuidanceMode::kFarLead;
+    case msg::NavigationObjective::GUIDANCE_MODE_AHEAD_LEAD:
+      return InterceptGuidanceMode::kAheadLead;
+    default:
+      return std::nullopt;
+  }
+}
+
 [[nodiscard]] double pointDistance(const Point3& first, const Point3& second) noexcept {
   return std::hypot(std::hypot(first.x - second.x, first.y - second.y),
                     first.z - second.z);
@@ -109,9 +127,24 @@ ProductionMppiNode::navigationObjective() const {
 
 void ProductionMppiNode::onNavigationObjective(
     const msg::NavigationObjective& message) {
+  const bool tracking = message.objective_type ==
+                        msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION;
+  const std::optional<InterceptGuidanceMode> guidance_mode =
+      guidanceMode(message.guidance_mode);
   if (!finitePoint(message.position) ||
+      message.objective_type >
+          msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION ||
+      !guidance_mode.has_value() ||
       message.terminal_policy >
-          msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING) {
+          msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING ||
+      (tracking &&
+       (!finitePoint(message.observed_target_position) ||
+        !finiteVector(message.observed_target_velocity) ||
+        !std::isfinite(message.prediction_horizon_s) ||
+        message.prediction_horizon_s < 0.0 ||
+        timeNanoseconds(message.observation_stamp) <= 0 ||
+        message.terminal_policy !=
+            msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING))) {
     RCLCPP_WARN(get_logger(),
                 "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
                 " sample=%" PRIu64 " reason=invalid_payload",
@@ -128,10 +161,62 @@ void ProductionMppiNode::onNavigationObjective(
     return;
   }
 
-  const Point3 goal{message.position.x, message.position.y, message.position.z};
+  const Point3 unconstrained_goal{message.position.x, message.position.y,
+                                  message.position.z};
+  Point3 goal = unconstrained_goal;
+  std::optional<ProductionTrackingObjective> tracking_objective;
+  if (tracking) {
+    const Point3 observed{message.observed_target_position.x,
+                          message.observed_target_position.y,
+                          message.observed_target_position.z};
+    TrackingObjectiveResolution resolution{
+        .resolved_position = observed,
+        .status = TrackingObjectiveResolutionStatus::kWorldUnavailable,
+        .resolved_fraction = 0.0,
+    };
+    if (use_static_map_ && static_occupancy_3d_) {
+      resolution =
+          resolveTrackingObjective(*static_occupancy_3d_, observed, unconstrained_goal,
+                                   tracking_objective_ray_sample_spacing_m_);
+    } else if (!use_static_map_) {
+      std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
+      {
+        const std::scoped_lock lock{esdf_state_mutex_};
+        if (prepared_esdf_) {
+          raw_occupancy = prepared_esdf_->raw_occupancy;
+        }
+      }
+      if (raw_occupancy) {
+        resolution =
+            resolveTrackingObjective(*raw_occupancy, observed, unconstrained_goal,
+                                     tracking_objective_ray_sample_spacing_m_);
+      }
+    }
+    if (resolution.status == TrackingObjectiveResolutionStatus::kInvalidInput) {
+      RCLCPP_WARN(get_logger(),
+                  "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
+                  " sample=%" PRIu64 " reason=invalid_tracking_resolution",
+                  message.mission_epoch, message.sample_sequence);
+      return;
+    }
+    goal = resolution.resolved_position;
+    tracking_objective = ProductionTrackingObjective{
+        .observed_position = observed,
+        .unconstrained_predicted_position = unconstrained_goal,
+        .observed_velocity =
+            Vec3{message.observed_target_velocity.x, message.observed_target_velocity.y,
+                 message.observed_target_velocity.z},
+        .observation_stamp_ns = timeNanoseconds(message.observation_stamp),
+        .prediction_horizon_s = message.prediction_horizon_s,
+        .resolved_fraction = resolution.resolved_fraction,
+        .guidance_mode = *guidance_mode,
+        .resolution_status = resolution.status,
+    };
+  }
   const auto objective = std::make_shared<const ProductionNavigationObjective>(
       ProductionNavigationObjective{
           .goal = goal,
+          .tracking = tracking_objective,
           .mission_epoch = message.mission_epoch,
           .sample_sequence = message.sample_sequence,
           .stamp_ns = timeNanoseconds(message.stamp),
@@ -162,13 +247,34 @@ void ProductionMppiNode::onNavigationObjective(
   if (request_replan) {
     requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
   }
-  RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 1000,
-      "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
-      " goal=(%.2f,%.2f,%.2f) policy=%s replan=%s",
-      message.mission_epoch, message.sample_sequence, goal.x, goal.y, goal.z,
-      objective->continuous_tracking ? "continuous_tracking" : "position_hold",
-      request_replan ? "true" : "false");
+  if (objective->tracking.has_value()) {
+    const ProductionTrackingObjective tracking_data =
+        objective->tracking.value_or(ProductionTrackingObjective{});
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
+        " type=tracking_prediction mode=%s horizon_s=%.3f "
+        "observed=(%.2f,%.2f,%.2f) predicted=(%.2f,%.2f,%.2f) "
+        "resolved=(%.2f,%.2f,%.2f) resolution=%s resolved_fraction=%.3f "
+        "replan=%s",
+        message.mission_epoch, message.sample_sequence,
+        interceptGuidanceModeName(tracking_data.guidance_mode),
+        tracking_data.prediction_horizon_s, tracking_data.observed_position.x,
+        tracking_data.observed_position.y, tracking_data.observed_position.z,
+        tracking_data.unconstrained_predicted_position.x,
+        tracking_data.unconstrained_predicted_position.y,
+        tracking_data.unconstrained_predicted_position.z, goal.x, goal.y, goal.z,
+        trackingObjectiveResolutionStatusName(tracking_data.resolution_status),
+        tracking_data.resolved_fraction, request_replan ? "true" : "false");
+  } else {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
+        " type=position goal=(%.2f,%.2f,%.2f) policy=%s replan=%s",
+        message.mission_epoch, message.sample_sequence, goal.x, goal.y, goal.z,
+        objective->continuous_tracking ? "continuous_tracking" : "position_hold",
+        request_replan ? "true" : "false");
+  }
 }
 
 } // namespace drone_city_nav

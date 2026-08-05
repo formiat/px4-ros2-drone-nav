@@ -24,6 +24,10 @@ struct MppiDebugMarkerInput {
   mppi::State target{};
   Point3 mission_start{};
   Point3 mission_goal{};
+  Point3 observed_tracking_target{};
+  Point3 predicted_tracking_target{};
+  Point3 resolved_tracking_target{};
+  bool tracking_objective_active{false};
   mppi::RiskTier selected_tier{mppi::RiskTier::kCollision};
 };
 
