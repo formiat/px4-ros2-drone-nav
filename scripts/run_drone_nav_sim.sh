@@ -110,7 +110,7 @@ elif [[ -n "${headless}" ]]; then
 else
   enable_rviz="true"
 fi
-evader_speed_scale="${EVADER_SPEED_SCALE:-0.75}"
+evader_speed_scale="${EVADER_SPEED_SCALE:-1.0}"
 enable_gazebo_gui_follow_camera="$(
   normalize_bool "${ENABLE_GZ_GUI_FOLLOW_CAMERA:-true}"
 )"

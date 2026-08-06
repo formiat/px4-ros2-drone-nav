@@ -179,12 +179,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
         )
 
-    def test_intercept_evader_defaults_to_three_quarters_interceptor_speed(self) -> None:
+    def test_intercept_evader_defaults_to_interceptor_speed(self) -> None:
         self.assertIn(
-            'evader_speed_scale="${EVADER_SPEED_SCALE:-0.75}"', self.text
+            'evader_speed_scale="${EVADER_SPEED_SCALE:-1.0}"', self.text
         )
         self.assertIn(
-            'DeclareLaunchArgument("evader_speed_scale", default_value="0.75")',
+            'DeclareLaunchArgument("evader_speed_scale", default_value="1.0")',
             self.intercept_launch_text,
         )
 

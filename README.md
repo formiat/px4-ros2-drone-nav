@@ -130,8 +130,8 @@ The point-to-point mission remains the default. The intercept mission launches
 three isolated interceptor PX4/ROS stacks and one evader stack. The
 interceptors start in three city corners; one starts at the evader's destination
 but receives neither that destination nor any other attacker ground truth. The
-evader flies diagonally to its fixed goal at 75% of the interceptor speed
-policy. Each interceptor receives only its own ideal radar measurements
+evader flies diagonally to its fixed goal with the same speed policy as the
+interceptors. Each interceptor receives only its own ideal radar measurements
 containing range, azimuth, elevation, and radial velocity; an independent
 variable-dt tracker derives the target state used by predictive guidance. Scan
 cadence follows a deterministic correlated random walk from 0.1 s to 3.0 s
