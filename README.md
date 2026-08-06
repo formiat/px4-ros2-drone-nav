@@ -6,13 +6,13 @@ The main package is `drone_city_nav`, an ament CMake package built with
 
 ## Demo Videos
 
-| Static-map navigation | Navigation without a static map |
+| Autonomous interceptor mission | Navigation without a static map |
 |:--:|:--:|
-| [![Static-map navigation demo](https://img.youtube.com/vi/sYGQDgPQ-mc/maxresdefault.jpg)](https://youtu.be/sYGQDgPQ-mc) | [![Navigation without a static map](https://img.youtube.com/vi/DAHCt6dmAAE/maxresdefault.jpg)](https://youtu.be/DAHCt6dmAAE) |
-| [Watch on YouTube](https://youtu.be/sYGQDgPQ-mc) | [Watch on YouTube](https://youtu.be/DAHCt6dmAAE) |
+| [![Autonomous interceptor mission](https://img.youtube.com/vi/ouRDE7C2NvM/maxresdefault.jpg)](https://youtu.be/ouRDE7C2NvM) | [![Navigation without a static map](https://img.youtube.com/vi/DAHCt6dmAAE/maxresdefault.jpg)](https://youtu.be/DAHCt6dmAAE) |
+| [Watch on YouTube](https://youtu.be/ouRDE7C2NvM) | [Watch on YouTube](https://youtu.be/DAHCt6dmAAE) |
 
-The videos demonstrate the static-map and sensor-driven operating modes as of
-July 2026.
+The videos demonstrate autonomous interception and sensor-driven navigation as
+of August 2026.
 
 ## Roadmap
 
