@@ -24,6 +24,11 @@ struct TrackingPursuitDiagnostics {
   double target_separation_m{-1.0};
   double closing_speed_mps{-1.0};
   double radar_age_ms{-1.0};
+  double selected_prediction_fraction{0.0};
+  std::uint8_t radar_cadence_reason{0U};
+  bool observed_target_visible{false};
+  bool predicted_intercept_path_clear{false};
+  bool direct_interception_active{false};
 };
 
 [[nodiscard]] TrackingPursuitDiagnostics

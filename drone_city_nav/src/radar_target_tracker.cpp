@@ -119,6 +119,8 @@ RadarTargetTracker::RadarTargetTracker(const RadarTargetTrackerConfig& config)
       config_.position_correction_gain > 1.0 ||
       !(config_.velocity_correction_gain > 0.0) ||
       config_.velocity_correction_gain > 1.0 ||
+      !(config_.high_rate_velocity_correction_gain > 0.0) ||
+      config_.high_rate_velocity_correction_gain > 1.0 ||
       !(config_.maximum_ownship_stamp_error_s >= 0.0) || config_.track_id == 0U) {
     throw std::invalid_argument{"invalid radar target tracker configuration"};
   }
@@ -128,15 +130,20 @@ void RadarTargetTracker::reset() noexcept {
   previous_.reset();
 }
 
-RadarTrackEstimate RadarTargetTracker::update(const TimedVehicleState& ownship,
-                                              const RadarDetectionSample& detection,
-                                              const std::int64_t measurement_stamp_ns,
-                                              const std::uint64_t scan_sequence) {
+RadarTrackEstimate RadarTargetTracker::update(
+    const TimedVehicleState& ownship, const RadarDetectionSample& detection,
+    const std::int64_t measurement_stamp_ns, const std::uint64_t scan_sequence,
+    const RadarTrackerUpdateMode update_mode) {
+  const double velocity_correction_gain =
+      update_mode == RadarTrackerUpdateMode::kTrack
+          ? config_.high_rate_velocity_correction_gain
+          : config_.velocity_correction_gain;
   RadarTrackEstimate result{
       .stamp_ns = measurement_stamp_ns,
       .track_id = config_.track_id,
       .source_scan_sequence = scan_sequence,
       .source_detection_id = detection.detection_id,
+      .velocity_correction_gain = velocity_correction_gain,
   };
   if (!validOwnship(ownship) || measurement_stamp_ns <= 0 ||
       static_cast<double>(absoluteDifference(ownship.stamp_ns, measurement_stamp_ns)) *
@@ -183,12 +190,9 @@ RadarTrackEstimate RadarTargetTracker::update(const TimedVehicleState& ownship,
         predicted.z + config_.position_correction_gain * innovation.z,
     };
     velocity = Vec3{
-        previous_->velocity.x +
-            config_.velocity_correction_gain * innovation.x / delta_s,
-        previous_->velocity.y +
-            config_.velocity_correction_gain * innovation.y / delta_s,
-        previous_->velocity.z +
-            config_.velocity_correction_gain * innovation.z / delta_s,
+        previous_->velocity.x + velocity_correction_gain * innovation.x / delta_s,
+        previous_->velocity.y + velocity_correction_gain * innovation.y / delta_s,
+        previous_->velocity.z + velocity_correction_gain * innovation.z / delta_s,
     };
   } else {
     velocity = Vec3{(result.position.x - previous_->position.x) / delta_s,

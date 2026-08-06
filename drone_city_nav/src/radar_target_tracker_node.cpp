@@ -35,6 +35,8 @@ public:
                 declare_parameter<double>("position_correction_gain", 1.0),
             .velocity_correction_gain =
                 declare_parameter<double>("velocity_correction_gain", 0.5),
+            .high_rate_velocity_correction_gain =
+                declare_parameter<double>("high_rate_velocity_correction_gain", 1.0),
             .maximum_ownship_stamp_error_s =
                 declare_parameter<double>("maximum_ownship_stamp_error_s", 0.05),
             .track_id = static_cast<std::uint64_t>(
@@ -80,7 +82,8 @@ private:
   }
 
   void onRadarScan(const msg::RadarScan& scan) {
-    if (scan.header.frame_id != expected_radar_frame_ || scan.detections.empty()) {
+    if (scan.header.frame_id != expected_radar_frame_ || scan.detections.empty() ||
+        scan.cadence_mode > msg::RadarScan::CADENCE_MODE_TRACK) {
       RCLCPP_WARN(get_logger(),
                   "RADAR_TRACK rejected=true reason=invalid_scan frame='%s' "
                   "detections=%zu",
@@ -111,8 +114,11 @@ private:
         .elevation_rad = input.elevation_rad,
         .radial_velocity_mps = input.radial_velocity_mps,
     };
-    const RadarTrackEstimate estimate =
-        tracker_.update(*ownship, detection, stamp_ns, pending_scan_->scan_sequence);
+    const RadarTrackEstimate estimate = tracker_.update(
+        *ownship, detection, stamp_ns, pending_scan_->scan_sequence,
+        pending_scan_->cadence_mode == msg::RadarScan::CADENCE_MODE_TRACK
+            ? RadarTrackerUpdateMode::kTrack
+            : RadarTrackerUpdateMode::kSearch);
     if (!estimate.position_valid) {
       RCLCPP_WARN(get_logger(),
                   "RADAR_TRACK rejected=true reason=tracker_update_failed "
@@ -146,10 +152,16 @@ private:
     last_scan_sequence_ = pending_scan_->scan_sequence;
     RCLCPP_INFO(get_logger(),
                 "RADAR_TRACK status=%s track_id=%" PRIu64 " scan_sequence=%" PRIu64
-                " measurement_count=%zu velocity_valid=%s",
+                " measurement_count=%zu velocity_valid=%s cadence_mode=%s "
+                "cadence_reason=%u velocity_correction_gain=%.3f",
                 estimate.velocity_valid ? "tracking" : "initializing",
                 estimate.track_id, estimate.source_scan_sequence,
-                estimate.measurement_count, estimate.velocity_valid ? "true" : "false");
+                estimate.measurement_count, estimate.velocity_valid ? "true" : "false",
+                pending_scan_->cadence_mode == msg::RadarScan::CADENCE_MODE_TRACK
+                    ? "track"
+                    : "search",
+                static_cast<unsigned int>(pending_scan_->cadence_reason),
+                estimate.velocity_correction_gain);
     pending_scan_.reset();
   }
 

@@ -132,9 +132,11 @@ fixed goal at 50% of the interceptor speed policy. The interceptor receives
 only ideal radar measurements containing range, azimuth, elevation, and radial
 velocity; a variable-dt tracker derives the target state used by predictive
 guidance. Scan cadence follows a deterministic correlated random walk from
-0.1 s to 3.0 s at long range. At 30 m the radar enters a 20 Hz track mode and
-stays there until range exceeds 40 m. Tracker coasting and guidance continue at
-20 Hz between scans. Only the simulation radar adapter and mission referee may
+0.1 s to 3.0 s while the current target estimate is occluded. Once the planner
+validates swept raw-clear visibility of that estimate, a typed command triggers
+an immediate scan and 20 Hz track mode without a range limit. Tracker coasting
+and guidance continue at 20 Hz between scans. Only the simulation radar adapter
+and mission referee may
 read evader ground truth. Mission motion starts only after both planners report
 a resident world and the tracker has published its first valid target position.
 
@@ -143,9 +145,10 @@ latency-compensated analytic intercept solution, capped at 15 s, and smoothly
 caps the lead at 1 s when the interceptor is already ahead in the evader's
 motion corridor. Vertical prediction models the target stopping its climb or
 descent under bounded acceleration and clamps the result to the configured
-half-open flight envelope. The planner clips predictions at the first physical raw
-obstacle. When the resulting interceptor-to-target segment is raw-clear, MPPI
-tracks the moving target directly without repeatedly rebuilding a global route.
+half-open flight envelope. The planner treats current-target visibility and the
+path to the predicted intercept point separately. A visible current target keeps
+direct MPPI interception active; a blocked full-lead path shortens the prediction
+toward the current target instead of dropping direct mode.
 A swept separation of 5 m publishes typed
 `VehicleDestroyed` events for both roles; their offboard nodes then force-disarm
 and confirm both deaths before reporting a successful intercept. If the evader reaches its goal

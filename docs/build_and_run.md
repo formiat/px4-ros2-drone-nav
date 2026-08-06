@@ -95,17 +95,20 @@ The interceptor uses a latency-compensated analytic intercept solution capped at
 1 s.
 The interceptor receives no evader coordinates. An ideal radar adapter publishes
 only range, azimuth, elevation, and radial velocity at a deterministic varying
-cadence between 0.1 s and 3.0 s. It switches to a 20 Hz track mode at 30 m and
-returns to the long-range cadence beyond 40 m. A variable-dt tracker reconstructs
-and coasts a target track, and guidance continues at 20 Hz between scans.
+cadence between 0.1 s and 3.0 s. A typed planner command switches it immediately
+to 20 Hz whenever the current target estimate has swept raw-clear visibility,
+independent of range, and returns it to varying search cadence when the target is
+occluded. A variable-dt tracker reconstructs and coasts a target track, and
+guidance continues at 20 Hz between scans.
 The mission start barrier waits for both planner worlds and the first valid
 target position from that tracker. Static planner readiness comes from the
 resident Occupancy3D ESDF and does not wait for a lidar snapshot.
 Prediction includes measurement age and is clipped only by physical raw
 occupancy in the active static or sensor-derived map. Vertical prediction
 decelerates vertical target motion to a stop and remains inside the configured
-flight envelope. A raw-clear segment uses
-direct moving-target MPPI pursuit without repeated global replanning.
+flight envelope. Visibility of the current target uses direct moving-target MPPI
+pursuit. If only the full predicted intercept point is blocked, the planner
+shortens the lead while preserving direct mode.
 The headless command requires a terminal intercept outcome and validates both
 PX4 instance logs. An intercept result requires confirmed disarm of both
 vehicles. An evader-goal result requires the interceptor to stop tracking and

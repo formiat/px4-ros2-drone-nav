@@ -12,8 +12,6 @@ struct RadarCadenceConfig {
   double maximum_step_s{0.25};
   double step_correlation{0.85};
   double track_interval_s{0.05};
-  double track_enter_range_m{30.0};
-  double track_exit_range_m{40.0};
   std::uint64_t random_seed{42U};
 };
 
@@ -22,14 +20,10 @@ public:
   explicit CorrelatedRadarCadence(const RadarCadenceConfig& config = {});
 
   [[nodiscard]] double nextIntervalSeconds();
-  [[nodiscard]] double nextIntervalSeconds(double target_range_m);
+  [[nodiscard]] double nextIntervalSeconds(bool track_mode);
 
   [[nodiscard]] double currentIntervalSeconds() const noexcept {
     return current_interval_s_;
-  }
-
-  [[nodiscard]] bool trackMode() const noexcept {
-    return track_mode_;
   }
 
 private:
@@ -38,7 +32,6 @@ private:
   std::uniform_real_distribution<double> noise_distribution_{-1.0, 1.0};
   double current_interval_s_{0.1};
   double current_step_s_{0.0};
-  bool track_mode_{false};
 };
 
 } // namespace drone_city_nav

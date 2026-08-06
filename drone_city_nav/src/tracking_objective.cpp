@@ -21,6 +21,9 @@ namespace {
 }
 
 using RawOccupiedQuery = std::function<bool(const Point3&)>;
+using SweptClearQuery = std::function<bool(const Point3&, const Point3&)>;
+
+constexpr std::size_t kDirectTargetRefinementIterations{8U};
 
 [[nodiscard]] TrackingObjectiveResolution
 resolve(const Point3& observed_position, const Point3& predicted_position,
@@ -66,6 +69,73 @@ resolve(const Point3& observed_position, const Point3& predicted_position,
       .status = TrackingObjectiveResolutionStatus::kUnchanged,
       .resolved_fraction = 1.0,
   };
+}
+
+[[nodiscard]] DirectTrackingTargetResolution
+resolveDirectTarget(const Point3& interceptor_position,
+                    const Point3& current_target_position,
+                    const Point3& predicted_target_position,
+                    const TrackingObjectiveResolution& prediction_resolution,
+                    const SweptClearQuery& swept_clear) {
+  DirectTrackingTargetResolution result{
+      .selected_position = current_target_position,
+      .status = DirectTrackingTargetStatus::kInvalidInput,
+  };
+  if (!finite(interceptor_position) || !finite(current_target_position) ||
+      !finite(predicted_target_position) ||
+      prediction_resolution.status ==
+          TrackingObjectiveResolutionStatus::kInvalidInput) {
+    return result;
+  }
+
+  result.observed_target_visible =
+      swept_clear(interceptor_position, current_target_position);
+  if (!result.observed_target_visible) {
+    result.status = DirectTrackingTargetStatus::kObservedTargetOccluded;
+    return result;
+  }
+
+  const double maximum_fraction =
+      std::clamp(prediction_resolution.resolved_fraction, 0.0, 1.0);
+  const bool full_prediction_raw_clear =
+      prediction_resolution.status == TrackingObjectiveResolutionStatus::kUnchanged &&
+      maximum_fraction >= 1.0 - 1.0e-9;
+  if (full_prediction_raw_clear &&
+      swept_clear(interceptor_position, predicted_target_position)) {
+    result.selected_position = predicted_target_position;
+    result.selected_prediction_fraction = 1.0;
+    result.status = DirectTrackingTargetStatus::kFullPrediction;
+    result.predicted_intercept_path_clear = true;
+    return result;
+  }
+
+  double clear_fraction = 0.0;
+  double blocked_fraction = maximum_fraction;
+  const Point3 maximum_candidate =
+      interpolate(current_target_position, predicted_target_position, maximum_fraction);
+  if (maximum_fraction > 0.0 && swept_clear(interceptor_position, maximum_candidate)) {
+    clear_fraction = maximum_fraction;
+  } else {
+    for (std::size_t iteration = 0U; iteration < kDirectTargetRefinementIterations;
+         ++iteration) {
+      const double candidate_fraction = 0.5 * (clear_fraction + blocked_fraction);
+      const Point3 candidate = interpolate(
+          current_target_position, predicted_target_position, candidate_fraction);
+      if (swept_clear(interceptor_position, candidate)) {
+        clear_fraction = candidate_fraction;
+      } else {
+        blocked_fraction = candidate_fraction;
+      }
+    }
+  }
+
+  result.selected_prediction_fraction = clear_fraction;
+  result.selected_position =
+      interpolate(current_target_position, predicted_target_position, clear_fraction);
+  result.status = clear_fraction > 1.0e-6
+                      ? DirectTrackingTargetStatus::kShortenedPrediction
+                      : DirectTrackingTargetStatus::kCurrentTargetOnly;
+  return result;
 }
 
 } // namespace
@@ -153,6 +223,36 @@ bool trackingLineOfSightSweptRawClear(const OccupancyGrid3D& raw_occupancy,
       .accepted();
 }
 
+DirectTrackingTargetResolution resolveDirectTrackingTarget(
+    const OccupancyGrid2D& raw_occupancy, const Point3& interceptor_position,
+    const Point3& current_target_position, const Point3& predicted_target_position,
+    const SweptFootprintConfig& footprint) {
+  const TrackingObjectiveResolution prediction_resolution =
+      resolveTrackingObjective(raw_occupancy, current_target_position,
+                               predicted_target_position, footprint.sweep_step_m);
+  return resolveDirectTarget(
+      interceptor_position, current_target_position, predicted_target_position,
+      prediction_resolution,
+      [&raw_occupancy, &footprint](const Point3& from, const Point3& to) {
+        return trackingLineOfSightSweptRawClear(raw_occupancy, from, to, footprint);
+      });
+}
+
+DirectTrackingTargetResolution resolveDirectTrackingTarget(
+    const OccupancyGrid3D& raw_occupancy, const Point3& interceptor_position,
+    const Point3& current_target_position, const Point3& predicted_target_position,
+    const SweptFootprintConfig& footprint) {
+  const TrackingObjectiveResolution prediction_resolution =
+      resolveTrackingObjective(raw_occupancy, current_target_position,
+                               predicted_target_position, footprint.sweep_step_m);
+  return resolveDirectTarget(
+      interceptor_position, current_target_position, predicted_target_position,
+      prediction_resolution,
+      [&raw_occupancy, &footprint](const Point3& from, const Point3& to) {
+        return trackingLineOfSightSweptRawClear(raw_occupancy, from, to, footprint);
+      });
+}
+
 TrackingObjectiveResolution resolveTrackingObjective(
     const OccupancyGrid3D& raw_occupancy, const Point3& observed_position,
     const Point3& predicted_position, const double maximum_sample_spacing_m) {
@@ -177,6 +277,25 @@ const char* trackingObjectiveResolutionStatusName(
     case TrackingObjectiveResolutionStatus::kWorldUnavailable:
       return "world_unavailable";
     case TrackingObjectiveResolutionStatus::kInvalidInput:
+      return "invalid_input";
+  }
+  return "unknown";
+}
+
+const char*
+directTrackingTargetStatusName(const DirectTrackingTargetStatus status) noexcept {
+  switch (status) {
+    case DirectTrackingTargetStatus::kFullPrediction:
+      return "full_prediction";
+    case DirectTrackingTargetStatus::kShortenedPrediction:
+      return "shortened_prediction";
+    case DirectTrackingTargetStatus::kCurrentTargetOnly:
+      return "current_target_only";
+    case DirectTrackingTargetStatus::kObservedTargetOccluded:
+      return "observed_target_occluded";
+    case DirectTrackingTargetStatus::kWorldUnavailable:
+      return "world_unavailable";
+    case DirectTrackingTargetStatus::kInvalidInput:
       return "invalid_input";
   }
   return "unknown";

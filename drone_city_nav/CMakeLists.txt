@@ -52,6 +52,7 @@ rosidl_generate_interfaces(
   "msg/NavigationObjective.msg"
   "msg/RadarDetection.msg"
   "msg/RadarScan.msg"
+  "msg/RadarTrackModeCommand.msg"
   "msg/TargetTrack.msg"
   "msg/InterceptMissionCommand.msg"
   "msg/VehicleNavigationState.msg"

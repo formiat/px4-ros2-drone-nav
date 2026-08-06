@@ -185,6 +185,9 @@ def generate_launch_description():
                     "path_topic": path_topic,
                     "markers_topic": marker_topic,
                     "navigation_objective_topic": f"{prefix}/navigation_objective",
+                    "radar_track_mode_command_topic": (
+                        f"{prefix}/radar/track_mode_command"
+                    ),
                     "diagnostics_output_dir": f"log/intercept/{role}/mppi",
                     "static_cruise_speed_mps": document["production_mppi_node"]
                     ["ros__parameters"]["static_cruise_speed_mps"]
@@ -364,6 +367,9 @@ def generate_launch_description():
                             "radar_state_topic": "/vehicles/interceptor/state",
                             "target_state_topic": "/vehicles/evader/state",
                             "radar_scan_topic": "/vehicles/interceptor/radar/scan",
+                            "track_mode_command_topic": (
+                                "/vehicles/interceptor/radar/track_mode_command"
+                            ),
                             "minimum_scan_interval_s": float(
                                 LaunchConfiguration(
                                     "radar_minimum_scan_interval_s"
@@ -392,16 +398,6 @@ def generate_launch_description():
                             "track_interval_s": float(
                                 LaunchConfiguration(
                                     "radar_track_interval_s"
-                                ).perform(context)
-                            ),
-                            "track_enter_range_m": float(
-                                LaunchConfiguration(
-                                    "radar_track_enter_range_m"
-                                ).perform(context)
-                            ),
-                            "track_exit_range_m": float(
-                                LaunchConfiguration(
-                                    "radar_track_exit_range_m"
                                 ).perform(context)
                             ),
                             "random_seed": int(
@@ -433,6 +429,7 @@ def generate_launch_description():
                                 ).perform(context)
                             )
                             + 1.0,
+                            "high_rate_velocity_correction_gain": 1.0,
                         }
                     ],
                 ),
@@ -661,12 +658,6 @@ def generate_launch_description():
                 "radar_interval_step_correlation", default_value="0.85"
             ),
             DeclareLaunchArgument("radar_track_interval_s", default_value="0.05"),
-            DeclareLaunchArgument(
-                "radar_track_enter_range_m", default_value="30.0"
-            ),
-            DeclareLaunchArgument(
-                "radar_track_exit_range_m", default_value="40.0"
-            ),
             DeclareLaunchArgument("radar_random_seed", default_value="42"),
             DeclareLaunchArgument("evader_speed_scale", default_value="0.5"),
             DeclareLaunchArgument(

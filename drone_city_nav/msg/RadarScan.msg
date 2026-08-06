@@ -1,3 +1,13 @@
+uint8 CADENCE_MODE_SEARCH=0
+uint8 CADENCE_MODE_TRACK=1
+
+uint8 CADENCE_REASON_NO_TRACKING_OBJECTIVE=0
+uint8 CADENCE_REASON_OBSERVED_TARGET_OCCLUDED=1
+uint8 CADENCE_REASON_OBSERVED_TARGET_VISIBLE=2
+uint8 CADENCE_REASON_WORLD_UNAVAILABLE=3
+
 std_msgs/Header header
 uint64 scan_sequence
+uint8 cadence_mode
+uint8 cadence_reason
 RadarDetection[] detections

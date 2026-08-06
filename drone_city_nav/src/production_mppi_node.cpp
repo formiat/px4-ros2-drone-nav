@@ -651,6 +651,10 @@ ProductionMppiNode::ProductionMppiNode()
       [this](const msg::NavigationObjective::SharedPtr message) {
         onNavigationObjective(*message);
       });
+  radar_track_mode_command_pub_ = create_publisher<msg::RadarTrackModeCommand>(
+      declare_parameter<std::string>("radar_track_mode_command_topic",
+                                     "/drone_city_nav/radar/track_mode_command"),
+      rclcpp::QoS{1}.reliable().transient_local());
   path_pub_ = create_publisher<nav_msgs::msg::Path>(
       declare_parameter<std::string>("path_topic", "/drone_city_nav/mppi/path"),
       rclcpp::QoS{1}.reliable());

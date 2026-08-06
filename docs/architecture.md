@@ -144,11 +144,14 @@ through the ROS graph before starting the mission.
 `RadarScan` exposes only range, azimuth, elevation, and relative radial velocity.
 It contains no absolute target state or simulator identity. The ideal simulator
 publishes immediately at a deterministic correlated cadence between 0.1 s and
-3.0 s at long range, then enters a 20 Hz track mode at 30 m with a 40 m exit
-hysteresis. The tracker reconstructs Cartesian position from the interceptor
-state at measurement time. Its first measurement has no full velocity estimate;
-later variable-dt corrections produce a constant-velocity `TargetTrack` that
-coasts between measurements. Interceptor guidance runs at 20 Hz and converts
+3.0 s in search mode. The planner publishes a typed mode command containing no
+target state: swept raw-clear visibility of the current target estimate requests
+an immediate scan and 20 Hz track mode at any range; occlusion restores search
+cadence. The tracker reconstructs Cartesian position from the interceptor state
+at measurement time. Its first measurement has no full velocity estimate; later
+variable-dt corrections produce a constant-velocity `TargetTrack` that coasts
+between measurements. Ideal high-rate scans use full velocity innovation gain.
+Interceptor guidance runs at 20 Hz and converts
 that track into a typed continuous objective. It solves the constant-velocity
 intercept equation, caps the result at 15 s, and caps the horizon at 1 s while
 ahead inside the target corridor. Vertical coasting applies bounded
@@ -160,9 +163,12 @@ Guidance does not read occupancy. The production planner resolves the predicted
 segment against its immutable raw world, stopping at the first occupied cell and
 retaining the last free sample as the ordinary planning goal. Unknown no-static
 space remains traversable, and no inflation or prohibited region is introduced.
-After two raw-clear confirmations, continuous tracking bypasses repeated global
-replanning and gives MPPI a direct moving-target objective. Raw blockage exits
-that mode immediately and requests an ordinary global route. MPPI minimizes
+The planner separately validates swept visibility of the coasted current target
+and the path to the full predicted intercept point. Current-target visibility
+keeps direct interception active; blockage of only the full prediction shortens
+the lead to the farthest directly reachable point, down to the current target.
+Current-target occlusion exits direct mode immediately and atomically hands off
+to a current-generation global route. MPPI minimizes
 closest approach to the target trajectory over its horizon, while raw collision
 remains forbidden. Continuous objectives disable terminal goal capture. Swept
 relative-motion evaluation detects a 5 m intercept between state samples and

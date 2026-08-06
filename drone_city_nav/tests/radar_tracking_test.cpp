@@ -67,8 +67,6 @@ TEST(RadarCadence, IsDeterministicCorrelatedAndBounded) {
       .maximum_step_s = 0.25,
       .step_correlation = 0.85,
       .track_interval_s = 0.05,
-      .track_enter_range_m = 30.0,
-      .track_exit_range_m = 40.0,
       .random_seed = 1234U,
   };
   CorrelatedRadarCadence first{config};
@@ -89,17 +87,12 @@ TEST(RadarCadence, IsDeterministicCorrelatedAndBounded) {
   EXPECT_TRUE(varied);
 }
 
-TEST(RadarCadence, UsesFastTrackModeWithRangeHysteresis) {
+TEST(RadarCadence, UsesExplicitFastTrackModeWithoutRangePolicy) {
   CorrelatedRadarCadence cadence;
 
-  EXPECT_GT(cadence.nextIntervalSeconds(50.0), 0.0);
-  EXPECT_FALSE(cadence.trackMode());
-  EXPECT_DOUBLE_EQ(cadence.nextIntervalSeconds(30.0), 0.05);
-  EXPECT_TRUE(cadence.trackMode());
-  EXPECT_DOUBLE_EQ(cadence.nextIntervalSeconds(35.0), 0.05);
-  EXPECT_TRUE(cadence.trackMode());
-  EXPECT_GT(cadence.nextIntervalSeconds(40.0), 0.0);
-  EXPECT_FALSE(cadence.trackMode());
+  EXPECT_DOUBLE_EQ(cadence.nextIntervalSeconds(true), 0.05);
+  EXPECT_DOUBLE_EQ(cadence.nextIntervalSeconds(true), 0.05);
+  EXPECT_GT(cadence.nextIntervalSeconds(false), 0.0);
 }
 
 TEST(RadarOwnshipHistory, InterpolatesPositionVelocityAndWrappedHeading) {
@@ -164,6 +157,7 @@ TEST(RadarTargetTracker, FiltersTangentialInnovationWithConstantVelocityModel) {
       .maximum_update_interval_s = 4.0,
       .position_correction_gain = 1.0,
       .velocity_correction_gain = 0.25,
+      .high_rate_velocity_correction_gain = 1.0,
       .maximum_ownship_stamp_error_s = 0.05,
       .track_id = 1U,
   }};
@@ -199,6 +193,48 @@ TEST(RadarTargetTracker, FiltersTangentialInnovationWithConstantVelocityModel) {
   EXPECT_GT(filtered.velocity.y, 1.2);
   EXPECT_LT(filtered.velocity.y, 1.3);
   EXPECT_LT(filtered.velocity.y, 2.0);
+}
+
+TEST(RadarTargetTracker, AppliesFullVelocityCorrectionInTrackMode) {
+  RadarTargetTracker tracker{RadarTargetTrackerConfig{
+      .maximum_update_interval_s = 4.0,
+      .position_correction_gain = 1.0,
+      .velocity_correction_gain = 0.5,
+      .high_rate_velocity_correction_gain = 1.0,
+      .maximum_ownship_stamp_error_s = 0.05,
+      .track_id = 1U,
+  }};
+  const TimedVehicleState ownship1 = vehicleState(Point3{}, Vec3{}, 1'000'000'000LL);
+  const TimedVehicleState ownship2 = vehicleState(Point3{}, Vec3{}, 2'000'000'000LL);
+  const TimedVehicleState ownship3 = vehicleState(Point3{}, Vec3{}, 3'000'000'000LL);
+  const auto update =
+      [&tracker](const TimedVehicleState& ownship, const TimedVehicleState& target,
+                 const std::uint64_t sequence, const RadarTrackerUpdateMode mode) {
+        const auto measurement = simulateIdealRadarDetection(ownship, target, 1U);
+        EXPECT_TRUE(measurement.has_value());
+        return tracker.update(ownship, measurement.value_or(RadarDetectionSample{}),
+                              ownship.stamp_ns, sequence, mode);
+      };
+
+  ASSERT_TRUE(update(ownship1,
+                     vehicleState(Point3{10.0, 0.0, 0.0}, Vec3{1.0, 0.0, 0.0},
+                                  ownship1.stamp_ns),
+                     1U, RadarTrackerUpdateMode::kSearch)
+                  .position_valid);
+  ASSERT_TRUE(update(ownship2,
+                     vehicleState(Point3{11.0, 0.0, 0.0}, Vec3{1.0, 0.0, 0.0},
+                                  ownship2.stamp_ns),
+                     2U, RadarTrackerUpdateMode::kSearch)
+                  .velocity_valid);
+  const RadarTrackEstimate turned = update(
+      ownship3,
+      vehicleState(Point3{11.0, 1.0, 0.0}, Vec3{0.0, 1.0, 0.0}, ownship3.stamp_ns), 3U,
+      RadarTrackerUpdateMode::kTrack);
+
+  ASSERT_TRUE(turned.velocity_valid);
+  EXPECT_DOUBLE_EQ(turned.velocity_correction_gain, 1.0);
+  EXPECT_NEAR(turned.velocity.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(turned.velocity.y, 1.0, 1.0e-9);
 }
 
 } // namespace

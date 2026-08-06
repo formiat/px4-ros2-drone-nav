@@ -25,6 +25,23 @@ struct TrackingObjectiveResolution {
   double resolved_fraction{0.0};
 };
 
+enum class DirectTrackingTargetStatus : std::uint8_t {
+  kFullPrediction,
+  kShortenedPrediction,
+  kCurrentTargetOnly,
+  kObservedTargetOccluded,
+  kWorldUnavailable,
+  kInvalidInput,
+};
+
+struct DirectTrackingTargetResolution {
+  Point3 selected_position{};
+  double selected_prediction_fraction{0.0};
+  DirectTrackingTargetStatus status{DirectTrackingTargetStatus::kWorldUnavailable};
+  bool observed_target_visible{false};
+  bool predicted_intercept_path_clear{false};
+};
+
 struct TrackingLineOfSightConfig {
   std::size_t clear_confirmations{2U};
 };
@@ -76,7 +93,20 @@ trackingLineOfSightSweptRawClear(const OccupancyGrid3D& raw_occupancy,
                                  const Point3& from, const Point3& to,
                                  const SweptFootprintConfig& footprint);
 
+[[nodiscard]] DirectTrackingTargetResolution resolveDirectTrackingTarget(
+    const OccupancyGrid2D& raw_occupancy, const Point3& interceptor_position,
+    const Point3& current_target_position, const Point3& predicted_target_position,
+    const SweptFootprintConfig& footprint);
+
+[[nodiscard]] DirectTrackingTargetResolution resolveDirectTrackingTarget(
+    const OccupancyGrid3D& raw_occupancy, const Point3& interceptor_position,
+    const Point3& current_target_position, const Point3& predicted_target_position,
+    const SweptFootprintConfig& footprint);
+
 [[nodiscard]] const char* trackingObjectiveResolutionStatusName(
     TrackingObjectiveResolutionStatus status) noexcept;
+
+[[nodiscard]] const char*
+directTrackingTargetStatusName(DirectTrackingTargetStatus status) noexcept;
 
 } // namespace drone_city_nav

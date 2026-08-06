@@ -209,20 +209,19 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 )
                 self.assertIn(f'"{name}": float(', self.intercept_launch_text)
 
-    def test_intercept_launch_configures_close_range_radar_track_mode(self) -> None:
-        expected_defaults = {
-            "radar_track_interval_s": "0.05",
-            "radar_track_enter_range_m": "30.0",
-            "radar_track_exit_range_m": "40.0",
-        }
-        for name, default in expected_defaults.items():
-            with self.subTest(parameter=name):
-                self.assertRegex(
-                    self.intercept_launch_text,
-                    rf'"{name}",\s*default_value="{default}"',
-                )
-                self.assertIn(f'"{name.removeprefix("radar_")}": float(',
-                              self.intercept_launch_text)
+    def test_intercept_launch_configures_los_driven_radar_track_mode(self) -> None:
+        self.assertRegex(
+            self.intercept_launch_text,
+            r'"radar_track_interval_s",\s*default_value="0.05"',
+        )
+        self.assertIn('"track_interval_s": float(', self.intercept_launch_text)
+        self.assertIn('"track_mode_command_topic": (', self.intercept_launch_text)
+        self.assertIn(
+            '"high_rate_velocity_correction_gain": 1.0',
+            self.intercept_launch_text,
+        )
+        self.assertNotIn("radar_track_enter_range_m", self.intercept_launch_text)
+        self.assertNotIn("radar_track_exit_range_m", self.intercept_launch_text)
 
     def test_navigation_nodes_use_gazebo_simulation_clock(self) -> None:
         self.assertIn(

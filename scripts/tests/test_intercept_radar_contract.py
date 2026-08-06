@@ -13,6 +13,7 @@ SOURCE = PACKAGE / "src"
 LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
 RADAR_DETECTION = PACKAGE / "msg" / "RadarDetection.msg"
 RADAR_SCAN = PACKAGE / "msg" / "RadarScan.msg"
+RADAR_TRACK_MODE_COMMAND = PACKAGE / "msg" / "RadarTrackModeCommand.msg"
 GUIDANCE = SOURCE / "interceptor_guidance_node.cpp"
 TRACKER = SOURCE / "radar_target_tracker_node.cpp"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
@@ -37,6 +38,15 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertNotIn("absolute", detection + scan)
         self.assertNotIn("truth", detection + scan)
         self.assertNotIn("entity", detection + scan)
+
+    def test_track_mode_command_contains_only_typed_visibility_policy(self) -> None:
+        command = RADAR_TRACK_MODE_COMMAND.read_text(encoding="utf-8")
+        self.assertIn("uint8 MODE_SEARCH=0", command)
+        self.assertIn("uint8 MODE_TRACK=1", command)
+        self.assertIn("uint8 REASON_OBSERVED_TARGET_VISIBLE=2", command)
+        self.assertNotIn("geometry_msgs", command)
+        self.assertNotIn("position", command)
+        self.assertNotIn("range_m", command)
 
     def test_only_simulation_boundary_nodes_subscribe_to_evader_truth(self) -> None:
         subscribers = {
@@ -80,6 +90,8 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn('"target_track_readiness_topic"', text)
         self.assertIn('"interceptor_world_readiness_topic"', text)
         self.assertIn('"evader_world_readiness_topic"', text)
+        self.assertIn('"track_mode_command_topic"', text)
+        self.assertIn('"radar_track_mode_command_topic"', text)
         self.assertNotIn("tracked_agent_state_topic", text)
         self.assertNotIn('executable="intercept_mission_node"', text)
 

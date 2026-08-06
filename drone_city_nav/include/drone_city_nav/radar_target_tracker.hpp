@@ -37,8 +37,14 @@ struct RadarTargetTrackerConfig {
   double maximum_update_interval_s{4.0};
   double position_correction_gain{1.0};
   double velocity_correction_gain{0.5};
+  double high_rate_velocity_correction_gain{1.0};
   double maximum_ownship_stamp_error_s{0.05};
   std::uint64_t track_id{1U};
+};
+
+enum class RadarTrackerUpdateMode : std::uint8_t {
+  kSearch,
+  kTrack,
 };
 
 struct RadarTrackEstimate {
@@ -49,6 +55,7 @@ struct RadarTrackEstimate {
   std::uint64_t source_scan_sequence{0U};
   std::uint64_t source_detection_id{0U};
   std::size_t measurement_count{0U};
+  double velocity_correction_gain{0.0};
   bool position_valid{false};
   bool velocity_valid{false};
 };
@@ -57,10 +64,10 @@ class RadarTargetTracker final {
 public:
   explicit RadarTargetTracker(const RadarTargetTrackerConfig& config = {});
 
-  [[nodiscard]] RadarTrackEstimate update(const TimedVehicleState& ownship,
-                                          const RadarDetectionSample& detection,
-                                          std::int64_t measurement_stamp_ns,
-                                          std::uint64_t scan_sequence);
+  [[nodiscard]] RadarTrackEstimate
+  update(const TimedVehicleState& ownship, const RadarDetectionSample& detection,
+         std::int64_t measurement_stamp_ns, std::uint64_t scan_sequence,
+         RadarTrackerUpdateMode update_mode = RadarTrackerUpdateMode::kSearch);
 
   void reset() noexcept;
 

@@ -26,13 +26,13 @@ void ProductionMppiNode::planningTick() {
                                                    : nullptr;
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const bool terminal_hold_enabled = !objective || !objective->continuous_tracking;
-  const bool direct_tracking_line_of_sight =
+  const bool direct_tracking_interception =
       objective && objective->continuous_tracking && tracking_objective != nullptr &&
-      tracking_objective->direct_line_of_sight;
+      tracking_objective->direct_interception_active;
   const std::uint64_t line_of_sight_generation =
       tracking_objective != nullptr ? tracking_objective->line_of_sight_generation : 0U;
   const std::uint64_t effective_guide_generation =
-      direct_tracking_line_of_sight
+      direct_tracking_interception
           ? (std::uint64_t{1} << 63U) | line_of_sight_generation
           : 0U;
   const StaticRouteObjective current_route_objective =
@@ -173,7 +173,7 @@ void ProductionMppiNode::planningTick() {
   const bool route_objective_matches = staticRouteObjectiveMatches(
       esdf->route_objective, current_route_objective, required_route_sample,
       std::numeric_limits<double>::infinity());
-  if (!direct_tracking_line_of_sight && objective && objective->continuous_tracking &&
+  if (!direct_tracking_interception && objective && objective->continuous_tracking &&
       !route_objective_matches) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
@@ -183,7 +183,7 @@ void ProductionMppiNode::planningTick() {
         objective->mission_epoch, objective->sample_sequence, required_route_sample,
         esdf->route_objective.mission_epoch, esdf->route_objective.sample_sequence);
   }
-  bool route_usable = !direct_tracking_line_of_sight && route_objective_matches;
+  bool route_usable = !direct_tracking_interception && route_objective_matches;
   bool route_cross_track_rejected = false;
   const std::span<const Point2> guide =
       route_usable && esdf->route_2d_projection
@@ -284,14 +284,17 @@ void ProductionMppiNode::planningTick() {
   std::string target_source;
   double target_station_m = 0.0;
   mppi::State target;
-  if (direct_tracking_line_of_sight) {
+  if (direct_tracking_interception) {
     target = mppi::State{
         .x = static_cast<float>(mission_goal.x),
         .y = static_cast<float>(mission_goal.y),
         .z = static_cast<float>(mission_goal.z),
         .yaw = navigation.state.yaw,
     };
-    target_source = "tracking_raw_clear_direct";
+    target_source = tracking_objective != nullptr &&
+                            tracking_objective->predicted_intercept_path_clear
+                        ? "tracking_direct_full_prediction"
+                        : "tracking_direct_shortened_prediction";
   } else if (!route_usable && objective && objective->continuous_tracking) {
     target = navigation.state;
     target_source = route_cross_track_rejected ? "tracking_route_cross_track_rejected"
@@ -344,7 +347,7 @@ void ProductionMppiNode::planningTick() {
       applied_control.valid && control_feedback_age_ms >= 0.0 &&
       control_feedback_age_ms <= maximum_control_feedback_age_ms_;
   MppiLivenessResult liveness;
-  if (liveness_supervisor_ && !direct_tracking_line_of_sight) {
+  if (liveness_supervisor_ && !direct_tracking_interception) {
     liveness = liveness_supervisor_->evaluate(MppiLivenessObservation{
         .stamp_ns = now_ns,
         .actual_state = navigation.state,
@@ -363,7 +366,7 @@ void ProductionMppiNode::planningTick() {
     });
   }
   GlobalGuideProgressUpdate guide_progress;
-  if (guide_progress_tracker_ && !direct_tracking_line_of_sight) {
+  if (guide_progress_tracker_ && !direct_tracking_interception) {
     const GlobalGuideProjection& projection = route_projection;
     guide_progress = guide_progress_tracker_->evaluate(GlobalGuideProgressObservation{
         .stamp_ns = now_ns,
@@ -387,7 +390,7 @@ void ProductionMppiNode::planningTick() {
   }
   const MppiNominalReseedUpdate nominal_reseed =
       nominal_reseed_tracker_.update(MppiNominalReseedObservation{
-          .guide_generation = direct_tracking_line_of_sight
+          .guide_generation = direct_tracking_interception
                                   ? effective_guide_generation
                                   : esdf->global_guide_generation,
           .local_liveness_generation = liveness.reseed_generation,
@@ -531,7 +534,7 @@ void ProductionMppiNode::planningTick() {
     }
     no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
         result.eligible_risk_contract.available, result.nominal_reseeded);
-    if (no_eligible_recovery.guide_replan_requested && !direct_tracking_line_of_sight) {
+    if (no_eligible_recovery.guide_replan_requested && !direct_tracking_interception) {
       requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts,
                           esdf->global_guide_generation);
     }
@@ -552,7 +555,7 @@ void ProductionMppiNode::planningTick() {
   if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
     std::shared_ptr<const std::vector<mppi::RouteSample3D>> rviz_route =
         esdf->mppi_route;
-    if (direct_tracking_line_of_sight) {
+    if (direct_tracking_interception) {
       const std::vector<Point3> direct_points{
           Point3{navigation.state.x, navigation.state.y, navigation.state.z},
           mission_goal,

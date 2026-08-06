@@ -18,6 +18,7 @@
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
 #include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
+#include "drone_city_nav/msg/radar_track_mode_command.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
@@ -61,6 +62,7 @@ struct ProductionMppiNavigation {
 
 struct ProductionTrackingObjective {
   Point3 observed_position{};
+  Point3 current_target_position{};
   Point3 unconstrained_predicted_position{};
   Vec3 observed_velocity{};
   std::int64_t observation_stamp_ns{0};
@@ -69,8 +71,14 @@ struct ProductionTrackingObjective {
   InterceptGuidanceMode guidance_mode{InterceptGuidanceMode::kDirect};
   TrackingObjectiveResolutionStatus resolution_status{
       TrackingObjectiveResolutionStatus::kInvalidInput};
+  DirectTrackingTargetStatus direct_target_status{
+      DirectTrackingTargetStatus::kWorldUnavailable};
+  std::uint8_t radar_cadence_reason{
+      msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE};
   bool vertical_prediction_clipped{false};
-  bool direct_line_of_sight{false};
+  bool observed_target_visible{false};
+  bool predicted_intercept_path_clear{false};
+  bool direct_interception_active{false};
   std::uint64_t line_of_sight_generation{0U};
 };
 
@@ -347,6 +355,8 @@ private:
   void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void onNavigationObjective(const msg::NavigationObjective& message);
+  void publishRadarTrackModeCommand(const ProductionNavigationObjective& objective,
+                                    std::uint8_t reason);
   void requestStaticEsdfWork(bool force_refresh = false);
   void completeStaticEsdfWork(bool world_ready) noexcept;
   void publishWorldReadiness(bool ready);
@@ -540,6 +550,8 @@ private:
   rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;
+  rclcpp::Publisher<msg::RadarTrackModeCommand>::SharedPtr
+      radar_track_mode_command_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;

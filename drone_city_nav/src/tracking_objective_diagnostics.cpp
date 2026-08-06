@@ -10,6 +10,24 @@
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav::detail {
+namespace {
+
+[[nodiscard]] const char* radarCadenceReasonName(const std::uint8_t reason) noexcept {
+  switch (reason) {
+    case msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE:
+      return "no_tracking_objective";
+    case msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_OCCLUDED:
+      return "observed_target_occluded";
+    case msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_VISIBLE:
+      return "observed_target_visible";
+    case msg::RadarTrackModeCommand::REASON_WORLD_UNAVAILABLE:
+      return "world_unavailable";
+    default:
+      return "unknown";
+  }
+}
+
+} // namespace
 
 TrackingPursuitDiagnostics
 trackingPursuitDiagnostics(const ProductionNavigationObjective* navigation_objective,
@@ -26,6 +44,11 @@ trackingPursuitDiagnostics(const ProductionNavigationObjective* navigation_objec
   }
 
   const ProductionTrackingObjective& tracking = navigation_objective->tracking.value();
+  diagnostics.selected_prediction_fraction = tracking.resolved_fraction;
+  diagnostics.radar_cadence_reason = tracking.radar_cadence_reason;
+  diagnostics.observed_target_visible = tracking.observed_target_visible;
+  diagnostics.predicted_intercept_path_clear = tracking.predicted_intercept_path_clear;
+  diagnostics.direct_interception_active = tracking.direct_interception_active;
   const double observation_age_s =
       static_cast<double>(std::max<std::int64_t>(
           0, input.planning_stamp_ns - tracking.observation_stamp_ns)) *
@@ -68,7 +91,15 @@ std::string trackingPursuitInfoFields(const TrackingPursuitDiagnostics& diagnost
          << (speed_policy.terminal_goal_limit_enabled ? "true" : "false")
          << " tracking_separation_m=" << diagnostics.target_separation_m
          << " closing_speed_mps=" << diagnostics.closing_speed_mps
-         << " radar_age_ms=" << diagnostics.radar_age_ms
+         << " radar_age_ms=" << diagnostics.radar_age_ms << " observed_target_visible="
+         << (diagnostics.observed_target_visible ? "true" : "false")
+         << " predicted_intercept_path_clear="
+         << (diagnostics.predicted_intercept_path_clear ? "true" : "false")
+         << " direct_interception="
+         << (diagnostics.direct_interception_active ? "true" : "false")
+         << " selected_prediction_fraction=" << diagnostics.selected_prediction_fraction
+         << " radar_cadence_reason="
+         << radarCadenceReasonName(diagnostics.radar_cadence_reason)
          << " minimum_target_separation_m=" << result.minimum_target_separation_m
          << " predicted_capture_time_s=" << result.predicted_capture_time_s;
   return output.str();
@@ -87,6 +118,15 @@ std::string trackingPursuitJsonFields(const TrackingPursuitDiagnostics& diagnost
          << ",\"tracking_separation_m\":" << diagnostics.target_separation_m
          << ",\"closing_speed_mps\":" << diagnostics.closing_speed_mps
          << ",\"radar_age_ms\":" << diagnostics.radar_age_ms
+         << ",\"observed_target_visible\":"
+         << (diagnostics.observed_target_visible ? "true" : "false")
+         << ",\"predicted_intercept_path_clear\":"
+         << (diagnostics.predicted_intercept_path_clear ? "true" : "false")
+         << ",\"direct_interception_active\":"
+         << (diagnostics.direct_interception_active ? "true" : "false")
+         << ",\"selected_prediction_fraction\":"
+         << diagnostics.selected_prediction_fraction << ",\"radar_cadence_reason\":\""
+         << radarCadenceReasonName(diagnostics.radar_cadence_reason) << '"'
          << ",\"minimum_target_separation_m\":" << result.minimum_target_separation_m
          << ",\"predicted_capture_time_s\":" << result.predicted_capture_time_s;
   return output.str();
@@ -122,6 +162,9 @@ trackingObjectiveJsonFields(const ProductionNavigationObjective* navigation_obje
          << ",\"tracking_observed_x_m\":" << data.observed_position.x
          << ",\"tracking_observed_y_m\":" << data.observed_position.y
          << ",\"tracking_observed_z_m\":" << data.observed_position.z
+         << ",\"tracking_current_target_x_m\":" << data.current_target_position.x
+         << ",\"tracking_current_target_y_m\":" << data.current_target_position.y
+         << ",\"tracking_current_target_z_m\":" << data.current_target_position.z
          << ",\"tracking_velocity_x_mps\":" << data.observed_velocity.x
          << ",\"tracking_velocity_y_mps\":" << data.observed_velocity.y
          << ",\"tracking_velocity_z_mps\":" << data.observed_velocity.z
@@ -133,8 +176,18 @@ trackingObjectiveJsonFields(const ProductionNavigationObjective* navigation_obje
          << ",\"tracking_resolved_x_m\":" << resolved_position.x
          << ",\"tracking_resolved_y_m\":" << resolved_position.y
          << ",\"tracking_resolved_z_m\":" << resolved_position.z
+         << ",\"tracking_direct_target_status\":\""
+         << directTrackingTargetStatusName(data.direct_target_status) << '"'
+         << ",\"tracking_observed_target_visible\":"
+         << (data.observed_target_visible ? "true" : "false")
+         << ",\"tracking_predicted_intercept_path_clear\":"
+         << (data.predicted_intercept_path_clear ? "true" : "false")
+         << ",\"tracking_direct_interception_active\":"
+         << (data.direct_interception_active ? "true" : "false")
          << ",\"tracking_direct_los\":"
-         << (data.direct_line_of_sight ? "true" : "false")
+         << (data.direct_interception_active ? "true" : "false")
+         << ",\"tracking_radar_cadence_reason\":\""
+         << radarCadenceReasonName(data.radar_cadence_reason) << '"'
          << ",\"tracking_los_generation\":" << data.line_of_sight_generation;
   return output.str();
 }
@@ -147,7 +200,7 @@ void populateTrackingObjectiveMarkers(
   }
   const ProductionTrackingObjective& tracking = navigation_objective->tracking.value();
   marker_input.tracking_objective_active = true;
-  marker_input.observed_tracking_target = tracking.observed_position;
+  marker_input.observed_tracking_target = tracking.current_target_position;
   marker_input.predicted_tracking_target = tracking.unconstrained_predicted_position;
   marker_input.resolved_tracking_target = navigation_objective->goal;
 }

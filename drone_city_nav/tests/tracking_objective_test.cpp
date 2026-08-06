@@ -117,6 +117,75 @@ TEST(TrackingObjective, SweptThreeDimensionalLineOfSightUsesVehicleVolume) {
       grid, from, to, SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25}));
 }
 
+TEST(TrackingObjective, KeepsCurrentTargetVisibleWhenFullPredictionIsBlocked) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 14, 6}};
+  grid.reset(CellState::kFree);
+  grid.setOccupied(GridIndex{8, 1});
+
+  const DirectTrackingTargetResolution result = resolveDirectTrackingTarget(
+      grid, Point3{1.5, 1.5, 5.0}, Point3{5.5, 1.5, 5.0}, Point3{11.5, 1.5, 5.0},
+      SweptFootprintConfig{.radius_m = 0.1, .sweep_step_m = 0.25});
+
+  EXPECT_TRUE(result.observed_target_visible);
+  EXPECT_FALSE(result.predicted_intercept_path_clear);
+  EXPECT_EQ(result.status, DirectTrackingTargetStatus::kShortenedPrediction);
+  EXPECT_GT(result.selected_prediction_fraction, 0.0);
+  EXPECT_LT(result.selected_prediction_fraction, 1.0);
+  EXPECT_GT(result.selected_position.x, 5.5);
+  EXPECT_LT(result.selected_position.x, 8.0);
+
+  TrackingLineOfSightLifecycle lifecycle{
+      TrackingLineOfSightConfig{.clear_confirmations = 2U}};
+  EXPECT_FALSE(lifecycle.update(result.observed_target_visible).active);
+  EXPECT_TRUE(lifecycle.update(result.observed_target_visible).active);
+}
+
+TEST(TrackingObjective, ShortensLeadWhenDirectInterceptChordIsBlocked) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 12, 12}};
+  grid.reset(CellState::kFree);
+  grid.setOccupied(GridIndex{3, 4});
+
+  const DirectTrackingTargetResolution result = resolveDirectTrackingTarget(
+      grid, Point3{1.5, 1.5, 5.0}, Point3{5.5, 1.5, 5.0}, Point3{5.5, 9.5, 5.0},
+      SweptFootprintConfig{.radius_m = 0.1, .sweep_step_m = 0.25});
+
+  EXPECT_TRUE(result.observed_target_visible);
+  EXPECT_FALSE(result.predicted_intercept_path_clear);
+  EXPECT_EQ(result.status, DirectTrackingTargetStatus::kShortenedPrediction);
+  EXPECT_GT(result.selected_prediction_fraction, 0.0);
+  EXPECT_LT(result.selected_prediction_fraction, 1.0);
+}
+
+TEST(TrackingObjective, ReportsCurrentTargetOcclusionSeparately) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 12, 6}};
+  grid.reset(CellState::kFree);
+  grid.setOccupied(GridIndex{3, 1});
+
+  const DirectTrackingTargetResolution result = resolveDirectTrackingTarget(
+      grid, Point3{1.5, 1.5, 5.0}, Point3{5.5, 1.5, 5.0}, Point3{9.5, 1.5, 5.0},
+      SweptFootprintConfig{.radius_m = 0.1, .sweep_step_m = 0.25});
+
+  EXPECT_FALSE(result.observed_target_visible);
+  EXPECT_FALSE(result.predicted_intercept_path_clear);
+  EXPECT_EQ(result.status, DirectTrackingTargetStatus::kObservedTargetOccluded);
+  EXPECT_DOUBLE_EQ(result.selected_prediction_fraction, 0.0);
+}
+
+TEST(TrackingObjective, UsesFullPredictionWhenBothPathsAreClear) {
+  OccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 8, 8}};
+
+  const Point3 predicted{11.5, 4.5, 4.0};
+  const DirectTrackingTargetResolution result = resolveDirectTrackingTarget(
+      grid, Point3{1.5, 1.5, 4.0}, Point3{5.5, 1.5, 4.0}, predicted,
+      SweptFootprintConfig{.radius_m = 0.1, .sweep_step_m = 0.25});
+
+  EXPECT_TRUE(result.observed_target_visible);
+  EXPECT_TRUE(result.predicted_intercept_path_clear);
+  EXPECT_EQ(result.status, DirectTrackingTargetStatus::kFullPrediction);
+  EXPECT_DOUBLE_EQ(result.selected_prediction_fraction, 1.0);
+  EXPECT_DOUBLE_EQ(result.selected_position.x, predicted.x);
+}
+
 TEST(TrackingLineOfSightLifecycle, ConfirmsEntryAndLeavesImmediatelyWhenBlocked) {
   TrackingLineOfSightLifecycle lifecycle{
       TrackingLineOfSightConfig{.clear_confirmations = 2U}};

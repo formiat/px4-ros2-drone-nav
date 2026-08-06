@@ -30,8 +30,9 @@ The radar interface will provide only:
 The initial implementation uses ideal measurements without noise,
 interference, latency, or measurement errors. Measurement cadence follows a
 deterministic correlated random walk between 0.1 s and 3.0 s. Guidance continues
-at 20 Hz by coasting the latest target track between scans. At 30 m the radar
-enters a 20 Hz track mode and remains there until range exceeds 40 m.
+at 20 Hz by coasting the latest target track between scans. Swept raw-clear
+visibility of the current target estimate commands an immediate scan and 20 Hz
+track mode at any range; target occlusion restores variable search cadence.
 
 The physical radar will not be simulated. Only the radar measurement interface
 and its integration with the interceptor are implemented.
@@ -69,12 +70,13 @@ prediction segment at the first raw occupied cell and uses the last raw-free
 sample. It does not search for a nearest free point and does not add inflation
 or prohibited regions. Vertical prediction applies bounded deceleration until
 the target stops climbing or descending and clamps altitude to the configured
-flight envelope instead of rejecting the objective. A raw-clear
-interceptor-to-target segment activates
-direct moving-target MPPI pursuit; a blocked segment retains ordinary global
-planning. RViz and JSONL diagnostics expose observed, predicted, and resolved
-target points together with closing speed, commanded speed, active speed
-limiter, and radar age.
+flight envelope instead of rejecting the objective. Swept visibility of the
+current target activates direct moving-target MPPI pursuit. If only the full
+prediction is blocked, the planner shortens the lead toward the current target;
+only current-target occlusion returns execution to ordinary global planning.
+RViz and JSONL diagnostics expose observed, coasted current, predicted, and
+resolved target points together with visibility, prediction-path clearance,
+closing speed, commanded speed, active speed limiter, and radar age.
 
 The initial target-motion prediction scope is complete. It now consumes the
 target track produced by the radar pipeline described in section 2.
