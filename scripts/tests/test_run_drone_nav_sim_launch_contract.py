@@ -150,7 +150,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 display = config.split("Name: Static City Map Points", 1)[1].split(
                     "Name: Static Building Volumes", 1
                 )[0]
-                self.assertIn("Alpha: 0.04", static_map_display)
+                self.assertIn("Alpha: 0.12", static_map_display)
                 self.assertIn("Durability Policy: Transient Local", display)
                 self.assertIn("Reliability Policy: Reliable", display)
                 self.assertIn("History Policy: Keep Last", display)
