@@ -169,7 +169,11 @@ position hold; no vehicle is disarmed. A later inertial approach cannot change
 the first outcome, although entering the capture radius still applies the normal
 pair disarm. Evader goal arrival is an intercept failure but still a technically
 successful simulation outcome. RViz and Gazebo follow `interceptor_0`, then
-switch deterministically to the next living interceptor if it dies. The GUI
+switch deterministically to the next living interceptor if it dies. RViz keeps
+the lightweight route and direction arrow of every interceptor visible. Its
+full MPPI, memory, and lidar layers are routed from the current spectator only
+and switch with the same spectator selection; optional per-interceptor memory
+clouds remain disabled by default. The GUI
 workflow remains open after either outcome. The headless workflow exits only
 after all applicable hold and disarm settlements are confirmed in the log. The
 mission contains one evader only; it does not respawn attackers or start another

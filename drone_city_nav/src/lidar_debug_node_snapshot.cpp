@@ -3,6 +3,9 @@
 namespace drone_city_nav {
 
 void LidarDebugNode::writeSnapshot() {
+  if (!diagnosticsSelected()) {
+    return;
+  }
   if (max_snapshots_ > 0U && snapshot_index_ >= max_snapshots_) {
     return;
   }

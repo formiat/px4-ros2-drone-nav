@@ -75,6 +75,7 @@ def generate_launch_description():
                 "speed_scale": 1.0,
                 "is_interceptor": True,
                 "prediction_heading_offset_rad": 0.0,
+                "rviz_color": (0.15, 0.75, 1.0),
             },
             "interceptor_1": {
                 "px4_namespace": "interceptor_1",
@@ -90,6 +91,7 @@ def generate_launch_description():
                 "speed_scale": 1.0,
                 "is_interceptor": True,
                 "prediction_heading_offset_rad": math.radians(45.0),
+                "rviz_color": (0.30, 0.95, 0.45),
             },
             "interceptor_2": {
                 "px4_namespace": "interceptor_2",
@@ -105,6 +107,7 @@ def generate_launch_description():
                 "speed_scale": 1.0,
                 "is_interceptor": True,
                 "prediction_heading_offset_rad": math.radians(-45.0),
+                "rviz_color": (1.0, 0.60, 0.20),
             },
             "evader": {
                 "px4_namespace": "evader",
@@ -122,6 +125,7 @@ def generate_launch_description():
                 ),
                 "is_interceptor": False,
                 "prediction_heading_offset_rad": 0.0,
+                "rviz_color": (1.0, 0.25, 0.15),
             },
         }
         nodes = []
@@ -156,14 +160,8 @@ def generate_launch_description():
                 if primary
                 else f"{prefix}/obstacle_memory_snapshot"
             )
-            path_topic = (
-                "/drone_city_nav/mppi/path" if primary else f"{prefix}/mppi/path"
-            )
-            marker_topic = (
-                "/drone_city_nav/mppi/markers"
-                if primary
-                else f"{prefix}/mppi/markers"
-            )
+            path_topic = f"{prefix}/mppi/path"
+            marker_topic = f"{prefix}/mppi/markers"
             memory_params = _parameters(
                 document,
                 "obstacle_memory_node",
@@ -265,15 +263,9 @@ def generate_launch_description():
                     "rviz_drone_follow_frame": "drone_follow",
                     "rviz_drone_marker_topic": "/drone_city_nav/drone_marker",
                     "rviz_drone_marker_id": list(roles).index(role),
-                    "rviz_drone_marker_color_r": (
-                        0.15 if config["is_interceptor"] else 1.0
-                    ),
-                    "rviz_drone_marker_color_g": (
-                        0.65 if config["is_interceptor"] else 0.25
-                    ),
-                    "rviz_drone_marker_color_b": (
-                        1.0 if config["is_interceptor"] else 0.15
-                    ),
+                    "rviz_drone_marker_color_r": config["rviz_color"][0],
+                    "rviz_drone_marker_color_g": config["rviz_color"][1],
+                    "rviz_drone_marker_color_b": config["rviz_color"][2],
                 },
             )
             crash_params = _parameters(
@@ -327,7 +319,7 @@ def generate_launch_description():
                     ),
                 ]
             )
-            if primary:
+            if config["is_interceptor"]:
                 debug_params = _parameters(
                     document,
                     "lidar_debug_node",
@@ -341,14 +333,29 @@ def generate_launch_description():
                         "raw_obstacle_grid_topic": "/drone_city_nav/raw_obstacle_grid",
                         "memory_grid_topic": f"{prefix}/obstacle_memory_grid",
                         "path_topic": path_topic,
-                        "output_dir": "log/intercept/interceptor_0/lidar_debug",
+                        "pointcloud_topic": f"{prefix}/lidar_debug_points",
+                        "raw_lidar_3d_pointcloud_topic": (
+                            f"{prefix}/raw_lidar_hit_points_3d"
+                        ),
+                        "remembered_pointcloud_topic": (
+                            f"{prefix}/remembered_lidar_points"
+                        ),
+                        "occupied_pointcloud_topic": f"{prefix}/raw_occupied_cells",
+                        "raw_memory_pointcloud_topic": (
+                            f"{prefix}/raw_memory_obstacle_points"
+                        ),
+                        "output_dir": f"log/intercept/{role}/lidar_debug",
+                        "spectator_vehicle_id": role,
+                        "spectator_target_topic": (
+                            "/drone_city_nav/spectator_target"
+                        ),
                     },
                 )
                 nodes.append(
                     Node(
                         package="drone_city_nav",
                         executable="lidar_debug_node",
-                        namespace="vehicles/interceptor_0",
+                        namespace=f"vehicles/{role}",
                         name="lidar_debug_node",
                         output="screen",
                         condition=IfCondition(enable_lidar_debug),
@@ -667,6 +674,62 @@ def generate_launch_description():
                             ],
                             "gazebo_models": [
                                 roles[role]["model"] for role in interceptor_roles
+                            ],
+                        }
+                    ],
+                ),
+                Node(
+                    package="drone_city_nav",
+                    executable="intercept_diagnostics_mux_node",
+                    name="intercept_diagnostics_mux_node",
+                    output="screen",
+                    parameters=[
+                        {
+                            "use_sim_time": True,
+                            "vehicle_ids": interceptor_roles,
+                            "path_topics": [
+                                f"{prefix}/mppi/path"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "marker_topics": [
+                                f"{prefix}/mppi/markers"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "status_topics": [
+                                f"{prefix}/mppi/status"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "execution_horizon_topics": [
+                                f"{prefix}/mppi/execution_horizon"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "navigation_state_topics": [
+                                f"{prefix}/state"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "memory_3d_topics": [
+                                f"{prefix}/raw_memory_points_3d"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "lidar_pointcloud_topics": [
+                                f"{prefix}/lidar_debug_points"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "raw_lidar_3d_pointcloud_topics": [
+                                f"{prefix}/raw_lidar_hit_points_3d"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "remembered_pointcloud_topics": [
+                                f"{prefix}/remembered_lidar_points"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "occupied_pointcloud_topics": [
+                                f"{prefix}/raw_occupied_cells"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "raw_memory_pointcloud_topics": [
+                                f"{prefix}/raw_memory_obstacle_points"
+                                for prefix in interceptor_prefixes
                             ],
                         }
                     ],

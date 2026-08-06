@@ -24,8 +24,9 @@ Do not infer a planner coordinate error until the displayed fixed frame and the
 |---|---|
 | Raw Obstacle Grid | `/drone_city_nav/raw_obstacle_grid` |
 | Static City Map Points | `/drone_city_nav/static_map_points` |
-| MPPI Horizon | `/drone_city_nav/mppi/path` |
-| MPPI Markers | `/drone_city_nav/mppi/markers` |
+| Selected MPPI Horizon | `/drone_city_nav/mppi/path` |
+| Selected MPPI Markers | `/drone_city_nav/mppi/markers` |
+| Interceptor Directions | `/drone_city_nav/interceptor_directions` |
 | Drone | `/drone_city_nav/drone_marker` |
 | Lidar Hit Points | `/drone_city_nav/lidar_debug_points` |
 | Raw Lidar Returns 3D | `/drone_city_nav/raw_lidar_hit_points_3d` |
@@ -33,6 +34,15 @@ Do not infer a planner coordinate error until the displayed fixed frame and the
 | Raw Memory Cells | `/drone_city_nav/raw_memory_obstacle_points` |
 | Raw Memory Hit Origins 3D | `/drone_city_nav/raw_memory_obstacle_points_3d` |
 | Raw Occupied Cells | `/drone_city_nav/raw_occupied_cells` |
+
+In the intercept mission, the lightweight planner paths are also shown from
+`/vehicles/interceptor_0/mppi/path` through
+`/vehicles/interceptor_2/mppi/path`, each with a stable color. The global MPPI,
+memory, and lidar topics above represent only the interceptor selected by
+`/drone_city_nav/spectator_target`. The diagnostics mux clears old marker and
+point-cloud state before switching those topics. Optional displays
+for each interceptor's complete memory point cloud are present but disabled by
+default, so they create no RViz subscription or rendering load until enabled.
 
 ## MPPI Markers
 

@@ -54,6 +54,10 @@ LidarDebugNode::LidarDebugNode()
   const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*this);
   applyConfig(config);
   const LidarDebugNodeTopics& topics = config.topics;
+  spectator_vehicle_id_ = declare_parameter<std::string>("spectator_vehicle_id", "");
+  const std::string spectator_target_topic = declare_parameter<std::string>(
+      "spectator_target_topic", "/drone_city_nav/spectator_target");
+  selected_for_spectator_ = spectator_vehicle_id_.empty();
 
   std::filesystem::create_directories(output_dir_);
   summary_path_ = std::filesystem::path{output_dir_} / "snapshots.jsonl";
@@ -86,13 +90,19 @@ LidarDebugNode::LidarDebugNode()
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         last_grid_ = *msg;
         grid_seen_ = true;
-        publishOccupiedPointCloud();
+        if (diagnosticsSelected()) {
+          publishOccupiedPointCloud();
+        }
       });
   memory_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
       topics.memory_grid, rclcpp::QoS{1}.transient_local(),
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
-        publishPointCloud(collectOccupiedGridPoints(*msg), raw_memory_pointcloud_z_m_,
-                          raw_memory_pointcloud_pub_);
+        last_memory_grid_ = *msg;
+        memory_grid_seen_ = true;
+        if (diagnosticsSelected()) {
+          publishPointCloud(collectOccupiedGridPoints(*msg), raw_memory_pointcloud_z_m_,
+                            raw_memory_pointcloud_pub_);
+        }
       });
   path_sub_ = create_subscription<nav_msgs::msg::Path>(
       topics.path, rclcpp::QoS{1}.reliable(),
@@ -110,6 +120,14 @@ LidarDebugNode::LidarDebugNode()
       occupied_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
   raw_memory_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
       raw_memory_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
+
+  if (!spectator_vehicle_id_.empty()) {
+    spectator_target_sub_ = create_subscription<msg::SpectatorTarget>(
+        spectator_target_topic, rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const msg::SpectatorTarget::SharedPtr message) {
+          onSpectatorTarget(*message);
+        });
+  }
 
   timer_ = create_wall_timer(std::chrono::duration<double>{snapshot_period_s_},
                              [this]() { writeSnapshot(); });
@@ -134,7 +152,8 @@ LidarDebugNode::LidarDebugNode()
       "pointcloud_z[current=%.2f, remembered=%.2f, occupied=%.2f, "
       "raw_memory=%.2f] "
       "yaw_source=%s initial_heading=%.3f max_heading_variance=%.6frad2 "
-      "startup_stable_samples=%zu startup_maximum_delta=%.3frad",
+      "startup_stable_samples=%zu startup_maximum_delta=%.3frad "
+      "spectator_vehicle_id='%s' selected=%s",
       output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
       topics.lidar.c_str(), topics.raw_obstacle_grid.c_str(),
       topics.memory_grid.c_str(), topics.path.c_str(),
@@ -151,7 +170,45 @@ LidarDebugNode::LidarDebugNode()
       remembered_pointcloud_z_m_, occupied_pointcloud_z_m_, raw_memory_pointcloud_z_m_,
       yawSourceName(), initial_heading_rad_, maximum_heading_variance_rad2_,
       config.startup_heading_stable_sample_count,
-      config.startup_heading_maximum_sample_delta_rad);
+      config.startup_heading_maximum_sample_delta_rad, spectator_vehicle_id_.c_str(),
+      diagnosticsSelected() ? "true" : "false");
+}
+
+bool LidarDebugNode::diagnosticsSelected() const noexcept {
+  return spectator_vehicle_id_.empty() || selected_for_spectator_;
+}
+
+void LidarDebugNode::onSpectatorTarget(const msg::SpectatorTarget& msg) {
+  const bool selected = msg.vehicle_id == spectator_vehicle_id_;
+  if (selected == selected_for_spectator_) {
+    return;
+  }
+
+  selected_for_spectator_ = selected;
+  if (!selected) {
+    clearPublishedPointClouds();
+  } else {
+    if (grid_seen_) {
+      publishOccupiedPointCloud();
+    }
+    if (memory_grid_seen_) {
+      publishPointCloud(collectOccupiedGridPoints(last_memory_grid_),
+                        raw_memory_pointcloud_z_m_, raw_memory_pointcloud_pub_);
+    }
+  }
+  RCLCPP_INFO(get_logger(),
+              "LIDAR_DEBUG_SPECTATOR selected=%s vehicle_id='%s' "
+              "spectator_vehicle_id='%s'",
+              selected ? "true" : "false", msg.vehicle_id.c_str(),
+              spectator_vehicle_id_.c_str());
+}
+
+void LidarDebugNode::clearPublishedPointClouds() {
+  publishRawLidarPointCloud({});
+  publishPointCloud({}, current_pointcloud_z_m_, pointcloud_pub_);
+  publishPointCloud({}, remembered_pointcloud_z_m_, remembered_pointcloud_pub_);
+  publishPointCloud({}, occupied_pointcloud_z_m_, occupied_pointcloud_pub_);
+  publishPointCloud({}, raw_memory_pointcloud_z_m_, raw_memory_pointcloud_pub_);
 }
 
 } // namespace drone_city_nav

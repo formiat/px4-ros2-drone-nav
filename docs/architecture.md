@@ -134,6 +134,15 @@ interceptor[i] state + RadarScan[i] -> tracker[i] -> TargetTrack[i]
 interceptor[i] state + TargetTrack[i] -> guidance[i] -> NavigationObjective[i]
 ```
 
+Visualization remains outside this control boundary. Each planner publishes a
+namespaced lightweight path. `intercept_diagnostics_mux_node` subscribes to the
+latched `SpectatorTarget`, clears the previous selected layers, and republishes
+the selected planner markers, execution horizon, status, memory cloud, and
+lidar-debug clouds on stable RViz topics. All three paths and velocity/path
+direction arrows remain visible concurrently. Three selector-gated lidar debug
+nodes retain pose and latest-map context, but only the current spectator
+projects scans, writes snapshots, and publishes detailed lidar layers.
+
 The mission referee publishes the evader's fixed position objective, then waits
 until all four vehicles are navigation-ready, all planners have activated a
 world, and all three trackers have produced a valid target position. It evaluates the

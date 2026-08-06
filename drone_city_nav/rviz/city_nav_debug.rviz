@@ -55,18 +55,50 @@ Visualization Manager:
         static_building: true
       Topic:
         Value: /drone_city_nav/static_building_markers
+    - Alpha: 0.72
+      Class: rviz_default_plugins/Path
+      Color: 38; 191; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.08
+      Name: Interceptor 0 Route
+      Topic:
+        Value: /vehicles/interceptor_0/mppi/path
+    - Alpha: 0.72
+      Class: rviz_default_plugins/Path
+      Color: 76; 235; 115
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.08
+      Name: Interceptor 1 Route
+      Topic:
+        Value: /vehicles/interceptor_1/mppi/path
+    - Alpha: 0.72
+      Class: rviz_default_plugins/Path
+      Color: 255; 153; 51
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.08
+      Name: Interceptor 2 Route
+      Topic:
+        Value: /vehicles/interceptor_2/mppi/path
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Interceptor Directions
+      Topic:
+        Value: /drone_city_nav/interceptor_directions
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 0; 220; 255
       Enabled: true
       Line Style: Lines
       Line Width: 0.18
-      Name: MPPI Candidate Horizon
+      Name: Selected MPPI Candidate Horizon
       Topic:
         Value: /drone_city_nav/mppi/path
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: MPPI Markers
+      Name: Selected MPPI Markers
       Namespaces:
         global_lattice_guide: true
         mppi_candidate: true
@@ -153,6 +185,60 @@ Visualization Manager:
       Style: Spheres
       Topic:
         Value: /drone_city_nav/raw_memory_obstacle_points_3d
+    - Alpha: 0.75
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 38; 191; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: false
+      Name: Interceptor 0 Memory (Optional)
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.25
+      Style: Spheres
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /vehicles/interceptor_0/raw_memory_points_3d
+    - Alpha: 0.75
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 76; 235; 115
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: false
+      Name: Interceptor 1 Memory (Optional)
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.25
+      Style: Spheres
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /vehicles/interceptor_1/raw_memory_points_3d
+    - Alpha: 0.75
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 153; 51
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: false
+      Name: Interceptor 2 Memory (Optional)
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.25
+      Style: Spheres
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /vehicles/interceptor_2/raw_memory_points_3d
     - Alpha: 0.30
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

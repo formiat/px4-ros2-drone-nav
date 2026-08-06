@@ -9,6 +9,7 @@
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_snapshot_writer.hpp"
+#include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
 
@@ -72,7 +73,13 @@ private:
 
   void onScan(const sensor_msgs::msg::LaserScan& msg);
 
+  void onSpectatorTarget(const msg::SpectatorTarget& msg);
+
   void writeSnapshot();
+
+  [[nodiscard]] bool diagnosticsSelected() const noexcept;
+
+  void clearPublishedPointClouds();
 
   [[nodiscard]] double scanRangeMax() const;
 
@@ -147,6 +154,7 @@ private:
   std::ofstream summary_stream_;
   sensor_msgs::msg::LaserScan last_scan_;
   nav_msgs::msg::OccupancyGrid last_grid_;
+  nav_msgs::msg::OccupancyGrid last_memory_grid_;
   nav_msgs::msg::Path last_path_;
   Pose2 current_pose_{};
   Point2 px4_local_origin_{};
@@ -219,6 +227,7 @@ private:
   bool scan_seen_{false};
   bool last_scan_projection_seen_{false};
   bool grid_seen_{false};
+  bool memory_grid_seen_{false};
   bool path_seen_{false};
   bool pose_seen_{false};
   bool altitude_valid_{false};
@@ -233,6 +242,8 @@ private:
   double maximum_heading_variance_rad2_{0.05};
   bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{true};
+  bool selected_for_spectator_{true};
+  std::string spectator_vehicle_id_;
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_obstacle_grid_sub_;
@@ -242,6 +253,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
+  rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       raw_lidar_3d_pointcloud_pub_;

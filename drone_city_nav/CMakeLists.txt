@@ -331,6 +331,20 @@ target_link_libraries(intercept_spectator_node ${cpp_typesupport_target})
 ament_target_dependencies(intercept_spectator_node geometry_msgs rclcpp tf2_ros)
 enable_project_warnings(intercept_spectator_node)
 
+add_executable(intercept_diagnostics_mux_node
+               src/intercept_diagnostics_mux_node.cpp)
+target_compile_features(intercept_diagnostics_mux_node PRIVATE cxx_std_20)
+target_link_libraries(intercept_diagnostics_mux_node ${cpp_typesupport_target})
+ament_target_dependencies(
+  intercept_diagnostics_mux_node
+  geometry_msgs
+  nav_msgs
+  rclcpp
+  sensor_msgs
+  std_msgs
+  visualization_msgs)
+enable_project_warnings(intercept_diagnostics_mux_node)
+
 add_executable(
   lidar_debug_node
   src/lidar_debug_node.cpp
@@ -340,7 +354,7 @@ add_executable(
   src/lidar_debug_node_snapshot.cpp)
 target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
 target_link_libraries(lidar_debug_node drone_city_nav_core
-                      drone_city_nav_ros_adapters)
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
 ament_target_dependencies(
   lidar_debug_node
   nav_msgs
@@ -400,6 +414,7 @@ install(
     radar_target_tracker_node
     interceptor_guidance_node
     intercept_spectator_node
+    intercept_diagnostics_mux_node
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib

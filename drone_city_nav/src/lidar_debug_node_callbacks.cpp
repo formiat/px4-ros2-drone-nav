@@ -74,6 +74,10 @@ void LidarDebugNode::onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg) 
 }
 
 void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
+  if (!diagnosticsSelected()) {
+    return;
+  }
+
   last_scan_ = msg;
   scan_seen_ = true;
   last_scan_receive_ns_ = get_clock()->now().nanoseconds();
