@@ -659,7 +659,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument("radar_track_interval_s", default_value="0.05"),
             DeclareLaunchArgument("radar_random_seed", default_value="42"),
-            DeclareLaunchArgument("evader_speed_scale", default_value="0.5"),
+            DeclareLaunchArgument("evader_speed_scale", default_value="0.75"),
             DeclareLaunchArgument(
                 "shutdown_on_terminal_outcome", default_value="true"
             ),

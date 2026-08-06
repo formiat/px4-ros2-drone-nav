@@ -128,7 +128,7 @@ Run the two-vehicle intercept mission:
 
 The point-to-point mission remains the default. The intercept mission launches
 isolated interceptor and evader PX4/ROS namespaces. The evader flies to its
-fixed goal at 50% of the interceptor speed policy. The interceptor receives
+fixed goal at 75% of the interceptor speed policy. The interceptor receives
 only ideal radar measurements containing range, azimuth, elevation, and radial
 velocity; a variable-dt tracker derives the target state used by predictive
 guidance. Scan cadence follows a deterministic correlated random walk from
