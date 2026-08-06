@@ -102,6 +102,8 @@ namespace {
       return "physical_collision";
     case msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT:
       return "proximity_intercept";
+    case msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION:
+      return "proximity_collision";
     default:
       return "invalid";
   }
@@ -109,7 +111,8 @@ namespace {
 
 [[nodiscard]] bool validVehicleDeathCause(const std::uint8_t cause) noexcept {
   return cause == msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
-         cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT;
+         cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT ||
+         cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION;
 }
 
 } // namespace
@@ -141,6 +144,7 @@ public:
     auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
     expected_vehicle_role_ = static_cast<std::uint8_t>(declare_parameter<std::int64_t>(
         "vehicle_role", msg::VehicleDestroyed::ROLE_UNSPECIFIED));
+    expected_vehicle_id_ = declare_parameter<std::string>("vehicle_id", "");
     mission_epoch_ =
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 0));
     if (expected_vehicle_role_ > msg::VehicleDestroyed::ROLE_EVADER) {
@@ -226,16 +230,20 @@ public:
               destroyed->vehicle_role == expected_vehicle_role_;
           const bool expected_epoch =
               mission_epoch_ == 0U || destroyed->mission_epoch == mission_epoch_;
+          const bool expected_id = expected_vehicle_id_.empty() ||
+                                   destroyed->vehicle_id == expected_vehicle_id_;
           if (!validVehicleDeathCause(destroyed->death_cause) || !expected_role ||
-              !expected_epoch) {
+              !expected_epoch || !expected_id) {
             RCLCPP_ERROR(get_logger(),
                          "VEHICLE_DESTROYED rejected=true reason=invalid_contract "
-                         "cause=%u role=%u mission_epoch=%" PRIu64
-                         " expected_role=%u expected_epoch=%" PRIu64,
+                         "cause=%u role=%u vehicle_id='%s' mission_epoch=%" PRIu64
+                         " expected_role=%u expected_vehicle_id='%s' "
+                         "expected_epoch=%" PRIu64,
                          static_cast<unsigned>(destroyed->death_cause),
                          static_cast<unsigned>(destroyed->vehicle_role),
-                         destroyed->mission_epoch,
-                         static_cast<unsigned>(expected_vehicle_role_), mission_epoch_);
+                         destroyed->vehicle_id.c_str(), destroyed->mission_epoch,
+                         static_cast<unsigned>(expected_vehicle_role_),
+                         expected_vehicle_id_.c_str(), mission_epoch_);
             return;
           }
           if (destruction_disarm_lifecycle_->latched()) {
@@ -249,15 +257,15 @@ public:
           horizon_.reset();
           auto_arm_ = false;
           auto_offboard_ = false;
-          RCLCPP_ERROR(get_logger(),
-                       "VEHICLE_DESTROYED latched=true role=%s cause=%s "
-                       "mission_epoch=%" PRIu64 " detail='%s' "
-                       "drone_collision='%s' obstacle_collision='%s'",
-                       vehicleRoleName(destroyed_role_),
-                       vehicleDeathCauseName(destroyed_cause_),
-                       destruction_mission_epoch_, destruction_detail_.c_str(),
-                       destroyed->drone_collision.c_str(),
-                       destroyed->obstacle_collision.c_str());
+          RCLCPP_ERROR(
+              get_logger(),
+              "VEHICLE_DESTROYED latched=true role=%s vehicle_id='%s' cause=%s "
+              "mission_epoch=%" PRIu64 " detail='%s' "
+              "drone_collision='%s' obstacle_collision='%s'",
+              vehicleRoleName(destroyed_role_), destroyed->vehicle_id.c_str(),
+              vehicleDeathCauseName(destroyed_cause_), destruction_mission_epoch_,
+              destruction_detail_.c_str(), destroyed->drone_collision.c_str(),
+              destroyed->obstacle_collision.c_str());
         });
     require_mission_start_signal_ =
         declare_parameter<bool>("require_mission_start_signal", false);
@@ -709,6 +717,7 @@ private:
   std::string rviz_drone_follow_frame_{"drone_follow"};
   std::string applied_control_feedback_frame_id_{"map"};
   std::string destruction_detail_;
+  std::string expected_vehicle_id_;
   std::uint64_t destruction_mission_epoch_{0U};
   std::uint64_t mission_epoch_{0U};
   std::uint8_t destroyed_role_{msg::VehicleDestroyed::ROLE_UNSPECIFIED};

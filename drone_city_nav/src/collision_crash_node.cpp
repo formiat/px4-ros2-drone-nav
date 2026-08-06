@@ -36,6 +36,7 @@ public:
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 0));
     vehicle_role_ = static_cast<std::uint8_t>(declare_parameter<std::int64_t>(
         "vehicle_role", msg::VehicleDestroyed::ROLE_UNSPECIFIED));
+    vehicle_id_ = declare_parameter<std::string>("vehicle_id", "");
     if (vehicle_role_ > msg::VehicleDestroyed::ROLE_EVADER) {
       throw std::invalid_argument{"invalid collision detector vehicle role"};
     }
@@ -51,13 +52,17 @@ public:
               destroyed->death_cause ==
                   msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
               destroyed->death_cause ==
-                  msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT;
+                  msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT ||
+              destroyed->death_cause ==
+                  msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION;
           const bool matching_role =
               destroyed->vehicle_role == vehicle_role_ ||
               destroyed->vehicle_role == msg::VehicleDestroyed::ROLE_UNSPECIFIED;
           const bool matching_epoch =
               mission_epoch_ == 0U || destroyed->mission_epoch == mission_epoch_;
-          if (valid_cause && matching_role && matching_epoch) {
+          const bool matching_id =
+              vehicle_id_.empty() || destroyed->vehicle_id == vehicle_id_;
+          if (valid_cause && matching_role && matching_epoch && matching_id) {
             destroyed_ = true;
           }
         });
@@ -91,9 +96,11 @@ public:
 
     RCLCPP_INFO(get_logger(),
                 "Physical collision detector ready: contacts='%s' "
-                "vehicle_destroyed='%s' role=%u airborne_altitude=%.2fm",
+                "vehicle_destroyed='%s' role=%u vehicle_id='%s' "
+                "airborne_altitude=%.2fm",
                 contacts_topic.c_str(), vehicle_destroyed_topic.c_str(),
-                static_cast<unsigned>(vehicle_role_), airborne_altitude_m_);
+                static_cast<unsigned>(vehicle_role_), vehicle_id_.c_str(),
+                airborne_altitude_m_);
   }
 
 private:
@@ -137,6 +144,7 @@ private:
       }
       event.mission_epoch = mission_epoch_;
       event.vehicle_role = vehicle_role_;
+      event.vehicle_id = vehicle_id_;
       event.death_cause = msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION;
       event.detail = "gazebo_contact";
       event.drone_collision = contact.collision1.name;
@@ -158,11 +166,12 @@ private:
       const double yaw = attitude_valid_ ? attitude_.yaw_rad
                                          : std::numeric_limits<double>::quiet_NaN();
       RCLCPP_ERROR(get_logger(),
-                   "VEHICLE_DESTROYED role=%u cause=physical_collision "
+                   "VEHICLE_DESTROYED role=%u vehicle_id='%s' "
+                   "cause=physical_collision "
                    "drone_collision='%s' "
                    "obstacle_collision='%s' contact=(%.3f, %.3f, %.3f) altitude=%.2f "
                    "speed=%.2f attitude_rpy=(%.3f, %.3f, %.3f) mission_epoch=%lu",
-                   static_cast<unsigned>(event.vehicle_role),
+                   static_cast<unsigned>(event.vehicle_role), event.vehicle_id.c_str(),
                    event.drone_collision.c_str(), event.obstacle_collision.c_str(),
                    event.event_position.x, event.event_position.y,
                    event.event_position.z, event.altitude_m, event.speed_mps, roll,
@@ -181,6 +190,7 @@ private:
   bool airborne_seen_{false};
   bool destroyed_{false};
   std::string drone_collision_filter_;
+  std::string vehicle_id_;
   std::uint64_t mission_epoch_{0U};
   std::uint8_t vehicle_role_{msg::VehicleDestroyed::ROLE_UNSPECIFIED};
 

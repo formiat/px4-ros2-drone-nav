@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import yaml
@@ -60,18 +61,50 @@ def generate_launch_description():
             ]
 
         roles = {
-            "interceptor": {
-                "px4_namespace": "interceptor",
-                "model": LaunchConfiguration("interceptor_model").perform(context),
+            "interceptor_0": {
+                "px4_namespace": "interceptor_0",
+                "model": LaunchConfiguration("interceptor_0_model").perform(context),
                 "origin_x": float(
-                    LaunchConfiguration("interceptor_origin_x_m").perform(context)
+                    LaunchConfiguration("interceptor_0_origin_x_m").perform(context)
                 ),
                 "origin_y": float(
-                    LaunchConfiguration("interceptor_origin_y_m").perform(context)
+                    LaunchConfiguration("interceptor_0_origin_y_m").perform(context)
                 ),
                 "target_system": 1,
                 "rviz_primary": True,
                 "speed_scale": 1.0,
+                "is_interceptor": True,
+                "prediction_heading_offset_rad": 0.0,
+            },
+            "interceptor_1": {
+                "px4_namespace": "interceptor_1",
+                "model": LaunchConfiguration("interceptor_1_model").perform(context),
+                "origin_x": float(
+                    LaunchConfiguration("interceptor_1_origin_x_m").perform(context)
+                ),
+                "origin_y": float(
+                    LaunchConfiguration("interceptor_1_origin_y_m").perform(context)
+                ),
+                "target_system": 2,
+                "rviz_primary": False,
+                "speed_scale": 1.0,
+                "is_interceptor": True,
+                "prediction_heading_offset_rad": math.radians(45.0),
+            },
+            "interceptor_2": {
+                "px4_namespace": "interceptor_2",
+                "model": LaunchConfiguration("interceptor_2_model").perform(context),
+                "origin_x": float(
+                    LaunchConfiguration("interceptor_2_origin_x_m").perform(context)
+                ),
+                "origin_y": float(
+                    LaunchConfiguration("interceptor_2_origin_y_m").perform(context)
+                ),
+                "target_system": 3,
+                "rviz_primary": False,
+                "speed_scale": 1.0,
+                "is_interceptor": True,
+                "prediction_heading_offset_rad": math.radians(-45.0),
             },
             "evader": {
                 "px4_namespace": "evader",
@@ -82,11 +115,13 @@ def generate_launch_description():
                 "origin_y": float(
                     LaunchConfiguration("evader_origin_y_m").perform(context)
                 ),
-                "target_system": 2,
+                "target_system": 4,
                 "rviz_primary": False,
                 "speed_scale": float(
                     LaunchConfiguration("evader_speed_scale").perform(context)
                 ),
+                "is_interceptor": False,
+                "prediction_heading_offset_rad": 0.0,
             },
         }
         nodes = []
@@ -149,9 +184,7 @@ def generate_launch_description():
                     "obstacle_memory_snapshot_topic": memory_snapshot,
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "tracked_agent_track_topic": (
-                        "/vehicles/interceptor/target_track"
-                        if role == "interceptor"
-                        else ""
+                        f"{prefix}/target_track" if config["is_interceptor"] else ""
                     ),
                     "tracked_agent_maximum_age_s": (
                         float(
@@ -223,17 +256,24 @@ def generate_launch_description():
                     "require_mission_start_signal": True,
                     "mission_start_topic": f"{prefix}/mission_start",
                     "vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed",
-                    "vehicle_role": 1 if primary else 2,
+                    "vehicle_role": 1 if config["is_interceptor"] else 2,
+                    "vehicle_id": role,
                     "mission_epoch": 1,
                     "vehicle_navigation_state_topic": f"{prefix}/state",
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
-                    "rviz_drone_follow_tf_enabled": primary,
+                    "rviz_drone_follow_tf_enabled": False,
                     "rviz_drone_follow_frame": "drone_follow",
                     "rviz_drone_marker_topic": "/drone_city_nav/drone_marker",
-                    "rviz_drone_marker_id": 0 if primary else 1,
-                    "rviz_drone_marker_color_r": 0.15 if primary else 1.0,
-                    "rviz_drone_marker_color_g": 0.65 if primary else 0.25,
-                    "rviz_drone_marker_color_b": 1.0 if primary else 0.15,
+                    "rviz_drone_marker_id": list(roles).index(role),
+                    "rviz_drone_marker_color_r": (
+                        0.15 if config["is_interceptor"] else 1.0
+                    ),
+                    "rviz_drone_marker_color_g": (
+                        0.65 if config["is_interceptor"] else 0.25
+                    ),
+                    "rviz_drone_marker_color_b": (
+                        1.0 if config["is_interceptor"] else 0.15
+                    ),
                 },
             )
             crash_params = _parameters(
@@ -242,7 +282,8 @@ def generate_launch_description():
                 {
                     "contacts_topic": contacts_topic,
                     "vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed",
-                    "vehicle_role": 1 if primary else 2,
+                    "vehicle_role": 1 if config["is_interceptor"] else 2,
+                    "vehicle_id": role,
                     "mission_epoch": 1,
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
                     "px4_vehicle_attitude_topic": f"{px4}/out/vehicle_attitude",
@@ -300,14 +341,14 @@ def generate_launch_description():
                         "raw_obstacle_grid_topic": "/drone_city_nav/raw_obstacle_grid",
                         "memory_grid_topic": f"{prefix}/obstacle_memory_grid",
                         "path_topic": path_topic,
-                        "output_dir": "log/intercept/interceptor/lidar_debug",
+                        "output_dir": "log/intercept/interceptor_0/lidar_debug",
                     },
                 )
                 nodes.append(
                     Node(
                         package="drone_city_nav",
                         executable="lidar_debug_node",
-                        namespace="vehicles/interceptor",
+                        namespace="vehicles/interceptor_0",
                         name="lidar_debug_node",
                         output="screen",
                         condition=IfCondition(enable_lidar_debug),
@@ -354,177 +395,205 @@ def generate_launch_description():
                 LaunchConfiguration("evader_goal_z_m").perform(context)
             ),
         }
+        interceptor_roles = [
+            role for role, config in roles.items() if config["is_interceptor"]
+        ]
+        radar_seed = int(LaunchConfiguration("radar_random_seed").perform(context))
+        for index, role in enumerate(interceptor_roles):
+            prefix = f"/vehicles/{role}"
+            config = roles[role]
+            nodes.extend(
+                [
+                    Node(
+                        package="drone_city_nav",
+                        executable="radar_simulator_node",
+                        namespace=f"vehicles/{role}",
+                        name="radar_simulator_node",
+                        output="screen",
+                        parameters=[
+                            {
+                                "use_sim_time": True,
+                                "radar_state_topic": f"{prefix}/state",
+                                "target_state_topic": "/vehicles/evader/state",
+                                "radar_scan_topic": f"{prefix}/radar/scan",
+                                "track_mode_command_topic": (
+                                    f"{prefix}/radar/track_mode_command"
+                                ),
+                                "minimum_scan_interval_s": float(
+                                    LaunchConfiguration(
+                                        "radar_minimum_scan_interval_s"
+                                    ).perform(context)
+                                ),
+                                "maximum_scan_interval_s": float(
+                                    LaunchConfiguration(
+                                        "radar_maximum_scan_interval_s"
+                                    ).perform(context)
+                                ),
+                                "initial_scan_interval_s": float(
+                                    LaunchConfiguration(
+                                        "radar_initial_scan_interval_s"
+                                    ).perform(context)
+                                ),
+                                "maximum_interval_step_s": float(
+                                    LaunchConfiguration(
+                                        "radar_maximum_interval_step_s"
+                                    ).perform(context)
+                                ),
+                                "interval_step_correlation": float(
+                                    LaunchConfiguration(
+                                        "radar_interval_step_correlation"
+                                    ).perform(context)
+                                ),
+                                "track_interval_s": float(
+                                    LaunchConfiguration(
+                                        "radar_track_interval_s"
+                                    ).perform(context)
+                                ),
+                                "random_seed": radar_seed + index,
+                            }
+                        ],
+                    ),
+                    Node(
+                        package="drone_city_nav",
+                        executable="radar_target_tracker_node",
+                        namespace=f"vehicles/{role}",
+                        name="radar_target_tracker_node",
+                        output="screen",
+                        parameters=[
+                            {
+                                "use_sim_time": True,
+                                "ownship_state_topic": f"{prefix}/state",
+                                "radar_scan_topic": f"{prefix}/radar/scan",
+                                "target_track_topic": f"{prefix}/target_track",
+                                "target_track_readiness_topic": (
+                                    f"{prefix}/target_track_ready"
+                                ),
+                                "maximum_update_interval_s": float(
+                                    LaunchConfiguration(
+                                        "radar_maximum_scan_interval_s"
+                                    ).perform(context)
+                                )
+                                + 1.0,
+                                "high_rate_velocity_correction_gain": 1.0,
+                            }
+                        ],
+                    ),
+                    Node(
+                        package="drone_city_nav",
+                        executable="interceptor_guidance_node",
+                        namespace=f"vehicles/{role}",
+                        name="interceptor_guidance_node",
+                        output="screen",
+                        parameters=[
+                            {
+                                "use_sim_time": True,
+                                "ownship_state_topic": f"{prefix}/state",
+                                "target_track_topic": f"{prefix}/target_track",
+                                "mission_command_topic": f"{prefix}/mission_command",
+                                "navigation_objective_topic": (
+                                    f"{prefix}/navigation_objective"
+                                ),
+                                "expected_maximum_measurement_age_s": float(
+                                    LaunchConfiguration(
+                                        "radar_maximum_scan_interval_s"
+                                    ).perform(context)
+                                )
+                                + 0.5,
+                                "intercept_interceptor_speed_mps": (
+                                    interceptor_speed_mps
+                                ),
+                                "intercept_prediction_heading_offset_rad": config[
+                                    "prediction_heading_offset_rad"
+                                ],
+                                "intercept_hypothesis_zero_distance_m": float(
+                                    LaunchConfiguration(
+                                        "intercept_hypothesis_zero_distance_m"
+                                    ).perform(context)
+                                ),
+                                "intercept_hypothesis_full_distance_m": float(
+                                    LaunchConfiguration(
+                                        "intercept_hypothesis_full_distance_m"
+                                    ).perform(context)
+                                ),
+                                "intercept_maximum_hypothesis_lateral_offset_m": float(
+                                    LaunchConfiguration(
+                                        "intercept_maximum_hypothesis_lateral_offset_m"
+                                    ).perform(context)
+                                ),
+                                "intercept_minimum_prediction_horizon_s": float(
+                                    LaunchConfiguration(
+                                        "intercept_minimum_prediction_horizon_s"
+                                    ).perform(context)
+                                ),
+                                "intercept_maximum_prediction_horizon_s": float(
+                                    LaunchConfiguration(
+                                        "intercept_maximum_prediction_horizon_s"
+                                    ).perform(context)
+                                ),
+                                "intercept_ahead_maximum_prediction_horizon_s": float(
+                                    LaunchConfiguration(
+                                        "intercept_ahead_maximum_prediction_horizon_s"
+                                    ).perform(context)
+                                ),
+                                "intercept_fallback_prediction_horizon_s": float(
+                                    LaunchConfiguration(
+                                        "intercept_fallback_prediction_horizon_s"
+                                    ).perform(context)
+                                ),
+                                "intercept_minimum_target_speed_mps": float(
+                                    LaunchConfiguration(
+                                        "intercept_minimum_target_speed_mps"
+                                    ).perform(context)
+                                ),
+                                "intercept_ahead_enter_m": float(
+                                    LaunchConfiguration(
+                                        "intercept_ahead_enter_m"
+                                    ).perform(context)
+                                ),
+                                "intercept_ahead_exit_m": float(
+                                    LaunchConfiguration(
+                                        "intercept_ahead_exit_m"
+                                    ).perform(context)
+                                ),
+                                "intercept_ahead_corridor_enter_m": float(
+                                    LaunchConfiguration(
+                                        "intercept_ahead_corridor_enter_m"
+                                    ).perform(context)
+                                ),
+                                "intercept_ahead_corridor_exit_m": float(
+                                    LaunchConfiguration(
+                                        "intercept_ahead_corridor_exit_m"
+                                    ).perform(context)
+                                ),
+                                "intercept_horizon_smoothing_time_constant_s": float(
+                                    LaunchConfiguration(
+                                        "intercept_horizon_smoothing_time_constant_s"
+                                    ).perform(context)
+                                ),
+                                "intercept_target_vertical_deceleration_mps2": float(
+                                    document["production_mppi_node"][
+                                        "ros__parameters"
+                                    ]["maximum_vertical_acceleration_mps2"]
+                                ),
+                                "minimum_target_z_m": float(
+                                    document["production_mppi_node"][
+                                        "ros__parameters"
+                                    ]["minimum_target_z_m"]
+                                ),
+                                "maximum_target_z_m": float(
+                                    document["production_mppi_node"][
+                                        "ros__parameters"
+                                    ]["maximum_target_z_m"]
+                                ),
+                            }
+                        ],
+                    ),
+                ]
+            )
+
+        interceptor_prefixes = [f"/vehicles/{role}" for role in interceptor_roles]
         nodes.extend(
             [
-                Node(
-                    package="drone_city_nav",
-                    executable="radar_simulator_node",
-                    name="radar_simulator_node",
-                    output="screen",
-                    parameters=[
-                        {
-                            "use_sim_time": True,
-                            "radar_state_topic": "/vehicles/interceptor/state",
-                            "target_state_topic": "/vehicles/evader/state",
-                            "radar_scan_topic": "/vehicles/interceptor/radar/scan",
-                            "track_mode_command_topic": (
-                                "/vehicles/interceptor/radar/track_mode_command"
-                            ),
-                            "minimum_scan_interval_s": float(
-                                LaunchConfiguration(
-                                    "radar_minimum_scan_interval_s"
-                                ).perform(context)
-                            ),
-                            "maximum_scan_interval_s": float(
-                                LaunchConfiguration(
-                                    "radar_maximum_scan_interval_s"
-                                ).perform(context)
-                            ),
-                            "initial_scan_interval_s": float(
-                                LaunchConfiguration(
-                                    "radar_initial_scan_interval_s"
-                                ).perform(context)
-                            ),
-                            "maximum_interval_step_s": float(
-                                LaunchConfiguration(
-                                    "radar_maximum_interval_step_s"
-                                ).perform(context)
-                            ),
-                            "interval_step_correlation": float(
-                                LaunchConfiguration(
-                                    "radar_interval_step_correlation"
-                                ).perform(context)
-                            ),
-                            "track_interval_s": float(
-                                LaunchConfiguration(
-                                    "radar_track_interval_s"
-                                ).perform(context)
-                            ),
-                            "random_seed": int(
-                                LaunchConfiguration("radar_random_seed").perform(
-                                    context
-                                )
-                            ),
-                        }
-                    ],
-                ),
-                Node(
-                    package="drone_city_nav",
-                    executable="radar_target_tracker_node",
-                    namespace="vehicles/interceptor",
-                    name="radar_target_tracker_node",
-                    output="screen",
-                    parameters=[
-                        {
-                            "use_sim_time": True,
-                            "ownship_state_topic": "/vehicles/interceptor/state",
-                            "radar_scan_topic": "/vehicles/interceptor/radar/scan",
-                            "target_track_topic": "/vehicles/interceptor/target_track",
-                            "target_track_readiness_topic": (
-                                "/vehicles/interceptor/target_track_ready"
-                            ),
-                            "maximum_update_interval_s": float(
-                                LaunchConfiguration(
-                                    "radar_maximum_scan_interval_s"
-                                ).perform(context)
-                            )
-                            + 1.0,
-                            "high_rate_velocity_correction_gain": 1.0,
-                        }
-                    ],
-                ),
-                Node(
-                    package="drone_city_nav",
-                    executable="interceptor_guidance_node",
-                    namespace="vehicles/interceptor",
-                    name="interceptor_guidance_node",
-                    output="screen",
-                    parameters=[
-                        {
-                            "use_sim_time": True,
-                            "ownship_state_topic": "/vehicles/interceptor/state",
-                            "target_track_topic": "/vehicles/interceptor/target_track",
-                            "mission_command_topic": (
-                                "/vehicles/interceptor/mission_command"
-                            ),
-                            "navigation_objective_topic": (
-                                "/vehicles/interceptor/navigation_objective"
-                            ),
-                            "expected_maximum_measurement_age_s": float(
-                                LaunchConfiguration(
-                                    "radar_maximum_scan_interval_s"
-                                ).perform(context)
-                            )
-                            + 0.5,
-                            "intercept_interceptor_speed_mps": interceptor_speed_mps,
-                            "intercept_minimum_prediction_horizon_s": float(
-                                LaunchConfiguration(
-                                    "intercept_minimum_prediction_horizon_s"
-                                ).perform(context)
-                            ),
-                            "intercept_maximum_prediction_horizon_s": float(
-                                LaunchConfiguration(
-                                    "intercept_maximum_prediction_horizon_s"
-                                ).perform(context)
-                            ),
-                            "intercept_ahead_maximum_prediction_horizon_s": float(
-                                LaunchConfiguration(
-                                    "intercept_ahead_maximum_prediction_horizon_s"
-                                ).perform(context)
-                            ),
-                            "intercept_fallback_prediction_horizon_s": float(
-                                LaunchConfiguration(
-                                    "intercept_fallback_prediction_horizon_s"
-                                ).perform(context)
-                            ),
-                            "intercept_minimum_target_speed_mps": float(
-                                LaunchConfiguration(
-                                    "intercept_minimum_target_speed_mps"
-                                ).perform(context)
-                            ),
-                            "intercept_ahead_enter_m": float(
-                                LaunchConfiguration("intercept_ahead_enter_m").perform(
-                                    context
-                                )
-                            ),
-                            "intercept_ahead_exit_m": float(
-                                LaunchConfiguration("intercept_ahead_exit_m").perform(
-                                    context
-                                )
-                            ),
-                            "intercept_ahead_corridor_enter_m": float(
-                                LaunchConfiguration(
-                                    "intercept_ahead_corridor_enter_m"
-                                ).perform(context)
-                            ),
-                            "intercept_ahead_corridor_exit_m": float(
-                                LaunchConfiguration(
-                                    "intercept_ahead_corridor_exit_m"
-                                ).perform(context)
-                            ),
-                            "intercept_horizon_smoothing_time_constant_s": float(
-                                LaunchConfiguration(
-                                    "intercept_horizon_smoothing_time_constant_s"
-                                ).perform(context)
-                            ),
-                            "intercept_target_vertical_deceleration_mps2": float(
-                                document["production_mppi_node"]["ros__parameters"][
-                                    "maximum_vertical_acceleration_mps2"
-                                ]
-                            ),
-                            "minimum_target_z_m": float(
-                                document["production_mppi_node"]["ros__parameters"][
-                                    "minimum_target_z_m"
-                                ]
-                            ),
-                            "maximum_target_z_m": float(
-                                document["production_mppi_node"]["ros__parameters"][
-                                    "maximum_target_z_m"
-                                ]
-                            ),
-                        }
-                    ],
-                ),
                 Node(
                     package="drone_city_nav",
                     executable="intercept_mission_referee_node",
@@ -535,32 +604,70 @@ def generate_launch_description():
                         {
                             "use_sim_time": True,
                             **evader_goal,
-                            "interceptor_state_topic": (
-                                "/vehicles/interceptor/state"
-                            ),
+                            "interceptor_ids": interceptor_roles,
+                            "interceptor_state_topics": [
+                                f"{prefix}/state" for prefix in interceptor_prefixes
+                            ],
+                            "interceptor_execution_horizon_topics": [
+                                f"{prefix}/mppi/execution_horizon"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "interceptor_mission_command_topics": [
+                                f"{prefix}/mission_command"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "interceptor_world_readiness_topics": [
+                                f"{prefix}/mppi/world_ready"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "target_track_readiness_topics": [
+                                f"{prefix}/target_track_ready"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "interceptor_destroyed_topics": [
+                                f"{prefix}/vehicle_destroyed"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "interceptor_start_topics": [
+                                f"{prefix}/mission_start"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "radar_simulator_node_fqns": [
+                                f"{prefix}/radar_simulator_node"
+                                for prefix in interceptor_prefixes
+                            ],
                             "evader_state_topic": "/vehicles/evader/state",
-                            "interceptor_mission_command_topic": (
-                                "/vehicles/interceptor/mission_command"
-                            ),
-                            "interceptor_world_readiness_topic": (
-                                "/vehicles/interceptor/mppi/world_ready"
-                            ),
                             "evader_world_readiness_topic": (
                                 "/vehicles/evader/mppi/world_ready"
-                            ),
-                            "target_track_readiness_topic": (
-                                "/vehicles/interceptor/target_track_ready"
-                            ),
-                            "interceptor_destroyed_topic": (
-                                "/vehicles/interceptor/vehicle_destroyed"
                             ),
                             "evader_destroyed_topic": (
                                 "/vehicles/evader/vehicle_destroyed"
                             ),
-                            "radar_simulator_node_fqn": "/radar_simulator_node",
                             "shutdown_on_terminal_outcome": (
                                 shutdown_on_terminal_outcome
                             ),
+                        }
+                    ],
+                ),
+                Node(
+                    package="drone_city_nav",
+                    executable="intercept_spectator_node",
+                    name="intercept_spectator_node",
+                    output="screen",
+                    parameters=[
+                        {
+                            "use_sim_time": True,
+                            "interceptor_ids": interceptor_roles,
+                            "interceptor_state_topics": [
+                                f"{prefix}/state" for prefix in interceptor_prefixes
+                            ],
+                            "interceptor_destroyed_topics": [
+                                f"{prefix}/vehicle_destroyed"
+                                for prefix in interceptor_prefixes
+                            ],
+                            "gazebo_models": [
+                                roles[role]["model"] for role in interceptor_roles
+                            ],
                         }
                     ],
                 ),
@@ -606,10 +713,28 @@ def generate_launch_description():
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
             DeclareLaunchArgument("use_static_map", default_value=""),
             DeclareLaunchArgument("static_occupancy_3d_path", default_value=""),
-            DeclareLaunchArgument("interceptor_model", default_value="x500_lidar_2d_0"),
-            DeclareLaunchArgument("evader_model", default_value="x500_lidar_2d_1"),
-            DeclareLaunchArgument("interceptor_origin_x_m", default_value="54.0"),
-            DeclareLaunchArgument("interceptor_origin_y_m", default_value="54.0"),
+            DeclareLaunchArgument(
+                "interceptor_0_model", default_value="x500_lidar_2d_0"
+            ),
+            DeclareLaunchArgument(
+                "interceptor_1_model", default_value="x500_lidar_2d_1"
+            ),
+            DeclareLaunchArgument(
+                "interceptor_2_model", default_value="x500_lidar_2d_2"
+            ),
+            DeclareLaunchArgument("evader_model", default_value="x500_lidar_2d_3"),
+            DeclareLaunchArgument("interceptor_0_origin_x_m", default_value="54.0"),
+            DeclareLaunchArgument("interceptor_0_origin_y_m", default_value="54.0"),
+            DeclareLaunchArgument("interceptor_1_origin_x_m", default_value="54.0"),
+            DeclareLaunchArgument(
+                "interceptor_1_origin_y_m", default_value="378.0"
+            ),
+            DeclareLaunchArgument(
+                "interceptor_2_origin_x_m", default_value="270.0"
+            ),
+            DeclareLaunchArgument(
+                "interceptor_2_origin_y_m", default_value="378.0"
+            ),
             DeclareLaunchArgument("evader_origin_x_m", default_value="270.0"),
             DeclareLaunchArgument("evader_origin_y_m", default_value="54.0"),
             DeclareLaunchArgument("evader_goal_x_m", default_value="54.0"),
@@ -641,6 +766,16 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "intercept_horizon_smoothing_time_constant_s", default_value="0.5"
+            ),
+            DeclareLaunchArgument(
+                "intercept_hypothesis_zero_distance_m", default_value="30.0"
+            ),
+            DeclareLaunchArgument(
+                "intercept_hypothesis_full_distance_m", default_value="120.0"
+            ),
+            DeclareLaunchArgument(
+                "intercept_maximum_hypothesis_lateral_offset_m",
+                default_value="70.0",
             ),
             DeclareLaunchArgument(
                 "radar_minimum_scan_interval_s", default_value="0.1"

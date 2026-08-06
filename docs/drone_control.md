@@ -54,8 +54,9 @@ there is no separate passage hold or nearest-opening selector.
 
 A typed `VehicleDestroyed` event stops setpoint execution and latches bounded
 PX4 force-disarm retries until the vehicle status confirms disarmed. The only
-accepted causes are Gazebo `physical_collision` and mission-referee
-`proximity_intercept`; role and mission epoch must match the offboard instance.
+accepted causes are Gazebo `physical_collision`, mission-referee
+`proximity_intercept`, and interceptor `proximity_collision`; vehicle ID, role,
+and mission epoch must match the offboard instance.
 Mission failure, goal arrival, stale state, and planner collision diagnostics do
 not publish destruction and cannot request force-disarm.
 

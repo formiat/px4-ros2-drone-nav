@@ -69,11 +69,14 @@ px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
 smoke_duration_s="${SMOKE_DURATION_S:-0}"
 px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_drone_nav.log}"
+interceptor_1_px4_log_file="${INTERCEPTOR_1_PX4_LOG_FILE:-${run_log_dir}/px4_interceptor_1_nav.log}"
+interceptor_2_px4_log_file="${INTERCEPTOR_2_PX4_LOG_FILE:-${run_log_dir}/px4_interceptor_2_nav.log}"
 evader_px4_log_file="${EVADER_PX4_LOG_FILE:-${run_log_dir}/px4_evader_nav.log}"
 uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${run_log_dir}/uxrce_agent_drone_nav.log}"
 ros_log_file="${ROS_LOG_FILE:-${run_log_dir}/ros_drone_nav.log}"
 gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_drone_nav.log}"
 gz_gui_log_file="${GZ_GUI_LOG_FILE:-${run_log_dir}/gz_gui_drone_nav.log}"
+gz_spectator_log_file="${GZ_SPECTATOR_LOG_FILE:-${run_log_dir}/gz_spectator_follow.log}"
 gz_scene_diagnostics_dir="${GZ_SCENE_DIAGNOSTICS_DIR:-${run_log_dir}/gazebo_scene_debug}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"
 lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_memory_hits/${run_id}.jsonl}"
@@ -137,6 +140,14 @@ spawn_x_m="${SIM_START_X_M:--171.0}"
 spawn_y_m="${SIM_START_Y_M:--81.0}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
 spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
+interceptor_1_spawn_x_m="${INTERCEPTOR_1_SIM_START_X_M:-153.0}"
+interceptor_1_spawn_y_m="${INTERCEPTOR_1_SIM_START_Y_M:--81.0}"
+interceptor_1_spawn_z_m="${INTERCEPTOR_1_SIM_START_Z_M:-0.3}"
+interceptor_1_spawn_yaw_rad="${INTERCEPTOR_1_SIM_START_YAW_RAD:-0}"
+interceptor_2_spawn_x_m="${INTERCEPTOR_2_SIM_START_X_M:-153.0}"
+interceptor_2_spawn_y_m="${INTERCEPTOR_2_SIM_START_Y_M:-135.0}"
+interceptor_2_spawn_z_m="${INTERCEPTOR_2_SIM_START_Z_M:-0.3}"
+interceptor_2_spawn_yaw_rad="${INTERCEPTOR_2_SIM_START_YAW_RAD:-0}"
 evader_spawn_x_m="${EVADER_SIM_START_X_M:--171.0}"
 evader_spawn_y_m="${EVADER_SIM_START_Y_M:-135.0}"
 evader_spawn_z_m="${EVADER_SIM_START_Z_M:-0.3}"
@@ -371,7 +382,11 @@ if [[ "${enable_gz_scene_diagnostics}" == "true" ||
 fi
 : > "${px4_log_file}"
 if [[ "${mission_type}" == "intercept" ]]; then
+  mkdir -p "$(dirname "${interceptor_1_px4_log_file}")"
+  mkdir -p "$(dirname "${interceptor_2_px4_log_file}")"
   mkdir -p "$(dirname "${evader_px4_log_file}")"
+  : > "${interceptor_1_px4_log_file}"
+  : > "${interceptor_2_px4_log_file}"
   : > "${evader_px4_log_file}"
 fi
 : > "${uxrce_log_file}"
@@ -583,7 +598,8 @@ echo "Gazebo resources: ${runtime_dir}"
     gz_gui_pid=$!
     configure_gazebo_world_running "${gazebo_world_unpause_wait_s}" &
     gz_unpause_pid=$!
-    if bool_is_true "${enable_gazebo_gui_follow_camera}"; then
+    if bool_is_true "${enable_gazebo_gui_follow_camera}" &&
+      [[ "${mission_type}" != "intercept" ]]; then
       configure_gazebo_gui_follow_camera \
         "${gazebo_gui_follow_target}" \
         "${gazebo_gui_follow_offset}" \
@@ -627,34 +643,55 @@ px4_parameter_stream() {
 echo "PX4 SITL log: ${px4_log_file}"
 echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}"
 if [[ "${mission_type}" == "intercept" ]]; then
+  echo "Interceptor 1 PX4 SITL log: ${interceptor_1_px4_log_file}"
+  echo "Interceptor 1 Gazebo spawn pose: ${interceptor_1_spawn_x_m},${interceptor_1_spawn_y_m},${interceptor_1_spawn_z_m},0,0,${interceptor_1_spawn_yaw_rad}"
+  echo "Interceptor 2 PX4 SITL log: ${interceptor_2_px4_log_file}"
+  echo "Interceptor 2 Gazebo spawn pose: ${interceptor_2_spawn_x_m},${interceptor_2_spawn_y_m},${interceptor_2_spawn_z_m},0,0,${interceptor_2_spawn_yaw_rad}"
   echo "Evader PX4 SITL log: ${evader_px4_log_file}"
   echo "Evader Gazebo spawn pose: ${evader_spawn_x_m},${evader_spawn_y_m},${evader_spawn_z_m},0,0,${evader_spawn_yaw_rad}"
-  (
-    px4_parameter_stream "${px4_active_cruise_speed_mps}" \
-      "${px4_active_max_horizontal_speed_mps}" |
-      PX4_GZ_WORLD="${world_name}" \
-        PX4_GZ_STANDALONE=1 \
-        PX4_GZ_MODEL_POSE="${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}" \
-        PX4_SIM_MODEL="${px4_model_target}" \
-        PX4_UXRCE_DDS_NS=interceptor \
-        PX4_SYS_AUTOSTART=4013 \
-        HEADLESS="${headless}" \
-        run_px4_instance 0
-  ) > "${px4_log_file}" 2>&1 &
-  px4_pid=$!
-  (
-    px4_parameter_stream "${evader_px4_cruise_speed_mps}" \
-      "${evader_px4_max_horizontal_speed_mps}" |
-      PX4_GZ_WORLD="${world_name}" \
-        PX4_GZ_STANDALONE=1 \
-        PX4_GZ_MODEL_POSE="${evader_spawn_x_m},${evader_spawn_y_m},${evader_spawn_z_m},0,0,${evader_spawn_yaw_rad}" \
-        PX4_SIM_MODEL="${px4_model_target}" \
-        PX4_UXRCE_DDS_NS=evader \
-        PX4_SYS_AUTOSTART=4013 \
-        HEADLESS="${headless}" \
-        run_px4_instance 1
-  ) > "${evader_px4_log_file}" 2>&1 &
-  evader_px4_pid=$!
+  intercept_px4_namespaces=(interceptor_0 interceptor_1 interceptor_2 evader)
+  intercept_px4_spawn_poses=(
+    "${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}"
+    "${interceptor_1_spawn_x_m},${interceptor_1_spawn_y_m},${interceptor_1_spawn_z_m},0,0,${interceptor_1_spawn_yaw_rad}"
+    "${interceptor_2_spawn_x_m},${interceptor_2_spawn_y_m},${interceptor_2_spawn_z_m},0,0,${interceptor_2_spawn_yaw_rad}"
+    "${evader_spawn_x_m},${evader_spawn_y_m},${evader_spawn_z_m},0,0,${evader_spawn_yaw_rad}"
+  )
+  intercept_px4_logs=(
+    "${px4_log_file}"
+    "${interceptor_1_px4_log_file}"
+    "${interceptor_2_px4_log_file}"
+    "${evader_px4_log_file}"
+  )
+  intercept_px4_cruise_speeds=(
+    "${px4_active_cruise_speed_mps}"
+    "${px4_active_cruise_speed_mps}"
+    "${px4_active_cruise_speed_mps}"
+    "${evader_px4_cruise_speed_mps}"
+  )
+  intercept_px4_maximum_speeds=(
+    "${px4_active_max_horizontal_speed_mps}"
+    "${px4_active_max_horizontal_speed_mps}"
+    "${px4_active_max_horizontal_speed_mps}"
+    "${evader_px4_max_horizontal_speed_mps}"
+  )
+  intercept_px4_pids=()
+  for instance in 0 1 2 3; do
+    (
+      px4_parameter_stream "${intercept_px4_cruise_speeds[instance]}" \
+        "${intercept_px4_maximum_speeds[instance]}" |
+        PX4_GZ_WORLD="${world_name}" \
+          PX4_GZ_STANDALONE=1 \
+          PX4_GZ_MODEL_POSE="${intercept_px4_spawn_poses[instance]}" \
+          PX4_SIM_MODEL="${px4_model_target}" \
+          PX4_UXRCE_DDS_NS="${intercept_px4_namespaces[instance]}" \
+          PX4_SYS_AUTOSTART=4013 \
+          HEADLESS="${headless}" \
+          run_px4_instance "${instance}"
+    ) > "${intercept_px4_logs[instance]}" 2>&1 &
+    intercept_px4_pids+=("$!")
+  done
+  px4_pid="${intercept_px4_pids[0]}"
+  evader_px4_pid="${intercept_px4_pids[3]}"
 else
   (
     px4_parameter_stream "${px4_active_cruise_speed_mps}" \
@@ -675,11 +712,14 @@ if ! kill -0 "${px4_pid}" 2>/dev/null; then
   tail -n 80 "${px4_log_file}" >&2
   exit 1
 fi
-if [[ "${mission_type}" == "intercept" ]] &&
-  ! kill -0 "${evader_px4_pid}" 2>/dev/null; then
-  echo "Evader PX4 SITL exited before ROS launch. Last log lines:" >&2
-  tail -n 80 "${evader_px4_log_file}" >&2
-  exit 1
+if [[ "${mission_type}" == "intercept" ]]; then
+  for instance in 0 1 2 3; do
+    if ! kill -0 "${intercept_px4_pids[instance]}" 2>/dev/null; then
+      echo "${intercept_px4_namespaces[instance]} PX4 SITL exited before ROS launch. Last log lines:" >&2
+      tail -n 80 "${intercept_px4_logs[instance]}" >&2
+      exit 1
+    fi
+  done
 fi
 
 if bool_is_true "${enable_gz_scene_diagnostics}"; then
@@ -709,6 +749,8 @@ check_headless_run() {
     --enable-lidar-debug "${enable_lidar_debug}"
   )
   if [[ "${mission_type}" == "intercept" ]]; then
+    validation_args+=(--px4-log "${interceptor_1_px4_log_file}")
+    validation_args+=(--px4-log "${interceptor_2_px4_log_file}")
     validation_args+=(--px4-log "${evader_px4_log_file}")
   fi
   if [[ -n "${mission_check}" || "${mission_type}" == "intercept" ]]; then
@@ -723,6 +765,8 @@ check_headless_run() {
     print_log_tail "Gazebo" "${gz_log_file}"
     print_log_tail "PX4 SITL" "${px4_log_file}"
     if [[ "${mission_type}" == "intercept" ]]; then
+      print_log_tail "Interceptor 1 PX4 SITL" "${interceptor_1_px4_log_file}"
+      print_log_tail "Interceptor 2 PX4 SITL" "${interceptor_2_px4_log_file}"
       print_log_tail "Evader PX4 SITL" "${evader_px4_log_file}"
     fi
     print_log_tail "ROS launch" "${ros_log_file}"
@@ -760,6 +804,14 @@ if [[ -n "${enable_static_map_override}" ]]; then
 fi
 echo "ROS launch log: ${ros_log_file}"
 echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"
+if [[ "${mission_type}" == "intercept" && -z "${headless}" ]] &&
+  bool_is_true "${enable_gazebo_gui_follow_camera}"; then
+  python3 "${repo_root}/scripts/gazebo_spectator_follow.py" \
+    --world "${world_name}" \
+    --offset "${gazebo_gui_follow_offset}" \
+    --wait-s "${gazebo_gui_follow_wait_s}" \
+    > "${gz_spectator_log_file}" 2>&1 &
+fi
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav "${launch_file}" \
     "${ros_launch_args[@]}" \

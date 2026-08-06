@@ -89,6 +89,7 @@ struct ProductionNavigationObjective {
   std::uint64_t sample_sequence{0U};
   std::int64_t stamp_ns{0};
   bool continuous_tracking{false};
+  bool immediate_hold{false};
 };
 
 [[nodiscard]] inline StaticRouteObjective

@@ -1,0 +1,4 @@
+builtin_interfaces/Time stamp
+uint64 mission_epoch
+string vehicle_id
+string gazebo_model

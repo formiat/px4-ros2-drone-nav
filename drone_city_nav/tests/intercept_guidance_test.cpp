@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <limits>
 
 namespace drone_city_nav {
@@ -175,6 +176,69 @@ TEST(InterceptGuidance, ClampsVerticalPredictionAtFlightEnvelopeBoundary) {
   EXPECT_LT(result.predicted_position.z, 32.0);
   EXPECT_GE(result.predicted_position.z, 1.0);
   EXPECT_TRUE(result.vertical_prediction_limited);
+}
+
+TEST(InterceptGuidance, AppliesFarHeadingHypothesisAndPreservesMeasuredVelocity) {
+  InterceptGuidance guidance{InterceptGuidanceConfig{
+      .prediction_heading_offset_rad = std::acos(-1.0) / 4.0,
+      .hypothesis_zero_distance_m = 30.0,
+      .hypothesis_full_distance_m = 100.0,
+      .maximum_hypothesis_lateral_offset_m = 70.0,
+  }};
+  const TimedVehicleState interceptor =
+      state(Point3{-100.0, 0.0, 10.0}, {}, 1'000'000'000LL);
+  const TimedVehicleState target =
+      state(Point3{100.0, 0.0, 10.0}, Vec3{10.0, 0.0, 0.0}, 1'000'000'000LL);
+
+  const InterceptGuidanceResult result =
+      guidance.update(interceptor, target, 1'000'000'000LL);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_NEAR(result.effective_heading_offset_rad, std::acos(-1.0) / 4.0, 1.0e-9);
+  EXPECT_GT(result.predicted_position.y, 0.0);
+  EXPECT_DOUBLE_EQ(result.observed_velocity.x, 10.0);
+  EXPECT_DOUBLE_EQ(result.observed_velocity.y, 0.0);
+}
+
+TEST(InterceptGuidance, HypothesisConvergesToRealTrackNearTarget) {
+  InterceptGuidance guidance{InterceptGuidanceConfig{
+      .prediction_heading_offset_rad = -std::acos(-1.0) / 4.0,
+      .hypothesis_zero_distance_m = 30.0,
+      .hypothesis_full_distance_m = 100.0,
+      .maximum_hypothesis_lateral_offset_m = 70.0,
+  }};
+  const TimedVehicleState interceptor =
+      state(Point3{-10.0, 0.0, 10.0}, {}, 1'000'000'000LL);
+  const TimedVehicleState target =
+      state(Point3{}, Vec3{10.0, 0.0, 0.0}, 1'000'000'000LL);
+
+  const InterceptGuidanceResult result =
+      guidance.update(interceptor, target, 1'000'000'000LL);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_DOUBLE_EQ(result.effective_heading_offset_rad, 0.0);
+  EXPECT_DOUBLE_EQ(result.hypothesis_lateral_offset_m, 0.0);
+  EXPECT_DOUBLE_EQ(result.predicted_position.y, 0.0);
+}
+
+TEST(InterceptGuidance, CapsHypothesisLateralOffset) {
+  InterceptGuidance guidance{InterceptGuidanceConfig{
+      .maximum_prediction_horizon_s = 15.0,
+      .prediction_heading_offset_rad = std::acos(-1.0) / 2.0,
+      .hypothesis_zero_distance_m = 0.0,
+      .hypothesis_full_distance_m = 1.0,
+      .maximum_hypothesis_lateral_offset_m = 20.0,
+  }};
+  const TimedVehicleState interceptor =
+      state(Point3{-200.0, 0.0, 10.0}, {}, 1'000'000'000LL);
+  const TimedVehicleState target =
+      state(Point3{}, Vec3{10.0, 0.0, 0.0}, 1'000'000'000LL);
+
+  const InterceptGuidanceResult result =
+      guidance.update(interceptor, target, 1'000'000'000LL);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_NEAR(result.hypothesis_lateral_offset_m, 20.0, 1.0e-9);
 }
 
 } // namespace

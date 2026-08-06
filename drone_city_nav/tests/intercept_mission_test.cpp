@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+
 namespace drone_city_nav {
 namespace {
 
@@ -89,21 +91,130 @@ TEST(InterceptMissionEvaluatorTest, FirstTerminalOutcomeRemainsLatched) {
   EXPECT_EQ(late_interceptor.outcome, InterceptMissionOutcome::kEvaderReachedGoal);
 }
 
+TEST(MultiInterceptMissionEvaluatorTest, SelectsClosestCapturingInterceptor) {
+  MultiInterceptMissionEvaluator evaluator{Point3{100.0, 0.0, 10.0}, 3U};
+  const std::array interceptors{
+      state(Point3{20.0, 0.0, 10.0}, {}, 1),
+      state(Point3{3.0, 0.0, 10.0}, {}, 1),
+      state(Point3{4.0, 0.0, 10.0}, {}, 1),
+  };
+
+  const MultiInterceptMissionUpdate update =
+      evaluator.update(interceptors, state(Point3{0.0, 0.0, 10.0}, {}, 1));
+
+  EXPECT_EQ(update.capturing_interceptor_index, std::optional<std::size_t>{1U});
+  EXPECT_EQ(update.outcome, InterceptMissionOutcome::kIntercepted);
+  EXPECT_NEAR(update.separation_m, 3.0, 1.0e-9);
+}
+
+TEST(MultiInterceptMissionEvaluatorTest, IgnoresDisarmedNearbyInterceptor) {
+  MultiInterceptMissionEvaluator evaluator{Point3{100.0, 0.0, 10.0}, 2U};
+  std::array interceptors{
+      state(Point3{1.0, 0.0, 10.0}, {}, 1),
+      state(Point3{20.0, 0.0, 10.0}, {}, 1),
+  };
+  interceptors[0].armed = false;
+
+  const MultiInterceptMissionUpdate update =
+      evaluator.update(interceptors, state(Point3{}, {}, 1));
+
+  EXPECT_FALSE(update.capturing_interceptor_index.has_value());
+  EXPECT_EQ(update.outcome, InterceptMissionOutcome::kRunning);
+}
+
+TEST(MultiInterceptMissionEvaluatorTest, CaptureWinsOverGoalAtSameSample) {
+  MultiInterceptMissionEvaluator evaluator{
+      Point3{100.0, 0.0, 10.0}, 2U,
+      InterceptMissionConfig{.capture_radius_m = 5.0, .evader_goal_radius_m = 2.0}};
+  const std::array interceptors{
+      state(Point3{104.0, 0.0, 10.0}, {}, 1),
+      state(Point3{}, {}, 1),
+  };
+
+  const MultiInterceptMissionUpdate update =
+      evaluator.update(interceptors, state(Point3{100.0, 0.0, 10.0}, {}, 1));
+
+  EXPECT_TRUE(update.newly_terminal);
+  EXPECT_EQ(update.outcome, InterceptMissionOutcome::kIntercepted);
+  EXPECT_EQ(update.capturing_interceptor_index, std::optional<std::size_t>{0U});
+}
+
+TEST(MultiInterceptMissionEvaluatorTest, DetectsCaptureBySweptRelativeMotion) {
+  MultiInterceptMissionEvaluator evaluator{Point3{100.0, 0.0, 10.0}, 2U};
+  std::array interceptors{
+      state(Point3{-10.0, 0.0, 10.0}, {}, 1),
+      state(Point3{40.0, 0.0, 10.0}, {}, 1),
+  };
+  const TimedVehicleState evader = state(Point3{0.0, 0.0, 10.0}, {}, 1);
+  EXPECT_EQ(evaluator.update(interceptors, evader).outcome,
+            InterceptMissionOutcome::kRunning);
+  interceptors[0] = state(Point3{10.0, 0.0, 10.0}, {}, 2);
+
+  const MultiInterceptMissionUpdate update =
+      evaluator.update(interceptors, state(Point3{0.0, 0.0, 10.0}, {}, 2));
+
+  EXPECT_EQ(update.outcome, InterceptMissionOutcome::kIntercepted);
+  EXPECT_EQ(update.capturing_interceptor_index, std::optional<std::size_t>{0U});
+}
+
+TEST(MultiInterceptMissionEvaluatorTest, ResolvesEqualCaptureByLowestIndex) {
+  MultiInterceptMissionEvaluator evaluator{Point3{100.0, 0.0, 10.0}, 3U};
+  const std::array interceptors{
+      state(Point3{-3.0, 0.0, 10.0}, {}, 1),
+      state(Point3{3.0, 0.0, 10.0}, {}, 1),
+      state(Point3{20.0, 0.0, 10.0}, {}, 1),
+  };
+
+  const MultiInterceptMissionUpdate update =
+      evaluator.update(interceptors, state(Point3{0.0, 0.0, 10.0}, {}, 1));
+
+  EXPECT_EQ(update.capturing_interceptor_index, std::optional<std::size_t>{0U});
+}
+
+TEST(MultiInterceptMissionEvaluatorTest, LateCapturePreservesGoalOutcome) {
+  MultiInterceptMissionEvaluator evaluator{
+      Point3{100.0, 0.0, 10.0}, 2U,
+      InterceptMissionConfig{.capture_radius_m = 5.0, .evader_goal_radius_m = 2.0}};
+  std::array interceptors{
+      state(Point3{50.0, 0.0, 10.0}, {}, 1),
+      state(Point3{}, {}, 1),
+  };
+  EXPECT_EQ(
+      evaluator.update(interceptors, state(Point3{100.0, 0.0, 10.0}, {}, 1)).outcome,
+      InterceptMissionOutcome::kEvaderReachedGoal);
+  interceptors[0] = state(Point3{100.0, 0.0, 10.0}, {}, 2);
+
+  const MultiInterceptMissionUpdate update =
+      evaluator.update(interceptors, state(Point3{100.0, 0.0, 10.0}, {}, 2));
+
+  EXPECT_EQ(update.outcome, InterceptMissionOutcome::kEvaderReachedGoal);
+  EXPECT_FALSE(update.newly_terminal);
+  EXPECT_TRUE(update.newly_captured);
+  EXPECT_EQ(update.capturing_interceptor_index, std::optional<std::size_t>{0U});
+}
+
 TEST(InterceptorHoldConfirmationTest, RequiresStablePositionAndSpeed) {
   InterceptorHoldConfirmation confirmation{
-      Point3{10.0, 20.0, 15.0}, InterceptorHoldConfig{.position_tolerance_m = 2.0,
-                                                      .maximum_speed_mps = 0.8,
-                                                      .confirmation_duration_s = 1.0}};
+      InterceptorHoldConfig{.position_tolerance_m = 2.0,
+                            .maximum_speed_mps = 0.8,
+                            .confirmation_duration_s = 1.0}};
   EXPECT_FALSE(
       confirmation
-          .update(state(Point3{10.0, 20.0, 15.0}, Vec3{2.0, 0.0, 0.0}, 1'000'000'000LL))
+          .update(state(Point3{10.0, 20.0, 15.0}, {}, 500'000'000LL), std::nullopt)
           .confirmed);
   EXPECT_FALSE(
       confirmation
-          .update(state(Point3{10.5, 20.0, 15.0}, Vec3{0.2, 0.0, 0.0}, 2'000'000'000LL))
+          .update(state(Point3{10.0, 20.0, 15.0}, Vec3{2.0, 0.0, 0.0}, 1'000'000'000LL),
+                  Point3{10.0, 20.0, 15.0})
+          .confirmed);
+  EXPECT_FALSE(
+      confirmation
+          .update(state(Point3{10.5, 20.0, 15.0}, Vec3{0.2, 0.0, 0.0}, 2'000'000'000LL),
+                  Point3{10.0, 20.0, 15.0})
           .confirmed);
   const InterceptorHoldUpdate confirmed = confirmation.update(
-      state(Point3{10.4, 20.0, 15.0}, Vec3{0.1, 0.0, 0.0}, 3'100'000'000LL));
+      state(Point3{10.4, 20.0, 15.0}, Vec3{0.1, 0.0, 0.0}, 3'100'000'000LL),
+      Point3{10.0, 20.0, 15.0});
   EXPECT_TRUE(confirmed.confirmed);
   EXPECT_TRUE(confirmed.newly_confirmed);
   EXPECT_NEAR(confirmed.position_error_m, 0.4, 1.0e-9);

@@ -24,7 +24,9 @@ class VehicleDestructionContractTest(unittest.TestCase):
         text = MESSAGE.read_text(encoding="utf-8")
         self.assertIn("CAUSE_PHYSICAL_COLLISION=1", text)
         self.assertIn("CAUSE_PROXIMITY_INTERCEPT=2", text)
+        self.assertIn("CAUSE_PROXIMITY_COLLISION=3", text)
         self.assertIn("uint8 vehicle_role", text)
+        self.assertIn("string vehicle_id", text)
         self.assertIn("uint8 death_cause", text)
         self.assertNotIn("mission_failure", text.lower())
         self.assertNotIn("goal", text.lower())
@@ -54,18 +56,23 @@ class VehicleDestructionContractTest(unittest.TestCase):
         self.assertIn("destruction_disarm.force_disarm_requested", offboard)
         self.assertIn("validVehicleDeathCause", offboard)
         self.assertIn("expected_vehicle_role_", offboard)
+        self.assertIn("expected_vehicle_id_", offboard)
 
     def test_producers_assign_distinct_structured_causes(self) -> None:
         referee = REFEREE.read_text(encoding="utf-8")
         collision = COLLISION.read_text(encoding="utf-8")
         self.assertIn("CAUSE_PROXIMITY_INTERCEPT", referee)
+        self.assertIn("CAUSE_PROXIMITY_COLLISION", referee)
         self.assertIn("CAUSE_PHYSICAL_COLLISION", collision)
         self.assertNotIn("VehicleCommand", referee)
 
     def test_intercept_launch_wires_role_and_epoch_per_vehicle(self) -> None:
         text = LAUNCH.read_text(encoding="utf-8")
         self.assertIn('"vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed"', text)
-        self.assertGreaterEqual(text.count('"vehicle_role": 1 if primary else 2'), 2)
+        self.assertGreaterEqual(
+            text.count('"vehicle_role": 1 if config["is_interceptor"] else 2'), 2
+        )
+        self.assertGreaterEqual(text.count('"vehicle_id": role'), 2)
         self.assertGreaterEqual(text.count('"mission_epoch": 1'), 2)
 
 

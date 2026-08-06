@@ -75,6 +75,14 @@ public:
             declare_parameter<double>("intercept_ahead_corridor_exit_m", 20.0),
         .horizon_smoothing_time_constant_s = declare_parameter<double>(
             "intercept_horizon_smoothing_time_constant_s", 0.5),
+        .prediction_heading_offset_rad =
+            declare_parameter<double>("intercept_prediction_heading_offset_rad", 0.0),
+        .hypothesis_zero_distance_m =
+            declare_parameter<double>("intercept_hypothesis_zero_distance_m", 30.0),
+        .hypothesis_full_distance_m =
+            declare_parameter<double>("intercept_hypothesis_full_distance_m", 120.0),
+        .maximum_hypothesis_lateral_offset_m = declare_parameter<double>(
+            "intercept_maximum_hypothesis_lateral_offset_m", 70.0),
         .target_vertical_deceleration_mps2 = declare_parameter<double>(
             "intercept_target_vertical_deceleration_mps2", 4.0),
         .target_flight_envelope =
@@ -155,7 +163,8 @@ private:
     objective.position.z = hold_position_->z;
     objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
     objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
-    objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
+    objective.terminal_policy =
+        msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD;
     objective_pub_->publish(objective);
     RCLCPP_INFO(get_logger(),
                 "INTERCEPTOR_HOLD_OBJECTIVE published=true reason='%s' "
@@ -195,6 +204,9 @@ private:
     objective.observed_target_velocity.y = guidance.observed_velocity.y;
     objective.observed_target_velocity.z = guidance.observed_velocity.z;
     objective.prediction_horizon_s = guidance.prediction_horizon_s;
+    objective.configured_heading_offset_rad = guidance.configured_heading_offset_rad;
+    objective.effective_heading_offset_rad = guidance.effective_heading_offset_rad;
+    objective.hypothesis_lateral_offset_m = guidance.hypothesis_lateral_offset_m;
     objective.vertical_prediction_limited = guidance.vertical_prediction_limited;
     objective.objective_type =
         msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION;
@@ -215,11 +227,16 @@ private:
         "INTERCEPT_GUIDANCE source=radar_track mode=%s track_id=%" PRIu64
         " scan_sequence=%" PRIu64 " target_speed_mps=%.3f horizon_s=%.3f "
         "analytic_intercept_time_s=%.3f measurement_age_s=%.3f ahead_m=%.3f "
-        "cross_track_m=%.3f vertical_prediction_limited=%s",
+        "cross_track_m=%.3f configured_heading_offset_deg=%.1f "
+        "effective_heading_offset_deg=%.1f hypothesis_lateral_offset_m=%.3f "
+        "vertical_prediction_limited=%s",
         interceptGuidanceModeName(guidance.mode), target_track_->track_id,
         target_track_->source_scan_sequence, guidance.target_speed_mps,
         guidance.prediction_horizon_s, guidance.analytic_intercept_time_s,
         guidance.prediction_age_s, guidance.ahead_m, guidance.cross_track_m,
+        guidance.configured_heading_offset_rad * 180.0 / std::acos(-1.0),
+        guidance.effective_heading_offset_rad * 180.0 / std::acos(-1.0),
+        guidance.hypothesis_lateral_offset_m,
         guidance.vertical_prediction_limited ? "true" : "false");
   }
 

@@ -122,23 +122,24 @@ motion and continuously warm-starts from its previous control sequence.
 Point-to-point navigation remains the default mission and uses the configured
 fixed position objective and terminal goal capture.
 
-The intercept mission runs two complete navigation stacks with separate PX4 DDS
-namespaces, lidar memory, planners, offboard nodes, and destruction state. Pursuit uses
-an explicit radar data boundary:
+The finite intercept mission runs four complete navigation stacks: three
+interceptors and one evader, each with a separate PX4 DDS namespace, lidar
+memory, planner, offboard node, and destruction state. Pursuit uses an explicit
+radar data boundary:
 
 ```text
 evader ground truth -> mission referee -> outcome and settlement only
-evader ground truth -> radar simulator -> RadarScan
-interceptor state + RadarScan -> target tracker -> TargetTrack
-interceptor state + TargetTrack -> guidance -> NavigationObjective
+evader ground truth -> three radar simulators -> independent RadarScan streams
+interceptor[i] state + RadarScan[i] -> tracker[i] -> TargetTrack[i]
+interceptor[i] state + TargetTrack[i] -> guidance[i] -> NavigationObjective[i]
 ```
 
 The mission referee publishes the evader's fixed position objective, then waits
-until both vehicles are navigation-ready, both planners have activated a world,
-and the tracker has produced its first valid target position. It evaluates the
+until all four vehicles are navigation-ready, all planners have activated a
+world, and all three trackers have produced a valid target position. It evaluates the
 terminal outcome and owns hold or disarm settlement. It cannot publish an
-interceptor navigation objective. Only the referee and radar simulator
-subscribe to evader ground truth; the referee verifies this subscriber set
+interceptor navigation objective. Only the referee and three radar simulators
+subscribe to evader ground truth; the referee verifies this exact subscriber set
 through the ROS graph before starting the mission.
 
 `RadarScan` exposes only range, azimuth, elevation, and relative radial velocity.
@@ -151,8 +152,12 @@ cadence. The tracker reconstructs Cartesian position from the interceptor state
 at measurement time. Its first measurement has no full velocity estimate; later
 variable-dt corrections produce a constant-velocity `TargetTrack` that coasts
 between measurements. Ideal high-rate scans use full velocity innovation gain.
-Interceptor guidance runs at 20 Hz and converts
-that track into a typed continuous objective. It solves the constant-velocity
+Each interceptor guidance node runs at 20 Hz and converts its track into a typed
+continuous objective. The central hypothesis follows measured target motion;
+the other two rotate only their long-range prediction by `-45` and `+45`
+degrees. Their effective offsets continuously converge to zero from 120 m to
+30 m and their lateral displacement is capped at 70 m. Radar tracks and measured
+velocities remain unchanged. Guidance solves the constant-velocity
 intercept equation, caps the result at 15 s, and caps the horizon at 1 s while
 ahead inside the target corridor. Vertical coasting applies bounded
 deceleration until vertical speed reaches zero and clips altitude to the flight
@@ -172,17 +177,21 @@ to a current-generation global route. MPPI minimizes
 closest approach to the target trajectory over its horizon, while raw collision
 remains forbidden. Continuous objectives disable terminal goal capture. Swept
 relative-motion evaluation detects a 5 m intercept between state samples and
-publishes one typed `VehicleDestroyed` event per role with cause
-`proximity_intercept`.
+publishes one typed `VehicleDestroyed` event for the capturing interceptor and
+one for the evader with cause `proximity_intercept`. Every death event includes
+a stable `vehicle_id`, so role alone never identifies one of several
+interceptors.
 
 The first terminal event is latched and cannot be reclassified by later inertial
 motion. Evader goal arrival is latched on the first airborne sample inside the
 configured goal radius, without a stop-speed or hold-time delay. An intercept
-records the result only after both typed destruction events
-and both PX4 disarm confirmations. If the evader reaches its goal first, the
-coordinator freezes the interceptor objective at its current position and
-records the result only after position and speed remain inside the configured
-hold tolerances. No mission termination or disarm is requested in that branch.
+records the result only after both typed destruction events, both PX4 disarm
+confirmations, and confirmed holds from every surviving interceptor. If the
+evader reaches its goal first, the coordinator commands every surviving
+interceptor to brake and transition into stationary position hold. It records
+the result only after a post-command position-hold horizon is active and all
+positions and speeds remain inside the configured hold tolerances. No mission
+termination or disarm is requested in that branch.
 The capture detector remains active until settlement: a late inertial entry into
 the capture radius still disarms both vehicles but cannot overwrite the latched
 evader-goal outcome.
@@ -191,14 +200,24 @@ alive after either result.
 
 Mission failure and vehicle death are independent. Generic system failures only
 produce a failed mission result. A physical Gazebo contact publishes cause
-`physical_collision`; a 5 m intercept publishes cause `proximity_intercept`.
-Only these causes can enter the force-disarm lifecycle. Physical evader death is
-settled after its disarm and a confirmed hold of a surviving interceptor.
+`physical_collision`; a 5 m intercept publishes `proximity_intercept`; and a
+5 m interceptor-to-interceptor collision publishes `proximity_collision` for
+the involved pair. Only these physical death causes can enter the force-disarm
+lifecycle. A single interceptor death does not terminate the episode while
+another interceptor remains. Physical evader death is settled after its disarm
+and confirmed holds of all survivors. If no interceptor remains, the finite
+mission ends with `no_interceptors_remaining`.
 
-Each lidar pipeline filters returns belonging to the other tracked vehicle
-before obstacle-memory integration. This prevents a moving agent from becoming
-a persistent environmental obstacle; it does not introduce a prohibited zone
-or relax collision checks against raw physical occupancy.
+One spectator node owns the sole RViz `drone_follow` transform. It initially
+tracks `interceptor_0` and deterministically switches to the next living
+interceptor after a typed death event. A visualization-only adapter applies the
+same selection to the Gazebo GUI camera. No attacker respawn or episode reset
+exists in this finite mission.
+
+Each interceptor lidar pipeline filters returns belonging to its radar-tracked
+evader before obstacle-memory integration. This prevents the moving target from
+becoming a persistent environmental obstacle; it does not introduce a
+prohibited zone or relax collision checks against raw physical occupancy.
 
 ## Execution Contract
 

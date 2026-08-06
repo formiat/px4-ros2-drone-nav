@@ -249,7 +249,7 @@ void ProductionMppiNode::onNavigationObjective(
           msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION ||
       !guidance_mode.has_value() ||
       message.terminal_policy >
-          msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING ||
+          msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD ||
       (tracking &&
        (!finitePoint(message.observed_target_position) ||
         !finiteVector(message.observed_target_velocity) ||
@@ -434,6 +434,8 @@ void ProductionMppiNode::onNavigationObjective(
           .continuous_tracking =
               message.terminal_policy ==
               msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING,
+          .immediate_hold = message.terminal_policy ==
+                            msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD,
       });
   navigation_objective_.store(objective, std::memory_order_release);
   publishRadarTrackModeCommand(*objective, radar_cadence_reason);
@@ -523,7 +525,7 @@ void ProductionMppiNode::onNavigationObjective(
         "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
         " type=position goal=(%.2f,%.2f,%.2f) policy=%s replan=%s",
         message.mission_epoch, message.sample_sequence, goal.x, goal.y, goal.z,
-        objective->continuous_tracking ? "continuous_tracking" : "position_hold",
+        objective->immediate_hold ? "immediate_hold" : "position_hold",
         request_replan ? "true" : "false");
   }
 }

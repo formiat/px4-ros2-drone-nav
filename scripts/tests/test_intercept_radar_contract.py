@@ -18,6 +18,8 @@ GUIDANCE = SOURCE / "interceptor_guidance_node.cpp"
 TRACKER = SOURCE / "radar_target_tracker_node.cpp"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
+PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
+NAVIGATION_OBJECTIVE = PACKAGE / "msg" / "NavigationObjective.msg"
 
 
 class InterceptRadarContractTest(unittest.TestCase):
@@ -75,7 +77,21 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("RADAR_DATA_BOUNDARY verified=true", text)
         self.assertIn("ground_truth_boundary_violation", text)
 
-    def test_launch_wires_four_nodes_without_legacy_truth_filter(self) -> None:
+    def test_survivor_hold_brakes_then_requires_stationary_horizon(self) -> None:
+        objective = NAVIGATION_OBJECTIVE.read_text(encoding="utf-8")
+        guidance = GUIDANCE.read_text(encoding="utf-8")
+        planning = PLANNING_TICK.read_text(encoding="utf-8")
+        referee = REFEREE.read_text(encoding="utf-8")
+
+        self.assertIn("uint8 TERMINAL_POLICY_IMMEDIATE_HOLD=2", objective)
+        self.assertIn("TERMINAL_POLICY_IMMEDIATE_HOLD", guidance)
+        self.assertIn("objective->immediate_hold", planning)
+        self.assertIn("mission_command_braking_hold", planning)
+        self.assertIn("interceptor_execution_horizon_topics", referee)
+        self.assertIn("stationary_position_hold", referee)
+        self.assertIn("EXECUTION_MODE_POSITION_HOLD", referee)
+
+    def test_launch_wires_three_radar_pipelines_without_truth_filter(self) -> None:
         text = LAUNCH.read_text(encoding="utf-8")
         for executable in (
             "intercept_mission_referee_node",
@@ -87,13 +103,17 @@ class InterceptRadarContractTest(unittest.TestCase):
                 self.assertIn(f'executable="{executable}"', text)
         self.assertEqual(text.count('"/vehicles/evader/state"'), 2)
         self.assertIn('"tracked_agent_track_topic"', text)
-        self.assertIn('"target_track_readiness_topic"', text)
-        self.assertIn('"interceptor_world_readiness_topic"', text)
+        self.assertIn('"target_track_readiness_topics"', text)
+        self.assertIn('"interceptor_world_readiness_topics"', text)
         self.assertIn('"evader_world_readiness_topic"', text)
         self.assertIn('"track_mode_command_topic"', text)
         self.assertIn('"radar_track_mode_command_topic"', text)
         self.assertNotIn("tracked_agent_state_topic", text)
         self.assertNotIn('executable="intercept_mission_node"', text)
+        self.assertIn('"interceptor_0"', text)
+        self.assertIn('"interceptor_1"', text)
+        self.assertIn('"interceptor_2"', text)
+        self.assertIn('"radar_simulator_node_fqns"', text)
 
     def test_lidar_filter_uses_only_the_derived_target_track(self) -> None:
         text = OBSTACLE_MEMORY.read_text(encoding="utf-8")

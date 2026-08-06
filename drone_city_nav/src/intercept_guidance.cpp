@@ -34,6 +34,19 @@ namespace {
                 position.z + velocity.z * time_s};
 }
 
+[[nodiscard]] Vec3 rotateHorizontal(const Vec3& velocity,
+                                    const double angle_rad) noexcept {
+  const double cosine = std::cos(angle_rad);
+  const double sine = std::sin(angle_rad);
+  return Vec3{velocity.x * cosine - velocity.y * sine,
+              velocity.x * sine + velocity.y * cosine, velocity.z};
+}
+
+[[nodiscard]] double horizontalDistance(const Point3& first,
+                                        const Point3& second) noexcept {
+  return std::hypot(first.x - second.x, first.y - second.y);
+}
+
 [[nodiscard]] std::optional<double>
 horizontalInterceptTime(const Point3& interceptor, const Point3& target,
                         const Vec3& target_velocity,
@@ -131,6 +144,11 @@ InterceptGuidance::InterceptGuidance(const InterceptGuidanceConfig& config)
       !(config_.ahead_corridor_enter_m > 0.0) ||
       !(config_.ahead_corridor_exit_m >= config_.ahead_corridor_enter_m) ||
       !(config_.horizon_smoothing_time_constant_s > 0.0) ||
+      !std::isfinite(config_.prediction_heading_offset_rad) ||
+      std::abs(config_.prediction_heading_offset_rad) > std::acos(-1.0) ||
+      !(config_.hypothesis_zero_distance_m >= 0.0) ||
+      !(config_.hypothesis_full_distance_m > config_.hypothesis_zero_distance_m) ||
+      !(config_.maximum_hypothesis_lateral_offset_m >= 0.0) ||
       !(config_.target_vertical_deceleration_mps2 > 0.0) ||
       !clampToFlightEnvelope(config_.target_flight_envelope.minimum_target_z_m,
                              config_.target_flight_envelope)
@@ -159,6 +177,7 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
   result.observed_velocity =
       target.velocity_valid && finite(target.velocity) ? target.velocity : Vec3{};
   result.observation_stamp_ns = target.stamp_ns;
+  result.configured_heading_offset_rad = config_.prediction_heading_offset_rad;
   result.valid = true;
   result.predicted_position = target.position;
   result.prediction_age_s =
@@ -198,6 +217,18 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
     return result;
   }
 
+  Vec3 hypothesis_velocity = current_velocity;
+  if (interceptor.position_valid && finite(interceptor.position)) {
+    const double distance_m = horizontalDistance(interceptor.position, current_target);
+    const double blend = std::clamp(
+        (distance_m - config_.hypothesis_zero_distance_m) /
+            (config_.hypothesis_full_distance_m - config_.hypothesis_zero_distance_m),
+        0.0, 1.0);
+    result.effective_heading_offset_rad = config_.prediction_heading_offset_rad * blend;
+    hypothesis_velocity =
+        rotateHorizontal(current_velocity, result.effective_heading_offset_rad);
+  }
+
   const Vec3 direction{current_velocity.x / result.target_speed_mps,
                        current_velocity.y / result.target_speed_mps,
                        current_velocity.z / result.target_speed_mps};
@@ -224,8 +255,7 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
   const std::optional<double> intercept_time =
       interceptor.position_valid && finite(interceptor.position)
           ? horizontalInterceptTime(interceptor.position, current_target,
-                                    result.observed_velocity,
-                                    config_.interceptor_speed_mps)
+                                    hypothesis_velocity, config_.interceptor_speed_mps)
           : std::nullopt;
   result.analytic_intercept_time_s =
       intercept_time.value_or(config_.fallback_prediction_horizon_s);
@@ -252,8 +282,22 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
   previous_update_stamp_ns_ = now_ns;
   result.prediction_horizon_s = *smoothed_prediction_horizon_s_;
   result.predicted_position =
-      extrapolate(target.position, result.observed_velocity,
-                  result.prediction_age_s + result.prediction_horizon_s);
+      extrapolate(current_target, hypothesis_velocity, result.prediction_horizon_s);
+  const Point3 baseline_prediction =
+      extrapolate(current_target, current_velocity, result.prediction_horizon_s);
+  const double hypothesis_delta_x = result.predicted_position.x - baseline_prediction.x;
+  const double hypothesis_delta_y = result.predicted_position.y - baseline_prediction.y;
+  result.hypothesis_lateral_offset_m =
+      std::hypot(hypothesis_delta_x, hypothesis_delta_y);
+  if (result.hypothesis_lateral_offset_m >
+          config_.maximum_hypothesis_lateral_offset_m &&
+      result.hypothesis_lateral_offset_m > 1.0e-9) {
+    const double scale = config_.maximum_hypothesis_lateral_offset_m /
+                         result.hypothesis_lateral_offset_m;
+    result.predicted_position.x = baseline_prediction.x + hypothesis_delta_x * scale;
+    result.predicted_position.y = baseline_prediction.y + hypothesis_delta_y * scale;
+    result.hypothesis_lateral_offset_m = config_.maximum_hypothesis_lateral_offset_m;
+  }
   const TargetVerticalPrediction predicted_vertical = predictTargetVerticalMotion(
       target.position.z, result.observed_velocity.z,
       result.prediction_age_s + result.prediction_horizon_s,

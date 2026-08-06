@@ -5,12 +5,12 @@
 Implement an autonomous interceptor drone capable of pursuing an attacking
 drone using external target information.
 
-The current foundation launches one interceptor and one attacking drone in
+The current foundation launches three interceptors and one attacking drone in
 isolated PX4 and ROS namespaces. The attacker flies from a fixed start to a
-fixed goal. The interceptor receives a radar-derived target track, predicts its
-motion, and continuously updates a tracking objective without entering terminal
-goal hold. A separation of 5 m or less destroys both drones and records a
-successful intercept outcome.
+fixed goal. Every interceptor receives an independent radar-derived target
+track, predicts its motion, and continuously updates a tracking objective
+without entering terminal goal hold. A separation of 5 m or less destroys the
+capturing pair and records a successful intercept outcome.
 
 The remaining work is to validate and tune the radar tracking and predictive
 guidance pipeline over repeated mission runs.
@@ -37,8 +37,8 @@ track mode at any range; target occlusion restores variable search cadence.
 The physical radar will not be simulated. Only the radar measurement interface
 and its integration with the interceptor are implemented.
 
-The pursuit data path is split into a mission referee, radar simulator, target
-tracker, and interceptor guidance node. Only the referee and radar simulator may
+Each pursuit data path is split into a mission referee, radar simulator, target
+tracker, and interceptor guidance node. Only the referee and radar simulators may
 subscribe to attacker ground truth. The interceptor-facing `RadarScan` carries
 range, azimuth, elevation, and relative radial velocity, but no absolute target
 position, velocity, or simulator entity identity. The first detection supports
@@ -81,19 +81,24 @@ closing speed, commanded speed, active speed limiter, and radar age.
 The initial target-motion prediction scope is complete. It now consumes the
 target track produced by the radar pipeline described in section 2.
 
-## 4. Multiple Interceptors Versus One Attacker
+## 4. Multiple Interceptors Versus One Attacker (Completed)
 
-Run a scenario with three interceptor drones cooperating against one attacking
-drone.
+The finite scenario now runs three interceptor drones against one attacking
+drone. They start in three different city corners and own independent PX4,
+navigation, radar, tracker, and guidance pipelines. Long-range guidance tests
+the measured motion direction plus `-45` and `+45` degree alternatives. The
+offsets converge to zero near the attacker and cannot move the predicted point
+more than 70 m laterally.
 
-After the attacker is neutralized, all surviving interceptors land and wait for
-the next attacker. The scenario may later become an endless mission that spawns
-a new attacker periodically.
+The first interceptor within 5 m of the attacker destroys that pair. Surviving
+interceptors brake and enter confirmed stationary position hold.
+Interceptor-to-interceptor separation within 5 m is accepted as collateral
+damage; only that pair is destroyed and the pursuit continues. The spectator
+camera switches from a destroyed tracked interceptor to the next living one.
 
-Collision avoidance between drones will not be implemented for this
-experimental stage. Drone-to-drone collisions are acceptable collateral
-damage. As a simplified physical model, two drones coming within 5 m of each
-other may both be considered destroyed.
+This stage deliberately contains one attacker and one episode. Attacker
+despawn, respawn, and an endless campaign remain future work and are not part of
+the current implementation.
 
 ## 5. Multiple Interceptors Versus Multiple Attackers
 

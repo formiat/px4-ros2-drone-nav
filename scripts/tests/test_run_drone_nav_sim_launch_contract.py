@@ -326,8 +326,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             'echo "param set MPC_XY_VEL_MAX ${maximum_speed}"',
             self.text,
         )
-        self.assertIn('px4_parameter_stream "${px4_active_cruise_speed_mps}"', self.text)
-        self.assertIn('px4_parameter_stream "${evader_px4_cruise_speed_mps}"', self.text)
+        self.assertIn('"${px4_active_cruise_speed_mps}"', self.text)
+        self.assertIn('"${evader_px4_cruise_speed_mps}"', self.text)
+        self.assertIn(
+            'px4_parameter_stream "${intercept_px4_cruise_speeds[instance]}"',
+            self.text,
+        )
         self.assertIn(
             "param set MPC_ACC_HOR_MAX "
             "${px4_active_max_horizontal_acceleration_mps2}",
@@ -345,19 +349,29 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_mode_launches_isolated_px4_instances(self) -> None:
         self.assertIn('mission_type="${MISSION_TYPE:-point_to_point}"', self.text)
-        self.assertIn("PX4_UXRCE_DDS_NS=interceptor", self.text)
-        self.assertIn("PX4_UXRCE_DDS_NS=evader", self.text)
-        self.assertIn("run_px4_instance 0", self.text)
-        self.assertIn("run_px4_instance 1", self.text)
+        self.assertIn(
+            "intercept_px4_namespaces=(interceptor_0 interceptor_1 "
+            "interceptor_2 evader)",
+            self.text,
+        )
+        self.assertIn("for instance in 0 1 2 3", self.text)
+        self.assertIn('PX4_UXRCE_DDS_NS="${intercept_px4_namespaces[instance]}"', self.text)
+        self.assertIn('run_px4_instance "${instance}"', self.text)
+        self.assertIn('--px4-log "${interceptor_1_px4_log_file}"', self.text)
+        self.assertIn('--px4-log "${interceptor_2_px4_log_file}"', self.text)
         self.assertIn('--px4-log "${evader_px4_log_file}"', self.text)
 
     def test_intercept_launch_keeps_vehicle_state_isolated(self) -> None:
-        self.assertIn('"/vehicles/interceptor/state"', self.intercept_launch_text)
+        for interceptor in ("interceptor_0", "interceptor_1", "interceptor_2"):
+            self.assertIn(f'"{interceptor}": {{', self.intercept_launch_text)
+            self.assertIn(
+                f'"px4_namespace": "{interceptor}"', self.intercept_launch_text
+            )
         self.assertIn('"/vehicles/evader/state"', self.intercept_launch_text)
-        self.assertIn('px4_namespace": "interceptor"', self.intercept_launch_text)
         self.assertIn('px4_namespace": "evader"', self.intercept_launch_text)
         self.assertIn('"require_mission_start_signal": True', self.intercept_launch_text)
-        self.assertIn('"rviz_drone_follow_tf_enabled": primary', self.intercept_launch_text)
+        self.assertIn('"rviz_drone_follow_tf_enabled": False', self.intercept_launch_text)
+        self.assertIn('executable="intercept_spectator_node"', self.intercept_launch_text)
 
     def test_intercept_gui_observes_terminal_fall_and_headless_exits(self) -> None:
         self.assertIn(

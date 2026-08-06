@@ -1,5 +1,6 @@
 uint8 TERMINAL_POLICY_POSITION_HOLD=0
 uint8 TERMINAL_POLICY_CONTINUOUS_TRACKING=1
+uint8 TERMINAL_POLICY_IMMEDIATE_HOLD=2
 
 uint8 OBJECTIVE_TYPE_POSITION=0
 uint8 OBJECTIVE_TYPE_TRACKING_PREDICTION=1
@@ -16,6 +17,9 @@ geometry_msgs/Point position
 geometry_msgs/Point observed_target_position
 geometry_msgs/Vector3 observed_target_velocity
 float64 prediction_horizon_s
+float64 configured_heading_offset_rad
+float64 effective_heading_offset_rad
+float64 hypothesis_lateral_offset_m
 bool vertical_prediction_limited
 uint8 objective_type
 uint8 guidance_mode

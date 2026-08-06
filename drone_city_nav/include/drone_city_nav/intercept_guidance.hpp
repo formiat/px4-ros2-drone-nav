@@ -26,6 +26,10 @@ struct InterceptGuidanceConfig {
   double ahead_corridor_enter_m{15.0};
   double ahead_corridor_exit_m{20.0};
   double horizon_smoothing_time_constant_s{0.5};
+  double prediction_heading_offset_rad{0.0};
+  double hypothesis_zero_distance_m{30.0};
+  double hypothesis_full_distance_m{120.0};
+  double maximum_hypothesis_lateral_offset_m{70.0};
   double target_vertical_deceleration_mps2{4.0};
   FlightEnvelopeConfig target_flight_envelope{};
 };
@@ -49,6 +53,9 @@ struct InterceptGuidanceResult {
   double target_speed_mps{0.0};
   double ahead_m{0.0};
   double cross_track_m{0.0};
+  double configured_heading_offset_rad{0.0};
+  double effective_heading_offset_rad{0.0};
+  double hypothesis_lateral_offset_m{0.0};
   bool valid{false};
   bool vertical_prediction_limited{false};
 };

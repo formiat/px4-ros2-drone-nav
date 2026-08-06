@@ -119,7 +119,7 @@ Run the GUI simulation:
 ./scripts/sim_gui.sh
 ```
 
-Run the two-vehicle intercept mission:
+Run the finite three-interceptor mission:
 
 ```bash
 ./scripts/sim_intercept_gui.sh
@@ -127,18 +127,21 @@ Run the two-vehicle intercept mission:
 ```
 
 The point-to-point mission remains the default. The intercept mission launches
-isolated interceptor and evader PX4/ROS namespaces. The evader flies to its
-fixed goal at 75% of the interceptor speed policy. The interceptor receives
-only ideal radar measurements containing range, azimuth, elevation, and radial
-velocity; a variable-dt tracker derives the target state used by predictive
-guidance. Scan cadence follows a deterministic correlated random walk from
-0.1 s to 3.0 s while the current target estimate is occluded. Once the planner
-validates swept raw-clear visibility of that estimate, a typed command triggers
-an immediate scan and 20 Hz track mode without a range limit. Tracker coasting
-and guidance continue at 20 Hz between scans. Only the simulation radar adapter
-and mission referee may
-read evader ground truth. Mission motion starts only after both planners report
-a resident world and the tracker has published its first valid target position.
+three isolated interceptor PX4/ROS stacks and one evader stack. The
+interceptors start in three city corners; one starts at the evader's destination
+but receives neither that destination nor any other attacker ground truth. The
+evader flies diagonally to its fixed goal at 75% of the interceptor speed
+policy. Each interceptor receives only its own ideal radar measurements
+containing range, azimuth, elevation, and radial velocity; an independent
+variable-dt tracker derives the target state used by predictive guidance. Scan
+cadence follows a deterministic correlated random walk from 0.1 s to 3.0 s
+while the current target estimate is occluded. Once a planner validates swept
+raw-clear visibility of that estimate, a typed command triggers an immediate
+scan and 20 Hz track mode without a range limit. Tracker coasting and guidance
+continue at 20 Hz between scans. Only the three simulation radar adapters and
+the mission referee may read evader ground truth. Mission motion starts only
+after all four planners report a resident world and all three trackers have
+published a valid target position.
 
 The continuous guidance objective has no terminal goal hold. It uses a
 latency-compensated analytic intercept solution, capped at 15 s, and smoothly
@@ -149,24 +152,36 @@ half-open flight envelope. The planner treats current-target visibility and the
 path to the predicted intercept point separately. A visible current target keeps
 direct MPPI interception active; a blocked full-lead path shortens the prediction
 toward the current target instead of dropping direct mode.
-A swept separation of 5 m publishes typed
-`VehicleDestroyed` events for both roles; their offboard nodes then force-disarm
-and confirm both deaths before reporting a successful intercept. If the evader reaches its goal
-first, the first airborne sample inside the goal radius latches that outcome,
-the interceptor stops tracking and enters a
-confirmed position hold, and neither vehicle is disarmed. A later inertial
-approach cannot change the first outcome, although entering the capture radius
-still applies the normal two-vehicle disarm. Evader goal arrival is an intercept
-failure but still a technically successful simulation outcome. RViz and Gazebo
-follow the interceptor. The GUI workflow remains open after either outcome. The
-headless workflow exits only after the applicable hold or disarm settlement is
-confirmed in the log.
+The central interceptor predicts the measured direction. The other two use
+`-45` and `+45` degree motion hypotheses at long range; those offsets converge
+continuously to zero below 30 m and their lateral lead is capped at 70 m. The
+radar track itself is never rotated or falsified.
+
+A swept separation of 5 m between any interceptor and the evader publishes
+typed `VehicleDestroyed` events for that pair. Their offboard nodes force-disarm
+and confirm both deaths, while the other interceptors brake and enter confirmed
+stationary position hold. A physical or 5 m proximity collision between
+interceptors destroys only the involved vehicles and the mission continues
+while another interceptor is available. If the evader reaches its goal first,
+the first airborne sample inside the goal radius latches that outcome, all
+surviving interceptors stop tracking, brake, and enter confirmed stationary
+position hold; no vehicle is disarmed. A later inertial approach cannot change
+the first outcome, although entering the capture radius still applies the normal
+pair disarm. Evader goal arrival is an intercept failure but still a technically
+successful simulation outcome. RViz and Gazebo follow `interceptor_0`, then
+switch deterministically to the next living interceptor if it dies. The GUI
+workflow remains open after either outcome. The headless workflow exits only
+after all applicable hold and disarm settlements are confirmed in the log. The
+mission contains one evader only; it does not respawn attackers or start another
+episode.
 
 Mission outcome and vehicle death are separate contracts. Mission failures never
 request disarm. Force-disarm is owned only by the latched death lifecycle and is
-accepted only for a physical Gazebo collision or a proximity intercept. If the
+accepted only for a physical Gazebo collision or a typed 5 m proximity death. If the
 evader physically crashes, its death/disarm is confirmed and a surviving
-interceptor is placed into a confirmed position hold.
+interceptor is braked into a confirmed stationary position hold. A typed proximity
+collision between two interceptors is the same physical death contract, not a
+mission-failure disarm path.
 
 Stop all running simulation leftovers, including related Gazebo/PX4/ROS
 processes and simulation containers:

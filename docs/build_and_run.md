@@ -80,7 +80,7 @@ Headless smoke run:
 ./scripts/sim_headless.sh
 ```
 
-Two-vehicle intercept mission:
+Finite three-interceptor versus one-evader mission:
 
 ```bash
 ./scripts/sim_intercept_gui.sh
@@ -90,18 +90,19 @@ Two-vehicle intercept mission:
 Set `EVADER_SPEED_SCALE` to override the default `0.75` evader speed multiplier.
 By default, the evader flies diagonally across the city from map position
 `(270, 54)` to `(54, 378)` at `18 m` altitude.
-The interceptor uses a latency-compensated analytic intercept solution capped at
-15 s. While ahead inside the target corridor, the smoothed lead is capped at
-1 s.
-The interceptor receives no evader coordinates. An ideal radar adapter publishes
+Each interceptor uses a latency-compensated analytic intercept solution capped
+at 15 s. While ahead inside the target corridor, the smoothed lead is capped at
+1 s. The three long-range motion hypotheses are `0`, `+45`, and `-45` degrees;
+the lateral hypotheses converge to zero within 30 m and are capped at 70 m.
+Interceptors receive no evader coordinates. Three ideal radar adapters publish
 only range, azimuth, elevation, and radial velocity at a deterministic varying
 cadence between 0.1 s and 3.0 s. A typed planner command switches it immediately
 to 20 Hz whenever the current target estimate has swept raw-clear visibility,
 independent of range, and returns it to varying search cadence when the target is
 occluded. A variable-dt tracker reconstructs and coasts a target track, and
 guidance continues at 20 Hz between scans.
-The mission start barrier waits for both planner worlds and the first valid
-target position from that tracker. Static planner readiness comes from the
+The mission start barrier waits for all four planner worlds and the first valid
+target position from every tracker. Static planner readiness comes from the
 resident Occupancy3D ESDF and does not wait for a lidar snapshot.
 Prediction includes measurement age and is clipped only by physical raw
 occupancy in the active static or sensor-derived map. Vertical prediction
@@ -109,15 +110,16 @@ decelerates vertical target motion to a stop and remains inside the configured
 flight envelope. Visibility of the current target uses direct moving-target MPPI
 pursuit. If only the full predicted intercept point is blocked, the planner
 shortens the lead while preserving direct mode.
-The headless command requires a terminal intercept outcome and validates both
-PX4 instance logs. An intercept result requires confirmed disarm of both
-vehicles. An evader-goal result requires the interceptor to stop tracking and
-confirm a stable position hold without disarming either vehicle. The headless
-workflow exits after the corresponding settlement is recorded. If inertial
-motion causes a late capture after evader goal arrival, both disarms are required
-while the original evader-goal outcome remains unchanged. The GUI command keeps
-Gazebo and RViz open after either outcome; stop it explicitly when inspection is
-complete.
+The headless command validates all four PX4 logs. An intercept result requires
+confirmed disarm of the capturing pair and confirmed holds from every surviving
+interceptor. Survivors first brake, then must publish and maintain a stationary
+position-hold horizon. An evader-goal result requires all surviving interceptors
+to stop tracking and confirm the same hold transition without disarming. If
+inertial motion causes a late capture after evader goal arrival, both pair
+disarms are required while the original evader-goal outcome remains unchanged.
+The GUI command keeps Gazebo and RViz open after either outcome; stop it
+explicitly when inspection is complete. No attacker respawn or repeated episode
+is performed.
 
 A mission error never requests disarm. Force-disarm occurs only after a typed
 physical-collision or proximity-intercept destruction event. A physical evader

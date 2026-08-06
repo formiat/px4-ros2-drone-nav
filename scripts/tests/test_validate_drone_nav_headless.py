@@ -66,16 +66,53 @@ class SafetyRelevantRosLogTest(unittest.TestCase):
 
 
 class InterceptSettlementValidationTest(unittest.TestCase):
+    def test_interceptor_physical_losses_require_typed_disarm_settlement(self) -> None:
+        log = (
+            "VEHICLE_DESTROYED referee_observed=true role=interceptor "
+            "vehicle_id='interceptor_1' cause=physical_collision\n"
+            "[vehicles.interceptor_1.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=interceptor cause=physical_collision\n"
+        )
+        errors: list[str] = []
+        VALIDATOR.validate_intercept_physical_losses(log, errors)
+        self.assertEqual(errors, [])
+
+    def test_interceptor_physical_loss_without_disarm_is_rejected(self) -> None:
+        log = (
+            "VEHICLE_DESTROYED referee_observed=true role=interceptor "
+            "vehicle_id='interceptor_2' cause=physical_collision\n"
+        )
+        errors: list[str] = []
+        VALIDATOR.validate_intercept_physical_losses(log, errors)
+        self.assertIn(
+            "FAIL: physical loss is disarm-confirmed for interceptor_2", errors
+        )
+
+    def test_evader_physical_loss_remains_a_validation_failure(self) -> None:
+        log = (
+            "VEHICLE_DESTROYED referee_observed=true role=evader "
+            "vehicle_id='evader' cause=physical_collision\n"
+        )
+        errors: list[str] = []
+        VALIDATOR.validate_intercept_physical_losses(log, errors)
+        self.assertIn("FAIL: evader physical crash was reported", errors)
+
     def test_intercept_requires_two_confirmed_disarms_in_completed_log(self) -> None:
         log = (
-            "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true\n"
-            "[vehicles.interceptor.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true "
+            "live_interceptors=3\n"
+            "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=interceptor cause=proximity_intercept "
             "mission_epoch=1 detail='intercepted'\n"
             "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=evader cause=proximity_intercept "
             "mission_epoch=1 detail='intercepted'\n"
-            "MISSION_RESULT success=true mission=intercept outcome=intercepted\n"
+            "INTERCEPTOR_HOLD_CONFIRMED vehicle_id='interceptor_1' "
+            "position_error_m=0.2 speed_mps=0.1\n"
+            "INTERCEPTOR_HOLD_CONFIRMED vehicle_id='interceptor_2' "
+            "position_error_m=0.2 speed_mps=0.1\n"
+            "MISSION_RESULT success=true mission=intercept outcome=intercepted "
+            "capturing_interceptor_id='interceptor_0'\n"
         )
         errors: list[str] = []
         VALIDATOR.validate_intercept_settlement(log, errors)
@@ -83,11 +120,13 @@ class InterceptSettlementValidationTest(unittest.TestCase):
 
     def test_intercept_accepts_confirmation_logged_during_shutdown(self) -> None:
         log = (
-            "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true\n"
-            "[vehicles.interceptor.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true "
+            "live_interceptors=1\n"
+            "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=interceptor cause=proximity_intercept "
             "mission_epoch=1 detail='intercepted'\n"
-            "MISSION_RESULT success=true mission=intercept outcome=intercepted\n"
+            "MISSION_RESULT success=true mission=intercept outcome=intercepted "
+            "capturing_interceptor_id='interceptor_0'\n"
             "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=evader cause=proximity_intercept "
             "mission_epoch=1 detail='intercepted'\n"
@@ -100,7 +139,8 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         log = (
             "INTERCEPT_OUTCOME outcome=evader_reached_goal first_terminal_event=true\n"
             "INTERCEPTOR_HOLD requested=true\n"
-            "INTERCEPTOR_HOLD_CONFIRMED position_error_m=0.2 speed_mps=0.1\n"
+            "INTERCEPTOR_HOLD_CONFIRMED vehicle_id='interceptor_0' "
+            "position_error_m=0.2 speed_mps=0.1\n"
             "MISSION_RESULT success=true mission=intercept "
             "outcome=evader_reached_goal\n"
         )
@@ -129,8 +169,9 @@ class InterceptSettlementValidationTest(unittest.TestCase):
             "INTERCEPT_OUTCOME outcome=evader_reached_goal first_terminal_event=true\n"
             "INTERCEPTOR_HOLD requested=true\n"
             "INTERCEPT_LATE_CAPTURE outcome_preserved=evader_reached_goal\n"
-            "INTERCEPTOR_HOLD_ABORTED reason=late_capture\n"
-            "[vehicles.interceptor.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "INTERCEPTOR_HOLD_ABORTED vehicle_id='interceptor_0' "
+            "reason=late_capture\n"
+            "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=interceptor cause=proximity_intercept "
             "mission_epoch=1 detail='late_intercept_after_evader_goal'\n"
             "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
@@ -148,30 +189,31 @@ class InterceptSettlementValidationTest(unittest.TestCase):
     ) -> None:
         log = (
             "VEHICLE_DESTROYED referee_observed=true role=evader "
+            "vehicle_id='evader' "
             "cause=physical_collision mission_epoch=1 detail='gazebo_contact'\n"
             "INTERCEPTOR_HOLD requested=true\n"
             "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=evader cause=physical_collision "
             "mission_epoch=1 detail='gazebo_contact'\n"
-            "INTERCEPTOR_HOLD_CONFIRMED position_error_m=0.2 speed_mps=0.1\n"
-            "MISSION_RESULT success=false mission=intercept outcome=system_failure "
-            "reason='physical_collision_evader' mission_epoch=1 "
-            "disarm_requested=false\n"
+            "INTERCEPTOR_HOLD_CONFIRMED vehicle_id='interceptor_0' "
+            "position_error_m=0.2 speed_mps=0.1\n"
+            "MISSION_RESULT success=false mission=intercept "
+            "outcome=evader_crashed mission_epoch=1\n"
         )
         errors: list[str] = []
         VALIDATOR.validate_intercept_settlement(log, errors)
         self.assertEqual(errors, [])
 
-    def test_interceptor_physical_destruction_requires_its_disarm(self) -> None:
+    def test_no_interceptors_remaining_requires_a_confirmed_disarm(self) -> None:
         log = (
             "VEHICLE_DESTROYED referee_observed=true role=interceptor "
+            "vehicle_id='interceptor_0' "
             "cause=physical_collision mission_epoch=1 detail='gazebo_contact'\n"
-            "[vehicles.interceptor.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=interceptor cause=physical_collision "
             "mission_epoch=1 detail='gazebo_contact'\n"
-            "MISSION_RESULT success=false mission=intercept outcome=system_failure "
-            "reason='physical_collision_interceptor' mission_epoch=1 "
-            "disarm_requested=false\n"
+            "MISSION_RESULT success=false mission=intercept "
+            "outcome=no_interceptors_remaining mission_epoch=1\n"
         )
         errors: list[str] = []
         VALIDATOR.validate_intercept_settlement(log, errors)
@@ -180,13 +222,13 @@ class InterceptSettlementValidationTest(unittest.TestCase):
     def test_evader_physical_destruction_rejects_missing_hold_confirmation(self) -> None:
         log = (
             "VEHICLE_DESTROYED referee_observed=true role=evader "
+            "vehicle_id='evader' "
             "cause=physical_collision\n"
             "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=evader cause=physical_collision\n"
             "INTERCEPTOR_HOLD requested=true\n"
-            "MISSION_RESULT success=false mission=intercept outcome=system_failure "
-            "reason='physical_collision_evader' mission_epoch=1 "
-            "disarm_requested=false\n"
+            "MISSION_RESULT success=false mission=intercept "
+            "outcome=evader_crashed mission_epoch=1\n"
         )
         errors: list[str] = []
         VALIDATOR.validate_intercept_settlement(log, errors)

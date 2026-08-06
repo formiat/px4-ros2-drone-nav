@@ -55,19 +55,20 @@ class PlannerReadinessContractTest(unittest.TestCase):
             planner_parameters,
         )
 
-    def test_intercept_start_requires_both_worlds_and_a_target_track(self) -> None:
+    def test_intercept_start_requires_all_worlds_and_target_tracks(self) -> None:
         referee = REFEREE.read_text(encoding="utf-8")
         tracker = TRACKER.read_text(encoding="utf-8")
         launch = LAUNCH.read_text(encoding="utf-8")
 
-        self.assertIn("InterceptMissionReadiness readiness", referee)
-        self.assertIn("interceptor_world_readiness_topic", referee)
+        self.assertIn("missionReady() const", referee)
+        self.assertIn("interceptor_world_readiness_topics", referee)
         self.assertIn("evader_world_readiness_topic", referee)
-        self.assertIn("target_track_readiness_topic", referee)
+        self.assertIn("target_track_readiness_topics", referee)
+        self.assertIn("std::ranges::all_of(interceptors_", referee)
         self.assertIn("publishTrackReadiness(true)", tracker)
-        self.assertIn("interceptor_world_readiness_topic", launch)
+        self.assertIn("interceptor_world_readiness_topics", launch)
         self.assertIn("evader_world_readiness_topic", launch)
-        self.assertIn("target_track_readiness_topic", launch)
+        self.assertIn("target_track_readiness_topics", launch)
 
 
 if __name__ == "__main__":

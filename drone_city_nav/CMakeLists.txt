@@ -55,6 +55,7 @@ rosidl_generate_interfaces(
   "msg/RadarTrackModeCommand.msg"
   "msg/TargetTrack.msg"
   "msg/InterceptMissionCommand.msg"
+  "msg/SpectatorTarget.msg"
   "msg/VehicleNavigationState.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
@@ -324,6 +325,12 @@ target_link_libraries(interceptor_guidance_node drone_city_nav_core
 ament_target_dependencies(interceptor_guidance_node rclcpp)
 enable_project_warnings(interceptor_guidance_node)
 
+add_executable(intercept_spectator_node src/intercept_spectator_node.cpp)
+target_compile_features(intercept_spectator_node PRIVATE cxx_std_20)
+target_link_libraries(intercept_spectator_node ${cpp_typesupport_target})
+ament_target_dependencies(intercept_spectator_node geometry_msgs rclcpp tf2_ros)
+enable_project_warnings(intercept_spectator_node)
+
 add_executable(
   lidar_debug_node
   src/lidar_debug_node.cpp
@@ -392,6 +399,7 @@ install(
     radar_simulator_node
     radar_target_tracker_node
     interceptor_guidance_node
+    intercept_spectator_node
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib

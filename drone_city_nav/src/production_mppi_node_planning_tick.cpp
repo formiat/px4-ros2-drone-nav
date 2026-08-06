@@ -321,7 +321,13 @@ void ProductionMppiNode::planningTick() {
     }
   }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
-  if (goal_capture.latched) {
+  if (objective && objective->immediate_hold) {
+    planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
+    target = navigation.state;
+    speed_policy.reference_speed_mps = 0.0;
+    speed_policy.target_lookahead_m = 0.0;
+    target_source = "mission_command_braking_hold";
+  } else if (goal_capture.latched) {
     planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
     target = mppi::State{
         .x = static_cast<float>(mission_goal.x),

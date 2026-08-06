@@ -26,6 +26,36 @@ namespace {
 
 } // namespace
 
+double minimumSweptVehicleSeparation(
+    const TimedVehicleState& first, const TimedVehicleState& second,
+    const std::optional<TimedVehicleState>& previous_first,
+    const std::optional<TimedVehicleState>& previous_second) noexcept {
+  const Vec3 current_relative = subtract(first.position, second.position);
+  double minimum = norm(current_relative);
+  if (!previous_first || !previous_second) {
+    return minimum;
+  }
+  const Vec3 previous_relative =
+      subtract(previous_first->position, previous_second->position);
+  const Vec3 delta{current_relative.x - previous_relative.x,
+                   current_relative.y - previous_relative.y,
+                   current_relative.z - previous_relative.z};
+  const double delta_norm_squared =
+      delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+  if (delta_norm_squared <= 1.0e-12) {
+    return std::min(minimum, norm(previous_relative));
+  }
+  const double projection =
+      -(previous_relative.x * delta.x + previous_relative.y * delta.y +
+        previous_relative.z * delta.z) /
+      delta_norm_squared;
+  const double fraction = std::clamp(projection, 0.0, 1.0);
+  const Vec3 closest{previous_relative.x + fraction * delta.x,
+                     previous_relative.y + fraction * delta.y,
+                     previous_relative.z + fraction * delta.z};
+  return std::min(minimum, norm(closest));
+}
+
 bool interceptMissionReady(const InterceptMissionReadiness& readiness) noexcept {
   return readiness.interceptor_navigation_ready && readiness.evader_navigation_ready &&
          readiness.interceptor_world_ready && readiness.evader_world_ready &&
@@ -92,22 +122,23 @@ InterceptStateAdjudicationLifecycle::update(const std::int64_t now_ns,
 }
 
 InterceptorHoldConfirmation::InterceptorHoldConfirmation(
-    const Point3& hold_position, const InterceptorHoldConfig& config)
-    : hold_position_{hold_position},
-      config_{config} {
-  if (!finite(hold_position_) || !(config_.position_tolerance_m > 0.0) ||
-      !(config_.maximum_speed_mps >= 0.0) ||
+    const InterceptorHoldConfig& config)
+    : config_{config} {
+  if (!(config_.position_tolerance_m > 0.0) || !(config_.maximum_speed_mps >= 0.0) ||
       !(config_.confirmation_duration_s >= 0.0)) {
     throw std::invalid_argument{"invalid interceptor hold configuration"};
   }
 }
 
 InterceptorHoldUpdate
-InterceptorHoldConfirmation::update(const TimedVehicleState& interceptor) {
+InterceptorHoldConfirmation::update(const TimedVehicleState& interceptor,
+                                    const std::optional<Point3>& active_hold_position) {
   InterceptorHoldUpdate result;
-  result.position_error_m = interceptor.position_valid && finite(interceptor.position)
-                                ? norm(subtract(interceptor.position, hold_position_))
-                                : std::numeric_limits<double>::infinity();
+  result.position_error_m =
+      active_hold_position && finite(*active_hold_position) &&
+              interceptor.position_valid && finite(interceptor.position)
+          ? norm(subtract(interceptor.position, *active_hold_position))
+          : std::numeric_limits<double>::infinity();
   result.speed_mps = interceptor.velocity_valid && finite(interceptor.velocity)
                          ? norm(interceptor.velocity)
                          : std::numeric_limits<double>::infinity();
@@ -116,8 +147,8 @@ InterceptorHoldConfirmation::update(const TimedVehicleState& interceptor) {
     return result;
   }
 
-  const bool stable = interceptor.stamp_ns > 0 && interceptor.armed &&
-                      interceptor.airborne &&
+  const bool stable = active_hold_position.has_value() && interceptor.stamp_ns > 0 &&
+                      interceptor.armed && interceptor.airborne &&
                       result.position_error_m <= config_.position_tolerance_m &&
                       result.speed_mps <= config_.maximum_speed_mps;
   if (!stable) {
@@ -152,30 +183,8 @@ InterceptMissionEvaluator::InterceptMissionEvaluator(
 double InterceptMissionEvaluator::sweptSeparation(
     const TimedVehicleState& interceptor,
     const TimedVehicleState& evader) const noexcept {
-  const Vec3 current_relative = subtract(interceptor.position, evader.position);
-  double minimum = norm(current_relative);
-  if (!previous_interceptor_ || !previous_evader_) {
-    return minimum;
-  }
-  const Vec3 previous_relative =
-      subtract(previous_interceptor_->position, previous_evader_->position);
-  const Vec3 delta{current_relative.x - previous_relative.x,
-                   current_relative.y - previous_relative.y,
-                   current_relative.z - previous_relative.z};
-  const double delta_norm_squared =
-      delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
-  if (delta_norm_squared <= 1.0e-12) {
-    return std::min(minimum, norm(previous_relative));
-  }
-  const double projection =
-      -(previous_relative.x * delta.x + previous_relative.y * delta.y +
-        previous_relative.z * delta.z) /
-      delta_norm_squared;
-  const double fraction = std::clamp(projection, 0.0, 1.0);
-  const Vec3 closest{previous_relative.x + fraction * delta.x,
-                     previous_relative.y + fraction * delta.y,
-                     previous_relative.z + fraction * delta.z};
-  return std::min(minimum, norm(closest));
+  return minimumSweptVehicleSeparation(interceptor, evader, previous_interceptor_,
+                                       previous_evader_);
 }
 
 InterceptMissionUpdate
@@ -222,6 +231,85 @@ void InterceptMissionEvaluator::resetTemporalContinuity() noexcept {
   previous_evader_.reset();
 }
 
+MultiInterceptMissionEvaluator::MultiInterceptMissionEvaluator(
+    const Point3& evader_goal, const std::size_t interceptor_count,
+    const InterceptMissionConfig& config)
+    : evader_goal_{evader_goal},
+      config_{config},
+      previous_interceptors_(interceptor_count) {
+  if (!finite(evader_goal_) || interceptor_count == 0U ||
+      !(config_.capture_radius_m > 0.0) || !(config_.evader_goal_radius_m > 0.0)) {
+    throw std::invalid_argument{"invalid multi-intercept mission configuration"};
+  }
+}
+
+MultiInterceptMissionUpdate MultiInterceptMissionEvaluator::update(
+    const std::span<const TimedVehicleState> interceptors,
+    const TimedVehicleState& evader) {
+  if (interceptors.size() != previous_interceptors_.size()) {
+    throw std::invalid_argument{"interceptor count changed during mission"};
+  }
+  MultiInterceptMissionUpdate result{.outcome = outcome_,
+                                     .capture_detected = capture_detected_,
+                                     .capturing_interceptor_index = std::nullopt,
+                                     .separation_m =
+                                         std::numeric_limits<double>::infinity()};
+  if (!evader.position_valid || !finite(evader.position)) {
+    return result;
+  }
+
+  const bool evader_active = evader.armed && evader.airborne;
+  double best_capture_separation = std::numeric_limits<double>::infinity();
+  for (std::size_t index = 0; index < interceptors.size(); ++index) {
+    const TimedVehicleState& interceptor = interceptors[index];
+    if (!interceptor.position_valid || !finite(interceptor.position)) {
+      continue;
+    }
+    const double separation = minimumSweptVehicleSeparation(
+        interceptor, evader, previous_interceptors_[index], previous_evader_);
+    result.separation_m = std::min(result.separation_m, separation);
+    const bool captured = evader_active && interceptor.armed && interceptor.airborne &&
+                          separation <= config_.capture_radius_m;
+    if (captured && separation < best_capture_separation) {
+      result.capturing_interceptor_index = index;
+      best_capture_separation = separation;
+    }
+  }
+  if (result.capturing_interceptor_index.has_value()) {
+    result.separation_m = best_capture_separation;
+  }
+
+  const bool captured_now = result.capturing_interceptor_index.has_value();
+  if (captured_now && !capture_detected_) {
+    capture_detected_ = true;
+    result.capture_detected = true;
+    result.newly_captured = true;
+  }
+  if (outcome_ == InterceptMissionOutcome::kRunning && captured_now) {
+    outcome_ = InterceptMissionOutcome::kIntercepted;
+    result.outcome = outcome_;
+    result.newly_terminal = true;
+  } else if (outcome_ == InterceptMissionOutcome::kRunning && evader_active) {
+    const double goal_distance = norm(subtract(evader.position, evader_goal_));
+    if (goal_distance <= config_.evader_goal_radius_m) {
+      outcome_ = InterceptMissionOutcome::kEvaderReachedGoal;
+      result.outcome = outcome_;
+      result.newly_terminal = true;
+    }
+  }
+
+  for (std::size_t index = 0; index < interceptors.size(); ++index) {
+    previous_interceptors_[index] = interceptors[index];
+  }
+  previous_evader_ = evader;
+  return result;
+}
+
+void MultiInterceptMissionEvaluator::resetTemporalContinuity() noexcept {
+  std::fill(previous_interceptors_.begin(), previous_interceptors_.end(), std::nullopt);
+  previous_evader_.reset();
+}
+
 const char*
 interceptMissionOutcomeName(const InterceptMissionOutcome outcome) noexcept {
   switch (outcome) {
@@ -231,6 +319,10 @@ interceptMissionOutcomeName(const InterceptMissionOutcome outcome) noexcept {
       return "intercepted";
     case InterceptMissionOutcome::kEvaderReachedGoal:
       return "evader_reached_goal";
+    case InterceptMissionOutcome::kEvaderCrashed:
+      return "evader_crashed";
+    case InterceptMissionOutcome::kNoInterceptorsRemaining:
+      return "no_interceptors_remaining";
   }
   return "unknown";
 }

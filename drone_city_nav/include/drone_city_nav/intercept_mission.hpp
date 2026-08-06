@@ -2,8 +2,11 @@
 
 #include "drone_city_nav/types.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -29,6 +32,8 @@ enum class InterceptMissionOutcome : std::uint8_t {
   kRunning,
   kIntercepted,
   kEvaderReachedGoal,
+  kEvaderCrashed,
+  kNoInterceptorsRemaining,
 };
 
 struct InterceptMissionUpdate {
@@ -36,6 +41,15 @@ struct InterceptMissionUpdate {
   bool newly_terminal{false};
   bool capture_detected{false};
   bool newly_captured{false};
+  double separation_m{0.0};
+};
+
+struct MultiInterceptMissionUpdate {
+  InterceptMissionOutcome outcome{InterceptMissionOutcome::kRunning};
+  bool newly_terminal{false};
+  bool capture_detected{false};
+  bool newly_captured{false};
+  std::optional<std::size_t> capturing_interceptor_index;
   double separation_m{0.0};
 };
 
@@ -109,13 +123,13 @@ struct InterceptorHoldUpdate {
 
 class InterceptorHoldConfirmation final {
 public:
-  InterceptorHoldConfirmation(const Point3& hold_position,
-                              const InterceptorHoldConfig& config = {});
+  explicit InterceptorHoldConfirmation(const InterceptorHoldConfig& config = {});
 
-  [[nodiscard]] InterceptorHoldUpdate update(const TimedVehicleState& interceptor);
+  [[nodiscard]] InterceptorHoldUpdate
+  update(const TimedVehicleState& interceptor,
+         const std::optional<Point3>& active_hold_position);
 
 private:
-  Point3 hold_position_{};
   InterceptorHoldConfig config_{};
   std::optional<std::int64_t> stable_since_ns_;
   bool confirmed_{false};
@@ -145,6 +159,35 @@ private:
   InterceptMissionOutcome outcome_{InterceptMissionOutcome::kRunning};
   bool capture_detected_{false};
 };
+
+class MultiInterceptMissionEvaluator final {
+public:
+  MultiInterceptMissionEvaluator(const Point3& evader_goal,
+                                 std::size_t interceptor_count,
+                                 const InterceptMissionConfig& config = {});
+
+  [[nodiscard]] MultiInterceptMissionUpdate
+  update(std::span<const TimedVehicleState> interceptors,
+         const TimedVehicleState& evader);
+  void resetTemporalContinuity() noexcept;
+
+  [[nodiscard]] InterceptMissionOutcome outcome() const noexcept {
+    return outcome_;
+  }
+
+private:
+  Point3 evader_goal_{};
+  InterceptMissionConfig config_{};
+  std::vector<std::optional<TimedVehicleState>> previous_interceptors_;
+  std::optional<TimedVehicleState> previous_evader_;
+  InterceptMissionOutcome outcome_{InterceptMissionOutcome::kRunning};
+  bool capture_detected_{false};
+};
+
+[[nodiscard]] double minimumSweptVehicleSeparation(
+    const TimedVehicleState& first, const TimedVehicleState& second,
+    const std::optional<TimedVehicleState>& previous_first = std::nullopt,
+    const std::optional<TimedVehicleState>& previous_second = std::nullopt) noexcept;
 
 [[nodiscard]] const char*
 interceptMissionOutcomeName(InterceptMissionOutcome outcome) noexcept;

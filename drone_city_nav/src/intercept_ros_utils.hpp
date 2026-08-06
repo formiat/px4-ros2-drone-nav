@@ -1,9 +1,11 @@
 #pragma once
 
 #include "drone_city_nav/intercept_mission.hpp"
+#include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 
 #include <builtin_interfaces/msg/time.hpp>
+#include <cmath>
 #include <cstdint>
 
 namespace drone_city_nav::detail {
@@ -36,6 +38,43 @@ vehicleState(const msg::VehicleNavigationState& message) noexcept {
       .airborne = message.airborne,
       .navigation_ready = message.navigation_ready,
   };
+}
+
+[[nodiscard]] inline const char* vehicleRoleName(const std::uint8_t role) noexcept {
+  switch (role) {
+    case msg::VehicleDestroyed::ROLE_INTERCEPTOR:
+      return "interceptor";
+    case msg::VehicleDestroyed::ROLE_EVADER:
+      return "evader";
+    default:
+      return "unspecified";
+  }
+}
+
+[[nodiscard]] inline const char* deathCauseName(const std::uint8_t cause) noexcept {
+  switch (cause) {
+    case msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION:
+      return "physical_collision";
+    case msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT:
+      return "proximity_intercept";
+    case msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION:
+      return "proximity_collision";
+    default:
+      return "invalid";
+  }
+}
+
+[[nodiscard]] inline bool validDeathCause(const std::uint8_t cause) noexcept {
+  return cause == msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
+         cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT ||
+         cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION;
+}
+
+[[nodiscard]] inline double speed(const TimedVehicleState& state) noexcept {
+  return state.velocity_valid
+             ? std::hypot(std::hypot(state.velocity.x, state.velocity.y),
+                          state.velocity.z)
+             : 0.0;
 }
 
 } // namespace drone_city_nav::detail
