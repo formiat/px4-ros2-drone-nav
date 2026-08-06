@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <limits>
 #include <span>
@@ -33,6 +34,14 @@ void ProductionMppiNode::planningTick() {
   const std::uint64_t effective_guide_generation =
       direct_tracking_line_of_sight
           ? (std::uint64_t{1} << 63U) | line_of_sight_generation
+          : 0U;
+  const StaticRouteObjective current_route_objective =
+      objective ? makeStaticRouteObjective(*objective) : StaticRouteObjective{};
+  const std::uint64_t required_route_epoch =
+      minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
+  const std::uint64_t required_route_sample =
+      objective && objective->mission_epoch == required_route_epoch
+          ? minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire)
           : 0U;
   const auto snapshot_started = std::chrono::steady_clock::now();
   ProductionMppiNavigation navigation;
@@ -161,8 +170,23 @@ void ProductionMppiNode::planningTick() {
   if (!engine_->ready()) {
     return;
   }
+  const bool route_objective_matches = staticRouteObjectiveMatches(
+      esdf->route_objective, current_route_objective, required_route_sample,
+      std::numeric_limits<double>::infinity());
+  if (!direct_tracking_line_of_sight && objective && objective->continuous_tracking &&
+      !route_objective_matches) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "TRACKING_ROUTE_HANDOFF status=waiting_for_current_route "
+        "current_epoch=%" PRIu64 " current_sample=%" PRIu64 " required_sample=%" PRIu64
+        " route_epoch=%" PRIu64 " route_sample=%" PRIu64,
+        objective->mission_epoch, objective->sample_sequence, required_route_sample,
+        esdf->route_objective.mission_epoch, esdf->route_objective.sample_sequence);
+  }
+  bool route_usable = !direct_tracking_line_of_sight && route_objective_matches;
+  bool route_cross_track_rejected = false;
   const std::span<const Point2> guide =
-      !direct_tracking_line_of_sight && esdf->route_2d_projection
+      route_usable && esdf->route_2d_projection
           ? std::span<const Point2>{*esdf->route_2d_projection}
           : std::span<const Point2>{};
   if (tracked_route_generation_ != esdf->global_guide_generation) {
@@ -170,7 +194,7 @@ void ProductionMppiNode::planningTick() {
     tracked_route_station_m_ = 0.0;
   }
   GlobalGuideProjection measured_route_projection;
-  if (!direct_tracking_line_of_sight && esdf->route_3d) {
+  if (route_usable && esdf->route_3d) {
     const RouteProjection3D measured_route_3d = projectOntoRoute3D(
         *esdf->route_3d,
         Point3{navigation.state.x, navigation.state.y, navigation.state.z},
@@ -184,7 +208,7 @@ void ProductionMppiNode::planningTick() {
         .cross_track_m = measured_route_3d.distance_m,
         .point = Point2{measured_route_3d.point.x, measured_route_3d.point.y},
     };
-  } else if (!direct_tracking_line_of_sight && esdf->route_2d_projection) {
+  } else if (route_usable && esdf->route_2d_projection) {
     measured_route_projection = projectOntoGlobalGuide(
         *esdf->route_2d_projection, Point2{navigation.state.x, navigation.state.y},
         tracked_route_station_m_);
@@ -193,6 +217,21 @@ void ProductionMppiNode::planningTick() {
     tracked_route_station_m_ =
         std::max(tracked_route_station_m_, measured_route_projection.station_m);
   }
+  if (measured_route_projection.valid &&
+      measured_route_projection.cross_track_m >
+          active_guide_config_.maximum_cross_track_m) {
+    route_usable = false;
+    route_cross_track_rejected = true;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "TRACKING_ROUTE_HANDOFF status=rejected_cross_track "
+        "route_generation=%" PRIu64 " cross_track_m=%.2f maximum_m=%.2f",
+        esdf->global_guide_generation, measured_route_projection.cross_track_m,
+        active_guide_config_.maximum_cross_track_m);
+    requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged,
+                        esdf->global_guide_generation);
+    measured_route_projection = {};
+  }
   GlobalGuideProjection route_projection = measured_route_projection;
   if (route_projection.valid) {
     route_projection.station_m = tracked_route_station_m_;
@@ -200,15 +239,17 @@ void ProductionMppiNode::planningTick() {
         std::max(0.0, route_projection.station_m + route_projection.remaining_m -
                           tracked_route_station_m_);
   }
-  if (use_static_map_ && !direct_tracking_line_of_sight && route_projection.valid) {
+  if (use_static_map_ && objective && objective->continuous_tracking) {
+    maybeRequestStaticTrackingWorldRefresh(*esdf, navigation, *objective, now_ns);
+  }
+  if (use_static_map_ && route_usable && route_projection.valid) {
     maybeRequestStaticRouteExtension(*esdf, navigation, route_projection, now_ns);
   }
   const std::span<const RouteSample3D> route_3d =
-      !direct_tracking_line_of_sight && esdf->route_3d
-          ? std::span<const RouteSample3D>{*esdf->route_3d}
-          : std::span<const RouteSample3D>{};
+      route_usable && esdf->route_3d ? std::span<const RouteSample3D>{*esdf->route_3d}
+                                     : std::span<const RouteSample3D>{};
   const std::span<const ConstrainedRouteSpan> constrained_spans =
-      !direct_tracking_line_of_sight && esdf->constrained_spans
+      route_usable && esdf->constrained_spans
           ? std::span<const ConstrainedRouteSpan>{*esdf->constrained_spans}
           : std::span<const ConstrainedRouteSpan>{};
   const ConstrainedRouteObservation route_constraint = observeConstrainedRoute(
@@ -251,6 +292,10 @@ void ProductionMppiNode::planningTick() {
         .yaw = navigation.state.yaw,
     };
     target_source = "tracking_raw_clear_direct";
+  } else if (!route_usable && objective && objective->continuous_tracking) {
+    target = navigation.state;
+    target_source = route_cross_track_rejected ? "tracking_route_cross_track_rejected"
+                                               : "tracking_route_objective_mismatch";
   } else {
     target =
         selectTarget(*esdf, tracked_route_station_m_, speed_policy.target_lookahead_m,
@@ -284,12 +329,16 @@ void ProductionMppiNode::planningTick() {
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "mission_goal_position_hold";
-  } else if (target_source == "mission_goal_direct") {
+  } else if (target_source == "mission_goal_direct" ||
+             target_source == "tracking_route_objective_mismatch" ||
+             target_source == "tracking_route_cross_track_rejected") {
     planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
     target = navigation.state;
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
-    target_source = "no_guide_braking_hold";
+    target_source = target_source == "mission_goal_direct"
+                        ? "no_guide_braking_hold"
+                        : target_source + "_braking_hold";
   }
   const bool control_feedback_fresh =
       applied_control.valid && control_feedback_age_ms >= 0.0 &&
@@ -363,7 +412,7 @@ void ProductionMppiNode::planningTick() {
             .maximum_eligible_tier;
   }
   mppi::RiskTier route_required_risk_tier = mppi::RiskTier::kPreferred;
-  if (!direct_tracking_line_of_sight && esdf->mppi_route && route_projection.valid) {
+  if (route_usable && esdf->mppi_route && route_projection.valid) {
     const double horizon_distance_m = std::max(
         target_station_m - route_projection.station_m,
         speed_policy.reference_speed_mps * static_cast<double>(mppi_config_.steps) *
@@ -433,8 +482,8 @@ void ProductionMppiNode::planningTick() {
       .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
       .moving_target = moving_target,
       .route =
-          !direct_tracking_line_of_sight && esdf->mppi_route &&
-                  route_projection.valid && !route_control.hold_xy
+          route_usable && esdf->mppi_route && route_projection.valid &&
+                  !route_control.hold_xy
               ? std::optional<mppi::RouteReference>{mppi::RouteReference{
                     .points = esdf->mppi_route,
                     .generation = esdf->global_guide_generation,

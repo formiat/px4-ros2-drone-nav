@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
+#include <limits>
 #include <span>
 #include <string>
 #include <utility>
@@ -14,9 +15,8 @@ namespace drone_city_nav {
 void ProductionMppiNode::processStaticGuideSearch(
     const ProductionMppiPreparedEsdf& world,
     const ProductionMppiNavigation& navigation) {
-  const std::shared_ptr<const ProductionNavigationObjective> objective =
-      navigationObjective();
-  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
+  const Point3 mission_goal =
+      world.search_objective.available ? world.search_objective.goal : mission_goal_;
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
                            static_cast<double>(navigation.state.vy),
@@ -202,6 +202,20 @@ void ProductionMppiNode::processStaticGuideSearch(
           : StaticRouteActivationStatus::kCandidateNotExecutable;
   bool revision_matches = false;
   bool generation_matches = false;
+  const std::shared_ptr<const ProductionNavigationObjective> activation_objective =
+      navigationObjective();
+  const std::uint64_t required_objective_epoch =
+      minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
+  const std::uint64_t required_objective_sample =
+      activation_objective &&
+              activation_objective->mission_epoch == required_objective_epoch
+          ? minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire)
+          : 0U;
+  const bool objective_matches =
+      activation_objective &&
+      staticRouteObjectiveMatches(
+          world.search_objective, makeStaticRouteObjective(*activation_objective),
+          required_objective_sample, std::numeric_limits<double>::infinity());
   const StaticRouteCandidate route_candidate{
       .search_revision = prepared.revision,
       .base_route_generation = world.static_route_replan_request
@@ -230,12 +244,13 @@ void ProductionMppiNode::processStaticGuideSearch(
     revision_matches = prepared_esdf_ && prepared_esdf_->revision == prepared.revision;
     if (route_candidate.executable && route_candidate.validation.accepted &&
         route_candidate.route && route_candidate.constrained_spans &&
-        revision_matches && generation_matches) {
+        revision_matches && generation_matches && objective_matches) {
       activation_status = StaticRouteActivationStatus::kActivated;
       prepared.static_route_activation_status = activation_status;
       prepared.static_route_revision_matches = true;
       prepared.static_route_generation_matches = true;
       prepared.global_guide_generation = ++static_route_generation_;
+      prepared.route_objective = world.search_objective;
       prepared.global_guide_release_reason = GlobalGuideReleaseReason::kNone;
       prepared.static_route_extension_request = false;
       prepared.static_route_extension_base_generation = 0U;
@@ -248,14 +263,16 @@ void ProductionMppiNode::processStaticGuideSearch(
       activation_status = StaticRouteActivationStatus::kStaleWorldRevision;
     } else if (route_candidate.validation.accepted && !generation_matches) {
       activation_status = StaticRouteActivationStatus::kStaleRouteGeneration;
+    } else if (route_candidate.validation.accepted && !objective_matches) {
+      activation_status = StaticRouteActivationStatus::kStaleObjective;
     }
   }
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
       " activated=%s activation_status=%.*s revision_matches=%s "
-      "generation_matches=%s extension=%s replan=%s base_generation=%" PRIu64
-      " replan_reason=%s"
+      "generation_matches=%s objective_matches=%s extension=%s replan=%s "
+      "base_generation=%" PRIu64 " replan_reason=%s"
       " validation=%.*s endpoint_improvement_m=%.2f status=%s termination=%s "
       "points=%zu samples=%zu spans=%zu expansions=%zu expansion_limit=%zu "
       "deadline_ms=%.2f "
@@ -296,6 +313,7 @@ void ProductionMppiNode::processStaticGuideSearch(
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
       staticRouteActivationStatusName(activation_status).data(),
       revision_matches ? "true" : "false", generation_matches ? "true" : "false",
+      objective_matches ? "true" : "false",
       world.static_route_extension_request ? "true" : "false",
       world.static_route_replan_request ? "true" : "false",
       world.static_route_replan_request ? world.static_route_replan_base_generation
@@ -389,6 +407,35 @@ void ProductionMppiNode::processStaticGuideSearch(
   }
   if (world.static_route_replan_request) {
     finishStaticRouteReplan(world.static_route_replan_base_generation);
+  }
+  const std::shared_ptr<const ProductionNavigationObjective> current_objective =
+      navigationObjective();
+  if (current_objective && current_objective->continuous_tracking) {
+    const std::uint64_t required_epoch =
+        minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
+    const std::uint64_t required_sample =
+        current_objective->mission_epoch == required_epoch
+            ? minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire)
+            : 0U;
+    StaticRouteObjective resident_route_objective;
+    {
+      const std::scoped_lock lock{esdf_state_mutex_};
+      if (prepared_esdf_) {
+        resident_route_objective = prepared_esdf_->route_objective;
+      }
+    }
+    if (!staticRouteObjectiveMatches(
+            resident_route_objective, makeStaticRouteObjective(*current_objective),
+            required_sample, std::numeric_limits<double>::infinity())) {
+      RCLCPP_INFO(get_logger(),
+                  "STATIC_ROUTE_SHADOW status=followup_required "
+                  "required_epoch=%" PRIu64 " required_sample=%" PRIu64
+                  " resident_epoch=%" PRIu64 " resident_sample=%" PRIu64,
+                  required_epoch, required_sample,
+                  resident_route_objective.mission_epoch,
+                  resident_route_objective.sample_sequence);
+      requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
+    }
   }
 }
 

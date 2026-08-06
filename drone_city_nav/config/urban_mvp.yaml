@@ -165,6 +165,7 @@ production_mppi_node:
     dynamic_objective_replan_distance_m: 5.0
     dynamic_objective_replan_period_s: 0.25
     tracking_objective_ray_sample_spacing_m: 0.25
+    static_tracking_esdf_refresh_margin_m: 15.0
     tracking_capture_radius_m: 5.0
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot

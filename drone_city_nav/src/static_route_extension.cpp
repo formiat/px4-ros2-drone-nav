@@ -41,7 +41,8 @@ std::uint64_t StaticRouteReplanGate::generation() const noexcept {
 }
 
 StaticRouteRoiRefreshRequest StaticRouteRoiRefreshLifecycle::queue(
-    const std::uint64_t base_route_generation) noexcept {
+    const std::uint64_t base_route_generation,
+    const StaticRouteRoiRefreshRequest::Purpose purpose) noexcept {
   if (base_route_generation == 0U) {
     return {};
   }
@@ -49,15 +50,19 @@ StaticRouteRoiRefreshRequest StaticRouteRoiRefreshLifecycle::queue(
       next_sequence_.fetch_add(1U, std::memory_order_relaxed) + 1U;
   requested_base_route_generation_.store(base_route_generation,
                                          std::memory_order_relaxed);
+  requested_purpose_.store(purpose, std::memory_order_relaxed);
   requested_sequence_.store(sequence, std::memory_order_release);
-  return {.sequence = sequence, .base_route_generation = base_route_generation};
+  return {.sequence = sequence,
+          .base_route_generation = base_route_generation,
+          .purpose = purpose};
 }
 
 StaticRouteRoiRefreshRequest StaticRouteRoiRefreshLifecycle::latest() const noexcept {
   const std::uint64_t sequence = requested_sequence_.load(std::memory_order_acquire);
   return {.sequence = sequence,
           .base_route_generation =
-              requested_base_route_generation_.load(std::memory_order_relaxed)};
+              requested_base_route_generation_.load(std::memory_order_relaxed),
+          .purpose = requested_purpose_.load(std::memory_order_relaxed)};
 }
 
 bool StaticRouteRoiRefreshLifecycle::pending(
@@ -138,8 +143,8 @@ Point3 staticRoutePlanningGoal(const Point3& start, const Point3& mission_goal,
                 std::lerp(start.z, mission_goal.z, ratio)};
 }
 
-bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid,
-                                const Point3& point) noexcept {
+bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid, const Point3& point,
+                                const double margin_m) noexcept {
   if (grid.width <= 0 || grid.height <= 0 || grid.depth <= 1 ||
       !(grid.resolution_m > 0.0F)) {
     return false;
@@ -150,9 +155,29 @@ bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid,
                            static_cast<double>(grid.height) * grid.resolution_m;
   const double maximum_z = static_cast<double>(grid.origin_z_m) +
                            static_cast<double>(grid.depth) * grid.resolution_m;
-  return point.x >= grid.origin_x_m && point.x < maximum_x &&
-         point.y >= grid.origin_y_m && point.y < maximum_y &&
-         point.z >= grid.origin_z_m && point.z < maximum_z;
+  const double margin = std::max(0.0, margin_m);
+  return point.x >= static_cast<double>(grid.origin_x_m) + margin &&
+         point.x < maximum_x - margin &&
+         point.y >= static_cast<double>(grid.origin_y_m) + margin &&
+         point.y < maximum_y - margin &&
+         point.z >= static_cast<double>(grid.origin_z_m) && point.z < maximum_z;
+}
+
+bool staticRouteObjectiveMatches(const StaticRouteObjective& route_objective,
+                                 const StaticRouteObjective& current_objective,
+                                 const std::uint64_t minimum_tracking_sample_sequence,
+                                 const double maximum_tracking_goal_error_m) noexcept {
+  if (!route_objective.available || !current_objective.available ||
+      route_objective.mission_epoch != current_objective.mission_epoch ||
+      route_objective.continuous_tracking != current_objective.continuous_tracking) {
+    return false;
+  }
+  if (!current_objective.continuous_tracking) {
+    return true;
+  }
+  return route_objective.sample_sequence >= minimum_tracking_sample_sequence &&
+         distance3D(route_objective.goal, current_objective.goal) <=
+             std::max(0.0, maximum_tracking_goal_error_m);
 }
 
 bool staticRouteHasProtectedConstrainedSuffix(
@@ -254,6 +279,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "stale_world_revision";
     case StaticRouteActivationStatus::kStaleRouteGeneration:
       return "stale_route_generation";
+    case StaticRouteActivationStatus::kStaleObjective:
+      return "stale_objective";
   }
   return "unknown";
 }

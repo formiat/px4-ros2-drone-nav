@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
+#include "drone_city_nav/occupancy_grid_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -43,6 +44,8 @@ struct MppiHorizonSafetyResult {
   double stopping_distance_m{0.0};
   double latest_safe_intervention_time_s{0.0};
   bool flight_envelope_violation{false};
+  bool global_raw_collision{false};
+  std::size_t global_raw_fallback_samples{0U};
   std::vector<mppi::State> fallback_horizon;
   std::vector<mppi::Control> fallback_controls;
 };
@@ -87,6 +90,7 @@ buildMppiBrakingFallback(const mppi::State& current_state,
     const mppi::State& current_state, std::span<const mppi::State> horizon,
     std::span<const float> esdf_m, const mppi::EsdfGrid& grid,
     const MppiHorizonSafetyConfig& config, bool engine_collision = false,
-    std::span<const mppi::KnownSolid> known_solids = {});
+    std::span<const mppi::KnownSolid> known_solids = {},
+    const OccupancyGrid3D* global_raw_occupancy = nullptr);
 
 } // namespace drone_city_nav

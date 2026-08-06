@@ -50,6 +50,50 @@ struct InterceptMissionReadiness {
 [[nodiscard]] bool
 interceptMissionReady(const InterceptMissionReadiness& readiness) noexcept;
 
+struct InterceptStateAdjudicationConfig {
+  double maximum_state_age_s{1.0};
+  double maximum_degraded_duration_s{5.0};
+};
+
+enum class InterceptStateAdjudicationStatus : std::uint8_t {
+  kHealthy,
+  kDegraded,
+  kProlongedFailure,
+};
+
+struct InterceptStateAdjudicationUpdate {
+  InterceptStateAdjudicationStatus status{InterceptStateAdjudicationStatus::kHealthy};
+  bool interceptor_fresh{false};
+  bool evader_fresh{false};
+  bool newly_degraded{false};
+  bool newly_recovered{false};
+  bool newly_prolonged_failure{false};
+  double interceptor_age_s{0.0};
+  double evader_age_s{0.0};
+  double degraded_duration_s{0.0};
+};
+
+class InterceptStateAdjudicationLifecycle final {
+public:
+  explicit InterceptStateAdjudicationLifecycle(
+      const InterceptStateAdjudicationConfig& config = {});
+
+  [[nodiscard]] InterceptStateAdjudicationUpdate
+  update(std::int64_t now_ns, const TimedVehicleState& interceptor,
+         const TimedVehicleState& evader) noexcept;
+
+private:
+  [[nodiscard]] bool stateFresh(std::int64_t now_ns,
+                                const TimedVehicleState& state) const noexcept;
+  [[nodiscard]] static double stateAgeSeconds(std::int64_t now_ns,
+                                              const TimedVehicleState& state) noexcept;
+
+  std::int64_t maximum_state_age_ns_{0};
+  std::int64_t maximum_degraded_duration_ns_{0};
+  std::optional<std::int64_t> degraded_since_ns_;
+  bool prolonged_failure_reported_{false};
+};
+
 struct InterceptorHoldConfig {
   double position_tolerance_m{2.0};
   double maximum_speed_mps{0.8};
@@ -84,6 +128,7 @@ public:
 
   [[nodiscard]] InterceptMissionUpdate update(const TimedVehicleState& interceptor,
                                               const TimedVehicleState& evader);
+  void resetTemporalContinuity() noexcept;
 
   [[nodiscard]] InterceptMissionOutcome outcome() const noexcept {
     return outcome_;

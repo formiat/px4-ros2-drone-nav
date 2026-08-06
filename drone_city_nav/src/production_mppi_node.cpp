@@ -146,10 +146,13 @@ ProductionMppiNode::ProductionMppiNode()
       declare_parameter<double>("tracking_objective_ray_sample_spacing_m", 0.25);
   tracking_capture_radius_m_ =
       declare_parameter<double>("tracking_capture_radius_m", 5.0);
+  static_tracking_esdf_refresh_margin_m_ =
+      declare_parameter<double>("static_tracking_esdf_refresh_margin_m", 15.0);
   if (!(dynamic_objective_replan_distance_m_ > 0.0) ||
       !(dynamic_objective_replan_period_s_ > 0.0) ||
       !(tracking_objective_ray_sample_spacing_m_ > 0.0) ||
       !(tracking_capture_radius_m_ > 0.0) ||
+      !(static_tracking_esdf_refresh_margin_m_ >= 0.0) ||
       !insideFlightEnvelope(mission_goal_, flight_envelope_config_)) {
     throw std::invalid_argument{"invalid navigation objective configuration"};
   }

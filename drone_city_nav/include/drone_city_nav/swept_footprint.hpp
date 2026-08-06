@@ -1,6 +1,8 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_config.hpp"
+#include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -55,6 +57,27 @@ validateFootprintAt(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
 validateSweptFootprint(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
                        const Point3& first, const Point3& second,
                        const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
+validateRawFootprintAt(const OccupancyGrid2D& occupancy, const Point3& position,
+                       const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
+validateRawSweptFootprint(const OccupancyGrid2D& occupancy, const Point3& first,
+                          const Point3& second,
+                          const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
+validateRawFootprintAt(const OccupancyGrid3D& occupancy, const Point3& position,
+                       const FootprintBodyAxis& body_axis,
+                       const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
+validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
+                          const FootprintBodyAxis& first_body_axis,
+                          const Point3& second,
+                          const FootprintBodyAxis& second_body_axis,
+                          const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] SweptFootprintResult
 validateSweptFootprint(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,

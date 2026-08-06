@@ -290,10 +290,17 @@ void ProductionMppiNode::onNavigationObjective(
     if (navigation.valid) {
       const Point3 current_position{navigation.state.x, navigation.state.y,
                                     navigation.state.z};
+      const SweptFootprintConfig footprint{
+          .radius_m = safety_config_.physical_footprint_radius_m,
+          .lower_extent_m = safety_config_.physical_footprint_lower_extent_m,
+          .upper_extent_m = safety_config_.physical_footprint_upper_extent_m,
+          .perimeter_samples = safety_config_.physical_footprint_samples,
+          .radial_rings = safety_config_.physical_footprint_radial_rings,
+          .axial_samples = safety_config_.physical_footprint_axial_samples,
+          .sweep_step_m = tracking_objective_ray_sample_spacing_m_};
       if (use_static_map_ && static_occupancy_3d_) {
-        raw_clear =
-            trackingLineOfSightRawClear(*static_occupancy_3d_, current_position, goal,
-                                        tracking_objective_ray_sample_spacing_m_);
+        raw_clear = trackingLineOfSightSweptRawClear(*static_occupancy_3d_,
+                                                     current_position, goal, footprint);
       } else if (!use_static_map_) {
         std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
         {
@@ -303,9 +310,8 @@ void ProductionMppiNode::onNavigationObjective(
           }
         }
         if (raw_occupancy) {
-          raw_clear =
-              trackingLineOfSightRawClear(*raw_occupancy, current_position, goal,
-                                          tracking_objective_ray_sample_spacing_m_);
+          raw_clear = trackingLineOfSightSweptRawClear(*raw_occupancy, current_position,
+                                                       goal, footprint);
         }
       }
     }
@@ -353,6 +359,7 @@ void ProductionMppiNode::onNavigationObjective(
   }
 
   bool request_replan = false;
+  bool require_new_tracking_route = false;
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   {
     const std::scoped_lock lock{objective_replan_mutex_};
@@ -371,12 +378,23 @@ void ProductionMppiNode::onNavigationObjective(
         tracking_objective.value_or(ProductionTrackingObjective{}).direct_line_of_sight;
     const bool direct_line_of_sight_lost =
         previous_direct_line_of_sight && !current_direct_line_of_sight;
-    request_replan = epoch_changed || direct_line_of_sight_lost ||
-                     (!current_direct_line_of_sight && moved && period_elapsed);
+    require_new_tracking_route =
+        tracking && (epoch_changed || direct_line_of_sight_lost);
+    request_replan =
+        epoch_changed || direct_line_of_sight_lost || (moved && period_elapsed);
     if (request_replan) {
       objective_replan_anchor_ = goal;
       objective_replan_stamp_ns_ = now_ns;
     }
+  }
+  if (require_new_tracking_route) {
+    minimum_tracking_route_mission_epoch_.store(message.mission_epoch,
+                                                std::memory_order_release);
+    minimum_tracking_route_sample_sequence_.store(message.sample_sequence,
+                                                  std::memory_order_release);
+  } else if (!tracking) {
+    minimum_tracking_route_mission_epoch_.store(0U, std::memory_order_release);
+    minimum_tracking_route_sample_sequence_.store(0U, std::memory_order_release);
   }
   if (request_replan) {
     requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);

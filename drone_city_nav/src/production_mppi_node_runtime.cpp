@@ -65,6 +65,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
   RiskAwareLatticeSearchSession search_session;
   std::optional<ProductionMppiNavigation> search_navigation;
   std::optional<GlobalGuideHeading> search_heading;
+  StaticRouteObjective active_route_objective;
   std::size_t continuation_attempt = 0U;
   bool search_session_in_progress = false;
   std::chrono::steady_clock::time_point search_session_started{};
@@ -145,9 +146,37 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       search_navigation = navigation_;
     }
     const ProductionMppiNavigation navigation = *search_navigation;
-    const std::shared_ptr<const ProductionNavigationObjective> objective =
+    const std::shared_ptr<const ProductionNavigationObjective> current_objective =
         navigationObjective();
-    const Point3 mission_goal = objective ? objective->goal : mission_goal_;
+    const Point3 mission_goal = world->search_objective.available
+                                    ? world->search_objective.goal
+                                    : mission_goal_;
+    const std::uint64_t required_objective_epoch =
+        minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
+    const std::uint64_t required_objective_sample =
+        current_objective &&
+                current_objective->mission_epoch == required_objective_epoch
+            ? minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire)
+            : 0U;
+    const bool world_objective_matches =
+        current_objective &&
+        staticRouteObjectiveMatches(
+            world->search_objective, makeStaticRouteObjective(*current_objective),
+            required_objective_sample, std::numeric_limits<double>::infinity());
+    const auto candidate_objective_matches =
+        [&](const GlobalGuideCandidate& candidate) {
+          return current_objective &&
+                 staticRouteObjectiveMatches(
+                     StaticRouteObjective{
+                         .goal = candidate.objective_goal,
+                         .mission_epoch = candidate.objective_mission_epoch,
+                         .sample_sequence = candidate.objective_sample_sequence,
+                         .continuous_tracking = candidate.objective_continuous_tracking,
+                         .available = candidate.objective_available},
+                     makeStaticRouteObjective(*current_objective),
+                     required_objective_sample,
+                     std::numeric_limits<double>::infinity());
+        };
     ActiveGlobalGuideUpdate guide_update;
     GlobalGuideHeading guide_heading;
     RiskAwareLatticeResult lattice_observation;
@@ -326,12 +355,18 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal ||
               lattice_observation.status == LatticePlanStatus::kViableFrontier ||
               lattice_observation.status == LatticePlanStatus::kRawSafeDetourPrefix;
-          if (executable &&
+          if (executable && world_objective_matches &&
               validate_candidate_on_latest_world(candidate, reaches_mission_goal)) {
             const GlobalGuideCandidate pending{
                 .guide = candidate,
                 .base_generation = guide_update.generation,
                 .search_revision = world->revision,
+                .objective_goal = world->search_objective.goal,
+                .objective_mission_epoch = world->search_objective.mission_epoch,
+                .objective_sample_sequence = world->search_objective.sample_sequence,
+                .objective_continuous_tracking =
+                    world->search_objective.continuous_tracking,
+                .objective_available = world->search_objective.available,
                 .reaches_mission_goal = reaches_mission_goal,
                 .status = lattice_observation.status,
                 .expansions = lattice_observation.expansions,
@@ -354,7 +389,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               if (globalGuideCandidateReadyForActivation(
                       selected, false, search_config.minimum_frontier_guide_length_m,
                       search_config.minimum_frontier_endpoint_displacement_m)) {
-                if (validate_candidate_on_latest_world(selected.guide,
+                if (candidate_objective_matches(selected) &&
+                    validate_candidate_on_latest_world(selected.guide,
                                                        selected.reaches_mission_goal)) {
                   guide_acceptance = active_guide_lifecycle_->accept(
                       selected.guide, selected.reaches_mission_goal,
@@ -380,6 +416,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               selected, true, search_config.minimum_frontier_guide_length_m,
               search_config.minimum_frontier_endpoint_displacement_m);
           if (selected.base_generation == guide_update.generation && ready &&
+              candidate_objective_matches(selected) &&
               validate_candidate_on_latest_world(selected.guide,
                                                  selected.reaches_mission_goal)) {
             guide_acceptance = active_guide_lifecycle_->accept(
@@ -421,12 +458,18 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
               lattice_observation.status == LatticePlanStatus::kReachedPlanningGoal ||
               lattice_observation.status == LatticePlanStatus::kViableFrontier ||
               lattice_observation.status == LatticePlanStatus::kRawSafeDetourPrefix;
-          if (candidate_available &&
+          if (candidate_available && world_objective_matches &&
               validate_candidate_on_latest_world(candidate, reaches_mission_goal)) {
             const GlobalGuideCandidate pending{
                 .guide = candidate,
                 .base_generation = guide_update.generation,
                 .search_revision = world->revision,
+                .objective_goal = world->search_objective.goal,
+                .objective_mission_epoch = world->search_objective.mission_epoch,
+                .objective_sample_sequence = world->search_objective.sample_sequence,
+                .objective_continuous_tracking =
+                    world->search_objective.continuous_tracking,
+                .objective_available = world->search_objective.available,
                 .reaches_mission_goal = reaches_mission_goal,
                 .status = lattice_observation.status,
                 .expansions = lattice_observation.expansions,
@@ -449,7 +492,8 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                     search_config.minimum_frontier_guide_length_m,
                     search_config.minimum_frontier_endpoint_displacement_m)) {
               const GlobalGuideCandidate selected = *pending_global_guide_;
-              if (validate_candidate_on_latest_world(selected.guide,
+              if (candidate_objective_matches(selected) &&
+                  validate_candidate_on_latest_world(selected.guide,
                                                      selected.reaches_mission_goal)) {
                 guide_acceptance = active_guide_lifecycle_->accept(
                     selected.guide, selected.reaches_mission_goal,
@@ -525,14 +569,25 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     if (!guide) {
       mppi_route.reset();
       route_source.reset();
+      active_route_objective = {};
     } else if (guide.get() != route_source.get()) {
       mppi_route = makeMppiRoute2D(*guide, mission_goal.z,
                                    speed_policy_config_.cruise_speed_mps);
       route_source = guide;
     }
+    if (activated_candidate.has_value()) {
+      active_route_objective = StaticRouteObjective{
+          .goal = activated_candidate->objective_goal,
+          .mission_epoch = activated_candidate->objective_mission_epoch,
+          .sample_sequence = activated_candidate->objective_sample_sequence,
+          .continuous_tracking = activated_candidate->objective_continuous_tracking,
+          .available = activated_candidate->objective_available,
+      };
+    }
     ProductionMppiPreparedEsdf prepared = *publication_world;
     prepared.mppi_route = mppi_route;
     prepared.route_2d_projection = guide;
+    prepared.route_objective = active_route_objective;
     prepared.global_guide_expansions = active_guide_expansions;
     prepared.global_guide_cost = active_guide_cost;
     prepared.global_guide_generation = active_status.generation;
@@ -831,6 +886,10 @@ void ProductionMppiNode::requestGuideRelease(const GlobalGuideReleaseReason reas
         return;
       }
       request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
+      if (const std::shared_ptr<const ProductionNavigationObjective> objective =
+              navigationObjective()) {
+        request->search_objective = makeStaticRouteObjective(*objective);
+      }
       request->global_guide_release_reason = reason;
       request->static_route_replan_request = true;
       request->static_route_replan_base_generation =

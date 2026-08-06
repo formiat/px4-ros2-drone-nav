@@ -87,8 +87,13 @@ public:
                              declare_parameter<double>("evader_goal_radius_m", 2.0),
                      });
     target_goal_ = target_goal;
-    maximum_state_age_ns_ = static_cast<std::int64_t>(
-        declare_parameter<double>("maximum_state_age_s", 1.0) * 1.0e9);
+    state_adjudication_ = std::make_unique<InterceptStateAdjudicationLifecycle>(
+        InterceptStateAdjudicationConfig{
+            .maximum_state_age_s =
+                declare_parameter<double>("maximum_state_age_s", 1.0),
+            .maximum_degraded_duration_s =
+                declare_parameter<double>("maximum_degraded_state_duration_s", 5.0),
+        });
     destruction_settlement_timeout_ns_ = static_cast<std::int64_t>(
         declare_parameter<double>("destruction_settlement_timeout_s", 5.0) * 1.0e9);
     hold_config_.position_tolerance_m =
@@ -418,6 +423,12 @@ private:
     }
   }
 
+  void settleAdjudicationFailure(const std::int64_t now_ns) {
+    if (updateHoldConfirmation(now_ns)) {
+      failMission("prolonged_stale_vehicle_state");
+    }
+  }
+
   void settleProximityDestruction(const std::int64_t now_ns) {
     const bool events_confirmed =
         ownship_destroyed_ && target_destroyed_ &&
@@ -498,12 +509,6 @@ private:
                 mission_epoch_);
   }
 
-  [[nodiscard]] bool stateFresh(const TimedVehicleState& state,
-                                const std::int64_t now_ns) const noexcept {
-    return state.stamp_ns > 0 && now_ns >= state.stamp_ns &&
-           now_ns - state.stamp_ns <= maximum_state_age_ns_;
-  }
-
   void tick() {
     if (result_reported_) {
       return;
@@ -526,10 +531,40 @@ private:
       settlePhysicalDeath(now_ns);
       return;
     }
-    if (mission_started_ &&
-        (!stateFresh(*ownship_state_, now_ns) || !stateFresh(*target_state_, now_ns))) {
-      failMission("stale_vehicle_state");
+    if (mission_started_ && adjudication_failure_pending_) {
+      settleAdjudicationFailure(now_ns);
       return;
+    }
+    if (mission_started_ && !terminal_outcome_.has_value()) {
+      const InterceptStateAdjudicationUpdate adjudication =
+          state_adjudication_->update(now_ns, *ownship_state_, *target_state_);
+      if (adjudication.newly_recovered) {
+        evaluator_->resetTemporalContinuity();
+        RCLCPP_INFO(get_logger(),
+                    "INTERCEPT_ADJUDICATION state=recovered "
+                    "interceptor_age_ms=%.1f evader_age_ms=%.1f epoch=%" PRIu64,
+                    adjudication.interceptor_age_s * 1000.0,
+                    adjudication.evader_age_s * 1000.0, mission_epoch_);
+      }
+      if (adjudication.status != InterceptStateAdjudicationStatus::kHealthy) {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "INTERCEPT_ADJUDICATION state=%s interceptor_fresh=%s "
+            "evader_fresh=%s interceptor_age_ms=%.1f evader_age_ms=%.1f "
+            "degraded_duration_s=%.2f epoch=%" PRIu64,
+            adjudication.status == InterceptStateAdjudicationStatus::kProlongedFailure
+                ? "prolonged_failure"
+                : "degraded",
+            adjudication.interceptor_fresh ? "true" : "false",
+            adjudication.evader_fresh ? "true" : "false",
+            adjudication.interceptor_age_s * 1000.0, adjudication.evader_age_s * 1000.0,
+            adjudication.degraded_duration_s, mission_epoch_);
+        if (adjudication.newly_prolonged_failure) {
+          adjudication_failure_pending_ = true;
+          requestHold("prolonged_stale_vehicle_state");
+        }
+        return;
+      }
     }
     if (!mission_started_) {
       const InterceptMissionReadiness readiness{
@@ -588,6 +623,7 @@ private:
   }
 
   std::unique_ptr<InterceptMissionEvaluator> evaluator_;
+  std::unique_ptr<InterceptStateAdjudicationLifecycle> state_adjudication_;
   std::unique_ptr<InterceptorHoldConfirmation> hold_confirmation_;
   InterceptorHoldConfig hold_config_{};
   Point3 target_goal_{};
@@ -603,7 +639,6 @@ private:
   std::string physical_death_reason_;
   double evaluator_capture_radius_m_{5.0};
   std::uint64_t mission_epoch_{1U};
-  std::int64_t maximum_state_age_ns_{1'000'000'000LL};
   std::int64_t destruction_settlement_timeout_ns_{5'000'000'000LL};
   std::int64_t hold_timeout_ns_{20'000'000'000LL};
   std::int64_t boundary_startup_timeout_ns_{10'000'000'000LL};
@@ -620,6 +655,7 @@ private:
   bool ownship_destroyed_{false};
   bool target_destroyed_{false};
   bool physical_death_pending_{false};
+  bool adjudication_failure_pending_{false};
   bool shutdown_on_terminal_outcome_{true};
   bool boundary_verified_{false};
   bool ownship_world_ready_{false};

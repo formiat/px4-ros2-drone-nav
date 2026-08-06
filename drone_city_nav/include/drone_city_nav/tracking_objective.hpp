@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -64,6 +65,16 @@ private:
 [[nodiscard]] bool trackingLineOfSightRawClear(const OccupancyGrid3D& raw_occupancy,
                                                const Point3& from, const Point3& to,
                                                double maximum_sample_spacing_m = 0.25);
+
+[[nodiscard]] bool
+trackingLineOfSightSweptRawClear(const OccupancyGrid2D& raw_occupancy,
+                                 const Point3& from, const Point3& to,
+                                 const SweptFootprintConfig& footprint);
+
+[[nodiscard]] bool
+trackingLineOfSightSweptRawClear(const OccupancyGrid3D& raw_occupancy,
+                                 const Point3& from, const Point3& to,
+                                 const SweptFootprintConfig& footprint);
 
 [[nodiscard]] const char* trackingObjectiveResolutionStatusName(
     TrackingObjectiveResolutionStatus status) noexcept;

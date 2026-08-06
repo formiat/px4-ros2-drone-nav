@@ -90,6 +90,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       continue;
     }
     if (use_static_map_) {
+      const std::shared_ptr<const ProductionNavigationObjective> objective =
+          navigationObjective();
       const StaticRouteRoiRefreshRequest roi_refresh =
           static_roi_refresh_lifecycle_.latest();
       std::optional<ProductionMppiPreparedEsdf> active_prepared;
@@ -110,7 +112,12 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           active_prepared ? active_prepared->esdf_finalize_ms : 0.0;
       if (roi_refresh_pending && !proactive_roi_refresh) {
         static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
-        finishStaticRouteExtension(roi_refresh.base_route_generation);
+        if (roi_refresh.purpose ==
+            StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
+          finishStaticRouteReplan(roi_refresh.base_route_generation);
+        } else {
+          finishStaticRouteExtension(roi_refresh.base_route_generation);
+        }
       }
       if (static_esdf_3d_ && !proactive_roi_refresh && active_prepared) {
         const bool readiness_transition = !world_ready_.load(std::memory_order_acquire);
@@ -127,11 +134,18 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           navigation = navigation_;
         }
         if (!navigation.valid) {
+          if (proactive_roi_refresh) {
+            static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
+            if (roi_refresh.purpose ==
+                StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
+              finishStaticRouteReplan(roi_refresh.base_route_generation);
+            } else {
+              finishStaticRouteExtension(roi_refresh.base_route_generation);
+            }
+          }
           completeStaticEsdfWork(false);
           continue;
         }
-        const std::shared_ptr<const ProductionNavigationObjective> objective =
-            navigationObjective();
         const Point3 mission_goal = objective ? objective->goal : mission_goal_;
         const GridBounds3D local_bounds = localStaticEsdfBounds(
             *static_occupancy_3d_,
@@ -156,18 +170,33 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         static_y_pass_ms = field.stats().y_pass_ms;
         static_z_pass_ms = field.stats().z_pass_ms;
         static_finalize_ms = field.stats().finalize_ms;
-        RCLCPP_INFO(get_logger(),
-                    "STATIC_ESDF3D_READY build_ms=%.2f voxels=%zu "
-                    "dimensions=%dx%dx%d proactive_extension=%s "
-                    "base_generation=%" PRIu64,
-                    field.stats().duration_ms, field.stats().voxel_count,
-                    local_bounds.width_cells, local_bounds.height_cells,
-                    local_bounds.depth_cells, proactive_roi_refresh ? "true" : "false",
-                    proactive_roi_refresh ? roi_refresh.base_route_generation : 0U);
+        RCLCPP_INFO(
+            get_logger(),
+            "STATIC_ESDF3D_READY build_ms=%.2f voxels=%zu "
+            "dimensions=%dx%dx%d proactive_refresh=%s refresh_purpose=%s "
+            "base_generation=%" PRIu64,
+            field.stats().duration_ms, field.stats().voxel_count,
+            local_bounds.width_cells, local_bounds.height_cells,
+            local_bounds.depth_cells, proactive_roi_refresh ? "true" : "false",
+            proactive_roi_refresh &&
+                    roi_refresh.purpose ==
+                        StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective
+                ? "tracking_objective"
+                : "route_extension",
+            proactive_roi_refresh ? roi_refresh.base_route_generation : 0U);
       }
       const mppi::EsdfUploadResult upload = engine_->updateEsdf(mppi::EsdfSnapshot{
           static_esdf_grid_, *static_esdf_3d_, static_occupancy_3d_->fingerprint()});
       if (!upload.accepted) {
+        if (proactive_roi_refresh) {
+          static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
+          if (roi_refresh.purpose ==
+              StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
+            finishStaticRouteReplan(roi_refresh.base_route_generation);
+          } else {
+            finishStaticRouteExtension(roi_refresh.base_route_generation);
+          }
+        }
         completeStaticEsdfWork(false);
         continue;
       }
@@ -192,9 +221,24 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.grid = static_esdf_grid_;
       prepared.distances_m = static_esdf_3d_;
       prepared.channel_edges = static_channel_edges_;
-      prepared.static_route_extension_request = proactive_roi_refresh;
+      if (objective) {
+        prepared.search_objective = makeStaticRouteObjective(*objective);
+      }
+      const bool tracking_roi_refresh =
+          proactive_roi_refresh &&
+          roi_refresh.purpose ==
+              StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective;
+      prepared.static_route_extension_request =
+          proactive_roi_refresh && !tracking_roi_refresh;
       prepared.static_route_extension_base_generation =
-          proactive_roi_refresh ? roi_refresh.base_route_generation : 0U;
+          prepared.static_route_extension_request ? roi_refresh.base_route_generation
+                                                  : 0U;
+      prepared.static_route_replan_request = tracking_roi_refresh;
+      prepared.static_route_replan_base_generation =
+          tracking_roi_refresh ? roi_refresh.base_route_generation : 0U;
+      prepared.static_route_replan_reason =
+          tracking_roi_refresh ? GlobalGuideReleaseReason::kObjectiveChanged
+                               : GlobalGuideReleaseReason::kNone;
       {
         const std::scoped_lock lock{esdf_state_mutex_};
         prepared_esdf_ = prepared;
@@ -282,6 +326,10 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     prepared.distances_m =
         std::make_shared<const std::vector<float>>(std::move(distances));
     prepared.raw_occupancy = std::move(raw_occupancy);
+    if (const std::shared_ptr<const ProductionNavigationObjective> objective =
+            navigationObjective()) {
+      prepared.search_objective = makeStaticRouteObjective(*objective);
+    }
     prepared.lattice_search_performed = false;
     prepared.lattice_continuation_attempt = 0U;
 

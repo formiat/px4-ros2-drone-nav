@@ -139,6 +139,20 @@ bool trackingLineOfSightRawClear(const OccupancyGrid3D& raw_occupancy,
              .status == TrackingObjectiveResolutionStatus::kUnchanged;
 }
 
+bool trackingLineOfSightSweptRawClear(const OccupancyGrid2D& raw_occupancy,
+                                      const Point3& from, const Point3& to,
+                                      const SweptFootprintConfig& footprint) {
+  return validateRawSweptFootprint(raw_occupancy, from, to, footprint).accepted();
+}
+
+bool trackingLineOfSightSweptRawClear(const OccupancyGrid3D& raw_occupancy,
+                                      const Point3& from, const Point3& to,
+                                      const SweptFootprintConfig& footprint) {
+  return validateRawSweptFootprint(raw_occupancy, from, FootprintBodyAxis{}, to,
+                                   FootprintBodyAxis{}, footprint)
+      .accepted();
+}
+
 TrackingObjectiveResolution resolveTrackingObjective(
     const OccupancyGrid3D& raw_occupancy, const Point3& observed_position,
     const Point3& predicted_position, const double maximum_sample_spacing_m) {

@@ -32,6 +32,65 @@ bool interceptMissionReady(const InterceptMissionReadiness& readiness) noexcept 
          readiness.target_track_ready;
 }
 
+InterceptStateAdjudicationLifecycle::InterceptStateAdjudicationLifecycle(
+    const InterceptStateAdjudicationConfig& config) {
+  if (!(config.maximum_state_age_s > 0.0) ||
+      !(config.maximum_degraded_duration_s > 0.0) ||
+      !std::isfinite(config.maximum_state_age_s) ||
+      !std::isfinite(config.maximum_degraded_duration_s)) {
+    throw std::invalid_argument{"invalid intercept state adjudication configuration"};
+  }
+  maximum_state_age_ns_ = static_cast<std::int64_t>(config.maximum_state_age_s * 1.0e9);
+  maximum_degraded_duration_ns_ =
+      static_cast<std::int64_t>(config.maximum_degraded_duration_s * 1.0e9);
+}
+
+double InterceptStateAdjudicationLifecycle::stateAgeSeconds(
+    const std::int64_t now_ns, const TimedVehicleState& state) noexcept {
+  if (state.stamp_ns <= 0 || now_ns < state.stamp_ns) {
+    return std::numeric_limits<double>::infinity();
+  }
+  return static_cast<double>(now_ns - state.stamp_ns) * 1.0e-9;
+}
+
+bool InterceptStateAdjudicationLifecycle::stateFresh(
+    const std::int64_t now_ns, const TimedVehicleState& state) const noexcept {
+  return state.stamp_ns > 0 && now_ns >= state.stamp_ns &&
+         now_ns - state.stamp_ns <= maximum_state_age_ns_;
+}
+
+InterceptStateAdjudicationUpdate
+InterceptStateAdjudicationLifecycle::update(const std::int64_t now_ns,
+                                            const TimedVehicleState& interceptor,
+                                            const TimedVehicleState& evader) noexcept {
+  InterceptStateAdjudicationUpdate result{
+      .interceptor_fresh = stateFresh(now_ns, interceptor),
+      .evader_fresh = stateFresh(now_ns, evader),
+      .interceptor_age_s = stateAgeSeconds(now_ns, interceptor),
+      .evader_age_s = stateAgeSeconds(now_ns, evader),
+  };
+  if (result.interceptor_fresh && result.evader_fresh) {
+    result.newly_recovered = degraded_since_ns_.has_value();
+    degraded_since_ns_.reset();
+    prolonged_failure_reported_ = false;
+    return result;
+  }
+
+  result.status = InterceptStateAdjudicationStatus::kDegraded;
+  if (!degraded_since_ns_.has_value() || now_ns < *degraded_since_ns_) {
+    degraded_since_ns_ = now_ns;
+    result.newly_degraded = true;
+  }
+  result.degraded_duration_s =
+      static_cast<double>(now_ns - *degraded_since_ns_) * 1.0e-9;
+  if (now_ns - *degraded_since_ns_ >= maximum_degraded_duration_ns_) {
+    result.status = InterceptStateAdjudicationStatus::kProlongedFailure;
+    result.newly_prolonged_failure = !prolonged_failure_reported_;
+    prolonged_failure_reported_ = true;
+  }
+  return result;
+}
+
 InterceptorHoldConfirmation::InterceptorHoldConfirmation(
     const Point3& hold_position, const InterceptorHoldConfig& config)
     : hold_position_{hold_position},
@@ -156,6 +215,11 @@ InterceptMissionEvaluator::update(const TimedVehicleState& interceptor,
   previous_interceptor_ = interceptor;
   previous_evader_ = evader;
   return result;
+}
+
+void InterceptMissionEvaluator::resetTemporalContinuity() noexcept {
+  previous_interceptor_.reset();
+  previous_evader_.reset();
 }
 
 const char*

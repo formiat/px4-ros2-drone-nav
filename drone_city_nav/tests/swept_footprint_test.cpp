@@ -90,5 +90,46 @@ TEST(SweptFootprintTest, RotatesPhysicalVolumeWithBodyAxis) {
             SweptFootprintStatus::kRawCollision);
 }
 
+TEST(SweptFootprintTest, RawTwoDimensionalSweepRejectsSideContact) {
+  OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 1.0, 12, 6}};
+  occupancy.reset(CellState::kFree);
+  occupancy.setOccupied(GridIndex{6, 3});
+
+  const SweptFootprintResult center = validateRawSweptFootprint(
+      occupancy, Point3{1.5, 2.5, 5.0}, Point3{10.5, 2.5, 5.0},
+      SweptFootprintConfig{.radius_m = 0.0, .sweep_step_m = 0.25});
+  const SweptFootprintResult physical = validateRawSweptFootprint(
+      occupancy, Point3{1.5, 2.5, 5.0}, Point3{10.5, 2.5, 5.0},
+      SweptFootprintConfig{.radius_m = 1.0, .sweep_step_m = 0.25});
+
+  EXPECT_TRUE(center.accepted());
+  EXPECT_EQ(physical.status, SweptFootprintStatus::kRawCollision);
+}
+
+TEST(SweptFootprintTest, RawThreeDimensionalSweepUsesAxialExtent) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 10, 4, 6}};
+  occupancy.setOccupied(GridIndex3D{4, 1, 3});
+  const SweptFootprintConfig footprint{.radius_m = 0.25,
+                                       .lower_extent_m = 0.2,
+                                       .upper_extent_m = 1.2,
+                                       .sweep_step_m = 0.25};
+
+  const SweptFootprintResult result =
+      validateRawSweptFootprint(occupancy, Point3{1.5, 1.5, 2.5}, FootprintBodyAxis{},
+                                Point3{8.5, 1.5, 2.5}, FootprintBodyAxis{}, footprint);
+
+  EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
+}
+
+TEST(SweptFootprintTest, RawWorldBoundaryIsNotAnArtificialObstacle) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4}};
+
+  EXPECT_TRUE(validateRawSweptFootprint(
+                  occupancy, Point3{1.5, 1.5, 1.5}, FootprintBodyAxis{},
+                  Point3{8.0, 1.5, 1.5}, FootprintBodyAxis{},
+                  SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25})
+                  .accepted());
+}
+
 } // namespace
 } // namespace drone_city_nav

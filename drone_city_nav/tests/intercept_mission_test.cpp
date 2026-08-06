@@ -31,6 +31,22 @@ TEST(InterceptMissionEvaluatorTest, DetectsCaptureBetweenSamples) {
   EXPECT_NEAR(update.separation_m, 0.0, 1.0e-9);
 }
 
+TEST(InterceptMissionEvaluatorTest, DoesNotSweepAcrossTelemetryGapAfterReset) {
+  InterceptMissionEvaluator evaluator{Point3{100.0, 0.0, 10.0}};
+  EXPECT_EQ(evaluator
+                .update(state(Point3{-10.0, 0.0, 10.0}, {}, 1),
+                        state(Point3{0.0, 0.0, 10.0}, {}, 1))
+                .outcome,
+            InterceptMissionOutcome::kRunning);
+
+  evaluator.resetTemporalContinuity();
+  const InterceptMissionUpdate update = evaluator.update(
+      state(Point3{10.0, 0.0, 10.0}, {}, 2), state(Point3{0.0, 0.0, 10.0}, {}, 2));
+
+  EXPECT_EQ(update.outcome, InterceptMissionOutcome::kRunning);
+  EXPECT_FALSE(update.newly_captured);
+}
+
 TEST(InterceptMissionEvaluatorTest, GoalTriggersAtFirstEntry) {
   InterceptMissionEvaluator evaluator{
       Point3{100.0, 0.0, 10.0},
@@ -121,6 +137,38 @@ TEST(InterceptMissionReadinessTest, RejectsAnyMissingPlannerReadiness) {
   readiness.interceptor_world_ready = true;
   readiness.evader_world_ready = false;
   EXPECT_FALSE(interceptMissionReady(readiness));
+}
+
+TEST(InterceptStateAdjudicationLifecycleTest, RecoversFromTransientStaleness) {
+  InterceptStateAdjudicationLifecycle lifecycle{InterceptStateAdjudicationConfig{
+      .maximum_state_age_s = 1.0, .maximum_degraded_duration_s = 5.0}};
+  const TimedVehicleState interceptor = state(Point3{}, {}, 1'000'000'000LL);
+  const TimedVehicleState stale_evader = state(Point3{}, {}, 1'000'000'000LL);
+
+  const InterceptStateAdjudicationUpdate degraded =
+      lifecycle.update(2'100'000'000LL, interceptor, stale_evader);
+  EXPECT_EQ(degraded.status, InterceptStateAdjudicationStatus::kDegraded);
+  EXPECT_TRUE(degraded.newly_degraded);
+
+  const InterceptStateAdjudicationUpdate recovered =
+      lifecycle.update(2'200'000'000LL, state(Point3{}, {}, 2'200'000'000LL),
+                       state(Point3{}, {}, 2'200'000'000LL));
+  EXPECT_EQ(recovered.status, InterceptStateAdjudicationStatus::kHealthy);
+  EXPECT_TRUE(recovered.newly_recovered);
+}
+
+TEST(InterceptStateAdjudicationLifecycleTest, ReportsProlongedFailureOnce) {
+  InterceptStateAdjudicationLifecycle lifecycle{InterceptStateAdjudicationConfig{
+      .maximum_state_age_s = 1.0, .maximum_degraded_duration_s = 2.0}};
+  const TimedVehicleState stale = state(Point3{}, {}, 1'000'000'000LL);
+
+  EXPECT_EQ(lifecycle.update(2'100'000'000LL, stale, stale).status,
+            InterceptStateAdjudicationStatus::kDegraded);
+  const InterceptStateAdjudicationUpdate failed =
+      lifecycle.update(4'100'000'000LL, stale, stale);
+  EXPECT_EQ(failed.status, InterceptStateAdjudicationStatus::kProlongedFailure);
+  EXPECT_TRUE(failed.newly_prolonged_failure);
+  EXPECT_FALSE(lifecycle.update(4'200'000'000LL, stale, stale).newly_prolonged_failure);
 }
 
 } // namespace

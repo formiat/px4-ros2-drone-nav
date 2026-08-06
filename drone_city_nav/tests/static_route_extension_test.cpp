@@ -183,6 +183,46 @@ TEST(StaticRouteExtensionTest, RepeatedRoiRefreshUsesUniqueRequestSequence) {
   EXPECT_TRUE(lifecycle.pending(second));
 }
 
+TEST(StaticRouteExtensionTest, PreservesTrackingRefreshPurpose) {
+  StaticRouteRoiRefreshLifecycle lifecycle;
+
+  const StaticRouteRoiRefreshRequest request =
+      lifecycle.queue(9U, StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
+
+  EXPECT_EQ(request.purpose, StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
+  EXPECT_EQ(lifecycle.latest().purpose,
+            StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
+}
+
+TEST(StaticRouteExtensionTest, RejectsRouteOlderThanLosHandoffSample) {
+  const StaticRouteObjective current{.goal = Point3{100.0, 50.0, 18.0},
+                                     .mission_epoch = 7U,
+                                     .sample_sequence = 120U,
+                                     .continuous_tracking = true,
+                                     .available = true};
+  StaticRouteObjective route = current;
+  route.sample_sequence = 119U;
+
+  EXPECT_FALSE(staticRouteObjectiveMatches(route, current, 120U, 5.0));
+  route.sample_sequence = 120U;
+  EXPECT_TRUE(staticRouteObjectiveMatches(route, current, 120U, 5.0));
+}
+
+TEST(StaticRouteExtensionTest, RequiresSameEpochAndNearbyTrackingObjective) {
+  const StaticRouteObjective current{.goal = Point3{100.0, 50.0, 18.0},
+                                     .mission_epoch = 7U,
+                                     .sample_sequence = 120U,
+                                     .continuous_tracking = true,
+                                     .available = true};
+  StaticRouteObjective route = current;
+  route.mission_epoch = 6U;
+  EXPECT_FALSE(staticRouteObjectiveMatches(route, current, 0U, 5.0));
+
+  route = current;
+  route.goal.x += 6.0;
+  EXPECT_FALSE(staticRouteObjectiveMatches(route, current, 0U, 5.0));
+}
+
 TEST(StaticRouteExtensionTest, ProtectsConstrainedSuffixThroughDeparture) {
   const std::vector<RouteSample3D> active =
       sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 10.0);
@@ -212,6 +252,9 @@ TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kStaleRouteGeneration),
             "stale_route_generation");
+  EXPECT_EQ(
+      staticRouteActivationStatusName(StaticRouteActivationStatus::kStaleObjective),
+      "stale_objective");
 }
 
 } // namespace

@@ -94,6 +94,29 @@ TEST(TrackingObjective, ReportsRawClearLineOfSight) {
       trackingLineOfSightRawClear(grid, Point3{1.5, 1.5, 5.0}, Point3{8.5, 1.5, 5.0}));
 }
 
+TEST(TrackingObjective, SweptLineOfSightRejectsRotorContactOffCenterline) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 10, 6}};
+  grid.reset(CellState::kFree);
+  grid.setOccupied(GridIndex{4, 2});
+  const Point3 from{1.5, 1.5, 5.0};
+  const Point3 to{8.5, 1.5, 5.0};
+
+  EXPECT_TRUE(trackingLineOfSightRawClear(grid, from, to));
+  EXPECT_FALSE(trackingLineOfSightSweptRawClear(
+      grid, from, to, SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25}));
+}
+
+TEST(TrackingObjective, SweptThreeDimensionalLineOfSightUsesVehicleVolume) {
+  OccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 1.0, 10, 6, 6}};
+  grid.setOccupied(GridIndex3D{4, 2, 2});
+  const Point3 from{1.5, 1.5, 2.5};
+  const Point3 to{8.5, 1.5, 2.5};
+
+  EXPECT_TRUE(trackingLineOfSightRawClear(grid, from, to));
+  EXPECT_FALSE(trackingLineOfSightSweptRawClear(
+      grid, from, to, SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25}));
+}
+
 TEST(TrackingLineOfSightLifecycle, ConfirmsEntryAndLeavesImmediatelyWhenBlocked) {
   TrackingLineOfSightLifecycle lifecycle{
       TrackingLineOfSightConfig{.clear_confirmations = 2U}};

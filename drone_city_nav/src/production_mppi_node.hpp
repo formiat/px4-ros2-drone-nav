@@ -83,6 +83,17 @@ struct ProductionNavigationObjective {
   bool continuous_tracking{false};
 };
 
+[[nodiscard]] inline StaticRouteObjective
+makeStaticRouteObjective(const ProductionNavigationObjective& objective) noexcept {
+  return StaticRouteObjective{
+      .goal = objective.goal,
+      .mission_epoch = objective.mission_epoch,
+      .sample_sequence = objective.sample_sequence,
+      .continuous_tracking = objective.continuous_tracking,
+      .available = true,
+  };
+}
+
 enum class ProductionPlanningSearchKind : std::uint8_t {
   kNone,
   kLattice2D,
@@ -133,6 +144,8 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> channel_edges;
   std::shared_ptr<const std::vector<std::string>> selected_channel_ids;
+  StaticRouteObjective search_objective{};
+  StaticRouteObjective route_objective{};
   std::vector<Lattice3DTopologyCandidate> topology_candidates;
   double topology_objective_cost{0.0};
   double topology_route_length_m{0.0};
@@ -345,6 +358,11 @@ private:
                                         const ProductionMppiNavigation& navigation,
                                         const GlobalGuideProjection& route_projection,
                                         std::int64_t now_ns);
+  void
+  maybeRequestStaticTrackingWorldRefresh(const ProductionMppiPreparedEsdf& esdf,
+                                         const ProductionMppiNavigation& navigation,
+                                         const ProductionNavigationObjective& objective,
+                                         std::int64_t now_ns);
   void finishStaticRouteExtension(std::uint64_t base_generation) noexcept;
   void finishStaticRouteReplan(std::uint64_t base_generation) noexcept;
   void esdfWorker(std::stop_token stop_token);
@@ -401,6 +419,7 @@ private:
   double dynamic_objective_replan_period_s_{0.25};
   double tracking_objective_ray_sample_spacing_m_{0.25};
   double tracking_capture_radius_m_{5.0};
+  double static_tracking_esdf_refresh_margin_m_{15.0};
   TrackingLineOfSightLifecycle tracking_line_of_sight_lifecycle_{};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
@@ -461,6 +480,8 @@ private:
   std::int64_t memory_receive_stamp_ns_{0};
   std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
       navigation_objective_;
+  std::atomic<std::uint64_t> minimum_tracking_route_mission_epoch_{0U};
+  std::atomic<std::uint64_t> minimum_tracking_route_sample_sequence_{0U};
   std::mutex objective_replan_mutex_;
   Point3 objective_replan_anchor_{};
   std::int64_t objective_replan_stamp_ns_{0};

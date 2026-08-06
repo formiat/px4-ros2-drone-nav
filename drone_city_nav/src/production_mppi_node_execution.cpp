@@ -119,10 +119,17 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     if (!esdf.distances_m) {
       return publication;
     }
-    safety = evaluateMppiHorizonSafety(input.initial_state, result.horizon,
-                                       *esdf.distances_m, esdf.grid, safety_config_,
-                                       false, {});
+    safety = evaluateMppiHorizonSafety(
+        input.initial_state, result.horizon, *esdf.distances_m, esdf.grid,
+        safety_config_, false, {},
+        use_static_map_ && static_occupancy_3d_ ? &*static_occupancy_3d_ : nullptr);
     intervention = safety_intervention_tracker_.update(now_ns, safety);
+    if (safety.global_raw_fallback_samples > 0U) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "STATIC_SAFETY_GLOBAL_RAW_FALLBACK samples=%zu collision=%s",
+                           safety.global_raw_fallback_samples,
+                           safety.global_raw_collision ? "true" : "false");
+    }
     if (safety.flight_envelope_violation) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,

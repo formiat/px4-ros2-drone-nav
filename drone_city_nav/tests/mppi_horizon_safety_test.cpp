@@ -158,6 +158,43 @@ TEST(MppiHorizonSafetyTest, DoesNotTreatComputationalGridBoundaryAsCollision) {
   EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
 }
 
+TEST(MppiHorizonSafetyTest, UsesGlobalRawOccupancyOutsideLocalStaticEsdf) {
+  const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  const std::vector<float> local_esdf(16U, 10.0F);
+  OccupancyGrid3D global_raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 8, 4, 4}};
+  global_raw.setOccupied(GridIndex3D{4, 1, 1});
+  const mppi::State current{1.0F, 1.5F, 1.5F};
+  const std::vector<mppi::State> horizon{current, mppi::State{6.0F, 1.5F, 1.5F}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25},
+      false, {}, &global_raw);
+
+  EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_TRUE(result.global_raw_collision);
+  EXPECT_GT(result.global_raw_fallback_samples, 0U);
+}
+
+TEST(MppiHorizonSafetyTest, AllowsRawFreeSpaceOutsideLocalStaticEsdf) {
+  const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  const std::vector<float> local_esdf(16U, 10.0F);
+  const OccupancyGrid3D global_raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 8, 4, 4}};
+  const mppi::State current{1.0F, 1.5F, 1.5F};
+  const std::vector<mppi::State> horizon{current, mppi::State{6.0F, 1.5F, 1.5F}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25},
+      false, {}, &global_raw);
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_FALSE(result.global_raw_collision);
+  EXPECT_GT(result.global_raw_fallback_samples, 0U);
+}
+
 TEST(MppiHorizonSafetyTest, UsesAltitudeForThreeDimensionalCollision) {
   mppi::EsdfGrid grid{2, 2, 1.0F, 0.0F, 0.0F};
   grid.depth = 2;

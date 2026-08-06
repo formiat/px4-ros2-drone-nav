@@ -336,6 +336,10 @@ void ProductionMppiNode::processDiagnostics(
        << " target_source=" << target_source << " target=(" << input.target.x << ','
        << input.target.y << ',' << input.target.z << ")"
        << " guide_generation=" << esdf.global_guide_generation
+       << " route_objective_epoch=" << esdf.route_objective.mission_epoch
+       << " route_objective_sample=" << esdf.route_objective.sample_sequence
+       << " search_objective_epoch=" << esdf.search_objective.mission_epoch
+       << " search_objective_sample=" << esdf.search_objective.sample_sequence
        << " guide_reused=" << (esdf.global_guide_reused ? "true" : "false")
        << " guide_reaches_mission_goal="
        << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
@@ -672,6 +676,10 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"jerk_cap_mps3\":" << mppi_config_.dynamics.maximum_control_jerk_mps3
         << ",\"speed_tracking_weight\":" << mppi_config_.costs.speed_tracking_weight
         << ",\"guide_generation\":" << esdf.global_guide_generation
+        << ",\"route_objective_epoch\":" << esdf.route_objective.mission_epoch
+        << ",\"route_objective_sample\":" << esdf.route_objective.sample_sequence
+        << ",\"search_objective_epoch\":" << esdf.search_objective.mission_epoch
+        << ",\"search_objective_sample\":" << esdf.search_objective.sample_sequence
         << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
         << ",\"guide_reaches_mission_goal\":"
         << (esdf.global_guide_reaches_mission_goal ? "true" : "false")

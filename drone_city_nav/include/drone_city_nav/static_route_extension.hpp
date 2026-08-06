@@ -26,6 +26,14 @@ struct StaticRouteExtensionConfig {
   double protected_departure_m{5.0};
 };
 
+struct StaticRouteObjective {
+  Point3 goal{};
+  std::uint64_t mission_epoch{0U};
+  std::uint64_t sample_sequence{0U};
+  bool continuous_tracking{false};
+  bool available{false};
+};
+
 struct StaticRouteExtensionObservation {
   std::uint64_t route_generation{0U};
   double route_station_m{0.0};
@@ -63,12 +71,18 @@ private:
 struct StaticRouteRoiRefreshRequest {
   std::uint64_t sequence{0U};
   std::uint64_t base_route_generation{0U};
+  enum class Purpose : std::uint8_t {
+    kRouteExtension,
+    kTrackingObjective,
+  } purpose{Purpose::kRouteExtension};
 };
 
 class StaticRouteRoiRefreshLifecycle final {
 public:
   [[nodiscard]] StaticRouteRoiRefreshRequest
-  queue(std::uint64_t base_route_generation) noexcept;
+  queue(std::uint64_t base_route_generation,
+        StaticRouteRoiRefreshRequest::Purpose purpose =
+            StaticRouteRoiRefreshRequest::Purpose::kRouteExtension) noexcept;
   [[nodiscard]] StaticRouteRoiRefreshRequest latest() const noexcept;
   [[nodiscard]] bool
   pending(const StaticRouteRoiRefreshRequest& request) const noexcept;
@@ -78,6 +92,8 @@ private:
   std::atomic<std::uint64_t> next_sequence_{0U};
   std::atomic<std::uint64_t> requested_sequence_{0U};
   std::atomic<std::uint64_t> requested_base_route_generation_{0U};
+  std::atomic<StaticRouteRoiRefreshRequest::Purpose> requested_purpose_{
+      StaticRouteRoiRefreshRequest::Purpose::kRouteExtension};
   std::atomic<std::uint64_t> completed_sequence_{0U};
 };
 
@@ -100,6 +116,7 @@ enum class StaticRouteActivationStatus : std::uint8_t {
   kCandidateValidationRejected,
   kStaleWorldRevision,
   kStaleRouteGeneration,
+  kStaleObjective,
 };
 
 struct StaticRouteCandidateValidation {
@@ -133,7 +150,14 @@ deferStaticRouteReleaseDuringExtension(bool request_in_flight,
                                              double planning_distance_m) noexcept;
 
 [[nodiscard]] bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid,
-                                              const Point3& point) noexcept;
+                                              const Point3& point,
+                                              double margin_m = 0.0) noexcept;
+
+[[nodiscard]] bool
+staticRouteObjectiveMatches(const StaticRouteObjective& route_objective,
+                            const StaticRouteObjective& current_objective,
+                            std::uint64_t minimum_tracking_sample_sequence,
+                            double maximum_tracking_goal_error_m) noexcept;
 
 [[nodiscard]] bool staticRouteHasProtectedConstrainedSuffix(
     std::span<const RouteSample3D> route,

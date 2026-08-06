@@ -14,6 +14,11 @@ struct GlobalGuideCandidate {
   std::shared_ptr<const std::vector<Point2>> guide;
   std::uint64_t base_generation{0U};
   std::uint64_t search_revision{0U};
+  Point3 objective_goal{};
+  std::uint64_t objective_mission_epoch{0U};
+  std::uint64_t objective_sample_sequence{0U};
+  bool objective_continuous_tracking{false};
+  bool objective_available{false};
   bool reaches_mission_goal{false};
   LatticePlanStatus status{LatticePlanStatus::kInvalidInput};
   std::size_t expansions{0U};
