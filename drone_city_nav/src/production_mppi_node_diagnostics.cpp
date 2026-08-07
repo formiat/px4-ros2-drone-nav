@@ -375,7 +375,14 @@ void ProductionMppiNode::processDiagnostics(
        << finiteOrNegative(speed_policy.observation_limit_mps)
        << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
        << " active_rollouts=" << result.active_rollouts
+       << " gpu_warm_start_ms=" << result.timings.warm_start_ms
+       << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
+       << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
+       << " gpu_risk_reduction_ms=" << result.timings.risk_reduction_ms
+       << " gpu_weight_calculation_ms=" << result.timings.weight_calculation_ms
+       << " gpu_control_update_ms=" << result.timings.control_update_ms
        << " gpu_ms=" << result.timings.gpu_total_ms
+       << " horizon_reconstruction_ms=" << result.timings.horizon_reconstruction_ms
        << " total_ms=" << result.timings.host_total_ms
        << " snapshot_ms=" << snapshot.snapshot_ms
        << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
@@ -793,7 +800,14 @@ void ProductionMppiNode::processDiagnostics(
         << finiteOrNegative(speed_policy.observation_limit_mps)
         << ",\"goal_speed_limit_mps\":" << finiteOrNegative(speed_policy.goal_limit_mps)
         << ",\"active_rollouts\":" << result.active_rollouts
+        << ",\"gpu_warm_start_ms\":" << result.timings.warm_start_ms
+        << ",\"gpu_noise_generation_ms\":" << result.timings.noise_generation_ms
+        << ",\"gpu_rollout_simulation_ms\":" << result.timings.rollout_simulation_ms
+        << ",\"gpu_risk_reduction_ms\":" << result.timings.risk_reduction_ms
+        << ",\"gpu_weight_calculation_ms\":" << result.timings.weight_calculation_ms
+        << ",\"gpu_control_update_ms\":" << result.timings.control_update_ms
         << ",\"gpu_ms\":" << result.timings.gpu_total_ms
+        << ",\"horizon_reconstruction_ms\":" << result.timings.horizon_reconstruction_ms
         << ",\"total_ms\":" << result.timings.host_total_ms
         << ",\"snapshot_ms\":" << snapshot.snapshot_ms
         << ",\"stability_ms\":" << snapshot.stability_ms << ",\"rviz_ms\":" << rviz_ms

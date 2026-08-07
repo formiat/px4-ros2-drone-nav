@@ -68,6 +68,16 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         self.assertIn('"diagnostics_flush_period_s"', planner)
         self.assertIn("diagnostics_file_due", diagnostics)
         self.assertIn("diagnostics_error_ring_", diagnostics)
+        for stage in (
+            "gpu_warm_start_ms",
+            "gpu_noise_generation_ms",
+            "gpu_rollout_simulation_ms",
+            "gpu_risk_reduction_ms",
+            "gpu_weight_calculation_ms",
+            "gpu_control_update_ms",
+            "horizon_reconstruction_ms",
+        ):
+            self.assertIn(stage, diagnostics)
         self.assertIn("mppi_error_context.jsonl", planner)
 
 
