@@ -120,8 +120,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     throw std::invalid_argument{"planner worker count must be in [1, 8]"};
   }
   planner_worker_count_ = static_cast<std::size_t>(planner_worker_count);
-  planner_worker_scheduler_id_ =
-      declare_parameter<std::string>("planner_worker_scheduler_id", "");
   planning_tick_phase_offset_s_ =
       declare_parameter<double>("planning_tick_phase_offset_s", 0.0);
   use_static_map_ = declare_parameter<bool>("use_static_map", true);
@@ -625,21 +623,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
   no_static_cycle_detector_ =
       std::make_unique<NoStaticRouteCycleDetector>(no_static_cycle_config_);
-  if (planner_worker_scheduler_id_.empty()) {
-    planning_worker_pool_ = std::make_shared<BoundedWorkerPool>(planner_worker_count_);
-  } else {
-    planning_worker_pool_ = BoundedWorkerPool::acquireShared(
-        planner_worker_scheduler_id_, planner_worker_count_);
-  }
-  const BoundedWorkerPoolStatistics scheduler_statistics =
-      planning_worker_pool_->statistics();
-  RCLCPP_INFO(get_logger(),
-              "PLANNING_WORKER_SCHEDULER id='%s' shared=%s workers=%zu clients=%zu",
-              planner_worker_scheduler_id_.empty()
-                  ? "private"
-                  : planner_worker_scheduler_id_.c_str(),
-              planning_worker_pool_->isSharedScheduler() ? "true" : "false",
-              scheduler_statistics.worker_count, scheduler_statistics.client_count);
+  planning_worker_pool_ = std::make_unique<BoundedWorkerPool>(planner_worker_count_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
   if (use_static_map_) {
     const auto package_share = std::filesystem::path{

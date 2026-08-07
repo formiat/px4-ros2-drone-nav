@@ -28,14 +28,6 @@ retaining separate streams, buffers, nominal controls, and route state. This
 reduces process, DDS, and CUDA-context overhead without changing rollout
 selection.
 
-CPU planning uses a separate process-local scheduler with a mission-wide worker
-budget. Every planner owns a FIFO lane, and ready jobs are selected round-robin
-across lanes. This keeps ESDF, topology, continuation, and route-validation work
-bounded while allowing a busy planner to use workers that other vehicles do not
-currently need. Scheduler counters are included in
-`PRODUCTION_MPPI_SUMMARY`; `planner_scheduler_peak_active` verifies actual
-parallel use and pending/submitted/completed counters expose saturation.
-
 A fused vehicle-by-rollout micro-batch was evaluated with the same mission
 contract and rejected. The live four-vehicle workload produced an average batch
 size of only about 1.5 vehicles: synchronization increased static GPU p50 from
@@ -108,7 +100,6 @@ For a real run, compare:
 6. offboard horizon receive age;
 7. liveness and braking frequency.
 8. planner process/thread count and CUDA process count in multi-vehicle runs.
-9. planner scheduler peak active/pending tasks and completed-task count.
 
 Do not lower collision checking or shorten braking horizons solely to improve
 timing. First reduce redundant ESDF work, stale revisions, diagnostic load, or

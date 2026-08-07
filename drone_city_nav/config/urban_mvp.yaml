@@ -101,7 +101,6 @@ production_mppi_node:
     diagnostics_flush_period_s: 1.0
     diagnostics_error_ring_capacity: 25
     planner_worker_count: 4
-    planner_worker_scheduler_id: ""
     rollouts: 8192
     direct_tracking_rollouts: 4096
     dt_s: 0.05

@@ -1,39 +1,25 @@
 #pragma once
 
 #include <algorithm>
+#include <condition_variable>
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <future>
-#include <memory>
+#include <mutex>
+#include <queue>
 #include <stdexcept>
-#include <string>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace drone_city_nav {
 
-struct BoundedWorkerPoolStatistics {
-  std::size_t worker_count{0U};
-  std::size_t client_count{0U};
-  std::size_t pending_tasks{0U};
-  std::size_t active_tasks{0U};
-  std::size_t peak_pending_tasks{0U};
-  std::size_t peak_active_tasks{0U};
-  std::uint64_t submitted_tasks{0U};
-  std::uint64_t completed_tasks{0U};
-};
-
 class BoundedWorkerPool final {
 public:
   explicit BoundedWorkerPool(std::size_t worker_count,
                              std::size_t maximum_pending_tasks = 256U);
   ~BoundedWorkerPool();
-
-  [[nodiscard]] static std::shared_ptr<BoundedWorkerPool>
-  acquireShared(std::string scheduler_id, std::size_t worker_count,
-                std::size_t maximum_pending_tasks = 256U);
 
   BoundedWorkerPool(const BoundedWorkerPool&) = delete;
   BoundedWorkerPool& operator=(const BoundedWorkerPool&) = delete;
@@ -42,10 +28,6 @@ public:
 
   [[nodiscard]] std::size_t workerCount() const noexcept;
   [[nodiscard]] bool canParallelizeFromCurrentThread() const noexcept;
-  [[nodiscard]] bool isSharedScheduler() const noexcept;
-  [[nodiscard]] const std::string& schedulerId() const noexcept;
-  [[nodiscard]] bool sharesSchedulerWith(const BoundedWorkerPool& other) const noexcept;
-  [[nodiscard]] BoundedWorkerPoolStatistics statistics() const;
 
   template<typename Function>
   [[nodiscard]] auto
@@ -54,7 +36,17 @@ public:
     auto task = std::make_shared<std::packaged_task<Result()>>(
         std::forward<Function>(function));
     std::future<Result> future = task->get_future();
-    enqueue([task]() { (*task)(); });
+    {
+      std::unique_lock lock{mutex_};
+      space_available_.wait(lock, [this]() {
+        return stopping_ || tasks_.size() < maximum_pending_tasks_;
+      });
+      if (stopping_) {
+        throw std::runtime_error{"submit on stopped worker pool"};
+      }
+      tasks_.emplace([task]() { (*task)(); });
+    }
+    task_available_.notify_one();
     return future;
   }
 
@@ -63,7 +55,7 @@ public:
     if (count == 0U) {
       return;
     }
-    if (current_state_ == state_.get()) {
+    if (current_pool_ == this) {
       for (std::size_t index = 0U; index < count; ++index) {
         function(index);
       }
@@ -91,18 +83,17 @@ public:
   }
 
 private:
-  struct SharedState;
+  void workerLoop();
 
-  BoundedWorkerPool(std::shared_ptr<SharedState> state, std::string scheduler_id,
-                    bool shared_scheduler);
-  void enqueue(std::function<void()> task);
+  static thread_local const BoundedWorkerPool* current_pool_;
 
-  static thread_local const SharedState* current_state_;
-
-  std::shared_ptr<SharedState> state_;
-  std::size_t lane_index_{0U};
-  std::string scheduler_id_;
-  bool shared_scheduler_{false};
+  std::size_t maximum_pending_tasks_{0U};
+  mutable std::mutex mutex_;
+  std::condition_variable task_available_;
+  std::condition_variable space_available_;
+  std::queue<std::function<void()>> tasks_;
+  std::vector<std::jthread> workers_;
+  bool stopping_{false};
 };
 
 } // namespace drone_city_nav
