@@ -238,6 +238,11 @@ def generate_launch_description():
                 if primary
                 else f"{prefix}/raw_obstacle_snapshot"
             )
+            raw_delta = (
+                "/drone_city_nav/raw_obstacle_delta"
+                if primary
+                else f"{prefix}/raw_obstacle_delta"
+            )
             memory_snapshot = (
                 "/drone_city_nav/obstacle_memory_snapshot"
                 if primary
@@ -270,6 +275,7 @@ def generate_launch_description():
                     "obstacle_memory_snapshot_topic": memory_snapshot,
                     "obstacle_memory_status_topic": memory_status,
                     "raw_obstacle_snapshot_topic": raw_snapshot,
+                    "raw_obstacle_delta_topic": raw_delta,
                     "tracked_agent_track_topic": (
                         f"{prefix}/target_track" if config["is_interceptor"] else ""
                     ),
@@ -298,6 +304,7 @@ def generate_launch_description():
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "raw_obstacle_snapshot_topic": raw_snapshot,
+                    "raw_obstacle_delta_topic": raw_delta,
                     "obstacle_memory_status_topic": memory_status,
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",
                     "execution_horizon_topic": f"{prefix}/mppi/execution_horizon",

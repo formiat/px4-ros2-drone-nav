@@ -199,9 +199,9 @@ TEST(MppiHorizonSafetyTest, ValidatesEveryHorizonSampleAgainstNewestRawSnapshot)
   const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F};
   const std::vector<float> local_esdf(4U, 10.0F);
   const GridBounds raw_bounds{0.0, 0.0, 1.0, 8, 4};
-  std::vector<std::int8_t> raw_cells(32U, 0);
-  raw_cells[1U * 8U + 4U] = 100;
-  const RawOccupancyGridView2D latest_raw{raw_bounds, raw_cells, 100};
+  OccupancyGrid2D latest_raw{raw_bounds};
+  latest_raw.reset(CellState::kFree);
+  latest_raw.setOccupied(GridIndex{4, 1});
   const mppi::State current{1.0F, 1.5F, 5.0F};
   const std::vector<mppi::State> horizon{current, mppi::State{6.0F, 1.5F, 5.0F}};
 
@@ -221,8 +221,8 @@ TEST(MppiHorizonSafetyTest, LatestRawBoundaryDoesNotBecomeAProhibitedZone) {
   const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F};
   const std::vector<float> local_esdf(4U, 10.0F);
   const GridBounds raw_bounds{0.0, 0.0, 1.0, 4, 4};
-  const std::vector<std::int8_t> raw_cells(16U, 0);
-  const RawOccupancyGridView2D latest_raw{raw_bounds, raw_cells, 100};
+  OccupancyGrid2D latest_raw{raw_bounds};
+  latest_raw.reset(CellState::kFree);
   const mppi::State current{1.0F, 1.5F, 5.0F};
   const std::vector<mppi::State> horizon{current, mppi::State{8.0F, 1.5F, 5.0F}};
 

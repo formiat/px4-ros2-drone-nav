@@ -6,12 +6,14 @@
 #include "drone_city_nav/msg/obstacle_memory_status.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
+#include "drone_city_nav/raw_obstacle_delta.hpp"
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <cstdint>
 #include <utility>
 
@@ -19,6 +21,16 @@
 #include "raw_world_snapshot.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] std::uint64_t riskPolicyFingerprint(const double critical_distance_m,
+                                                  const double preferred_distance_m) {
+  return (static_cast<std::uint64_t>(std::llround(critical_distance_m * 1000.0))
+          << 32U) ^
+         static_cast<std::uint64_t>(std::llround(preferred_distance_m * 1000.0));
+}
+
+} // namespace
 
 ObstacleMemoryTransport::ObstacleMemoryTransport(
     rclcpp::Node& node, std::string frame_id, const bool use_static_map,
@@ -29,6 +41,8 @@ ObstacleMemoryTransport::ObstacleMemoryTransport(
       static_grid_{std::move(static_grid)},
       risk_critical_distance_m_{risk_critical_distance_m},
       risk_preferred_distance_m_{risk_preferred_distance_m},
+      risk_policy_fingerprint_{
+          riskPolicyFingerprint(risk_critical_distance_m, risk_preferred_distance_m)},
       use_static_map_{use_static_map} {
   debug_publish_period_s_ = std::clamp(
       node_.declare_parameter<double>("obstacle_memory_debug_publish_period_s", 1.0),
@@ -49,6 +63,9 @@ ObstacleMemoryTransport::ObstacleMemoryTransport(
       std::clamp(node_.declare_parameter<double>(
                      "obstacle_memory_snapshot_max_publish_interval_ms", 1500.0),
                  1.0, 60'000.0);
+  raw_delta_chunk_size_cells_ = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+      node_.declare_parameter<std::int64_t>("raw_obstacle_delta_chunk_size_cells", 32),
+      4, 256));
 
   raw_grid_pub_ = node_.create_publisher<nav_msgs::msg::OccupancyGrid>(
       node_.declare_parameter<std::string>("obstacle_memory_grid_topic",
@@ -76,14 +93,18 @@ ObstacleMemoryTransport::ObstacleMemoryTransport(
       node_.declare_parameter<std::string>("raw_obstacle_snapshot_topic",
                                            "/drone_city_nav/raw_obstacle_snapshot"),
       rclcpp::QoS{1}.reliable().transient_local());
+  raw_obstacle_delta_pub_ = node_.create_publisher<msg::RawObstacleDelta>(
+      node_.declare_parameter<std::string>("raw_obstacle_delta_topic",
+                                           "/drone_city_nav/raw_obstacle_delta"),
+      rclcpp::QoS{1}.reliable().transient_local());
 
   RCLCPP_INFO(node_.get_logger(),
               "Obstacle memory transport: mode=%s status=every_update "
-              "raw=%s full_snapshot=debug_period debug_period=%.2fs "
+              "raw=full_resync_plus_cumulative_delta chunk_size=%u "
+              "full_snapshot=debug_period debug_period=%.2fs "
               "diagnostic_period=%.2fs budgets[serialized_bytes=%zu assembly=%.1fms "
               "publish_interval=%.1fms]",
-              use_static_map_ ? "static" : "no_static",
-              use_static_map_ ? "debug_period" : "every_update",
+              use_static_map_ ? "static" : "no_static", raw_delta_chunk_size_cells_,
               debug_publish_period_s_, diagnostic_period_s_, maximum_serialized_bytes_,
               maximum_assembly_time_ms_, maximum_publish_interval_ms_);
 }
@@ -91,7 +112,8 @@ ObstacleMemoryTransport::ObstacleMemoryTransport(
 void ObstacleMemoryTransport::publish(
     const OccupancyGrid2D& raw_grid,
     const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance,
-    const GridCellCounts& cell_counts, const rclcpp::Time& stamp) {
+    const GridCellCounts& cell_counts, RawGridChanges changes,
+    const rclcpp::Time& stamp) {
   const std::int64_t stamp_ns = stamp.nanoseconds();
   if (producer_instance_id_ == 0U) {
     producer_instance_id_ =
@@ -102,22 +124,53 @@ void ObstacleMemoryTransport::publish(
     return;
   }
 
+  if (changes.full_reset) {
+    raw_base_revision_ = 0U;
+    dirty_chunks_since_base_.clear();
+  }
+  if (!use_static_map_) {
+    const std::vector<std::uint32_t> changed_chunks = rawObstacleChunkIndices(
+        raw_grid.bounds(), changes.cell_indices, raw_delta_chunk_size_cells_);
+    dirty_chunks_since_base_.insert(changed_chunks.begin(), changed_chunks.end());
+  }
   const bool publish_debug =
+      changes.full_reset || raw_base_revision_ == 0U ||
       debug_publish_period_s_ <= 0.0 || last_debug_publish_stamp_ns_ <= 0 ||
       stamp_ns - last_debug_publish_stamp_ns_ >=
           static_cast<std::int64_t>(debug_publish_period_s_ * 1.0e9);
-  const bool publish_raw = !use_static_map_ || publish_debug;
   const auto assembly_started = std::chrono::steady_clock::now();
   std::optional<nav_msgs::msg::OccupancyGrid> grid_message;
-  if (publish_raw || publish_debug) {
+  if (publish_debug) {
     grid_message = makeObstacleMemoryOccupancyGridMessage(raw_grid, stamp, frame_id_);
   }
 
   bool raw_snapshot_published{false};
-  if (publish_raw && grid_message.has_value()) {
+  if (publish_debug && grid_message.has_value()) {
     raw_snapshot_published =
         publishRawWorldSnapshot(*grid_message, producer_instance_id_, sequence_);
     raw_snapshot_publications_ += raw_snapshot_published ? 1U : 0U;
+    if (raw_snapshot_published) {
+      raw_base_revision_ = sequence_;
+      dirty_chunks_since_base_.clear();
+    }
+  }
+
+  std::optional<msg::RawObstacleDelta> raw_delta_message;
+  if (!use_static_map_ && !raw_snapshot_published && raw_base_revision_ > 0U &&
+      !changes.cell_indices.empty() && !dirty_chunks_since_base_.empty()) {
+    const std::vector<std::uint32_t> chunks{dirty_chunks_since_base_.begin(),
+                                            dirty_chunks_since_base_.end()};
+    std_msgs::msg::Header header;
+    header.stamp = stamp;
+    header.frame_id = frame_id_;
+    raw_delta_message = makeRawObstacleDelta(
+        raw_grid, header, producer_instance_id_, raw_base_revision_, sequence_,
+        risk_policy_fingerprint_, risk_critical_distance_m_, risk_preferred_distance_m_,
+        raw_delta_chunk_size_cells_, chunks);
+    if (raw_delta_message) {
+      raw_obstacle_delta_pub_->publish(*raw_delta_message);
+      ++raw_delta_publications_;
+    }
   }
 
   std::optional<msg::ObstacleMemorySnapshot> snapshot_message;
@@ -159,6 +212,7 @@ void ObstacleMemoryTransport::publish(
   status.sequence = sequence_;
   status.occupied_cell_count = static_cast<std::uint64_t>(cell_counts.occupied_cells);
   status.raw_snapshot_published = raw_snapshot_published;
+  status.raw_delta_published = raw_delta_message.has_value();
   status.full_snapshot_published = snapshot_message.has_value();
   status_pub_->publish(status);
   ++status_publications_;
@@ -172,10 +226,17 @@ void ObstacleMemoryTransport::publish(
                        "Obstacle memory update published: producer_instance=%" PRIu64
                        " sequence=%" PRIu64 " stamp_ns=%" PRId64
                        " status_interval_ms=%.3f full_assembly_ms=%.3f occupied=%zu "
-                       "raw_published=%s full_published=%s",
+                       "raw_full_published=%s raw_delta_published=%s "
+                       "raw_delta_chunks=%zu raw_delta_bytes=%zu full_published=%s",
                        status.producer_instance_id, status.sequence, stamp_ns,
                        status_interval_ms, assembly_ms, cell_counts.occupied_cells,
                        raw_snapshot_published ? "true" : "false",
+                       raw_delta_message ? "true" : "false",
+                       raw_delta_message ? raw_delta_message->chunk_indices.size() : 0U,
+                       raw_delta_message ? raw_delta_message->chunk_data.size() +
+                                               raw_delta_message->chunk_indices.size() *
+                                                   sizeof(std::uint32_t)
+                                         : 0U,
                        snapshot_message.has_value() ? "true" : "false");
 
   const bool report_transport =
@@ -210,12 +271,13 @@ void ObstacleMemoryTransport::publish(
           " full_serialized_bytes=%zu provenance_serialized_bytes=%zu "
           "grid_cells=%zu max_assembly_ms=%.3f max_publish_interval_ms=%.3f "
           "publish_rate_hz=%.3f publications=%" PRIu64 " status_publications=%" PRIu64
-          " raw_publications=%" PRIu64 " debug_publications=%" PRIu64,
+          " raw_full_publications=%" PRIu64 " raw_delta_publications=%" PRIu64
+          " debug_publications=%" PRIu64,
           status_name, snapshot_message->sequence, snapshot_bytes, provenance_bytes,
           snapshot_message->grid.data.size(), maximum_assembly_since_report_ms_,
           maximum_publish_interval_since_report_ms_, publish_rate_hz,
           snapshot_publications_, status_publications_, raw_snapshot_publications_,
-          debug_publications_);
+          raw_delta_publications_, debug_publications_);
     } else {
       RCLCPP_WARN(
           node_.get_logger(),

@@ -3,4 +3,5 @@ uint64 producer_instance_id
 uint64 sequence
 uint64 occupied_cell_count
 bool raw_snapshot_published
+bool raw_delta_published
 bool full_snapshot_published

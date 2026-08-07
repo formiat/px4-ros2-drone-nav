@@ -19,11 +19,13 @@
 #include "drone_city_nav/msg/navigation_objective.hpp"
 #include "drone_city_nav/msg/obstacle_memory_status.hpp"
 #include "drone_city_nav/msg/radar_track_mode_command.hpp"
+#include "drone_city_nav/msg/raw_obstacle_delta.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
+#include "drone_city_nav/raw_obstacle_delta.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
@@ -127,9 +129,10 @@ struct ProductionMppiPreparedEsdf;
 
 struct ProductionMppiRawWorld2D {
   std::uint64_t producer_instance_id{0U};
+  std::uint64_t base_snapshot_revision{0U};
   std::uint64_t revision{0U};
-  std::uint64_t occupied_fingerprint{0U};
   std::int64_t ready_stamp_ns{0};
+  double reconstruction_ms{0.0};
   std::shared_ptr<const OccupancyGrid2D> occupancy;
 };
 
@@ -378,6 +381,8 @@ private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
+  void onRawObstacleDelta(msg::RawObstacleDelta::ConstSharedPtr message);
+  void queueRawWorld(const RawObstacleGridState& state, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void onNavigationObjective(const msg::NavigationObjective& message);
@@ -539,9 +544,11 @@ private:
 
   std::mutex raw_queue_mutex_;
   std::condition_variable_any raw_queue_condition_;
-  msg::RawObstacleSnapshot::ConstSharedPtr pending_raw_snapshot_;
-  std::atomic<std::shared_ptr<const msg::RawObstacleSnapshot>> latest_raw_snapshot_;
+  std::shared_ptr<const ProductionMppiRawWorld2D> pending_raw_world_;
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
+  std::mutex raw_reconstruction_mutex_;
+  RawObstacleDeltaAccumulator raw_delta_accumulator_;
+  msg::RawObstacleDelta::ConstSharedPtr pending_raw_delta_;
   std::chrono::steady_clock::time_point no_static_esdf_last_build_time_{};
   std::atomic<std::uint64_t> no_static_raw_updates_{0U};
   std::atomic<std::uint64_t> no_static_esdf_builds_{0U};
@@ -601,6 +608,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
+  rclcpp::Subscription<msg::RawObstacleDelta>::SharedPtr raw_delta_sub_;
   rclcpp::Subscription<msg::ObstacleMemoryStatus>::SharedPtr memory_status_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;

@@ -183,6 +183,9 @@ TEST(NavigationPose, ScanReadinessRequiresFreshPoseState) {
 TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
+  const RawGridChanges initial_changes = memory.takeRawGridChanges();
+  EXPECT_TRUE(initial_changes.full_reset);
+  EXPECT_TRUE(initial_changes.cell_indices.empty());
   const GridCellCounts initial_counts = memory.countRawCells();
   EXPECT_EQ(initial_counts.unknown_cells, memory.rawGrid().cellCount());
   EXPECT_EQ(initial_counts.free_cells, 0U);
@@ -222,6 +225,10 @@ TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   EXPECT_EQ(counts.unknown_cells + counts.free_cells + counts.occupied_cells,
             memory.rawGrid().cellCount());
   EXPECT_EQ(counts.occupied_cells, 1U);
+  const RawGridChanges changes = memory.takeRawGridChanges();
+  EXPECT_FALSE(changes.full_reset);
+  EXPECT_FALSE(changes.cell_indices.empty());
+  EXPECT_TRUE(memory.takeRawGridChanges().cell_indices.empty());
 }
 
 TEST(GridConfig, BoundedGridBoundsSanitizesInvalidAndHugeInputs) {
@@ -494,6 +501,7 @@ TEST(ObstacleMemoryGrid, ResetClearsScoresAndRawStates) {
   EXPECT_EQ(counts.free_cells, 0U);
   EXPECT_EQ(counts.unknown_cells, memory.rawGrid().cellCount());
   EXPECT_TRUE(memory.activeProvenance().empty());
+  EXPECT_TRUE(memory.takeRawGridChanges().full_reset);
 }
 
 } // namespace drone_city_nav

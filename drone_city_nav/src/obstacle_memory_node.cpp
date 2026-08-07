@@ -555,8 +555,9 @@ private:
     }
 
     const GridCellCounts raw_counts = memory_->countRawCells();
+    RawGridChanges raw_changes = memory_->takeRawGridChanges();
     memory_transport_->publish(memory_->rawGrid(), memory_->activeProvenance(),
-                               raw_counts, now());
+                               raw_counts, std::move(raw_changes), now());
     if (!stats.occupied_transitions.empty()) {
       LidarMemoryHitDiagnosticBatch diagnostics;
       diagnostics.transitions = std::move(stats.occupied_transitions);

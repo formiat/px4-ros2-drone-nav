@@ -1,6 +1,5 @@
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/local_esdf_2d.hpp"
-#include "drone_city_nav/ros_conversions.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -63,12 +62,12 @@ namespace {
 
 void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
-    msg::RawObstacleSnapshot::ConstSharedPtr snapshot;
+    std::shared_ptr<const ProductionMppiRawWorld2D> raw_world;
     bool static_work{false};
     {
       std::unique_lock lock{raw_queue_mutex_};
       raw_queue_condition_.wait(lock, stop_token, [this]() {
-        return pending_raw_snapshot_ != nullptr || pending_static_esdf_work_;
+        return pending_raw_world_ != nullptr || pending_static_esdf_work_;
       });
       if (stop_token.stop_requested()) {
         return;
@@ -77,13 +76,14 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         static_work = std::exchange(pending_static_esdf_work_, false);
         static_esdf_work_in_progress_ = static_work;
       } else {
-        snapshot = std::exchange(pending_raw_snapshot_, nullptr);
+        raw_world = std::exchange(pending_raw_world_, nullptr);
       }
     }
-    if ((!use_static_map_ && !snapshot) || (use_static_map_ && !static_work)) {
+    if ((!use_static_map_ && !raw_world) || (use_static_map_ && !static_work)) {
       continue;
     }
-    const std::int64_t source_stamp_ns = get_clock()->now().nanoseconds();
+    const std::int64_t source_stamp_ns =
+        use_static_map_ ? get_clock()->now().nanoseconds() : raw_world->ready_stamp_ns;
     if (use_static_map_ && !static_occupancy_3d_) {
       RCLCPP_ERROR(get_logger(),
                    "STATIC_ESDF3D rejected reason=resident_occupancy_unavailable");
@@ -290,32 +290,15 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                   prepared.grid.height, prepared.grid.depth);
       continue;
     }
-    const auto conversion_started = std::chrono::steady_clock::now();
-    RawOccupancyGridFromRosResult conversion =
-        rawOccupancyGridFromRos(snapshot->grid, RawOccupancyGridFromRosConfig{100, 0});
-    if (!conversion.grid.has_value()) {
+    const std::shared_ptr<const OccupancyGrid2D> raw_occupancy = raw_world->occupancy;
+    if (!raw_occupancy) {
       RCLCPP_WARN(get_logger(),
                   "PRODUCTION_MPPI_ESDF rejected revision=%" PRIu64
-                  " reason=invalid_raw_grid",
-                  snapshot->obstacle_snapshot_revision);
+                  " reason=unavailable_raw_grid",
+                  raw_world->revision);
       continue;
     }
-    auto raw_occupancy =
-        std::make_shared<const OccupancyGrid2D>(std::move(*conversion.grid));
-    const double raw_conversion_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  conversion_started)
-            .count();
-    const auto raw_world =
-        std::make_shared<const ProductionMppiRawWorld2D>(ProductionMppiRawWorld2D{
-            .producer_instance_id = snapshot->producer_instance_id,
-            .revision = snapshot->obstacle_snapshot_revision,
-            .occupied_fingerprint = raw_occupancy->occupiedFingerprint(),
-            .ready_stamp_ns = get_clock()->now().nanoseconds(),
-            .occupancy = raw_occupancy,
-        });
-    latest_raw_world_.store(raw_world, std::memory_order_release);
-    no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
+    const double raw_conversion_ms = raw_world->reconstruction_ms;
 
     ProductionMppiNavigation navigation;
     {
@@ -422,7 +405,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         prepared = *prepared_esdf_;
       }
     }
-    prepared.producer_instance_id = snapshot->producer_instance_id;
+    prepared.producer_instance_id = raw_world->producer_instance_id;
     prepared.revision = local_occupied_fingerprint;
     prepared.source_occupied_fingerprint = local_occupied_fingerprint;
     prepared.source_stamp_ns = source_stamp_ns;

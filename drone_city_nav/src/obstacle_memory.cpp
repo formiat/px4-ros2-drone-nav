@@ -5,6 +5,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 
 namespace drone_city_nav {
 namespace {
@@ -349,6 +350,8 @@ void ObstacleMemoryGrid::reset() {
   raw_grid_ = OccupancyGrid2D{raw_grid_.bounds()};
   std::fill(scores_.begin(), scores_.end(), 0);
   raw_cell_counts_ = GridCellCounts{.unknown_cells = raw_grid_.cellCount()};
+  changed_cell_indices_.clear();
+  full_reset_pending_ = true;
   active_provenance_.clear();
   uncertain_hit_tracker_.clear();
 }
@@ -369,6 +372,14 @@ ObstacleMemoryGrid::activeProvenance() const noexcept {
 
 GridCellCounts ObstacleMemoryGrid::countRawCells() const noexcept {
   return raw_cell_counts_;
+}
+
+RawGridChanges ObstacleMemoryGrid::takeRawGridChanges() {
+  RawGridChanges changes{.cell_indices = std::move(changed_cell_indices_),
+                         .full_reset = full_reset_pending_};
+  changed_cell_indices_.clear();
+  full_reset_pending_ = false;
+  return changes;
 }
 
 void ObstacleMemoryGrid::applyMiss(const GridIndex cell,
@@ -433,6 +444,7 @@ void ObstacleMemoryGrid::syncCellState(const GridIndex cell,
     return;
   }
   recordCellStateTransition(raw_cell_counts_, previous, next);
+  changed_cell_indices_.push_back(index);
   switch (next) {
     case CellState::kUnknown:
       raw_grid_.setUnknown(cell);

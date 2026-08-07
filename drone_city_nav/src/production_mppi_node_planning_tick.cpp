@@ -1,6 +1,5 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
-#include "drone_city_nav/ros_conversions.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -60,12 +59,11 @@ void ProductionMppiNode::planningTick() {
     const std::scoped_lock lock{esdf_state_mutex_};
     esdf = prepared_esdf_;
   }
-  const std::shared_ptr<const msg::RawObstacleSnapshot> latest_raw_snapshot =
-      latest_raw_snapshot_.load(std::memory_order_acquire);
+  const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
+      latest_raw_world_.load(std::memory_order_acquire);
   const auto raw_revision = [&](const std::uint64_t esdf_revision) {
-    return !use_static_map_ && latest_raw_snapshot
-               ? latest_raw_snapshot->obstacle_snapshot_revision
-               : esdf_revision;
+    return !use_static_map_ && latest_raw_world ? latest_raw_world->revision
+                                                : esdf_revision;
   };
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const double pose_age_ms =

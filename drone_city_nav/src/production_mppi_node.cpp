@@ -709,6 +709,13 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       [this](msg::RawObstacleSnapshot::ConstSharedPtr message) {
         onRawObstacleSnapshot(std::move(message));
       });
+  raw_delta_sub_ = create_subscription<msg::RawObstacleDelta>(
+      declare_parameter<std::string>("raw_obstacle_delta_topic",
+                                     "/drone_city_nav/raw_obstacle_delta"),
+      rclcpp::QoS{1}.reliable().transient_local(),
+      [this](msg::RawObstacleDelta::ConstSharedPtr message) {
+        onRawObstacleDelta(std::move(message));
+      });
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
       declare_parameter<std::string>("obstacle_memory_status_topic",
                                      "/drone_city_nav/obstacle_memory_status"),

@@ -169,7 +169,7 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
     const MppiHorizonSafetyConfig& config, const bool engine_collision,
     const std::span<const mppi::KnownSolid> known_solids,
     const OccupancyGrid3D* global_raw_occupancy,
-    const RawOccupancyGridView2D* latest_raw_occupancy) {
+    const OccupancyGrid2D* latest_raw_occupancy) {
   MppiHorizonSafetyResult result;
   const double speed =
       std::hypot(std::hypot(current_state.vx, current_state.vy), current_state.vz);

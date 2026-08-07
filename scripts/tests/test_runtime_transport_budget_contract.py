@@ -39,8 +39,15 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         )[0]
 
         self.assertIn("makeObstacleMemorySnapshotMessage", debug_block)
-        self.assertIn("const bool publish_raw = !use_static_map_ || publish_debug", source)
+        self.assertIn("raw_base_revision_ = sequence_", source)
+        self.assertIn("dirty_chunks_since_base_", source)
+        self.assertIn("makeRawObstacleDelta", source)
         self.assertIn("status_pub_->publish(status)", source)
+
+        planner = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("create_subscription<msg::RawObstacleDelta>", planner)
 
     def test_intercept_launch_wires_per_vehicle_status_topics(self) -> None:
         launch = (PACKAGE / "launch" / "intercept.launch.py").read_text(
@@ -48,10 +55,12 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         )
 
         self.assertIn('f"{prefix}/obstacle_memory_status"', launch)
+        self.assertIn('f"{prefix}/raw_obstacle_delta"', launch)
         planner_parameters = launch.split("planner_params =", maxsplit=1)[1].split(
             "offboard_params =", maxsplit=1
         )[0]
         self.assertIn('"obstacle_memory_status_topic": memory_status', planner_parameters)
+        self.assertIn('"raw_obstacle_delta_topic": raw_delta', planner_parameters)
         self.assertNotIn(
             '"obstacle_memory_snapshot_topic": memory_snapshot', planner_parameters
         )

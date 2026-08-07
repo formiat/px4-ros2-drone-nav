@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <numbers>
@@ -138,12 +139,94 @@ void ProductionMppiNode::onRawObstacleSnapshot(
   if (use_static_map_) {
     return;
   }
-  latest_raw_snapshot_.store(message, std::memory_order_release);
-  std::scoped_lock lock{raw_queue_mutex_};
-  if (pending_raw_snapshot_) {
-    ++dropped_raw_snapshots_;
+  const auto started = std::chrono::steady_clock::now();
+  RawObstacleGridUpdate update;
+  {
+    const std::scoped_lock lock{raw_reconstruction_mutex_};
+    update = raw_delta_accumulator_.apply(*message);
+    if (update.accepted()) {
+      msg::RawObstacleDelta::ConstSharedPtr pending =
+          std::exchange(pending_raw_delta_, nullptr);
+      if (pending &&
+          pending->producer_instance_id == update.state.producer_instance_id &&
+          pending->base_snapshot_revision == update.state.base_snapshot_revision &&
+          pending->obstacle_snapshot_revision >
+              update.state.obstacle_snapshot_revision) {
+        const RawObstacleGridUpdate pending_update =
+            raw_delta_accumulator_.apply(*pending);
+        if (pending_update.accepted()) {
+          update = pending_update;
+        }
+      }
+    }
   }
-  pending_raw_snapshot_ = std::move(message);
+  if (!update.accepted()) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "RAW_OBSTACLE_FULL rejected status=%s producer=%" PRIu64 " revision=%" PRIu64,
+        rawObstacleGridUpdateStatusName(update.status), message->producer_instance_id,
+        message->obstacle_snapshot_revision);
+    return;
+  }
+  const double reconstruction_ms = std::chrono::duration<double, std::milli>(
+                                       std::chrono::steady_clock::now() - started)
+                                       .count();
+  queueRawWorld(update.state, reconstruction_ms);
+}
+
+void ProductionMppiNode::onRawObstacleDelta(
+    msg::RawObstacleDelta::ConstSharedPtr message) {
+  if (use_static_map_) {
+    return;
+  }
+  const auto started = std::chrono::steady_clock::now();
+  RawObstacleGridUpdate update;
+  {
+    const std::scoped_lock lock{raw_reconstruction_mutex_};
+    update = raw_delta_accumulator_.apply(*message);
+    if (update.status == RawObstacleGridUpdateStatus::kBaseUnavailable &&
+        (!pending_raw_delta_ || message->obstacle_snapshot_revision >
+                                    pending_raw_delta_->obstacle_snapshot_revision)) {
+      pending_raw_delta_ = message;
+    }
+  }
+  if (!update.accepted()) {
+    if (update.status == RawObstacleGridUpdateStatus::kInvalidMessage) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "RAW_OBSTACLE_DELTA rejected status=%s producer=%" PRIu64 " base=%" PRIu64
+          " revision=%" PRIu64,
+          rawObstacleGridUpdateStatusName(update.status), message->producer_instance_id,
+          message->base_snapshot_revision, message->obstacle_snapshot_revision);
+    }
+    return;
+  }
+  const double reconstruction_ms = std::chrono::duration<double, std::milli>(
+                                       std::chrono::steady_clock::now() - started)
+                                       .count();
+  queueRawWorld(update.state, reconstruction_ms);
+}
+
+void ProductionMppiNode::queueRawWorld(const RawObstacleGridState& state,
+                                       const double reconstruction_ms) {
+  auto world =
+      std::make_shared<const ProductionMppiRawWorld2D>(ProductionMppiRawWorld2D{
+          .producer_instance_id = state.producer_instance_id,
+          .base_snapshot_revision = state.base_snapshot_revision,
+          .revision = state.obstacle_snapshot_revision,
+          .ready_stamp_ns = get_clock()->now().nanoseconds(),
+          .reconstruction_ms = reconstruction_ms,
+          .occupancy = state.occupancy,
+      });
+  latest_raw_world_.store(world, std::memory_order_release);
+  no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
+  {
+    const std::scoped_lock lock{raw_queue_mutex_};
+    if (pending_raw_world_) {
+      ++dropped_raw_snapshots_;
+    }
+    pending_raw_world_ = std::move(world);
+  }
   raw_queue_condition_.notify_all();
 }
 

@@ -94,6 +94,6 @@ buildMppiBrakingFallback(const mppi::State& current_state,
     const MppiHorizonSafetyConfig& config, bool engine_collision = false,
     std::span<const mppi::KnownSolid> known_solids = {},
     const OccupancyGrid3D* global_raw_occupancy = nullptr,
-    const RawOccupancyGridView2D* latest_raw_occupancy = nullptr);
+    const OccupancyGrid2D* latest_raw_occupancy = nullptr);
 
 } // namespace drone_city_nav

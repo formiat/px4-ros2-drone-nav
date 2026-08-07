@@ -111,6 +111,11 @@ struct GridCellCounts {
   std::size_t inflated_cells{0U};
 };
 
+struct RawGridChanges {
+  std::vector<std::size_t> cell_indices;
+  bool full_reset{false};
+};
+
 class ObstacleMemoryGrid {
 public:
   explicit ObstacleMemoryGrid(const GridBounds& bounds);
@@ -128,6 +133,7 @@ public:
   [[nodiscard]] const std::unordered_map<std::size_t, MemoryCellProvenance>&
   activeProvenance() const noexcept;
   [[nodiscard]] GridCellCounts countRawCells() const noexcept;
+  [[nodiscard]] RawGridChanges takeRawGridChanges();
 
 private:
   void applyMiss(GridIndex cell, const ObstacleMemoryConfig& config);
@@ -140,6 +146,8 @@ private:
   OccupancyGrid2D raw_grid_;
   std::vector<int> scores_;
   GridCellCounts raw_cell_counts_{};
+  std::vector<std::size_t> changed_cell_indices_;
+  bool full_reset_pending_{true};
   std::unordered_map<std::size_t, MemoryCellProvenance> active_provenance_;
   UncertainLidarHitTracker uncertain_hit_tracker_;
 };

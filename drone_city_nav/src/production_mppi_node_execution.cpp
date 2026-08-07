@@ -1,5 +1,3 @@
-#include "drone_city_nav/ros_conversions.hpp"
-
 #include <algorithm>
 #include <builtin_interfaces/msg/time.hpp>
 #include <cinttypes>
@@ -44,12 +42,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       navigationObjective();
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
-  const std::shared_ptr<const msg::RawObstacleSnapshot> latest_raw_snapshot =
-      latest_raw_snapshot_.load(std::memory_order_acquire);
-  std::optional<RawOccupancyGridView2D> latest_raw_view;
-  if (!use_static_map_ && latest_raw_snapshot) {
-    latest_raw_view = rawOccupancyGridViewFromRos(latest_raw_snapshot->grid, 100);
-  }
+  const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
+      latest_raw_world_.load(std::memory_order_acquire);
+  const OccupancyGrid2D* latest_raw_occupancy =
+      !use_static_map_ && latest_raw_world && latest_raw_world->occupancy
+          ? latest_raw_world->occupancy.get()
+          : nullptr;
 
   const auto make_horizon = [&](const std::int64_t valid_until_ns,
                                 const ProductionMppiExecutionMode mode,
@@ -61,9 +59,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     horizon.valid_from = timeFromNanoseconds(now_ns);
     horizon.valid_until = timeFromNanoseconds(valid_until_ns);
     horizon.pose_revision = input.pose_revision;
-    horizon.obstacle_revision = latest_raw_snapshot
-                                    ? latest_raw_snapshot->obstacle_snapshot_revision
-                                    : input.obstacle_revision;
+    horizon.obstacle_revision =
+        latest_raw_world ? latest_raw_world->revision : input.obstacle_revision;
     horizon.risk_tier = static_cast<std::uint8_t>(result.selected_tier);
     horizon.execution_mode = static_cast<std::uint8_t>(mode);
     horizon.execution_reason = static_cast<std::uint8_t>(reason);
@@ -134,7 +131,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         input.initial_state, result.horizon, *esdf.distances_m, esdf.grid,
         safety_config_, false, {},
         use_static_map_ && static_occupancy_3d_ ? &*static_occupancy_3d_ : nullptr,
-        latest_raw_view ? &*latest_raw_view : nullptr);
+        latest_raw_occupancy);
     intervention = safety_intervention_tracker_.update(now_ns, safety);
     if (safety.global_raw_fallback_samples > 0U) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
@@ -148,7 +145,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           "NO_STATIC_SAFETY_LATEST_RAW samples=%zu collision=%s raw_revision=%" PRIu64,
           safety.global_raw_validation_samples,
           safety.global_raw_collision ? "true" : "false",
-          latest_raw_snapshot ? latest_raw_snapshot->obstacle_snapshot_revision : 0U);
+          latest_raw_world ? latest_raw_world->revision : 0U);
     }
     if (safety.flight_envelope_violation) {
       RCLCPP_WARN_THROTTLE(

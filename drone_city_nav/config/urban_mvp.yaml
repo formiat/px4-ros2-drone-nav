@@ -11,6 +11,8 @@ obstacle_memory_node:
     obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
+    raw_obstacle_delta_topic: /drone_city_nav/raw_obstacle_delta
+    raw_obstacle_delta_chunk_size_cells: 32
     use_static_map: true
     risk_critical_distance_m: 1.0
     risk_preferred_distance_m: 6.0
@@ -179,6 +181,7 @@ production_mppi_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
+    raw_obstacle_delta_topic: /drone_city_nav/raw_obstacle_delta
     path_topic: /drone_city_nav/mppi/path
     markers_topic: /drone_city_nav/mppi/markers
     status_topic: /drone_city_nav/mppi/status

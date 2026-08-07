@@ -1,0 +1,11 @@
+std_msgs/Header header
+uint64 producer_instance_id
+uint64 base_snapshot_revision
+uint64 obstacle_snapshot_revision
+uint64 risk_policy_fingerprint
+float64 risk_critical_distance_m
+float64 risk_preferred_distance_m
+nav_msgs/MapMetaData map_info
+uint32 chunk_size_cells
+uint32[] chunk_indices
+int8[] chunk_data
