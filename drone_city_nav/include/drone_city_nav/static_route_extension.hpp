@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -32,6 +33,50 @@ struct StaticRouteObjective {
   std::uint64_t sample_sequence{0U};
   bool continuous_tracking{false};
   bool available{false};
+};
+
+struct StaticRouteSearchRetryConfig {
+  double minimum_pose_change_m{2.0};
+  double minimum_objective_change_m{5.0};
+  double minimum_retry_interval_s{1.0};
+};
+
+struct StaticRouteSearchContext {
+  std::uint64_t base_route_generation{0U};
+  Point3 search_start{};
+  StaticRouteObjective objective{};
+  std::uint64_t minimum_tracking_sample_sequence{0U};
+  std::int64_t stamp_ns{0};
+};
+
+enum class StaticRouteSearchRetryTrigger : std::uint8_t {
+  kNoFailure,
+  kRouteGenerationChanged,
+  kObjectiveChanged,
+  kPoseChanged,
+  kRetryIntervalElapsed,
+  kSuppressed,
+};
+
+struct StaticRouteSearchRetryDecision {
+  bool allow{false};
+  StaticRouteSearchRetryTrigger trigger{StaticRouteSearchRetryTrigger::kSuppressed};
+  double pose_change_m{0.0};
+  double objective_change_m{0.0};
+  double elapsed_s{0.0};
+};
+
+class StaticRouteFailedSearchLatch final {
+public:
+  [[nodiscard]] StaticRouteSearchRetryDecision
+  evaluate(const StaticRouteSearchRetryConfig& config,
+           const StaticRouteSearchContext& context) const noexcept;
+  void recordFailure(const StaticRouteSearchContext& context) noexcept;
+  void clear() noexcept;
+  [[nodiscard]] bool latched() const noexcept;
+
+private:
+  std::optional<StaticRouteSearchContext> failure_;
 };
 
 struct StaticRouteExtensionObservation {
@@ -177,5 +222,8 @@ staticRouteCandidateStatusName(StaticRouteCandidateStatus status) noexcept;
 
 [[nodiscard]] std::string_view
 staticRouteActivationStatusName(StaticRouteActivationStatus status) noexcept;
+
+[[nodiscard]] std::string_view
+staticRouteSearchRetryTriggerName(StaticRouteSearchRetryTrigger trigger) noexcept;
 
 } // namespace drone_city_nav

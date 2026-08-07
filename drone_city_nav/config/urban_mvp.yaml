@@ -257,6 +257,9 @@ production_mppi_node:
     static_global_guide_extension_retry_progress_m: 15.0
     static_global_guide_extension_retry_interval_s: 1.0
     static_global_guide_extension_minimum_endpoint_improvement_m: 5.0
+    static_global_guide_failed_search_pose_change_m: 2.0
+    static_global_guide_failed_search_objective_change_m: 5.0
+    static_global_guide_failed_search_retry_interval_s: 1.0
     mission_goal_capture_radius_m: 2.0
     global_guide_maximum_cross_track_m: 15.0
     global_guide_heading_low_speed_mps: 0.5

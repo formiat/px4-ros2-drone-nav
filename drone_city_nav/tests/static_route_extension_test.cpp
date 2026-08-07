@@ -169,6 +169,87 @@ TEST(StaticRouteExtensionTest, CoalescesReplanForOneRouteGeneration) {
   EXPECT_TRUE(gate.tryBegin(7U));
 }
 
+TEST(StaticRouteExtensionTest, SuppressesEquivalentFailedSearchUntilRetryInterval) {
+  StaticRouteFailedSearchLatch latch;
+  const StaticRouteSearchContext failure{
+      .base_route_generation = 7U,
+      .search_start = Point3{10.0, 20.0, 18.0},
+      .objective = StaticRouteObjective{.goal = Point3{100.0, 200.0, 18.0},
+                                        .mission_epoch = 3U,
+                                        .sample_sequence = 40U,
+                                        .continuous_tracking = true,
+                                        .available = true},
+      .minimum_tracking_sample_sequence = 30U,
+      .stamp_ns = 1'000'000'000,
+  };
+  latch.recordFailure(failure);
+
+  StaticRouteSearchContext retry = failure;
+  retry.objective.sample_sequence = 41U;
+  retry.stamp_ns = 1'500'000'000;
+  StaticRouteSearchRetryDecision decision =
+      latch.evaluate(StaticRouteSearchRetryConfig{}, retry);
+  EXPECT_FALSE(decision.allow);
+  EXPECT_EQ(decision.trigger, StaticRouteSearchRetryTrigger::kSuppressed);
+
+  retry.stamp_ns = 2'000'000'000;
+  decision = latch.evaluate(StaticRouteSearchRetryConfig{}, retry);
+  EXPECT_TRUE(decision.allow);
+  EXPECT_EQ(decision.trigger, StaticRouteSearchRetryTrigger::kRetryIntervalElapsed);
+}
+
+TEST(StaticRouteExtensionTest, FailedSearchRetriesAfterMeaningfulStateChange) {
+  StaticRouteFailedSearchLatch latch;
+  const StaticRouteSearchContext failure{
+      .base_route_generation = 7U,
+      .search_start = Point3{10.0, 20.0, 18.0},
+      .objective = StaticRouteObjective{.goal = Point3{100.0, 200.0, 18.0},
+                                        .mission_epoch = 3U,
+                                        .sample_sequence = 40U,
+                                        .continuous_tracking = true,
+                                        .available = true},
+      .minimum_tracking_sample_sequence = 30U,
+      .stamp_ns = 1'000'000'000,
+  };
+  latch.recordFailure(failure);
+
+  StaticRouteSearchContext changed = failure;
+  changed.search_start.x += 2.0;
+  changed.stamp_ns += 100'000'000;
+  EXPECT_EQ(latch.evaluate(StaticRouteSearchRetryConfig{}, changed).trigger,
+            StaticRouteSearchRetryTrigger::kPoseChanged);
+
+  changed = failure;
+  changed.objective.goal.y += 5.0;
+  changed.stamp_ns += 100'000'000;
+  EXPECT_EQ(latch.evaluate(StaticRouteSearchRetryConfig{}, changed).trigger,
+            StaticRouteSearchRetryTrigger::kObjectiveChanged);
+
+  changed = failure;
+  changed.minimum_tracking_sample_sequence += 1U;
+  changed.stamp_ns += 100'000'000;
+  EXPECT_EQ(latch.evaluate(StaticRouteSearchRetryConfig{}, changed).trigger,
+            StaticRouteSearchRetryTrigger::kObjectiveChanged);
+
+  changed = failure;
+  changed.base_route_generation += 1U;
+  changed.stamp_ns += 100'000'000;
+  EXPECT_EQ(latch.evaluate(StaticRouteSearchRetryConfig{}, changed).trigger,
+            StaticRouteSearchRetryTrigger::kRouteGenerationChanged);
+}
+
+TEST(StaticRouteExtensionTest, SuccessfulSearchClearsFailureLatch) {
+  StaticRouteFailedSearchLatch latch;
+  latch.recordFailure(StaticRouteSearchContext{.base_route_generation = 7U});
+  ASSERT_TRUE(latch.latched());
+
+  latch.clear();
+
+  EXPECT_FALSE(latch.latched());
+  EXPECT_EQ(latch.evaluate(StaticRouteSearchRetryConfig{}, {}).trigger,
+            StaticRouteSearchRetryTrigger::kNoFailure);
+}
+
 TEST(StaticRouteExtensionTest, RepeatedRoiRefreshUsesUniqueRequestSequence) {
   StaticRouteRoiRefreshLifecycle lifecycle;
 

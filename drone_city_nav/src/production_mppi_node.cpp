@@ -484,6 +484,19 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   static_route_extension_config_.minimum_endpoint_improvement_m =
       declare_parameter<double>(
           "static_global_guide_extension_minimum_endpoint_improvement_m", 5.0);
+  static_route_search_retry_config_.minimum_pose_change_m =
+      declare_parameter<double>("static_global_guide_failed_search_pose_change_m", 2.0);
+  static_route_search_retry_config_.minimum_objective_change_m =
+      declare_parameter<double>("static_global_guide_failed_search_objective_change_m",
+                                5.0);
+  static_route_search_retry_config_.minimum_retry_interval_s =
+      declare_parameter<double>("static_global_guide_failed_search_retry_interval_s",
+                                1.0);
+  if (!(static_route_search_retry_config_.minimum_pose_change_m > 0.0) ||
+      !(static_route_search_retry_config_.minimum_objective_change_m > 0.0) ||
+      !(static_route_search_retry_config_.minimum_retry_interval_s > 0.0)) {
+    throw std::invalid_argument{"invalid static route search retry configuration"};
+  }
   active_guide_config_.maximum_cross_track_m =
       declare_parameter<double>("global_guide_maximum_cross_track_m", 15.0);
   active_guide_config_.velocity_heading_low_speed_mps =

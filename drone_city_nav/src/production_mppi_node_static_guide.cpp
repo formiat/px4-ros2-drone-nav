@@ -406,7 +406,33 @@ void ProductionMppiNode::processStaticGuideSearch(
     finishStaticRouteExtension(world.static_route_extension_base_generation);
   }
   if (world.static_route_replan_request) {
-    finishStaticRouteReplan(world.static_route_replan_base_generation);
+    const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
+    if (activated) {
+      static_route_failed_search_latch_.clear();
+    } else if (revision_matches && generation_matches && objective_matches) {
+      static_route_failed_search_latch_.recordFailure(StaticRouteSearchContext{
+          .base_route_generation = world.static_route_replan_base_generation,
+          .search_start = search_start,
+          .objective = world.search_objective,
+          .minimum_tracking_sample_sequence = required_objective_sample,
+          .stamp_ns = get_clock()->now().nanoseconds(),
+      });
+      RCLCPP_INFO(
+          get_logger(),
+          "STATIC_ROUTE_SEARCH_OUTCOME status=failed_latched "
+          "generation=%" PRIu64 " activation_status=%.*s "
+          "candidate_status=%.*s start=(%.2f,%.2f,%.2f)",
+          world.static_route_replan_base_generation,
+          static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
+          staticRouteActivationStatusName(activation_status).data(),
+          static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
+          staticRouteCandidateStatusName(validation.status).data(), search_start.x,
+          search_start.y, search_start.z);
+    }
+    static_route_replan_gate_.finish(world.static_route_replan_base_generation);
+  } else if (activated) {
+    const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
+    static_route_failed_search_latch_.clear();
   }
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();

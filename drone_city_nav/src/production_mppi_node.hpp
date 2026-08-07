@@ -395,6 +395,8 @@ private:
   navigationObjective() const;
   void requestGuideRelease(GlobalGuideReleaseReason reason,
                            std::uint64_t guide_generation = 0U);
+  void requestStaticRouteReplan(GlobalGuideReleaseReason reason,
+                                std::uint64_t guide_generation);
   void maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
                                         const ProductionMppiNavigation& navigation,
                                         const GlobalGuideProjection& route_projection,
@@ -509,6 +511,7 @@ private:
   ConstrainedRouteControlConfig constrained_route_control_config_{};
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
+  StaticRouteSearchRetryConfig static_route_search_retry_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
@@ -528,6 +531,7 @@ private:
   double static_route_extension_last_request_station_m_{0.0};
   std::int64_t static_route_extension_last_request_stamp_ns_{0};
   StaticRouteReplanGate static_route_replan_gate_{};
+  StaticRouteFailedSearchLatch static_route_failed_search_latch_{};
   StaticRouteRoiRefreshLifecycle static_roi_refresh_lifecycle_{};
 
   mutable std::mutex input_mutex_;

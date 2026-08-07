@@ -40,6 +40,69 @@ std::uint64_t StaticRouteReplanGate::generation() const noexcept {
   return generation_;
 }
 
+StaticRouteSearchRetryDecision StaticRouteFailedSearchLatch::evaluate(
+    const StaticRouteSearchRetryConfig& config,
+    const StaticRouteSearchContext& context) const noexcept {
+  if (!failure_.has_value()) {
+    return {.allow = true, .trigger = StaticRouteSearchRetryTrigger::kNoFailure};
+  }
+
+  const StaticRouteSearchContext& failure = *failure_;
+  StaticRouteSearchRetryDecision decision;
+  decision.pose_change_m = distance3D(failure.search_start, context.search_start);
+  if (failure.objective.available && context.objective.available) {
+    decision.objective_change_m =
+        distance3D(failure.objective.goal, context.objective.goal);
+  }
+  if (context.stamp_ns > failure.stamp_ns) {
+    decision.elapsed_s =
+        static_cast<double>(context.stamp_ns - failure.stamp_ns) * 1.0e-9;
+  }
+
+  if (failure.base_route_generation != context.base_route_generation) {
+    decision.allow = true;
+    decision.trigger = StaticRouteSearchRetryTrigger::kRouteGenerationChanged;
+    return decision;
+  }
+  const bool objective_identity_changed =
+      failure.objective.available != context.objective.available ||
+      failure.objective.mission_epoch != context.objective.mission_epoch ||
+      failure.objective.continuous_tracking != context.objective.continuous_tracking ||
+      failure.minimum_tracking_sample_sequence !=
+          context.minimum_tracking_sample_sequence;
+  if (objective_identity_changed ||
+      decision.objective_change_m + 1.0e-9 >=
+          std::max(0.0, config.minimum_objective_change_m)) {
+    decision.allow = true;
+    decision.trigger = StaticRouteSearchRetryTrigger::kObjectiveChanged;
+    return decision;
+  }
+  if (decision.pose_change_m + 1.0e-9 >= std::max(0.0, config.minimum_pose_change_m)) {
+    decision.allow = true;
+    decision.trigger = StaticRouteSearchRetryTrigger::kPoseChanged;
+    return decision;
+  }
+  if (decision.elapsed_s + 1.0e-9 >= std::max(0.0, config.minimum_retry_interval_s)) {
+    decision.allow = true;
+    decision.trigger = StaticRouteSearchRetryTrigger::kRetryIntervalElapsed;
+    return decision;
+  }
+  return decision;
+}
+
+void StaticRouteFailedSearchLatch::recordFailure(
+    const StaticRouteSearchContext& context) noexcept {
+  failure_ = context;
+}
+
+void StaticRouteFailedSearchLatch::clear() noexcept {
+  failure_.reset();
+}
+
+bool StaticRouteFailedSearchLatch::latched() const noexcept {
+  return failure_.has_value();
+}
+
 StaticRouteRoiRefreshRequest StaticRouteRoiRefreshLifecycle::queue(
     const std::uint64_t base_route_generation,
     const StaticRouteRoiRefreshRequest::Purpose purpose) noexcept {
@@ -281,6 +344,25 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "stale_route_generation";
     case StaticRouteActivationStatus::kStaleObjective:
       return "stale_objective";
+  }
+  return "unknown";
+}
+
+std::string_view staticRouteSearchRetryTriggerName(
+    const StaticRouteSearchRetryTrigger trigger) noexcept {
+  switch (trigger) {
+    case StaticRouteSearchRetryTrigger::kNoFailure:
+      return "no_failure";
+    case StaticRouteSearchRetryTrigger::kRouteGenerationChanged:
+      return "route_generation_changed";
+    case StaticRouteSearchRetryTrigger::kObjectiveChanged:
+      return "objective_changed";
+    case StaticRouteSearchRetryTrigger::kPoseChanged:
+      return "pose_changed";
+    case StaticRouteSearchRetryTrigger::kRetryIntervalElapsed:
+      return "retry_interval_elapsed";
+    case StaticRouteSearchRetryTrigger::kSuppressed:
+      return "suppressed";
   }
   return "unknown";
 }
