@@ -91,8 +91,8 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         launch_source = LAUNCH.read_text(encoding="utf-8")
         run_source = RUN_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertEqual([], prefix(""))
-        self.assertEqual(["taskset", "--cpu-list", "4-15"], prefix("4-15"))
+        self.assertEqual("", prefix(""))
+        self.assertEqual("taskset --cpu-list 4-15", prefix("4-15"))
         with self.assertRaises(RuntimeError):
             prefix("4-15;false")
         self.assertIn('ENABLE_SUBSYSTEM_CPU_AFFINITY:-true', run_source)

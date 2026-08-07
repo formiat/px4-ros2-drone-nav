@@ -46,10 +46,10 @@ def _allocate_planner_workers(total_workers, vehicle_count):
 def _cpu_affinity_prefix(cpu_list):
     value = cpu_list.strip()
     if not value:
-        return []
+        return ""
     if re.fullmatch(r"[0-9,-]+", value) is None:
         raise RuntimeError(f"Invalid CPU affinity list '{value}'")
-    return ["taskset", "--cpu-list", value]
+    return f"taskset --cpu-list {value}"
 
 
 def generate_launch_description():
