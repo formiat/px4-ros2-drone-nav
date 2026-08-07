@@ -26,10 +26,15 @@ The intercept mission loads all vehicle planners into one ROS 2 component
 container. Their MPPI engines share one process and CUDA primary context while
 retaining separate streams, buffers, nominal controls, and route state. This
 reduces process, DDS, and CUDA-context overhead without changing rollout
-selection. In intercept mode, the dominant simulation stage is fused across the
-vehicle dimension when planner ticks reach the bounded two-millisecond batch
-window. Per-vehicle reductions and control updates remain independent and
-deterministic.
+selection.
+
+A fused vehicle-by-rollout micro-batch was evaluated with the same mission
+contract and rejected. The live four-vehicle workload produced an average batch
+size of only about 1.5 vehicles: synchronization increased static GPU p50 from
+22.8 ms to 45.9 ms and no-static GPU p50 from 3.45 ms to 6.07 ms. Independent
+streams in the shared process are therefore the production backend. Reconsider
+fusion only if profiling demonstrates reliably full batches without collection
+latency.
 
 Buffers are allocated for the configured maximum rollout count. A confirmed
 direct-interception tick may execute a smaller validated prefix through

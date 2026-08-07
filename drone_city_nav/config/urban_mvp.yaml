@@ -103,7 +103,6 @@ production_mppi_node:
     planner_worker_count: 4
     rollouts: 8192
     direct_tracking_rollouts: 4096
-    multi_vehicle_mppi_batch_size: 1
     dt_s: 0.05
     static_horizon_duration_s: 6.0
     no_static_horizon_duration_s: 4.0

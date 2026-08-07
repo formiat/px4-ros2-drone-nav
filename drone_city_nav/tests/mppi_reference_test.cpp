@@ -19,17 +19,6 @@ TEST(MppiReferenceTest, ActiveRolloutBudgetUsesCapacityOrValidatedPrefix) {
                std::invalid_argument);
 }
 
-TEST(MppiReferenceTest, MultiVehicleBatchSizeIsBounded) {
-  BenchmarkConfig config;
-  config.multi_vehicle_batch_size = 8U;
-  EXPECT_TRUE(benchmarkConfigIsValid(config));
-
-  config.multi_vehicle_batch_size = 0U;
-  EXPECT_FALSE(benchmarkConfigIsValid(config));
-  config.multi_vehicle_batch_size = 9U;
-  EXPECT_FALSE(benchmarkConfigIsValid(config));
-}
-
 TEST(MppiReferenceTest, DynamicsClampsAccelerationAndVelocity) {
   DynamicsConfig config{};
   config.dt_s = 1.0F;

@@ -157,6 +157,12 @@ def generate_launch_description():
         planner_worker_counts = _allocate_planner_workers(
             planner_worker_budget, len(role_names)
         )
+        planner_tick_rate_hz = float(
+            document["production_mppi_node"]["ros__parameters"]["tick_rate_hz"]
+        )
+        planner_tick_phase_step_s = 1.0 / (
+            planner_tick_rate_hz * len(role_names)
+        )
         nodes = []
         planner_components = []
         bridge_arguments = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
@@ -259,8 +265,9 @@ def generate_launch_description():
                     ),
                     "diagnostics_output_dir": f"log/intercept/{role}/mppi",
                     "planner_worker_count": planner_worker_counts[role_index],
-                    "multi_vehicle_mppi_batch_size": len(role_names),
-                    "planning_tick_phase_offset_s": 0.0,
+                    "planning_tick_phase_offset_s": (
+                        role_index * planner_tick_phase_step_s
+                    ),
                     "static_cruise_speed_mps": document["production_mppi_node"]
                     ["ros__parameters"]["static_cruise_speed_mps"]
                     * config["speed_scale"],

@@ -187,8 +187,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("mission_goal_capture_radius_m", 2.0);
   mppi_config_.rollouts =
       static_cast<std::size_t>(declare_parameter<int>("rollouts", 8192));
-  mppi_config_.multi_vehicle_batch_size = static_cast<std::size_t>(
-      declare_parameter<int>("multi_vehicle_mppi_batch_size", 1));
   direct_tracking_rollouts_ = static_cast<std::size_t>(
       declare_parameter<int>("direct_tracking_rollouts", 4096));
   if (mppi_config_.rollouts == 0U || direct_tracking_rollouts_ == 0U ||
@@ -772,7 +770,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   RCLCPP_INFO(
       get_logger(),
       "Production MPPI ready: rollouts=%zu direct_tracking_rollouts=%zu "
-      "gpu_batch_size=%zu steps=%zu rate=%.1fHz "
+      "steps=%zu rate=%.1fHz "
       "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
       "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
@@ -780,9 +778,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
       "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
       "planner_tick_phase_ms=%.1f no_static_esdf=(%.1fHz,%.1fm,%.1fm)",
-      mppi_config_.rollouts, direct_tracking_rollouts_,
-      mppi_config_.multi_vehicle_batch_size, mppi_config_.steps, tick_rate_hz_,
-      deadline_ms_, 0UL, use_static_map_ ? "true" : "false", "false",
+      mppi_config_.rollouts, direct_tracking_rollouts_, mppi_config_.steps,
+      tick_rate_hz_, deadline_ms_, 0UL, use_static_map_ ? "true" : "false", "false",
       static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
       lattice_config_.receding_goal_distance_m, speed_policy_config_.cruise_speed_mps,
       mppi_config_.dynamics.maximum_horizontal_speed_mps,

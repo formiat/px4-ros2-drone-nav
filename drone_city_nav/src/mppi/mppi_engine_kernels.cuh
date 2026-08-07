@@ -366,77 +366,22 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
   return result;
 }
 
-struct SimulationBatchInput {
-  const float* noise_ax;
-  const float* noise_ay;
-  const float* noise_az;
-  const float* noise_yaw;
-  const Control* nominal;
-  float* soft_cost;
-  float* critical_exposure;
-  float* planning_exposure;
-  float* minimum_clearance;
-  std::uint8_t* worst_tier;
-  std::uint8_t* raw_collision;
-  std::uint8_t* solid_collision;
-  std::size_t rollouts;
-  std::size_t steps;
-  State initial;
-  State target;
-  MovingTargetReference moving_target;
-  bool moving_target_enabled;
-  DynamicsConfig dynamics;
-  RiskConfig risk;
-  FootprintConfig footprint;
-  CostConfig costs;
-  EsdfGrid grid;
-  cudaTextureObject_t esdf_texture;
-  const KnownSolid* solids;
-  std::size_t solid_count;
-  const RouteSample3D* route_points;
-  std::size_t route_point_count;
-  float initial_route_station_m;
-  Control previous_applied_control;
-  float first_control_interval_s;
-  float reference_speed_mps;
-  bool early_exit;
-};
-
-__device__ void simulateRollout(const SimulationBatchInput& input,
-                                const std::size_t rollout) {
-  const float* const noise_ax = input.noise_ax;
-  const float* const noise_ay = input.noise_ay;
-  const float* const noise_az = input.noise_az;
-  const float* const noise_yaw = input.noise_yaw;
-  const Control* const nominal = input.nominal;
-  float* const soft_cost = input.soft_cost;
-  float* const critical_exposure = input.critical_exposure;
-  float* const planning_exposure = input.planning_exposure;
-  float* const minimum_clearance = input.minimum_clearance;
-  std::uint8_t* const worst_tier = input.worst_tier;
-  std::uint8_t* const raw_collision = input.raw_collision;
-  std::uint8_t* const solid_collision = input.solid_collision;
-  const std::size_t rollouts = input.rollouts;
-  const std::size_t steps = input.steps;
-  const State initial = input.initial;
-  const State target = input.target;
-  const MovingTargetReference moving_target = input.moving_target;
-  const bool moving_target_enabled = input.moving_target_enabled;
-  const DynamicsConfig dynamics = input.dynamics;
-  const RiskConfig risk = input.risk;
-  const FootprintConfig footprint = input.footprint;
-  const CostConfig costs = input.costs;
-  const EsdfGrid grid = input.grid;
-  const cudaTextureObject_t esdf_texture = input.esdf_texture;
-  const KnownSolid* const solids = input.solids;
-  const std::size_t solid_count = input.solid_count;
-  const RouteSample3D* const route_points = input.route_points;
-  const std::size_t route_point_count = input.route_point_count;
-  const float initial_route_station_m = input.initial_route_station_m;
-  const Control previous_applied_control = input.previous_applied_control;
-  const float first_control_interval_s = input.first_control_interval_s;
-  const float reference_speed_mps = input.reference_speed_mps;
-  const bool early_exit = input.early_exit;
+__global__ void
+simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
+         const float* noise_yaw, const Control* nominal, float* soft_cost,
+         float* critical_exposure, float* planning_exposure, float* minimum_clearance,
+         std::uint8_t* worst_tier, std::uint8_t* raw_collision,
+         std::uint8_t* solid_collision, std::size_t rollouts, std::size_t steps,
+         State initial, State target, MovingTargetReference moving_target,
+         bool moving_target_enabled, DynamicsConfig dynamics, RiskConfig risk,
+         FootprintConfig footprint, CostConfig costs, EsdfGrid grid,
+         cudaTextureObject_t esdf_texture, const KnownSolid* solids,
+         std::size_t solid_count, const RouteSample3D* route_points,
+         std::size_t route_point_count, float initial_route_station_m,
+         Control previous_applied_control, float first_control_interval_s,
+         float reference_speed_mps, bool early_exit) {
+  const std::size_t rollout =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (rollout >= rollouts) {
     return;
   }
@@ -595,69 +540,6 @@ __device__ void simulateRollout(const SimulationBatchInput& input,
   worst_tier[rollout] = tier;
   raw_collision[rollout] = raw_hit ? 1U : 0U;
   solid_collision[rollout] = solid_hit ? 1U : 0U;
-}
-
-__global__ void
-simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
-         const float* noise_yaw, const Control* nominal, float* soft_cost,
-         float* critical_exposure, float* planning_exposure, float* minimum_clearance,
-         std::uint8_t* worst_tier, std::uint8_t* raw_collision,
-         std::uint8_t* solid_collision, std::size_t rollouts, std::size_t steps,
-         State initial, State target, MovingTargetReference moving_target,
-         bool moving_target_enabled, DynamicsConfig dynamics, RiskConfig risk,
-         FootprintConfig footprint, CostConfig costs, EsdfGrid grid,
-         cudaTextureObject_t esdf_texture, const KnownSolid* solids,
-         std::size_t solid_count, const RouteSample3D* route_points,
-         std::size_t route_point_count, float initial_route_station_m,
-         Control previous_applied_control, float first_control_interval_s,
-         float reference_speed_mps, bool early_exit) {
-  const std::size_t rollout =
-      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  simulateRollout(SimulationBatchInput{noise_ax,
-                                       noise_ay,
-                                       noise_az,
-                                       noise_yaw,
-                                       nominal,
-                                       soft_cost,
-                                       critical_exposure,
-                                       planning_exposure,
-                                       minimum_clearance,
-                                       worst_tier,
-                                       raw_collision,
-                                       solid_collision,
-                                       rollouts,
-                                       steps,
-                                       initial,
-                                       target,
-                                       moving_target,
-                                       moving_target_enabled,
-                                       dynamics,
-                                       risk,
-                                       footprint,
-                                       costs,
-                                       grid,
-                                       esdf_texture,
-                                       solids,
-                                       solid_count,
-                                       route_points,
-                                       route_point_count,
-                                       initial_route_station_m,
-                                       previous_applied_control,
-                                       first_control_interval_s,
-                                       reference_speed_mps,
-                                       early_exit},
-                  rollout);
-}
-
-__global__ void simulateBatch(const SimulationBatchInput* inputs,
-                              const std::size_t input_count) {
-  const std::size_t input_index = static_cast<std::size_t>(blockIdx.y);
-  if (input_index >= input_count) {
-    return;
-  }
-  const std::size_t rollout =
-      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  simulateRollout(inputs[input_index], rollout);
 }
 
 __device__ float atomicMinFloat(float* address, float value) {

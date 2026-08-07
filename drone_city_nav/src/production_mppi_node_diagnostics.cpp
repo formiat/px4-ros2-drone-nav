@@ -375,7 +375,6 @@ void ProductionMppiNode::processDiagnostics(
        << finiteOrNegative(speed_policy.observation_limit_mps)
        << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
        << " active_rollouts=" << result.active_rollouts
-       << " gpu_batch_size=" << result.gpu_batch_size
        << " gpu_ms=" << result.timings.gpu_total_ms
        << " total_ms=" << result.timings.host_total_ms
        << " snapshot_ms=" << snapshot.snapshot_ms
@@ -794,7 +793,6 @@ void ProductionMppiNode::processDiagnostics(
         << finiteOrNegative(speed_policy.observation_limit_mps)
         << ",\"goal_speed_limit_mps\":" << finiteOrNegative(speed_policy.goal_limit_mps)
         << ",\"active_rollouts\":" << result.active_rollouts
-        << ",\"gpu_batch_size\":" << result.gpu_batch_size
         << ",\"gpu_ms\":" << result.timings.gpu_total_ms
         << ",\"total_ms\":" << result.timings.host_total_ms
         << ",\"snapshot_ms\":" << snapshot.snapshot_ms

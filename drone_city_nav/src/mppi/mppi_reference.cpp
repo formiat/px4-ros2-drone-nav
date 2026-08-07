@@ -54,9 +54,7 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
 } // namespace
 
 bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
-  return !config.scenario.empty() && config.rollouts > 0U &&
-         config.multi_vehicle_batch_size > 0U &&
-         config.multi_vehicle_batch_size <= 8U && config.steps >= 2U &&
+  return !config.scenario.empty() && config.rollouts > 0U && config.steps >= 2U &&
          config.measured_ticks > 0U && std::isfinite(config.deadline_ms) &&
          config.deadline_ms > 0.0 && std::isfinite(config.dynamics.dt_s) &&
          config.dynamics.dt_s > 0.0F && std::isfinite(config.costs.temperature) &&

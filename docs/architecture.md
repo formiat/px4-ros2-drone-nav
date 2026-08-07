@@ -280,12 +280,10 @@ horizon has been published.
 
 In the four-vehicle intercept mission, the planner component container has one
 executor thread per vehicle. CPU-heavy planner work remains bounded by the
-mission-wide planner worker budget. Noise generation, risk reduction, control
-updates, and all planner state remain per vehicle. The dominant rollout
-simulation stage is submitted through a bounded micro-batch coordinator and one
-vehicle-by-rollout CUDA kernel. A two-millisecond collection deadline permits a
-partial batch when another planner is not executing MPPI, so holds and missing
-world state cannot block the remaining vehicles.
+mission-wide planner worker budget. Each MPPI engine currently launches its own
+rollout kernels on an independent CUDA stream; vehicle-by-rollout fused kernels
+are a separate backend optimization and are not implied by component
+composition.
 
 ## Current Architectural Limits
 
