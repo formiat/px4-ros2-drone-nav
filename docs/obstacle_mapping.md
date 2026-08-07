@@ -302,7 +302,7 @@ keeps observed obstacles available after they leave the instantaneous scan.
 
 These are alternative production planning sources, selected by mode:
 
-- static: canonical Occupancy3D -> local ESDF3D;
+- static: canonical Occupancy3D + precomputed chunked ESDF3D -> local ESDF3D;
 - no-static: accumulated 2D lidar memory -> ESDF2D.
 
 They are not merged in the current implementation. Each occupied distance

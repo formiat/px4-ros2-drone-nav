@@ -73,6 +73,13 @@ def generate_launch_description():
             static_path = document["production_mppi_node"]["ros__parameters"][
                 "static_occupancy_3d_path"
             ]
+        static_esdf_cache_path = LaunchConfiguration(
+            "static_esdf_3d_cache_path"
+        ).perform(context)
+        if not static_esdf_cache_path:
+            static_esdf_cache_path = document["production_mppi_node"][
+                "ros__parameters"
+            ]["static_esdf_3d_cache_path"]
 
         roles = {
             "interceptor_0": {
@@ -235,6 +242,7 @@ def generate_launch_description():
                 {
                     "use_static_map": use_static_map,
                     "static_occupancy_3d_path": static_path,
+                    "static_esdf_3d_cache_path": static_esdf_cache_path,
                     "px4_local_origin_x_m": config["origin_x"],
                     "px4_local_origin_y_m": config["origin_y"],
                     "start_x_m": config["origin_x"],
@@ -814,6 +822,7 @@ def generate_launch_description():
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
             DeclareLaunchArgument("use_static_map", default_value=""),
             DeclareLaunchArgument("static_occupancy_3d_path", default_value=""),
+            DeclareLaunchArgument("static_esdf_3d_cache_path", default_value=""),
             DeclareLaunchArgument(
                 "interceptor_0_model", default_value="x500_lidar_2d_0"
             ),

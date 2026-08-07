@@ -20,11 +20,12 @@ cadence; the planner loads canonical Occupancy3D directly and does not merge the
 
 ## 2. ESDF Preparation
 
-The production MPPI node builds a mode-specific occupied-distance field
-asynchronously. Static mode materializes a local dense ESDF3D from canonical
-Occupancy3D. No-static mode builds an ESDF2D from the latest raw lidar-memory
-snapshot. MPPI continues using the last complete immutable field until a newer
-revision is ready.
+The production MPPI node prepares a mode-specific occupied-distance field
+asynchronously. Static mode extracts a local dense ESDF3D from the precomputed
+chunked cache associated with canonical Occupancy3D. Fingerprint or format
+mismatch falls back to the exact runtime EDT. No-static mode builds a local
+ESDF2D from the latest raw lidar-memory snapshot. MPPI continues using the last
+complete immutable field until a newer revision is ready.
 
 Distance classifications are:
 

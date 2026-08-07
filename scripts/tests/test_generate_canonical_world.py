@@ -15,6 +15,7 @@ GENERATOR_PATH = REPO_ROOT / "scripts/generate_canonical_world.py"
 SPEC_PATH = REPO_ROOT / "drone_city_nav/worlds/canonical_city.world3d.json"
 COMMITTED_SDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.sdf"
 COMMITTED_OCCUPANCY = REPO_ROOT / "drone_city_nav/worlds/generated_city.occupancy3d"
+COMMITTED_ESDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.esdf3d"
 
 SPEC = importlib.util.spec_from_file_location("generate_canonical_world", GENERATOR_PATH)
 assert SPEC is not None and SPEC.loader is not None
@@ -275,6 +276,27 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             self.assertEqual(
                 COMMITTED_OCCUPANCY.read_bytes(), generated_occupancy.read_bytes()
             )
+
+    def test_precomputed_esdf_matches_committed_occupancy(self) -> None:
+        occupancy_header_format = "<8sII4f3IQI"
+        esdf_header_format = "<8sII4f3IQfI"
+        with COMMITTED_OCCUPANCY.open("rb") as stream:
+            occupancy = struct.unpack(
+                occupancy_header_format,
+                stream.read(struct.calcsize(occupancy_header_format)),
+            )
+        with COMMITTED_ESDF.open("rb") as stream:
+            esdf = struct.unpack(
+                esdf_header_format,
+                stream.read(struct.calcsize(esdf_header_format)),
+            )
+        self.assertEqual(b"DCNESF3D", esdf[0])
+        self.assertEqual(1, esdf[1])
+        self.assertEqual(16, esdf[2])
+        self.assertEqual(occupancy[3:11], esdf[3:11])
+        self.assertEqual(occupancy[10], esdf[10])
+        self.assertAlmostEqual(26.0, esdf[11])
+        self.assertGreater(esdf[12], 0)
 
 
 if __name__ == "__main__":

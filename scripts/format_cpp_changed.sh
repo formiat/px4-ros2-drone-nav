@@ -32,6 +32,7 @@ Default scope is changed, staged, and untracked C++ files under:
   drone_city_nav/include
   drone_city_nav/src
   drone_city_nav/tests
+  drone_city_nav/tools
 
 Use --all only when intentionally normalizing the whole project.
 EOF
@@ -56,7 +57,7 @@ done
 
 is_cpp_path() {
   case "$1" in
-    drone_city_nav/include/* | drone_city_nav/src/* | drone_city_nav/tests/*)
+    drone_city_nav/include/* | drone_city_nav/src/* | drone_city_nav/tests/* | drone_city_nav/tools/*)
       case "$1" in
         *.c | *.cc | *.cpp | *.cu | *.cuh | *.cxx | *.h | *.hh | *.hpp | *.hxx)
           return 0
@@ -73,7 +74,8 @@ collect_all_cpp_files() {
   done < <(git ls-files \
     'drone_city_nav/include/*' \
     'drone_city_nav/src/*' \
-    'drone_city_nav/tests/*')
+    'drone_city_nav/tests/*' \
+    'drone_city_nav/tools/*')
 }
 
 collect_changed_cpp_files() {
@@ -81,15 +83,18 @@ collect_changed_cpp_files() {
     git diff --name-only --diff-filter=ACMRTUXB HEAD -- \
       'drone_city_nav/include/*' \
       'drone_city_nav/src/*' \
-      'drone_city_nav/tests/*'
+      'drone_city_nav/tests/*' \
+      'drone_city_nav/tools/*'
     git diff --cached --name-only --diff-filter=ACMRTUXB -- \
       'drone_city_nav/include/*' \
       'drone_city_nav/src/*' \
-      'drone_city_nav/tests/*'
+      'drone_city_nav/tests/*' \
+      'drone_city_nav/tools/*'
     git ls-files --others --exclude-standard -- \
       'drone_city_nav/include/*' \
       'drone_city_nav/src/*' \
-      'drone_city_nav/tests/*'
+      'drone_city_nav/tests/*' \
+      'drone_city_nav/tools/*'
   } | while IFS= read -r path; do
     is_cpp_path "${path}" && printf '%s\n' "${path}"
   done | sort -u

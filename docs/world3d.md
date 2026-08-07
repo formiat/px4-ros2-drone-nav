@@ -22,11 +22,12 @@ RViz reverses the visual X direction relative to map X. The map directions above
 therefore produce the screen-space cross-sections requested for a vehicle
 approaching from the lower-right mission start.
 
-`scripts/generate_canonical_world.py` deterministically emits two committed
-artifacts from that specification:
+The canonical-world toolchain deterministically emits three committed artifacts
+from that specification:
 
 - `drone_city_nav/worlds/generated_city.sdf` for Gazebo rendering and physics;
-- `drone_city_nav/worlds/generated_city.occupancy3d` for static planning.
+- `drone_city_nav/worlds/generated_city.occupancy3d` for static planning;
+- `drone_city_nav/worlds/generated_city.esdf3d` for precomputed static distances.
 
 The old `.map2d` and `.passages3d` sources no longer exist. There is no runtime
 portal database, nearest-opening selector, or separate hand-authored passage
@@ -39,19 +40,27 @@ controls its own transparency; Gazebo building materials remain opaque.
 
 ## Regeneration
 
-Run the generator through the repository container workflow:
+Run the generators through the repository container workflow:
 
 ```bash
-./scripts/dev_shell.sh python3 scripts/generate_canonical_world.py \
+./scripts/dev_shell.sh
+make build
+python3 scripts/generate_canonical_world.py \
   --spec drone_city_nav/worlds/canonical_city.world3d.json \
   --sdf drone_city_nav/worlds/generated_city.sdf \
   --occupancy drone_city_nav/worlds/generated_city.occupancy3d
+./build/drone_city_nav/generate_static_esdf_cache \
+  --occupancy drone_city_nav/worlds/generated_city.occupancy3d \
+  --output drone_city_nav/worlds/generated_city.esdf3d \
+  --maximum-distance-m 26 --workers 8
 ```
 
 `make test-scripts` regenerates both artifacts in a temporary directory and
-checks byte-for-byte equality with the committed files. It also verifies all
-four channel cross-sections, orientation, horizontal geometry, deduplicated
-shared bridge masses, and lidar visibility contract.
+checks the SDF and Occupancy3D byte-for-byte. It also verifies that the committed
+ESDF cache carries the same grid metadata and canonical-world fingerprint, plus
+all four channel cross-sections, orientation, horizontal geometry, deduplicated
+shared bridge masses, and lidar visibility contract. C++ tests verify exact
+cache round-tripping, ROI extraction, distance capping, and corruption handling.
 
 ## Occupancy3D
 
@@ -77,10 +86,19 @@ Only physical collision geometry is voxelized. No clearance inflation,
 prohibited grid, portal mask, or no-static lidar occluder is stored in
 Occupancy3D.
 
-`production_mppi_node` loads this file directly when `use_static_map=true`.
-Around the current vehicle-to-planning-goal region it materializes an immutable
-local dense ESDF3D and uploads that field to MPPI. The full global 3D array is
-not rebuilt on every tick.
+`production_mppi_node` loads Occupancy3D directly when `use_static_map=true`.
+The immutable global ESDF is computed offline and stored as independently
+compressed 16-cubed chunks. At runtime the planner decodes only chunks intersecting
+the current vehicle-to-planning-goal ROI, materializes that local dense ESDF3D,
+and uploads it to MPPI. The cache is accepted only when its grid metadata,
+canonical-world fingerprint, and maximum distance satisfy the current request.
+A missing, corrupt, or incompatible cache is logged and falls back to the exact
+runtime EDT builder.
+
+The cache stores exact squared voxel distances rather than an inflated occupancy
+layer. Only raw Occupancy3D cells remain hard obstacles. Using the global field
+also preserves distance information from physical objects immediately outside a
+local computational ROI; the ROI boundary itself is not an obstacle.
 
 ## Generated Channel Geometry And Graph
 
@@ -218,7 +236,7 @@ alignment time, risk exposure, channel id, and acceptance/rejection reason.
 When changing static geometry or optional channels:
 
 1. Edit only `canonical_city.world3d.json`.
-2. Regenerate both committed artifacts.
+2. Regenerate all three committed artifacts.
 3. Run `make test-scripts` and `make quality` in the container.
 4. Check Occupancy3D points against Gazebo geometry in RViz.
 5. If channels are present, verify static route Z and constrained-span

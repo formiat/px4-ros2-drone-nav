@@ -78,6 +78,8 @@ Global guide:
 Static world:
 
 - `static_occupancy_3d_path` selects the generated Occupancy3D artifact;
+- `static_esdf_3d_cache_path` selects its fingerprint-bound precomputed ESDF
+  artifact; an empty value derives the `.esdf3d` path from Occupancy3D;
 - Occupancy3D embeds the generated constrained channel graph;
 - `global_lattice_3d_nominal_vertical_speed_mps` participates in physical travel
   time estimation;

@@ -152,10 +152,31 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             *static_occupancy_3d_,
             Point3{navigation.state.x, navigation.state.y, navigation.state.z},
             mission_goal, lattice_3d_config_.planning_goal_distance_m, 40.0);
-        const DistanceField3D field = DistanceField3D::buildLocal(
-            *static_occupancy_3d_, local_bounds,
-            static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
-            planning_worker_pool_.get());
+        const double maximum_distance_m =
+            static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0;
+        bool precomputed_cache_used{false};
+        StaticEsdfCacheExtractionStats cache_stats;
+        std::optional<DistanceField3D> cached_field;
+        if (static_esdf_cache_ && static_esdf_cache_->compatibleWith(
+                                      *static_occupancy_3d_, maximum_distance_m)) {
+          try {
+            StaticEsdfCacheExtraction extraction =
+                static_esdf_cache_->extract(local_bounds, maximum_distance_m);
+            cache_stats = extraction.stats;
+            cached_field.emplace(std::move(extraction.field));
+            precomputed_cache_used = true;
+          } catch (const std::exception& error) {
+            RCLCPP_ERROR(get_logger(),
+                         "STATIC_ESDF_CACHE_FALLBACK reason=extract_failed error=%s",
+                         error.what());
+            static_esdf_cache_.reset();
+          }
+        }
+        const DistanceField3D field =
+            cached_field ? std::move(*cached_field)
+                         : DistanceField3D::buildLocal(*static_occupancy_3d_,
+                                                       local_bounds, maximum_distance_m,
+                                                       planning_worker_pool_.get());
         const GridBounds3D& bounds = field.bounds();
         static_esdf_grid_ = mppi::EsdfGrid{bounds.width_cells,
                                            bounds.height_cells,
@@ -173,9 +194,11 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         static_finalize_ms = field.stats().finalize_ms;
         RCLCPP_INFO(
             get_logger(),
-            "STATIC_ESDF3D_READY build_ms=%.2f voxels=%zu "
+            "STATIC_ESDF3D_READY source=%s build_ms=%.2f voxels=%zu "
             "dimensions=%dx%dx%d proactive_refresh=%s refresh_purpose=%s "
-            "base_generation=%" PRIu64,
+            "base_generation=%" PRIu64
+            " cache_chunks=%zu cache_decode_ms=%.2f cache_finite_voxels=%zu",
+            precomputed_cache_used ? "precomputed_cache" : "runtime_edt",
             field.stats().duration_ms, field.stats().voxel_count,
             local_bounds.width_cells, local_bounds.height_cells,
             local_bounds.depth_cells, proactive_roi_refresh ? "true" : "false",
@@ -184,7 +207,9 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                         StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective
                 ? "tracking_objective"
                 : "route_extension",
-            proactive_roi_refresh ? roi_refresh.base_route_generation : 0U);
+            proactive_roi_refresh ? roi_refresh.base_route_generation : 0U,
+            cache_stats.decoded_chunks, cache_stats.decode_ms,
+            cache_stats.finite_voxels);
       }
       const mppi::EsdfUploadResult upload = engine_->updateEsdf(mppi::EsdfSnapshot{
           static_esdf_grid_, *static_esdf_3d_, static_occupancy_3d_->fingerprint()});

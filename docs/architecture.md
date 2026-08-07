@@ -11,7 +11,8 @@ Gazebo GPU lidar + PX4 pose
   -> 2D obstacle memory + atomic raw obstacle snapshot
 
 static:
-  canonical Occupancy3D -> local dense ESDF3D -> 3D lattice route
+  canonical Occupancy3D + precomputed chunked ESDF3D
+  -> extracted local dense ESDF3D -> 3D lattice route
 
 no-static:
   raw obstacle snapshot -> dense ESDF2D -> sticky 2D lattice guide
@@ -56,8 +57,10 @@ Gazebo contact involving the drone
 - consumes PX4 state, the memory-status heartbeat, and immutable raw obstacle
   snapshots where required;
 - loads canonical Occupancy3D directly in static mode;
-- builds the resident static ESDF asynchronously as soon as navigation state and
-  the configured objective are ready, independently of lidar snapshots;
+- extracts the resident static ESDF asynchronously from a fingerprint-validated
+  precomputed cache as soon as navigation state and the configured objective are
+  ready, independently of lidar snapshots;
+- falls back to the exact runtime EDT when the cache is unavailable or invalid;
 - publishes latched planner-world readiness after successful ESDF activation;
 - builds and maintains the active global lattice guide;
 - selects local lookahead targets;
@@ -95,6 +98,7 @@ participating in route selection.
 Static production planning uses:
 
 - sparse physical 3D occupancy generated from the canonical world;
+- an offline-generated chunked global ESDF carrying the same world fingerprint;
 - a local dense ESDF3D resident on the GPU;
 - preferred, planning, critical, and collision risk tiers;
 - typed 3D routes with constrained spans inferred from the route envelope.

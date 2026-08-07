@@ -29,6 +29,7 @@ find_package(gz-msgs10 REQUIRED)
 find_package(gz-sim8 REQUIRED)
 find_package(gz-transport13 REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(PkgConfig REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(ros_gz_interfaces REQUIRED)
@@ -37,6 +38,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
+pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
@@ -170,6 +172,7 @@ add_library(
   src/route_3d.cpp
   src/static_route_extension.cpp
   src/static_route_geometry.cpp
+  src/static_esdf_cache.cpp
   src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
   src/tracked_agent_lidar_filter.cpp
@@ -195,6 +198,12 @@ target_include_directories(
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:include>")
 enable_project_warnings(drone_city_nav_core)
+target_link_libraries(drone_city_nav_core PRIVATE PkgConfig::ZSTD)
+
+add_executable(generate_static_esdf_cache tools/generate_static_esdf_cache.cpp)
+target_compile_features(generate_static_esdf_cache PRIVATE cxx_std_20)
+target_link_libraries(generate_static_esdf_cache drone_city_nav_core)
+enable_project_warnings(generate_static_esdf_cache)
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   target_link_libraries(drone_city_nav_mppi_cuda PUBLIC drone_city_nav_core)
@@ -420,6 +429,7 @@ install(
     interceptor_guidance_node
     intercept_spectator_node
     intercept_diagnostics_mux_node
+    generate_static_esdf_cache
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -594,6 +604,11 @@ if(BUILD_TESTING)
   target_compile_features(distance_field_3d_test PRIVATE cxx_std_20)
   target_link_libraries(distance_field_3d_test drone_city_nav_core)
   enable_project_warnings(distance_field_3d_test)
+
+  ament_add_gtest(static_esdf_cache_test tests/static_esdf_cache_test.cpp)
+  target_compile_features(static_esdf_cache_test PRIVATE cxx_std_20)
+  target_link_libraries(static_esdf_cache_test drone_city_nav_core)
+  enable_project_warnings(static_esdf_cache_test)
 
   ament_add_gtest(route_3d_test tests/route_3d_test.cpp)
   target_compile_features(route_3d_test PRIVATE cxx_std_20)

@@ -9,6 +9,7 @@
 namespace drone_city_nav {
 
 class BoundedWorkerPool;
+class StaticEsdfCache;
 
 struct DistanceField3DBuildStats {
   std::size_t source_voxels{0U};
@@ -38,6 +39,8 @@ public:
   [[nodiscard]] const DistanceField3DBuildStats& stats() const noexcept;
 
 private:
+  friend class StaticEsdfCache;
+
   GridBounds3D bounds_{};
   double maximum_distance_m_{0.0};
   std::vector<float> distances_m_;

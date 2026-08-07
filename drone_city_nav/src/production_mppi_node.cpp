@@ -627,6 +627,41 @@ ProductionMppiNode::ProductionMppiNode()
       occupancy_path = package_share / occupancy_path;
     }
     static_occupancy_3d_ = OccupancyGrid3D::load(occupancy_path);
+    std::filesystem::path cache_path = declare_parameter<std::string>(
+        "static_esdf_3d_cache_path", "worlds/generated_city.esdf3d");
+    if (cache_path.empty()) {
+      cache_path = occupancy_path;
+      cache_path.replace_extension(".esdf3d");
+    } else if (cache_path.is_relative()) {
+      cache_path = package_share / cache_path;
+    }
+    const double required_maximum_distance_m =
+        static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0;
+    try {
+      StaticEsdfCache cache = StaticEsdfCache::load(cache_path);
+      if (cache.compatibleWith(*static_occupancy_3d_, required_maximum_distance_m)) {
+        RCLCPP_INFO(get_logger(),
+                    "STATIC_ESDF_CACHE_READY path=%s fingerprint=%" PRIu64
+                    " maximum_distance_m=%.2f chunks=%zu bytes=%zu",
+                    cache_path.c_str(), cache.occupancyFingerprint(),
+                    cache.maximumDistanceM(), cache.storedChunkCount(),
+                    cache.compressedBytes());
+        static_esdf_cache_ = std::move(cache);
+      } else {
+        RCLCPP_WARN(get_logger(),
+                    "STATIC_ESDF_CACHE_FALLBACK path=%s reason=incompatible_world_or_"
+                    "distance cache_fingerprint=%" PRIu64
+                    " occupancy_fingerprint=%" PRIu64
+                    " cache_maximum_distance_m=%.2f requested_maximum_distance_m=%.2f",
+                    cache_path.c_str(), cache.occupancyFingerprint(),
+                    static_occupancy_3d_->fingerprint(), cache.maximumDistanceM(),
+                    required_maximum_distance_m);
+      }
+    } catch (const std::exception& error) {
+      RCLCPP_WARN(get_logger(),
+                  "STATIC_ESDF_CACHE_FALLBACK path=%s reason=load_failed error=%s",
+                  cache_path.c_str(), error.what());
+    }
     static_channel_edges_ =
         std::make_shared<const std::vector<ConstrainedFreeSpaceEdge>>(
             static_occupancy_3d_->channelEdges());

@@ -39,6 +39,7 @@ RUN curl -fsSL https://packages.osrfoundation.org/gazebo.gpg \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gz-harmonic \
+        libzstd-dev \
         python3-colcon-common-extensions \
         python3-pip \
         python3-rosdep \

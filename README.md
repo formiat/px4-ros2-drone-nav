@@ -259,9 +259,10 @@ Record a debug rosbag while the simulation is running:
 
 The container targets use `build/`, `install/`, and `log/`.
 
-Static mode loads `generated_city.occupancy3d` directly in
-`production_mppi_node`. The map and `generated_city.sdf` are generated from the
-same canonical world specification. The current city is a `5 x 8` Manhattan
+Static mode loads `generated_city.occupancy3d` and its fingerprint-bound,
+precomputed chunked `generated_city.esdf3d` in `production_mppi_node`. The map,
+distance cache, and `generated_city.sdf` are generated from the same canonical
+world specification. The current city is a `5 x 8` Manhattan
 building grid with two horizontal L-shaped air channels, one straight-through
 channel, and one T junction. Static planning loads the generated constrained
 free-space graph embedded in Occupancy3D and objectively compares ordinary and

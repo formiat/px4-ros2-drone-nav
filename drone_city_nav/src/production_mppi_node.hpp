@@ -27,6 +27,7 @@
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/static_esdf_cache.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
 #include "drone_city_nav/tracking_objective.hpp"
@@ -506,6 +507,7 @@ private:
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
+  std::optional<StaticEsdfCache> static_esdf_cache_;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
