@@ -21,11 +21,16 @@ namespace drone_city_nav::mppi {
 namespace {
 
 constexpr int kThreadsPerBlock{256};
+constexpr std::size_t kControlUpdateStepTile{32U};
+constexpr std::size_t kControlUpdateRolloutLanes{8U};
+constexpr std::size_t kControlUpdatePartitions{16U};
 constexpr std::size_t kMaximumKnownSolids{2048U};
 constexpr std::size_t kMaximumRoutePoints{512U};
 constexpr std::size_t kRepairCandidateCount{6U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
+static_assert(kControlUpdateStepTile * kControlUpdateRolloutLanes ==
+              static_cast<std::size_t>(kThreadsPerBlock));
 
 void checkCuda(const cudaError_t error, const char* const operation) {
   if (error != cudaSuccess) {
@@ -219,6 +224,7 @@ struct DeviceBuffers {
   DeviceBuffer<float> weights;
   DeviceBuffer<Control> nominal;
   DeviceBuffer<Control> updated;
+  DeviceBuffer<Control> control_update_partials;
   DeviceBuffer<Control> best_eligible;
   DeviceBuffer<Control> repair_candidates;
   DeviceBuffer<int> best_tier;
@@ -245,6 +251,7 @@ struct DeviceBuffers {
         weights{rollouts},
         nominal{steps},
         updated{steps},
+        control_update_partials{kControlUpdatePartitions * steps},
         best_eligible{steps},
         repair_candidates{kRepairCandidateCount * steps},
         best_tier{1U},
@@ -260,10 +267,10 @@ struct DeviceBuffers {
            soft_cost.bytes() + critical_exposure.bytes() + planning_exposure.bytes() +
            minimum_clearance.bytes() + worst_tier.bytes() + raw_collision.bytes() +
            solid_collision.bytes() + weights.bytes() + nominal.bytes() +
-           updated.bytes() + best_eligible.bytes() + repair_candidates.bytes() +
-           best_tier.bytes() + best_rollout.bytes() + best_critical.bytes() +
-           best_planning.bytes() + minimum_soft.bytes() + weight_sum.bytes() +
-           solids.bytes() + route_points.bytes();
+           updated.bytes() + control_update_partials.bytes() + best_eligible.bytes() +
+           repair_candidates.bytes() + best_tier.bytes() + best_rollout.bytes() +
+           best_critical.bytes() + best_planning.bytes() + minimum_soft.bytes() +
+           weight_sum.bytes() + solids.bytes() + route_points.bytes();
   }
 };
 
@@ -466,6 +473,10 @@ public:
         static_cast<int>((active_rollouts + kThreadsPerBlock - 1U) / kThreadsPerBlock);
     const int control_blocks =
         static_cast<int>((config_.steps + kThreadsPerBlock - 1U) / kThreadsPerBlock);
+    const dim3 control_update_grid{
+        static_cast<unsigned int>((config_.steps + kControlUpdateStepTile - 1U) /
+                                  kControlUpdateStepTile),
+        static_cast<unsigned int>(kControlUpdatePartitions), 1U};
     double elapsed_s = 0.0;
     if (has_updated_) {
       if (last_planning_stamp_ns_ > 0 &&
@@ -585,11 +596,16 @@ public:
         buffers_.weights.get(), buffers_.soft_cost.get(), buffers_.minimum_soft.get(),
         active_rollouts, buffers_.best_rollout.get());
     weights_done_.record(stream_);
-    updateControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.nominal.get(), buffers_.updated.get(), buffers_.noise_ax.get(),
-        buffers_.noise_ay.get(), buffers_.noise_az.get(), buffers_.noise_yaw.get(),
-        buffers_.weights.get(), buffers_.weight_sum.get(), active_rollouts,
-        config_.steps);
+    accumulateControlUpdatePartials<<<control_update_grid, kThreadsPerBlock, 0U,
+                                      stream_>>>(
+        buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
+        buffers_.noise_yaw.get(), buffers_.weights.get(),
+        buffers_.control_update_partials.get(), active_rollouts, config_.steps,
+        kControlUpdatePartitions);
+    finalizeControlUpdate<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
+        buffers_.nominal.get(), buffers_.updated.get(),
+        buffers_.control_update_partials.get(), buffers_.weight_sum.get(),
+        config_.steps, kControlUpdatePartitions);
     limitControls<<<1, 1, 0U, stream_>>>(buffers_.updated.get(), config_.steps,
                                          config_.dynamics, previous_applied_control,
                                          first_control_interval_s);

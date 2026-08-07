@@ -572,14 +572,67 @@ __global__ void initializeReduction(int* best_tier, float* best_critical,
   }
 }
 
+template<typename T> __device__ T blockMinimum(T value, const T identity) {
+  constexpr unsigned int kFullWarpMask{0xffffffffU};
+  constexpr int kWarpSize{32};
+  __shared__ T warp_minima[kThreadsPerBlock / kWarpSize];
+  const int lane = static_cast<int>(threadIdx.x) % kWarpSize;
+  const int warp = static_cast<int>(threadIdx.x) / kWarpSize;
+  for (int offset = kWarpSize / 2; offset > 0; offset /= 2) {
+    const T other = __shfl_down_sync(kFullWarpMask, value, offset);
+    value = value < other ? value : other;
+  }
+  if (lane == 0) {
+    warp_minima[warp] = value;
+  }
+  __syncthreads();
+  if (warp != 0) {
+    return identity;
+  }
+  value = lane < kThreadsPerBlock / kWarpSize ? warp_minima[lane] : identity;
+  for (int offset = kWarpSize / 2; offset > 0; offset /= 2) {
+    const T other = __shfl_down_sync(kFullWarpMask, value, offset);
+    value = value < other ? value : other;
+  }
+  return value;
+}
+
+__device__ float blockSum(float value) {
+  constexpr unsigned int kFullWarpMask{0xffffffffU};
+  constexpr int kWarpSize{32};
+  __shared__ float warp_sums[kThreadsPerBlock / kWarpSize];
+  const int lane = static_cast<int>(threadIdx.x) % kWarpSize;
+  const int warp = static_cast<int>(threadIdx.x) / kWarpSize;
+  for (int offset = kWarpSize / 2; offset > 0; offset /= 2) {
+    value += __shfl_down_sync(kFullWarpMask, value, offset);
+  }
+  if (lane == 0) {
+    warp_sums[warp] = value;
+  }
+  __syncthreads();
+  if (warp != 0) {
+    return 0.0F;
+  }
+  value = lane < kThreadsPerBlock / kWarpSize ? warp_sums[lane] : 0.0F;
+  for (int offset = kWarpSize / 2; offset > 0; offset /= 2) {
+    value += __shfl_down_sync(kFullWarpMask, value, offset);
+  }
+  return value;
+}
+
 __global__ void selectBestEligibleRollout(const float* weights, const float* soft_cost,
                                           const float* minimum_soft,
                                           const std::size_t count, int* best_rollout) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  int candidate = INT_MAX;
   if (index < count && weights[index] > 0.0F &&
       soft_cost[index] <= *minimum_soft + 1.0e-5F) {
-    atomicMin(best_rollout, static_cast<int>(index));
+    candidate = static_cast<int>(index);
+  }
+  const int block_candidate = blockMinimum(candidate, INT_MAX);
+  if (threadIdx.x == 0 && block_candidate != INT_MAX) {
+    atomicMin(best_rollout, block_candidate);
   }
 }
 
@@ -608,9 +661,15 @@ __global__ void reduceTier(const std::uint8_t* tier, const std::uint8_t* raw_col
                            int maximum_tier, int* best_tier) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  int candidate = static_cast<int>(RiskTier::kCollision);
   if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
       static_cast<int>(tier[index]) <= maximum_tier) {
-    atomicMin(best_tier, static_cast<int>(tier[index]));
+    candidate = static_cast<int>(tier[index]);
+  }
+  const int block_candidate =
+      blockMinimum(candidate, static_cast<int>(RiskTier::kCollision));
+  if (threadIdx.x == 0) {
+    atomicMin(best_tier, block_candidate);
   }
 }
 
@@ -620,9 +679,14 @@ __global__ void reduceCritical(const std::uint8_t* tier, const float* critical,
                                const int* best_tier, float* best_critical) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  float candidate = kInfinity;
   if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
       static_cast<int>(tier[index]) == *best_tier) {
-    atomicMinFloat(best_critical, critical[index]);
+    candidate = critical[index];
+  }
+  const float block_candidate = blockMinimum(candidate, kInfinity);
+  if (threadIdx.x == 0) {
+    atomicMinFloat(best_critical, block_candidate);
   }
 }
 
@@ -633,10 +697,15 @@ __global__ void reducePlanning(const std::uint8_t* tier, const float* critical,
                                float critical_tolerance, float* best_planning) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  float candidate = kInfinity;
   if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
       static_cast<int>(tier[index]) == *best_tier &&
       critical[index] <= *best_critical + critical_tolerance) {
-    atomicMinFloat(best_planning, planning[index]);
+    candidate = planning[index];
+  }
+  const float block_candidate = blockMinimum(candidate, kInfinity);
+  if (threadIdx.x == 0) {
+    atomicMinFloat(best_planning, block_candidate);
   }
 }
 
@@ -649,19 +718,23 @@ __global__ void reduceSoft(const std::uint8_t* tier, const float* critical,
                            RiskConfig risk, int maximum_tier) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index >= count) {
-    return;
-  }
+  const bool valid = index < count;
   const bool escalated = maximum_tier > static_cast<int>(RiskTier::kPreferred);
   const bool eligible =
-      escalated
-          ? static_cast<int>(tier[index]) <= maximum_tier
-          : static_cast<int>(tier[index]) == *best_tier &&
-                critical[index] <=
-                    *best_critical + risk.critical_exposure_tolerance_m &&
-                planning[index] <= *best_planning + risk.planning_exposure_tolerance_m;
-  if (raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
-    atomicMinFloat(minimum_soft, soft[index]);
+      valid &&
+      (escalated ? static_cast<int>(tier[index]) <= maximum_tier
+                 : static_cast<int>(tier[index]) == *best_tier &&
+                       critical[index] <=
+                           *best_critical + risk.critical_exposure_tolerance_m &&
+                       planning[index] <=
+                           *best_planning + risk.planning_exposure_tolerance_m);
+  float candidate = kInfinity;
+  if (valid && raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
+    candidate = soft[index];
+  }
+  const float block_candidate = blockMinimum(candidate, kInfinity);
+  if (threadIdx.x == 0) {
+    atomicMinFloat(minimum_soft, block_candidate);
   }
 }
 
@@ -674,51 +747,93 @@ calculateWeights(const std::uint8_t* tier, const float* critical, const float* p
                  float temperature, int maximum_tier, float* weight_sum) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index >= count) {
-    return;
-  }
+  const bool valid = index < count;
   float weight = 0.0F;
   const bool escalated = maximum_tier > static_cast<int>(RiskTier::kPreferred);
   const bool eligible =
-      escalated
-          ? static_cast<int>(tier[index]) <= maximum_tier
-          : static_cast<int>(tier[index]) == *best_tier &&
-                critical[index] <=
-                    *best_critical + risk.critical_exposure_tolerance_m &&
-                planning[index] <= *best_planning + risk.planning_exposure_tolerance_m;
-  if (raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
+      valid &&
+      (escalated ? static_cast<int>(tier[index]) <= maximum_tier
+                 : static_cast<int>(tier[index]) == *best_tier &&
+                       critical[index] <=
+                           *best_critical + risk.critical_exposure_tolerance_m &&
+                       planning[index] <=
+                           *best_planning + risk.planning_exposure_tolerance_m);
+  if (valid && raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
     weight = expf(-(soft[index] - *minimum_soft) / temperature);
   }
-  weights[index] = weight;
-  atomicAdd(weight_sum, weight);
+  if (valid) {
+    weights[index] = weight;
+  }
+  const float block_weight_sum = blockSum(weight);
+  if (threadIdx.x == 0) {
+    atomicAdd(weight_sum, block_weight_sum);
+  }
 }
 
-__global__ void updateControls(const Control* nominal, Control* updated,
-                               const float* noise_ax, const float* noise_ay,
-                               const float* noise_az, const float* noise_yaw,
-                               const float* weights, const float* weight_sum,
-                               std::size_t rollouts, std::size_t steps) {
+__global__ void accumulateControlUpdatePartials(
+    const float* noise_ax, const float* noise_ay, const float* noise_az,
+    const float* noise_yaw, const float* weights, Control* partials,
+    std::size_t rollouts, std::size_t steps, std::size_t partitions) {
+  // Each warp keeps adjacent timesteps coalesced while Y blocks partition rollouts.
+  __shared__ Control tile[kThreadsPerBlock];
+  const std::size_t step_lane = threadIdx.x % kControlUpdateStepTile;
+  const std::size_t rollout_lane = threadIdx.x / kControlUpdateStepTile;
+  const std::size_t step =
+      static_cast<std::size_t>(blockIdx.x) * kControlUpdateStepTile + step_lane;
+  const std::size_t partition = blockIdx.y;
+  float ax = 0.0F;
+  float ay = 0.0F;
+  float az = 0.0F;
+  float yaw = 0.0F;
+  if (step < steps) {
+    const std::size_t rollout_stride = partitions * kControlUpdateRolloutLanes;
+    for (std::size_t rollout = partition * kControlUpdateRolloutLanes + rollout_lane;
+         rollout < rollouts; rollout += rollout_stride) {
+      const std::size_t index = rollout * steps + step;
+      const float weight = weights[rollout];
+      ax += weight * noise_ax[index];
+      ay += weight * noise_ay[index];
+      az += weight * noise_az[index];
+      yaw += weight * noise_yaw[index];
+    }
+  }
+  tile[threadIdx.x] = Control{ax, ay, az, yaw};
+  __syncthreads();
+  if (rollout_lane != 0U || step >= steps) {
+    return;
+  }
+  Control partial{};
+  for (std::size_t lane = 0U; lane < kControlUpdateRolloutLanes; ++lane) {
+    const Control value = tile[lane * kControlUpdateStepTile + step_lane];
+    partial.ax += value.ax;
+    partial.ay += value.ay;
+    partial.az += value.az;
+    partial.yaw_accel += value.yaw_accel;
+  }
+  partials[partition * steps + step] = partial;
+}
+
+__global__ void finalizeControlUpdate(const Control* nominal, Control* updated,
+                                      const Control* partials, const float* weight_sum,
+                                      std::size_t steps, std::size_t partitions) {
   const std::size_t step =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (step >= steps) {
     return;
   }
-  float ax = 0.0F;
-  float ay = 0.0F;
-  float az = 0.0F;
-  float yaw = 0.0F;
-  for (std::size_t rollout = 0U; rollout < rollouts; ++rollout) {
-    const std::size_t index = rollout * steps + step;
-    const float weight = weights[rollout];
-    ax += weight * noise_ax[index];
-    ay += weight * noise_ay[index];
-    az += weight * noise_az[index];
-    yaw += weight * noise_yaw[index];
+  Control sum{};
+  for (std::size_t partition = 0U; partition < partitions; ++partition) {
+    const Control partial = partials[partition * steps + step];
+    sum.ax += partial.ax;
+    sum.ay += partial.ay;
+    sum.az += partial.az;
+    sum.yaw_accel += partial.yaw_accel;
   }
   const float denominator = fmaxf(*weight_sum, 1.0e-12F);
-  updated[step] = Control{
-      nominal[step].ax + ax / denominator, nominal[step].ay + ay / denominator,
-      nominal[step].az + az / denominator, nominal[step].yaw_accel + yaw / denominator};
+  updated[step] = Control{nominal[step].ax + sum.ax / denominator,
+                          nominal[step].ay + sum.ay / denominator,
+                          nominal[step].az + sum.az / denominator,
+                          nominal[step].yaw_accel + sum.yaw_accel / denominator};
 }
 
 __global__ void limitControls(Control* controls, std::size_t steps,
