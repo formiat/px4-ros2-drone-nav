@@ -43,20 +43,6 @@ def _optional_bool(value, fallback):
     raise RuntimeError(f"Expected boolean launch value, got '{value}'")
 
 
-def _allocate_planner_workers(total_workers, vehicle_count):
-    if vehicle_count <= 0:
-        raise RuntimeError("At least one vehicle is required")
-    if total_workers < vehicle_count or total_workers > vehicle_count * 8:
-        raise RuntimeError(
-            "Planner worker budget must provide between 1 and 8 workers per vehicle"
-        )
-    base_workers, extra_workers = divmod(total_workers, vehicle_count)
-    return [
-        base_workers + (1 if index < extra_workers else 0)
-        for index in range(vehicle_count)
-    ]
-
-
 def _cpu_affinity_prefix(cpu_list):
     value = cpu_list.strip()
     if not value:
@@ -190,9 +176,13 @@ def generate_launch_description():
         planner_worker_budget = int(
             LaunchConfiguration("planner_worker_budget").perform(context)
         )
-        planner_worker_counts = _allocate_planner_workers(
-            planner_worker_budget, len(role_names)
-        )
+        if planner_worker_budget < 1 or planner_worker_budget > 8:
+            raise RuntimeError("Planner worker budget must be in [1, 8]")
+        planner_worker_scheduler_id = LaunchConfiguration(
+            "planner_worker_scheduler_id"
+        ).perform(context)
+        if not planner_worker_scheduler_id:
+            raise RuntimeError("Planner worker scheduler id must not be empty")
         planner_tick_rate_hz = float(
             document["production_mppi_node"]["ros__parameters"]["tick_rate_hz"]
         )
@@ -301,7 +291,8 @@ def generate_launch_description():
                         f"{prefix}/radar/track_mode_command"
                     ),
                     "diagnostics_output_dir": f"log/intercept/{role}/mppi",
-                    "planner_worker_count": planner_worker_counts[role_index],
+                    "planner_worker_count": planner_worker_budget,
+                    "planner_worker_scheduler_id": planner_worker_scheduler_id,
                     "planning_tick_phase_offset_s": (
                         role_index * planner_tick_phase_step_s
                     ),
@@ -900,6 +891,10 @@ def generate_launch_description():
             DeclareLaunchArgument("radar_random_seed", default_value="42"),
             DeclareLaunchArgument("evader_speed_scale", default_value="1.0"),
             DeclareLaunchArgument("planner_worker_budget", default_value="8"),
+            DeclareLaunchArgument(
+                "planner_worker_scheduler_id",
+                default_value="intercept_planning",
+            ),
             DeclareLaunchArgument("control_cpu_list", default_value=""),
             DeclareLaunchArgument("planning_cpu_list", default_value=""),
             DeclareLaunchArgument("diagnostics_cpu_list", default_value=""),

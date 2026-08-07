@@ -455,6 +455,7 @@ private:
   double no_static_esdf_half_extent_m_{100.0};
   double no_static_esdf_recenter_margin_m_{70.0};
   std::size_t planner_worker_count_{4U};
+  std::string planner_worker_scheduler_id_;
   std::size_t direct_tracking_rollouts_{4096U};
   double planning_tick_phase_offset_s_{0.0};
   NoStaticRouteCycleConfig no_static_cycle_config_{};
@@ -505,7 +506,7 @@ private:
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};
-  std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
+  std::shared_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;

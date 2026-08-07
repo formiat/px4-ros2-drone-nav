@@ -44,6 +44,11 @@ Execution cadence:
 - `tick_rate_hz`, `rviz_rate_hz`, `diagnostics_info_rate_hz`;
 - `diagnostics_file_rate_hz`, `diagnostics_flush_period_s`, and
   `diagnostics_error_ring_capacity`;
+- `planner_worker_count` is the private pool size in standalone missions or the
+  total process-local worker budget when `planner_worker_scheduler_id` names a
+  shared scheduler; each shared planner receives a separate fair FIFO lane;
+- `planner_worker_scheduler_id` is empty for a private pool and is set by the
+  intercept launch for all vehicle planners in its component process;
 - `rollouts`, `dt_s`, mode-specific horizon duration;
 - deadline and maximum input ages.
 

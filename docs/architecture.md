@@ -74,10 +74,14 @@ This node has no direct PX4 command publisher.
 
 The intercept launch loads all four production planners as ROS 2 components in
 one multithreaded component container. Each component retains independent
-vehicle state, route lifecycle, worker pool, CUDA stream, ESDF, and MPPI nominal
-controls. Sharing one process removes redundant ROS/DDS process overhead and
-lets all planners use one CUDA primary context; it does not merge vehicle state
-or make one vehicle's planner callbacks depend on another vehicle.
+vehicle state, route lifecycle, scheduler lane, CUDA stream, ESDF, and MPPI
+nominal controls. Their CPU-heavy ESDF, topology, continuation, and route
+validation jobs use one process-local bounded worker scheduler. Per-planner
+FIFO lanes and round-robin dispatch prevent one vehicle from monopolizing the
+mission budget while allowing an otherwise idle vehicle's capacity to be used
+by active planning work. Sharing one process removes redundant ROS/DDS process
+overhead and lets all planners use one CUDA primary context; it does not merge
+vehicle state or make one vehicle's route state depend on another vehicle.
 
 Radar target trackers and interceptor guidance nodes run in a separate
 multithreaded component container. Tracker-to-guidance `TargetTrack` delivery
@@ -294,11 +298,15 @@ horizon has been published.
 
 In the four-vehicle intercept mission, the planner component container has one
 executor thread per vehicle. CPU-heavy planner work remains bounded by the
-mission-wide planner worker budget. Each MPPI engine currently launches its own
-rollout kernels on an independent CUDA stream; vehicle-by-rollout fused kernels
-are a separate backend optimization and are not implied by component
-composition. Three tracker/guidance pairs share a second component process and
-use three executor threads; simulator truth never enters that process.
+mission-wide planner worker budget and is dispatched fairly across per-vehicle
+lanes. Nested planning work executes serially inside an existing scheduler job,
+so topology-level parallelism cannot create a second layer of worker tasks.
+Standalone navigation leaves `planner_worker_scheduler_id` empty and owns a
+private pool. Each MPPI engine currently launches its own rollout kernels on an
+independent CUDA stream; vehicle-by-rollout fused kernels are a separate backend
+optimization and are not implied by component composition. Three
+tracker/guidance pairs share a second component process and use three executor
+threads; simulator truth never enters that process.
 
 The intercept launcher applies subsystem CPU affinity when the host exposes at
 least four logical CPUs. Control and physics, planning and mapping, and

@@ -71,6 +71,8 @@ void ProductionMppiNode::publishSummary() {
       rollout_ticks > 0U ? static_cast<double>(active_rollout_total) /
                                static_cast<double>(rollout_ticks)
                          : 0.0;
+  const BoundedWorkerPoolStatistics scheduler_statistics =
+      planning_worker_pool_->statistics();
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
@@ -84,7 +86,11 @@ void ProductionMppiNode::publishSummary() {
       " no_static_raw_updates=%" PRIu64 " no_static_esdf_builds=%" PRIu64
       " no_static_esdf_throttled=%" PRIu64 " dropped_diagnostics=%" PRIu64
       " full_rollout_ticks=%" PRIu64 " reduced_rollout_ticks=%" PRIu64
-      " average_active_rollouts=%.1f",
+      " average_active_rollouts=%.1f planner_scheduler_shared=%s"
+      " planner_scheduler_workers=%zu planner_scheduler_clients=%zu"
+      " planner_scheduler_pending=%zu planner_scheduler_active=%zu"
+      " planner_scheduler_peak_pending=%zu planner_scheduler_peak_active=%zu"
+      " planner_scheduler_submitted=%" PRIu64 " planner_scheduler_completed=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, raw_collision_horizons, solid_collision_horizons,
@@ -95,7 +101,12 @@ void ProductionMppiNode::publishSummary() {
       no_static_esdf_builds_.load(std::memory_order_relaxed),
       no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
       dropped_diagnostics_snapshots_.load(std::memory_order_relaxed),
-      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts);
+      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts,
+      planning_worker_pool_->isSharedScheduler() ? "true" : "false",
+      scheduler_statistics.worker_count, scheduler_statistics.client_count,
+      scheduler_statistics.pending_tasks, scheduler_statistics.active_tasks,
+      scheduler_statistics.peak_pending_tasks, scheduler_statistics.peak_active_tasks,
+      scheduler_statistics.submitted_tasks, scheduler_statistics.completed_tasks);
 }
 
 } // namespace drone_city_nav
