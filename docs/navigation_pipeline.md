@@ -6,15 +6,17 @@ into a timestamped local trajectory horizon.
 ## 1. Raw World Snapshot
 
 `obstacle_memory_node` integrates accepted lidar returns into a scored 2D
-memory grid. `/drone_city_nav/obstacle_memory_snapshot` carries that grid and
-its provenance atomically; `/drone_city_nav/raw_obstacle_snapshot` carries the
-validated raw runtime grid and risk-policy fingerprint. The matching RViz
-occupancy grid is debug-only and is never used as planner input.
+memory grid. `/drone_city_nav/obstacle_memory_status` carries the producer and
+sequence heartbeat without copying the grid. `/drone_city_nav/raw_obstacle_snapshot`
+carries the validated raw runtime grid and risk-policy fingerprint. The larger
+atomic grid/provenance snapshot and the matching RViz occupancy grid are
+debug-only and are never used as planner inputs.
 
-In no-static mode this snapshot is the planning world. In static mode it keeps
-sensor diagnostics and snapshot freshness alive, but the planner loads
-canonical Occupancy3D directly and does not merge this 2D grid into the static
-3D map.
+In no-static mode the raw snapshot is the planning world and is published after
+every accepted update. In static mode the status heartbeat keeps memory
+diagnostics observable, while the raw and full snapshots run at the lower debug
+cadence; the planner loads canonical Occupancy3D directly and does not merge the
+2D grid into the static 3D map.
 
 ## 2. ESDF Preparation
 
@@ -120,7 +122,9 @@ release a stalled guide.
 
 The production node publishes the execution horizon immediately after planning
 and safety evaluation. RViz, INFO summaries, and JSONL diagnostics run outside
-the control-critical publication path.
+the control-critical publication path. JSONL writes have a configurable rate and
+batched flush period; a bounded recent-record ring is dumped when a collision
+episode begins.
 
 Offboard consumes the fresh horizon, interpolates by timestamp, and emits PX4
 trajectory setpoints. If the horizon expires, offboard brakes instead of

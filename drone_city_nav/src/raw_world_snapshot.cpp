@@ -27,8 +27,20 @@ composeRawObstacleSnapshot(const msg::ObstacleMemorySnapshot& memory_snapshot,
                            const std::optional<OccupancyGrid2D>& static_grid,
                            const double critical_distance_m,
                            const double preferred_distance_m) {
-  const RawOccupancyGridFromRosResult converted = rawOccupancyGridFromRos(
-      memory_snapshot.grid, RawOccupancyGridFromRosConfig{100, 0});
+  return composeRawObstacleSnapshot(
+      memory_snapshot.grid, memory_snapshot.producer_instance_id,
+      memory_snapshot.sequence, static_grid, critical_distance_m, preferred_distance_m);
+}
+
+std::optional<msg::RawObstacleSnapshot>
+composeRawObstacleSnapshot(const nav_msgs::msg::OccupancyGrid& memory_grid,
+                           const std::uint64_t producer_instance_id,
+                           const std::uint64_t obstacle_snapshot_revision,
+                           const std::optional<OccupancyGrid2D>& static_grid,
+                           const double critical_distance_m,
+                           const double preferred_distance_m) {
+  const RawOccupancyGridFromRosResult converted =
+      rawOccupancyGridFromRos(memory_grid, RawOccupancyGridFromRosConfig{100, 0});
   if (!converted.grid.has_value()) {
     return std::nullopt;
   }
@@ -43,15 +55,15 @@ composeRawObstacleSnapshot(const msg::ObstacleMemorySnapshot& memory_snapshot,
     raw_world = std::move(combined);
   }
   msg::RawObstacleSnapshot message;
-  message.producer_instance_id = memory_snapshot.producer_instance_id;
-  message.obstacle_snapshot_revision = memory_snapshot.sequence;
+  message.producer_instance_id = producer_instance_id;
+  message.obstacle_snapshot_revision = obstacle_snapshot_revision;
   message.risk_policy_fingerprint =
       (static_cast<std::uint64_t>(std::llround(critical_distance_m * 1000.0)) << 32U) ^
       static_cast<std::uint64_t>(std::llround(preferred_distance_m * 1000.0));
   message.risk_critical_distance_m = critical_distance_m;
   message.risk_preferred_distance_m = preferred_distance_m;
-  message.grid = rawOccupancyGridToRos(
-      raw_world, RawOccupancyGridToRosConfig{memory_snapshot.grid.header});
+  message.grid =
+      rawOccupancyGridToRos(raw_world, RawOccupancyGridToRosConfig{memory_grid.header});
   return message;
 }
 

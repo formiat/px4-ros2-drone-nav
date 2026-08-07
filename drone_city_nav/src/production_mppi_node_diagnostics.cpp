@@ -1,6 +1,3 @@
-#include "drone_city_nav/mppi_debug_markers.hpp"
-#include "drone_city_nav/visualization_marker_helpers.hpp"
-
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
@@ -8,7 +5,6 @@
 #include <iomanip>
 #include <numeric>
 #include <sstream>
-#include <utility>
 
 #include "production_mppi_node.hpp"
 #include "successor_profiling_diagnostics.hpp"
@@ -43,116 +39,6 @@ planningRiskStageName(const ProductionMppiPreparedEsdf& esdf) noexcept {
 }
 
 } // namespace
-
-void ProductionMppiNode::diagnosticsWorker(const std::stop_token stop_token) {
-  while (!stop_token.stop_requested()) {
-    std::optional<ProductionMppiDiagnosticsSnapshot> snapshot =
-        diagnostics_mailbox_.waitPop(stop_token);
-    if (!snapshot.has_value()) {
-      break;
-    }
-    processDiagnostics(*snapshot);
-  }
-  if (std::optional<ProductionMppiDiagnosticsSnapshot> pending =
-          diagnostics_mailbox_.tryPop();
-      pending.has_value()) {
-    processDiagnostics(*pending);
-  }
-  if (diagnostics_stream_) {
-    diagnostics_stream_.flush();
-  }
-}
-
-void ProductionMppiNode::enqueueDiagnostics(
-    ProductionMppiDiagnosticsSnapshot snapshot) {
-  if (diagnostics_mailbox_.push(std::move(snapshot))) {
-    dropped_diagnostics_snapshots_.fetch_add(1U, std::memory_order_relaxed);
-  }
-}
-
-void ProductionMppiNode::recordTickStatistics(
-    const mppi::MppiTickResult& result,
-    const ProductionMppiPlanningState planning_state,
-    const bool liveness_reseed_requested) {
-  const std::scoped_lock lock{statistics_mutex_};
-  ++completed_ticks_;
-  runtime_samples_ms_.push_back(result.timings.host_total_ms);
-  deadline_misses_ += result.timings.host_total_ms > deadline_ms_ ? 1U : 0U;
-  raw_collision_horizons_ += result.raw_collision ? 1U : 0U;
-  solid_collision_horizons_ += result.known_solid_collision ? 1U : 0U;
-  post_update_contract_violations_ +=
-      planning_state == ProductionMppiPlanningState::kPlanned &&
-              !result.post_update_classification.contract_preserved
-          ? 1U
-          : 0U;
-  no_progress_horizons_ += result.head_progress_m <= 0.0F ? 1U : 0U;
-  liveness_reseeds_ += liveness_reseed_requested ? 1U : 0U;
-  no_guide_braking_hold_ticks_ +=
-      planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ? 1U : 0U;
-  unavailable_world_braking_hold_ticks_ +=
-      planning_state == ProductionMppiPlanningState::kUnavailableWorldBrakingHold ? 1U
-                                                                                  : 0U;
-  mission_goal_position_hold_ticks_ +=
-      planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold ? 1U : 0U;
-}
-
-void ProductionMppiNode::publishRviz(
-    const ProductionMppiDiagnosticsSnapshot& snapshot) {
-  if (!snapshot.rviz.has_value()) {
-    return;
-  }
-  const std::shared_ptr<const ProductionNavigationObjective>& objective =
-      snapshot.objective;
-  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
-  const ProductionMppiRvizSnapshot& rviz = *snapshot.rviz;
-  const auto stamp = now();
-  nav_msgs::msg::Path path;
-  path.header.frame_id = frame_id_;
-  path.header.stamp = stamp;
-  path.poses.reserve(rviz.candidate_horizon.size());
-  for (const mppi::State& state : rviz.candidate_horizon) {
-    geometry_msgs::msg::PoseStamped pose;
-    pose.header = path.header;
-    pose.pose.position.x = state.x;
-    pose.pose.position.y = state.y;
-    pose.pose.position.z = gazeboAlignedRvizZ(state.z);
-    pose.pose.orientation.w = 1.0;
-    path.poses.push_back(pose);
-  }
-  path_pub_->publish(path);
-
-  const std::span<const mppi::State> previous_horizon{rviz.previous_horizon};
-  const std::span<const mppi::State> execution_horizon{rviz.execution_horizon};
-  const std::span<const mppi::RouteSample3D> global_route =
-      rviz.route ? std::span<const mppi::RouteSample3D>{*rviz.route}
-                 : std::span<const mppi::RouteSample3D>{};
-  const std::span<const ConstrainedFreeSpaceEdge> channel_edges =
-      rviz.channel_edges
-          ? std::span<const ConstrainedFreeSpaceEdge>{*rviz.channel_edges}
-          : std::span<const ConstrainedFreeSpaceEdge>{};
-  const std::span<const std::string> selected_channel_ids =
-      rviz.selected_channel_ids
-          ? std::span<const std::string>{*rviz.selected_channel_ids}
-          : std::span<const std::string>{};
-  MppiDebugMarkerInput marker_input{
-      .header = path.header,
-      .horizon = rviz.candidate_horizon,
-      .previous_horizon = previous_horizon,
-      .execution_horizon = execution_horizon,
-      .global_route = global_route,
-      .channel_edges = channel_edges,
-      .selected_channel_ids = selected_channel_ids,
-      .initial_state = snapshot.input.initial_state,
-      .target = snapshot.input.target,
-      .mission_start = mission_start_,
-      .mission_goal = mission_goal,
-      .selected_tier = snapshot.result.selected_tier,
-  };
-  detail::populateTrackingObjectiveMarkers(objective.get(), marker_input);
-  const visualization_msgs::msg::MarkerArray markers =
-      buildMppiDebugMarkers(marker_input);
-  markers_pub_->publish(markers);
-}
 
 void ProductionMppiNode::processDiagnostics(
     const ProductionMppiDiagnosticsSnapshot& snapshot) {
@@ -635,8 +521,18 @@ void ProductionMppiNode::processDiagnostics(
     status_pub_->publish(status);
     last_diagnostics_info_stamp_ns_ = now_ns;
   }
-  if (diagnostics_stream_) {
-    diagnostics_stream_
+  const bool diagnostics_error = result.raw_collision || result.known_solid_collision;
+  const bool new_error_episode = diagnostics_error && !diagnostics_error_active_;
+  if (!diagnostics_error) {
+    diagnostics_error_active_ = false;
+  }
+  const bool diagnostics_file_due =
+      last_diagnostics_file_stamp_ns_ <= 0 ||
+      now_ns < last_diagnostics_file_stamp_ns_ ||
+      now_ns - last_diagnostics_file_stamp_ns_ >= diagnostics_file_period_ns_;
+  if (diagnostics_stream_ && (diagnostics_file_due || new_error_episode)) {
+    std::ostringstream json;
+    json
         << "{\"tick\":" << snapshot.tick_sequence
         << ",\"pose_revision\":" << input.pose_revision
         << ",\"raw_revision\":" << input.obstacle_revision
@@ -952,7 +848,33 @@ void ProductionMppiNode::processDiagnostics(
         << (stability.valid ? stability.position_rms_m : -1.0)
         << ",\"dropped_diagnostics\":"
         << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed) << "}\n";
+    std::string json_line = json.str();
+    diagnostics_stream_ << json_line;
+    last_diagnostics_file_stamp_ns_ = now_ns;
+    diagnostics_error_ring_.push_back(std::move(json_line));
+    while (diagnostics_error_ring_.size() > diagnostics_error_ring_capacity_) {
+      diagnostics_error_ring_.pop_front();
+    }
+    if (new_error_episode && diagnostics_error_stream_) {
+      diagnostics_error_stream_
+          << "{\"event\":\"diagnostics_error_context\",\"trigger_tick\":"
+          << snapshot.tick_sequence << ",\"records\":" << diagnostics_error_ring_.size()
+          << "}\n";
+      for (const std::string& record : diagnostics_error_ring_) {
+        diagnostics_error_stream_ << record;
+      }
+      diagnostics_error_stream_.flush();
+      diagnostics_stream_.flush();
+      last_diagnostics_flush_time_ = std::chrono::steady_clock::now();
+    }
+    diagnostics_error_active_ = diagnostics_error;
+  }
+  const auto flush_now = std::chrono::steady_clock::now();
+  if (diagnostics_stream_ &&
+      flush_now - last_diagnostics_flush_time_ >=
+          std::chrono::duration<double>{diagnostics_flush_period_s_}) {
     diagnostics_stream_.flush();
+    last_diagnostics_flush_time_ = flush_now;
   }
   if (now_ns - last_summary_stamp_ns_ >= 5000000000LL) {
     publishSummary();

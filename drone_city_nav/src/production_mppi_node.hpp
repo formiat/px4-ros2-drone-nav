@@ -17,7 +17,7 @@
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
-#include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
+#include "drone_city_nav/msg/obstacle_memory_status.hpp"
 #include "drone_city_nav/msg/radar_track_mode_command.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
@@ -39,8 +39,10 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -353,7 +355,7 @@ private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
-  void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
+  void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void onNavigationObjective(const msg::NavigationObjective& message);
   void publishRadarTrackModeCommand(const ProductionNavigationObjective& objective,
@@ -404,6 +406,9 @@ private:
   double tick_rate_hz_{50.0};
   double rviz_rate_hz_{10.0};
   double diagnostics_info_rate_hz_{5.0};
+  double diagnostics_file_rate_hz_{5.0};
+  double diagnostics_flush_period_s_{1.0};
+  std::size_t diagnostics_error_ring_capacity_{25U};
   double deadline_ms_{20.0};
   double maximum_pose_age_ms_{150.0};
   double maximum_pose_prediction_age_ms_{1000.0};
@@ -440,8 +445,10 @@ private:
   std::filesystem::path diagnostics_output_dir_{"log/mppi"};
   std::int64_t rviz_period_ns_{100000000};
   std::int64_t diagnostics_info_period_ns_{200000000};
+  std::int64_t diagnostics_file_period_ns_{200000000};
   std::int64_t last_rviz_stamp_ns_{0};
   std::int64_t last_diagnostics_info_stamp_ns_{0};
+  std::int64_t last_diagnostics_file_stamp_ns_{0};
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
 
   mppi::BenchmarkConfig mppi_config_{};
@@ -540,6 +547,10 @@ private:
   std::int64_t last_summary_stamp_ns_{0};
   mutable std::mutex statistics_mutex_;
   std::ofstream diagnostics_stream_;
+  std::ofstream diagnostics_error_stream_;
+  std::deque<std::string> diagnostics_error_ring_;
+  std::chrono::steady_clock::time_point last_diagnostics_flush_time_{};
+  bool diagnostics_error_active_{false};
   LatestValueMailbox<ProductionMppiDiagnosticsSnapshot> diagnostics_mailbox_;
   std::atomic<std::uint64_t> dropped_diagnostics_snapshots_{0U};
   std::jthread diagnostics_worker_;
@@ -548,7 +559,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
-  rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
+  rclcpp::Subscription<msg::ObstacleMemoryStatus>::SharedPtr memory_status_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;
   rclcpp::Publisher<msg::RadarTrackModeCommand>::SharedPtr

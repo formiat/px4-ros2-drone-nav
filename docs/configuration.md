@@ -42,6 +42,8 @@ Memory:
 Execution cadence:
 
 - `tick_rate_hz`, `rviz_rate_hz`, `diagnostics_info_rate_hz`;
+- `diagnostics_file_rate_hz`, `diagnostics_flush_period_s`, and
+  `diagnostics_error_ring_capacity`;
 - `rollouts`, `dt_s`, mode-specific horizon duration;
 - deadline and maximum input ages.
 

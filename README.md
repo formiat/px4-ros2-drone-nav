@@ -267,12 +267,15 @@ channel, and one T junction. Static planning loads the generated constrained
 free-space graph embedded in Occupancy3D and objectively compares ordinary and
 channel routes; no channel is mandatory. Selected channel edges directly create
 typed route spans. There is no separate passage file or nearest-portal selector.
-No-static mode uses the accumulated 2D lidar-memory snapshot; collisionless lidar
+No-static mode uses the accumulated raw 2D lidar-memory world; collisionless lidar
 occluders make all four channels appear closed in that mode. Source contracts are documented in
 `docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
 
-Obstacle topics follow a strict raw/runtime/debug contract. Raw sources such as
-the grid carried by `/drone_city_nav/obstacle_memory_snapshot` contain only
+Obstacle topics follow a strict raw/runtime/debug contract.
+`/drone_city_nav/obstacle_memory_status` is the lightweight per-update heartbeat,
+while `/drone_city_nav/raw_obstacle_snapshot` carries the current raw grid used by
+no-static planning. The larger atomic memory/provenance snapshot is published at
+the debug cadence and is not deserialized by the planner. Raw grids contain only
 direct obstacle evidence. In no-static mode the planner builds a
 distance-derived risk field from that raw 2D world without materializing
 inflated grids. Static mode instead loads canonical Occupancy3D directly. The
@@ -294,7 +297,9 @@ python3 scripts/analyze_lidar_projection_snapshots.py \
   log/lidar_debug/snapshots.jsonl
 ```
 
-Production MPPI diagnostics are written as JSON Lines under `log/mppi/`.
+Production MPPI diagnostics are written as rate-limited JSON Lines under
+`log/mppi/`; recent full records are also retained in a bounded ring and dumped
+to `mppi_error_context.jsonl` when a collision episode begins.
 Synchronized lidar, raw-grid, and local-horizon snapshots are written under
 `log/lidar_debug/`. The simulation wrapper prints the exact per-run artifact
 directory.

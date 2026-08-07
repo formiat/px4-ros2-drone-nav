@@ -74,11 +74,11 @@ the hit that first made the cell occupied, the latest accepted hit, the observed
 minimum/maximum endpoint Z, the accepted-hit count, the score transition that
 first crossed the occupied threshold, that threshold, and the number of
 independent scans supporting the trigger decision. This metadata never
-participates in risk scoring, lattice search, MPPI, or trajectory control. It is published
-on `/drone_city_nav/obstacle_memory_provenance` for standalone diagnostics. The
-planner receives the same data through the authoritative atomic
-`/drone_city_nav/obstacle_memory_snapshot` message, which carries the raw grid
-and provenance together.
+participates in risk scoring, lattice search, MPPI, or trajectory control. It is
+published on `/drone_city_nav/obstacle_memory_provenance` and in the atomic
+`/drone_city_nav/obstacle_memory_snapshot` at the standalone debug cadence. The
+planner does not deserialize this provenance; it receives a lightweight status
+heartbeat and the raw runtime obstacle snapshot.
 
 For RViz, `obstacle_memory_node` also derives
 `/drone_city_nav/raw_memory_obstacle_points_3d` directly from the same active
@@ -234,29 +234,24 @@ Raw occupied cells and evaluation bounds are hard rejects. MPPI first selects
 the best eligible risk class, then applies its soft dynamics and progress cost
 within that class.
 
-## Atomic Memory Transport
+## Memory Transport
 
-Runtime planning receives a single `ObstacleMemorySnapshot` containing the raw
-2D grid and exact sparse provenance. A monotonically increasing producer
-sequence and the grid stamp make delivery and replacement observable. The
-planner rejects zero, duplicate, or out-of-order sequences and retains its last
-valid state when nested grid/provenance validation fails.
+Every accepted memory update publishes a small `ObstacleMemoryStatus` carrying
+the producer identity, monotonically increasing sequence, occupied count, and
+which larger artifacts were emitted for that update. The planner consumes this
+message for memory revision diagnostics without receiving the grid or sparse
+provenance payload.
 
-The authoritative atomic snapshot is published after every accepted memory
-scan update. Standalone grid/provenance topics are diagnostics-only and default
-to a 1 Hz cadence to avoid duplicate serialization and transient-local history
-cost. The provenance debug publisher uses KeepLast(1); exact runtime history is
-carried by the currently applied atomic snapshot rather than a retained queue of
-large standalone messages.
+No-static runtime planning receives `RawObstacleSnapshot`, which contains the raw
+2D grid and risk-policy identity but no sparse diagnostic provenance. It is
+published after every accepted memory update and moved into the planner as an
+immutable revision. Static planning does not consume it; canonical Occupancy3D
+is its authoritative world.
 
-The planner's snapshot callback runs separately from planning work. It fully
-validates and parses each delivered atomic pair, retains only the newest parsed
-pair, and records both DDS sequence gaps and replacements in that pending slot.
-At the start of each planning check, the pair is moved into the active planner
-state. The active pair remains immutable for the rest of that planning cycle.
-
-The atomic raw obstacle snapshot is published for runtime validation. Its
-debug-only raw grid mirror is published for visualization.
+`ObstacleMemorySnapshot` remains an atomic raw-grid/provenance artifact for
+offline auditing and debug consumers. It, the standalone grid/provenance topics,
+and the 3D diagnostic point cloud default to a 1 Hz cadence. This avoids repeated
+multi-megabyte provenance assembly and DDS deserialization in the runtime path.
 
 ## RViz Outputs
 
@@ -266,6 +261,7 @@ Useful visualization topics:
 - `/drone_city_nav/obstacle_memory_grid`
 - `/drone_city_nav/obstacle_memory_provenance`
 - `/drone_city_nav/obstacle_memory_snapshot`
+- `/drone_city_nav/obstacle_memory_status`
 - `/drone_city_nav/raw_obstacle_snapshot`
 - `/drone_city_nav/raw_obstacle_grid`
 - `/drone_city_nav/lidar_debug_points`

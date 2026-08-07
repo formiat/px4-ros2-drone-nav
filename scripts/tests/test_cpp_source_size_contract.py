@@ -17,10 +17,10 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def tracked_source_files() -> list[Path]:
+def repository_source_files() -> list[Path]:
     root = repo_root()
     result = subprocess.run(
-        ["git", "ls-files"],
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
         cwd=root,
         check=True,
         text=True,
@@ -41,7 +41,7 @@ class CppSourceSizeContractTest(unittest.TestCase):
     def test_tracked_cpp_sources_stay_under_size_limit(self) -> None:
         oversized: list[str] = []
         root = repo_root()
-        for path in tracked_source_files():
+        for path in repository_source_files():
             if not path.exists():
                 continue
             line_count = sum(

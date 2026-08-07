@@ -4,6 +4,9 @@
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 
+#include <nav_msgs/msg/occupancy_grid.hpp>
+
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string_view>
@@ -20,6 +23,13 @@ declareStaticRawWorldGrid(rclcpp::Node& node, std::string_view frame_id,
 
 [[nodiscard]] std::optional<msg::RawObstacleSnapshot>
 composeRawObstacleSnapshot(const msg::ObstacleMemorySnapshot& memory_snapshot,
+                           const std::optional<OccupancyGrid2D>& static_grid,
+                           double critical_distance_m, double preferred_distance_m);
+
+[[nodiscard]] std::optional<msg::RawObstacleSnapshot>
+composeRawObstacleSnapshot(const nav_msgs::msg::OccupancyGrid& memory_grid,
+                           std::uint64_t producer_instance_id,
+                           std::uint64_t obstacle_snapshot_revision,
                            const std::optional<OccupancyGrid2D>& static_grid,
                            double critical_distance_m, double preferred_distance_m);
 

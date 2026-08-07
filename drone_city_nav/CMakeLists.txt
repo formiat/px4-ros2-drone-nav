@@ -44,6 +44,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryCellProvenance.msg"
   "msg/ObstacleMemoryProvenance.msg"
   "msg/ObstacleMemorySnapshot.msg"
+  "msg/ObstacleMemoryStatus.msg"
   "msg/RawObstacleSnapshot.msg"
   "msg/VehicleDestroyed.msg"
   "msg/MppiHorizonPoint.msg"
@@ -233,6 +234,7 @@ enable_project_warnings(drone_city_nav_ros_adapters)
 
 add_executable(obstacle_memory_node src/obstacle_memory_node.cpp
                                     src/obstacle_memory_node_helpers.cpp
+                                    src/obstacle_memory_transport.cpp
                                     src/raw_world_snapshot.cpp)
 target_compile_features(obstacle_memory_node PRIVATE cxx_std_20)
 target_link_libraries(obstacle_memory_node drone_city_nav_core
@@ -375,6 +377,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_static_extension.cpp
     src/production_mppi_node_static_guide.cpp
     src/production_mppi_node_diagnostics.cpp
+    src/production_mppi_node_diagnostics_runtime.cpp
     src/production_mppi_node_summary.cpp
     src/tracking_objective_diagnostics.cpp
     src/production_mppi_node_execution.cpp)

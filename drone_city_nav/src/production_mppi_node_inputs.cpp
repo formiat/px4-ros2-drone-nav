@@ -183,7 +183,7 @@ void ProductionMppiNode::publishWorldReadiness(const bool ready) {
               use_static_map_ ? "resident_static_esdf" : "raw_snapshot_esdf");
 }
 
-void ProductionMppiNode::onMemorySnapshot(const msg::ObstacleMemorySnapshot& message) {
+void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message) {
   const std::scoped_lock lock{input_mutex_};
   memory_sequence_ = message.sequence;
   memory_receive_stamp_ns_ = get_clock()->now().nanoseconds();

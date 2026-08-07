@@ -160,6 +160,11 @@ def generate_launch_description():
                 if primary
                 else f"{prefix}/obstacle_memory_snapshot"
             )
+            memory_status = (
+                "/drone_city_nav/obstacle_memory_status"
+                if primary
+                else f"{prefix}/obstacle_memory_status"
+            )
             path_topic = f"{prefix}/mppi/path"
             marker_topic = f"{prefix}/mppi/markers"
             memory_params = _parameters(
@@ -180,6 +185,7 @@ def generate_launch_description():
                     "raw_memory_3d_pointcloud_topic": f"{prefix}/raw_memory_points_3d",
                     "obstacle_memory_provenance_topic": f"{prefix}/memory_provenance",
                     "obstacle_memory_snapshot_topic": memory_snapshot,
+                    "obstacle_memory_status_topic": memory_status,
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "tracked_agent_track_topic": (
                         f"{prefix}/target_track" if config["is_interceptor"] else ""
@@ -208,7 +214,7 @@ def generate_launch_description():
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "raw_obstacle_snapshot_topic": raw_snapshot,
-                    "obstacle_memory_snapshot_topic": memory_snapshot,
+                    "obstacle_memory_status_topic": memory_status,
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",
                     "execution_horizon_topic": f"{prefix}/mppi/execution_horizon",
                     "status_topic": f"{prefix}/mppi/status",

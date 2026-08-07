@@ -44,13 +44,17 @@ Gazebo contact involving the drone
   accepting scan geometry;
 - starts a new pose-history generation at every valid PX4-heading handoff;
 - maintains 2D occupancy memory and sparse 3D diagnostic provenance;
-- publishes `/drone_city_nav/obstacle_memory_snapshot`;
-- publishes `/drone_city_nav/raw_obstacle_snapshot`;
+- publishes a lightweight `/drone_city_nav/obstacle_memory_status` after every
+  accepted update;
+- publishes `/drone_city_nav/raw_obstacle_snapshot` on every no-static update and
+  at the debug cadence in static mode;
+- publishes the full atomic memory/provenance snapshot at the debug cadence;
 - does not load or merge the canonical static map.
 
 ### `production_mppi_node`
 
-- consumes PX4 state and immutable obstacle snapshots;
+- consumes PX4 state, the memory-status heartbeat, and immutable raw obstacle
+  snapshots where required;
 - loads canonical Occupancy3D directly in static mode;
 - builds the resident static ESDF asynchronously as soon as navigation state and
   the configured objective are ready, independently of lidar snapshots;
@@ -95,7 +99,7 @@ Static production planning uses:
 - preferred, planning, critical, and collision risk tiers;
 - typed 3D routes with constrained spans inferred from the route envelope.
 
-No-static production planning uses the raw 2D obstacle-memory snapshot and a
+No-static production planning uses the raw 2D obstacle snapshot and a
 2D distance field. It does not load channel metadata or the canonical 3D map.
 
 There are no separately materialized planner/prohibited inflated grids,

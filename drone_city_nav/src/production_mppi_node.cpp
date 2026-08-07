@@ -95,6 +95,17 @@ ProductionMppiNode::ProductionMppiNode()
   rviz_rate_hz_ = declare_parameter<double>("rviz_rate_hz", 10.0);
   diagnostics_info_rate_hz_ =
       declare_parameter<double>("diagnostics_info_rate_hz", 5.0);
+  diagnostics_file_rate_hz_ =
+      declare_parameter<double>("diagnostics_file_rate_hz", 5.0);
+  diagnostics_flush_period_s_ =
+      declare_parameter<double>("diagnostics_flush_period_s", 1.0);
+  const std::int64_t diagnostics_error_ring_capacity =
+      declare_parameter<std::int64_t>("diagnostics_error_ring_capacity", 25);
+  if (diagnostics_error_ring_capacity < 1 || diagnostics_error_ring_capacity > 1000) {
+    throw std::invalid_argument{"diagnostics error ring capacity must be in [1, 1000]"};
+  }
+  diagnostics_error_ring_capacity_ =
+      static_cast<std::size_t>(diagnostics_error_ring_capacity);
   deadline_ms_ = declare_parameter<double>("deadline_ms", 20.0);
   maximum_pose_age_ms_ = declare_parameter<double>("maximum_pose_age_ms", 150.0);
   maximum_pose_prediction_age_ms_ =
@@ -534,9 +545,12 @@ ProductionMppiNode::ProductionMppiNode()
   rviz_period_ns_ = static_cast<std::int64_t>(1.0e9 / std::max(0.1, rviz_rate_hz_));
   diagnostics_info_period_ns_ =
       static_cast<std::int64_t>(1.0e9 / std::max(0.1, diagnostics_info_rate_hz_));
+  diagnostics_file_period_ns_ =
+      static_cast<std::int64_t>(1.0e9 / std::max(0.1, diagnostics_file_rate_hz_));
 
   if (!(tick_rate_hz_ > 0.0) || !(rviz_rate_hz_ > 0.0) ||
       !(diagnostics_info_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
+      !(diagnostics_file_rate_hz_ > 0.0) || !(diagnostics_flush_period_s_ > 0.0) ||
       !(maximum_control_feedback_age_ms_ > 0.0) ||
       !std::isfinite(constrained_route_speed_limit_mps_) ||
       constrained_route_speed_limit_mps_ < 0.0F ||
@@ -608,7 +622,11 @@ ProductionMppiNode::ProductionMppiNode()
                 static_occupancy_3d_->bounds().depth_cells);
   }
   std::filesystem::create_directories(diagnostics_output_dir_);
-  diagnostics_stream_.open(diagnostics_output_dir_ / "mppi_ticks.jsonl", std::ios::app);
+  diagnostics_stream_.open(diagnostics_output_dir_ / "mppi_ticks.jsonl",
+                           std::ios::trunc);
+  diagnostics_error_stream_.open(diagnostics_output_dir_ / "mppi_error_context.jsonl",
+                                 std::ios::trunc);
+  last_diagnostics_flush_time_ = std::chrono::steady_clock::now();
   const auto sensor_qos = rclcpp::SensorDataQoS{};
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
       declare_parameter<std::string>("px4_local_position_topic",
@@ -630,12 +648,12 @@ ProductionMppiNode::ProductionMppiNode()
       [this](msg::RawObstacleSnapshot::ConstSharedPtr message) {
         onRawObstacleSnapshot(std::move(message));
       });
-  memory_snapshot_sub_ = create_subscription<msg::ObstacleMemorySnapshot>(
-      declare_parameter<std::string>("obstacle_memory_snapshot_topic",
-                                     "/drone_city_nav/obstacle_memory_snapshot"),
+  memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
+      declare_parameter<std::string>("obstacle_memory_status_topic",
+                                     "/drone_city_nav/obstacle_memory_status"),
       rclcpp::QoS{1}.reliable().transient_local(),
-      [this](const msg::ObstacleMemorySnapshot::SharedPtr message) {
-        onMemorySnapshot(*message);
+      [this](const msg::ObstacleMemoryStatus::SharedPtr message) {
+        onMemoryStatus(*message);
       });
   applied_control_sub_ = create_subscription<msg::MppiControlFeedback>(
       declare_parameter<std::string>("applied_control_feedback_topic",
