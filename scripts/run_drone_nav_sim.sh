@@ -553,6 +553,17 @@ run_px4_instance() {
     "${px4_build_dir}/bin/px4" -i "${instance}"
 }
 
+reset_px4_instance_state() {
+  local instance="$1"
+  local rootfs_dir="${px4_build_dir}/rootfs/${instance}"
+
+  # SITL state must not carry sensor calibration or a stored mission between runs.
+  rm -f -- \
+    "${rootfs_dir}/parameters.bson" \
+    "${rootfs_dir}/parameters_backup.bson" \
+    "${rootfs_dir}/dataman"
+}
+
 configure_gazebo_gui_follow_camera() {
   local target="$1"
   local offset="$2"
@@ -758,6 +769,7 @@ if [[ "${mission_type}" == "intercept" ]]; then
   )
   intercept_px4_pids=()
   for instance in 0 1 2 3; do
+    reset_px4_instance_state "${instance}"
     (
       px4_parameter_stream "${intercept_px4_cruise_speeds[instance]}" \
         "${intercept_px4_maximum_speeds[instance]}" |
@@ -775,6 +787,7 @@ if [[ "${mission_type}" == "intercept" ]]; then
   px4_pid="${intercept_px4_pids[0]}"
   evader_px4_pid="${intercept_px4_pids[3]}"
 else
+  reset_px4_instance_state 0
   (
     px4_parameter_stream "${px4_active_cruise_speed_mps}" \
       "${px4_active_max_horizontal_speed_mps}" |

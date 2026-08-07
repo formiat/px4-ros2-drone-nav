@@ -374,6 +374,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('--px4-log "${interceptor_2_px4_log_file}"', self.text)
         self.assertIn('--px4-log "${evader_px4_log_file}"', self.text)
 
+    def test_px4_sitl_state_is_reset_before_each_launch(self) -> None:
+        self.assertIn("reset_px4_instance_state()", self.text)
+        self.assertIn('"${rootfs_dir}/parameters.bson"', self.text)
+        self.assertIn('"${rootfs_dir}/parameters_backup.bson"', self.text)
+        self.assertIn('"${rootfs_dir}/dataman"', self.text)
+        reset_index = self.text.index('reset_px4_instance_state "${instance}"')
+        launch_index = self.text.index('run_px4_instance "${instance}"')
+        self.assertLess(reset_index, launch_index)
+        self.assertIn("reset_px4_instance_state 0", self.text)
+
     def test_intercept_launch_keeps_vehicle_state_isolated(self) -> None:
         for interceptor in ("interceptor_0", "interceptor_1", "interceptor_2"):
             self.assertIn(f'"{interceptor}": {{', self.intercept_launch_text)
