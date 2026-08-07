@@ -77,25 +77,41 @@ clipSegmentToGrid(const OccupancyGrid2D& grid, const Point2 start,
   return ClippedSegment{clipped_end, t1 < 1.0 - kBoundaryEpsilon};
 }
 
-[[nodiscard]] GridCellCounts countCells(const OccupancyGrid2D& grid) {
-  GridCellCounts counts{};
-  for (int y = 0; y < grid.height(); ++y) {
-    for (int x = 0; x < grid.width(); ++x) {
-      const GridIndex cell{x, y};
-      switch (grid.state(cell)) {
-        case CellState::kUnknown:
-          ++counts.unknown_cells;
-          break;
-        case CellState::kFree:
-          ++counts.free_cells;
-          break;
-        case CellState::kOccupied:
-          ++counts.occupied_cells;
-          break;
-      }
-    }
+[[nodiscard]] std::size_t& cellCountForState(GridCellCounts& counts,
+                                             const CellState state) {
+  switch (state) {
+    case CellState::kUnknown:
+      return counts.unknown_cells;
+    case CellState::kFree:
+      return counts.free_cells;
+    case CellState::kOccupied:
+      return counts.occupied_cells;
   }
-  return counts;
+  throw std::logic_error{"Unsupported occupancy cell state"};
+}
+
+void recordCellStateTransition(GridCellCounts& counts, const CellState previous,
+                               const CellState next) {
+  if (previous == next) {
+    return;
+  }
+  std::size_t& previous_count = cellCountForState(counts, previous);
+  if (previous_count == 0U) {
+    throw std::logic_error{"Obstacle memory cell counters are inconsistent"};
+  }
+  --previous_count;
+  ++cellCountForState(counts, next);
+}
+
+[[nodiscard]] CellState cellStateForScore(const int score,
+                                          const ObstacleMemoryConfig& config) noexcept {
+  if (score >= config.occupied_score) {
+    return CellState::kOccupied;
+  }
+  if (score <= config.free_score) {
+    return CellState::kFree;
+  }
+  return CellState::kUnknown;
 }
 
 [[nodiscard]] MemoryCellProvenance
@@ -151,7 +167,8 @@ void updateCellProvenance(MemoryCellProvenance& provenance,
 
 ObstacleMemoryGrid::ObstacleMemoryGrid(const GridBounds& bounds)
     : raw_grid_{bounds},
-      scores_(raw_grid_.cellCount(), 0) {
+      scores_(raw_grid_.cellCount(), 0),
+      raw_cell_counts_{.unknown_cells = raw_grid_.cellCount()} {
 }
 
 ObstacleMemoryStats
@@ -331,6 +348,7 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
 void ObstacleMemoryGrid::reset() {
   raw_grid_ = OccupancyGrid2D{raw_grid_.bounds()};
   std::fill(scores_.begin(), scores_.end(), 0);
+  raw_cell_counts_ = GridCellCounts{.unknown_cells = raw_grid_.cellCount()};
   active_provenance_.clear();
   uncertain_hit_tracker_.clear();
 }
@@ -349,8 +367,8 @@ ObstacleMemoryGrid::activeProvenance() const noexcept {
   return active_provenance_;
 }
 
-GridCellCounts ObstacleMemoryGrid::countRawCells() const {
-  return countCells(raw_grid_);
+GridCellCounts ObstacleMemoryGrid::countRawCells() const noexcept {
+  return raw_cell_counts_;
 }
 
 void ObstacleMemoryGrid::applyMiss(const GridIndex cell,
@@ -404,17 +422,28 @@ std::optional<ObstacleMemoryOccupiedTransition> ObstacleMemoryGrid::applyAccepte
 
 void ObstacleMemoryGrid::syncCellState(const GridIndex cell,
                                        const ObstacleMemoryConfig& config) {
-  const int score = scores_.at(raw_grid_.linearIndex(cell));
-  if (score >= config.occupied_score) {
-    raw_grid_.setOccupied(cell);
+  const std::size_t index = raw_grid_.linearIndex(cell);
+  const int score = scores_.at(index);
+  const CellState previous = raw_grid_.state(cell);
+  const CellState next = cellStateForScore(score, config);
+  if (next != CellState::kOccupied) {
+    active_provenance_.erase(index);
+  }
+  if (previous == next) {
     return;
   }
-  active_provenance_.erase(raw_grid_.linearIndex(cell));
-  if (score <= config.free_score) {
-    raw_grid_.setFree(cell);
-    return;
+  recordCellStateTransition(raw_cell_counts_, previous, next);
+  switch (next) {
+    case CellState::kUnknown:
+      raw_grid_.setUnknown(cell);
+      return;
+    case CellState::kFree:
+      raw_grid_.setFree(cell);
+      return;
+    case CellState::kOccupied:
+      raw_grid_.setOccupied(cell);
+      return;
   }
-  raw_grid_.setUnknown(cell);
 }
 
 } // namespace drone_city_nav

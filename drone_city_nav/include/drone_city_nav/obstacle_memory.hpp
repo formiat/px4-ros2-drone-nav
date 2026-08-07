@@ -127,7 +127,7 @@ public:
   [[nodiscard]] const OccupancyGrid2D& rawGrid() const noexcept;
   [[nodiscard]] const std::unordered_map<std::size_t, MemoryCellProvenance>&
   activeProvenance() const noexcept;
-  [[nodiscard]] GridCellCounts countRawCells() const;
+  [[nodiscard]] GridCellCounts countRawCells() const noexcept;
 
 private:
   void applyMiss(GridIndex cell, const ObstacleMemoryConfig& config);
@@ -139,6 +139,7 @@ private:
 
   OccupancyGrid2D raw_grid_;
   std::vector<int> scores_;
+  GridCellCounts raw_cell_counts_{};
   std::unordered_map<std::size_t, MemoryCellProvenance> active_provenance_;
   UncertainLidarHitTracker uncertain_hit_tracker_;
 };

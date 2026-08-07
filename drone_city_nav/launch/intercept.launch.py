@@ -71,6 +71,7 @@ def generate_launch_description():
     params_file = LaunchConfiguration("params_file")
     enable_rviz = LaunchConfiguration("enable_rviz")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
+    enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
 
     def launch_nodes(context, *args, **kwargs):
         del args, kwargs
@@ -105,6 +106,13 @@ def generate_launch_description():
         lidar_debug_enabled = _optional_bool(
             enable_lidar_debug.perform(context), False
         )
+        obstacle_memory_enabled = _optional_bool(
+            enable_obstacle_memory.perform(context), True
+        )
+        if not use_static_map and not obstacle_memory_enabled:
+            raise RuntimeError("No-static navigation requires obstacle memory")
+        if lidar_debug_enabled and not obstacle_memory_enabled:
+            raise RuntimeError("Lidar debug requires obstacle memory")
         static_path = LaunchConfiguration("static_occupancy_3d_path").perform(context)
         if not static_path:
             static_path = document["production_mppi_node"]["ros__parameters"][
@@ -218,10 +226,11 @@ def generate_launch_description():
                 "sensor/lidar_2d_v2/scan"
             )
             scan_topic = f"{prefix}/scan"
-            bridge_arguments.append(
-                f"{gz_scan}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
-            )
-            bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
+            if obstacle_memory_enabled or lidar_debug_enabled:
+                bridge_arguments.append(
+                    f"{gz_scan}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
+                )
+                bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
 
             primary = config["rviz_primary"]
             raw_snapshot = (
@@ -377,8 +386,8 @@ def generate_launch_description():
                     "drone_collision_filter": config["model"],
                 },
             )
-            nodes.extend(
-                [
+            if obstacle_memory_enabled:
+                nodes.append(
                     Node(
                         package="drone_city_nav",
                         executable="obstacle_memory_node",
@@ -387,7 +396,10 @@ def generate_launch_description():
                         output="screen",
                         prefix=planning_prefix,
                         parameters=[memory_params, {"use_sim_time": True}],
-                    ),
+                    )
+                )
+            nodes.extend(
+                [
                     Node(
                         package="drone_city_nav",
                         executable="mppi_offboard_node",
@@ -814,6 +826,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument("enable_rviz", default_value="false"),
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
+            DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value=""),
             DeclareLaunchArgument("static_occupancy_3d_path", default_value=""),
             DeclareLaunchArgument("static_esdf_3d_cache_path", default_value=""),

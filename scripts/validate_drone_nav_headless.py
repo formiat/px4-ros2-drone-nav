@@ -301,6 +301,7 @@ def main() -> int:
     px4_logs = [read_text(path) for path in args.px4_log]
     px4_log = "\n".join(px4_logs)
     expected_static = parse_bool(args.expected_static)
+    expected_memory = parse_bool(args.expected_memory)
     enable_lidar_debug = parse_bool(args.enable_lidar_debug) is not False
     errors: list[str] = []
     safety_ros_log = safety_relevant_ros_log(ros_log, args.mission_type)
@@ -313,18 +314,23 @@ def main() -> int:
         expected_vehicles,
         errors,
     )
-    require(
-        "obstacle memory receives lidar",
-        ros_log,
-        r"First lidar scan|Obstacle memory update:",
-        errors,
-    )
-    require(
-        "raw obstacle snapshots are published",
-        ros_log,
-        r"Raw obstacle snapshot|raw obstacle snapshot|raw_revision=",
-        errors,
-    )
+    if expected_memory is not False:
+        require(
+            "obstacle memory receives lidar",
+            ros_log,
+            r"First lidar scan|Obstacle memory update:",
+            errors,
+        )
+        require(
+            "raw obstacle snapshots are published",
+            ros_log,
+            r"Raw obstacle snapshot|raw obstacle snapshot|raw_revision=",
+            errors,
+        )
+    elif re.search(r"First lidar scan|Obstacle memory update:", ros_log):
+        errors.append("FAIL: obstacle memory is disabled")
+    else:
+        print("OK: obstacle memory is disabled")
     require(
         "production MPPI is ready",
         ros_log,

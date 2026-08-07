@@ -125,7 +125,14 @@ lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"
 lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_memory_hits/${run_id}.jsonl}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
-enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
+enable_lidar_debug_override=""
+if [[ -n "${ENABLE_LIDAR_DEBUG+x}" ]]; then
+  enable_lidar_debug_override="$(normalize_bool "${ENABLE_LIDAR_DEBUG}")"
+fi
+enable_obstacle_memory_override=""
+if [[ -n "${ENABLE_OBSTACLE_MEMORY+x}" ]]; then
+  enable_obstacle_memory_override="$(normalize_bool "${ENABLE_OBSTACLE_MEMORY}")"
+fi
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
@@ -286,6 +293,31 @@ configured_static_map="$(
     read_ros_bool_parameter production_mppi_node use_static_map
 )"
 active_static_map="${enable_static_map_override:-${configured_static_map}}"
+if [[ -n "${enable_lidar_debug_override}" ]]; then
+  enable_lidar_debug="${enable_lidar_debug_override}"
+elif bool_is_true "${active_static_map}" && [[ -n "${headless}" ]]; then
+  enable_lidar_debug="false"
+else
+  enable_lidar_debug="true"
+fi
+if [[ -n "${enable_obstacle_memory_override}" ]]; then
+  enable_obstacle_memory="${enable_obstacle_memory_override}"
+elif ! bool_is_true "${active_static_map}" || bool_is_true "${enable_lidar_debug}" ||
+  [[ -z "${headless}" ]]; then
+  enable_obstacle_memory="true"
+else
+  enable_obstacle_memory="false"
+fi
+if ! bool_is_true "${active_static_map}" &&
+  ! bool_is_true "${enable_obstacle_memory}"; then
+  echo "No-static navigation requires ENABLE_OBSTACLE_MEMORY=true" >&2
+  exit 1
+fi
+if bool_is_true "${enable_lidar_debug}" &&
+  ! bool_is_true "${enable_obstacle_memory}"; then
+  echo "Lidar debug requires ENABLE_OBSTACLE_MEMORY=true" >&2
+  exit 1
+fi
 px4_static_max_horizontal_speed_mps="$(
     read_ros_float_parameter production_mppi_node static_absolute_speed_limit_mps
 )"
@@ -346,8 +378,8 @@ format_override_value() {
 }
 
 expected_static_map="${active_static_map}"
-expected_obstacle_memory="true"
-expected_current_lidar="true"
+expected_obstacle_memory="${enable_obstacle_memory}"
+expected_current_lidar="${enable_obstacle_memory}"
 
 clean_stale_gazebo_processes() {
   if ! bool_is_true "${clean_stale_gazebo_processes_enabled}"; then
@@ -578,6 +610,7 @@ echo "Gazebo log: ${gz_log_file}"
 echo "Gazebo GUI log: ${gz_gui_log_file}"
 echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_scene_diagnostics_dir}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
+echo "Obstacle memory: enabled=${enable_obstacle_memory}"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'" |
@@ -831,6 +864,7 @@ if [[ "${mission_type}" == "intercept" ]]; then
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
     enable_lidar_debug:="${enable_lidar_debug}"
+    enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     evader_speed_scale:="${evader_speed_scale}"
     shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"
@@ -846,6 +880,7 @@ else
     enable_gazebo_bridge:=true
     enable_mission_monitor:=true
     enable_lidar_debug:="${enable_lidar_debug}"
+    enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     rviz_config:="${rviz_config_file}"
     rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"

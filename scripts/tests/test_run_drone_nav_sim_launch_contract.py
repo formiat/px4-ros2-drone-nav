@@ -229,6 +229,19 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
         self.assertGreaterEqual(self.launch_text.count('"use_sim_time": True'), 7)
 
+    def test_static_headless_disables_diagnostic_mapping(self) -> None:
+        self.assertIn("ENABLE_OBSTACLE_MEMORY", self.text)
+        self.assertIn('enable_obstacle_memory="false"', self.text)
+        self.assertIn('enable_obstacle_memory:="${enable_obstacle_memory}"', self.text)
+        self.assertIn('elif bool_is_true "${active_static_map}"', self.text)
+        self.assertIn("No-static navigation requires ENABLE_OBSTACLE_MEMORY=true", self.text)
+        self.assertIn(
+            'DeclareLaunchArgument("enable_obstacle_memory", default_value="true")',
+            self.intercept_launch_text,
+        )
+        self.assertIn("if obstacle_memory_enabled:", self.intercept_launch_text)
+        self.assertIn("if obstacle_memory_enabled:", self.launch_text)
+
     def test_static_map_override_reaches_production_mppi(self) -> None:
         self.assertIn("production_mppi_parameters", self.launch_text)
         self.assertIn(

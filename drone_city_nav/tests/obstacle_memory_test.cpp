@@ -183,6 +183,10 @@ TEST(NavigationPose, ScanReadinessRequiresFreshPoseState) {
 TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
+  const GridCellCounts initial_counts = memory.countRawCells();
+  EXPECT_EQ(initial_counts.unknown_cells, memory.rawGrid().cellCount());
+  EXPECT_EQ(initial_counts.free_cells, 0U);
+  EXPECT_EQ(initial_counts.occupied_cells, 0U);
 
   const ObstacleMemoryStats stats = memory.integrateScan(
       Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), acceptedHitConfig());
@@ -214,6 +218,10 @@ TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   EXPECT_EQ(memory.activeProvenance().size(), 1U);
   EXPECT_EQ(stats.hit_beams, 1U);
   EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
+  const GridCellCounts counts = memory.countRawCells();
+  EXPECT_EQ(counts.unknown_cells + counts.free_cells + counts.occupied_cells,
+            memory.rawGrid().cellCount());
+  EXPECT_EQ(counts.occupied_cells, 1U);
 }
 
 TEST(GridConfig, BoundedGridBoundsSanitizesInvalidAndHugeInputs) {

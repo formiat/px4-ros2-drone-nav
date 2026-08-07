@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -42,6 +43,7 @@ def generate_launch_description():
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
+    enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
     enable_rviz = LaunchConfiguration("enable_rviz")
     rviz_drone_follow_tf_enabled = LaunchConfiguration(
         "rviz_drone_follow_tf_enabled"
@@ -81,6 +83,30 @@ def generate_launch_description():
         static_map_override = optional_bool_override(
             context, use_static_map, "use_static_map"
         )
+        with open(params_file.perform(context), encoding="utf-8") as stream:
+            configured_static_map = bool(
+                yaml.safe_load(stream)["production_mppi_node"]["ros__parameters"][
+                    "use_static_map"
+                ]
+            )
+        static_map_enabled = (
+            configured_static_map
+            if static_map_override is None
+            else static_map_override
+        )
+        obstacle_memory_override = optional_bool_override(
+            context, enable_obstacle_memory, "enable_obstacle_memory"
+        )
+        obstacle_memory_enabled = (
+            True if obstacle_memory_override is None else obstacle_memory_override
+        )
+        lidar_debug_override = optional_bool_override(
+            context, enable_lidar_debug, "enable_lidar_debug"
+        )
+        if not static_map_enabled and not obstacle_memory_enabled:
+            raise RuntimeError("No-static navigation requires obstacle memory")
+        if lidar_debug_override is True and not obstacle_memory_enabled:
+            raise RuntimeError("Lidar debug requires obstacle memory")
         if static_map_override is not None:
             obstacle_memory_overrides["use_static_map"] = static_map_override
 
@@ -111,37 +137,44 @@ def generate_launch_description():
             production_mppi_parameters.append(
                 {"static_occupancy_3d_path": static_world_path_override}
             )
-        return [
-            Node(
-                package="drone_city_nav",
-                executable="obstacle_memory_node",
-                name="obstacle_memory_node",
-                output="screen",
-                parameters=obstacle_memory_parameters,
-            ),
-            Node(
-                package="drone_city_nav",
-                executable="world_visualization_node",
-                name="world_visualization_node",
-                output="screen",
-                parameters=obstacle_memory_parameters,
-            ),
-            Node(
-                package="drone_city_nav",
-                executable="production_mppi_node",
-                name="production_mppi_node",
-                output="screen",
-                parameters=production_mppi_parameters,
-            ),
-            Node(
-                package="drone_city_nav",
-                executable="mission_monitor_node",
-                name="mission_monitor_node",
-                output="screen",
-                condition=IfCondition(enable_mission_monitor),
-                parameters=mission_monitor_parameters,
-            ),
-        ]
+        nodes = []
+        if obstacle_memory_enabled:
+            nodes.append(
+                Node(
+                    package="drone_city_nav",
+                    executable="obstacle_memory_node",
+                    name="obstacle_memory_node",
+                    output="screen",
+                    parameters=obstacle_memory_parameters,
+                )
+            )
+        nodes.extend(
+            [
+                Node(
+                    package="drone_city_nav",
+                    executable="world_visualization_node",
+                    name="world_visualization_node",
+                    output="screen",
+                    parameters=obstacle_memory_parameters,
+                ),
+                Node(
+                    package="drone_city_nav",
+                    executable="production_mppi_node",
+                    name="production_mppi_node",
+                    output="screen",
+                    parameters=production_mppi_parameters,
+                ),
+                Node(
+                    package="drone_city_nav",
+                    executable="mission_monitor_node",
+                    name="mission_monitor_node",
+                    output="screen",
+                    condition=IfCondition(enable_mission_monitor),
+                    parameters=mission_monitor_parameters,
+                ),
+            ]
+        )
+        return nodes
 
     mppi_offboard = Node(
         package="drone_city_nav",
@@ -283,6 +316,11 @@ def generate_launch_description():
                 "enable_lidar_debug",
                 default_value="true",
                 description="Record lidar/grid/path snapshots for debugging.",
+            ),
+            DeclareLaunchArgument(
+                "enable_obstacle_memory",
+                default_value="true",
+                description="Run lidar obstacle memory; required without a static map.",
             ),
             DeclareLaunchArgument(
                 "enable_rviz",
