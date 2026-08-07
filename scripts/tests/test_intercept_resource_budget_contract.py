@@ -56,6 +56,7 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
 
         self.assertIn("ComposableNodeContainer(", source)
         self.assertIn('executable="component_container_mt"', source)
+        self.assertIn('namespace=""', source)
         self.assertIn('plugin="drone_city_nav::ProductionMppiNode"', source)
         self.assertIn('"thread_num": len(role_names)', source)
         self.assertNotIn('executable="production_mppi_node"', source)

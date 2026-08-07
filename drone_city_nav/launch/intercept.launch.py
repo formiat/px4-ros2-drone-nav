@@ -416,6 +416,7 @@ def generate_launch_description():
             ComposableNodeContainer(
                 package="rclcpp_components",
                 executable="component_container_mt",
+                namespace="",
                 name="multi_vehicle_mppi_container",
                 output="screen",
                 parameters=[
