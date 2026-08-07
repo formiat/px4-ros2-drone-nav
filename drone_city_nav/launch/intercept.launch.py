@@ -27,6 +27,20 @@ def _optional_bool(value, fallback):
     raise RuntimeError(f"Expected boolean launch value, got '{value}'")
 
 
+def _allocate_planner_workers(total_workers, vehicle_count):
+    if vehicle_count <= 0:
+        raise RuntimeError("At least one vehicle is required")
+    if total_workers < vehicle_count or total_workers > vehicle_count * 8:
+        raise RuntimeError(
+            "Planner worker budget must provide between 1 and 8 workers per vehicle"
+        )
+    base_workers, extra_workers = divmod(total_workers, vehicle_count)
+    return [
+        base_workers + (1 if index < extra_workers else 0)
+        for index in range(vehicle_count)
+    ]
+
+
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     params_file = LaunchConfiguration("params_file")
@@ -128,6 +142,19 @@ def generate_launch_description():
                 "rviz_color": (1.0, 0.25, 0.15),
             },
         }
+        role_names = list(roles)
+        planner_worker_budget = int(
+            LaunchConfiguration("planner_worker_budget").perform(context)
+        )
+        planner_worker_counts = _allocate_planner_workers(
+            planner_worker_budget, len(role_names)
+        )
+        planner_tick_rate_hz = float(
+            document["production_mppi_node"]["ros__parameters"]["tick_rate_hz"]
+        )
+        planner_tick_phase_step_s = 1.0 / (
+            planner_tick_rate_hz * len(role_names)
+        )
         nodes = []
         bridge_arguments = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
         bridge_remaps = []
@@ -137,6 +164,7 @@ def generate_launch_description():
         )
 
         for role, config in roles.items():
+            role_index = role_names.index(role)
             prefix = f"/vehicles/{role}"
             px4 = f"/{config['px4_namespace']}/fmu"
             gz_scan = (
@@ -226,6 +254,10 @@ def generate_launch_description():
                         f"{prefix}/radar/track_mode_command"
                     ),
                     "diagnostics_output_dir": f"log/intercept/{role}/mppi",
+                    "planner_worker_count": planner_worker_counts[role_index],
+                    "planning_tick_phase_offset_s": (
+                        role_index * planner_tick_phase_step_s
+                    ),
                     "static_cruise_speed_mps": document["production_mppi_node"]
                     ["ros__parameters"]["static_cruise_speed_mps"]
                     * config["speed_scale"],
@@ -268,7 +300,7 @@ def generate_launch_description():
                     "rviz_drone_follow_tf_enabled": False,
                     "rviz_drone_follow_frame": "drone_follow",
                     "rviz_drone_marker_topic": "/drone_city_nav/drone_marker",
-                    "rviz_drone_marker_id": list(roles).index(role),
+                    "rviz_drone_marker_id": role_index,
                     "rviz_drone_marker_color_r": config["rviz_color"][0],
                     "rviz_drone_marker_color_g": config["rviz_color"][1],
                     "rviz_drone_marker_color_b": config["rviz_color"][2],
@@ -864,6 +896,7 @@ def generate_launch_description():
             DeclareLaunchArgument("radar_track_interval_s", default_value="0.05"),
             DeclareLaunchArgument("radar_random_seed", default_value="42"),
             DeclareLaunchArgument("evader_speed_scale", default_value="1.0"),
+            DeclareLaunchArgument("planner_worker_budget", default_value="8"),
             DeclareLaunchArgument(
                 "shutdown_on_terminal_outcome", default_value="true"
             ),

@@ -383,6 +383,7 @@ private:
   void processStaticGuideSearch(const ProductionMppiPreparedEsdf& world,
                                 const ProductionMppiNavigation& navigation);
   void diagnosticsWorker(std::stop_token stop_token);
+  void startPlanningTimer();
   void planningTick();
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);
@@ -425,6 +426,7 @@ private:
   double no_static_adaptive_minimum_endpoint_displacement_m_{12.0};
   std::size_t no_static_adaptive_validation_states_{8192U};
   std::size_t planner_worker_count_{4U};
+  double planning_tick_phase_offset_s_{0.0};
   NoStaticRouteCycleConfig no_static_cycle_config_{};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
   Point2 px4_local_origin_{54.0, 54.0};
@@ -569,6 +571,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr world_readiness_pub_;
   rclcpp::Publisher<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_pub_;
+  rclcpp::TimerBase::SharedPtr planning_start_timer_;
   rclcpp::TimerBase::SharedPtr planning_timer_;
 };
 
