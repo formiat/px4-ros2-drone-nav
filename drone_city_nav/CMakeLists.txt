@@ -324,17 +324,36 @@ target_link_libraries(radar_simulator_node drone_city_nav_core
 ament_target_dependencies(radar_simulator_node rclcpp)
 enable_project_warnings(radar_simulator_node)
 
-add_executable(radar_target_tracker_node src/radar_target_tracker_node.cpp)
+add_library(
+  drone_city_nav_interceptor_tracking_components SHARED
+  src/radar_target_tracker_node.cpp
+  src/interceptor_guidance_node.cpp)
+target_compile_features(drone_city_nav_interceptor_tracking_components
+                        PRIVATE cxx_std_20)
+target_link_libraries(drone_city_nav_interceptor_tracking_components
+                      drone_city_nav_core ${cpp_typesupport_target})
+ament_target_dependencies(
+  drone_city_nav_interceptor_tracking_components
+  rclcpp
+  rclcpp_components
+  std_msgs)
+rclcpp_components_register_nodes(
+  drone_city_nav_interceptor_tracking_components
+  "drone_city_nav::RadarTargetTrackerNode"
+  "drone_city_nav::InterceptorGuidanceNode")
+enable_project_warnings(drone_city_nav_interceptor_tracking_components)
+
+add_executable(radar_target_tracker_node src/radar_target_tracker_main.cpp)
 target_compile_features(radar_target_tracker_node PRIVATE cxx_std_20)
-target_link_libraries(radar_target_tracker_node drone_city_nav_core
-                      ${cpp_typesupport_target})
-ament_target_dependencies(radar_target_tracker_node rclcpp std_msgs)
+target_link_libraries(radar_target_tracker_node
+                      drone_city_nav_interceptor_tracking_components)
+ament_target_dependencies(radar_target_tracker_node rclcpp)
 enable_project_warnings(radar_target_tracker_node)
 
-add_executable(interceptor_guidance_node src/interceptor_guidance_node.cpp)
+add_executable(interceptor_guidance_node src/interceptor_guidance_main.cpp)
 target_compile_features(interceptor_guidance_node PRIVATE cxx_std_20)
-target_link_libraries(interceptor_guidance_node drone_city_nav_core
-                      ${cpp_typesupport_target})
+target_link_libraries(interceptor_guidance_node
+                      drone_city_nav_interceptor_tracking_components)
 ament_target_dependencies(interceptor_guidance_node rclcpp)
 enable_project_warnings(interceptor_guidance_node)
 
@@ -443,6 +462,7 @@ install(
     radar_simulator_node
     radar_target_tracker_node
     interceptor_guidance_node
+    drone_city_nav_interceptor_tracking_components
     intercept_spectator_node
     intercept_diagnostics_mux_node
     generate_static_esdf_cache

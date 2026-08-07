@@ -1,3 +1,5 @@
+#include "drone_city_nav/radar_target_tracker_node.hpp"
+
 #include "drone_city_nav/msg/radar_scan.hpp"
 #include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
@@ -10,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 #include <string>
 
@@ -19,8 +22,8 @@ namespace drone_city_nav {
 
 class RadarTargetTrackerNode final : public rclcpp::Node {
 public:
-  RadarTargetTrackerNode()
-      : Node{"radar_target_tracker_node"},
+  explicit RadarTargetTrackerNode(const rclcpp::NodeOptions& options)
+      : Node{"radar_target_tracker_node", options},
         ownship_history_{RadarOwnshipHistoryConfig{
             .retention_ns = static_cast<std::int64_t>(
                 declare_parameter<double>("ownship_history_retention_s", 5.0) * 1.0e9),
@@ -178,11 +181,11 @@ private:
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr track_readiness_pub_;
 };
 
+std::shared_ptr<rclcpp::Node>
+makeRadarTargetTrackerNode(const rclcpp::NodeOptions& options) {
+  return std::make_shared<RadarTargetTrackerNode>(options);
+}
+
 } // namespace drone_city_nav
 
-int main(int argc, char** argv) {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<drone_city_nav::RadarTargetTrackerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(drone_city_nav::RadarTargetTrackerNode)

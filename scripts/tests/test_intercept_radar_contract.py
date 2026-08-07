@@ -96,11 +96,15 @@ class InterceptRadarContractTest(unittest.TestCase):
         for executable in (
             "intercept_mission_referee_node",
             "radar_simulator_node",
-            "radar_target_tracker_node",
-            "interceptor_guidance_node",
         ):
             with self.subTest(executable=executable):
                 self.assertIn(f'executable="{executable}"', text)
+        self.assertIn('plugin="drone_city_nav::RadarTargetTrackerNode"', text)
+        self.assertIn('plugin="drone_city_nav::InterceptorGuidanceNode"', text)
+        self.assertIn('name="interceptor_tracking_container"', text)
+        self.assertIn('{"use_intra_process_comms": True}', text)
+        self.assertNotIn('executable="radar_target_tracker_node"', text)
+        self.assertNotIn('executable="interceptor_guidance_node"', text)
         self.assertEqual(text.count('"/vehicles/evader/state"'), 2)
         self.assertIn('"tracked_agent_track_topic"', text)
         self.assertIn('"target_track_readiness_topics"', text)

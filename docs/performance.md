@@ -36,6 +36,12 @@ streams in the shared process are therefore the production backend. Reconsider
 fusion only if profiling demonstrates reliably full batches without collection
 latency.
 
+The three radar tracker/guidance pairs use one interceptor-side component
+container. This replaces six standalone ROS contexts with one shared context;
+intra-process delivery also removes the DDS serialization hop between each
+`TargetTrack` publisher and its guidance consumer. Radar simulators stay
+process-isolated because they consume target ground truth.
+
 Buffers are allocated for the configured maximum rollout count. A confirmed
 direct-interception tick may execute a smaller validated prefix through
 `direct_tracking_rollouts`; loss of direct tracking, route execution, holds, and

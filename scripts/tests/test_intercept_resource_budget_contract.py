@@ -61,6 +61,16 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn('"thread_num": len(role_names)', source)
         self.assertNotIn('executable="production_mppi_node"', source)
 
+    def test_tracking_pairs_share_an_intra_process_component_container(self) -> None:
+        source = LAUNCH.read_text(encoding="utf-8")
+
+        self.assertIn('name="interceptor_tracking_container"', source)
+        self.assertIn('plugin="drone_city_nav::RadarTargetTrackerNode"', source)
+        self.assertIn('plugin="drone_city_nav::InterceptorGuidanceNode"', source)
+        self.assertIn('{"use_intra_process_comms": True}', source)
+        self.assertNotIn('executable="radar_target_tracker_node"', source)
+        self.assertNotIn('executable="interceptor_guidance_node"', source)
+
     def test_planner_validates_and_applies_tick_phase(self) -> None:
         source = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
             encoding="utf-8"

@@ -468,66 +468,68 @@ def generate_launch_description():
             role for role, config in roles.items() if config["is_interceptor"]
         ]
         radar_seed = int(LaunchConfiguration("radar_random_seed").perform(context))
+        tracking_components = []
         for index, role in enumerate(interceptor_roles):
             prefix = f"/vehicles/{role}"
             config = roles[role]
-            nodes.extend(
+            nodes.append(
+                Node(
+                    package="drone_city_nav",
+                    executable="radar_simulator_node",
+                    namespace=f"vehicles/{role}",
+                    name="radar_simulator_node",
+                    output="screen",
+                    parameters=[
+                        {
+                            "use_sim_time": True,
+                            "radar_state_topic": f"{prefix}/state",
+                            "target_state_topic": "/vehicles/evader/state",
+                            "radar_scan_topic": f"{prefix}/radar/scan",
+                            "track_mode_command_topic": (
+                                f"{prefix}/radar/track_mode_command"
+                            ),
+                            "minimum_scan_interval_s": float(
+                                LaunchConfiguration(
+                                    "radar_minimum_scan_interval_s"
+                                ).perform(context)
+                            ),
+                            "maximum_scan_interval_s": float(
+                                LaunchConfiguration(
+                                    "radar_maximum_scan_interval_s"
+                                ).perform(context)
+                            ),
+                            "initial_scan_interval_s": float(
+                                LaunchConfiguration(
+                                    "radar_initial_scan_interval_s"
+                                ).perform(context)
+                            ),
+                            "maximum_interval_step_s": float(
+                                LaunchConfiguration(
+                                    "radar_maximum_interval_step_s"
+                                ).perform(context)
+                            ),
+                            "interval_step_correlation": float(
+                                LaunchConfiguration(
+                                    "radar_interval_step_correlation"
+                                ).perform(context)
+                            ),
+                            "track_interval_s": float(
+                                LaunchConfiguration(
+                                    "radar_track_interval_s"
+                                ).perform(context)
+                            ),
+                            "random_seed": radar_seed + index,
+                        }
+                    ],
+                )
+            )
+            tracking_components.extend(
                 [
-                    Node(
+                    ComposableNode(
                         package="drone_city_nav",
-                        executable="radar_simulator_node",
-                        namespace=f"vehicles/{role}",
-                        name="radar_simulator_node",
-                        output="screen",
-                        parameters=[
-                            {
-                                "use_sim_time": True,
-                                "radar_state_topic": f"{prefix}/state",
-                                "target_state_topic": "/vehicles/evader/state",
-                                "radar_scan_topic": f"{prefix}/radar/scan",
-                                "track_mode_command_topic": (
-                                    f"{prefix}/radar/track_mode_command"
-                                ),
-                                "minimum_scan_interval_s": float(
-                                    LaunchConfiguration(
-                                        "radar_minimum_scan_interval_s"
-                                    ).perform(context)
-                                ),
-                                "maximum_scan_interval_s": float(
-                                    LaunchConfiguration(
-                                        "radar_maximum_scan_interval_s"
-                                    ).perform(context)
-                                ),
-                                "initial_scan_interval_s": float(
-                                    LaunchConfiguration(
-                                        "radar_initial_scan_interval_s"
-                                    ).perform(context)
-                                ),
-                                "maximum_interval_step_s": float(
-                                    LaunchConfiguration(
-                                        "radar_maximum_interval_step_s"
-                                    ).perform(context)
-                                ),
-                                "interval_step_correlation": float(
-                                    LaunchConfiguration(
-                                        "radar_interval_step_correlation"
-                                    ).perform(context)
-                                ),
-                                "track_interval_s": float(
-                                    LaunchConfiguration(
-                                        "radar_track_interval_s"
-                                    ).perform(context)
-                                ),
-                                "random_seed": radar_seed + index,
-                            }
-                        ],
-                    ),
-                    Node(
-                        package="drone_city_nav",
-                        executable="radar_target_tracker_node",
+                        plugin="drone_city_nav::RadarTargetTrackerNode",
                         namespace=f"vehicles/{role}",
                         name="radar_target_tracker_node",
-                        output="screen",
                         parameters=[
                             {
                                 "use_sim_time": True,
@@ -546,13 +548,13 @@ def generate_launch_description():
                                 "high_rate_velocity_correction_gain": 1.0,
                             }
                         ],
+                        extra_arguments=[{"use_intra_process_comms": True}],
                     ),
-                    Node(
+                    ComposableNode(
                         package="drone_city_nav",
-                        executable="interceptor_guidance_node",
+                        plugin="drone_city_nav::InterceptorGuidanceNode",
                         namespace=f"vehicles/{role}",
                         name="interceptor_guidance_node",
-                        output="screen",
                         parameters=[
                             {
                                 "use_sim_time": True,
@@ -656,10 +658,24 @@ def generate_launch_description():
                                 ),
                             }
                         ],
+                        extra_arguments=[{"use_intra_process_comms": True}],
                     ),
                 ]
             )
 
+        nodes.append(
+            ComposableNodeContainer(
+                package="rclcpp_components",
+                executable="component_container_mt",
+                namespace="",
+                name="interceptor_tracking_container",
+                output="screen",
+                parameters=[
+                    {"thread_num": len(interceptor_roles), "use_sim_time": True}
+                ],
+                composable_node_descriptions=tracking_components,
+            )
+        )
         interceptor_prefixes = [f"/vehicles/{role}" for role in interceptor_roles]
         nodes.extend(
             [

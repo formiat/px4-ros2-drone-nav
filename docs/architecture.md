@@ -79,6 +79,12 @@ controls. Sharing one process removes redundant ROS/DDS process overhead and
 lets all planners use one CUDA primary context; it does not merge vehicle state
 or make one vehicle's planner callbacks depend on another vehicle.
 
+Radar target trackers and interceptor guidance nodes run in a separate
+multithreaded component container. Tracker-to-guidance `TargetTrack` delivery
+uses ROS 2 intra-process transport, while each interceptor retains independent
+tracker and guidance state. Radar simulators and the mission referee remain
+separate processes because they form the ground-truth data boundary.
+
 ### `mppi_offboard_node`
 
 - consumes only fresh `MppiTrajectoryHorizon` messages;
@@ -283,7 +289,8 @@ executor thread per vehicle. CPU-heavy planner work remains bounded by the
 mission-wide planner worker budget. Each MPPI engine currently launches its own
 rollout kernels on an independent CUDA stream; vehicle-by-rollout fused kernels
 are a separate backend optimization and are not implied by component
-composition.
+composition. Three tracker/guidance pairs share a second component process and
+use three executor threads; simulator truth never enters that process.
 
 ## Current Architectural Limits
 

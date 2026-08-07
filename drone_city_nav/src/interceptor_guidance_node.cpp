@@ -1,3 +1,5 @@
+#include "drone_city_nav/interceptor_guidance_node.hpp"
+
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/msg/intercept_mission_command.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
@@ -12,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <string>
 
 #include "intercept_ros_utils.hpp"
@@ -46,8 +49,8 @@ guidanceModeMessage(const InterceptGuidanceMode mode) noexcept {
 
 class InterceptorGuidanceNode final : public rclcpp::Node {
 public:
-  InterceptorGuidanceNode()
-      : Node{"interceptor_guidance_node"} {
+  explicit InterceptorGuidanceNode(const rclcpp::NodeOptions& options)
+      : Node{"interceptor_guidance_node", options} {
     mission_epoch_ =
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 1));
     expected_track_frame_ =
@@ -257,11 +260,11 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
+std::shared_ptr<rclcpp::Node>
+makeInterceptorGuidanceNode(const rclcpp::NodeOptions& options) {
+  return std::make_shared<InterceptorGuidanceNode>(options);
+}
+
 } // namespace drone_city_nav
 
-int main(int argc, char** argv) {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<drone_city_nav::InterceptorGuidanceNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(drone_city_nav::InterceptorGuidanceNode)
