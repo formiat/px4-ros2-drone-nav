@@ -163,6 +163,7 @@ production_mppi_node:
     physical_footprint_samples: 12
     physical_footprint_radial_rings: 2
     physical_footprint_axial_samples: 3
+    mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
     maximum_vertical_acceleration_mps2: 4.0
     critical_distance_m: 1.0

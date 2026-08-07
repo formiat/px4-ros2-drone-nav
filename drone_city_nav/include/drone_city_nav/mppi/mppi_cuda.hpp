@@ -25,6 +25,8 @@ struct StageTimingStatistics {
   TimingStatistics control_update{};
   TimingStatistics warm_start{};
   TimingStatistics gpu_total{};
+  TimingStatistics post_update_evaluation{};
+  TimingStatistics horizon_reconstruction{};
   TimingStatistics host_total{};
 };
 

@@ -264,6 +264,7 @@ __device__ DeviceBodyAxis crossAxis(const DeviceBodyAxis first,
 __device__ DeviceEsdfQuery queryFootprint(const State& state,
                                           const DeviceBodyAxis body_axis,
                                           const FootprintConfig footprint,
+                                          const float safe_clearance_m,
                                           const EsdfGrid grid,
                                           const cudaTextureObject_t esdf_texture) {
   DeviceEsdfQuery result =
@@ -328,6 +329,13 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
                                        : DeviceBodyAxis{1.0F, 0.0F, 0.0F};
   const DeviceBodyAxis radial_x = normalizeAxis(crossAxis(axis, reference));
   const DeviceBodyAxis radial_y = normalizeAxis(crossAxis(axis, radial_x));
+  const float bounding_radius_m = hypotf(
+      footprint.radius_m, fmaxf(footprint.lower_extent_m, footprint.upper_extent_m));
+  if (safe_clearance_m > 0.0F &&
+      result.clearance_m - bounding_radius_m >= safe_clearance_m) {
+    result.clearance_m -= bounding_radius_m;
+    return result;
+  }
   const std::uint32_t axial_samples = max(2U, footprint.axial_samples);
   const std::uint32_t radial_rings = max(1U, footprint.radial_rings);
   for (std::uint32_t axial_sample = 0U; axial_sample < axial_samples; ++axial_sample) {
@@ -442,8 +450,10 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       swept_state.x = previous_state.x + ratio * (state.x - previous_state.x);
       swept_state.y = previous_state.y + ratio * (state.y - previous_state.y);
       swept_state.z = previous_state.z + ratio * (state.z - previous_state.z);
-      const DeviceEsdfQuery esdf_query =
-          queryFootprint(swept_state, body_axis, footprint, grid, esdf_texture);
+      const DeviceEsdfQuery esdf_query = queryFootprint(
+          swept_state, body_axis, footprint,
+          footprint.clearance_broad_phase_enabled ? risk.preferred_distance_m : 0.0F,
+          grid, esdf_texture);
       clearance = fminf(clearance, esdf_query.clearance_m);
       segment_raw_hit = segment_raw_hit || esdf_query.raw_collision;
       for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;

@@ -327,6 +327,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       .axial_samples =
           static_cast<std::uint32_t>(safety_config_.physical_footprint_axial_samples),
   };
+  mppi_config_.footprint.clearance_broad_phase_enabled =
+      declare_parameter<bool>("mppi_footprint_clearance_broad_phase_enabled", true);
   mppi_config_.costs.head_progress_horizon_s =
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =

@@ -1,6 +1,8 @@
+#include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/mppi/mppi_cuda.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/occupancy_grid.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,12 +12,13 @@
 #include <cstring>
 #include <cuda_runtime.h>
 #include <iomanip>
+#include <iterator>
 #include <limits>
 #include <numeric>
-#include <queue>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -141,15 +144,6 @@ struct Scenario {
   float target_y_m{0.0F};
 };
 
-struct QueueCell {
-  float distance_cells{0.0F};
-  int index{0};
-
-  bool operator>(const QueueCell& other) const noexcept {
-    return distance_cells > other.distance_cells;
-  }
-};
-
 void fillRectangle(std::vector<std::uint8_t>& occupancy, const EsdfGrid& grid,
                    const float min_x, const float min_y, const float max_x,
                    const float max_y) {
@@ -169,56 +163,34 @@ void fillRectangle(std::vector<std::uint8_t>& occupancy, const EsdfGrid& grid,
 
 [[nodiscard]] std::vector<float> buildEsdf(const std::vector<std::uint8_t>& occupancy,
                                            const EsdfGrid& grid) {
-  std::vector<float> distances(occupancy.size(), kInfinity);
-  std::priority_queue<QueueCell, std::vector<QueueCell>, std::greater<>> queue;
-  for (std::size_t index = 0U; index < occupancy.size(); ++index) {
-    if (occupancy[index] != 0U) {
-      distances[index] = 0.0F;
-      queue.push(QueueCell{.distance_cells = 0.0F, .index = static_cast<int>(index)});
-    }
-  }
-  constexpr std::array<std::pair<int, int>, 8U> kNeighbors{{
-      {-1, -1},
-      {0, -1},
-      {1, -1},
-      {-1, 0},
-      {1, 0},
-      {-1, 1},
-      {0, 1},
-      {1, 1},
-  }};
-  while (!queue.empty()) {
-    const QueueCell current = queue.top();
-    queue.pop();
-    if (current.distance_cells >
-        distances[static_cast<std::size_t>(current.index)] + 1.0e-6F) {
-      continue;
-    }
-    const int x = current.index % grid.width;
-    const int y = current.index / grid.width;
-    for (const auto [dx, dy] : kNeighbors) {
-      const int next_x = x + dx;
-      const int next_y = y + dy;
-      if (next_x < 0 || next_x >= grid.width || next_y < 0 || next_y >= grid.height) {
-        continue;
-      }
-      const int next_index = next_y * grid.width + next_x;
-      const float step = dx != 0 && dy != 0 ? std::sqrt(2.0F) : 1.0F;
-      const float candidate = current.distance_cells + step;
-      if (candidate + 1.0e-6F < distances[static_cast<std::size_t>(next_index)]) {
-        distances[static_cast<std::size_t>(next_index)] = candidate;
-        queue.push(QueueCell{.distance_cells = candidate, .index = next_index});
+  OccupancyGrid2D source{GridBounds{grid.origin_x_m, grid.origin_y_m, grid.resolution_m,
+                                    grid.width, grid.height}};
+  source.reset(CellState::kFree);
+  for (int y = 0; y < grid.height; ++y) {
+    for (int x = 0; x < grid.width; ++x) {
+      const std::size_t index = static_cast<std::size_t>(y * grid.width + x);
+      if (occupancy[index] != 0U) {
+        source.setOccupied(GridIndex{x, y});
       }
     }
   }
-  for (float& distance : distances) {
-    distance *= grid.resolution_m;
-  }
+  const DistanceField2D field =
+      DistanceField2D::build(source, 1000.0, DistanceFieldSource::kOccupied);
+  std::vector<float> distances;
+  distances.reserve(field.distancesM().size());
+  std::ranges::transform(field.distancesM(), std::back_inserter(distances),
+                         [](const double value) { return static_cast<float>(value); });
   return distances;
 }
 
 [[nodiscard]] Scenario makeScenario(const std::string& name,
                                     double& build_duration_ms) {
+  constexpr std::string_view kThreeDimensionalSuffix{"_3d"};
+  const bool extrude_to_3d = name.ends_with(kThreeDimensionalSuffix);
+  const std::string_view base_name =
+      extrude_to_3d ? std::string_view{name}.substr(
+                          0U, name.size() - kThreeDimensionalSuffix.size())
+                    : std::string_view{name};
   Scenario scenario{
       .grid = EsdfGrid{.width = 512,
                        .height = 512,
@@ -236,21 +208,21 @@ void fillRectangle(std::vector<std::uint8_t>& occupancy, const EsdfGrid& grid,
   fillRectangle(occupancy, scenario.grid, 0.0F, 0.0F, 0.5F, 255.5F);
   fillRectangle(occupancy, scenario.grid, 255.0F, 0.0F, 255.5F, 255.5F);
 
-  if (name == "single_wall") {
+  if (base_name == "single_wall") {
     fillRectangle(occupancy, scenario.grid, 100.0F, 80.0F, 102.0F, 176.0F);
-  } else if (name == "parallel_walls") {
+  } else if (base_name == "parallel_walls") {
     fillRectangle(occupancy, scenario.grid, 40.0F, 105.0F, 230.0F, 110.0F);
     fillRectangle(occupancy, scenario.grid, 40.0F, 146.0F, 230.0F, 151.0F);
-  } else if (name == "narrow_corridor") {
+  } else if (base_name == "narrow_corridor") {
     fillRectangle(occupancy, scenario.grid, 40.0F, 118.0F, 230.0F, 123.0F);
     fillRectangle(occupancy, scenario.grid, 40.0F, 133.0F, 230.0F, 138.0F);
-  } else if (name == "building_block") {
+  } else if (base_name == "building_block") {
     fillRectangle(occupancy, scenario.grid, 105.0F, 98.0F, 145.0F, 158.0F);
-  } else if (name == "u_shaped_obstacle") {
+  } else if (base_name == "u_shaped_obstacle") {
     fillRectangle(occupancy, scenario.grid, 100.0F, 80.0F, 105.0F, 175.0F);
     fillRectangle(occupancy, scenario.grid, 100.0F, 80.0F, 165.0F, 85.0F);
     fillRectangle(occupancy, scenario.grid, 100.0F, 170.0F, 165.0F, 175.0F);
-  } else if (name == "urban_blocks") {
+  } else if (base_name == "urban_blocks") {
     for (int column = 0; column < 4; ++column) {
       for (int row = 0; row < 3; ++row) {
         const float x = 62.0F + static_cast<float>(column) * 45.0F;
@@ -258,10 +230,10 @@ void fillRectangle(std::vector<std::uint8_t>& occupancy, const EsdfGrid& grid,
         fillRectangle(occupancy, scenario.grid, x, y, x + 25.0F, y + 40.0F);
       }
     }
-  } else if (name == "passage_lower_upper") {
+  } else if (base_name == "passage_lower_upper") {
     fillRectangle(occupancy, scenario.grid, 105.0F, 75.0F, 115.0F, 120.0F);
     fillRectangle(occupancy, scenario.grid, 105.0F, 136.0F, 115.0F, 181.0F);
-  } else if (name == "random_occupancy") {
+  } else if (base_name == "random_occupancy") {
     std::uint64_t state = 0x9e3779b97f4a7c15ULL;
     for (int index = 0; index < 30; ++index) {
       state ^= state >> 12U;
@@ -272,11 +244,23 @@ void fillRectangle(std::vector<std::uint8_t>& occupancy, const EsdfGrid& grid,
       const float y = 30.0F + static_cast<float>(state % 380U) * 0.5F;
       fillRectangle(occupancy, scenario.grid, x, y, x + 5.0F, y + 8.0F);
     }
-  } else if (name != "open_space") {
+  } else if (base_name != "open_space") {
     throw std::invalid_argument{"unknown MPPI benchmark scenario: " + name};
   }
   const auto started_at = std::chrono::steady_clock::now();
   scenario.esdf = buildEsdf(occupancy, scenario.grid);
+  if (extrude_to_3d) {
+    constexpr int kDepthCells{80};
+    const std::vector<float> planar_esdf = std::move(scenario.esdf);
+    scenario.grid.depth = kDepthCells;
+    scenario.grid.origin_z_m = 0.0F;
+    scenario.esdf.resize(planar_esdf.size() * static_cast<std::size_t>(kDepthCells));
+    for (int z = 0; z < kDepthCells; ++z) {
+      std::ranges::copy(planar_esdf,
+                        scenario.esdf.begin() +
+                            static_cast<std::ptrdiff_t>(z) * planar_esdf.size());
+    }
+  }
   build_duration_ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - started_at)
                           .count();
@@ -421,12 +405,17 @@ struct TimingSamples {
   std::vector<double> update;
   std::vector<double> warm_start;
   std::vector<double> gpu_total;
+  std::vector<double> post_update_evaluation;
+  std::vector<double> horizon_reconstruction;
   std::vector<double> host_total;
 };
 
 } // namespace
 
 BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config) {
+  if (config.scenario.ends_with("_3d")) {
+    return runPersistentCudaBenchmark(config);
+  }
   if (!benchmarkConfigIsValid(config)) {
     throw std::invalid_argument{"invalid MPPI benchmark configuration"};
   }
@@ -711,6 +700,10 @@ BenchmarkResult runPersistentCudaBenchmark(const BenchmarkConfig& config) {
     measured.update.push_back(selected.timings.control_update_ms);
     measured.warm_start.push_back(selected.timings.warm_start_ms);
     measured.gpu_total.push_back(selected.timings.gpu_total_ms);
+    measured.post_update_evaluation.push_back(
+        selected.timings.post_update_evaluation_ms);
+    measured.horizon_reconstruction.push_back(
+        selected.timings.horizon_reconstruction_ms);
     measured.host_total.push_back(selected.timings.host_total_ms);
     if (selected.timings.host_total_ms > config.deadline_ms) {
       ++result.deadline_misses;
@@ -725,6 +718,10 @@ BenchmarkResult runPersistentCudaBenchmark(const BenchmarkConfig& config) {
   result.timings.control_update = statistics(std::move(measured.update));
   result.timings.warm_start = statistics(std::move(measured.warm_start));
   result.timings.gpu_total = statistics(std::move(measured.gpu_total));
+  result.timings.post_update_evaluation =
+      statistics(std::move(measured.post_update_evaluation));
+  result.timings.horizon_reconstruction =
+      statistics(std::move(measured.horizon_reconstruction));
   result.timings.host_total = statistics(std::move(measured.host_total));
 
   const std::vector<Control> zero_noise(config.steps);

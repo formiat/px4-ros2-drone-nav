@@ -41,6 +41,7 @@ struct FootprintConfig {
   std::uint32_t perimeter_samples{0U};
   std::uint32_t radial_rings{0U};
   std::uint32_t axial_samples{0U};
+  bool clearance_broad_phase_enabled{true};
 };
 
 struct CostConfig {

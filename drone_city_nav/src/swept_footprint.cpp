@@ -280,6 +280,15 @@ SweptFootprintResult validateFootprintAt(const mppi::EsdfGrid& grid,
                                           : FootprintBodyAxis{1.0, 0.0, 0.0};
   const FootprintBodyAxis radial_x = normalized(cross(axis, reference));
   const FootprintBodyAxis radial_y = normalized(cross(axis, radial_x));
+  const double bounding_radius_m =
+      std::hypot(radius_m, std::max(std::max(0.0, config.lower_extent_m),
+                                    std::max(0.0, config.upper_extent_m)));
+  if (config.safe_clearance_threshold_m > 0.0 &&
+      result.minimum_clearance_m - bounding_radius_m >=
+          config.safe_clearance_threshold_m) {
+    result.minimum_clearance_m -= bounding_radius_m;
+    return result;
+  }
   const std::size_t axial_samples = std::max<std::size_t>(2U, config.axial_samples);
   const std::size_t radial_rings = std::max<std::size_t>(1U, config.radial_rings);
   constexpr double kTwoPi{6.28318530717958647692};

@@ -383,6 +383,7 @@ void ProductionMppiNode::processDiagnostics(
        << " gpu_weight_calculation_ms=" << result.timings.weight_calculation_ms
        << " gpu_control_update_ms=" << result.timings.control_update_ms
        << " gpu_repair_validation_ms=" << result.timings.repair_validation_ms
+       << " post_update_evaluation_ms=" << result.timings.post_update_evaluation_ms
        << " gpu_ms=" << result.timings.gpu_total_ms
        << " horizon_reconstruction_ms=" << result.timings.horizon_reconstruction_ms
        << " total_ms=" << result.timings.host_total_ms
@@ -811,6 +812,7 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"gpu_weight_calculation_ms\":" << result.timings.weight_calculation_ms
         << ",\"gpu_control_update_ms\":" << result.timings.control_update_ms
         << ",\"gpu_repair_validation_ms\":" << result.timings.repair_validation_ms
+        << ",\"post_update_evaluation_ms\":" << result.timings.post_update_evaluation_ms
         << ",\"gpu_ms\":" << result.timings.gpu_total_ms
         << ",\"horizon_reconstruction_ms\":" << result.timings.horizon_reconstruction_ms
         << ",\"total_ms\":" << result.timings.host_total_ms

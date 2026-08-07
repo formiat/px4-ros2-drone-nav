@@ -34,7 +34,8 @@ void appendStatisticsJson(std::ostringstream& stream, const char* const name,
 std::vector<std::string> benchmarkScenarioNames() {
   return {"open_space",      "single_wall",         "parallel_walls",
           "narrow_corridor", "building_block",      "u_shaped_obstacle",
-          "urban_blocks",    "passage_lower_upper", "random_occupancy"};
+          "urban_blocks",    "passage_lower_upper", "random_occupancy",
+          "open_space_3d",   "narrow_corridor_3d",  "urban_blocks_3d"};
 }
 
 std::string benchmarkResultJson(const BenchmarkConfig& config,
@@ -49,6 +50,8 @@ std::string benchmarkResultJson(const BenchmarkConfig& config,
          << "  \"rollouts\": " << config.rollouts << ",\n"
          << "  \"steps\": " << config.steps << ",\n"
          << "  \"dt_s\": " << config.dynamics.dt_s << ",\n"
+         << "  \"footprint_clearance_broad_phase\": "
+         << (config.footprint.clearance_broad_phase_enabled ? "true" : "false") << ",\n"
          << "  \"warmup_ticks\": " << config.warmup_ticks << ",\n"
          << "  \"measured_ticks\": " << config.measured_ticks << ",\n"
          << "  \"deadline_ms\": " << config.deadline_ms << ",\n"
@@ -67,6 +70,10 @@ std::string benchmarkResultJson(const BenchmarkConfig& config,
   appendStatisticsJson(stream, "control_update", result.timings.control_update, true);
   appendStatisticsJson(stream, "warm_start", result.timings.warm_start, true);
   appendStatisticsJson(stream, "gpu_total", result.timings.gpu_total, true);
+  appendStatisticsJson(stream, "post_update_evaluation",
+                       result.timings.post_update_evaluation, true);
+  appendStatisticsJson(stream, "horizon_reconstruction",
+                       result.timings.horizon_reconstruction, true);
   appendStatisticsJson(stream, "host_total", result.timings.host_total, false);
   stream << "  },\n"
          << "  \"deadline_misses\": " << result.deadline_misses << ",\n"

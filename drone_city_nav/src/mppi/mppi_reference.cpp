@@ -25,7 +25,8 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
 }
 
 [[nodiscard]] SweptFootprintConfig sweptConfig(const FootprintConfig& footprint,
-                                               const float sweep_step_m) noexcept {
+                                               const float sweep_step_m,
+                                               const float safe_clearance_m) noexcept {
   return SweptFootprintConfig{
       .radius_m = footprint.radius_m,
       .lower_extent_m = footprint.lower_extent_m,
@@ -34,6 +35,7 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
       .radial_rings = footprint.radial_rings,
       .axial_samples = footprint.axial_samples,
       .sweep_step_m = sweep_step_m,
+      .safe_clearance_threshold_m = safe_clearance_m,
   };
 }
 
@@ -147,7 +149,9 @@ RolloutMetrics simulateReference(
     const SweptFootprintResult footprint_result = validateSweptFootprint(
         grid, esdf, Point3{previous_state.x, previous_state.y, previous_state.z},
         body_axis, Point3{state.x, state.y, state.z}, body_axis,
-        sweptConfig(footprint, validation_step_m));
+        sweptConfig(footprint, validation_step_m,
+                    footprint.clearance_broad_phase_enabled ? risk.preferred_distance_m
+                                                            : 0.0F));
     const bool raw_collision =
         footprint_result.status == SweptFootprintStatus::kRawCollision ||
         footprint_result.status == SweptFootprintStatus::kInvalidEsdf;

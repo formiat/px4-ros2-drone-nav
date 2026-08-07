@@ -57,6 +57,8 @@ void printUsage() {
             << "  --warmup-ticks COUNT\n"
             << "  --deadline-ms MILLISECONDS\n"
             << "  --seed VALUE\n"
+            << "  --production-footprint\n"
+            << "  --no-footprint-clearance-broad-phase\n"
             << "  --no-early-exit\n"
             << "  --json PATH\n"
             << "  --matrix default\n"
@@ -138,6 +140,16 @@ void writeJson(const std::filesystem::path& path, const BenchmarkConfig& config,
       config.deadline_ms = parseDouble(requireValue(argc, argv, index), "deadline");
     } else if (argument == "--seed") {
       config.seed = parseNumber<std::uint64_t>(requireValue(argc, argv, index), "seed");
+    } else if (argument == "--production-footprint") {
+      config.footprint = BenchmarkConfig{}.footprint;
+      config.footprint.radius_m = 0.82F;
+      config.footprint.lower_extent_m = 0.23F;
+      config.footprint.upper_extent_m = 0.35F;
+      config.footprint.perimeter_samples = 12U;
+      config.footprint.radial_rings = 2U;
+      config.footprint.axial_samples = 3U;
+    } else if (argument == "--no-footprint-clearance-broad-phase") {
+      config.footprint.clearance_broad_phase_enabled = false;
     } else if (argument == "--no-early-exit") {
       config.early_exit_on_collision = false;
     } else if (argument == "--json") {
@@ -164,7 +176,7 @@ void writeJson(const std::filesystem::path& path, const BenchmarkConfig& config,
   return config;
 }
 
-int runMatrix(BenchmarkConfig base, const std::filesystem::path& output_path) {
+int runMatrix(const BenchmarkConfig& base, const std::filesystem::path& output_path) {
   const std::vector<std::size_t> rollout_counts{2048U, 4096U, 8192U, 16384U};
   const std::vector<std::size_t> step_counts{60U, 80U, 100U};
   const std::vector<std::string> scenarios{"open_space", "urban_blocks",

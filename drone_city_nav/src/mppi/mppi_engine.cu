@@ -691,6 +691,7 @@ public:
           });
       return evaluation;
     };
+    const auto post_update_evaluation_started = std::chrono::steady_clock::now();
     EvaluatedControlSequence selected_evaluation = evaluate_controls(updated_);
     double repair_validation_ms{0.0};
     if (!selected_evaluation.classification.contract_preserved &&
@@ -819,6 +820,10 @@ public:
     result.timings.weight_calculation_ms = elapsedMs(reduction_done_, weights_done_);
     result.timings.control_update_ms = elapsedMs(weights_done_, update_done_);
     result.timings.repair_validation_ms = repair_validation_ms;
+    result.timings.post_update_evaluation_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  post_update_evaluation_started)
+            .count();
     result.timings.gpu_total_ms =
         elapsedMs(started_, completed_) + repair_validation_ms;
     const auto reconstruction_started = std::chrono::steady_clock::now();

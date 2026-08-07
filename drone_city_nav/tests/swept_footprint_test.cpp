@@ -90,6 +90,30 @@ TEST(SweptFootprintTest, RotatesPhysicalVolumeWithBodyAxis) {
             SweptFootprintStatus::kRawCollision);
 }
 
+TEST(SweptFootprintTest, ClearanceBroadPhaseReturnsAConservativeSafeBound) {
+  const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
+  const std::vector<float> esdf(std::size_t{8U} * 8U * 8U, 10.0F);
+  const Point3 position{3.5, 3.5, 3.5};
+  SweptFootprintConfig exact_config{.radius_m = 0.82,
+                                    .lower_extent_m = 0.23,
+                                    .upper_extent_m = 0.35,
+                                    .perimeter_samples = 12U,
+                                    .radial_rings = 2U,
+                                    .axial_samples = 3U};
+  SweptFootprintConfig broad_phase_config = exact_config;
+  broad_phase_config.safe_clearance_threshold_m = 6.0;
+
+  const SweptFootprintResult exact =
+      validateFootprintAt(grid, esdf, position, exact_config);
+  const SweptFootprintResult broad_phase =
+      validateFootprintAt(grid, esdf, position, broad_phase_config);
+
+  ASSERT_TRUE(exact.accepted());
+  ASSERT_TRUE(broad_phase.accepted());
+  EXPECT_GE(broad_phase.minimum_clearance_m, 6.0);
+  EXPECT_LE(broad_phase.minimum_clearance_m, exact.minimum_clearance_m);
+}
+
 TEST(SweptFootprintTest, RawTwoDimensionalSweepRejectsSideContact) {
   OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 1.0, 12, 6}};
   occupancy.reset(CellState::kFree);

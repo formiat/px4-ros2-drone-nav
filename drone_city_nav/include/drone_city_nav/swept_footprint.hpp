@@ -18,6 +18,7 @@ struct SweptFootprintConfig {
   std::size_t radial_rings{2U};
   std::size_t axial_samples{3U};
   double sweep_step_m{0.25};
+  double safe_clearance_threshold_m{0.0};
 };
 
 struct FootprintBodyAxis {
