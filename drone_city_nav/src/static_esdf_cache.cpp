@@ -7,10 +7,15 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
+#include <vector>
 #include <zstd.h>
 
 namespace drone_city_nav {
@@ -161,10 +166,45 @@ private:
 
 } // namespace
 
+struct StaticEsdfCache::SharedStorage {
+  GridBounds3D bounds{};
+  std::uint64_t occupancy_fingerprint{0U};
+  double maximum_distance_m{0.0};
+  std::vector<std::byte> compressed_storage;
+  std::unordered_map<OccupancyChunkIndex3D, ChunkRecord, OccupancyChunkIndex3DHash>
+      chunks;
+  mutable std::shared_mutex decoded_mutex;
+  mutable std::unordered_map<OccupancyChunkIndex3D,
+                             std::shared_ptr<const std::vector<float>>,
+                             OccupancyChunkIndex3DHash>
+      decoded_chunks;
+};
+
 StaticEsdfCache StaticEsdfCache::load(const std::filesystem::path& path) {
+  const std::filesystem::path canonical_path = std::filesystem::weakly_canonical(path);
+  const std::string registry_key =
+      canonical_path.string() + ':' + std::to_string(std::filesystem::file_size(path)) +
+      ':' +
+      std::to_string(std::filesystem::last_write_time(path).time_since_epoch().count());
+  static std::mutex registry_mutex;
+  static std::unordered_map<std::string, std::weak_ptr<SharedStorage>> registry;
+  const std::scoped_lock registry_lock{registry_mutex};
+
   StaticEsdfCache cache;
-  cache.storage_ = readFile(path);
-  ByteReader reader{cache.storage_};
+  if (const auto found = registry.find(registry_key); found != registry.end()) {
+    cache.shared_storage_ = found->second.lock();
+  }
+  if (cache.shared_storage_) {
+    cache.bounds_ = cache.shared_storage_->bounds;
+    cache.occupancy_fingerprint_ = cache.shared_storage_->occupancy_fingerprint;
+    cache.maximum_distance_m_ = cache.shared_storage_->maximum_distance_m;
+    cache.shared_resource_reused_ = true;
+    return cache;
+  }
+
+  auto storage = std::make_shared<SharedStorage>();
+  storage->compressed_storage = readFile(path);
+  ByteReader reader{storage->compressed_storage};
   std::array<char, 8U> magic{};
   const auto magic_bytes = reader.readBytes(magic.size(), "magic");
   std::memcpy(magic.data(), magic_bytes.data(), magic.size());
@@ -174,22 +214,22 @@ StaticEsdfCache StaticEsdfCache::load(const std::filesystem::path& path) {
       chunk_size != static_cast<std::uint32_t>(kChunkSize)) {
     throw std::runtime_error{"unsupported static ESDF cache format"};
   }
-  cache.bounds_.resolution_m = reader.read<float>("resolution");
-  cache.bounds_.origin_x = reader.read<float>("origin x");
-  cache.bounds_.origin_y = reader.read<float>("origin y");
-  cache.bounds_.origin_z = reader.read<float>("origin z");
-  cache.bounds_.width_cells = static_cast<int>(reader.read<std::uint32_t>("width"));
-  cache.bounds_.height_cells = static_cast<int>(reader.read<std::uint32_t>("height"));
-  cache.bounds_.depth_cells = static_cast<int>(reader.read<std::uint32_t>("depth"));
-  cache.occupancy_fingerprint_ = reader.read<std::uint64_t>("occupancy fingerprint");
-  cache.maximum_distance_m_ = reader.read<float>("maximum distance");
+  storage->bounds.resolution_m = reader.read<float>("resolution");
+  storage->bounds.origin_x = reader.read<float>("origin x");
+  storage->bounds.origin_y = reader.read<float>("origin y");
+  storage->bounds.origin_z = reader.read<float>("origin z");
+  storage->bounds.width_cells = static_cast<int>(reader.read<std::uint32_t>("width"));
+  storage->bounds.height_cells = static_cast<int>(reader.read<std::uint32_t>("height"));
+  storage->bounds.depth_cells = static_cast<int>(reader.read<std::uint32_t>("depth"));
+  storage->occupancy_fingerprint = reader.read<std::uint64_t>("occupancy fingerprint");
+  storage->maximum_distance_m = reader.read<float>("maximum distance");
   const std::uint32_t chunk_count = reader.read<std::uint32_t>("chunk count");
-  if (!(cache.bounds_.resolution_m > 0.0) || cache.bounds_.width_cells <= 0 ||
-      cache.bounds_.height_cells <= 0 || cache.bounds_.depth_cells <= 0 ||
-      !(cache.maximum_distance_m_ > 0.0)) {
+  if (!(storage->bounds.resolution_m > 0.0) || storage->bounds.width_cells <= 0 ||
+      storage->bounds.height_cells <= 0 || storage->bounds.depth_cells <= 0 ||
+      !(storage->maximum_distance_m > 0.0)) {
     throw std::runtime_error{"invalid static ESDF cache metadata"};
   }
-  cache.chunks_.reserve(chunk_count);
+  storage->chunks.reserve(chunk_count);
   for (std::uint32_t number = 0U; number < chunk_count; ++number) {
     const OccupancyChunkIndex3D index{reader.read<std::int32_t>("chunk x"),
                                       reader.read<std::int32_t>("chunk y"),
@@ -201,7 +241,7 @@ StaticEsdfCache StaticEsdfCache::load(const std::filesystem::path& path) {
     }
     const std::size_t payload_offset = reader.offset();
     static_cast<void>(reader.readBytes(payload_size, "chunk payload"));
-    const auto [unused, inserted] = cache.chunks_.emplace(
+    const auto [unused, inserted] = storage->chunks.emplace(
         index, ChunkRecord{payload_offset, payload_size, payload_checksum});
     static_cast<void>(unused);
     if (!inserted) {
@@ -211,6 +251,11 @@ StaticEsdfCache StaticEsdfCache::load(const std::filesystem::path& path) {
   if (!reader.atEnd()) {
     throw std::runtime_error{"trailing bytes in static ESDF cache"};
   }
+  cache.bounds_ = storage->bounds;
+  cache.occupancy_fingerprint_ = storage->occupancy_fingerprint;
+  cache.maximum_distance_m_ = storage->maximum_distance_m;
+  cache.shared_storage_ = storage;
+  registry[registry_key] = storage;
   return cache;
 }
 
@@ -319,6 +364,53 @@ void StaticEsdfCache::write(const std::filesystem::path& path,
   writeValue(stream, stored_chunks);
 }
 
+GridBounds3D
+StaticEsdfCache::alignRegionToChunks(const GridBounds3D& world_bounds,
+                                     const GridBounds3D& requested_bounds) {
+  if (!(world_bounds.resolution_m > 0.0) || world_bounds.width_cells <= 0 ||
+      world_bounds.height_cells <= 0 || world_bounds.depth_cells <= 0 ||
+      requested_bounds.width_cells <= 0 || requested_bounds.height_cells <= 0 ||
+      requested_bounds.depth_cells <= 0 ||
+      std::abs(requested_bounds.resolution_m - world_bounds.resolution_m) > 1.0e-6) {
+    throw std::invalid_argument{"invalid static ESDF cache ROI bounds"};
+  }
+  const int offset_x = alignedOffset(requested_bounds.origin_x, world_bounds.origin_x,
+                                     world_bounds.resolution_m);
+  const int offset_y = alignedOffset(requested_bounds.origin_y, world_bounds.origin_y,
+                                     world_bounds.resolution_m);
+  const int offset_z = alignedOffset(requested_bounds.origin_z, world_bounds.origin_z,
+                                     world_bounds.resolution_m);
+  const auto align_axis = [](const int offset, const int extent,
+                             const int world_extent) {
+    if (offset < 0 || extent <= 0 || offset + extent > world_extent) {
+      throw std::out_of_range{"static ESDF cache ROI is outside world bounds"};
+    }
+    const int first = (offset / kChunkSize) * kChunkSize;
+    const int requested_end = offset + extent;
+    const int aligned_end = std::min(
+        world_extent, ((requested_end + kChunkSize - 1) / kChunkSize) * kChunkSize);
+    return std::pair{first, aligned_end - first};
+  };
+  const auto [first_x, width] =
+      align_axis(offset_x, requested_bounds.width_cells, world_bounds.width_cells);
+  const auto [first_y, height] =
+      align_axis(offset_y, requested_bounds.height_cells, world_bounds.height_cells);
+  const auto [first_z, depth] =
+      align_axis(offset_z, requested_bounds.depth_cells, world_bounds.depth_cells);
+  return GridBounds3D{
+      .origin_x = world_bounds.origin_x +
+                  static_cast<double>(first_x) * world_bounds.resolution_m,
+      .origin_y = world_bounds.origin_y +
+                  static_cast<double>(first_y) * world_bounds.resolution_m,
+      .origin_z = world_bounds.origin_z +
+                  static_cast<double>(first_z) * world_bounds.resolution_m,
+      .resolution_m = world_bounds.resolution_m,
+      .width_cells = width,
+      .height_cells = height,
+      .depth_cells = depth,
+  };
+}
+
 bool StaticEsdfCache::compatibleWith(
     const OccupancyGrid3D& occupancy,
     const double requested_maximum_distance_m) const noexcept {
@@ -332,7 +424,7 @@ StaticEsdfCacheExtraction
 StaticEsdfCache::extract(const GridBounds3D& local_bounds,
                          const double maximum_distance_m) const {
   const auto started = std::chrono::steady_clock::now();
-  if (!(maximum_distance_m > 0.0) ||
+  if (!shared_storage_ || !(maximum_distance_m > 0.0) ||
       maximum_distance_m > maximum_distance_m_ + 1.0e-6 ||
       std::abs(local_bounds.resolution_m - bounds_.resolution_m) > 1.0e-6) {
     throw std::invalid_argument{"static ESDF cache cannot satisfy requested field"};
@@ -362,28 +454,68 @@ StaticEsdfCache::extract(const GridBounds3D& local_bounds,
   const int last_chunk_x = (offset_x + local_bounds.width_cells - 1) / kChunkSize;
   const int last_chunk_y = (offset_y + local_bounds.height_cells - 1) / kChunkSize;
   const int last_chunk_z = (offset_z + local_bounds.depth_cells - 1) / kChunkSize;
-  std::array<std::uint16_t, kValuesPerChunk> values{};
-  const auto decode_started = std::chrono::steady_clock::now();
   for (int chunk_z = first_chunk_z; chunk_z <= last_chunk_z; ++chunk_z) {
     for (int chunk_y = first_chunk_y; chunk_y <= last_chunk_y; ++chunk_y) {
       for (int chunk_x = first_chunk_x; chunk_x <= last_chunk_x; ++chunk_x) {
-        const auto record =
-            chunks_.find(OccupancyChunkIndex3D{chunk_x, chunk_y, chunk_z});
-        if (record == chunks_.end()) {
+        const OccupancyChunkIndex3D chunk{chunk_x, chunk_y, chunk_z};
+        const auto record = shared_storage_->chunks.find(chunk);
+        if (record == shared_storage_->chunks.end()) {
           continue;
         }
-        const std::span payload = std::span<const std::byte>{storage_}.subspan(
-            record->second.payload_offset, record->second.payload_size);
-        const std::size_t decoded_size = ZSTD_decompress(
-            values.data(), kDecodedChunkBytes, payload.data(), payload.size());
-        if (ZSTD_isError(decoded_size) != 0U || decoded_size != kDecodedChunkBytes) {
-          throw std::runtime_error{"failed to decompress static ESDF cache chunk"};
+        ++result.stats.requested_chunks;
+        std::shared_ptr<const std::vector<float>> values;
+        {
+          const std::shared_lock lock{shared_storage_->decoded_mutex};
+          if (const auto found = shared_storage_->decoded_chunks.find(chunk);
+              found != shared_storage_->decoded_chunks.end()) {
+            values = found->second;
+          }
         }
-        const auto decoded = std::as_bytes(std::span{values});
-        if (checksum(decoded) != record->second.checksum) {
-          throw std::runtime_error{"static ESDF cache chunk checksum mismatch"};
+        if (values) {
+          ++result.stats.decoded_chunk_cache_hits;
+        } else {
+          const std::unique_lock lock{shared_storage_->decoded_mutex};
+          if (const auto found = shared_storage_->decoded_chunks.find(chunk);
+              found != shared_storage_->decoded_chunks.end()) {
+            values = found->second;
+            ++result.stats.decoded_chunk_cache_hits;
+          } else {
+            const auto decode_started = std::chrono::steady_clock::now();
+            std::array<std::uint16_t, kValuesPerChunk> squared_values{};
+            const std::span payload =
+                std::span<const std::byte>{shared_storage_->compressed_storage}.subspan(
+                    record->second.payload_offset, record->second.payload_size);
+            const std::size_t decoded_size =
+                ZSTD_decompress(squared_values.data(), kDecodedChunkBytes,
+                                payload.data(), payload.size());
+            if (ZSTD_isError(decoded_size) != 0U ||
+                decoded_size != kDecodedChunkBytes) {
+              throw std::runtime_error{"failed to decompress static ESDF cache chunk"};
+            }
+            const auto decoded = std::as_bytes(std::span{squared_values});
+            if (checksum(decoded) != record->second.checksum) {
+              throw std::runtime_error{"static ESDF cache chunk checksum mismatch"};
+            }
+            auto decoded_values = std::make_shared<std::vector<float>>(
+                kValuesPerChunk, std::numeric_limits<float>::infinity());
+            for (std::size_t index = 0U; index < squared_values.size(); ++index) {
+              if (squared_values.at(index) == kInfinity) {
+                continue;
+              }
+              (*decoded_values)[index] = static_cast<float>(
+                  std::sqrt(static_cast<double>(squared_values.at(index))) *
+                  bounds_.resolution_m);
+            }
+            values = decoded_values;
+            shared_storage_->decoded_chunks.emplace(chunk, std::move(decoded_values));
+            ++result.stats.decoded_chunks;
+            result.stats.decode_ms +=
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - decode_started)
+                    .count();
+          }
         }
-        ++result.stats.decoded_chunks;
+        const auto copy_started = std::chrono::steady_clock::now();
         for (int z = 0; z < kChunkSize; ++z) {
           const int local_z = chunk_z * kChunkSize + z - offset_z;
           if (local_z < 0 || local_z >= local_bounds.depth_cells) {
@@ -399,34 +531,33 @@ StaticEsdfCache::extract(const GridBounds3D& local_bounds,
               if (local_x < 0 || local_x >= local_bounds.width_cells) {
                 continue;
               }
-              const std::uint16_t squared = values.at(chunkIndex(x, y, z));
-              if (squared == kInfinity) {
-                continue;
-              }
-              const double distance =
-                  std::sqrt(static_cast<double>(squared)) * bounds_.resolution_m;
-              if (distance > maximum_distance_m) {
+              const float distance = values->at(chunkIndex(x, y, z));
+              if (!std::isfinite(distance) ||
+                  distance > static_cast<float>(maximum_distance_m)) {
                 continue;
               }
               result.field
                   .distances_m_[localIndex(local_bounds, local_x, local_y, local_z)] =
-                  static_cast<float>(distance);
+                  distance;
               ++result.stats.finite_voxels;
             }
           }
         }
+        result.stats.copy_ms += std::chrono::duration<double, std::milli>(
+                                    std::chrono::steady_clock::now() - copy_started)
+                                    .count();
       }
     }
   }
-  result.stats.decode_ms = std::chrono::duration<double, std::milli>(
-                               std::chrono::steady_clock::now() - decode_started)
-                               .count();
+  {
+    const std::shared_lock lock{shared_storage_->decoded_mutex};
+    result.stats.resident_decoded_chunks = shared_storage_->decoded_chunks.size();
+  }
   result.stats.duration_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - started)
                                  .count();
-  result.stats.copy_ms = result.stats.decode_ms;
   result.field.stats_.duration_ms = result.stats.duration_ms;
-  result.field.stats_.finalize_ms = result.stats.decode_ms;
+  result.field.stats_.finalize_ms = result.stats.copy_ms;
   return result;
 }
 
@@ -443,11 +574,15 @@ double StaticEsdfCache::maximumDistanceM() const noexcept {
 }
 
 std::size_t StaticEsdfCache::storedChunkCount() const noexcept {
-  return chunks_.size();
+  return shared_storage_ ? shared_storage_->chunks.size() : 0U;
 }
 
 std::size_t StaticEsdfCache::compressedBytes() const noexcept {
-  return storage_.size();
+  return shared_storage_ ? shared_storage_->compressed_storage.size() : 0U;
+}
+
+bool StaticEsdfCache::sharedResourceReused() const noexcept {
+  return shared_resource_reused_;
 }
 
 } // namespace drone_city_nav

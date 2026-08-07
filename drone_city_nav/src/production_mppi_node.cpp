@@ -649,10 +649,12 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       if (cache.compatibleWith(*static_occupancy_3d_, required_maximum_distance_m)) {
         RCLCPP_INFO(get_logger(),
                     "STATIC_ESDF_CACHE_READY path=%s fingerprint=%" PRIu64
-                    " maximum_distance_m=%.2f chunks=%zu bytes=%zu",
+                    " maximum_distance_m=%.2f chunks=%zu bytes=%zu "
+                    "shared_resource_reused=%s",
                     cache_path.c_str(), cache.occupancyFingerprint(),
                     cache.maximumDistanceM(), cache.storedChunkCount(),
-                    cache.compressedBytes());
+                    cache.compressedBytes(),
+                    cache.sharedResourceReused() ? "true" : "false");
         static_esdf_cache_ = std::move(cache);
       } else {
         RCLCPP_WARN(get_logger(),

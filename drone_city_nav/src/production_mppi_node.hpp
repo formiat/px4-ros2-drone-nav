@@ -517,6 +517,7 @@ private:
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
+  bool static_esdf_uploaded_{false};
   std::uint64_t static_route_generation_{0U};
   std::uint64_t tracked_route_generation_{0U};
   double tracked_route_station_m_{0.0};

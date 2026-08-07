@@ -74,7 +74,53 @@ TEST(StaticEsdfCache, RoundTripPreservesGlobalDistanceField) {
     EXPECT_FLOAT_EQ(extracted.field.distancesM()[index], expected.distancesM()[index]);
   }
   EXPECT_GT(extracted.stats.decoded_chunks, 0U);
+  EXPECT_EQ(extracted.stats.requested_chunks, extracted.stats.decoded_chunks);
+  EXPECT_EQ(extracted.stats.decoded_chunk_cache_hits, 0U);
   EXPECT_GT(extracted.stats.finite_voxels, 0U);
+}
+
+TEST(StaticEsdfCache, LoadedInstancesShareDecodedChunks) {
+  const OccupancyGrid3D occupancy = testOccupancy();
+  const DistanceField3D global = DistanceField3D::build(occupancy, 6.0);
+  TemporaryCacheFile file;
+  StaticEsdfCache::write(file.path(), occupancy, global, 1);
+
+  const StaticEsdfCache first = StaticEsdfCache::load(file.path());
+  const StaticEsdfCache second = StaticEsdfCache::load(file.path());
+  EXPECT_FALSE(first.sharedResourceReused());
+  EXPECT_TRUE(second.sharedResourceReused());
+
+  const StaticEsdfCacheExtraction initial = first.extract(testBounds(), 6.0);
+  ASSERT_GT(initial.stats.decoded_chunks, 0U);
+  const StaticEsdfCacheExtraction reused = second.extract(testBounds(), 6.0);
+  EXPECT_EQ(reused.stats.decoded_chunks, 0U);
+  EXPECT_EQ(reused.stats.decoded_chunk_cache_hits, reused.stats.requested_chunks);
+  EXPECT_EQ(reused.stats.resident_decoded_chunks,
+            initial.stats.resident_decoded_chunks);
+  ASSERT_EQ(reused.field.distancesM().size(), initial.field.distancesM().size());
+  for (std::size_t index = 0U; index < initial.field.distancesM().size(); ++index) {
+    EXPECT_FLOAT_EQ(reused.field.distancesM()[index],
+                    initial.field.distancesM()[index]);
+  }
+}
+
+TEST(StaticEsdfCache, AlignsRegionsToStableChunkBoundaries) {
+  const GridBounds3D requested{.origin_x = -1.0,
+                               .origin_y = 5.5,
+                               .origin_z = 1.0,
+                               .resolution_m = 0.5,
+                               .width_cells = 15,
+                               .height_cells = 12,
+                               .depth_cells = 8};
+  const GridBounds3D aligned =
+      StaticEsdfCache::alignRegionToChunks(testBounds(), requested);
+
+  EXPECT_DOUBLE_EQ(aligned.origin_x, -2.0);
+  EXPECT_DOUBLE_EQ(aligned.origin_y, 4.0);
+  EXPECT_DOUBLE_EQ(aligned.origin_z, 0.0);
+  EXPECT_EQ(aligned.width_cells, 20);
+  EXPECT_EQ(aligned.height_cells, 16);
+  EXPECT_EQ(aligned.depth_cells, 12);
 }
 
 TEST(StaticEsdfCache, ExtractsAlignedLocalRegionAndAppliesSmallerCap) {
