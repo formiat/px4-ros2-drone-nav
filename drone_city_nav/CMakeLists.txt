@@ -612,6 +612,12 @@ if(BUILD_TESTING)
   target_link_libraries(mppi_rollout_budget_test drone_city_nav_core)
   enable_project_warnings(mppi_rollout_budget_test)
 
+  ament_add_gtest(mppi_horizon_sampling_test
+                  tests/mppi_horizon_sampling_test.cpp)
+  target_compile_features(mppi_horizon_sampling_test PRIVATE cxx_std_20)
+  target_include_directories(mppi_horizon_sampling_test PRIVATE include)
+  enable_project_warnings(mppi_horizon_sampling_test)
+
   if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     ament_add_gtest(mppi_control_sequence_test_current
                     tests/mppi_control_sequence_test.cpp)

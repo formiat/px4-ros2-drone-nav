@@ -374,7 +374,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          std::uint8_t* solid_collision, std::size_t rollouts, std::size_t steps,
          State initial, State target, MovingTargetReference moving_target,
          bool moving_target_enabled, DynamicsConfig dynamics, RiskConfig risk,
-         FootprintConfig footprint, CostConfig costs, EsdfGrid grid,
+         FootprintConfig footprint, CostConfig costs,
+         HorizonSamplingConfig horizon_sampling, EsdfGrid grid,
          cudaTextureObject_t esdf_texture, const KnownSolid* solids,
          std::size_t solid_count, const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
@@ -453,11 +454,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
     raw_hit = raw_hit || segment_raw_hit;
-    const RouteProjection route_projection =
-        route_point_count >= 2U
-            ? projectOntoRoute(state, route_points, route_point_count,
-                               rollout_route_station_m)
-            : RouteProjection{};
     const float segment_m = dynamics.dt_s * hypotf(state.vx, state.vy);
     if (raw_hit || solid_hit) {
       tier = static_cast<std::uint8_t>(RiskTier::kCollision);
@@ -468,21 +464,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kPlanning));
       planning_m += segment_m;
     }
-    if (route_projection.valid) {
-      rollout_route_station_m = route_projection.station_m;
-      guide_cost += route_projection.cross_track_m * route_projection.cross_track_m;
-      terminal_route_progress = route_projection.station_m - initial_route_station_m;
-    } else {
-      const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
-                                (state.x - initial.x) * (target.y - initial.y);
-      const float guide_length =
-          fmaxf(1.0F, hypotf(target.x - initial.x, target.y - initial.y));
-      guide_cost += (guide_cross / guide_length) * (guide_cross / guide_length);
-    }
-    const float z_reference =
-        route_projection.valid ? route_projection.reference_z_m : target.z;
-    const float altitude_error = state.z - z_reference;
-    altitude_cost += altitude_error * altitude_error;
     const float target_elapsed_s = static_cast<float>(step + 1U) * dynamics.dt_s;
     const float target_distance =
         moving_target_enabled
@@ -493,6 +474,46 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                      movingTargetAltitudeAt(moving_target, target_elapsed_s) - state.z)
             : hypotf(target.x - state.x, target.y - state.y);
     minimum_target_separation_m = fminf(minimum_target_separation_m, target_distance);
+    const HorizonCostSample path_cost_sample =
+        route_point_count >= 2U
+            ? horizonCostSample(step, steps, dynamics.dt_s,
+                                costs.head_progress_horizon_s, horizon_sampling)
+            : HorizonCostSample{1U, true};
+    RouteProjection route_projection;
+    if (path_cost_sample.evaluate && route_point_count >= 2U) {
+      route_projection = projectOntoRoute(state, route_points, route_point_count,
+                                          rollout_route_station_m);
+    }
+    if (path_cost_sample.evaluate) {
+      const float sample_weight =
+          static_cast<float>(path_cost_sample.represented_steps);
+      if (route_projection.valid) {
+        rollout_route_station_m = route_projection.station_m;
+        guide_cost += sample_weight * route_projection.cross_track_m *
+                      route_projection.cross_track_m;
+        terminal_route_progress = route_projection.station_m - initial_route_station_m;
+      } else {
+        const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
+                                  (state.x - initial.x) * (target.y - initial.y);
+        const float guide_length =
+            fmaxf(1.0F, hypotf(target.x - initial.x, target.y - initial.y));
+        guide_cost +=
+            sample_weight * (guide_cross / guide_length) * (guide_cross / guide_length);
+      }
+      const float z_reference =
+          route_projection.valid ? route_projection.reference_z_m : target.z;
+      const float altitude_error = state.z - z_reference;
+      altitude_cost += sample_weight * altitude_error * altitude_error;
+      const float active_reference_speed_mps =
+          route_projection.valid && route_projection.reference_speed_mps > 0.0F
+              ? fminf(reference_speed_mps, route_projection.reference_speed_mps)
+              : reference_speed_mps;
+      if (active_reference_speed_mps >= 0.0F) {
+        const float speed_error =
+            hypotf(state.vx, state.vy) - active_reference_speed_mps;
+        speed_tracking_cost += sample_weight * speed_error * speed_error;
+      }
+    }
     if (step + 1U == head_steps) {
       head_progress =
           moving_target_enabled ? initial_distance - target_distance
@@ -502,14 +523,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
-    const float active_reference_speed_mps =
-        route_projection.valid && route_projection.reference_speed_mps > 0.0F
-            ? fminf(reference_speed_mps, route_projection.reference_speed_mps)
-            : reference_speed_mps;
-    if (active_reference_speed_mps >= 0.0F) {
-      const float speed_error = hypotf(state.vx, state.vy) - active_reference_speed_mps;
-      speed_tracking_cost += speed_error * speed_error;
-    }
     jerk_cost += (control.ax - previous.ax) * (control.ax - previous.ax) +
                  (control.ay - previous.ay) * (control.ay - previous.ay) +
                  (control.az - previous.az) * (control.az - previous.az);

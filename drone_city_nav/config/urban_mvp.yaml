@@ -115,6 +115,8 @@ production_mppi_node:
     maximum_vertical_speed_mps: 5.0
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
+    far_horizon_full_rate_duration_s: 2.0
+    far_horizon_cost_stride: 2
     static_speed_tracking_weight: 1.0
     no_static_speed_tracking_weight: 1.0
     deadline_ms: 20.0

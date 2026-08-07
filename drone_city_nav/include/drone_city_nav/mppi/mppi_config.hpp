@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/mppi/mppi_horizon_sampling.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 
 #include <cstddef>
@@ -73,6 +74,7 @@ struct BenchmarkConfig {
   RiskConfig risk{};
   FootprintConfig footprint{};
   CostConfig costs{};
+  HorizonSamplingConfig horizon_sampling{};
 };
 
 [[nodiscard]] bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept;

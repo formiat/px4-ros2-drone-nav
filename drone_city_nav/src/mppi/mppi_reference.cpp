@@ -65,6 +65,7 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.head_progress_weight >= 0.0F &&
          std::isfinite(config.costs.speed_tracking_weight) &&
          config.costs.speed_tracking_weight >= 0.0F &&
+         horizonSamplingConfigIsValid(config.horizon_sampling) &&
          config.footprint.radius_m >= 0.0F && config.footprint.lower_extent_m >= 0.0F &&
          config.footprint.upper_extent_m >= 0.0F &&
          (config.footprint.radius_m == 0.0F ||

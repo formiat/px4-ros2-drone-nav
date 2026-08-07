@@ -331,6 +331,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
       static_cast<float>(declare_parameter<double>("head_progress_weight", 8.0));
+  mppi_config_.horizon_sampling.full_rate_duration_s = static_cast<float>(
+      declare_parameter<double>("far_horizon_full_rate_duration_s", 2.0));
+  mppi_config_.horizon_sampling.far_cost_stride = static_cast<std::uint32_t>(
+      declare_parameter<std::int64_t>("far_horizon_cost_stride", 2));
   const double static_speed_tracking_weight =
       declare_parameter<double>("static_speed_tracking_weight", 1.0);
   const double no_static_speed_tracking_weight =
@@ -813,7 +817,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
       "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
-      "constrained_route_speed_limit=%.1fmps head_progress=%.2fs liveness=%s "
+      "constrained_route_speed_limit=%.1fmps head_progress=%.2fs "
+      "far_cost_sampling=(%.2fs,%u) liveness=%s "
       "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
       "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
       "planner_tick_phase_ms=%.1f no_static_esdf=(%.1fHz,%.1fm,%.1fm)",
@@ -829,6 +834,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       mppi_config_.costs.speed_tracking_weight,
       use_static_map_ ? constrained_route_speed_limit_mps_ : 0.0F,
       mppi_config_.costs.head_progress_horizon_s,
+      mppi_config_.horizon_sampling.full_rate_duration_s,
+      mppi_config_.horizon_sampling.far_cost_stride,
       liveness_config_.enabled ? "true" : "false",
       frontier_blacklist_enabled_ ? "true" : "false",
       active_guide_config_.minimum_remaining_m,
