@@ -82,6 +82,7 @@ struct MppiStageTimings {
   double control_update_ms{0.0};
   double warm_start_ms{0.0};
   double gpu_total_ms{0.0};
+  double repair_validation_ms{0.0};
   double host_total_ms{0.0};
   double horizon_reconstruction_ms{0.0};
 };

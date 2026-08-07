@@ -23,6 +23,7 @@ namespace {
 constexpr int kThreadsPerBlock{256};
 constexpr std::size_t kMaximumKnownSolids{2048U};
 constexpr std::size_t kMaximumRoutePoints{512U};
+constexpr std::size_t kRepairCandidateCount{6U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
 
@@ -219,6 +220,7 @@ struct DeviceBuffers {
   DeviceBuffer<Control> nominal;
   DeviceBuffer<Control> updated;
   DeviceBuffer<Control> best_eligible;
+  DeviceBuffer<Control> repair_candidates;
   DeviceBuffer<int> best_tier;
   DeviceBuffer<int> best_rollout;
   DeviceBuffer<float> best_critical;
@@ -244,6 +246,7 @@ struct DeviceBuffers {
         nominal{steps},
         updated{steps},
         best_eligible{steps},
+        repair_candidates{kRepairCandidateCount * steps},
         best_tier{1U},
         best_rollout{1U},
         best_critical{1U},
@@ -257,10 +260,10 @@ struct DeviceBuffers {
            soft_cost.bytes() + critical_exposure.bytes() + planning_exposure.bytes() +
            minimum_clearance.bytes() + worst_tier.bytes() + raw_collision.bytes() +
            solid_collision.bytes() + weights.bytes() + nominal.bytes() +
-           updated.bytes() + best_eligible.bytes() + best_tier.bytes() +
-           best_rollout.bytes() + best_critical.bytes() + best_planning.bytes() +
-           minimum_soft.bytes() + weight_sum.bytes() + solids.bytes() +
-           route_points.bytes();
+           updated.bytes() + best_eligible.bytes() + repair_candidates.bytes() +
+           best_tier.bytes() + best_rollout.bytes() + best_critical.bytes() +
+           best_planning.bytes() + minimum_soft.bytes() + weight_sum.bytes() +
+           solids.bytes() + route_points.bytes();
   }
 };
 
@@ -328,15 +331,18 @@ hostFootprintConfig(const FootprintConfig& footprint) noexcept {
   });
 }
 
-[[nodiscard]] bool hostSweptSolidCollision(const State& initial,
+[[nodiscard]] bool hostSweptSolidCollision(const std::span<const State> horizon,
                                            const std::span<const Control> controls,
-                                           const DynamicsConfig& dynamics,
                                            const FootprintConfig& footprint,
                                            const std::span<const KnownSolid> solids) {
-  State previous = initial;
-  for (const Control& control : controls) {
+  if (horizon.size() != controls.size() + 1U) {
+    return true;
+  }
+  for (std::size_t index = 0U; index < controls.size(); ++index) {
+    const Control& control = controls[index];
     const FootprintBodyAxis body_axis = hostBodyAxis(control);
-    const State next = integrateReference(previous, control, dynamics);
+    const State& previous = horizon[index];
+    const State& next = horizon[index + 1U];
     const float segment_length_m = std::hypot(next.x - previous.x, next.y - previous.y);
     const std::size_t samples = std::max<std::size_t>(
         1U, static_cast<std::size_t>(std::ceil(segment_length_m / 0.25F)));
@@ -350,10 +356,16 @@ hostFootprintConfig(const FootprintConfig& footprint) noexcept {
         return true;
       }
     }
-    previous = next;
   }
   return false;
 }
+
+struct EvaluatedControlSequence {
+  ReferenceSimulationTrace trace;
+  RolloutMetrics metrics{};
+  MppiPostUpdateClassificationResult classification{};
+  bool known_solid_collision{false};
+};
 
 } // namespace
 
@@ -365,6 +377,7 @@ public:
         nominal_(config_.steps),
         updated_(config_.steps),
         best_eligible_(config_.steps),
+        repair_candidates_(kRepairCandidateCount * config_.steps),
         zero_noise_(config_.steps) {
     if (!benchmarkConfigIsValid(config_)) {
       throw std::invalid_argument{"invalid MPPI engine configuration"};
@@ -532,7 +545,7 @@ public:
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
         route_active ? input.route->initial_station_m : 0.0F, previous_applied_control,
         first_control_interval_s, input.reference_speed_mps,
-        config_.early_exit_on_collision);
+        config_.early_exit_on_collision, nullptr);
     simulation_done_.record(stream_);
     initializeReduction<<<1, 1, 0U, stream_>>>(
         buffers_.best_tier.get(), buffers_.best_critical.get(),
@@ -640,56 +653,139 @@ public:
         .planning_exposure_tolerance_m = config_.risk.planning_exposure_tolerance_m,
         .weight_sum = eligible_weight_sum,
     };
-    const auto classify_controls = [&](const std::span<const Control> controls) {
-      const RolloutMetrics metrics = simulateReference(
+    const auto evaluate_controls = [&](const std::span<const Control> controls) {
+      EvaluatedControlSequence evaluation;
+      evaluation.metrics = simulateReference(
           input.initial_state, controls, zero_noise_, config_.dynamics, config_.risk,
           config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
           input.target.x, input.target.y, config_.early_exit_on_collision,
           previous_applied_control, input.reference_speed_mps, config_.footprint,
-          input.moving_target);
-      const bool known_solid_collision =
-          hostSweptSolidCollision(input.initial_state, controls, config_.dynamics,
-                                  config_.footprint, known_solids_);
-      return classifyMppiPostUpdate(
+          input.moving_target, &evaluation.trace);
+      evaluation.known_solid_collision = hostSweptSolidCollision(
+          evaluation.trace.horizon, controls, config_.footprint, known_solids_);
+      evaluation.classification = classifyMppiPostUpdate(
           result.eligible_risk_contract,
           MppiPostUpdateObservation{
-              .tier = known_solid_collision ? RiskTier::kCollision : metrics.worst_tier,
-              .raw_collision = metrics.collision,
-              .known_solid_collision = known_solid_collision,
-              .critical_exposure_m = metrics.critical_exposure_m,
-              .planning_exposure_m = metrics.planning_exposure_m,
+              .tier = evaluation.known_solid_collision ? RiskTier::kCollision
+                                                       : evaluation.metrics.worst_tier,
+              .raw_collision = evaluation.metrics.collision,
+              .known_solid_collision = evaluation.known_solid_collision,
+              .critical_exposure_m = evaluation.metrics.critical_exposure_m,
+              .planning_exposure_m = evaluation.metrics.planning_exposure_m,
           });
+      return evaluation;
     };
-    MppiPostUpdateClassificationResult weighted_classification =
-        classify_controls(updated_);
-    if (!weighted_classification.contract_preserved &&
+    EvaluatedControlSequence selected_evaluation = evaluate_controls(updated_);
+    double repair_validation_ms{0.0};
+    if (!selected_evaluation.classification.contract_preserved &&
         result.eligible_risk_contract.available) {
       std::vector<Control> limited_nominal = nominal_;
       limitControlSequence(limited_nominal, config_.dynamics, previous_applied_control,
                            first_control_interval_s);
       constexpr std::array backtrack_ratios{0.5F, 0.25F, 0.125F, 0.0625F, 0.0F};
-      bool repaired = false;
-      std::vector<Control> candidate(updated_.size());
-      for (const float ratio : backtrack_ratios) {
+      for (std::size_t candidate_index = 0U; candidate_index < backtrack_ratios.size();
+           ++candidate_index) {
+        const float ratio = backtrack_ratios[candidate_index];
+        std::span<Control> candidate{
+            repair_candidates_.data() + candidate_index * config_.steps, config_.steps};
         for (std::size_t index = 0U; index < candidate.size(); ++index) {
           candidate[index] =
               interpolateControl(limited_nominal[index], updated_[index], ratio);
         }
         limitControlSequence(candidate, config_.dynamics, previous_applied_control,
                              first_control_interval_s);
-        if (classify_controls(candidate).contract_preserved) {
-          updated_ = candidate;
-          result.post_update_repair = MppiPostUpdateRepair::kBacktracked;
-          result.post_update_backtrack_ratio = ratio;
-          repaired = true;
-          break;
-        }
       }
-      if (!repaired && classify_controls(best_eligible_).contract_preserved) {
-        updated_ = best_eligible_;
-        result.post_update_repair = MppiPostUpdateRepair::kBestEligibleRollout;
-        result.post_update_backtrack_ratio = 0.0F;
+      std::ranges::copy(
+          best_eligible_,
+          repair_candidates_.begin() +
+              static_cast<std::ptrdiff_t>(backtrack_ratios.size() * config_.steps));
+
+      repair_started_.record(stream_);
+      checkCuda(cudaMemcpyAsync(buffers_.repair_candidates.get(),
+                                repair_candidates_.data(),
+                                repair_candidates_.size() * sizeof(Control),
+                                cudaMemcpyHostToDevice, stream_),
+                "upload post-update repair candidates");
+      constexpr std::size_t candidate_count = kRepairCandidateCount;
+      const int repair_blocks = static_cast<int>(
+          (candidate_count + kThreadsPerBlock - 1U) / kThreadsPerBlock);
+      simulate<<<repair_blocks, kThreadsPerBlock, 0U, stream_>>>(
+          buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
+          buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
+          buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
+          buffers_.minimum_clearance.get(), buffers_.worst_tier.get(),
+          buffers_.raw_collision.get(), buffers_.solid_collision.get(), candidate_count,
+          config_.steps, input.initial_state, input.target, moving_target,
+          moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
+          config_.costs, textures_[active_texture_].grid(),
+          textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
+          buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
+          route_active ? input.route->initial_station_m : 0.0F,
+          previous_applied_control, first_control_interval_s, input.reference_speed_mps,
+          config_.early_exit_on_collision, buffers_.repair_candidates.get());
+      checkCuda(cudaMemcpyAsync(
+                    repair_critical_exposure_.data(), buffers_.critical_exposure.get(),
+                    candidate_count * sizeof(float), cudaMemcpyDeviceToHost, stream_),
+                "copy repair critical exposure");
+      checkCuda(cudaMemcpyAsync(
+                    repair_planning_exposure_.data(), buffers_.planning_exposure.get(),
+                    candidate_count * sizeof(float), cudaMemcpyDeviceToHost, stream_),
+                "copy repair planning exposure");
+      checkCuda(cudaMemcpyAsync(repair_worst_tier_.data(), buffers_.worst_tier.get(),
+                                candidate_count * sizeof(std::uint8_t),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy repair risk tiers");
+      checkCuda(cudaMemcpyAsync(repair_raw_collision_.data(),
+                                buffers_.raw_collision.get(),
+                                candidate_count * sizeof(std::uint8_t),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy repair raw collisions");
+      checkCuda(cudaMemcpyAsync(repair_solid_collision_.data(),
+                                buffers_.solid_collision.get(),
+                                candidate_count * sizeof(std::uint8_t),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy repair solid collisions");
+      repair_done_.record(stream_);
+      repair_done_.synchronize();
+      checkCuda(cudaGetLastError(), "post-update repair validation");
+      repair_validation_ms = elapsedMs(repair_started_, repair_done_);
+
+      bool repaired{false};
+      for (std::size_t candidate_index = 0U; candidate_index < candidate_count;
+           ++candidate_index) {
+        const bool solid_collision = repair_solid_collision_[candidate_index] != 0U;
+        const MppiPostUpdateClassificationResult gpu_classification =
+            classifyMppiPostUpdate(
+                result.eligible_risk_contract,
+                MppiPostUpdateObservation{
+                    .tier = solid_collision ? RiskTier::kCollision
+                                            : static_cast<RiskTier>(
+                                                  repair_worst_tier_[candidate_index]),
+                    .raw_collision = repair_raw_collision_[candidate_index] != 0U,
+                    .known_solid_collision = solid_collision,
+                    .critical_exposure_m = repair_critical_exposure_[candidate_index],
+                    .planning_exposure_m = repair_planning_exposure_[candidate_index],
+                });
+        if (!gpu_classification.contract_preserved) {
+          continue;
+        }
+        const std::span<const Control> candidate{
+            repair_candidates_.data() + candidate_index * config_.steps, config_.steps};
+        EvaluatedControlSequence confirmed = evaluate_controls(candidate);
+        if (!confirmed.classification.contract_preserved) {
+          continue;
+        }
+        std::ranges::copy(candidate, updated_.begin());
+        selected_evaluation = std::move(confirmed);
+        if (candidate_index < backtrack_ratios.size()) {
+          result.post_update_repair = MppiPostUpdateRepair::kBacktracked;
+          result.post_update_backtrack_ratio = backtrack_ratios[candidate_index];
+        } else {
+          result.post_update_repair = MppiPostUpdateRepair::kBestEligibleRollout;
+          result.post_update_backtrack_ratio = 0.0F;
+        }
         repaired = true;
+        break;
       }
       if (!repaired) {
         result.post_update_repair = MppiPostUpdateRepair::kFailed;
@@ -706,18 +802,31 @@ public:
     result.timings.risk_reduction_ms = elapsedMs(simulation_done_, reduction_done_);
     result.timings.weight_calculation_ms = elapsedMs(reduction_done_, weights_done_);
     result.timings.control_update_ms = elapsedMs(weights_done_, update_done_);
-    result.timings.gpu_total_ms = elapsedMs(started_, completed_);
+    result.timings.repair_validation_ms = repair_validation_ms;
+    result.timings.gpu_total_ms =
+        elapsedMs(started_, completed_) + repair_validation_ms;
     const auto reconstruction_started = std::chrono::steady_clock::now();
-    State state = input.initial_state;
-    result.horizon.reserve(updated_.size() + 1U);
-    result.horizon.push_back(state);
+    result.horizon = std::move(selected_evaluation.trace.horizon);
+    if (result.horizon.size() != updated_.size() + 1U) {
+      throw std::runtime_error{"MPPI control evaluation returned incomplete horizon"};
+    }
+    State state = result.horizon.front();
     const float initial_distance =
         std::hypot(input.target.x - state.x, input.target.y - state.y);
     float reconstruction_route_station_m =
         input.route.has_value() ? input.route->initial_station_m : 0.0F;
     std::optional<float> latest_route_station;
-    result.minimum_esdf_distance_m = kInfinity;
-    result.selected_tier = RiskTier::kPreferred;
+    const RolloutMetrics& metrics = selected_evaluation.metrics;
+    result.raw_collision = metrics.collision;
+    result.known_solid_collision = selected_evaluation.known_solid_collision;
+    result.critical_exposure_m = metrics.critical_exposure_m;
+    result.planning_exposure_m = metrics.planning_exposure_m;
+    result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
+    result.minimum_target_separation_m = metrics.minimum_target_separation_m;
+    result.predicted_capture_time_s = metrics.predicted_capture_time_s;
+    result.selected_tier =
+        result.known_solid_collision ? RiskTier::kCollision : metrics.worst_tier;
+    result.post_update_classification = selected_evaluation.classification;
     Control previous_control = previous_applied_control;
     if (!updated_.empty()) {
       result.first_control_delta =
@@ -741,8 +850,7 @@ public:
                      control.az - previous_control.az) /
               (index == 0U ? first_control_interval_s : config_.dynamics.dt_s));
       previous_control = control;
-      state = integrateReference(state, control, config_.dynamics);
-      result.horizon.push_back(state);
+      state = result.horizon[index + 1U];
       if (input.route.has_value() && input.route->points) {
         latest_route_station = projectForwardRouteStation(
             *input.route->points, state, reconstruction_route_station_m);
@@ -757,34 +865,7 @@ public:
                 : initial_distance -
                       std::hypot(input.target.x - state.x, input.target.y - state.y);
       }
-      if (hostSolidCollision(state, hostBodyAxis(control), config_.footprint,
-                             known_solids_)) {
-        result.known_solid_collision = true;
-      }
     }
-    const RolloutMetrics metrics = simulateReference(
-        input.initial_state, updated_, zero_noise_, config_.dynamics, config_.risk,
-        config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
-        input.target.x, input.target.y, config_.early_exit_on_collision,
-        previous_applied_control, input.reference_speed_mps, config_.footprint,
-        input.moving_target);
-    result.raw_collision = metrics.collision;
-    result.critical_exposure_m = metrics.critical_exposure_m;
-    result.planning_exposure_m = metrics.planning_exposure_m;
-    result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
-    result.minimum_target_separation_m = metrics.minimum_target_separation_m;
-    result.predicted_capture_time_s = metrics.predicted_capture_time_s;
-    result.selected_tier =
-        result.known_solid_collision ? RiskTier::kCollision : metrics.worst_tier;
-    result.post_update_classification = classifyMppiPostUpdate(
-        result.eligible_risk_contract,
-        MppiPostUpdateObservation{
-            .tier = result.selected_tier,
-            .raw_collision = result.raw_collision,
-            .known_solid_collision = result.known_solid_collision,
-            .critical_exposure_m = result.critical_exposure_m,
-            .planning_exposure_m = result.planning_exposure_m,
-        });
     result.terminal_progress_m =
         latest_route_station.has_value()
             ? *latest_route_station - input.route->initial_station_m
@@ -832,6 +913,12 @@ private:
   std::vector<Control> nominal_;
   std::vector<Control> updated_;
   std::vector<Control> best_eligible_;
+  std::vector<Control> repair_candidates_;
+  std::array<float, kRepairCandidateCount> repair_critical_exposure_{};
+  std::array<float, kRepairCandidateCount> repair_planning_exposure_{};
+  std::array<std::uint8_t, kRepairCandidateCount> repair_worst_tier_{};
+  std::array<std::uint8_t, kRepairCandidateCount> repair_raw_collision_{};
+  std::array<std::uint8_t, kRepairCandidateCount> repair_solid_collision_{};
   std::vector<Control> zero_noise_;
   std::optional<Control> last_output_control_;
   std::int64_t last_planning_stamp_ns_{0};
@@ -847,6 +934,8 @@ private:
   Event update_done_;
   Event warm_done_;
   Event completed_;
+  Event repair_started_;
+  Event repair_done_;
   mutable std::mutex mutex_;
 };
 

@@ -80,6 +80,29 @@ TEST(MppiReferenceTest, CollisionIsHardAndStopsEarly) {
   EXPECT_FLOAT_EQ(metrics.minimum_clearance_m, 0.0F);
 }
 
+TEST(MppiReferenceTest, TraceKeepsFullHorizonAfterEarlyCollision) {
+  constexpr int kWidth = 4;
+  constexpr int kHeight = 4;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 0.0F);
+  const std::array<Control, 3> controls{
+      Control{.ax = 1.0F},
+      Control{.ax = 1.0F},
+      Control{.ax = 1.0F},
+  };
+  const std::array<Control, 3> noise{};
+  ReferenceSimulationTrace trace;
+
+  const RolloutMetrics metrics =
+      simulateReference(State{1.5F, 1.5F, 0.0F}, controls, noise, DynamicsConfig{},
+                        RiskConfig{}, CostConfig{}, grid, esdf, 3.0F, 1.5F, true,
+                        Control{}, -1.0F, FootprintConfig{}, std::nullopt, &trace);
+
+  ASSERT_TRUE(metrics.collision);
+  ASSERT_EQ(trace.horizon.size(), controls.size() + 1U);
+  EXPECT_GT(trace.horizon.back().x, trace.horizon.at(1U).x);
+}
+
 TEST(MppiReferenceTest, NearWallFreeCellIsCriticalRatherThanCollision) {
   const EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf{1.0F, 0.0F};

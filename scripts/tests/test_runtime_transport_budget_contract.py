@@ -75,6 +75,7 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
             "gpu_risk_reduction_ms",
             "gpu_weight_calculation_ms",
             "gpu_control_update_ms",
+            "gpu_repair_validation_ms",
             "horizon_reconstruction_ms",
         ):
             self.assertIn(stage, diagnostics)

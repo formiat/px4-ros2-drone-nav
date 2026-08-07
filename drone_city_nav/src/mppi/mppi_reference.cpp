@@ -106,10 +106,16 @@ RolloutMetrics simulateReference(
     const std::span<const float> esdf, const float target_x_m, const float target_y_m,
     const bool early_exit_on_collision, const Control previous_applied_control,
     const float reference_speed_mps, const FootprintConfig& footprint,
-    const std::optional<MovingTargetReference> moving_target) {
+    const std::optional<MovingTargetReference> moving_target,
+    ReferenceSimulationTrace* const trace) {
   RolloutMetrics metrics{};
   metrics.minimum_clearance_m = std::numeric_limits<float>::infinity();
   State state = initial_state;
+  if (trace != nullptr) {
+    trace->horizon.clear();
+    trace->horizon.reserve(nominal_controls.size() + 1U);
+    trace->horizon.push_back(state);
+  }
   Control previous = previous_applied_control;
   const float initial_target_distance =
       moving_target.has_value()
@@ -120,6 +126,7 @@ RolloutMetrics simulateReference(
       std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
                                   costs.head_progress_horizon_s / dynamics.dt_s)),
                               1U, nominal_controls.size());
+  std::size_t simulated_steps = 0U;
   for (std::size_t step = 0U; step < nominal_controls.size(); ++step) {
     Control control{
         .ax = nominal_controls[step].ax + noise_controls[step].ax,
@@ -129,6 +136,10 @@ RolloutMetrics simulateReference(
     };
     const State previous_state = state;
     state = integrateReference(state, control, dynamics);
+    if (trace != nullptr) {
+      trace->horizon.push_back(state);
+    }
+    simulated_steps = step + 1U;
     const float validation_step_m = std::max(0.05F, 0.5F * grid.resolution_m);
     const FootprintBodyAxis body_axis =
         bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
@@ -188,6 +199,20 @@ RolloutMetrics simulateReference(
     previous = control;
     if (metrics.collision && early_exit_on_collision) {
       break;
+    }
+  }
+  if (trace != nullptr && simulated_steps < nominal_controls.size()) {
+    State trace_state = state;
+    for (std::size_t step = simulated_steps; step < nominal_controls.size(); ++step) {
+      const Control control{
+          .ax = nominal_controls[step].ax + noise_controls[step].ax,
+          .ay = nominal_controls[step].ay + noise_controls[step].ay,
+          .az = nominal_controls[step].az + noise_controls[step].az,
+          .yaw_accel =
+              nominal_controls[step].yaw_accel + noise_controls[step].yaw_accel,
+      };
+      trace_state = integrateReference(trace_state, control, dynamics);
+      trace->horizon.push_back(trace_state);
     }
   }
   metrics.costs.progress =

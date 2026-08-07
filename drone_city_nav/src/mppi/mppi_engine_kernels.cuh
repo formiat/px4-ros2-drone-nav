@@ -379,7 +379,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          std::size_t solid_count, const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
          Control previous_applied_control, float first_control_interval_s,
-         float reference_speed_mps, bool early_exit) {
+         float reference_speed_mps, bool early_exit, const Control* direct_controls) {
   const std::size_t rollout =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (rollout >= rollouts) {
@@ -416,9 +416,12 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           : (requested_head_steps > steps ? steps : requested_head_steps);
   for (std::size_t step = 0U; step < steps; ++step) {
     const std::size_t index = rollout * steps + step;
-    Control control{
-        nominal[step].ax + noise_ax[index], nominal[step].ay + noise_ay[index],
-        nominal[step].az + noise_az[index], nominal[step].yaw_accel + noise_yaw[index]};
+    Control control = direct_controls != nullptr
+                          ? direct_controls[index]
+                          : Control{nominal[step].ax + noise_ax[index],
+                                    nominal[step].ay + noise_ay[index],
+                                    nominal[step].az + noise_az[index],
+                                    nominal[step].yaw_accel + noise_yaw[index]};
     control = limitControlStep(control, previous, dynamics,
                                step == 0U ? first_control_interval_s : dynamics.dt_s);
     const State previous_state = state;
