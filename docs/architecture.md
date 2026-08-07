@@ -72,6 +72,13 @@ Gazebo contact involving the drone
 
 This node has no direct PX4 command publisher.
 
+The intercept launch loads all four production planners as ROS 2 components in
+one multithreaded component container. Each component retains independent
+vehicle state, route lifecycle, worker pool, CUDA stream, ESDF, and MPPI nominal
+controls. Sharing one process removes redundant ROS/DDS process overhead and
+lets all planners use one CUDA primary context; it does not merge vehicle state
+or make one vehicle's planner callbacks depend on another vehicle.
+
 ### `mppi_offboard_node`
 
 - consumes only fresh `MppiTrajectoryHorizon` messages;
@@ -270,6 +277,13 @@ ROS callbacks update short latest-value state. ESDF construction runs outside
 the control callback. MPPI uses persistent GPU allocations. Diagnostics are
 copied into a bounded latest-value mailbox and written after the execution
 horizon has been published.
+
+In the four-vehicle intercept mission, the planner component container has one
+executor thread per vehicle. CPU-heavy planner work remains bounded by the
+mission-wide planner worker budget. Each MPPI engine currently launches its own
+rollout kernels on an independent CUDA stream; vehicle-by-rollout fused kernels
+are a separate backend optimization and are not implied by component
+composition.
 
 ## Current Architectural Limits
 

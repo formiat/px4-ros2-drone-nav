@@ -51,6 +51,15 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn('"planner_worker_count": planner_worker_counts[role_index]', source)
         self.assertIn('"planning_tick_phase_offset_s": (', source)
 
+    def test_planners_share_one_multithreaded_component_process(self) -> None:
+        source = LAUNCH.read_text(encoding="utf-8")
+
+        self.assertIn("ComposableNodeContainer(", source)
+        self.assertIn('executable="component_container_mt"', source)
+        self.assertIn('plugin="drone_city_nav::ProductionMppiNode"', source)
+        self.assertIn('"thread_num": len(role_names)', source)
+        self.assertNotIn('executable="production_mppi_node"', source)
+
     def test_planner_validates_and_applies_tick_phase(self) -> None:
         source = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
             encoding="utf-8"

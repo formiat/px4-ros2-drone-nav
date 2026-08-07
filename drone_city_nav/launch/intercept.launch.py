@@ -7,7 +7,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, Shutdown
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer, Node
+from launch_ros.descriptions import ComposableNode
 
 
 def _parameters(document, node_name, overrides):
@@ -163,6 +164,7 @@ def generate_launch_description():
             planner_tick_rate_hz * len(role_names)
         )
         nodes = []
+        planner_components = []
         bridge_arguments = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
         bridge_remaps = []
         contacts_topic = "/drone_city_nav/drone_contacts"
@@ -282,6 +284,15 @@ def generate_launch_description():
                     * config["speed_scale"],
                 },
             )
+            planner_components.append(
+                ComposableNode(
+                    package="drone_city_nav",
+                    plugin="drone_city_nav::ProductionMppiNode",
+                    namespace=f"vehicles/{role}",
+                    name="production_mppi_node",
+                    parameters=[planner_params, {"use_sim_time": True}],
+                )
+            )
             offboard_params = _parameters(
                 document,
                 "mppi_offboard_node",
@@ -338,14 +349,6 @@ def generate_launch_description():
                         name="obstacle_memory_node",
                         output="screen",
                         parameters=[memory_params, {"use_sim_time": True}],
-                    ),
-                    Node(
-                        package="drone_city_nav",
-                        executable="production_mppi_node",
-                        namespace=f"vehicles/{role}",
-                        name="production_mppi_node",
-                        output="screen",
-                        parameters=[planner_params, {"use_sim_time": True}],
                     ),
                     Node(
                         package="drone_city_nav",
@@ -409,6 +412,18 @@ def generate_launch_description():
                     )
                 )
 
+        nodes.append(
+            ComposableNodeContainer(
+                package="rclcpp_components",
+                executable="component_container_mt",
+                name="multi_vehicle_mppi_container",
+                output="screen",
+                parameters=[
+                    {"thread_num": len(role_names), "use_sim_time": True}
+                ],
+                composable_node_descriptions=planner_components,
+            )
+        )
         bridge_arguments.extend(["--ros-args", *bridge_remaps])
         nodes.insert(
             0,

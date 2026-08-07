@@ -22,6 +22,12 @@ end-to-end latency. Report distributions, not one sample:
 - maximum;
 - deadline misses.
 
+The intercept mission loads all vehicle planners into one ROS 2 component
+container. Their MPPI engines share one process and CUDA primary context while
+retaining separate streams, buffers, nominal controls, and route state. This
+reduces process, DDS, and CUDA-context overhead without changing rollout
+selection. It is not yet a fused vehicle-by-rollout GPU batch.
+
 ## ESDF
 
 Full CPU ESDF construction is substantially more expensive than one resident
@@ -60,6 +66,7 @@ For a real run, compare:
 5. dropped ESDF and diagnostic snapshots;
 6. offboard horizon receive age;
 7. liveness and braking frequency.
+8. planner process/thread count and CUDA process count in multi-vehicle runs.
 
 Do not lower collision checking or shorten braking horizons solely to improve
 timing. First reduce redundant ESDF work, stale revisions, diagnostic load, or

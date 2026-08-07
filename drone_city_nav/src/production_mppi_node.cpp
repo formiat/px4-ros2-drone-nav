@@ -7,6 +7,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <filesystem>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 
 namespace drone_city_nav {
@@ -89,8 +90,8 @@ const char* productionGuideCandidateValidationStatusName(
   return "unknown";
 }
 
-ProductionMppiNode::ProductionMppiNode()
-    : Node{"production_mppi_node"} {
+ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
+    : Node{"production_mppi_node", options} {
   tick_rate_hz_ = declare_parameter<double>("tick_rate_hz", 50.0);
   rviz_rate_hz_ = declare_parameter<double>("rviz_rate_hz", 10.0);
   diagnostics_info_rate_hz_ =
@@ -815,9 +816,4 @@ ProductionMppiNode::~ProductionMppiNode() {
 
 } // namespace drone_city_nav
 
-int main(int argc, char* argv[]) {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<drone_city_nav::ProductionMppiNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(drone_city_nav::ProductionMppiNode)

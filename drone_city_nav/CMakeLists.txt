@@ -32,6 +32,7 @@ find_package(nav_msgs REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(ros_gz_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -376,8 +377,8 @@ ament_target_dependencies(
 enable_project_warnings(lidar_debug_node)
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
-  add_executable(
-    production_mppi_node
+  add_library(
+    drone_city_nav_production_mppi_component SHARED
     src/production_mppi_node.cpp
     src/production_mppi_node_esdf.cpp
     src/production_mppi_node_inputs.cpp
@@ -392,24 +393,39 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_summary.cpp
     src/tracking_objective_diagnostics.cpp
     src/production_mppi_node_execution.cpp)
-  target_compile_features(production_mppi_node PRIVATE cxx_std_20)
+  target_compile_features(drone_city_nav_production_mppi_component PRIVATE cxx_std_20)
   target_link_libraries(
-    production_mppi_node
+    drone_city_nav_production_mppi_component
     drone_city_nav_core
     drone_city_nav_ros_adapters
     drone_city_nav_mppi_cuda
     ${cpp_typesupport_target})
   ament_target_dependencies(
-    production_mppi_node
+    drone_city_nav_production_mppi_component
     ament_index_cpp
     nav_msgs
     px4_msgs
     rclcpp
+    rclcpp_components
     std_msgs
     visualization_msgs)
+  rclcpp_components_register_nodes(
+    drone_city_nav_production_mppi_component
+    "drone_city_nav::ProductionMppiNode")
+  enable_project_warnings(drone_city_nav_production_mppi_component)
+
+  add_executable(production_mppi_node src/production_mppi_main.cpp)
+  target_compile_features(production_mppi_node PRIVATE cxx_std_20)
+  target_link_libraries(production_mppi_node
+                        drone_city_nav_production_mppi_component)
+  ament_target_dependencies(production_mppi_node rclcpp)
   enable_project_warnings(production_mppi_node)
-  install(TARGETS production_mppi_node
-          RUNTIME DESTINATION lib/${PROJECT_NAME})
+  install(
+    TARGETS production_mppi_node drone_city_nav_production_mppi_component
+    EXPORT drone_city_nav_targets
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION lib/${PROJECT_NAME})
 endif()
 
 install(

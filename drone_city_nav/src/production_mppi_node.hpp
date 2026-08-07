@@ -366,7 +366,7 @@ productionPlanningSearchKindName(ProductionPlanningSearchKind kind) noexcept;
 
 class ProductionMppiNode final : public rclcpp::Node {
 public:
-  ProductionMppiNode();
+  explicit ProductionMppiNode(const rclcpp::NodeOptions& options);
   ~ProductionMppiNode() override;
 
   ProductionMppiNode(const ProductionMppiNode&) = delete;

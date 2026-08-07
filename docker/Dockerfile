@@ -52,6 +52,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-${ROS_DISTRO}-geometry-msgs \
         ros-${ROS_DISTRO}-nav-msgs \
         ros-${ROS_DISTRO}-rclcpp \
+        ros-${ROS_DISTRO}-rclcpp-components \
         ros-${ROS_DISTRO}-ros-base \
         ros-${ROS_DISTRO}-ros-gz \
         ros-${ROS_DISTRO}-sensor-msgs \
