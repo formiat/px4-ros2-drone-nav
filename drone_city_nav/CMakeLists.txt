@@ -185,6 +185,7 @@ add_library(
   src/mppi_liveness.cpp
   src/mppi_nominal_reseed.cpp
   src/mppi_risk_escalation.cpp
+  src/mppi_rollout_budget.cpp
   src/mppi_speed_policy.cpp
   src/navigation_state_prediction.cpp
   src/no_static_route_cycle.cpp
@@ -605,6 +606,11 @@ if(BUILD_TESTING)
   target_compile_features(mppi_speed_policy_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_speed_policy_test_current drone_city_nav_core)
   enable_project_warnings(mppi_speed_policy_test_current)
+
+  ament_add_gtest(mppi_rollout_budget_test tests/mppi_rollout_budget_test.cpp)
+  target_compile_features(mppi_rollout_budget_test PRIVATE cxx_std_20)
+  target_link_libraries(mppi_rollout_budget_test drone_city_nav_core)
+  enable_project_warnings(mppi_rollout_budget_test)
 
   if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     ament_add_gtest(mppi_control_sequence_test_current

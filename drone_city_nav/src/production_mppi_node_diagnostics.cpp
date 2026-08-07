@@ -374,7 +374,8 @@ void ProductionMppiNode::processDiagnostics(
        << " observation_speed_limit_mps="
        << finiteOrNegative(speed_policy.observation_limit_mps)
        << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
-       << " active_rollouts=" << result.active_rollouts
+       << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
+       << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
        << " gpu_warm_start_ms=" << result.timings.warm_start_ms
        << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
        << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
@@ -801,6 +802,8 @@ void ProductionMppiNode::processDiagnostics(
         << finiteOrNegative(speed_policy.observation_limit_mps)
         << ",\"goal_speed_limit_mps\":" << finiteOrNegative(speed_policy.goal_limit_mps)
         << ",\"active_rollouts\":" << result.active_rollouts
+        << ",\"rollout_budget_reason\":\""
+        << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason) << '"'
         << ",\"gpu_warm_start_ms\":" << result.timings.warm_start_ms
         << ",\"gpu_noise_generation_ms\":" << result.timings.noise_generation_ms
         << ",\"gpu_rollout_simulation_ms\":" << result.timings.rollout_simulation_ms

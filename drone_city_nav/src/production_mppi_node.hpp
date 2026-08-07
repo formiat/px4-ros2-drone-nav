@@ -13,6 +13,7 @@
 #include "drone_city_nav/mppi_liveness.hpp"
 #include "drone_city_nav/mppi_nominal_reseed.hpp"
 #include "drone_city_nav/mppi_risk_escalation.hpp"
+#include "drone_city_nav/mppi_rollout_budget.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
@@ -352,6 +353,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   bool route_projection_valid{false};
   bool liveness_reseed_requested{false};
   bool pose_predicted{false};
+  MppiRolloutBudgetDecision rollout_budget{};
   mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
   mppi::RiskTier maximum_eligible_risk_tier{mppi::RiskTier::kPreferred};
 };
@@ -462,7 +464,7 @@ private:
   double no_static_esdf_half_extent_m_{100.0};
   double no_static_esdf_recenter_margin_m_{70.0};
   std::size_t planner_worker_count_{4U};
-  std::size_t direct_tracking_rollouts_{4096U};
+  MppiRolloutBudgetConfig rollout_budget_config_{};
   double planning_tick_phase_offset_s_{0.0};
   NoStaticRouteCycleConfig no_static_cycle_config_{};
   MissionGoalCaptureConfig mission_goal_capture_config_{};

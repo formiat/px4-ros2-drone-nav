@@ -187,10 +187,26 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("mission_goal_capture_radius_m", 2.0);
   mppi_config_.rollouts =
       static_cast<std::size_t>(declare_parameter<int>("rollouts", 8192));
-  direct_tracking_rollouts_ = static_cast<std::size_t>(
+  rollout_budget_config_.full_rollouts = mppi_config_.rollouts;
+  rollout_budget_config_.open_static_rollouts =
+      static_cast<std::size_t>(declare_parameter<int>("open_static_rollouts", 6144));
+  rollout_budget_config_.direct_tracking_rollouts = static_cast<std::size_t>(
       declare_parameter<int>("direct_tracking_rollouts", 4096));
-  if (mppi_config_.rollouts == 0U || direct_tracking_rollouts_ == 0U ||
-      direct_tracking_rollouts_ > mppi_config_.rollouts) {
+  rollout_budget_config_.minimum_reduced_clearance_m = static_cast<float>(
+      declare_parameter<double>("adaptive_rollout_minimum_clearance_m", 8.0));
+  rollout_budget_config_.maximum_world_age_ms =
+      declare_parameter<double>("adaptive_rollout_maximum_world_age_ms", 250.0);
+  rollout_budget_config_.maximum_tracking_age_ms =
+      declare_parameter<double>("adaptive_rollout_maximum_tracking_age_ms", 250.0);
+  if (mppi_config_.rollouts == 0U ||
+      rollout_budget_config_.direct_tracking_rollouts == 0U ||
+      rollout_budget_config_.open_static_rollouts == 0U ||
+      rollout_budget_config_.direct_tracking_rollouts >
+          rollout_budget_config_.open_static_rollouts ||
+      rollout_budget_config_.open_static_rollouts > mppi_config_.rollouts ||
+      !(rollout_budget_config_.minimum_reduced_clearance_m > 0.0F) ||
+      !(rollout_budget_config_.maximum_world_age_ms > 0.0) ||
+      !(rollout_budget_config_.maximum_tracking_age_ms > 0.0)) {
     throw std::invalid_argument{"invalid MPPI rollout budget"};
   }
   mppi_config_.dynamics.dt_s =
@@ -791,7 +807,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   }
   RCLCPP_INFO(
       get_logger(),
-      "Production MPPI ready: rollouts=%zu direct_tracking_rollouts=%zu "
+      "Production MPPI ready: rollouts=%zu open_static_rollouts=%zu "
+      "direct_tracking_rollouts=%zu adaptive_clearance_m=%.1f "
       "steps=%zu rate=%.1fHz "
       "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
       "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
@@ -800,7 +817,9 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
       "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
       "planner_tick_phase_ms=%.1f no_static_esdf=(%.1fHz,%.1fm,%.1fm)",
-      mppi_config_.rollouts, direct_tracking_rollouts_, mppi_config_.steps,
+      mppi_config_.rollouts, rollout_budget_config_.open_static_rollouts,
+      rollout_budget_config_.direct_tracking_rollouts,
+      rollout_budget_config_.minimum_reduced_clearance_m, mppi_config_.steps,
       tick_rate_hz_, deadline_ms_, 0UL, use_static_map_ ? "true" : "false", "false",
       static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
       lattice_config_.receding_goal_distance_m, speed_policy_config_.cruise_speed_mps,

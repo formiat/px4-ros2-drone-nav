@@ -1,3 +1,4 @@
+#include "drone_city_nav/esdf_query.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 
@@ -481,6 +482,30 @@ void ProductionMppiNode::planningTick() {
       };
     }
   }
+  const EsdfQueryResult current_clearance =
+      queryConservativeEsdf3D(esdf->grid, *esdf->distances_m, navigation.state.x,
+                              navigation.state.y, navigation.state.z);
+  const double tracking_age_ms =
+      tracking_objective != nullptr && tracking_objective->observation_stamp_ns > 0
+          ? static_cast<double>(std::max<std::int64_t>(
+                0, now_ns - tracking_objective->observation_stamp_ns)) /
+                1.0e6
+          : std::numeric_limits<double>::infinity();
+  const MppiRolloutBudgetDecision rollout_budget = selectMppiRolloutBudget(
+      rollout_budget_config_,
+      MppiRolloutBudgetObservation{
+          .static_world = use_static_map_,
+          .guide_available =
+              direct_tracking_interception || (route_usable && route_projection.valid),
+          .direct_tracking = direct_tracking_interception,
+          .clearance_valid = current_clearance.status == EsdfQueryStatus::kValid,
+          .clearance_m = current_clearance.clearance_m,
+          .world_age_ms = esdf_age_ms,
+          .tracking_age_ms = tracking_age_ms,
+          .required_risk_tier = direct_tracking_interception
+                                    ? mppi::RiskTier::kPreferred
+                                    : maximum_eligible_risk_tier_,
+      });
   mppi::MppiTickInput input{
       .initial_state = navigation.state,
       .target = target,
@@ -505,9 +530,7 @@ void ProductionMppiNode::planningTick() {
                     .initial_station_m = static_cast<float>(route_projection.station_m),
                 }}
               : std::nullopt,
-      .active_rollouts = direct_tracking_interception
-                             ? std::optional<std::size_t>{direct_tracking_rollouts_}
-                             : std::nullopt,
+      .active_rollouts = rollout_budget.active_rollouts,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
@@ -650,6 +673,7 @@ void ProductionMppiNode::planningTick() {
       .route_projection_valid = route_projection.valid,
       .liveness_reseed_requested = liveness.reseed_requested,
       .pose_predicted = pose_predicted,
+      .rollout_budget = rollout_budget,
       .route_required_risk_tier = route_required_risk_tier,
       .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
   });
