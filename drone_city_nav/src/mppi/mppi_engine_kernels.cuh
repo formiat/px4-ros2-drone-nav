@@ -338,31 +338,33 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
   }
   const std::uint32_t axial_samples = max(2U, footprint.axial_samples);
   const std::uint32_t radial_rings = max(1U, footprint.radial_rings);
-  for (std::uint32_t axial_sample = 0U; axial_sample < axial_samples; ++axial_sample) {
-    const float axial_ratio =
-        static_cast<float>(axial_sample) / static_cast<float>(axial_samples - 1U);
-    const float axial_offset =
-        -footprint.lower_extent_m +
-        axial_ratio * (footprint.lower_extent_m + footprint.upper_extent_m);
-    for (std::uint32_t ring = 0U; ring <= radial_rings; ++ring) {
-      const std::uint32_t angular_samples =
-          ring == 0U ? 1U : footprint.perimeter_samples;
-      const float radial_offset = footprint.radius_m * static_cast<float>(ring) /
-                                  static_cast<float>(radial_rings);
-      for (std::uint32_t angular = 0U; angular < angular_samples; ++angular) {
-        const float angle = 2.0F * kPi * static_cast<float>(angular) /
-                            static_cast<float>(angular_samples);
-        const float radial_x_component =
-            cosf(angle) * radial_x.x + sinf(angle) * radial_y.x;
-        const float radial_y_component =
-            cosf(angle) * radial_x.y + sinf(angle) * radial_y.y;
-        const float radial_z_component =
-            cosf(angle) * radial_x.z + sinf(angle) * radial_y.z;
+  for (std::uint32_t ring = 0U; ring <= radial_rings; ++ring) {
+    const std::uint32_t angular_samples = ring == 0U ? 1U : footprint.perimeter_samples;
+    const float radial_offset = footprint.radius_m * static_cast<float>(ring) /
+                                static_cast<float>(radial_rings);
+    for (std::uint32_t angular = 0U; angular < angular_samples; ++angular) {
+      const float angle = 2.0F * kPi * static_cast<float>(angular) /
+                          static_cast<float>(angular_samples);
+      float sin_angle = 0.0F;
+      float cos_angle = 0.0F;
+      sincosf(angle, &sin_angle, &cos_angle);
+      const float radial_x_offset =
+          radial_offset * (cos_angle * radial_x.x + sin_angle * radial_y.x);
+      const float radial_y_offset =
+          radial_offset * (cos_angle * radial_x.y + sin_angle * radial_y.y);
+      const float radial_z_offset =
+          radial_offset * (cos_angle * radial_x.z + sin_angle * radial_y.z);
+      for (std::uint32_t axial_sample = 0U; axial_sample < axial_samples;
+           ++axial_sample) {
+        const float axial_ratio =
+            static_cast<float>(axial_sample) / static_cast<float>(axial_samples - 1U);
+        const float axial_offset =
+            -footprint.lower_extent_m +
+            axial_ratio * (footprint.lower_extent_m + footprint.upper_extent_m);
         const DeviceEsdfQuery query = queryEsdfPoint(
-            state.x + axial_offset * axis.x + radial_offset * radial_x_component,
-            state.y + axial_offset * axis.y + radial_offset * radial_y_component,
-            state.z + axial_offset * axis.z + radial_offset * radial_z_component, grid,
-            esdf_texture);
+            state.x + axial_offset * axis.x + radial_x_offset,
+            state.y + axial_offset * axis.y + radial_y_offset,
+            state.z + axial_offset * axis.z + radial_z_offset, grid, esdf_texture);
         result.clearance_m = fminf(result.clearance_m, query.clearance_m);
         result.raw_collision = result.raw_collision || query.raw_collision;
         if (result.raw_collision) {
