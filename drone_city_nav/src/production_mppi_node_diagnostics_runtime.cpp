@@ -66,6 +66,11 @@ void ProductionMppiNode::recordTickStatistics(
                                                                                   : 0U;
   mission_goal_position_hold_ticks_ +=
       planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold ? 1U : 0U;
+  if (result.active_rollouts > 0U) {
+    active_rollout_total_ += result.active_rollouts;
+    full_rollout_ticks_ += result.active_rollouts == mppi_config_.rollouts ? 1U : 0U;
+    reduced_rollout_ticks_ += result.active_rollouts < mppi_config_.rollouts ? 1U : 0U;
+  }
 }
 
 void ProductionMppiNode::publishRviz(

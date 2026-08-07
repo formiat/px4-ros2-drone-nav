@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 namespace drone_city_nav::mppi {
@@ -60,7 +61,18 @@ struct MppiTickInput {
   RiskTier maximum_eligible_risk_tier{RiskTier::kPreferred};
   std::optional<MovingTargetReference> moving_target;
   std::optional<RouteReference> route;
+  std::optional<std::size_t> active_rollouts;
 };
+
+[[nodiscard]] inline std::size_t
+resolveMppiActiveRollouts(const std::size_t capacity,
+                          const std::optional<std::size_t> requested) {
+  const std::size_t active = requested.value_or(capacity);
+  if (capacity == 0U || active == 0U || active > capacity) {
+    throw std::invalid_argument{"active MPPI rollout count exceeds capacity"};
+  }
+  return active;
+}
 
 struct MppiStageTimings {
   double noise_generation_ms{0.0};
@@ -119,6 +131,7 @@ struct MppiTickResult {
   double warm_start_shift_s{0.0};
   bool nominal_reseeded{false};
   std::uint64_t esdf_revision{0U};
+  std::size_t active_rollouts{0U};
   MppiStageTimings timings{};
 };
 

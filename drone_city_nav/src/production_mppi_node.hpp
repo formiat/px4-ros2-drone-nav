@@ -455,6 +455,7 @@ private:
   double no_static_esdf_half_extent_m_{100.0};
   double no_static_esdf_recenter_margin_m_{70.0};
   std::size_t planner_worker_count_{4U};
+  std::size_t direct_tracking_rollouts_{4096U};
   double planning_tick_phase_offset_s_{0.0};
   NoStaticRouteCycleConfig no_static_cycle_config_{};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
@@ -581,6 +582,9 @@ private:
   std::uint64_t no_guide_braking_hold_ticks_{0U};
   std::uint64_t unavailable_world_braking_hold_ticks_{0U};
   std::uint64_t mission_goal_position_hold_ticks_{0U};
+  std::uint64_t full_rollout_ticks_{0U};
+  std::uint64_t reduced_rollout_ticks_{0U};
+  std::uint64_t active_rollout_total_{0U};
   std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
   mutable std::mutex statistics_mutex_;

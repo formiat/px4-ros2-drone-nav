@@ -109,6 +109,7 @@ void ProductionMppiNode::planningTick() {
         .reference_speed_mps = 0.0F,
         .moving_target = std::nullopt,
         .route = std::nullopt,
+        .active_rollouts = std::nullopt,
     };
     const MppiHorizonSafetyResult fallback =
         buildMppiBrakingFallback(input.initial_state, safety_config_);
@@ -506,6 +507,9 @@ void ProductionMppiNode::planningTick() {
                     .initial_station_m = static_cast<float>(route_projection.station_m),
                 }}
               : std::nullopt,
+      .active_rollouts = direct_tracking_interception
+                             ? std::optional<std::size_t>{direct_tracking_rollouts_}
+                             : std::nullopt,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
@@ -613,6 +617,7 @@ void ProductionMppiNode::planningTick() {
   diagnostic_result.warm_start_shift_s = result.warm_start_shift_s;
   diagnostic_result.nominal_reseeded = result.nominal_reseeded;
   diagnostic_result.esdf_revision = result.esdf_revision;
+  diagnostic_result.active_rollouts = result.active_rollouts;
   diagnostic_result.timings = result.timings;
   ProductionMppiPreparedEsdf diagnostic_esdf = *esdf;
   diagnostic_esdf.distances_m.reset();

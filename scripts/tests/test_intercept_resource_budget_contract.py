@@ -71,6 +71,18 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn("planning_start_timer_->cancel()", source)
         self.assertIn("startPlanningTimer();", source)
 
+    def test_reduced_rollout_budget_is_limited_to_direct_tracking(self) -> None:
+        config = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")
+        planning_tick = (
+            PACKAGE / "src" / "production_mppi_node_planning_tick.cpp"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("rollouts: 8192", config)
+        self.assertIn("direct_tracking_rollouts: 4096", config)
+        self.assertIn(
+            ".active_rollouts = direct_tracking_interception", planning_tick
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

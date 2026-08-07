@@ -444,11 +444,13 @@ public:
       }
     }
     const auto host_started = std::chrono::steady_clock::now();
-    const std::size_t noise_count = config_.rollouts * config_.steps;
+    const std::size_t active_rollouts =
+        resolveMppiActiveRollouts(config_.rollouts, input.active_rollouts);
+    const std::size_t noise_count = active_rollouts * config_.steps;
     const int noise_blocks =
         static_cast<int>((noise_count + kThreadsPerBlock - 1U) / kThreadsPerBlock);
     const int rollout_blocks =
-        static_cast<int>((config_.rollouts + kThreadsPerBlock - 1U) / kThreadsPerBlock);
+        static_cast<int>((active_rollouts + kThreadsPerBlock - 1U) / kThreadsPerBlock);
     const int control_blocks =
         static_cast<int>((config_.steps + kThreadsPerBlock - 1U) / kThreadsPerBlock);
     double elapsed_s = 0.0;
@@ -522,7 +524,7 @@ public:
         buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
         buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
         buffers_.minimum_clearance.get(), buffers_.worst_tier.get(),
-        buffers_.raw_collision.get(), buffers_.solid_collision.get(), config_.rollouts,
+        buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
         config_.steps, input.initial_state, input.target, moving_target,
         moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
         config_.costs, textures_[active_texture_].grid(),
@@ -538,22 +540,22 @@ public:
         buffers_.weight_sum.get(), buffers_.best_rollout.get());
     reduceTier<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.raw_collision.get(),
-        buffers_.solid_collision.get(), config_.rollouts,
+        buffers_.solid_collision.get(), active_rollouts,
         static_cast<int>(input.maximum_eligible_risk_tier), buffers_.best_tier.get());
     reduceCritical<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
-        buffers_.raw_collision.get(), buffers_.solid_collision.get(), config_.rollouts,
+        buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
         buffers_.best_tier.get(), buffers_.best_critical.get());
     reducePlanning<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
         buffers_.planning_exposure.get(), buffers_.raw_collision.get(),
-        buffers_.solid_collision.get(), config_.rollouts, buffers_.best_tier.get(),
+        buffers_.solid_collision.get(), active_rollouts, buffers_.best_tier.get(),
         buffers_.best_critical.get(), config_.risk.critical_exposure_tolerance_m,
         buffers_.best_planning.get());
     reduceSoft<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
         buffers_.planning_exposure.get(), buffers_.soft_cost.get(),
-        buffers_.raw_collision.get(), buffers_.solid_collision.get(), config_.rollouts,
+        buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
         buffers_.best_tier.get(), buffers_.best_critical.get(),
         buffers_.best_planning.get(), buffers_.minimum_soft.get(), config_.risk,
         static_cast<int>(input.maximum_eligible_risk_tier));
@@ -562,18 +564,18 @@ public:
         buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
         buffers_.planning_exposure.get(), buffers_.soft_cost.get(),
         buffers_.raw_collision.get(), buffers_.solid_collision.get(),
-        buffers_.weights.get(), config_.rollouts, buffers_.best_tier.get(),
+        buffers_.weights.get(), active_rollouts, buffers_.best_tier.get(),
         buffers_.best_critical.get(), buffers_.best_planning.get(),
         buffers_.minimum_soft.get(), config_.risk, config_.costs.temperature,
         static_cast<int>(input.maximum_eligible_risk_tier), buffers_.weight_sum.get());
     selectBestEligibleRollout<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.weights.get(), buffers_.soft_cost.get(), buffers_.minimum_soft.get(),
-        config_.rollouts, buffers_.best_rollout.get());
+        active_rollouts, buffers_.best_rollout.get());
     weights_done_.record(stream_);
     updateControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.nominal.get(), buffers_.updated.get(), buffers_.noise_ax.get(),
         buffers_.noise_ay.get(), buffers_.noise_az.get(), buffers_.noise_yaw.get(),
-        buffers_.weights.get(), buffers_.weight_sum.get(), config_.rollouts,
+        buffers_.weights.get(), buffers_.weight_sum.get(), active_rollouts,
         config_.steps);
     limitControls<<<1, 1, 0U, stream_>>>(buffers_.updated.get(), config_.steps,
                                          config_.dynamics, previous_applied_control,
@@ -581,7 +583,7 @@ public:
     buildBestEligibleControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.nominal.get(), buffers_.best_eligible.get(), buffers_.noise_ax.get(),
         buffers_.noise_ay.get(), buffers_.noise_az.get(), buffers_.noise_yaw.get(),
-        buffers_.best_rollout.get(), config_.rollouts, config_.steps);
+        buffers_.best_rollout.get(), active_rollouts, config_.steps);
     limitControls<<<1, 1, 0U, stream_>>>(buffers_.best_eligible.get(), config_.steps,
                                          config_.dynamics, previous_applied_control,
                                          first_control_interval_s);
@@ -697,6 +699,7 @@ public:
     result.warm_start_shift_s = elapsed_s;
     result.nominal_reseeded = nominal_reseeded;
     result.esdf_revision = textures_[active_texture_].revision();
+    result.active_rollouts = active_rollouts;
     result.timings.warm_start_ms = elapsedMs(started_, warm_done_);
     result.timings.noise_generation_ms = elapsedMs(warm_done_, noise_done_);
     result.timings.rollout_simulation_ms = elapsedMs(noise_done_, simulation_done_);

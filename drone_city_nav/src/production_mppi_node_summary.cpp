@@ -36,6 +36,9 @@ void ProductionMppiNode::publishSummary() {
   std::uint64_t no_guide_braking_hold_ticks{0U};
   std::uint64_t unavailable_world_braking_hold_ticks{0U};
   std::uint64_t mission_goal_position_hold_ticks{0U};
+  std::uint64_t full_rollout_ticks{0U};
+  std::uint64_t reduced_rollout_ticks{0U};
+  std::uint64_t active_rollout_total{0U};
   {
     const std::scoped_lock lock{statistics_mutex_};
     runtime_samples_ms = runtime_samples_ms_;
@@ -49,6 +52,9 @@ void ProductionMppiNode::publishSummary() {
     no_guide_braking_hold_ticks = no_guide_braking_hold_ticks_;
     unavailable_world_braking_hold_ticks = unavailable_world_braking_hold_ticks_;
     mission_goal_position_hold_ticks = mission_goal_position_hold_ticks_;
+    full_rollout_ticks = full_rollout_ticks_;
+    reduced_rollout_ticks = reduced_rollout_ticks_;
+    active_rollout_total = active_rollout_total_;
   }
   if (runtime_samples_ms.empty()) {
     return;
@@ -60,6 +66,11 @@ void ProductionMppiNode::publishSummary() {
   }
   const double maximum =
       *std::max_element(runtime_samples_ms.begin(), runtime_samples_ms.end());
+  const std::uint64_t rollout_ticks = full_rollout_ticks + reduced_rollout_ticks;
+  const double average_active_rollouts =
+      rollout_ticks > 0U ? static_cast<double>(active_rollout_total) /
+                               static_cast<double>(rollout_ticks)
+                         : 0.0;
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
@@ -71,7 +82,9 @@ void ProductionMppiNode::publishSummary() {
       " unavailable_world_braking_hold_ticks=%" PRIu64
       " mission_goal_position_hold_ticks=%" PRIu64 " dropped_esdf_updates=%" PRIu64
       " no_static_raw_updates=%" PRIu64 " no_static_esdf_builds=%" PRIu64
-      " no_static_esdf_throttled=%" PRIu64 " dropped_diagnostics=%" PRIu64,
+      " no_static_esdf_throttled=%" PRIu64 " dropped_diagnostics=%" PRIu64
+      " full_rollout_ticks=%" PRIu64 " reduced_rollout_ticks=%" PRIu64
+      " average_active_rollouts=%.1f",
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, raw_collision_horizons, solid_collision_horizons,
@@ -81,7 +94,8 @@ void ProductionMppiNode::publishSummary() {
       no_static_raw_updates_.load(std::memory_order_relaxed),
       no_static_esdf_builds_.load(std::memory_order_relaxed),
       no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
-      dropped_diagnostics_snapshots_.load(std::memory_order_relaxed));
+      dropped_diagnostics_snapshots_.load(std::memory_order_relaxed),
+      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts);
 }
 
 } // namespace drone_city_nav

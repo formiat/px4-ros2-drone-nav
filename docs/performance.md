@@ -28,6 +28,12 @@ retaining separate streams, buffers, nominal controls, and route state. This
 reduces process, DDS, and CUDA-context overhead without changing rollout
 selection. It is not yet a fused vehicle-by-rollout GPU batch.
 
+Buffers are allocated for the configured maximum rollout count. A confirmed
+direct-interception tick may execute a smaller validated prefix through
+`direct_tracking_rollouts`; loss of direct tracking, route execution, holds, and
+all ordinary navigation ticks retain the full configured budget. Diagnostics
+record `active_rollouts` so timing changes can be compared by actual GPU work.
+
 ## ESDF
 
 Full CPU ESDF construction is substantially more expensive than one resident

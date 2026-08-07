@@ -1,3 +1,4 @@
+#include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
 #include <gtest/gtest.h>
@@ -8,6 +9,15 @@
 
 namespace drone_city_nav::mppi {
 namespace {
+
+TEST(MppiReferenceTest, ActiveRolloutBudgetUsesCapacityOrValidatedPrefix) {
+  EXPECT_EQ(resolveMppiActiveRollouts(8192U, std::nullopt), 8192U);
+  EXPECT_EQ(resolveMppiActiveRollouts(8192U, 4096U), 4096U);
+  EXPECT_THROW(static_cast<void>(resolveMppiActiveRollouts(8192U, 0U)),
+               std::invalid_argument);
+  EXPECT_THROW(static_cast<void>(resolveMppiActiveRollouts(8192U, 8193U)),
+               std::invalid_argument);
+}
 
 TEST(MppiReferenceTest, DynamicsClampsAccelerationAndVelocity) {
   DynamicsConfig config{};
