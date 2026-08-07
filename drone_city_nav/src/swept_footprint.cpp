@@ -201,6 +201,54 @@ void accumulate(SweptFootprintResult& result,
           .minimum_clearance_m = std::numeric_limits<double>::infinity()};
 }
 
+template<typename Occupancy>
+[[nodiscard]] SweptFootprintResult
+validateRawFootprintAt2D(const Occupancy& occupancy, const Point3& position,
+                         const SweptFootprintConfig& config) noexcept {
+  const double radius_m = std::max(0.0, config.radius_m);
+  if (!(radius_m > 0.0)) {
+    const std::optional<GridIndex> cell =
+        occupancy.worldToCell(Point2{position.x, position.y});
+    return cell.has_value() && occupancy.isOccupied(*cell)
+               ? SweptFootprintResult{.status = SweptFootprintStatus::kRawCollision,
+                                      .failure_point = position}
+               : validRawFootprint();
+  }
+  const GridBounds& bounds = occupancy.bounds();
+  const int minimum_x = std::max(
+      0, minimumCell(position.x - radius_m, bounds.origin_x, bounds.resolution_m));
+  const int maximum_x = std::min(
+      bounds.width_cells - 1,
+      maximumCell(position.x + radius_m, bounds.origin_x, bounds.resolution_m));
+  const int minimum_y = std::max(
+      0, minimumCell(position.y - radius_m, bounds.origin_y, bounds.resolution_m));
+  const int maximum_y = std::min(
+      bounds.height_cells - 1,
+      maximumCell(position.y + radius_m, bounds.origin_y, bounds.resolution_m));
+  const double radius_squared = radius_m * radius_m;
+  for (int y = minimum_y; y <= maximum_y; ++y) {
+    for (int x = minimum_x; x <= maximum_x; ++x) {
+      const GridIndex cell{x, y};
+      if (!occupancy.isOccupied(cell)) {
+        continue;
+      }
+      const double cell_minimum_x = bounds.origin_x + x * bounds.resolution_m;
+      const double cell_minimum_y = bounds.origin_y + y * bounds.resolution_m;
+      const double nearest_x =
+          std::clamp(position.x, cell_minimum_x, cell_minimum_x + bounds.resolution_m);
+      const double nearest_y =
+          std::clamp(position.y, cell_minimum_y, cell_minimum_y + bounds.resolution_m);
+      const double dx = position.x - nearest_x;
+      const double dy = position.y - nearest_y;
+      if (dx * dx + dy * dy <= radius_squared) {
+        return {.status = SweptFootprintStatus::kRawCollision,
+                .failure_point = Point3{nearest_x, nearest_y, position.z}};
+      }
+    }
+  }
+  return validRawFootprint();
+}
+
 } // namespace
 
 SweptFootprintResult validateFootprintAt(const mppi::EsdfGrid& grid,
@@ -312,48 +360,13 @@ validateSweptFootprint(const mppi::EsdfGrid& grid, const std::span<const float> 
 SweptFootprintResult
 validateRawFootprintAt(const OccupancyGrid2D& occupancy, const Point3& position,
                        const SweptFootprintConfig& config) noexcept {
-  const double radius_m = std::max(0.0, config.radius_m);
-  if (!(radius_m > 0.0)) {
-    const std::optional<GridIndex> cell =
-        occupancy.worldToCell(Point2{position.x, position.y});
-    return cell.has_value() && occupancy.isOccupied(*cell)
-               ? SweptFootprintResult{.status = SweptFootprintStatus::kRawCollision,
-                                      .failure_point = position}
-               : validRawFootprint();
-  }
-  const GridBounds& bounds = occupancy.bounds();
-  const int minimum_x = std::max(
-      0, minimumCell(position.x - radius_m, bounds.origin_x, bounds.resolution_m));
-  const int maximum_x = std::min(
-      bounds.width_cells - 1,
-      maximumCell(position.x + radius_m, bounds.origin_x, bounds.resolution_m));
-  const int minimum_y = std::max(
-      0, minimumCell(position.y - radius_m, bounds.origin_y, bounds.resolution_m));
-  const int maximum_y = std::min(
-      bounds.height_cells - 1,
-      maximumCell(position.y + radius_m, bounds.origin_y, bounds.resolution_m));
-  const double radius_squared = radius_m * radius_m;
-  for (int y = minimum_y; y <= maximum_y; ++y) {
-    for (int x = minimum_x; x <= maximum_x; ++x) {
-      const GridIndex cell{x, y};
-      if (!occupancy.isOccupied(cell)) {
-        continue;
-      }
-      const double cell_minimum_x = bounds.origin_x + x * bounds.resolution_m;
-      const double cell_minimum_y = bounds.origin_y + y * bounds.resolution_m;
-      const double nearest_x =
-          std::clamp(position.x, cell_minimum_x, cell_minimum_x + bounds.resolution_m);
-      const double nearest_y =
-          std::clamp(position.y, cell_minimum_y, cell_minimum_y + bounds.resolution_m);
-      const double dx = position.x - nearest_x;
-      const double dy = position.y - nearest_y;
-      if (dx * dx + dy * dy <= radius_squared) {
-        return {.status = SweptFootprintStatus::kRawCollision,
-                .failure_point = Point3{nearest_x, nearest_y, position.z}};
-      }
-    }
-  }
-  return validRawFootprint();
+  return validateRawFootprintAt2D(occupancy, position, config);
+}
+
+SweptFootprintResult
+validateRawFootprintAt(const RawOccupancyGridView2D& occupancy, const Point3& position,
+                       const SweptFootprintConfig& config) noexcept {
+  return validateRawFootprintAt2D(occupancy, position, config);
 }
 
 SweptFootprintResult

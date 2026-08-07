@@ -195,6 +195,48 @@ TEST(MppiHorizonSafetyTest, AllowsRawFreeSpaceOutsideLocalStaticEsdf) {
   EXPECT_GT(result.global_raw_fallback_samples, 0U);
 }
 
+TEST(MppiHorizonSafetyTest, ValidatesEveryHorizonSampleAgainstNewestRawSnapshot) {
+  const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> local_esdf(4U, 10.0F);
+  const GridBounds raw_bounds{0.0, 0.0, 1.0, 8, 4};
+  std::vector<std::int8_t> raw_cells(32U, 0);
+  raw_cells[1U * 8U + 4U] = 100;
+  const RawOccupancyGridView2D latest_raw{raw_bounds, raw_cells, 100};
+  const mppi::State current{1.0F, 1.5F, 5.0F};
+  const std::vector<mppi::State> horizon{current, mppi::State{6.0F, 1.5F, 5.0F}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25},
+      false, {}, nullptr, &latest_raw);
+
+  EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_TRUE(result.global_raw_collision);
+  EXPECT_GT(result.global_raw_validation_samples, 0U);
+  EXPECT_EQ(result.global_raw_fallback_samples, 0U);
+}
+
+TEST(MppiHorizonSafetyTest, LatestRawBoundaryDoesNotBecomeAProhibitedZone) {
+  const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> local_esdf(4U, 10.0F);
+  const GridBounds raw_bounds{0.0, 0.0, 1.0, 4, 4};
+  const std::vector<std::int8_t> raw_cells(16U, 0);
+  const RawOccupancyGridView2D latest_raw{raw_bounds, raw_cells, 100};
+  const mppi::State current{1.0F, 1.5F, 5.0F};
+  const std::vector<mppi::State> horizon{current, mppi::State{8.0F, 1.5F, 5.0F}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25},
+      false, {}, nullptr, &latest_raw);
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_FALSE(result.global_raw_collision);
+  EXPECT_GT(result.global_raw_validation_samples, 0U);
+}
+
 TEST(MppiHorizonSafetyTest, UsesAltitudeForThreeDimensionalCollision) {
   mppi::EsdfGrid grid{2, 2, 1.0F, 0.0F, 0.0F};
   grid.depth = 2;

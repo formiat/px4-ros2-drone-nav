@@ -1,4 +1,5 @@
 #include "drone_city_nav/distance_field.hpp"
+#include "drone_city_nav/local_esdf_2d.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 
 #include <algorithm>
@@ -264,6 +265,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                   prepared.grid.height, prepared.grid.depth);
       continue;
     }
+    const auto conversion_started = std::chrono::steady_clock::now();
     RawOccupancyGridFromRosResult conversion =
         rawOccupancyGridFromRos(snapshot->grid, RawOccupancyGridFromRosConfig{100, 0});
     if (!conversion.grid.has_value()) {
@@ -273,17 +275,98 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                   snapshot->obstacle_snapshot_revision);
       continue;
     }
-    const auto build_started = std::chrono::steady_clock::now();
     auto raw_occupancy =
         std::make_shared<const OccupancyGrid2D>(std::move(*conversion.grid));
+    const double raw_conversion_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  conversion_started)
+            .count();
+    const auto raw_world =
+        std::make_shared<const ProductionMppiRawWorld2D>(ProductionMppiRawWorld2D{
+            .producer_instance_id = snapshot->producer_instance_id,
+            .revision = snapshot->obstacle_snapshot_revision,
+            .occupied_fingerprint = raw_occupancy->occupiedFingerprint(),
+            .ready_stamp_ns = get_clock()->now().nanoseconds(),
+            .occupancy = raw_occupancy,
+        });
+    latest_raw_world_.store(raw_world, std::memory_order_release);
+    no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
+
+    ProductionMppiNavigation navigation;
+    {
+      const std::scoped_lock lock{input_mutex_};
+      navigation = navigation_;
+    }
+    if (!navigation.valid) {
+      continue;
+    }
+    std::optional<ProductionMppiPreparedEsdf> active_prepared;
+    {
+      const std::scoped_lock lock{esdf_state_mutex_};
+      active_prepared = prepared_esdf_;
+    }
+    const GridBounds& world_bounds = raw_occupancy->bounds();
+    const Point2 position{navigation.state.x, navigation.state.y};
+    GridBounds local_bounds;
+    bool recenter = true;
+    if (active_prepared && active_prepared->distances_m) {
+      local_bounds = GridBounds{
+          .origin_x = active_prepared->grid.origin_x_m,
+          .origin_y = active_prepared->grid.origin_y_m,
+          .resolution_m = active_prepared->grid.resolution_m,
+          .width_cells = active_prepared->grid.width,
+          .height_cells = active_prepared->grid.height,
+      };
+      recenter = localEsdfNeedsRecenter(local_bounds, world_bounds, position,
+                                        no_static_esdf_recenter_margin_m_);
+    }
+    if (recenter) {
+      local_bounds =
+          selectLocalEsdfBounds(world_bounds, position, no_static_esdf_half_extent_m_);
+    }
+    OccupancyGrid2D local_occupancy = cropOccupancyGrid(*raw_occupancy, local_bounds);
+    const std::uint64_t local_occupied_fingerprint =
+        local_occupancy.occupiedFingerprint();
+    const bool local_occupancy_unchanged =
+        active_prepared && active_prepared->distances_m && !recenter &&
+        active_prepared->source_occupied_fingerprint == local_occupied_fingerprint;
+    const auto build_started_at = std::chrono::steady_clock::now();
+    const bool first_build =
+        no_static_esdf_last_build_time_ == std::chrono::steady_clock::time_point{};
+    const bool build_rate_due =
+        first_build || std::chrono::duration<double>(build_started_at -
+                                                     no_static_esdf_last_build_time_)
+                               .count() >= 1.0 / no_static_esdf_update_rate_hz_;
+    if (local_occupancy_unchanged ||
+        (active_prepared && !recenter && !build_rate_due)) {
+      if (!local_occupancy_unchanged) {
+        no_static_esdf_throttled_updates_.fetch_add(1U, std::memory_order_relaxed);
+      } else {
+        const std::scoped_lock lock{esdf_state_mutex_};
+        if (prepared_esdf_ && prepared_esdf_->revision == active_prepared->revision) {
+          prepared_esdf_->source_stamp_ns = source_stamp_ns;
+          prepared_esdf_->ready_stamp_ns = raw_world->ready_stamp_ns;
+          prepared_esdf_->raw_occupancy = raw_occupancy;
+        }
+      }
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "NO_STATIC_ESDF_DEFERRED raw_revision=%" PRIu64
+          " reason=%s raw_conversion_ms=%.2f raw_updates=%" PRIu64 " builds=%" PRIu64
+          " throttled=%" PRIu64,
+          raw_world->revision,
+          local_occupancy_unchanged ? "occupied_unchanged" : "rate_limited",
+          raw_conversion_ms, no_static_raw_updates_.load(std::memory_order_relaxed),
+          no_static_esdf_builds_.load(std::memory_order_relaxed),
+          no_static_esdf_throttled_updates_.load(std::memory_order_relaxed));
+      continue;
+    }
     const DistanceField2D field = DistanceField2D::build(
-        *raw_occupancy,
+        local_occupancy,
         static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
         DistanceFieldSource::kOccupied, planning_worker_pool_.get());
-    const double build_ms = std::chrono::duration<double, std::milli>(
-                                std::chrono::steady_clock::now() - build_started)
-                                .count();
-    const auto conversion_started = std::chrono::steady_clock::now();
+    const double build_ms = field.stats().duration_ms;
+    const auto float_conversion_started = std::chrono::steady_clock::now();
     std::vector<float> distances;
     distances.reserve(field.distancesM().size());
     for (const double distance_m : field.distancesM()) {
@@ -291,18 +374,21 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     }
     const double conversion_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  conversion_started)
-            .count();
+                                                  float_conversion_started)
+            .count() +
+        raw_conversion_ms;
     const GridBounds& bounds = field.bounds();
     const mppi::EsdfGrid grid{bounds.width_cells, bounds.height_cells,
                               static_cast<float>(bounds.resolution_m),
                               static_cast<float>(bounds.origin_x),
                               static_cast<float>(bounds.origin_y)};
     const mppi::EsdfUploadResult upload = engine_->updateEsdf(
-        mppi::EsdfSnapshot{grid, distances, snapshot->obstacle_snapshot_revision});
+        mppi::EsdfSnapshot{grid, distances, local_occupied_fingerprint});
     if (!upload.accepted) {
       continue;
     }
+    no_static_esdf_last_build_time_ = build_started_at;
+    no_static_esdf_builds_.fetch_add(1U, std::memory_order_relaxed);
 
     ProductionMppiPreparedEsdf prepared;
     {
@@ -312,7 +398,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       }
     }
     prepared.producer_instance_id = snapshot->producer_instance_id;
-    prepared.revision = snapshot->obstacle_snapshot_revision;
+    prepared.revision = local_occupied_fingerprint;
+    prepared.source_occupied_fingerprint = local_occupied_fingerprint;
     prepared.source_stamp_ns = source_stamp_ns;
     prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
     prepared.build_ms = build_ms;
@@ -325,7 +412,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     prepared.grid = grid;
     prepared.distances_m =
         std::make_shared<const std::vector<float>>(std::move(distances));
-    prepared.raw_occupancy = std::move(raw_occupancy);
+    prepared.raw_occupancy = raw_occupancy;
     if (const std::shared_ptr<const ProductionNavigationObjective> objective =
             navigationObjective()) {
       prepared.search_objective = makeStaticRouteObjective(*objective);
@@ -352,12 +439,18 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
 
     RCLCPP_INFO(
         get_logger(),
-        "PRODUCTION_MPPI_ESDF revision=%" PRIu64
+        "PRODUCTION_MPPI_ESDF revision=%" PRIu64 " raw_revision=%" PRIu64
         " build_ms=%.2f conversion_ms=%.2f upload_ms=%.2f "
-        "raw_to_ready_ms=%.2f dropped_raw=%" PRIu64 " dropped_guide_worlds=%" PRIu64,
-        prepared.revision, prepared.build_ms, prepared.conversion_ms,
-        prepared.upload_ms,
+        "raw_to_ready_ms=%.2f full_cells=%zu local_cells=%zu dimensions=%dx%d "
+        "recenter=%s builds=%" PRIu64 " throttled=%" PRIu64 " dropped_raw=%" PRIu64
+        " dropped_guide_worlds=%" PRIu64,
+        prepared.revision, raw_world->revision, prepared.build_ms,
+        prepared.conversion_ms, prepared.upload_ms,
         static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
+        raw_occupancy->cellCount(), local_occupancy.cellCount(), prepared.grid.width,
+        prepared.grid.height, recenter ? "true" : "false",
+        no_static_esdf_builds_.load(std::memory_order_relaxed),
+        no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
         dropped_raw_snapshots_.load(std::memory_order_relaxed),
         dropped_guide_worlds_.load(std::memory_order_relaxed));
   }

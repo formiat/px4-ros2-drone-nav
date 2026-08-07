@@ -168,7 +168,8 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
     const std::span<const float> esdf_m, const mppi::EsdfGrid& grid,
     const MppiHorizonSafetyConfig& config, const bool engine_collision,
     const std::span<const mppi::KnownSolid> known_solids,
-    const OccupancyGrid3D* global_raw_occupancy) {
+    const OccupancyGrid3D* global_raw_occupancy,
+    const RawOccupancyGridView2D* latest_raw_occupancy) {
   MppiHorizonSafetyResult result;
   const double speed =
       std::hypot(std::hypot(current_state.vx, current_state.vy), current_state.vz);
@@ -215,13 +216,24 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
           footprint_validation.status == SweptFootprintStatus::kOutsideGrid;
       if (outside_local_esdf && global_raw_occupancy != nullptr) {
         ++result.global_raw_fallback_samples;
+        ++result.global_raw_validation_samples;
       }
-      const bool global_raw_collision =
+      const bool static_global_raw_collision =
           outside_local_esdf && global_raw_occupancy != nullptr &&
           !validateRawFootprintAt(*global_raw_occupancy,
                                   Point3{state.x, state.y, state.z}, body_axis,
                                   footprint)
                .accepted();
+      if (latest_raw_occupancy != nullptr) {
+        ++result.global_raw_validation_samples;
+      }
+      const bool latest_raw_collision =
+          latest_raw_occupancy != nullptr &&
+          !validateRawFootprintAt(*latest_raw_occupancy,
+                                  Point3{state.x, state.y, state.z}, footprint)
+               .accepted();
+      const bool global_raw_collision =
+          static_global_raw_collision || latest_raw_collision;
       result.global_raw_collision = result.global_raw_collision || global_raw_collision;
       const bool footprint_collision =
           footprint_validation.status == SweptFootprintStatus::kRawCollision ||

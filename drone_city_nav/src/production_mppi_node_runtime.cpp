@@ -201,69 +201,17 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       const auto validate_candidate_on_latest_world =
           [&](const std::shared_ptr<const std::vector<Point2>>& candidate,
               const bool reaches_mission_goal) {
-            std::shared_ptr<const ProductionMppiPreparedEsdf> validation_world;
-            {
-              const std::scoped_lock lock{esdf_state_mutex_};
-              if (prepared_esdf_.has_value()) {
-                validation_world =
-                    std::make_shared<const ProductionMppiPreparedEsdf>(*prepared_esdf_);
-              }
+            ProductionGuideCandidateValidation validation =
+                validateGuideCandidateOnLatestWorld(candidate, reaches_mission_goal);
+            raw_validation = validation.raw_validation;
+            candidate_validation_status = validation.status;
+            validation_revision = validation.validation_revision;
+            candidate_validation_position = validation.validation_position;
+            latest_world_rejected_candidate = !validation.accepted;
+            if (validation.accepted) {
+              publication_world = std::move(validation.publication_world);
             }
-            ProductionMppiNavigation validation_navigation;
-            {
-              const std::scoped_lock lock{input_mutex_};
-              validation_navigation = navigation_;
-            }
-            if (!validation_world || !validation_world->distances_m ||
-                !validation_world->raw_occupancy || !validation_navigation.valid) {
-              candidate_validation_status =
-                  ProductionGuideCandidateValidationStatus::kUnavailableLatestWorld;
-              latest_world_rejected_candidate = true;
-              return false;
-            }
-            validation_revision = validation_world->revision;
-            candidate_validation_position =
-                Point2{validation_navigation.state.x, validation_navigation.state.y};
-            const GlobalGuideProjection candidate_projection =
-                projectOntoGlobalGuide(*candidate, candidate_validation_position);
-            if (!candidate_projection.valid) {
-              candidate_validation_status =
-                  ProductionGuideCandidateValidationStatus::kInvalidProjection;
-              latest_world_rejected_candidate = true;
-              return false;
-            }
-            if (candidate_projection.cross_track_m >
-                active_guide_config_.maximum_cross_track_m) {
-              candidate_validation_status =
-                  ProductionGuideCandidateValidationStatus::kExcessiveCrossTrack;
-              latest_world_rejected_candidate = true;
-              return false;
-            }
-            raw_validation = validateGuideAgainstRawOccupancy(
-                *candidate, *validation_world->raw_occupancy,
-                active_guide_config_.validation_sample_step_m,
-                candidate_projection.station_m);
-            if (!raw_validation.accepted) {
-              candidate_validation_status =
-                  ProductionGuideCandidateValidationStatus::kRawValidationRejected;
-              latest_world_rejected_candidate = true;
-              return false;
-            }
-            ActiveGlobalGuideLifecycle validator{active_guide_config_};
-            if (!validator
-                     .accept(candidate, reaches_mission_goal, validation_world->grid,
-                             *validation_world->distances_m,
-                             candidate_validation_position)
-                     .accepted) {
-              candidate_validation_status =
-                  ProductionGuideCandidateValidationStatus::kLifecycleRejected;
-              latest_world_rejected_candidate = true;
-              return false;
-            }
-            candidate_validation_status =
-                ProductionGuideCandidateValidationStatus::kAccepted;
-            publication_world = std::move(validation_world);
-            return true;
+            return validation.accepted;
           };
       const std::shared_ptr<const std::vector<Point2>> previous_active_guide =
           active_guide_lifecycle_->guide();
@@ -275,13 +223,19 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           previous_active_guide->size() >= 2U &&
           guide_update.release_reason == GlobalGuideReleaseReason::kBlocked &&
           world->raw_occupancy) {
+        const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
+            latest_raw_world_.load(std::memory_order_acquire);
+        const std::shared_ptr<const OccupancyGrid2D> validation_occupancy =
+            latest_raw_world && latest_raw_world->occupancy
+                ? latest_raw_world->occupancy
+                : world->raw_occupancy;
         const GlobalGuideProjection release_projection =
             projectOntoGlobalGuide(*previous_active_guide, position);
         const double validation_station_m =
             release_projection.valid ? release_projection.station_m : 0.0;
         const RawGuideValidationResult blocked_validation =
             validateGuideAgainstRawOccupancy(
-                *previous_active_guide, *world->raw_occupancy,
+                *previous_active_guide, *validation_occupancy,
                 active_guide_config_.validation_sample_step_m, validation_station_m);
         const Point2 failure_point =
             blocked_validation.accepted ? position : blocked_validation.failure_point;
@@ -669,6 +623,15 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     {
       const std::scoped_lock lock{esdf_state_mutex_};
       if (prepared_esdf_.has_value() && prepared_esdf_->revision == prepared.revision) {
+        prepared.source_stamp_ns =
+            std::max(prepared.source_stamp_ns, prepared_esdf_->source_stamp_ns);
+        prepared.ready_stamp_ns =
+            std::max(prepared.ready_stamp_ns, prepared_esdf_->ready_stamp_ns);
+        if (const std::shared_ptr<const ProductionMppiRawWorld2D> raw_world =
+                latest_raw_world_.load(std::memory_order_acquire);
+            raw_world && raw_world->occupancy) {
+          prepared.raw_occupancy = raw_world->occupancy;
+        }
         prepared_esdf_ = prepared;
         activated = true;
       }

@@ -63,6 +63,10 @@ validateRawFootprintAt(const OccupancyGrid2D& occupancy, const Point3& position,
                        const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] SweptFootprintResult
+validateRawFootprintAt(const RawOccupancyGridView2D& occupancy, const Point3& position,
+                       const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
 validateRawSweptFootprint(const OccupancyGrid2D& occupancy, const Point3& first,
                           const Point3& second,
                           const SweptFootprintConfig& config) noexcept;

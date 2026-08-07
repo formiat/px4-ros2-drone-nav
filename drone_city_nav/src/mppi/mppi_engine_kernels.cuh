@@ -1,0 +1,748 @@
+#pragma once
+
+__device__ float clampValue(const float value, const float minimum,
+                            const float maximum) {
+  return fminf(maximum, fmaxf(minimum, value));
+}
+
+__device__ void clampHorizontal(float& x, float& y, const float limit) {
+  const float magnitude = hypotf(x, y);
+  if (magnitude > limit && magnitude > 0.0F) {
+    const float scale = limit / magnitude;
+    x *= scale;
+    y *= scale;
+  }
+}
+
+__device__ std::uint64_t mixBits(std::uint64_t value) {
+  value += 0x9e3779b97f4a7c15ULL;
+  value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+  value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+  return value ^ (value >> 31U);
+}
+
+__device__ float uniform01(const std::uint64_t value) {
+  return static_cast<float>((mixBits(value) >> 40U) + 1U) * (1.0F / 16777217.0F);
+}
+
+__device__ float gaussian(const std::uint64_t first, const std::uint64_t second) {
+  const float u1 = fmaxf(uniform01(first), 1.0e-7F);
+  return sqrtf(-2.0F * logf(u1)) * cosf(2.0F * kPi * uniform01(second));
+}
+
+__global__ void generateNoise(float* noise_ax, float* noise_ay, float* noise_az,
+                              float* noise_yaw, std::size_t count, std::uint64_t seed,
+                              std::uint64_t tick, NoiseConfig config) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= count) {
+    return;
+  }
+  const std::uint64_t base = seed ^ (tick * 0xd1342543de82ef95ULL) ^ index;
+  noise_ax[index] = config.horizontal_acceleration_sigma_mps2 *
+                    gaussian(base, base ^ 0xa0761d6478bd642fULL);
+  noise_ay[index] =
+      config.horizontal_acceleration_sigma_mps2 *
+      gaussian(base ^ 0xe7037ed1a0b428dbULL, base ^ 0x8ebc6af09c88c6e3ULL);
+  noise_az[index] =
+      config.vertical_acceleration_sigma_mps2 *
+      gaussian(base ^ 0x589965cc75374cc3ULL, base ^ 0x1d8e4e27c47d124fULL);
+  noise_yaw[index] =
+      config.yaw_acceleration_sigma_radps2 *
+      gaussian(base ^ 0xeb44accab455d165ULL, base ^ 0x9e3779b97f4a7c15ULL);
+}
+
+__device__ State integrate(State state, Control control, DynamicsConfig config) {
+  clampHorizontal(control.ax, control.ay, config.maximum_horizontal_acceleration_mps2);
+  control.az = clampValue(control.az, -config.maximum_vertical_acceleration_mps2,
+                          config.maximum_vertical_acceleration_mps2);
+  control.yaw_accel =
+      clampValue(control.yaw_accel, -config.maximum_yaw_acceleration_radps2,
+                 config.maximum_yaw_acceleration_radps2);
+  const float drag = fmaxf(0.0F, 1.0F - config.linear_drag_1ps * config.dt_s);
+  state.vx = state.vx * drag + control.ax * config.dt_s;
+  state.vy = state.vy * drag + control.ay * config.dt_s;
+  state.vz = state.vz * drag + control.az * config.dt_s;
+  clampHorizontal(state.vx, state.vy, config.maximum_horizontal_speed_mps);
+  state.vz = clampValue(state.vz, -config.maximum_vertical_speed_mps,
+                        config.maximum_vertical_speed_mps);
+  state.yaw_rate =
+      clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,
+                 -config.maximum_yaw_rate_radps, config.maximum_yaw_rate_radps);
+  state.x += state.vx * config.dt_s;
+  state.y += state.vy * config.dt_s;
+  state.z += state.vz * config.dt_s;
+  state.yaw = remainderf(state.yaw + state.yaw_rate * config.dt_s, 2.0F * kPi);
+  return state;
+}
+
+__device__ Control limitControlStep(Control control, const Control previous,
+                                    const DynamicsConfig config,
+                                    const float interval_s) {
+  clampHorizontal(control.ax, control.ay, config.maximum_horizontal_acceleration_mps2);
+  control.az = clampValue(control.az, -config.maximum_vertical_acceleration_mps2,
+                          config.maximum_vertical_acceleration_mps2);
+  control.yaw_accel =
+      clampValue(control.yaw_accel, -config.maximum_yaw_acceleration_radps2,
+                 config.maximum_yaw_acceleration_radps2);
+  const float maximum_delta = config.maximum_control_jerk_mps3 * interval_s;
+  control.ax =
+      clampValue(control.ax, previous.ax - maximum_delta, previous.ax + maximum_delta);
+  control.ay =
+      clampValue(control.ay, previous.ay - maximum_delta, previous.ay + maximum_delta);
+  control.az =
+      clampValue(control.az, previous.az - maximum_delta, previous.az + maximum_delta);
+  return control;
+}
+
+struct DeviceBodyAxis {
+  float x{0.0F};
+  float y{0.0F};
+  float z{1.0F};
+};
+
+__device__ DeviceBodyAxis normalizeAxis(const DeviceBodyAxis axis) {
+  const float length = sqrtf(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
+  return length > 1.0e-6F && isfinite(length)
+             ? DeviceBodyAxis{axis.x / length, axis.y / length, axis.z / length}
+             : DeviceBodyAxis{};
+}
+
+__device__ DeviceBodyAxis bodyAxisFromControl(const Control control) {
+  constexpr float kGravityMps2{9.80665F};
+  return normalizeAxis(
+      DeviceBodyAxis{control.ax, control.ay, control.az + kGravityMps2});
+}
+
+__device__ bool cylinderProjectionOverlaps(const float center_projection,
+                                           const float axis_projection,
+                                           const float solid_min, const float solid_max,
+                                           const FootprintConfig footprint) {
+  const float projection = clampValue(axis_projection, -1.0F, 1.0F);
+  const float radial_projection =
+      footprint.radius_m * sqrtf(fmaxf(0.0F, 1.0F - projection * projection));
+  const float maximum_axial = projection >= 0.0F
+                                  ? footprint.upper_extent_m * projection
+                                  : -footprint.lower_extent_m * projection;
+  const float minimum_axial = projection >= 0.0F
+                                  ? -footprint.lower_extent_m * projection
+                                  : footprint.upper_extent_m * projection;
+  return center_projection + maximum_axial + radial_projection >= solid_min &&
+         center_projection + minimum_axial - radial_projection <= solid_max;
+}
+
+__device__ bool intersectsSolid(const State& state, const DeviceBodyAxis body_axis,
+                                const FootprintConfig footprint,
+                                const KnownSolid& solid) {
+  if (!(footprint.radius_m > 0.0F)) {
+    if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
+      return false;
+    }
+    const float dx = state.x - solid.center_x_m;
+    const float dy = state.y - solid.center_y_m;
+    return fabsf(dx * solid.normal_x + dy * solid.normal_y) <= solid.half_depth_m &&
+           fabsf(dx * solid.lateral_x + dy * solid.lateral_y) <= solid.half_width_m;
+  }
+  const float dx = state.x - solid.center_x_m;
+  const float dy = state.y - solid.center_y_m;
+  const float depth = dx * solid.normal_x + dy * solid.normal_y;
+  const float lateral = dx * solid.lateral_x + dy * solid.lateral_y;
+  const float axis_depth = body_axis.x * solid.normal_x + body_axis.y * solid.normal_y;
+  const float axis_lateral =
+      body_axis.x * solid.lateral_x + body_axis.y * solid.lateral_y;
+  return cylinderProjectionOverlaps(depth, axis_depth, -solid.half_depth_m,
+                                    solid.half_depth_m, footprint) &&
+         cylinderProjectionOverlaps(lateral, axis_lateral, -solid.half_width_m,
+                                    solid.half_width_m, footprint) &&
+         cylinderProjectionOverlaps(state.z, body_axis.z, solid.min_z_m, solid.max_z_m,
+                                    footprint);
+}
+
+struct RouteProjection {
+  float station_m{0.0F};
+  float cross_track_m{0.0F};
+  float reference_z_m{0.0F};
+  float reference_speed_mps{0.0F};
+  bool valid{false};
+};
+
+__device__ RouteProjection projectOntoRoute(const State& state,
+                                            const RouteSample3D* route_points,
+                                            const std::size_t route_point_count,
+                                            const float minimum_station_m) {
+  RouteProjection result;
+  float best_squared_distance = kInfinity;
+  for (std::size_t index = 0U; index + 1U < route_point_count; ++index) {
+    const RouteSample3D first = route_points[index];
+    const RouteSample3D second = route_points[index + 1U];
+    if (second.station_m + 1.0e-5F < minimum_station_m) {
+      continue;
+    }
+    const float dx = second.x_m - first.x_m;
+    const float dy = second.y_m - first.y_m;
+    const float squared_length = dx * dx + dy * dy;
+    const float station_length_m = second.station_m - first.station_m;
+    if (!(squared_length > 1.0e-8F) || !(station_length_m > 1.0e-5F)) {
+      continue;
+    }
+    const float minimum_ratio = clampValue(
+        (minimum_station_m - first.station_m) / station_length_m, 0.0F, 1.0F);
+    const float ratio = clampValue(
+        ((state.x - first.x_m) * dx + (state.y - first.y_m) * dy) / squared_length,
+        minimum_ratio, 1.0F);
+    const float projected_x = first.x_m + ratio * dx;
+    const float projected_y = first.y_m + ratio * dy;
+    const float offset_x = state.x - projected_x;
+    const float offset_y = state.y - projected_y;
+    const float squared_distance = offset_x * offset_x + offset_y * offset_y;
+    if (squared_distance < best_squared_distance) {
+      best_squared_distance = squared_distance;
+      result.station_m = first.station_m + ratio * station_length_m;
+      result.cross_track_m = sqrtf(squared_distance);
+      result.reference_z_m = first.z_m + ratio * (second.z_m - first.z_m);
+      result.reference_speed_mps =
+          first.reference_speed_mps +
+          ratio * (second.reference_speed_mps - first.reference_speed_mps);
+      result.valid = true;
+    }
+  }
+  return result;
+}
+
+struct DeviceEsdfQuery {
+  float clearance_m;
+  bool raw_collision;
+};
+
+__device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const float z,
+                                          const EsdfGrid grid,
+                                          const cudaTextureObject_t esdf_texture) {
+  const float cell_x_float = (x - grid.origin_x_m) / grid.resolution_m;
+  const float cell_y_float = (y - grid.origin_y_m) / grid.resolution_m;
+  const int cell_x = static_cast<int>(floorf(cell_x_float));
+  const int cell_y = static_cast<int>(floorf(cell_y_float));
+  const int depth = max(1, grid.depth);
+  const int cell_z =
+      depth > 1 ? static_cast<int>(floorf((z - grid.origin_z_m) / grid.resolution_m))
+                : 0;
+  if (cell_x < 0 || cell_y < 0 || cell_z < 0 || cell_x >= grid.width ||
+      cell_y >= grid.height || cell_z >= depth) {
+    return {kInfinity, false};
+  }
+  const float center_distance_m = tex3D<float>(
+      esdf_texture, static_cast<float>(cell_x) + 0.5F,
+      static_cast<float>(cell_y) + 0.5F, static_cast<float>(cell_z) + 0.5F);
+  if (isinf(center_distance_m) && center_distance_m > 0.0F) {
+    return {center_distance_m, false};
+  }
+  if (!isfinite(center_distance_m) || center_distance_m < 0.0F) {
+    return {0.0F, true};
+  }
+  const float center_x_m =
+      grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
+  const float center_y_m =
+      grid.origin_y_m + (static_cast<float>(cell_y) + 0.5F) * grid.resolution_m;
+  const float center_z_m =
+      grid.origin_z_m + (static_cast<float>(cell_z) + 0.5F) * grid.resolution_m;
+  const float dx = x - center_x_m;
+  const float dy = y - center_y_m;
+  const float dz = depth > 1 ? z - center_z_m : 0.0F;
+  const float half_diagonal_scale =
+      depth > 1 ? 0.86602540378443864676F : 0.70710678118654752440F;
+  const float correction_m =
+      sqrtf(dx * dx + dy * dy + dz * dz) + half_diagonal_scale * grid.resolution_m;
+  return {fmaxf(0.0F, center_distance_m - correction_m), center_distance_m == 0.0F};
+}
+
+__device__ DeviceBodyAxis crossAxis(const DeviceBodyAxis first,
+                                    const DeviceBodyAxis second) {
+  return DeviceBodyAxis{first.y * second.z - first.z * second.y,
+                        first.z * second.x - first.x * second.z,
+                        first.x * second.y - first.y * second.x};
+}
+
+__device__ DeviceEsdfQuery queryFootprint(const State& state,
+                                          const DeviceBodyAxis body_axis,
+                                          const FootprintConfig footprint,
+                                          const EsdfGrid grid,
+                                          const cudaTextureObject_t esdf_texture) {
+  DeviceEsdfQuery result =
+      queryEsdfPoint(state.x, state.y, state.z, grid, esdf_texture);
+  if (result.raw_collision || !(footprint.radius_m > 0.0F) ||
+      footprint.perimeter_samples == 0U) {
+    return result;
+  }
+  if (grid.depth <= 1) {
+    const float minimum_x = state.x - footprint.radius_m;
+    const float maximum_x = state.x + footprint.radius_m;
+    const float minimum_y = state.y - footprint.radius_m;
+    const float maximum_y = state.y + footprint.radius_m;
+    const int minimum_cell_x = max(
+        0, static_cast<int>(floorf((minimum_x - grid.origin_x_m) / grid.resolution_m)));
+    const int maximum_cell_x = min(
+        grid.width - 1,
+        static_cast<int>(ceilf((maximum_x - grid.origin_x_m) / grid.resolution_m)) - 1);
+    const int minimum_cell_y = max(
+        0, static_cast<int>(floorf((minimum_y - grid.origin_y_m) / grid.resolution_m)));
+    const int maximum_cell_y = min(
+        grid.height - 1,
+        static_cast<int>(ceilf((maximum_y - grid.origin_y_m) / grid.resolution_m)) - 1);
+    const float radius_squared = footprint.radius_m * footprint.radius_m;
+    for (int cell_y = minimum_cell_y; cell_y <= maximum_cell_y; ++cell_y) {
+      for (int cell_x = minimum_cell_x; cell_x <= maximum_cell_x; ++cell_x) {
+        const float center_distance_m =
+            tex3D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
+                         static_cast<float>(cell_y) + 0.5F, 0.5F);
+        if ((!isfinite(center_distance_m) &&
+             !(isinf(center_distance_m) && center_distance_m > 0.0F)) ||
+            center_distance_m < 0.0F) {
+          result.raw_collision = true;
+          return result;
+        }
+        if (center_distance_m != 0.0F) {
+          continue;
+        }
+        const float cell_minimum_x =
+            grid.origin_x_m + static_cast<float>(cell_x) * grid.resolution_m;
+        const float cell_minimum_y =
+            grid.origin_y_m + static_cast<float>(cell_y) * grid.resolution_m;
+        const float nearest_x =
+            clampValue(state.x, cell_minimum_x, cell_minimum_x + grid.resolution_m);
+        const float nearest_y =
+            clampValue(state.y, cell_minimum_y, cell_minimum_y + grid.resolution_m);
+        const float dx = state.x - nearest_x;
+        const float dy = state.y - nearest_y;
+        if (dx * dx + dy * dy <= radius_squared) {
+          result.clearance_m = 0.0F;
+          result.raw_collision = true;
+          return result;
+        }
+      }
+    }
+    result.clearance_m = fmaxf(0.0F, result.clearance_m - footprint.radius_m);
+    return result;
+  }
+  const DeviceBodyAxis axis = normalizeAxis(body_axis);
+  const DeviceBodyAxis reference = fabsf(axis.z) < 0.9F
+                                       ? DeviceBodyAxis{0.0F, 0.0F, 1.0F}
+                                       : DeviceBodyAxis{1.0F, 0.0F, 0.0F};
+  const DeviceBodyAxis radial_x = normalizeAxis(crossAxis(axis, reference));
+  const DeviceBodyAxis radial_y = normalizeAxis(crossAxis(axis, radial_x));
+  const std::uint32_t axial_samples = max(2U, footprint.axial_samples);
+  const std::uint32_t radial_rings = max(1U, footprint.radial_rings);
+  for (std::uint32_t axial_sample = 0U; axial_sample < axial_samples; ++axial_sample) {
+    const float axial_ratio =
+        static_cast<float>(axial_sample) / static_cast<float>(axial_samples - 1U);
+    const float axial_offset =
+        -footprint.lower_extent_m +
+        axial_ratio * (footprint.lower_extent_m + footprint.upper_extent_m);
+    for (std::uint32_t ring = 0U; ring <= radial_rings; ++ring) {
+      const std::uint32_t angular_samples =
+          ring == 0U ? 1U : footprint.perimeter_samples;
+      const float radial_offset = footprint.radius_m * static_cast<float>(ring) /
+                                  static_cast<float>(radial_rings);
+      for (std::uint32_t angular = 0U; angular < angular_samples; ++angular) {
+        const float angle = 2.0F * kPi * static_cast<float>(angular) /
+                            static_cast<float>(angular_samples);
+        const float radial_x_component =
+            cosf(angle) * radial_x.x + sinf(angle) * radial_y.x;
+        const float radial_y_component =
+            cosf(angle) * radial_x.y + sinf(angle) * radial_y.y;
+        const float radial_z_component =
+            cosf(angle) * radial_x.z + sinf(angle) * radial_y.z;
+        const DeviceEsdfQuery query = queryEsdfPoint(
+            state.x + axial_offset * axis.x + radial_offset * radial_x_component,
+            state.y + axial_offset * axis.y + radial_offset * radial_y_component,
+            state.z + axial_offset * axis.z + radial_offset * radial_z_component, grid,
+            esdf_texture);
+        result.clearance_m = fminf(result.clearance_m, query.clearance_m);
+        result.raw_collision = result.raw_collision || query.raw_collision;
+        if (result.raw_collision) {
+          return result;
+        }
+      }
+    }
+  }
+  return result;
+}
+
+__global__ void
+simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
+         const float* noise_yaw, const Control* nominal, float* soft_cost,
+         float* critical_exposure, float* planning_exposure, float* minimum_clearance,
+         std::uint8_t* worst_tier, std::uint8_t* raw_collision,
+         std::uint8_t* solid_collision, std::size_t rollouts, std::size_t steps,
+         State initial, State target, MovingTargetReference moving_target,
+         bool moving_target_enabled, DynamicsConfig dynamics, RiskConfig risk,
+         FootprintConfig footprint, CostConfig costs, EsdfGrid grid,
+         cudaTextureObject_t esdf_texture, const KnownSolid* solids,
+         std::size_t solid_count, const RouteSample3D* route_points,
+         std::size_t route_point_count, float initial_route_station_m,
+         Control previous_applied_control, float first_control_interval_s,
+         float reference_speed_mps, bool early_exit) {
+  const std::size_t rollout =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (rollout >= rollouts) {
+    return;
+  }
+  State state = initial;
+  Control previous = previous_applied_control;
+  float guide_cost = 0.0F;
+  float acceleration_cost = 0.0F;
+  float jerk_cost = 0.0F;
+  float yaw_cost = 0.0F;
+  float altitude_cost = 0.0F;
+  float speed_tracking_cost = 0.0F;
+  float critical_m = 0.0F;
+  float planning_m = 0.0F;
+  float minimum_clearance_m = kInfinity;
+  bool raw_hit = false;
+  bool solid_hit = false;
+  std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
+  const float initial_distance =
+      moving_target_enabled ? hypotf(hypotf(moving_target.state.x - initial.x,
+                                            moving_target.state.y - initial.y),
+                                     moving_target.state.z - initial.z)
+                            : hypotf(target.x - initial.x, target.y - initial.y);
+  float minimum_target_separation_m = initial_distance;
+  float head_progress = 0.0F;
+  float terminal_route_progress = 0.0F;
+  float rollout_route_station_m = initial_route_station_m;
+  const std::size_t requested_head_steps =
+      static_cast<std::size_t>(ceilf(costs.head_progress_horizon_s / dynamics.dt_s));
+  const std::size_t head_steps =
+      requested_head_steps == 0U
+          ? 1U
+          : (requested_head_steps > steps ? steps : requested_head_steps);
+  for (std::size_t step = 0U; step < steps; ++step) {
+    const std::size_t index = rollout * steps + step;
+    Control control{
+        nominal[step].ax + noise_ax[index], nominal[step].ay + noise_ay[index],
+        nominal[step].az + noise_az[index], nominal[step].yaw_accel + noise_yaw[index]};
+    control = limitControlStep(control, previous, dynamics,
+                               step == 0U ? first_control_interval_s : dynamics.dt_s);
+    const State previous_state = state;
+    state = integrate(state, control, dynamics);
+    const float segment_length_m =
+        hypotf(state.x - previous_state.x, state.y - previous_state.y);
+    const float validation_step_m = fmaxf(0.05F, 0.5F * grid.resolution_m);
+    const int validation_samples =
+        max(1, static_cast<int>(ceilf(segment_length_m / validation_step_m)));
+    float clearance = kInfinity;
+    bool segment_raw_hit = false;
+    const DeviceBodyAxis body_axis = bodyAxisFromControl(control);
+    for (int sample = 1; sample <= validation_samples; ++sample) {
+      const float ratio =
+          static_cast<float>(sample) / static_cast<float>(validation_samples);
+      State swept_state = state;
+      swept_state.x = previous_state.x + ratio * (state.x - previous_state.x);
+      swept_state.y = previous_state.y + ratio * (state.y - previous_state.y);
+      swept_state.z = previous_state.z + ratio * (state.z - previous_state.z);
+      const DeviceEsdfQuery esdf_query =
+          queryFootprint(swept_state, body_axis, footprint, grid, esdf_texture);
+      clearance = fminf(clearance, esdf_query.clearance_m);
+      segment_raw_hit = segment_raw_hit || esdf_query.raw_collision;
+      for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;
+           ++solid_index) {
+        solid_hit =
+            intersectsSolid(swept_state, body_axis, footprint, solids[solid_index]);
+      }
+    }
+    minimum_clearance_m = fminf(minimum_clearance_m, clearance);
+    raw_hit = raw_hit || segment_raw_hit;
+    const RouteProjection route_projection =
+        route_point_count >= 2U
+            ? projectOntoRoute(state, route_points, route_point_count,
+                               rollout_route_station_m)
+            : RouteProjection{};
+    const float segment_m = dynamics.dt_s * hypotf(state.vx, state.vy);
+    if (raw_hit || solid_hit) {
+      tier = static_cast<std::uint8_t>(RiskTier::kCollision);
+    } else if (clearance < risk.critical_distance_m) {
+      tier = max(tier, static_cast<std::uint8_t>(RiskTier::kCritical));
+      critical_m += segment_m;
+    } else if (clearance < risk.preferred_distance_m) {
+      tier = max(tier, static_cast<std::uint8_t>(RiskTier::kPlanning));
+      planning_m += segment_m;
+    }
+    if (route_projection.valid) {
+      rollout_route_station_m = route_projection.station_m;
+      guide_cost += route_projection.cross_track_m * route_projection.cross_track_m;
+      terminal_route_progress = route_projection.station_m - initial_route_station_m;
+    } else {
+      const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
+                                (state.x - initial.x) * (target.y - initial.y);
+      const float guide_length =
+          fmaxf(1.0F, hypotf(target.x - initial.x, target.y - initial.y));
+      guide_cost += (guide_cross / guide_length) * (guide_cross / guide_length);
+    }
+    const float z_reference =
+        route_projection.valid ? route_projection.reference_z_m : target.z;
+    const float altitude_error = state.z - z_reference;
+    altitude_cost += altitude_error * altitude_error;
+    const float target_elapsed_s = static_cast<float>(step + 1U) * dynamics.dt_s;
+    const float target_distance =
+        moving_target_enabled
+            ? hypotf(hypotf(moving_target.state.x +
+                                moving_target.state.vx * target_elapsed_s - state.x,
+                            moving_target.state.y +
+                                moving_target.state.vy * target_elapsed_s - state.y),
+                     movingTargetAltitudeAt(moving_target, target_elapsed_s) - state.z)
+            : hypotf(target.x - state.x, target.y - state.y);
+    minimum_target_separation_m = fminf(minimum_target_separation_m, target_distance);
+    if (step + 1U == head_steps) {
+      head_progress =
+          moving_target_enabled ? initial_distance - target_distance
+          : route_projection.valid
+              ? route_projection.station_m - initial_route_station_m
+              : initial_distance - hypotf(target.x - state.x, target.y - state.y);
+    }
+    acceleration_cost +=
+        control.ax * control.ax + control.ay * control.ay + control.az * control.az;
+    const float active_reference_speed_mps =
+        route_projection.valid && route_projection.reference_speed_mps > 0.0F
+            ? fminf(reference_speed_mps, route_projection.reference_speed_mps)
+            : reference_speed_mps;
+    if (active_reference_speed_mps >= 0.0F) {
+      const float speed_error = hypotf(state.vx, state.vy) - active_reference_speed_mps;
+      speed_tracking_cost += speed_error * speed_error;
+    }
+    jerk_cost += (control.ax - previous.ax) * (control.ax - previous.ax) +
+                 (control.ay - previous.ay) * (control.ay - previous.ay) +
+                 (control.az - previous.az) * (control.az - previous.az);
+    yaw_cost += control.yaw_accel * control.yaw_accel;
+    previous = control;
+    if ((raw_hit || solid_hit) && early_exit) {
+      break;
+    }
+  }
+  const float terminal_distance =
+      moving_target_enabled
+          ? fmaxf(0.0F, minimum_target_separation_m - moving_target.capture_radius_m)
+          : hypotf(target.x - state.x, target.y - state.y);
+  const float progress =
+      moving_target_enabled     ? initial_distance - minimum_target_separation_m
+      : route_point_count >= 2U ? terminal_route_progress
+                                : initial_distance - terminal_distance;
+  soft_cost[rollout] =
+      costs.head_progress_weight * -head_progress + costs.progress_weight * -progress +
+      costs.speed_tracking_weight * dynamics.dt_s * speed_tracking_cost +
+      costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
+      costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
+      costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
+      costs.jerk_weight * jerk_cost + costs.yaw_change_weight * yaw_cost +
+      costs.planning_exposure_weight * planning_m +
+      costs.critical_exposure_weight * critical_m +
+      costs.terminal_weight * terminal_distance;
+  critical_exposure[rollout] = critical_m;
+  planning_exposure[rollout] = planning_m;
+  minimum_clearance[rollout] = minimum_clearance_m;
+  worst_tier[rollout] = tier;
+  raw_collision[rollout] = raw_hit ? 1U : 0U;
+  solid_collision[rollout] = solid_hit ? 1U : 0U;
+}
+
+__device__ float atomicMinFloat(float* address, float value) {
+  int* const address_as_int = reinterpret_cast<int*>(address);
+  int old = *address_as_int;
+  int assumed = 0;
+  while (value < __int_as_float(old)) {
+    assumed = old;
+    old = atomicCAS(address_as_int, assumed, __float_as_int(value));
+    if (old == assumed) {
+      break;
+    }
+  }
+  return __int_as_float(old);
+}
+
+__global__ void initializeReduction(int* best_tier, float* best_critical,
+                                    float* best_planning, float* minimum_soft,
+                                    float* weight_sum, int* best_rollout) {
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    *best_tier = static_cast<int>(RiskTier::kCollision);
+    *best_critical = kInfinity;
+    *best_planning = kInfinity;
+    *minimum_soft = kInfinity;
+    *weight_sum = 0.0F;
+    *best_rollout = INT_MAX;
+  }
+}
+
+__global__ void selectBestEligibleRollout(const float* weights, const float* soft_cost,
+                                          const float* minimum_soft,
+                                          const std::size_t count, int* best_rollout) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count && weights[index] > 0.0F &&
+      soft_cost[index] <= *minimum_soft + 1.0e-5F) {
+    atomicMin(best_rollout, static_cast<int>(index));
+  }
+}
+
+__global__ void buildBestEligibleControls(
+    const Control* nominal, Control* best_eligible, const float* noise_ax,
+    const float* noise_ay, const float* noise_az, const float* noise_yaw,
+    const int* best_rollout, const std::size_t rollouts, const std::size_t steps) {
+  const std::size_t step =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (step >= steps) {
+    return;
+  }
+  const int rollout = *best_rollout;
+  if (rollout < 0 || static_cast<std::size_t>(rollout) >= rollouts) {
+    best_eligible[step] = nominal[step];
+    return;
+  }
+  const std::size_t index = static_cast<std::size_t>(rollout) * steps + step;
+  best_eligible[step] = Control{
+      nominal[step].ax + noise_ax[index], nominal[step].ay + noise_ay[index],
+      nominal[step].az + noise_az[index], nominal[step].yaw_accel + noise_yaw[index]};
+}
+
+__global__ void reduceTier(const std::uint8_t* tier, const std::uint8_t* raw_collision,
+                           const std::uint8_t* solid_collision, std::size_t count,
+                           int maximum_tier, int* best_tier) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
+      static_cast<int>(tier[index]) <= maximum_tier) {
+    atomicMin(best_tier, static_cast<int>(tier[index]));
+  }
+}
+
+__global__ void reduceCritical(const std::uint8_t* tier, const float* critical,
+                               const std::uint8_t* raw_collision,
+                               const std::uint8_t* solid_collision, std::size_t count,
+                               const int* best_tier, float* best_critical) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
+      static_cast<int>(tier[index]) == *best_tier) {
+    atomicMinFloat(best_critical, critical[index]);
+  }
+}
+
+__global__ void reducePlanning(const std::uint8_t* tier, const float* critical,
+                               const float* planning, const std::uint8_t* raw_collision,
+                               const std::uint8_t* solid_collision, std::size_t count,
+                               const int* best_tier, const float* best_critical,
+                               float critical_tolerance, float* best_planning) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
+      static_cast<int>(tier[index]) == *best_tier &&
+      critical[index] <= *best_critical + critical_tolerance) {
+    atomicMinFloat(best_planning, planning[index]);
+  }
+}
+
+__global__ void reduceSoft(const std::uint8_t* tier, const float* critical,
+                           const float* planning, const float* soft,
+                           const std::uint8_t* raw_collision,
+                           const std::uint8_t* solid_collision, std::size_t count,
+                           const int* best_tier, const float* best_critical,
+                           const float* best_planning, float* minimum_soft,
+                           RiskConfig risk, int maximum_tier) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= count) {
+    return;
+  }
+  const bool escalated = maximum_tier > static_cast<int>(RiskTier::kPreferred);
+  const bool eligible =
+      escalated
+          ? static_cast<int>(tier[index]) <= maximum_tier
+          : static_cast<int>(tier[index]) == *best_tier &&
+                critical[index] <=
+                    *best_critical + risk.critical_exposure_tolerance_m &&
+                planning[index] <= *best_planning + risk.planning_exposure_tolerance_m;
+  if (raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
+    atomicMinFloat(minimum_soft, soft[index]);
+  }
+}
+
+__global__ void
+calculateWeights(const std::uint8_t* tier, const float* critical, const float* planning,
+                 const float* soft, const std::uint8_t* raw_collision,
+                 const std::uint8_t* solid_collision, float* weights, std::size_t count,
+                 const int* best_tier, const float* best_critical,
+                 const float* best_planning, const float* minimum_soft, RiskConfig risk,
+                 float temperature, int maximum_tier, float* weight_sum) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= count) {
+    return;
+  }
+  float weight = 0.0F;
+  const bool escalated = maximum_tier > static_cast<int>(RiskTier::kPreferred);
+  const bool eligible =
+      escalated
+          ? static_cast<int>(tier[index]) <= maximum_tier
+          : static_cast<int>(tier[index]) == *best_tier &&
+                critical[index] <=
+                    *best_critical + risk.critical_exposure_tolerance_m &&
+                planning[index] <= *best_planning + risk.planning_exposure_tolerance_m;
+  if (raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
+    weight = expf(-(soft[index] - *minimum_soft) / temperature);
+  }
+  weights[index] = weight;
+  atomicAdd(weight_sum, weight);
+}
+
+__global__ void updateControls(const Control* nominal, Control* updated,
+                               const float* noise_ax, const float* noise_ay,
+                               const float* noise_az, const float* noise_yaw,
+                               const float* weights, const float* weight_sum,
+                               std::size_t rollouts, std::size_t steps) {
+  const std::size_t step =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (step >= steps) {
+    return;
+  }
+  float ax = 0.0F;
+  float ay = 0.0F;
+  float az = 0.0F;
+  float yaw = 0.0F;
+  for (std::size_t rollout = 0U; rollout < rollouts; ++rollout) {
+    const std::size_t index = rollout * steps + step;
+    const float weight = weights[rollout];
+    ax += weight * noise_ax[index];
+    ay += weight * noise_ay[index];
+    az += weight * noise_az[index];
+    yaw += weight * noise_yaw[index];
+  }
+  const float denominator = fmaxf(*weight_sum, 1.0e-12F);
+  updated[step] = Control{
+      nominal[step].ax + ax / denominator, nominal[step].ay + ay / denominator,
+      nominal[step].az + az / denominator, nominal[step].yaw_accel + yaw / denominator};
+}
+
+__global__ void limitControls(Control* controls, std::size_t steps,
+                              DynamicsConfig dynamics, Control previous_applied_control,
+                              float first_control_interval_s) {
+  if (blockIdx.x != 0 || threadIdx.x != 0) {
+    return;
+  }
+  Control previous = previous_applied_control;
+  for (std::size_t step = 0U; step < steps; ++step) {
+    const float interval_s = step == 0U ? first_control_interval_s : dynamics.dt_s;
+    const float maximum_delta = dynamics.maximum_control_jerk_mps3 * interval_s;
+    Control control = controls[step];
+    clampHorizontal(control.ax, control.ay,
+                    dynamics.maximum_horizontal_acceleration_mps2);
+    control.az = clampValue(control.az, -dynamics.maximum_vertical_acceleration_mps2,
+                            dynamics.maximum_vertical_acceleration_mps2);
+    control.yaw_accel =
+        clampValue(control.yaw_accel, -dynamics.maximum_yaw_acceleration_radps2,
+                   dynamics.maximum_yaw_acceleration_radps2);
+    control.ax = clampValue(control.ax, previous.ax - maximum_delta,
+                            previous.ax + maximum_delta);
+    control.ay = clampValue(control.ay, previous.ay - maximum_delta,
+                            previous.ay + maximum_delta);
+    control.az = clampValue(control.az, previous.az - maximum_delta,
+                            previous.az + maximum_delta);
+    controls[step] = control;
+    previous = control;
+  }
+}

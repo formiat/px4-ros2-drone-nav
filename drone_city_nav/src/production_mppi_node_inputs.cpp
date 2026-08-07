@@ -138,6 +138,7 @@ void ProductionMppiNode::onRawObstacleSnapshot(
   if (use_static_map_) {
     return;
   }
+  latest_raw_snapshot_.store(message, std::memory_order_release);
   std::scoped_lock lock{raw_queue_mutex_};
   if (pending_raw_snapshot_) {
     ++dropped_raw_snapshots_;
@@ -352,20 +353,17 @@ void ProductionMppiNode::onNavigationObjective(
             *static_occupancy_3d_, current_position, *current_target, goal, footprint);
       }
     } else if (!use_static_map_) {
-      std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
-      {
-        const std::scoped_lock lock{esdf_state_mutex_};
-        if (prepared_esdf_) {
-          raw_occupancy = prepared_esdf_->raw_occupancy;
-        }
-      }
-      if (raw_occupancy) {
+      const std::shared_ptr<const ProductionMppiRawWorld2D> raw_world =
+          latest_raw_world_.load(std::memory_order_acquire);
+      if (raw_world && raw_world->occupancy) {
         world_available = true;
-        resolution = resolveTrackingObjective(*raw_occupancy, *current_target, goal,
-                                              tracking_objective_ray_sample_spacing_m_);
+        resolution =
+            resolveTrackingObjective(*raw_world->occupancy, *current_target, goal,
+                                     tracking_objective_ray_sample_spacing_m_);
         if (navigation.valid) {
-          direct_resolution = resolveDirectTrackingTarget(
-              *raw_occupancy, current_position, *current_target, goal, footprint);
+          direct_resolution =
+              resolveDirectTrackingTarget(*raw_world->occupancy, current_position,
+                                          *current_target, goal, footprint);
         }
       }
     }

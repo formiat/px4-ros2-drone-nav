@@ -149,6 +149,7 @@ add_library(
   src/lidar_ingestion_decision.cpp
   src/lidar_ingestion_confidence.cpp
   src/lidar_memory_hit_diagnostics.cpp
+  src/local_esdf_2d.cpp
   src/mapping_lifecycle.cpp
   src/mission_goal_capture.cpp
   src/lidar_pose_history.cpp
@@ -372,6 +373,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_esdf.cpp
     src/production_mppi_node_inputs.cpp
     src/production_mppi_node_planning_tick.cpp
+    src/production_mppi_node_raw_world.cpp
     src/production_mppi_node_runtime.cpp
     src/production_mppi_route_helpers.cpp
     src/production_mppi_node_static_extension.cpp
@@ -471,6 +473,11 @@ if(BUILD_TESTING)
   target_compile_features(esdf_query_test PRIVATE cxx_std_20)
   target_link_libraries(esdf_query_test drone_city_nav_core)
   enable_project_warnings(esdf_query_test)
+
+  ament_add_gtest(local_esdf_2d_test tests/local_esdf_2d_test.cpp)
+  target_compile_features(local_esdf_2d_test PRIVATE cxx_std_20)
+  target_link_libraries(local_esdf_2d_test drone_city_nav_core)
+  enable_project_warnings(local_esdf_2d_test)
 
   ament_add_gtest(flight_envelope_test tests/flight_envelope_test.cpp)
   target_compile_features(flight_envelope_test PRIVATE cxx_std_20)

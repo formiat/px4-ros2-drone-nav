@@ -44,6 +44,7 @@ public:
   [[nodiscard]] bool isOccupied(GridIndex cell) const;
   [[nodiscard]] std::span<const CellState> cells() const noexcept;
   [[nodiscard]] OccupancyGridFingerprint rawFingerprint() const noexcept;
+  [[nodiscard]] std::uint64_t occupiedFingerprint() const noexcept;
 
   void reset(CellState value = CellState::kUnknown);
   void setUnknown(GridIndex cell);
@@ -57,6 +58,24 @@ public:
 private:
   GridBounds bounds_{};
   std::vector<CellState> cells_;
+};
+
+// Non-owning view used when safety must inspect the newest middleware snapshot
+// without waiting for a full grid conversion.
+class RawOccupancyGridView2D {
+public:
+  RawOccupancyGridView2D(const GridBounds& bounds, std::span<const std::int8_t> cells,
+                         std::int8_t minimum_occupied_value);
+
+  [[nodiscard]] const GridBounds& bounds() const noexcept;
+  [[nodiscard]] bool contains(GridIndex cell) const noexcept;
+  [[nodiscard]] std::optional<GridIndex> worldToCell(Point2 point) const noexcept;
+  [[nodiscard]] bool isOccupied(GridIndex cell) const noexcept;
+
+private:
+  GridBounds bounds_{};
+  std::span<const std::int8_t> cells_;
+  std::int8_t minimum_occupied_value_{100};
 };
 
 } // namespace drone_city_nav

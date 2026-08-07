@@ -70,13 +70,17 @@ void ProductionMppiNode::publishSummary() {
       " no_guide_braking_hold_ticks=%" PRIu64
       " unavailable_world_braking_hold_ticks=%" PRIu64
       " mission_goal_position_hold_ticks=%" PRIu64 " dropped_esdf_updates=%" PRIu64
-      " dropped_diagnostics=%" PRIu64,
+      " no_static_raw_updates=%" PRIu64 " no_static_esdf_builds=%" PRIu64
+      " no_static_esdf_throttled=%" PRIu64 " dropped_diagnostics=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, raw_collision_horizons, solid_collision_horizons,
       post_update_contract_violations, no_progress_horizons, liveness_reseeds,
       no_guide_braking_hold_ticks, unavailable_world_braking_hold_ticks,
       mission_goal_position_hold_ticks, dropped_esdf_updates,
+      no_static_raw_updates_.load(std::memory_order_relaxed),
+      no_static_esdf_builds_.load(std::memory_order_relaxed),
+      no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
       dropped_diagnostics_snapshots_.load(std::memory_order_relaxed));
 }
 

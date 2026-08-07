@@ -161,6 +161,55 @@ OccupancyGridFingerprint OccupancyGrid2D::rawFingerprint() const noexcept {
   return fingerprint;
 }
 
+std::uint64_t OccupancyGrid2D::occupiedFingerprint() const noexcept {
+  std::uint64_t hash = hashBounds(bounds_);
+  for (const CellState state : cells_) {
+    hashByte(hash, state == CellState::kOccupied ? 1U : 0U);
+  }
+  return hash;
+}
+
+RawOccupancyGridView2D::RawOccupancyGridView2D(const GridBounds& bounds,
+                                               const std::span<const std::int8_t> cells,
+                                               const std::int8_t minimum_occupied_value)
+    : bounds_{bounds},
+      cells_{cells},
+      minimum_occupied_value_{minimum_occupied_value} {
+  if (!gridBoundsUsable(bounds_) || cells_.size() != gridBoundsCellCount(bounds_)) {
+    throw std::invalid_argument{"Raw occupancy view requires valid matching bounds"};
+  }
+}
+
+const GridBounds& RawOccupancyGridView2D::bounds() const noexcept {
+  return bounds_;
+}
+
+bool RawOccupancyGridView2D::contains(const GridIndex cell) const noexcept {
+  return cell.x >= 0 && cell.y >= 0 && cell.x < bounds_.width_cells &&
+         cell.y < bounds_.height_cells;
+}
+
+std::optional<GridIndex>
+RawOccupancyGridView2D::worldToCell(const Point2 point) const noexcept {
+  const auto x = finiteFloorToInt((point.x - bounds_.origin_x) / bounds_.resolution_m);
+  const auto y = finiteFloorToInt((point.y - bounds_.origin_y) / bounds_.resolution_m);
+  if (!x.has_value() || !y.has_value()) {
+    return std::nullopt;
+  }
+  const GridIndex cell{*x, *y};
+  return contains(cell) ? std::optional<GridIndex>{cell} : std::nullopt;
+}
+
+bool RawOccupancyGridView2D::isOccupied(const GridIndex cell) const noexcept {
+  if (!contains(cell)) {
+    return false;
+  }
+  const std::size_t index =
+      static_cast<std::size_t>(cell.y) * static_cast<std::size_t>(bounds_.width_cells) +
+      static_cast<std::size_t>(cell.x);
+  return cells_[index] >= minimum_occupied_value_;
+}
+
 void OccupancyGrid2D::reset(const CellState value) {
   std::fill(cells_.begin(), cells_.end(), value);
 }

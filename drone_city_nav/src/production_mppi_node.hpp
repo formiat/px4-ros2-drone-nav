@@ -22,6 +22,7 @@
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
+#include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
@@ -121,9 +122,30 @@ enum class ProductionGuideCandidateValidationStatus : std::uint8_t {
   kLifecycleRejected,
 };
 
+struct ProductionMppiPreparedEsdf;
+
+struct ProductionMppiRawWorld2D {
+  std::uint64_t producer_instance_id{0U};
+  std::uint64_t revision{0U};
+  std::uint64_t occupied_fingerprint{0U};
+  std::int64_t ready_stamp_ns{0};
+  std::shared_ptr<const OccupancyGrid2D> occupancy;
+};
+
+struct ProductionGuideCandidateValidation {
+  std::shared_ptr<const ProductionMppiPreparedEsdf> publication_world;
+  RawGuideValidationResult raw_validation{};
+  Point2 validation_position{};
+  std::uint64_t validation_revision{0U};
+  ProductionGuideCandidateValidationStatus status{
+      ProductionGuideCandidateValidationStatus::kNotAttempted};
+  bool accepted{false};
+};
+
 struct ProductionMppiPreparedEsdf {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t revision{0U};
+  std::uint64_t source_occupied_fingerprint{0U};
   std::int64_t source_stamp_ns{0};
   std::int64_t ready_stamp_ns{0};
   double build_ms{0.0};
@@ -380,6 +402,9 @@ private:
   void finishStaticRouteReplan(std::uint64_t base_generation) noexcept;
   void esdfWorker(std::stop_token stop_token);
   void guideWorker(std::stop_token stop_token);
+  [[nodiscard]] ProductionGuideCandidateValidation validateGuideCandidateOnLatestWorld(
+      const std::shared_ptr<const std::vector<Point2>>& candidate,
+      bool reaches_mission_goal);
   void processStaticGuideSearch(const ProductionMppiPreparedEsdf& world,
                                 const ProductionMppiNavigation& navigation);
   void diagnosticsWorker(std::stop_token stop_token);
@@ -425,6 +450,9 @@ private:
   double no_static_adaptive_minimum_guide_length_m_{24.0};
   double no_static_adaptive_minimum_endpoint_displacement_m_{12.0};
   std::size_t no_static_adaptive_validation_states_{8192U};
+  double no_static_esdf_update_rate_hz_{2.5};
+  double no_static_esdf_half_extent_m_{100.0};
+  double no_static_esdf_recenter_margin_m_{70.0};
   std::size_t planner_worker_count_{4U};
   double planning_tick_phase_offset_s_{0.0};
   NoStaticRouteCycleConfig no_static_cycle_config_{};
@@ -509,6 +537,12 @@ private:
   std::mutex raw_queue_mutex_;
   std::condition_variable_any raw_queue_condition_;
   msg::RawObstacleSnapshot::ConstSharedPtr pending_raw_snapshot_;
+  std::atomic<std::shared_ptr<const msg::RawObstacleSnapshot>> latest_raw_snapshot_;
+  std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
+  std::chrono::steady_clock::time_point no_static_esdf_last_build_time_{};
+  std::atomic<std::uint64_t> no_static_raw_updates_{0U};
+  std::atomic<std::uint64_t> no_static_esdf_builds_{0U};
+  std::atomic<std::uint64_t> no_static_esdf_throttled_updates_{0U};
   bool pending_static_esdf_work_{false};
   bool static_esdf_work_in_progress_{false};
   std::atomic_bool vehicle_navigation_ready_{false};

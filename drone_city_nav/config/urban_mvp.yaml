@@ -118,6 +118,9 @@ production_mppi_node:
     no_static_stale_esdf_execution_window_s: 4.0
     maximum_control_feedback_age_ms: 200.0
     no_static_guide_lookahead_m: 30.0
+    no_static_esdf_update_rate_hz: 2.5
+    no_static_esdf_half_extent_m: 100.0
+    no_static_esdf_recenter_margin_m: 70.0
     static_minimum_target_lookahead_m: 30.0
     static_maximum_target_lookahead_m: 100.0
     use_static_map: true

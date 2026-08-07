@@ -58,7 +58,9 @@ is_cpp_path() {
   case "$1" in
     drone_city_nav/include/* | drone_city_nav/src/* | drone_city_nav/tests/*)
       case "$1" in
-        *.c | *.cc | *.cpp | *.cxx | *.h | *.hh | *.hpp | *.hxx) return 0 ;;
+        *.c | *.cc | *.cpp | *.cu | *.cuh | *.cxx | *.h | *.hh | *.hpp | *.hxx)
+          return 0
+          ;;
       esac
       ;;
   esac

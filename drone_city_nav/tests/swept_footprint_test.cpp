@@ -106,6 +106,27 @@ TEST(SweptFootprintTest, RawTwoDimensionalSweepRejectsSideContact) {
   EXPECT_EQ(physical.status, SweptFootprintStatus::kRawCollision);
 }
 
+TEST(SweptFootprintTest, MiddlewareRawViewMatchesOwnedGridCollisionSemantics) {
+  const GridBounds bounds{0.0, 0.0, 1.0, 8, 6};
+  OccupancyGrid2D owned{bounds};
+  owned.reset(CellState::kFree);
+  owned.setOccupied(GridIndex{4, 3});
+  std::vector<std::int8_t> middleware_cells(48U, 0);
+  middleware_cells[3U * 8U + 4U] = 100;
+  const RawOccupancyGridView2D view{bounds, middleware_cells, 100};
+  const SweptFootprintConfig footprint{.radius_m = 0.75};
+
+  const SweptFootprintResult owned_result =
+      validateRawFootprintAt(owned, Point3{3.5, 3.5, 5.0}, footprint);
+  const SweptFootprintResult view_result =
+      validateRawFootprintAt(view, Point3{3.5, 3.5, 5.0}, footprint);
+
+  EXPECT_EQ(view_result.status, owned_result.status);
+  EXPECT_EQ(view_result.status, SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(
+      validateRawFootprintAt(view, Point3{20.0, 20.0, 5.0}, footprint).accepted());
+}
+
 TEST(SweptFootprintTest, RawThreeDimensionalSweepUsesAxialExtent) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 10, 4, 6}};
   occupancy.setOccupied(GridIndex3D{4, 1, 3});

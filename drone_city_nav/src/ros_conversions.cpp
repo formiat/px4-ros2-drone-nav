@@ -120,6 +120,21 @@ rawOccupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
   return result;
 }
 
+std::optional<RawOccupancyGridView2D>
+rawOccupancyGridViewFromRos(const nav_msgs::msg::OccupancyGrid& msg,
+                            const std::int8_t minimum_occupied_value) {
+  const std::optional<GridBounds> bounds = rosGridBounds(msg);
+  if (!bounds.has_value()) {
+    return std::nullopt;
+  }
+  const std::size_t expected_data_size = static_cast<std::size_t>(bounds->width_cells) *
+                                         static_cast<std::size_t>(bounds->height_cells);
+  if (msg.data.size() != expected_data_size) {
+    return std::nullopt;
+  }
+  return RawOccupancyGridView2D{*bounds, msg.data, minimum_occupied_value};
+}
+
 nav_msgs::msg::OccupancyGrid
 rawOccupancyGridToRos(const OccupancyGrid2D& grid,
                       const RawOccupancyGridToRosConfig& config) {

@@ -9,7 +9,17 @@ from pathlib import Path
 
 
 MAX_SOURCE_LINES = 1000
-SOURCE_SUFFIXES = {".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}
+SOURCE_SUFFIXES = {
+    ".cc",
+    ".cpp",
+    ".cu",
+    ".cuh",
+    ".cxx",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".hxx",
+}
 IGNORED_PATH_PARTS = {"build", "install", "log"}
 
 

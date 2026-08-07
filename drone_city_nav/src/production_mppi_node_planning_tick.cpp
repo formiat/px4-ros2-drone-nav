@@ -60,6 +60,13 @@ void ProductionMppiNode::planningTick() {
     const std::scoped_lock lock{esdf_state_mutex_};
     esdf = prepared_esdf_;
   }
+  const std::shared_ptr<const msg::RawObstacleSnapshot> latest_raw_snapshot =
+      latest_raw_snapshot_.load(std::memory_order_acquire);
+  const auto raw_revision = [&](const std::uint64_t esdf_revision) {
+    return !use_static_map_ && latest_raw_snapshot
+               ? latest_raw_snapshot->obstacle_snapshot_revision
+               : esdf_revision;
+  };
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const double pose_age_ms =
       static_cast<double>(now_ns - navigation.receive_stamp_ns) / 1.0e6;
@@ -95,7 +102,7 @@ void ProductionMppiNode::planningTick() {
         .initial_state = navigation.state,
         .target = navigation.state,
         .pose_revision = navigation.revision,
-        .obstacle_revision = stale_esdf.revision,
+        .obstacle_revision = raw_revision(stale_esdf.revision),
         .planning_stamp_ns = now_ns,
         .previous_applied_control = std::nullopt,
         .nominal_reseed_generation = 0U,
@@ -479,7 +486,7 @@ void ProductionMppiNode::planningTick() {
       .initial_state = navigation.state,
       .target = target,
       .pose_revision = navigation.revision,
-      .obstacle_revision = esdf->revision,
+      .obstacle_revision = raw_revision(esdf->revision),
       .planning_stamp_ns = now_ns,
       .previous_applied_control =
           control_feedback_fresh ? std::optional<mppi::Control>{applied_control.control}

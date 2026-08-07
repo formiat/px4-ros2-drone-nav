@@ -43,6 +43,10 @@ rawOccupancyGridToRos(const OccupancyGrid2D& grid,
 rawOccupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
                         const RawOccupancyGridFromRosConfig& config);
 
+[[nodiscard]] std::optional<RawOccupancyGridView2D>
+rawOccupancyGridViewFromRos(const nav_msgs::msg::OccupancyGrid& msg,
+                            std::int8_t minimum_occupied_value);
+
 [[nodiscard]] double occupancyGridClearanceM(const nav_msgs::msg::OccupancyGrid& msg,
                                              Point2 point, double search_radius_m,
                                              std::int8_t min_occupancy_value);
