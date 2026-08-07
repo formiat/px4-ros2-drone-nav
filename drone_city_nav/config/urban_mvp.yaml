@@ -84,7 +84,6 @@ world_visualization_node:
     frame_id: map
     use_static_map: true
     static_occupancy_3d_path: worlds/generated_city.occupancy3d
-    static_esdf_3d_cache_path: worlds/generated_city.esdf3d
     static_map_visualization_stride_cells: 4
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
     raw_obstacle_grid_topic: /drone_city_nav/raw_obstacle_grid
@@ -126,6 +125,7 @@ production_mppi_node:
     static_maximum_target_lookahead_m: 100.0
     use_static_map: true
     static_occupancy_3d_path: worlds/generated_city.occupancy3d
+    static_esdf_3d_cache_path: worlds/generated_city.esdf3d
     static_cruise_speed_mps: 20.0
     static_absolute_speed_limit_mps: 20.0
     static_maximum_horizontal_acceleration_mps2: 8.0
