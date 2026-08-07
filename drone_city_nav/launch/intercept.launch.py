@@ -1,4 +1,5 @@
 import math
+import re
 from pathlib import Path
 
 import yaml
@@ -42,6 +43,15 @@ def _allocate_planner_workers(total_workers, vehicle_count):
     ]
 
 
+def _cpu_affinity_prefix(cpu_list):
+    value = cpu_list.strip()
+    if not value:
+        return []
+    if re.fullmatch(r"[0-9,-]+", value) is None:
+        raise RuntimeError(f"Invalid CPU affinity list '{value}'")
+    return ["taskset", "--cpu-list", value]
+
+
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     params_file = LaunchConfiguration("params_file")
@@ -68,6 +78,15 @@ def generate_launch_description():
         )
         shutdown_on_terminal_outcome = _optional_bool(
             LaunchConfiguration("shutdown_on_terminal_outcome").perform(context), True
+        )
+        control_prefix = _cpu_affinity_prefix(
+            LaunchConfiguration("control_cpu_list").perform(context)
+        )
+        planning_prefix = _cpu_affinity_prefix(
+            LaunchConfiguration("planning_cpu_list").perform(context)
+        )
+        diagnostics_prefix = _cpu_affinity_prefix(
+            LaunchConfiguration("diagnostics_cpu_list").perform(context)
         )
         static_path = LaunchConfiguration("static_occupancy_3d_path").perform(context)
         if not static_path:
@@ -348,6 +367,7 @@ def generate_launch_description():
                         namespace=f"vehicles/{role}",
                         name="obstacle_memory_node",
                         output="screen",
+                        prefix=planning_prefix,
                         parameters=[memory_params, {"use_sim_time": True}],
                     ),
                     Node(
@@ -356,6 +376,7 @@ def generate_launch_description():
                         namespace=f"vehicles/{role}",
                         name="mppi_offboard_node",
                         output="screen",
+                        prefix=control_prefix,
                         parameters=[offboard_params, {"use_sim_time": True}],
                     ),
                     Node(
@@ -364,6 +385,7 @@ def generate_launch_description():
                         namespace=f"vehicles/{role}",
                         name="collision_crash_node",
                         output="screen",
+                        prefix=control_prefix,
                         parameters=[crash_params, {"use_sim_time": True}],
                     ),
                 ]
@@ -408,6 +430,7 @@ def generate_launch_description():
                         name="lidar_debug_node",
                         output="screen",
                         condition=IfCondition(enable_lidar_debug),
+                        prefix=diagnostics_prefix,
                         parameters=[debug_params, {"use_sim_time": True}],
                     )
                 )
@@ -419,6 +442,7 @@ def generate_launch_description():
                 namespace="",
                 name="multi_vehicle_mppi_container",
                 output="screen",
+                prefix=planning_prefix,
                 parameters=[
                     {"thread_num": len(role_names), "use_sim_time": True}
                 ],
@@ -433,6 +457,7 @@ def generate_launch_description():
                 executable="parameter_bridge",
                 name="intercept_gazebo_bridge",
                 output="screen",
+                prefix=control_prefix,
                 arguments=bridge_arguments,
             ),
         )
@@ -450,6 +475,7 @@ def generate_launch_description():
                 executable="world_visualization_node",
                 name="world_visualization_node",
                 output="screen",
+                prefix=diagnostics_prefix,
                 parameters=[world_params, {"use_sim_time": True}],
             )
         )
@@ -479,6 +505,7 @@ def generate_launch_description():
                     namespace=f"vehicles/{role}",
                     name="radar_simulator_node",
                     output="screen",
+                    prefix=control_prefix,
                     parameters=[
                         {
                             "use_sim_time": True,
@@ -670,6 +697,7 @@ def generate_launch_description():
                 namespace="",
                 name="interceptor_tracking_container",
                 output="screen",
+                prefix=control_prefix,
                 parameters=[
                     {"thread_num": len(interceptor_roles), "use_sim_time": True}
                 ],
@@ -685,6 +713,7 @@ def generate_launch_description():
                     name="intercept_mission_referee_node",
                     output="screen",
                     on_exit=Shutdown(reason="intercept mission completed"),
+                    prefix=control_prefix,
                     parameters=[
                         {
                             "use_sim_time": True,
@@ -739,6 +768,7 @@ def generate_launch_description():
                     executable="intercept_spectator_node",
                     name="intercept_spectator_node",
                     output="screen",
+                    prefix=diagnostics_prefix,
                     parameters=[
                         {
                             "use_sim_time": True,
@@ -761,6 +791,7 @@ def generate_launch_description():
                     executable="intercept_diagnostics_mux_node",
                     name="intercept_diagnostics_mux_node",
                     output="screen",
+                    prefix=diagnostics_prefix,
                     parameters=[
                         {
                             "use_sim_time": True,
@@ -821,6 +852,7 @@ def generate_launch_description():
                 name="gazebo_aligned_map_tf",
                 output="screen",
                 condition=IfCondition(enable_rviz),
+                prefix=diagnostics_prefix,
                 arguments=[
                     "--x", "0.0", "--y", "0.0", "--z", "0.0",
                     "--qx", "0.7071067811865476",
@@ -838,6 +870,7 @@ def generate_launch_description():
                 name="rviz2",
                 output="screen",
                 condition=IfCondition(enable_rviz),
+                prefix=diagnostics_prefix,
                 arguments=["-d", str(package_share / "rviz" / "city_nav_debug.rviz")],
                 parameters=[{"use_sim_time": True}],
             )
@@ -938,6 +971,9 @@ def generate_launch_description():
             DeclareLaunchArgument("radar_random_seed", default_value="42"),
             DeclareLaunchArgument("evader_speed_scale", default_value="1.0"),
             DeclareLaunchArgument("planner_worker_budget", default_value="8"),
+            DeclareLaunchArgument("control_cpu_list", default_value=""),
+            DeclareLaunchArgument("planning_cpu_list", default_value=""),
+            DeclareLaunchArgument("diagnostics_cpu_list", default_value=""),
             DeclareLaunchArgument(
                 "shutdown_on_terminal_outcome", default_value="true"
             ),

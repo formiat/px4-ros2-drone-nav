@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
+RUN_SCRIPT = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
 
 
 def _load_budget_allocator():
@@ -24,6 +26,19 @@ def _load_budget_allocator():
     namespace: dict[str, object] = {}
     exec(compile(ast.Module(body=[allocator], type_ignores=[]), LAUNCH, "exec"), namespace)
     return namespace["_allocate_planner_workers"]
+
+
+def _load_cpu_affinity_prefix():
+    module = ast.parse(LAUNCH.read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_cpu_affinity_prefix"
+    )
+    namespace: dict[str, object] = {"re": re}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), LAUNCH, "exec"), namespace)
+    return namespace["_cpu_affinity_prefix"]
 
 
 class InterceptResourceBudgetContractTest(unittest.TestCase):
@@ -70,6 +85,23 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn('{"use_intra_process_comms": True}', source)
         self.assertNotIn('executable="radar_target_tracker_node"', source)
         self.assertNotIn('executable="interceptor_guidance_node"', source)
+
+    def test_subsystem_affinity_is_validated_and_wired_by_role(self) -> None:
+        prefix = _load_cpu_affinity_prefix()
+        launch_source = LAUNCH.read_text(encoding="utf-8")
+        run_source = RUN_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertEqual([], prefix(""))
+        self.assertEqual(["taskset", "--cpu-list", "4-15"], prefix("4-15"))
+        with self.assertRaises(RuntimeError):
+            prefix("4-15;false")
+        self.assertIn('ENABLE_SUBSYSTEM_CPU_AFFINITY:-true', run_source)
+        self.assertIn('control_cpu_list:="${control_cpu_list}"', run_source)
+        self.assertIn('planning_cpu_list:="${planning_cpu_list}"', run_source)
+        self.assertIn('diagnostics_cpu_list:="${diagnostics_cpu_list}"', run_source)
+        self.assertIn("prefix=control_prefix", launch_source)
+        self.assertIn("prefix=planning_prefix", launch_source)
+        self.assertIn("prefix=diagnostics_prefix", launch_source)
 
     def test_planner_validates_and_applies_tick_phase(self) -> None:
         source = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(

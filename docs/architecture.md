@@ -292,6 +292,13 @@ are a separate backend optimization and are not implied by component
 composition. Three tracker/guidance pairs share a second component process and
 use three executor threads; simulator truth never enters that process.
 
+The intercept launcher applies subsystem CPU affinity when the host exposes at
+least four logical CPUs. Control and physics, planning and mapping, and
+diagnostics receive overlapping CPU masks so latency-sensitive work retains
+reserved capacity without assigning a vehicle to one core. Every mask can be
+overridden, and `ENABLE_SUBSYSTEM_CPU_AFFINITY=false` restores unrestricted
+scheduling.
+
 ## Current Architectural Limits
 
 - The lattice is not incremental AD*.

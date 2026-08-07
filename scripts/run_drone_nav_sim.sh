@@ -49,6 +49,26 @@ bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
 }
 
+run_with_cpu_affinity() {
+  local cpu_list="$1"
+  shift
+  if [[ -n "${cpu_list}" ]]; then
+    taskset --cpu-list "${cpu_list}" "$@"
+  else
+    "$@"
+  fi
+}
+
+exec_with_cpu_affinity() {
+  local cpu_list="$1"
+  shift
+  if [[ -n "${cpu_list}" ]]; then
+    exec taskset --cpu-list "${cpu_list}" "$@"
+  else
+    exec "$@"
+  fi
+}
+
 px4_dir="${PX4_AUTOPILOT_DIR:-${repo_root}/external/PX4-Autopilot}"
 px4_build_dir="${px4_dir}/build/px4_sitl_default"
 ros_distro="${ROS_DISTRO:-jazzy}"
@@ -64,6 +84,29 @@ mission_type="${MISSION_TYPE:-point_to_point}"
 if [[ "${mission_type}" != "point_to_point" && "${mission_type}" != "intercept" ]]; then
   echo "Unsupported MISSION_TYPE=${mission_type}; expected point_to_point or intercept" >&2
   exit 1
+fi
+enable_subsystem_cpu_affinity="$(
+  normalize_bool "${ENABLE_SUBSYSTEM_CPU_AFFINITY:-true}"
+)"
+control_cpu_list=""
+planning_cpu_list=""
+diagnostics_cpu_list=""
+if bool_is_true "${enable_subsystem_cpu_affinity}" &&
+  command -v taskset >/dev/null 2>&1; then
+  cpu_count="$(nproc)"
+  if ((cpu_count >= 4)); then
+    control_cpu_list="${CONTROL_CPU_LIST:-0-$((cpu_count / 2 - 1))}"
+    planning_cpu_list="${PLANNING_CPU_LIST:-$((cpu_count / 4))-$((cpu_count - 1))}"
+    diagnostics_cpu_list="${DIAGNOSTICS_CPU_LIST:-$((3 * cpu_count / 4))-$((cpu_count - 1))}"
+    if ! taskset --cpu-list "${control_cpu_list}" true ||
+      ! taskset --cpu-list "${planning_cpu_list}" true ||
+      ! taskset --cpu-list "${diagnostics_cpu_list}" true; then
+      echo "WARNING: subsystem CPU affinity masks are unavailable; disabling affinity." >&2
+      control_cpu_list=""
+      planning_cpu_list=""
+      diagnostics_cpu_list=""
+    fi
+  fi
 fi
 px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
@@ -467,13 +510,15 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 run_px4_sitl() {
-  make -C "${px4_dir}" px4_sitl "${px4_model_target}"
+  run_with_cpu_affinity "${control_cpu_list}" \
+    make -C "${px4_dir}" px4_sitl "${px4_model_target}"
 }
 
 run_px4_instance() {
   local instance="$1"
   cd "${px4_dir}"
-  exec "${px4_build_dir}/bin/px4" -i "${instance}"
+  exec_with_cpu_affinity "${control_cpu_list}" \
+    "${px4_build_dir}/bin/px4" -i "${instance}"
 }
 
 configure_gazebo_gui_follow_camera() {
@@ -544,6 +589,7 @@ echo "Obstacle source overrides: static=$(format_override_value "${enable_static
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
 echo "Static world: ${repo_root}/drone_city_nav/worlds/${world_name}.occupancy3d"
 echo "Gazebo resources: ${runtime_dir}"
+echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_cpu_list:-all}' planning='${planning_cpu_list:-all}' diagnostics='${diagnostics_cpu_list:-all}'"
 (
   gz_server_pid=""
   gz_gui_pid=""
@@ -585,7 +631,8 @@ echo "Gazebo resources: ${runtime_dir}"
   if [[ -n "${headless}" ]]; then
     gz_args+=(--headless-rendering)
   fi
-  gz sim "${gz_args[@]}" "${runtime_worlds_dir}/${world_name}.sdf" &
+  run_with_cpu_affinity "${control_cpu_list}" \
+    gz sim "${gz_args[@]}" "${runtime_worlds_dir}/${world_name}.sdf" &
   gz_server_pid=$!
 
   if [[ -z "${headless}" ]]; then
@@ -594,7 +641,8 @@ echo "Gazebo resources: ${runtime_dir}"
       "${gazebo_gui_follow_wait_s}"; then
       echo "WARNING: launching Gazebo GUI without the requested drone entity."
     fi
-    gz sim -g >> "${gz_gui_log_file}" 2>&1 &
+    run_with_cpu_affinity "${diagnostics_cpu_list}" \
+      gz sim -g >> "${gz_gui_log_file}" 2>&1 &
     gz_gui_pid=$!
     configure_gazebo_world_running "${gazebo_world_unpause_wait_s}" &
     gz_unpause_pid=$!
@@ -613,7 +661,8 @@ echo "Gazebo resources: ${runtime_dir}"
 ) >> "${gz_log_file}" 2>&1 &
 
 echo "MicroXRCEAgent log: ${uxrce_log_file}"
-MicroXRCEAgent udp4 -p 8888 > "${uxrce_log_file}" 2>&1 &
+run_with_cpu_affinity "${control_cpu_list}" \
+  MicroXRCEAgent udp4 -p 8888 > "${uxrce_log_file}" 2>&1 &
 
 px4_parameter_stream() {
   local cruise_speed="$1"
@@ -785,6 +834,9 @@ if [[ "${mission_type}" == "intercept" ]]; then
     enable_rviz:="${enable_rviz}"
     evader_speed_scale:="${evader_speed_scale}"
     shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"
+    control_cpu_list:="${control_cpu_list}"
+    planning_cpu_list:="${planning_cpu_list}"
+    diagnostics_cpu_list:="${diagnostics_cpu_list}"
   )
 else
   ros_launch_args=(
