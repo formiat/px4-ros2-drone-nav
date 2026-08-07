@@ -70,6 +70,8 @@ void ProductionMppiNode::recordTickStatistics(
     active_rollout_total_ += result.active_rollouts;
     full_rollout_ticks_ += result.active_rollouts == mppi_config_.rollouts ? 1U : 0U;
     reduced_rollout_ticks_ += result.active_rollouts < mppi_config_.rollouts ? 1U : 0U;
+    batched_gpu_ticks_ += result.gpu_batch_size > 1U ? 1U : 0U;
+    gpu_batch_size_total_ += result.gpu_batch_size;
   }
 }
 

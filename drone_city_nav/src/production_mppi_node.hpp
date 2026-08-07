@@ -585,6 +585,8 @@ private:
   std::uint64_t full_rollout_ticks_{0U};
   std::uint64_t reduced_rollout_ticks_{0U};
   std::uint64_t active_rollout_total_{0U};
+  std::uint64_t batched_gpu_ticks_{0U};
+  std::uint64_t gpu_batch_size_total_{0U};
   std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
   mutable std::mutex statistics_mutex_;

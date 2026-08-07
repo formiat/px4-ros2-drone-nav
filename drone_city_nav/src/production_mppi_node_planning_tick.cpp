@@ -618,6 +618,7 @@ void ProductionMppiNode::planningTick() {
   diagnostic_result.nominal_reseeded = result.nominal_reseeded;
   diagnostic_result.esdf_revision = result.esdf_revision;
   diagnostic_result.active_rollouts = result.active_rollouts;
+  diagnostic_result.gpu_batch_size = result.gpu_batch_size;
   diagnostic_result.timings = result.timings;
   ProductionMppiPreparedEsdf diagnostic_esdf = *esdf;
   diagnostic_esdf.distances_m.reset();

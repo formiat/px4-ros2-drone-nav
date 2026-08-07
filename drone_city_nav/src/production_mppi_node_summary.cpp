@@ -39,6 +39,8 @@ void ProductionMppiNode::publishSummary() {
   std::uint64_t full_rollout_ticks{0U};
   std::uint64_t reduced_rollout_ticks{0U};
   std::uint64_t active_rollout_total{0U};
+  std::uint64_t batched_gpu_ticks{0U};
+  std::uint64_t gpu_batch_size_total{0U};
   {
     const std::scoped_lock lock{statistics_mutex_};
     runtime_samples_ms = runtime_samples_ms_;
@@ -55,6 +57,8 @@ void ProductionMppiNode::publishSummary() {
     full_rollout_ticks = full_rollout_ticks_;
     reduced_rollout_ticks = reduced_rollout_ticks_;
     active_rollout_total = active_rollout_total_;
+    batched_gpu_ticks = batched_gpu_ticks_;
+    gpu_batch_size_total = gpu_batch_size_total_;
   }
   if (runtime_samples_ms.empty()) {
     return;
@@ -71,6 +75,10 @@ void ProductionMppiNode::publishSummary() {
       rollout_ticks > 0U ? static_cast<double>(active_rollout_total) /
                                static_cast<double>(rollout_ticks)
                          : 0.0;
+  const double average_gpu_batch_size =
+      rollout_ticks > 0U ? static_cast<double>(gpu_batch_size_total) /
+                               static_cast<double>(rollout_ticks)
+                         : 0.0;
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
@@ -84,7 +92,8 @@ void ProductionMppiNode::publishSummary() {
       " no_static_raw_updates=%" PRIu64 " no_static_esdf_builds=%" PRIu64
       " no_static_esdf_throttled=%" PRIu64 " dropped_diagnostics=%" PRIu64
       " full_rollout_ticks=%" PRIu64 " reduced_rollout_ticks=%" PRIu64
-      " average_active_rollouts=%.1f",
+      " average_active_rollouts=%.1f batched_gpu_ticks=%" PRIu64
+      " average_gpu_batch_size=%.2f",
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, raw_collision_horizons, solid_collision_horizons,
@@ -95,7 +104,8 @@ void ProductionMppiNode::publishSummary() {
       no_static_esdf_builds_.load(std::memory_order_relaxed),
       no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
       dropped_diagnostics_snapshots_.load(std::memory_order_relaxed),
-      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts);
+      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts,
+      batched_gpu_ticks, average_gpu_batch_size);
 }
 
 } // namespace drone_city_nav

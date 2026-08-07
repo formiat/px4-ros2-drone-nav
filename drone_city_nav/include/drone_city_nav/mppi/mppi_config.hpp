@@ -62,6 +62,7 @@ struct CostConfig {
 struct BenchmarkConfig {
   std::string scenario{"urban_blocks"};
   std::size_t rollouts{8192U};
+  std::size_t multi_vehicle_batch_size{1U};
   std::size_t steps{80U};
   std::size_t warmup_ticks{100U};
   std::size_t measured_ticks{1000U};

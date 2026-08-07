@@ -41,7 +41,7 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             allocate(33, 4)
 
-    def test_launch_wires_worker_counts_and_tick_phases(self) -> None:
+    def test_launch_wires_worker_counts_and_gpu_batch(self) -> None:
         source = LAUNCH.read_text(encoding="utf-8")
 
         self.assertIn(
@@ -49,7 +49,8 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
             source,
         )
         self.assertIn('"planner_worker_count": planner_worker_counts[role_index]', source)
-        self.assertIn('"planning_tick_phase_offset_s": (', source)
+        self.assertIn('"multi_vehicle_mppi_batch_size": len(role_names)', source)
+        self.assertIn('"planning_tick_phase_offset_s": 0.0', source)
 
     def test_planners_share_one_multithreaded_component_process(self) -> None:
         source = LAUNCH.read_text(encoding="utf-8")

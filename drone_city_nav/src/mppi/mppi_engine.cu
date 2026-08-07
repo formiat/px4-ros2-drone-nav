@@ -8,14 +8,17 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cuda_runtime.h>
+#include <exception>
 #include <limits>
 #include <mutex>
 #include <ranges>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace drone_city_nav::mppi {
 namespace {
@@ -265,6 +268,7 @@ struct DeviceBuffers {
 };
 
 #include "mppi_engine_kernels.cuh"
+#include "mppi_simulation_batch.cuh"
 
 [[nodiscard]] SweptFootprintConfig
 hostFootprintConfig(const FootprintConfig& footprint) noexcept {
@@ -519,21 +523,69 @@ public:
         buffers_.noise_yaw.get(), noise_count, config_.seed, tick_sequence_++,
         config_.noise);
     noise_done_.record(stream_);
-    simulate<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
-        buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
-        buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
-        buffers_.minimum_clearance.get(), buffers_.worst_tier.get(),
-        buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
-        config_.steps, input.initial_state, input.target, moving_target,
-        moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
-        config_.costs, textures_[active_texture_].grid(),
-        textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
-        buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
-        route_active ? input.route->initial_station_m : 0.0F, previous_applied_control,
-        first_control_interval_s, input.reference_speed_mps,
-        config_.early_exit_on_collision);
-    simulation_done_.record(stream_);
+    const SimulationBatchInput simulation_input{
+        buffers_.noise_ax.get(),
+        buffers_.noise_ay.get(),
+        buffers_.noise_az.get(),
+        buffers_.noise_yaw.get(),
+        buffers_.nominal.get(),
+        buffers_.soft_cost.get(),
+        buffers_.critical_exposure.get(),
+        buffers_.planning_exposure.get(),
+        buffers_.minimum_clearance.get(),
+        buffers_.worst_tier.get(),
+        buffers_.raw_collision.get(),
+        buffers_.solid_collision.get(),
+        active_rollouts,
+        config_.steps,
+        input.initial_state,
+        input.target,
+        moving_target,
+        moving_target_enabled,
+        config_.dynamics,
+        config_.risk,
+        config_.footprint,
+        config_.costs,
+        textures_[active_texture_].grid(),
+        textures_[active_texture_].texture(),
+        buffers_.solids.get(),
+        solid_count_,
+        buffers_.route_points.get(),
+        route_active ? route_point_count_ : 0U,
+        route_active ? input.route->initial_station_m : 0.0F,
+        previous_applied_control,
+        first_control_interval_s,
+        input.reference_speed_mps,
+        config_.early_exit_on_collision,
+    };
+    std::size_t executed_batch_size{1U};
+    if (config_.multi_vehicle_batch_size > 1U) {
+      SimulationBatchRequest request{
+          .input = simulation_input,
+          .stream = stream_,
+          .noise_ready = noise_done_.get(),
+          .simulation_done = simulation_done_.get(),
+          .rollout_blocks = static_cast<std::size_t>(rollout_blocks),
+      };
+      executed_batch_size = simulationBatchCoordinator().submit(
+          request, config_.multi_vehicle_batch_size);
+    } else {
+      simulate<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
+          buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
+          buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
+          buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
+          buffers_.minimum_clearance.get(), buffers_.worst_tier.get(),
+          buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
+          config_.steps, input.initial_state, input.target, moving_target,
+          moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
+          config_.costs, textures_[active_texture_].grid(),
+          textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
+          buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
+          route_active ? input.route->initial_station_m : 0.0F,
+          previous_applied_control, first_control_interval_s, input.reference_speed_mps,
+          config_.early_exit_on_collision);
+      simulation_done_.record(stream_);
+    }
     initializeReduction<<<1, 1, 0U, stream_>>>(
         buffers_.best_tier.get(), buffers_.best_critical.get(),
         buffers_.best_planning.get(), buffers_.minimum_soft.get(),
@@ -700,6 +752,7 @@ public:
     result.nominal_reseeded = nominal_reseeded;
     result.esdf_revision = textures_[active_texture_].revision();
     result.active_rollouts = active_rollouts;
+    result.gpu_batch_size = executed_batch_size;
     result.timings.warm_start_ms = elapsedMs(started_, warm_done_);
     result.timings.noise_generation_ms = elapsedMs(warm_done_, noise_done_);
     result.timings.rollout_simulation_ms = elapsedMs(noise_done_, simulation_done_);

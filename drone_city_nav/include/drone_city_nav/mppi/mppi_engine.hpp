@@ -132,6 +132,7 @@ struct MppiTickResult {
   bool nominal_reseeded{false};
   std::uint64_t esdf_revision{0U};
   std::size_t active_rollouts{0U};
+  std::size_t gpu_batch_size{0U};
   MppiStageTimings timings{};
 };
 
