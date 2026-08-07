@@ -1,5 +1,6 @@
 import math
 import re
+import runpy
 from pathlib import Path
 
 import yaml
@@ -10,6 +11,19 @@ from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer, Node
 from launch_ros.descriptions import ComposableNode
+
+
+_DIAGNOSTICS_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("intercept_diagnostics_launch.py"))
+)
+_make_diagnostics_container = _DIAGNOSTICS_SUPPORT["make_diagnostics_container"]
+_make_lidar_debug_component = _DIAGNOSTICS_SUPPORT["make_lidar_debug_component"]
+_make_selected_diagnostics_components = _DIAGNOSTICS_SUPPORT[
+    "make_selected_diagnostics_components"
+]
+_make_world_visualization_component = _DIAGNOSTICS_SUPPORT[
+    "make_world_visualization_component"
+]
 
 
 def _parameters(document, node_name, overrides):
@@ -87,6 +101,9 @@ def generate_launch_description():
         )
         diagnostics_prefix = _cpu_affinity_prefix(
             LaunchConfiguration("diagnostics_cpu_list").perform(context)
+        )
+        lidar_debug_enabled = _optional_bool(
+            enable_lidar_debug.perform(context), False
         )
         static_path = LaunchConfiguration("static_occupancy_3d_path").perform(context)
         if not static_path:
@@ -184,6 +201,7 @@ def generate_launch_description():
         )
         nodes = []
         planner_components = []
+        diagnostics_components = []
         bridge_arguments = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
         bridge_remaps = []
         contacts_topic = "/drone_city_nav/drone_contacts"
@@ -422,18 +440,10 @@ def generate_launch_description():
                         ),
                     },
                 )
-                nodes.append(
-                    Node(
-                        package="drone_city_nav",
-                        executable="lidar_debug_node",
-                        namespace=f"vehicles/{role}",
-                        name="lidar_debug_node",
-                        output="screen",
-                        condition=IfCondition(enable_lidar_debug),
-                        prefix=diagnostics_prefix,
-                        parameters=[debug_params, {"use_sim_time": True}],
+                if lidar_debug_enabled:
+                    diagnostics_components.append(
+                        _make_lidar_debug_component(role, debug_params)
                     )
-                )
 
         nodes.append(
             ComposableNodeContainer(
@@ -469,16 +479,7 @@ def generate_launch_description():
                 "static_occupancy_3d_path": static_path,
             },
         )
-        nodes.append(
-            Node(
-                package="drone_city_nav",
-                executable="world_visualization_node",
-                name="world_visualization_node",
-                output="screen",
-                prefix=diagnostics_prefix,
-                parameters=[world_params, {"use_sim_time": True}],
-            )
-        )
+        diagnostics_components.append(_make_world_visualization_component(world_params))
         evader_goal = {
             "evader_goal_x_m": float(
                 LaunchConfiguration("evader_goal_x_m").perform(context)
@@ -705,145 +706,73 @@ def generate_launch_description():
             )
         )
         interceptor_prefixes = [f"/vehicles/{role}" for role in interceptor_roles]
-        nodes.extend(
-            [
-                Node(
-                    package="drone_city_nav",
-                    executable="intercept_mission_referee_node",
-                    name="intercept_mission_referee_node",
-                    output="screen",
-                    on_exit=Shutdown(reason="intercept mission completed"),
-                    prefix=control_prefix,
-                    parameters=[
-                        {
-                            "use_sim_time": True,
-                            **evader_goal,
-                            "interceptor_ids": interceptor_roles,
-                            "interceptor_state_topics": [
-                                f"{prefix}/state" for prefix in interceptor_prefixes
-                            ],
-                            "interceptor_execution_horizon_topics": [
-                                f"{prefix}/mppi/execution_horizon"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "interceptor_mission_command_topics": [
-                                f"{prefix}/mission_command"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "interceptor_world_readiness_topics": [
-                                f"{prefix}/mppi/world_ready"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "target_track_readiness_topics": [
-                                f"{prefix}/target_track_ready"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "interceptor_destroyed_topics": [
-                                f"{prefix}/vehicle_destroyed"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "interceptor_start_topics": [
-                                f"{prefix}/mission_start"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "radar_simulator_node_fqns": [
-                                f"{prefix}/radar_simulator_node"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "evader_state_topic": "/vehicles/evader/state",
-                            "evader_world_readiness_topic": (
-                                "/vehicles/evader/mppi/world_ready"
-                            ),
-                            "evader_destroyed_topic": (
-                                "/vehicles/evader/vehicle_destroyed"
-                            ),
-                            "shutdown_on_terminal_outcome": (
-                                shutdown_on_terminal_outcome
-                            ),
-                        }
-                    ],
-                ),
-                Node(
-                    package="drone_city_nav",
-                    executable="intercept_spectator_node",
-                    name="intercept_spectator_node",
-                    output="screen",
-                    prefix=diagnostics_prefix,
-                    parameters=[
-                        {
-                            "use_sim_time": True,
-                            "interceptor_ids": interceptor_roles,
-                            "interceptor_state_topics": [
-                                f"{prefix}/state" for prefix in interceptor_prefixes
-                            ],
-                            "interceptor_destroyed_topics": [
-                                f"{prefix}/vehicle_destroyed"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "gazebo_models": [
-                                roles[role]["model"] for role in interceptor_roles
-                            ],
-                        }
-                    ],
-                ),
-                Node(
-                    package="drone_city_nav",
-                    executable="intercept_diagnostics_mux_node",
-                    name="intercept_diagnostics_mux_node",
-                    output="screen",
-                    prefix=diagnostics_prefix,
-                    parameters=[
-                        {
-                            "use_sim_time": True,
-                            "vehicle_ids": interceptor_roles,
-                            "path_topics": [
-                                f"{prefix}/mppi/path"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "marker_topics": [
-                                f"{prefix}/mppi/markers"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "status_topics": [
-                                f"{prefix}/mppi/status"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "execution_horizon_topics": [
-                                f"{prefix}/mppi/execution_horizon"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "navigation_state_topics": [
-                                f"{prefix}/state"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "memory_3d_topics": [
-                                f"{prefix}/raw_memory_points_3d"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "lidar_pointcloud_topics": [
-                                f"{prefix}/lidar_debug_points"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "raw_lidar_3d_pointcloud_topics": [
-                                f"{prefix}/raw_lidar_hit_points_3d"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "remembered_pointcloud_topics": [
-                                f"{prefix}/remembered_lidar_points"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "occupied_pointcloud_topics": [
-                                f"{prefix}/raw_occupied_cells"
-                                for prefix in interceptor_prefixes
-                            ],
-                            "raw_memory_pointcloud_topics": [
-                                f"{prefix}/raw_memory_obstacle_points"
-                                for prefix in interceptor_prefixes
-                            ],
-                        }
-                    ],
-                ),
-            ]
+        nodes.append(
+            Node(
+                package="drone_city_nav",
+                executable="intercept_mission_referee_node",
+                name="intercept_mission_referee_node",
+                output="screen",
+                on_exit=Shutdown(reason="intercept mission completed"),
+                prefix=control_prefix,
+                parameters=[
+                    {
+                        "use_sim_time": True,
+                        **evader_goal,
+                        "interceptor_ids": interceptor_roles,
+                        "interceptor_state_topics": [
+                            f"{prefix}/state" for prefix in interceptor_prefixes
+                        ],
+                        "interceptor_execution_horizon_topics": [
+                            f"{prefix}/mppi/execution_horizon"
+                            for prefix in interceptor_prefixes
+                        ],
+                        "interceptor_mission_command_topics": [
+                            f"{prefix}/mission_command"
+                            for prefix in interceptor_prefixes
+                        ],
+                        "interceptor_world_readiness_topics": [
+                            f"{prefix}/mppi/world_ready"
+                            for prefix in interceptor_prefixes
+                        ],
+                        "target_track_readiness_topics": [
+                            f"{prefix}/target_track_ready"
+                            for prefix in interceptor_prefixes
+                        ],
+                        "interceptor_destroyed_topics": [
+                            f"{prefix}/vehicle_destroyed"
+                            for prefix in interceptor_prefixes
+                        ],
+                        "interceptor_start_topics": [
+                            f"{prefix}/mission_start"
+                            for prefix in interceptor_prefixes
+                        ],
+                        "radar_simulator_node_fqns": [
+                            f"{prefix}/radar_simulator_node"
+                            for prefix in interceptor_prefixes
+                        ],
+                        "evader_state_topic": "/vehicles/evader/state",
+                        "evader_world_readiness_topic": (
+                            "/vehicles/evader/mppi/world_ready"
+                        ),
+                        "evader_destroyed_topic": (
+                            "/vehicles/evader/vehicle_destroyed"
+                        ),
+                        "shutdown_on_terminal_outcome": (
+                            shutdown_on_terminal_outcome
+                        ),
+                    }
+                ],
+            )
+        )
+        diagnostics_components.extend(
+            _make_selected_diagnostics_components(
+                interceptor_roles,
+                interceptor_prefixes,
+                [roles[role]["model"] for role in interceptor_roles],
+            )
+        )
+        nodes.append(
+            _make_diagnostics_container(diagnostics_components, diagnostics_prefix)
         )
         nodes.append(
             Node(

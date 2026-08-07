@@ -371,7 +371,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('px4_namespace": "evader"', self.intercept_launch_text)
         self.assertIn('"require_mission_start_signal": True', self.intercept_launch_text)
         self.assertIn('"rviz_drone_follow_tf_enabled": False', self.intercept_launch_text)
-        self.assertIn('executable="intercept_spectator_node"', self.intercept_launch_text)
+        diagnostics_launch = INTERCEPT_LAUNCH_FILE.with_name(
+            "intercept_diagnostics_launch.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'plugin="drone_city_nav::InterceptSpectatorNode"', diagnostics_launch
+        )
 
     def test_intercept_gui_observes_terminal_fall_and_headless_exits(self) -> None:
         self.assertIn(

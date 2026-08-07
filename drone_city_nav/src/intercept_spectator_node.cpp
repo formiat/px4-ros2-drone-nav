@@ -1,3 +1,5 @@
+#include "drone_city_nav/intercept_spectator_node.hpp"
+
 #include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
@@ -10,6 +12,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 #include <string>
 #include <tf2_ros/transform_broadcaster.h>
@@ -30,8 +33,8 @@ void requireCount(const std::vector<std::string>& values, const std::size_t coun
 
 class InterceptSpectatorNode final : public rclcpp::Node {
 public:
-  InterceptSpectatorNode()
-      : Node{"intercept_spectator_node"},
+  explicit InterceptSpectatorNode(const rclcpp::NodeOptions& options)
+      : Node{"intercept_spectator_node", options},
         tf_broadcaster_{std::make_unique<tf2_ros::TransformBroadcaster>(*this)} {
     mission_epoch_ =
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 1));
@@ -172,11 +175,11 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
+std::shared_ptr<rclcpp::Node>
+makeInterceptSpectatorNode(const rclcpp::NodeOptions& options) {
+  return std::make_shared<InterceptSpectatorNode>(options);
+}
+
 } // namespace drone_city_nav
 
-int main(int argc, char** argv) {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<drone_city_nav::InterceptSpectatorNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(drone_city_nav::InterceptSpectatorNode)

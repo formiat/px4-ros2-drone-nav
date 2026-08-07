@@ -12,6 +12,7 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
+DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
 RUN_SCRIPT = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
 
 
@@ -85,6 +86,31 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn('{"use_intra_process_comms": True}', source)
         self.assertNotIn('executable="radar_target_tracker_node"', source)
         self.assertNotIn('executable="interceptor_guidance_node"', source)
+
+    def test_diagnostics_share_an_intra_process_component_container(self) -> None:
+        source = LAUNCH.read_text(encoding="utf-8")
+        diagnostics_source = DIAGNOSTICS_LAUNCH.read_text(encoding="utf-8")
+
+        self.assertIn('name="intercept_diagnostics_container"', diagnostics_source)
+        for plugin in (
+            "WorldVisualizationNode",
+            "InterceptSpectatorNode",
+            "InterceptDiagnosticsMuxNode",
+            "LidarDebugNode",
+        ):
+            with self.subTest(plugin=plugin):
+                self.assertIn(
+                    f'plugin="drone_city_nav::{plugin}"', diagnostics_source
+                )
+        for executable in (
+            "world_visualization_node",
+            "intercept_spectator_node",
+            "intercept_diagnostics_mux_node",
+            "lidar_debug_node",
+        ):
+            with self.subTest(executable=executable):
+                self.assertNotIn(f'executable="{executable}"', source)
+        self.assertIn("if lidar_debug_enabled:", source)
 
     def test_subsystem_affinity_is_validated_and_wired_by_role(self) -> None:
         prefix = _load_cpu_affinity_prefix()

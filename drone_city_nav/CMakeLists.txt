@@ -273,19 +273,6 @@ ament_target_dependencies(
   visualization_msgs)
 enable_project_warnings(mppi_offboard_node)
 
-add_executable(world_visualization_node src/world_visualization_node.cpp)
-target_compile_features(world_visualization_node PRIVATE cxx_std_20)
-target_link_libraries(world_visualization_node drone_city_nav_core
-                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
-ament_target_dependencies(
-  world_visualization_node
-  ament_index_cpp
-  nav_msgs
-  rclcpp
-  sensor_msgs
-  visualization_msgs)
-enable_project_warnings(world_visualization_node)
-
 add_executable(collision_crash_node src/collision_crash_node.cpp)
 target_compile_features(collision_crash_node PRIVATE cxx_std_20)
 target_link_libraries(collision_crash_node drone_city_nav_core
@@ -357,42 +344,68 @@ target_link_libraries(interceptor_guidance_node
 ament_target_dependencies(interceptor_guidance_node rclcpp)
 enable_project_warnings(interceptor_guidance_node)
 
-add_executable(intercept_spectator_node src/intercept_spectator_node.cpp)
-target_compile_features(intercept_spectator_node PRIVATE cxx_std_20)
-target_link_libraries(intercept_spectator_node ${cpp_typesupport_target})
-ament_target_dependencies(intercept_spectator_node geometry_msgs rclcpp tf2_ros)
-enable_project_warnings(intercept_spectator_node)
-
-add_executable(intercept_diagnostics_mux_node
-               src/intercept_diagnostics_mux_node.cpp)
-target_compile_features(intercept_diagnostics_mux_node PRIVATE cxx_std_20)
-target_link_libraries(intercept_diagnostics_mux_node ${cpp_typesupport_target})
-ament_target_dependencies(
-  intercept_diagnostics_mux_node
-  geometry_msgs
-  nav_msgs
-  rclcpp
-  sensor_msgs
-  std_msgs
-  visualization_msgs)
-enable_project_warnings(intercept_diagnostics_mux_node)
-
-add_executable(
-  lidar_debug_node
-  src/lidar_debug_node.cpp
+add_library(
+  drone_city_nav_diagnostics_components SHARED
+  src/world_visualization_node.cpp
+  src/intercept_spectator_node.cpp
+  src/intercept_diagnostics_mux_node.cpp
+  src/lidar_debug_component.cpp
   src/lidar_debug_node_callbacks.cpp
   src/lidar_debug_node_lifecycle.cpp
   src/lidar_debug_node_points.cpp
   src/lidar_debug_node_snapshot.cpp)
-target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
-target_link_libraries(lidar_debug_node drone_city_nav_core
-                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
+target_compile_features(drone_city_nav_diagnostics_components PRIVATE cxx_std_20)
+target_link_libraries(
+  drone_city_nav_diagnostics_components
+  drone_city_nav_core
+  drone_city_nav_ros_adapters
+  ${cpp_typesupport_target})
 ament_target_dependencies(
-  lidar_debug_node
+  drone_city_nav_diagnostics_components
+  ament_index_cpp
+  geometry_msgs
   nav_msgs
   px4_msgs
   rclcpp
-  sensor_msgs)
+  rclcpp_components
+  sensor_msgs
+  std_msgs
+  tf2_ros
+  visualization_msgs)
+rclcpp_components_register_nodes(
+  drone_city_nav_diagnostics_components
+  "drone_city_nav::WorldVisualizationNode"
+  "drone_city_nav::InterceptSpectatorNode"
+  "drone_city_nav::InterceptDiagnosticsMuxNode"
+  "drone_city_nav::LidarDebugNode")
+enable_project_warnings(drone_city_nav_diagnostics_components)
+
+add_executable(world_visualization_node src/world_visualization_main.cpp)
+target_compile_features(world_visualization_node PRIVATE cxx_std_20)
+target_link_libraries(world_visualization_node
+                      drone_city_nav_diagnostics_components)
+ament_target_dependencies(world_visualization_node rclcpp)
+enable_project_warnings(world_visualization_node)
+
+add_executable(intercept_spectator_node src/intercept_spectator_main.cpp)
+target_compile_features(intercept_spectator_node PRIVATE cxx_std_20)
+target_link_libraries(intercept_spectator_node
+                      drone_city_nav_diagnostics_components)
+ament_target_dependencies(intercept_spectator_node rclcpp)
+enable_project_warnings(intercept_spectator_node)
+
+add_executable(intercept_diagnostics_mux_node
+               src/intercept_diagnostics_mux_main.cpp)
+target_compile_features(intercept_diagnostics_mux_node PRIVATE cxx_std_20)
+target_link_libraries(intercept_diagnostics_mux_node
+                      drone_city_nav_diagnostics_components)
+ament_target_dependencies(intercept_diagnostics_mux_node rclcpp)
+enable_project_warnings(intercept_diagnostics_mux_node)
+
+add_executable(lidar_debug_node src/lidar_debug_node.cpp)
+target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
+target_link_libraries(lidar_debug_node drone_city_nav_diagnostics_components)
+ament_target_dependencies(lidar_debug_node rclcpp)
 enable_project_warnings(lidar_debug_node)
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
@@ -463,6 +476,7 @@ install(
     radar_target_tracker_node
     interceptor_guidance_node
     drone_city_nav_interceptor_tracking_components
+    drone_city_nav_diagnostics_components
     intercept_spectator_node
     intercept_diagnostics_mux_node
     generate_static_esdf_cache

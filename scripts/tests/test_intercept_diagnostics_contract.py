@@ -10,6 +10,7 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
+DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
 MUX = PACKAGE / "src" / "intercept_diagnostics_mux_node.cpp"
 LIDAR_HEADER = PACKAGE / "src" / "lidar_debug_node.hpp"
 LIDAR_CALLBACKS = PACKAGE / "src" / "lidar_debug_node_callbacks.cpp"
@@ -23,18 +24,28 @@ RVIZ_CONFIGS = (
 class InterceptDiagnosticsContractTest(unittest.TestCase):
     def test_launch_keeps_all_interceptor_sources_namespaced(self) -> None:
         launch = LAUNCH.read_text(encoding="utf-8")
+        diagnostics_launch = DIAGNOSTICS_LAUNCH.read_text(encoding="utf-8")
         self.assertIn('path_topic = f"{prefix}/mppi/path"', launch)
         self.assertIn('marker_topic = f"{prefix}/mppi/markers"', launch)
         self.assertNotIn('"/drone_city_nav/mppi/path" if primary', launch)
-        self.assertIn('executable="intercept_diagnostics_mux_node"', launch)
-        self.assertIn('"vehicle_ids": interceptor_roles', launch)
+        self.assertIn(
+            'plugin="drone_city_nav::InterceptDiagnosticsMuxNode"',
+            diagnostics_launch,
+        )
+        self.assertIn('name="intercept_diagnostics_container"', diagnostics_launch)
+        self.assertIn('"vehicle_ids": interceptor_roles', diagnostics_launch)
 
     def test_lidar_debug_is_selector_gated_for_every_interceptor(self) -> None:
         launch = LAUNCH.read_text(encoding="utf-8")
+        diagnostics_launch = DIAGNOSTICS_LAUNCH.read_text(encoding="utf-8")
         header = LIDAR_HEADER.read_text(encoding="utf-8")
         callbacks = LIDAR_CALLBACKS.read_text(encoding="utf-8")
         lifecycle = LIDAR_LIFECYCLE.read_text(encoding="utf-8")
         self.assertIn('if config["is_interceptor"]:', launch)
+        self.assertIn("if lidar_debug_enabled:", launch)
+        self.assertIn(
+            'plugin="drone_city_nav::LidarDebugNode"', diagnostics_launch
+        )
         self.assertIn('"spectator_vehicle_id": role', launch)
         self.assertIn('namespace=f"vehicles/{role}"', launch)
         self.assertIn("diagnosticsSelected", header)

@@ -49,8 +49,8 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   raw_memory_pointcloud_z_m_ = config.raw_memory_pointcloud_z_m;
 }
 
-LidarDebugNode::LidarDebugNode()
-    : Node{"lidar_debug_node"} {
+LidarDebugNode::LidarDebugNode(const rclcpp::NodeOptions& options)
+    : Node{"lidar_debug_node", options} {
   const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*this);
   applyConfig(config);
   const LidarDebugNodeTopics& topics = config.topics;

@@ -85,6 +85,12 @@ uses ROS 2 intra-process transport, while each interceptor retains independent
 tracker and guidance state. Radar simulators and the mission referee remain
 separate processes because they form the ground-truth data boundary.
 
+The spectator, diagnostics mux, world visualization, and enabled lidar-debug
+nodes share a diagnostics-only component container. Intra-process transport
+avoids serializing spectator selection and detailed point clouds between these
+components. This container remains isolated from planning, mapping, control,
+the mission referee, and radar simulators.
+
 ### `mppi_offboard_node`
 
 - consumes only fresh `MppiTrajectoryHorizon` messages;
@@ -162,7 +168,9 @@ the selected planner markers, execution horizon, status, memory cloud, and
 lidar-debug clouds on stable RViz topics. All three paths and velocity/path
 direction arrows remain visible concurrently. Three selector-gated lidar debug
 nodes retain pose and latest-map context, but only the current spectator
-projects scans, writes snapshots, and publishes detailed lidar layers.
+projects scans, writes snapshots, and publishes detailed lidar layers. These
+visualization-only nodes share the diagnostics component container; their
+outputs never participate in route selection or vehicle control.
 
 The mission referee publishes the evader's fixed position objective, then waits
 until all four vehicles are navigation-ready, all planners have activated a

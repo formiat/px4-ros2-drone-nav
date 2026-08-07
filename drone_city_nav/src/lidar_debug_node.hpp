@@ -60,7 +60,7 @@ toNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
 
 class LidarDebugNode final : public rclcpp::Node {
 public:
-  LidarDebugNode();
+  explicit LidarDebugNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions{});
 
 private:
   void applyConfig(const LidarDebugNodeConfig& config);

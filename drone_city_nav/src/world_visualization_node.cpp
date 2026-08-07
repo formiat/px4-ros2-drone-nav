@@ -1,3 +1,5 @@
+#include "drone_city_nav/world_visualization_node.hpp"
+
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
@@ -11,14 +13,15 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <string>
 
 namespace drone_city_nav {
 
 class WorldVisualizationNode final : public rclcpp::Node {
 public:
-  WorldVisualizationNode()
-      : Node{"world_visualization_node"} {
+  explicit WorldVisualizationNode(const rclcpp::NodeOptions& options)
+      : Node{"world_visualization_node", options} {
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     const auto durable_qos = rclcpp::QoS{1}.reliable().transient_local();
     raw_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
@@ -101,11 +104,11 @@ private:
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
 };
 
+std::shared_ptr<rclcpp::Node>
+makeWorldVisualizationNode(const rclcpp::NodeOptions& options) {
+  return std::make_shared<WorldVisualizationNode>(options);
+}
+
 } // namespace drone_city_nav
 
-int main(int argc, char* argv[]) {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<drone_city_nav::WorldVisualizationNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(drone_city_nav::WorldVisualizationNode)

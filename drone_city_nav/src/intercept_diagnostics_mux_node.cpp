@@ -1,3 +1,5 @@
+#include "drone_city_nav/intercept_diagnostics_mux_node.hpp"
+
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
@@ -20,6 +22,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -96,8 +99,8 @@ emptyPointCloud(const builtin_interfaces::msg::Time& stamp,
 
 class InterceptDiagnosticsMuxNode final : public rclcpp::Node {
 public:
-  InterceptDiagnosticsMuxNode()
-      : Node{"intercept_diagnostics_mux_node"} {
+  explicit InterceptDiagnosticsMuxNode(const rclcpp::NodeOptions& options)
+      : Node{"intercept_diagnostics_mux_node", options} {
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     vehicle_ids_ = declare_parameter<std::vector<std::string>>(
         "vehicle_ids", {"interceptor_0", "interceptor_1", "interceptor_2"});
@@ -489,11 +492,11 @@ private:
   rclcpp::TimerBase::SharedPtr direction_timer_;
 };
 
+std::shared_ptr<rclcpp::Node>
+makeInterceptDiagnosticsMuxNode(const rclcpp::NodeOptions& options) {
+  return std::make_shared<InterceptDiagnosticsMuxNode>(options);
+}
+
 } // namespace drone_city_nav
 
-int main(int argc, char** argv) {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<drone_city_nav::InterceptDiagnosticsMuxNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(drone_city_nav::InterceptDiagnosticsMuxNode)

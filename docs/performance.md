@@ -42,6 +42,12 @@ intra-process delivery also removes the DDS serialization hop between each
 `TargetTrack` publisher and its guidance consumer. Radar simulators stay
 process-isolated because they consume target ground truth.
 
+Intercept visualization uses a third component container for the spectator,
+diagnostics mux, world visualization, and enabled selector-gated lidar-debug
+nodes. Spectator selection and detailed point clouds use intra-process delivery
+inside that container. The control, planning, mapping, referee, and radar
+ground-truth boundaries remain separate processes.
+
 Intercept simulation uses subsystem affinity rather than per-vehicle pinning.
 On a 16-CPU host the default masks are control/physics `0-7`, planning/mapping
 `4-15`, and diagnostics `12-15`. The overlap leaves dedicated capacity at both
