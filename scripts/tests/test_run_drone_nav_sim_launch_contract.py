@@ -183,6 +183,18 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
         )
 
+    def test_interceptor_2_starts_one_block_inside_the_east_edge(self) -> None:
+        self.assertRegex(
+            self.intercept_launch_text,
+            r'DeclareLaunchArgument\(\s*"interceptor_2_origin_x_m", '
+            r'default_value="216\.0"\s*\)',
+        )
+        self.assertRegex(
+            self.intercept_launch_text,
+            r'DeclareLaunchArgument\(\s*"interceptor_2_origin_y_m", '
+            r'default_value="378\.0"\s*\)',
+        )
+
     def test_intercept_evader_defaults_to_interceptor_speed(self) -> None:
         self.assertIn(
             'evader_speed_scale="${EVADER_SPEED_SCALE:-1.0}"', self.text

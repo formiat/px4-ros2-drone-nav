@@ -898,7 +898,7 @@ def generate_launch_description():
                 "interceptor_1_origin_y_m", default_value="378.0"
             ),
             DeclareLaunchArgument(
-                "interceptor_2_origin_x_m", default_value="270.0"
+                "interceptor_2_origin_x_m", default_value="216.0"
             ),
             DeclareLaunchArgument(
                 "interceptor_2_origin_y_m", default_value="378.0"
