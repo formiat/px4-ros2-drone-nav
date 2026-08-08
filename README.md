@@ -179,6 +179,9 @@ after all applicable hold and disarm settlements are confirmed in the log. The
 mission contains one evader only; it does not respawn attackers or start another
 episode.
 
+In the Gazebo view, interceptor visibility markers remain yellow and the evader
+visibility marker is red. RViz continues to use its distinct per-role colors.
+
 Mission outcome and vehicle death are separate contracts. Mission failures never
 request disarm. Force-disarm is owned only by the latched death lifecycle and is
 accepted only for a physical Gazebo collision or a typed 5 m proximity death. If the

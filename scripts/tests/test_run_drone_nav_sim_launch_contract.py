@@ -192,6 +192,26 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
         )
 
+    def test_intercept_evader_uses_a_red_gazebo_marker_variant(self) -> None:
+        self.assertIn(
+            'evader_px4_model_target="${EVADER_PX4_MODEL_TARGET:-'
+            'gz_x500_lidar_2d_evader}"',
+            self.text,
+        )
+        self.assertIn(
+            'evader_model_name="${evader_px4_model_target#gz_}"', self.text
+        )
+        self.assertIn("EVADER_PX4_MODEL_TARGET", self.container_text)
+        self.assertIn("configure_drone_marker_color.py", self.text)
+        self.assertIn(
+            'PX4_SIM_MODEL="${intercept_px4_model_targets[instance]}"',
+            self.text,
+        )
+        self.assertIn(
+            '"evader_model", default_value="x500_lidar_2d_evader_3"',
+            self.intercept_launch_text,
+        )
+
     def test_intercept_launch_configures_adaptive_predictive_guidance(self) -> None:
         expected_defaults = {
             "intercept_minimum_prediction_horizon_s": "0.0",

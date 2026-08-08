@@ -109,6 +109,12 @@ if bool_is_true "${enable_subsystem_cpu_affinity}" &&
   fi
 fi
 px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
+evader_px4_model_target="${EVADER_PX4_MODEL_TARGET:-gz_x500_lidar_2d_evader}"
+evader_model_name="${evader_px4_model_target#gz_}"
+if [[ ! "${evader_px4_model_target}" =~ ^gz_[A-Za-z0-9_]+$ ]]; then
+  echo "Invalid EVADER_PX4_MODEL_TARGET: ${evader_px4_model_target}" >&2
+  exit 1
+fi
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
 smoke_duration_s="${SMOKE_DURATION_S:-0}"
 px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_drone_nav.log}"
@@ -431,6 +437,13 @@ prepare_runtime_resources() {
 
   ln -s "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
     "${runtime_models_dir}/x500_lidar_2d"
+  if [[ "${mission_type}" == "intercept" ]]; then
+    cp -a "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
+      "${runtime_models_dir}/${evader_model_name}"
+    python3 "${repo_root}/scripts/configure_drone_marker_color.py" \
+      "${runtime_models_dir}/${evader_model_name}" \
+      --model-name "${evader_model_name}"
+  fi
   cp -a "${repo_root}/drone_city_nav/models/lidar_2d_v2" \
     "${runtime_models_dir}/lidar_2d_v2"
 
@@ -743,6 +756,12 @@ if [[ "${mission_type}" == "intercept" ]]; then
   echo "Evader PX4 SITL log: ${evader_px4_log_file}"
   echo "Evader Gazebo spawn pose: ${evader_spawn_x_m},${evader_spawn_y_m},${evader_spawn_z_m},0,0,${evader_spawn_yaw_rad}"
   intercept_px4_namespaces=(interceptor_0 interceptor_1 interceptor_2 evader)
+  intercept_px4_model_targets=(
+    "${px4_model_target}"
+    "${px4_model_target}"
+    "${px4_model_target}"
+    "${evader_px4_model_target}"
+  )
   intercept_px4_spawn_poses=(
     "${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}"
     "${interceptor_1_spawn_x_m},${interceptor_1_spawn_y_m},${interceptor_1_spawn_z_m},0,0,${interceptor_1_spawn_yaw_rad}"
@@ -776,7 +795,7 @@ if [[ "${mission_type}" == "intercept" ]]; then
         PX4_GZ_WORLD="${world_name}" \
           PX4_GZ_STANDALONE=1 \
           PX4_GZ_MODEL_POSE="${intercept_px4_spawn_poses[instance]}" \
-          PX4_SIM_MODEL="${px4_model_target}" \
+          PX4_SIM_MODEL="${intercept_px4_model_targets[instance]}" \
           PX4_UXRCE_DDS_NS="${intercept_px4_namespaces[instance]}" \
           PX4_SYS_AUTOSTART=4013 \
           HEADLESS="${headless}" \
@@ -879,6 +898,7 @@ if [[ "${mission_type}" == "intercept" ]]; then
     enable_lidar_debug:="${enable_lidar_debug}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
+    evader_model:="${evader_model_name}_3"
     evader_speed_scale:="${evader_speed_scale}"
     shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"
     control_cpu_list:="${control_cpu_list}"

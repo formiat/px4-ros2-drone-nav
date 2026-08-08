@@ -869,7 +869,9 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "interceptor_2_model", default_value="x500_lidar_2d_2"
             ),
-            DeclareLaunchArgument("evader_model", default_value="x500_lidar_2d_3"),
+            DeclareLaunchArgument(
+                "evader_model", default_value="x500_lidar_2d_evader_3"
+            ),
             DeclareLaunchArgument("interceptor_0_origin_x_m", default_value="54.0"),
             DeclareLaunchArgument("interceptor_0_origin_y_m", default_value="54.0"),
             DeclareLaunchArgument("interceptor_1_origin_x_m", default_value="54.0"),
