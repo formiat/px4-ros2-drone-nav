@@ -234,6 +234,7 @@ add_library(
   src/mppi_debug_markers.cpp
   src/ros_conversions.cpp
   src/raw_obstacle_delta.cpp
+  src/spectator_diagnostics_selection_ros.cpp
   src/static_map_debug.cpp
   src/visualization_marker_helpers.cpp)
 target_compile_features(drone_city_nav_ros_adapters PUBLIC cxx_std_20)
@@ -753,6 +754,12 @@ if(BUILD_TESTING)
   target_compile_features(latest_lidar_scan_safety_test PRIVATE cxx_std_20)
   target_link_libraries(latest_lidar_scan_safety_test drone_city_nav_core)
   enable_project_warnings(latest_lidar_scan_safety_test)
+
+  ament_add_gtest(spectator_diagnostics_selection_test
+                  tests/spectator_diagnostics_selection_test.cpp)
+  target_compile_features(spectator_diagnostics_selection_test PRIVATE cxx_std_20)
+  target_include_directories(spectator_diagnostics_selection_test PRIVATE include)
+  enable_project_warnings(spectator_diagnostics_selection_test)
 endif()
 
 ament_export_include_directories(include)

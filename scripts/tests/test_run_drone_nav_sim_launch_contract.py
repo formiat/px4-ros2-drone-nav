@@ -83,6 +83,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('echo "Gazebo GUI log: ${gz_gui_log_file}"', self.text)
         self.assertIn(': > "${gz_gui_log_file}"', self.text)
 
+    def test_gui_ros_output_is_written_directly_without_terminal_tee(self) -> None:
+        self.assertIn('> "${ros_log_file}" 2>&1', self.text)
+        self.assertNotIn('2>&1 | tee "${ros_log_file}"', self.text)
+
     def test_gazebo_scene_diagnostics_are_captured(self) -> None:
         self.assertIn("ENABLE_GZ_SCENE_DIAGNOSTICS", self.text)
         self.assertIn("capture_gazebo_scene_diagnostics", self.text)
@@ -240,7 +244,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
         )
         self.assertIn(
-            '"persistent_memory_enabled": obstacle_memory_enabled',
+            '"persistent_memory_enabled": role_persistent_memory_enabled',
             self.intercept_launch_text,
         )
         self.assertIn(

@@ -150,9 +150,12 @@ Point-to-point navigation remains the default mission and uses the configured
 fixed position objective and terminal goal capture.
 
 The finite intercept mission runs four complete navigation stacks: three
-interceptors and one evader, each with a separate PX4 DDS namespace, lidar
-memory, planner, offboard node, and destruction state. Pursuit uses an explicit
-radar data boundary:
+interceptors and one evader, each with a separate PX4 DDS namespace, planner,
+offboard node, lidar safety input, and destruction state. No-static navigation
+maintains independent persistent lidar memory for every vehicle. Static
+navigation uses the canonical world for planning and keeps diagnostic persistent
+memory only for the current spectator interceptor. Pursuit uses an explicit radar
+data boundary:
 
 ```text
 evader ground truth -> mission referee -> outcome and settlement only
@@ -168,7 +171,10 @@ the selected planner markers, execution horizon, status, memory cloud, and
 lidar-debug clouds on stable RViz topics. All three paths and velocity/path
 direction arrows remain visible concurrently. Three selector-gated lidar debug
 nodes retain pose and latest-map context, but only the current spectator
-projects scans, writes snapshots, and publishes detailed lidar layers. These
+projects scans, integrates diagnostic memory, writes a bounded startup snapshot,
+and publishes detailed lidar layers. The evader and non-selected interceptors
+continue publishing their latest physical lidar returns for stopping safety, but
+do not build static-mode diagnostic memory. These
 visualization-only nodes share the diagnostics component container; their
 outputs never participate in route selection or vehicle control.
 

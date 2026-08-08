@@ -9,10 +9,13 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/mapping_lifecycle.hpp"
 #include "drone_city_nav/msg/latest_lidar_safety_scan.hpp"
+#include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
+#include "drone_city_nav/spectator_diagnostics_selection.hpp"
+#include "drone_city_nav/spectator_diagnostics_selection_ros.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
 
 #include <px4_msgs/msg/timesync_status.hpp>
@@ -42,28 +45,12 @@
 #include <vector>
 
 #include "obstacle_memory_node_helpers.hpp"
+#include "obstacle_memory_node_types.hpp"
 #include "obstacle_memory_transport.hpp"
 #include "raw_world_snapshot.hpp"
 
 namespace drone_city_nav {
 constexpr std::int64_t kLidarDiagnosticsInfoThrottleMs{200};
-
-struct LidarMemoryHitDiagnosticBatch {
-  std::vector<ObstacleMemoryOccupiedTransition> transitions;
-  LidarMemoryHitDiagnosticContext common_context;
-  LidarPoseHistory pose_history;
-  Px4RosTimeMapper time_mapper;
-};
-
-struct PendingLidarScan {
-  sensor_msgs::msg::LaserScan scan;
-  std::int64_t receive_stamp_ns{0};
-};
-
-enum class PendingLidarScanDisposition : std::uint8_t {
-  kWaitForPoseBracket,
-  kConsumed,
-};
 
 class ObstacleMemoryNode final : public rclcpp::Node {
 public:
@@ -71,6 +58,10 @@ public:
       : Node{"obstacle_memory_node"} {
     persistent_memory_enabled_ =
         declare_parameter<bool>("persistent_memory_enabled", true);
+    persistent_memory_selection_ = SpectatorDiagnosticsSelection{
+        declare_parameter<std::string>("persistent_memory_spectator_vehicle_id", "")};
+    const std::string spectator_target_topic = declare_parameter<std::string>(
+        "persistent_memory_spectator_target_topic", "/drone_city_nav/spectator_target");
     const double requested_resolution_m =
         declare_parameter<double>("grid_resolution_m", 0.5);
     const double width_m = declare_parameter<double>("grid_width_m", 120.0);
@@ -289,12 +280,18 @@ public:
             tracked_agent_stamp_ns_ = rclcpp::Time{track->header.stamp}.nanoseconds();
           });
     }
+    spectator_target_sub_ = subscribeSpectatorDiagnosticsSelection(
+        *this, spectator_target_topic, persistent_memory_selection_,
+        "OBSTACLE_MEMORY_SPECTATOR");
     RCLCPP_INFO(get_logger(),
                 "Lidar obstacle source ready: persistent_memory=%s "
+                "spectator_gated=%s selected=%s "
                 "pose=px4_local_position grid=%dx%d "
                 "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s' "
                 "timesync='%s'",
                 persistent_memory_enabled_ ? "true" : "false",
+                persistent_memory_selection_.gated() ? "true" : "false",
+                persistent_memory_selection_.selected() ? "true" : "false",
                 memory_bounds.width_cells, memory_bounds.height_cells,
                 memory_bounds.resolution_m, memory_bounds.origin_x,
                 memory_bounds.origin_y, lidar_topic.c_str(), attitude_topic.c_str(),
@@ -646,7 +643,7 @@ private:
     publishLatestLidarSafetyScan(scan, scan_ranges, acquisition_pose.alignment.poses,
                                  lidar_pose_history_.generation(),
                                  acquisition_pose.adjusted_timing.first_beam_stamp_ns);
-    if (!persistent_memory_enabled_) {
+    if (!persistent_memory_enabled_ || !persistent_memory_selection_.selected()) {
       if (!scan_seen_) {
         scan_seen_ = true;
         RCLCPP_INFO(
@@ -974,6 +971,7 @@ private:
   bool current_velocity_valid_{false};
   bool lidar_memory_hit_dump_enabled_{true};
   bool persistent_memory_enabled_{true};
+  SpectatorDiagnosticsSelection persistent_memory_selection_;
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
@@ -982,6 +980,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_track_sub_;
+  rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
   rclcpp::Publisher<msg::LatestLidarSafetyScan>::SharedPtr
       latest_lidar_safety_scan_pub_;
 };

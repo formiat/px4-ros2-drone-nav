@@ -190,11 +190,15 @@ safety lifecycle continue to apply.
 
 This safety input is intentionally independent of scored persistent memory. A
 later free-space update cannot erase the physical return from the latest scan
-before the planner evaluates it. When persistent memory is disabled in static
-headless operation, the same node runs in a lightweight safety-only mode: it
-keeps acquisition-time pose histories and publishes latest-scan returns, but it
-does not allocate a memory grid, integrate hits, publish snapshots, or start the
-memory diagnostics worker.
+before the planner evaluates it. When persistent memory is disabled, the same
+node runs in a lightweight safety-only mode: it keeps acquisition-time pose
+histories and publishes latest-scan returns, but it does not allocate a memory
+grid, integrate hits, publish snapshots, or start the memory diagnostics worker.
+Static intercept GUI runs additionally gate diagnostic memory by the latched
+spectator target. Only the selected interceptor integrates and publishes this
+memory; all other vehicles remain in latest-scan safety mode. No-static mode does
+not apply this gate because every vehicle requires its own persistent map for
+navigation.
 
 ## Per-Beam Expected-Surface Rejection
 

@@ -935,5 +935,5 @@ if [[ "${smoke_duration_s}" != "0" ]]; then
 else
   ros2 launch drone_city_nav "${launch_file}" \
     "${ros_launch_args[@]}" \
-    2>&1 | tee "${ros_log_file}"
+    > "${ros_log_file}" 2>&1
 fi

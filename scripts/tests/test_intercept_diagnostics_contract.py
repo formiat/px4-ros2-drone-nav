@@ -12,6 +12,7 @@ PACKAGE = REPOSITORY / "drone_city_nav"
 LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
 DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
 MUX = PACKAGE / "src" / "intercept_diagnostics_mux_node.cpp"
+OBSTACLE_MEMORY = PACKAGE / "src" / "obstacle_memory_node.cpp"
 LIDAR_HEADER = PACKAGE / "src" / "lidar_debug_node.hpp"
 LIDAR_CALLBACKS = PACKAGE / "src" / "lidar_debug_node_callbacks.cpp"
 LIDAR_LIFECYCLE = PACKAGE / "src" / "lidar_debug_node_lifecycle.cpp"
@@ -51,6 +52,22 @@ class InterceptDiagnosticsContractTest(unittest.TestCase):
         self.assertIn("diagnosticsSelected", header)
         self.assertIn("if (!diagnosticsSelected())", callbacks)
         self.assertIn("LIDAR_DEBUG_SPECTATOR", lifecycle)
+
+    def test_static_persistent_memory_is_selector_gated(self) -> None:
+        launch = LAUNCH.read_text(encoding="utf-8")
+        obstacle_memory = OBSTACLE_MEMORY.read_text(encoding="utf-8")
+        self.assertIn("role_persistent_memory_enabled", launch)
+        self.assertIn('not use_static_map or config["is_interceptor"]', launch)
+        self.assertIn('persistent_memory_spectator_vehicle_id = (', launch)
+        self.assertIn('"persistent_memory_spectator_vehicle_id": (', launch)
+        self.assertIn("SpectatorDiagnosticsSelection", obstacle_memory)
+        self.assertIn("OBSTACLE_MEMORY_SPECTATOR", obstacle_memory)
+        self.assertIn("!persistent_memory_selection_.selected()", obstacle_memory)
+
+    def test_static_lidar_artifacts_are_bounded_per_interceptor(self) -> None:
+        launch = LAUNCH.read_text(encoding="utf-8")
+        self.assertIn('"max_snapshots": (', launch)
+        self.assertRegex(launch, r'"max_snapshots": \(\s+1\s+if use_static_map')
 
     def test_mux_clears_then_republishes_selected_diagnostics(self) -> None:
         source = MUX.read_text(encoding="utf-8")

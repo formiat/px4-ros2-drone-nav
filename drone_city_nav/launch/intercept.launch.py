@@ -255,11 +255,25 @@ def generate_launch_description():
             latest_lidar_safety_scan = f"{prefix}/latest_lidar_safety_scan"
             path_topic = f"{prefix}/mppi/path"
             marker_topic = f"{prefix}/mppi/markers"
+            role_persistent_memory_enabled = obstacle_memory_enabled and (
+                not use_static_map or config["is_interceptor"]
+            )
+            persistent_memory_spectator_vehicle_id = (
+                role
+                if use_static_map and role_persistent_memory_enabled
+                else ""
+            )
             memory_params = _parameters(
                 document,
                 "obstacle_memory_node",
                 {
-                    "persistent_memory_enabled": obstacle_memory_enabled,
+                    "persistent_memory_enabled": role_persistent_memory_enabled,
+                    "persistent_memory_spectator_vehicle_id": (
+                        persistent_memory_spectator_vehicle_id
+                    ),
+                    "persistent_memory_spectator_target_topic": (
+                        "/drone_city_nav/spectator_target"
+                    ),
                     "use_static_map": use_static_map,
                     "lidar_topic": scan_topic,
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
@@ -455,6 +469,13 @@ def generate_launch_description():
                             f"{prefix}/raw_memory_obstacle_points"
                         ),
                         "output_dir": f"log/intercept/{role}/lidar_debug",
+                        "max_snapshots": (
+                            1
+                            if use_static_map
+                            else document["lidar_debug_node"]["ros__parameters"][
+                                "max_snapshots"
+                            ]
+                        ),
                         "spectator_vehicle_id": role,
                         "spectator_target_topic": (
                             "/drone_city_nav/spectator_target"
