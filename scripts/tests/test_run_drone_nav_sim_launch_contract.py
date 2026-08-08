@@ -181,16 +181,23 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             for vehicle in self.intercept_scenario["vehicles"]
             if vehicle["id"] == "evader"
         )
-        self.assertEqual(evader["map_start_m"][:2], [270.0, 54.0])
+        self.assertEqual(evader["map_start_m"][:2], [216.0, 54.0])
         self.assertEqual(self.intercept_scenario["evader_goal_m"][:2], [54.0, 378.0])
 
-    def test_interceptor_2_starts_one_block_inside_the_east_edge(self) -> None:
+    def test_interceptor_2_and_evader_start_on_adjacent_east_lanes(self) -> None:
         interceptor = next(
             vehicle
             for vehicle in self.intercept_scenario["vehicles"]
             if vehicle["id"] == "interceptor_2"
         )
-        self.assertEqual(interceptor["map_start_m"][:2], [216.0, 378.0])
+        evader = next(
+            vehicle
+            for vehicle in self.intercept_scenario["vehicles"]
+            if vehicle["id"] == "evader"
+        )
+        self.assertEqual(interceptor["map_start_m"][:2], [270.0, 378.0])
+        self.assertEqual(evader["map_start_m"][:2], [216.0, 54.0])
+        self.assertEqual(interceptor["map_start_m"][0] - evader["map_start_m"][0], 54.0)
 
     def test_intercept_evader_defaults_to_interceptor_speed(self) -> None:
         self.assertIn(

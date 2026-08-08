@@ -26,7 +26,7 @@
       "px4_namespace": "interceptor_2",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_2",
-      "map_start_m": [216.0, 378.0, 0.3],
+      "map_start_m": [270.0, 378.0, 0.3],
       "yaw_rad": 0.0
     },
     {
@@ -35,7 +35,7 @@
       "px4_namespace": "evader",
       "px4_model_target": "gz_x500_lidar_2d_evader",
       "gazebo_model_name": "x500_lidar_2d_evader_3",
-      "map_start_m": [270.0, 54.0, 0.3],
+      "map_start_m": [216.0, 54.0, 0.3],
       "yaw_rad": 0.0
     }
   ],

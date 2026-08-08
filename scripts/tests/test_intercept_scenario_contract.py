@@ -28,8 +28,8 @@ class InterceptScenarioContractTest(unittest.TestCase):
         expected = {
             "interceptor_0": ((54.0, 54.0, 0.3), (-171.0, -81.0, 0.3)),
             "interceptor_1": ((54.0, 378.0, 0.3), (153.0, -81.0, 0.3)),
-            "interceptor_2": ((216.0, 378.0, 0.3), (153.0, 81.0, 0.3)),
-            "evader": ((270.0, 54.0, 0.3), (-171.0, 135.0, 0.3)),
+            "interceptor_2": ((270.0, 378.0, 0.3), (153.0, 135.0, 0.3)),
+            "evader": ((216.0, 54.0, 0.3), (-171.0, 81.0, 0.3)),
         }
         self.assertEqual(tuple(expected), tuple(v["id"] for v in scenario["vehicles"]))
         for vehicle in scenario["vehicles"]:
