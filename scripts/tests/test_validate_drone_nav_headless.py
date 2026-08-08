@@ -97,6 +97,49 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         VALIDATOR.validate_intercept_physical_losses(log, errors)
         self.assertIn("FAIL: evader physical crash was reported", errors)
 
+    def test_interceptor_building_collision_is_a_validation_failure(self) -> None:
+        log = (
+            "[vehicles.interceptor_1.collision_crash_node]: VEHICLE_DESTROYED "
+            "role=1 vehicle_id='interceptor_1' cause=physical_collision "
+            "drone_collision='x500_interceptor_1::base_link::collision' "
+            "obstacle_collision='building_014::link::collision'\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_building_collisions(log, errors)
+
+        self.assertEqual(
+            errors,
+            [
+                "FAIL: interceptor_1 collided with building obstacle "
+                "'building_014::link::collision'"
+            ],
+        )
+
+    def test_evader_building_collision_is_a_validation_failure(self) -> None:
+        log = (
+            "VEHICLE_DESTROYED role=2 vehicle_id='evader' "
+            "cause=physical_collision drone_collision='evader' "
+            "obstacle_collision='building_037::link::collision'\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_building_collisions(log, errors)
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("evader collided with building", errors[0])
+
+    def test_proximity_intercept_is_not_a_building_collision(self) -> None:
+        log = (
+            "VEHICLE_DESTROYED role=1 vehicle_id='interceptor_0' "
+            "cause=proximity_intercept obstacle_collision=''\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_building_collisions(log, errors)
+
+        self.assertEqual(errors, [])
+
     def test_intercept_requires_two_confirmed_disarms_in_completed_log(self) -> None:
         log = (
             "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true "

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -86,6 +87,23 @@ class DroneModelSdfContractTest(unittest.TestCase):
             any(name.startswith("yellow_") for name in visuals),
             f"lidar model must not own drone visibility visuals: {sorted(visuals)}",
         )
+
+    def test_lidar_covers_every_omnidirectional_motion_direction(self) -> None:
+        root = parse_sdf(LIDAR_SDF)
+        sensor = next(
+            element
+            for element in root.iter("sensor")
+            if element.attrib.get("name") == "lidar_2d_v2"
+        )
+        horizontal = sensor.find("ray/scan/horizontal")
+        self.assertIsNotNone(horizontal)
+        samples = int(horizontal.findtext("samples", "0"))
+        min_angle = float(horizontal.findtext("min_angle", "nan"))
+        max_angle = float(horizontal.findtext("max_angle", "nan"))
+
+        self.assertEqual(720, samples)
+        self.assertAlmostEqual(2.0 * math.pi, max_angle - min_angle, places=5)
+        self.assertLessEqual((max_angle - min_angle) / (samples - 1), 0.01)
 
     def test_static_lidar_default_excludes_channel_masses_and_occluders(self) -> None:
         lidar_root = parse_sdf(LIDAR_SDF)

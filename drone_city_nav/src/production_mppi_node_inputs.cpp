@@ -24,6 +24,29 @@ timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
   return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
 }
 
+[[nodiscard]] double dotProduct(const Point3& first, const Point3& second) noexcept {
+  return first.x * second.x + first.y * second.y + first.z * second.z;
+}
+
+[[nodiscard]] bool validUnitAxis(const Point3& axis) noexcept {
+  constexpr double kUnitTolerance{1.0e-3};
+  const double squared_norm = dotProduct(axis, axis);
+  return std::isfinite(squared_norm) && std::abs(squared_norm - 1.0) <= kUnitTolerance;
+}
+
+[[nodiscard]] bool validBodyFrame(const LidarProjectionBodyFrame& frame) noexcept {
+  constexpr double kOrthogonalityTolerance{1.0e-3};
+  return std::isfinite(frame.origin_map_m.x) && std::isfinite(frame.origin_map_m.y) &&
+         std::isfinite(frame.origin_map_m.z) && validUnitAxis(frame.x_axis_map) &&
+         validUnitAxis(frame.y_axis_map) && validUnitAxis(frame.z_axis_map) &&
+         std::abs(dotProduct(frame.x_axis_map, frame.y_axis_map)) <=
+             kOrthogonalityTolerance &&
+         std::abs(dotProduct(frame.x_axis_map, frame.z_axis_map)) <=
+             kOrthogonalityTolerance &&
+         std::abs(dotProduct(frame.y_axis_map, frame.z_axis_map)) <=
+             kOrthogonalityTolerance;
+}
+
 [[nodiscard]] std::optional<InterceptGuidanceMode>
 guidanceMode(const std::uint8_t value) noexcept {
   switch (value) {
@@ -271,6 +294,69 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
   const std::scoped_lock lock{input_mutex_};
   memory_sequence_ = message.sequence;
   memory_receive_stamp_ns_ = get_clock()->now().nanoseconds();
+}
+
+void ProductionMppiNode::onLatestLidarSafetyScan(
+    const msg::LatestLidarSafetyScan& message) {
+  constexpr std::size_t kMaximumSafetyBeamCount{20'000U};
+  if (!latest_lidar_safety_enabled_) {
+    return;
+  }
+  const std::int64_t acquisition_stamp_ns = timeNanoseconds(message.header.stamp);
+  const LidarProjectionBodyFrame frame{
+      .origin_map_m = Point3{message.frame_origin_map.x, message.frame_origin_map.y,
+                             message.frame_origin_map.z},
+      .x_axis_map = Point3{message.body_x_axis_map.x, message.body_x_axis_map.y,
+                           message.body_x_axis_map.z},
+      .y_axis_map = Point3{message.body_y_axis_map.x, message.body_y_axis_map.y,
+                           message.body_y_axis_map.z},
+      .z_axis_map = Point3{message.body_z_axis_map.x, message.body_z_axis_map.y,
+                           message.body_z_axis_map.z},
+      .valid = true,
+  };
+  const bool valid_counts =
+      message.source_beam_count <= kMaximumSafetyBeamCount &&
+      message.hit_points_body_frd.size() <= message.source_beam_count;
+  if (message.header.frame_id != frame_id_ || acquisition_stamp_ns <= 0 ||
+      !valid_counts || !validBodyFrame(frame)) {
+    rejected_lidar_safety_scans_.fetch_add(1U, std::memory_order_relaxed);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "LATEST_LIDAR_SAFETY rejected=true reason=invalid_contract sequence=%" PRIu64
+        " frame='%s' acquisition_stamp_ns=%" PRId64 " source_beams=%u hit_points=%zu",
+        message.sequence, message.header.frame_id.c_str(), acquisition_stamp_ns,
+        message.source_beam_count, message.hit_points_body_frd.size());
+    return;
+  }
+
+  auto snapshot = std::make_shared<LatestLidarSafetySnapshot>();
+  snapshot->hit_points_map_m.reserve(message.hit_points_body_frd.size());
+  for (const geometry_msgs::msg::Point32& point : message.hit_points_body_frd) {
+    const Point3 body_point{point.x, point.y, point.z};
+    if (!std::isfinite(body_point.x) || !std::isfinite(body_point.y) ||
+        !std::isfinite(body_point.z)) {
+      rejected_lidar_safety_scans_.fetch_add(1U, std::memory_order_relaxed);
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "LATEST_LIDAR_SAFETY rejected=true reason=non_finite_hit sequence=%" PRIu64,
+          message.sequence);
+      return;
+    }
+    const Point3 map_point = lidarBodyPointToMap(frame, body_point);
+    if (!std::isfinite(map_point.x) || !std::isfinite(map_point.y) ||
+        !std::isfinite(map_point.z)) {
+      rejected_lidar_safety_scans_.fetch_add(1U, std::memory_order_relaxed);
+      return;
+    }
+    snapshot->hit_points_map_m.push_back(map_point);
+  }
+  snapshot->acquisition_stamp_ns = acquisition_stamp_ns;
+  snapshot->receive_stamp_ns = get_clock()->now().nanoseconds();
+  snapshot->sequence = message.sequence;
+  snapshot->pose_generation = message.pose_generation;
+  snapshot->source_beam_count = message.source_beam_count;
+  snapshot->invalid_beam_count = message.invalid_beam_count;
+  latest_lidar_safety_scan_.store(std::move(snapshot), std::memory_order_release);
 }
 
 void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& message) {

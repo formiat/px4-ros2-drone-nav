@@ -1,10 +1,14 @@
 #include "drone_city_nav/grid_config.hpp"
+#include "drone_city_nav/latest_lidar_scan_safety.hpp"
+#include "drone_city_nav/latest_lidar_scan_safety_ros.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
+#include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/mapping_lifecycle.hpp"
+#include "drone_city_nav/msg/latest_lidar_safety_scan.hpp"
 #include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
@@ -26,6 +30,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -50,10 +55,22 @@ struct LidarMemoryHitDiagnosticBatch {
   Px4RosTimeMapper time_mapper;
 };
 
+struct PendingLidarScan {
+  sensor_msgs::msg::LaserScan scan;
+  std::int64_t receive_stamp_ns{0};
+};
+
+enum class PendingLidarScanDisposition : std::uint8_t {
+  kWaitForPoseBracket,
+  kConsumed,
+};
+
 class ObstacleMemoryNode final : public rclcpp::Node {
 public:
   ObstacleMemoryNode()
       : Node{"obstacle_memory_node"} {
+    persistent_memory_enabled_ =
+        declare_parameter<bool>("persistent_memory_enabled", true);
     const double requested_resolution_m =
         declare_parameter<double>("grid_resolution_m", 0.5);
     const double width_m = declare_parameter<double>("grid_width_m", 120.0);
@@ -62,7 +79,9 @@ public:
     const double origin_y = declare_parameter<double>("grid_origin_y", -40.0);
     const GridBounds memory_bounds = boundedGridBounds(
         origin_x, origin_y, requested_resolution_m, width_m, height_m);
-    memory_ = std::make_unique<ObstacleMemoryGrid>(memory_bounds);
+    if (persistent_memory_enabled_) {
+      memory_ = std::make_unique<ObstacleMemoryGrid>(memory_bounds);
+    }
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     const double risk_critical_distance_m =
         declare_parameter<double>("risk_critical_distance_m", 1.0);
@@ -73,9 +92,11 @@ public:
     std::optional<OccupancyGrid2D> static_grid =
         declareStaticRawWorldGrid(*this, frame_id_, package_share);
     const bool use_static_map = get_parameter("use_static_map").as_bool();
-    memory_transport_ = std::make_unique<ObstacleMemoryTransport>(
-        *this, frame_id_, use_static_map, std::move(static_grid),
-        risk_critical_distance_m, risk_preferred_distance_m);
+    if (persistent_memory_enabled_) {
+      memory_transport_ = std::make_unique<ObstacleMemoryTransport>(
+          *this, frame_id_, use_static_map, std::move(static_grid),
+          risk_critical_distance_m, risk_preferred_distance_m);
+    }
     const LidarMappingYawConfig mapping_yaw_config =
         declareLidarMappingYawConfig(*this);
     use_px4_heading_for_scan_ = mapping_yaw_config.use_px4_heading;
@@ -85,12 +106,36 @@ public:
         mapping_yaw_config.startup_stable_sample_count;
     startup_heading_maximum_sample_delta_rad_ =
         mapping_yaw_config.startup_maximum_sample_delta_rad;
-    motion_compensate_lidar_pose_ =
+    lidar_acquisition_pose_config_.apply_sensor_time_offset =
         declare_parameter<bool>("motion_compensate_lidar_pose", true);
-    lidar_pose_latency_s_ =
+    lidar_acquisition_pose_config_.sensor_time_offset_s =
         std::clamp(declare_parameter<double>("lidar_pose_latency_s", 0.05), 0.0, 1.0);
+    lidar_acquisition_pose_config_.require_source_timestamp_alignment = true;
+    lidar_acquisition_pose_config_.require_bracketed_pose = true;
+    lidar_scan_alignment_maximum_wait_ns_ = static_cast<std::int64_t>(
+        std::clamp(
+            declare_parameter<double>("lidar_scan_alignment_maximum_wait_s", 0.35), 0.0,
+            2.0) *
+        1.0e9);
+    lidar_scan_alignment_queue_capacity_ =
+        static_cast<std::size_t>(std::clamp<std::int64_t>(
+            declare_parameter<std::int64_t>("lidar_scan_alignment_queue_capacity", 8),
+            1, 100));
+    lidar_pose_source_stamp_config_.maximum_receive_delay_ns =
+        static_cast<std::int64_t>(
+            std::clamp(declare_parameter<double>(
+                           "lidar_pose_source_maximum_receive_delay_s", 1.0),
+                       0.0, 10.0) *
+            1.0e9);
+    lidar_pose_source_stamp_config_.maximum_future_skew_ns = static_cast<std::int64_t>(
+        std::clamp(
+            declare_parameter<double>("lidar_pose_source_maximum_future_skew_s", 0.1),
+            0.0, 1.0) *
+        1.0e9);
     min_mapping_altitude_m_ = declare_parameter<double>("min_mapping_altitude_m", 0.0);
-    mapping_lifecycle_ = std::make_unique<MappingLifecycle>(min_mapping_altitude_m_);
+    if (persistent_memory_enabled_) {
+      mapping_lifecycle_ = std::make_unique<MappingLifecycle>(min_mapping_altitude_m_);
+    }
     max_pose_staleness_ns_ = static_cast<std::int64_t>(
         std::clamp<double>(declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0,
                            3600.0) *
@@ -145,8 +190,11 @@ public:
         declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
     max_projected_lidar_altitude_m_ =
         declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
-    memory_->configureAmbiguousHitTracking(
-        declareAmbiguousLidarHitTrackerConfig(*this));
+    const AmbiguousLidarHitTrackerConfig ambiguous_hit_config =
+        declareAmbiguousLidarHitTrackerConfig(*this);
+    if (memory_ != nullptr) {
+      memory_->configureAmbiguousHitTracking(ambiguous_hit_config);
+    }
     ground_lidar_rejection_config_ =
         declareGroundLidarRejectionConfig(*this, memory_config_.max_lidar_range_m);
     memory_config_.ingestion_confidence = declareLidarIngestionConfidenceConfig(*this);
@@ -197,6 +245,10 @@ public:
     tracked_agent_maximum_age_ns_ = static_cast<std::int64_t>(
         declare_parameter<double>("tracked_agent_maximum_age_s", 0.5) * 1.0e9);
     const auto sensor_qos = rclcpp::SensorDataQoS{};
+    latest_lidar_safety_scan_pub_ = create_publisher<msg::LatestLidarSafetyScan>(
+        declare_parameter<std::string>("latest_lidar_safety_scan_topic",
+                                       "/drone_city_nav/latest_lidar_safety_scan"),
+        sensor_qos);
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
         lidar_topic, sensor_qos,
         [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
@@ -220,7 +272,9 @@ public:
         [this](const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
           const bool armed =
               msg->arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
-          mapping_lifecycle_->updateArmed(armed);
+          if (mapping_lifecycle_ != nullptr) {
+            mapping_lifecycle_->updateArmed(armed);
+          }
         });
     if (!tracked_agent_track_topic.empty()) {
       tracked_agent_track_sub_ = create_subscription<msg::TargetTrack>(
@@ -236,40 +290,45 @@ public:
           });
     }
     RCLCPP_INFO(get_logger(),
-                "Obstacle memory ready: pose=px4_local_position grid=%dx%d "
+                "Lidar obstacle source ready: persistent_memory=%s "
+                "pose=px4_local_position grid=%dx%d "
                 "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s' "
                 "timesync='%s'",
-                memory_->rawGrid().width(), memory_->rawGrid().height(),
-                memory_->rawGrid().resolution(), memory_->rawGrid().originX(),
-                memory_->rawGrid().originY(), lidar_topic.c_str(),
-                attitude_topic.c_str(), timesync_status_topic.c_str());
-    RCLCPP_INFO(get_logger(),
-                "Obstacle memory config: max_range=%.2f stride=%d "
-                "raw_memory_only=true "
-                "score[min=%d max=%d free<=%d occupied>=%d] "
-                "yaw_source=%s max_heading_variance=%.6frad2 "
-                "startup_stable_samples=%zu startup_maximum_delta=%.3frad "
-                "compensate_attitude=%s lidar_z_offset=%.2f "
-                "projected_altitude_range=[%.2f, %.2f] "
-                "motion_compensation=%s pose_latency=%.3fs "
-                "lidar_mount_rpy=(%.3f, %.3f, %.3f) full_extrinsic=%s "
-                "translation_body_frd=(%.3f, %.3f, %.3f)",
-                memory_config_.max_lidar_range_m, memory_config_.scan_stride,
-                memory_config_.min_score, memory_config_.max_score,
-                memory_config_.free_score, memory_config_.occupied_score,
-                use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
-                maximum_heading_variance_rad2_, startup_heading_stable_sample_count_,
-                startup_heading_maximum_sample_delta_rad_,
-                compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
-                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-                motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
-                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
-                use_full_lidar_extrinsic_ ? "true" : "false",
-                lidar_translation_body_frd_m_.x, lidar_translation_body_frd_m_.y,
-                lidar_translation_body_frd_m_.z);
-    openLidarMemoryHitDump();
-    lidar_diagnostics_worker_ = std::jthread(
-        [this](const std::stop_token token) { lidarDiagnosticsWorker(token); });
+                persistent_memory_enabled_ ? "true" : "false",
+                memory_bounds.width_cells, memory_bounds.height_cells,
+                memory_bounds.resolution_m, memory_bounds.origin_x,
+                memory_bounds.origin_y, lidar_topic.c_str(), attitude_topic.c_str(),
+                timesync_status_topic.c_str());
+    RCLCPP_INFO(
+        get_logger(),
+        "Obstacle memory config: max_range=%.2f stride=%d "
+        "raw_memory_only=true "
+        "score[min=%d max=%d free<=%d occupied>=%d] "
+        "yaw_source=%s max_heading_variance=%.6frad2 "
+        "startup_stable_samples=%zu startup_maximum_delta=%.3frad "
+        "compensate_attitude=%s lidar_z_offset=%.2f "
+        "projected_altitude_range=[%.2f, %.2f] "
+        "motion_compensation=%s pose_latency=%.3fs "
+        "lidar_mount_rpy=(%.3f, %.3f, %.3f) full_extrinsic=%s "
+        "translation_body_frd=(%.3f, %.3f, %.3f)",
+        memory_config_.max_lidar_range_m, memory_config_.scan_stride,
+        memory_config_.min_score, memory_config_.max_score, memory_config_.free_score,
+        memory_config_.occupied_score,
+        use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
+        maximum_heading_variance_rad2_, startup_heading_stable_sample_count_,
+        startup_heading_maximum_sample_delta_rad_,
+        compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
+        min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
+        lidar_acquisition_pose_config_.apply_sensor_time_offset ? "true" : "false",
+        lidar_acquisition_pose_config_.sensor_time_offset_s, lidar_mount_roll_rad_,
+        lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+        use_full_lidar_extrinsic_ ? "true" : "false", lidar_translation_body_frd_m_.x,
+        lidar_translation_body_frd_m_.y, lidar_translation_body_frd_m_.z);
+    if (persistent_memory_enabled_) {
+      openLidarMemoryHitDump();
+      lidar_diagnostics_worker_ = std::jthread(
+          [this](const std::stop_token token) { lidarDiagnosticsWorker(token); });
+    }
   }
 
   ~ObstacleMemoryNode() override {
@@ -299,6 +358,12 @@ private:
         last_mapping_yaw_source_ != MappingYawSource::kPx4Heading;
     if (starts_new_px4_generation) {
       lidar_pose_history_.startNewGeneration();
+      if (!pending_lidar_scans_.empty()) {
+        RCLCPP_INFO(get_logger(),
+                    "LIDAR_SCAN_ALIGNMENT cleared=%zu reason=new_pose_generation",
+                    pending_lidar_scans_.size());
+        pending_lidar_scans_.clear();
+      }
     }
     if (mapping_yaw.source != last_mapping_yaw_source_) {
       RCLCPP_INFO(get_logger(),
@@ -353,14 +418,26 @@ private:
     }
 
     last_pose_update_ns_ = receive_stamp_ns;
-    lidar_pose_history_.addPosition(
-        receive_stamp_ns,
-        Point3{current_pose_.pose.position.x, current_pose_.pose.position.y,
-               current_pose_.altitude_m},
-        current_pose_.pose.yaw_rad,
-        current_pose_.yaw_valid && current_pose_.altitude_valid,
-        px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
-        lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
+    const LidarPoseSourceStampResult source_stamp =
+        resolveLidarPoseSourceStamp(px4_ros_time_mapper_, msg.timestamp_sample,
+                                    receive_stamp_ns, lidar_pose_source_stamp_config_);
+    if (source_stamp.resolved()) {
+      lidar_pose_history_.addPosition(
+          receive_stamp_ns,
+          Point3{current_pose_.pose.position.x, current_pose_.pose.position.y,
+                 current_pose_.altitude_m},
+          current_pose_.pose.yaw_rad,
+          current_pose_.yaw_valid && current_pose_.altitude_valid,
+          source_stamp.acquisition_stamp_ns,
+          lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
+    } else {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "LIDAR_POSE_HISTORY position_rejected=true reason=%s "
+                           "source_timestamp_us=%" PRIu64 " receive_delta_ms=%.3f",
+                           lidarPoseSourceStampStatusName(source_stamp.status),
+                           msg.timestamp_sample,
+                           1.0e-6 * static_cast<double>(source_stamp.receive_delta_ns));
+    }
     if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
       current_velocity_ =
           Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
@@ -370,14 +447,26 @@ private:
       current_velocity_valid_ = false;
     }
     logFirstNavigationPose(*this, pose_seen_, current_pose_, "px4_local_position");
+    processPendingLidarScans();
   }
 
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
     last_attitude_receive_ns_ = get_clock()->now().nanoseconds();
-    lidar_pose_history_.addAttitude(
-        last_attitude_receive_ns_, msg.q,
-        px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
-        lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
+    const LidarPoseSourceStampResult source_stamp = resolveLidarPoseSourceStamp(
+        px4_ros_time_mapper_, msg.timestamp_sample, last_attitude_receive_ns_,
+        lidar_pose_source_stamp_config_);
+    if (source_stamp.resolved()) {
+      lidar_pose_history_.addAttitude(
+          last_attitude_receive_ns_, msg.q, source_stamp.acquisition_stamp_ns,
+          lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
+    } else {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "LIDAR_POSE_HISTORY attitude_rejected=true reason=%s "
+                           "source_timestamp_us=%" PRIu64 " receive_delta_ms=%.3f",
+                           lidarPoseSourceStampStatusName(source_stamp.status),
+                           msg.timestamp_sample,
+                           1.0e-6 * static_cast<double>(source_stamp.receive_delta_ns));
+    }
     const std::optional<std::int64_t> sample_stamp_ns =
         px4TimestampNanoseconds(msg.timestamp_sample);
     attitude_sample_stamp_ns_ = sample_stamp_ns.value_or(0);
@@ -390,55 +479,103 @@ private:
 
     current_attitude_ = *euler;
     attitude_valid_ = true;
+    processPendingLidarScans();
   }
 
   void onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg) {
     px4_ros_time_mapper_.observeTimesync(msg.timestamp, msg.estimated_offset,
                                          msg.round_trip_time,
                                          get_clock()->now().nanoseconds());
+    processPendingLidarScans();
   }
 
   void onScan(const sensor_msgs::msg::LaserScan& scan) {
-    const std::int64_t now_ns = get_clock()->now().nanoseconds();
-    const bool pose_fresh =
-        timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
-    const double pose_age_s = navigationPoseAgeSeconds(last_pose_update_ns_, now_ns);
-    if (memory_ == nullptr ||
-        !navigationPoseReadyForScan(current_pose_, last_pose_update_ns_, now_ns,
-                                    max_pose_staleness_ns_)) {
-      if (!pose_fresh) {
-        invalidateObstacleNavigationPose(current_pose_, last_pose_update_ns_,
-                                         current_velocity_, current_velocity_valid_);
-      }
+    if (pending_lidar_scans_.size() >= lidar_scan_alignment_queue_capacity_) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Skipping obstacle memory scan without valid navigation pose: "
-          "position_valid=%s yaw_valid=%s pose_fresh=%s pose_age_s=%.2f",
-          current_pose_.position_valid ? "true" : "false",
-          current_pose_.yaw_valid ? "true" : "false", pose_fresh ? "true" : "false",
-          pose_age_s);
-      return;
+          "LIDAR_SCAN_ALIGNMENT dropped=true reason=queue_capacity capacity=%zu",
+          lidar_scan_alignment_queue_capacity_);
+      pending_lidar_scans_.pop_front();
     }
-    if (!mapping_lifecycle_->updateAltitude(current_pose_.altitude_m,
-                                            current_pose_.altitude_valid)) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Skipping obstacle memory scan before mapping activation: altitude=%.2f "
-          "valid=%s activation=%.2f",
-          current_pose_.altitude_m, current_pose_.altitude_valid ? "true" : "false",
-          min_mapping_altitude_m_);
-      return;
-    }
+    pending_lidar_scans_.push_back(
+        PendingLidarScan{scan, get_clock()->now().nanoseconds()});
+    processPendingLidarScans();
+  }
 
-    const double pose_lag_s =
-        navigationPoseReceiveLagSeconds(last_pose_update_ns_, now_ns);
-    const LidarPoseMotionCompensationResult motion_compensation =
-        compensateLidarPoseForLatency(current_pose_.pose.position, current_velocity_,
-                                      motion_compensate_lidar_pose_,
-                                      current_velocity_valid_, pose_lag_s,
-                                      lidar_pose_latency_s_);
-    Pose2 scan_pose = current_pose_.pose;
-    scan_pose.position = motion_compensation.position;
+  void processPendingLidarScans() {
+    while (!pending_lidar_scans_.empty()) {
+      const PendingLidarScanDisposition disposition =
+          processPendingLidarScan(pending_lidar_scans_.front());
+      if (disposition == PendingLidarScanDisposition::kWaitForPoseBracket) {
+        return;
+      }
+      pending_lidar_scans_.pop_front();
+    }
+  }
+
+  [[nodiscard]] PendingLidarScanDisposition
+  processPendingLidarScan(const PendingLidarScan& pending) {
+    const sensor_msgs::msg::LaserScan& scan = pending.scan;
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    const std::optional<std::int64_t> scan_stamp_ns =
+        validRosStampNanoseconds(scan.header.stamp);
+    const LaserScanTiming scan_timing{
+        .first_beam_stamp_ns = scan_stamp_ns.value_or(0),
+        .first_beam_stamp_valid = scan_stamp_ns.has_value(),
+        .time_increment_s = static_cast<double>(scan.time_increment),
+        .receive_stamp_ns = pending.receive_stamp_ns,
+        .receive_stamp_valid = pending.receive_stamp_ns > 0,
+    };
+    const LidarAcquisitionPoseResult acquisition_pose =
+        resolveLidarAcquisitionBeamPoses(
+            lidar_pose_history_, scan_timing, scan.ranges.size(),
+            lidar_acquisition_pose_config_,
+            use_px4_heading_for_scan_ ? std::nullopt
+                                      : std::optional<double>{initial_heading_rad_},
+            &px4_ros_time_mapper_);
+    const bool permanent_failure =
+        acquisition_pose.status ==
+            LidarAcquisitionPoseStatus::kInvalidSensorTimeOffset ||
+        acquisition_pose.status == LidarAcquisitionPoseStatus::kInvalidScanTimestamp;
+    const bool wait_expired =
+        pending.receive_stamp_ns <= 0 ||
+        now_ns - pending.receive_stamp_ns >= lidar_scan_alignment_maximum_wait_ns_;
+    const std::string alignment_diagnostic = formatLidarAcquisitionPoseDiagnostic(
+        acquisition_pose.resolved() ? "Lidar acquisition pose"
+                                    : "Lidar acquisition pose rejected",
+        acquisition_pose, scan_timing, now_ns);
+    if (!acquisition_pose.resolved()) {
+      if (!permanent_failure && !wait_expired) {
+        return PendingLidarScanDisposition::kWaitForPoseBracket;
+      }
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "LIDAR_SCAN_ALIGNMENT dropped=true queue_wait_ms=%.3f %s",
+                           1.0e-6 *
+                               static_cast<double>(now_ns - pending.receive_stamp_ns),
+                           alignment_diagnostic.c_str());
+      return PendingLidarScanDisposition::kConsumed;
+    }
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000, "LIDAR_SCAN_ALIGNMENT queue_wait_ms=%.3f %s",
+        1.0e-6 * static_cast<double>(now_ns - pending.receive_stamp_ns),
+        alignment_diagnostic.c_str());
+
+    const LidarProjectionPose& first_beam_pose =
+        acquisition_pose.alignment.poses.front();
+    const Pose2 scan_pose{first_beam_pose.position, first_beam_pose.yaw_rad};
+    const Point2 acquisition_shift{
+        first_beam_pose.position.x - current_pose_.pose.position.x,
+        first_beam_pose.position.y - current_pose_.pose.position.y};
+    const LidarPoseMotionCompensationResult motion_compensation{
+        .position = first_beam_pose.position,
+        .applied_shift = acquisition_shift,
+        .pose_lag_s = navigationPoseReceiveLagSeconds(last_pose_update_ns_, now_ns),
+        .latency_s = lidar_acquisition_pose_config_.sensor_time_offset_s,
+        .signed_time_offset_s =
+            static_cast<double>(acquisition_pose.sensor_time_offset_ns) * 1.0e-9,
+        .applied_shift_m = std::hypot(acquisition_shift.x, acquisition_shift.y),
+        .applied = std::hypot(acquisition_shift.x, acquisition_shift.y) > 0.0,
+    };
 
     std::vector<float> filtered_ranges;
     std::span<const float> scan_ranges{scan.ranges.data(), scan.ranges.size()};
@@ -462,7 +599,7 @@ private:
           scan_ranges,
           TrackedAgentLidarFilterInput{
               .scan_pose = scan_pose,
-              .scan_altitude_m = current_pose_.altitude_m,
+              .scan_altitude_m = first_beam_pose.altitude_m,
               .angle_min_rad = static_cast<double>(scan.angle_min),
               .angle_increment_rad = static_cast<double>(scan.angle_increment),
               .scan_yaw_offset_rad = scan_yaw_offset_rad_,
@@ -487,14 +624,14 @@ private:
     scan_view.range_min_m = static_cast<double>(scan.range_min);
     scan_view.range_max_m = static_cast<double>(scan.range_max);
     scan_view.scan_yaw_offset_rad = scan_yaw_offset_rad_;
-    scan_view.origin_altitude_m = current_pose_.altitude_m;
-    scan_view.roll_rad = current_attitude_.roll_rad;
-    scan_view.pitch_rad = current_attitude_.pitch_rad;
+    scan_view.origin_altitude_m = first_beam_pose.altitude_m;
+    scan_view.roll_rad = first_beam_pose.roll_rad;
+    scan_view.pitch_rad = first_beam_pose.pitch_rad;
     scan_view.lidar_z_offset_m = lidar_z_offset_m_;
     scan_view.min_projected_altitude_m = min_projected_lidar_altitude_m_;
     scan_view.max_projected_altitude_m = max_projected_lidar_altitude_m_;
-    scan_view.altitude_valid = current_pose_.altitude_valid;
-    scan_view.attitude_valid = attitude_valid_;
+    scan_view.altitude_valid = first_beam_pose.altitude_valid;
+    scan_view.attitude_valid = first_beam_pose.attitude_valid;
     scan_view.compensate_attitude = compensate_lidar_attitude_;
     scan_view.lidar_mount_roll_rad = lidar_mount_roll_rad_;
     scan_view.lidar_mount_pitch_rad = lidar_mount_pitch_rad_;
@@ -502,42 +639,41 @@ private:
     scan_view.use_full_lidar_extrinsic = use_full_lidar_extrinsic_;
     scan_view.lidar_translation_body_frd_m = lidar_translation_body_frd_m_;
     scan_view.lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_;
-    const std::optional<std::int64_t> scan_stamp_ns =
-        validRosStampNanoseconds(scan.header.stamp);
-    scan_view.timing.first_beam_stamp_ns = scan_stamp_ns.value_or(0);
-    scan_view.timing.first_beam_stamp_valid = scan_stamp_ns.has_value();
-    scan_view.timing.time_increment_s = static_cast<double>(scan.time_increment);
-    scan_view.timing.receive_stamp_ns = now_ns;
-    scan_view.timing.receive_stamp_valid = now_ns > 0;
-    const LidarBeamPoseAlignmentResult pose_alignment =
-        timestampAlignedLidarBeamPosesWithDiagnostics(
-            lidar_pose_history_, scan_view.timing, scan.ranges.size(),
-            use_px4_heading_for_scan_ ? std::nullopt
-                                      : std::optional<double>{initial_heading_rad_},
-            &px4_ros_time_mapper_);
-    if (pose_alignment.aligned()) {
-      scan_view.beam_projection_poses = pose_alignment.poses;
+    scan_view.timing = scan_timing;
+    scan_view.beam_projection_poses = acquisition_pose.alignment.poses;
+    scan_view.projection_pose_source =
+        LidarProjectionPoseSource::kSourceTimestampAligned;
+    publishLatestLidarSafetyScan(scan, scan_ranges, acquisition_pose.alignment.poses,
+                                 lidar_pose_history_.generation(),
+                                 acquisition_pose.adjusted_timing.first_beam_stamp_ns);
+    if (!persistent_memory_enabled_) {
+      if (!scan_seen_) {
+        scan_seen_ = true;
+        RCLCPP_INFO(
+            get_logger(),
+            "First lidar safety scan: beams=%zu range=[%.2f, %.2f] "
+            "angle=[%.2f, %.2f] attitude_valid=%s",
+            scan.ranges.size(), static_cast<double>(scan.range_min),
+            static_cast<double>(scan.range_max), static_cast<double>(scan.angle_min),
+            static_cast<double>(scan.angle_max), attitude_valid_ ? "true" : "false");
+      }
+      return PendingLidarScanDisposition::kConsumed;
     }
-    if (pose_alignment.sourceAligned()) {
-      scan_view.projection_pose_source =
-          LidarProjectionPoseSource::kSourceTimestampAligned;
-    } else if (pose_alignment.aligned()) {
-      scan_view.projection_pose_source =
-          LidarProjectionPoseSource::kReceiveTimestampAligned;
-    } else if (motion_compensation.applied) {
-      scan_view.projection_pose_source =
-          LidarProjectionPoseSource::kMotionExtrapolatedFallback;
+    if (memory_ == nullptr || mapping_lifecycle_ == nullptr ||
+        memory_transport_ == nullptr) {
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
+                            "Obstacle memory integration unavailable");
+      return PendingLidarScanDisposition::kConsumed;
     }
-    const std::string alignment_diagnostic = formatLidarPoseAlignmentDiagnostic(
-        pose_alignment.aligned() ? "Lidar 6DoF pose alignment"
-                                 : "Lidar 6DoF pose alignment fallback",
-        pose_alignment, scan_view.timing, now_ns);
-    if (pose_alignment.aligned()) {
-      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
-                           alignment_diagnostic.c_str());
-    } else {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
-                           alignment_diagnostic.c_str());
+    if (!mapping_lifecycle_->updateAltitude(first_beam_pose.altitude_m,
+                                            first_beam_pose.altitude_valid)) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Skipping obstacle memory scan before mapping activation: altitude=%.2f "
+          "valid=%s activation=%.2f",
+          first_beam_pose.altitude_m, first_beam_pose.altitude_valid ? "true" : "false",
+          min_mapping_altitude_m_);
+      return PendingLidarScanDisposition::kConsumed;
     }
     ObstacleMemoryStats stats = memory_->integrateScan(
         scan_pose, scan_view, memory_config_, nullptr, &ground_lidar_rejection_config_);
@@ -588,7 +724,7 @@ private:
         motion_compensation.applied_shift.y, motion_compensation.applied_shift_m,
         current_attitude_.roll_rad, current_attitude_.pitch_rad,
         attitude_valid_ ? "true" : "false",
-        lidarPoseAlignmentStatusName(pose_alignment.status), stats.processed_beams,
+        lidarAcquisitionPoseStatusName(acquisition_pose.status), stats.processed_beams,
         stats.timestamp_aligned_beams, stats.hit_beams, stats.invalid_ranges,
         stats.altitude_rejected_beams, stats.clipped_rays, stats.outside_hit_endpoints,
         stats.free_cells_updated, stats.occupied_cells_updated,
@@ -614,6 +750,7 @@ private:
                            "Obstacle memory lidar decision samples: %s",
                            decision_samples.c_str());
     }
+    return PendingLidarScanDisposition::kConsumed;
   }
 
   [[nodiscard]] LidarMemoryHitDiagnosticContext makeLidarMemoryHitDiagnosticContext(
@@ -645,24 +782,64 @@ private:
         .scan_duration_s = lidarScanDurationSeconds(
             static_cast<double>(scan.scan_time),
             static_cast<double>(scan.time_increment), scan.ranges.size()),
-        .projection_config =
-            LidarProjectionConfig{
-                .max_lidar_range_m = memory_config_.max_lidar_range_m,
-                .range_hit_epsilon_m = memory_config_.range_hit_epsilon_m,
-                .scan_yaw_offset_rad = scan_yaw_offset_rad_,
-                .lidar_z_offset_m = lidar_z_offset_m_,
-                .min_projected_altitude_m = min_projected_lidar_altitude_m_,
-                .max_projected_altitude_m = max_projected_lidar_altitude_m_,
-                .compensate_attitude = compensate_lidar_attitude_,
-                .lidar_mount_roll_rad = lidar_mount_roll_rad_,
-                .lidar_mount_pitch_rad = lidar_mount_pitch_rad_,
-                .lidar_mount_yaw_rad = lidar_mount_yaw_rad_,
-                .use_full_lidar_extrinsic = use_full_lidar_extrinsic_,
-                .lidar_translation_body_frd_m = lidar_translation_body_frd_m_,
-                .lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_,
-            },
+        .projection_config = lidarProjectionConfig(),
         .ground_config = ground_lidar_rejection_config_,
     };
+  }
+
+  [[nodiscard]] LidarProjectionConfig lidarProjectionConfig() const noexcept {
+    return LidarProjectionConfig{
+        .max_lidar_range_m = memory_config_.max_lidar_range_m,
+        .range_hit_epsilon_m = memory_config_.range_hit_epsilon_m,
+        .scan_yaw_offset_rad = scan_yaw_offset_rad_,
+        .lidar_z_offset_m = lidar_z_offset_m_,
+        .min_projected_altitude_m = min_projected_lidar_altitude_m_,
+        .max_projected_altitude_m = max_projected_lidar_altitude_m_,
+        .compensate_attitude = compensate_lidar_attitude_,
+        .lidar_mount_roll_rad = lidar_mount_roll_rad_,
+        .lidar_mount_pitch_rad = lidar_mount_pitch_rad_,
+        .lidar_mount_yaw_rad = lidar_mount_yaw_rad_,
+        .use_full_lidar_extrinsic = use_full_lidar_extrinsic_,
+        .lidar_translation_body_frd_m = lidar_translation_body_frd_m_,
+        .lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_,
+    };
+  }
+
+  void publishLatestLidarSafetyScan(
+      const sensor_msgs::msg::LaserScan& scan, const std::span<const float> ranges,
+      const std::span<const LidarProjectionPose> beam_projection_poses,
+      const std::uint64_t pose_generation, const std::int64_t acquisition_stamp_ns) {
+    if (!latest_lidar_safety_scan_pub_) {
+      return;
+    }
+    const LatestLidarSafetyScanBuildResult safety_scan =
+        buildLatestLidarSafetyScan(LatestLidarSafetyScanBuildInput{
+            .ranges = ranges,
+            .beam_projection_poses = beam_projection_poses,
+            .projection_config = lidarProjectionConfig(),
+            .range_min_m = static_cast<double>(scan.range_min),
+            .range_max_m = static_cast<double>(scan.range_max),
+            .angle_min_rad = static_cast<double>(scan.angle_min),
+            .angle_increment_rad = static_cast<double>(scan.angle_increment),
+        });
+    if (!safety_scan.valid) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "LATEST_LIDAR_SAFETY_SCAN published=false reason=projection_failed "
+          "source_beams=%zu invalid_beams=%zu",
+          safety_scan.source_beam_count, safety_scan.invalid_beam_count);
+      return;
+    }
+    msg::LatestLidarSafetyScan message = makeLatestLidarSafetyScanMessage(
+        safety_scan, scan.header, frame_id_, acquisition_stamp_ns,
+        ++latest_lidar_safety_scan_sequence_, pose_generation);
+    latest_lidar_safety_scan_pub_->publish(message);
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "LATEST_LIDAR_SAFETY_SCAN published=true sequence=%" PRIu64
+        " source_beams=%u hit_points=%zu invalid_beams=%u pose_generation=%" PRIu64,
+        message.sequence, message.source_beam_count, message.hit_points_body_frd.size(),
+        message.invalid_beam_count, message.pose_generation);
   }
 
   void openLidarMemoryHitDump() {
@@ -748,9 +925,12 @@ private:
   Point2 current_velocity_{};
   LidarPoseHistory lidar_pose_history_;
   Px4RosTimeMapper px4_ros_time_mapper_;
+  LidarAcquisitionPoseConfig lidar_acquisition_pose_config_{};
+  LidarPoseSourceStampConfig lidar_pose_source_stamp_config_{};
   std::string frame_id_{"map"};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
+  std::int64_t lidar_scan_alignment_maximum_wait_ns_{350'000'000};
   std::int64_t last_pose_update_ns_{0};
   std::int64_t attitude_sample_stamp_ns_{0};
   std::int64_t last_attitude_receive_ns_{0};
@@ -767,7 +947,6 @@ private:
   std::array<double, 4> lidar_flu_to_body_frd_quaternion_{0.0, 1.0, 0.0, 0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
-  double lidar_pose_latency_s_{0.05};
   double tracked_agent_filter_radius_m_{1.0};
   double tracked_agent_filter_vertical_tolerance_m_{1.0};
   std::int64_t tracked_agent_maximum_age_ns_{500'000'000LL};
@@ -781,10 +960,12 @@ private:
   LidarMemoryHitDumpWriter lidar_memory_hit_dump_;
   LatestValueMailbox<LidarMemoryHitDiagnosticBatch> lidar_diagnostics_mailbox_;
   std::atomic<std::uint64_t> dropped_lidar_diagnostic_batches_{0U};
+  std::uint64_t latest_lidar_safety_scan_sequence_{0U};
+  std::size_t lidar_scan_alignment_queue_capacity_{8U};
+  std::deque<PendingLidarScan> pending_lidar_scans_;
   std::jthread lidar_diagnostics_worker_;
   bool use_px4_heading_for_scan_{true};
   double maximum_heading_variance_rad2_{0.05};
-  bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{true};
   bool pose_seen_{false};
   bool scan_seen_{false};
@@ -792,6 +973,7 @@ private:
   bool attitude_sample_stamp_valid_{false};
   bool current_velocity_valid_{false};
   bool lidar_memory_hit_dump_enabled_{true};
+  bool persistent_memory_enabled_{true};
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
@@ -800,6 +982,8 @@ private:
   rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_track_sub_;
+  rclcpp::Publisher<msg::LatestLidarSafetyScan>::SharedPtr
+      latest_lidar_safety_scan_pub_;
 };
 
 } // namespace drone_city_nav

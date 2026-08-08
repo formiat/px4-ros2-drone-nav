@@ -239,8 +239,15 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             'DeclareLaunchArgument("enable_obstacle_memory", default_value="true")',
             self.intercept_launch_text,
         )
-        self.assertIn("if obstacle_memory_enabled:", self.intercept_launch_text)
-        self.assertIn("if obstacle_memory_enabled:", self.launch_text)
+        self.assertIn(
+            '"persistent_memory_enabled": obstacle_memory_enabled',
+            self.intercept_launch_text,
+        )
+        self.assertIn(
+            'obstacle_memory_overrides["persistent_memory_enabled"]',
+            self.launch_text,
+        )
+        self.assertIn('expected_current_lidar="true"', self.text)
 
     def test_static_map_override_reaches_production_mppi(self) -> None:
         self.assertIn("production_mppi_parameters", self.launch_text)

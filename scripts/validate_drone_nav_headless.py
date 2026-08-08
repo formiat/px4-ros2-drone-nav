@@ -278,6 +278,25 @@ def validate_intercept_physical_losses(ros_log: str, errors: list[str]) -> None:
         print("OK: no crash was reported")
 
 
+def validate_building_collisions(ros_log: str, errors: list[str]) -> None:
+    collisions = sorted(
+        set(
+            re.findall(
+                r"VEHICLE_DESTROYED role=[0-9]+ vehicle_id='([^']+)' "
+                r"cause=physical_collision .*?obstacle_collision='([^']*building[^']*)'",
+                ros_log,
+            )
+        )
+    )
+    if not collisions:
+        print("OK: no vehicle collided with a building")
+        return
+    for vehicle_id, obstacle in collisions:
+        errors.append(
+            f"FAIL: {vehicle_id} collided with building obstacle '{obstacle}'"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate production MPPI headless run logs."
@@ -302,9 +321,11 @@ def main() -> int:
     px4_log = "\n".join(px4_logs)
     expected_static = parse_bool(args.expected_static)
     expected_memory = parse_bool(args.expected_memory)
+    expected_current_lidar = parse_bool(args.expected_current_lidar)
     enable_lidar_debug = parse_bool(args.enable_lidar_debug) is not False
     errors: list[str] = []
     safety_ros_log = safety_relevant_ros_log(ros_log, args.mission_type)
+    validate_building_collisions(ros_log, errors)
 
     expected_vehicles = 2 if args.mission_type == "intercept" else 1
     require_count(
@@ -331,6 +352,17 @@ def main() -> int:
         errors.append("FAIL: obstacle memory is disabled")
     else:
         print("OK: obstacle memory is disabled")
+    if expected_current_lidar is True:
+        require(
+            "latest lidar safety source is active",
+            ros_log,
+            r"LATEST_LIDAR_SAFETY_SCAN published=true",
+            errors,
+        )
+    elif expected_current_lidar is False and re.search(
+        r"LATEST_LIDAR_SAFETY_SCAN published=true", ros_log
+    ):
+        errors.append("FAIL: latest lidar safety source is disabled")
     require(
         "production MPPI is ready",
         ros_log,

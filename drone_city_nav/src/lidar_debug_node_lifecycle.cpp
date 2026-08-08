@@ -15,6 +15,14 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   scan_yaw_offset_rad_ = config.scan_yaw_offset_rad;
   motion_compensate_lidar_pose_ = config.motion_compensate_lidar_pose;
   lidar_pose_latency_s_ = config.lidar_pose_latency_s;
+  lidar_acquisition_pose_config_.apply_sensor_time_offset =
+      config.motion_compensate_lidar_pose;
+  lidar_acquisition_pose_config_.sensor_time_offset_s = config.lidar_pose_latency_s;
+  lidar_acquisition_pose_config_.require_source_timestamp_alignment = true;
+  lidar_acquisition_pose_config_.require_bracketed_pose = true;
+  lidar_scan_alignment_maximum_wait_ns_ =
+      static_cast<std::int64_t>(config.lidar_scan_alignment_maximum_wait_s * 1.0e9);
+  lidar_scan_alignment_queue_capacity_ = config.lidar_scan_alignment_queue_capacity;
   lidar_scan_duration_override_s_ = config.lidar_scan_duration_override_s;
   compensate_lidar_attitude_ = config.compensate_lidar_attitude;
   lidar_z_offset_m_ = config.lidar_z_offset_m;
@@ -186,6 +194,7 @@ void LidarDebugNode::onSpectatorTarget(const msg::SpectatorTarget& msg) {
 
   selected_for_spectator_ = selected;
   if (!selected) {
+    pending_lidar_scans_.clear();
     clearPublishedPointClouds();
   } else {
     if (grid_seen_) {

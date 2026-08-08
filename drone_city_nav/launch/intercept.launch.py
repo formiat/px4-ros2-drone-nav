@@ -226,11 +226,10 @@ def generate_launch_description():
                 "sensor/lidar_2d_v2/scan"
             )
             scan_topic = f"{prefix}/scan"
-            if obstacle_memory_enabled or lidar_debug_enabled:
-                bridge_arguments.append(
-                    f"{gz_scan}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
-                )
-                bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
+            bridge_arguments.append(
+                f"{gz_scan}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
+            )
+            bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
 
             primary = config["rviz_primary"]
             raw_snapshot = (
@@ -253,12 +252,14 @@ def generate_launch_description():
                 if primary
                 else f"{prefix}/obstacle_memory_status"
             )
+            latest_lidar_safety_scan = f"{prefix}/latest_lidar_safety_scan"
             path_topic = f"{prefix}/mppi/path"
             marker_topic = f"{prefix}/mppi/markers"
             memory_params = _parameters(
                 document,
                 "obstacle_memory_node",
                 {
+                    "persistent_memory_enabled": obstacle_memory_enabled,
                     "use_static_map": use_static_map,
                     "lidar_topic": scan_topic,
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
@@ -276,6 +277,7 @@ def generate_launch_description():
                     "obstacle_memory_status_topic": memory_status,
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "raw_obstacle_delta_topic": raw_delta,
+                    "latest_lidar_safety_scan_topic": latest_lidar_safety_scan,
                     "tracked_agent_track_topic": (
                         f"{prefix}/target_track" if config["is_interceptor"] else ""
                     ),
@@ -306,6 +308,7 @@ def generate_launch_description():
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "raw_obstacle_delta_topic": raw_delta,
                     "obstacle_memory_status_topic": memory_status,
+                    "latest_lidar_safety_scan_topic": latest_lidar_safety_scan,
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",
                     "execution_horizon_topic": f"{prefix}/mppi/execution_horizon",
                     "status_topic": f"{prefix}/mppi/status",
@@ -393,18 +396,17 @@ def generate_launch_description():
                     "drone_collision_filter": config["model"],
                 },
             )
-            if obstacle_memory_enabled:
-                nodes.append(
-                    Node(
-                        package="drone_city_nav",
-                        executable="obstacle_memory_node",
-                        namespace=f"vehicles/{role}",
-                        name="obstacle_memory_node",
-                        output="screen",
-                        prefix=planning_prefix,
-                        parameters=[memory_params, {"use_sim_time": True}],
-                    )
+            nodes.append(
+                Node(
+                    package="drone_city_nav",
+                    executable="obstacle_memory_node",
+                    namespace=f"vehicles/{role}",
+                    name="obstacle_memory_node",
+                    output="screen",
+                    prefix=planning_prefix,
+                    parameters=[memory_params, {"use_sim_time": True}],
                 )
+            )
             nodes.extend(
                 [
                     Node(

@@ -19,6 +19,18 @@ namespace {
   return std::hypot(vector.x, vector.y, vector.z);
 }
 
+[[nodiscard]] std::array<double, 4>
+quaternionFromRpy(const double roll_rad, const double pitch_rad, const double yaw_rad) {
+  const double cr = std::cos(roll_rad * 0.5);
+  const double sr = std::sin(roll_rad * 0.5);
+  const double cp = std::cos(pitch_rad * 0.5);
+  const double sp = std::sin(pitch_rad * 0.5);
+  const double cy = std::cos(yaw_rad * 0.5);
+  const double sy = std::sin(yaw_rad * 0.5);
+  return {cr * cp * cy + sr * sp * sy, sr * cp * cy - cr * sp * sy,
+          cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy};
+}
+
 } // namespace
 
 TEST(LidarProjection, ExplicitFluToFrdProjectionKeepsLevelForwardBeam) {
@@ -163,6 +175,29 @@ TEST(LidarProjection, FullExtrinsicUsesMappingYawInsteadOfQuaternionYaw) {
 
   EXPECT_NEAR(projection.ned_direction.x, std::cos(mapping_yaw_rad), 1.0e-9);
   EXPECT_NEAR(projection.ned_direction.y, std::sin(mapping_yaw_rad), 1.0e-9);
+}
+
+TEST(LidarProjection, FullExtrinsicUsesSynchronizedQuaternionTiltForEveryBeam) {
+  constexpr double mapping_yaw_rad{0.3};
+  constexpr double estimator_yaw_rad{1.1};
+  constexpr double pitch_rad{-0.4};
+  LidarProjectionPose pose{
+      Point2{0.0, 0.0}, 18.0, mapping_yaw_rad, 0.0, 0.0, true, true};
+  pose.body_to_ned_quaternion = quaternionFromRpy(0.0, pitch_rad, estimator_yaw_rad);
+  pose.body_to_ned_quaternion_valid = true;
+  LidarProjectionConfig config{};
+  config.use_full_lidar_extrinsic = true;
+  config.compensate_attitude = true;
+  config.lidar_flu_to_body_frd_quaternion = {0.0, 1.0, 0.0, 0.0};
+
+  const LidarBeamProjection projection = project(pose, config, 10.0F);
+
+  EXPECT_NEAR(projection.ned_direction.x,
+              std::cos(pitch_rad) * std::cos(mapping_yaw_rad), 1.0e-9);
+  EXPECT_NEAR(projection.ned_direction.y,
+              std::cos(pitch_rad) * std::sin(mapping_yaw_rad), 1.0e-9);
+  EXPECT_NEAR(projection.ned_direction.z, -std::sin(pitch_rad), 1.0e-9);
+  EXPECT_LT(projection.endpoint_altitude_m, pose.altitude_m);
 }
 
 TEST(LidarProjection, TiltedProjectionUsesBodyFrdAxes) {

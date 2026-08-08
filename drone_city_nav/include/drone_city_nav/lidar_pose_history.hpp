@@ -95,6 +95,8 @@ struct LidarBeamPoseAlignmentResult {
   std::int64_t requested_stamp_ns{0};
   std::int64_t position_stamp_error_ns{0};
   std::int64_t attitude_stamp_error_ns{0};
+  std::int64_t maximum_position_extrapolation_ns{0};
+  std::int64_t maximum_attitude_extrapolation_ns{0};
   std::size_t position_sample_count{0U};
   std::size_t attitude_sample_count{0U};
   LidarPoseTemporalAlignment position_timing{};
@@ -108,6 +110,11 @@ struct LidarBeamPoseAlignmentResult {
 
   [[nodiscard]] bool sourceAligned() const noexcept {
     return aligned() && source == LidarPoseAlignmentSource::kSourceTimestampAligned;
+  }
+
+  [[nodiscard]] bool bracketed() const noexcept {
+    return aligned() && maximum_position_extrapolation_ns == 0 &&
+           maximum_attitude_extrapolation_ns == 0;
   }
 };
 

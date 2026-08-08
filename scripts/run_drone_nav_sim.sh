@@ -379,7 +379,7 @@ format_override_value() {
 
 expected_static_map="${active_static_map}"
 expected_obstacle_memory="${enable_obstacle_memory}"
-expected_current_lidar="${enable_obstacle_memory}"
+expected_current_lidar="true"
 
 clean_stale_gazebo_processes() {
   if ! bool_is_true "${clean_stale_gazebo_processes_enabled}"; then

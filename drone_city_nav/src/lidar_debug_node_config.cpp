@@ -16,6 +16,10 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
   config.max_lidar_range_m = std::max(1.0, config.max_lidar_range_m);
   config.range_hit_epsilon_m = std::max(0.0, config.range_hit_epsilon_m);
   config.lidar_pose_latency_s = std::clamp(config.lidar_pose_latency_s, 0.0, 1.0);
+  config.lidar_scan_alignment_maximum_wait_s =
+      std::clamp(config.lidar_scan_alignment_maximum_wait_s, 0.0, 2.0);
+  config.lidar_scan_alignment_queue_capacity =
+      std::clamp<std::size_t>(config.lidar_scan_alignment_queue_capacity, 1U, 100U);
   config.lidar_scan_duration_override_s =
       std::clamp(config.lidar_scan_duration_override_s, 0.0, 1.0);
   config.hit_memory_resolution_m = std::max(0.05, config.hit_memory_resolution_m);
@@ -64,6 +68,15 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "motion_compensate_lidar_pose", config.motion_compensate_lidar_pose);
   config.lidar_pose_latency_s = node.declare_parameter<double>(
       "lidar_pose_latency_s", config.lidar_pose_latency_s);
+  config.lidar_scan_alignment_maximum_wait_s =
+      node.declare_parameter<double>("lidar_scan_alignment_maximum_wait_s",
+                                     config.lidar_scan_alignment_maximum_wait_s);
+  config.lidar_scan_alignment_queue_capacity =
+      static_cast<std::size_t>(std::max<std::int64_t>(
+          node.declare_parameter<std::int64_t>(
+              "lidar_scan_alignment_queue_capacity",
+              static_cast<std::int64_t>(config.lidar_scan_alignment_queue_capacity)),
+          0));
   config.lidar_scan_duration_override_s = node.declare_parameter<double>(
       "lidar_scan_duration_override_s", config.lidar_scan_duration_override_s);
   config.compensate_lidar_attitude = node.declare_parameter<bool>(

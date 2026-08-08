@@ -484,6 +484,12 @@ LidarBeamPoseAlignmentResult timestampAlignedLidarBeamPosesWithDiagnostics(
           history.sampleWithDiagnostics(requested_stamp_ns, time_basis);
       attempt.position_stamp_error_ns = sample.position_stamp_error_ns;
       attempt.attitude_stamp_error_ns = sample.attitude_stamp_error_ns;
+      attempt.maximum_position_extrapolation_ns =
+          std::max(attempt.maximum_position_extrapolation_ns,
+                   std::abs(sample.position_timing.signed_extrapolation_ns));
+      attempt.maximum_attitude_extrapolation_ns =
+          std::max(attempt.maximum_attitude_extrapolation_ns,
+                   std::abs(sample.attitude_timing.signed_extrapolation_ns));
       attempt.position_timing = sample.position_timing;
       attempt.attitude_timing = sample.attitude_timing;
       if (!sample.aligned_pose.has_value()) {
@@ -612,6 +618,10 @@ std::string formatLidarPoseAlignmentDiagnostic(
          << 1.0e-6 * static_cast<double>(result.position_stamp_error_ns)
          << " attitude_error_ms="
          << 1.0e-6 * static_cast<double>(result.attitude_stamp_error_ns)
+         << " maximum_position_extrapolation_ms="
+         << 1.0e-6 * static_cast<double>(result.maximum_position_extrapolation_ns)
+         << " maximum_attitude_extrapolation_ms="
+         << 1.0e-6 * static_cast<double>(result.maximum_attitude_extrapolation_ns)
          << " position_timing[mode="
          << lidarPoseTemporalModeName(result.position_timing.mode)
          << " receive=" << result.position_timing.from_receive_stamp_ns << ".."

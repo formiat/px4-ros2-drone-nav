@@ -43,6 +43,14 @@ struct LidarProjectionConfig {
   std::array<double, 4> lidar_flu_to_body_frd_quaternion{0.0, 1.0, 0.0, 0.0};
 };
 
+struct LidarProjectionBodyFrame {
+  Point3 origin_map_m{};
+  Point3 x_axis_map{};
+  Point3 y_axis_map{};
+  Point3 z_axis_map{};
+  bool valid{false};
+};
+
 enum class LidarBeamProjectionStatus {
   kAccepted,
   kInvalidScan,
@@ -85,5 +93,15 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
                  double scan_range_min_m, double scan_range_max_m, double angle_min_rad,
                  double angle_increment_rad, std::size_t beam_index,
                  float raw_range) noexcept;
+
+[[nodiscard]] LidarProjectionBodyFrame
+lidarProjectionBodyFrame(const LidarProjectionPose& pose,
+                         const LidarProjectionConfig& config) noexcept;
+
+[[nodiscard]] Point3 lidarBodyPointToMap(const LidarProjectionBodyFrame& frame,
+                                         const Point3& body_frd_point) noexcept;
+
+[[nodiscard]] Point3 lidarMapPointToBody(const LidarProjectionBodyFrame& frame,
+                                         const Point3& map_point) noexcept;
 
 } // namespace drone_city_nav

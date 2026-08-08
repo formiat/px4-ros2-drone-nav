@@ -114,6 +114,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
   maximum_control_feedback_age_ms_ =
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
+  latest_lidar_safety_enabled_ =
+      declare_parameter<bool>("latest_lidar_safety_enabled", true);
+  latest_lidar_safety_maximum_age_ms_ =
+      declare_parameter<double>("latest_lidar_safety_maximum_age_ms", 250.0);
   const std::int64_t planner_worker_count =
       declare_parameter<std::int64_t>("planner_worker_count", 4);
   if (planner_worker_count < 1 || planner_worker_count > 8) {
@@ -602,6 +606,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(diagnostics_info_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
       !(diagnostics_file_rate_hz_ > 0.0) || !(diagnostics_flush_period_s_ > 0.0) ||
       !(maximum_control_feedback_age_ms_ > 0.0) ||
+      !(latest_lidar_safety_maximum_age_ms_ > 0.0) ||
       !std::isfinite(constrained_route_speed_limit_mps_) ||
       constrained_route_speed_limit_mps_ < 0.0F ||
       !(route_constraint_diagnostics_distance_m_ >= 0.0) ||
@@ -752,6 +757,12 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](msg::RawObstacleDelta::ConstSharedPtr message) {
         onRawObstacleDelta(std::move(message));
+      });
+  latest_lidar_safety_scan_sub_ = create_subscription<msg::LatestLidarSafetyScan>(
+      declare_parameter<std::string>("latest_lidar_safety_scan_topic",
+                                     "/drone_city_nav/latest_lidar_safety_scan"),
+      sensor_qos, [this](const msg::LatestLidarSafetyScan::SharedPtr message) {
+        onLatestLidarSafetyScan(*message);
       });
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
       declare_parameter<std::string>("obstacle_memory_status_topic",

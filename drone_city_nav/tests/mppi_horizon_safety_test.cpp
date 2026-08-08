@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <vector>
 
 namespace drone_city_nav {
@@ -235,6 +236,102 @@ TEST(MppiHorizonSafetyTest, LatestRawBoundaryDoesNotBecomeAProhibitedZone) {
   EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
   EXPECT_FALSE(result.global_raw_collision);
   EXPECT_GT(result.global_raw_validation_samples, 0U);
+}
+
+TEST(MppiHorizonSafetyTest, RejectsPhysicalFootprintContactWithLatestLidarHit) {
+  const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> local_esdf(4U, 10.0F);
+  const mppi::State current{1.0F, 1.0F, 5.0F};
+  const std::vector<mppi::State> horizon{current, mppi::State{5.0F, 1.0F, 5.0F}};
+  const std::vector<Point3> latest_lidar_hits{Point3{3.0, 1.0, 5.0}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25,
+                              .physical_footprint_lower_extent_m = 0.2,
+                              .physical_footprint_upper_extent_m = 0.3},
+      false, {}, nullptr, nullptr, latest_lidar_hits);
+
+  EXPECT_NE(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_TRUE(result.latest_lidar_collision);
+  EXPECT_GT(result.latest_lidar_validation_samples, 0U);
+  EXPECT_GT(result.latest_lidar_point_checks, 0U);
+}
+
+TEST(MppiHorizonSafetyTest, LatestLidarHitDoesNotCreateAnInfiniteVerticalColumn) {
+  const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> local_esdf(4U, 10.0F);
+  const mppi::State current{1.0F, 1.0F, 5.0F};
+  const std::vector<mppi::State> horizon{current, mppi::State{5.0F, 1.0F, 5.0F}};
+  const std::vector<Point3> latest_lidar_hits{Point3{3.0, 1.0, 6.0}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25,
+                              .physical_footprint_lower_extent_m = 0.2,
+                              .physical_footprint_upper_extent_m = 0.3},
+      false, {}, nullptr, nullptr, latest_lidar_hits);
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_FALSE(result.latest_lidar_collision);
+  EXPECT_GT(result.latest_lidar_validation_samples, 0U);
+}
+
+TEST(MppiHorizonSafetyTest,
+     BrakesForLatestLidarHitOnStoppingPathWhenNominalHorizonTurnsAway) {
+  const mppi::EsdfGrid local_grid{20, 20, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> local_esdf(400U, 10.0F);
+  mppi::State current{1.0F, 1.0F, 5.0F};
+  current.vx = 8.0F;
+  const std::vector<mppi::State> horizon{current, mppi::State{1.0F, 5.0F, 5.0F}};
+  const std::vector<Point3> latest_lidar_hits{Point3{4.0, 1.0, 5.0}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.reaction_latency_s = 0.1,
+                              .maximum_braking_acceleration_mps2 = 4.0,
+                              .minimum_time_to_collision_s = 0.1,
+                              .fallback_duration_s = 3.0,
+                              .dt_s = 0.05,
+                              .swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25,
+                              .physical_footprint_lower_extent_m = 0.2,
+                              .physical_footprint_upper_extent_m = 0.3},
+      false, {}, nullptr, nullptr, latest_lidar_hits);
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kBrake);
+  EXPECT_TRUE(result.latest_lidar_collision);
+  EXPECT_TRUE(result.latest_lidar_stopping_path_collision);
+  EXPECT_TRUE(std::isfinite(result.latest_lidar_stopping_time_to_collision_s));
+  EXPECT_GT(result.latest_lidar_stopping_validation_samples, 0U);
+  EXPECT_GT(result.latest_lidar_stopping_point_checks, 0U);
+}
+
+TEST(MppiHorizonSafetyTest, AllowsLatestLidarHitOutsideStoppingFootprint) {
+  const mppi::EsdfGrid local_grid{20, 20, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> local_esdf(400U, 10.0F);
+  mppi::State current{1.0F, 1.0F, 5.0F};
+  current.vx = 8.0F;
+  const std::vector<mppi::State> horizon{current, mppi::State{5.0F, 1.0F, 5.0F}};
+  const std::vector<Point3> latest_lidar_hits{Point3{4.0, 2.0, 5.0}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.reaction_latency_s = 0.1,
+                              .maximum_braking_acceleration_mps2 = 4.0,
+                              .fallback_duration_s = 3.0,
+                              .dt_s = 0.05,
+                              .swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25,
+                              .physical_footprint_lower_extent_m = 0.2,
+                              .physical_footprint_upper_extent_m = 0.3},
+      false, {}, nullptr, nullptr, latest_lidar_hits);
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_FALSE(result.latest_lidar_stopping_path_collision);
+  EXPECT_GT(result.latest_lidar_stopping_validation_samples, 0U);
 }
 
 TEST(MppiHorizonSafetyTest, UsesAltitudeForThreeDimensionalCollision) {

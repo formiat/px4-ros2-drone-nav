@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <vector>
@@ -46,8 +47,16 @@ struct MppiHorizonSafetyResult {
   double latest_safe_intervention_time_s{0.0};
   bool flight_envelope_violation{false};
   bool global_raw_collision{false};
+  bool latest_lidar_collision{false};
+  bool latest_lidar_stopping_path_collision{false};
   std::size_t global_raw_validation_samples{0U};
   std::size_t global_raw_fallback_samples{0U};
+  std::size_t latest_lidar_validation_samples{0U};
+  std::size_t latest_lidar_point_checks{0U};
+  std::size_t latest_lidar_stopping_validation_samples{0U};
+  std::size_t latest_lidar_stopping_point_checks{0U};
+  double latest_lidar_stopping_time_to_collision_s{
+      std::numeric_limits<double>::infinity()};
   std::vector<mppi::State> fallback_horizon;
   std::vector<mppi::Control> fallback_controls;
 };
@@ -94,6 +103,7 @@ buildMppiBrakingFallback(const mppi::State& current_state,
     const MppiHorizonSafetyConfig& config, bool engine_collision = false,
     std::span<const mppi::KnownSolid> known_solids = {},
     const OccupancyGrid3D* global_raw_occupancy = nullptr,
-    const OccupancyGrid2D* latest_raw_occupancy = nullptr);
+    const OccupancyGrid2D* latest_raw_occupancy = nullptr,
+    std::span<const Point3> latest_lidar_hit_points_map_m = {});
 
 } // namespace drone_city_nav

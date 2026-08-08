@@ -41,6 +41,8 @@ struct LidarDebugNodeConfig {
   double scan_yaw_offset_rad{0.0};
   bool motion_compensate_lidar_pose{true};
   double lidar_pose_latency_s{0.05};
+  double lidar_scan_alignment_maximum_wait_s{0.35};
+  std::size_t lidar_scan_alignment_queue_capacity{8U};
   double lidar_scan_duration_override_s{0.0};
   bool compensate_lidar_attitude{true};
   double lidar_z_offset_m{0.0};

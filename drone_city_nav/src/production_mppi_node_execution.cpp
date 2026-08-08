@@ -2,7 +2,9 @@
 #include <builtin_interfaces/msg/time.hpp>
 #include <cinttypes>
 #include <cmath>
+#include <limits>
 #include <ranges>
+#include <span>
 
 #include "production_mppi_node.hpp"
 
@@ -48,6 +50,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       !use_static_map_ && latest_raw_world && latest_raw_world->occupancy
           ? latest_raw_world->occupancy.get()
           : nullptr;
+  const std::shared_ptr<const LatestLidarSafetySnapshot> latest_lidar_safety_scan =
+      latest_lidar_safety_scan_.load(std::memory_order_acquire);
+  constexpr std::int64_t kMaximumFutureScanSkewNs{100'000'000};
+  const std::int64_t latest_lidar_age_ns =
+      latest_lidar_safety_scan ? now_ns - latest_lidar_safety_scan->acquisition_stamp_ns
+                               : std::numeric_limits<std::int64_t>::max();
+  const bool latest_lidar_safety_fresh =
+      latest_lidar_safety_enabled_ && latest_lidar_safety_scan &&
+      latest_lidar_safety_scan->acquisition_stamp_ns > 0 &&
+      latest_lidar_age_ns >= -kMaximumFutureScanSkewNs &&
+      static_cast<double>(latest_lidar_age_ns) * 1.0e-6 <=
+          latest_lidar_safety_maximum_age_ms_;
+  const std::span<const Point3> latest_lidar_hit_points =
+      latest_lidar_safety_fresh
+          ? std::span<const Point3>{latest_lidar_safety_scan->hit_points_map_m}
+          : std::span<const Point3>{};
 
   const auto make_horizon = [&](const std::int64_t valid_until_ns,
                                 const ProductionMppiExecutionMode mode,
@@ -131,7 +149,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         input.initial_state, result.horizon, *esdf.distances_m, esdf.grid,
         safety_config_, false, {},
         use_static_map_ && static_occupancy_3d_ ? &*static_occupancy_3d_ : nullptr,
-        latest_raw_occupancy);
+        latest_raw_occupancy, latest_lidar_hit_points);
     intervention = safety_intervention_tracker_.update(now_ns, safety);
     if (safety.global_raw_fallback_samples > 0U) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
@@ -146,6 +164,57 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           safety.global_raw_validation_samples,
           safety.global_raw_collision ? "true" : "false",
           latest_raw_world ? latest_raw_world->revision : 0U);
+    }
+    if (latest_lidar_safety_fresh) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "LATEST_LIDAR_SAFETY sequence=%" PRIu64
+          " age_ms=%.1f hit_points=%zu validation_samples=%zu point_checks=%zu "
+          "stopping_samples=%zu stopping_point_checks=%zu stopping_collision=%s "
+          "stopping_ttc_s=%.3f collision=%s",
+          latest_lidar_safety_scan->sequence,
+          static_cast<double>(latest_lidar_age_ns) * 1.0e-6,
+          latest_lidar_hit_points.size(), safety.latest_lidar_validation_samples,
+          safety.latest_lidar_point_checks,
+          safety.latest_lidar_stopping_validation_samples,
+          safety.latest_lidar_stopping_point_checks,
+          safety.latest_lidar_stopping_path_collision ? "true" : "false",
+          safety.latest_lidar_stopping_time_to_collision_s,
+          safety.latest_lidar_collision ? "true" : "false");
+      constexpr std::int64_t kStoppingCollisionLogPeriodNs{1'000'000'000};
+      if (safety.latest_lidar_stopping_path_collision &&
+          (!latest_lidar_stopping_collision_active_ ||
+           now_ns - latest_lidar_stopping_collision_log_ns_ >=
+               kStoppingCollisionLogPeriodNs)) {
+        RCLCPP_WARN(
+            get_logger(),
+            "LATEST_LIDAR_STOPPING_SAFETY collision=true sequence=%" PRIu64
+            " age_ms=%.1f speed_mps=%.3f stopping_distance_m=%.3f "
+            "time_to_collision_s=%.3f hit_points=%zu validation_samples=%zu "
+            "point_checks=%zu action=brake",
+            latest_lidar_safety_scan->sequence,
+            static_cast<double>(latest_lidar_age_ns) * 1.0e-6,
+            std::hypot(std::hypot(input.initial_state.vx, input.initial_state.vy),
+                       input.initial_state.vz),
+            safety.stopping_distance_m,
+            safety.latest_lidar_stopping_time_to_collision_s,
+            latest_lidar_hit_points.size(),
+            safety.latest_lidar_stopping_validation_samples,
+            safety.latest_lidar_stopping_point_checks);
+        latest_lidar_stopping_collision_log_ns_ = now_ns;
+      }
+      latest_lidar_stopping_collision_active_ =
+          safety.latest_lidar_stopping_path_collision;
+    } else if (latest_lidar_safety_enabled_ && latest_lidar_safety_scan) {
+      latest_lidar_stopping_collision_active_ = false;
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "LATEST_LIDAR_SAFETY usable=false reason=stale age_ms=%.1f "
+                           "maximum_age_ms=%.1f sequence=%" PRIu64,
+                           static_cast<double>(latest_lidar_age_ns) * 1.0e-6,
+                           latest_lidar_safety_maximum_age_ms_,
+                           latest_lidar_safety_scan->sequence);
+    } else {
+      latest_lidar_stopping_collision_active_ = false;
     }
     if (safety.flight_envelope_violation) {
       RCLCPP_WARN_THROTTLE(

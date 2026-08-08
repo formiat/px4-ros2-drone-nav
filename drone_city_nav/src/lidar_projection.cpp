@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace drone_city_nav {
 namespace {
@@ -72,6 +73,35 @@ normalizedQuaternion(const std::array<double, 4>& quaternion) noexcept {
           quaternion[2] * quaternion[2] + quaternion[3] * quaternion[3]) > 1.0e-24;
 }
 
+[[nodiscard]] double normalizedAngle(double angle_rad) noexcept {
+  constexpr double kPi{std::numbers::pi};
+  while (angle_rad > kPi) {
+    angle_rad -= 2.0 * kPi;
+  }
+  while (angle_rad < -kPi) {
+    angle_rad += 2.0 * kPi;
+  }
+  return angle_rad;
+}
+
+[[nodiscard]] std::array<double, 4>
+quaternionMultiply(const std::array<double, 4>& lhs,
+                   const std::array<double, 4>& rhs) noexcept {
+  return {
+      lhs[0] * rhs[0] - lhs[1] * rhs[1] - lhs[2] * rhs[2] - lhs[3] * rhs[3],
+      lhs[0] * rhs[1] + lhs[1] * rhs[0] + lhs[2] * rhs[3] - lhs[3] * rhs[2],
+      lhs[0] * rhs[2] - lhs[1] * rhs[3] + lhs[2] * rhs[0] + lhs[3] * rhs[1],
+      lhs[0] * rhs[3] + lhs[1] * rhs[2] - lhs[2] * rhs[1] + lhs[3] * rhs[0],
+  };
+}
+
+[[nodiscard]] double quaternionYaw(const std::array<double, 4>& quaternion) noexcept {
+  const auto normalized = normalizedQuaternion(quaternion);
+  return std::atan2(
+      2.0 * (normalized[0] * normalized[3] + normalized[1] * normalized[2]),
+      1.0 - 2.0 * (normalized[2] * normalized[2] + normalized[3] * normalized[3]));
+}
+
 [[nodiscard]] std::array<double, 4> quaternionFromRpy(const double roll_rad,
                                                       const double pitch_rad,
                                                       const double yaw_rad) noexcept {
@@ -128,6 +158,16 @@ mountedLidarDirection(const Point3& lidar_direction,
 [[nodiscard]] std::array<double, 4>
 projectionBodyQuaternion(const LidarProjectionPose& pose,
                          const LidarProjectionConfig& config) noexcept {
+  if (config.compensate_attitude && pose.attitude_valid &&
+      pose.body_to_ned_quaternion_valid &&
+      validQuaternion(pose.body_to_ned_quaternion)) {
+    const auto attitude = normalizedQuaternion(pose.body_to_ned_quaternion);
+    const double yaw_delta_rad =
+        normalizedAngle(pose.yaw_rad - quaternionYaw(attitude));
+    const std::array<double, 4> mapping_yaw_correction{
+        std::cos(0.5 * yaw_delta_rad), 0.0, 0.0, std::sin(0.5 * yaw_delta_rad)};
+    return normalizedQuaternion(quaternionMultiply(mapping_yaw_correction, attitude));
+  }
   const double roll =
       config.compensate_attitude && pose.attitude_valid ? pose.roll_rad : 0.0;
   const double pitch =
@@ -321,6 +361,64 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
 
   projection.status = LidarBeamProjectionStatus::kAccepted;
   return projection;
+}
+
+LidarProjectionBodyFrame
+lidarProjectionBodyFrame(const LidarProjectionPose& pose,
+                         const LidarProjectionConfig& config) noexcept {
+  LidarProjectionBodyFrame frame{};
+  if (!finite2D(pose.position) || !std::isfinite(pose.altitude_m) ||
+      !std::isfinite(pose.yaw_rad) ||
+      (config.compensate_attitude &&
+       (!pose.attitude_valid || !std::isfinite(pose.roll_rad) ||
+        !std::isfinite(pose.pitch_rad)))) {
+    return frame;
+  }
+  const std::array<double, 4> quaternion = projectionBodyQuaternion(pose, config);
+  frame.origin_map_m = Point3{pose.position.x, pose.position.y, pose.altitude_m};
+  frame.x_axis_map =
+      nedVectorToMap(rotateByQuaternion(Point3{1.0, 0.0, 0.0}, quaternion));
+  frame.y_axis_map =
+      nedVectorToMap(rotateByQuaternion(Point3{0.0, 1.0, 0.0}, quaternion));
+  frame.z_axis_map =
+      nedVectorToMap(rotateByQuaternion(Point3{0.0, 0.0, 1.0}, quaternion));
+  frame.valid = finite2D(Point2{frame.x_axis_map.x, frame.x_axis_map.y}) &&
+                finite2D(Point2{frame.y_axis_map.x, frame.y_axis_map.y}) &&
+                finite2D(Point2{frame.z_axis_map.x, frame.z_axis_map.y}) &&
+                std::isfinite(frame.x_axis_map.z) &&
+                std::isfinite(frame.y_axis_map.z) && std::isfinite(frame.z_axis_map.z);
+  return frame;
+}
+
+Point3 lidarBodyPointToMap(const LidarProjectionBodyFrame& frame,
+                           const Point3& body_frd_point) noexcept {
+  if (!frame.valid) {
+    return Point3{std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0};
+  }
+  return Point3{
+      frame.origin_map_m.x + body_frd_point.x * frame.x_axis_map.x +
+          body_frd_point.y * frame.y_axis_map.x + body_frd_point.z * frame.z_axis_map.x,
+      frame.origin_map_m.y + body_frd_point.x * frame.x_axis_map.y +
+          body_frd_point.y * frame.y_axis_map.y + body_frd_point.z * frame.z_axis_map.y,
+      frame.origin_map_m.z + body_frd_point.x * frame.x_axis_map.z +
+          body_frd_point.y * frame.y_axis_map.z + body_frd_point.z * frame.z_axis_map.z,
+  };
+}
+
+Point3 lidarMapPointToBody(const LidarProjectionBodyFrame& frame,
+                           const Point3& map_point) noexcept {
+  if (!frame.valid) {
+    return Point3{std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0};
+  }
+  const Point3 delta{map_point.x - frame.origin_map_m.x,
+                     map_point.y - frame.origin_map_m.y,
+                     map_point.z - frame.origin_map_m.z};
+  return Point3{delta.x * frame.x_axis_map.x + delta.y * frame.x_axis_map.y +
+                    delta.z * frame.x_axis_map.z,
+                delta.x * frame.y_axis_map.x + delta.y * frame.y_axis_map.y +
+                    delta.z * frame.y_axis_map.z,
+                delta.x * frame.z_axis_map.x + delta.y * frame.z_axis_map.y +
+                    delta.z * frame.z_axis_map.z};
 }
 
 } // namespace drone_city_nav

@@ -87,6 +87,148 @@ intersectsKnownSolid(const mppi::State& state, const FootprintBodyAxis& body_axi
                                             (second.vz - first.vz) / safe_duration_s});
 }
 
+[[nodiscard]] bool
+intersectsPhysicalFootprint(const Point3& point, const mppi::State& state,
+                            const FootprintBodyAxis& body_axis,
+                            const SweptFootprintConfig& footprint) noexcept {
+  const Point3 delta{point.x - static_cast<double>(state.x),
+                     point.y - static_cast<double>(state.y),
+                     point.z - static_cast<double>(state.z)};
+  const double axial =
+      delta.x * body_axis.x + delta.y * body_axis.y + delta.z * body_axis.z;
+  if (axial < -footprint.lower_extent_m || axial > footprint.upper_extent_m) {
+    return false;
+  }
+  const double distance_squared =
+      delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+  const double radial_squared = std::max(0.0, distance_squared - axial * axial);
+  return radial_squared <= footprint.radius_m * footprint.radius_m;
+}
+
+struct LatestLidarStoppingPathValidation {
+  bool collision{false};
+  double time_to_collision_s{std::numeric_limits<double>::infinity()};
+  std::size_t validation_samples{0U};
+  std::size_t point_checks{0U};
+};
+
+[[nodiscard]] mppi::State interpolateState(const mppi::State& first,
+                                           const mppi::State& second,
+                                           double ratio) noexcept;
+
+[[nodiscard]] mppi::Control brakingControl(const mppi::State& state,
+                                           const MppiHorizonSafetyConfig& config,
+                                           const double duration_s) noexcept {
+  const double horizontal_speed = std::hypot(state.vx, state.vy);
+  mppi::Control control{};
+  if (horizontal_speed > 1.0e-3) {
+    const double deceleration = std::min(config.maximum_braking_acceleration_mps2,
+                                         horizontal_speed / duration_s);
+    control.ax = static_cast<float>(-deceleration * state.vx / horizontal_speed);
+    control.ay = static_cast<float>(-deceleration * state.vy / horizontal_speed);
+  }
+  if (std::abs(state.vz) > 1.0e-3) {
+    control.az = static_cast<float>(
+        -std::copysign(std::min(config.maximum_braking_acceleration_mps2,
+                                std::abs(state.vz) / duration_s),
+                       state.vz));
+  }
+  return control;
+}
+
+void advanceState(mppi::State& state, const mppi::Control& control,
+                  const double duration_s,
+                  const FlightEnvelopeConfig& flight_envelope) noexcept {
+  const float duration = static_cast<float>(duration_s);
+  state.vx += control.ax * duration;
+  state.vy += control.ay * duration;
+  state.vz += control.az * duration;
+  state.x += state.vx * duration;
+  state.y += state.vy * duration;
+  state.z += state.vz * duration;
+  constrainStateToFlightEnvelope(state, flight_envelope);
+}
+
+[[nodiscard]] bool
+validateLatestLidarState(const mppi::State& state, const FootprintBodyAxis& body_axis,
+                         const SweptFootprintConfig& footprint,
+                         const std::span<const Point3> latest_lidar_hit_points_map_m,
+                         LatestLidarStoppingPathValidation& validation) noexcept {
+  ++validation.validation_samples;
+  for (const Point3& hit : latest_lidar_hit_points_map_m) {
+    ++validation.point_checks;
+    if (intersectsPhysicalFootprint(hit, state, body_axis, footprint)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] LatestLidarStoppingPathValidation validateLatestLidarStoppingPath(
+    const mppi::State& current_state, const MppiHorizonSafetyConfig& config,
+    const SweptFootprintConfig& footprint,
+    const std::span<const Point3> latest_lidar_hit_points_map_m) {
+  LatestLidarStoppingPathValidation validation;
+  if (latest_lidar_hit_points_map_m.empty()) {
+    return validation;
+  }
+
+  mppi::State previous = current_state;
+  constrainStateToFlightEnvelope(previous, config.flight_envelope);
+  if (!validateLatestLidarState(previous, FootprintBodyAxis{}, footprint,
+                                latest_lidar_hit_points_map_m, validation)) {
+    validation.collision = true;
+    validation.time_to_collision_s = 0.0;
+    return validation;
+  }
+
+  const double integration_step_s = std::max(1.0e-3, config.dt_s);
+  const double stopping_duration_s = std::max(
+      config.fallback_duration_s,
+      config.reaction_latency_s +
+          std::hypot(std::hypot(current_state.vx, current_state.vy), current_state.vz) /
+              std::max(1.0e-3, config.maximum_braking_acceleration_mps2));
+  double elapsed_s = 0.0;
+  while (elapsed_s + 1.0e-9 < stopping_duration_s) {
+    const bool reaction_phase = elapsed_s + 1.0e-9 < config.reaction_latency_s;
+    const double phase_remaining_s = reaction_phase
+                                         ? config.reaction_latency_s - elapsed_s
+                                         : stopping_duration_s - elapsed_s;
+    const double duration_s = std::min(
+        {integration_step_s, stopping_duration_s - elapsed_s, phase_remaining_s});
+    const mppi::Control control =
+        reaction_phase ? mppi::Control{} : brakingControl(previous, config, duration_s);
+    mppi::State next = previous;
+    advanceState(next, control, duration_s, config.flight_envelope);
+    const FootprintBodyAxis body_axis = bodyAxisForSegment(previous, next, duration_s);
+    const double segment_length_m =
+        std::hypot(std::hypot(static_cast<double>(next.x - previous.x),
+                              static_cast<double>(next.y - previous.y)),
+                   static_cast<double>(next.z - previous.z));
+    const std::size_t sample_count = std::max<std::size_t>(
+        1U, static_cast<std::size_t>(std::ceil(
+                segment_length_m / std::max(1.0e-3, config.swept_validation_step_m))));
+    for (std::size_t sample = 1U; sample <= sample_count; ++sample) {
+      const double ratio =
+          static_cast<double>(sample) / static_cast<double>(sample_count);
+      const mppi::State state = interpolateState(previous, next, ratio);
+      if (!validateLatestLidarState(state, body_axis, footprint,
+                                    latest_lidar_hit_points_map_m, validation)) {
+        validation.collision = true;
+        validation.time_to_collision_s = elapsed_s + ratio * duration_s;
+        return validation;
+      }
+    }
+    elapsed_s += duration_s;
+    previous = next;
+    const double speed = std::hypot(std::hypot(previous.vx, previous.vy), previous.vz);
+    if (!reaction_phase && speed <= 1.0e-3) {
+      break;
+    }
+  }
+  return validation;
+}
+
 void populateBrakingFallback(const mppi::State& initial,
                              const MppiHorizonSafetyConfig& config,
                              MppiHorizonSafetyResult& result) {
@@ -98,27 +240,8 @@ void populateBrakingFallback(const mppi::State& initial,
   result.fallback_controls.reserve(steps);
   result.fallback_horizon.push_back(state);
   for (std::size_t step = 0U; step < steps; ++step) {
-    const double horizontal_speed = std::hypot(state.vx, state.vy);
-    mppi::Control control{};
-    if (horizontal_speed > 1.0e-3) {
-      const double deceleration = std::min(config.maximum_braking_acceleration_mps2,
-                                           horizontal_speed / config.dt_s);
-      control.ax = static_cast<float>(-deceleration * state.vx / horizontal_speed);
-      control.ay = static_cast<float>(-deceleration * state.vy / horizontal_speed);
-    }
-    if (std::abs(state.vz) > 1.0e-3) {
-      control.az = static_cast<float>(
-          -std::copysign(std::min(config.maximum_braking_acceleration_mps2,
-                                  std::abs(state.vz) / config.dt_s),
-                         state.vz));
-    }
-    state.vx += control.ax * static_cast<float>(config.dt_s);
-    state.vy += control.ay * static_cast<float>(config.dt_s);
-    state.vz += control.az * static_cast<float>(config.dt_s);
-    state.x += state.vx * static_cast<float>(config.dt_s);
-    state.y += state.vy * static_cast<float>(config.dt_s);
-    state.z += state.vz * static_cast<float>(config.dt_s);
-    constrainStateToFlightEnvelope(state, config.flight_envelope);
+    const mppi::Control control = brakingControl(state, config, config.dt_s);
+    advanceState(state, control, config.dt_s, config.flight_envelope);
     result.fallback_controls.push_back(control);
     result.fallback_horizon.push_back(state);
   }
@@ -169,7 +292,8 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
     const MppiHorizonSafetyConfig& config, const bool engine_collision,
     const std::span<const mppi::KnownSolid> known_solids,
     const OccupancyGrid3D* global_raw_occupancy,
-    const OccupancyGrid2D* latest_raw_occupancy) {
+    const OccupancyGrid2D* latest_raw_occupancy,
+    const std::span<const Point3> latest_lidar_hit_points_map_m) {
   MppiHorizonSafetyResult result;
   const double speed =
       std::hypot(std::hypot(current_state.vx, current_state.vy), current_state.vz);
@@ -190,6 +314,25 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
       .radial_rings = config.physical_footprint_radial_rings,
       .axial_samples = config.physical_footprint_axial_samples,
       .sweep_step_m = config.swept_validation_step_m};
+  const LatestLidarStoppingPathValidation stopping_validation =
+      validateLatestLidarStoppingPath(current_state, config, footprint,
+                                      latest_lidar_hit_points_map_m);
+  result.latest_lidar_stopping_path_collision = stopping_validation.collision;
+  result.latest_lidar_stopping_time_to_collision_s =
+      stopping_validation.time_to_collision_s;
+  result.latest_lidar_stopping_validation_samples =
+      stopping_validation.validation_samples;
+  result.latest_lidar_stopping_point_checks = stopping_validation.point_checks;
+  if (stopping_validation.collision) {
+    result.latest_lidar_collision = true;
+    result.time_to_collision_s = stopping_validation.time_to_collision_s;
+    result.latest_safe_intervention_time_s = 0.0;
+    result.decision = result.time_to_collision_s > config.minimum_time_to_collision_s
+                          ? MppiHorizonSafetyDecision::kBrake
+                          : MppiHorizonSafetyDecision::kHold;
+    populateBrakingFallback(current_state, config, result);
+    return result;
+  }
   for (std::size_t index = 0U; index < horizon.size(); ++index) {
     const mppi::State& next = horizon[index];
     const FootprintBodyAxis body_axis = bodyAxisForSegment(previous, next, config.dt_s);
@@ -235,10 +378,23 @@ MppiHorizonSafetyResult evaluateMppiHorizonSafety(
       const bool global_raw_collision =
           static_global_raw_collision || latest_raw_collision;
       result.global_raw_collision = result.global_raw_collision || global_raw_collision;
+      bool latest_lidar_collision = false;
+      if (!latest_lidar_hit_points_map_m.empty()) {
+        ++result.latest_lidar_validation_samples;
+        for (const Point3& hit : latest_lidar_hit_points_map_m) {
+          ++result.latest_lidar_point_checks;
+          if (intersectsPhysicalFootprint(hit, state, body_axis, footprint)) {
+            latest_lidar_collision = true;
+            break;
+          }
+        }
+      }
+      result.latest_lidar_collision =
+          result.latest_lidar_collision || latest_lidar_collision;
       const bool footprint_collision =
           footprint_validation.status == SweptFootprintStatus::kRawCollision ||
           footprint_validation.status == SweptFootprintStatus::kInvalidEsdf ||
-          global_raw_collision;
+          global_raw_collision || latest_lidar_collision;
       if (footprint_collision ||
           intersectsKnownSolid(state, body_axis, footprint, known_solids)) {
         result.time_to_collision_s =

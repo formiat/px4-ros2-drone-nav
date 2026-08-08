@@ -100,6 +100,9 @@ def generate_launch_description():
         obstacle_memory_enabled = (
             True if obstacle_memory_override is None else obstacle_memory_override
         )
+        obstacle_memory_overrides["persistent_memory_enabled"] = (
+            obstacle_memory_enabled
+        )
         lidar_debug_override = optional_bool_override(
             context, enable_lidar_debug, "enable_lidar_debug"
         )
@@ -137,17 +140,15 @@ def generate_launch_description():
             production_mppi_parameters.append(
                 {"static_occupancy_3d_path": static_world_path_override}
             )
-        nodes = []
-        if obstacle_memory_enabled:
-            nodes.append(
-                Node(
-                    package="drone_city_nav",
-                    executable="obstacle_memory_node",
-                    name="obstacle_memory_node",
-                    output="screen",
-                    parameters=obstacle_memory_parameters,
-                )
+        nodes = [
+            Node(
+                package="drone_city_nav",
+                executable="obstacle_memory_node",
+                name="obstacle_memory_node",
+                output="screen",
+                parameters=obstacle_memory_parameters,
             )
+        ]
         nodes.extend(
             [
                 Node(

@@ -6,6 +6,7 @@
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
+#include "drone_city_nav/latest_lidar_scan_safety.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
@@ -15,6 +16,7 @@
 #include "drone_city_nav/mppi_risk_escalation.hpp"
 #include "drone_city_nav/mppi_rollout_budget.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
+#include "drone_city_nav/msg/latest_lidar_safety_scan.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
@@ -384,6 +386,7 @@ private:
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onRawObstacleDelta(msg::RawObstacleDelta::ConstSharedPtr message);
+  void onLatestLidarSafetyScan(const msg::LatestLidarSafetyScan& message);
   void queueRawWorld(const RawObstacleGridState& state, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
@@ -451,6 +454,10 @@ private:
   double maximum_esdf_age_ms_{1000.0};
   double stale_esdf_execution_window_ms_{4000.0};
   double maximum_control_feedback_age_ms_{200.0};
+  double latest_lidar_safety_maximum_age_ms_{250.0};
+  bool latest_lidar_safety_enabled_{true};
+  bool latest_lidar_stopping_collision_active_{false};
+  std::int64_t latest_lidar_stopping_collision_log_ns_{0};
   double no_static_guide_lookahead_m_{30.0};
   bool frontier_blacklist_enabled_{false};
   double frontier_blacklist_ttl_s_{15.0};
@@ -553,6 +560,8 @@ private:
   std::condition_variable_any raw_queue_condition_;
   std::shared_ptr<const ProductionMppiRawWorld2D> pending_raw_world_;
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
+  std::atomic<std::shared_ptr<const LatestLidarSafetySnapshot>>
+      latest_lidar_safety_scan_;
   std::mutex raw_reconstruction_mutex_;
   RawObstacleDeltaAccumulator raw_delta_accumulator_;
   msg::RawObstacleDelta::ConstSharedPtr pending_raw_delta_;
@@ -560,6 +569,7 @@ private:
   std::atomic<std::uint64_t> no_static_raw_updates_{0U};
   std::atomic<std::uint64_t> no_static_esdf_builds_{0U};
   std::atomic<std::uint64_t> no_static_esdf_throttled_updates_{0U};
+  std::atomic<std::uint64_t> rejected_lidar_safety_scans_{0U};
   bool pending_static_esdf_work_{false};
   bool static_esdf_work_in_progress_{false};
   std::atomic_bool vehicle_navigation_ready_{false};
@@ -616,6 +626,8 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
   rclcpp::Subscription<msg::RawObstacleDelta>::SharedPtr raw_delta_sub_;
+  rclcpp::Subscription<msg::LatestLidarSafetyScan>::SharedPtr
+      latest_lidar_safety_scan_sub_;
   rclcpp::Subscription<msg::ObstacleMemoryStatus>::SharedPtr memory_status_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;

@@ -27,15 +27,25 @@ lidar memory into Occupancy3D.
 
 ## Lidar Input
 
-`obstacle_memory_node` projects `/scan`, immediately integrates each accepted
-beam into its scored memory, and publishes the resulting atomic snapshot. There
-is no separate production current-lidar overlay.
+`obstacle_memory_node` first resolves one strict full-6DoF acquisition pose for
+every `/scan` beam. Only then does it integrate accepted beams into scored
+memory and publish the resulting runtime state. An unresolved temporal binding
+rejects the complete scan before either hit integration or free-space carving.
 
 Important parameters:
 
 - `max_lidar_range_m`
 - `range_hit_epsilon_m`
-- lidar pose latency and attitude compensation settings.
+- calibrated sensor time offset and attitude compensation settings;
+- source timestamp receive-delay and future-skew limits;
+- latest-lidar safety scan age limit in the planner.
+
+The vehicle can accelerate in any horizontal body direction, so the shipped
+2D lidar covers the full 360-degree horizontal sector. It retains 720 samples;
+the wider sector therefore does not increase scan size or DDS traffic. This is
+still a single horizontal 2D lidar, not a 3D perception system. Complete
+azimuth coverage is required so a backwards or sideways stopping path cannot
+fall into a sensor blind sector.
 
 Lidar evidence is never filtered against hand-authored passage geometry. Static
 planning reads Occupancy3D. No-static uses the 2D lidar-memory result, and its
@@ -102,34 +112,36 @@ actual ROS CDR serialization buffer. This includes variable-length cell and
 string payloads and is intended for monitoring DDS bandwidth growth.
 
 Beam acquisition time is derived from the scan stamp and `time_increment`.
-Receive time is stored separately and is never substituted for a missing sensor
-stamp. Position XYZ and quaternion attitude are sampled independently for every
-beam acquisition timestamp from bounded histories. `TimesyncStatus` recovers
-PX4-local acquisition time from the DDS-adjusted `timestamp_sample`, and a
-bounded affine mapper relates PX4-local time to ROS simulation time. The mapper
-uses the lower callback-latency envelope so average executor delay is not baked
-into the clock offset. XYZ is interpolated linearly and the complete body-to-NED
-quaternion is interpolated with SLERP at the same acquisition timestamp.
+The calibrated sensor time offset is applied to the first-beam stamp before any
+position or attitude lookup; all subsequent beam stamps derive from that
+adjusted stamp. Receive time is diagnostic only and is never substituted for a
+missing sensor stamp. Position XYZ and quaternion attitude are sampled for
+every beam from the same bounded acquisition-time history. `TimesyncStatus`
+recovers PX4-local acquisition time from the DDS-adjusted `timestamp_sample`,
+and a bounded affine mapper relates PX4-local time to ROS simulation time. XYZ
+is interpolated linearly and the complete body-to-NED quaternion is interpolated
+with SLERP at the same requested timestamp.
 
-Projection reports one explicit pose source:
+Production mapping accepts only `source_timestamp_aligned`. The clock mapper
+must be ready, source timestamps must be valid and close to their receive time,
+and both histories must cover every beam. Receive-time alignment and the legacy
+velocity extrapolation remain library diagnostics but are not accepted for
+mapping or lidar-debug projection. Failure rejects the whole scan, leaving both
+occupied and free memory unchanged.
 
-- `source_timestamp_aligned` for PX4 `timestamp_sample` alignment;
-- `receive_timestamp_aligned` while the clock mapper is not ready;
-- `motion_extrapolated_fallback` for the legacy velocity/latency fallback;
-- `callback_pose_fallback` when no temporal compensation is available.
-
-The fixed `lidar_pose_latency_s` shift is used only by the fallback path. It is
-not added to a source-timestamp-aligned pose. If either acquisition history
-cannot cover the requested timestamp, the node logs the exact fallback source,
-bracketing samples, interpolation/extrapolation age, and mapper residual.
+`lidar_pose_latency_s` is retained as a configuration-compatible name for the
+calibrated sensor time offset. A positive value samples both position and
+attitude later than the raw scan stamp. Diagnostics report the adjusted stamp,
+bracketing samples, interpolation/extrapolation age, mapper residual, and the
+single accepted pose source.
 
 ## Motion Compensation
 
-Lidar projection can account for:
+Lidar projection accounts for:
 
 - PX4 heading;
-- motion-compensated lidar pose;
-- lidar pose latency;
+- acquisition-time position and attitude;
+- a calibrated sensor time offset;
 - attitude compensation;
 - a full rigid body-to-lidar extrinsic.
 
@@ -159,6 +171,30 @@ to the map Z-up convention.
 debug alike.
 
 The same concepts appear in obstacle-memory and lidar-debug configuration.
+
+## Latest-Scan Safety
+
+Each strictly aligned scan also publishes its actual hit endpoints on
+`/drone_city_nav/latest_lidar_safety_scan`. Endpoints are expressed in a fixed
+body-FRD frame at the adjusted first-beam acquisition pose. The message contains
+no persistent-memory cells and no free-space interpretation. Tracked drone hits
+are filtered before publication, using the same input scan as mapping.
+
+The planner reconstructs those endpoints in `map` and, while the scan is fresh,
+checks every swept horizon sample against the configured physical 3D cylinder
+of the vehicle. A hit blocks execution only when it intersects that physical
+volume. A point above or below the body does not create a vertical column, and
+no radius beyond the real footprint is added. Missing or stale latest-scan data
+does not turn unknown space into a hard zone; the existing raw world and normal
+safety lifecycle continue to apply.
+
+This safety input is intentionally independent of scored persistent memory. A
+later free-space update cannot erase the physical return from the latest scan
+before the planner evaluates it. When persistent memory is disabled in static
+headless operation, the same node runs in a lightweight safety-only mode: it
+keeps acquisition-time pose histories and publishes latest-scan returns, but it
+does not allocate a memory grid, integrate hits, publish snapshots, or start the
+memory diagnostics worker.
 
 ## Per-Beam Expected-Surface Rejection
 
@@ -264,6 +300,7 @@ Useful visualization topics:
 - `/drone_city_nav/obstacle_memory_status`
 - `/drone_city_nav/raw_obstacle_snapshot`
 - `/drone_city_nav/raw_obstacle_grid`
+- `/drone_city_nav/latest_lidar_safety_scan`
 - `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/raw_lidar_hit_points_3d`
 - `/drone_city_nav/remembered_lidar_points`

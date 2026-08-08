@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/debug_image.hpp"
+#include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_debug_node_config.hpp"
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_debug_renderer.hpp"
@@ -30,6 +31,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -63,6 +65,16 @@ public:
   explicit LidarDebugNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions{});
 
 private:
+  struct PendingLidarScan {
+    sensor_msgs::msg::LaserScan scan;
+    std::int64_t receive_stamp_ns{0};
+  };
+
+  enum class PendingLidarScanDisposition : std::uint8_t {
+    kWaitForPoseBracket,
+    kConsumed,
+  };
+
   void applyConfig(const LidarDebugNodeConfig& config);
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
@@ -72,6 +84,11 @@ private:
   void onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg);
 
   void onScan(const sensor_msgs::msg::LaserScan& msg);
+
+  void processPendingLidarScans();
+
+  [[nodiscard]] PendingLidarScanDisposition
+  processPendingLidarScan(const PendingLidarScan& pending);
 
   void onSpectatorTarget(const msg::SpectatorTarget& msg);
 
@@ -162,6 +179,8 @@ private:
   AttitudeEuler attitude_{};
   LidarPoseHistory lidar_pose_history_{};
   Px4RosTimeMapper px4_ros_time_mapper_{};
+  LidarAcquisitionPoseConfig lidar_acquisition_pose_config_{};
+  LidarPoseSourceStampConfig lidar_pose_source_stamp_config_{};
   MappingYawTracker mapping_yaw_tracker_;
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double horizontal_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
@@ -193,6 +212,7 @@ private:
   std::size_t beam_csv_stride_{1U};
   std::size_t max_logged_hit_points_{256U};
   std::size_t max_remembered_hit_points_{50000U};
+  std::size_t lidar_scan_alignment_queue_capacity_{8U};
   std::uint64_t max_snapshots_{0U};
   std::uint64_t snapshot_index_{0U};
   std::int64_t last_scan_receive_ns_{0};
@@ -203,12 +223,14 @@ private:
   std::int64_t last_projected_pose_receive_ns_{0};
   std::int64_t last_projected_heading_receive_ns_{0};
   std::int64_t last_projected_attitude_receive_ns_{0};
+  std::int64_t lidar_scan_alignment_maximum_wait_ns_{350'000'000};
   std::set<std::pair<int, int>> remembered_hit_cells_;
   std::vector<LidarSnapshotCsvRow> last_scan_rows_;
   LidarSnapshotStats last_scan_stats_{};
   std::vector<Point2> last_scan_hit_points_;
   std::vector<Point2> remembered_hit_points_;
   std::vector<LidarProjectionPose> last_projected_beam_poses_;
+  std::deque<PendingLidarScan> pending_lidar_scans_;
   LidarBeamPoseAlignmentResult last_pose_alignment_{};
   Pose2 last_projected_pose_{};
   Point2 last_projected_velocity_{};

@@ -48,6 +48,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryProvenance.msg"
   "msg/ObstacleMemorySnapshot.msg"
   "msg/ObstacleMemoryStatus.msg"
+  "msg/LatestLidarSafetyScan.msg"
   "msg/RawObstacleDelta.msg"
   "msg/RawObstacleSnapshot.msg"
   "msg/VehicleDestroyed.msg"
@@ -147,6 +148,8 @@ add_library(
   src/intercept_guidance.cpp
   src/intercept_mission.cpp
   src/known_static_lidar_hit_classifier.cpp
+  src/latest_lidar_scan_safety.cpp
+  src/lidar_acquisition_pose.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_debug_snapshot_pipeline.cpp
   src/lidar_beam_observation.cpp
@@ -223,6 +226,7 @@ enable_project_warnings(drone_contact_system)
 add_library(
   drone_city_nav_ros_adapters
   src/lidar_debug_node_config.cpp
+  src/latest_lidar_scan_safety_ros.cpp
   src/memory_provenance_audit_tracker.cpp
   src/obstacle_memory_provenance_ros.cpp
   src/px4_offboard_setpoint_io.cpp
@@ -737,6 +741,18 @@ if(BUILD_TESTING)
   target_compile_features(lidar_pose_history_test_current PRIVATE cxx_std_20)
   target_link_libraries(lidar_pose_history_test_current drone_city_nav_core)
   enable_project_warnings(lidar_pose_history_test_current)
+
+  ament_add_gtest(lidar_acquisition_pose_test
+                  tests/lidar_acquisition_pose_test.cpp)
+  target_compile_features(lidar_acquisition_pose_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_acquisition_pose_test drone_city_nav_core)
+  enable_project_warnings(lidar_acquisition_pose_test)
+
+  ament_add_gtest(latest_lidar_scan_safety_test
+                  tests/latest_lidar_scan_safety_test.cpp)
+  target_compile_features(latest_lidar_scan_safety_test PRIVATE cxx_std_20)
+  target_link_libraries(latest_lidar_scan_safety_test drone_city_nav_core)
+  enable_project_warnings(latest_lidar_scan_safety_test)
 endif()
 
 ament_export_include_directories(include)
