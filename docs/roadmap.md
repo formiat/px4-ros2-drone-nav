@@ -37,9 +37,11 @@ track mode at any range; target occlusion restores variable search cadence.
 The physical radar will not be simulated. Only the radar measurement interface
 and its integration with the interceptor are implemented.
 
-Each pursuit data path is split into a mission referee, radar simulator, target
-tracker, and interceptor guidance node. Only the referee and radar simulators may
-subscribe to attacker ground truth. The interceptor-facing `RadarScan` carries
+Each pursuit data path is split into a simulation-truth adapter, mission
+referee, radar simulator, target tracker, and interceptor guidance node. Gazebo
+model poses are converted to typed physical truth once; only the referee and
+radar simulators may subscribe to the target's typed truth. The
+interceptor-facing `RadarScan` carries
 range, azimuth, elevation, and relative radial velocity, but no absolute target
 position, velocity, or simulator entity identity. The first detection supports
 direct pursuit; subsequent variable-dt updates estimate Cartesian velocity for

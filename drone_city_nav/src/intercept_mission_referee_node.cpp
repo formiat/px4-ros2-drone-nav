@@ -2,6 +2,8 @@
 #include "drone_city_nav/msg/intercept_mission_command.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
+#include "drone_city_nav/msg/simulation_truth_alignment.hpp"
+#include "drone_city_nav/msg/simulation_truth_state.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 
@@ -19,39 +21,14 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "intercept_ground_truth_boundary.hpp"
+#include "intercept_referee_support.hpp"
 #include "intercept_ros_utils.hpp"
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] std::string
-fullyQualifiedNodeName(const rclcpp::TopicEndpointInfo& endpoint) {
-  const std::string& node_namespace = endpoint.node_namespace();
-  return node_namespace == "/" ? "/" + endpoint.node_name()
-                               : node_namespace + "/" + endpoint.node_name();
-}
-
-[[nodiscard]] bool
-endpointIdentityKnown(const rclcpp::TopicEndpointInfo& endpoint) noexcept {
-  return !endpoint.node_name().empty() &&
-         endpoint.node_name() != "_NODE_NAME_UNKNOWN_" &&
-         !endpoint.node_namespace().empty() &&
-         endpoint.node_namespace() != "_NODE_NAMESPACE_UNKNOWN_";
-}
-
-void requireCount(const std::vector<std::string>& values, const std::size_t count,
-                  const std::string& parameter_name) {
-  if (values.size() != count) {
-    throw std::invalid_argument{parameter_name + " must contain " +
-                                std::to_string(count) + " entries"};
-  }
-}
-
-} // namespace
 
 class InterceptMissionRefereeNode final : public rclcpp::Node {
 public:
@@ -79,13 +56,13 @@ public:
         declare_parameter<double>("interceptor_hold_maximum_speed_mps", 0.8);
     hold_config_.confirmation_duration_s =
         declare_parameter<double>("interceptor_hold_confirmation_duration_s", 1.0);
-    destruction_settlement_timeout_ns_ = secondsToNanoseconds(
+    destruction_settlement_timeout_ns_ = missionTimeoutNanoseconds(
         declare_parameter<double>("destruction_settlement_timeout_s", 5.0));
-    hold_timeout_ns_ = secondsToNanoseconds(
+    hold_timeout_ns_ = missionTimeoutNanoseconds(
         declare_parameter<double>("interceptor_hold_timeout_s", 20.0));
-    boundary_startup_timeout_ns_ = secondsToNanoseconds(
+    boundary_startup_timeout_ns_ = missionTimeoutNanoseconds(
         declare_parameter<double>("ground_truth_boundary_startup_timeout_s", 10.0));
-    mission_readiness_timeout_ns_ = secondsToNanoseconds(
+    mission_readiness_timeout_ns_ = missionTimeoutNanoseconds(
         declare_parameter<double>("mission_readiness_timeout_s", 30.0));
     shutdown_on_terminal_outcome_ =
         declare_parameter<bool>("shutdown_on_terminal_outcome", true);
@@ -97,6 +74,7 @@ public:
         target_goal_, interceptors_.size(), mission_config);
     previous_collision_states_.resize(interceptors_.size());
     configureEvader();
+    configureGroundTruthBoundary();
     publishTargetObjective();
 
     timer_ = create_wall_timer(std::chrono::milliseconds{50}, [this] { tick(); });
@@ -118,7 +96,9 @@ private:
   struct InterceptorRuntime {
     std::string id;
     std::string radar_simulator_fqn;
+    std::string truth_state_topic;
     std::optional<TimedVehicleState> state;
+    std::optional<TimedVehicleState> truth_state;
     std::optional<HoldHorizon> hold_horizon;
     std::unique_ptr<InterceptStateAdjudicationLifecycle> adjudication;
     std::unique_ptr<InterceptorHoldConfirmation> hold_confirmation;
@@ -130,6 +110,7 @@ private:
     std::int64_t hold_requested_ns{0};
     std::uint64_t hold_request_horizon_sequence{0U};
     rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr state_sub;
+    rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr truth_state_sub;
     rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr world_ready_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr track_ready_sub;
@@ -139,73 +120,11 @@ private:
     rclcpp::Publisher<msg::InterceptMissionCommand>::SharedPtr command_pub;
   };
 
-  [[nodiscard]] static std::int64_t secondsToNanoseconds(const double seconds) {
-    if (!(seconds > 0.0) || !std::isfinite(seconds)) {
-      throw std::invalid_argument{"mission timeout must be finite and positive"};
-    }
-    return static_cast<std::int64_t>(seconds * 1.0e9);
-  }
-
   void configureInterceptors(const std::vector<std::string>& ids) {
     if (ids.empty()) {
       throw std::invalid_argument{"at least one interceptor is required"};
     }
-    const auto defaultTopics = [&ids](const std::string& suffix) {
-      std::vector<std::string> topics;
-      topics.reserve(ids.size());
-      for (const std::string& id : ids) {
-        std::string topic{"/vehicles/"};
-        topic.append(id);
-        topic.append(suffix);
-        topics.push_back(std::move(topic));
-      }
-      return topics;
-    };
-    const std::vector<std::string> state_topics =
-        declare_parameter<std::vector<std::string>>("interceptor_state_topics",
-                                                    defaultTopics("/state"));
-    const std::vector<std::string> horizon_topics =
-        declare_parameter<std::vector<std::string>>(
-            "interceptor_execution_horizon_topics",
-            defaultTopics("/mppi/execution_horizon"));
-    const std::vector<std::string> world_topics =
-        declare_parameter<std::vector<std::string>>(
-            "interceptor_world_readiness_topics", defaultTopics("/mppi/world_ready"));
-    const std::vector<std::string> track_topics =
-        declare_parameter<std::vector<std::string>>(
-            "target_track_readiness_topics", defaultTopics("/target_track_ready"));
-    const std::vector<std::string> destroyed_topics =
-        declare_parameter<std::vector<std::string>>(
-            "interceptor_destroyed_topics", defaultTopics("/vehicle_destroyed"));
-    const std::vector<std::string> start_topics =
-        declare_parameter<std::vector<std::string>>("interceptor_start_topics",
-                                                    defaultTopics("/mission_start"));
-    const std::vector<std::string> command_topics =
-        declare_parameter<std::vector<std::string>>(
-            "interceptor_mission_command_topics", defaultTopics("/mission_command"));
-    std::vector<std::string> default_radar_fqns;
-    default_radar_fqns.reserve(ids.size());
-    for (const std::string& id : ids) {
-      std::string fqn{"/vehicles/"};
-      fqn.append(id);
-      fqn.append("/radar_simulator_node");
-      default_radar_fqns.push_back(std::move(fqn));
-    }
-    const std::vector<std::string> radar_fqns =
-        declare_parameter<std::vector<std::string>>("radar_simulator_node_fqns",
-                                                    default_radar_fqns);
-    for (const auto& [values, name] :
-         std::vector<std::pair<const std::vector<std::string>*, std::string>>{
-             {&state_topics, "interceptor_state_topics"},
-             {&horizon_topics, "interceptor_execution_horizon_topics"},
-             {&world_topics, "interceptor_world_readiness_topics"},
-             {&track_topics, "target_track_readiness_topics"},
-             {&destroyed_topics, "interceptor_destroyed_topics"},
-             {&start_topics, "interceptor_start_topics"},
-             {&command_topics, "interceptor_mission_command_topics"},
-             {&radar_fqns, "radar_simulator_node_fqns"}}) {
-      requireCount(*values, ids.size(), name);
-    }
+    const InterceptorTopicConfig topics = declareInterceptorTopicConfig(*this, ids);
 
     interceptors_.resize(ids.size());
     const auto state_qos = rclcpp::QoS{10}.best_effort();
@@ -213,16 +132,24 @@ private:
     for (std::size_t index = 0; index < ids.size(); ++index) {
       InterceptorRuntime& runtime = interceptors_[index];
       runtime.id = ids[index];
-      runtime.radar_simulator_fqn = radar_fqns[index];
+      runtime.radar_simulator_fqn = topics.radar_simulator_fqn[index];
+      runtime.truth_state_topic = topics.physical_truth_state[index];
       runtime.adjudication =
           std::make_unique<InterceptStateAdjudicationLifecycle>(state_config_);
       runtime.state_sub = create_subscription<msg::VehicleNavigationState>(
-          state_topics[index], state_qos,
+          topics.navigation_state[index], state_qos,
           [this, index](const msg::VehicleNavigationState::SharedPtr state) {
             interceptors_[index].state = detail::vehicleState(*state);
           });
+      runtime.truth_state_sub = create_subscription<msg::SimulationTruthState>(
+          topics.physical_truth_state[index], state_qos,
+          [this, index](const msg::SimulationTruthState::SharedPtr state) {
+            if (state->vehicle_id == interceptors_[index].id) {
+              interceptors_[index].truth_state = detail::physicalTruthState(*state);
+            }
+          });
       runtime.horizon_sub = create_subscription<msg::MppiTrajectoryHorizon>(
-          horizon_topics[index], rclcpp::QoS{10}.best_effort(),
+          topics.execution_horizon[index], rclcpp::QoS{10}.best_effort(),
           [this, index](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
             interceptors_[index].hold_horizon = HoldHorizon{
                 .position = Point3{horizon->stationary_hold_position.x,
@@ -235,26 +162,26 @@ private:
             };
           });
       runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
-          world_topics[index], latched_qos,
+          topics.world_readiness[index], latched_qos,
           [this, index](const std_msgs::msg::Bool::SharedPtr ready) {
             interceptors_[index].world_ready = ready->data;
           });
       runtime.track_ready_sub = create_subscription<std_msgs::msg::Bool>(
-          track_topics[index], latched_qos,
+          topics.track_readiness[index], latched_qos,
           [this, index](const std_msgs::msg::Bool::SharedPtr ready) {
             interceptors_[index].track_ready = ready->data;
           });
       runtime.destroyed_sub = create_subscription<msg::VehicleDestroyed>(
-          destroyed_topics[index], latched_qos,
+          topics.destroyed[index], latched_qos,
           [this, index](const msg::VehicleDestroyed::SharedPtr destroyed) {
             onVehicleDestroyed(*destroyed, index);
           });
-      runtime.start_pub =
-          create_publisher<std_msgs::msg::Bool>(start_topics[index], latched_qos);
+      runtime.start_pub = create_publisher<std_msgs::msg::Bool>(
+          topics.mission_start[index], latched_qos);
       runtime.destroyed_pub =
-          create_publisher<msg::VehicleDestroyed>(destroyed_topics[index], latched_qos);
+          create_publisher<msg::VehicleDestroyed>(topics.destroyed[index], latched_qos);
       runtime.command_pub = create_publisher<msg::InterceptMissionCommand>(
-          command_topics[index], latched_qos);
+          topics.mission_command[index], latched_qos);
     }
   }
 
@@ -262,6 +189,8 @@ private:
     evader_id_ = declare_parameter<std::string>("evader_id", "evader");
     target_state_topic_ =
         declare_parameter<std::string>("evader_state_topic", "/vehicles/evader/state");
+    target_truth_state_topic_ = declare_parameter<std::string>(
+        "evader_truth_state_topic", "/simulation_truth/vehicles/evader/state");
     target_destroyed_topic_ = declare_parameter<std::string>(
         "evader_destroyed_topic", "/vehicles/evader/vehicle_destroyed");
     const auto state_qos = rclcpp::QoS{10}.best_effort();
@@ -270,6 +199,24 @@ private:
         target_state_topic_, state_qos,
         [this](const msg::VehicleNavigationState::SharedPtr state) {
           target_state_ = detail::vehicleState(*state);
+        });
+    target_truth_state_sub_ = create_subscription<msg::SimulationTruthState>(
+        target_truth_state_topic_, state_qos,
+        [this](const msg::SimulationTruthState::SharedPtr state) {
+          if (state->vehicle_id == evader_id_) {
+            target_truth_state_ = detail::physicalTruthState(*state);
+          }
+        });
+    truth_alignment_sub_ = create_subscription<msg::SimulationTruthAlignment>(
+        declare_parameter<std::string>("truth_alignment_status_topic",
+                                       "/simulation_truth/alignment"),
+        latched_qos, [this](const msg::SimulationTruthAlignment::SharedPtr status) {
+          truth_alignment_ready_ = status->ready;
+          truth_alignment_sample_aligned_ = status->reason == "aligned";
+          truth_alignment_failure_confirmed_ = status->failure_confirmed;
+          truth_alignment_reason_ = status->reason;
+          truth_alignment_vehicle_id_ = status->vehicle_id;
+          truth_alignment_maximum_error_m_ = status->maximum_position_error_m;
         });
     target_world_ready_sub_ = create_subscription<std_msgs::msg::Bool>(
         declare_parameter<std::string>("evader_world_readiness_topic",
@@ -295,17 +242,25 @@ private:
   }
 
   void publishTargetObjective() {
-    msg::NavigationObjective objective;
-    objective.stamp = now();
-    objective.mission_epoch = mission_epoch_;
-    objective.sample_sequence = 1U;
-    objective.position.x = target_goal_.x;
-    objective.position.y = target_goal_.y;
-    objective.position.z = target_goal_.z;
-    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
-    objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
-    objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
-    target_objective_pub_->publish(objective);
+    target_objective_pub_->publish(makePositionHoldObjective(
+        now(), mission_epoch_, ++target_objective_sequence_, target_goal_));
+  }
+
+  void configureGroundTruthBoundary() {
+    const std::string referee_fqn = get_fully_qualified_name();
+    const std::string adapter_fqn = declare_parameter<std::string>(
+        "simulation_truth_adapter_node_fqn", "/simulation_truth_adapter_node");
+    std::vector<InterceptorTruthEndpoint> endpoints;
+    endpoints.reserve(interceptors_.size());
+    for (const InterceptorRuntime& interceptor : interceptors_) {
+      endpoints.push_back(InterceptorTruthEndpoint{
+          .physical_truth_topic = interceptor.truth_state_topic,
+          .radar_simulator_fqn = interceptor.radar_simulator_fqn,
+      });
+    }
+    ground_truth_boundary_ =
+        makeInterceptGroundTruthBoundary(referee_fqn, adapter_fqn, target_state_topic_,
+                                         target_truth_state_topic_, endpoints);
   }
 
   void onVehicleDestroyed(const msg::VehicleDestroyed& destroyed,
@@ -316,19 +271,8 @@ private:
     const std::string& expected_id = interceptor_index.has_value()
                                          ? interceptors_[*interceptor_index].id
                                          : evader_id_;
-    if (destroyed.vehicle_role != expected_role ||
-        destroyed.vehicle_id != expected_id ||
-        !detail::validDeathCause(destroyed.death_cause) ||
-        (destroyed.mission_epoch != 0U && destroyed.mission_epoch != mission_epoch_)) {
-      RCLCPP_ERROR(get_logger(),
-                   "VEHICLE_DESTROYED referee_rejected=true expected_role=%s "
-                   "expected_vehicle_id='%s' actual_role=%u actual_vehicle_id='%s' "
-                   "cause=%u event_epoch=%" PRIu64 " mission_epoch=%" PRIu64,
-                   detail::vehicleRoleName(expected_role), expected_id.c_str(),
-                   static_cast<unsigned>(destroyed.vehicle_role),
-                   destroyed.vehicle_id.c_str(),
-                   static_cast<unsigned>(destroyed.death_cause),
-                   destroyed.mission_epoch, mission_epoch_);
+    if (!validateVehicleDestroyedEvent(get_logger(), destroyed, expected_role,
+                                       expected_id, mission_epoch_)) {
       return;
     }
 
@@ -377,52 +321,43 @@ private:
       return boundary_verified_;
     }
     last_boundary_check_ns_ = now_ns;
-    std::unordered_set<std::string> allowed{get_fully_qualified_name()};
-    for (const InterceptorRuntime& interceptor : interceptors_) {
-      allowed.insert(interceptor.radar_simulator_fqn);
+    const GroundTruthBoundaryUpdate update = ground_truth_boundary_->update(*this);
+    if (!update.violating_subscriber.empty()) {
+      failMission("ground_truth_boundary_violation:" + update.violating_topic + ":" +
+                  update.violating_subscriber);
+      return false;
     }
-    std::unordered_set<std::string> observed;
-    bool identity_pending = false;
-    for (const rclcpp::TopicEndpointInfo& endpoint :
-         get_subscriptions_info_by_topic(target_state_topic_)) {
-      if (!endpointIdentityKnown(endpoint)) {
-        identity_pending = true;
-        continue;
-      }
-      const std::string subscriber = fullyQualifiedNodeName(endpoint);
-      observed.insert(subscriber);
-      if (!allowed.contains(subscriber)) {
-        failMission("ground_truth_boundary_violation:" + subscriber);
-        return false;
-      }
-    }
-    if (identity_pending) {
-      return boundary_verified_;
-    }
-    bool complete = observed.contains(get_fully_qualified_name());
-    for (const InterceptorRuntime& interceptor : interceptors_) {
-      complete = complete && observed.contains(interceptor.radar_simulator_fqn);
-    }
-    if (complete && !boundary_verified_) {
-      boundary_verified_ = true;
+    boundary_verified_ = update.verified;
+    if (update.newly_verified) {
       RCLCPP_INFO(get_logger(),
-                  "RADAR_DATA_BOUNDARY verified=true truth_topic='%s' "
-                  "allowed_radar_subscribers=%zu",
-                  target_state_topic_.c_str(), interceptors_.size());
+                  "RADAR_DATA_BOUNDARY verified=true physical_truth=true "
+                  "interceptors=%zu",
+                  interceptors_.size());
     }
     return boundary_verified_;
   }
 
   [[nodiscard]] bool missionReady() const {
-    if (!target_state_ || !target_state_->navigation_ready || !target_world_ready_) {
+    if (!truth_alignment_ready_ || !target_state_ || !target_truth_state_ ||
+        !target_state_->navigation_ready || !target_world_ready_) {
       return false;
     }
     return !target_destroyed_ &&
            std::ranges::all_of(interceptors_, [](const InterceptorRuntime& runtime) {
-             return !runtime.destroyed && runtime.state &&
+             return !runtime.destroyed && runtime.state && runtime.truth_state &&
                     runtime.state->navigation_ready && runtime.world_ready &&
                     runtime.track_ready;
            });
+  }
+
+  [[nodiscard]] std::optional<TimedVehicleState>
+  interceptorPhysicalState(const std::size_t index) const noexcept {
+    return detail::physicalState(interceptors_[index].state,
+                                 interceptors_[index].truth_state);
+  }
+
+  [[nodiscard]] std::optional<TimedVehicleState> targetPhysicalState() const noexcept {
+    return detail::physicalState(target_state_, target_truth_state_);
   }
 
   void publishMissionStart() {
@@ -484,6 +419,47 @@ private:
                 mission_epoch_);
   }
 
+  void requestTargetHold(const std::string& reason) {
+    if (target_hold_requested_ || target_destroyed_ || !target_state_ ||
+        !target_state_->position_valid) {
+      return;
+    }
+    target_hold_requested_ = true;
+    msg::NavigationObjective objective;
+    objective.stamp = now();
+    objective.mission_epoch = mission_epoch_;
+    objective.sample_sequence = ++target_objective_sequence_;
+    objective.position.x = target_state_->position.x;
+    objective.position.y = target_state_->position.y;
+    objective.position.z = target_state_->position.z;
+    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
+    objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
+    objective.terminal_policy =
+        msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD;
+    target_objective_pub_->publish(objective);
+    RCLCPP_INFO(get_logger(),
+                "EVADER_HOLD requested=true reason='%s' "
+                "position=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64,
+                reason.c_str(), target_state_->position.x, target_state_->position.y,
+                target_state_->position.z, mission_epoch_);
+  }
+
+  void handleCoordinateAlignmentFailure() {
+    if (system_failure_reason_.has_value()) {
+      return;
+    }
+    system_failure_reason_ =
+        "coordinate_alignment_mismatch:" + truth_alignment_vehicle_id_ + ":" +
+        truth_alignment_reason_;
+    RCLCPP_ERROR(get_logger(),
+                 "SIMULATION_TRUTH_ALIGNMENT mission_blocked=true reason='%s' "
+                 "vehicle_id='%s' max_error_m=%.3f mission_started=%s",
+                 truth_alignment_reason_.c_str(), truth_alignment_vehicle_id_.c_str(),
+                 truth_alignment_maximum_error_m_, mission_started_ ? "true" : "false");
+    requestHoldsForSurvivors(*system_failure_reason_);
+    requestTargetHold(*system_failure_reason_);
+  }
+
   void
   requestHoldsForSurvivors(const std::string& reason,
                            const std::optional<std::size_t> excluded = std::nullopt) {
@@ -514,14 +490,15 @@ private:
   }
 
   void requestCaptureDestruction(const std::size_t interceptor_index,
-                                 const std::string& detail) {
+                                 const std::string& detail,
+                                 const MultiInterceptMissionUpdate& update) {
     if (interceptor_index >= interceptors_.size()) {
       failMission("capturing_interceptor_index_out_of_range");
       return;
     }
-    const std::optional<TimedVehicleState> target_state = target_state_;
+    const std::optional<TimedVehicleState> target_state = targetPhysicalState();
     const std::optional<TimedVehicleState> interceptor_state =
-        interceptors_[interceptor_index].state;
+        interceptorPhysicalState(interceptor_index);
     if (target_destruction_requested_ || !target_state || !interceptor_state) {
       return;
     }
@@ -536,11 +513,9 @@ private:
         target_state.value(), msg::VehicleDestroyed::ROLE_EVADER, evader_id_,
         msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT, detail));
     destruction_requested_ns_ = now().nanoseconds();
-    RCLCPP_ERROR(get_logger(),
-                 "PROXIMITY_INTERCEPT destruction_requested=true "
-                 "interceptor_id='%s' separation_threshold_m=%.3f "
-                 "mission_epoch=%" PRIu64,
-                 interceptor.id.c_str(), capture_radius_m_, mission_epoch_);
+    logPhysicalProximityIntercept(get_logger(), interceptor.id, update,
+                                  *interceptor_state, *target_state, capture_radius_m_,
+                                  destruction_requested_ns_, mission_epoch_);
   }
 
   void requestInterceptorCollision(const std::size_t first_index,
@@ -548,7 +523,11 @@ private:
                                    const double separation_m) {
     InterceptorRuntime& first = interceptors_[first_index];
     InterceptorRuntime& second = interceptors_[second_index];
-    if (!first.state || !second.state || first.destruction_requested ||
+    const std::optional<TimedVehicleState> first_state =
+        interceptorPhysicalState(first_index);
+    const std::optional<TimedVehicleState> second_state =
+        interceptorPhysicalState(second_index);
+    if (!first_state || !second_state || first.destruction_requested ||
         second.destruction_requested) {
       return;
     }
@@ -556,10 +535,10 @@ private:
     second.destruction_requested = true;
     const std::string detail = "interceptor_collision:" + first.id + ":" + second.id;
     first.destroyed_pub->publish(makeProximityDestruction(
-        *first.state, msg::VehicleDestroyed::ROLE_INTERCEPTOR, first.id,
+        *first_state, msg::VehicleDestroyed::ROLE_INTERCEPTOR, first.id,
         msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION, detail));
     second.destroyed_pub->publish(makeProximityDestruction(
-        *second.state, msg::VehicleDestroyed::ROLE_INTERCEPTOR, second.id,
+        *second_state, msg::VehicleDestroyed::ROLE_INTERCEPTOR, second.id,
         msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION, detail));
     destruction_requested_ns_ = now().nanoseconds();
     RCLCPP_ERROR(get_logger(),
@@ -594,8 +573,10 @@ private:
     std::vector<TimedVehicleState> states(interceptors_.size());
     for (std::size_t index = 0; index < interceptors_.size(); ++index) {
       const InterceptorRuntime& interceptor = interceptors_[index];
-      if (interceptor.state) {
-        states[index] = *interceptor.state;
+      const std::optional<TimedVehicleState> physical_state =
+          interceptorPhysicalState(index);
+      if (physical_state) {
+        states[index] = *physical_state;
       }
       if (interceptor.destroyed || interceptor.destruction_requested ||
           (interceptor.disabled && !include_disabled)) {
@@ -607,20 +588,22 @@ private:
   }
 
   [[nodiscard]] bool updateStateAdjudication(const std::int64_t now_ns) {
-    if (!target_state_) {
+    const std::optional<TimedVehicleState> target_state = targetPhysicalState();
+    if (!target_state) {
       return false;
     }
-    const TimedVehicleState& target_state = target_state_.value();
     bool target_fresh = true;
     bool continuity_reset = false;
     for (std::size_t index = 0; index < interceptors_.size(); ++index) {
       InterceptorRuntime& interceptor = interceptors_[index];
-      if (!interceptor.state || interceptor.destroyed ||
+      const std::optional<TimedVehicleState> interceptor_state =
+          interceptorPhysicalState(index);
+      if (!interceptor_state || interceptor.destroyed ||
           interceptor.destruction_requested || interceptor.disabled) {
         continue;
       }
-      const InterceptStateAdjudicationUpdate update = interceptor.adjudication->update(
-          now_ns, interceptor.state.value(), target_state);
+      const InterceptStateAdjudicationUpdate update =
+          interceptor.adjudication->update(now_ns, *interceptor_state, *target_state);
       continuity_reset = continuity_reset || update.newly_recovered;
       target_fresh = target_fresh && update.evader_fresh;
       if (update.status == InterceptStateAdjudicationStatus::kHealthy) {
@@ -656,7 +639,8 @@ private:
 
   void detectInterceptorCollisions() {
     for (std::size_t first = 0; first < interceptors_.size(); ++first) {
-      const std::optional<TimedVehicleState> first_state = interceptors_[first].state;
+      const std::optional<TimedVehicleState> first_state =
+          interceptorPhysicalState(first);
       const TimedVehicleState first_value = first_state.value_or(TimedVehicleState{});
       if (!first_state || interceptors_[first].destroyed ||
           interceptors_[first].destruction_requested || !first_value.armed ||
@@ -665,7 +649,7 @@ private:
       }
       for (std::size_t second = first + 1; second < interceptors_.size(); ++second) {
         const std::optional<TimedVehicleState> second_state =
-            interceptors_[second].state;
+            interceptorPhysicalState(second);
         const TimedVehicleState second_value =
             second_state.value_or(TimedVehicleState{});
         if (!second_state || interceptors_[second].destroyed ||
@@ -686,7 +670,7 @@ private:
       }
     }
     for (std::size_t index = 0; index < interceptors_.size(); ++index) {
-      previous_collision_states_[index] = interceptors_[index].state;
+      previous_collision_states_[index] = interceptorPhysicalState(index);
     }
   }
 
@@ -763,14 +747,15 @@ private:
   }
 
   void handleMissionEvaluation(const std::int64_t now_ns) {
-    if (!target_state_) {
+    const std::optional<TimedVehicleState> physical_target = targetPhysicalState();
+    if (!physical_target) {
       return;
     }
     const bool detect_late_capture =
         terminal_outcome_ == InterceptMissionOutcome::kEvaderReachedGoal;
     std::vector<TimedVehicleState> states = evaluatorStates(detect_late_capture);
     const MultiInterceptMissionUpdate update =
-        evaluator_->update(states, target_state_.value());
+        evaluator_->update(states, *physical_target);
     if (!terminal_outcome_.has_value() && update.newly_terminal) {
       if (update.outcome == InterceptMissionOutcome::kIntercepted) {
         if (!update.capturing_interceptor_index) {
@@ -780,7 +765,7 @@ private:
         const std::size_t interceptor_index =
             update.capturing_interceptor_index.value();
         beginTerminal(update.outcome, "intercepted");
-        requestCaptureDestruction(interceptor_index, "intercepted");
+        requestCaptureDestruction(interceptor_index, "intercepted", update);
         requestHoldsForSurvivors("evader_intercepted", interceptor_index);
       } else {
         beginTerminal(update.outcome, "evader_reached_goal");
@@ -804,7 +789,8 @@ private:
                   "INTERCEPTOR_HOLD_ABORTED vehicle_id='%s' reason=late_capture "
                   "mission_epoch=%" PRIu64,
                   interceptors_[interceptor_index].id.c_str(), mission_epoch_);
-      requestCaptureDestruction(interceptor_index, "late_intercept_after_evader_goal");
+      requestCaptureDestruction(interceptor_index, "late_intercept_after_evader_goal",
+                                update);
     }
     if (!terminal_outcome_.has_value()) {
       detectInterceptorCollisions();
@@ -883,9 +869,14 @@ private:
       }
       return;
     }
-    if (!target_state_ ||
+    if (truth_alignment_failure_confirmed_ && !terminal_outcome_.has_value()) {
+      handleCoordinateAlignmentFailure();
+      settleTerminal(now_ns);
+      return;
+    }
+    if (!target_state_ || !target_truth_state_ ||
         std::ranges::any_of(interceptors_, [](const InterceptorRuntime& runtime) {
-          return !runtime.state.has_value();
+          return !runtime.state.has_value() || !runtime.truth_state.has_value();
         })) {
       return;
     }
@@ -914,6 +905,9 @@ private:
       settleTerminal(now_ns);
       return;
     }
+    if (!truth_alignment_sample_aligned_) {
+      return;
+    }
     if (!updateStateAdjudication(now_ns)) {
       return;
     }
@@ -933,18 +927,25 @@ private:
   std::vector<InterceptorRuntime> interceptors_;
   std::vector<std::optional<TimedVehicleState>> previous_collision_states_;
   std::unique_ptr<MultiInterceptMissionEvaluator> evaluator_;
+  std::unique_ptr<InterceptGroundTruthBoundary> ground_truth_boundary_;
   InterceptStateAdjudicationConfig state_config_{};
   InterceptorHoldConfig hold_config_{};
   Point3 target_goal_{};
   std::optional<TimedVehicleState> target_state_;
+  std::optional<TimedVehicleState> target_truth_state_;
   std::optional<InterceptMissionOutcome> terminal_outcome_;
   std::optional<std::size_t> capturing_interceptor_index_;
   std::optional<std::string> system_failure_reason_;
   std::string evader_id_;
   std::string target_state_topic_;
+  std::string target_truth_state_topic_;
   std::string target_destroyed_topic_;
+  std::string truth_alignment_reason_;
+  std::string truth_alignment_vehicle_id_;
   double capture_radius_m_{5.0};
+  double truth_alignment_maximum_error_m_{0.0};
   std::uint64_t mission_epoch_{1U};
+  std::uint64_t target_objective_sequence_{0U};
   std::int64_t destruction_settlement_timeout_ns_{5'000'000'000LL};
   std::int64_t hold_timeout_ns_{20'000'000'000LL};
   std::int64_t boundary_startup_timeout_ns_{10'000'000'000LL};
@@ -959,9 +960,15 @@ private:
   bool target_destroyed_{false};
   bool target_destruction_requested_{false};
   bool target_world_ready_{false};
+  bool target_hold_requested_{false};
   bool shutdown_on_terminal_outcome_{true};
   bool boundary_verified_{false};
+  bool truth_alignment_ready_{false};
+  bool truth_alignment_sample_aligned_{false};
+  bool truth_alignment_failure_confirmed_{false};
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr target_state_sub_;
+  rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr target_truth_state_sub_;
+  rclcpp::Subscription<msg::SimulationTruthAlignment>::SharedPtr truth_alignment_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr target_world_ready_sub_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr target_destroyed_sub_;
   rclcpp::Publisher<msg::NavigationObjective>::SharedPtr target_objective_pub_;

@@ -66,6 +66,13 @@ heuristic: Gazebo physics contact is the source of truth for a crash.
 
 When changing the scenario, keep these values consistent across nodes.
 
+The intercept mission does not duplicate these values. Its four map starts and
+evader goal live in `drone_city_nav/config/intercept_scenario.json`; Gazebo
+spawns are derived automatically from the canonical world's `map_to_sdf`
+transform. At runtime, `simulation_truth_adapter_node` converts Gazebo dynamic
+poses back to map coordinates and the referee blocks mission start until all
+four navigation poses agree with physical truth.
+
 ## Static World Generation
 
 The planner static obstacle source is configured with:

@@ -21,8 +21,10 @@ class SafetyRelevantRosLogTest(unittest.TestCase):
     def test_intercept_requires_complete_radar_data_path(self) -> None:
         log = (
             "RADAR_DATA_BOUNDARY verified=true\n"
+            "SIMULATION_TRUTH_ALIGNMENT ready=true failure_confirmed=false "
+            "reason=aligned\n"
             "RADAR_SCAN published=true sequence=2 detections=1 "
-            "source=ideal_truth_adapter\n"
+            "source=gazebo_physical_truth\n"
             "RADAR_TRACK status=tracking measurement_count=2 velocity_valid=true\n"
             "INTERCEPT_GUIDANCE source=radar_track mode=analytic_intercept\n"
         )
@@ -144,6 +146,11 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         log = (
             "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true "
             "live_interceptors=3\n"
+            "PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true "
+            "interceptor_id='interceptor_0' measured_swept_separation_m=4.8 "
+            "current_separation_m=5.1 separation_threshold_m=5.0 "
+            "interpolation_fraction=0.8 interceptor_position=(1,2,3) "
+            "evader_position=(4,5,6)\n"
             "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=interceptor cause=proximity_intercept "
             "mission_epoch=1 detail='intercepted'\n"
@@ -165,6 +172,11 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         log = (
             "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true "
             "live_interceptors=1\n"
+            "PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true "
+            "interceptor_id='interceptor_0' measured_swept_separation_m=4.9 "
+            "current_separation_m=4.9 separation_threshold_m=5.0 "
+            "interpolation_fraction=1.0 interceptor_position=(1,2,3) "
+            "evader_position=(4,5,6)\n"
             "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=interceptor cause=proximity_intercept "
             "mission_epoch=1 detail='intercepted'\n"
@@ -177,6 +189,25 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         errors: list[str] = []
         VALIDATOR.validate_intercept_settlement(log, errors)
         self.assertEqual(errors, [])
+
+    def test_intercept_without_physical_proximity_evidence_is_rejected(self) -> None:
+        log = (
+            "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true "
+            "live_interceptors=1\n"
+            "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=interceptor cause=proximity_intercept "
+            "mission_epoch=1 detail='intercepted'\n"
+            "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=evader cause=proximity_intercept "
+            "mission_epoch=1 detail='intercepted'\n"
+            "MISSION_RESULT success=true mission=intercept outcome=intercepted "
+            "capturing_interceptor_id='interceptor_0'\n"
+        )
+        errors: list[str] = []
+        VALIDATOR.validate_intercept_settlement(log, errors)
+        self.assertIn(
+            "FAIL: intercept has physical Gazebo proximity evidence", errors
+        )
 
     def test_evader_goal_requires_hold_without_disarm(self) -> None:
         log = (

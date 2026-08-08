@@ -158,11 +158,19 @@ memory only for the current spectator interceptor. Pursuit uses an explicit rada
 data boundary:
 
 ```text
-evader ground truth -> mission referee -> outcome and settlement only
-evader ground truth -> three radar simulators -> independent RadarScan streams
+Gazebo Pose_V -> simulation truth adapter -> typed physical vehicle states
+typed evader truth -> mission referee -> outcome and settlement only
+typed evader truth -> three radar simulators -> independent RadarScan streams
 interceptor[i] state + RadarScan[i] -> tracker[i] -> TargetTrack[i]
 interceptor[i] state + TargetTrack[i] -> guidance[i] -> NavigationObjective[i]
 ```
+
+`intercept_scenario.json` is the only hand-written source for vehicle map starts
+and the evader goal. Its Gazebo spawns are derived from the canonical world's
+`map_to_sdf` transform by both the runner and launch tooling. The simulation
+truth adapter converts physical Gazebo poses back to map coordinates and checks
+them against navigation states over consecutive samples. A persistent mismatch
+prevents mission start and requests hold for already airborne vehicles.
 
 Visualization remains outside this control boundary. Each planner publishes a
 namespaced lightweight path. `intercept_diagnostics_mux_node` subscribes to the
@@ -180,11 +188,13 @@ outputs never participate in route selection or vehicle control.
 
 The mission referee publishes the evader's fixed position objective, then waits
 until all four vehicles are navigation-ready, all planners have activated a
-world, and all three trackers have produced a valid target position. It evaluates the
+world, all three trackers have produced a valid target position, and physical
+and navigation coordinates are aligned. It evaluates the
 terminal outcome and owns hold or disarm settlement. It cannot publish an
-interceptor navigation objective. Only the referee and three radar simulators
-subscribe to evader ground truth; the referee verifies this exact subscriber set
-through the ROS graph before starting the mission.
+interceptor navigation objective. The referee verifies both boundaries through
+the ROS graph: only the referee and simulation-truth adapter may subscribe to
+the evader navigation state, and only the referee and three radar simulators may
+subscribe to typed evader physical truth.
 
 `RadarScan` exposes only range, azimuth, elevation, and relative radial velocity.
 It contains no absolute target state or simulator identity. The ideal simulator
@@ -221,7 +231,8 @@ Current-target occlusion exits direct mode immediately and atomically hands off
 to a current-generation global route. MPPI minimizes
 closest approach to the target trajectory over its horizon, while raw collision
 remains forbidden. Continuous objectives disable terminal goal capture. Swept
-relative-motion evaluation detects a 5 m intercept between state samples and
+relative-motion evaluation over physical Gazebo poses detects a 5 m intercept
+between state samples and
 publishes one typed `VehicleDestroyed` event for the capturing interceptor and
 one for the evader with cause `proximity_intercept`. Every death event includes
 a stable `vehicle_id`, so role alone never identifies one of several

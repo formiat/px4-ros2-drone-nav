@@ -40,7 +40,9 @@ The three radar tracker/guidance pairs use one interceptor-side component
 container. This replaces six standalone ROS contexts with one shared context;
 intra-process delivery also removes the DDS serialization hop between each
 `TargetTrack` publisher and its guidance consumer. Radar simulators stay
-process-isolated because they consume target ground truth.
+process-isolated because they consume typed target physical truth. A single
+simulation-truth adapter subscribes to Gazebo's dynamic-pose stream, avoiding a
+full static-scene pose stream for every radar.
 
 Intercept visualization uses a third component container for the spectator,
 diagnostics mux, world visualization, and enabled selector-gated lidar-debug

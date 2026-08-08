@@ -62,6 +62,8 @@ rosidl_generate_interfaces(
   "msg/TargetTrack.msg"
   "msg/InterceptMissionCommand.msg"
   "msg/SpectatorTarget.msg"
+  "msg/SimulationTruthAlignment.msg"
+  "msg/SimulationTruthState.msg"
   "msg/VehicleNavigationState.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
@@ -176,6 +178,7 @@ add_library(
   src/risk_aware_lattice_3d_geometry.cpp
   src/risk_aware_lattice_3d_result.cpp
   src/route_3d.cpp
+  src/simulation_truth_alignment.cpp
   src/static_route_extension.cpp
   src/static_route_geometry.cpp
   src/static_esdf_cache.cpp
@@ -306,7 +309,9 @@ ament_target_dependencies(
 enable_project_warnings(mission_monitor_node)
 
 add_executable(intercept_mission_referee_node
-               src/intercept_mission_referee_node.cpp)
+               src/intercept_mission_referee_node.cpp
+               src/intercept_ground_truth_boundary.cpp
+               src/intercept_referee_support.cpp)
 target_compile_features(intercept_mission_referee_node PRIVATE cxx_std_20)
 target_link_libraries(intercept_mission_referee_node drone_city_nav_core
                       ${cpp_typesupport_target})
@@ -319,6 +324,18 @@ target_link_libraries(radar_simulator_node drone_city_nav_core
                       ${cpp_typesupport_target})
 ament_target_dependencies(radar_simulator_node rclcpp)
 enable_project_warnings(radar_simulator_node)
+
+add_executable(simulation_truth_adapter_node
+               src/simulation_truth_adapter_node.cpp)
+target_compile_features(simulation_truth_adapter_node PRIVATE cxx_std_20)
+target_link_libraries(
+  simulation_truth_adapter_node
+  drone_city_nav_core
+  ${cpp_typesupport_target}
+  gz-transport13::gz-transport13
+  gz-msgs10::gz-msgs10)
+ament_target_dependencies(simulation_truth_adapter_node rclcpp)
+enable_project_warnings(simulation_truth_adapter_node)
 
 add_library(
   drone_city_nav_interceptor_tracking_components SHARED
@@ -482,6 +499,7 @@ install(
     mission_monitor_node
     intercept_mission_referee_node
     radar_simulator_node
+    simulation_truth_adapter_node
     radar_target_tracker_node
     interceptor_guidance_node
     drone_city_nav_interceptor_tracking_components
@@ -508,6 +526,12 @@ if(BUILD_TESTING)
   target_compile_features(intercept_guidance_test PRIVATE cxx_std_20)
   target_link_libraries(intercept_guidance_test drone_city_nav_core)
   enable_project_warnings(intercept_guidance_test)
+
+  ament_add_gtest(simulation_truth_alignment_test
+                  tests/simulation_truth_alignment_test.cpp)
+  target_compile_features(simulation_truth_alignment_test PRIVATE cxx_std_20)
+  target_link_libraries(simulation_truth_alignment_test drone_city_nav_core)
+  enable_project_warnings(simulation_truth_alignment_test)
 
   ament_add_gtest(direct_tracking_maneuver_lifecycle_test
                   tests/direct_tracking_maneuver_lifecycle_test.cpp)

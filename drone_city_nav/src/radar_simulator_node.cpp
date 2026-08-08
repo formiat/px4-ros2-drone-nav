@@ -1,5 +1,6 @@
 #include "drone_city_nav/msg/radar_scan.hpp"
 #include "drone_city_nav/msg/radar_track_mode_command.hpp"
+#include "drone_city_nav/msg/simulation_truth_state.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 #include "drone_city_nav/radar_cadence.hpp"
 #include "drone_city_nav/radar_model.hpp"
@@ -78,16 +79,23 @@ public:
     });
 
     const auto state_qos = rclcpp::QoS{10}.best_effort();
-    radar_state_sub_ = create_subscription<msg::VehicleNavigationState>(
-        declare_parameter<std::string>("radar_state_topic",
+    radar_navigation_state_sub_ = create_subscription<msg::VehicleNavigationState>(
+        declare_parameter<std::string>("radar_navigation_state_topic",
                                        "/vehicles/interceptor/state"),
         state_qos, [this](const msg::VehicleNavigationState::SharedPtr state) {
-          radar_state_ = detail::vehicleState(*state);
+          radar_navigation_state_ = detail::vehicleState(*state);
         });
-    target_state_sub_ = create_subscription<msg::VehicleNavigationState>(
-        declare_parameter<std::string>("target_state_topic", "/vehicles/evader/state"),
-        state_qos, [this](const msg::VehicleNavigationState::SharedPtr state) {
-          target_state_ = detail::vehicleState(*state);
+    radar_truth_state_sub_ = create_subscription<msg::SimulationTruthState>(
+        declare_parameter<std::string>("radar_truth_state_topic",
+                                       "/simulation_truth/vehicles/interceptor/state"),
+        state_qos, [this](const msg::SimulationTruthState::SharedPtr state) {
+          radar_truth_state_ = detail::physicalTruthState(*state);
+        });
+    target_truth_state_sub_ = create_subscription<msg::SimulationTruthState>(
+        declare_parameter<std::string>("target_truth_state_topic",
+                                       "/simulation_truth/vehicles/evader/state"),
+        state_qos, [this](const msg::SimulationTruthState::SharedPtr state) {
+          target_truth_state_ = detail::physicalTruthState(*state);
         });
     scan_pub_ = create_publisher<msg::RadarScan>(
         declare_parameter<std::string>("radar_scan_topic",
@@ -151,21 +159,31 @@ private:
     if (next_scan_due_ns_ > 0 && now_ns < next_scan_due_ns_) {
       return;
     }
-    if (!radar_state_.has_value() || !target_state_.has_value() ||
-        !radar_state_->heading_valid) {
+    if (!radar_navigation_state_.has_value() || !radar_truth_state_.has_value() ||
+        !target_truth_state_.has_value() || !radar_navigation_state_->heading_valid) {
       return;
     }
-    const std::int64_t measurement_stamp_ns = radar_state_->stamp_ns;
+    const std::int64_t measurement_stamp_ns = radar_truth_state_->stamp_ns;
     if (measurement_stamp_ns <= previous_scan_stamp_ns_) {
       return;
     }
+    const double heading_age_s =
+        std::abs(static_cast<double>(measurement_stamp_ns -
+                                     radar_navigation_state_->stamp_ns)) *
+        1.0e-9;
+    if (heading_age_s > maximum_state_alignment_s_) {
+      return;
+    }
     const std::optional<TimedVehicleState> target =
-        stateAt(*target_state_, measurement_stamp_ns, maximum_state_alignment_s_);
+        stateAt(*target_truth_state_, measurement_stamp_ns, maximum_state_alignment_s_);
     if (!target.has_value()) {
       return;
     }
+    TimedVehicleState radar = *radar_truth_state_;
+    radar.heading_rad = radar_navigation_state_->heading_rad;
+    radar.heading_valid = true;
     const std::optional<RadarDetectionSample> detection =
-        simulateIdealRadarDetection(*radar_state_, *target, 1U);
+        simulateIdealRadarDetection(radar, *target, 1U);
     if (!detection.has_value()) {
       return;
     }
@@ -198,15 +216,16 @@ private:
         get_logger(), *get_clock(), 1000,
         "RADAR_SCAN published=true sequence=%lu detections=1 range_m=%.3f "
         "actual_interval_s=%.3f next_interval_s=%.3f track_mode=%s cadence_reason=%s "
-        "source=ideal_truth_adapter",
+        "source=gazebo_physical_truth",
         static_cast<unsigned long>(scan.scan_sequence), detection->range_m,
         actual_interval_s, next_interval_s, track_mode_active_ ? "true" : "false",
         cadenceReasonName(track_mode_reason_));
   }
 
   std::unique_ptr<CorrelatedRadarCadence> cadence_;
-  std::optional<TimedVehicleState> radar_state_;
-  std::optional<TimedVehicleState> target_state_;
+  std::optional<TimedVehicleState> radar_navigation_state_;
+  std::optional<TimedVehicleState> radar_truth_state_;
+  std::optional<TimedVehicleState> target_truth_state_;
   std::string radar_frame_id_;
   double maximum_state_alignment_s_{0.1};
   std::int64_t next_scan_due_ns_{0};
@@ -217,8 +236,10 @@ private:
   std::uint8_t track_mode_reason_{
       msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE};
   bool track_mode_active_{false};
-  rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr radar_state_sub_;
-  rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr target_state_sub_;
+  rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr
+      radar_navigation_state_sub_;
+  rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr radar_truth_state_sub_;
+  rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr target_truth_state_sub_;
   rclcpp::Publisher<msg::RadarScan>::SharedPtr scan_pub_;
   rclcpp::Subscription<msg::RadarTrackModeCommand>::SharedPtr track_mode_command_sub_;
   rclcpp::TimerBase::SharedPtr timer_;

@@ -31,6 +31,8 @@ TEST(InterceptMissionEvaluatorTest, DetectsCaptureBetweenSamples) {
   EXPECT_TRUE(update.newly_terminal);
   EXPECT_EQ(update.outcome, InterceptMissionOutcome::kIntercepted);
   EXPECT_NEAR(update.separation_m, 0.0, 1.0e-9);
+  EXPECT_NEAR(update.current_separation_m, 10.0, 1.0e-9);
+  EXPECT_NEAR(update.interpolation_fraction, 0.5, 1.0e-9);
 }
 
 TEST(InterceptMissionEvaluatorTest, DoesNotSweepAcrossTelemetryGapAfterReset) {
@@ -137,6 +139,9 @@ TEST(MultiInterceptMissionEvaluatorTest, CaptureWinsOverGoalAtSameSample) {
   EXPECT_TRUE(update.newly_terminal);
   EXPECT_EQ(update.outcome, InterceptMissionOutcome::kIntercepted);
   EXPECT_EQ(update.capturing_interceptor_index, std::optional<std::size_t>{0U});
+  EXPECT_NEAR(update.separation_m, 4.0, 1.0e-9);
+  EXPECT_NEAR(update.current_separation_m, 4.0, 1.0e-9);
+  EXPECT_NEAR(update.interpolation_fraction, 1.0, 1.0e-9);
 }
 
 TEST(MultiInterceptMissionEvaluatorTest, DetectsCaptureBySweptRelativeMotion) {
@@ -155,6 +160,9 @@ TEST(MultiInterceptMissionEvaluatorTest, DetectsCaptureBySweptRelativeMotion) {
 
   EXPECT_EQ(update.outcome, InterceptMissionOutcome::kIntercepted);
   EXPECT_EQ(update.capturing_interceptor_index, std::optional<std::size_t>{0U});
+  EXPECT_NEAR(update.separation_m, 0.0, 1.0e-9);
+  EXPECT_NEAR(update.current_separation_m, 10.0, 1.0e-9);
+  EXPECT_NEAR(update.interpolation_fraction, 0.5, 1.0e-9);
 }
 
 TEST(MultiInterceptMissionEvaluatorTest, ResolvesEqualCaptureByLowestIndex) {

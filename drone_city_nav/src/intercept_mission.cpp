@@ -26,14 +26,16 @@ namespace {
 
 } // namespace
 
-double minimumSweptVehicleSeparation(
+SweptVehicleSeparation sweptVehicleSeparation(
     const TimedVehicleState& first, const TimedVehicleState& second,
     const std::optional<TimedVehicleState>& previous_first,
     const std::optional<TimedVehicleState>& previous_second) noexcept {
   const Vec3 current_relative = subtract(first.position, second.position);
-  double minimum = norm(current_relative);
+  SweptVehicleSeparation result;
+  result.current_m = norm(current_relative);
+  result.minimum_m = result.current_m;
   if (!previous_first || !previous_second) {
-    return minimum;
+    return result;
   }
   const Vec3 previous_relative =
       subtract(previous_first->position, previous_second->position);
@@ -43,7 +45,12 @@ double minimumSweptVehicleSeparation(
   const double delta_norm_squared =
       delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
   if (delta_norm_squared <= 1.0e-12) {
-    return std::min(minimum, norm(previous_relative));
+    const double previous_m = norm(previous_relative);
+    if (previous_m < result.minimum_m) {
+      result.minimum_m = previous_m;
+      result.interpolation_fraction = 0.0;
+    }
+    return result;
   }
   const double projection =
       -(previous_relative.x * delta.x + previous_relative.y * delta.y +
@@ -53,7 +60,20 @@ double minimumSweptVehicleSeparation(
   const Vec3 closest{previous_relative.x + fraction * delta.x,
                      previous_relative.y + fraction * delta.y,
                      previous_relative.z + fraction * delta.z};
-  return std::min(minimum, norm(closest));
+  const double closest_m = norm(closest);
+  if (closest_m < result.minimum_m) {
+    result.minimum_m = closest_m;
+    result.interpolation_fraction = fraction;
+  }
+  return result;
+}
+
+double minimumSweptVehicleSeparation(
+    const TimedVehicleState& first, const TimedVehicleState& second,
+    const std::optional<TimedVehicleState>& previous_first,
+    const std::optional<TimedVehicleState>& previous_second) noexcept {
+  return sweptVehicleSeparation(first, second, previous_first, previous_second)
+      .minimum_m;
 }
 
 bool interceptMissionReady(const InterceptMissionReadiness& readiness) noexcept {
@@ -197,7 +217,11 @@ InterceptMissionEvaluator::update(const TimedVehicleState& interceptor,
     return result;
   }
 
-  result.separation_m = sweptSeparation(interceptor, evader);
+  const SweptVehicleSeparation separation = sweptVehicleSeparation(
+      interceptor, evader, previous_interceptor_, previous_evader_);
+  result.separation_m = separation.minimum_m;
+  result.current_separation_m = separation.current_m;
+  result.interpolation_fraction = separation.interpolation_fraction;
   const bool mission_active =
       interceptor.armed && evader.armed && interceptor.airborne && evader.airborne;
   const bool captured_now =
@@ -249,34 +273,45 @@ MultiInterceptMissionUpdate MultiInterceptMissionEvaluator::update(
   if (interceptors.size() != previous_interceptors_.size()) {
     throw std::invalid_argument{"interceptor count changed during mission"};
   }
-  MultiInterceptMissionUpdate result{.outcome = outcome_,
-                                     .capture_detected = capture_detected_,
-                                     .capturing_interceptor_index = std::nullopt,
-                                     .separation_m =
-                                         std::numeric_limits<double>::infinity()};
+  MultiInterceptMissionUpdate result{
+      .outcome = outcome_,
+      .capture_detected = capture_detected_,
+      .capturing_interceptor_index = std::nullopt,
+      .separation_m = std::numeric_limits<double>::infinity(),
+      .current_separation_m = std::numeric_limits<double>::infinity()};
   if (!evader.position_valid || !finite(evader.position)) {
     return result;
   }
 
   const bool evader_active = evader.armed && evader.airborne;
   double best_capture_separation = std::numeric_limits<double>::infinity();
+  double best_capture_current_separation = std::numeric_limits<double>::infinity();
+  double best_capture_fraction = 1.0;
   for (std::size_t index = 0; index < interceptors.size(); ++index) {
     const TimedVehicleState& interceptor = interceptors[index];
     if (!interceptor.position_valid || !finite(interceptor.position)) {
       continue;
     }
-    const double separation = minimumSweptVehicleSeparation(
+    const SweptVehicleSeparation separation = sweptVehicleSeparation(
         interceptor, evader, previous_interceptors_[index], previous_evader_);
-    result.separation_m = std::min(result.separation_m, separation);
+    if (separation.minimum_m < result.separation_m) {
+      result.separation_m = separation.minimum_m;
+      result.current_separation_m = separation.current_m;
+      result.interpolation_fraction = separation.interpolation_fraction;
+    }
     const bool captured = evader_active && interceptor.armed && interceptor.airborne &&
-                          separation <= config_.capture_radius_m;
-    if (captured && separation < best_capture_separation) {
+                          separation.minimum_m <= config_.capture_radius_m;
+    if (captured && separation.minimum_m < best_capture_separation) {
       result.capturing_interceptor_index = index;
-      best_capture_separation = separation;
+      best_capture_separation = separation.minimum_m;
+      best_capture_current_separation = separation.current_m;
+      best_capture_fraction = separation.interpolation_fraction;
     }
   }
   if (result.capturing_interceptor_index.has_value()) {
     result.separation_m = best_capture_separation;
+    result.current_separation_m = best_capture_current_separation;
+    result.interpolation_fraction = best_capture_fraction;
   }
 
   const bool captured_now = result.capturing_interceptor_index.has_value();

@@ -1,12 +1,14 @@
 #pragma once
 
 #include "drone_city_nav/intercept_mission.hpp"
+#include "drone_city_nav/msg/simulation_truth_state.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 
 #include <builtin_interfaces/msg/time.hpp>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 
 namespace drone_city_nav::detail {
 
@@ -38,6 +40,38 @@ vehicleState(const msg::VehicleNavigationState& message) noexcept {
       .airborne = message.airborne,
       .navigation_ready = message.navigation_ready,
   };
+}
+
+[[nodiscard]] inline TimedVehicleState
+physicalTruthState(const msg::SimulationTruthState& message) noexcept {
+  return TimedVehicleState{
+      .position = Point3{message.position.x, message.position.y, message.position.z},
+      .velocity = Vec3{message.velocity.x, message.velocity.y, message.velocity.z},
+      .stamp_ns = timeNanoseconds(message.header.stamp),
+      .position_valid = message.position_valid,
+      .velocity_valid = message.velocity_valid,
+  };
+}
+
+[[nodiscard]] inline TimedVehicleState
+physicalStateWithNavigationStatus(const TimedVehicleState& physical_truth,
+                                  const TimedVehicleState& navigation) noexcept {
+  TimedVehicleState result = physical_truth;
+  result.heading_rad = navigation.heading_rad;
+  result.heading_valid = navigation.heading_valid;
+  result.armed = navigation.armed;
+  result.airborne = navigation.airborne;
+  result.navigation_ready = navigation.navigation_ready;
+  return result;
+}
+
+[[nodiscard]] inline std::optional<TimedVehicleState>
+physicalState(const std::optional<TimedVehicleState>& navigation,
+              const std::optional<TimedVehicleState>& truth) noexcept {
+  if (!navigation || !truth) {
+    return std::nullopt;
+  }
+  return physicalStateWithNavigationStatus(*truth, *navigation);
 }
 
 [[nodiscard]] inline const char* vehicleRoleName(const std::uint8_t role) noexcept {

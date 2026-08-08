@@ -42,6 +42,8 @@ struct InterceptMissionUpdate {
   bool capture_detected{false};
   bool newly_captured{false};
   double separation_m{0.0};
+  double current_separation_m{0.0};
+  double interpolation_fraction{1.0};
 };
 
 struct MultiInterceptMissionUpdate {
@@ -51,6 +53,14 @@ struct MultiInterceptMissionUpdate {
   bool newly_captured{false};
   std::optional<std::size_t> capturing_interceptor_index;
   double separation_m{0.0};
+  double current_separation_m{0.0};
+  double interpolation_fraction{1.0};
+};
+
+struct SweptVehicleSeparation {
+  double minimum_m{0.0};
+  double current_m{0.0};
+  double interpolation_fraction{1.0};
 };
 
 struct InterceptMissionReadiness {
@@ -185,6 +195,11 @@ private:
 };
 
 [[nodiscard]] double minimumSweptVehicleSeparation(
+    const TimedVehicleState& first, const TimedVehicleState& second,
+    const std::optional<TimedVehicleState>& previous_first = std::nullopt,
+    const std::optional<TimedVehicleState>& previous_second = std::nullopt) noexcept;
+
+[[nodiscard]] SweptVehicleSeparation sweptVehicleSeparation(
     const TimedVehicleState& first, const TimedVehicleState& second,
     const std::optional<TimedVehicleState>& previous_first = std::nullopt,
     const std::optional<TimedVehicleState>& previous_second = std::nullopt) noexcept;

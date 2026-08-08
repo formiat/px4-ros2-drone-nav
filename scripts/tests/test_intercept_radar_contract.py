@@ -17,6 +17,9 @@ RADAR_TRACK_MODE_COMMAND = PACKAGE / "msg" / "RadarTrackModeCommand.msg"
 GUIDANCE = SOURCE / "interceptor_guidance_node.cpp"
 TRACKER = SOURCE / "radar_target_tracker_node.cpp"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
+REFEREE_SUPPORT = SOURCE / "intercept_referee_support.cpp"
+RADAR_SIMULATOR = SOURCE / "radar_simulator_node.cpp"
+TRUTH_ADAPTER = SOURCE / "simulation_truth_adapter_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 NAVIGATION_OBJECTIVE = PACKAGE / "msg" / "NavigationObjective.msg"
@@ -59,7 +62,11 @@ class InterceptRadarContractTest(unittest.TestCase):
         }
         self.assertEqual(
             subscribers,
-            {"intercept_mission_referee_node.cpp", "radar_simulator_node.cpp"},
+            {"intercept_mission_referee_node.cpp", "simulation_truth_adapter_node.cpp"},
+        )
+        self.assertNotIn(
+            '"/vehicles/evader/state"',
+            RADAR_SIMULATOR.read_text(encoding="utf-8"),
         )
 
     def test_tracker_and_guidance_have_no_truth_bypass(self) -> None:
@@ -88,7 +95,10 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("TERMINAL_POLICY_IMMEDIATE_HOLD", guidance)
         self.assertIn("objective->immediate_hold", planning)
         self.assertIn("mission_command_braking_hold", planning)
-        self.assertIn("interceptor_execution_horizon_topics", referee)
+        self.assertIn(
+            "interceptor_execution_horizon_topics",
+            REFEREE_SUPPORT.read_text(encoding="utf-8"),
+        )
         self.assertIn("stationary_position_hold", referee)
         self.assertIn("EXECUTION_MODE_POSITION_HOLD", referee)
 
@@ -106,7 +116,12 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn('{"use_intra_process_comms": True}', text)
         self.assertNotIn('executable="radar_target_tracker_node"', text)
         self.assertNotIn('executable="interceptor_guidance_node"', text)
-        self.assertEqual(text.count('"/vehicles/evader/state"'), 2)
+        self.assertEqual(text.count('"/vehicles/evader/state"'), 1)
+        self.assertIn('"target_truth_state_topic"', text)
+        self.assertIn('"evader_truth_state_topic"', text)
+        self.assertIn('executable="simulation_truth_adapter_node"', (
+            LAUNCH.with_name("intercept_truth_launch.py")
+        ).read_text(encoding="utf-8"))
         self.assertIn('"tracked_agent_track_topic"', text)
         self.assertIn('"target_track_readiness_topics"', text)
         self.assertIn('"interceptor_world_readiness_topics"', text)

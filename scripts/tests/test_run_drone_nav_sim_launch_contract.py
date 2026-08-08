@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 
@@ -20,6 +21,12 @@ INTERCEPT_LAUNCH_FILE = (
     / "drone_city_nav"
     / "launch"
     / "intercept.launch.py"
+)
+INTERCEPT_SCENARIO = (
+    Path(__file__).resolve().parents[2]
+    / "drone_city_nav"
+    / "config"
+    / "intercept_scenario.json"
 )
 NAV_CONFIG = (
     Path(__file__).resolve().parents[2]
@@ -58,6 +65,9 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
         cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
         cls.intercept_launch_text = INTERCEPT_LAUNCH_FILE.read_text(encoding="utf-8")
+        cls.intercept_scenario = json.loads(
+            INTERCEPT_SCENARIO.read_text(encoding="utf-8")
+        )
         cls.nav_config_text = NAV_CONFIG.read_text(encoding="utf-8")
         cls.production_mppi_source_text = PRODUCTION_MPPI_SOURCE.read_text(
             encoding="utf-8"
@@ -166,34 +176,21 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('executable="production_mppi_node"', self.launch_text)
 
     def test_intercept_evader_route_crosses_city_diagonally(self) -> None:
-        self.assertIn(
-            'DeclareLaunchArgument("evader_origin_x_m", default_value="270.0")',
-            self.intercept_launch_text,
+        evader = next(
+            vehicle
+            for vehicle in self.intercept_scenario["vehicles"]
+            if vehicle["id"] == "evader"
         )
-        self.assertIn(
-            'DeclareLaunchArgument("evader_origin_y_m", default_value="54.0")',
-            self.intercept_launch_text,
-        )
-        self.assertIn(
-            'DeclareLaunchArgument("evader_goal_x_m", default_value="54.0")',
-            self.intercept_launch_text,
-        )
-        self.assertIn(
-            'DeclareLaunchArgument("evader_goal_y_m", default_value="378.0")',
-            self.intercept_launch_text,
-        )
+        self.assertEqual(evader["map_start_m"][:2], [270.0, 54.0])
+        self.assertEqual(self.intercept_scenario["evader_goal_m"][:2], [54.0, 378.0])
 
     def test_interceptor_2_starts_one_block_inside_the_east_edge(self) -> None:
-        self.assertRegex(
-            self.intercept_launch_text,
-            r'DeclareLaunchArgument\(\s*"interceptor_2_origin_x_m", '
-            r'default_value="216\.0"\s*\)',
+        interceptor = next(
+            vehicle
+            for vehicle in self.intercept_scenario["vehicles"]
+            if vehicle["id"] == "interceptor_2"
         )
-        self.assertRegex(
-            self.intercept_launch_text,
-            r'DeclareLaunchArgument\(\s*"interceptor_2_origin_y_m", '
-            r'default_value="378\.0"\s*\)',
-        )
+        self.assertEqual(interceptor["map_start_m"][:2], [216.0, 378.0])
 
     def test_intercept_evader_defaults_to_interceptor_speed(self) -> None:
         self.assertIn(
@@ -206,23 +203,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_evader_uses_a_red_gazebo_marker_variant(self) -> None:
         self.assertIn(
-            'evader_px4_model_target="${EVADER_PX4_MODEL_TARGET:-'
-            'gz_x500_lidar_2d_evader}"',
-            self.text,
-        )
-        self.assertIn(
             'evader_model_name="${evader_px4_model_target#gz_}"', self.text
         )
-        self.assertIn("EVADER_PX4_MODEL_TARGET", self.container_text)
         self.assertIn("configure_drone_marker_color.py", self.text)
         self.assertIn(
             'PX4_SIM_MODEL="${intercept_px4_model_targets[instance]}"',
             self.text,
         )
-        self.assertIn(
-            '"evader_model", default_value="x500_lidar_2d_evader_3"',
-            self.intercept_launch_text,
-        )
+        evader = self.intercept_scenario["vehicles"][-1]
+        self.assertEqual(evader["px4_model_target"], "gz_x500_lidar_2d_evader")
+        self.assertEqual(evader["gazebo_model_name"], "x500_lidar_2d_evader_3")
 
     def test_intercept_launch_configures_adaptive_predictive_guidance(self) -> None:
         expected_defaults = {
@@ -268,13 +258,14 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             "return (0.0, angle_rad, -angle_rad)",
             self.intercept_launch_text,
         )
-        for index in range(3):
-            with self.subTest(interceptor=index):
-                self.assertIn(
-                    '"prediction_heading_offset_rad": '
-                    f"directional_hypothesis_offsets_rad[{index}]",
-                    self.intercept_launch_text,
-                )
+        self.assertIn(
+            "directional_hypothesis_offsets_rad[interceptor_index]",
+            self.intercept_launch_text,
+        )
+        self.assertIn(
+            '"prediction_heading_offset_rad": heading_offset',
+            self.intercept_launch_text,
+        )
 
     def test_intercept_launch_configures_los_driven_radar_track_mode(self) -> None:
         self.assertRegex(
@@ -436,11 +427,8 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_mode_launches_isolated_px4_instances(self) -> None:
         self.assertIn('mission_type="${MISSION_TYPE:-point_to_point}"', self.text)
-        self.assertIn(
-            "intercept_px4_namespaces=(interceptor_0 interceptor_1 "
-            "interceptor_2 evader)",
-            self.text,
-        )
+        self.assertIn("intercept_scenario.py", self.text)
+        self.assertIn("intercept_px4_namespaces", self.text)
         self.assertIn("for instance in 0 1 2 3", self.text)
         self.assertIn('PX4_UXRCE_DDS_NS="${intercept_px4_namespaces[instance]}"', self.text)
         self.assertIn('run_px4_instance "${instance}"', self.text)
@@ -460,12 +448,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_launch_keeps_vehicle_state_isolated(self) -> None:
         for interceptor in ("interceptor_0", "interceptor_1", "interceptor_2"):
-            self.assertIn(f'"{interceptor}": {{', self.intercept_launch_text)
-            self.assertIn(
-                f'"px4_namespace": "{interceptor}"', self.intercept_launch_text
+            vehicle = next(
+                entry
+                for entry in self.intercept_scenario["vehicles"]
+                if entry["id"] == interceptor
             )
+            self.assertEqual(vehicle["px4_namespace"], interceptor)
         self.assertIn('"/vehicles/evader/state"', self.intercept_launch_text)
-        self.assertIn('px4_namespace": "evader"', self.intercept_launch_text)
+        self.assertEqual(
+            self.intercept_scenario["vehicles"][-1]["px4_namespace"], "evader"
+        )
         self.assertIn('"require_mission_start_signal": True', self.intercept_launch_text)
         self.assertIn('"rviz_drone_follow_tf_enabled": False', self.intercept_launch_text)
         diagnostics_launch = INTERCEPT_LAUNCH_FILE.with_name(

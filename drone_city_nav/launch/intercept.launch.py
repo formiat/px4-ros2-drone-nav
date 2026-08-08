@@ -16,6 +16,15 @@ from launch_ros.descriptions import ComposableNode
 _DIAGNOSTICS_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("intercept_diagnostics_launch.py"))
 )
+_SCENARIO_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("intercept_scenario.py"))
+)
+_TRUTH_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("intercept_truth_launch.py"))
+)
+_load_intercept_scenario = _SCENARIO_SUPPORT["load_intercept_scenario"]
+_make_simulation_truth_adapter = _TRUTH_SUPPORT["make_simulation_truth_adapter"]
+_truth_state_topic = _TRUTH_SUPPORT["truth_state_topic"]
 _make_diagnostics_container = _DIAGNOSTICS_SUPPORT["make_diagnostics_container"]
 _make_lidar_debug_component = _DIAGNOSTICS_SUPPORT["make_lidar_debug_component"]
 _make_selected_diagnostics_components = _DIAGNOSTICS_SUPPORT[
@@ -76,6 +85,7 @@ def _cpu_affinity_prefix(cpu_list):
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     params_file = LaunchConfiguration("params_file")
+    intercept_scenario_path = LaunchConfiguration("intercept_scenario_path")
     enable_rviz = LaunchConfiguration("enable_rviz")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
@@ -85,6 +95,9 @@ def generate_launch_description():
         params_path = params_file.perform(context)
         with open(params_path, encoding="utf-8") as stream:
             document = yaml.safe_load(stream)
+        scenario = _load_intercept_scenario(
+            intercept_scenario_path.perform(context)
+        )
         configured_static = bool(
             document["production_mppi_node"]["ros__parameters"]["use_static_map"]
         )
@@ -142,74 +155,43 @@ def generate_launch_description():
                 "ros__parameters"
             ]["static_esdf_3d_cache_path"]
 
-        roles = {
-            "interceptor_0": {
-                "px4_namespace": "interceptor_0",
-                "model": LaunchConfiguration("interceptor_0_model").perform(context),
-                "origin_x": float(
-                    LaunchConfiguration("interceptor_0_origin_x_m").perform(context)
-                ),
-                "origin_y": float(
-                    LaunchConfiguration("interceptor_0_origin_y_m").perform(context)
-                ),
-                "target_system": 1,
-                "rviz_primary": True,
-                "speed_scale": 1.0,
-                "is_interceptor": True,
-                "prediction_heading_offset_rad": directional_hypothesis_offsets_rad[0],
-                "rviz_color": (0.15, 0.75, 1.0),
-            },
-            "interceptor_1": {
-                "px4_namespace": "interceptor_1",
-                "model": LaunchConfiguration("interceptor_1_model").perform(context),
-                "origin_x": float(
-                    LaunchConfiguration("interceptor_1_origin_x_m").perform(context)
-                ),
-                "origin_y": float(
-                    LaunchConfiguration("interceptor_1_origin_y_m").perform(context)
-                ),
-                "target_system": 2,
-                "rviz_primary": False,
-                "speed_scale": 1.0,
-                "is_interceptor": True,
-                "prediction_heading_offset_rad": directional_hypothesis_offsets_rad[1],
-                "rviz_color": (0.30, 0.95, 0.45),
-            },
-            "interceptor_2": {
-                "px4_namespace": "interceptor_2",
-                "model": LaunchConfiguration("interceptor_2_model").perform(context),
-                "origin_x": float(
-                    LaunchConfiguration("interceptor_2_origin_x_m").perform(context)
-                ),
-                "origin_y": float(
-                    LaunchConfiguration("interceptor_2_origin_y_m").perform(context)
-                ),
-                "target_system": 3,
-                "rviz_primary": False,
-                "speed_scale": 1.0,
-                "is_interceptor": True,
-                "prediction_heading_offset_rad": directional_hypothesis_offsets_rad[2],
-                "rviz_color": (1.0, 0.60, 0.20),
-            },
-            "evader": {
-                "px4_namespace": "evader",
-                "model": LaunchConfiguration("evader_model").perform(context),
-                "origin_x": float(
-                    LaunchConfiguration("evader_origin_x_m").perform(context)
-                ),
-                "origin_y": float(
-                    LaunchConfiguration("evader_origin_y_m").perform(context)
-                ),
-                "target_system": 4,
-                "rviz_primary": False,
-                "speed_scale": float(
-                    LaunchConfiguration("evader_speed_scale").perform(context)
-                ),
-                "is_interceptor": False,
-                "prediction_heading_offset_rad": 0.0,
-                "rviz_color": (1.0, 0.25, 0.15),
-            },
+        role_policy = {
+            "interceptor_0": (1, True, (0.15, 0.75, 1.0)),
+            "interceptor_1": (2, False, (0.30, 0.95, 0.45)),
+            "interceptor_2": (3, False, (1.0, 0.60, 0.20)),
+            "evader": (4, False, (1.0, 0.25, 0.15)),
         }
+        roles = {}
+        interceptor_index = 0
+        for vehicle in scenario["vehicles"]:
+            role = vehicle["id"]
+            target_system, rviz_primary, rviz_color = role_policy[role]
+            is_interceptor = vehicle["role"] == "interceptor"
+            heading_offset = (
+                directional_hypothesis_offsets_rad[interceptor_index]
+                if is_interceptor
+                else 0.0
+            )
+            if is_interceptor:
+                interceptor_index += 1
+            roles[role] = {
+                "px4_namespace": vehicle["px4_namespace"],
+                "model": vehicle["gazebo_model_name"],
+                "map_start_x": vehicle["map_start_m"][0],
+                "map_start_y": vehicle["map_start_m"][1],
+                "target_system": target_system,
+                "rviz_primary": rviz_primary,
+                "speed_scale": (
+                    1.0
+                    if is_interceptor
+                    else float(
+                        LaunchConfiguration("evader_speed_scale").perform(context)
+                    )
+                ),
+                "is_interceptor": is_interceptor,
+                "prediction_heading_offset_rad": heading_offset,
+                "rviz_color": rviz_color,
+            }
         role_names = list(roles)
         planner_worker_budget = int(
             LaunchConfiguration("planner_worker_budget").perform(context)
@@ -296,10 +278,10 @@ def generate_launch_description():
                     "px4_vehicle_attitude_topic": f"{px4}/out/vehicle_attitude",
                     "px4_timesync_status_topic": f"{px4}/out/timesync_status",
                     "px4_vehicle_status_topic": f"{px4}/out/vehicle_status_v1",
-                    "px4_local_origin_x_m": config["origin_x"],
-                    "px4_local_origin_y_m": config["origin_y"],
-                    "initial_x_m": config["origin_x"],
-                    "initial_y_m": config["origin_y"],
+                    "px4_local_origin_x_m": config["map_start_x"],
+                    "px4_local_origin_y_m": config["map_start_y"],
+                    "initial_x_m": config["map_start_x"],
+                    "initial_y_m": config["map_start_y"],
                     "obstacle_memory_grid_topic": f"{prefix}/obstacle_memory_grid",
                     "raw_memory_3d_pointcloud_topic": f"{prefix}/raw_memory_points_3d",
                     "obstacle_memory_provenance_topic": f"{prefix}/memory_provenance",
@@ -329,10 +311,10 @@ def generate_launch_description():
                     "use_static_map": use_static_map,
                     "static_occupancy_3d_path": static_path,
                     "static_esdf_3d_cache_path": static_esdf_cache_path,
-                    "px4_local_origin_x_m": config["origin_x"],
-                    "px4_local_origin_y_m": config["origin_y"],
-                    "start_x_m": config["origin_x"],
-                    "start_y_m": config["origin_y"],
+                    "px4_local_origin_x_m": config["map_start_x"],
+                    "px4_local_origin_y_m": config["map_start_y"],
+                    "start_x_m": config["map_start_x"],
+                    "start_y_m": config["map_start_y"],
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "raw_obstacle_snapshot_topic": raw_snapshot,
@@ -390,8 +372,8 @@ def generate_launch_description():
                     "vehicle_command_topic": f"{px4}/in/vehicle_command",
                     "mppi_execution_horizon_topic": f"{prefix}/mppi/execution_horizon",
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",
-                    "px4_local_origin_x_m": config["origin_x"],
-                    "px4_local_origin_y_m": config["origin_y"],
+                    "px4_local_origin_x_m": config["map_start_x"],
+                    "px4_local_origin_y_m": config["map_start_y"],
                     "target_system": config["target_system"],
                     "source_system": config["target_system"],
                     "require_mission_start_signal": True,
@@ -468,8 +450,8 @@ def generate_launch_description():
                         "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
                         "px4_vehicle_attitude_topic": f"{px4}/out/vehicle_attitude",
                         "px4_timesync_status_topic": f"{px4}/out/timesync_status",
-                        "px4_local_origin_x_m": config["origin_x"],
-                        "px4_local_origin_y_m": config["origin_y"],
+                        "px4_local_origin_x_m": config["map_start_x"],
+                        "px4_local_origin_y_m": config["map_start_y"],
                         "raw_obstacle_grid_topic": "/drone_city_nav/raw_obstacle_grid",
                         "memory_grid_topic": f"{prefix}/obstacle_memory_grid",
                         "path_topic": path_topic,
@@ -539,19 +521,14 @@ def generate_launch_description():
         )
         diagnostics_components.append(_make_world_visualization_component(world_params))
         evader_goal = {
-            "evader_goal_x_m": float(
-                LaunchConfiguration("evader_goal_x_m").perform(context)
-            ),
-            "evader_goal_y_m": float(
-                LaunchConfiguration("evader_goal_y_m").perform(context)
-            ),
-            "evader_goal_z_m": float(
-                LaunchConfiguration("evader_goal_z_m").perform(context)
-            ),
+            "evader_goal_x_m": scenario["evader_goal_m"][0],
+            "evader_goal_y_m": scenario["evader_goal_m"][1],
+            "evader_goal_z_m": scenario["evader_goal_m"][2],
         }
         interceptor_roles = [
             role for role, config in roles.items() if config["is_interceptor"]
         ]
+        nodes.append(_make_simulation_truth_adapter(scenario, control_prefix))
         radar_seed = int(LaunchConfiguration("radar_random_seed").perform(context))
         tracking_components = []
         for index, role in enumerate(interceptor_roles):
@@ -568,8 +545,9 @@ def generate_launch_description():
                     parameters=[
                         {
                             "use_sim_time": True,
-                            "radar_state_topic": f"{prefix}/state",
-                            "target_state_topic": "/vehicles/evader/state",
+                            "radar_navigation_state_topic": f"{prefix}/state",
+                            "radar_truth_state_topic": _truth_state_topic(role),
+                            "target_truth_state_topic": _truth_state_topic("evader"),
                             "radar_scan_topic": f"{prefix}/radar/scan",
                             "track_mode_command_topic": (
                                 f"{prefix}/radar/track_mode_command"
@@ -783,6 +761,9 @@ def generate_launch_description():
                         "interceptor_state_topics": [
                             f"{prefix}/state" for prefix in interceptor_prefixes
                         ],
+                        "interceptor_truth_state_topics": [
+                            _truth_state_topic(role) for role in interceptor_roles
+                        ],
                         "interceptor_execution_horizon_topics": [
                             f"{prefix}/mppi/execution_horizon"
                             for prefix in interceptor_prefixes
@@ -812,6 +793,10 @@ def generate_launch_description():
                             for prefix in interceptor_prefixes
                         ],
                         "evader_state_topic": "/vehicles/evader/state",
+                        "evader_truth_state_topic": _truth_state_topic("evader"),
+                        "truth_alignment_status_topic": (
+                            "/simulation_truth/alignment"
+                        ),
                         "evader_world_readiness_topic": (
                             "/vehicles/evader/mppi/world_ready"
                         ),
@@ -873,41 +858,18 @@ def generate_launch_description():
                 "params_file",
                 default_value=str(package_share / "config" / "urban_mvp.yaml"),
             ),
+            DeclareLaunchArgument(
+                "intercept_scenario_path",
+                default_value=str(
+                    package_share / "config" / "intercept_scenario.json"
+                ),
+            ),
             DeclareLaunchArgument("enable_rviz", default_value="false"),
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value=""),
             DeclareLaunchArgument("static_occupancy_3d_path", default_value=""),
             DeclareLaunchArgument("static_esdf_3d_cache_path", default_value=""),
-            DeclareLaunchArgument(
-                "interceptor_0_model", default_value="x500_lidar_2d_0"
-            ),
-            DeclareLaunchArgument(
-                "interceptor_1_model", default_value="x500_lidar_2d_1"
-            ),
-            DeclareLaunchArgument(
-                "interceptor_2_model", default_value="x500_lidar_2d_2"
-            ),
-            DeclareLaunchArgument(
-                "evader_model", default_value="x500_lidar_2d_evader_3"
-            ),
-            DeclareLaunchArgument("interceptor_0_origin_x_m", default_value="54.0"),
-            DeclareLaunchArgument("interceptor_0_origin_y_m", default_value="54.0"),
-            DeclareLaunchArgument("interceptor_1_origin_x_m", default_value="54.0"),
-            DeclareLaunchArgument(
-                "interceptor_1_origin_y_m", default_value="378.0"
-            ),
-            DeclareLaunchArgument(
-                "interceptor_2_origin_x_m", default_value="216.0"
-            ),
-            DeclareLaunchArgument(
-                "interceptor_2_origin_y_m", default_value="378.0"
-            ),
-            DeclareLaunchArgument("evader_origin_x_m", default_value="270.0"),
-            DeclareLaunchArgument("evader_origin_y_m", default_value="54.0"),
-            DeclareLaunchArgument("evader_goal_x_m", default_value="54.0"),
-            DeclareLaunchArgument("evader_goal_y_m", default_value="378.0"),
-            DeclareLaunchArgument("evader_goal_z_m", default_value="18.0"),
             DeclareLaunchArgument(
                 "intercept_minimum_prediction_horizon_s", default_value="0.0"
             ),

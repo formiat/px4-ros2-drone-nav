@@ -1,0 +1,8 @@
+std_msgs/Header header
+bool ready
+bool failure_confirmed
+string reason
+string vehicle_id
+uint32 aligned_vehicle_count
+uint32 expected_vehicle_count
+float64 maximum_position_error_m

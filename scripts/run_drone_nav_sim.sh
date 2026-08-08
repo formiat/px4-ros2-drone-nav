@@ -85,6 +85,42 @@ if [[ "${mission_type}" != "point_to_point" && "${mission_type}" != "intercept" 
   echo "Unsupported MISSION_TYPE=${mission_type}; expected point_to_point or intercept" >&2
   exit 1
 fi
+intercept_scenario_path="$(make_abs_path "${INTERCEPT_SCENARIO_PATH:-drone_city_nav/config/intercept_scenario.json}")"
+intercept_scenario_tsv=""
+intercept_vehicle_ids=()
+intercept_vehicle_roles=()
+intercept_px4_namespaces=()
+intercept_px4_model_targets=()
+intercept_gazebo_model_names=()
+intercept_map_start_poses=()
+intercept_gazebo_spawn_poses=()
+if [[ "${mission_type}" == "intercept" ]]; then
+  if ! intercept_scenario_tsv="$(
+    python3 "${repo_root}/drone_city_nav/launch/intercept_scenario.py" \
+      --scenario "${intercept_scenario_path}" --format tsv
+  )"; then
+    echo "Failed to resolve intercept scenario: ${intercept_scenario_path}" >&2
+    exit 1
+  fi
+  while IFS=$'\t' read -r vehicle_id vehicle_role px4_namespace \
+    vehicle_px4_model_target gazebo_model_name map_x map_y map_z \
+    gazebo_x gazebo_y gazebo_z yaw_rad; do
+    [[ -n "${vehicle_id}" ]] || continue
+    intercept_vehicle_ids+=("${vehicle_id}")
+    intercept_vehicle_roles+=("${vehicle_role}")
+    intercept_px4_namespaces+=("${px4_namespace}")
+    intercept_px4_model_targets+=("${vehicle_px4_model_target}")
+    intercept_gazebo_model_names+=("${gazebo_model_name}")
+    intercept_map_start_poses+=("${map_x},${map_y},${map_z},0,0,${yaw_rad}")
+    intercept_gazebo_spawn_poses+=(
+      "${gazebo_x},${gazebo_y},${gazebo_z},0,0,${yaw_rad}"
+    )
+  done <<< "${intercept_scenario_tsv}"
+  if [[ "${#intercept_vehicle_ids[@]}" -ne 4 ]]; then
+    echo "Intercept scenario must resolve exactly four vehicles" >&2
+    exit 1
+  fi
+fi
 enable_subsystem_cpu_affinity="$(
   normalize_bool "${ENABLE_SUBSYSTEM_CPU_AFFINITY:-true}"
 )"
@@ -109,10 +145,14 @@ if bool_is_true "${enable_subsystem_cpu_affinity}" &&
   fi
 fi
 px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
-evader_px4_model_target="${EVADER_PX4_MODEL_TARGET:-gz_x500_lidar_2d_evader}"
+evader_px4_model_target="gz_x500_lidar_2d_evader"
+if [[ "${mission_type}" == "intercept" ]]; then
+  px4_model_target="${intercept_px4_model_targets[0]}"
+  evader_px4_model_target="${intercept_px4_model_targets[3]}"
+fi
 evader_model_name="${evader_px4_model_target#gz_}"
 if [[ ! "${evader_px4_model_target}" =~ ^gz_[A-Za-z0-9_]+$ ]]; then
-  echo "Invalid EVADER_PX4_MODEL_TARGET: ${evader_px4_model_target}" >&2
+  echo "Invalid evader PX4 model target: ${evader_px4_model_target}" >&2
   exit 1
 fi
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
@@ -195,22 +235,10 @@ clean_stale_gazebo_processes_enabled="$(
 clean_stale_gazebo_processes_dry_run="$(
   normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_DRY_RUN:-false}"
 )"
-spawn_x_m="${SIM_START_X_M:--171.0}"
-spawn_y_m="${SIM_START_Y_M:--81.0}"
-spawn_z_m="${SIM_START_Z_M:-0.3}"
-spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
-interceptor_1_spawn_x_m="${INTERCEPTOR_1_SIM_START_X_M:-153.0}"
-interceptor_1_spawn_y_m="${INTERCEPTOR_1_SIM_START_Y_M:--81.0}"
-interceptor_1_spawn_z_m="${INTERCEPTOR_1_SIM_START_Z_M:-0.3}"
-interceptor_1_spawn_yaw_rad="${INTERCEPTOR_1_SIM_START_YAW_RAD:-0}"
-interceptor_2_spawn_x_m="${INTERCEPTOR_2_SIM_START_X_M:-153.0}"
-interceptor_2_spawn_y_m="${INTERCEPTOR_2_SIM_START_Y_M:-135.0}"
-interceptor_2_spawn_z_m="${INTERCEPTOR_2_SIM_START_Z_M:-0.3}"
-interceptor_2_spawn_yaw_rad="${INTERCEPTOR_2_SIM_START_YAW_RAD:-0}"
-evader_spawn_x_m="${EVADER_SIM_START_X_M:--171.0}"
-evader_spawn_y_m="${EVADER_SIM_START_Y_M:-135.0}"
-evader_spawn_z_m="${EVADER_SIM_START_Z_M:-0.3}"
-evader_spawn_yaw_rad="${EVADER_SIM_START_YAW_RAD:-0}"
+point_gazebo_spawn_x_m="${SIM_START_X_M:--171.0}"
+point_gazebo_spawn_y_m="${SIM_START_Y_M:--81.0}"
+point_gazebo_spawn_z_m="${SIM_START_Z_M:-0.3}"
+point_gazebo_spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
 runtime_dir="${colcon_build_base}/gazebo_drone_nav"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
@@ -750,27 +778,14 @@ px4_parameter_stream() {
 }
 
 echo "PX4 SITL log: ${px4_log_file}"
-echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}"
 if [[ "${mission_type}" == "intercept" ]]; then
+  echo "Intercept scenario: ${intercept_scenario_path}"
+  for instance in 0 1 2 3; do
+    echo "INTERCEPT_COORDINATE_CONTRACT vehicle_id='${intercept_vehicle_ids[instance]}' map_start='${intercept_map_start_poses[instance]}' gazebo_spawn='${intercept_gazebo_spawn_poses[instance]}' gazebo_model='${intercept_gazebo_model_names[instance]}'"
+  done
   echo "Interceptor 1 PX4 SITL log: ${interceptor_1_px4_log_file}"
-  echo "Interceptor 1 Gazebo spawn pose: ${interceptor_1_spawn_x_m},${interceptor_1_spawn_y_m},${interceptor_1_spawn_z_m},0,0,${interceptor_1_spawn_yaw_rad}"
   echo "Interceptor 2 PX4 SITL log: ${interceptor_2_px4_log_file}"
-  echo "Interceptor 2 Gazebo spawn pose: ${interceptor_2_spawn_x_m},${interceptor_2_spawn_y_m},${interceptor_2_spawn_z_m},0,0,${interceptor_2_spawn_yaw_rad}"
   echo "Evader PX4 SITL log: ${evader_px4_log_file}"
-  echo "Evader Gazebo spawn pose: ${evader_spawn_x_m},${evader_spawn_y_m},${evader_spawn_z_m},0,0,${evader_spawn_yaw_rad}"
-  intercept_px4_namespaces=(interceptor_0 interceptor_1 interceptor_2 evader)
-  intercept_px4_model_targets=(
-    "${px4_model_target}"
-    "${px4_model_target}"
-    "${px4_model_target}"
-    "${evader_px4_model_target}"
-  )
-  intercept_px4_spawn_poses=(
-    "${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}"
-    "${interceptor_1_spawn_x_m},${interceptor_1_spawn_y_m},${interceptor_1_spawn_z_m},0,0,${interceptor_1_spawn_yaw_rad}"
-    "${interceptor_2_spawn_x_m},${interceptor_2_spawn_y_m},${interceptor_2_spawn_z_m},0,0,${interceptor_2_spawn_yaw_rad}"
-    "${evader_spawn_x_m},${evader_spawn_y_m},${evader_spawn_z_m},0,0,${evader_spawn_yaw_rad}"
-  )
   intercept_px4_logs=(
     "${px4_log_file}"
     "${interceptor_1_px4_log_file}"
@@ -797,7 +812,7 @@ if [[ "${mission_type}" == "intercept" ]]; then
         "${intercept_px4_maximum_speeds[instance]}" |
         PX4_GZ_WORLD="${world_name}" \
           PX4_GZ_STANDALONE=1 \
-          PX4_GZ_MODEL_POSE="${intercept_px4_spawn_poses[instance]}" \
+          PX4_GZ_MODEL_POSE="${intercept_gazebo_spawn_poses[instance]}" \
           PX4_SIM_MODEL="${intercept_px4_model_targets[instance]}" \
           PX4_UXRCE_DDS_NS="${intercept_px4_namespaces[instance]}" \
           PX4_SYS_AUTOSTART=4013 \
@@ -809,13 +824,14 @@ if [[ "${mission_type}" == "intercept" ]]; then
   px4_pid="${intercept_px4_pids[0]}"
   evader_px4_pid="${intercept_px4_pids[3]}"
 else
+  echo "PX4 Gazebo spawn pose: ${point_gazebo_spawn_x_m},${point_gazebo_spawn_y_m},${point_gazebo_spawn_z_m},0,0,${point_gazebo_spawn_yaw_rad}"
   reset_px4_instance_state 0
   (
     px4_parameter_stream "${px4_active_cruise_speed_mps}" \
       "${px4_active_max_horizontal_speed_mps}" |
       PX4_GZ_WORLD="${world_name}" \
         PX4_GZ_STANDALONE=1 \
-        PX4_GZ_MODEL_POSE="${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}" \
+        PX4_GZ_MODEL_POSE="${point_gazebo_spawn_x_m},${point_gazebo_spawn_y_m},${point_gazebo_spawn_z_m},0,0,${point_gazebo_spawn_yaw_rad}" \
         HEADLESS="${headless}" \
         run_px4_sitl
   ) > "${px4_log_file}" 2>&1 &
@@ -898,10 +914,10 @@ if [[ "${mission_type}" == "intercept" ]]; then
   launch_file="intercept.launch.py"
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
+    intercept_scenario_path:="${intercept_scenario_path}"
     enable_lidar_debug:="${enable_lidar_debug}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
-    evader_model:="${evader_model_name}_3"
     evader_speed_scale:="${evader_speed_scale}"
     intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"
     shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"

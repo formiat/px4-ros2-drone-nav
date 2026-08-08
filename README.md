@@ -128,7 +128,7 @@ Run the finite three-interceptor mission:
 
 The point-to-point mission remains the default. The intercept mission launches
 three isolated interceptor PX4/ROS stacks and one evader stack. The
-interceptors start in three city corners; one starts at the evader's destination
+interceptors start in three separated city sectors; one starts at the evader's destination
 but receives neither that destination nor any other attacker ground truth. The
 evader flies diagonally to its fixed goal with the same speed policy as the
 interceptors. Each interceptor receives only its own ideal radar measurements
@@ -139,9 +139,17 @@ while the current target estimate is occluded. Once a planner validates swept
 raw-clear visibility of that estimate, a typed command triggers an immediate
 scan and 20 Hz track mode without a range limit. Tracker coasting and guidance
 continue at 20 Hz between scans. Only the three simulation radar adapters and
-the mission referee may read evader ground truth. Mission motion starts only
-after all four planners report a resident world and all three trackers have
-published a valid target position.
+the mission referee may consume the typed physical target truth produced by the
+simulation-truth adapter. Radar measurements and mission proximity are derived
+from Gazebo model poses, not independently configured PX4 origins. Mission
+motion starts only after all four planners report a resident world, all three
+trackers have published a valid target position, and several consecutive
+samples confirm that every navigation pose agrees with its Gazebo pose.
+
+All four map-frame starts and the evader goal are owned by
+`drone_city_nav/config/intercept_scenario.json`. The runner derives each Gazebo
+spawn from the canonical world's `map_to_sdf` transform; there are no separate
+intercept spawn coordinates in the shell or launch file.
 
 The continuous guidance objective has no terminal goal hold. It uses a
 latency-compensated analytic intercept solution, capped at 15 s, and smoothly
@@ -158,7 +166,8 @@ interceptors `+45` and `-45` degree long-range motion hypotheses. Those offsets
 converge continuously to zero below 30 m and their lateral lead is capped at
 70 m. The radar track itself is never rotated or falsified.
 
-A swept separation of 5 m between any interceptor and the evader publishes
+A physically measured swept Gazebo separation of 5 m between any interceptor
+and the evader publishes
 typed `VehicleDestroyed` events for that pair. Their offboard nodes force-disarm
 and confirm both deaths, while the other interceptors brake and enter confirmed
 stationary position hold. A physical or 5 m proximity collision between

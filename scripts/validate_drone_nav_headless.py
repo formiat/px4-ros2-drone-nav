@@ -76,6 +76,7 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
         errors,
     )
     if outcome == "intercepted":
+        validate_physical_proximity_intercept(settled_log, errors)
         capturing = re.search(r"capturing_interceptor_id='(interceptor_[0-9]+)'", result.group(0))
         if capturing is None:
             errors.append("FAIL: intercept result identifies the capturing interceptor")
@@ -160,6 +161,36 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
         print("OK: evader goal settlement keeps both vehicles armed")
 
 
+def validate_physical_proximity_intercept(
+    ros_log: str, errors: list[str]
+) -> None:
+    event = re.search(
+        r"PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true .*"
+        r"measured_swept_separation_m=([0-9.]+) .*"
+        r"separation_threshold_m=([0-9.]+) .*"
+        r"interpolation_fraction=([0-9.]+) .*"
+        r"interceptor_position=\([^)]+\) evader_position=\([^)]+\)",
+        ros_log,
+    )
+    if event is None:
+        errors.append("FAIL: intercept has physical Gazebo proximity evidence")
+        return
+    separation_m = float(event.group(1))
+    threshold_m = float(event.group(2))
+    fraction = float(event.group(3))
+    if separation_m > threshold_m + 1.0e-6:
+        errors.append(
+            "FAIL: physical intercept separation exceeds the capture threshold"
+        )
+    elif not 0.0 <= fraction <= 1.0:
+        errors.append("FAIL: physical intercept interpolation fraction is invalid")
+    else:
+        print(
+            "OK: physical Gazebo proximity confirms intercept "
+            f"({separation_m:.3f} <= {threshold_m:.3f} m)"
+        )
+
+
 def validate_intercept_physical_destruction_settlement(
     ros_log: str, errors: list[str]
 ) -> None:
@@ -211,9 +242,16 @@ def validate_intercept_radar_pipeline(ros_log: str, errors: list[str]) -> None:
         errors,
     )
     require(
+        "navigation and Gazebo physical coordinates are aligned",
+        ros_log,
+        r"SIMULATION_TRUTH_ALIGNMENT ready=true failure_confirmed=false "
+        r"reason=aligned",
+        errors,
+    )
+    require(
         "radar simulator publishes relative measurements",
         ros_log,
-        r"RADAR_SCAN published=true .*source=ideal_truth_adapter",
+        r"RADAR_SCAN published=true .*source=gazebo_physical_truth",
         errors,
     )
     require(
@@ -327,7 +365,7 @@ def main() -> int:
     safety_ros_log = safety_relevant_ros_log(ros_log, args.mission_type)
     validate_building_collisions(ros_log, errors)
 
-    expected_vehicles = 2 if args.mission_type == "intercept" else 1
+    expected_vehicles = 4 if args.mission_type == "intercept" else 1
     require_count(
         "PX4 instances report Gazebo ready",
         px4_log,

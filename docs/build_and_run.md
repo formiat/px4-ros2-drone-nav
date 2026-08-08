@@ -90,6 +90,11 @@ Finite three-interceptor versus one-evader mission:
 Set `EVADER_SPEED_SCALE` to override the default `1.0` evader speed multiplier.
 By default, the evader flies diagonally across the city from map position
 `(270, 54)` to `(54, 378)` at `18 m` altitude.
+The complete finite scenario is defined in
+`drone_city_nav/config/intercept_scenario.json`. The shell runner and ROS launch
+both load this file, and each Gazebo spawn is derived from the canonical
+`map_to_sdf` transform. Set `INTERCEPT_SCENARIO_PATH` to run another validated
+scenario; do not add independent shell spawn overrides.
 Each interceptor uses a latency-compensated analytic intercept solution capped
 at 15 s. While ahead inside the target corridor, the smoothed lead is capped at
 1 s. All three interceptors use the measured motion direction by default. Set
@@ -103,9 +108,12 @@ to 20 Hz whenever the current target estimate has swept raw-clear visibility,
 independent of range, and returns it to varying search cadence when the target is
 occluded. A variable-dt tracker reconstructs and coasts a target track, and
 guidance continues at 20 Hz between scans.
-The mission start barrier waits for all four planner worlds and the first valid
-target position from every tracker. Static planner readiness comes from the
-resident Occupancy3D ESDF and does not wait for a lidar snapshot.
+The mission start barrier waits for all four planner worlds, the first valid
+target position from every tracker, and confirmed agreement between each PX4
+navigation pose and its physical Gazebo model pose. A persistent mismatch
+blocks mission start and commands airborne vehicles to hold. Static planner
+readiness comes from the resident Occupancy3D ESDF and does not wait for a lidar
+snapshot.
 Prediction includes measurement age and is clipped only by physical raw
 occupancy in the active static or sensor-derived map. Vertical prediction
 decelerates vertical target motion to a stop and remains inside the configured
@@ -113,7 +121,8 @@ flight envelope. Visibility of the current target uses direct moving-target MPPI
 pursuit. If only the full predicted intercept point is blocked, the planner
 shortens the lead while preserving direct mode.
 The headless command validates all four PX4 logs. An intercept result requires
-confirmed disarm of the capturing pair and confirmed holds from every surviving
+typed Gazebo physical-proximity evidence at or below 5 m, confirmed disarm of
+the capturing pair, and confirmed holds from every surviving
 interceptor. Survivors first brake, then must publish and maintain a stationary
 position-hold horizon. An evader-goal result requires all surviving interceptors
 to stop tracking and confirm the same hold transition without disarming. If
