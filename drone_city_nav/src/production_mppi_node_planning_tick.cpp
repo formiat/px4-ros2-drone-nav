@@ -329,11 +329,16 @@ void ProductionMppiNode::planningTick() {
   }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
   if (objective && objective->immediate_hold) {
-    planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
-    target = navigation.state;
+    planning_state = ProductionMppiPlanningState::kObstacleAwareHold;
+    target = mppi::State{
+        .x = static_cast<float>(mission_goal.x),
+        .y = static_cast<float>(mission_goal.y),
+        .z = static_cast<float>(mission_goal.z),
+        .yaw = navigation.state.yaw,
+    };
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
-    target_source = "mission_command_braking_hold";
+    target_source = "mission_command_obstacle_aware_hold";
   } else if (goal_capture.latched) {
     planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
     target = mppi::State{
@@ -543,8 +548,8 @@ void ProductionMppiNode::planningTick() {
       .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
       .moving_target = moving_target,
       .route =
-          route_usable && esdf->mppi_route && route_projection.valid &&
-                  !route_control.hold_xy
+          planning_state == ProductionMppiPlanningState::kPlanned && route_usable &&
+                  esdf->mppi_route && route_projection.valid && !route_control.hold_xy
               ? std::optional<mppi::RouteReference>{mppi::RouteReference{
                     .points = esdf->mppi_route,
                     .generation = esdf->global_guide_generation,

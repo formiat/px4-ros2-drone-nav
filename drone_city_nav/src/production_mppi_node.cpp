@@ -16,6 +16,8 @@ productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcep
   switch (state) {
     case ProductionMppiPlanningState::kPlanned:
       return "planned";
+    case ProductionMppiPlanningState::kObstacleAwareHold:
+      return "obstacle_aware_hold";
     case ProductionMppiPlanningState::kNoGuideBrakingHold:
       return "no_guide_braking_hold";
     case ProductionMppiPlanningState::kUnavailableWorldBrakingHold:

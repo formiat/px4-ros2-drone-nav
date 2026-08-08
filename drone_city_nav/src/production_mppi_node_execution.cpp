@@ -139,6 +139,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const bool forced_braking_hold =
       planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ||
       planning_state == ProductionMppiPlanningState::kUnavailableWorldBrakingHold;
+  const bool obstacle_aware_hold =
+      planning_state == ProductionMppiPlanningState::kObstacleAwareHold;
   MppiHorizonSafetyResult safety;
   MppiSafetyInterventionUpdate intervention;
   if (!forced_braking_hold) {
@@ -233,8 +235,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
        intervention.decision != MppiHorizonSafetyDecision::kExecute &&
        intervention.decision != MppiHorizonSafetyDecision::kExecuteUntilDeadline);
   const MppiBrakeHoldUpdate brake_hold = brake_hold_lifecycle_.update(
-      braking, input.initial_state, safety_config_.position_hold_capture_speed_mps,
-      flight_envelope_config_);
+      braking || obstacle_aware_hold, input.initial_state,
+      safety_config_.position_hold_capture_speed_mps, flight_envelope_config_);
   ProductionMppiExecutionReason fallback_reason =
       ProductionMppiExecutionReason::kHorizonSafety;
   if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
@@ -242,6 +244,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   } else if (planning_state ==
              ProductionMppiPlanningState::kUnavailableWorldBrakingHold) {
     fallback_reason = ProductionMppiExecutionReason::kUnavailableWorld;
+  } else if (obstacle_aware_hold) {
+    fallback_reason = ProductionMppiExecutionReason::kGoalCapture;
   }
   if (brake_hold.position_hold) {
     const auto hold_duration_ns = static_cast<std::int64_t>(
@@ -285,10 +289,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   }
 
   const ProductionMppiExecutionMode execution_mode =
-      braking ? ProductionMppiExecutionMode::kBraking
-              : ProductionMppiExecutionMode::kPlanned;
+      braking || obstacle_aware_hold ? ProductionMppiExecutionMode::kBraking
+                                     : ProductionMppiExecutionMode::kPlanned;
   const ProductionMppiExecutionReason execution_reason =
-      braking ? fallback_reason : ProductionMppiExecutionReason::kNone;
+      braking || obstacle_aware_hold ? fallback_reason
+                                     : ProductionMppiExecutionReason::kNone;
   msg::MppiTrajectoryHorizon horizon = make_horizon(
       now_ns + static_cast<std::int64_t>(
                    static_cast<double>(controls.size()) *

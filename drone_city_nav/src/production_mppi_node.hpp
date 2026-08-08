@@ -324,6 +324,7 @@ struct ProductionMppiExecutionPublication {
 
 enum class ProductionMppiPlanningState {
   kPlanned,
+  kObstacleAwareHold,
   kNoGuideBrakingHold,
   kUnavailableWorldBrakingHold,
   kMissionGoalPositionHold,

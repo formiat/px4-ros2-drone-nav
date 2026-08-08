@@ -85,7 +85,9 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("RADAR_DATA_BOUNDARY verified=true", text)
         self.assertIn("ground_truth_boundary_violation", text)
 
-    def test_survivor_hold_brakes_then_requires_stationary_horizon(self) -> None:
+    def test_survivor_hold_avoids_obstacles_then_requires_stationary_horizon(
+        self,
+    ) -> None:
         objective = NAVIGATION_OBJECTIVE.read_text(encoding="utf-8")
         guidance = GUIDANCE.read_text(encoding="utf-8")
         planning = PLANNING_TICK.read_text(encoding="utf-8")
@@ -94,7 +96,13 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("uint8 TERMINAL_POLICY_IMMEDIATE_HOLD=2", objective)
         self.assertIn("TERMINAL_POLICY_IMMEDIATE_HOLD", guidance)
         self.assertIn("objective->immediate_hold", planning)
-        self.assertIn("mission_command_braking_hold", planning)
+        self.assertIn("kObstacleAwareHold", planning)
+        self.assertIn("mission_command_obstacle_aware_hold", planning)
+        execution = (
+            SOURCE / "production_mppi_node_execution.cpp"
+        ).read_text(encoding="utf-8")
+        self.assertIn("braking || obstacle_aware_hold", execution)
+        self.assertIn("!forced_braking_hold", execution)
         self.assertIn(
             "interceptor_execution_horizon_topics",
             REFEREE_SUPPORT.read_text(encoding="utf-8"),
