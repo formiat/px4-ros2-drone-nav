@@ -112,5 +112,44 @@ TEST(SimulationTruthAlignmentTest, ToleratesTransientMismatchAfterReadiness) {
   EXPECT_FALSE(recovered.failure_confirmed);
 }
 
+TEST(SimulationTruthAlignmentMissionLifecycleTest,
+     BlocksConfirmedMismatchBeforeStartupContract) {
+  SimulationTruthAlignmentMissionLifecycle lifecycle;
+
+  const SimulationTruthAlignmentMissionUpdate update =
+      lifecycle.update(SimulationTruthAlignmentObservation{
+          .ready = false, .sample_aligned = false, .failure_confirmed = true});
+
+  EXPECT_FALSE(update.startup_ready);
+  EXPECT_TRUE(update.startup_failure_confirmed);
+  EXPECT_FALSE(update.runtime_residual);
+  EXPECT_FALSE(lifecycle.latchStartupContract());
+}
+
+TEST(SimulationTruthAlignmentMissionLifecycleTest,
+     TreatsConfirmedMismatchAfterStartupAsRecoverableRuntimeResidual) {
+  SimulationTruthAlignmentMissionLifecycle lifecycle;
+  const SimulationTruthAlignmentMissionUpdate ready =
+      lifecycle.update(SimulationTruthAlignmentObservation{
+          .ready = true, .sample_aligned = true, .failure_confirmed = false});
+  ASSERT_TRUE(ready.startup_ready);
+  ASSERT_TRUE(lifecycle.latchStartupContract());
+
+  const SimulationTruthAlignmentMissionUpdate degraded =
+      lifecycle.update(SimulationTruthAlignmentObservation{
+          .ready = false, .sample_aligned = false, .failure_confirmed = true});
+  EXPECT_TRUE(degraded.startup_ready);
+  EXPECT_FALSE(degraded.startup_failure_confirmed);
+  EXPECT_TRUE(degraded.runtime_residual);
+  EXPECT_TRUE(degraded.newly_runtime_degraded);
+
+  const SimulationTruthAlignmentMissionUpdate recovered =
+      lifecycle.update(SimulationTruthAlignmentObservation{
+          .ready = true, .sample_aligned = true, .failure_confirmed = false});
+  EXPECT_TRUE(recovered.startup_ready);
+  EXPECT_FALSE(recovered.runtime_residual);
+  EXPECT_TRUE(recovered.newly_runtime_recovered);
+}
+
 } // namespace
 } // namespace drone_city_nav

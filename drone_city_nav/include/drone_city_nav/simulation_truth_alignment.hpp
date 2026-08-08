@@ -45,6 +45,33 @@ struct SimulationTruthAlignmentUpdate {
   bool newly_failed{false};
 };
 
+struct SimulationTruthAlignmentObservation {
+  bool ready{false};
+  bool sample_aligned{false};
+  bool failure_confirmed{false};
+};
+
+struct SimulationTruthAlignmentMissionUpdate {
+  bool startup_ready{false};
+  bool startup_failure_confirmed{false};
+  bool runtime_residual{false};
+  bool newly_runtime_degraded{false};
+  bool newly_runtime_recovered{false};
+};
+
+class SimulationTruthAlignmentMissionLifecycle final {
+public:
+  [[nodiscard]] SimulationTruthAlignmentMissionUpdate
+  update(const SimulationTruthAlignmentObservation& observation) noexcept;
+
+  [[nodiscard]] bool latchStartupContract() noexcept;
+
+private:
+  SimulationTruthAlignmentObservation observation_{};
+  bool startup_contract_latched_{false};
+  bool runtime_residual_{false};
+};
+
 class SimulationTruthAlignmentMonitor final {
 public:
   explicit SimulationTruthAlignmentMonitor(

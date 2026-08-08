@@ -6,6 +6,7 @@
 #include "drone_city_nav/msg/simulation_truth_state.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
+#include "drone_city_nav/simulation_truth_alignment.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -211,12 +212,7 @@ private:
         declare_parameter<std::string>("truth_alignment_status_topic",
                                        "/simulation_truth/alignment"),
         latched_qos, [this](const msg::SimulationTruthAlignment::SharedPtr status) {
-          truth_alignment_ready_ = status->ready;
-          truth_alignment_sample_aligned_ = status->reason == "aligned";
-          truth_alignment_failure_confirmed_ = status->failure_confirmed;
-          truth_alignment_reason_ = status->reason;
-          truth_alignment_vehicle_id_ = status->vehicle_id;
-          truth_alignment_maximum_error_m_ = status->maximum_position_error_m;
+          onTruthAlignmentStatus(*status);
         });
     target_world_ready_sub_ = create_subscription<std_msgs::msg::Bool>(
         declare_parameter<std::string>("evader_world_readiness_topic",
@@ -239,6 +235,20 @@ private:
         latched_qos);
     target_destroyed_pub_ =
         create_publisher<msg::VehicleDestroyed>(target_destroyed_topic_, latched_qos);
+  }
+
+  void onTruthAlignmentStatus(const msg::SimulationTruthAlignment& status) {
+    truth_alignment_reason_ = status.reason;
+    truth_alignment_vehicle_id_ = status.vehicle_id;
+    truth_alignment_maximum_error_m_ = status.maximum_position_error_m;
+    truth_alignment_mission_update_ =
+        truth_alignment_lifecycle_.update(SimulationTruthAlignmentObservation{
+            .ready = status.ready,
+            .sample_aligned = status.reason == "aligned",
+            .failure_confirmed = status.failure_confirmed,
+        });
+    logRuntimeTruthAlignmentTransition(get_logger(), status,
+                                       truth_alignment_mission_update_);
   }
 
   void publishTargetObjective() {
@@ -301,7 +311,8 @@ private:
                  detail::deathCauseName(destroyed.death_cause), mission_epoch_,
                  destroyed.detail.c_str());
 
-    if (!mission_started_ || terminal_outcome_.has_value()) {
+    if (!mission_started_ || terminal_outcome_.has_value() ||
+        system_failure_reason_.has_value()) {
       return;
     }
     if (!interceptor_index.has_value()) {
@@ -338,8 +349,9 @@ private:
   }
 
   [[nodiscard]] bool missionReady() const {
-    if (!truth_alignment_ready_ || !target_state_ || !target_truth_state_ ||
-        !target_state_->navigation_ready || !target_world_ready_) {
+    if (!truth_alignment_mission_update_.startup_ready || !target_state_ ||
+        !target_truth_state_ || !target_state_->navigation_ready ||
+        !target_world_ready_) {
       return false;
     }
     return !target_destroyed_ &&
@@ -361,6 +373,10 @@ private:
   }
 
   void publishMissionStart() {
+    if (!truth_alignment_lifecycle_.latchStartupContract()) {
+      failMission("truth_alignment_contract_not_ready");
+      return;
+    }
     std_msgs::msg::Bool start;
     start.data = true;
     for (InterceptorRuntime& interceptor : interceptors_) {
@@ -370,7 +386,7 @@ private:
     mission_started_ = true;
     RCLCPP_INFO(get_logger(),
                 "INTERCEPT_MISSION state=running epoch=%" PRIu64
-                " interceptor_count=%zu",
+                " interceptor_count=%zu startup_coordinate_contract_latched=true",
                 mission_epoch_, interceptors_.size());
   }
 
@@ -444,7 +460,7 @@ private:
                 target_state_->position.z, mission_epoch_);
   }
 
-  void handleCoordinateAlignmentFailure() {
+  void handleStartupCoordinateAlignmentFailure() {
     if (system_failure_reason_.has_value()) {
       return;
     }
@@ -452,7 +468,7 @@ private:
         "coordinate_alignment_mismatch:" + truth_alignment_vehicle_id_ + ":" +
         truth_alignment_reason_;
     RCLCPP_ERROR(get_logger(),
-                 "SIMULATION_TRUTH_ALIGNMENT mission_blocked=true reason='%s' "
+                 "SIMULATION_TRUTH_ALIGNMENT startup_mission_blocked=true reason='%s' "
                  "vehicle_id='%s' max_error_m=%.3f mission_started=%s",
                  truth_alignment_reason_.c_str(), truth_alignment_vehicle_id_.c_str(),
                  truth_alignment_maximum_error_m_, mission_started_ ? "true" : "false");
@@ -468,25 +484,6 @@ private:
         requestHold(index, reason);
       }
     }
-  }
-
-  [[nodiscard]] msg::VehicleDestroyed
-  makeProximityDestruction(const TimedVehicleState& state, const std::uint8_t role,
-                           const std::string& vehicle_id, const std::uint8_t cause,
-                           const std::string& detail) const {
-    msg::VehicleDestroyed destroyed;
-    destroyed.stamp = now();
-    destroyed.mission_epoch = mission_epoch_;
-    destroyed.vehicle_role = role;
-    destroyed.vehicle_id = vehicle_id;
-    destroyed.death_cause = cause;
-    destroyed.detail = detail;
-    destroyed.event_position.x = state.position.x;
-    destroyed.event_position.y = state.position.y;
-    destroyed.event_position.z = state.position.z;
-    destroyed.altitude_m = state.position.z;
-    destroyed.speed_mps = detail::speed(state);
-    return destroyed;
   }
 
   void requestCaptureDestruction(const std::size_t interceptor_index,
@@ -506,12 +503,13 @@ private:
     interceptor.destruction_requested = true;
     target_destruction_requested_ = true;
     capturing_interceptor_index_ = interceptor_index;
-    interceptor.destroyed_pub->publish(makeProximityDestruction(
-        interceptor_state.value(), msg::VehicleDestroyed::ROLE_INTERCEPTOR,
-        interceptor.id, msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT, detail));
-    target_destroyed_pub_->publish(makeProximityDestruction(
-        target_state.value(), msg::VehicleDestroyed::ROLE_EVADER, evader_id_,
+    interceptor.destroyed_pub->publish(makeProximityDestructionEvent(
+        now(), mission_epoch_, interceptor_state.value(),
+        msg::VehicleDestroyed::ROLE_INTERCEPTOR, interceptor.id,
         msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT, detail));
+    target_destroyed_pub_->publish(makeProximityDestructionEvent(
+        now(), mission_epoch_, target_state.value(), msg::VehicleDestroyed::ROLE_EVADER,
+        evader_id_, msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT, detail));
     destruction_requested_ns_ = now().nanoseconds();
     logPhysicalProximityIntercept(get_logger(), interceptor.id, update,
                                   *interceptor_state, *target_state, capture_radius_m_,
@@ -534,12 +532,12 @@ private:
     first.destruction_requested = true;
     second.destruction_requested = true;
     const std::string detail = "interceptor_collision:" + first.id + ":" + second.id;
-    first.destroyed_pub->publish(makeProximityDestruction(
-        *first_state, msg::VehicleDestroyed::ROLE_INTERCEPTOR, first.id,
-        msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION, detail));
-    second.destroyed_pub->publish(makeProximityDestruction(
-        *second_state, msg::VehicleDestroyed::ROLE_INTERCEPTOR, second.id,
-        msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION, detail));
+    first.destroyed_pub->publish(makeProximityDestructionEvent(
+        now(), mission_epoch_, *first_state, msg::VehicleDestroyed::ROLE_INTERCEPTOR,
+        first.id, msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION, detail));
+    second.destroyed_pub->publish(makeProximityDestructionEvent(
+        now(), mission_epoch_, *second_state, msg::VehicleDestroyed::ROLE_INTERCEPTOR,
+        second.id, msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION, detail));
     destruction_requested_ns_ = now().nanoseconds();
     RCLCPP_ERROR(get_logger(),
                  "INTERCEPTOR_PROXIMITY_COLLISION first='%s' second='%s' "
@@ -549,7 +547,7 @@ private:
   }
 
   void beginTerminal(const InterceptMissionOutcome outcome, const std::string& reason) {
-    if (terminal_outcome_.has_value()) {
+    if (terminal_outcome_.has_value() || system_failure_reason_.has_value()) {
       return;
     }
     terminal_outcome_ = outcome;
@@ -721,8 +719,13 @@ private:
 
   void settleTerminal(const std::int64_t now_ns) {
     if (system_failure_reason_.has_value()) {
-      if (allSurvivorsHeld(now_ns)) {
+      const bool deaths_settled = allRequestedDeathsSettled();
+      if (deaths_settled && allSurvivorsHeld(now_ns)) {
         failMission(*system_failure_reason_);
+      } else if (!deaths_settled && destruction_requested_ns_ > 0 &&
+                 now_ns - destruction_requested_ns_ >
+                     destruction_settlement_timeout_ns_) {
+        failMission("vehicle_destruction_not_confirmed");
       }
       return;
     }
@@ -746,56 +749,52 @@ private:
     }
   }
 
-  void handleMissionEvaluation(const std::int64_t now_ns) {
+  void evaluateMissionAndPhysicalEvents(const bool accept_new_mission_outcome) {
     const std::optional<TimedVehicleState> physical_target = targetPhysicalState();
     if (!physical_target) {
+      detectInterceptorCollisions();
       return;
     }
-    const bool detect_late_capture =
-        terminal_outcome_ == InterceptMissionOutcome::kEvaderReachedGoal;
-    std::vector<TimedVehicleState> states = evaluatorStates(detect_late_capture);
+    std::vector<TimedVehicleState> states = evaluatorStates(true);
     const MultiInterceptMissionUpdate update =
         evaluator_->update(states, *physical_target);
-    if (!terminal_outcome_.has_value() && update.newly_terminal) {
-      if (update.outcome == InterceptMissionOutcome::kIntercepted) {
-        if (!update.capturing_interceptor_index) {
-          failMission("intercept_outcome_without_capturing_interceptor");
-          return;
-        }
-        const std::size_t interceptor_index =
-            update.capturing_interceptor_index.value();
-        beginTerminal(update.outcome, "intercepted");
-        requestCaptureDestruction(interceptor_index, "intercepted", update);
-        requestHoldsForSurvivors("evader_intercepted", interceptor_index);
-      } else {
-        beginTerminal(update.outcome, "evader_reached_goal");
-      }
-      return;
-    }
-    if (terminal_outcome_ == InterceptMissionOutcome::kEvaderReachedGoal &&
-        update.newly_captured && !late_capture_after_goal_) {
+    if (update.newly_captured) {
       if (!update.capturing_interceptor_index) {
-        failMission("late_capture_without_capturing_interceptor");
+        failMission("capture_without_capturing_interceptor");
         return;
       }
-      late_capture_after_goal_ = true;
       const std::size_t interceptor_index = update.capturing_interceptor_index.value();
-      RCLCPP_INFO(get_logger(),
-                  "INTERCEPT_LATE_CAPTURE outcome_preserved=evader_reached_goal "
-                  "interceptor_id='%s' separation_m=%.3f mission_epoch=%" PRIu64,
-                  interceptors_[interceptor_index].id.c_str(), update.separation_m,
-                  mission_epoch_);
-      RCLCPP_INFO(get_logger(),
-                  "INTERCEPTOR_HOLD_ABORTED vehicle_id='%s' reason=late_capture "
-                  "mission_epoch=%" PRIu64,
-                  interceptors_[interceptor_index].id.c_str(), mission_epoch_);
-      requestCaptureDestruction(interceptor_index, "late_intercept_after_evader_goal",
-                                update);
+      std::string detail{"intercepted"};
+      if (accept_new_mission_outcome) {
+        beginTerminal(update.outcome, "intercepted");
+      } else if (terminal_outcome_ == InterceptMissionOutcome::kEvaderReachedGoal) {
+        detail = "late_intercept_after_evader_goal";
+        RCLCPP_INFO(get_logger(),
+                    "INTERCEPT_LATE_CAPTURE outcome_preserved=evader_reached_goal "
+                    "interceptor_id='%s' separation_m=%.3f mission_epoch=%" PRIu64,
+                    interceptors_[interceptor_index].id.c_str(), update.separation_m,
+                    mission_epoch_);
+        RCLCPP_INFO(get_logger(),
+                    "INTERCEPTOR_HOLD_ABORTED vehicle_id='%s' reason=late_capture "
+                    "mission_epoch=%" PRIu64,
+                    interceptors_[interceptor_index].id.c_str(), mission_epoch_);
+      } else {
+        detail = "capture_after_system_failure";
+        RCLCPP_INFO(get_logger(),
+                    "INTERCEPT_POST_OUTCOME_CAPTURE "
+                    "outcome_preserved=system_failure interceptor_id='%s' "
+                    "separation_m=%.3f mission_epoch=%" PRIu64,
+                    interceptors_[interceptor_index].id.c_str(), update.separation_m,
+                    mission_epoch_);
+      }
+      requestCaptureDestruction(interceptor_index, detail, update);
+      requestHoldsForSurvivors("evader_intercepted", interceptor_index);
     }
-    if (!terminal_outcome_.has_value()) {
-      detectInterceptorCollisions();
+    if (accept_new_mission_outcome && update.newly_terminal &&
+        update.outcome == InterceptMissionOutcome::kEvaderReachedGoal) {
+      beginTerminal(update.outcome, "evader_reached_goal");
     }
-    (void)now_ns;
+    detectInterceptorCollisions();
   }
 
   void finishMission() {
@@ -869,8 +868,9 @@ private:
       }
       return;
     }
-    if (truth_alignment_failure_confirmed_ && !terminal_outcome_.has_value()) {
-      handleCoordinateAlignmentFailure();
+    if (!mission_started_ &&
+        truth_alignment_mission_update_.startup_failure_confirmed) {
+      handleStartupCoordinateAlignmentFailure();
       settleTerminal(now_ns);
       return;
     }
@@ -897,18 +897,22 @@ private:
       }
       return;
     }
-    if (terminal_outcome_.has_value() || system_failure_reason_.has_value()) {
-      if (terminal_outcome_ == InterceptMissionOutcome::kEvaderReachedGoal &&
-          !target_destroyed_) {
-        handleMissionEvaluation(now_ns);
+    const InterceptRefereeCyclePolicy cycle_policy =
+        interceptRefereeCyclePolicy(mission_started_, terminal_outcome_.has_value(),
+                                    system_failure_reason_.has_value());
+    if (cycle_policy.settle_lifecycle) {
+      if (cycle_policy.evaluate_physical_contacts) {
+        evaluateMissionAndPhysicalEvents(cycle_policy.accept_new_mission_outcome);
       }
       settleTerminal(now_ns);
       return;
     }
-    if (!truth_alignment_sample_aligned_) {
+    if (!updateStateAdjudication(now_ns)) {
       return;
     }
-    if (!updateStateAdjudication(now_ns)) {
+    evaluateMissionAndPhysicalEvents(cycle_policy.accept_new_mission_outcome);
+    if (terminal_outcome_.has_value() || system_failure_reason_.has_value()) {
+      settleTerminal(now_ns);
       return;
     }
     if (operationalInterceptorCount() == 0U) {
@@ -919,15 +923,17 @@ private:
         system_failure_reason_ = "no_operational_interceptors";
         requestHoldsForSurvivors(*system_failure_reason_);
       }
+      settleTerminal(now_ns);
       return;
     }
-    handleMissionEvaluation(now_ns);
   }
 
   std::vector<InterceptorRuntime> interceptors_;
   std::vector<std::optional<TimedVehicleState>> previous_collision_states_;
   std::unique_ptr<MultiInterceptMissionEvaluator> evaluator_;
   std::unique_ptr<InterceptGroundTruthBoundary> ground_truth_boundary_;
+  SimulationTruthAlignmentMissionLifecycle truth_alignment_lifecycle_;
+  SimulationTruthAlignmentMissionUpdate truth_alignment_mission_update_{};
   InterceptStateAdjudicationConfig state_config_{};
   InterceptorHoldConfig hold_config_{};
   Point3 target_goal_{};
@@ -956,16 +962,12 @@ private:
   std::int64_t mission_readiness_started_ns_{0};
   bool mission_started_{false};
   bool result_reported_{false};
-  bool late_capture_after_goal_{false};
   bool target_destroyed_{false};
   bool target_destruction_requested_{false};
   bool target_world_ready_{false};
   bool target_hold_requested_{false};
   bool shutdown_on_terminal_outcome_{true};
   bool boundary_verified_{false};
-  bool truth_alignment_ready_{false};
-  bool truth_alignment_sample_aligned_{false};
-  bool truth_alignment_failure_confirmed_{false};
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr target_state_sub_;
   rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr target_truth_state_sub_;
   rclcpp::Subscription<msg::SimulationTruthAlignment>::SharedPtr truth_alignment_sub_;

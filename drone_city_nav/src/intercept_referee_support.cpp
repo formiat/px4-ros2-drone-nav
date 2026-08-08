@@ -125,6 +125,48 @@ msg::NavigationObjective makePositionHoldObjective(const rclcpp::Time& stamp,
   return objective;
 }
 
+msg::VehicleDestroyed makeProximityDestructionEvent(const rclcpp::Time& stamp,
+                                                    const std::uint64_t mission_epoch,
+                                                    const TimedVehicleState& state,
+                                                    const std::uint8_t role,
+                                                    const std::string& vehicle_id,
+                                                    const std::uint8_t cause,
+                                                    const std::string& event_detail) {
+  msg::VehicleDestroyed destroyed;
+  destroyed.stamp = stamp;
+  destroyed.mission_epoch = mission_epoch;
+  destroyed.vehicle_role = role;
+  destroyed.vehicle_id = vehicle_id;
+  destroyed.death_cause = cause;
+  destroyed.detail = event_detail;
+  destroyed.event_position.x = state.position.x;
+  destroyed.event_position.y = state.position.y;
+  destroyed.event_position.z = state.position.z;
+  destroyed.altitude_m = state.position.z;
+  destroyed.speed_mps = detail::speed(state);
+  return destroyed;
+}
+
+void logRuntimeTruthAlignmentTransition(
+    const rclcpp::Logger& logger, const msg::SimulationTruthAlignment& status,
+    const SimulationTruthAlignmentMissionUpdate& update) {
+  if (update.newly_runtime_degraded) {
+    RCLCPP_WARN(logger,
+                "SIMULATION_TRUTH_ALIGNMENT runtime_residual=true "
+                "startup_contract_latched=true mission_blocked=false reason='%s' "
+                "vehicle_id='%s' max_error_m=%.3f failure_confirmed=%s",
+                status.reason.c_str(), status.vehicle_id.c_str(),
+                status.maximum_position_error_m,
+                status.failure_confirmed ? "true" : "false");
+  } else if (update.newly_runtime_recovered) {
+    RCLCPP_INFO(logger,
+                "SIMULATION_TRUTH_ALIGNMENT runtime_residual=false "
+                "startup_contract_latched=true mission_blocked=false "
+                "max_error_m=%.3f",
+                status.maximum_position_error_m);
+  }
+}
+
 void logPhysicalProximityIntercept(const rclcpp::Logger& logger,
                                    const std::string& interceptor_id,
                                    const MultiInterceptMissionUpdate& update,

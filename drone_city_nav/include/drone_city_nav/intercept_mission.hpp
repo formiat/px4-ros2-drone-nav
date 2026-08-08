@@ -57,6 +57,16 @@ struct MultiInterceptMissionUpdate {
   double interpolation_fraction{1.0};
 };
 
+struct InterceptRefereeCyclePolicy {
+  bool evaluate_physical_contacts{false};
+  bool accept_new_mission_outcome{false};
+  bool settle_lifecycle{false};
+};
+
+[[nodiscard]] InterceptRefereeCyclePolicy
+interceptRefereeCyclePolicy(bool mission_started, bool terminal_outcome_latched,
+                            bool system_failure_latched) noexcept;
+
 struct SweptVehicleSeparation {
   double minimum_m{0.0};
   double current_m{0.0};

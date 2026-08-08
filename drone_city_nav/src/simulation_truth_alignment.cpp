@@ -50,6 +50,38 @@ positionAt(const TimedVehicleState& state, const std::int64_t stamp_ns,
 
 } // namespace
 
+SimulationTruthAlignmentMissionUpdate SimulationTruthAlignmentMissionLifecycle::update(
+    const SimulationTruthAlignmentObservation& observation) noexcept {
+  observation_ = observation;
+  const bool previous_runtime_residual = runtime_residual_;
+  runtime_residual_ = startup_contract_latched_ &&
+                      (!observation_.ready || !observation_.sample_aligned ||
+                       observation_.failure_confirmed);
+  return SimulationTruthAlignmentMissionUpdate{
+      .startup_ready = startup_contract_latched_ ||
+                       (observation_.ready && observation_.sample_aligned &&
+                        !observation_.failure_confirmed),
+      .startup_failure_confirmed =
+          !startup_contract_latched_ && observation_.failure_confirmed,
+      .runtime_residual = runtime_residual_,
+      .newly_runtime_degraded = runtime_residual_ && !previous_runtime_residual,
+      .newly_runtime_recovered = !runtime_residual_ && previous_runtime_residual,
+  };
+}
+
+bool SimulationTruthAlignmentMissionLifecycle::latchStartupContract() noexcept {
+  if (startup_contract_latched_) {
+    return true;
+  }
+  if (!observation_.ready || !observation_.sample_aligned ||
+      observation_.failure_confirmed) {
+    return false;
+  }
+  startup_contract_latched_ = true;
+  runtime_residual_ = false;
+  return true;
+}
+
 SimulationTruthAlignmentMonitor::SimulationTruthAlignmentMonitor(
     const SimulationTruthAlignmentConfig& config)
     : config_{config} {

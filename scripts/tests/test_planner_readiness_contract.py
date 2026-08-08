@@ -72,6 +72,15 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("evader_world_readiness_topic", launch)
         self.assertIn("target_track_readiness_topics", launch)
 
+    def test_coordinate_alignment_is_latched_as_a_startup_contract(self) -> None:
+        referee = REFEREE.read_text(encoding="utf-8")
+        referee_support = REFEREE_SUPPORT.read_text(encoding="utf-8")
+        self.assertIn("latchStartupContract()", referee)
+        self.assertIn("startup_failure_confirmed", referee)
+        self.assertIn("runtime_residual=true", referee_support)
+        self.assertIn("mission_blocked=false", referee_support)
+        self.assertNotIn("truth_alignment_sample_aligned_", referee)
+
 
 if __name__ == "__main__":
     unittest.main()

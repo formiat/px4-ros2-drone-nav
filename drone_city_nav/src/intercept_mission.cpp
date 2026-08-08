@@ -82,6 +82,21 @@ bool interceptMissionReady(const InterceptMissionReadiness& readiness) noexcept 
          readiness.target_track_ready;
 }
 
+InterceptRefereeCyclePolicy
+interceptRefereeCyclePolicy(const bool mission_started,
+                            const bool terminal_outcome_latched,
+                            const bool system_failure_latched) noexcept {
+  if (!mission_started) {
+    return {};
+  }
+  return InterceptRefereeCyclePolicy{
+      .evaluate_physical_contacts = true,
+      .accept_new_mission_outcome =
+          !terminal_outcome_latched && !system_failure_latched,
+      .settle_lifecycle = terminal_outcome_latched || system_failure_latched,
+  };
+}
+
 InterceptStateAdjudicationLifecycle::InterceptStateAdjudicationLifecycle(
     const InterceptStateAdjudicationConfig& config) {
   if (!(config.maximum_state_age_s > 0.0) ||

@@ -201,6 +201,35 @@ TEST(MultiInterceptMissionEvaluatorTest, LateCapturePreservesGoalOutcome) {
   EXPECT_EQ(update.capturing_interceptor_index, std::optional<std::size_t>{0U});
 }
 
+TEST(InterceptRefereeCyclePolicyTest,
+     ContinuesPhysicalContactsWithoutReplacingTerminalOutcome) {
+  const InterceptRefereeCyclePolicy terminal =
+      interceptRefereeCyclePolicy(true, true, false);
+  EXPECT_TRUE(terminal.evaluate_physical_contacts);
+  EXPECT_FALSE(terminal.accept_new_mission_outcome);
+  EXPECT_TRUE(terminal.settle_lifecycle);
+
+  const InterceptRefereeCyclePolicy system_failure =
+      interceptRefereeCyclePolicy(true, false, true);
+  EXPECT_TRUE(system_failure.evaluate_physical_contacts);
+  EXPECT_FALSE(system_failure.accept_new_mission_outcome);
+  EXPECT_TRUE(system_failure.settle_lifecycle);
+}
+
+TEST(InterceptRefereeCyclePolicyTest, EnablesOutcomesOnlyDuringActiveMission) {
+  const InterceptRefereeCyclePolicy before_start =
+      interceptRefereeCyclePolicy(false, false, false);
+  EXPECT_FALSE(before_start.evaluate_physical_contacts);
+  EXPECT_FALSE(before_start.accept_new_mission_outcome);
+  EXPECT_FALSE(before_start.settle_lifecycle);
+
+  const InterceptRefereeCyclePolicy active =
+      interceptRefereeCyclePolicy(true, false, false);
+  EXPECT_TRUE(active.evaluate_physical_contacts);
+  EXPECT_TRUE(active.accept_new_mission_outcome);
+  EXPECT_FALSE(active.settle_lifecycle);
+}
+
 TEST(InterceptorHoldConfirmationTest, RequiresStablePositionAndSpeed) {
   InterceptorHoldConfirmation confirmation{
       InterceptorHoldConfig{.position_tolerance_m = 2.0,

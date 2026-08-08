@@ -2,7 +2,9 @@
 
 #include "drone_city_nav/intercept_mission.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
+#include "drone_city_nav/msg/simulation_truth_alignment.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
+#include "drone_city_nav/simulation_truth_alignment.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -39,6 +41,16 @@ declareInterceptorTopicConfig(rclcpp::Node& node,
 [[nodiscard]] msg::NavigationObjective
 makePositionHoldObjective(const rclcpp::Time& stamp, std::uint64_t mission_epoch,
                           std::uint64_t sample_sequence, const Point3& position);
+
+[[nodiscard]] msg::VehicleDestroyed
+makeProximityDestructionEvent(const rclcpp::Time& stamp, std::uint64_t mission_epoch,
+                              const TimedVehicleState& state, std::uint8_t role,
+                              const std::string& vehicle_id, std::uint8_t cause,
+                              const std::string& event_detail);
+
+void logRuntimeTruthAlignmentTransition(
+    const rclcpp::Logger& logger, const msg::SimulationTruthAlignment& status,
+    const SimulationTruthAlignmentMissionUpdate& update);
 
 void logPhysicalProximityIntercept(const rclcpp::Logger& logger,
                                    const std::string& interceptor_id,

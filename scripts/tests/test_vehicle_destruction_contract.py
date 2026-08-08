@@ -66,6 +66,15 @@ class VehicleDestructionContractTest(unittest.TestCase):
         self.assertIn("CAUSE_PHYSICAL_COLLISION", collision)
         self.assertNotIn("VehicleCommand", referee)
 
+    def test_referee_keeps_physical_contacts_active_during_settlement(self) -> None:
+        referee = REFEREE.read_text(encoding="utf-8")
+        self.assertIn("interceptRefereeCyclePolicy", referee)
+        self.assertIn("evaluateMissionAndPhysicalEvents", referee)
+        self.assertIn("evaluatorStates(true)", referee)
+        self.assertIn("detectInterceptorCollisions();", referee)
+        self.assertIn("outcome_preserved=system_failure", referee)
+        self.assertNotIn("late_capture_after_goal_", referee)
+
     def test_intercept_launch_wires_role_and_epoch_per_vehicle(self) -> None:
         text = LAUNCH.read_text(encoding="utf-8")
         self.assertIn('"vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed"', text)

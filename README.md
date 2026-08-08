@@ -145,6 +145,10 @@ from Gazebo model poses, not independently configured PX4 origins. Mission
 motion starts only after all four planners report a resident world, all three
 trackers have published a valid target position, and several consecutive
 samples confirm that every navigation pose agrees with its Gazebo pose.
+This coordinate agreement is a startup contract: once mission motion begins it
+is latched for the episode. Later navigation-to-truth residuals remain visible
+as diagnostics but do not stop physical adjudication or place the fleet in
+hold.
 
 All four map-frame starts and the evader goal are owned by
 `drone_city_nav/config/intercept_scenario.json`. The runner derives each Gazebo
