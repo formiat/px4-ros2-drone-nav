@@ -197,11 +197,12 @@ at measurement time. Its first measurement has no full velocity estimate; later
 variable-dt corrections produce a constant-velocity `TargetTrack` that coasts
 between measurements. Ideal high-rate scans use full velocity innovation gain.
 Each interceptor guidance node runs at 20 Hz and converts its track into a typed
-continuous objective. The central hypothesis follows measured target motion;
-the other two rotate only their long-range prediction by `-45` and `+45`
-degrees. Their effective offsets continuously converge to zero from 120 m to
-30 m and their lateral displacement is capped at 70 m. Radar tracks and measured
-velocities remain unchanged. Guidance solves the constant-velocity
+continuous objective. All three follow measured target motion by default. When
+`intercept_directional_hypotheses_enabled` is enabled, the other two rotate only
+their long-range prediction by `-45` and `+45` degrees. Their effective offsets
+continuously converge to zero from 120 m to 30 m and their lateral displacement
+is capped at 70 m. Radar tracks and measured velocities remain unchanged.
+Guidance solves the constant-velocity
 intercept equation, caps the result at 15 s, and caps the horizon at 1 s while
 ahead inside the target corridor. Vertical coasting applies bounded
 deceleration until vertical speed reaches zero and clips altitude to the flight

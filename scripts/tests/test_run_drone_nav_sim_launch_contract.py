@@ -233,6 +233,37 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 )
                 self.assertIn(f'"{name}": float(', self.intercept_launch_text)
 
+    def test_intercept_directional_hypotheses_are_disabled_by_default(self) -> None:
+        self.assertIn(
+            'INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED:-false', self.text
+        )
+        self.assertIn(
+            'intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"',
+            self.text,
+        )
+        self.assertIn(
+            "INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED", self.container_text
+        )
+        self.assertRegex(
+            self.intercept_launch_text,
+            r'"intercept_directional_hypotheses_enabled",\s*default_value="false"',
+        )
+        self.assertIn(
+            "return (0.0, 0.0, 0.0)",
+            self.intercept_launch_text,
+        )
+        self.assertIn(
+            "return (0.0, angle_rad, -angle_rad)",
+            self.intercept_launch_text,
+        )
+        for index in range(3):
+            with self.subTest(interceptor=index):
+                self.assertIn(
+                    '"prediction_heading_offset_rad": '
+                    f"directional_hypothesis_offsets_rad[{index}]",
+                    self.intercept_launch_text,
+                )
+
     def test_intercept_launch_configures_los_driven_radar_track_mode(self) -> None:
         self.assertRegex(
             self.intercept_launch_text,

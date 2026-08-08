@@ -85,10 +85,10 @@ target track produced by the radar pipeline described in section 2.
 
 The finite scenario now runs three interceptor drones against one attacking
 drone. They start in three different city corners and own independent PX4,
-navigation, radar, tracker, and guidance pipelines. Long-range guidance tests
-the measured motion direction plus `-45` and `+45` degree alternatives. The
-offsets converge to zero near the attacker and cannot move the predicted point
-more than 70 m laterally.
+navigation, radar, tracker, and guidance pipelines. All three use the measured
+motion direction by default. Optional long-range directional hypotheses add
+`-45` and `+45` degree alternatives; the offsets converge to zero near the
+attacker and cannot move the predicted point more than 70 m laterally.
 
 The first interceptor within 5 m of the attacker destroys that pair. Surviving
 interceptors brake and enter confirmed stationary position hold.

@@ -92,8 +92,10 @@ By default, the evader flies diagonally across the city from map position
 `(270, 54)` to `(54, 378)` at `18 m` altitude.
 Each interceptor uses a latency-compensated analytic intercept solution capped
 at 15 s. While ahead inside the target corridor, the smoothed lead is capped at
-1 s. The three long-range motion hypotheses are `0`, `+45`, and `-45` degrees;
-the lateral hypotheses converge to zero within 30 m and are capped at 70 m.
+1 s. All three interceptors use the measured motion direction by default. Set
+`INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=true` to enable the `0`, `+45`, and
+`-45` degree long-range hypotheses; the lateral hypotheses converge to zero
+within 30 m and are capped at 70 m.
 Interceptors receive no evader coordinates. Three ideal radar adapters publish
 only range, azimuth, elevation, and radial velocity at a deterministic varying
 cadence between 0.1 s and 3.0 s. A typed planner command switches it immediately

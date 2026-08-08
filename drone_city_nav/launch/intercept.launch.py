@@ -43,6 +43,13 @@ def _optional_bool(value, fallback):
     raise RuntimeError(f"Expected boolean launch value, got '{value}'")
 
 
+def _directional_hypothesis_offsets_rad(enabled):
+    if not enabled:
+        return (0.0, 0.0, 0.0)
+    angle_rad = math.radians(45.0)
+    return (0.0, angle_rad, -angle_rad)
+
+
 def _allocate_planner_workers(total_workers, vehicle_count):
     if vehicle_count <= 0:
         raise RuntimeError("At least one vehicle is required")
@@ -90,6 +97,15 @@ def generate_launch_description():
                 if use_static_map
                 else "no_static_cruise_speed_mps"
             ]
+        )
+        directional_hypotheses_enabled = _optional_bool(
+            LaunchConfiguration(
+                "intercept_directional_hypotheses_enabled"
+            ).perform(context),
+            False,
+        )
+        directional_hypothesis_offsets_rad = _directional_hypothesis_offsets_rad(
+            directional_hypotheses_enabled
         )
         shutdown_on_terminal_outcome = _optional_bool(
             LaunchConfiguration("shutdown_on_terminal_outcome").perform(context), True
@@ -140,7 +156,7 @@ def generate_launch_description():
                 "rviz_primary": True,
                 "speed_scale": 1.0,
                 "is_interceptor": True,
-                "prediction_heading_offset_rad": 0.0,
+                "prediction_heading_offset_rad": directional_hypothesis_offsets_rad[0],
                 "rviz_color": (0.15, 0.75, 1.0),
             },
             "interceptor_1": {
@@ -156,7 +172,7 @@ def generate_launch_description():
                 "rviz_primary": False,
                 "speed_scale": 1.0,
                 "is_interceptor": True,
-                "prediction_heading_offset_rad": math.radians(45.0),
+                "prediction_heading_offset_rad": directional_hypothesis_offsets_rad[1],
                 "rviz_color": (0.30, 0.95, 0.45),
             },
             "interceptor_2": {
@@ -172,7 +188,7 @@ def generate_launch_description():
                 "rviz_primary": False,
                 "speed_scale": 1.0,
                 "is_interceptor": True,
-                "prediction_heading_offset_rad": math.radians(-45.0),
+                "prediction_heading_offset_rad": directional_hypothesis_offsets_rad[2],
                 "rviz_color": (1.0, 0.60, 0.20),
             },
             "evader": {
@@ -915,6 +931,9 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "intercept_horizon_smoothing_time_constant_s", default_value="0.5"
+            ),
+            DeclareLaunchArgument(
+                "intercept_directional_hypotheses_enabled", default_value="false"
             ),
             DeclareLaunchArgument(
                 "intercept_hypothesis_zero_distance_m", default_value="30.0"

@@ -152,10 +152,11 @@ half-open flight envelope. The planner treats current-target visibility and the
 path to the predicted intercept point separately. A visible current target keeps
 direct MPPI interception active; a blocked full-lead path shortens the prediction
 toward the current target instead of dropping direct mode.
-The central interceptor predicts the measured direction. The other two use
-`-45` and `+45` degree motion hypotheses at long range; those offsets converge
-continuously to zero below 30 m and their lateral lead is capped at 70 m. The
-radar track itself is never rotated or falsified.
+By default, all three interceptors predict the measured target direction. Set
+`INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=true` to assign the other two
+interceptors `+45` and `-45` degree long-range motion hypotheses. Those offsets
+converge continuously to zero below 30 m and their lateral lead is capped at
+70 m. The radar track itself is never rotated or falsified.
 
 A swept separation of 5 m between any interceptor and the evader publishes
 typed `VehicleDestroyed` events for that pair. Their offboard nodes force-disarm

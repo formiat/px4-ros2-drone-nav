@@ -167,6 +167,9 @@ else
   enable_rviz="true"
 fi
 evader_speed_scale="${EVADER_SPEED_SCALE:-1.0}"
+intercept_directional_hypotheses_enabled="$(
+  normalize_bool "${INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED:-false}"
+)"
 enable_gazebo_gui_follow_camera="$(
   normalize_bool "${ENABLE_GZ_GUI_FOLLOW_CAMERA:-true}"
 )"
@@ -900,6 +903,7 @@ if [[ "${mission_type}" == "intercept" ]]; then
     enable_rviz:="${enable_rviz}"
     evader_model:="${evader_model_name}_3"
     evader_speed_scale:="${evader_speed_scale}"
+    intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"
     shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"
     control_cpu_list:="${control_cpu_list}"
     planning_cpu_list:="${planning_cpu_list}"
