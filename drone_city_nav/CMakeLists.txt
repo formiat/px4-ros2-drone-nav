@@ -140,6 +140,7 @@ add_library(
   src/debug_image.cpp
   src/distance_field.cpp
   src/distance_field_3d.cpp
+  src/direct_tracking_maneuver_lifecycle.cpp
   src/esdf_query.cpp
   src/flight_envelope.cpp
   src/global_guide_candidate.cpp
@@ -507,6 +508,12 @@ if(BUILD_TESTING)
   target_compile_features(intercept_guidance_test PRIVATE cxx_std_20)
   target_link_libraries(intercept_guidance_test drone_city_nav_core)
   enable_project_warnings(intercept_guidance_test)
+
+  ament_add_gtest(direct_tracking_maneuver_lifecycle_test
+                  tests/direct_tracking_maneuver_lifecycle_test.cpp)
+  target_compile_features(direct_tracking_maneuver_lifecycle_test PRIVATE cxx_std_20)
+  target_link_libraries(direct_tracking_maneuver_lifecycle_test drone_city_nav_core)
+  enable_project_warnings(direct_tracking_maneuver_lifecycle_test)
 
   ament_add_gtest(tracking_objective_test tests/tracking_objective_test.cpp)
   target_compile_features(tracking_objective_test PRIVATE cxx_std_20)

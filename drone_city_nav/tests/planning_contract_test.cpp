@@ -94,5 +94,23 @@ TEST(MppiNominalReseedTrackerTest, ReseedsOnPersistentSafetyRejection) {
   EXPECT_TRUE(update.requested);
 }
 
+TEST(MppiNominalReseedTrackerTest, ReseedsOnDirectTrackingManeuver) {
+  MppiNominalReseedTracker tracker;
+  static_cast<void>(
+      tracker.update(MppiNominalReseedObservation{.guide_generation = 1U}));
+
+  const MppiNominalReseedUpdate update = tracker.update(MppiNominalReseedObservation{
+      .guide_generation = 1U,
+      .direct_tracking_maneuver_generation = 1U,
+  });
+  const MppiNominalReseedUpdate repeated = tracker.update(MppiNominalReseedObservation{
+      .guide_generation = 1U,
+      .direct_tracking_maneuver_generation = 1U,
+  });
+
+  EXPECT_TRUE(update.requested);
+  EXPECT_FALSE(repeated.requested);
+}
+
 } // namespace
 } // namespace drone_city_nav

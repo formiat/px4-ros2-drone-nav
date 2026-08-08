@@ -13,6 +13,7 @@ builtin_interfaces/Time stamp
 builtin_interfaces/Time observation_stamp
 uint64 mission_epoch
 uint64 sample_sequence
+uint64 target_track_id
 geometry_msgs/Point position
 geometry_msgs/Point observed_target_position
 geometry_msgs/Vector3 observed_target_velocity

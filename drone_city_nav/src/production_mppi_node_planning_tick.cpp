@@ -401,32 +401,6 @@ void ProductionMppiNode::planningTick() {
                           esdf->global_guide_generation);
     }
   }
-  const MppiNominalReseedUpdate nominal_reseed =
-      nominal_reseed_tracker_.update(MppiNominalReseedObservation{
-          .guide_generation = direct_tracking_interception
-                                  ? effective_guide_generation
-                                  : esdf->global_guide_generation,
-          .local_liveness_generation = liveness.reseed_generation,
-          .guide_liveness_generation = guide_progress.local_reseed_generation,
-          .safety_rejection_generation = guide_progress.persistent_safety_rejection
-                                             ? guide_progress.stall_generation
-                                             : 0U,
-      });
-  if (risk_escalation_) {
-    const bool stable_progress = previous_result_.has_value() &&
-                                 previous_result_->eligible_risk_contract.available &&
-                                 guide_progress.progress_m > 1.0e-3;
-    maximum_eligible_risk_tier_ =
-        risk_escalation_
-            ->update(MppiRiskEscalationObservation{
-                .reseed_generation =
-                    liveness.reseed_generation + guide_progress.local_reseed_generation,
-                .no_eligible_recovery_generation =
-                    nominal_reseed.no_eligible_recovery_generation,
-                .stable_progress = stable_progress,
-            })
-            .maximum_eligible_tier;
-  }
   mppi::RiskTier route_required_risk_tier = mppi::RiskTier::kPreferred;
   if (route_usable && esdf->mppi_route && route_projection.valid) {
     const double horizon_distance_m = std::max(
@@ -482,6 +456,53 @@ void ProductionMppiNode::planningTick() {
       };
     }
   }
+  DirectTrackingManeuverUpdate direct_tracking_maneuver;
+  if (direct_tracking_interception && moving_target.has_value()) {
+    direct_tracking_maneuver =
+        direct_tracking_maneuver_lifecycle_.update(DirectTrackingManeuverObservation{
+            .interceptor_position =
+                Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+            .interceptor_velocity =
+                Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
+            .target_position = Point3{moving_target->state.x, moving_target->state.y,
+                                      moving_target->state.z},
+            .target_velocity = Vec3{moving_target->state.vx, moving_target->state.vy,
+                                    moving_target->state.vz},
+            .stamp_ns = now_ns,
+            .line_of_sight_generation = line_of_sight_generation,
+            .active = planning_state == ProductionMppiPlanningState::kPlanned,
+        });
+  } else {
+    direct_tracking_maneuver = direct_tracking_maneuver_lifecycle_.update({});
+  }
+  const MppiNominalReseedUpdate nominal_reseed =
+      nominal_reseed_tracker_.update(MppiNominalReseedObservation{
+          .guide_generation = direct_tracking_interception
+                                  ? effective_guide_generation
+                                  : esdf->global_guide_generation,
+          .local_liveness_generation = liveness.reseed_generation,
+          .guide_liveness_generation = guide_progress.local_reseed_generation,
+          .safety_rejection_generation = guide_progress.persistent_safety_rejection
+                                             ? guide_progress.stall_generation
+                                             : 0U,
+          .direct_tracking_maneuver_generation =
+              direct_tracking_maneuver.reseed_generation,
+      });
+  if (risk_escalation_) {
+    const bool stable_progress = previous_result_.has_value() &&
+                                 previous_result_->eligible_risk_contract.available &&
+                                 guide_progress.progress_m > 1.0e-3;
+    maximum_eligible_risk_tier_ =
+        risk_escalation_
+            ->update(MppiRiskEscalationObservation{
+                .reseed_generation =
+                    liveness.reseed_generation + guide_progress.local_reseed_generation,
+                .no_eligible_recovery_generation =
+                    nominal_reseed.no_eligible_recovery_generation,
+                .stable_progress = stable_progress,
+            })
+            .maximum_eligible_tier;
+  }
   const EsdfQueryResult current_clearance =
       queryConservativeEsdf3D(esdf->grid, *esdf->distances_m, navigation.state.x,
                               navigation.state.y, navigation.state.z);
@@ -531,6 +552,7 @@ void ProductionMppiNode::planningTick() {
                 }}
               : std::nullopt,
       .active_rollouts = rollout_budget.active_rollouts,
+      .target_directed_reacquisition_enabled = direct_tracking_interception,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
@@ -637,6 +659,14 @@ void ProductionMppiNode::planningTick() {
   diagnostic_result.first_control_delta = result.first_control_delta;
   diagnostic_result.warm_start_shift_s = result.warm_start_shift_s;
   diagnostic_result.nominal_reseeded = result.nominal_reseeded;
+  diagnostic_result.target_directed_candidate_injected =
+      result.target_directed_candidate_injected;
+  diagnostic_result.target_directed_candidate_raw_safe =
+      result.target_directed_candidate_raw_safe;
+  diagnostic_result.target_directed_candidate_best_eligible =
+      result.target_directed_candidate_best_eligible;
+  diagnostic_result.target_directed_candidate_weight =
+      result.target_directed_candidate_weight;
   diagnostic_result.esdf_revision = result.esdf_revision;
   diagnostic_result.active_rollouts = result.active_rollouts;
   diagnostic_result.timings = result.timings;
@@ -652,6 +682,7 @@ void ProductionMppiNode::planningTick() {
       .stability = stability,
       .prediction = prediction,
       .liveness = liveness,
+      .direct_tracking_maneuver = direct_tracking_maneuver,
       .speed_policy = speed_policy,
       .guide_progress = guide_progress,
       .no_eligible_recovery = no_eligible_recovery,

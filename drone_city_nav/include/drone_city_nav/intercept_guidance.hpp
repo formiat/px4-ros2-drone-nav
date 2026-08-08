@@ -58,6 +58,7 @@ struct InterceptGuidanceResult {
   double hypothesis_lateral_offset_m{0.0};
   bool valid{false};
   bool vertical_prediction_limited{false};
+  bool hypothesis_converged_latched{false};
 };
 
 [[nodiscard]] TargetVerticalPrediction
@@ -72,6 +73,8 @@ public:
   [[nodiscard]] InterceptGuidanceResult update(const TimedVehicleState& interceptor,
                                                const TimedVehicleState& target,
                                                std::int64_t now_ns);
+  void observeLineOfSight(bool active) noexcept;
+  void resetTargetTrack() noexcept;
 
 private:
   void resetPredictionState() noexcept;
@@ -80,6 +83,8 @@ private:
   std::optional<double> smoothed_prediction_horizon_s_;
   std::optional<std::int64_t> previous_update_stamp_ns_;
   bool ahead_mode_{false};
+  bool line_of_sight_active_{false};
+  bool hypothesis_converged_latched_{false};
 };
 
 [[nodiscard]] const char*

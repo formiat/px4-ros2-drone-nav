@@ -1,3 +1,4 @@
+#include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -6,8 +7,11 @@
 
 int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
-  rclcpp::spin(
-      std::make_shared<drone_city_nav::ProductionMppiNode>(rclcpp::NodeOptions{}));
+  auto node =
+      std::make_shared<drone_city_nav::ProductionMppiNode>(rclcpp::NodeOptions{});
+  rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 2U};
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }

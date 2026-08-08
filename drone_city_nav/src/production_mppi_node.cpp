@@ -172,6 +172,19 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("tracking_capture_radius_m", 5.0);
   static_tracking_esdf_refresh_margin_m_ =
       declare_parameter<double>("static_tracking_esdf_refresh_margin_m", 15.0);
+  direct_tracking_maneuver_lifecycle_ =
+      DirectTrackingManeuverLifecycle{DirectTrackingManeuverConfig{
+          .bearing_change_threshold_rad = declare_parameter<double>(
+              "direct_tracking_reseed_bearing_change_rad", 0.5235987755982988),
+          .minimum_closing_speed_mps = declare_parameter<double>(
+              "direct_tracking_minimum_closing_speed_mps", 0.5),
+          .closing_recovery_speed_mps = declare_parameter<double>(
+              "direct_tracking_closing_recovery_speed_mps", 1.5),
+          .no_closing_duration_s = declare_parameter<double>(
+              "direct_tracking_no_closing_reseed_delay_s", 1.0),
+          .minimum_reseed_interval_s = declare_parameter<double>(
+              "direct_tracking_minimum_reseed_interval_s", 0.5),
+      }};
   if (!(dynamic_objective_replan_distance_m_ > 0.0) ||
       !(dynamic_objective_replan_period_s_ > 0.0) ||
       !(tracking_objective_ray_sample_spacing_m_ > 0.0) ||
@@ -730,61 +743,77 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   diagnostics_error_stream_.open(diagnostics_output_dir_ / "mppi_error_context.jsonl",
                                  std::ios::trunc);
   last_diagnostics_flush_time_ = std::chrono::steady_clock::now();
+  input_callback_group_ =
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  planning_callback_group_ =
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions input_subscription_options;
+  input_subscription_options.callback_group = input_callback_group_;
   const auto sensor_qos = rclcpp::SensorDataQoS{};
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
       declare_parameter<std::string>("px4_local_position_topic",
                                      "/fmu/out/vehicle_local_position_v1"),
-      sensor_qos, [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr message) {
+      sensor_qos,
+      [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr message) {
         onLocalPosition(*message);
-      });
+      },
+      input_subscription_options);
   navigation_readiness_sub_ = create_subscription<std_msgs::msg::Bool>(
       declare_parameter<std::string>("navigation_readiness_topic",
                                      "/drone_city_nav/navigation_ready"),
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](const std_msgs::msg::Bool::SharedPtr message) {
         onNavigationReadiness(*message);
-      });
+      },
+      input_subscription_options);
   raw_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot>(
       declare_parameter<std::string>("raw_obstacle_snapshot_topic",
                                      "/drone_city_nav/raw_obstacle_snapshot"),
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](msg::RawObstacleSnapshot::ConstSharedPtr message) {
         onRawObstacleSnapshot(std::move(message));
-      });
+      },
+      input_subscription_options);
   raw_delta_sub_ = create_subscription<msg::RawObstacleDelta>(
       declare_parameter<std::string>("raw_obstacle_delta_topic",
                                      "/drone_city_nav/raw_obstacle_delta"),
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](msg::RawObstacleDelta::ConstSharedPtr message) {
         onRawObstacleDelta(std::move(message));
-      });
+      },
+      input_subscription_options);
   latest_lidar_safety_scan_sub_ = create_subscription<msg::LatestLidarSafetyScan>(
       declare_parameter<std::string>("latest_lidar_safety_scan_topic",
                                      "/drone_city_nav/latest_lidar_safety_scan"),
-      sensor_qos, [this](const msg::LatestLidarSafetyScan::SharedPtr message) {
+      sensor_qos,
+      [this](const msg::LatestLidarSafetyScan::SharedPtr message) {
         onLatestLidarSafetyScan(*message);
-      });
+      },
+      input_subscription_options);
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
       declare_parameter<std::string>("obstacle_memory_status_topic",
                                      "/drone_city_nav/obstacle_memory_status"),
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](const msg::ObstacleMemoryStatus::SharedPtr message) {
         onMemoryStatus(*message);
-      });
+      },
+      input_subscription_options);
   applied_control_sub_ = create_subscription<msg::MppiControlFeedback>(
       declare_parameter<std::string>("applied_control_feedback_topic",
                                      "/drone_city_nav/mppi/applied_control"),
       rclcpp::QoS{10}.reliable(),
       [this](const msg::MppiControlFeedback::SharedPtr message) {
         onAppliedControl(*message);
-      });
+      },
+      input_subscription_options);
   navigation_objective_sub_ = create_subscription<msg::NavigationObjective>(
       declare_parameter<std::string>("navigation_objective_topic",
                                      "/drone_city_nav/navigation_objective"),
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](const msg::NavigationObjective::SharedPtr message) {
         onNavigationObjective(*message);
-      });
+      },
+      input_subscription_options);
   radar_track_mode_command_pub_ = create_publisher<msg::RadarTrackModeCommand>(
       declare_parameter<std::string>("radar_track_mode_command_topic",
                                      "/drone_city_nav/radar/track_mode_command"),
@@ -815,10 +844,12 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       std::jthread([this](const std::stop_token token) { guideWorker(token); });
   if (planning_tick_phase_offset_s_ > 0.0) {
     planning_start_timer_ = create_wall_timer(
-        std::chrono::duration<double>{planning_tick_phase_offset_s_}, [this]() {
+        std::chrono::duration<double>{planning_tick_phase_offset_s_},
+        [this]() {
           planning_start_timer_->cancel();
           startPlanningTimer();
-        });
+        },
+        planning_callback_group_);
   } else {
     startPlanningTimer();
   }
@@ -860,7 +891,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
 
 void ProductionMppiNode::startPlanningTimer() {
   planning_timer_ = create_wall_timer(
-      std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); });
+      std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); },
+      planning_callback_group_);
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

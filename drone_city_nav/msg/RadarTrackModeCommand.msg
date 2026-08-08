@@ -9,5 +9,6 @@ uint8 REASON_WORLD_UNAVAILABLE=3
 builtin_interfaces/Time stamp
 uint64 mission_epoch
 uint64 objective_sample_sequence
+uint64 target_track_id
 uint8 mode
 uint8 reason

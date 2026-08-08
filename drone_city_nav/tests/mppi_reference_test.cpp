@@ -260,6 +260,22 @@ TEST(MppiReferenceTest, MovingTargetUsesClosestApproachInsteadOfTerminalPoint) {
   EXPECT_LT(moving_target.soft_cost, terminal_point.soft_cost);
 }
 
+TEST(MppiReferenceTest, MovingTargetDiagnosticsUseDynamicClosestApproach) {
+  RolloutMetrics metrics;
+  metrics.costs.head_progress = 3.0F;
+  metrics.costs.progress = -8.0F;
+
+  const MppiProgressDiagnostics moving =
+      resolveUnroutedProgressDiagnostics(metrics, true, -20.0F, -30.0F);
+  const MppiProgressDiagnostics fixed =
+      resolveUnroutedProgressDiagnostics(metrics, false, -20.0F, -30.0F);
+
+  EXPECT_FLOAT_EQ(moving.head_progress_m, 3.0F);
+  EXPECT_FLOAT_EQ(moving.terminal_progress_m, 8.0F);
+  EXPECT_FLOAT_EQ(fixed.head_progress_m, -20.0F);
+  EXPECT_FLOAT_EQ(fixed.terminal_progress_m, -30.0F);
+}
+
 TEST(MppiReferenceTest, MovingTargetVerticalMotionStopsAndRespectsBounds) {
   const MovingTargetReference stopping{
       .state = State{.z = 18.0F, .vz = 4.0F},

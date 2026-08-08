@@ -426,7 +426,24 @@ void ProductionMppiNode::processDiagnostics(
        << (input.previous_applied_control.has_value() ? "offboard_feedback"
                                                       : "engine_fallback")
        << " nominal_reseeded=" << (result.nominal_reseeded ? "true" : "false")
-       << " no_eligible_phase="
+       << " direct_maneuver_reseed="
+       << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
+       << " direct_maneuver_reason="
+       << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
+       << " direct_bearing_change_deg="
+       << snapshot.direct_tracking_maneuver.bearing_change_rad * 180.0 / std::acos(-1.0)
+       << " direct_closing_speed_mps="
+       << snapshot.direct_tracking_maneuver.closing_speed_mps
+       << " direct_no_closing_duration_s="
+       << snapshot.direct_tracking_maneuver.no_closing_duration_s
+       << " target_directed_candidate_injected="
+       << (result.target_directed_candidate_injected ? "true" : "false")
+       << " target_directed_candidate_raw_safe="
+       << (result.target_directed_candidate_raw_safe ? "true" : "false")
+       << " target_directed_candidate_best_eligible="
+       << (result.target_directed_candidate_best_eligible ? "true" : "false")
+       << " target_directed_candidate_weight="
+       << result.target_directed_candidate_weight << " no_eligible_phase="
        << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase)
        << " no_eligible_recovery_generation="
        << snapshot.no_eligible_recovery.no_eligible_recovery_generation
@@ -850,7 +867,24 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"terminal_progress_m\":" << result.terminal_progress_m
         << ",\"warm_start_shift_ms\":" << result.warm_start_shift_s * 1000.0
         << ",\"nominal_reseeded\":" << (result.nominal_reseeded ? "true" : "false")
-        << ",\"no_eligible_phase\":\""
+        << ",\"direct_maneuver_reseed\":"
+        << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
+        << ",\"direct_maneuver_reason\":\""
+        << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
+        << '"' << ",\"direct_bearing_change_rad\":"
+        << snapshot.direct_tracking_maneuver.bearing_change_rad
+        << ",\"direct_closing_speed_mps\":"
+        << snapshot.direct_tracking_maneuver.closing_speed_mps
+        << ",\"direct_no_closing_duration_s\":"
+        << snapshot.direct_tracking_maneuver.no_closing_duration_s
+        << ",\"target_directed_candidate_injected\":"
+        << (result.target_directed_candidate_injected ? "true" : "false")
+        << ",\"target_directed_candidate_raw_safe\":"
+        << (result.target_directed_candidate_raw_safe ? "true" : "false")
+        << ",\"target_directed_candidate_best_eligible\":"
+        << (result.target_directed_candidate_best_eligible ? "true" : "false")
+        << ",\"target_directed_candidate_weight\":"
+        << result.target_directed_candidate_weight << ",\"no_eligible_phase\":\""
         << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase) << '"'
         << ",\"no_eligible_recovery_generation\":"
         << snapshot.no_eligible_recovery.no_eligible_recovery_generation

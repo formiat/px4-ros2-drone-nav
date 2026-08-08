@@ -78,6 +78,22 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.risk.preferred_distance_m >= config.risk.critical_distance_m;
 }
 
+MppiProgressDiagnostics resolveUnroutedProgressDiagnostics(
+    const RolloutMetrics& metrics, const bool moving_target_enabled,
+    const float fixed_target_head_progress_m,
+    const float fixed_target_terminal_progress_m) noexcept {
+  if (moving_target_enabled) {
+    return MppiProgressDiagnostics{
+        .head_progress_m = metrics.costs.head_progress,
+        .terminal_progress_m = -metrics.costs.progress,
+    };
+  }
+  return MppiProgressDiagnostics{
+      .head_progress_m = fixed_target_head_progress_m,
+      .terminal_progress_m = fixed_target_terminal_progress_m,
+  };
+}
+
 State integrateReference(State state, Control control,
                          const DynamicsConfig& config) noexcept {
   clampHorizontal(control.ax, control.ay, config.maximum_horizontal_acceleration_mps2);

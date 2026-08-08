@@ -163,6 +163,19 @@ void InterceptGuidance::resetPredictionState() noexcept {
   ahead_mode_ = false;
 }
 
+void InterceptGuidance::observeLineOfSight(const bool active) noexcept {
+  if (line_of_sight_active_ && !active) {
+    hypothesis_converged_latched_ = false;
+  }
+  line_of_sight_active_ = active;
+}
+
+void InterceptGuidance::resetTargetTrack() noexcept {
+  resetPredictionState();
+  line_of_sight_active_ = false;
+  hypothesis_converged_latched_ = false;
+}
+
 InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& interceptor,
                                                   const TimedVehicleState& target,
                                                   const std::int64_t now_ns) {
@@ -179,6 +192,7 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
   result.observation_stamp_ns = target.stamp_ns;
   result.configured_heading_offset_rad = config_.prediction_heading_offset_rad;
   result.valid = true;
+  result.hypothesis_converged_latched = hypothesis_converged_latched_;
   result.predicted_position = target.position;
   result.prediction_age_s =
       static_cast<double>(std::max<std::int64_t>(0, now_ns - target.stamp_ns)) * 1.0e-9;
@@ -224,10 +238,18 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
         (distance_m - config_.hypothesis_zero_distance_m) /
             (config_.hypothesis_full_distance_m - config_.hypothesis_zero_distance_m),
         0.0, 1.0);
-    result.effective_heading_offset_rad = config_.prediction_heading_offset_rad * blend;
+    if (line_of_sight_active_ &&
+        std::abs(config_.prediction_heading_offset_rad) > 1.0e-9 &&
+        distance_m <= config_.hypothesis_zero_distance_m) {
+      hypothesis_converged_latched_ = true;
+    }
+    result.effective_heading_offset_rad =
+        hypothesis_converged_latched_ ? 0.0
+                                      : config_.prediction_heading_offset_rad * blend;
     hypothesis_velocity =
         rotateHorizontal(current_velocity, result.effective_heading_offset_rad);
   }
+  result.hypothesis_converged_latched = hypothesis_converged_latched_;
 
   const Vec3 direction{current_velocity.x / result.target_speed_mps,
                        current_velocity.y / result.target_speed_mps,

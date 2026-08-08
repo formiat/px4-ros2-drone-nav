@@ -274,105 +274,8 @@ struct DeviceBuffers {
   }
 };
 
+#include "mppi_engine_host_validation.hpp"
 #include "mppi_engine_kernels.cuh"
-
-[[nodiscard]] SweptFootprintConfig
-hostFootprintConfig(const FootprintConfig& footprint) noexcept {
-  return SweptFootprintConfig{
-      .radius_m = footprint.radius_m,
-      .lower_extent_m = footprint.lower_extent_m,
-      .upper_extent_m = footprint.upper_extent_m,
-      .perimeter_samples = footprint.perimeter_samples,
-      .radial_rings = footprint.radial_rings,
-      .axial_samples = footprint.axial_samples,
-  };
-}
-
-[[nodiscard]] FootprintBodyAxis hostBodyAxis(const Control& control) noexcept {
-  return bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
-}
-
-[[nodiscard]] bool hostSolidCollision(const State& state,
-                                      const FootprintBodyAxis& body_axis,
-                                      const FootprintConfig& footprint_config,
-                                      const std::span<const KnownSolid> solids) {
-  const SweptFootprintConfig footprint = hostFootprintConfig(footprint_config);
-  const auto overlaps_projection = [&](const double center_projection,
-                                       const double axis_projection,
-                                       const double solid_min, const double solid_max) {
-    const double projection = std::clamp(axis_projection, -1.0, 1.0);
-    const double radial_projection =
-        footprint.radius_m * std::sqrt(std::max(0.0, 1.0 - projection * projection));
-    const double maximum_axial = projection >= 0.0
-                                     ? footprint.upper_extent_m * projection
-                                     : -footprint.lower_extent_m * projection;
-    const double minimum_axial = projection >= 0.0
-                                     ? -footprint.lower_extent_m * projection
-                                     : footprint.upper_extent_m * projection;
-    return center_projection + maximum_axial + radial_projection >= solid_min &&
-           center_projection + minimum_axial - radial_projection <= solid_max;
-  };
-  return std::ranges::any_of(solids, [&](const KnownSolid& solid) {
-    if (!(footprint.radius_m > 0.0)) {
-      if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
-        return false;
-      }
-      const float dx = state.x - solid.center_x_m;
-      const float dy = state.y - solid.center_y_m;
-      return std::abs(dx * solid.normal_x + dy * solid.normal_y) <=
-                 solid.half_depth_m &&
-             std::abs(dx * solid.lateral_x + dy * solid.lateral_y) <=
-                 solid.half_width_m;
-    }
-    const float dx = state.x - solid.center_x_m;
-    const float dy = state.y - solid.center_y_m;
-    const double depth = dx * solid.normal_x + dy * solid.normal_y;
-    const double lateral = dx * solid.lateral_x + dy * solid.lateral_y;
-    return overlaps_projection(
-               depth, body_axis.x * solid.normal_x + body_axis.y * solid.normal_y,
-               -solid.half_depth_m, solid.half_depth_m) &&
-           overlaps_projection(
-               lateral, body_axis.x * solid.lateral_x + body_axis.y * solid.lateral_y,
-               -solid.half_width_m, solid.half_width_m) &&
-           overlaps_projection(state.z, body_axis.z, solid.min_z_m, solid.max_z_m);
-  });
-}
-
-[[nodiscard]] bool hostSweptSolidCollision(const std::span<const State> horizon,
-                                           const std::span<const Control> controls,
-                                           const FootprintConfig& footprint,
-                                           const std::span<const KnownSolid> solids) {
-  if (horizon.size() != controls.size() + 1U) {
-    return true;
-  }
-  for (std::size_t index = 0U; index < controls.size(); ++index) {
-    const Control& control = controls[index];
-    const FootprintBodyAxis body_axis = hostBodyAxis(control);
-    const State& previous = horizon[index];
-    const State& next = horizon[index + 1U];
-    const float segment_length_m = std::hypot(next.x - previous.x, next.y - previous.y);
-    const std::size_t samples = std::max<std::size_t>(
-        1U, static_cast<std::size_t>(std::ceil(segment_length_m / 0.25F)));
-    for (std::size_t sample = 1U; sample <= samples; ++sample) {
-      const float ratio = static_cast<float>(sample) / static_cast<float>(samples);
-      State state = next;
-      state.x = std::lerp(previous.x, next.x, ratio);
-      state.y = std::lerp(previous.y, next.y, ratio);
-      state.z = std::lerp(previous.z, next.z, ratio);
-      if (hostSolidCollision(state, body_axis, footprint, solids)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-struct EvaluatedControlSequence {
-  ReferenceSimulationTrace trace;
-  RolloutMetrics metrics{};
-  MppiPostUpdateClassificationResult classification{};
-  bool known_solid_collision{false};
-};
 
 } // namespace
 
@@ -385,6 +288,11 @@ public:
         updated_(config_.steps),
         best_eligible_(config_.steps),
         repair_candidates_(kRepairCandidateCount * config_.steps),
+        reacquisition_candidate_(config_.steps),
+        reacquisition_noise_ax_(config_.steps),
+        reacquisition_noise_ay_(config_.steps),
+        reacquisition_noise_az_(config_.steps),
+        reacquisition_noise_yaw_(config_.steps),
         zero_noise_(config_.steps) {
     if (!benchmarkConfigIsValid(config_)) {
       throw std::invalid_argument{"invalid MPPI engine configuration"};
@@ -531,6 +439,23 @@ public:
         route_uploaded_ = true;
       }
     }
+    const bool target_directed_reacquisition_enabled =
+        input.target_directed_reacquisition_enabled && active_rollouts > 0U;
+    if (target_directed_reacquisition_enabled) {
+      reacquisition_candidate_ = buildGuideDirectedNominalSeed(
+          input.initial_state, input.target, {}, 0.0F, input.reference_speed_mps,
+          config_.dynamics, config_.steps, previous_applied_control);
+      for (std::size_t step = 0U; step < config_.steps; ++step) {
+        reacquisition_noise_ax_[step] =
+            reacquisition_candidate_[step].ax - nominal_[step].ax;
+        reacquisition_noise_ay_[step] =
+            reacquisition_candidate_[step].ay - nominal_[step].ay;
+        reacquisition_noise_az_[step] =
+            reacquisition_candidate_[step].az - nominal_[step].az;
+        reacquisition_noise_yaw_[step] =
+            reacquisition_candidate_[step].yaw_accel - nominal_[step].yaw_accel;
+      }
+    }
 
     started_.record(stream_);
     checkCuda(cudaMemcpyAsync(buffers_.nominal.get(), nominal_.data(),
@@ -542,6 +467,22 @@ public:
         buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
         buffers_.noise_yaw.get(), noise_count, config_.seed, tick_sequence_++,
         config_.noise);
+    if (target_directed_reacquisition_enabled) {
+      const std::size_t bytes = config_.steps * sizeof(float);
+      checkCuda(cudaMemcpyAsync(buffers_.noise_ax.get(), reacquisition_noise_ax_.data(),
+                                bytes, cudaMemcpyHostToDevice, stream_),
+                "inject target-directed acceleration x");
+      checkCuda(cudaMemcpyAsync(buffers_.noise_ay.get(), reacquisition_noise_ay_.data(),
+                                bytes, cudaMemcpyHostToDevice, stream_),
+                "inject target-directed acceleration y");
+      checkCuda(cudaMemcpyAsync(buffers_.noise_az.get(), reacquisition_noise_az_.data(),
+                                bytes, cudaMemcpyHostToDevice, stream_),
+                "inject target-directed acceleration z");
+      checkCuda(cudaMemcpyAsync(buffers_.noise_yaw.get(),
+                                reacquisition_noise_yaw_.data(), bytes,
+                                cudaMemcpyHostToDevice, stream_),
+                "inject target-directed yaw acceleration");
+    }
     noise_done_.record(stream_);
     simulate<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
@@ -621,6 +562,10 @@ public:
     float best_critical_exposure_m = kInfinity;
     float best_planning_exposure_m = kInfinity;
     float eligible_weight_sum = 0.0F;
+    int best_rollout_index = -1;
+    std::uint8_t reacquisition_raw_collision = 1U;
+    std::uint8_t reacquisition_solid_collision = 1U;
+    float reacquisition_weight = 0.0F;
     checkCuda(cudaMemcpyAsync(updated_.data(), buffers_.updated.get(),
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,
                               stream_),
@@ -645,6 +590,26 @@ public:
                               sizeof(eligible_weight_sum), cudaMemcpyDeviceToHost,
                               stream_),
               "copy eligible weight sum");
+    if (target_directed_reacquisition_enabled) {
+      checkCuda(cudaMemcpyAsync(&best_rollout_index, buffers_.best_rollout.get(),
+                                sizeof(best_rollout_index), cudaMemcpyDeviceToHost,
+                                stream_),
+                "copy best rollout index");
+      checkCuda(cudaMemcpyAsync(&reacquisition_raw_collision,
+                                buffers_.raw_collision.get(),
+                                sizeof(reacquisition_raw_collision),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy target-directed raw collision");
+      checkCuda(cudaMemcpyAsync(&reacquisition_solid_collision,
+                                buffers_.solid_collision.get(),
+                                sizeof(reacquisition_solid_collision),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy target-directed solid collision");
+      checkCuda(cudaMemcpyAsync(&reacquisition_weight, buffers_.weights.get(),
+                                sizeof(reacquisition_weight), cudaMemcpyDeviceToHost,
+                                stream_),
+                "copy target-directed weight");
+    }
     completed_.record(stream_);
     completed_.synchronize();
     checkCuda(cudaGetLastError(), "MPPI engine kernels");
@@ -669,6 +634,13 @@ public:
         .planning_exposure_tolerance_m = config_.risk.planning_exposure_tolerance_m,
         .weight_sum = eligible_weight_sum,
     };
+    result.target_directed_candidate_injected = target_directed_reacquisition_enabled;
+    result.target_directed_candidate_raw_safe = target_directed_reacquisition_enabled &&
+                                                reacquisition_raw_collision == 0U &&
+                                                reacquisition_solid_collision == 0U;
+    result.target_directed_candidate_best_eligible =
+        target_directed_reacquisition_enabled && best_rollout_index == 0;
+    result.target_directed_candidate_weight = reacquisition_weight;
     const auto evaluate_controls = [&](const std::span<const Control> controls) {
       EvaluatedControlSequence evaluation;
       evaluation.metrics = simulateReference(
@@ -834,6 +806,7 @@ public:
     State state = result.horizon.front();
     const float initial_distance =
         std::hypot(input.target.x - state.x, input.target.y - state.y);
+    float fixed_target_head_progress_m = 0.0F;
     float reconstruction_route_station_m =
         input.route.has_value() ? input.route->initial_station_m : 0.0F;
     std::optional<float> latest_route_station;
@@ -880,18 +853,27 @@ public:
         }
       }
       if (index + 1U == head_steps) {
-        result.head_progress_m =
-            latest_route_station.has_value()
-                ? *latest_route_station - input.route->initial_station_m
-                : initial_distance -
-                      std::hypot(input.target.x - state.x, input.target.y - state.y);
+        if (latest_route_station.has_value()) {
+          result.head_progress_m =
+              *latest_route_station - input.route->initial_station_m;
+        } else {
+          fixed_target_head_progress_m =
+              initial_distance -
+              std::hypot(input.target.x - state.x, input.target.y - state.y);
+        }
       }
     }
-    result.terminal_progress_m =
-        latest_route_station.has_value()
-            ? *latest_route_station - input.route->initial_station_m
-            : initial_distance -
-                  std::hypot(input.target.x - state.x, input.target.y - state.y);
+    if (latest_route_station.has_value()) {
+      result.terminal_progress_m =
+          *latest_route_station - input.route->initial_station_m;
+    } else {
+      const MppiProgressDiagnostics progress = resolveUnroutedProgressDiagnostics(
+          metrics, moving_target_enabled, fixed_target_head_progress_m,
+          initial_distance -
+              std::hypot(input.target.x - state.x, input.target.y - state.y));
+      result.head_progress_m = progress.head_progress_m;
+      result.terminal_progress_m = progress.terminal_progress_m;
+    }
     result.timings.horizon_reconstruction_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   reconstruction_started)
@@ -935,6 +917,11 @@ private:
   std::vector<Control> updated_;
   std::vector<Control> best_eligible_;
   std::vector<Control> repair_candidates_;
+  std::vector<Control> reacquisition_candidate_;
+  std::vector<float> reacquisition_noise_ax_;
+  std::vector<float> reacquisition_noise_ay_;
+  std::vector<float> reacquisition_noise_az_;
+  std::vector<float> reacquisition_noise_yaw_;
   std::array<float, kRepairCandidateCount> repair_critical_exposure_{};
   std::array<float, kRepairCandidateCount> repair_planning_exposure_{};
   std::array<std::uint8_t, kRepairCandidateCount> repair_worst_tier_{};

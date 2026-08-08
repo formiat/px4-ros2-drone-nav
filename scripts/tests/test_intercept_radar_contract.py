@@ -46,6 +46,7 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("uint8 MODE_SEARCH=0", command)
         self.assertIn("uint8 MODE_TRACK=1", command)
         self.assertIn("uint8 REASON_OBSERVED_TARGET_VISIBLE=2", command)
+        self.assertIn("uint64 target_track_id", command)
         self.assertNotIn("geometry_msgs", command)
         self.assertNotIn("position", command)
         self.assertNotIn("range_m", command)
@@ -112,6 +113,10 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn('"evader_world_readiness_topic"', text)
         self.assertIn('"track_mode_command_topic"', text)
         self.assertIn('"radar_track_mode_command_topic"', text)
+        self.assertIn(
+            'create_subscription<msg::RadarTrackModeCommand>',
+            GUIDANCE.read_text(encoding="utf-8"),
+        )
         self.assertNotIn("tracked_agent_state_topic", text)
         self.assertNotIn('executable="intercept_mission_node"', text)
         self.assertIn('"interceptor_0"', text)

@@ -221,6 +221,54 @@ TEST(InterceptGuidance, HypothesisConvergesToRealTrackNearTarget) {
   EXPECT_DOUBLE_EQ(result.predicted_position.y, 0.0);
 }
 
+TEST(InterceptGuidance, ConvergedHypothesisStaysClosedUntilLineOfSightIsLost) {
+  InterceptGuidance guidance{InterceptGuidanceConfig{
+      .prediction_heading_offset_rad = std::acos(-1.0) / 4.0,
+      .hypothesis_zero_distance_m = 30.0,
+      .hypothesis_full_distance_m = 100.0,
+      .maximum_hypothesis_lateral_offset_m = 70.0,
+  }};
+  const TimedVehicleState target =
+      state(Point3{}, Vec3{10.0, 0.0, 0.0}, 1'000'000'000LL);
+  guidance.observeLineOfSight(true);
+
+  const InterceptGuidanceResult converged = guidance.update(
+      state(Point3{-10.0, 0.0, 10.0}, {}, 1'000'000'000LL), target, 1'000'000'000LL);
+  const InterceptGuidanceResult missed = guidance.update(
+      state(Point3{-100.0, 0.0, 10.0}, {}, 1'100'000'000LL), target, 1'100'000'000LL);
+  guidance.observeLineOfSight(false);
+  const InterceptGuidanceResult reacquisition = guidance.update(
+      state(Point3{-100.0, 0.0, 10.0}, {}, 1'200'000'000LL), target, 1'200'000'000LL);
+
+  EXPECT_TRUE(converged.hypothesis_converged_latched);
+  EXPECT_DOUBLE_EQ(converged.effective_heading_offset_rad, 0.0);
+  EXPECT_TRUE(missed.hypothesis_converged_latched);
+  EXPECT_DOUBLE_EQ(missed.effective_heading_offset_rad, 0.0);
+  EXPECT_FALSE(reacquisition.hypothesis_converged_latched);
+  EXPECT_GT(reacquisition.effective_heading_offset_rad, 0.0);
+}
+
+TEST(InterceptGuidance, NewTargetTrackReopensConvergedHypothesis) {
+  InterceptGuidance guidance{InterceptGuidanceConfig{
+      .prediction_heading_offset_rad = -std::acos(-1.0) / 4.0,
+      .hypothesis_zero_distance_m = 30.0,
+      .hypothesis_full_distance_m = 100.0,
+      .maximum_hypothesis_lateral_offset_m = 70.0,
+  }};
+  const TimedVehicleState target =
+      state(Point3{}, Vec3{10.0, 0.0, 0.0}, 1'000'000'000LL);
+  guidance.observeLineOfSight(true);
+  static_cast<void>(guidance.update(
+      state(Point3{-10.0, 0.0, 10.0}, {}, 1'000'000'000LL), target, 1'000'000'000LL));
+
+  guidance.resetTargetTrack();
+  const InterceptGuidanceResult next_track = guidance.update(
+      state(Point3{-100.0, 0.0, 10.0}, {}, 1'100'000'000LL), target, 1'100'000'000LL);
+
+  EXPECT_FALSE(next_track.hypothesis_converged_latched);
+  EXPECT_LT(next_track.effective_heading_offset_rad, 0.0);
+}
+
 TEST(InterceptGuidance, CapsHypothesisLateralOffset) {
   InterceptGuidance guidance{InterceptGuidanceConfig{
       .maximum_prediction_horizon_s = 15.0,

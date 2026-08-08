@@ -62,6 +62,7 @@ struct MppiTickInput {
   std::optional<MovingTargetReference> moving_target;
   std::optional<RouteReference> route;
   std::optional<std::size_t> active_rollouts;
+  bool target_directed_reacquisition_enabled{false};
 };
 
 [[nodiscard]] inline std::size_t
@@ -132,6 +133,10 @@ struct MppiTickResult {
   float first_control_delta{0.0F};
   double warm_start_shift_s{0.0};
   bool nominal_reseeded{false};
+  bool target_directed_candidate_injected{false};
+  bool target_directed_candidate_raw_safe{false};
+  bool target_directed_candidate_best_eligible{false};
+  float target_directed_candidate_weight{0.0F};
   std::uint64_t esdf_revision{0U};
   std::size_t active_rollouts{0U};
   MppiStageTimings timings{};

@@ -512,7 +512,7 @@ def generate_launch_description():
                 output="screen",
                 prefix=planning_prefix,
                 parameters=[
-                    {"thread_num": len(role_names), "use_sim_time": True}
+                    {"thread_num": len(role_names) + 2, "use_sim_time": True}
                 ],
                 composable_node_descriptions=planner_components,
             )
@@ -646,6 +646,9 @@ def generate_launch_description():
                                 "use_sim_time": True,
                                 "ownship_state_topic": f"{prefix}/state",
                                 "target_track_topic": f"{prefix}/target_track",
+                                "radar_track_mode_command_topic": (
+                                    f"{prefix}/radar/track_mode_command"
+                                ),
                                 "mission_command_topic": f"{prefix}/mission_command",
                                 "navigation_objective_topic": (
                                     f"{prefix}/navigation_objective"

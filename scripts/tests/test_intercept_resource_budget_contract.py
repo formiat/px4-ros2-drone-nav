@@ -74,7 +74,7 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn('executable="component_container_mt"', source)
         self.assertIn('namespace=""', source)
         self.assertIn('plugin="drone_city_nav::ProductionMppiNode"', source)
-        self.assertIn('"thread_num": len(role_names)', source)
+        self.assertIn('"thread_num": len(role_names) + 2', source)
         self.assertNotIn('executable="production_mppi_node"', source)
 
     def test_tracking_pairs_share_an_intra_process_component_container(self) -> None:
@@ -138,6 +138,22 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn("planning tick phase offset must be in", source)
         self.assertIn("planning_start_timer_->cancel()", source)
         self.assertIn("startPlanningTimer();", source)
+
+    def test_planning_timer_cannot_starve_input_callbacks(self) -> None:
+        header = (PACKAGE / "src" / "production_mppi_node.hpp").read_text(
+            encoding="utf-8"
+        )
+        source = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("input_callback_group_", header)
+        self.assertIn("planning_callback_group_", header)
+        self.assertIn(
+            "input_subscription_options.callback_group = input_callback_group_",
+            source,
+        )
+        self.assertIn("planning_callback_group_);", source)
 
     def test_adaptive_rollout_budget_preserves_uncertain_and_risky_work(self) -> None:
         config = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")

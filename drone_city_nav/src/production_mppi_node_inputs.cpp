@@ -390,6 +390,8 @@ void ProductionMppiNode::publishRadarTrackModeCommand(
   command.stamp = get_clock()->now();
   command.mission_epoch = objective.mission_epoch;
   command.objective_sample_sequence = objective.sample_sequence;
+  command.target_track_id =
+      objective.tracking.has_value() ? objective.tracking->target_track_id : 0U;
   command.mode =
       objective.tracking.has_value() && objective.tracking->observed_target_visible
           ? msg::RadarTrackModeCommand::MODE_TRACK
@@ -424,7 +426,7 @@ void ProductionMppiNode::onNavigationObjective(
        (!finitePoint(message.observed_target_position) ||
         !finiteVector(message.observed_target_velocity) ||
         !std::isfinite(message.prediction_horizon_s) ||
-        message.prediction_horizon_s < 0.0 ||
+        message.prediction_horizon_s < 0.0 || message.target_track_id == 0U ||
         timeNanoseconds(message.observation_stamp) <= 0 ||
         message.terminal_policy !=
             msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING))) {
@@ -548,7 +550,13 @@ void ProductionMppiNode::onNavigationObjective(
     }
     const bool epoch_changed =
         !previous || previous->mission_epoch != message.mission_epoch;
-    if (epoch_changed) {
+    const std::uint64_t previous_target_track_id =
+        previous
+            ? previous->tracking.value_or(ProductionTrackingObjective{}).target_track_id
+            : 0U;
+    const bool target_track_changed =
+        previous_target_track_id != message.target_track_id;
+    if (epoch_changed || target_track_changed) {
       tracking_line_of_sight_lifecycle_.reset();
     }
     line_of_sight = tracking_line_of_sight_lifecycle_.update(
@@ -587,6 +595,7 @@ void ProductionMppiNode::onNavigationObjective(
             direct_resolution.predicted_intercept_path_clear,
         .direct_interception_active = line_of_sight.active,
         .line_of_sight_generation = line_of_sight.generation,
+        .target_track_id = message.target_track_id,
     };
   } else {
     tracking_line_of_sight_lifecycle_.reset();

@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
+#include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
@@ -89,6 +90,7 @@ struct ProductionTrackingObjective {
   bool predicted_intercept_path_clear{false};
   bool direct_interception_active{false};
   std::uint64_t line_of_sight_generation{0U};
+  std::uint64_t target_track_id{0U};
 };
 
 struct ProductionNavigationObjective {
@@ -334,6 +336,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   ProductionMppiStability stability{};
   ProductionMppiPredictionError prediction{};
   MppiLivenessResult liveness{};
+  DirectTrackingManeuverUpdate direct_tracking_maneuver{};
   MppiSpeedPolicyResult speed_policy{};
   GlobalGuideProgressUpdate guide_progress{};
   MppiEligibleRolloutUpdate no_eligible_recovery{};
@@ -485,6 +488,7 @@ private:
   double tracking_capture_radius_m_{5.0};
   double static_tracking_esdf_refresh_margin_m_{15.0};
   TrackingLineOfSightLifecycle tracking_line_of_sight_lifecycle_{};
+  DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_{};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
   float constrained_route_speed_limit_mps_{10.0F};
@@ -621,6 +625,8 @@ private:
   std::atomic<std::uint64_t> dropped_diagnostics_snapshots_{0U};
   std::jthread diagnostics_worker_;
 
+  rclcpp::CallbackGroup::SharedPtr input_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr planning_callback_group_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;

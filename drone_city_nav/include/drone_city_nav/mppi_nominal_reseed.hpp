@@ -16,6 +16,7 @@ struct MppiNominalReseedObservation {
   std::uint64_t local_liveness_generation{0U};
   std::uint64_t guide_liveness_generation{0U};
   std::uint64_t safety_rejection_generation{0U};
+  std::uint64_t direct_tracking_maneuver_generation{0U};
 };
 
 struct MppiNominalReseedUpdate {
@@ -45,6 +46,7 @@ private:
   std::uint64_t local_liveness_generation_{0U};
   std::uint64_t guide_liveness_generation_{0U};
   std::uint64_t safety_rejection_generation_{0U};
+  std::uint64_t direct_tracking_maneuver_generation_{0U};
   std::uint64_t no_eligible_recovery_generation_{0U};
   MppiNoEligiblePhase no_eligible_phase_{MppiNoEligiblePhase::kHealthy};
   bool recovery_reseed_pending_{false};

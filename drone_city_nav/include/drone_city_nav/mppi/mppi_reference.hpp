@@ -15,6 +15,17 @@ struct ReferenceSimulationTrace {
   std::vector<State> horizon;
 };
 
+struct MppiProgressDiagnostics {
+  float head_progress_m{0.0F};
+  float terminal_progress_m{0.0F};
+};
+
+[[nodiscard]] MppiProgressDiagnostics
+resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
+                                   bool moving_target_enabled,
+                                   float fixed_target_head_progress_m,
+                                   float fixed_target_terminal_progress_m) noexcept;
+
 [[nodiscard]] RolloutMetrics simulateReference(
     const State& initial_state, std::span<const Control> nominal_controls,
     std::span<const Control> noise_controls, const DynamicsConfig& dynamics,

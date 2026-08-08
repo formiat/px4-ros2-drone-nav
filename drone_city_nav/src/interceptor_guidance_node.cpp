@@ -3,6 +3,7 @@
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/msg/intercept_mission_command.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
+#include "drone_city_nav/msg/radar_track_mode_command.hpp"
 #include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 
@@ -118,7 +119,26 @@ public:
                         track->position_valid ? "true" : "false");
             return;
           }
+          if (!target_track_.has_value() ||
+              target_track_->track_id != track->track_id) {
+            guidance_->resetTargetTrack();
+          }
           target_track_ = *track;
+        });
+    radar_track_mode_sub_ = create_subscription<msg::RadarTrackModeCommand>(
+        declare_parameter<std::string>(
+            "radar_track_mode_command_topic",
+            "/vehicles/interceptor/radar/track_mode_command"),
+        rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const msg::RadarTrackModeCommand::SharedPtr command) {
+          if (command->mission_epoch != mission_epoch_ ||
+              command->mode > msg::RadarTrackModeCommand::MODE_TRACK ||
+              !target_track_.has_value() ||
+              command->target_track_id != target_track_->track_id) {
+            return;
+          }
+          guidance_->observeLineOfSight(command->mode ==
+                                        msg::RadarTrackModeCommand::MODE_TRACK);
         });
     mission_command_sub_ = create_subscription<msg::InterceptMissionCommand>(
         declare_parameter<std::string>("mission_command_topic",
@@ -161,6 +181,7 @@ private:
     objective.stamp = now();
     objective.mission_epoch = mission_epoch_;
     objective.sample_sequence = ++objective_sequence_;
+    objective.target_track_id = 0U;
     objective.position.x = hold_position_->x;
     objective.position.y = hold_position_->y;
     objective.position.z = hold_position_->z;
@@ -197,6 +218,7 @@ private:
     objective.observation_stamp = detail::timeMessage(guidance.observation_stamp_ns);
     objective.mission_epoch = mission_epoch_;
     objective.sample_sequence = ++objective_sequence_;
+    objective.target_track_id = target_track_->track_id;
     objective.position.x = guidance.predicted_position.x;
     objective.position.y = guidance.predicted_position.y;
     objective.position.z = guidance.predicted_position.z;
@@ -232,7 +254,7 @@ private:
         "analytic_intercept_time_s=%.3f measurement_age_s=%.3f ahead_m=%.3f "
         "cross_track_m=%.3f configured_heading_offset_deg=%.1f "
         "effective_heading_offset_deg=%.1f hypothesis_lateral_offset_m=%.3f "
-        "vertical_prediction_limited=%s",
+        "hypothesis_converged_latched=%s vertical_prediction_limited=%s",
         interceptGuidanceModeName(guidance.mode), target_track_->track_id,
         target_track_->source_scan_sequence, guidance.target_speed_mps,
         guidance.prediction_horizon_s, guidance.analytic_intercept_time_s,
@@ -240,6 +262,7 @@ private:
         guidance.configured_heading_offset_rad * 180.0 / std::acos(-1.0),
         guidance.effective_heading_offset_rad * 180.0 / std::acos(-1.0),
         guidance.hypothesis_lateral_offset_m,
+        guidance.hypothesis_converged_latched ? "true" : "false",
         guidance.vertical_prediction_limited ? "true" : "false");
   }
 
@@ -255,6 +278,7 @@ private:
   bool hold_requested_{false};
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr ownship_state_sub_;
   rclcpp::Subscription<msg::TargetTrack>::SharedPtr target_track_sub_;
+  rclcpp::Subscription<msg::RadarTrackModeCommand>::SharedPtr radar_track_mode_sub_;
   rclcpp::Subscription<msg::InterceptMissionCommand>::SharedPtr mission_command_sub_;
   rclcpp::Publisher<msg::NavigationObjective>::SharedPtr objective_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
