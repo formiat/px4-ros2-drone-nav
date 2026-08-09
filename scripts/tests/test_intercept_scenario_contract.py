@@ -80,15 +80,24 @@ class InterceptScenarioContractTest(unittest.TestCase):
         )
         self.assertEqual(
             [target["goal_m"] for target in scenario["evaders"]],
-            [(162.0, 216.0, 18.0), (162.0, 216.0, 18.0)],
+            [(54.0, 378.0, 18.0), (54.0, 378.0, 18.0)],
+        )
+        self.assertEqual(
+            [vehicle["map_start_m"] for vehicle in scenario["vehicles"]],
+            [
+                (54.0, 378.0, 0.3),
+                (270.0, 378.0, 0.3),
+                (54.0, 54.0, 0.3),
+                (270.0, 54.0, 0.3),
+            ],
         )
         self.assertEqual(
             [vehicle["gazebo_spawn_m"] for vehicle in scenario["vehicles"]],
             [
-                (-171.0, -81.0, 0.3),
-                (153.0, 135.0, 0.3),
-                (-171.0, 135.0, 0.3),
                 (153.0, -81.0, 0.3),
+                (153.0, 135.0, 0.3),
+                (-171.0, -81.0, 0.3),
+                (-171.0, 135.0, 0.3),
             ],
         )
         makefile = MAKEFILE_PATH.read_text(encoding="utf-8")

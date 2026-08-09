@@ -205,9 +205,11 @@ Run the finite two-interceptor versus two-attacker mission separately:
 ```
 
 This entry point uses the same generic launch and navigation code with
-`drone_city_nav/config/multi_intercept_2v2_scenario.json`. Two interceptors and
-two attackers start in opposite city corners. Both attackers fly toward the
-same fixed goal. Each interceptor owns an independent radar simulator and
+`drone_city_nav/config/multi_intercept_2v2_scenario.json`. The two attackers
+start at the endpoints of the short city side farthest from the destination;
+the interceptors start on the opposite short side, next to the destination
+corner at `(54, 378, 18)`. Both attackers fly toward that same fixed goal. Each
+interceptor owns an independent radar simulator and
 multi-target tracker; its `RadarScan` contains one relative spherical detection
 per active attacker and still exposes no absolute target coordinates.
 
