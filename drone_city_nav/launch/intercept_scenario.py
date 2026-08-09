@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load and validate the canonical finite intercept scenario."""
+"""Load and validate a canonical finite interceptor scenario."""
 
 from __future__ import annotations
 
@@ -17,9 +17,14 @@ EXPECTED_VEHICLE_IDS = (
     "evader",
 )
 
+SUPPORTED_SCHEMAS = {
+    "drone_city_nav_intercept_scenario_v1",
+    "drone_city_nav_intercept_scenario_v2",
+}
+
 
 def _finite_vector(value: Any, length: int, label: str) -> tuple[float, ...]:
-    if not isinstance(value, list) or len(value) != length:
+    if not isinstance(value, (list, tuple)) or len(value) != length:
         raise ValueError(f"{label} must contain {length} numeric values")
     result = tuple(float(component) for component in value)
     if not all(math.isfinite(component) for component in result):
@@ -69,7 +74,8 @@ def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
     scenario_path = Path(path).resolve()
     with scenario_path.open(encoding="utf-8") as stream:
         document = json.load(stream)
-    if document.get("schema") != "drone_city_nav_intercept_scenario_v1":
+    schema = document.get("schema")
+    if schema not in SUPPORTED_SCHEMAS:
         raise ValueError("unsupported intercept scenario schema")
 
     world_path = _resolve_world_path(scenario_path, document.get("canonical_world"))
@@ -116,21 +122,88 @@ def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
         )
 
     actual_ids = tuple(vehicle["id"] for vehicle in vehicles)
-    if actual_ids != EXPECTED_VEHICLE_IDS:
-        raise ValueError(
-            f"vehicle order must be {EXPECTED_VEHICLE_IDS}, got {actual_ids}"
+    if len(set(actual_ids)) != len(actual_ids):
+        raise ValueError("vehicle ids must be unique")
+    namespaces = tuple(vehicle["px4_namespace"] for vehicle in vehicles)
+    if len(set(namespaces)) != len(namespaces):
+        raise ValueError("PX4 namespaces must be unique")
+    models = tuple(vehicle["gazebo_model_name"] for vehicle in vehicles)
+    if len(set(models)) != len(models):
+        raise ValueError("Gazebo model names must be unique")
+
+    interceptor_count = sum(
+        vehicle["role"] == "interceptor" for vehicle in vehicles
+    )
+    evader_count = sum(vehicle["role"] == "evader" for vehicle in vehicles)
+    if interceptor_count == 0 or evader_count == 0:
+        raise ValueError("scenario must contain interceptors and evaders")
+    if schema == "drone_city_nav_intercept_scenario_v1":
+        if actual_ids != EXPECTED_VEHICLE_IDS:
+            raise ValueError(
+                f"vehicle order must be {EXPECTED_VEHICLE_IDS}, got {actual_ids}"
+            )
+        if evader_count != 1:
+            raise ValueError("legacy scenario must contain exactly one evader")
+
+    default_evader_goal = document.get("evader_goal_m")
+    if default_evader_goal is not None:
+        default_evader_goal = _finite_vector(
+            default_evader_goal, 3, "evader_goal_m"
         )
-    if sum(vehicle["role"] == "evader" for vehicle in vehicles) != 1:
-        raise ValueError("scenario must contain exactly one evader")
+    evaders = []
+    detection_ids: set[int] = set()
+    for vehicle, source_vehicle in zip(vehicles, source_vehicles, strict=True):
+        if vehicle["role"] != "evader":
+            continue
+        source_detection_id = source_vehicle.get("detection_id")
+        if source_detection_id is None:
+            if schema == "drone_city_nav_intercept_scenario_v2":
+                raise ValueError(
+                    f"evader {vehicle['id']} is missing detection_id"
+                )
+            detection_id = len(detection_ids) + 1
+        elif not isinstance(source_detection_id, int) or isinstance(
+            source_detection_id, bool
+        ):
+            raise ValueError(f"invalid detection_id for evader {vehicle['id']}")
+        else:
+            detection_id = source_detection_id
+        if detection_id <= 0 or detection_id in detection_ids:
+            raise ValueError(
+                f"detection_id for evader {vehicle['id']} must be positive and unique"
+            )
+        detection_ids.add(detection_id)
+        source_goal = source_vehicle.get("goal_m", default_evader_goal)
+        if source_goal is None:
+            raise ValueError(f"evader {vehicle['id']} is missing goal_m")
+        evaders.append(
+            {
+                "id": vehicle["id"],
+                "goal_m": _finite_vector(
+                    source_goal, 3, f"vehicle {vehicle['id']} goal_m"
+                ),
+                "detection_id": detection_id,
+            }
+        )
+
+    mission_name = document.get("mission_name", "intercept")
+    if not isinstance(mission_name, str) or not mission_name:
+        raise ValueError("mission_name must be a non-empty string")
 
     return {
+        "schema": schema,
+        "mission_name": mission_name,
         "path": scenario_path,
         "canonical_world_path": world_path,
         "map_to_sdf": transform,
         "vehicles": vehicles,
-        "evader_goal_m": _finite_vector(
-            document.get("evader_goal_m"), 3, "evader_goal_m"
-        ),
+        "interceptor_ids": [
+            vehicle["id"]
+            for vehicle in vehicles
+            if vehicle["role"] == "interceptor"
+        ],
+        "evaders": evaders,
+        "evader_goal_m": evaders[0]["goal_m"],
     }
 
 

@@ -49,6 +49,9 @@ bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
 }
 
+# shellcheck source=intercept_sim_runtime.sh
+source "${repo_root}/scripts/intercept_sim_runtime.sh"
+
 run_with_cpu_affinity() {
   local cpu_list="$1"
   shift
@@ -81,46 +84,7 @@ run_log_dir="$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")"
 run_id="${DRONE_GAZEBO_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 world_name="generated_city"
 mission_type="${MISSION_TYPE:-point_to_point}"
-if [[ "${mission_type}" != "point_to_point" && "${mission_type}" != "intercept" ]]; then
-  echo "Unsupported MISSION_TYPE=${mission_type}; expected point_to_point or intercept" >&2
-  exit 1
-fi
-intercept_scenario_path="$(make_abs_path "${INTERCEPT_SCENARIO_PATH:-drone_city_nav/config/intercept_scenario.json}")"
-intercept_scenario_tsv=""
-intercept_vehicle_ids=()
-intercept_vehicle_roles=()
-intercept_px4_namespaces=()
-intercept_px4_model_targets=()
-intercept_gazebo_model_names=()
-intercept_map_start_poses=()
-intercept_gazebo_spawn_poses=()
-if [[ "${mission_type}" == "intercept" ]]; then
-  if ! intercept_scenario_tsv="$(
-    python3 "${repo_root}/drone_city_nav/launch/intercept_scenario.py" \
-      --scenario "${intercept_scenario_path}" --format tsv
-  )"; then
-    echo "Failed to resolve intercept scenario: ${intercept_scenario_path}" >&2
-    exit 1
-  fi
-  while IFS=$'\t' read -r vehicle_id vehicle_role px4_namespace \
-    vehicle_px4_model_target gazebo_model_name map_x map_y map_z \
-    gazebo_x gazebo_y gazebo_z yaw_rad; do
-    [[ -n "${vehicle_id}" ]] || continue
-    intercept_vehicle_ids+=("${vehicle_id}")
-    intercept_vehicle_roles+=("${vehicle_role}")
-    intercept_px4_namespaces+=("${px4_namespace}")
-    intercept_px4_model_targets+=("${vehicle_px4_model_target}")
-    intercept_gazebo_model_names+=("${gazebo_model_name}")
-    intercept_map_start_poses+=("${map_x},${map_y},${map_z},0,0,${yaw_rad}")
-    intercept_gazebo_spawn_poses+=(
-      "${gazebo_x},${gazebo_y},${gazebo_z},0,0,${yaw_rad}"
-    )
-  done <<< "${intercept_scenario_tsv}"
-  if [[ "${#intercept_vehicle_ids[@]}" -ne 4 ]]; then
-    echo "Intercept scenario must resolve exactly four vehicles" >&2
-    exit 1
-  fi
-fi
+load_intercept_sim_scenario "${mission_type}" "${INTERCEPT_SCENARIO_PATH:-}"
 enable_subsystem_cpu_affinity="$(
   normalize_bool "${ENABLE_SUBSYSTEM_CPU_AFFINITY:-true}"
 )"
@@ -145,22 +109,33 @@ if bool_is_true "${enable_subsystem_cpu_affinity}" &&
   fi
 fi
 px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
-evader_px4_model_target="gz_x500_lidar_2d_evader"
-if [[ "${mission_type}" == "intercept" ]]; then
+if bool_is_true "${intercept_mission}"; then
   px4_model_target="${intercept_px4_model_targets[0]}"
-  evader_px4_model_target="${intercept_px4_model_targets[3]}"
-fi
-evader_model_name="${evader_px4_model_target#gz_}"
-if [[ ! "${evader_px4_model_target}" =~ ^gz_[A-Za-z0-9_]+$ ]]; then
-  echo "Invalid evader PX4 model target: ${evader_px4_model_target}" >&2
-  exit 1
+  for vehicle_px4_model_target in "${intercept_px4_model_targets[@]}"; do
+    if [[ ! "${vehicle_px4_model_target}" =~ ^gz_[A-Za-z0-9_]+$ ]]; then
+      echo "Invalid intercept PX4 model target: ${vehicle_px4_model_target}" >&2
+      exit 1
+    fi
+  done
 fi
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
 smoke_duration_s="${SMOKE_DURATION_S:-0}"
 px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_drone_nav.log}"
-interceptor_1_px4_log_file="${INTERCEPTOR_1_PX4_LOG_FILE:-${run_log_dir}/px4_interceptor_1_nav.log}"
-interceptor_2_px4_log_file="${INTERCEPTOR_2_PX4_LOG_FILE:-${run_log_dir}/px4_interceptor_2_nav.log}"
-evader_px4_log_file="${EVADER_PX4_LOG_FILE:-${run_log_dir}/px4_evader_nav.log}"
+intercept_px4_logs=()
+if bool_is_true "${intercept_mission}"; then
+  for instance in "${!intercept_vehicle_ids[@]}"; do
+    if [[ "${instance}" -eq 0 ]]; then
+      intercept_px4_logs+=("${px4_log_file}")
+      continue
+    fi
+    log_env_name="$(printf '%s' "${intercept_vehicle_ids[instance]}" |
+      tr '[:lower:]-' '[:upper:]_')_PX4_LOG_FILE"
+    log_override="${!log_env_name:-}"
+    intercept_px4_logs+=(
+      "${log_override:-${run_log_dir}/px4_${intercept_vehicle_ids[instance]}_nav.log}"
+    )
+  done
+fi
 uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${run_log_dir}/uxrce_agent_drone_nav.log}"
 ros_log_file="${ROS_LOG_FILE:-${run_log_dir}/ros_drone_nav.log}"
 gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_drone_nav.log}"
@@ -251,7 +226,7 @@ if [[ ! -d "${px4_dir}" ]]; then
   echo "Run scripts/setup_px4_autopilot.sh first or set PX4_AUTOPILOT_DIR." >&2
   exit 1
 fi
-if [[ "${mission_type}" == "intercept" && ! -x "${px4_build_dir}/bin/px4" ]]; then
+if bool_is_true "${intercept_mission}" && [[ ! -x "${px4_build_dir}/bin/px4" ]]; then
   echo "PX4 SITL binary was not found: ${px4_build_dir}/bin/px4" >&2
   echo "Build PX4 SITL before running the intercept mission." >&2
   exit 1
@@ -468,13 +443,7 @@ prepare_runtime_resources() {
 
   ln -s "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
     "${runtime_models_dir}/x500_lidar_2d"
-  if [[ "${mission_type}" == "intercept" ]]; then
-    cp -a "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
-      "${runtime_models_dir}/${evader_model_name}"
-    python3 "${repo_root}/scripts/configure_drone_marker_color.py" \
-      "${runtime_models_dir}/${evader_model_name}" \
-      --model-name "${evader_model_name}"
-  fi
+  prepare_intercept_evader_model_resources
   cp -a "${repo_root}/drone_city_nav/models/lidar_2d_v2" \
     "${runtime_models_dir}/lidar_2d_v2"
 
@@ -500,13 +469,11 @@ if [[ "${enable_gz_scene_diagnostics}" == "true" ||
   mkdir -p "${gz_scene_diagnostics_dir}"
 fi
 : > "${px4_log_file}"
-if [[ "${mission_type}" == "intercept" ]]; then
-  mkdir -p "$(dirname "${interceptor_1_px4_log_file}")"
-  mkdir -p "$(dirname "${interceptor_2_px4_log_file}")"
-  mkdir -p "$(dirname "${evader_px4_log_file}")"
-  : > "${interceptor_1_px4_log_file}"
-  : > "${interceptor_2_px4_log_file}"
-  : > "${evader_px4_log_file}"
+if bool_is_true "${intercept_mission}"; then
+  for vehicle_log in "${intercept_px4_logs[@]}"; do
+    mkdir -p "$(dirname "${vehicle_log}")"
+    : > "${vehicle_log}"
+  done
 fi
 : > "${uxrce_log_file}"
 : > "${ros_log_file}"
@@ -735,7 +702,7 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
     configure_gazebo_world_running "${gazebo_world_unpause_wait_s}" &
     gz_unpause_pid=$!
     if bool_is_true "${enable_gazebo_gui_follow_camera}" &&
-      [[ "${mission_type}" != "intercept" ]]; then
+      ! bool_is_true "${intercept_mission}"; then
       configure_gazebo_gui_follow_camera \
         "${gazebo_gui_follow_target}" \
         "${gazebo_gui_follow_offset}" \
@@ -778,34 +745,25 @@ px4_parameter_stream() {
 }
 
 echo "PX4 SITL log: ${px4_log_file}"
-if [[ "${mission_type}" == "intercept" ]]; then
+if bool_is_true "${intercept_mission}"; then
   echo "Intercept scenario: ${intercept_scenario_path}"
-  for instance in 0 1 2 3; do
+  for instance in "${!intercept_vehicle_ids[@]}"; do
     echo "INTERCEPT_COORDINATE_CONTRACT vehicle_id='${intercept_vehicle_ids[instance]}' map_start='${intercept_map_start_poses[instance]}' gazebo_spawn='${intercept_gazebo_spawn_poses[instance]}' gazebo_model='${intercept_gazebo_model_names[instance]}'"
+    echo "PX4 SITL log for ${intercept_vehicle_ids[instance]}: ${intercept_px4_logs[instance]}"
   done
-  echo "Interceptor 1 PX4 SITL log: ${interceptor_1_px4_log_file}"
-  echo "Interceptor 2 PX4 SITL log: ${interceptor_2_px4_log_file}"
-  echo "Evader PX4 SITL log: ${evader_px4_log_file}"
-  intercept_px4_logs=(
-    "${px4_log_file}"
-    "${interceptor_1_px4_log_file}"
-    "${interceptor_2_px4_log_file}"
-    "${evader_px4_log_file}"
-  )
-  intercept_px4_cruise_speeds=(
-    "${px4_active_cruise_speed_mps}"
-    "${px4_active_cruise_speed_mps}"
-    "${px4_active_cruise_speed_mps}"
-    "${evader_px4_cruise_speed_mps}"
-  )
-  intercept_px4_maximum_speeds=(
-    "${px4_active_max_horizontal_speed_mps}"
-    "${px4_active_max_horizontal_speed_mps}"
-    "${px4_active_max_horizontal_speed_mps}"
-    "${evader_px4_max_horizontal_speed_mps}"
-  )
+  intercept_px4_cruise_speeds=()
+  intercept_px4_maximum_speeds=()
+  for instance in "${!intercept_vehicle_ids[@]}"; do
+    if [[ "${intercept_vehicle_roles[instance]}" == "evader" ]]; then
+      intercept_px4_cruise_speeds+=("${evader_px4_cruise_speed_mps}")
+      intercept_px4_maximum_speeds+=("${evader_px4_max_horizontal_speed_mps}")
+    else
+      intercept_px4_cruise_speeds+=("${px4_active_cruise_speed_mps}")
+      intercept_px4_maximum_speeds+=("${px4_active_max_horizontal_speed_mps}")
+    fi
+  done
   intercept_px4_pids=()
-  for instance in 0 1 2 3; do
+  for instance in "${!intercept_vehicle_ids[@]}"; do
     reset_px4_instance_state "${instance}"
     (
       px4_parameter_stream "${intercept_px4_cruise_speeds[instance]}" \
@@ -822,7 +780,6 @@ if [[ "${mission_type}" == "intercept" ]]; then
     intercept_px4_pids+=("$!")
   done
   px4_pid="${intercept_px4_pids[0]}"
-  evader_px4_pid="${intercept_px4_pids[3]}"
 else
   echo "PX4 Gazebo spawn pose: ${point_gazebo_spawn_x_m},${point_gazebo_spawn_y_m},${point_gazebo_spawn_z_m},0,0,${point_gazebo_spawn_yaw_rad}"
   reset_px4_instance_state 0
@@ -845,8 +802,8 @@ if ! kill -0 "${px4_pid}" 2>/dev/null; then
   tail -n 80 "${px4_log_file}" >&2
   exit 1
 fi
-if [[ "${mission_type}" == "intercept" ]]; then
-  for instance in 0 1 2 3; do
+if bool_is_true "${intercept_mission}"; then
+  for instance in "${!intercept_vehicle_ids[@]}"; do
     if ! kill -0 "${intercept_px4_pids[instance]}" 2>/dev/null; then
       echo "${intercept_px4_namespaces[instance]} PX4 SITL exited before ROS launch. Last log lines:" >&2
       tail -n 80 "${intercept_px4_logs[instance]}" >&2
@@ -881,12 +838,14 @@ check_headless_run() {
     --expected-current-lidar "${expected_current_lidar}"
     --enable-lidar-debug "${enable_lidar_debug}"
   )
-  if [[ "${mission_type}" == "intercept" ]]; then
-    validation_args+=(--px4-log "${interceptor_1_px4_log_file}")
-    validation_args+=(--px4-log "${interceptor_2_px4_log_file}")
-    validation_args+=(--px4-log "${evader_px4_log_file}")
+  if bool_is_true "${intercept_mission}"; then
+    validation_args+=(--expected-vehicles "${#intercept_vehicle_ids[@]}")
+    for instance in "${!intercept_vehicle_ids[@]}"; do
+      [[ "${instance}" -eq 0 ]] ||
+        validation_args+=(--px4-log "${intercept_px4_logs[instance]}")
+    done
   fi
-  if [[ -n "${mission_check}" || "${mission_type}" == "intercept" ]]; then
+  if [[ -n "${mission_check}" ]] || bool_is_true "${intercept_mission}"; then
     validation_args+=(--mission-check)
   fi
   if bool_is_true "${allow_mission_failure}"; then
@@ -897,10 +856,12 @@ check_headless_run() {
     "${validation_args[@]}"; then
     print_log_tail "Gazebo" "${gz_log_file}"
     print_log_tail "PX4 SITL" "${px4_log_file}"
-    if [[ "${mission_type}" == "intercept" ]]; then
-      print_log_tail "Interceptor 1 PX4 SITL" "${interceptor_1_px4_log_file}"
-      print_log_tail "Interceptor 2 PX4 SITL" "${interceptor_2_px4_log_file}"
-      print_log_tail "Evader PX4 SITL" "${evader_px4_log_file}"
+    if bool_is_true "${intercept_mission}"; then
+      for instance in "${!intercept_vehicle_ids[@]}"; do
+        [[ "${instance}" -eq 0 ]] || print_log_tail \
+          "${intercept_vehicle_ids[instance]} PX4 SITL" \
+          "${intercept_px4_logs[instance]}"
+      done
     fi
     print_log_tail "ROS launch" "${ros_log_file}"
     return 1
@@ -910,7 +871,7 @@ check_headless_run() {
 }
 
 launch_file="city_nav.launch.py"
-if [[ "${mission_type}" == "intercept" ]]; then
+if bool_is_true "${intercept_mission}"; then
   launch_file="intercept.launch.py"
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
@@ -944,7 +905,7 @@ if [[ -n "${enable_static_map_override}" ]]; then
 fi
 echo "ROS launch log: ${ros_log_file}"
 echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"
-if [[ "${mission_type}" == "intercept" && -z "${headless}" ]] &&
+if bool_is_true "${intercept_mission}" && [[ -z "${headless}" ]] &&
   bool_is_true "${enable_gazebo_gui_follow_camera}"; then
   python3 "${repo_root}/scripts/gazebo_spectator_follow.py" \
     --world "${world_name}" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract tests for keeping C++ source files reviewable."""
+"""Contract tests for keeping hand-written source files reviewable."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ SOURCE_SUFFIXES = {
     ".hh",
     ".hpp",
     ".hxx",
+    ".py",
+    ".sh",
 }
 IGNORED_PATH_PARTS = {"build", "install", "log"}
 
@@ -47,8 +49,8 @@ def repository_source_files() -> list[Path]:
     return files
 
 
-class CppSourceSizeContractTest(unittest.TestCase):
-    def test_tracked_cpp_sources_stay_under_size_limit(self) -> None:
+class SourceSizeContractTest(unittest.TestCase):
+    def test_tracked_sources_stay_under_size_limit(self) -> None:
         oversized: list[str] = []
         root = repo_root()
         for path in repository_source_files():
@@ -65,7 +67,7 @@ class CppSourceSizeContractTest(unittest.TestCase):
         self.assertEqual(
             [],
             oversized,
-            "Split oversized C++ source/header files; limit is "
+            "Split oversized source files; limit is "
             f"{MAX_SOURCE_LINES} lines.",
         )
 

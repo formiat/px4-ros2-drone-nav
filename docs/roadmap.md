@@ -102,15 +102,27 @@ This stage deliberately contains one attacker and one episode. Attacker
 despawn, respawn, and an endless campaign remain future work and are not part of
 the current implementation.
 
-## 5. Multiple Interceptors Versus Multiple Attackers
+## 5. Multiple Interceptors Versus Multiple Attackers (Completed)
 
-Start with three interceptor drones and three attacking drones, all spawned
-simultaneously.
+The first finite scenario launches two interceptor drones and two attacking
+drones from opposite city corners. Both attackers share one fixed destination.
+The existing 3x1 `intercept` entry point remains unchanged; dedicated
+`sim_multi_intercept_gui.sh` and `sim_multi_intercept_headless.sh` wrappers load
+the 2x2 scenario through the same generic N x M launch pipeline.
 
-Implement dynamic target assignment, initially using a simple policy such as
-nearest-target allocation. Collision avoidance remains disabled, and mid-air
-collisions are treated as acceptable collateral damage for this experimental
-scenario.
+Each interceptor receives an independent ideal radar scan containing relative
+measurements for every attacker and maintains one radar-derived track per
+detection. A typed assignment coordinator minimizes estimated intercept time,
+covers distinct active targets where possible, and applies hold time,
+improvement threshold, and confirmation hysteresis before changing an existing
+assignment. Terminal attackers are removed immediately and the remaining fleet
+is reassigned without restarting navigation.
+
+The multi-target referee records one first terminal outcome for every attacker
+and preserves physical 5 m proximity, typed death, disarm, and survivor-hold
+settlement. Collision avoidance remains disabled, and mid-air collisions are
+treated as acceptable collateral damage. The finite mission does not respawn
+attackers and does not implement an endless campaign.
 
 ## 6. Cooperative Multi-Drone Air Traffic
 

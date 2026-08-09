@@ -60,6 +60,9 @@ rosidl_generate_interfaces(
   "msg/RadarScan.msg"
   "msg/RadarTrackModeCommand.msg"
   "msg/TargetTrack.msg"
+  "msg/TargetTrackArray.msg"
+  "msg/TargetAssignment.msg"
+  "msg/InterceptTargetStatus.msg"
   "msg/InterceptMissionCommand.msg"
   "msg/SpectatorTarget.msg"
   "msg/SimulationTruthAlignment.msg"
@@ -168,6 +171,7 @@ add_library(
   src/radar_cadence.cpp
   src/radar_model.cpp
   src/radar_target_tracker.cpp
+  src/target_assignment.cpp
   src/raw_guide_validation.cpp
   src/risk_aware_lattice.cpp
   src/risk_aware_lattice_geometry.cpp
@@ -310,6 +314,7 @@ enable_project_warnings(mission_monitor_node)
 
 add_executable(intercept_mission_referee_node
                src/intercept_mission_referee_node.cpp
+               src/intercept_mission_referee_lifecycle.cpp
                src/intercept_ground_truth_boundary.cpp
                src/intercept_referee_support.cpp)
 target_compile_features(intercept_mission_referee_node PRIVATE cxx_std_20)
@@ -340,6 +345,7 @@ enable_project_warnings(simulation_truth_adapter_node)
 add_library(
   drone_city_nav_interceptor_tracking_components SHARED
   src/radar_target_tracker_node.cpp
+  src/target_assignment_coordinator_node.cpp
   src/interceptor_guidance_node.cpp)
 target_compile_features(drone_city_nav_interceptor_tracking_components
                         PRIVATE cxx_std_20)
@@ -353,6 +359,7 @@ ament_target_dependencies(
 rclcpp_components_register_nodes(
   drone_city_nav_interceptor_tracking_components
   "drone_city_nav::RadarTargetTrackerNode"
+  "drone_city_nav::TargetAssignmentCoordinatorNode"
   "drone_city_nav::InterceptorGuidanceNode")
 enable_project_warnings(drone_city_nav_interceptor_tracking_components)
 
@@ -548,6 +555,11 @@ if(BUILD_TESTING)
   target_compile_features(radar_tracking_test PRIVATE cxx_std_20)
   target_link_libraries(radar_tracking_test drone_city_nav_core)
   enable_project_warnings(radar_tracking_test)
+
+  ament_add_gtest(target_assignment_test tests/target_assignment_test.cpp)
+  target_compile_features(target_assignment_test PRIVATE cxx_std_20)
+  target_link_libraries(target_assignment_test drone_city_nav_core)
+  enable_project_warnings(target_assignment_test)
 
   ament_add_gtest(tracked_agent_lidar_filter_test
                   tests/tracked_agent_lidar_filter_test.cpp)

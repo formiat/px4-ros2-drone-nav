@@ -46,6 +46,8 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/sim_headless.sh
 ./scripts/sim_intercept_gui.sh
 ./scripts/sim_intercept_headless.sh
+./scripts/sim_multi_intercept_gui.sh
+./scripts/sim_multi_intercept_headless.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -64,6 +66,8 @@ make sim-gui
 make sim-headless
 make sim-intercept-gui
 make sim-intercept-headless
+make sim-multi-intercept-gui
+make sim-multi-intercept-headless
 ```
 
 Build and run the isolated CUDA MPPI benchmark:
@@ -192,6 +196,39 @@ workflow remains open after either outcome. The headless workflow exits only
 after all applicable hold and disarm settlements are confirmed in the log. The
 mission contains one evader only; it does not respawn attackers or start another
 episode.
+
+Run the finite two-interceptor versus two-attacker mission separately:
+
+```bash
+./scripts/sim_multi_intercept_gui.sh
+./scripts/sim_multi_intercept_headless.sh
+```
+
+This entry point uses the same generic launch and navigation code with
+`drone_city_nav/config/multi_intercept_2v2_scenario.json`. Two interceptors and
+two attackers start in opposite city corners. Both attackers fly toward the
+same fixed goal. Each interceptor owns an independent radar simulator and
+multi-target tracker; its `RadarScan` contains one relative spherical detection
+per active attacker and still exposes no absolute target coordinates.
+
+A central typed assignment coordinator compares estimated constant-velocity
+intercept times and computes a deterministic minimum-cost allocation. In the
+2x2 case it covers both active attackers with distinct interceptors whenever
+valid tracks permit it. Assignment changes require a material, sustained cost
+improvement, which prevents rapid target flapping. If an attacker is
+intercepted, reaches its goal, or is destroyed, it is removed from future
+allocation immediately and the surviving interceptors are reassigned to the
+remaining active attackers. Radio transport and communication impairments are
+not simulated.
+
+The referee records exactly one first terminal outcome per attacker. An
+interceptor-attacker separation of 5 m destroys and disarms only that pair;
+other assignments continue. The finite episode ends after every attacker has a
+terminal outcome, or fails if no interceptor remains while an attacker is still
+active. Headless validation requires every captured pair to have physical
+Gazebo proximity evidence and confirmed disarms, every survivor to confirm
+position hold, and no vehicle to collide with a building. Directional motion
+hypotheses are disabled in this supported scenario.
 
 In the Gazebo view, interceptor visibility markers remain yellow and the evader
 visibility marker is red. RViz continues to use its distinct per-role colors.

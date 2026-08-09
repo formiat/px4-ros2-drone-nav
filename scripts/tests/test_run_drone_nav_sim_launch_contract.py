@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
+INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("intercept_sim_runtime.sh")
 CONTAINER_RUNNER = Path(__file__).resolve().parents[1] / "container_run.sh"
 LAUNCH_FILE = (
     Path(__file__).resolve().parents[2]
@@ -21,6 +22,9 @@ INTERCEPT_LAUNCH_FILE = (
     / "drone_city_nav"
     / "launch"
     / "intercept.launch.py"
+)
+INTERCEPT_TRACKING_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+    "intercept_tracking_launch.py"
 )
 INTERCEPT_SCENARIO = (
     Path(__file__).resolve().parents[2]
@@ -62,9 +66,15 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.text = RUNNER.read_text(encoding="utf-8")
+        cls.intercept_runtime_text = cls.text + INTERCEPT_RUNTIME_HELPER.read_text(
+            encoding="utf-8"
+        )
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
         cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
         cls.intercept_launch_text = INTERCEPT_LAUNCH_FILE.read_text(encoding="utf-8")
+        cls.intercept_tracking_launch_text = (
+            INTERCEPT_TRACKING_LAUNCH_FILE.read_text(encoding="utf-8")
+        )
         cls.intercept_scenario = json.loads(
             INTERCEPT_SCENARIO.read_text(encoding="utf-8")
         )
@@ -210,9 +220,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_evader_uses_a_red_gazebo_marker_variant(self) -> None:
         self.assertIn(
-            'evader_model_name="${evader_px4_model_target#gz_}"', self.text
+            'evader_model_name="${intercept_px4_model_targets[instance]#gz_}"',
+            self.intercept_runtime_text,
         )
-        self.assertIn("configure_drone_marker_color.py", self.text)
+        self.assertIn(
+            "configure_drone_marker_color.py", self.intercept_runtime_text
+        )
         self.assertIn(
             'PX4_SIM_MODEL="${intercept_px4_model_targets[instance]}"',
             self.text,
@@ -240,7 +253,11 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                     self.intercept_launch_text,
                     rf'"{name}",\s*default_value="{default}"',
                 )
-                self.assertIn(f'"{name}": float(', self.intercept_launch_text)
+                self.assertIn(f'"{name}",', self.intercept_launch_text)
+                self.assertRegex(
+                    self.intercept_tracking_launch_text,
+                    rf'settings\[\s*"{name}"\s*\]',
+                )
 
     def test_intercept_directional_hypotheses_are_disabled_by_default(self) -> None:
         self.assertIn(
@@ -258,7 +275,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             r'"intercept_directional_hypotheses_enabled",\s*default_value="false"',
         )
         self.assertIn(
-            "return (0.0, 0.0, 0.0)",
+            "return tuple(0.0 for _ in range(interceptor_count))",
             self.intercept_launch_text,
         )
         self.assertIn(
@@ -266,7 +283,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
         )
         self.assertIn(
-            "directional_hypothesis_offsets_rad[interceptor_index]",
+            "offsets[interceptor_index]",
             self.intercept_launch_text,
         )
         self.assertIn(
@@ -279,11 +296,15 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
             r'"radar_track_interval_s",\s*default_value="0.05"',
         )
-        self.assertIn('"track_interval_s": float(', self.intercept_launch_text)
-        self.assertIn('"track_mode_command_topic": (', self.intercept_launch_text)
+        self.assertIn(
+            '"track_interval_s": settings[', self.intercept_tracking_launch_text
+        )
+        self.assertIn(
+            '"track_mode_command_topic": (', self.intercept_tracking_launch_text
+        )
         self.assertIn(
             '"high_rate_velocity_correction_gain": 1.0',
-            self.intercept_launch_text,
+            self.intercept_tracking_launch_text,
         )
         self.assertNotIn("radar_track_enter_range_m", self.intercept_launch_text)
         self.assertNotIn("radar_track_exit_range_m", self.intercept_launch_text)
@@ -434,14 +455,21 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_mode_launches_isolated_px4_instances(self) -> None:
         self.assertIn('mission_type="${MISSION_TYPE:-point_to_point}"', self.text)
-        self.assertIn("intercept_scenario.py", self.text)
-        self.assertIn("intercept_px4_namespaces", self.text)
-        self.assertIn("for instance in 0 1 2 3", self.text)
+        self.assertIn("intercept_scenario.py", self.intercept_runtime_text)
+        self.assertIn("intercept_px4_namespaces", self.intercept_runtime_text)
+        self.assertIn(
+            'for instance in "${!intercept_vehicle_ids[@]}"', self.text
+        )
         self.assertIn('PX4_UXRCE_DDS_NS="${intercept_px4_namespaces[instance]}"', self.text)
         self.assertIn('run_px4_instance "${instance}"', self.text)
-        self.assertIn('--px4-log "${interceptor_1_px4_log_file}"', self.text)
-        self.assertIn('--px4-log "${interceptor_2_px4_log_file}"', self.text)
-        self.assertIn('--px4-log "${evader_px4_log_file}"', self.text)
+        self.assertIn(
+            'validation_args+=(--expected-vehicles "${#intercept_vehicle_ids[@]}")',
+            self.text,
+        )
+        self.assertIn(
+            'validation_args+=(--px4-log "${intercept_px4_logs[instance]}")',
+            self.text,
+        )
 
     def test_px4_sitl_state_is_reset_before_each_launch(self) -> None:
         self.assertIn("reset_px4_instance_state()", self.text)
@@ -461,7 +489,8 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 if entry["id"] == interceptor
             )
             self.assertEqual(vehicle["px4_namespace"], interceptor)
-        self.assertIn('"/vehicles/evader/state"', self.intercept_launch_text)
+        self.assertIn('f"{prefix}/state"', self.intercept_launch_text)
+        self.assertIn('scenario["vehicles"]', self.intercept_launch_text)
         self.assertEqual(
             self.intercept_scenario["vehicles"][-1]["px4_namespace"], "evader"
         )

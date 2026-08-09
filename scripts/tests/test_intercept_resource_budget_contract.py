@@ -13,6 +13,7 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
 DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
+TRACKING_LAUNCH = PACKAGE / "launch" / "intercept_tracking_launch.py"
 RUN_SCRIPT = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
 
 
@@ -78,11 +79,14 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertNotIn('executable="production_mppi_node"', source)
 
     def test_tracking_pairs_share_an_intra_process_component_container(self) -> None:
-        source = LAUNCH.read_text(encoding="utf-8")
+        source = TRACKING_LAUNCH.read_text(encoding="utf-8")
 
         self.assertIn('name="interceptor_tracking_container"', source)
         self.assertIn('plugin="drone_city_nav::RadarTargetTrackerNode"', source)
         self.assertIn('plugin="drone_city_nav::InterceptorGuidanceNode"', source)
+        self.assertIn(
+            'plugin="drone_city_nav::TargetAssignmentCoordinatorNode"', source
+        )
         self.assertIn('{"use_intra_process_comms": True}', source)
         self.assertNotIn('executable="radar_target_tracker_node"', source)
         self.assertNotIn('executable="interceptor_guidance_node"', source)

@@ -12,9 +12,19 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 SCENARIO_PATH = REPOSITORY / "drone_city_nav" / "config" / "intercept_scenario.json"
+MULTI_SCENARIO_PATH = (
+    REPOSITORY
+    / "drone_city_nav"
+    / "config"
+    / "multi_intercept_2v2_scenario.json"
+)
 LOADER_PATH = REPOSITORY / "drone_city_nav" / "launch" / "intercept_scenario.py"
 LAUNCH_PATH = REPOSITORY / "drone_city_nav" / "launch" / "intercept.launch.py"
 RUNNER_PATH = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
+RUNTIME_HELPER_PATH = REPOSITORY / "scripts" / "intercept_sim_runtime.sh"
+MULTI_HEADLESS_PATH = REPOSITORY / "scripts" / "sim_multi_intercept_headless.sh"
+MULTI_GUI_PATH = REPOSITORY / "scripts" / "sim_multi_intercept_gui.sh"
+MAKEFILE_PATH = REPOSITORY / "Makefile"
 
 SPEC = importlib.util.spec_from_file_location("intercept_scenario", LOADER_PATH)
 assert SPEC is not None and SPEC.loader is not None
@@ -54,9 +64,68 @@ class InterceptScenarioContractTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "vehicle order"):
                 SCENARIO_MODULE.load_intercept_scenario(malformed)
 
+    def test_generic_2v2_scenario_has_stable_targets_and_spawns(self) -> None:
+        scenario = SCENARIO_MODULE.load_intercept_scenario(MULTI_SCENARIO_PATH)
+        self.assertEqual(scenario["mission_name"], "multi_intercept")
+        self.assertEqual(
+            [vehicle["id"] for vehicle in scenario["vehicles"]],
+            ["interceptor_0", "interceptor_1", "evader_0", "evader_1"],
+        )
+        self.assertEqual(
+            scenario["interceptor_ids"], ["interceptor_0", "interceptor_1"]
+        )
+        self.assertEqual(
+            [(target["id"], target["detection_id"]) for target in scenario["evaders"]],
+            [("evader_0", 1), ("evader_1", 2)],
+        )
+        self.assertEqual(
+            [target["goal_m"] for target in scenario["evaders"]],
+            [(162.0, 216.0, 18.0), (162.0, 216.0, 18.0)],
+        )
+        self.assertEqual(
+            [vehicle["gazebo_spawn_m"] for vehicle in scenario["vehicles"]],
+            [
+                (-171.0, -81.0, 0.3),
+                (153.0, 135.0, 0.3),
+                (-171.0, 135.0, 0.3),
+                (153.0, -81.0, 0.3),
+            ],
+        )
+        makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
+        for wrapper, target in (
+            (MULTI_HEADLESS_PATH, "sim-multi-intercept-headless"),
+            (MULTI_GUI_PATH, "sim-multi-intercept-gui"),
+        ):
+            with self.subTest(wrapper=wrapper.name):
+                text = wrapper.read_text(encoding="utf-8")
+                self.assertIn(f"make {target}", text)
+                recipe = makefile.split(f"{target}:", maxsplit=1)[1].split(
+                    "\n\n", maxsplit=1
+                )[0]
+                self.assertIn("MISSION_TYPE=multi_intercept", recipe)
+                self.assertIn("INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=false", recipe)
+        runner = RUNNER_PATH.read_text(encoding="utf-8") + RUNTIME_HELPER_PATH.read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("multi_intercept_2v2_scenario.json", runner)
+
+    def test_v2_rejects_duplicate_detection_ids(self) -> None:
+        document = json.loads(MULTI_SCENARIO_PATH.read_text(encoding="utf-8"))
+        document["canonical_world"] = str(
+            (MULTI_SCENARIO_PATH.parent / document["canonical_world"]).resolve()
+        )
+        document["vehicles"][-1]["detection_id"] = 1
+        with tempfile.TemporaryDirectory() as directory:
+            malformed = Path(directory) / "scenario.json"
+            malformed.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "positive and unique"):
+                SCENARIO_MODULE.load_intercept_scenario(malformed)
+
     def test_launch_and_runner_have_no_independent_intercept_coordinates(self) -> None:
         launch = LAUNCH_PATH.read_text(encoding="utf-8")
-        runner = RUNNER_PATH.read_text(encoding="utf-8")
+        runner = RUNNER_PATH.read_text(encoding="utf-8") + RUNTIME_HELPER_PATH.read_text(
+            encoding="utf-8"
+        )
         self.assertIn("load_intercept_scenario", launch)
         self.assertIn('intercept_scenario_path:="${intercept_scenario_path}"', runner)
         self.assertIn("intercept_scenario.py", runner)

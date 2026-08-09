@@ -7,13 +7,17 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "intercept_ros_utils.hpp"
 
@@ -91,12 +95,34 @@ public:
         state_qos, [this](const msg::SimulationTruthState::SharedPtr state) {
           radar_truth_state_ = detail::physicalTruthState(*state);
         });
-    target_truth_state_sub_ = create_subscription<msg::SimulationTruthState>(
-        declare_parameter<std::string>("target_truth_state_topic",
-                                       "/simulation_truth/vehicles/evader/state"),
-        state_qos, [this](const msg::SimulationTruthState::SharedPtr state) {
-          target_truth_state_ = detail::physicalTruthState(*state);
-        });
+    const std::vector<std::string> target_topics =
+        declare_parameter<std::vector<std::string>>(
+            "target_truth_state_topics", {"/simulation_truth/vehicles/evader/state"});
+    const std::vector<std::int64_t> target_detection_ids =
+        declare_parameter<std::vector<std::int64_t>>("target_detection_ids", {1});
+    if (target_topics.empty() || target_topics.size() != target_detection_ids.size()) {
+      throw std::invalid_argument{
+          "radar target topics and detection ids must be non-empty and equal-sized"};
+    }
+    std::unordered_set<std::uint64_t> unique_detection_ids;
+    target_truth_states_.resize(target_topics.size());
+    target_detection_ids_.reserve(target_detection_ids.size());
+    target_truth_state_subs_.reserve(target_topics.size());
+    for (std::size_t index = 0U; index < target_topics.size(); ++index) {
+      if (target_detection_ids[index] <= 0) {
+        throw std::invalid_argument{"radar detection ids must be positive"};
+      }
+      const auto detection_id = static_cast<std::uint64_t>(target_detection_ids[index]);
+      if (!unique_detection_ids.insert(detection_id).second) {
+        throw std::invalid_argument{"radar detection ids must be unique"};
+      }
+      target_detection_ids_.push_back(detection_id);
+      target_truth_state_subs_.push_back(create_subscription<msg::SimulationTruthState>(
+          target_topics[index], state_qos,
+          [this, index](const msg::SimulationTruthState::SharedPtr state) {
+            target_truth_states_[index] = detail::physicalTruthState(*state);
+          }));
+    }
     scan_pub_ = create_publisher<msg::RadarScan>(
         declare_parameter<std::string>("radar_scan_topic",
                                        "/vehicles/interceptor/radar/scan"),
@@ -112,10 +138,10 @@ public:
     timer_ = create_wall_timer(std::chrono::milliseconds{20}, [this] { tick(); });
     RCLCPP_INFO(get_logger(),
                 "Radar simulator ready: frame='%s' cadence=[%.3f,%.3f]s "
-                "track_interval=%.3fs track_control=los_command",
+                "track_interval=%.3fs targets=%zu track_control=los_command",
                 radar_frame_id_.c_str(), cadenceMinimumInterval(),
-                cadenceMaximumInterval(),
-                get_parameter("track_interval_s").as_double());
+                cadenceMaximumInterval(), get_parameter("track_interval_s").as_double(),
+                target_truth_states_.size());
   }
 
 private:
@@ -159,34 +185,28 @@ private:
     if (next_scan_due_ns_ > 0 && now_ns < next_scan_due_ns_) {
       return;
     }
-    if (!radar_navigation_state_.has_value() || !radar_truth_state_.has_value() ||
-        !target_truth_state_.has_value() || !radar_navigation_state_->heading_valid) {
+    if (!radar_navigation_state_.has_value() || !radar_truth_state_.has_value()) {
       return;
     }
-    const std::int64_t measurement_stamp_ns = radar_truth_state_->stamp_ns;
+    const TimedVehicleState& navigation_state = radar_navigation_state_.value();
+    const TimedVehicleState& truth_state = radar_truth_state_.value();
+    if (!navigation_state.heading_valid) {
+      return;
+    }
+    const std::int64_t measurement_stamp_ns = truth_state.stamp_ns;
     if (measurement_stamp_ns <= previous_scan_stamp_ns_) {
       return;
     }
     const double heading_age_s =
-        std::abs(static_cast<double>(measurement_stamp_ns -
-                                     radar_navigation_state_->stamp_ns)) *
+        std::abs(
+            static_cast<double>(measurement_stamp_ns - navigation_state.stamp_ns)) *
         1.0e-9;
     if (heading_age_s > maximum_state_alignment_s_) {
       return;
     }
-    const std::optional<TimedVehicleState> target =
-        stateAt(*target_truth_state_, measurement_stamp_ns, maximum_state_alignment_s_);
-    if (!target.has_value()) {
-      return;
-    }
-    TimedVehicleState radar = *radar_truth_state_;
-    radar.heading_rad = radar_navigation_state_->heading_rad;
+    TimedVehicleState radar = truth_state;
+    radar.heading_rad = navigation_state.heading_rad;
     radar.heading_valid = true;
-    const std::optional<RadarDetectionSample> detection =
-        simulateIdealRadarDetection(radar, *target, 1U);
-    if (!detection.has_value()) {
-      return;
-    }
 
     msg::RadarScan scan;
     scan.header.stamp = detail::timeMessage(measurement_stamp_ns);
@@ -195,13 +215,34 @@ private:
     scan.cadence_mode = track_mode_active_ ? msg::RadarScan::CADENCE_MODE_TRACK
                                            : msg::RadarScan::CADENCE_MODE_SEARCH;
     scan.cadence_reason = track_mode_reason_;
-    msg::RadarDetection radar_detection;
-    radar_detection.detection_id = detection->detection_id;
-    radar_detection.range_m = detection->range_m;
-    radar_detection.azimuth_rad = detection->azimuth_rad;
-    radar_detection.elevation_rad = detection->elevation_rad;
-    radar_detection.radial_velocity_mps = detection->radial_velocity_mps;
-    scan.detections.push_back(radar_detection);
+    double minimum_range_m = std::numeric_limits<double>::infinity();
+    scan.detections.reserve(target_truth_states_.size());
+    for (std::size_t index = 0U; index < target_truth_states_.size(); ++index) {
+      const std::optional<TimedVehicleState>& target_truth =
+          target_truth_states_[index];
+      if (!target_truth.has_value()) {
+        return;
+      }
+      const std::optional<TimedVehicleState> target = stateAt(
+          target_truth.value(), measurement_stamp_ns, maximum_state_alignment_s_);
+      if (!target.has_value()) {
+        return;
+      }
+      const std::optional<RadarDetectionSample> detection = simulateIdealRadarDetection(
+          radar, target.value(), target_detection_ids_[index]);
+      if (!detection.has_value()) {
+        return;
+      }
+      const RadarDetectionSample& resolved_detection = detection.value();
+      msg::RadarDetection radar_detection;
+      radar_detection.detection_id = resolved_detection.detection_id;
+      radar_detection.range_m = resolved_detection.range_m;
+      radar_detection.azimuth_rad = resolved_detection.azimuth_rad;
+      radar_detection.elevation_rad = resolved_detection.elevation_rad;
+      radar_detection.radial_velocity_mps = resolved_detection.radial_velocity_mps;
+      scan.detections.push_back(radar_detection);
+      minimum_range_m = std::min(minimum_range_m, resolved_detection.range_m);
+    }
     scan_pub_->publish(scan);
 
     const double next_interval_s = cadence_->nextIntervalSeconds(track_mode_active_);
@@ -214,18 +255,19 @@ private:
     previous_scan_stamp_ns_ = measurement_stamp_ns;
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "RADAR_SCAN published=true sequence=%lu detections=1 range_m=%.3f "
+        "RADAR_SCAN published=true sequence=%lu detections=%zu minimum_range_m=%.3f "
         "actual_interval_s=%.3f next_interval_s=%.3f track_mode=%s cadence_reason=%s "
         "source=gazebo_physical_truth",
-        static_cast<unsigned long>(scan.scan_sequence), detection->range_m,
-        actual_interval_s, next_interval_s, track_mode_active_ ? "true" : "false",
-        cadenceReasonName(track_mode_reason_));
+        static_cast<unsigned long>(scan.scan_sequence), scan.detections.size(),
+        minimum_range_m, actual_interval_s, next_interval_s,
+        track_mode_active_ ? "true" : "false", cadenceReasonName(track_mode_reason_));
   }
 
   std::unique_ptr<CorrelatedRadarCadence> cadence_;
   std::optional<TimedVehicleState> radar_navigation_state_;
   std::optional<TimedVehicleState> radar_truth_state_;
-  std::optional<TimedVehicleState> target_truth_state_;
+  std::vector<std::optional<TimedVehicleState>> target_truth_states_;
+  std::vector<std::uint64_t> target_detection_ids_;
   std::string radar_frame_id_;
   double maximum_state_alignment_s_{0.1};
   std::int64_t next_scan_due_ns_{0};
@@ -239,7 +281,8 @@ private:
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr
       radar_navigation_state_sub_;
   rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr radar_truth_state_sub_;
-  rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr target_truth_state_sub_;
+  std::vector<rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr>
+      target_truth_state_subs_;
   rclcpp::Publisher<msg::RadarScan>::SharedPtr scan_pub_;
   rclcpp::Subscription<msg::RadarTrackModeCommand>::SharedPtr track_mode_command_sub_;
   rclcpp::TimerBase::SharedPtr timer_;

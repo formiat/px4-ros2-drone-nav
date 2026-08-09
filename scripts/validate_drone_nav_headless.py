@@ -48,11 +48,10 @@ def read_text(path: Path) -> str:
 
 
 def safety_relevant_ros_log(ros_log: str, mission_type: str) -> str:
-    if mission_type != "intercept":
+    if mission_type not in {"intercept", "multi_intercept"}:
         return ros_log
     terminal_result = re.search(
-        r"MISSION_RESULT success=true mission=intercept "
-        r"outcome=(?:intercepted|evader_reached_goal).*",
+        rf"MISSION_RESULT success=true mission={mission_type} outcome=[a-z_]+.*",
         ros_log,
     )
     return ros_log[: terminal_result.end()] if terminal_result else ros_log
@@ -272,6 +271,128 @@ def validate_intercept_radar_pipeline(ros_log: str, errors: list[str]) -> None:
         print("OK: no evader ground-truth boundary violation")
 
 
+def validate_multi_intercept_settlement(ros_log: str, errors: list[str]) -> None:
+    result = re.search(
+        r"MISSION_RESULT success=true mission=multi_intercept "
+        r"outcome=(all_intercepted|all_reached_goal|mixed) .*"
+        r"intercepted_targets=([0-9]+) reached_goal_targets=([0-9]+) "
+        r"destroyed_targets=([0-9]+) target_count=([0-9]+)",
+        ros_log,
+    )
+    if result is None:
+        errors.append("FAIL: multi-intercept mission reports a technical outcome")
+        return
+    settled_log = ros_log[: result.end()]
+    result_counts = tuple(int(result.group(index)) for index in range(2, 6))
+    intercepted_count, reached_goal_count, destroyed_count, expected_targets = (
+        result_counts
+    )
+    if sum(result_counts[:3]) != expected_targets:
+        errors.append("FAIL: multi-intercept result target counts are consistent")
+
+    target_outcomes = re.findall(
+        r"INTERCEPT_TARGET_OUTCOME target_id='([^']+)' detection_id=[0-9]+ "
+        r"outcome=([a-z_]+) first_target_terminal_event=true "
+        r"capturing_interceptor_id='([^']+)'",
+        settled_log,
+    )
+    outcome_ids = [target_id for target_id, _, _ in target_outcomes]
+    if len(target_outcomes) != expected_targets or len(set(outcome_ids)) != len(
+        outcome_ids
+    ):
+        errors.append(
+            "FAIL: every target has exactly one terminal outcome "
+            f"({len(target_outcomes)} != {expected_targets})"
+        )
+    else:
+        print(f"OK: all target outcomes are recorded ({expected_targets})")
+
+    startup = re.search(
+        r"INTERCEPT_MISSION state=running mission='multi_intercept' .*"
+        r"interceptor_count=([0-9]+) target_count=([0-9]+)",
+        settled_log,
+    )
+    expected_interceptors = int(startup.group(1)) if startup else 0
+    if startup is None or int(startup.group(2)) != expected_targets:
+        errors.append("FAIL: multi-intercept startup counts match the result")
+    assignment_ids = set(
+        re.findall(
+            r"TARGET_ASSIGNMENT interceptor_id='([^']+)' detection_id=[0-9]+",
+            settled_log,
+        )
+    )
+    if len(assignment_ids) < expected_interceptors:
+        errors.append(
+            "FAIL: adaptive assignments are published for all interceptors "
+            f"({len(assignment_ids)} < {expected_interceptors})"
+        )
+    else:
+        print(
+            "OK: adaptive assignments are published for all interceptors "
+            f"({expected_interceptors})"
+        )
+
+    captured_interceptors: set[str] = set()
+    for target_id, outcome, capturing_id in target_outcomes:
+        if outcome != "intercepted":
+            continue
+        if capturing_id == "none":
+            errors.append(f"FAIL: captured target {target_id} identifies its interceptor")
+            continue
+        captured_interceptors.add(capturing_id)
+        proximity = re.search(
+            r"PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true "
+            rf"interceptor_id='{re.escape(capturing_id)}' "
+            rf"target_id='{re.escape(target_id)}' .*"
+            r"measured_swept_separation_m=([0-9.]+) .*"
+            r"separation_threshold_m=([0-9.]+)",
+            settled_log,
+        )
+        if proximity is None or float(proximity.group(1)) > float(proximity.group(2)):
+            errors.append(
+                f"FAIL: {capturing_id} physically intercepts {target_id} within threshold"
+            )
+        else:
+            print(f"OK: {capturing_id} physically intercepts {target_id}")
+        for vehicle_id, role in (
+            (capturing_id, "interceptor"),
+            (target_id, "evader"),
+        ):
+            require(
+                f"multi-intercept disarm is confirmed for {vehicle_id}",
+                ros_log,
+                rf"\[vehicles\.{re.escape(vehicle_id)}\.mppi_offboard_node\].*"
+                rf"VEHICLE_DESTROYED disarm_confirmed=true role={role} "
+                r"cause=proximity_intercept",
+                errors,
+            )
+
+    destroyed_interceptors = captured_interceptors | set(
+        re.findall(
+            r"VEHICLE_DESTROYED referee_observed=true role=interceptor "
+            r"vehicle_id='([^']+)'",
+            settled_log,
+        )
+    )
+    surviving_interceptors = assignment_ids - destroyed_interceptors
+    for interceptor_id in sorted(surviving_interceptors):
+        require(
+            f"surviving interceptor {interceptor_id} confirms hold",
+            settled_log,
+            rf"INTERCEPTOR_HOLD_CONFIRMED vehicle_id='{re.escape(interceptor_id)}'",
+            errors,
+        )
+
+    if len([item for item in target_outcomes if item[1] == "intercepted"]) != (
+        intercepted_count
+    ) or len([item for item in target_outcomes if item[1] == "reached_goal"]) != (
+        reached_goal_count
+    ) or len([item for item in target_outcomes if item[1] == "destroyed"]) != (
+        destroyed_count
+    ):
+        errors.append("FAIL: target outcomes match multi-intercept result counts")
+
+
 def validate_intercept_physical_losses(ros_log: str, errors: list[str]) -> None:
     if "CRASH_EVENT" in ros_log:
         errors.append("FAIL: untyped legacy crash was reported")
@@ -343,9 +464,10 @@ def main() -> int:
     parser.add_argument("--px4-log", required=True, action="append", type=Path)
     parser.add_argument(
         "--mission-type",
-        choices=("point_to_point", "intercept"),
+        choices=("point_to_point", "intercept", "multi_intercept"),
         default="point_to_point",
     )
+    parser.add_argument("--expected-vehicles", type=int, default=0)
     parser.add_argument("--expected-static", default="")
     parser.add_argument("--expected-memory", default="")
     parser.add_argument("--expected-current-lidar", default="")
@@ -365,7 +487,12 @@ def main() -> int:
     safety_ros_log = safety_relevant_ros_log(ros_log, args.mission_type)
     validate_building_collisions(ros_log, errors)
 
-    expected_vehicles = 4 if args.mission_type == "intercept" else 1
+    expected_vehicles = args.expected_vehicles
+    if expected_vehicles <= 0:
+        expected_vehicles = 4 if args.mission_type in {
+            "intercept",
+            "multi_intercept",
+        } else 1
     require_count(
         "PX4 instances report Gazebo ready",
         px4_log,
@@ -468,7 +595,7 @@ def main() -> int:
             errors,
         )
 
-    if args.mission_type == "intercept":
+    if args.mission_type in {"intercept", "multi_intercept"}:
         validate_intercept_physical_losses(safety_ros_log, errors)
     elif re.search(r"CRASH_EVENT|cause=physical_collision", safety_ros_log):
         errors.append("FAIL: crash was reported")
@@ -483,8 +610,9 @@ def main() -> int:
             r"MISSION_RESULT success=true",
             errors,
         )
-        if args.mission_type == "intercept":
+        if args.mission_type in {"intercept", "multi_intercept"}:
             validate_intercept_radar_pipeline(ros_log, errors)
+        if args.mission_type == "intercept":
             require(
                 "intercept mission reports a technical outcome",
                 ros_log,
@@ -493,6 +621,8 @@ def main() -> int:
                 errors,
             )
             validate_intercept_settlement(ros_log, errors)
+        elif args.mission_type == "multi_intercept":
+            validate_multi_intercept_settlement(ros_log, errors)
     elif mission_failed:
         print("WARN: mission failure was allowed")
 

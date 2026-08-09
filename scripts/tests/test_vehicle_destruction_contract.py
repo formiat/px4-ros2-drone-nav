@@ -15,6 +15,7 @@ LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
 CONFIG = PACKAGE / "config" / "urban_mvp.yaml"
 MESSAGE = PACKAGE / "msg" / "VehicleDestroyed.msg"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
+REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 COLLISION = SOURCE / "collision_crash_node.cpp"
 
@@ -59,7 +60,9 @@ class VehicleDestructionContractTest(unittest.TestCase):
         self.assertIn("expected_vehicle_id_", offboard)
 
     def test_producers_assign_distinct_structured_causes(self) -> None:
-        referee = REFEREE.read_text(encoding="utf-8")
+        referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
+            encoding="utf-8"
+        )
         collision = COLLISION.read_text(encoding="utf-8")
         self.assertIn("CAUSE_PROXIMITY_INTERCEPT", referee)
         self.assertIn("CAUSE_PROXIMITY_COLLISION", referee)
@@ -67,12 +70,17 @@ class VehicleDestructionContractTest(unittest.TestCase):
         self.assertNotIn("VehicleCommand", referee)
 
     def test_referee_keeps_physical_contacts_active_during_settlement(self) -> None:
-        referee = REFEREE.read_text(encoding="utf-8")
-        self.assertIn("interceptRefereeCyclePolicy", referee)
-        self.assertIn("evaluateMissionAndPhysicalEvents", referee)
-        self.assertIn("evaluatorStates(true)", referee)
-        self.assertIn("detectInterceptorCollisions();", referee)
-        self.assertIn("outcome_preserved=system_failure", referee)
+        referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
+            encoding="utf-8"
+        )
+        terminal_branch = referee.split(
+            "if (aggregate_outcome_.has_value() || system_failure_reason_.has_value())",
+            maxsplit=1,
+        )[1]
+        self.assertIn("detectPhysicalContacts();", terminal_branch)
+        self.assertIn("settleTerminal(now_ns);", terminal_branch)
+        self.assertIn("outcome_preserved=evader_reached_goal", referee)
+        self.assertIn("outcome_preserved=target_reached_goal", referee)
         self.assertNotIn("late_capture_after_goal_", referee)
 
     def test_intercept_launch_wires_role_and_epoch_per_vehicle(self) -> None:

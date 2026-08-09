@@ -66,6 +66,11 @@ predictTargetVerticalMotion(double initial_z_m, double initial_velocity_mps,
                             double elapsed_s, double deceleration_mps2,
                             const FlightEnvelopeConfig& flight_envelope) noexcept;
 
+[[nodiscard]] std::optional<double>
+estimateHorizontalInterceptTime(const Point3& interceptor, const Point3& target,
+                                const Vec3& target_velocity,
+                                double interceptor_speed_mps) noexcept;
+
 class InterceptGuidance final {
 public:
   explicit InterceptGuidance(const InterceptGuidanceConfig& config = {});

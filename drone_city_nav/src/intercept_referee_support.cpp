@@ -78,6 +78,40 @@ declareInterceptorTopicConfig(rclcpp::Node& node,
   return config;
 }
 
+TargetTopicConfig
+declareTargetTopicConfig(rclcpp::Node& node,
+                         const std::vector<std::string>& vehicle_ids) {
+  const auto vehicleDefault = [&](const std::string& suffix) {
+    return vehicleTopics(vehicle_ids, "/vehicles/", suffix);
+  };
+  TargetTopicConfig config{
+      .navigation_state = node.declare_parameter<std::vector<std::string>>(
+          "target_state_topics", vehicleDefault("/state")),
+      .physical_truth_state = node.declare_parameter<std::vector<std::string>>(
+          "target_truth_state_topics",
+          vehicleTopics(vehicle_ids, "/simulation_truth/vehicles/", "/state")),
+      .world_readiness = node.declare_parameter<std::vector<std::string>>(
+          "target_world_readiness_topics", vehicleDefault("/mppi/world_ready")),
+      .destroyed = node.declare_parameter<std::vector<std::string>>(
+          "target_destroyed_topics", vehicleDefault("/vehicle_destroyed")),
+      .objective = node.declare_parameter<std::vector<std::string>>(
+          "target_objective_topics", vehicleDefault("/navigation_objective")),
+      .mission_start = node.declare_parameter<std::vector<std::string>>(
+          "target_start_topics", vehicleDefault("/mission_start")),
+  };
+  for (const auto& [values, parameter_name] :
+       std::vector<std::pair<const std::vector<std::string>*, std::string>>{
+           {&config.navigation_state, "target_state_topics"},
+           {&config.physical_truth_state, "target_truth_state_topics"},
+           {&config.world_readiness, "target_world_readiness_topics"},
+           {&config.destroyed, "target_destroyed_topics"},
+           {&config.objective, "target_objective_topics"},
+           {&config.mission_start, "target_start_topics"}}) {
+    requireCount(*values, vehicle_ids.size(), parameter_name);
+  }
+  return config;
+}
+
 std::int64_t missionTimeoutNanoseconds(const double seconds) {
   if (!(seconds > 0.0) || !std::isfinite(seconds)) {
     throw std::invalid_argument{"mission timeout must be finite and positive"};
@@ -167,31 +201,30 @@ void logRuntimeTruthAlignmentTransition(
   }
 }
 
-void logPhysicalProximityIntercept(const rclcpp::Logger& logger,
-                                   const std::string& interceptor_id,
-                                   const MultiInterceptMissionUpdate& update,
-                                   const TimedVehicleState& interceptor_state,
-                                   const TimedVehicleState& evader_state,
-                                   const double capture_radius_m,
-                                   const std::int64_t event_stamp_ns,
-                                   const std::uint64_t mission_epoch) {
+void logPhysicalProximityIntercept(
+    const rclcpp::Logger& logger, const std::string& interceptor_id,
+    const std::string& target_id, const SweptVehicleSeparation& separation,
+    const TimedVehicleState& interceptor_state, const TimedVehicleState& evader_state,
+    const double capture_radius_m, const std::int64_t event_stamp_ns,
+    const std::uint64_t mission_epoch) {
   const double interceptor_age_ms =
       static_cast<double>(event_stamp_ns - interceptor_state.stamp_ns) * 1.0e-6;
   const double evader_age_ms =
       static_cast<double>(event_stamp_ns - evader_state.stamp_ns) * 1.0e-6;
-  RCLCPP_ERROR(logger,
-               "PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true "
-               "interceptor_id='%s' measured_swept_separation_m=%.3f "
-               "current_separation_m=%.3f separation_threshold_m=%.3f "
-               "interpolation_fraction=%.6f interceptor_position=(%.3f,%.3f,%.3f) "
-               "evader_position=(%.3f,%.3f,%.3f) interceptor_truth_age_ms=%.1f "
-               "evader_truth_age_ms=%.1f mission_epoch=%" PRIu64,
-               interceptor_id.c_str(), update.separation_m, update.current_separation_m,
-               capture_radius_m, update.interpolation_fraction,
-               interceptor_state.position.x, interceptor_state.position.y,
-               interceptor_state.position.z, evader_state.position.x,
-               evader_state.position.y, evader_state.position.z, interceptor_age_ms,
-               evader_age_ms, mission_epoch);
+  RCLCPP_ERROR(
+      logger,
+      "PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true "
+      "interceptor_id='%s' target_id='%s' "
+      "measured_swept_separation_m=%.3f "
+      "current_separation_m=%.3f separation_threshold_m=%.3f "
+      "interpolation_fraction=%.6f interceptor_position=(%.3f,%.3f,%.3f) "
+      "evader_position=(%.3f,%.3f,%.3f) interceptor_truth_age_ms=%.1f "
+      "evader_truth_age_ms=%.1f mission_epoch=%" PRIu64,
+      interceptor_id.c_str(), target_id.c_str(), separation.minimum_m,
+      separation.current_m, capture_radius_m, separation.interpolation_fraction,
+      interceptor_state.position.x, interceptor_state.position.y,
+      interceptor_state.position.z, evader_state.position.x, evader_state.position.y,
+      evader_state.position.z, interceptor_age_ms, evader_age_ms, mission_epoch);
 }
 
 } // namespace drone_city_nav

@@ -2,12 +2,13 @@
 
 #include "drone_city_nav/msg/radar_scan.hpp"
 #include "drone_city_nav/msg/target_track.hpp"
+#include "drone_city_nav/msg/target_track_array.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 #include "drone_city_nav/radar_target_tracker.hpp"
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
 
+#include <algorithm>
 #include <cinttypes>
 #include <cstdint>
 #include <memory>
@@ -15,6 +16,7 @@
 #include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 #include "intercept_ros_utils.hpp"
 
@@ -31,7 +33,7 @@ public:
                 declare_parameter<double>("ownship_maximum_extrapolation_s", 0.1) *
                 1.0e9),
         }},
-        tracker_{RadarTargetTrackerConfig{
+        tracker_config_{RadarTargetTrackerConfig{
             .maximum_update_interval_s =
                 declare_parameter<double>("maximum_update_interval_s", 4.0),
             .position_correction_gain =
@@ -42,8 +44,7 @@ public:
                 declare_parameter<double>("high_rate_velocity_correction_gain", 1.0),
             .maximum_ownship_stamp_error_s =
                 declare_parameter<double>("maximum_ownship_stamp_error_s", 0.05),
-            .track_id = static_cast<std::uint64_t>(
-                declare_parameter<std::int64_t>("track_id", 1)),
+            .track_id = 1U,
         }} {
     expected_radar_frame_ =
         declare_parameter<std::string>("expected_radar_frame", "radar_yaw");
@@ -62,28 +63,16 @@ public:
                                        "/vehicles/interceptor/radar/scan"),
         rclcpp::QoS{10}.reliable(),
         [this](const msg::RadarScan::SharedPtr scan) { onRadarScan(*scan); });
-    track_pub_ = create_publisher<msg::TargetTrack>(
-        declare_parameter<std::string>("target_track_topic",
-                                       "/vehicles/interceptor/target_track"),
+    track_array_pub_ = create_publisher<msg::TargetTrackArray>(
+        declare_parameter<std::string>("target_track_array_topic",
+                                       "/vehicles/interceptor/target_tracks"),
         rclcpp::QoS{1}.reliable().transient_local());
-    track_readiness_pub_ = create_publisher<std_msgs::msg::Bool>(
-        declare_parameter<std::string>("target_track_readiness_topic",
-                                       "/vehicles/interceptor/target_track_ready"),
-        rclcpp::QoS{1}.reliable().transient_local());
-    publishTrackReadiness(false);
     RCLCPP_INFO(get_logger(),
                 "Radar target tracker ready: input_frame='%s' output_frame='%s'",
                 expected_radar_frame_.c_str(), output_frame_.c_str());
   }
 
 private:
-  void publishTrackReadiness(const bool ready) {
-    std_msgs::msg::Bool message;
-    message.data = ready;
-    track_readiness_pub_->publish(message);
-    RCLCPP_INFO(get_logger(), "RADAR_TRACK_READY ready=%s", ready ? "true" : "false");
-  }
-
   void onRadarScan(const msg::RadarScan& scan) {
     if (scan.header.frame_id != expected_radar_frame_ || scan.detections.empty() ||
         scan.cadence_mode > msg::RadarScan::CADENCE_MODE_TRACK) {
@@ -109,76 +98,98 @@ private:
     if (!ownship.has_value()) {
       return;
     }
-    const msg::RadarDetection& input = pending_scan_->detections.front();
-    const RadarDetectionSample detection{
-        .detection_id = input.detection_id,
-        .range_m = input.range_m,
-        .azimuth_rad = input.azimuth_rad,
-        .elevation_rad = input.elevation_rad,
-        .radial_velocity_mps = input.radial_velocity_mps,
-    };
-    const RadarTrackEstimate estimate = tracker_.update(
-        *ownship, detection, stamp_ns, pending_scan_->scan_sequence,
-        pending_scan_->cadence_mode == msg::RadarScan::CADENCE_MODE_TRACK
-            ? RadarTrackerUpdateMode::kTrack
-            : RadarTrackerUpdateMode::kSearch);
-    if (!estimate.position_valid) {
-      RCLCPP_WARN(get_logger(),
-                  "RADAR_TRACK rejected=true reason=tracker_update_failed "
-                  "scan_sequence=%" PRIu64,
-                  pending_scan_->scan_sequence);
-      pending_scan_.reset();
-      return;
-    }
+    msg::TargetTrackArray output;
+    output.header = pending_scan_->header;
+    output.header.frame_id = output_frame_;
+    output.source_scan_sequence = pending_scan_->scan_sequence;
+    std::vector<msg::RadarDetection> detections = pending_scan_->detections;
+    std::ranges::sort(detections, {}, &msg::RadarDetection::detection_id);
+    std::uint64_t previous_detection_id = 0U;
+    for (const msg::RadarDetection& input : detections) {
+      if (input.detection_id == 0U || input.detection_id == previous_detection_id) {
+        RCLCPP_WARN(get_logger(),
+                    "RADAR_TRACK rejected_detection=true reason=invalid_detection_id "
+                    "detection_id=%" PRIu64 " scan_sequence=%" PRIu64,
+                    input.detection_id, pending_scan_->scan_sequence);
+        continue;
+      }
+      previous_detection_id = input.detection_id;
+      auto tracker = trackers_.find(input.detection_id);
+      if (tracker == trackers_.end()) {
+        RadarTargetTrackerConfig config = tracker_config_;
+        config.track_id = input.detection_id;
+        tracker = trackers_
+                      .emplace(input.detection_id,
+                               std::make_unique<RadarTargetTracker>(config))
+                      .first;
+      }
+      const RadarDetectionSample detection{
+          .detection_id = input.detection_id,
+          .range_m = input.range_m,
+          .azimuth_rad = input.azimuth_rad,
+          .elevation_rad = input.elevation_rad,
+          .radial_velocity_mps = input.radial_velocity_mps,
+      };
+      const RadarTrackEstimate estimate = tracker->second->update(
+          *ownship, detection, stamp_ns, pending_scan_->scan_sequence,
+          pending_scan_->cadence_mode == msg::RadarScan::CADENCE_MODE_TRACK
+              ? RadarTrackerUpdateMode::kTrack
+              : RadarTrackerUpdateMode::kSearch);
+      if (!estimate.position_valid) {
+        RCLCPP_WARN(get_logger(),
+                    "RADAR_TRACK rejected_detection=true reason=tracker_update_failed "
+                    "detection_id=%" PRIu64 " scan_sequence=%" PRIu64,
+                    input.detection_id, pending_scan_->scan_sequence);
+        continue;
+      }
 
-    msg::TargetTrack track;
-    track.header.stamp = pending_scan_->header.stamp;
-    track.header.frame_id = output_frame_;
-    track.track_id = estimate.track_id;
-    track.source_scan_sequence = estimate.source_scan_sequence;
-    track.source_detection_id = estimate.source_detection_id;
-    track.position.x = estimate.position.x;
-    track.position.y = estimate.position.y;
-    track.position.z = estimate.position.z;
-    track.velocity.x = estimate.velocity.x;
-    track.velocity.y = estimate.velocity.y;
-    track.velocity.z = estimate.velocity.z;
-    track.position_valid = estimate.position_valid;
-    track.velocity_valid = estimate.velocity_valid;
-    track.status = estimate.velocity_valid ? msg::TargetTrack::STATUS_TRACKING
-                                           : msg::TargetTrack::STATUS_INITIALIZING;
-    track_pub_->publish(track);
-    if (!track_ready_) {
-      track_ready_ = true;
-      publishTrackReadiness(true);
+      msg::TargetTrack track;
+      track.header = output.header;
+      track.track_id = estimate.track_id;
+      track.source_scan_sequence = estimate.source_scan_sequence;
+      track.source_detection_id = estimate.source_detection_id;
+      track.position.x = estimate.position.x;
+      track.position.y = estimate.position.y;
+      track.position.z = estimate.position.z;
+      track.velocity.x = estimate.velocity.x;
+      track.velocity.y = estimate.velocity.y;
+      track.velocity.z = estimate.velocity.z;
+      track.position_valid = estimate.position_valid;
+      track.velocity_valid = estimate.velocity_valid;
+      track.status = estimate.velocity_valid ? msg::TargetTrack::STATUS_TRACKING
+                                             : msg::TargetTrack::STATUS_INITIALIZING;
+      output.tracks.push_back(track);
+      RCLCPP_INFO(
+          get_logger(),
+          "RADAR_TRACK status=%s track_id=%" PRIu64 " detection_id=%" PRIu64
+          " scan_sequence=%" PRIu64
+          " measurement_count=%zu velocity_valid=%s cadence_mode=%s "
+          "cadence_reason=%u velocity_correction_gain=%.3f",
+          estimate.velocity_valid ? "tracking" : "initializing", estimate.track_id,
+          estimate.source_detection_id, estimate.source_scan_sequence,
+          estimate.measurement_count, estimate.velocity_valid ? "true" : "false",
+          pending_scan_->cadence_mode == msg::RadarScan::CADENCE_MODE_TRACK ? "track"
+                                                                            : "search",
+          static_cast<unsigned int>(pending_scan_->cadence_reason),
+          estimate.velocity_correction_gain);
+    }
+    if (!output.tracks.empty()) {
+      track_array_pub_->publish(output);
     }
     last_scan_sequence_ = pending_scan_->scan_sequence;
-    RCLCPP_INFO(get_logger(),
-                "RADAR_TRACK status=%s track_id=%" PRIu64 " scan_sequence=%" PRIu64
-                " measurement_count=%zu velocity_valid=%s cadence_mode=%s "
-                "cadence_reason=%u velocity_correction_gain=%.3f",
-                estimate.velocity_valid ? "tracking" : "initializing",
-                estimate.track_id, estimate.source_scan_sequence,
-                estimate.measurement_count, estimate.velocity_valid ? "true" : "false",
-                pending_scan_->cadence_mode == msg::RadarScan::CADENCE_MODE_TRACK
-                    ? "track"
-                    : "search",
-                static_cast<unsigned int>(pending_scan_->cadence_reason),
-                estimate.velocity_correction_gain);
     pending_scan_.reset();
   }
 
   RadarOwnshipHistory ownship_history_;
-  RadarTargetTracker tracker_;
+  RadarTargetTrackerConfig tracker_config_{};
+  std::unordered_map<std::uint64_t, std::unique_ptr<RadarTargetTracker>> trackers_;
   std::optional<msg::RadarScan> pending_scan_;
   std::string expected_radar_frame_;
   std::string output_frame_;
   std::uint64_t last_scan_sequence_{0U};
-  bool track_ready_{false};
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr ownship_state_sub_;
   rclcpp::Subscription<msg::RadarScan>::SharedPtr radar_scan_sub_;
-  rclcpp::Publisher<msg::TargetTrack>::SharedPtr track_pub_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr track_readiness_pub_;
+  rclcpp::Publisher<msg::TargetTrackArray>::SharedPtr track_array_pub_;
 };
 
 std::shared_ptr<rclcpp::Node>

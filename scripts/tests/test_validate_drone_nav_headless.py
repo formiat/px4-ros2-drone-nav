@@ -68,6 +68,37 @@ class SafetyRelevantRosLogTest(unittest.TestCase):
 
 
 class InterceptSettlementValidationTest(unittest.TestCase):
+    def test_multi_intercept_requires_complete_2v2_settlement(self) -> None:
+        log = (
+            "INTERCEPT_MISSION state=running mission='multi_intercept' epoch=1 "
+            "interceptor_count=2 target_count=2\n"
+            "TARGET_ASSIGNMENT interceptor_id='interceptor_0' detection_id=1\n"
+            "TARGET_ASSIGNMENT interceptor_id='interceptor_1' detection_id=2\n"
+            "INTERCEPT_TARGET_OUTCOME target_id='evader_0' detection_id=1 "
+            "outcome=intercepted first_target_terminal_event=true "
+            "capturing_interceptor_id='interceptor_0'\n"
+            "PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true "
+            "interceptor_id='interceptor_0' target_id='evader_0' "
+            "measured_swept_separation_m=4.8 current_separation_m=5.1 "
+            "separation_threshold_m=5.0\n"
+            "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=interceptor cause=proximity_intercept\n"
+            "[vehicles.evader_0.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=evader cause=proximity_intercept\n"
+            "INTERCEPT_TARGET_OUTCOME target_id='evader_1' detection_id=2 "
+            "outcome=reached_goal first_target_terminal_event=true "
+            "capturing_interceptor_id='none'\n"
+            "INTERCEPTOR_HOLD_CONFIRMED vehicle_id='interceptor_1'\n"
+            "MISSION_RESULT success=true mission=multi_intercept outcome=mixed "
+            "intercepted_targets=1 reached_goal_targets=1 destroyed_targets=0 "
+            "target_count=2 mission_epoch=1\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_multi_intercept_settlement(log, errors)
+
+        self.assertEqual(errors, [])
+
     def test_interceptor_physical_losses_require_typed_disarm_settlement(self) -> None:
         log = (
             "VEHICLE_DESTROYED referee_observed=true role=interceptor "

@@ -15,8 +15,9 @@ ESDF = SOURCE / "production_mppi_node_esdf.cpp"
 PLANNER = SOURCE / "production_mppi_node.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
+REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
 REFEREE_SUPPORT = SOURCE / "intercept_referee_support.cpp"
-TRACKER = SOURCE / "radar_target_tracker_node.cpp"
+ASSIGNMENT_COORDINATOR = SOURCE / "target_assignment_coordinator_node.cpp"
 LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
 
 
@@ -57,23 +58,27 @@ class PlannerReadinessContractTest(unittest.TestCase):
         )
 
     def test_intercept_start_requires_all_worlds_and_target_tracks(self) -> None:
-        referee = REFEREE.read_text(encoding="utf-8")
+        referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
+            encoding="utf-8"
+        )
         referee_support = REFEREE_SUPPORT.read_text(encoding="utf-8")
-        tracker = TRACKER.read_text(encoding="utf-8")
+        coordinator = ASSIGNMENT_COORDINATOR.read_text(encoding="utf-8")
         launch = LAUNCH.read_text(encoding="utf-8")
 
         self.assertIn("missionReady() const", referee)
         self.assertIn("interceptor_world_readiness_topics", referee_support)
-        self.assertIn("evader_world_readiness_topic", referee)
+        self.assertIn("target_world_readiness_topics", referee_support)
         self.assertIn("target_track_readiness_topics", referee_support)
         self.assertIn("std::ranges::all_of(interceptors_", referee)
-        self.assertIn("publishTrackReadiness(true)", tracker)
+        self.assertIn("publishReadiness(runtime, true)", coordinator)
         self.assertIn("interceptor_world_readiness_topics", launch)
-        self.assertIn("evader_world_readiness_topic", launch)
+        self.assertIn("target_world_readiness_topics", launch)
         self.assertIn("target_track_readiness_topics", launch)
 
     def test_coordinate_alignment_is_latched_as_a_startup_contract(self) -> None:
-        referee = REFEREE.read_text(encoding="utf-8")
+        referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
+            encoding="utf-8"
+        )
         referee_support = REFEREE_SUPPORT.read_text(encoding="utf-8")
         self.assertIn("latchStartupContract()", referee)
         self.assertIn("startup_failure_confirmed", referee)

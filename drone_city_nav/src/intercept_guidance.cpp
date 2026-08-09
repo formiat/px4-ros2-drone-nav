@@ -89,6 +89,18 @@ horizontalInterceptTime(const Point3& interceptor, const Point3& target,
 
 } // namespace
 
+std::optional<double>
+estimateHorizontalInterceptTime(const Point3& interceptor, const Point3& target,
+                                const Vec3& target_velocity,
+                                const double interceptor_speed_mps) noexcept {
+  if (!finite(interceptor) || !finite(target) || !finite(target_velocity) ||
+      !(interceptor_speed_mps > 0.0) || !std::isfinite(interceptor_speed_mps)) {
+    return std::nullopt;
+  }
+  return horizontalInterceptTime(interceptor, target, target_velocity,
+                                 interceptor_speed_mps);
+}
+
 TargetVerticalPrediction
 predictTargetVerticalMotion(const double initial_z_m, const double initial_velocity_mps,
                             const double elapsed_s, const double deceleration_mps2,
@@ -276,8 +288,9 @@ InterceptGuidanceResult InterceptGuidance::update(const TimedVehicleState& inter
 
   const std::optional<double> intercept_time =
       interceptor.position_valid && finite(interceptor.position)
-          ? horizontalInterceptTime(interceptor.position, current_target,
-                                    hypothesis_velocity, config_.interceptor_speed_mps)
+          ? estimateHorizontalInterceptTime(interceptor.position, current_target,
+                                            hypothesis_velocity,
+                                            config_.interceptor_speed_mps)
           : std::nullopt;
   result.analytic_intercept_time_s =
       intercept_time.value_or(config_.fallback_prediction_horizon_s);

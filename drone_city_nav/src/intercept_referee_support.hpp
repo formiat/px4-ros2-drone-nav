@@ -26,9 +26,22 @@ struct InterceptorTopicConfig {
   std::vector<std::string> radar_simulator_fqn;
 };
 
+struct TargetTopicConfig {
+  std::vector<std::string> navigation_state;
+  std::vector<std::string> physical_truth_state;
+  std::vector<std::string> world_readiness;
+  std::vector<std::string> destroyed;
+  std::vector<std::string> objective;
+  std::vector<std::string> mission_start;
+};
+
 [[nodiscard]] InterceptorTopicConfig
 declareInterceptorTopicConfig(rclcpp::Node& node,
                               const std::vector<std::string>& vehicle_ids);
+
+[[nodiscard]] TargetTopicConfig
+declareTargetTopicConfig(rclcpp::Node& node,
+                         const std::vector<std::string>& vehicle_ids);
 
 [[nodiscard]] std::int64_t missionTimeoutNanoseconds(double seconds);
 
@@ -52,12 +65,10 @@ void logRuntimeTruthAlignmentTransition(
     const rclcpp::Logger& logger, const msg::SimulationTruthAlignment& status,
     const SimulationTruthAlignmentMissionUpdate& update);
 
-void logPhysicalProximityIntercept(const rclcpp::Logger& logger,
-                                   const std::string& interceptor_id,
-                                   const MultiInterceptMissionUpdate& update,
-                                   const TimedVehicleState& interceptor_state,
-                                   const TimedVehicleState& evader_state,
-                                   double capture_radius_m, std::int64_t event_stamp_ns,
-                                   std::uint64_t mission_epoch);
+void logPhysicalProximityIntercept(
+    const rclcpp::Logger& logger, const std::string& interceptor_id,
+    const std::string& target_id, const SweptVehicleSeparation& separation,
+    const TimedVehicleState& interceptor_state, const TimedVehicleState& evader_state,
+    double capture_radius_m, std::int64_t event_stamp_ns, std::uint64_t mission_epoch);
 
 } // namespace drone_city_nav

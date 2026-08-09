@@ -28,6 +28,11 @@ struct InterceptorTruthEndpoint {
   std::string radar_simulator_fqn;
 };
 
+struct TargetTruthEndpoint {
+  std::string navigation_topic;
+  std::string physical_truth_topic;
+};
+
 class InterceptGroundTruthBoundary final {
 public:
   explicit InterceptGroundTruthBoundary(
@@ -39,6 +44,12 @@ private:
   std::vector<GroundTruthTopicContract> contracts_;
   bool verified_{false};
 };
+
+[[nodiscard]] std::unique_ptr<InterceptGroundTruthBoundary>
+makeInterceptGroundTruthBoundary(
+    const std::string& referee_fqn, const std::string& adapter_fqn,
+    const std::vector<TargetTruthEndpoint>& target_endpoints,
+    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints);
 
 [[nodiscard]] std::unique_ptr<InterceptGroundTruthBoundary>
 makeInterceptGroundTruthBoundary(
