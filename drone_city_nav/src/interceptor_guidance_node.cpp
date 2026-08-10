@@ -4,6 +4,7 @@
 #include "drone_city_nav/msg/intercept_mission_command.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
 #include "drone_city_nav/msg/radar_track_mode_command.hpp"
+#include "drone_city_nav/msg/target_assignment.hpp"
 #include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 
@@ -16,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
+#include <stdexcept>
 #include <string>
 
 #include "intercept_ros_utils.hpp"
@@ -56,8 +58,16 @@ public:
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 1));
     expected_track_frame_ =
         declare_parameter<std::string>("expected_track_frame", "map");
+    interceptor_id_ = declare_parameter<std::string>("interceptor_id", "interceptor");
+    if (interceptor_id_.empty()) {
+      throw std::invalid_argument{"interceptor_id must be non-empty"};
+    }
     expected_maximum_measurement_age_s_ =
         declare_parameter<double>("expected_maximum_measurement_age_s", 3.5);
+    flight_envelope_config_ = FlightEnvelopeConfig{
+        .minimum_target_z_m = declare_parameter<double>("minimum_target_z_m", 1.0),
+        .maximum_target_z_m = declare_parameter<double>("maximum_target_z_m", 32.0),
+    };
     guidance_ = std::make_unique<InterceptGuidance>(InterceptGuidanceConfig{
         .interceptor_speed_mps =
             declare_parameter<double>("intercept_interceptor_speed_mps", 20.0),
@@ -89,13 +99,7 @@ public:
             "intercept_maximum_hypothesis_lateral_offset_m", 70.0),
         .target_vertical_deceleration_mps2 = declare_parameter<double>(
             "intercept_target_vertical_deceleration_mps2", 4.0),
-        .target_flight_envelope =
-            FlightEnvelopeConfig{
-                .minimum_target_z_m =
-                    declare_parameter<double>("minimum_target_z_m", 1.0),
-                .maximum_target_z_m =
-                    declare_parameter<double>("maximum_target_z_m", 32.0),
-            },
+        .target_flight_envelope = flight_envelope_config_,
     });
 
     const auto state_qos = rclcpp::QoS{10}.best_effort();
@@ -119,11 +123,15 @@ public:
                         track->position_valid ? "true" : "false");
             return;
           }
-          if (!target_track_.has_value() ||
-              target_track_->track_id != track->track_id) {
-            guidance_->resetTargetTrack();
-          }
-          target_track_ = *track;
+          selected_target_track_ = *track;
+          activateSelectedTrackIfAssigned();
+        });
+    target_assignment_sub_ = create_subscription<msg::TargetAssignment>(
+        declare_parameter<std::string>("target_assignment_topic",
+                                       "/vehicles/interceptor/target_assignment"),
+        rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const msg::TargetAssignment::SharedPtr assignment) {
+          onTargetAssignment(*assignment);
         });
     radar_track_mode_sub_ = create_subscription<msg::RadarTrackModeCommand>(
         declare_parameter<std::string>(
@@ -159,6 +167,78 @@ public:
   }
 
 private:
+  void activateSelectedTrackIfAssigned() {
+    if (!active_assignment_track_id_.has_value() ||
+        !selected_target_track_.has_value() ||
+        selected_target_track_->track_id != *active_assignment_track_id_ ||
+        selected_target_track_->source_detection_id !=
+            active_assignment_detection_id_) {
+      return;
+    }
+    if (!target_track_.has_value() ||
+        target_track_->track_id != selected_target_track_->track_id) {
+      guidance_->resetTargetTrack();
+    }
+    target_track_ = selected_target_track_;
+  }
+
+  void clearTrackingAssignment(const std::string& reason) {
+    const bool was_active = active_assignment_track_id_.has_value();
+    active_assignment_track_id_.reset();
+    active_assignment_detection_id_ = 0U;
+    target_track_.reset();
+    selected_target_track_.reset();
+    guidance_->resetTargetTrack();
+    if (was_active) {
+      assignment_clear_pending_ = true;
+      assignment_clear_reason_ = reason;
+    }
+    publishAssignmentClearIfReady();
+  }
+
+  void onTargetAssignment(const msg::TargetAssignment& assignment) {
+    if (assignment.mission_epoch != mission_epoch_ ||
+        assignment.interceptor_id != interceptor_id_ ||
+        assignment.assignment_generation < assignment_generation_) {
+      return;
+    }
+    assignment_generation_ = assignment.assignment_generation;
+    if (!assignment.active) {
+      clearTrackingAssignment("assignment_inactive");
+      RCLCPP_INFO(get_logger(),
+                  "INTERCEPT_GUIDANCE_ASSIGNMENT active=false interceptor_id='%s' "
+                  "detection_id=%" PRIu64 " track_id=%" PRIu64 " generation=%" PRIu64,
+                  interceptor_id_.c_str(), assignment.target_detection_id,
+                  assignment.target_track_id, assignment.assignment_generation);
+      return;
+    }
+    if (assignment.target_detection_id == 0U || assignment.target_track_id == 0U) {
+      RCLCPP_WARN(get_logger(),
+                  "INTERCEPT_GUIDANCE_ASSIGNMENT rejected=true reason=invalid_active_"
+                  "assignment interceptor_id='%s'",
+                  interceptor_id_.c_str());
+      return;
+    }
+    const bool assignment_changed =
+        !active_assignment_track_id_.has_value() ||
+        *active_assignment_track_id_ != assignment.target_track_id ||
+        active_assignment_detection_id_ != assignment.target_detection_id;
+    active_assignment_track_id_ = assignment.target_track_id;
+    active_assignment_detection_id_ = assignment.target_detection_id;
+    assignment_clear_pending_ = false;
+    assignment_clear_reason_.clear();
+    if (assignment_changed) {
+      target_track_.reset();
+      guidance_->resetTargetTrack();
+    }
+    activateSelectedTrackIfAssigned();
+    RCLCPP_INFO(get_logger(),
+                "INTERCEPT_GUIDANCE_ASSIGNMENT active=true interceptor_id='%s' "
+                "detection_id=%" PRIu64 " track_id=%" PRIu64 " generation=%" PRIu64,
+                interceptor_id_.c_str(), assignment.target_detection_id,
+                assignment.target_track_id, assignment.assignment_generation);
+  }
+
   void onMissionCommand(const msg::InterceptMissionCommand& command) {
     if (command.mission_epoch != mission_epoch_ ||
         command.command !=
@@ -166,6 +246,13 @@ private:
       return;
     }
     hold_requested_ = true;
+    active_assignment_track_id_.reset();
+    active_assignment_detection_id_ = 0U;
+    target_track_.reset();
+    selected_target_track_.reset();
+    guidance_->resetTargetTrack();
+    assignment_clear_pending_ = false;
+    assignment_clear_reason_.clear();
     hold_reason_ = command.reason;
     hold_position_.reset();
     publishHoldIfReady();
@@ -176,24 +263,67 @@ private:
         !ownship_state_->position_valid) {
       return;
     }
-    hold_position_ = ownship_state_->position;
+    const std::optional<Point3> position = currentHoldPosition();
+    if (!position.has_value()) {
+      return;
+    }
+    hold_position_ = *position;
+    publishPositionHoldObjective(*hold_position_);
+    RCLCPP_INFO(get_logger(),
+                "INTERCEPTOR_HOLD_OBJECTIVE published=true reason='%s' "
+                "mission_epoch=%" PRIu64,
+                hold_reason_.c_str(), mission_epoch_);
+  }
+
+  [[nodiscard]] std::optional<Point3> currentHoldPosition() const {
+    if (!ownship_state_.has_value() || !ownship_state_->position_valid ||
+        !std::isfinite(ownship_state_->position.x) ||
+        !std::isfinite(ownship_state_->position.y) ||
+        !std::isfinite(ownship_state_->position.z)) {
+      return std::nullopt;
+    }
+    const std::optional<double> bounded_z =
+        clampToFlightEnvelope(ownship_state_->position.z, flight_envelope_config_);
+    if (!bounded_z.has_value()) {
+      return std::nullopt;
+    }
+    Point3 position = ownship_state_->position;
+    position.z = *bounded_z;
+    return position;
+  }
+
+  void publishPositionHoldObjective(const Point3& position) {
     msg::NavigationObjective objective;
     objective.stamp = now();
     objective.mission_epoch = mission_epoch_;
     objective.sample_sequence = ++objective_sequence_;
     objective.target_track_id = 0U;
-    objective.position.x = hold_position_->x;
-    objective.position.y = hold_position_->y;
-    objective.position.z = hold_position_->z;
+    objective.position.x = position.x;
+    objective.position.y = position.y;
+    objective.position.z = position.z;
     objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
     objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
     objective.terminal_policy =
         msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD;
     objective_pub_->publish(objective);
+  }
+
+  void publishAssignmentClearIfReady() {
+    if (!assignment_clear_pending_ || hold_requested_) {
+      return;
+    }
+    const std::optional<Point3> position = currentHoldPosition();
+    if (!position.has_value()) {
+      return;
+    }
+    publishPositionHoldObjective(*position);
+    assignment_clear_pending_ = false;
     RCLCPP_INFO(get_logger(),
-                "INTERCEPTOR_HOLD_OBJECTIVE published=true reason='%s' "
+                "INTERCEPT_GUIDANCE_ASSIGNMENT_CLEARED "
+                "objective=hold_current_position reason='%s' "
                 "mission_epoch=%" PRIu64,
-                hold_reason_.c_str(), mission_epoch_);
+                assignment_clear_reason_.c_str(), mission_epoch_);
+    assignment_clear_reason_.clear();
   }
 
   void tick() {
@@ -201,8 +331,13 @@ private:
       publishHoldIfReady();
       return;
     }
+    publishAssignmentClearIfReady();
+    if (!active_assignment_track_id_.has_value()) {
+      return;
+    }
     if (!ownship_state_.has_value() || !ownship_state_->position_valid ||
-        !target_track_.has_value()) {
+        !target_track_.has_value() ||
+        target_track_->track_id != *active_assignment_track_id_) {
       return;
     }
     const auto publication_stamp = now();
@@ -269,15 +404,24 @@ private:
   std::unique_ptr<InterceptGuidance> guidance_;
   std::optional<TimedVehicleState> ownship_state_;
   std::optional<msg::TargetTrack> target_track_;
+  std::optional<msg::TargetTrack> selected_target_track_;
   std::optional<Point3> hold_position_;
+  std::optional<std::uint64_t> active_assignment_track_id_;
+  FlightEnvelopeConfig flight_envelope_config_{};
   std::string expected_track_frame_;
+  std::string interceptor_id_;
   std::string hold_reason_;
+  std::string assignment_clear_reason_;
   double expected_maximum_measurement_age_s_{3.5};
   std::uint64_t mission_epoch_{1U};
   std::uint64_t objective_sequence_{0U};
+  std::uint64_t assignment_generation_{0U};
+  std::uint64_t active_assignment_detection_id_{0U};
   bool hold_requested_{false};
+  bool assignment_clear_pending_{false};
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr ownship_state_sub_;
   rclcpp::Subscription<msg::TargetTrack>::SharedPtr target_track_sub_;
+  rclcpp::Subscription<msg::TargetAssignment>::SharedPtr target_assignment_sub_;
   rclcpp::Subscription<msg::RadarTrackModeCommand>::SharedPtr radar_track_mode_sub_;
   rclcpp::Subscription<msg::InterceptMissionCommand>::SharedPtr mission_command_sub_;
   rclcpp::Publisher<msg::NavigationObjective>::SharedPtr objective_pub_;

@@ -139,5 +139,29 @@ TEST(TargetAssignment, ReassignsImmediatelyWhenCurrentTargetDisappears) {
   EXPECT_EQ(decisionFor(reassigned, "interceptor_0").detection_id, 2U);
 }
 
+TEST(TargetAssignment, RefreshesAssignmentWhenTrackerChangesTrackId) {
+  AdaptiveTargetAssignment assignment;
+  constexpr std::int64_t first_ns{1'000'000'000LL};
+  TargetAssignmentTrack initial_track = track(1U, 10.0, 0.0, first_ns);
+  initial_track.track_id = 101U;
+  const TargetAssignmentUpdate initial = assignment.update(
+      first_ns, {TargetAssignmentAgent{
+                    "interceptor_0", state(0.0, 0.0, first_ns), {initial_track}}});
+  ASSERT_TRUE(initial.changed);
+  ASSERT_EQ(decisionFor(initial, "interceptor_0").track_id, 101U);
+
+  constexpr std::int64_t next_ns{1'100'000'000LL};
+  TargetAssignmentTrack replacement_track = track(1U, 10.0, 0.0, next_ns);
+  replacement_track.track_id = 202U;
+  const TargetAssignmentUpdate refreshed = assignment.update(
+      next_ns, {TargetAssignmentAgent{
+                   "interceptor_0", state(0.0, 0.0, next_ns), {replacement_track}}});
+
+  EXPECT_TRUE(refreshed.changed);
+  EXPECT_EQ(refreshed.reason, TargetAssignmentReason::kTargetSetChanged);
+  EXPECT_EQ(decisionFor(refreshed, "interceptor_0").detection_id, 1U);
+  EXPECT_EQ(decisionFor(refreshed, "interceptor_0").track_id, 202U);
+}
+
 } // namespace
 } // namespace drone_city_nav

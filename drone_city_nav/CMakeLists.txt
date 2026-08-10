@@ -561,6 +561,20 @@ if(BUILD_TESTING)
   target_link_libraries(target_assignment_test drone_city_nav_core)
   enable_project_warnings(target_assignment_test)
 
+  ament_add_gtest(target_assignment_lifecycle_test
+                  tests/target_assignment_lifecycle_test.cpp)
+  target_compile_features(target_assignment_lifecycle_test PRIVATE cxx_std_20)
+  target_link_libraries(
+    target_assignment_lifecycle_test
+    drone_city_nav_interceptor_tracking_components
+    ${cpp_typesupport_target})
+  ament_target_dependencies(target_assignment_lifecycle_test rclcpp)
+  set_tests_properties(
+    target_assignment_lifecycle_test
+    PROPERTIES ENVIRONMENT
+               "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
+  enable_project_warnings(target_assignment_lifecycle_test)
+
   ament_add_gtest(tracked_agent_lidar_filter_test
                   tests/tracked_agent_lidar_filter_test.cpp)
   target_compile_features(tracked_agent_lidar_filter_test PRIVATE cxx_std_20)

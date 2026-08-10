@@ -145,7 +145,8 @@ sameDecisions(const std::vector<TargetAssignmentDecision>& first,
   }
   for (std::size_t index = 0U; index < first.size(); ++index) {
     if (first[index].interceptor_id != second[index].interceptor_id ||
-        first[index].detection_id != second[index].detection_id) {
+        first[index].detection_id != second[index].detection_id ||
+        first[index].track_id != second[index].track_id) {
       return false;
     }
   }
@@ -322,7 +323,7 @@ AdaptiveTargetAssignment::update(const std::int64_t now_ns,
     }
     const TargetAssignmentTrack* track =
         findTrack(*agent_iterator, decision.detection_id);
-    if (track == nullptr) {
+    if (track == nullptr || track->track_id != decision.track_id) {
       current_valid = false;
       break;
     }

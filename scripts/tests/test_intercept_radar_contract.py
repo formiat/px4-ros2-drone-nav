@@ -159,13 +159,24 @@ class InterceptRadarContractTest(unittest.TestCase):
 
     def test_assignment_drops_destroyed_and_capturing_interceptors(self) -> None:
         coordinator = ASSIGNMENT_COORDINATOR.read_text(encoding="utf-8")
+        guidance = GUIDANCE.read_text(encoding="utf-8")
+        tracking_launch = TRACKING_LAUNCH.read_text(encoding="utf-8")
+        assignment_contract = (
+            PACKAGE / "msg" / "TargetAssignment.msg"
+        ).read_text(encoding="utf-8")
         target_status = (
             PACKAGE / "msg" / "InterceptTargetStatus.msg"
         ).read_text(encoding="utf-8")
         self.assertIn("string capturing_interceptor_id", target_status)
+        self.assertIn("bool active", assignment_contract)
         self.assertIn("create_subscription<msg::VehicleDestroyed>", coordinator)
         self.assertIn("deactivateInterceptor", coordinator)
         self.assertIn("!runtime.active", coordinator)
+        self.assertIn("message.active = false", coordinator)
+        self.assertIn("create_subscription<msg::TargetAssignment>", guidance)
+        self.assertIn("clearTrackingAssignment", guidance)
+        self.assertIn("publishAssignmentClearIfReady", guidance)
+        self.assertIn('"target_assignment_topic":', tracking_launch)
 
     def test_lidar_filter_uses_only_the_derived_target_track(self) -> None:
         text = OBSTACLE_MEMORY.read_text(encoding="utf-8")

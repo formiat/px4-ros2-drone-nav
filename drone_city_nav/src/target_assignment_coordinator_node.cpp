@@ -196,6 +196,9 @@ private:
     std::optional<msg::TargetTrackArray> tracks;
     std::uint64_t last_published_scan_sequence{0U};
     std::uint64_t assigned_detection_id{0U};
+    std::uint64_t assigned_track_id{0U};
+    std::uint64_t assignment_generation{0U};
+    std::string assigned_frame_id;
     bool ready{false};
     bool readiness_published{false};
     bool active{true};
@@ -227,8 +230,16 @@ private:
     }
     if (status.status == msg::InterceptTargetStatus::STATUS_ACTIVE) {
       inactive_detection_ids_.erase(status.target_detection_id);
-    } else {
-      inactive_detection_ids_.insert(status.target_detection_id);
+      return;
+    }
+    inactive_detection_ids_.insert(status.target_detection_id);
+    for (Runtime& runtime : runtimes_) {
+      if (runtime.assigned_detection_id != status.target_detection_id) {
+        continue;
+      }
+      publishInactiveAssignment(runtime, "target_terminal",
+                                TargetAssignmentReason::kTargetSetChanged);
+      publishReadiness(runtime, false);
     }
     if (status.status == msg::InterceptTargetStatus::STATUS_INTERCEPTED &&
         !status.capturing_interceptor_id.empty()) {
@@ -252,12 +263,43 @@ private:
       return;
     }
     runtime->active = false;
-    runtime->assigned_detection_id = 0U;
+    publishInactiveAssignment(*runtime, reason,
+                              TargetAssignmentReason::kTargetSetChanged);
     publishReadiness(*runtime, false);
     RCLCPP_INFO(get_logger(),
                 "TARGET_ASSIGNMENT_INTERCEPTOR_INACTIVE interceptor_id='%s' "
                 "reason=%s mission_epoch=%" PRIu64,
                 interceptor_id.c_str(), reason, mission_epoch_);
+  }
+
+  void publishInactiveAssignment(Runtime& runtime, const char* cause,
+                                 const TargetAssignmentReason reason) {
+    if (runtime.assigned_detection_id == 0U || runtime.assigned_track_id == 0U) {
+      return;
+    }
+    msg::TargetAssignment message;
+    message.header.stamp = now();
+    message.header.frame_id = runtime.assigned_frame_id;
+    message.mission_epoch = mission_epoch_;
+    message.assignment_generation = runtime.assignment_generation;
+    message.interceptor_id = runtime.id;
+    message.target_detection_id = runtime.assigned_detection_id;
+    message.target_track_id = runtime.assigned_track_id;
+    message.estimated_intercept_time_s = 0.0;
+    message.reason = assignmentReasonMessage(reason);
+    message.active = false;
+    runtime.assignment_pub->publish(message);
+    RCLCPP_INFO(
+        get_logger(),
+        "TARGET_ASSIGNMENT interceptor_id='%s' detection_id=%" PRIu64
+        " track_id=%" PRIu64 " generation=%" PRIu64 " reason=%s active=false cause=%s",
+        runtime.id.c_str(), runtime.assigned_detection_id, runtime.assigned_track_id,
+        runtime.assignment_generation, targetAssignmentReasonName(reason), cause);
+    runtime.assigned_detection_id = 0U;
+    runtime.assigned_track_id = 0U;
+    runtime.assignment_generation = 0U;
+    runtime.assigned_frame_id.clear();
+    runtime.last_published_scan_sequence = 0U;
   }
 
   [[nodiscard]] bool allActiveTargetsObserved(const Runtime& runtime) const {
@@ -333,13 +375,17 @@ private:
       return;
     }
     const bool assignment_changed =
-        runtime.assigned_detection_id != decision.detection_id;
+        runtime.assigned_detection_id != decision.detection_id ||
+        runtime.assigned_track_id != decision.track_id;
     if (assignment_changed ||
         runtime.last_published_scan_sequence != selected->source_scan_sequence) {
       runtime.selected_track_pub->publish(*selected);
       runtime.last_published_scan_sequence = selected->source_scan_sequence;
     }
     runtime.assigned_detection_id = decision.detection_id;
+    runtime.assigned_track_id = decision.track_id;
+    runtime.assignment_generation = update.generation;
+    runtime.assigned_frame_id = selected->header.frame_id;
     publishReadiness(runtime, true);
     if (!update.changed && !assignment_changed) {
       return;
@@ -359,7 +405,7 @@ private:
     RCLCPP_INFO(get_logger(),
                 "TARGET_ASSIGNMENT interceptor_id='%s' detection_id=%" PRIu64
                 " track_id=%" PRIu64 " estimated_intercept_time_s=%.3f "
-                "generation=%" PRIu64 " reason=%s",
+                "generation=%" PRIu64 " reason=%s active=true",
                 runtime.id.c_str(), decision.detection_id, decision.track_id,
                 decision.estimated_intercept_time_s, update.generation,
                 targetAssignmentReasonName(update.reason));
@@ -373,7 +419,7 @@ private:
       const auto decision = std::ranges::find(
           update.decisions, runtime.id, &TargetAssignmentDecision::interceptor_id);
       if (decision == update.decisions.end()) {
-        runtime.assigned_detection_id = 0U;
+        publishInactiveAssignment(runtime, "no_assignment", update.reason);
         publishReadiness(runtime, false);
         continue;
       }

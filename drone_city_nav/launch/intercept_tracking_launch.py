@@ -5,13 +5,15 @@ from launch_ros.descriptions import ComposableNode
 
 
 def _guidance_parameters(
-    prefix, config, document, interceptor_speed_mps, settings
+    prefix, interceptor_id, config, document, interceptor_speed_mps, settings
 ):
     planner = document["production_mppi_node"]["ros__parameters"]
     return {
         "use_sim_time": True,
+        "interceptor_id": interceptor_id,
         "ownship_state_topic": f"{prefix}/state",
         "target_track_topic": f"{prefix}/target_track",
+        "target_assignment_topic": f"{prefix}/target_assignment",
         "radar_track_mode_command_topic": (
             f"{prefix}/radar/track_mode_command"
         ),
@@ -161,6 +163,7 @@ def make_interceptor_tracking_pipeline(
                     parameters=[
                         _guidance_parameters(
                             prefix,
+                            interceptor_id,
                             roles[interceptor_id],
                             document,
                             interceptor_speed_mps,
