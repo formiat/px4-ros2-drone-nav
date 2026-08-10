@@ -1,6 +1,6 @@
 # Gazebo Roadmap
 
-## 1. Interceptor Drone (In Progress)
+## 1. Interceptor Drone (Completed)
 
 Implement an autonomous interceptor drone capable of pursuing an attacking
 drone using external target information.
@@ -12,8 +12,9 @@ track, predicts its motion, and continuously updates a tracking objective
 without entering terminal goal hold. A separation of 5 m or less destroys the
 capturing pair and records a successful intercept outcome.
 
-The remaining work is to validate and tune the radar tracking and predictive
-guidance pipeline over repeated mission runs.
+The interceptor mission, radar-derived tracking, predictive guidance, and
+physical interception lifecycle have been implemented and validated in
+repeated mission runs.
 
 ## 2. Radar Measurement Simulation (Completed)
 
