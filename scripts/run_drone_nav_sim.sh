@@ -201,7 +201,7 @@ if ! bool_is_true "${enable_rviz}"; then
   rviz_drone_follow_tf_enabled="false"
 fi
 gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
-gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
+gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:-12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
 gazebo_world_unpause_wait_s="${GZ_WORLD_UNPAUSE_WAIT_S:-60}"
 clean_stale_gazebo_processes_enabled="$(

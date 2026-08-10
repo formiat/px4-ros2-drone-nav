@@ -10,6 +10,7 @@ from pathlib import Path
 
 RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
 INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("intercept_sim_runtime.sh")
+GAZEBO_SPECTATOR_FOLLOW = RUNNER.with_name("gazebo_spectator_follow.py")
 CONTAINER_RUNNER = Path(__file__).resolve().parents[1] / "container_run.sh"
 LAUNCH_FILE = (
     Path(__file__).resolve().parents[2]
@@ -69,6 +70,9 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         cls.intercept_runtime_text = cls.text + INTERCEPT_RUNTIME_HELPER.read_text(
             encoding="utf-8"
         )
+        cls.gazebo_spectator_follow_text = GAZEBO_SPECTATOR_FOLLOW.read_text(
+            encoding="utf-8"
+        )
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
         cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
         cls.intercept_launch_text = INTERCEPT_LAUNCH_FILE.read_text(encoding="utf-8")
@@ -92,6 +96,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("gazebo_gui_control.py", self.text)
         self.assertNotIn("--gui-config", self.text)
         self.assertNotIn("GZ_GUI_PLUGIN_PATH", self.text)
+
+    def test_gazebo_follow_camera_defaults_match_forward_view(self) -> None:
+        self.assertIn(
+            'gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:-12 0 6}"',
+            self.text,
+        )
+        self.assertIn(
+            'parser.add_argument("--offset", default="12 0 6")',
+            self.gazebo_spectator_follow_text,
+        )
 
     def test_gazebo_gui_launch_uses_direct_gui_command(self) -> None:
         self.assertIn("gz sim -g", self.text)

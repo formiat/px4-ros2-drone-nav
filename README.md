@@ -267,7 +267,7 @@ By default, the Gazebo 3D view uses Gazebo's `CameraTracking` plugin to follow
 the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
 `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the target with
 `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
-`GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The runner waits for the PX4 model to appear
+`GZ_GUI_FOLLOW_OFFSET="12 0 6"`. The runner waits for the PX4 model to appear
 in the server scene before starting the GUI, then repeatedly publishes an
 ID-aware native `CameraTrack` command until the resulting target state remains
 stable. The conflicting `/gui/follow` service is intentionally not used.
