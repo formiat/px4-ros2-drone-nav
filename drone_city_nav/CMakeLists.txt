@@ -183,6 +183,7 @@ add_library(
   src/risk_aware_lattice_3d_result.cpp
   src/route_3d.cpp
   src/simulation_truth_alignment.cpp
+  src/spectator_selection.cpp
   src/static_route_extension.cpp
   src/static_route_geometry.cpp
   src/static_esdf_cache.cpp
@@ -817,6 +818,11 @@ if(BUILD_TESTING)
   target_compile_features(spectator_diagnostics_selection_test PRIVATE cxx_std_20)
   target_include_directories(spectator_diagnostics_selection_test PRIVATE include)
   enable_project_warnings(spectator_diagnostics_selection_test)
+
+  ament_add_gtest(spectator_selection_test tests/spectator_selection_test.cpp)
+  target_compile_features(spectator_selection_test PRIVATE cxx_std_20)
+  target_link_libraries(spectator_selection_test drone_city_nav_core)
+  enable_project_warnings(spectator_selection_test)
 endif()
 
 ament_export_include_directories(include)

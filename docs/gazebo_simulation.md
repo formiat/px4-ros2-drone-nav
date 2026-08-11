@@ -115,7 +115,9 @@ The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
 - `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`
 - `ENABLE_RVIZ_FOLLOW_CAMERA=false`
 - `GZ_GUI_FOLLOW_TARGET=<model>`
-- `GZ_GUI_FOLLOW_OFFSET="12 0 6"`
+- `GZ_GUI_FOLLOW_OFFSET="-12 0 6"`
+- `INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID=<scenario vehicle ID>`
+- `INTERCEPT_SPECTATOR_RESELECTION_POLICY=first_living|next_living`
 
 ## Known Gazebo-Specific Issues
 

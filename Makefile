@@ -54,8 +54,17 @@ sim-intercept-headless: build
 
 .PHONY: sim-multi-intercept-gui
 sim-multi-intercept-gui: build
-	MISSION_TYPE=multi_intercept INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=false ./scripts/run_drone_nav_sim.sh
+	MISSION_TYPE=multi_intercept \
+		INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=false \
+		INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader_0}" \
+		INTERCEPT_SPECTATOR_RESELECTION_POLICY="$${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-next_living}" \
+		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-multi-intercept-headless
 sim-multi-intercept-headless: build
-	MISSION_TYPE=multi_intercept INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=false HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-180}" ./scripts/run_drone_nav_sim.sh
+	MISSION_TYPE=multi_intercept \
+		INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=false \
+		INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader_0}" \
+		INTERCEPT_SPECTATOR_RESELECTION_POLICY="$${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-next_living}" \
+		HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-180}" \
+		./scripts/run_drone_nav_sim.sh

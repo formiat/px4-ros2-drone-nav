@@ -186,9 +186,10 @@ surviving interceptors stop tracking, brake, and enter confirmed stationary
 position hold; no vehicle is disarmed. A later inertial approach cannot change
 the first outcome, although entering the capture radius still applies the normal
 pair disarm. Evader goal arrival is an intercept failure but still a technically
-successful simulation outcome. RViz and Gazebo follow `interceptor_0`, then
-switch deterministically to the next living interceptor if it dies. RViz keeps
-the lightweight route and direction arrow of every interceptor visible. Its
+successful simulation outcome. RViz and Gazebo initially follow `interceptor_0`.
+The default `first_living` policy selects the first surviving scenario vehicle
+after the observed vehicle dies. RViz keeps the lightweight route and direction
+arrow of every interceptor visible. Its
 full MPPI, memory, and lidar layers are routed from the current spectator only
 and switch with the same spectator selection; optional per-interceptor memory
 clouds remain disabled by default. The GUI
@@ -232,6 +233,12 @@ Gazebo proximity evidence and confirmed disarms, every survivor to confirm
 position hold, and no vehicle to collide with a building. Directional motion
 hypotheses are disabled in this supported scenario.
 
+The `2x2` GUI starts with `evader_0` as the spectator and uses the cyclic
+`next_living` policy. After its destruction, the camera selects `evader_1` when
+it is alive; otherwise it continues through the scenario order and wraps to the
+first living vehicle. Gazebo, the RViz `drone_follow` frame, and selected planner
+diagnostics consume the same typed spectator selection.
+
 In the Gazebo view, interceptor visibility markers remain yellow and the evader
 visibility marker is red. RViz continues to use its distinct per-role colors.
 
@@ -263,15 +270,22 @@ all candidate containers and PIDs before terminating them. Use
 `DRONE_GAZEBO_CLEAN_STALE_DRY_RUN=true` to list candidates without killing, or
 `DRONE_GAZEBO_CLEAN_STALE_PROCESSES=false` only for intentional debugging.
 
-By default, the Gazebo 3D view uses Gazebo's `CameraTracking` plugin to follow
-the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
-`ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the target with
-`GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
-`GZ_GUI_FOLLOW_OFFSET="12 0 6"`. The runner waits for the PX4 model to appear
+By default, the Gazebo 3D view uses Gazebo's `CameraTracking` plugin. The
+point-to-point mission follows the PX4-spawned model `x500_lidar_2d_0`; intercept
+missions derive the model from the typed spectator selection. Disable the
+camera with `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the point-to-point target
+with `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
+`GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The runner waits for the initial model to appear
 in the server scene before starting the GUI, then repeatedly publishes an
 ID-aware native `CameraTrack` command until the resulting target state remains
 stable. The conflicting `/gui/follow` service is intentionally not used.
 Simulation unpause remains a separate Gazebo world-control operation.
+
+Intercept scripts expose `INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID` and
+`INTERCEPT_SPECTATOR_RESELECTION_POLICY`. The latter accepts `first_living` or
+`next_living`. `first_living` always selects the lowest-index living scenario
+vehicle; `next_living` scans forward from the destroyed vehicle and wraps at the
+end of the scenario list.
 
 By default, RViz also opens in a follow-camera debug view that targets the
 visualization-only `drone_follow` TF frame. Disable that behavior with

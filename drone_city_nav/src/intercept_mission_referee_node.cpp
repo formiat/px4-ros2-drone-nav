@@ -256,7 +256,9 @@ void InterceptMissionRefereeNode::configureGroundTruthBoundary() {
       get_fully_qualified_name(),
       declare_parameter<std::string>("simulation_truth_adapter_node_fqn",
                                      "/simulation_truth_adapter_node"),
-      target_endpoints, interceptor_endpoints);
+      target_endpoints, interceptor_endpoints,
+      declare_parameter<std::vector<std::string>>("target_navigation_observer_fqns",
+                                                  std::vector<std::string>{}));
 }
 
 void InterceptMissionRefereeNode::onTruthAlignmentStatus(

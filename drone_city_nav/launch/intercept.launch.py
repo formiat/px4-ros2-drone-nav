@@ -216,6 +216,23 @@ def generate_launch_description():
             directional_hypotheses_enabled,
         )
         role_names = list(roles)
+        spectator_initial_vehicle_id = LaunchConfiguration(
+            "spectator_initial_vehicle_id"
+        ).perform(context)
+        if not spectator_initial_vehicle_id:
+            spectator_initial_vehicle_id = role_names[0]
+        if spectator_initial_vehicle_id not in roles:
+            raise RuntimeError(
+                "spectator_initial_vehicle_id must identify a scenario vehicle, got "
+                f"'{spectator_initial_vehicle_id}'"
+            )
+        spectator_reselection_policy = LaunchConfiguration(
+            "spectator_reselection_policy"
+        ).perform(context)
+        if spectator_reselection_policy not in ("first_living", "next_living"):
+            raise RuntimeError(
+                "spectator_reselection_policy must be first_living or next_living"
+            )
         planner_worker_budget = int(
             LaunchConfiguration("planner_worker_budget").perform(context)
         )
@@ -276,9 +293,7 @@ def generate_launch_description():
             latest_lidar_safety_scan = f"{prefix}/latest_lidar_safety_scan"
             path_topic = f"{prefix}/mppi/path"
             marker_topic = f"{prefix}/mppi/markers"
-            role_persistent_memory_enabled = obstacle_memory_enabled and (
-                not use_static_map or config["is_interceptor"]
-            )
+            role_persistent_memory_enabled = obstacle_memory_enabled
             persistent_memory_spectator_vehicle_id = (
                 role
                 if use_static_map and role_persistent_memory_enabled
@@ -464,49 +479,48 @@ def generate_launch_description():
                     ),
                 ]
             )
-            if config["is_interceptor"]:
-                debug_params = _parameters(
-                    document,
-                    "lidar_debug_node",
-                    {
-                        "lidar_topic": scan_topic,
-                        "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
-                        "px4_vehicle_attitude_topic": f"{px4}/out/vehicle_attitude",
-                        "px4_timesync_status_topic": f"{px4}/out/timesync_status",
-                        "px4_local_origin_x_m": config["map_start_x"],
-                        "px4_local_origin_y_m": config["map_start_y"],
-                        "raw_obstacle_grid_topic": "/drone_city_nav/raw_obstacle_grid",
-                        "memory_grid_topic": f"{prefix}/obstacle_memory_grid",
-                        "path_topic": path_topic,
-                        "pointcloud_topic": f"{prefix}/lidar_debug_points",
-                        "raw_lidar_3d_pointcloud_topic": (
-                            f"{prefix}/raw_lidar_hit_points_3d"
-                        ),
-                        "remembered_pointcloud_topic": (
-                            f"{prefix}/remembered_lidar_points"
-                        ),
-                        "occupied_pointcloud_topic": f"{prefix}/raw_occupied_cells",
-                        "raw_memory_pointcloud_topic": (
-                            f"{prefix}/raw_memory_obstacle_points"
-                        ),
-                        "output_dir": f"log/intercept/{role}/lidar_debug",
-                        "max_snapshots": (
-                            1
-                            if use_static_map
-                            else document["lidar_debug_node"]["ros__parameters"][
-                                "max_snapshots"
-                            ]
-                        ),
-                        "spectator_vehicle_id": role,
-                        "spectator_target_topic": (
-                            "/drone_city_nav/spectator_target"
-                        ),
-                    },
+            debug_params = _parameters(
+                document,
+                "lidar_debug_node",
+                {
+                    "lidar_topic": scan_topic,
+                    "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
+                    "px4_vehicle_attitude_topic": f"{px4}/out/vehicle_attitude",
+                    "px4_timesync_status_topic": f"{px4}/out/timesync_status",
+                    "px4_local_origin_x_m": config["map_start_x"],
+                    "px4_local_origin_y_m": config["map_start_y"],
+                    "raw_obstacle_grid_topic": "/drone_city_nav/raw_obstacle_grid",
+                    "memory_grid_topic": f"{prefix}/obstacle_memory_grid",
+                    "path_topic": path_topic,
+                    "pointcloud_topic": f"{prefix}/lidar_debug_points",
+                    "raw_lidar_3d_pointcloud_topic": (
+                        f"{prefix}/raw_lidar_hit_points_3d"
+                    ),
+                    "remembered_pointcloud_topic": (
+                        f"{prefix}/remembered_lidar_points"
+                    ),
+                    "occupied_pointcloud_topic": f"{prefix}/raw_occupied_cells",
+                    "raw_memory_pointcloud_topic": (
+                        f"{prefix}/raw_memory_obstacle_points"
+                    ),
+                    "output_dir": f"log/intercept/{role}/lidar_debug",
+                    "max_snapshots": (
+                        1
+                        if use_static_map
+                        else document["lidar_debug_node"]["ros__parameters"][
+                            "max_snapshots"
+                        ]
+                    ),
+                    "spectator_vehicle_id": role,
+                    "spectator_target_topic": (
+                        "/drone_city_nav/spectator_target"
+                    ),
+                },
+            )
+            if lidar_debug_enabled:
+                diagnostics_components.append(
+                    _make_lidar_debug_component(role, debug_params)
                 )
-                if lidar_debug_enabled:
-                    diagnostics_components.append(
-                        _make_lidar_debug_component(role, debug_params)
-                    )
 
         nodes.append(
             ComposableNodeContainer(
@@ -655,6 +669,10 @@ def generate_launch_description():
                         "truth_alignment_status_topic": (
                             "/simulation_truth/alignment"
                         ),
+                        "target_navigation_observer_fqns": [
+                            "/intercept_spectator_node",
+                            "/intercept_diagnostics_mux_node",
+                        ],
                         "target_world_readiness_topics": [
                             f"{prefix}/mppi/world_ready"
                             for prefix in target_prefixes
@@ -681,9 +699,12 @@ def generate_launch_description():
         )
         diagnostics_components.extend(
             _make_selected_diagnostics_components(
-                interceptor_roles,
-                interceptor_prefixes,
-                [roles[role]["model"] for role in interceptor_roles],
+                role_names,
+                [f"/vehicles/{role}" for role in role_names],
+                [1 if roles[role]["is_interceptor"] else 2 for role in role_names],
+                [roles[role]["model"] for role in role_names],
+                spectator_initial_vehicle_id,
+                spectator_reselection_policy,
             )
         )
         nodes.append(
@@ -801,6 +822,10 @@ def generate_launch_description():
             DeclareLaunchArgument("control_cpu_list", default_value=""),
             DeclareLaunchArgument("planning_cpu_list", default_value=""),
             DeclareLaunchArgument("diagnostics_cpu_list", default_value=""),
+            DeclareLaunchArgument("spectator_initial_vehicle_id", default_value=""),
+            DeclareLaunchArgument(
+                "spectator_reselection_policy", default_value="first_living"
+            ),
             DeclareLaunchArgument(
                 "shutdown_on_terminal_outcome", default_value="true"
             ),

@@ -154,7 +154,7 @@ interceptors and one evader, each with a separate PX4 DDS namespace, planner,
 offboard node, lidar safety input, and destruction state. No-static navigation
 maintains independent persistent lidar memory for every vehicle. Static
 navigation uses the canonical world for planning and keeps diagnostic persistent
-memory only for the current spectator interceptor. Pursuit uses an explicit radar
+memory only for the current spectator vehicle. Pursuit uses an explicit radar
 data boundary:
 
 ```text
@@ -176,15 +176,21 @@ Visualization remains outside this control boundary. Each planner publishes a
 namespaced lightweight path. `intercept_diagnostics_mux_node` subscribes to the
 latched `SpectatorTarget`, clears the previous selected layers, and republishes
 the selected planner markers, execution horizon, status, memory cloud, and
-lidar-debug clouds on stable RViz topics. All three paths and velocity/path
-direction arrows remain visible concurrently. Three selector-gated lidar debug
-nodes retain pose and latest-map context, but only the current spectator
+lidar-debug clouds on stable RViz topics. Lightweight interceptor paths remain
+visible concurrently. Selector-gated lidar debug nodes retain pose and
+latest-map context for every scenario vehicle, but only the current spectator
 projects scans, integrates diagnostic memory, writes a bounded startup snapshot,
-and publishes detailed lidar layers. The evader and non-selected interceptors
-continue publishing their latest physical lidar returns for stopping safety, but
-do not build static-mode diagnostic memory. These
+and publishes detailed lidar layers. Non-selected vehicles continue publishing
+their latest physical lidar returns for stopping safety, but do not build
+static-mode diagnostic memory. These
 visualization-only nodes share the diagnostics component container; their
 outputs never participate in route selection or vehicle control.
+
+The radar anti-leak graph contract grants the spectator and diagnostics mux a
+narrow read-only exception for target navigation-state topics. That exception
+exists only to render and follow an attacker. Neither node receives physical
+Gazebo truth, publishes tracking objectives, or shares a process with tracker or
+guidance components.
 
 The mission referee publishes the evader's fixed position objective, then waits
 until all four vehicles are navigation-ready, all planners have activated a
@@ -264,10 +270,13 @@ another interceptor remains. Physical evader death is settled after its disarm
 and confirmed holds of all survivors. If no interceptor remains, the finite
 mission ends with `no_interceptors_remaining`.
 
-One spectator node owns the sole RViz `drone_follow` transform. It initially
-tracks `interceptor_0` and deterministically switches to the next living
-interceptor after a typed death event. A visualization-only adapter applies the
-same selection to the Gazebo GUI camera. No attacker respawn or episode reset
+One spectator node owns the sole RViz `drone_follow` transform. Its initial
+vehicle and `first_living` or cyclic `next_living` reselection policy are typed
+launch parameters. Death events are matched by vehicle ID, role, and mission
+epoch before changing the selection. A visualization-only adapter applies the
+same selection to the Gazebo GUI camera. The `3x1` script starts on
+`interceptor_0`; the `2x2` script starts on `evader_0` and prefers `evader_1`
+after a successful first interception. No attacker respawn or episode reset
 exists in this finite mission.
 
 Each interceptor lidar pipeline filters returns belonging to its radar-tracked

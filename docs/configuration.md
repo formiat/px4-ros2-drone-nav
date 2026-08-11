@@ -143,8 +143,11 @@ cloud topics.
 
 Simulation scripts translate environment variables such as
 `ENABLE_STATIC_MAP`, `ENABLE_RVIZ`, and camera toggles into launch arguments or
-temporary parameter overrides. The launch file and `scripts/run_drone_nav_sim.sh`
-are the source of truth for supported overrides.
+temporary parameter overrides. Intercept spectator selection additionally uses
+`INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID` and
+`INTERCEPT_SPECTATOR_RESELECTION_POLICY=first_living|next_living`. The launch
+file and `scripts/run_drone_nav_sim.sh` are the source of truth for supported
+overrides.
 
 ## Tuning Order
 

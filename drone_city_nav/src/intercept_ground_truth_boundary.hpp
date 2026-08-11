@@ -49,13 +49,15 @@ private:
 makeInterceptGroundTruthBoundary(
     const std::string& referee_fqn, const std::string& adapter_fqn,
     const std::vector<TargetTruthEndpoint>& target_endpoints,
-    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints);
+    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints,
+    const std::vector<std::string>& target_navigation_observer_fqns = {});
 
 [[nodiscard]] std::unique_ptr<InterceptGroundTruthBoundary>
 makeInterceptGroundTruthBoundary(
     const std::string& referee_fqn, const std::string& adapter_fqn,
     const std::string& evader_navigation_topic,
     const std::string& evader_physical_truth_topic,
-    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints);
+    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints,
+    const std::vector<std::string>& target_navigation_observer_fqns = {});
 
 } // namespace drone_city_nav

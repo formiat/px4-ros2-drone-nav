@@ -79,7 +79,8 @@ InterceptGroundTruthBoundary::update(const rclcpp::Node& node) {
 std::unique_ptr<InterceptGroundTruthBoundary> makeInterceptGroundTruthBoundary(
     const std::string& referee_fqn, const std::string& adapter_fqn,
     const std::vector<TargetTruthEndpoint>& target_endpoints,
-    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints) {
+    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints,
+    const std::vector<std::string>& target_navigation_observer_fqns) {
   std::vector<GroundTruthTopicContract> contracts;
   std::unordered_set<std::string> target_truth_subscribers{referee_fqn};
   for (const InterceptorTruthEndpoint& endpoint : interceptor_endpoints) {
@@ -91,9 +92,12 @@ std::unique_ptr<InterceptGroundTruthBoundary> makeInterceptGroundTruthBoundary(
     target_truth_subscribers.insert(endpoint.radar_simulator_fqn);
   }
   for (const TargetTruthEndpoint& endpoint : target_endpoints) {
+    std::unordered_set<std::string> navigation_subscribers{referee_fqn, adapter_fqn};
+    navigation_subscribers.insert(target_navigation_observer_fqns.begin(),
+                                  target_navigation_observer_fqns.end());
     contracts.push_back(GroundTruthTopicContract{
         .topic = endpoint.navigation_topic,
-        .allowed_subscribers = {referee_fqn, adapter_fqn},
+        .allowed_subscribers = std::move(navigation_subscribers),
         .required_subscribers = {referee_fqn, adapter_fqn},
     });
     contracts.push_back(GroundTruthTopicContract{
@@ -109,14 +113,15 @@ std::unique_ptr<InterceptGroundTruthBoundary> makeInterceptGroundTruthBoundary(
     const std::string& referee_fqn, const std::string& adapter_fqn,
     const std::string& evader_navigation_topic,
     const std::string& evader_physical_truth_topic,
-    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints) {
+    const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints,
+    const std::vector<std::string>& target_navigation_observer_fqns) {
   return makeInterceptGroundTruthBoundary(
       referee_fqn, adapter_fqn,
       std::vector<TargetTruthEndpoint>{{
           .navigation_topic = evader_navigation_topic,
           .physical_truth_topic = evader_physical_truth_topic,
       }},
-      interceptor_endpoints);
+      interceptor_endpoints, target_navigation_observer_fqns);
 }
 
 } // namespace drone_city_nav

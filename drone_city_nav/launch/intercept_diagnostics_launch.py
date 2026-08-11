@@ -26,7 +26,12 @@ def make_world_visualization_component(world_params):
 
 
 def make_selected_diagnostics_components(
-    interceptor_roles, interceptor_prefixes, gazebo_models
+    vehicle_ids,
+    vehicle_prefixes,
+    vehicle_roles,
+    gazebo_models,
+    initial_vehicle_id,
+    reselection_policy,
 ):
     spectator = ComposableNode(
         package="drone_city_nav",
@@ -35,15 +40,18 @@ def make_selected_diagnostics_components(
         parameters=[
             {
                 "use_sim_time": True,
-                "interceptor_ids": interceptor_roles,
-                "interceptor_state_topics": [
-                    f"{prefix}/state" for prefix in interceptor_prefixes
+                "vehicle_ids": vehicle_ids,
+                "vehicle_state_topics": [
+                    f"{prefix}/state" for prefix in vehicle_prefixes
                 ],
-                "interceptor_destroyed_topics": [
+                "vehicle_destroyed_topics": [
                     f"{prefix}/vehicle_destroyed"
-                    for prefix in interceptor_prefixes
+                    for prefix in vehicle_prefixes
                 ],
+                "vehicle_roles": vehicle_roles,
                 "gazebo_models": gazebo_models,
+                "initial_vehicle_id": initial_vehicle_id,
+                "reselection_policy": reselection_policy,
             }
         ],
         extra_arguments=[{"use_intra_process_comms": True}],
@@ -55,46 +63,46 @@ def make_selected_diagnostics_components(
         parameters=[
             {
                 "use_sim_time": True,
-                "vehicle_ids": interceptor_roles,
+                "vehicle_ids": vehicle_ids,
                 "path_topics": [
-                    f"{prefix}/mppi/path" for prefix in interceptor_prefixes
+                    f"{prefix}/mppi/path" for prefix in vehicle_prefixes
                 ],
                 "marker_topics": [
-                    f"{prefix}/mppi/markers" for prefix in interceptor_prefixes
+                    f"{prefix}/mppi/markers" for prefix in vehicle_prefixes
                 ],
                 "status_topics": [
-                    f"{prefix}/mppi/status" for prefix in interceptor_prefixes
+                    f"{prefix}/mppi/status" for prefix in vehicle_prefixes
                 ],
                 "execution_horizon_topics": [
                     f"{prefix}/mppi/execution_horizon"
-                    for prefix in interceptor_prefixes
+                    for prefix in vehicle_prefixes
                 ],
                 "navigation_state_topics": [
-                    f"{prefix}/state" for prefix in interceptor_prefixes
+                    f"{prefix}/state" for prefix in vehicle_prefixes
                 ],
                 "memory_3d_topics": [
                     f"{prefix}/raw_memory_points_3d"
-                    for prefix in interceptor_prefixes
+                    for prefix in vehicle_prefixes
                 ],
                 "lidar_pointcloud_topics": [
                     f"{prefix}/lidar_debug_points"
-                    for prefix in interceptor_prefixes
+                    for prefix in vehicle_prefixes
                 ],
                 "raw_lidar_3d_pointcloud_topics": [
                     f"{prefix}/raw_lidar_hit_points_3d"
-                    for prefix in interceptor_prefixes
+                    for prefix in vehicle_prefixes
                 ],
                 "remembered_pointcloud_topics": [
                     f"{prefix}/remembered_lidar_points"
-                    for prefix in interceptor_prefixes
+                    for prefix in vehicle_prefixes
                 ],
                 "occupied_pointcloud_topics": [
                     f"{prefix}/raw_occupied_cells"
-                    for prefix in interceptor_prefixes
+                    for prefix in vehicle_prefixes
                 ],
                 "raw_memory_pointcloud_topics": [
                     f"{prefix}/raw_memory_obstacle_points"
-                    for prefix in interceptor_prefixes
+                    for prefix in vehicle_prefixes
                 ],
             }
         ],

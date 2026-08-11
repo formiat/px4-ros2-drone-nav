@@ -20,6 +20,7 @@ TRACKER = SOURCE / "radar_target_tracker_node.cpp"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
 REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
 REFEREE_SUPPORT = SOURCE / "intercept_referee_support.cpp"
+GROUND_TRUTH_BOUNDARY = SOURCE / "intercept_ground_truth_boundary.cpp"
 RADAR_SIMULATOR = SOURCE / "radar_simulator_node.cpp"
 ASSIGNMENT_COORDINATOR = SOURCE / "target_assignment_coordinator_node.cpp"
 TRUTH_ADAPTER = SOURCE / "simulation_truth_adapter_node.cpp"
@@ -91,6 +92,27 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertNotIn("publishInterceptorObjective", text)
         self.assertIn("RADAR_DATA_BOUNDARY verified=true", text)
         self.assertIn("ground_truth_boundary_violation", text)
+
+    def test_visualization_observers_do_not_receive_physical_truth(self) -> None:
+        launch = LAUNCH.read_text(encoding="utf-8")
+        boundary = GROUND_TRUTH_BOUNDARY.read_text(encoding="utf-8")
+        self.assertIn('"target_navigation_observer_fqns"', launch)
+        self.assertIn('"/intercept_spectator_node"', launch)
+        self.assertIn('"/intercept_diagnostics_mux_node"', launch)
+        target_contracts = boundary.split(
+            "for (const TargetTruthEndpoint& endpoint", 1
+        )[1].split("return std::make_unique", 1)[0]
+        self.assertIn(
+            "navigation_subscribers.insert(target_navigation_observer_fqns",
+            target_contracts,
+        )
+        self.assertIn(
+            ".allowed_subscribers = std::move(navigation_subscribers)",
+            target_contracts,
+        )
+        self.assertIn(
+            ".allowed_subscribers = target_truth_subscribers", target_contracts
+        )
 
     def test_survivor_hold_avoids_obstacles_then_requires_stationary_horizon(
         self,

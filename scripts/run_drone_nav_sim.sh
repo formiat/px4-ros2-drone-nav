@@ -85,6 +85,29 @@ run_id="${DRONE_GAZEBO_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 world_name="generated_city"
 mission_type="${MISSION_TYPE:-point_to_point}"
 load_intercept_sim_scenario "${mission_type}" "${INTERCEPT_SCENARIO_PATH:-}"
+intercept_spectator_initial_vehicle_id=""
+intercept_spectator_initial_model=""
+intercept_spectator_reselection_policy="${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-first_living}"
+if bool_is_true "${intercept_mission}"; then
+  intercept_spectator_initial_vehicle_id="${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-${intercept_vehicle_ids[0]}}"
+  case "${intercept_spectator_reselection_policy}" in
+  first_living | next_living) ;;
+  *)
+    echo "Invalid INTERCEPT_SPECTATOR_RESELECTION_POLICY=${intercept_spectator_reselection_policy}; expected first_living or next_living" >&2
+    exit 1
+    ;;
+  esac
+  for instance in "${!intercept_vehicle_ids[@]}"; do
+    if [[ "${intercept_vehicle_ids[instance]}" == "${intercept_spectator_initial_vehicle_id}" ]]; then
+      intercept_spectator_initial_model="${intercept_gazebo_model_names[instance]}"
+      break
+    fi
+  done
+  if [[ -z "${intercept_spectator_initial_model}" ]]; then
+    echo "INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID=${intercept_spectator_initial_vehicle_id} is not present in ${intercept_scenario_path}" >&2
+    exit 1
+  fi
+fi
 enable_subsystem_cpu_affinity="$(
   normalize_bool "${ENABLE_SUBSYSTEM_CPU_AFFINITY:-true}"
 )"
@@ -200,8 +223,8 @@ rviz_drone_follow_tf_enabled="${enable_rviz_follow_camera}"
 if ! bool_is_true "${enable_rviz}"; then
   rviz_drone_follow_tf_enabled="false"
 fi
-gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
-gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:-12 0 6}"
+gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-${intercept_spectator_initial_model:-x500_lidar_2d_0}}"
+gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
 gazebo_world_unpause_wait_s="${GZ_WORLD_UNPAUSE_WAIT_S:-60}"
 clean_stale_gazebo_processes_enabled="$(
@@ -637,6 +660,10 @@ echo "RViz debug view: enabled=${enable_rviz}"
 echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'" |
   tee -a "${gz_log_file}"
+if bool_is_true "${intercept_mission}"; then
+  echo "Intercept spectator: initial_vehicle_id=${intercept_spectator_initial_vehicle_id} reselection_policy=${intercept_spectator_reselection_policy}" |
+    tee -a "${gz_log_file}"
+fi
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
@@ -881,6 +908,8 @@ if bool_is_true "${intercept_mission}"; then
     enable_rviz:="${enable_rviz}"
     evader_speed_scale:="${evader_speed_scale}"
     intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"
+    spectator_initial_vehicle_id:="${intercept_spectator_initial_vehicle_id}"
+    spectator_reselection_policy:="${intercept_spectator_reselection_policy}"
     shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"
     control_cpu_list:="${control_cpu_list}"
     planning_cpu_list:="${planning_cpu_list}"

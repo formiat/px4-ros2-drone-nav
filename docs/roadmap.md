@@ -97,7 +97,8 @@ The first interceptor within 5 m of the attacker destroys that pair. Surviving
 interceptors brake and enter confirmed stationary position hold.
 Interceptor-to-interceptor separation within 5 m is accepted as collateral
 damage; only that pair is destroyed and the pursuit continues. The spectator
-camera switches from a destroyed tracked interceptor to the next living one.
+camera starts on `interceptor_0` and uses the configurable living-vehicle
+reselection lifecycle after a typed death event.
 
 This stage deliberately contains one attacker and one episode. Attacker
 despawn, respawn, and an endless campaign remain future work and are not part of
@@ -125,6 +126,9 @@ and preserves physical 5 m proximity, typed death, disarm, and survivor-hold
 settlement. Collision avoidance remains disabled, and mid-air collisions are
 treated as acceptable collateral damage. The finite mission does not respawn
 attackers and does not implement an endless campaign.
+
+The `2x2` spectator starts on `evader_0` and uses cyclic `next_living`
+reselection, preferring `evader_1` after the first attacker's destruction.
 
 ## 6. Cooperative Multi-Drone Air Traffic
 

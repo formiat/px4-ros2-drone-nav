@@ -55,7 +55,7 @@ class GazeboSpectatorFollow(Node):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--world", default="generated_city")
-    parser.add_argument("--offset", default="12 0 6")
+    parser.add_argument("--offset", default="-12 0 6")
     parser.add_argument("--wait-s", type=int, default=15)
     return parser.parse_args()
 

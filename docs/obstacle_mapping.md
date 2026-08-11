@@ -195,7 +195,7 @@ node runs in a lightweight safety-only mode: it keeps acquisition-time pose
 histories and publishes latest-scan returns, but it does not allocate a memory
 grid, integrate hits, publish snapshots, or start the memory diagnostics worker.
 Static intercept GUI runs additionally gate diagnostic memory by the latched
-spectator target. Only the selected interceptor integrates and publishes this
+spectator target. Only the selected vehicle integrates and publishes this
 memory; all other vehicles remain in latest-scan safety mode. No-static mode does
 not apply this gate because every vehicle requires its own persistent map for
 navigation.

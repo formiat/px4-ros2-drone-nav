@@ -35,14 +35,17 @@ Do not infer a planner coordinate error until the displayed fixed frame and the
 | Raw Memory Hit Origins 3D | `/drone_city_nav/raw_memory_obstacle_points_3d` |
 | Raw Occupied Cells | `/drone_city_nav/raw_occupied_cells` |
 
-In the intercept mission, the lightweight planner paths are also shown from
+In the `3x1` intercept mission, the lightweight planner paths are also shown from
 `/vehicles/interceptor_0/mppi/path` through
 `/vehicles/interceptor_2/mppi/path`, each with a stable color. The global MPPI,
-memory, and lidar topics above represent only the interceptor selected by
+memory, and lidar topics above represent only the vehicle selected by
 `/drone_city_nav/spectator_target`. The diagnostics mux clears old marker and
 point-cloud state before switching those topics. Optional displays
 for each interceptor's complete memory point cloud are present but disabled by
 default, so they create no RViz subscription or rendering load until enabled.
+The `2x2` script selects `evader_0` initially and changes the same RViz follow
+frame and selected topics to `evader_1` after a typed destruction event when it
+is still alive.
 
 ## MPPI Markers
 

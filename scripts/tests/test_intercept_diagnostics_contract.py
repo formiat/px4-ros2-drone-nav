@@ -23,7 +23,7 @@ RVIZ_CONFIGS = (
 
 
 class InterceptDiagnosticsContractTest(unittest.TestCase):
-    def test_launch_keeps_all_interceptor_sources_namespaced(self) -> None:
+    def test_launch_keeps_all_vehicle_sources_namespaced(self) -> None:
         launch = LAUNCH.read_text(encoding="utf-8")
         diagnostics_launch = DIAGNOSTICS_LAUNCH.read_text(encoding="utf-8")
         self.assertIn('path_topic = f"{prefix}/mppi/path"', launch)
@@ -34,15 +34,20 @@ class InterceptDiagnosticsContractTest(unittest.TestCase):
             diagnostics_launch,
         )
         self.assertIn('name="intercept_diagnostics_container"', diagnostics_launch)
-        self.assertIn('"vehicle_ids": interceptor_roles', diagnostics_launch)
+        self.assertIn('"vehicle_ids": vehicle_ids', diagnostics_launch)
+        self.assertIn('"vehicle_roles": vehicle_roles', diagnostics_launch)
+        self.assertIn('"initial_vehicle_id": initial_vehicle_id', diagnostics_launch)
+        self.assertIn('"reselection_policy": reselection_policy', diagnostics_launch)
+        self.assertIn(
+            "[f\"/vehicles/{role}\" for role in role_names]", launch
+        )
 
-    def test_lidar_debug_is_selector_gated_for_every_interceptor(self) -> None:
+    def test_lidar_debug_is_selector_gated_for_every_vehicle(self) -> None:
         launch = LAUNCH.read_text(encoding="utf-8")
         diagnostics_launch = DIAGNOSTICS_LAUNCH.read_text(encoding="utf-8")
         header = LIDAR_HEADER.read_text(encoding="utf-8")
         callbacks = LIDAR_CALLBACKS.read_text(encoding="utf-8")
         lifecycle = LIDAR_LIFECYCLE.read_text(encoding="utf-8")
-        self.assertIn('if config["is_interceptor"]:', launch)
         self.assertIn("if lidar_debug_enabled:", launch)
         self.assertIn(
             'plugin="drone_city_nav::LidarDebugNode"', diagnostics_launch
@@ -57,7 +62,9 @@ class InterceptDiagnosticsContractTest(unittest.TestCase):
         launch = LAUNCH.read_text(encoding="utf-8")
         obstacle_memory = OBSTACLE_MEMORY.read_text(encoding="utf-8")
         self.assertIn("role_persistent_memory_enabled", launch)
-        self.assertIn('not use_static_map or config["is_interceptor"]', launch)
+        self.assertIn(
+            "role_persistent_memory_enabled = obstacle_memory_enabled", launch
+        )
         self.assertIn('persistent_memory_spectator_vehicle_id = (', launch)
         self.assertIn('"persistent_memory_spectator_vehicle_id": (', launch)
         self.assertIn("SpectatorDiagnosticsSelection", obstacle_memory)
