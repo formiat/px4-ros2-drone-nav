@@ -88,7 +88,7 @@ class InterceptScenarioContractTest(unittest.TestCase):
                 (54.0, 378.0, 0.3),
                 (270.0, 378.0, 0.3),
                 (54.0, 54.0, 0.3),
-                (270.0, 54.0, 0.3),
+                (216.0, 54.0, 0.3),
             ],
         )
         self.assertEqual(
@@ -97,7 +97,7 @@ class InterceptScenarioContractTest(unittest.TestCase):
                 (153.0, -81.0, 0.3),
                 (153.0, 135.0, 0.3),
                 (-171.0, -81.0, 0.3),
-                (-171.0, 135.0, 0.3),
+                (-171.0, 81.0, 0.3),
             ],
         )
         makefile = MAKEFILE_PATH.read_text(encoding="utf-8")

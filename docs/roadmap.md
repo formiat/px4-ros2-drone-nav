@@ -107,8 +107,9 @@ the current implementation.
 ## 5. Multiple Interceptors Versus Multiple Attackers (Completed)
 
 The first finite scenario launches two attacking drones from the short city
-side farthest from their shared corner destination and two interceptors from
-the opposite short side, next to that destination.
+side farthest from their shared corner destination. One attacker starts at the
+corner and the other starts one block inward along that side. Two interceptors
+start on the opposite short side, next to the destination.
 The existing 3x1 `intercept` entry point remains unchanged; dedicated
 `sim_multi_intercept_gui.sh` and `sim_multi_intercept_headless.sh` wrappers load
 the 2x2 scenario through the same generic N x M launch pipeline.

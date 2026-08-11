@@ -38,7 +38,7 @@
       "px4_model_target": "gz_x500_lidar_2d_evader",
       "gazebo_model_name": "x500_lidar_2d_evader_3",
       "detection_id": 2,
-      "map_start_m": [270.0, 54.0, 0.3],
+      "map_start_m": [216.0, 54.0, 0.3],
       "yaw_rad": 0.0
     }
   ],
