@@ -97,6 +97,50 @@ TEST(StaticRouteExtensionTest, DefersLifecycleReleaseButNeverRawBlockedRelease) 
       false, GlobalGuideReleaseReason::kStalled));
 }
 
+TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterRejectedExtension) {
+  StaticRouteDeferredReplanLatch latch;
+  latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kStalled,
+                                        .route_generation = 12U});
+
+  const std::optional<StaticRouteDeferredReplan> replay =
+      latch.finishExtension(12U, false);
+
+  ASSERT_NE(replay, std::nullopt);
+  const StaticRouteDeferredReplan replayed =
+      replay.value_or(StaticRouteDeferredReplan{});
+  EXPECT_EQ(replayed.reason, GlobalGuideReleaseReason::kStalled);
+  EXPECT_EQ(replayed.route_generation, 12U);
+  EXPECT_FALSE(latch.pending());
+}
+
+TEST(StaticRouteExtensionTest, DropsDeferredReplanAfterActivatedExtension) {
+  StaticRouteDeferredReplanLatch latch;
+  latch.defer(StaticRouteDeferredReplan{
+      .reason = GlobalGuideReleaseReason::kPersistentSafetyRejection,
+      .route_generation = 12U});
+
+  EXPECT_FALSE(latch.finishExtension(12U, true).has_value());
+  EXPECT_FALSE(latch.pending());
+}
+
+TEST(StaticRouteExtensionTest, KeepsStrongestDeferredReplanReason) {
+  StaticRouteDeferredReplanLatch latch;
+  latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kStalled,
+                                        .route_generation = 12U});
+  latch.defer(StaticRouteDeferredReplan{
+      .reason = GlobalGuideReleaseReason::kPersistentSafetyRejection,
+      .route_generation = 12U});
+  latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kExhausted,
+                                        .route_generation = 12U});
+
+  const std::optional<StaticRouteDeferredReplan> replay =
+      latch.finishExtension(12U, false);
+
+  ASSERT_NE(replay, std::nullopt);
+  EXPECT_EQ(replay.value_or(StaticRouteDeferredReplan{}).reason,
+            GlobalGuideReleaseReason::kPersistentSafetyRejection);
+}
+
 TEST(StaticRouteExtensionTest, CandidateMustImproveEndpointAndAvoidRawOccupancy) {
   const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,

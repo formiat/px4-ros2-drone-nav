@@ -16,6 +16,30 @@ namespace {
                     std::max(0.0, config.maximum_latency_s));
 }
 
+[[nodiscard]] unsigned
+deferredReplanPriority(const GlobalGuideReleaseReason reason) noexcept {
+  switch (reason) {
+    case GlobalGuideReleaseReason::kObjectiveChanged:
+      return 7U;
+    case GlobalGuideReleaseReason::kPersistentSafetyRejection:
+      return 6U;
+    case GlobalGuideReleaseReason::kNoEligibleRollouts:
+      return 5U;
+    case GlobalGuideReleaseReason::kDiverged:
+      return 4U;
+    case GlobalGuideReleaseReason::kExhausted:
+      return 3U;
+    case GlobalGuideReleaseReason::kStalled:
+      return 2U;
+    case GlobalGuideReleaseReason::kBlocked:
+    case GlobalGuideReleaseReason::kNoActiveGuide:
+      return 1U;
+    case GlobalGuideReleaseReason::kNone:
+      return 0U;
+  }
+  return 0U;
+}
+
 } // namespace
 
 bool StaticRouteReplanGate::tryBegin(const std::uint64_t route_generation) noexcept {
@@ -38,6 +62,34 @@ bool StaticRouteReplanGate::inFlight() const noexcept {
 
 std::uint64_t StaticRouteReplanGate::generation() const noexcept {
   return generation_.value_or(0U);
+}
+
+void StaticRouteDeferredReplanLatch::defer(
+    const StaticRouteDeferredReplan request) noexcept {
+  if (request.reason == GlobalGuideReleaseReason::kNone ||
+      request.route_generation == 0U) {
+    return;
+  }
+  if (!request_.has_value() || request_->route_generation != request.route_generation ||
+      deferredReplanPriority(request.reason) >
+          deferredReplanPriority(request_->reason)) {
+    request_ = request;
+  }
+}
+
+std::optional<StaticRouteDeferredReplan>
+StaticRouteDeferredReplanLatch::finishExtension(
+    const std::uint64_t route_generation, const bool extension_activated) noexcept {
+  if (!request_.has_value() || request_->route_generation != route_generation) {
+    return std::nullopt;
+  }
+  std::optional<StaticRouteDeferredReplan> completed = request_;
+  request_.reset();
+  return extension_activated ? std::nullopt : completed;
+}
+
+bool StaticRouteDeferredReplanLatch::pending() const noexcept {
+  return request_.has_value();
 }
 
 StaticRouteSearchRetryDecision StaticRouteFailedSearchLatch::evaluate(

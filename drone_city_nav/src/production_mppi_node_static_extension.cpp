@@ -91,13 +91,27 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
               esdf.global_guide_search_ms, esdf.build_ms);
 }
 
-void ProductionMppiNode::finishStaticRouteExtension(
-    const std::uint64_t base_generation) noexcept {
-  const std::scoped_lock lock{static_route_extension_mutex_};
-  if (static_route_extension_request_in_flight_ &&
-      static_route_extension_in_flight_generation_ == base_generation) {
-    static_route_extension_request_in_flight_ = false;
-    static_route_extension_in_flight_generation_ = 0U;
+void ProductionMppiNode::finishStaticRouteExtension(const std::uint64_t base_generation,
+                                                    const bool extension_activated) {
+  std::optional<StaticRouteDeferredReplan> deferred_replan;
+  {
+    const std::scoped_lock lock{static_route_extension_mutex_};
+    if (static_route_extension_request_in_flight_ &&
+        static_route_extension_in_flight_generation_ == base_generation) {
+      static_route_extension_request_in_flight_ = false;
+      static_route_extension_in_flight_generation_ = 0U;
+    }
+    deferred_replan = static_route_deferred_replan_latch_.finishExtension(
+        base_generation, extension_activated);
+  }
+  if (deferred_replan.has_value()) {
+    RCLCPP_INFO(get_logger(),
+                "STATIC_ROUTE_REPLAN_REQUEST status=replaying_deferred_request "
+                "generation=%" PRIu64 " reason=%s",
+                deferred_replan->route_generation,
+                globalGuideReleaseReasonName(deferred_replan->reason));
+    requestStaticRouteReplan(deferred_replan->reason,
+                             deferred_replan->route_generation);
   }
 }
 
@@ -115,14 +129,20 @@ void ProductionMppiNode::requestStaticRouteReplan(
   std::shared_ptr<ProductionMppiPreparedEsdf> request;
   std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
   const bool replan_in_flight = static_route_replan_gate_.inFlight();
-  if (deferStaticRouteReleaseDuringExtension(
-          static_route_extension_request_in_flight_ || replan_in_flight, reason)) {
+  if (deferStaticRouteReleaseDuringExtension(static_route_extension_request_in_flight_,
+                                             reason)) {
+    const std::uint64_t deferred_generation =
+        guide_generation != 0U ? guide_generation
+                               : static_route_extension_in_flight_generation_;
+    static_route_deferred_replan_latch_.defer(StaticRouteDeferredReplan{
+        .reason = reason, .route_generation = deferred_generation});
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STATIC_ROUTE_REPLAN_REQUEST status=deferred_active_request "
                          "in_flight_generation=%" PRIu64
-                         " requested_generation=%" PRIu64 " reason=%s",
-                         static_route_replan_gate_.generation(), guide_generation,
-                         globalGuideReleaseReasonName(reason));
+                         " requested_generation=%" PRIu64
+                         " deferred_generation=%" PRIu64 " reason=%s",
+                         static_route_extension_in_flight_generation_, guide_generation,
+                         deferred_generation, globalGuideReleaseReasonName(reason));
     return;
   }
   if (replan_in_flight) {

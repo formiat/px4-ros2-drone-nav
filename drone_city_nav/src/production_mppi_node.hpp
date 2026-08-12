@@ -441,7 +441,8 @@ private:
                                          const ProductionMppiNavigation& navigation,
                                          const ProductionNavigationObjective& objective,
                                          std::int64_t now_ns);
-  void finishStaticRouteExtension(std::uint64_t base_generation) noexcept;
+  void finishStaticRouteExtension(std::uint64_t base_generation,
+                                  bool extension_activated = false);
   void finishStaticRouteReplan(std::uint64_t base_generation) noexcept;
   void esdfWorker(std::stop_token stop_token);
   void guideWorker(std::stop_token stop_token);
@@ -586,6 +587,7 @@ private:
   std::uint64_t static_route_extension_last_request_generation_{0U};
   double static_route_extension_last_request_station_m_{0.0};
   std::int64_t static_route_extension_last_request_stamp_ns_{0};
+  StaticRouteDeferredReplanLatch static_route_deferred_replan_latch_{};
   StaticRouteReplanGate static_route_replan_gate_{};
   StaticRouteFailedSearchLatch static_route_failed_search_latch_{};
   StaticRouteRoiRefreshLifecycle static_roi_refresh_lifecycle_{};

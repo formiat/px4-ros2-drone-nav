@@ -445,7 +445,7 @@ void ProductionMppiNode::processStaticGuideSearch(
                 candidate.decision_reason.c_str());
   }
   if (world.static_route_extension_request) {
-    finishStaticRouteExtension(world.static_route_extension_base_generation);
+    finishStaticRouteExtension(world.static_route_extension_base_generation, activated);
   }
   const bool initial_route_search = !world.static_route_extension_request &&
                                     !world.static_route_replan_request &&

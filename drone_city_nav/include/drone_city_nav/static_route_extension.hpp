@@ -113,6 +113,22 @@ private:
   std::optional<std::uint64_t> generation_;
 };
 
+struct StaticRouteDeferredReplan {
+  GlobalGuideReleaseReason reason{GlobalGuideReleaseReason::kNone};
+  std::uint64_t route_generation{0U};
+};
+
+class StaticRouteDeferredReplanLatch final {
+public:
+  void defer(StaticRouteDeferredReplan request) noexcept;
+  [[nodiscard]] std::optional<StaticRouteDeferredReplan>
+  finishExtension(std::uint64_t route_generation, bool extension_activated) noexcept;
+  [[nodiscard]] bool pending() const noexcept;
+
+private:
+  std::optional<StaticRouteDeferredReplan> request_;
+};
+
 struct StaticRouteRoiRefreshRequest {
   std::uint64_t sequence{0U};
   std::uint64_t base_route_generation{0U};
