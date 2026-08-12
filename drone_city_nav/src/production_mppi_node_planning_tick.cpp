@@ -47,12 +47,14 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiNavigation navigation;
   ProductionMppiPredictionError prediction;
   ProductionMppiAppliedControl applied_control;
+  std::optional<ProductionMppiCooperativeCommand> cooperative_command;
   std::uint64_t memory_sequence{0U};
   {
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
     prediction = latest_prediction_error_;
     applied_control = applied_control_;
+    cooperative_command = cooperative_command_;
     memory_sequence = memory_sequence_;
   }
   std::optional<ProductionMppiPreparedEsdf> esdf;
@@ -97,6 +99,8 @@ void ProductionMppiNode::planningTick() {
       esdf_age_ms > maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_) {
     const ProductionMppiPreparedEsdf stale_esdf =
         esdf.value_or(ProductionMppiPreparedEsdf{});
+    const ProductionMppiCooperativeUpdate cooperative = prepareCooperativeTick(
+        stale_esdf, ConstrainedRouteObservation{}, cooperative_command, now_ns, 0.0);
     mppi::MppiTickInput input{
         .initial_state = navigation.state,
         .target = navigation.state,
@@ -171,6 +175,7 @@ void ProductionMppiNode::planningTick() {
         .stability_ms = 0.0,
         .liveness_reseed_requested = false,
         .pose_predicted = pose_predicted,
+        .cooperative = cooperative,
         .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
     });
     previous_result_ = std::move(result);
@@ -290,6 +295,16 @@ void ProductionMppiNode::planningTick() {
                   : std::nullopt,
           .terminal_goal_limit_enabled = terminal_hold_enabled,
       });
+  const ProductionMppiCooperativeUpdate cooperative =
+      prepareCooperativeTick(*esdf, route_constraint, cooperative_command, now_ns,
+                             speed_policy.reference_speed_mps);
+  if (cooperative.yield.active) {
+    speed_policy.reference_speed_mps =
+        std::min(speed_policy.reference_speed_mps, cooperative.yield.maximum_speed_mps);
+    speed_policy.target_lookahead_m = std::min(
+        speed_policy.target_lookahead_m,
+        std::max(0.0, cooperative.yield.hold_station_m - route_projection.station_m));
+  }
   std::string target_source;
   double target_station_m = 0.0;
   mppi::State target;
@@ -329,6 +344,18 @@ void ProductionMppiNode::planningTick() {
       speed_policy.target_lookahead_m = 0.0;
     }
   }
+  if (cooperative.yield.active && route_usable && route_projection.valid &&
+      esdf->route_3d && !esdf->route_3d->empty() && !route_control.hold_xy) {
+    const RouteSample3D hold_sample =
+        sampleRoute3DAtStation(*esdf->route_3d, cooperative.yield.hold_station_m);
+    target.x = static_cast<float>(hold_sample.position.x);
+    target.y = static_cast<float>(hold_sample.position.y);
+    target.z = static_cast<float>(hold_sample.position.z);
+    target_station_m = hold_sample.station_m;
+    target_source = cooperative.yield.hold_at_entry
+                        ? "cooperative_channel_yield_hold"
+                        : "cooperative_channel_yield_deceleration";
+  }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
   if (objective && objective->immediate_hold) {
     planning_state = ProductionMppiPlanningState::kObstacleAwareHold;
@@ -352,6 +379,12 @@ void ProductionMppiNode::planningTick() {
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "mission_goal_position_hold";
+  } else if (cooperative.yield.active && cooperative.yield.hold_at_entry &&
+             !route_control.hold_xy) {
+    planning_state = ProductionMppiPlanningState::kCooperativeChannelYieldHold;
+    speed_policy.reference_speed_mps = 0.0;
+    speed_policy.target_lookahead_m = 0.0;
+    target_source = "cooperative_channel_yield_hold";
   } else if (target_source == "mission_goal_direct" ||
              target_source == "tracking_route_objective_mismatch" ||
              target_source == "tracking_route_cross_track_rejected") {
@@ -397,7 +430,9 @@ void ProductionMppiNode::planningTick() {
         .station_m = projection.station_m,
         .predicted_head_progress_m =
             previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
-        .controller_active = control_feedback_fresh && !route_control.hold_xy,
+        .controller_active = control_feedback_fresh &&
+                             planning_state == ProductionMppiPlanningState::kPlanned &&
+                             !route_control.hold_xy,
         .emergency_braking =
             control_feedback_fresh && applied_control.emergency_braking,
     });
@@ -558,8 +593,8 @@ void ProductionMppiNode::planningTick() {
                     .initial_station_m = static_cast<float>(route_projection.station_m),
                 }}
               : std::nullopt,
-      .conflicting_peers = {},
-      .cooperative_maneuver = std::nullopt,
+      .conflicting_peers = cooperative.mppi.conflicting_peers,
+      .cooperative_maneuver = cooperative.mppi.maneuver,
       .active_rollouts = rollout_budget.active_rollouts,
       .target_directed_reacquisition_enabled = direct_tracking_interception,
   };
@@ -662,6 +697,8 @@ void ProductionMppiNode::planningTick() {
   diagnostic_result.head_progress_m = result.head_progress_m;
   diagnostic_result.terminal_progress_m = result.terminal_progress_m;
   diagnostic_result.minimum_target_separation_m = result.minimum_target_separation_m;
+  diagnostic_result.minimum_peer_separation_m = result.minimum_peer_separation_m;
+  diagnostic_result.peer_separation_cost = result.peer_separation_cost;
   diagnostic_result.predicted_capture_time_s = result.predicted_capture_time_s;
   diagnostic_result.maximum_acceleration_mps2 = result.maximum_acceleration_mps2;
   diagnostic_result.maximum_jerk_mps3 = result.maximum_jerk_mps3;
@@ -676,6 +713,9 @@ void ProductionMppiNode::planningTick() {
       result.target_directed_candidate_best_eligible;
   diagnostic_result.target_directed_candidate_weight =
       result.target_directed_candidate_weight;
+  diagnostic_result.cooperative_candidates_injected =
+      result.cooperative_candidates_injected;
+  diagnostic_result.cooperative_peer_count = result.cooperative_peer_count;
   diagnostic_result.esdf_revision = result.esdf_revision;
   diagnostic_result.active_rollouts = result.active_rollouts;
   diagnostic_result.timings = result.timings;
@@ -714,6 +754,7 @@ void ProductionMppiNode::planningTick() {
       .liveness_reseed_requested = liveness.reseed_requested,
       .pose_predicted = pose_predicted,
       .rollout_budget = rollout_budget,
+      .cooperative = cooperative,
       .route_required_risk_tier = route_required_risk_tier,
       .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
   });

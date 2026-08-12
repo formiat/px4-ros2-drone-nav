@@ -140,7 +140,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold ||
       planning_state == ProductionMppiPlanningState::kUnavailableWorldBrakingHold;
   const bool obstacle_aware_hold =
-      planning_state == ProductionMppiPlanningState::kObstacleAwareHold;
+      planning_state == ProductionMppiPlanningState::kObstacleAwareHold ||
+      planning_state == ProductionMppiPlanningState::kCooperativeChannelYieldHold;
   MppiHorizonSafetyResult safety;
   MppiSafetyInterventionUpdate intervention;
   if (!forced_braking_hold) {
@@ -245,7 +246,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
              ProductionMppiPlanningState::kUnavailableWorldBrakingHold) {
     fallback_reason = ProductionMppiExecutionReason::kUnavailableWorld;
   } else if (obstacle_aware_hold) {
-    fallback_reason = ProductionMppiExecutionReason::kGoalCapture;
+    fallback_reason =
+        planning_state == ProductionMppiPlanningState::kCooperativeChannelYieldHold
+            ? ProductionMppiExecutionReason::kCooperativeChannelYield
+            : ProductionMppiExecutionReason::kGoalCapture;
   }
   if (brake_hold.position_hold) {
     const auto hold_duration_ns = static_cast<std::int64_t>(

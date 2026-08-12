@@ -6,6 +6,7 @@
 #include <numeric>
 #include <sstream>
 
+#include "production_mppi_cooperative_diagnostics.hpp"
 #include "production_mppi_node.hpp"
 #include "successor_profiling_diagnostics.hpp"
 #include "tracking_objective_diagnostics.hpp"
@@ -140,6 +141,19 @@ void ProductionMppiNode::processDiagnostics(
                          "PRODUCTION_MPPI_STALE_WORLD action=continue_resident_esdf "
                          "esdf_age_ms=%.1f warning_age_ms=%.1f revision=%" PRIu64,
                          snapshot.esdf_age_ms, maximum_esdf_age_ms_, esdf.revision);
+  }
+  if (snapshot.cooperative.yield.active) {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "COOPERATIVE_CHANNEL_YIELD vehicle='%s' channel='%s' lane=%zu/%zu "
+        "status=%s hold=%s hold_station_m=%.2f maximum_speed_mps=%.2f",
+        vehicle_id_.c_str(), snapshot.cooperative.channel.channel_id.c_str(),
+        snapshot.cooperative.channel.lane_index,
+        snapshot.cooperative.channel.lane_count,
+        cooperativeChannelYieldStatusName(snapshot.cooperative.yield.status),
+        snapshot.cooperative.yield.hold_at_entry ? "true" : "false",
+        snapshot.cooperative.yield.hold_station_m,
+        snapshot.cooperative.yield.maximum_speed_mps);
   }
   if (snapshot.goal_capture.newly_latched) {
     RCLCPP_INFO(get_logger(),
@@ -376,6 +390,7 @@ void ProductionMppiNode::processDiagnostics(
        << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
        << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
        << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
+       << detail::cooperativeInfoFields(snapshot.cooperative, result)
        << " gpu_warm_start_ms=" << result.timings.warm_start_ms
        << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
        << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
@@ -822,6 +837,7 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"active_rollouts\":" << result.active_rollouts
         << ",\"rollout_budget_reason\":\""
         << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason) << '"'
+        << detail::cooperativeJsonFields(snapshot.cooperative, result)
         << ",\"gpu_warm_start_ms\":" << result.timings.warm_start_ms
         << ",\"gpu_noise_generation_ms\":" << result.timings.noise_generation_ms
         << ",\"gpu_rollout_simulation_ms\":" << result.timings.rollout_simulation_ms

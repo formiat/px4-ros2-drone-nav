@@ -72,6 +72,8 @@ namespace {
       return "none";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_HORIZON_SAFETY:
       return "horizon_safety";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_CHANNEL_YIELD:
+      return "cooperative_channel_yield";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE:
       return "goal_capture";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_GUIDE:

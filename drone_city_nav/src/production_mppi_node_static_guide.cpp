@@ -127,11 +127,31 @@ void ProductionMppiNode::processStaticGuideSearch(
     for (ConstrainedRouteSpan& span : geometry.constrained_spans) {
       span.route_generation = candidate_generation;
     }
+    std::vector<CooperativeChannelLaneAssignment> channel_assignments;
+    bool cooperative_route_valid = true;
+    if (cooperative_traffic_enabled_ && static_occupancy_3d_) {
+      const std::span<const ChannelLaneSet> lane_sets =
+          world.channel_lane_sets
+              ? std::span<const ChannelLaneSet>{*world.channel_lane_sets}
+              : std::span<const ChannelLaneSet>{};
+      CooperativeChannelRouteResult cooperative_route = applyCooperativeChannelLanes(
+          *mutable_route, geometry.constrained_spans, lane_sets, *static_occupancy_3d_,
+          cooperative_channel_route_config_);
+      cooperative_route_valid = cooperative_route.valid;
+      if (cooperative_route.valid) {
+        *mutable_route = std::move(cooperative_route.route);
+        geometry.constrained_spans = std::move(cooperative_route.constrained_spans);
+      }
+      channel_assignments = std::move(cooperative_route.assignments);
+    }
     auto mutable_spans = std::make_shared<std::vector<ConstrainedRouteSpan>>(
         std::move(geometry.constrained_spans));
-    if (assignRouteRiskTiers(*mutable_route, world.grid, *world.distances_m,
-                             mppi_config_.risk.critical_distance_m,
-                             mppi_config_.risk.preferred_distance_m)) {
+    if (!cooperative_route_valid) {
+      validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidChannelSpan};
+    } else if (assignRouteRiskTiers(*mutable_route, world.grid, *world.distances_m,
+                                    mppi_config_.risk.critical_distance_m,
+                                    mppi_config_.risk.preferred_distance_m)) {
       validation = validateStaticRouteCandidate(
           world.route_3d ? std::span<const RouteSample3D>{*world.route_3d}
                          : std::span<const RouteSample3D>{},
@@ -181,6 +201,9 @@ void ProductionMppiNode::processStaticGuideSearch(
     prepared.route_3d = route;
     prepared.route_2d_projection = projectRouteTo2D(*route);
     prepared.constrained_spans = spans;
+    prepared.cooperative_channel_assignments =
+        std::make_shared<const std::vector<CooperativeChannelLaneAssignment>>(
+            std::move(channel_assignments));
     prepared.selected_channel_ids = std::make_shared<const std::vector<std::string>>(
         std::move(selected_channel_ids));
     prepared.mppi_route =
@@ -265,6 +288,18 @@ void ProductionMppiNode::processStaticGuideSearch(
       activation_status = StaticRouteActivationStatus::kStaleRouteGeneration;
     } else if (route_candidate.validation.accepted && !objective_matches) {
       activation_status = StaticRouteActivationStatus::kStaleObjective;
+    }
+  }
+  if (activated && prepared.cooperative_channel_assignments) {
+    for (const CooperativeChannelLaneAssignment& assignment :
+         *prepared.cooperative_channel_assignments) {
+      RCLCPP_INFO(get_logger(),
+                  "COOPERATIVE_CHANNEL_ROUTE route_generation=%" PRIu64
+                  " span_index=%zu channel='%s' lane=%zu/%zu offset_m=%.2f status=%s",
+                  assignment.route_generation, assignment.span_index,
+                  assignment.channel_id.c_str(), assignment.lane_index,
+                  assignment.lane_count, assignment.lateral_offset_m,
+                  cooperativeChannelLaneRouteStatusName(assignment.status));
     }
   }
   RCLCPP_INFO(

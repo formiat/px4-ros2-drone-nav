@@ -2,6 +2,10 @@
 
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
+#include "drone_city_nav/channel_lanes.hpp"
+#include "drone_city_nav/cooperative_channel_execution.hpp"
+#include "drone_city_nav/cooperative_channel_route.hpp"
+#include "drone_city_nav/cooperative_mppi_adapter.hpp"
 #include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
@@ -17,6 +21,8 @@
 #include "drone_city_nav/mppi_risk_escalation.hpp"
 #include "drone_city_nav/mppi_rollout_budget.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
+#include "drone_city_nav/msg/cooperative_channel_intent.hpp"
+#include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
 #include "drone_city_nav/msg/latest_lidar_safety_scan.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
@@ -185,6 +191,9 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> channel_edges;
+  std::shared_ptr<const std::vector<ChannelLaneSet>> channel_lane_sets;
+  std::shared_ptr<const std::vector<CooperativeChannelLaneAssignment>>
+      cooperative_channel_assignments;
   std::shared_ptr<const std::vector<std::string>> selected_channel_ids;
   StaticRouteObjective search_objective{};
   StaticRouteObjective route_objective{};
@@ -292,6 +301,19 @@ struct ProductionMppiAppliedControl {
   bool valid{false};
 };
 
+struct ProductionMppiCooperativeCommand {
+  CooperativeManeuverCommandData data;
+  std::int64_t receive_stamp_ns{0};
+};
+
+struct ProductionMppiCooperativeUpdate {
+  CooperativeMppiAdapterResult mppi{};
+  CooperativeChannelUse channel{};
+  CooperativeChannelYieldDecision yield{};
+  std::uint64_t command_generation{0U};
+  double command_age_ms{-1.0};
+};
+
 struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> candidate_horizon;
   std::vector<mppi::State> previous_horizon;
@@ -310,6 +332,7 @@ enum class ProductionMppiExecutionMode : std::uint8_t {
 enum class ProductionMppiExecutionReason : std::uint8_t {
   kNone,
   kHorizonSafety,
+  kCooperativeChannelYield,
   kGoalCapture,
   kNoGuide,
   kUnavailableWorld,
@@ -325,6 +348,7 @@ struct ProductionMppiExecutionPublication {
 enum class ProductionMppiPlanningState {
   kPlanned,
   kObstacleAwareHold,
+  kCooperativeChannelYieldHold,
   kNoGuideBrakingHold,
   kUnavailableWorldBrakingHold,
   kMissionGoalPositionHold,
@@ -360,6 +384,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   bool liveness_reseed_requested{false};
   bool pose_predicted{false};
   MppiRolloutBudgetDecision rollout_budget{};
+  ProductionMppiCooperativeUpdate cooperative{};
   mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
   mppi::RiskTier maximum_eligible_risk_tier{mppi::RiskTier::kPreferred};
 };
@@ -395,6 +420,7 @@ private:
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void onNavigationObjective(const msg::NavigationObjective& message);
+  void onCooperativeManeuverCommand(const msg::CooperativeManeuverCommand& message);
   void publishRadarTrackModeCommand(const ProductionNavigationObjective& objective,
                                     std::uint8_t reason);
   void requestStaticEsdfWork(bool force_refresh = false);
@@ -426,6 +452,15 @@ private:
                                 const ProductionMppiNavigation& navigation);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
+  void configureCooperativeTraffic();
+  void initializeCooperativeChannelLanes();
+  void createCooperativeTrafficInterfaces(
+      const rclcpp::SubscriptionOptions& subscription_options);
+  [[nodiscard]] ProductionMppiCooperativeUpdate
+  prepareCooperativeTick(const ProductionMppiPreparedEsdf& esdf,
+                         const ConstrainedRouteObservation& route_observation,
+                         const std::optional<ProductionMppiCooperativeCommand>& command,
+                         std::int64_t now_ns, double planned_speed_mps);
   void planningTick();
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);
@@ -492,6 +527,8 @@ private:
   DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_{};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
+  bool cooperative_traffic_enabled_{false};
+  std::string vehicle_id_;
   float constrained_route_speed_limit_mps_{10.0F};
   double route_constraint_diagnostics_distance_m_{30.0};
   std::string frame_id_{"map"};
@@ -527,11 +564,16 @@ private:
   StaticRouteExtensionConfig static_route_extension_config_{};
   StaticRouteSearchRetryConfig static_route_search_retry_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};
+  ChannelLaneConfig cooperative_channel_lane_config_{};
+  CooperativeChannelRouteConfig cooperative_channel_route_config_{};
+  CooperativeChannelTimingConfig cooperative_channel_timing_config_{};
+  CooperativeChannelYieldConfig cooperative_channel_yield_config_{};
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;
+  std::shared_ptr<const std::vector<ChannelLaneSet>> static_channel_lane_sets_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   bool static_esdf_uploaded_{false};
@@ -551,6 +593,7 @@ private:
   mutable std::mutex input_mutex_;
   ProductionMppiNavigation navigation_{};
   ProductionMppiAppliedControl applied_control_{};
+  std::optional<ProductionMppiCooperativeCommand> cooperative_command_;
   std::uint64_t memory_sequence_{0U};
   std::int64_t memory_receive_stamp_ns_{0};
   std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
@@ -638,6 +681,8 @@ private:
   rclcpp::Subscription<msg::ObstacleMemoryStatus>::SharedPtr memory_status_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;
+  rclcpp::Subscription<msg::CooperativeManeuverCommand>::SharedPtr
+      cooperative_command_sub_;
   rclcpp::Publisher<msg::RadarTrackModeCommand>::SharedPtr
       radar_track_mode_command_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
@@ -645,6 +690,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr world_readiness_pub_;
   rclcpp::Publisher<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_pub_;
+  rclcpp::Publisher<msg::CooperativeChannelIntent>::SharedPtr
+      cooperative_channel_state_pub_;
   rclcpp::TimerBase::SharedPtr planning_start_timer_;
   rclcpp::TimerBase::SharedPtr planning_timer_;
 };

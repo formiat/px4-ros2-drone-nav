@@ -18,6 +18,8 @@ productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcep
       return "planned";
     case ProductionMppiPlanningState::kObstacleAwareHold:
       return "obstacle_aware_hold";
+    case ProductionMppiPlanningState::kCooperativeChannelYieldHold:
+      return "cooperative_channel_yield_hold";
     case ProductionMppiPlanningState::kNoGuideBrakingHold:
       return "no_guide_braking_hold";
     case ProductionMppiPlanningState::kUnavailableWorldBrakingHold:
@@ -48,6 +50,8 @@ productionMppiExecutionReasonName(const ProductionMppiExecutionReason reason) no
       return "none";
     case ProductionMppiExecutionReason::kHorizonSafety:
       return "horizon_safety";
+    case ProductionMppiExecutionReason::kCooperativeChannelYield:
+      return "cooperative_channel_yield";
     case ProductionMppiExecutionReason::kGoalCapture:
       return "goal_capture";
     case ProductionMppiExecutionReason::kNoGuide:
@@ -586,6 +590,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       safety_config_.physical_footprint_radial_rings;
   lattice_3d_config_.physical_footprint_axial_samples =
       safety_config_.physical_footprint_axial_samples;
+  configureCooperativeTraffic();
   safety_config_.position_hold_capture_speed_mps =
       declare_parameter<double>("safety_position_hold_capture_speed_mps", 0.20);
   const double static_safety_fallback_duration_s =
@@ -729,6 +734,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     static_channel_edges_ =
         std::make_shared<const std::vector<ConstrainedFreeSpaceEdge>>(
             static_occupancy_3d_->channelEdges());
+    initializeCooperativeChannelLanes();
     RCLCPP_INFO(get_logger(),
                 "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
                 " occupied_voxels=%zu channels=%zu dimensions=%dx%dx%d",
@@ -816,6 +822,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
         onNavigationObjective(*message);
       },
       input_subscription_options);
+  createCooperativeTrafficInterfaces(input_subscription_options);
   radar_track_mode_command_pub_ = create_publisher<msg::RadarTrackModeCommand>(
       declare_parameter<std::string>("radar_track_mode_command_topic",
                                      "/drone_city_nav/radar/track_mode_command"),
