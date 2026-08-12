@@ -64,11 +64,14 @@ cache round-tripping, ROI extraction, distance capping, and corruption handling.
 
 ## Occupancy3D
 
-The binary map uses schema version 2 with a sparse chunked bitset. Its header
+The binary map uses schema version 3 with a sparse chunked bitset. Its header
 stores grid bounds, resolution, chunk size, a fingerprint of the canonical JSON,
 and the number of occupied chunks. The chunk payload is followed by the generated
 constrained free-space graph. Each channel edge stores its identifier, sampled 3D
-centerline, entry and exit, vertical window, minimum clearance, and speed limit.
+centerline, entry and exit, explicit width and height, vertical window, minimum
+clearance, and speed limit. Keeping the cross-section dimensions separate allows
+cooperative traffic to derive and validate multiple lateral lanes without confusing
+the lower vertical clearance with the available horizontal width.
 Entry and exit are generated on the exterior portal planes, not at bridge
 centers, so approach and departure route segments remain outside solid geometry.
 This metadata is compiled from the same canonical JSON; it is not a separate

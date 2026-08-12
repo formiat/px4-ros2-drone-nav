@@ -237,8 +237,9 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
         .end_station_m = new_exit.station_m,
         .min_z_m = envelope.min_z_m,
         .max_z_m = envelope.max_z_m,
-        .minimum_clearance_m =
-            0.5 * (envelope.lateral_free_left_m + envelope.lateral_free_right_m),
+        .width_m = envelope.lateral_free_left_m + envelope.lateral_free_right_m,
+        .height_m = envelope.max_z_m - envelope.min_z_m,
+        .minimum_clearance_m = envelope.minimum_clearance_m,
         .speed_limit_mps = envelope.reference_speed_mps,
     });
   }

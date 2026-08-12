@@ -23,6 +23,8 @@ struct ConstrainedFreeSpaceEdge {
   Point3 exit{};
   double min_z_m{0.0};
   double max_z_m{0.0};
+  double width_m{0.0};
+  double height_m{0.0};
   double minimum_clearance_m{0.0};
   double speed_limit_mps{0.0};
 };

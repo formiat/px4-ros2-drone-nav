@@ -46,6 +46,8 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedChannelGeometry) {
                                .end_station_m = 20.0,
                                .min_z_m = 2.0,
                                .max_z_m = 8.0,
+                               .width_m = 18.0,
+                               .height_m = 6.0,
                                .minimum_clearance_m = 3.0,
                                .speed_limit_mps = 10.0}};
   const std::vector<ConstrainedRouteSpan> spans =

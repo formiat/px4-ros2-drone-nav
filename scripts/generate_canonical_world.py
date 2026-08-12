@@ -15,7 +15,7 @@ from xml.etree import ElementTree as ET
 
 
 OCCUPANCY_MAGIC = b"DCNOCC3D"
-OCCUPANCY_VERSION = 2
+OCCUPANCY_VERSION = 3
 NO_STATIC_SOLID_VISIBILITY = 0x08000000
 NO_STATIC_OCCLUDER_VISIBILITY = 0x04000000
 BUILDING_GRID_CENTER_M = 27.0
@@ -438,8 +438,10 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
             stream.write(struct.pack("<I", len(centerline)))
             for point in centerline:
                 stream.write(struct.pack("<3f", *point))
-            stream.write(struct.pack("<4f", min_z, max_z,
-                                     minimum_clearance, edge.speed_limit_mps))
+            stream.write(struct.pack(
+                "<6f", min_z, max_z, edge.width_m, edge.height_m,
+                minimum_clearance, edge.speed_limit_mps
+            ))
 
 
 def main() -> None:

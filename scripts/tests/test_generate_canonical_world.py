@@ -78,7 +78,7 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                     header_format, stream.read(struct.calcsize(header_format))
                 )
             self.assertEqual(b"DCNOCC3D", header[0])
-            self.assertEqual(2, header[1])
+            self.assertEqual(3, header[1])
             self.assertEqual(16, header[2])
             self.assertEqual((690, 1050, 80), header[7:10])
             self.assertGreater(header[11], 0)
@@ -94,11 +94,13 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                     channel_ids.append(stream.read(id_size).decode("utf-8"))
                     point_count = struct.unpack("<I", stream.read(4))[0]
                     stream.seek(point_count * struct.calcsize("<3f"), 1)
-                    min_z, max_z, clearance, speed_limit = struct.unpack(
-                        "<4f", stream.read(struct.calcsize("<4f"))
+                    min_z, max_z, width, height, clearance, speed_limit = struct.unpack(
+                        "<6f", stream.read(struct.calcsize("<6f"))
                     )
                     self.assertAlmostEqual(1.5, min_z)
                     self.assertAlmostEqual(8.5, max_z)
+                    self.assertAlmostEqual(24.0, width)
+                    self.assertAlmostEqual(7.0, height)
                     self.assertAlmostEqual(3.5, clearance)
                     self.assertAlmostEqual(10.0, speed_limit)
                 expected_edge_ids = [

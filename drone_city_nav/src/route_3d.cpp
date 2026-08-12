@@ -467,10 +467,11 @@ makeConstrainedRouteSpans(const std::span<const RouteSample3D> route,
       }
       span.envelope.push_back(RouteEnvelopeSample{
           .station_m = sample.station_m,
-          .lateral_free_left_m = traversal.minimum_clearance_m,
-          .lateral_free_right_m = traversal.minimum_clearance_m,
+          .lateral_free_left_m = 0.5 * traversal.width_m,
+          .lateral_free_right_m = 0.5 * traversal.width_m,
           .min_z_m = traversal.min_z_m,
           .max_z_m = traversal.max_z_m,
+          .minimum_clearance_m = traversal.minimum_clearance_m,
           .reference_z_m = sample.position.z,
           .reference_speed_mps = traversal.speed_limit_mps,
       });
@@ -479,10 +480,11 @@ makeConstrainedRouteSpans(const std::span<const RouteSample3D> route,
       const RouteSample3D entry = sampleAtStation(route, span.begin_station_m);
       span.envelope.push_back(RouteEnvelopeSample{
           .station_m = span.begin_station_m,
-          .lateral_free_left_m = traversal.minimum_clearance_m,
-          .lateral_free_right_m = traversal.minimum_clearance_m,
+          .lateral_free_left_m = 0.5 * traversal.width_m,
+          .lateral_free_right_m = 0.5 * traversal.width_m,
           .min_z_m = traversal.min_z_m,
           .max_z_m = traversal.max_z_m,
+          .minimum_clearance_m = traversal.minimum_clearance_m,
           .reference_z_m = entry.position.z,
           .reference_speed_mps = traversal.speed_limit_mps,
       });

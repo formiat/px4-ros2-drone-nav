@@ -131,6 +131,8 @@ TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedChannelEdges) {
               std::vector<Point3>{{1.0, 2.0, 5.0}, {3.0, 2.0, 5.0}}, 0.5, 10.0),
           .min_z_m = 1.5,
           .max_z_m = 8.5,
+          .width_m = 24.0,
+          .height_m = 7.0,
           .minimum_clearance_m = 3.5,
           .speed_limit_mps = 10.0},
       ConstrainedFreeSpaceEdge{
@@ -139,6 +141,8 @@ TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedChannelEdges) {
               std::vector<Point3>{{4.0, 2.0, 5.0}, {6.0, 2.0, 5.0}}, 0.5, 10.0),
           .min_z_m = 1.5,
           .max_z_m = 8.5,
+          .width_m = 24.0,
+          .height_m = 7.0,
           .minimum_clearance_m = 3.5,
           .speed_limit_mps = 10.0}};
   const std::vector<std::string> selected{"selected"};

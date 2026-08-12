@@ -422,6 +422,8 @@ TEST(Route3DTest, BuildsTypedSpanFromSelectedChannelTraversal) {
                                .end_station_m = 8.0,
                                .min_z_m = 1.5,
                                .max_z_m = 8.5,
+                               .width_m = 24.0,
+                               .height_m = 7.0,
                                .minimum_clearance_m = 3.5,
                                .speed_limit_mps = 10.0}};
 
@@ -502,6 +504,8 @@ TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
       .exit = Point3{12.5, 8.5, 5.5},
       .min_z_m = 1.5,
       .max_z_m = 8.5,
+      .width_m = 24.0,
+      .height_m = 7.0,
       .minimum_clearance_m = 3.5,
       .speed_limit_mps = 10.0}};
   RiskAwareLattice3DConfig config;
@@ -547,6 +551,8 @@ TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
       .exit = Point3{18.5, 2.5, 5.5},
       .min_z_m = 1.5,
       .max_z_m = 8.5,
+      .width_m = 24.0,
+      .height_m = 7.0,
       .minimum_clearance_m = 3.5,
       .speed_limit_mps = 10.0}};
   RiskAwareLattice3DConfig config;
@@ -589,6 +595,8 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
                                     .exit = points.back(),
                                     .min_z_m = 1.5,
                                     .max_z_m = 8.5,
+                                    .width_m = 24.0,
+                                    .height_m = 7.0,
                                     .minimum_clearance_m = 3.5,
                                     .speed_limit_mps = 10.0};
   };

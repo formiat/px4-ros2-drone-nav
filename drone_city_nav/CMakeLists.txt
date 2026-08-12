@@ -141,6 +141,7 @@ add_library(
   src/active_global_guide.cpp
   src/ambiguous_lidar_hit_tracker.cpp
   src/bounded_worker_pool.cpp
+  src/channel_lanes.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
   src/debug_image.cpp
   src/distance_field.cpp
@@ -731,6 +732,11 @@ if(BUILD_TESTING)
     occupancy_grid_3d_test
     PRIVATE TEST_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.occupancy3d")
   enable_project_warnings(occupancy_grid_3d_test)
+
+  ament_add_gtest(channel_lanes_test tests/channel_lanes_test.cpp)
+  target_compile_features(channel_lanes_test PRIVATE cxx_std_20)
+  target_link_libraries(channel_lanes_test drone_city_nav_core)
+  enable_project_warnings(channel_lanes_test)
 
   ament_add_gtest(distance_field_3d_test tests/distance_field_3d_test.cpp)
   target_compile_features(distance_field_3d_test PRIVATE cxx_std_20)

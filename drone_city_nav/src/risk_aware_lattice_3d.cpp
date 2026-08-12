@@ -367,6 +367,8 @@ reconstruct(const Key& terminal, const Point3& origin,
         .end_station_m = station_m,
         .min_z_m = channel.min_z_m,
         .max_z_m = channel.max_z_m,
+        .width_m = channel.width_m,
+        .height_m = channel.height_m,
         .minimum_clearance_m = channel.minimum_clearance_m,
         .speed_limit_mps = channel.speed_limit_mps,
     });

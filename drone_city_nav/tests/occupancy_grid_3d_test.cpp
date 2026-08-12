@@ -43,6 +43,8 @@ TEST(OccupancyGrid3D, StoresGeneratedConstrainedFreeSpaceEdges) {
           10.0),
       .min_z_m = 1.5,
       .max_z_m = 8.5,
+      .width_m = 24.0,
+      .height_m = 7.0,
       .minimum_clearance_m = 3.5,
       .speed_limit_mps = 10.0,
   });
@@ -57,6 +59,8 @@ TEST(OccupancyGrid3D, StoresGeneratedConstrainedFreeSpaceEdges) {
   EXPECT_DOUBLE_EQ(edge.exit.y, 4.0);
   EXPECT_DOUBLE_EQ(edge.exit.z, 5.0);
   EXPECT_DOUBLE_EQ(edge.minimum_clearance_m, 3.5);
+  EXPECT_DOUBLE_EQ(edge.width_m, 24.0);
+  EXPECT_DOUBLE_EQ(edge.height_m, 7.0);
 }
 
 TEST(OccupancyGrid3D, LoadsChannelGraphFromGeneratedArtifact) {
@@ -73,6 +77,8 @@ TEST(OccupancyGrid3D, LoadsChannelGraphFromGeneratedArtifact) {
     EXPECT_GT(edge.centerline.size(), 2U);
     EXPECT_DOUBLE_EQ(edge.min_z_m, 1.5);
     EXPECT_DOUBLE_EQ(edge.max_z_m, 8.5);
+    EXPECT_DOUBLE_EQ(edge.width_m, 24.0);
+    EXPECT_DOUBLE_EQ(edge.height_m, 7.0);
     EXPECT_DOUBLE_EQ(edge.minimum_clearance_m, 3.5);
     EXPECT_DOUBLE_EQ(edge.speed_limit_mps, 10.0);
   }

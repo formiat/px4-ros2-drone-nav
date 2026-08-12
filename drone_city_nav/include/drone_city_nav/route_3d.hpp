@@ -33,6 +33,7 @@ struct RouteEnvelopeSample {
   double lateral_free_right_m{0.0};
   double min_z_m{0.0};
   double max_z_m{0.0};
+  double minimum_clearance_m{0.0};
   double reference_z_m{0.0};
   double reference_speed_mps{0.0};
 };
@@ -51,6 +52,8 @@ struct SelectedChannelTraversal {
   double end_station_m{0.0};
   double min_z_m{0.0};
   double max_z_m{0.0};
+  double width_m{0.0};
+  double height_m{0.0};
   double minimum_clearance_m{0.0};
   double speed_limit_mps{0.0};
 };

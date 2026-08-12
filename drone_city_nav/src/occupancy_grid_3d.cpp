@@ -14,7 +14,8 @@ namespace drone_city_nav {
 namespace {
 
 constexpr std::array<char, 8U> kMagic{'D', 'C', 'N', 'O', 'C', 'C', '3', 'D'};
-constexpr std::uint32_t kVersion{2U};
+constexpr std::uint32_t kVersion{3U};
+constexpr std::uint32_t kLegacyVersion{2U};
 constexpr std::uint32_t kMaximumChannelCount{10000U};
 constexpr std::uint32_t kMaximumChannelPointCount{100000U};
 
@@ -95,7 +96,8 @@ OccupancyGrid3D OccupancyGrid3D::load(const std::filesystem::path& path) {
   }
   const std::uint32_t version = readValue<std::uint32_t>(stream, "version");
   const std::uint32_t chunk_size = readValue<std::uint32_t>(stream, "chunk size");
-  if (version != kVersion || chunk_size != static_cast<std::uint32_t>(kChunkSize)) {
+  if ((version != kVersion && version != kLegacyVersion) ||
+      chunk_size != static_cast<std::uint32_t>(kChunkSize)) {
     throw std::runtime_error{"unsupported Occupancy3D version or chunk size"};
   }
   GridBounds3D bounds;
@@ -161,8 +163,17 @@ OccupancyGrid3D OccupancyGrid3D::load(const std::filesystem::path& path) {
     }
     edge.min_z_m = static_cast<double>(readValue<float>(stream, "channel min z"));
     edge.max_z_m = static_cast<double>(readValue<float>(stream, "channel max z"));
+    if (version >= kVersion) {
+      edge.width_m = static_cast<double>(readValue<float>(stream, "channel width"));
+      edge.height_m = static_cast<double>(readValue<float>(stream, "channel height"));
+    } else {
+      edge.height_m = edge.max_z_m - edge.min_z_m;
+    }
     edge.minimum_clearance_m =
         static_cast<double>(readValue<float>(stream, "channel minimum clearance"));
+    if (version == kLegacyVersion) {
+      edge.width_m = 2.0 * edge.minimum_clearance_m;
+    }
     edge.speed_limit_mps =
         static_cast<double>(readValue<float>(stream, "channel speed limit"));
     edge.centerline = sampleRoute3D(points, bounds.resolution_m, edge.speed_limit_mps);
@@ -271,7 +282,9 @@ void OccupancyGrid3D::addChannelEdge(ConstrainedFreeSpaceEdge edge) {
       });
   if (edge.id.empty() || edge.centerline.size() < 2U || duplicate ||
       !std::isfinite(edge.min_z_m) || !std::isfinite(edge.max_z_m) ||
-      !(edge.max_z_m > edge.min_z_m) || !(edge.minimum_clearance_m > 0.0) ||
+      !(edge.max_z_m > edge.min_z_m) || !std::isfinite(edge.width_m) ||
+      !std::isfinite(edge.height_m) || !(edge.width_m > 0.0) ||
+      !(edge.height_m > 0.0) || !(edge.minimum_clearance_m > 0.0) ||
       !(edge.speed_limit_mps > 0.0)) {
     throw std::invalid_argument{"invalid Occupancy3D constrained free-space edge"};
   }
