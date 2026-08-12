@@ -217,6 +217,7 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
   observation.span_index = *selected_index;
   observation.span_available = true;
   observation.channel_id = span.channel_id;
+  observation.direction_sign = span.direction_sign;
   observation.begin_station_m = span.begin_station_m;
   observation.end_station_m = span.end_station_m;
   observation.distance_to_entry_m = span.begin_station_m - current_station_m;
@@ -457,6 +458,7 @@ makeConstrainedRouteSpans(const std::span<const RouteSample3D> route,
     }
     ConstrainedRouteSpan span{.channel_id = traversal.channel_id,
                               .route_generation = route_generation,
+                              .direction_sign = traversal.direction_sign,
                               .begin_station_m = traversal.begin_station_m,
                               .end_station_m = traversal.end_station_m,
                               .envelope = {}};

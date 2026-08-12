@@ -42,6 +42,7 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedChannelGeometry) {
       0.5, 20.0);
   const std::vector<SelectedChannelTraversal> traversals{
       SelectedChannelTraversal{.channel_id = "channel",
+                               .direction_sign = 1,
                                .begin_station_m = 10.0,
                                .end_station_m = 20.0,
                                .min_z_m = 2.0,
@@ -60,6 +61,7 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedChannelGeometry) {
 
   ASSERT_EQ(result.constrained_spans.size(), 1U);
   EXPECT_EQ(result.constrained_spans.front().channel_id, "channel");
+  EXPECT_EQ(result.constrained_spans.front().direction_sign, 1);
   EXPECT_TRUE(std::ranges::any_of(result.route, [](const RouteSample3D& sample) {
     return distance3D(sample.position, Point3{15.0, 5.0, 5.0}) < 0.25;
   }));

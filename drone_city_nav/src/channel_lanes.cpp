@@ -82,6 +82,21 @@ laneInsideVerticalWindow(const ChannelLane& lane,
   return minimum_clearance_m + 1.0e-9 >= config.minimum_wall_clearance_m;
 }
 
+[[nodiscard]] bool validateRawLane(ChannelLane& lane, const OccupancyGrid3D& occupancy,
+                                   const ChannelLaneConfig& config) noexcept {
+  const FootprintBodyAxis body_axis{};
+  for (std::size_t index = 0U; index + 1U < lane.centerline.size(); ++index) {
+    const SweptFootprintResult result = validateRawSweptFootprint(
+        occupancy, lane.centerline[index].position, body_axis,
+        lane.centerline[index + 1U].position, body_axis, config.footprint);
+    if (!result.accepted()) {
+      return false;
+    }
+  }
+  lane.minimum_wall_clearance_m = config.minimum_wall_clearance_m;
+  return true;
+}
+
 void validateConfig(const ChannelLaneConfig& config) {
   if (!finitePositive(config.minimum_center_separation_m) ||
       !(config.minimum_wall_clearance_m >= 0.0) || config.maximum_lane_count == 0U ||
@@ -194,6 +209,42 @@ ChannelLaneSet makeCollisionValidatedChannelLanes(
                        .centerline =
                            offsetChannelCenterline(channel.centerline, offsets[index])};
       if (!validateLane(lane, channel, config, grid, esdf_m)) {
+        valid = false;
+        break;
+      }
+      candidate.lanes.push_back(std::move(lane));
+    }
+    if (valid) {
+      return candidate;
+    }
+  }
+  return ChannelLaneSet{.channel_id = channel.id,
+                        .physical_width_m = channel.width_m,
+                        .usable_center_width_m = geometric.usable_center_width_m,
+                        .lanes = {}};
+}
+
+ChannelLaneSet
+makeRawCollisionValidatedChannelLanes(const ConstrainedFreeSpaceEdge& channel,
+                                      const ChannelLaneConfig& config,
+                                      const OccupancyGrid3D& occupancy) {
+  const ChannelLaneSet geometric = makeGeometricChannelLanes(channel, config);
+  for (std::size_t lane_count = geometric.lanes.size(); lane_count > 0U; --lane_count) {
+    ChannelLaneSet candidate{.channel_id = channel.id,
+                             .physical_width_m = channel.width_m,
+                             .usable_center_width_m = geometric.usable_center_width_m,
+                             .lanes = {}};
+    const std::vector<double> offsets =
+        laneOffsets(lane_count, config.minimum_center_separation_m);
+    candidate.lanes.reserve(lane_count);
+    bool valid = true;
+    for (std::size_t index = 0U; index < lane_count; ++index) {
+      ChannelLane lane{.index = index,
+                       .lateral_offset_m = offsets[index],
+                       .centerline =
+                           offsetChannelCenterline(channel.centerline, offsets[index])};
+      if (!laneInsideVerticalWindow(lane, channel, config.footprint) ||
+          !validateRawLane(lane, occupancy, config)) {
         valid = false;
         break;
       }

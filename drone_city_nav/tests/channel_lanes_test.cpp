@@ -95,6 +95,20 @@ TEST(ChannelLanes, ReducesCapacityWhenAnOuterLaneIsNotRawSafe) {
   EXPECT_DOUBLE_EQ(lanes.lanes[1].lateral_offset_m, 2.0);
 }
 
+TEST(ChannelLanes, RawValidationReducesCapacityAtOccupiedOuterLane) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 14, 12}};
+  for (int x = 1; x < 19; ++x) {
+    occupancy.setOccupied(GridIndex3D{x, 10, 5});
+  }
+
+  const ChannelLaneSet lanes =
+      makeRawCollisionValidatedChannelLanes(straightChannel(), laneConfig(), occupancy);
+
+  ASSERT_EQ(lanes.lanes.size(), 2U);
+  EXPECT_DOUBLE_EQ(lanes.lanes[0].lateral_offset_m, -2.0);
+  EXPECT_DOUBLE_EQ(lanes.lanes[1].lateral_offset_m, 2.0);
+}
+
 TEST(ChannelLanes, GroupsAlternativeMovementsIntoOneConflictResource) {
   EXPECT_EQ(channelConflictResourceId("channel_t:west_north"), "channel_t");
   EXPECT_EQ(channelConflictResourceId("channel_straight"), "channel_straight");

@@ -233,6 +233,7 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     const RouteEnvelopeSample& envelope = span.envelope.front();
     traversals.push_back(SelectedChannelTraversal{
         .channel_id = span.channel_id,
+        .direction_sign = span.direction_sign,
         .begin_station_m = new_entry.station_m,
         .end_station_m = new_exit.station_m,
         .min_z_m = envelope.min_z_m,

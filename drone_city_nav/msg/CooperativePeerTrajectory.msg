@@ -2,4 +2,6 @@ string vehicle_id
 float32 footprint_radius_m
 float32 footprint_lower_extent_m
 float32 footprint_upper_extent_m
+builtin_interfaces/Time valid_from
+builtin_interfaces/Time valid_until
 CooperativeTrajectoryPoint[] trajectory

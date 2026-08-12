@@ -242,6 +242,7 @@ enable_project_warnings(drone_contact_system)
 
 add_library(
   drone_city_nav_ros_adapters
+  src/cooperative_traffic_ros.cpp
   src/lidar_debug_node_config.cpp
   src/latest_lidar_scan_safety_ros.cpp
   src/memory_provenance_audit_tracker.cpp
@@ -371,6 +372,32 @@ rclcpp_components_register_nodes(
   "drone_city_nav::TargetAssignmentCoordinatorNode"
   "drone_city_nav::InterceptorGuidanceNode")
 enable_project_warnings(drone_city_nav_interceptor_tracking_components)
+
+add_library(
+  drone_city_nav_cooperative_components SHARED
+  src/cooperative_traffic_agent_node.cpp)
+target_compile_features(drone_city_nav_cooperative_components PRIVATE cxx_std_20)
+target_link_libraries(
+  drone_city_nav_cooperative_components
+  drone_city_nav_core
+  drone_city_nav_ros_adapters
+  ${cpp_typesupport_target})
+ament_target_dependencies(
+  drone_city_nav_cooperative_components
+  rclcpp
+  rclcpp_components)
+rclcpp_components_register_nodes(
+  drone_city_nav_cooperative_components
+  "drone_city_nav::CooperativeTrafficAgentNode")
+enable_project_warnings(drone_city_nav_cooperative_components)
+
+add_executable(cooperative_traffic_agent_node
+               src/cooperative_traffic_agent_main.cpp)
+target_compile_features(cooperative_traffic_agent_node PRIVATE cxx_std_20)
+target_link_libraries(cooperative_traffic_agent_node
+                      drone_city_nav_cooperative_components)
+ament_target_dependencies(cooperative_traffic_agent_node rclcpp)
+enable_project_warnings(cooperative_traffic_agent_node)
 
 add_executable(radar_target_tracker_node src/radar_target_tracker_main.cpp)
 target_compile_features(radar_target_tracker_node PRIVATE cxx_std_20)
@@ -518,7 +545,9 @@ install(
     simulation_truth_adapter_node
     radar_target_tracker_node
     interceptor_guidance_node
+    cooperative_traffic_agent_node
     drone_city_nav_interceptor_tracking_components
+    drone_city_nav_cooperative_components
     drone_city_nav_diagnostics_components
     intercept_spectator_node
     intercept_diagnostics_mux_node

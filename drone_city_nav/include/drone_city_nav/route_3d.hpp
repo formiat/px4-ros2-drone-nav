@@ -41,6 +41,7 @@ struct RouteEnvelopeSample {
 struct ConstrainedRouteSpan {
   std::string channel_id;
   std::uint64_t route_generation{0U};
+  int direction_sign{0};
   double begin_station_m{0.0};
   double end_station_m{0.0};
   std::vector<RouteEnvelopeSample> envelope;
@@ -48,6 +49,7 @@ struct ConstrainedRouteSpan {
 
 struct SelectedChannelTraversal {
   std::string channel_id;
+  int direction_sign{0};
   double begin_station_m{0.0};
   double end_station_m{0.0};
   double min_z_m{0.0};
@@ -83,6 +85,7 @@ struct ConstrainedRouteObservation {
   std::size_t span_count{0U};
   bool span_available{false};
   std::string channel_id;
+  int direction_sign{0};
   bool within_vertical_window{false};
   double station_m{0.0};
   double begin_station_m{0.0};

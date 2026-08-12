@@ -310,6 +310,7 @@ TEST(StaticRouteExtensionTest, ProtectsConstrainedSuffixThroughDeparture) {
   const std::vector<ConstrainedRouteSpan> spans{ConstrainedRouteSpan{
       .channel_id = "channel",
       .route_generation = 3U,
+      .direction_sign = 1,
       .begin_station_m = 5.0,
       .end_station_m = 12.0,
       .envelope = {},

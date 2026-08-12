@@ -53,6 +53,7 @@ TEST(Route3DTest, CoordinatesVerticalAlignmentBeforeChannelEntry) {
   const std::vector<ConstrainedRouteSpan> spans{ConstrainedRouteSpan{
       .channel_id = "channel",
       .route_generation = 4U,
+      .direction_sign = 1,
       .begin_station_m = entry_station,
       .end_station_m = route.back().station_m,
       .envelope = {RouteEnvelopeSample{.station_m = entry_station,
@@ -93,6 +94,7 @@ TEST(Route3DTest, ObservesConstrainedSpanLifecycleAndMotionMetrics) {
       ConstrainedRouteSpan{
           .channel_id = "test_channel",
           .route_generation = 7U,
+          .direction_sign = -1,
           .begin_station_m = 40.0,
           .end_station_m = 50.0,
           .envelope =
@@ -128,6 +130,7 @@ TEST(Route3DTest, ObservesConstrainedSpanLifecycleAndMotionMetrics) {
   EXPECT_TRUE(traversal.span_available);
   EXPECT_EQ(traversal.route_generation, 7U);
   EXPECT_EQ(traversal.span_index, 0U);
+  EXPECT_EQ(traversal.direction_sign, -1);
   EXPECT_EQ(traversal.span_count, 1U);
   EXPECT_DOUBLE_EQ(traversal.distance_to_entry_m, -5.0);
   EXPECT_DOUBLE_EQ(traversal.distance_to_exit_m, 5.0);
@@ -418,6 +421,7 @@ TEST(Route3DTest, BuildsTypedSpanFromSelectedChannelTraversal) {
       20.0);
   const std::vector<SelectedChannelTraversal> traversals{
       SelectedChannelTraversal{.channel_id = "test_channel",
+                               .direction_sign = -1,
                                .begin_station_m = 2.0,
                                .end_station_m = 8.0,
                                .min_z_m = 1.5,
@@ -433,6 +437,7 @@ TEST(Route3DTest, BuildsTypedSpanFromSelectedChannelTraversal) {
   ASSERT_EQ(spans.size(), 1U);
   EXPECT_EQ(spans.front().channel_id, "test_channel");
   EXPECT_EQ(spans.front().route_generation, 12U);
+  EXPECT_EQ(spans.front().direction_sign, -1);
   ASSERT_FALSE(spans.front().envelope.empty());
   EXPECT_DOUBLE_EQ(spans.front().envelope.front().min_z_m, 1.5);
   EXPECT_DOUBLE_EQ(spans.front().envelope.front().max_z_m, 8.5);

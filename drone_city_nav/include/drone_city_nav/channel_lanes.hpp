@@ -48,6 +48,11 @@ makeGeometricChannelLanes(const ConstrainedFreeSpaceEdge& channel,
     const ConstrainedFreeSpaceEdge& channel, const ChannelLaneConfig& config,
     const mppi::EsdfGrid& grid, std::span<const float> esdf_m);
 
+[[nodiscard]] ChannelLaneSet
+makeRawCollisionValidatedChannelLanes(const ConstrainedFreeSpaceEdge& channel,
+                                      const ChannelLaneConfig& config,
+                                      const OccupancyGrid3D& occupancy);
+
 [[nodiscard]] std::string channelConflictResourceId(std::string_view channel_id);
 
 } // namespace drone_city_nav

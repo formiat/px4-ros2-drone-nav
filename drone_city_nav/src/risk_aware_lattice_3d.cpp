@@ -363,6 +363,7 @@ reconstruct(const Key& terminal, const Point3& origin,
     }
     result.traversals.push_back(SelectedChannelTraversal{
         .channel_id = channel.id,
+        .direction_sign = transition.reversed ? -1 : 1,
         .begin_station_m = begin_station_m,
         .end_station_m = station_m,
         .min_z_m = channel.min_z_m,
