@@ -83,6 +83,15 @@ class VehicleDestructionContractTest(unittest.TestCase):
         self.assertIn("outcome_preserved=target_reached_goal", referee)
         self.assertNotIn("late_capture_after_goal_", referee)
 
+    def test_referee_advances_all_survivor_hold_confirmations_each_tick(self) -> None:
+        lifecycle = REFEREE_LIFECYCLE.read_text(encoding="utf-8")
+        hold_settlement = lifecycle.split(
+            "bool InterceptMissionRefereeNode::allSurvivorsHeld", maxsplit=1
+        )[1].split("void InterceptMissionRefereeNode::settleTerminal", maxsplit=1)[0]
+        self.assertNotIn("return false;", hold_settlement)
+        self.assertIn("all_confirmed = false;", hold_settlement)
+        self.assertIn("return all_confirmed;", hold_settlement)
+
     def test_intercept_launch_wires_role_and_epoch_per_vehicle(self) -> None:
         text = LAUNCH.read_text(encoding="utf-8")
         self.assertIn('"vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed"', text)

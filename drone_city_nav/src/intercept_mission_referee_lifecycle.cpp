@@ -512,12 +512,15 @@ bool InterceptMissionRefereeNode::destructionSettlementTimedOut(
 }
 
 bool InterceptMissionRefereeNode::allSurvivorsHeld(const std::int64_t now_ns) {
+  bool all_confirmed = true;
+  std::optional<std::string> timed_out_interceptor;
   for (InterceptorRuntime& interceptor : interceptors_) {
     if (interceptor.destroyed || interceptor.destruction_requested) {
       continue;
     }
     if (!interceptor.hold_confirmation || !interceptor.state) {
-      return false;
+      all_confirmed = false;
+      continue;
     }
     std::optional<Point3> active_hold_position;
     if (interceptor.hold_horizon && interceptor.hold_horizon->active &&
@@ -535,14 +538,27 @@ bool InterceptMissionRefereeNode::allSurvivorsHeld(const std::int64_t now_ns) {
                   mission_epoch_);
     }
     if (!update.confirmed) {
+      all_confirmed = false;
       if (interceptor.hold_requested_ns > 0 &&
-          now_ns - interceptor.hold_requested_ns > hold_timeout_ns_) {
-        failMission("interceptor_hold_not_confirmed:" + interceptor.id);
+          now_ns - interceptor.hold_requested_ns > hold_timeout_ns_ &&
+          !timed_out_interceptor.has_value()) {
+        RCLCPP_ERROR(
+            get_logger(),
+            "INTERCEPTOR_HOLD_TIMEOUT vehicle_id='%s' position_error_m=%.3f "
+            "speed_mps=%.3f active_hold_horizon=%s hold_horizon_sequence=%" PRIu64
+            " request_horizon_sequence=%" PRIu64 " mission_epoch=%" PRIu64,
+            interceptor.id.c_str(), update.position_error_m, update.speed_mps,
+            active_hold_position.has_value() ? "true" : "false",
+            interceptor.hold_horizon ? interceptor.hold_horizon->sequence : 0U,
+            interceptor.hold_request_horizon_sequence, mission_epoch_);
+        timed_out_interceptor = interceptor.id;
       }
-      return false;
     }
   }
-  return true;
+  if (timed_out_interceptor.has_value()) {
+    failMission("interceptor_hold_not_confirmed:" + *timed_out_interceptor);
+  }
+  return all_confirmed;
 }
 
 void InterceptMissionRefereeNode::settleTerminal(const std::int64_t now_ns) {
