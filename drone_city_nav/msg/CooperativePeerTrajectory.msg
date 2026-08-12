@@ -1,0 +1,5 @@
+string vehicle_id
+float32 footprint_radius_m
+float32 footprint_lower_extent_m
+float32 footprint_upper_extent_m
+CooperativeTrajectoryPoint[] trajectory

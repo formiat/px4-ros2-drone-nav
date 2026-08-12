@@ -1,0 +1,3 @@
+float32 time_from_valid_from_s
+geometry_msgs/Point position
+geometry_msgs/Vector3 velocity

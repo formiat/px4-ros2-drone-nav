@@ -68,6 +68,11 @@ rosidl_generate_interfaces(
   "msg/SimulationTruthAlignment.msg"
   "msg/SimulationTruthState.msg"
   "msg/VehicleNavigationState.msg"
+  "msg/CooperativeTrajectoryPoint.msg"
+  "msg/CooperativeChannelIntent.msg"
+  "msg/CooperativeFlightIntent.msg"
+  "msg/CooperativePeerTrajectory.msg"
+  "msg/CooperativeManeuverCommand.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
                               rosidl_typesupport_cpp)
@@ -142,6 +147,8 @@ add_library(
   src/ambiguous_lidar_hit_tracker.cpp
   src/bounded_worker_pool.cpp
   src/channel_lanes.cpp
+  src/cooperative_channel_coordination.cpp
+  src/cooperative_traffic.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
   src/debug_image.cpp
   src/distance_field.cpp
@@ -737,6 +744,11 @@ if(BUILD_TESTING)
   target_compile_features(channel_lanes_test PRIVATE cxx_std_20)
   target_link_libraries(channel_lanes_test drone_city_nav_core)
   enable_project_warnings(channel_lanes_test)
+
+  ament_add_gtest(cooperative_traffic_test tests/cooperative_traffic_test.cpp)
+  target_compile_features(cooperative_traffic_test PRIVATE cxx_std_20)
+  target_link_libraries(cooperative_traffic_test drone_city_nav_core)
+  enable_project_warnings(cooperative_traffic_test)
 
   ament_add_gtest(distance_field_3d_test tests/distance_field_3d_test.cpp)
   target_compile_features(distance_field_3d_test PRIVATE cxx_std_20)

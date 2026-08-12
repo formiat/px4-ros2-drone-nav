@@ -1,0 +1,22 @@
+uint8 MANEUVER_KEEP=0
+uint8 MANEUVER_CLIMB=1
+uint8 MANEUVER_DESCEND=2
+uint8 MANEUVER_LEFT=3
+uint8 MANEUVER_RIGHT=4
+uint8 MANEUVER_SLOW=5
+
+std_msgs/Header header
+string vehicle_id
+uint64 intent_generation
+builtin_interfaces/Time valid_from
+builtin_interfaces/Time valid_until
+float32 footprint_radius_m
+float32 footprint_lower_extent_m
+float32 footprint_upper_extent_m
+geometry_msgs/Point current_position
+geometry_msgs/Vector3 current_velocity
+uint8 maneuver_state
+uint64 conflict_generation
+string[] conflicting_vehicle_ids
+CooperativeChannelIntent channel
+CooperativeTrajectoryPoint[] trajectory
