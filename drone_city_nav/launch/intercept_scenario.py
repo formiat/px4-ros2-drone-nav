@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load and validate a canonical finite interceptor scenario."""
+"""Load and validate a canonical finite multi-vehicle scenario."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ EXPECTED_VEHICLE_IDS = (
 SUPPORTED_SCHEMAS = {
     "drone_city_nav_intercept_scenario_v1",
     "drone_city_nav_intercept_scenario_v2",
+    "drone_city_nav_cooperative_traffic_scenario_v1",
 }
 
 
@@ -69,14 +70,14 @@ def _map_to_sdf(
     )
 
 
-def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
+def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
     """Return a validated scenario with derived Gazebo spawn poses."""
     scenario_path = Path(path).resolve()
     with scenario_path.open(encoding="utf-8") as stream:
         document = json.load(stream)
     schema = document.get("schema")
     if schema not in SUPPORTED_SCHEMAS:
-        raise ValueError("unsupported intercept scenario schema")
+        raise ValueError("unsupported multi-vehicle scenario schema")
 
     world_path = _resolve_world_path(scenario_path, document.get("canonical_world"))
     with world_path.open(encoding="utf-8") as stream:
@@ -94,7 +95,7 @@ def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
             raise ValueError(f"vehicles[{index}] must be an object")
         vehicle_id = _required_string(source, "id", f"vehicles[{index}]")
         role = _required_string(source, "role", f"vehicles[{index}]")
-        if role not in {"interceptor", "evader"}:
+        if role not in {"interceptor", "evader", "civilian"}:
             raise ValueError(f"invalid role for {vehicle_id}: {role}")
         map_start = _finite_vector(
             source.get("map_start_m"), 3, f"vehicles[{index}].map_start_m"
@@ -135,8 +136,15 @@ def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
         vehicle["role"] == "interceptor" for vehicle in vehicles
     )
     evader_count = sum(vehicle["role"] == "evader" for vehicle in vehicles)
-    if interceptor_count == 0 or evader_count == 0:
-        raise ValueError("scenario must contain interceptors and evaders")
+    civilian_count = sum(vehicle["role"] == "civilian" for vehicle in vehicles)
+    cooperative_schema = schema == "drone_city_nav_cooperative_traffic_scenario_v1"
+    if cooperative_schema:
+        if civilian_count < 2 or civilian_count != len(vehicles):
+            raise ValueError(
+                "cooperative traffic scenario must contain only civilian vehicles"
+            )
+    elif interceptor_count == 0 or evader_count == 0 or civilian_count != 0:
+        raise ValueError("intercept scenario must contain interceptors and evaders")
     if schema == "drone_city_nav_intercept_scenario_v1":
         if actual_ids != EXPECTED_VEHICLE_IDS:
             raise ValueError(
@@ -151,8 +159,22 @@ def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
             default_evader_goal, 3, "evader_goal_m"
         )
     evaders = []
+    vehicle_goals = []
     detection_ids: set[int] = set()
     for vehicle, source_vehicle in zip(vehicles, source_vehicles, strict=True):
+        if vehicle["role"] == "civilian":
+            source_goal = source_vehicle.get("goal_m")
+            if source_goal is None:
+                raise ValueError(f"civilian {vehicle['id']} is missing goal_m")
+            vehicle_goals.append(
+                {
+                    "id": vehicle["id"],
+                    "goal_m": _finite_vector(
+                        source_goal, 3, f"vehicle {vehicle['id']} goal_m"
+                    ),
+                }
+            )
+            continue
         if vehicle["role"] != "evader":
             continue
         source_detection_id = source_vehicle.get("detection_id")
@@ -185,10 +207,22 @@ def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
                 "detection_id": detection_id,
             }
         )
+        vehicle_goals.append({"id": vehicle["id"], "goal_m": evaders[-1]["goal_m"]})
 
     mission_name = document.get("mission_name", "intercept")
     if not isinstance(mission_name, str) or not mission_name:
         raise ValueError("mission_name must be a non-empty string")
+    if cooperative_schema:
+        if mission_name != "cooperative_traffic":
+            raise ValueError(
+                "cooperative traffic scenario mission_name must be cooperative_traffic"
+            )
+        goal_altitudes = {goal["goal_m"][2] for goal in vehicle_goals}
+        start_altitudes = {vehicle["map_start_m"][2] for vehicle in vehicles}
+        if len(goal_altitudes) != 1 or len(start_altitudes) != 1:
+            raise ValueError(
+                "cooperative traffic vehicles must share start and cruise altitudes"
+            )
 
     return {
         "schema": schema,
@@ -202,9 +236,21 @@ def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
             for vehicle in vehicles
             if vehicle["role"] == "interceptor"
         ],
+        "civilian_ids": [
+            vehicle["id"] for vehicle in vehicles if vehicle["role"] == "civilian"
+        ],
+        "vehicle_goals": vehicle_goals,
         "evaders": evaders,
-        "evader_goal_m": evaders[0]["goal_m"],
+        "evader_goal_m": evaders[0]["goal_m"] if evaders else None,
     }
+
+
+def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
+    """Return an intercept scenario while preserving the legacy public loader."""
+    scenario = load_multi_vehicle_scenario(path)
+    if not scenario["evaders"] or scenario["civilian_ids"]:
+        raise ValueError("scenario is not an intercept mission")
+    return scenario
 
 
 def _print_tsv(scenario: dict[str, Any]) -> None:
@@ -236,7 +282,7 @@ def main() -> int:
     parser.add_argument("--scenario", required=True, type=Path)
     parser.add_argument("--format", choices=("tsv",), default="tsv")
     args = parser.parse_args()
-    scenario = load_intercept_scenario(args.scenario)
+    scenario = load_multi_vehicle_scenario(args.scenario)
     _print_tsv(scenario)
     return 0
 

@@ -1,0 +1,47 @@
+{
+  "schema": "drone_city_nav_cooperative_traffic_scenario_v1",
+  "mission_name": "cooperative_traffic",
+  "canonical_world": "../worlds/canonical_city.world3d.json",
+  "vehicles": [
+    {
+      "id": "civilian_0",
+      "role": "civilian",
+      "px4_namespace": "civilian_0",
+      "px4_model_target": "gz_x500_lidar_2d",
+      "gazebo_model_name": "x500_lidar_2d_0",
+      "map_start_m": [54.0, 54.0, 0.3],
+      "goal_m": [270.0, 378.0, 18.0],
+      "yaw_rad": 0.0
+    },
+    {
+      "id": "civilian_1",
+      "role": "civilian",
+      "px4_namespace": "civilian_1",
+      "px4_model_target": "gz_x500_lidar_2d",
+      "gazebo_model_name": "x500_lidar_2d_1",
+      "map_start_m": [270.0, 54.0, 0.3],
+      "goal_m": [54.0, 378.0, 18.0],
+      "yaw_rad": 0.0
+    },
+    {
+      "id": "civilian_2",
+      "role": "civilian",
+      "px4_namespace": "civilian_2",
+      "px4_model_target": "gz_x500_lidar_2d",
+      "gazebo_model_name": "x500_lidar_2d_2",
+      "map_start_m": [54.0, 378.0, 0.3],
+      "goal_m": [270.0, 54.0, 18.0],
+      "yaw_rad": 0.0
+    },
+    {
+      "id": "civilian_3",
+      "role": "civilian",
+      "px4_namespace": "civilian_3",
+      "px4_model_target": "gz_x500_lidar_2d",
+      "gazebo_model_name": "x500_lidar_2d_3",
+      "map_start_m": [270.0, 378.0, 0.3],
+      "goal_m": [54.0, 54.0, 18.0],
+      "yaw_rad": 0.0
+    }
+  ]
+}

@@ -37,7 +37,7 @@ public:
     vehicle_role_ = static_cast<std::uint8_t>(declare_parameter<std::int64_t>(
         "vehicle_role", msg::VehicleDestroyed::ROLE_UNSPECIFIED));
     vehicle_id_ = declare_parameter<std::string>("vehicle_id", "");
-    if (vehicle_role_ > msg::VehicleDestroyed::ROLE_EVADER) {
+    if (vehicle_role_ > msg::VehicleDestroyed::ROLE_CIVILIAN) {
       throw std::invalid_argument{"invalid collision detector vehicle role"};
     }
 

@@ -80,6 +80,8 @@ physicalState(const std::optional<TimedVehicleState>& navigation,
       return "interceptor";
     case msg::VehicleDestroyed::ROLE_EVADER:
       return "evader";
+    case msg::VehicleDestroyed::ROLE_CIVILIAN:
+      return "civilian";
     default:
       return "unspecified";
   }

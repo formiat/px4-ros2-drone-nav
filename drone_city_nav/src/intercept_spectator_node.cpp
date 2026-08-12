@@ -70,7 +70,8 @@ public:
     expected_roles_.reserve(role_values.size());
     for (const std::int64_t role : role_values) {
       if (role != msg::VehicleDestroyed::ROLE_INTERCEPTOR &&
-          role != msg::VehicleDestroyed::ROLE_EVADER) {
+          role != msg::VehicleDestroyed::ROLE_EVADER &&
+          role != msg::VehicleDestroyed::ROLE_CIVILIAN) {
         throw std::invalid_argument{"vehicle_roles contains an unsupported role"};
       }
       if (role < 0 || role > std::numeric_limits<std::uint8_t>::max()) {

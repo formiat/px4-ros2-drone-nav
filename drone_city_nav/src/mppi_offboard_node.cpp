@@ -93,6 +93,8 @@ namespace {
       return "interceptor";
     case msg::VehicleDestroyed::ROLE_EVADER:
       return "evader";
+    case msg::VehicleDestroyed::ROLE_CIVILIAN:
+      return "civilian";
     default:
       return "invalid";
   }
@@ -149,7 +151,7 @@ public:
     expected_vehicle_id_ = declare_parameter<std::string>("vehicle_id", "");
     mission_epoch_ =
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 0));
-    if (expected_vehicle_role_ > msg::VehicleDestroyed::ROLE_EVADER) {
+    if (expected_vehicle_role_ > msg::VehicleDestroyed::ROLE_CIVILIAN) {
       throw std::invalid_argument{"invalid offboard vehicle role"};
     }
     rviz_drone_follow_tf_enabled_ =
