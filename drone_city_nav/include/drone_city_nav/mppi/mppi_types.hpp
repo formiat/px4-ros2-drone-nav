@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -51,6 +52,7 @@ struct CooperativePeerSample {
 struct CooperativePeerTrajectory {
   std::shared_ptr<const std::vector<CooperativePeerSample>> samples;
   float footprint_radius_m{0.0F};
+  std::size_t active_steps{0U};
 };
 
 struct CooperativeManeuverPreference {

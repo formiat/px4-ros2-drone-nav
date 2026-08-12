@@ -161,6 +161,32 @@ pairPreference(const CooperativeFlightIntentData& ownship,
   return static_cast<std::int64_t>(std::llround(seconds * kNanosecondsPerSecond));
 }
 
+[[nodiscard]] std::optional<CooperativeTrajectorySample>
+sampleTrajectory(const std::span<const CooperativeTrajectorySample> trajectory,
+                 const std::int64_t valid_from_ns, const std::int64_t valid_until_ns,
+                 const std::int64_t time_ns) noexcept {
+  if (trajectory.empty() || time_ns < valid_from_ns || time_ns > valid_until_ns ||
+      time_ns < trajectory.front().time_ns || time_ns > trajectory.back().time_ns) {
+    return std::nullopt;
+  }
+  const auto next = std::ranges::lower_bound(trajectory, time_ns, {},
+                                             &CooperativeTrajectorySample::time_ns);
+  if (next == trajectory.end()) {
+    return trajectory.back();
+  }
+  if (next->time_ns == time_ns || next == trajectory.begin()) {
+    return *next;
+  }
+  const auto previous = std::prev(next);
+  const double fraction = static_cast<double>(time_ns - previous->time_ns) /
+                          static_cast<double>(next->time_ns - previous->time_ns);
+  return CooperativeTrajectorySample{
+      .time_ns = time_ns,
+      .position = interpolate(previous->position, next->position, fraction),
+      .velocity = interpolate(previous->velocity, next->velocity, fraction),
+  };
+}
+
 } // namespace
 
 CooperativePeerStore::CooperativePeerStore(std::string own_vehicle_id,
@@ -227,26 +253,15 @@ void CooperativePeerStore::clear() noexcept {
 std::optional<CooperativeTrajectorySample>
 sampleCooperativeTrajectory(const CooperativeFlightIntentData& intent,
                             const std::int64_t time_ns) noexcept {
-  if (intent.trajectory.empty() || time_ns < intent.trajectory.front().time_ns ||
-      time_ns > intent.trajectory.back().time_ns) {
-    return std::nullopt;
-  }
-  const auto next = std::ranges::lower_bound(intent.trajectory, time_ns, {},
-                                             &CooperativeTrajectorySample::time_ns);
-  if (next == intent.trajectory.end()) {
-    return intent.trajectory.back();
-  }
-  if (next->time_ns == time_ns || next == intent.trajectory.begin()) {
-    return *next;
-  }
-  const auto previous = std::prev(next);
-  const double fraction = static_cast<double>(time_ns - previous->time_ns) /
-                          static_cast<double>(next->time_ns - previous->time_ns);
-  return CooperativeTrajectorySample{
-      .time_ns = time_ns,
-      .position = interpolate(previous->position, next->position, fraction),
-      .velocity = interpolate(previous->velocity, next->velocity, fraction),
-  };
+  return sampleTrajectory(intent.trajectory, intent.valid_from_ns,
+                          intent.valid_until_ns, time_ns);
+}
+
+std::optional<CooperativeTrajectorySample>
+sampleCooperativeTrajectory(const CooperativePeerTrajectoryData& trajectory,
+                            const std::int64_t time_ns) noexcept {
+  return sampleTrajectory(trajectory.trajectory, trajectory.valid_from_ns,
+                          trajectory.valid_until_ns, time_ns);
 }
 
 CooperativeConflictPrediction predictCooperativeConflict(

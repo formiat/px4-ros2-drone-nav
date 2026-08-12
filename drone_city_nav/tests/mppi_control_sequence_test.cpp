@@ -133,8 +133,10 @@ TEST(MppiControlSequenceTest, CudaEngineEvaluatesCooperativePeers) {
   input.initial_state = State{.x = 5.0F, .y = 10.0F, .vx = 2.0F};
   input.target = State{.x = 30.0F, .y = 10.0F};
   input.planning_stamp_ns = 1;
-  input.conflicting_peers = {CooperativePeerTrajectory{
-      .samples = std::move(peer_samples), .footprint_radius_m = 0.82F}};
+  input.conflicting_peers = {
+      CooperativePeerTrajectory{.samples = std::move(peer_samples),
+                                .footprint_radius_m = 0.82F,
+                                .active_steps = config.steps}};
   input.cooperative_maneuver = CooperativeManeuverPreference{
       .maneuver = CooperativeManeuver::kLeft,
       .direction_y = 1.0F,

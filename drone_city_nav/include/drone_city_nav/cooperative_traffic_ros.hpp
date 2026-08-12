@@ -3,6 +3,7 @@
 #include "drone_city_nav/cooperative_traffic.hpp"
 #include "drone_city_nav/msg/cooperative_channel_intent.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
+#include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
 #include "drone_city_nav/msg/cooperative_peer_trajectory.hpp"
 
 #include <builtin_interfaces/msg/time.hpp>
@@ -30,5 +31,11 @@ cooperativeFlightIntentMessage(const CooperativeFlightIntentData& intent);
 
 [[nodiscard]] msg::CooperativePeerTrajectory
 cooperativePeerTrajectoryMessage(const CooperativeFlightIntentData& intent);
+
+[[nodiscard]] CooperativePeerTrajectoryData
+cooperativePeerTrajectoryData(const msg::CooperativePeerTrajectory& message);
+
+[[nodiscard]] CooperativeManeuverCommandData
+cooperativeManeuverCommandData(const msg::CooperativeManeuverCommand& message);
 
 } // namespace drone_city_nav

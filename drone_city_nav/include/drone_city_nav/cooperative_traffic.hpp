@@ -73,6 +73,34 @@ struct CooperativeFlightIntentData {
   std::vector<CooperativeTrajectorySample> trajectory;
 };
 
+struct CooperativePeerTrajectoryData {
+  std::string vehicle_id;
+  std::int64_t valid_from_ns{0};
+  std::int64_t valid_until_ns{0};
+  double footprint_radius_m{0.0};
+  double footprint_lower_extent_m{0.0};
+  double footprint_upper_extent_m{0.0};
+  std::vector<CooperativeTrajectorySample> trajectory;
+};
+
+struct CooperativeManeuverCommandData {
+  std::string vehicle_id;
+  std::int64_t stamp_ns{0};
+  std::uint64_t command_generation{0U};
+  std::int64_t valid_until_ns{0};
+  bool avoidance_active{false};
+  CooperativeManeuver preferred_maneuver{CooperativeManeuver::kKeep};
+  Vec3 preferred_acceleration_direction{};
+  std::uint64_t conflict_generation{0U};
+  bool channel_yield_required{false};
+  std::string channel_yield_to_vehicle_id;
+  std::string channel_id;
+  std::string channel_conflict_resource_id;
+  std::size_t channel_lane_index{0U};
+  std::size_t channel_lane_count{0U};
+  std::vector<CooperativePeerTrajectoryData> conflicting_peers;
+};
+
 enum class CooperativePeerUpdateStatus : std::uint8_t {
   kAccepted,
   kIgnoredOwnship,
@@ -125,6 +153,10 @@ struct CooperativeConflictPrediction {
 
 [[nodiscard]] std::optional<CooperativeTrajectorySample>
 sampleCooperativeTrajectory(const CooperativeFlightIntentData& intent,
+                            std::int64_t time_ns) noexcept;
+
+[[nodiscard]] std::optional<CooperativeTrajectorySample>
+sampleCooperativeTrajectory(const CooperativePeerTrajectoryData& trajectory,
                             std::int64_t time_ns) noexcept;
 
 [[nodiscard]] CooperativeConflictPrediction

@@ -205,4 +205,55 @@ cooperativePeerTrajectoryMessage(const CooperativeFlightIntentData& intent) {
   return message;
 }
 
+CooperativePeerTrajectoryData
+cooperativePeerTrajectoryData(const msg::CooperativePeerTrajectory& message) {
+  CooperativePeerTrajectoryData result{
+      .vehicle_id = message.vehicle_id,
+      .valid_from_ns = cooperativeTimeNanoseconds(message.valid_from),
+      .valid_until_ns = cooperativeTimeNanoseconds(message.valid_until),
+      .footprint_radius_m = message.footprint_radius_m,
+      .footprint_lower_extent_m = message.footprint_lower_extent_m,
+      .footprint_upper_extent_m = message.footprint_upper_extent_m,
+      .trajectory = {},
+  };
+  result.trajectory.reserve(message.trajectory.size());
+  for (const msg::CooperativeTrajectoryPoint& sample : message.trajectory) {
+    result.trajectory.push_back(CooperativeTrajectorySample{
+        .time_ns = result.valid_from_ns +
+                   static_cast<std::int64_t>(
+                       static_cast<double>(sample.time_from_valid_from_s) * 1.0e9),
+        .position = point(sample.position),
+        .velocity = vector(sample.velocity),
+    });
+  }
+  return result;
+}
+
+CooperativeManeuverCommandData
+cooperativeManeuverCommandData(const msg::CooperativeManeuverCommand& message) {
+  CooperativeManeuverCommandData result{
+      .vehicle_id = message.vehicle_id,
+      .stamp_ns = cooperativeTimeNanoseconds(message.header.stamp),
+      .command_generation = message.command_generation,
+      .valid_until_ns = cooperativeTimeNanoseconds(message.valid_until),
+      .avoidance_active = message.avoidance_active,
+      .preferred_maneuver = maneuver(message.preferred_maneuver),
+      .preferred_acceleration_direction =
+          vector(message.preferred_acceleration_direction),
+      .conflict_generation = message.conflict_generation,
+      .channel_yield_required = message.channel_yield_required,
+      .channel_yield_to_vehicle_id = message.channel_yield_to_vehicle_id,
+      .channel_id = message.channel_id,
+      .channel_conflict_resource_id = message.channel_conflict_resource_id,
+      .channel_lane_index = message.channel_lane_index,
+      .channel_lane_count = message.channel_lane_count,
+      .conflicting_peers = {},
+  };
+  result.conflicting_peers.reserve(message.conflicting_peers.size());
+  for (const msg::CooperativePeerTrajectory& peer : message.conflicting_peers) {
+    result.conflicting_peers.push_back(cooperativePeerTrajectoryData(peer));
+  }
+  return result;
+}
+
 } // namespace drone_city_nav

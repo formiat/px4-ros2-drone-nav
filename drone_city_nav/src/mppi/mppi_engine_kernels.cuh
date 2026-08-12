@@ -390,8 +390,10 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          std::size_t solid_count, const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
          const CooperativePeerSample* cooperative_peer_samples,
-         const float* cooperative_peer_radii, std::size_t cooperative_peer_count,
-         CooperativeConfig cooperative, Control cooperative_preferred_acceleration,
+         const float* cooperative_peer_radii,
+         const std::uint32_t* cooperative_peer_active_steps,
+         std::size_t cooperative_peer_count, CooperativeConfig cooperative,
+         Control cooperative_preferred_acceleration,
          std::size_t cooperative_preference_steps, bool cooperative_preference_enabled,
          Control previous_applied_control, float first_control_interval_s,
          float reference_speed_mps, bool early_exit, const Control* direct_controls) {
@@ -494,6 +496,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     minimum_target_separation_m = fminf(minimum_target_separation_m, target_distance);
     for (std::size_t peer_index = 0U; peer_index < cooperative_peer_count;
          ++peer_index) {
+      if (step >= cooperative_peer_active_steps[peer_index]) {
+        continue;
+      }
       const CooperativePeerSample peer =
           cooperative_peer_samples[peer_index * steps + step];
       const float peer_separation_m =

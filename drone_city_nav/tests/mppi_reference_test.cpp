@@ -246,10 +246,10 @@ TEST(MppiReferenceTest, PeerSeparationIsSoftAndTimeIndexed) {
       std::vector<CooperativePeerSample>(4U, CooperativePeerSample{.x = 4.0F}));
   const auto far_samples = std::make_shared<const std::vector<CooperativePeerSample>>(
       std::vector<CooperativePeerSample>(4U, CooperativePeerSample{.x = 20.0F}));
-  const std::array near_peer{
-      CooperativePeerTrajectory{.samples = near_samples, .footprint_radius_m = 0.82F}};
-  const std::array far_peer{
-      CooperativePeerTrajectory{.samples = far_samples, .footprint_radius_m = 0.82F}};
+  const std::array near_peer{CooperativePeerTrajectory{
+      .samples = near_samples, .footprint_radius_m = 0.82F, .active_steps = 4U}};
+  const std::array far_peer{CooperativePeerTrajectory{
+      .samples = far_samples, .footprint_radius_m = 0.82F, .active_steps = 4U}};
   const State initial{.vx = 2.0F};
 
   const RolloutMetrics near =

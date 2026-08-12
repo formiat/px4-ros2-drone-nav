@@ -148,6 +148,7 @@ add_library(
   src/bounded_worker_pool.cpp
   src/channel_lanes.cpp
   src/cooperative_channel_coordination.cpp
+  src/cooperative_mppi_adapter.cpp
   src/cooperative_traffic.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
   src/debug_image.cpp
@@ -778,6 +779,12 @@ if(BUILD_TESTING)
   target_compile_features(cooperative_traffic_test PRIVATE cxx_std_20)
   target_link_libraries(cooperative_traffic_test drone_city_nav_core)
   enable_project_warnings(cooperative_traffic_test)
+
+  ament_add_gtest(cooperative_mppi_adapter_test
+                  tests/cooperative_mppi_adapter_test.cpp)
+  target_compile_features(cooperative_mppi_adapter_test PRIVATE cxx_std_20)
+  target_link_libraries(cooperative_mppi_adapter_test drone_city_nav_core)
+  enable_project_warnings(cooperative_mppi_adapter_test)
 
   ament_add_gtest(distance_field_3d_test tests/distance_field_3d_test.cpp)
   target_compile_features(distance_field_3d_test PRIVATE cxx_std_20)

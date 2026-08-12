@@ -183,6 +183,7 @@ RolloutMetrics simulateReference(
     const CooperativeConfig& cooperative) {
   for (const CooperativePeerTrajectory& peer : conflicting_peers) {
     if (!peer.samples || peer.samples->size() < nominal_controls.size() ||
+        peer.active_steps == 0U || peer.active_steps > nominal_controls.size() ||
         !(peer.footprint_radius_m >= 0.0F)) {
       throw std::invalid_argument{"invalid cooperative peer trajectory"};
     }
@@ -268,6 +269,9 @@ RolloutMetrics simulateReference(
       metrics.predicted_capture_time_s = static_cast<float>(step + 1U) * dynamics.dt_s;
     }
     for (const CooperativePeerTrajectory& peer : conflicting_peers) {
+      if (step >= peer.active_steps) {
+        continue;
+      }
       const float separation_m = peerDistance(state, (*peer.samples)[step]);
       metrics.minimum_peer_separation_m =
           std::min(metrics.minimum_peer_separation_m, separation_m);

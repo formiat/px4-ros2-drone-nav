@@ -238,6 +238,7 @@ struct DeviceBuffers {
   DeviceBuffer<RouteSample3D> route_points{kMaximumRoutePoints};
   DeviceBuffer<CooperativePeerSample> cooperative_peer_samples;
   DeviceBuffer<float> cooperative_peer_radii{kMaximumCooperativePeers};
+  DeviceBuffer<std::uint32_t> cooperative_peer_active_steps{kMaximumCooperativePeers};
 
   DeviceBuffers(const std::size_t rollouts, const std::size_t steps)
       : noise_ax{rollouts * steps},
@@ -275,7 +276,8 @@ struct DeviceBuffers {
            repair_candidates.bytes() + best_tier.bytes() + best_rollout.bytes() +
            best_critical.bytes() + best_planning.bytes() + minimum_soft.bytes() +
            weight_sum.bytes() + solids.bytes() + route_points.bytes() +
-           cooperative_peer_samples.bytes() + cooperative_peer_radii.bytes();
+           cooperative_peer_samples.bytes() + cooperative_peer_radii.bytes() +
+           cooperative_peer_active_steps.bytes();
   }
 };
 
@@ -300,6 +302,7 @@ public:
         reacquisition_noise_yaw_(config_.steps),
         cooperative_peer_samples_(kMaximumCooperativePeers * config_.steps),
         cooperative_peer_radii_(kMaximumCooperativePeers),
+        cooperative_peer_active_steps_(kMaximumCooperativePeers),
         cooperative_candidates_(kCooperativeManeuverCandidateCount * config_.steps),
         cooperative_noise_ax_(kCooperativeManeuverCandidateCount * config_.steps),
         cooperative_noise_ay_(kCooperativeManeuverCandidateCount * config_.steps),
@@ -388,6 +391,7 @@ public:
     }
     for (const CooperativePeerTrajectory& peer : input.conflicting_peers) {
       if (!peer.samples || peer.samples->size() != config_.steps ||
+          peer.active_steps == 0U || peer.active_steps > config_.steps ||
           !std::isfinite(peer.footprint_radius_m) ||
           !(peer.footprint_radius_m >= 0.0F) ||
           !std::ranges::all_of(*peer.samples, [](const CooperativePeerSample& sample) {
@@ -520,6 +524,8 @@ public:
                         cooperative_peer_samples_.begin() +
                             static_cast<std::ptrdiff_t>(peer_index * config_.steps));
       cooperative_peer_radii_[peer_index] = peer.footprint_radius_m;
+      cooperative_peer_active_steps_[peer_index] =
+          static_cast<std::uint32_t>(peer.active_steps);
     }
     const Control cooperative_preferred_acceleration =
         input.cooperative_maneuver.has_value()
@@ -548,6 +554,11 @@ public:
                                 cooperative_peer_count * sizeof(float),
                                 cudaMemcpyHostToDevice, stream_),
                 "upload cooperative peer radii");
+      checkCuda(cudaMemcpyAsync(buffers_.cooperative_peer_active_steps.get(),
+                                cooperative_peer_active_steps_.data(),
+                                cooperative_peer_count * sizeof(std::uint32_t),
+                                cudaMemcpyHostToDevice, stream_),
+                "upload cooperative peer active steps");
     }
     warm_done_.record(stream_);
     generateNoise<<<noise_blocks, kThreadsPerBlock, 0U, stream_>>>(
@@ -607,7 +618,8 @@ public:
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
         route_active ? input.route->initial_station_m : 0.0F,
         buffers_.cooperative_peer_samples.get(), buffers_.cooperative_peer_radii.get(),
-        cooperative_peer_count, config_.cooperative, cooperative_preferred_acceleration,
+        buffers_.cooperative_peer_active_steps.get(), cooperative_peer_count,
+        config_.cooperative, cooperative_preferred_acceleration,
         cooperative_preference_steps, input.cooperative_maneuver.has_value(),
         previous_applied_control, first_control_interval_s, input.reference_speed_mps,
         config_.early_exit_on_collision, nullptr);
@@ -827,7 +839,8 @@ public:
           buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
           route_active ? input.route->initial_station_m : 0.0F,
           buffers_.cooperative_peer_samples.get(),
-          buffers_.cooperative_peer_radii.get(), cooperative_peer_count,
+          buffers_.cooperative_peer_radii.get(),
+          buffers_.cooperative_peer_active_steps.get(), cooperative_peer_count,
           config_.cooperative, cooperative_preferred_acceleration,
           cooperative_preference_steps, input.cooperative_maneuver.has_value(),
           previous_applied_control, first_control_interval_s, input.reference_speed_mps,
@@ -1046,6 +1059,7 @@ private:
   std::vector<float> reacquisition_noise_yaw_;
   std::vector<CooperativePeerSample> cooperative_peer_samples_;
   std::vector<float> cooperative_peer_radii_;
+  std::vector<std::uint32_t> cooperative_peer_active_steps_;
   std::vector<Control> cooperative_candidates_;
   std::vector<float> cooperative_noise_ax_;
   std::vector<float> cooperative_noise_ay_;
