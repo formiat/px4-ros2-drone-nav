@@ -834,6 +834,7 @@ if(BUILD_TESTING)
 
   ament_add_gtest(route_3d_test tests/route_3d_test.cpp)
   target_compile_features(route_3d_test PRIVATE cxx_std_20)
+  target_include_directories(route_3d_test PRIVATE src)
   target_link_libraries(route_3d_test drone_city_nav_core)
   enable_project_warnings(route_3d_test)
 

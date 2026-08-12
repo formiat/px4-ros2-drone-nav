@@ -45,7 +45,7 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
                            .perimeter_samples = config.physical_footprint_samples,
                            .radial_rings = config.physical_footprint_radial_rings,
                            .axial_samples = config.physical_footprint_axial_samples,
-                           .sweep_step_m = config.sample_step_m});
+                           .sweep_step_m = config.physical_footprint_sweep_step_m});
   if (!footprint.accepted()) {
     switch (footprint.status) {
       case SweptFootprintStatus::kOutsideGrid:

@@ -110,7 +110,7 @@ public:
   [[nodiscard]] std::uint64_t generation() const noexcept;
 
 private:
-  std::uint64_t generation_{0U};
+  std::optional<std::uint64_t> generation_;
 };
 
 struct StaticRouteRoiRefreshRequest {

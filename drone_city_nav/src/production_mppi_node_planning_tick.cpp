@@ -184,6 +184,9 @@ void ProductionMppiNode::planningTick() {
   if (!engine_->ready()) {
     return;
   }
+  if (use_static_map_ && esdf->global_guide_generation == 0U) {
+    requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide, 0U);
+  }
   const bool route_objective_matches = staticRouteObjectiveMatches(
       esdf->route_objective, current_route_objective, required_route_sample,
       std::numeric_limits<double>::infinity());

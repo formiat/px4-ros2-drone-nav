@@ -440,13 +440,20 @@ void ProductionMppiNode::processStaticGuideSearch(
   if (world.static_route_extension_request) {
     finishStaticRouteExtension(world.static_route_extension_base_generation);
   }
-  if (world.static_route_replan_request) {
+  const bool initial_route_search = !world.static_route_extension_request &&
+                                    !world.static_route_replan_request &&
+                                    world.global_guide_generation == 0U;
+  if (world.static_route_replan_request || initial_route_search) {
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
     if (activated) {
       static_route_failed_search_latch_.clear();
-    } else if (revision_matches && generation_matches && objective_matches) {
+    } else if (initial_route_search ||
+               (revision_matches && generation_matches && objective_matches)) {
+      const std::uint64_t failed_generation =
+          world.static_route_replan_request ? world.static_route_replan_base_generation
+                                            : 0U;
       static_route_failed_search_latch_.recordFailure(StaticRouteSearchContext{
-          .base_route_generation = world.static_route_replan_base_generation,
+          .base_route_generation = failed_generation,
           .search_start = search_start,
           .objective = world.search_objective,
           .minimum_tracking_sample_sequence = required_objective_sample,
@@ -455,16 +462,18 @@ void ProductionMppiNode::processStaticGuideSearch(
       RCLCPP_INFO(
           get_logger(),
           "STATIC_ROUTE_SEARCH_OUTCOME status=failed_latched "
-          "generation=%" PRIu64 " activation_status=%.*s "
+          "generation=%" PRIu64 " initial=%s activation_status=%.*s "
           "candidate_status=%.*s start=(%.2f,%.2f,%.2f)",
-          world.static_route_replan_base_generation,
+          failed_generation, initial_route_search ? "true" : "false",
           static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
           staticRouteActivationStatusName(activation_status).data(),
           static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
           staticRouteCandidateStatusName(validation.status).data(), search_start.x,
           search_start.y, search_start.z);
     }
-    static_route_replan_gate_.finish(world.static_route_replan_base_generation);
+    if (world.static_route_replan_request) {
+      static_route_replan_gate_.finish(world.static_route_replan_base_generation);
+    }
   } else if (activated) {
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
     static_route_failed_search_latch_.clear();

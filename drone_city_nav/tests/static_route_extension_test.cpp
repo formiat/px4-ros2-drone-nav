@@ -169,10 +169,25 @@ TEST(StaticRouteExtensionTest, CoalescesReplanForOneRouteGeneration) {
   EXPECT_TRUE(gate.tryBegin(7U));
 }
 
+TEST(StaticRouteExtensionTest, CoalescesInitialRouteSearchGeneration) {
+  StaticRouteReplanGate gate;
+
+  EXPECT_TRUE(gate.tryBegin(0U));
+  EXPECT_FALSE(gate.tryBegin(0U));
+  EXPECT_FALSE(gate.tryBegin(1U));
+  EXPECT_TRUE(gate.inFlight());
+  EXPECT_EQ(gate.generation(), 0U);
+
+  gate.finish(1U);
+  EXPECT_TRUE(gate.inFlight());
+  gate.finish(0U);
+  EXPECT_FALSE(gate.inFlight());
+}
+
 TEST(StaticRouteExtensionTest, SuppressesEquivalentFailedSearchUntilRetryInterval) {
   StaticRouteFailedSearchLatch latch;
   const StaticRouteSearchContext failure{
-      .base_route_generation = 7U,
+      .base_route_generation = 0U,
       .search_start = Point3{10.0, 20.0, 18.0},
       .objective = StaticRouteObjective{.goal = Point3{100.0, 200.0, 18.0},
                                         .mission_epoch = 3U,

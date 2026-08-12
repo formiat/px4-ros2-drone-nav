@@ -19,7 +19,7 @@ namespace {
 } // namespace
 
 bool StaticRouteReplanGate::tryBegin(const std::uint64_t route_generation) noexcept {
-  if (route_generation == 0U || generation_ != 0U) {
+  if (generation_.has_value()) {
     return false;
   }
   generation_ = route_generation;
@@ -27,17 +27,17 @@ bool StaticRouteReplanGate::tryBegin(const std::uint64_t route_generation) noexc
 }
 
 void StaticRouteReplanGate::finish(const std::uint64_t route_generation) noexcept {
-  if (generation_ == route_generation) {
-    generation_ = 0U;
+  if (generation_ == std::optional<std::uint64_t>{route_generation}) {
+    generation_.reset();
   }
 }
 
 bool StaticRouteReplanGate::inFlight() const noexcept {
-  return generation_ != 0U;
+  return generation_.has_value();
 }
 
 std::uint64_t StaticRouteReplanGate::generation() const noexcept {
-  return generation_;
+  return generation_.value_or(0U);
 }
 
 StaticRouteSearchRetryDecision StaticRouteFailedSearchLatch::evaluate(

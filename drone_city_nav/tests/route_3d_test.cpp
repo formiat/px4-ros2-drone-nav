@@ -9,6 +9,8 @@
 #include <limits>
 #include <vector>
 
+#include "risk_aware_lattice_3d_geometry.hpp"
+
 namespace drone_city_nav {
 namespace {
 
@@ -759,6 +761,41 @@ TEST(Route3DTest, EqualCostSearchKeepsLevelAltitudeBeforeVerticalAlternatives) {
     EXPECT_GE(sample.position.z, config.flight_envelope.minimum_target_z_m);
     EXPECT_LT(sample.position.z, config.flight_envelope.maximum_target_z_m);
   }
+}
+
+TEST(Route3DTest, EdgeFootprintUsesSafetySweepStepIndependentOfRouteSampling) {
+  constexpr int width{30};
+  constexpr int height{5};
+  constexpr int depth{30};
+  const mppi::EsdfGrid grid{width, height, 0.1F, 0.0F, 0.0F, depth, 0.0F};
+  std::vector<float> esdf(static_cast<std::size_t>(width * height * depth),
+                          std::numeric_limits<float>::infinity());
+  const std::size_t occupied_index =
+      (std::size_t{22U} * static_cast<std::size_t>(height) + std::size_t{2U}) *
+          static_cast<std::size_t>(width) +
+      std::size_t{12U};
+  esdf[occupied_index] = 0.0F;
+
+  RiskAwareLattice3DConfig coarse;
+  coarse.sample_step_m = 0.5;
+  coarse.physical_footprint_radius_m = 0.0;
+  coarse.physical_footprint_samples = 0U;
+  coarse.physical_footprint_sweep_step_m = 0.5;
+  coarse.preferred_distance_m = 0.0;
+  coarse.critical_distance_m = 0.0;
+  RiskAwareLattice3DConfig safety = coarse;
+  safety.physical_footprint_sweep_step_m = 0.1;
+  const Point3 first{0.05, 0.25, 2.25};
+  const Point3 second{2.05, 0.25, 2.25};
+
+  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, first, second,
+                                          Lattice3DRiskStage::kPreferredOnly, coarse)
+                .status,
+            detail::Lattice3DEdgeEvaluationStatus::kValid);
+  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, first, second,
+                                          Lattice3DRiskStage::kPreferredOnly, safety)
+                .status,
+            detail::Lattice3DEdgeEvaluationStatus::kRawCollision);
 }
 
 } // namespace

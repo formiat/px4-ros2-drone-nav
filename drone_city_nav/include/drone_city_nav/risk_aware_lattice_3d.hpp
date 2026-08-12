@@ -85,6 +85,7 @@ struct RiskAwareLattice3DConfig {
   std::size_t physical_footprint_samples{12U};
   std::size_t physical_footprint_radial_rings{2U};
   std::size_t physical_footprint_axial_samples{3U};
+  double physical_footprint_sweep_step_m{0.25};
   FlightEnvelopeConfig flight_envelope{};
   double planning_goal_distance_m{180.0};
   double goal_tolerance_m{2.0};

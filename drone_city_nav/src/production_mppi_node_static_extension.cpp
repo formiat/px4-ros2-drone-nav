@@ -136,9 +136,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
   }
   {
     const std::scoped_lock esdf_lock{esdf_state_mutex_};
-    if (!prepared_esdf_ || prepared_esdf_->global_guide_generation == 0U ||
-        (guide_generation != 0U &&
-         prepared_esdf_->global_guide_generation != guide_generation)) {
+    if (!prepared_esdf_) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "
@@ -147,14 +145,29 @@ void ProductionMppiNode::requestStaticRouteReplan(
           guide_generation, globalGuideReleaseReasonName(reason));
       return;
     }
+    const std::uint64_t resident_generation = prepared_esdf_->global_guide_generation;
+    if (resident_generation == 0U && !static_route_failed_search_latch_.latched()) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "STATIC_ROUTE_REPLAN_REQUEST status=waiting_initial_search "
+                           "requested_generation=%" PRIu64 " reason=%s",
+                           guide_generation, globalGuideReleaseReasonName(reason));
+      return;
+    }
+    if (guide_generation != 0U && resident_generation != guide_generation) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "
+          "resident_generation=%" PRIu64 " requested_generation=%" PRIu64 " reason=%s",
+          resident_generation, guide_generation, globalGuideReleaseReasonName(reason));
+      return;
+    }
     request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
     if (objective) {
       request->search_objective = makeStaticRouteObjective(*objective);
     }
     request->global_guide_release_reason = reason;
     request->static_route_replan_request = true;
-    request->static_route_replan_base_generation =
-        prepared_esdf_->global_guide_generation;
+    request->static_route_replan_base_generation = resident_generation;
     request->static_route_replan_reason = reason;
   }
 

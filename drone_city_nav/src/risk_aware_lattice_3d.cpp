@@ -879,7 +879,9 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
                            static_cast<std::size_t>(grid.height) *
                            static_cast<std::size_t>(grid.depth) ||
       !(config.horizontal_step_m > 0.0) || !(config.vertical_step_m > 0.0) ||
-      !(config.sample_step_m > 0.0) || !(config.nominal_horizontal_speed_mps > 0.0) ||
+      !(config.sample_step_m > 0.0) ||
+      !(config.physical_footprint_sweep_step_m > 0.0) ||
+      !(config.nominal_horizontal_speed_mps > 0.0) ||
       !(config.nominal_vertical_speed_mps > 0.0) ||
       !(config.channel_connection_distance_m > 0.0) ||
       evaluateFlightEnvelopeAltitude(start.z, config.flight_envelope) !=

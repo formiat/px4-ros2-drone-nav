@@ -598,6 +598,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       safety_config_.physical_footprint_radial_rings;
   lattice_3d_config_.physical_footprint_axial_samples =
       safety_config_.physical_footprint_axial_samples;
+  lattice_3d_config_.physical_footprint_sweep_step_m =
+      safety_config_.swept_validation_step_m;
   configureCooperativeTraffic();
   safety_config_.position_hold_capture_speed_mps =
       declare_parameter<double>("safety_position_hold_capture_speed_mps", 0.20);
