@@ -11,7 +11,7 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
-LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
+LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
 DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
 TRACKING_LAUNCH = PACKAGE / "launch" / "intercept_tracking_launch.py"
 RUN_SCRIPT = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"

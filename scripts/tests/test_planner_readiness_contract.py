@@ -18,7 +18,8 @@ REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
 REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
 REFEREE_SUPPORT = SOURCE / "intercept_referee_support.cpp"
 ASSIGNMENT_COORDINATOR = SOURCE / "target_assignment_coordinator_node.cpp"
-LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
+LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
+MISSION_LAUNCH = PACKAGE / "launch" / "multi_vehicle_mission_launch.py"
 
 
 class PlannerReadinessContractTest(unittest.TestCase):
@@ -63,7 +64,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         )
         referee_support = REFEREE_SUPPORT.read_text(encoding="utf-8")
         coordinator = ASSIGNMENT_COORDINATOR.read_text(encoding="utf-8")
-        launch = LAUNCH.read_text(encoding="utf-8")
+        launch = LAUNCH.read_text(encoding="utf-8") + MISSION_LAUNCH.read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("missionReady() const", referee)
         self.assertIn("interceptor_world_readiness_topics", referee_support)

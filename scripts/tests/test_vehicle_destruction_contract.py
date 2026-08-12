@@ -11,7 +11,7 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 SOURCE = PACKAGE / "src"
 INCLUDE = PACKAGE / "include" / "drone_city_nav"
-LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
+LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
 CONFIG = PACKAGE / "config" / "urban_mvp.yaml"
 MESSAGE = PACKAGE / "msg" / "VehicleDestroyed.msg"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
@@ -86,9 +86,7 @@ class VehicleDestructionContractTest(unittest.TestCase):
     def test_intercept_launch_wires_role_and_epoch_per_vehicle(self) -> None:
         text = LAUNCH.read_text(encoding="utf-8")
         self.assertIn('"vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed"', text)
-        self.assertGreaterEqual(
-            text.count('"vehicle_role": 1 if config["is_interceptor"] else 2'), 2
-        )
+        self.assertGreaterEqual(text.count('"vehicle_role": config["role_code"]'), 2)
         self.assertGreaterEqual(text.count('"vehicle_id": role'), 2)
         self.assertGreaterEqual(text.count('"mission_epoch": 1'), 2)
 

@@ -11,7 +11,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PARAMETERS = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
-INTERCEPT_LAUNCH = REPO_ROOT / "drone_city_nav/launch/intercept.launch.py"
+INTERCEPT_LAUNCH = REPO_ROOT / "drone_city_nav/launch/multi_vehicle.launch.py"
 
 
 class StaticEsdfCacheContractTest(unittest.TestCase):

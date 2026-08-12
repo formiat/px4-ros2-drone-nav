@@ -9,5 +9,5 @@ _MULTI_VEHICLE_LAUNCH = runpy.run_path(
 
 def generate_launch_description():
     return _MULTI_VEHICLE_LAUNCH["generate_multi_vehicle_launch_description"](
-        "intercept"
+        "cooperative_traffic"
     )

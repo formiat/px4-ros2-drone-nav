@@ -10,7 +10,7 @@ from pathlib import Path
 
 RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
 MAKEFILE = RUNNER.parents[1] / "Makefile"
-INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("intercept_sim_runtime.sh")
+INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("multi_vehicle_sim_runtime.sh")
 GAZEBO_SPECTATOR_FOLLOW = RUNNER.with_name("gazebo_spectator_follow.py")
 CONTAINER_RUNNER = Path(__file__).resolve().parents[1] / "container_run.sh"
 LAUNCH_FILE = (
@@ -27,6 +27,12 @@ INTERCEPT_LAUNCH_FILE = (
 )
 INTERCEPT_TRACKING_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
     "intercept_tracking_launch.py"
+)
+MULTI_VEHICLE_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+    "multi_vehicle.launch.py"
+)
+MULTI_VEHICLE_MISSION_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+    "multi_vehicle_mission_launch.py"
 )
 INTERCEPT_SCENARIO = (
     Path(__file__).resolve().parents[2]
@@ -77,7 +83,14 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
         cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
-        cls.intercept_launch_text = INTERCEPT_LAUNCH_FILE.read_text(encoding="utf-8")
+        cls.intercept_launch_text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (
+                INTERCEPT_LAUNCH_FILE,
+                MULTI_VEHICLE_LAUNCH_FILE,
+                MULTI_VEHICLE_MISSION_LAUNCH_FILE,
+            )
+        )
         cls.intercept_tracking_launch_text = (
             INTERCEPT_TRACKING_LAUNCH_FILE.read_text(encoding="utf-8")
         )
@@ -267,14 +280,14 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_evader_uses_a_red_gazebo_marker_variant(self) -> None:
         self.assertIn(
-            'evader_model_name="${intercept_px4_model_targets[instance]#gz_}"',
+            'evader_model_name="${multi_vehicle_px4_model_targets[instance]#gz_}"',
             self.intercept_runtime_text,
         )
         self.assertIn(
             "configure_drone_marker_color.py", self.intercept_runtime_text
         )
         self.assertIn(
-            'PX4_SIM_MODEL="${intercept_px4_model_targets[instance]}"',
+            'PX4_SIM_MODEL="${multi_vehicle_px4_model_targets[instance]}"',
             self.text,
         )
         evader = self.intercept_scenario["vehicles"][-1]
@@ -482,7 +495,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('"${px4_active_cruise_speed_mps}"', self.text)
         self.assertIn('"${evader_px4_cruise_speed_mps}"', self.text)
         self.assertIn(
-            'px4_parameter_stream "${intercept_px4_cruise_speeds[instance]}"',
+            'px4_parameter_stream "${multi_vehicle_px4_cruise_speeds[instance]}"',
             self.text,
         )
         self.assertIn(
@@ -503,19 +516,19 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_intercept_mode_launches_isolated_px4_instances(self) -> None:
         self.assertIn('mission_type="${MISSION_TYPE:-point_to_point}"', self.text)
         self.assertIn("intercept_scenario.py", self.intercept_runtime_text)
-        self.assertIn("intercept_px4_namespaces", self.intercept_runtime_text)
+        self.assertIn("multi_vehicle_px4_namespaces", self.intercept_runtime_text)
         self.assertIn(
-            'for instance in "${!intercept_vehicle_ids[@]}"', self.text
+            'for instance in "${!multi_vehicle_ids[@]}"', self.text
         )
-        self.assertIn('PX4_UXRCE_DDS_NS="${intercept_px4_namespaces[instance]}"', self.text)
+        self.assertIn('PX4_UXRCE_DDS_NS="${multi_vehicle_px4_namespaces[instance]}"', self.text)
         self.assertIn('run_px4_instance "${instance}"', self.text)
         self.assertIn(
-            'validation_args+=(--expected-vehicles "${#intercept_vehicle_ids[@]}")',
-            self.text,
+            'validation_args+=(--expected-vehicles "${#multi_vehicle_ids[@]}")',
+            self.intercept_runtime_text,
         )
         self.assertIn(
-            'validation_args+=(--px4-log "${intercept_px4_logs[instance]}")',
-            self.text,
+            'validation_args+=(--px4-log "${multi_vehicle_px4_logs[instance]}")',
+            self.intercept_runtime_text,
         )
 
     def test_px4_sitl_state_is_reset_before_each_launch(self) -> None:
@@ -552,20 +565,19 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_intercept_gui_observes_terminal_fall_and_headless_exits(self) -> None:
         self.assertIn(
-            'intercept_shutdown_on_terminal_outcome="false"', self.text
+            'multi_vehicle_shutdown_on_terminal_outcome="false"', self.text
         )
         self.assertIn(
-            'intercept_shutdown_on_terminal_outcome="true"', self.text
+            'multi_vehicle_shutdown_on_terminal_outcome="true"', self.text
         )
         self.assertIn(
-            'shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"',
+            'shutdown_on_terminal_outcome:="${multi_vehicle_shutdown_on_terminal_outcome}"',
             self.text,
         )
         self.assertIn(
-            '"shutdown_on_terminal_outcome": (',
+            '"shutdown_on_terminal_outcome": shutdown_on_terminal_outcome',
             self.intercept_launch_text,
         )
-        self.assertIn("shutdown_on_terminal_outcome\n", self.intercept_launch_text)
 
 
 if __name__ == "__main__":

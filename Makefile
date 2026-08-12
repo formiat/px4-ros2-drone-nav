@@ -68,3 +68,18 @@ sim-multi-intercept-headless: build
 		INTERCEPT_SPECTATOR_RESELECTION_POLICY="$${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-next_living}" \
 		HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-180}" \
 		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-cooperative-traffic-gui
+sim-cooperative-traffic-gui: build
+	MISSION_TYPE=cooperative_traffic \
+		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID="$${MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID:-civilian_0}" \
+		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY="$${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-next_living}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-cooperative-traffic-headless
+sim-cooperative-traffic-headless: build
+	MISSION_TYPE=cooperative_traffic \
+		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID="$${MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID:-civilian_0}" \
+		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY="$${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-next_living}" \
+		HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
+		./scripts/run_drone_nav_sim.sh

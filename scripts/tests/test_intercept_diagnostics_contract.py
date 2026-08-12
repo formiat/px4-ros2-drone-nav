@@ -9,7 +9,7 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
-LAUNCH = PACKAGE / "launch" / "intercept.launch.py"
+LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
 DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
 MUX = PACKAGE / "src" / "intercept_diagnostics_mux_node.cpp"
 OBSTACLE_MEMORY = PACKAGE / "src" / "obstacle_memory_node.cpp"

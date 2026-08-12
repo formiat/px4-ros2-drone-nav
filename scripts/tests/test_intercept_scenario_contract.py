@@ -19,9 +19,9 @@ MULTI_SCENARIO_PATH = (
     / "multi_intercept_2v2_scenario.json"
 )
 LOADER_PATH = REPOSITORY / "drone_city_nav" / "launch" / "intercept_scenario.py"
-LAUNCH_PATH = REPOSITORY / "drone_city_nav" / "launch" / "intercept.launch.py"
+LAUNCH_PATH = REPOSITORY / "drone_city_nav" / "launch" / "multi_vehicle.launch.py"
 RUNNER_PATH = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
-RUNTIME_HELPER_PATH = REPOSITORY / "scripts" / "intercept_sim_runtime.sh"
+RUNTIME_HELPER_PATH = REPOSITORY / "scripts" / "multi_vehicle_sim_runtime.sh"
 MULTI_HEADLESS_PATH = REPOSITORY / "scripts" / "sim_multi_intercept_headless.sh"
 MULTI_GUI_PATH = REPOSITORY / "scripts" / "sim_multi_intercept_gui.sh"
 MAKEFILE_PATH = REPOSITORY / "Makefile"
@@ -136,11 +136,12 @@ class InterceptScenarioContractTest(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("load_intercept_scenario", launch)
-        self.assertIn('intercept_scenario_path:="${intercept_scenario_path}"', runner)
+        self.assertIn('scenario_argument="intercept_scenario_path"', runner)
+        self.assertIn('"${scenario_argument}:=${multi_vehicle_scenario_path}"', runner)
         self.assertIn("intercept_scenario.py", runner)
-        self.assertIn("intercept_gazebo_spawn_poses", runner)
+        self.assertIn("multi_vehicle_gazebo_spawn_poses", runner)
         self.assertIn(
-            'PX4_GZ_MODEL_POSE="${intercept_gazebo_spawn_poses[instance]}"',
+            'PX4_GZ_MODEL_POSE="${multi_vehicle_gazebo_spawn_poses[instance]}"',
             runner,
         )
         self.assertNotIn("intercept_px4_spawn_poses", runner)

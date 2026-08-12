@@ -349,7 +349,8 @@ void CooperativeTrafficRefereeNode::onVehicleDestroyed(
     return;
   }
   vehicle.destroyed = true;
-  vehicle.destroyed_observed_ns = now().nanoseconds();
+  const std::int64_t observed_ns = now().nanoseconds();
+  vehicle.destroyed_observed_ns = observed_ns;
   RCLCPP_ERROR(get_logger(),
                "COOPERATIVE_VEHICLE_DESTROYED referee_observed=true vehicle_id='%s' "
                "cause=%s drone_collision='%s' obstacle_collision='%s' detail='%s' "
@@ -357,6 +358,25 @@ void CooperativeTrafficRefereeNode::onVehicleDestroyed(
                vehicle.id.c_str(), detail::deathCauseName(destroyed.death_cause),
                destroyed.drone_collision.c_str(), destroyed.obstacle_collision.c_str(),
                destroyed.detail.c_str(), mission_epoch_);
+  if (vehicle.navigation_state && vehicle.truth_state) {
+    const double position_error_m =
+        distance3D(vehicle.navigation_state->position, vehicle.truth_state->position);
+    const double navigation_age_ms =
+        static_cast<double>(observed_ns - vehicle.navigation_state->stamp_ns) * 1.0e-6;
+    const double truth_age_ms =
+        static_cast<double>(observed_ns - vehicle.truth_state->stamp_ns) * 1.0e-6;
+    RCLCPP_ERROR(
+        get_logger(),
+        "COOPERATIVE_VEHICLE_DESTRUCTION_STATE vehicle_id='%s' "
+        "navigation_position=(%.3f,%.3f,%.3f) truth_position=(%.3f,%.3f,%.3f) "
+        "navigation_truth_error_m=%.3f navigation_age_ms=%.1f truth_age_ms=%.1f "
+        "mission_epoch=%" PRIu64,
+        vehicle.id.c_str(), vehicle.navigation_state->position.x,
+        vehicle.navigation_state->position.y, vehicle.navigation_state->position.z,
+        vehicle.truth_state->position.x, vehicle.truth_state->position.y,
+        vehicle.truth_state->position.z, position_error_m, navigation_age_ms,
+        truth_age_ms, mission_epoch_);
+  }
   beginFailure("vehicle_destroyed:" + vehicle.id + ":" +
                detail::deathCauseName(destroyed.death_cause));
 }

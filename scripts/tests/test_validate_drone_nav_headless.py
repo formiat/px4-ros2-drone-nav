@@ -66,6 +66,53 @@ class SafetyRelevantRosLogTest(unittest.TestCase):
             log, VALIDATOR.safety_relevant_ros_log(log, "point_to_point")
         )
 
+    def test_cooperative_result_keeps_late_physical_failures(self) -> None:
+        log = (
+            "MISSION_RESULT success=true mission=cooperative_traffic "
+            "outcome=all_goals_reached\n"
+            "VEHICLE_DESTROYED cause=physical_collision\n"
+        )
+        relevant = VALIDATOR.safety_relevant_ros_log(log, "cooperative_traffic")
+        self.assertIn("cause=physical_collision", relevant)
+
+
+class CooperativeTrafficValidationTest(unittest.TestCase):
+    def test_complete_physical_settlement_is_accepted(self) -> None:
+        log = (
+            "COOPERATIVE_GROUND_TRUTH_BOUNDARY verified=true vehicles=4\n"
+            "SIMULATION_TRUTH_ALIGNMENT ready=true failure_confirmed=false "
+            "reason=aligned\n"
+            + "".join(
+                f"COOPERATIVE_AGENT_READY vehicle_id='civilian_{index}'\n"
+                for index in range(4)
+            )
+            + "COOPERATIVE_TRAFFIC_MISSION state=running vehicle_count=4 "
+            "mission_epoch=1 startup_coordinate_contract_latched=true "
+            "all_intents_ready=true\n"
+            + "".join(
+                f"COOPERATIVE_GOAL_HOLD_CONFIRMED vehicle_id='civilian_{index}'\n"
+                for index in range(4)
+            )
+            + "MISSION_RESULT success=true mission=cooperative_traffic "
+            "outcome=all_goals_reached vehicle_count=4 "
+            "minimum_physical_separation_m=5.400 minimum_pair='civilian_0:civilian_1' "
+            "desired_separation_m=5.000 desired_separation_violation_events=0 "
+            "active_desired_violations=0 physical_collisions=0 "
+            "building_collisions=0 mission_epoch=1\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_cooperative_traffic(log, 4, errors)
+
+        self.assertEqual(errors, [])
+
+    def test_any_vehicle_destruction_is_rejected(self) -> None:
+        errors: list[str] = []
+        VALIDATOR.validate_cooperative_traffic(
+            "COOPERATIVE_VEHICLE_DESTROYED referee_observed=true", 4, errors
+        )
+        self.assertIn("FAIL: cooperative traffic contains a physical loss", errors)
+
 
 class InterceptSettlementValidationTest(unittest.TestCase):
     def test_multi_intercept_requires_complete_2v2_settlement(self) -> None:

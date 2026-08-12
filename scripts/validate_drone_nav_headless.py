@@ -57,6 +57,72 @@ def safety_relevant_ros_log(ros_log: str, mission_type: str) -> str:
     return ros_log[: terminal_result.end()] if terminal_result else ros_log
 
 
+def validate_cooperative_traffic(
+    ros_log: str, expected_vehicles: int, errors: list[str]
+) -> None:
+    require(
+        "cooperative ground truth is restricted to the referee",
+        ros_log,
+        r"COOPERATIVE_GROUND_TRUTH_BOUNDARY verified=true",
+        errors,
+    )
+    require(
+        "cooperative navigation and physical coordinates are aligned",
+        ros_log,
+        r"SIMULATION_TRUTH_ALIGNMENT ready=true failure_confirmed=false "
+        r"reason=aligned",
+        errors,
+    )
+    require_count(
+        "cooperative agents publish independent flight intents",
+        ros_log,
+        r"COOPERATIVE_AGENT_READY vehicle_id='civilian_[0-9]+'",
+        expected_vehicles,
+        errors,
+    )
+    require(
+        "cooperative readiness barrier observes all intents",
+        ros_log,
+        rf"COOPERATIVE_TRAFFIC_MISSION state=running "
+        rf"vehicle_count={expected_vehicles} .*all_intents_ready=true",
+        errors,
+    )
+    require_count(
+        "all cooperative vehicles physically settle at their own goals",
+        ros_log,
+        r"COOPERATIVE_GOAL_HOLD_CONFIRMED vehicle_id='civilian_[0-9]+'",
+        expected_vehicles,
+        errors,
+    )
+    result = re.search(
+        r"MISSION_RESULT success=true mission=cooperative_traffic "
+        r"outcome=all_goals_reached vehicle_count=([0-9]+) "
+        r"minimum_physical_separation_m=([0-9.]+) .*"
+        r"desired_separation_m=([0-9.]+) "
+        r"desired_separation_violation_events=([0-9]+) .*"
+        r"physical_collisions=0 building_collisions=0",
+        ros_log,
+    )
+    if result is None:
+        errors.append("FAIL: cooperative traffic reports a complete physical result")
+    elif int(result.group(1)) != expected_vehicles:
+        errors.append("FAIL: cooperative result vehicle count matches the scenario")
+    else:
+        print(
+            "OK: cooperative traffic reaches all goals "
+            f"(minimum separation {float(result.group(2)):.3f} m, "
+            f"soft-target violations {int(result.group(4))})"
+        )
+    if re.search(
+        r"COOPERATIVE_VEHICLE_DESTROYED referee_observed=true|"
+        r"MISSION_RESULT success=false mission=cooperative_traffic",
+        ros_log,
+    ):
+        errors.append("FAIL: cooperative traffic contains a physical loss")
+    else:
+        print("OK: cooperative traffic has no vehicle destruction")
+
+
 def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
     result = re.search(
         r"MISSION_RESULT success=true mission=intercept "
@@ -464,7 +530,12 @@ def main() -> int:
     parser.add_argument("--px4-log", required=True, action="append", type=Path)
     parser.add_argument(
         "--mission-type",
-        choices=("point_to_point", "intercept", "multi_intercept"),
+        choices=(
+            "point_to_point",
+            "intercept",
+            "multi_intercept",
+            "cooperative_traffic",
+        ),
         default="point_to_point",
     )
     parser.add_argument("--expected-vehicles", type=int, default=0)
@@ -492,6 +563,7 @@ def main() -> int:
         expected_vehicles = 4 if args.mission_type in {
             "intercept",
             "multi_intercept",
+            "cooperative_traffic",
         } else 1
     require_count(
         "PX4 instances report Gazebo ready",
@@ -623,6 +695,8 @@ def main() -> int:
             validate_intercept_settlement(ros_log, errors)
         elif args.mission_type == "multi_intercept":
             validate_multi_intercept_settlement(ros_log, errors)
+        elif args.mission_type == "cooperative_traffic":
+            validate_cooperative_traffic(ros_log, expected_vehicles, errors)
     elif mission_failed:
         print("WARN: mission failure was allowed")
 

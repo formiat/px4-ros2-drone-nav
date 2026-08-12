@@ -49,8 +49,8 @@ bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
 }
 
-# shellcheck source=intercept_sim_runtime.sh
-source "${repo_root}/scripts/intercept_sim_runtime.sh"
+# shellcheck source=multi_vehicle_sim_runtime.sh
+source "${repo_root}/scripts/multi_vehicle_sim_runtime.sh"
 
 run_with_cpu_affinity() {
   local cpu_list="$1"
@@ -84,27 +84,28 @@ run_log_dir="$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")"
 run_id="${DRONE_GAZEBO_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 world_name="generated_city"
 mission_type="${MISSION_TYPE:-point_to_point}"
-load_intercept_sim_scenario "${mission_type}" "${INTERCEPT_SCENARIO_PATH:-}"
-intercept_spectator_initial_vehicle_id=""
-intercept_spectator_initial_model=""
-intercept_spectator_reselection_policy="${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-first_living}"
-if bool_is_true "${intercept_mission}"; then
-  intercept_spectator_initial_vehicle_id="${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-${intercept_vehicle_ids[0]}}"
-  case "${intercept_spectator_reselection_policy}" in
+multi_vehicle_scenario_override="${MULTI_VEHICLE_SCENARIO_PATH:-${INTERCEPT_SCENARIO_PATH:-}}"
+load_multi_vehicle_sim_scenario "${mission_type}" "${multi_vehicle_scenario_override}"
+multi_vehicle_spectator_initial_vehicle_id=""
+multi_vehicle_spectator_initial_model=""
+multi_vehicle_spectator_reselection_policy="${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-first_living}}"
+if bool_is_true "${multi_vehicle_mission}"; then
+  multi_vehicle_spectator_initial_vehicle_id="${MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID:-${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-${multi_vehicle_ids[0]}}}"
+  case "${multi_vehicle_spectator_reselection_policy}" in
   first_living | next_living) ;;
   *)
-    echo "Invalid INTERCEPT_SPECTATOR_RESELECTION_POLICY=${intercept_spectator_reselection_policy}; expected first_living or next_living" >&2
+    echo "Invalid spectator reselection policy ${multi_vehicle_spectator_reselection_policy}; expected first_living or next_living" >&2
     exit 1
     ;;
   esac
-  for instance in "${!intercept_vehicle_ids[@]}"; do
-    if [[ "${intercept_vehicle_ids[instance]}" == "${intercept_spectator_initial_vehicle_id}" ]]; then
-      intercept_spectator_initial_model="${intercept_gazebo_model_names[instance]}"
+  for instance in "${!multi_vehicle_ids[@]}"; do
+    if [[ "${multi_vehicle_ids[instance]}" == "${multi_vehicle_spectator_initial_vehicle_id}" ]]; then
+      multi_vehicle_spectator_initial_model="${multi_vehicle_gazebo_model_names[instance]}"
       break
     fi
   done
-  if [[ -z "${intercept_spectator_initial_model}" ]]; then
-    echo "INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID=${intercept_spectator_initial_vehicle_id} is not present in ${intercept_scenario_path}" >&2
+  if [[ -z "${multi_vehicle_spectator_initial_model}" ]]; then
+    echo "Spectator vehicle ${multi_vehicle_spectator_initial_vehicle_id} is not present in ${multi_vehicle_scenario_path}" >&2
     exit 1
   fi
 fi
@@ -132,11 +133,11 @@ if bool_is_true "${enable_subsystem_cpu_affinity}" &&
   fi
 fi
 px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
-if bool_is_true "${intercept_mission}"; then
-  px4_model_target="${intercept_px4_model_targets[0]}"
-  for vehicle_px4_model_target in "${intercept_px4_model_targets[@]}"; do
+if bool_is_true "${multi_vehicle_mission}"; then
+  px4_model_target="${multi_vehicle_px4_model_targets[0]}"
+  for vehicle_px4_model_target in "${multi_vehicle_px4_model_targets[@]}"; do
     if [[ ! "${vehicle_px4_model_target}" =~ ^gz_[A-Za-z0-9_]+$ ]]; then
-      echo "Invalid intercept PX4 model target: ${vehicle_px4_model_target}" >&2
+      echo "Invalid multi-vehicle PX4 model target: ${vehicle_px4_model_target}" >&2
       exit 1
     fi
   done
@@ -144,18 +145,18 @@ fi
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
 smoke_duration_s="${SMOKE_DURATION_S:-0}"
 px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_drone_nav.log}"
-intercept_px4_logs=()
-if bool_is_true "${intercept_mission}"; then
-  for instance in "${!intercept_vehicle_ids[@]}"; do
+multi_vehicle_px4_logs=()
+if bool_is_true "${multi_vehicle_mission}"; then
+  for instance in "${!multi_vehicle_ids[@]}"; do
     if [[ "${instance}" -eq 0 ]]; then
-      intercept_px4_logs+=("${px4_log_file}")
+      multi_vehicle_px4_logs+=("${px4_log_file}")
       continue
     fi
-    log_env_name="$(printf '%s' "${intercept_vehicle_ids[instance]}" |
+    log_env_name="$(printf '%s' "${multi_vehicle_ids[instance]}" |
       tr '[:lower:]-' '[:upper:]_')_PX4_LOG_FILE"
     log_override="${!log_env_name:-}"
-    intercept_px4_logs+=(
-      "${log_override:-${run_log_dir}/px4_${intercept_vehicle_ids[instance]}_nav.log}"
+    multi_vehicle_px4_logs+=(
+      "${log_override:-${run_log_dir}/px4_${multi_vehicle_ids[instance]}_nav.log}"
     )
   done
 fi
@@ -188,14 +189,18 @@ px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 allow_mission_failure="$(normalize_bool "${ALLOW_MISSION_FAILURE:-false}")"
 headless="${HEADLESS:-}"
-if [[ -n "${INTERCEPT_SHUTDOWN_ON_TERMINAL_OUTCOME+x}" ]]; then
-  intercept_shutdown_on_terminal_outcome="$(
+if [[ -n "${MULTI_VEHICLE_SHUTDOWN_ON_TERMINAL_OUTCOME+x}" ]]; then
+  multi_vehicle_shutdown_on_terminal_outcome="$(
+    normalize_bool "${MULTI_VEHICLE_SHUTDOWN_ON_TERMINAL_OUTCOME}"
+  )"
+elif [[ -n "${INTERCEPT_SHUTDOWN_ON_TERMINAL_OUTCOME+x}" ]]; then
+  multi_vehicle_shutdown_on_terminal_outcome="$(
     normalize_bool "${INTERCEPT_SHUTDOWN_ON_TERMINAL_OUTCOME}"
   )"
 elif [[ -n "${headless}" ]]; then
-  intercept_shutdown_on_terminal_outcome="true"
+  multi_vehicle_shutdown_on_terminal_outcome="true"
 else
-  intercept_shutdown_on_terminal_outcome="false"
+  multi_vehicle_shutdown_on_terminal_outcome="false"
 fi
 if [[ -n "${ENABLE_RVIZ+x}" ]]; then
   enable_rviz="${ENABLE_RVIZ}"
@@ -208,6 +213,10 @@ evader_speed_scale="${EVADER_SPEED_SCALE:-1.0}"
 intercept_directional_hypotheses_enabled="$(
   normalize_bool "${INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED:-false}"
 )"
+cooperative_desired_minimum_separation_m="${COOPERATIVE_DESIRED_MINIMUM_SEPARATION_M:-5.0}"
+cooperative_release_separation_m="${COOPERATIVE_RELEASE_SEPARATION_M:-7.0}"
+cooperative_prediction_horizon_s="${COOPERATIVE_PREDICTION_HORIZON_S:-5.0}"
+cooperative_mission_timeout_s="${COOPERATIVE_MISSION_TIMEOUT_S:-240.0}"
 enable_gazebo_gui_follow_camera="$(
   normalize_bool "${ENABLE_GZ_GUI_FOLLOW_CAMERA:-true}"
 )"
@@ -223,7 +232,7 @@ rviz_drone_follow_tf_enabled="${enable_rviz_follow_camera}"
 if ! bool_is_true "${enable_rviz}"; then
   rviz_drone_follow_tf_enabled="false"
 fi
-gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-${intercept_spectator_initial_model:-x500_lidar_2d_0}}"
+gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-${multi_vehicle_spectator_initial_model:-x500_lidar_2d_0}}"
 gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
 gazebo_world_unpause_wait_s="${GZ_WORLD_UNPAUSE_WAIT_S:-60}"
@@ -249,9 +258,10 @@ if [[ ! -d "${px4_dir}" ]]; then
   echo "Run scripts/setup_px4_autopilot.sh first or set PX4_AUTOPILOT_DIR." >&2
   exit 1
 fi
-if bool_is_true "${intercept_mission}" && [[ ! -x "${px4_build_dir}/bin/px4" ]]; then
+if bool_is_true "${multi_vehicle_mission}" &&
+  [[ ! -x "${px4_build_dir}/bin/px4" ]]; then
   echo "PX4 SITL binary was not found: ${px4_build_dir}/bin/px4" >&2
-  echo "Build PX4 SITL before running the intercept mission." >&2
+  echo "Build PX4 SITL before running a multi-vehicle mission." >&2
   exit 1
 fi
 if [[ ! -f "${ros_setup_file}" ]]; then
@@ -466,7 +476,7 @@ prepare_runtime_resources() {
 
   ln -s "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
     "${runtime_models_dir}/x500_lidar_2d"
-  prepare_intercept_evader_model_resources
+  prepare_multi_vehicle_model_resources
   cp -a "${repo_root}/drone_city_nav/models/lidar_2d_v2" \
     "${runtime_models_dir}/lidar_2d_v2"
 
@@ -492,8 +502,8 @@ if [[ "${enable_gz_scene_diagnostics}" == "true" ||
   mkdir -p "${gz_scene_diagnostics_dir}"
 fi
 : > "${px4_log_file}"
-if bool_is_true "${intercept_mission}"; then
-  for vehicle_log in "${intercept_px4_logs[@]}"; do
+if bool_is_true "${multi_vehicle_mission}"; then
+  for vehicle_log in "${multi_vehicle_px4_logs[@]}"; do
     mkdir -p "$(dirname "${vehicle_log}")"
     : > "${vehicle_log}"
   done
@@ -660,8 +670,8 @@ echo "RViz debug view: enabled=${enable_rviz}"
 echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'" |
   tee -a "${gz_log_file}"
-if bool_is_true "${intercept_mission}"; then
-  echo "Intercept spectator: initial_vehicle_id=${intercept_spectator_initial_vehicle_id} reselection_policy=${intercept_spectator_reselection_policy}" |
+if bool_is_true "${multi_vehicle_mission}"; then
+  echo "Multi-vehicle spectator: initial_vehicle_id=${multi_vehicle_spectator_initial_vehicle_id} reselection_policy=${multi_vehicle_spectator_reselection_policy}" |
     tee -a "${gz_log_file}"
 fi
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
@@ -729,7 +739,7 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
     configure_gazebo_world_running "${gazebo_world_unpause_wait_s}" &
     gz_unpause_pid=$!
     if bool_is_true "${enable_gazebo_gui_follow_camera}" &&
-      ! bool_is_true "${intercept_mission}"; then
+      ! bool_is_true "${multi_vehicle_mission}"; then
       configure_gazebo_gui_follow_camera \
         "${gazebo_gui_follow_target}" \
         "${gazebo_gui_follow_offset}" \
@@ -772,41 +782,41 @@ px4_parameter_stream() {
 }
 
 echo "PX4 SITL log: ${px4_log_file}"
-if bool_is_true "${intercept_mission}"; then
-  echo "Intercept scenario: ${intercept_scenario_path}"
-  for instance in "${!intercept_vehicle_ids[@]}"; do
-    echo "INTERCEPT_COORDINATE_CONTRACT vehicle_id='${intercept_vehicle_ids[instance]}' map_start='${intercept_map_start_poses[instance]}' gazebo_spawn='${intercept_gazebo_spawn_poses[instance]}' gazebo_model='${intercept_gazebo_model_names[instance]}'"
-    echo "PX4 SITL log for ${intercept_vehicle_ids[instance]}: ${intercept_px4_logs[instance]}"
+if bool_is_true "${multi_vehicle_mission}"; then
+  echo "Multi-vehicle scenario: ${multi_vehicle_scenario_path}"
+  for instance in "${!multi_vehicle_ids[@]}"; do
+    echo "MULTI_VEHICLE_COORDINATE_CONTRACT vehicle_id='${multi_vehicle_ids[instance]}' map_start='${multi_vehicle_map_start_poses[instance]}' gazebo_spawn='${multi_vehicle_gazebo_spawn_poses[instance]}' gazebo_model='${multi_vehicle_gazebo_model_names[instance]}'"
+    echo "PX4 SITL log for ${multi_vehicle_ids[instance]}: ${multi_vehicle_px4_logs[instance]}"
   done
-  intercept_px4_cruise_speeds=()
-  intercept_px4_maximum_speeds=()
-  for instance in "${!intercept_vehicle_ids[@]}"; do
-    if [[ "${intercept_vehicle_roles[instance]}" == "evader" ]]; then
-      intercept_px4_cruise_speeds+=("${evader_px4_cruise_speed_mps}")
-      intercept_px4_maximum_speeds+=("${evader_px4_max_horizontal_speed_mps}")
+  multi_vehicle_px4_cruise_speeds=()
+  multi_vehicle_px4_maximum_speeds=()
+  for instance in "${!multi_vehicle_ids[@]}"; do
+    if [[ "${multi_vehicle_roles[instance]}" == "evader" ]]; then
+      multi_vehicle_px4_cruise_speeds+=("${evader_px4_cruise_speed_mps}")
+      multi_vehicle_px4_maximum_speeds+=("${evader_px4_max_horizontal_speed_mps}")
     else
-      intercept_px4_cruise_speeds+=("${px4_active_cruise_speed_mps}")
-      intercept_px4_maximum_speeds+=("${px4_active_max_horizontal_speed_mps}")
+      multi_vehicle_px4_cruise_speeds+=("${px4_active_cruise_speed_mps}")
+      multi_vehicle_px4_maximum_speeds+=("${px4_active_max_horizontal_speed_mps}")
     fi
   done
-  intercept_px4_pids=()
-  for instance in "${!intercept_vehicle_ids[@]}"; do
+  multi_vehicle_px4_pids=()
+  for instance in "${!multi_vehicle_ids[@]}"; do
     reset_px4_instance_state "${instance}"
     (
-      px4_parameter_stream "${intercept_px4_cruise_speeds[instance]}" \
-        "${intercept_px4_maximum_speeds[instance]}" |
+      px4_parameter_stream "${multi_vehicle_px4_cruise_speeds[instance]}" \
+        "${multi_vehicle_px4_maximum_speeds[instance]}" |
         PX4_GZ_WORLD="${world_name}" \
           PX4_GZ_STANDALONE=1 \
-          PX4_GZ_MODEL_POSE="${intercept_gazebo_spawn_poses[instance]}" \
-          PX4_SIM_MODEL="${intercept_px4_model_targets[instance]}" \
-          PX4_UXRCE_DDS_NS="${intercept_px4_namespaces[instance]}" \
+          PX4_GZ_MODEL_POSE="${multi_vehicle_gazebo_spawn_poses[instance]}" \
+          PX4_SIM_MODEL="${multi_vehicle_px4_model_targets[instance]}" \
+          PX4_UXRCE_DDS_NS="${multi_vehicle_px4_namespaces[instance]}" \
           PX4_SYS_AUTOSTART=4013 \
           HEADLESS="${headless}" \
           run_px4_instance "${instance}"
-    ) > "${intercept_px4_logs[instance]}" 2>&1 &
-    intercept_px4_pids+=("$!")
+    ) > "${multi_vehicle_px4_logs[instance]}" 2>&1 &
+    multi_vehicle_px4_pids+=("$!")
   done
-  px4_pid="${intercept_px4_pids[0]}"
+  px4_pid="${multi_vehicle_px4_pids[0]}"
 else
   echo "PX4 Gazebo spawn pose: ${point_gazebo_spawn_x_m},${point_gazebo_spawn_y_m},${point_gazebo_spawn_z_m},0,0,${point_gazebo_spawn_yaw_rad}"
   reset_px4_instance_state 0
@@ -829,11 +839,11 @@ if ! kill -0 "${px4_pid}" 2>/dev/null; then
   tail -n 80 "${px4_log_file}" >&2
   exit 1
 fi
-if bool_is_true "${intercept_mission}"; then
-  for instance in "${!intercept_vehicle_ids[@]}"; do
-    if ! kill -0 "${intercept_px4_pids[instance]}" 2>/dev/null; then
-      echo "${intercept_px4_namespaces[instance]} PX4 SITL exited before ROS launch. Last log lines:" >&2
-      tail -n 80 "${intercept_px4_logs[instance]}" >&2
+if bool_is_true "${multi_vehicle_mission}"; then
+  for instance in "${!multi_vehicle_ids[@]}"; do
+    if ! kill -0 "${multi_vehicle_px4_pids[instance]}" 2>/dev/null; then
+      echo "${multi_vehicle_px4_namespaces[instance]} PX4 SITL exited before ROS launch. Last log lines:" >&2
+      tail -n 80 "${multi_vehicle_px4_logs[instance]}" >&2
       exit 1
     fi
   done
@@ -846,75 +856,37 @@ if bool_is_true "${enable_gz_scene_diagnostics}"; then
   fi
 fi
 
-print_log_tail() {
-  local label="$1"
-  local file="$2"
-  echo "---- ${label}: ${file} ----" >&2
-  perl -pe 's{\e\[[0-9;?]*[ -/]*[@-~]}{}g; s/\r/\n/g' "${file}" \
-    | sed '/^pxh> *$/d' \
-    | tail -n 80 >&2 || true
-}
-
-check_headless_run() {
-  local validation_args=(
-    --ros-log "${ros_log_file}"
-    --px4-log "${px4_log_file}"
-    --mission-type "${mission_type}"
-    --expected-static "${expected_static_map}"
-    --expected-memory "${expected_obstacle_memory}"
-    --expected-current-lidar "${expected_current_lidar}"
-    --enable-lidar-debug "${enable_lidar_debug}"
-  )
-  if bool_is_true "${intercept_mission}"; then
-    validation_args+=(--expected-vehicles "${#intercept_vehicle_ids[@]}")
-    for instance in "${!intercept_vehicle_ids[@]}"; do
-      [[ "${instance}" -eq 0 ]] ||
-        validation_args+=(--px4-log "${intercept_px4_logs[instance]}")
-    done
-  fi
-  if [[ -n "${mission_check}" ]] || bool_is_true "${intercept_mission}"; then
-    validation_args+=(--mission-check)
-  fi
-  if bool_is_true "${allow_mission_failure}"; then
-    validation_args+=(--allow-mission-failure)
-  fi
-
-  if ! python3 "${repo_root}/scripts/validate_drone_nav_headless.py" \
-    "${validation_args[@]}"; then
-    print_log_tail "Gazebo" "${gz_log_file}"
-    print_log_tail "PX4 SITL" "${px4_log_file}"
-    if bool_is_true "${intercept_mission}"; then
-      for instance in "${!intercept_vehicle_ids[@]}"; do
-        [[ "${instance}" -eq 0 ]] || print_log_tail \
-          "${intercept_vehicle_ids[instance]} PX4 SITL" \
-          "${intercept_px4_logs[instance]}"
-      done
-    fi
-    print_log_tail "ROS launch" "${ros_log_file}"
-    return 1
-  fi
-
-  return 0
-}
-
 launch_file="city_nav.launch.py"
-if bool_is_true "${intercept_mission}"; then
+if bool_is_true "${multi_vehicle_mission}"; then
+  scenario_argument="intercept_scenario_path"
   launch_file="intercept.launch.py"
+  if bool_is_true "${cooperative_traffic_mission}"; then
+    scenario_argument="cooperative_traffic_scenario_path"
+    launch_file="cooperative_traffic.launch.py"
+  fi
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
-    intercept_scenario_path:="${intercept_scenario_path}"
+    "${scenario_argument}:=${multi_vehicle_scenario_path}"
     enable_lidar_debug:="${enable_lidar_debug}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     evader_speed_scale:="${evader_speed_scale}"
     intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"
-    spectator_initial_vehicle_id:="${intercept_spectator_initial_vehicle_id}"
-    spectator_reselection_policy:="${intercept_spectator_reselection_policy}"
-    shutdown_on_terminal_outcome:="${intercept_shutdown_on_terminal_outcome}"
+    spectator_initial_vehicle_id:="${multi_vehicle_spectator_initial_vehicle_id}"
+    spectator_reselection_policy:="${multi_vehicle_spectator_reselection_policy}"
+    shutdown_on_terminal_outcome:="${multi_vehicle_shutdown_on_terminal_outcome}"
     control_cpu_list:="${control_cpu_list}"
     planning_cpu_list:="${planning_cpu_list}"
     diagnostics_cpu_list:="${diagnostics_cpu_list}"
   )
+  if bool_is_true "${cooperative_traffic_mission}"; then
+    ros_launch_args+=(
+      cooperative_desired_minimum_separation_m:="${cooperative_desired_minimum_separation_m}"
+      cooperative_release_separation_m:="${cooperative_release_separation_m}"
+      cooperative_prediction_horizon_s:="${cooperative_prediction_horizon_s}"
+      cooperative_mission_timeout_s:="${cooperative_mission_timeout_s}"
+    )
+  fi
 else
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
@@ -934,7 +906,7 @@ if [[ -n "${enable_static_map_override}" ]]; then
 fi
 echo "ROS launch log: ${ros_log_file}"
 echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"
-if bool_is_true "${intercept_mission}" && [[ -z "${headless}" ]] &&
+if bool_is_true "${multi_vehicle_mission}" && [[ -z "${headless}" ]] &&
   bool_is_true "${enable_gazebo_gui_follow_camera}"; then
   python3 "${repo_root}/scripts/gazebo_spectator_follow.py" \
     --world "${world_name}" \

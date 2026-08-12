@@ -50,7 +50,7 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         self.assertIn("create_subscription<msg::RawObstacleDelta>", planner)
 
     def test_intercept_launch_wires_per_vehicle_status_topics(self) -> None:
-        launch = (PACKAGE / "launch" / "intercept.launch.py").read_text(
+        launch = (PACKAGE / "launch" / "multi_vehicle.launch.py").read_text(
             encoding="utf-8"
         )
 
