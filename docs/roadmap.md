@@ -189,3 +189,30 @@ The planned components are:
 - passage detection;
 - autonomous passage traversal;
 - dynamic trajectory generation through detected passages.
+
+## 9. Large-Scale Realistic City And Full-Mission Validation
+
+Find a suitably licensed high-quality city environment or build a new one for
+the project. The location should be substantially larger and more visually and
+geometrically varied than the current regular test city, with realistic street
+layouts, building shapes, heights, materials, and urban topology.
+
+Where practical, include complex physically traversable 3D passages and
+channels such as multi-turn routes, junctions, and entry and exit points at
+different altitudes. Imported visual assets must have explicit provenance and a
+license compatible with the repository. Rendering meshes, collision geometry,
+lidar-visible surfaces, static occupancy, and generated planning artifacts must
+remain aligned instead of becoming separate hand-maintained versions of the
+world.
+
+Use the new location as a full-system validation environment rather than only a
+visual showcase. Re-run every supported point-to-point, static-map, no-static,
+3D-passage, single-target interception, multi-target interception, and
+cooperative-traffic mission that exists when this stage begins. Validation
+should cover multiple start and goal placements and repeated headless runs, and
+must preserve physical outcome checks, zero tolerance for building collisions,
+planner and controller diagnostics, real-time-factor monitoring, and measured
+CPU/GPU timing.
+
+This stage is complete only when the mission suite succeeds on the new city
+without scenario-specific route scripts or geometry exceptions.
