@@ -18,6 +18,8 @@ RADAR_TRACK_MODE_COMMAND = PACKAGE / "msg" / "RadarTrackModeCommand.msg"
 GUIDANCE = SOURCE / "interceptor_guidance_node.cpp"
 TRACKER = SOURCE / "radar_target_tracker_node.cpp"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
+COOPERATIVE_REFEREE = SOURCE / "cooperative_traffic_referee_node.cpp"
+COOPERATIVE_AGENT = SOURCE / "cooperative_traffic_agent_node.cpp"
 REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
 REFEREE_SUPPORT = SOURCE / "intercept_referee_support.cpp"
 GROUND_TRUTH_BOUNDARY = SOURCE / "intercept_ground_truth_boundary.cpp"
@@ -67,11 +69,22 @@ class InterceptRadarContractTest(unittest.TestCase):
         }
         self.assertEqual(
             subscribers,
-            {"intercept_mission_referee_node.cpp", "radar_simulator_node.cpp"},
+            {
+                "cooperative_traffic_referee_node.cpp",
+                "intercept_mission_referee_node.cpp",
+                "radar_simulator_node.cpp",
+            },
         )
         self.assertIn(
             "create_publisher<msg::SimulationTruthState>",
             TRUTH_ADAPTER.read_text(encoding="utf-8"),
+        )
+        cooperative_referee = COOPERATIVE_REFEREE.read_text(encoding="utf-8")
+        boundary = GROUND_TRUTH_BOUNDARY.read_text(encoding="utf-8")
+        self.assertIn("makeExclusiveGroundTruthBoundary", cooperative_referee)
+        self.assertIn(".allowed_subscribers = {required_subscriber_fqn}", boundary)
+        self.assertNotIn(
+            "SimulationTruthState", COOPERATIVE_AGENT.read_text(encoding="utf-8")
         )
 
     def test_tracker_and_guidance_have_no_truth_bypass(self) -> None:

@@ -152,6 +152,7 @@ add_library(
   src/cooperative_channel_coordination.cpp
   src/cooperative_mppi_adapter.cpp
   src/cooperative_traffic.cpp
+  src/cooperative_traffic_mission.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
   src/debug_image.cpp
   src/distance_field.cpp
@@ -336,6 +337,17 @@ target_link_libraries(intercept_mission_referee_node drone_city_nav_core
                       ${cpp_typesupport_target})
 ament_target_dependencies(intercept_mission_referee_node rclcpp std_msgs)
 enable_project_warnings(intercept_mission_referee_node)
+
+add_executable(cooperative_traffic_referee_node
+               src/cooperative_traffic_referee_main.cpp
+               src/cooperative_traffic_referee_node.cpp
+               src/cooperative_traffic_referee_lifecycle.cpp
+               src/intercept_ground_truth_boundary.cpp)
+target_compile_features(cooperative_traffic_referee_node PRIVATE cxx_std_20)
+target_link_libraries(cooperative_traffic_referee_node drone_city_nav_core
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
+ament_target_dependencies(cooperative_traffic_referee_node rclcpp std_msgs)
+enable_project_warnings(cooperative_traffic_referee_node)
 
 add_executable(radar_simulator_node src/radar_simulator_node.cpp)
 target_compile_features(radar_simulator_node PRIVATE cxx_std_20)
@@ -547,6 +559,7 @@ install(
     world_visualization_node
     mission_monitor_node
     intercept_mission_referee_node
+    cooperative_traffic_referee_node
     radar_simulator_node
     simulation_truth_adapter_node
     radar_target_tracker_node
@@ -796,6 +809,12 @@ if(BUILD_TESTING)
   target_compile_features(cooperative_traffic_test PRIVATE cxx_std_20)
   target_link_libraries(cooperative_traffic_test drone_city_nav_core)
   enable_project_warnings(cooperative_traffic_test)
+
+  ament_add_gtest(cooperative_traffic_mission_test
+                  tests/cooperative_traffic_mission_test.cpp)
+  target_compile_features(cooperative_traffic_mission_test PRIVATE cxx_std_20)
+  target_link_libraries(cooperative_traffic_mission_test drone_city_nav_core)
+  enable_project_warnings(cooperative_traffic_mission_test)
 
   ament_add_gtest(cooperative_mppi_adapter_test
                   tests/cooperative_mppi_adapter_test.cpp)

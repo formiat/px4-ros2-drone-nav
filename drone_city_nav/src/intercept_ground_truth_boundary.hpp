@@ -60,4 +60,8 @@ makeInterceptGroundTruthBoundary(
     const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints,
     const std::vector<std::string>& target_navigation_observer_fqns = {});
 
+[[nodiscard]] std::unique_ptr<InterceptGroundTruthBoundary>
+makeExclusiveGroundTruthBoundary(const std::string& required_subscriber_fqn,
+                                 const std::vector<std::string>& truth_topics);
+
 } // namespace drone_city_nav

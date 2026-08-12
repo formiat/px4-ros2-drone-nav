@@ -124,4 +124,22 @@ std::unique_ptr<InterceptGroundTruthBoundary> makeInterceptGroundTruthBoundary(
       interceptor_endpoints, target_navigation_observer_fqns);
 }
 
+std::unique_ptr<InterceptGroundTruthBoundary>
+makeExclusiveGroundTruthBoundary(const std::string& required_subscriber_fqn,
+                                 const std::vector<std::string>& truth_topics) {
+  if (required_subscriber_fqn.empty() || truth_topics.empty()) {
+    throw std::invalid_argument{"exclusive ground truth boundary requires endpoints"};
+  }
+  std::vector<GroundTruthTopicContract> contracts;
+  contracts.reserve(truth_topics.size());
+  for (const std::string& topic : truth_topics) {
+    contracts.push_back(GroundTruthTopicContract{
+        .topic = topic,
+        .allowed_subscribers = {required_subscriber_fqn},
+        .required_subscribers = {required_subscriber_fqn},
+    });
+  }
+  return std::make_unique<InterceptGroundTruthBoundary>(std::move(contracts));
+}
+
 } // namespace drone_city_nav
