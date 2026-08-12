@@ -584,6 +584,54 @@ TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
   EXPECT_EQ(result.selected_channels.front().channel_id, "far_channel");
 }
 
+TEST(Route3DTest, MaterializesRequiredChannelWhenUnconstrainedSlicePrefersFrontier) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 80, 12, 10}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 100.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
+      .id = "required_channel",
+      .centerline = sampleRoute3D(
+          std::vector<Point3>{{30.5, 5.5, 5.5}, {60.5, 5.5, 5.5}}, 0.5, 10.0),
+      .entry = Point3{30.5, 5.5, 5.5},
+      .exit = Point3{60.5, 5.5, 5.5},
+      .min_z_m = 1.5,
+      .max_z_m = 8.5,
+      .width_m = 24.0,
+      .height_m = 7.0,
+      .minimum_clearance_m = 3.5,
+      .speed_limit_mps = 10.0}};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 100.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.heading_bias_cost_per_rad = 0.0;
+  config.route_shape_turn_cost_per_rad = 0.0;
+  config.channel_topology_transition_cost = 100.0;
+  config.maximum_topology_search_groups = 1U;
+  config.maximum_expansions = 8U;
+  config.maximum_search_time_ms = 1000.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      grid, field.distancesM(), Point3{2.5, 5.5, 5.5}, Vec3{1.0, 0.0, 0.0},
+      Point3{74.5, 5.5, 5.5}, channels, config);
+
+  EXPECT_EQ(result.topology_searches, 2U);
+  ASSERT_EQ(result.selected_channels.size(), 1U);
+  EXPECT_EQ(result.selected_channels.front().channel_id, "required_channel");
+  EXPECT_GT(result.achieved_progress_m, 50.0);
+}
+
 TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 20, 10}};
   const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
@@ -636,12 +684,12 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
                              channels, config, &worker_pool);
 
   ASSERT_EQ(serial.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_EQ(serial.topology_searches, 3U);
+  EXPECT_EQ(serial.parallel_topology_searches, 0U);
   ASSERT_EQ(two_worker.status, serial.status);
   EXPECT_EQ(two_worker.route_fingerprint, serial.route_fingerprint);
-  EXPECT_EQ(two_worker.topology_searches, 1U);
-  EXPECT_EQ(two_worker.parallel_topology_searches, 0U);
-  EXPECT_GT(two_worker.successor_profiling.search.parallel_collection_calls, 0U);
-  EXPECT_GT(two_worker.successor_profiling.search.parallel_candidates, 0U);
+  EXPECT_EQ(two_worker.topology_searches, 3U);
+  EXPECT_EQ(two_worker.parallel_topology_searches, two_worker.topology_searches);
   ASSERT_EQ(parallel.status, serial.status);
   EXPECT_EQ(parallel.route_fingerprint, serial.route_fingerprint);
   EXPECT_EQ(parallel.topology_searches, 3U);

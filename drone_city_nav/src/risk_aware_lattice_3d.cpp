@@ -19,7 +19,7 @@
 
 #include "risk_aware_lattice_3d_continuation.hpp"
 #include "risk_aware_lattice_3d_geometry.hpp"
-#include "risk_aware_lattice_3d_result.hpp"
+#include "risk_aware_lattice_3d_search.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -29,6 +29,11 @@ enum class NodeKind : std::uint8_t {
   kChannelExit
 };
 
+enum class TopologyProgress : std::uint8_t {
+  kChannelNotTraversed,
+  kChannelTraversed,
+};
+
 struct Key {
   NodeKind kind{NodeKind::kLattice};
   int x{0};
@@ -36,6 +41,7 @@ struct Key {
   int z{0};
   int channel_index{-1};
   bool reversed{false};
+  TopologyProgress topology_progress{TopologyProgress::kChannelNotTraversed};
 
   [[nodiscard]] bool operator==(const Key&) const noexcept = default;
 };
@@ -51,6 +57,7 @@ struct KeyHash {
     combine(std::hash<int>{}(key.channel_index));
     combine(std::hash<unsigned>{}(static_cast<unsigned>(key.kind)));
     combine(std::hash<bool>{}(key.reversed));
+    combine(std::hash<unsigned>{}(static_cast<unsigned>(key.topology_progress)));
     return seed;
   }
 };
@@ -83,6 +90,7 @@ struct Record {
 struct QueueEntry {
   double f{0.0};
   double g_at_insert{0.0};
+  bool topology_satisfied{true};
   std::uint64_t sequence{0U};
   Key key{};
 };
@@ -90,6 +98,9 @@ struct QueueEntry {
 struct Greater {
   [[nodiscard]] bool operator()(const QueueEntry& lhs,
                                 const QueueEntry& rhs) const noexcept {
+    if (lhs.topology_satisfied != rhs.topology_satisfied) {
+      return !lhs.topology_satisfied && rhs.topology_satisfied;
+    }
     return lhs.f == rhs.f ? lhs.sequence > rhs.sequence : lhs.f > rhs.f;
   }
 };
@@ -140,14 +151,16 @@ channelInsideFlightEnvelope(const ConstrainedFreeSpaceEdge& channel,
 }
 
 [[nodiscard]] Key latticeKeyNear(const Point3& point, const Point3& origin,
-                                 const RiskAwareLattice3DConfig& config) noexcept {
+                                 const RiskAwareLattice3DConfig& config,
+                                 const TopologyProgress topology_progress) noexcept {
   return Key{.kind = NodeKind::kLattice,
              .x = static_cast<int>(
                  std::llround((point.x - origin.x) / config.horizontal_step_m)),
              .y = static_cast<int>(
                  std::llround((point.y - origin.y) / config.horizontal_step_m)),
              .z = static_cast<int>(
-                 std::llround((point.z - origin.z) / config.vertical_step_m))};
+                 std::llround((point.z - origin.z) / config.vertical_step_m)),
+             .topology_progress = topology_progress};
 }
 
 [[nodiscard]] Vec3 directionBetween(const Point3& first,
@@ -224,6 +237,44 @@ void accumulate(CostMetrics& target, const CostMetrics& addition) noexcept {
   const double vertical_m = std::abs(goal.z - point.z);
   return std::max(horizontal_m / std::max(1.0e-6, config.nominal_horizontal_speed_mps),
                   vertical_m / std::max(1.0e-6, config.nominal_vertical_speed_mps));
+}
+
+[[nodiscard]] double
+requiredChannelHeuristic(const Point3& point, const Point3& goal,
+                         const std::span<const ConstrainedFreeSpaceEdge> channels,
+                         const RiskAwareLattice3DConfig& config) noexcept {
+  double best = std::numeric_limits<double>::infinity();
+  for (const ConstrainedFreeSpaceEdge& channel : channels) {
+    for (const bool reversed : {false, true}) {
+      const Point3 entry = channelEntry(channel, reversed);
+      const Point3 exit = channelExit(channel, reversed);
+      best = std::min(best, heuristicCost(point, entry, config) +
+                                config.channel_topology_transition_cost +
+                                heuristicCost(entry, exit, config) +
+                                heuristicCost(exit, goal, config));
+    }
+  }
+  return best;
+}
+
+[[nodiscard]] double
+searchHeuristic(const Point3& point, const Point3& goal,
+                const TopologyProgress topology_progress,
+                const std::span<const ConstrainedFreeSpaceEdge> channels,
+                const detail::Lattice3DTopologyRequirement topology_requirement,
+                const RiskAwareLattice3DConfig& config) noexcept {
+  if (topology_requirement == detail::Lattice3DTopologyRequirement::kUnconstrained ||
+      topology_progress == TopologyProgress::kChannelTraversed) {
+    return heuristicCost(point, goal, config);
+  }
+  return requiredChannelHeuristic(point, goal, channels, config);
+}
+
+[[nodiscard]] bool queueTopologySatisfied(
+    const TopologyProgress topology_progress,
+    const detail::Lattice3DTopologyRequirement topology_requirement) noexcept {
+  return topology_requirement == detail::Lattice3DTopologyRequirement::kUnconstrained ||
+         topology_progress == TopologyProgress::kChannelTraversed;
 }
 
 [[nodiscard]] bool
@@ -382,7 +433,9 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
             const Point3& start, const Vec3& preferred_direction,
             const Point3& planning_goal, const Point3& mission_goal,
             const std::span<const ConstrainedFreeSpaceEdge> channels,
-            const Lattice3DRiskStage stage, const RiskAwareLattice3DConfig& config,
+            const Lattice3DRiskStage stage,
+            const detail::Lattice3DTopologyRequirement topology_requirement,
+            const RiskAwareLattice3DConfig& config,
             BoundedWorkerPool* const worker_pool) {
   using Clock = std::chrono::steady_clock;
   const auto deadline = Clock::now() + std::chrono::duration<double, std::milli>(
@@ -392,10 +445,14 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   const Key root{};
   records[root].g = 0.0;
   std::uint64_t sequence = 0U;
-  open.push(QueueEntry{.f = heuristicCost(start, planning_goal, config),
-                       .g_at_insert = 0.0,
-                       .sequence = sequence++,
-                       .key = root});
+  open.push(
+      QueueEntry{.f = searchHeuristic(start, planning_goal, root.topology_progress,
+                                      channels, topology_requirement, config),
+                 .g_at_insert = 0.0,
+                 .topology_satisfied = queueTopologySatisfied(root.topology_progress,
+                                                              topology_requirement),
+                 .sequence = sequence++,
+                 .key = root});
   Lattice3DSuccessorDiagnostics successor_diagnostics;
   Lattice3DSuccessorProfiling successor_profiling;
   const auto root_successors_started = Clock::now();
@@ -442,13 +499,15 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     }
     const Key next{.kind = NodeKind::kChannelExit,
                    .channel_index = static_cast<int>(channel_index),
-                   .reversed = reversed};
+                   .reversed = reversed,
+                   .topology_progress = TopologyProgress::kChannelTraversed};
     records[next] = *evaluation.candidate;
     records[next].parent = root;
     const Point3 successor = channelExit(channels[channel_index], reversed);
     open.push(QueueEntry{.f = evaluation.candidate->g +
                               1.5 * heuristicCost(successor, planning_goal, config),
                          .g_at_insert = evaluation.candidate->g,
+                         .topology_satisfied = true,
                          .sequence = sequence++,
                          .key = next});
     ++successor_diagnostics.channel_accepted;
@@ -467,7 +526,11 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
                                                 .count();
   }
   Key best = root;
-  double best_remaining = distance3D(start, planning_goal);
+  const bool unconstrained =
+      topology_requirement == detail::Lattice3DTopologyRequirement::kUnconstrained;
+  bool best_satisfies_topology = unconstrained;
+  double best_remaining = unconstrained ? distance3D(start, planning_goal)
+                                        : std::numeric_limits<double>::infinity();
   std::size_t expansions = 0U;
   std::size_t stale = 0U;
   std::size_t open_peak = open.size();
@@ -497,11 +560,16 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     ++expansions;
     const Point3 current = pointFor(entry.key, start, channels, config);
     const double remaining = distance3D(current, planning_goal);
-    if (remaining < best_remaining) {
+    const bool satisfies_topology =
+        unconstrained ||
+        entry.key.topology_progress == TopologyProgress::kChannelTraversed;
+    if (satisfies_topology &&
+        (!best_satisfies_topology || remaining < best_remaining)) {
       best_remaining = remaining;
       best = entry.key;
+      best_satisfies_topology = true;
     }
-    if (remaining <= config.goal_tolerance_m) {
+    if (satisfies_topology && remaining <= config.goal_tolerance_m) {
       CostMetrics connector;
       Vec3 incoming = found->second.incoming_direction;
       double clearance = found->second.minimum_clearance_m;
@@ -525,9 +593,10 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const std::size_t channel_generated_before =
         successor_diagnostics.channel_generated;
 
-    const Key lattice_base = entry.key.kind == NodeKind::kLattice
-                                 ? entry.key
-                                 : latticeKeyNear(current, start, config);
+    const Key lattice_base =
+        entry.key.kind == NodeKind::kLattice
+            ? entry.key
+            : latticeKeyNear(current, start, config, entry.key.topology_progress);
 
     struct LatticeEvaluation {
       Key next{};
@@ -547,7 +616,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
           const Key next{.kind = NodeKind::kLattice,
                          .x = lattice_base.x + dx,
                          .y = lattice_base.y + dy,
-                         .z = lattice_base.z + dz};
+                         .z = lattice_base.z + dz,
+                         .topology_progress = entry.key.topology_progress};
           lattice_evaluations.push_back(LatticeEvaluation{
               .next = next,
               .successor = latticePoint(next, start, config),
@@ -604,9 +674,13 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
       }
       stored = candidate;
       open.push(
-          QueueEntry{.f = candidate.g + 1.5 * heuristicCost(evaluation.successor,
-                                                            planning_goal, config),
+          QueueEntry{.f = candidate.g +
+                          1.5 * searchHeuristic(evaluation.successor, planning_goal,
+                                                evaluation.next.topology_progress,
+                                                channels, topology_requirement, config),
                      .g_at_insert = candidate.g,
+                     .topology_satisfied = queueTopologySatisfied(
+                         evaluation.next.topology_progress, topology_requirement),
                      .sequence = sequence++,
                      .key = evaluation.next});
       ++successor_diagnostics.lattice_accepted;
@@ -651,7 +725,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
       }
       const Key next{.kind = NodeKind::kChannelExit,
                      .channel_index = static_cast<int>(channel_index),
-                     .reversed = reversed};
+                     .reversed = reversed,
+                     .topology_progress = TopologyProgress::kChannelTraversed};
       Record& stored = records[next];
       if (!(evaluation.candidate->g + 1.0e-9 < stored.g)) {
         ++successor_diagnostics.channel_rejected_no_cost_improvement;
@@ -663,6 +738,7 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
       open.push(QueueEntry{.f = stored.g +
                                 1.5 * heuristicCost(successor, planning_goal, config),
                            .g_at_insert = stored.g,
+                           .topology_satisfied = true,
                            .sequence = sequence++,
                            .key = next});
       ++successor_diagnostics.channel_accepted;
@@ -700,7 +776,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   ReconstructedPath reconstructed = reconstruct(best, start, channels, config, records);
   result.points = std::move(reconstructed.points);
   result.selected_channels = std::move(reconstructed.traversals);
-  result.achieved_progress_m = distance3D(start, planning_goal) - best_remaining;
+  result.achieved_progress_m =
+      best_satisfies_topology ? distance3D(start, planning_goal) - best_remaining : 0.0;
   result.minimum_clearance_m = records.at(best).minimum_clearance_m;
   CostMetrics metrics = records.at(best).metrics;
   if (reached && goal_connector_metrics.has_value()) {
@@ -714,7 +791,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     appendUnique(result.points, planning_goal, unused_station_m);
     result.reached_mission_goal = distance3D(planning_goal, mission_goal) <= 1.0e-6;
     result.status = Lattice3DStatus::kReachedPlanningGoal;
-  } else if (result.points.size() >= 3U && result.achieved_progress_m >= 4.0) {
+  } else if (best_satisfies_topology && result.points.size() >= 3U &&
+             result.achieved_progress_m >= 4.0) {
     result.status = Lattice3DStatus::kViableFrontier;
   } else {
     result.status =
@@ -730,7 +808,7 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   result.planning_exposure_m = metrics.planning_exposure_m;
   result.critical_exposure_m = metrics.critical_exposure_m;
   result.turn_cost = metrics.turn_cost;
-  if (!reached) {
+  if (!reached && best_satisfies_topology) {
     const auto continuation_started = std::chrono::steady_clock::now();
     const detail::Lattice3DContinuationMetrics continuation =
         detail::evaluateLattice3DContinuation(
@@ -810,10 +888,12 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
        ++channel_index) {
     const Key forward{.kind = NodeKind::kChannelExit,
                       .channel_index = static_cast<int>(channel_index),
-                      .reversed = false};
+                      .reversed = false,
+                      .topology_progress = TopologyProgress::kChannelTraversed};
     const Key reverse{.kind = NodeKind::kChannelExit,
                       .channel_index = static_cast<int>(channel_index),
-                      .reversed = true};
+                      .reversed = true,
+                      .topology_progress = TopologyProgress::kChannelTraversed};
     const auto forward_record = records.find(forward);
     const auto reverse_record = records.find(reverse);
     const Record* best_record = nullptr;
@@ -868,125 +948,21 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
 
 } // namespace
 
-RiskAwareLattice3DResult planRiskAwareLattice3D(
+namespace detail {
+
+RiskAwareLattice3DResult searchRiskAwareLattice3DStage(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const Point3& start, const Vec3& preferred_direction, const Point3& mission_goal,
+    const Point3& start, const Vec3& preferred_direction, const Point3& planning_goal,
+    const Point3& mission_goal,
     const std::span<const ConstrainedFreeSpaceEdge> channel_edges,
+    const Lattice3DRiskStage stage,
+    const Lattice3DTopologyRequirement topology_requirement,
     const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool) {
-  const auto search_started = std::chrono::steady_clock::now();
-  if (grid.depth <= 1 ||
-      esdf_m.size() != static_cast<std::size_t>(grid.width) *
-                           static_cast<std::size_t>(grid.height) *
-                           static_cast<std::size_t>(grid.depth) ||
-      !(config.horizontal_step_m > 0.0) || !(config.vertical_step_m > 0.0) ||
-      !(config.sample_step_m > 0.0) ||
-      !(config.physical_footprint_sweep_step_m > 0.0) ||
-      !(config.nominal_horizontal_speed_mps > 0.0) ||
-      !(config.nominal_vertical_speed_mps > 0.0) ||
-      !(config.channel_connection_distance_m > 0.0) ||
-      evaluateFlightEnvelopeAltitude(start.z, config.flight_envelope) !=
-          FlightEnvelopeStatus::kValid ||
-      evaluateFlightEnvelopeAltitude(mission_goal.z, config.flight_envelope) !=
-          FlightEnvelopeStatus::kValid) {
-    return {};
-  }
-  const double full_distance = distance3D(start, mission_goal);
-  const double ratio = full_distance > config.planning_goal_distance_m
-                           ? config.planning_goal_distance_m / full_distance
-                           : 1.0;
-  const Point3 planning_goal{std::lerp(start.x, mission_goal.x, ratio),
-                             std::lerp(start.y, mission_goal.y, ratio), mission_goal.z};
-
-  struct TopologySearchBatch {
-    std::vector<ConstrainedFreeSpaceEdge> channels;
-    std::vector<RiskAwareLattice3DResult> stage_results;
-    double worker_ms{0.0};
-  };
-
-  std::vector<TopologySearchBatch> topology_searches;
-  topology_searches.push_back(TopologySearchBatch{
-      .channels = std::vector<ConstrainedFreeSpaceEdge>{channel_edges.begin(),
-                                                        channel_edges.end()},
-      .stage_results = {},
-      .worker_ms = 0.0,
-  });
-  const std::size_t topology_group_count =
-      worker_pool != nullptr && worker_pool->workerCount() > 2U &&
-              channel_edges.size() > 1U
-          ? std::min(channel_edges.size(), worker_pool->workerCount() - 1U)
-          : 0U;
-  topology_searches.resize(1U + topology_group_count);
-  for (std::size_t channel_index = 0U; channel_index < channel_edges.size();
-       ++channel_index) {
-    if (topology_group_count == 0U) {
-      break;
-    }
-    topology_searches[1U + channel_index % topology_group_count].channels.push_back(
-        channel_edges[channel_index]);
-  }
-  const auto run_topology_search = [&](const std::size_t search_index) {
-    const auto topology_started = std::chrono::steady_clock::now();
-    TopologySearchBatch& topology = topology_searches[search_index];
-    topology.stage_results.reserve(3U);
-    const std::span<const ConstrainedFreeSpaceEdge> topology_channels{
-        topology.channels};
-    for (const Lattice3DRiskStage stage :
-         {Lattice3DRiskStage::kPreferredOnly, Lattice3DRiskStage::kPlanningAllowed,
-          Lattice3DRiskStage::kCriticalAllowed}) {
-      topology.stage_results.push_back(
-          searchStage(grid, esdf_m, start, preferred_direction, planning_goal,
-                      mission_goal, topology_channels, stage, config, worker_pool));
-    }
-    topology.worker_ms = std::chrono::duration<double, std::milli>(
-                             std::chrono::steady_clock::now() - topology_started)
-                             .count();
-  };
-  const bool topology_parallel = worker_pool != nullptr &&
-                                 worker_pool->canParallelizeFromCurrentThread() &&
-                                 topology_searches.size() > 1U;
-  if (topology_parallel) {
-    worker_pool->parallelFor(topology_searches.size(), run_topology_search);
-  } else {
-    for (std::size_t search_index = 0U; search_index < topology_searches.size();
-         ++search_index) {
-      run_topology_search(search_index);
-    }
-  }
-  std::vector<RiskAwareLattice3DResult> stage_results;
-  stage_results.reserve(topology_searches.size() * 3U);
-  double topology_search_worker_ms = 0.0;
-  for (TopologySearchBatch& topology : topology_searches) {
-    topology_search_worker_ms += topology.worker_ms;
-    for (RiskAwareLattice3DResult& stage_result : topology.stage_results) {
-      stage_results.push_back(std::move(stage_result));
-    }
-  }
-
-  detail::Lattice3DStageSelection selection =
-      detail::selectLattice3DStageResult(stage_results, channel_edges.size());
-  Lattice3DSuccessorProfiling aggregate_successor_profiling;
-  double aggregate_continuation_validation_ms = 0.0;
-  for (const RiskAwareLattice3DResult& stage_result : stage_results) {
-    detail::accumulateLattice3DSuccessorProfile(
-        aggregate_successor_profiling.search, stage_result.successor_profiling.search);
-    detail::accumulateLattice3DSuccessorProfile(
-        aggregate_successor_profiling.continuation,
-        stage_result.successor_profiling.continuation);
-    aggregate_continuation_validation_ms += stage_result.continuation_validation_ms;
-  }
-  RiskAwareLattice3DResult result = std::move(stage_results[selection.selected_index]);
-  result.successor_profiling = aggregate_successor_profiling;
-  result.topology_searches = topology_searches.size();
-  result.parallel_topology_searches = topology_parallel ? topology_searches.size() : 0U;
-  result.topology_search_worker_ms = topology_search_worker_ms;
-  result.continuation_validation_ms = aggregate_continuation_validation_ms;
-  result.planning_goal = planning_goal;
-  result.topology_candidates = std::move(selection.diagnostics);
-  result.route_fingerprint = routeFingerprint(result.route, result.selected_channels);
-  result.search_ms = std::chrono::duration<double, std::milli>(
-                         std::chrono::steady_clock::now() - search_started)
-                         .count();
-  return result;
+  return searchStage(grid, esdf_m, start, preferred_direction, planning_goal,
+                     mission_goal, channel_edges, stage, topology_requirement, config,
+                     worker_pool);
 }
+
+} // namespace detail
 
 } // namespace drone_city_nav

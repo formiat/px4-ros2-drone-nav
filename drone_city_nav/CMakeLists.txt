@@ -193,6 +193,7 @@ add_library(
   src/risk_aware_lattice_3d.cpp
   src/risk_aware_lattice_3d_continuation.cpp
   src/risk_aware_lattice_3d_geometry.cpp
+  src/risk_aware_lattice_3d_planner.cpp
   src/risk_aware_lattice_3d_result.cpp
   src/route_3d.cpp
   src/simulation_truth_alignment.cpp

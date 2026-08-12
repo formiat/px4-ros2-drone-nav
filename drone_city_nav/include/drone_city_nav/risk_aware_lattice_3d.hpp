@@ -102,6 +102,7 @@ struct RiskAwareLattice3DConfig {
   double channel_connection_distance_m{3.0};
   double frontier_minimum_reachable_depth_m{8.0};
   std::size_t frontier_validation_maximum_states{2048U};
+  std::size_t maximum_topology_search_groups{3U};
   std::size_t maximum_expansions{200000U};
   double maximum_search_time_ms{250.0};
 };
