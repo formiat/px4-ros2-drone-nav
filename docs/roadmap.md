@@ -145,6 +145,32 @@ An open design question is whether the drones should exchange position,
 velocity, and heading telemetry through a shared communication channel to
 improve cooperative collision avoidance.
 
+## 6.1. Non-Cooperative Collision Avoidance in Interception Missions
+
+After the cooperative air-traffic work in section 6 establishes reusable
+collision-avoidance behavior, adapt and strengthen it for attacking drones in
+interception missions.
+
+Each attacker should carry a simulated high-rate onboard radar that reports
+relative observations of every nearby aircraft. The sensor must not classify a
+detection as an attacker or interceptor, and attackers must not exchange state
+or coordinate avoidance maneuvers with one another. Each attacker therefore
+reacts independently to all nearby drones using only its own state and onboard
+radar measurements.
+
+The interception policy should request stronger separation than the cooperative
+civilian policy. An initial target is approximately 10 m from every detected
+aircraft, compared with an approximately 5 m target for ordinary cooperative
+traffic. This separation is a strong optimization preference, not a reachability
+constraint: proximity should add a substantial trajectory cost and encourage a
+clear avoidance maneuver, but it must never create a prohibited grid, inflated
+obstacle, hard exclusion volume, or equivalent mandatory boundary around another
+drone.
+
+This keeps unavoidable close approaches and physical interception possible
+while making an attacker actively attempt to avoid collisions instead of flying
+as if other aircraft did not exist.
+
 ## 7. Advanced 3D Passages
 
 Extend the current 3D passage system with more complex passage geometries and
