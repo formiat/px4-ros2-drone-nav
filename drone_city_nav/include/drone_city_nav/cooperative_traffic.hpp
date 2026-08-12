@@ -202,6 +202,7 @@ private:
 
   CooperativeConflictConfig config_{};
   std::map<std::string, LatchedConflict> conflicts_;
+  std::string primary_peer_id_;
   std::uint64_t generation_{0U};
 };
 

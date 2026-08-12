@@ -102,16 +102,30 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
         )
         errors: list[str] = []
 
-        VALIDATOR.validate_cooperative_traffic(log, 4, errors)
+        VALIDATOR.validate_cooperative_traffic(log, 4, False, errors)
 
         self.assertEqual(errors, [])
 
     def test_any_vehicle_destruction_is_rejected(self) -> None:
         errors: list[str] = []
         VALIDATOR.validate_cooperative_traffic(
-            "COOPERATIVE_VEHICLE_DESTROYED referee_observed=true", 4, errors
+            "COOPERATIVE_VEHICLE_DESTROYED referee_observed=true", 4, False, errors
         )
         self.assertIn("FAIL: cooperative traffic contains a physical loss", errors)
+
+    def test_no_static_requires_actual_peer_memory_filtering(self) -> None:
+        errors: list[str] = []
+        VALIDATOR.validate_cooperative_traffic(
+            "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=2 matched_peers=1 "
+            "known_peers=3 latest_safety_excluded=false",
+            4,
+            True,
+            errors,
+        )
+        self.assertNotIn(
+            "FAIL: cooperative peers are filtered only from persistent lidar memory",
+            errors,
+        )
 
 
 class InterceptSettlementValidationTest(unittest.TestCase):

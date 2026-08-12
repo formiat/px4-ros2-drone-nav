@@ -58,7 +58,10 @@ def safety_relevant_ros_log(ros_log: str, mission_type: str) -> str:
 
 
 def validate_cooperative_traffic(
-    ros_log: str, expected_vehicles: int, errors: list[str]
+    ros_log: str,
+    expected_vehicles: int,
+    expected_memory: bool | None,
+    errors: list[str],
 ) -> None:
     require(
         "cooperative ground truth is restricted to the referee",
@@ -121,6 +124,14 @@ def validate_cooperative_traffic(
         errors.append("FAIL: cooperative traffic contains a physical loss")
     else:
         print("OK: cooperative traffic has no vehicle destruction")
+    if expected_memory is True:
+        require(
+            "cooperative peers are filtered only from persistent lidar memory",
+            ros_log,
+            r"COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=[1-9][0-9]* "
+            r"matched_peers=[1-9][0-9]* .*latest_safety_excluded=false",
+            errors,
+        )
 
 
 def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
@@ -696,7 +707,9 @@ def main() -> int:
         elif args.mission_type == "multi_intercept":
             validate_multi_intercept_settlement(ros_log, errors)
         elif args.mission_type == "cooperative_traffic":
-            validate_cooperative_traffic(ros_log, expected_vehicles, errors)
+            validate_cooperative_traffic(
+                ros_log, expected_vehicles, expected_memory, errors
+            )
     elif mission_failed:
         print("WARN: mission failure was allowed")
 

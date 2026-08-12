@@ -158,6 +158,45 @@ TEST(CooperativeConflictLifecycle, ReleasesOnlyAfterConfirmedSafeSeparation) {
           .active);
 }
 
+TEST(CooperativeConflictLifecycle, LatchesPrimaryPeerDuringThreeVehicleConflict) {
+  const CooperativeFlightIntentData ownship =
+      linearIntent("civilian_0", Point3{-10.0, 0.0, 10.0}, Point3{10.0, 0.0, 10.0},
+                   Vec3{10.0, 0.0, 0.0});
+  const CooperativeFlightIntentData first_primary =
+      linearIntent("civilian_1", Point3{0.0, -10.0, 10.0}, Point3{0.0, 10.0, 10.0},
+                   Vec3{0.0, 10.0, 0.0});
+  const CooperativeFlightIntentData second_peer =
+      linearIntent("civilian_2", Point3{4.0, -10.0, 10.0}, Point3{4.0, 10.0, 10.0},
+                   Vec3{0.0, 10.0, 0.0});
+  CooperativeConflictLifecycle lifecycle;
+
+  const CooperativeAvoidanceDecision initial =
+      lifecycle.update(kNowNs, ownship, std::vector{second_peer, first_primary});
+
+  ASSERT_TRUE(initial.active);
+  ASSERT_EQ(initial.peers.size(), 2U);
+  EXPECT_EQ(initial.primary_peer_id, "civilian_1");
+  const CooperativeManeuver initial_maneuver = initial.preferred_maneuver;
+
+  const CooperativeFlightIntentData still_conflicting_primary =
+      linearIntent("civilian_1", Point3{4.0, -10.0, 10.0}, Point3{4.0, 10.0, 10.0},
+                   Vec3{0.0, 10.0, 0.0});
+  const CooperativeFlightIntentData now_closest_peer =
+      linearIntent("civilian_2", Point3{0.0, -10.0, 10.0}, Point3{0.0, 10.0, 10.0},
+                   Vec3{0.0, 10.0, 0.0});
+  const CooperativeAvoidanceDecision updated =
+      lifecycle.update(kNowNs + 100'000'000LL, ownship,
+                       std::vector{still_conflicting_primary, now_closest_peer});
+
+  ASSERT_TRUE(updated.active);
+  ASSERT_EQ(updated.peers.size(), 2U);
+  EXPECT_LT(updated.peers.front().prediction.minimum_separation_m,
+            updated.peers.back().prediction.minimum_separation_m);
+  EXPECT_EQ(updated.peers.front().intent.vehicle_id, "civilian_2");
+  EXPECT_EQ(updated.primary_peer_id, "civilian_1");
+  EXPECT_EQ(updated.preferred_maneuver, initial_maneuver);
+}
+
 TEST(CooperativeChannelCoordination, AssignsOppositeSidesByTravelDirection) {
   EXPECT_EQ(assignCooperativeChannelLane(1, 5U), 0U);
   EXPECT_EQ(assignCooperativeChannelLane(-1, 5U), 4U);

@@ -464,9 +464,17 @@ CooperativeAvoidanceDecision CooperativeConflictLifecycle::update(
   });
   result.active = !result.peers.empty();
   if (!result.active) {
+    primary_peer_id_.clear();
     return result;
   }
-  const CooperativeConflictPeer& primary = result.peers.front();
+  const auto latched_primary =
+      std::ranges::find(result.peers, primary_peer_id_,
+                        [](const CooperativeConflictPeer& peer) -> const std::string& {
+                          return peer.intent.vehicle_id;
+                        });
+  const CooperativeConflictPeer& primary =
+      latched_primary != result.peers.end() ? *latched_primary : result.peers.front();
+  primary_peer_id_ = primary.intent.vehicle_id;
   const auto latch = conflicts_.find(primary.intent.vehicle_id);
   if (latch == conflicts_.end()) {
     return result;
@@ -481,6 +489,7 @@ CooperativeAvoidanceDecision CooperativeConflictLifecycle::update(
 
 void CooperativeConflictLifecycle::reset() noexcept {
   conflicts_.clear();
+  primary_peer_id_.clear();
   generation_ = 0U;
 }
 
