@@ -96,6 +96,7 @@ struct CooperativeManeuverCommandData {
   std::string channel_yield_to_vehicle_id;
   std::string channel_id;
   std::string channel_conflict_resource_id;
+  std::uint64_t channel_route_generation{0U};
   std::size_t channel_lane_index{0U};
   std::size_t channel_lane_count{0U};
   std::vector<CooperativePeerTrajectoryData> conflicting_peers;

@@ -245,6 +245,7 @@ cooperativeManeuverCommandData(const msg::CooperativeManeuverCommand& message) {
       .channel_yield_to_vehicle_id = message.channel_yield_to_vehicle_id,
       .channel_id = message.channel_id,
       .channel_conflict_resource_id = message.channel_conflict_resource_id,
+      .channel_route_generation = message.channel_route_generation,
       .channel_lane_index = message.channel_lane_index,
       .channel_lane_count = message.channel_lane_count,
       .conflicting_peers = {},

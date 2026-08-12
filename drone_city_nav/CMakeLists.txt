@@ -147,6 +147,7 @@ add_library(
   src/ambiguous_lidar_hit_tracker.cpp
   src/bounded_worker_pool.cpp
   src/channel_lanes.cpp
+  src/cooperative_channel_execution.cpp
   src/cooperative_channel_route.cpp
   src/cooperative_channel_coordination.cpp
   src/cooperative_mppi_adapter.cpp
@@ -781,6 +782,12 @@ if(BUILD_TESTING)
   target_compile_features(cooperative_channel_route_test PRIVATE cxx_std_20)
   target_link_libraries(cooperative_channel_route_test drone_city_nav_core)
   enable_project_warnings(cooperative_channel_route_test)
+
+  ament_add_gtest(cooperative_channel_execution_test
+                  tests/cooperative_channel_execution_test.cpp)
+  target_compile_features(cooperative_channel_execution_test PRIVATE cxx_std_20)
+  target_link_libraries(cooperative_channel_execution_test drone_city_nav_core)
+  enable_project_warnings(cooperative_channel_execution_test)
 
   ament_add_gtest(cooperative_traffic_test tests/cooperative_traffic_test.cpp)
   target_compile_features(cooperative_traffic_test PRIVATE cxx_std_20)

@@ -13,6 +13,7 @@ bool channel_yield_required
 string channel_yield_to_vehicle_id
 string channel_id
 string channel_conflict_resource_id
+uint64 channel_route_generation
 uint16 channel_lane_index
 uint16 channel_lane_count
 CooperativePeerTrajectory[] conflicting_peers

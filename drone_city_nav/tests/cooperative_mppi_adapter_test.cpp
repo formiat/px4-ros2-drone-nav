@@ -24,6 +24,7 @@ constexpr std::int64_t kSecondNs{1'000'000'000LL};
       .channel_yield_to_vehicle_id = {},
       .channel_id = {},
       .channel_conflict_resource_id = {},
+      .channel_route_generation = 0U,
       .channel_lane_index = 0U,
       .channel_lane_count = 0U,
       .conflicting_peers =

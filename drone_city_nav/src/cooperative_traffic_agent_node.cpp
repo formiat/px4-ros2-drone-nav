@@ -295,6 +295,7 @@ private:
     command.channel_yield_to_vehicle_id = channel.yield_to_vehicle_id;
     command.channel_id = ownship.channel.channel_id;
     command.channel_conflict_resource_id = ownship.channel.conflict_resource_id;
+    command.channel_route_generation = ownship.channel.route_generation;
     command.channel_lane_index = static_cast<std::uint16_t>(channel.lane_index);
     command.channel_lane_count = static_cast<std::uint16_t>(channel.lane_count);
     command.conflicting_peers.reserve(avoidance.peers.size());
