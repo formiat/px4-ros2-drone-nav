@@ -131,19 +131,36 @@ attackers and does not implement an endless campaign.
 The `2x2` spectator starts on `evader_0` and uses cyclic `next_living`
 reselection, preferring `evader_1` after the first attacker's destruction.
 
-## 6. Cooperative Multi-Drone Air Traffic
+## 6. Cooperative Multi-Drone Air Traffic (Completed)
 
-Run multiple autonomous civilian drones simultaneously in the same urban
-environment. Each drone has an independent point-to-point mission.
+The finite cooperative scenario launches four autonomous civilian drones from
+the city corners. Each vehicle has an independent point-to-point mission to the
+opposite corner, starts at the same altitude, and owns an isolated PX4,
+navigation, mapping, and MPPI pipeline. Fixed cruise-altitude layers are not
+preassigned.
 
-All drones initially fly at the same altitude. Fixed cruise-altitude layers
-must not be preassigned. Instead, the drones should dynamically negotiate
-collision-free trajectories during the mission, including temporary altitude
-changes when necessary.
+The drones exchange typed, bounded-validity flight intents at 20 Hz. Each intent
+contains the vehicle's physical footprint, current position and velocity,
+predicted MPPI trajectory, maneuver state, and constrained-channel use. Every
+vehicle independently validates peer freshness, predicts continuous closest
+approach over the shared horizon, and selects deterministic complementary
+vertical or lateral maneuvers. Latching and release hysteresis prevent rapid
+maneuver flapping.
 
-An open design question is whether the drones should exchange position,
-velocity, and heading telemetry through a shared communication channel to
-improve cooperative collision avoidance.
+Peer separation is implemented as a strong soft MPPI cost and preferred
+acceleration direction. It does not create prohibited grids, inflated obstacles,
+or hard exclusion volumes. Static passages expose capacity derived from
+raw-validated lane geometry: opposite traffic may use separate lanes when the
+physical width permits it, while exclusive or conflicting use is resolved by
+deterministic right-of-way and a route-safe hold before entry.
+
+In no-static mode, cooperative peer returns are filtered from persistent lidar
+memory without being removed from the latest-scan safety path. A dedicated
+referee verifies coordinate readiness, physical minimum separation, goal
+arrival, stationary hold, vehicle destruction, and building collisions. The
+supported headless contract requires every vehicle to settle at its own goal
+without physical loss. Both static-map and no-static-map scenarios have passed
+this full mission validation.
 
 ## 6.1. Non-Cooperative Collision Avoidance in Interception Missions
 

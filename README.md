@@ -48,6 +48,8 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/sim_intercept_headless.sh
 ./scripts/sim_multi_intercept_gui.sh
 ./scripts/sim_multi_intercept_headless.sh
+./scripts/sim_cooperative_traffic_gui.sh
+./scripts/sim_cooperative_traffic_headless.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -68,6 +70,8 @@ make sim-intercept-gui
 make sim-intercept-headless
 make sim-multi-intercept-gui
 make sim-multi-intercept-headless
+make sim-cooperative-traffic-gui
+make sim-cooperative-traffic-headless
 ```
 
 Build and run the isolated CUDA MPPI benchmark:
@@ -239,6 +243,46 @@ The `2x2` GUI starts with `evader_0` as the spectator and uses the cyclic
 it is alive; otherwise it continues through the scenario order and wraps to the
 first living vehicle. Gazebo, the RViz `drone_follow` frame, and selected planner
 diagnostics consume the same typed spectator selection.
+
+Run the cooperative civilian traffic mission:
+
+```bash
+./scripts/sim_cooperative_traffic_gui.sh
+./scripts/sim_cooperative_traffic_headless.sh
+```
+
+The finite scenario in
+`drone_city_nav/config/cooperative_traffic_scenario.json` launches four civilian
+drones from the city corners at the same initial and cruise altitude. Every
+vehicle has an independent point-to-point goal in the opposite corner and owns
+its own PX4, navigation, mapping, and MPPI pipeline. No fixed altitude layers are
+assigned.
+
+At 20 Hz, each vehicle publishes a typed `CooperativeFlightIntent` containing
+its current state, physical footprint, bounded-validity MPPI horizon, and active
+channel use. Every cooperative agent independently rejects stale or out-of-order
+peer intents, predicts the continuous closest approach over a five-second
+horizon, and chooses a deterministic complementary climb, descent, or lateral
+maneuver. Conflict state is latched briefly and released with hysteresis. The
+result is a soft planner preference and peer-separation cost, not a prohibited
+grid, inflated obstacle, or hard exclusion volume; raw physical obstacles remain
+the only hard collision constraint.
+
+Static-map channel routes derive their lane capacity from raw-validated channel
+geometry and the full drone footprint. Opposite traffic uses separate lanes when
+the passage has enough capacity. An exclusive or conflicting channel instead
+uses deterministic right-of-way and a route-safe hold before entry; an active
+constrained span is never replaced mid-traversal. In no-static mode, peer lidar
+returns are removed only from persistent obstacle memory. The unchanged latest
+scan still reaches immediate safety validation, so cooperative filtering cannot
+hide a real close-range obstacle.
+
+The mission referee uses Gazebo ground truth only for readiness and physical
+adjudication. Headless success requires all four drones to reach and physically
+hold at their own goals, no vehicle destruction or building collision, and a
+complete minimum-separation report. Both static-map and no-static-map workflows
+are supported. The GUI spectator starts on `civilian_0` and uses cyclic
+`next_living` selection.
 
 In the Gazebo view, interceptor visibility markers remain yellow and the evader
 visibility marker is red. RViz continues to use its distinct per-role colors.
