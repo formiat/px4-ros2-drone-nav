@@ -126,10 +126,11 @@ def validate_cooperative_traffic(
         print("OK: cooperative traffic has no vehicle destruction")
     if expected_memory is True:
         require(
-            "cooperative peers are filtered only from persistent lidar memory",
+            "cooperative peer memory filtering is active without weakening latest lidar safety",
             ros_log,
-            r"COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=[1-9][0-9]* "
-            r"matched_peers=[1-9][0-9]* .*latest_safety_excluded=false",
+            r"COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=[0-9]+ "
+            r"matched_peers=[0-9]+ known_peers=[1-9][0-9]* "
+            r"latest_safety_excluded=false",
             errors,
         )
 

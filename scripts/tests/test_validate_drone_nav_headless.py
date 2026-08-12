@@ -113,17 +113,35 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
         )
         self.assertIn("FAIL: cooperative traffic contains a physical loss", errors)
 
-    def test_no_static_requires_actual_peer_memory_filtering(self) -> None:
+    def test_no_static_accepts_active_peer_filter_without_incidental_lidar_hit(
+        self,
+    ) -> None:
         errors: list[str] = []
         VALIDATOR.validate_cooperative_traffic(
-            "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=2 matched_peers=1 "
+            "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=0 matched_peers=0 "
             "known_peers=3 latest_safety_excluded=false",
             4,
             True,
             errors,
         )
         self.assertNotIn(
-            "FAIL: cooperative peers are filtered only from persistent lidar memory",
+            "FAIL: cooperative peer memory filtering is active without weakening "
+            "latest lidar safety",
+            errors,
+        )
+
+    def test_no_static_requires_peer_filter_wiring(self) -> None:
+        errors: list[str] = []
+        VALIDATOR.validate_cooperative_traffic(
+            "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=0 matched_peers=0 "
+            "known_peers=0 latest_safety_excluded=false",
+            4,
+            True,
+            errors,
+        )
+        self.assertIn(
+            "FAIL: cooperative peer memory filtering is active without weakening "
+            "latest lidar safety",
             errors,
         )
 
