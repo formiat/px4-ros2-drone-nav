@@ -182,12 +182,8 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
             max(0, int(outcome_record.group(1)) - 1) if outcome_record else 0
         )
         if expected_holds > 0:
-            require_count(
-                "surviving interceptors confirm hold after capture",
-                settled_log,
-                r"INTERCEPTOR_HOLD_CONFIRMED vehicle_id='interceptor_[0-9]+'",
-                expected_holds,
-                errors,
+            validate_intercept_survivor_settlement(
+                ros_log, settled_log, expected_holds, errors
             )
         return
 
@@ -235,6 +231,59 @@ def validate_intercept_settlement(ros_log: str, errors: list[str]) -> None:
             errors,
         )
         print("OK: evader goal settlement keeps both vehicles armed")
+
+
+def validate_intercept_survivor_settlement(
+    ros_log: str,
+    settled_log: str,
+    expected_survivors: int,
+    errors: list[str],
+) -> None:
+    requested_ids = sorted(
+        set(
+            re.findall(
+                r"INTERCEPTOR_HOLD requested=true "
+                r"vehicle_id='(interceptor_[0-9]+)'",
+                settled_log,
+            )
+        )
+    )
+    if len(requested_ids) < expected_survivors:
+        errors.append(
+            "FAIL: post-capture hold is requested for every surviving interceptor "
+            f"({len(requested_ids)} < {expected_survivors})"
+        )
+        return
+
+    for interceptor_id in requested_ids:
+        if re.search(
+            rf"INTERCEPTOR_HOLD_CONFIRMED "
+            rf"vehicle_id='{re.escape(interceptor_id)}'",
+            settled_log,
+        ):
+            print(f"OK: {interceptor_id} confirms post-capture hold")
+            continue
+        destroyed = re.search(
+            r"VEHICLE_DESTROYED referee_observed=true role=interceptor "
+            rf"vehicle_id='{re.escape(interceptor_id)}' "
+            r"cause=proximity_collision",
+            settled_log,
+        )
+        disarmed = re.search(
+            rf"\[vehicles\.{re.escape(interceptor_id)}\.mppi_offboard_node\].*"
+            r"VEHICLE_DESTROYED disarm_confirmed=true role=interceptor "
+            r"cause=proximity_collision",
+            ros_log,
+        )
+        if destroyed and disarmed:
+            print(
+                f"OK: {interceptor_id} proximity death supersedes "
+                "post-capture hold"
+            )
+            continue
+        errors.append(
+            f"FAIL: {interceptor_id} confirms post-capture hold or proximity death"
+        )
 
 
 def validate_physical_proximity_intercept(

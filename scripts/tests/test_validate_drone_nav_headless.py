@@ -249,6 +249,8 @@ class InterceptSettlementValidationTest(unittest.TestCase):
             "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
             "disarm_confirmed=true role=evader cause=proximity_intercept "
             "mission_epoch=1 detail='intercepted'\n"
+            "INTERCEPTOR_HOLD requested=true vehicle_id='interceptor_1'\n"
+            "INTERCEPTOR_HOLD requested=true vehicle_id='interceptor_2'\n"
             "INTERCEPTOR_HOLD_CONFIRMED vehicle_id='interceptor_1' "
             "position_error_m=0.2 speed_mps=0.1\n"
             "INTERCEPTOR_HOLD_CONFIRMED vehicle_id='interceptor_2' "
@@ -281,6 +283,70 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         errors: list[str] = []
         VALIDATOR.validate_intercept_settlement(log, errors)
         self.assertEqual(errors, [])
+
+    def test_intercept_accepts_survivor_proximity_collision_after_capture(
+        self,
+    ) -> None:
+        log = (
+            "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true "
+            "live_interceptors=3\n"
+            "PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true "
+            "interceptor_id='interceptor_1' measured_swept_separation_m=4.2 "
+            "current_separation_m=4.2 separation_threshold_m=5.0 "
+            "interpolation_fraction=1.0 interceptor_position=(1,2,3) "
+            "evader_position=(4,5,6)\n"
+            "INTERCEPTOR_HOLD requested=true vehicle_id='interceptor_0'\n"
+            "INTERCEPTOR_HOLD requested=true vehicle_id='interceptor_2'\n"
+            "[vehicles.interceptor_1.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=interceptor cause=proximity_intercept "
+            "mission_epoch=1 detail='intercepted'\n"
+            "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=evader cause=proximity_intercept "
+            "mission_epoch=1 detail='intercepted'\n"
+            "VEHICLE_DESTROYED referee_observed=true role=interceptor "
+            "vehicle_id='interceptor_0' cause=proximity_collision\n"
+            "VEHICLE_DESTROYED referee_observed=true role=interceptor "
+            "vehicle_id='interceptor_2' cause=proximity_collision\n"
+            "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=interceptor cause=proximity_collision\n"
+            "[vehicles.interceptor_2.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=interceptor cause=proximity_collision\n"
+            "MISSION_RESULT success=true mission=intercept outcome=intercepted "
+            "capturing_interceptor_id='interceptor_1'\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_intercept_settlement(log, errors)
+
+        self.assertEqual(errors, [])
+
+    def test_intercept_rejects_unsettled_survivor_after_capture(self) -> None:
+        log = (
+            "INTERCEPT_OUTCOME outcome=intercepted first_terminal_event=true "
+            "live_interceptors=2\n"
+            "PROXIMITY_INTERCEPT destruction_requested=true physical_truth=true "
+            "interceptor_id='interceptor_0' measured_swept_separation_m=4.9 "
+            "current_separation_m=4.9 separation_threshold_m=5.0 "
+            "interpolation_fraction=1.0 interceptor_position=(1,2,3) "
+            "evader_position=(4,5,6)\n"
+            "INTERCEPTOR_HOLD requested=true vehicle_id='interceptor_1'\n"
+            "[vehicles.interceptor_0.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=interceptor cause=proximity_intercept "
+            "mission_epoch=1 detail='intercepted'\n"
+            "[vehicles.evader.mppi_offboard_node]: VEHICLE_DESTROYED "
+            "disarm_confirmed=true role=evader cause=proximity_intercept "
+            "mission_epoch=1 detail='intercepted'\n"
+            "MISSION_RESULT success=true mission=intercept outcome=intercepted "
+            "capturing_interceptor_id='interceptor_0'\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_intercept_settlement(log, errors)
+
+        self.assertIn(
+            "FAIL: interceptor_1 confirms post-capture hold or proximity death",
+            errors,
+        )
 
     def test_intercept_without_physical_proximity_evidence_is_rejected(self) -> None:
         log = (
