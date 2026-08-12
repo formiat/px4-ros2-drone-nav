@@ -120,16 +120,39 @@ TEST(StaticRouteExtensionTest, CandidateMustImproveEndpointAndAvoidRawOccupancy)
             StaticRouteCandidateStatus::kRawCollision);
 }
 
-TEST(StaticRouteExtensionTest, RequiredContinuationMayTemporarilyLoseGoalProgress) {
+TEST(StaticRouteExtensionTest, SafetyReplanMayTemporarilyLoseGoalProgress) {
   const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
                                 std::numeric_limits<float>::infinity());
 
   const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
       route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
-      FlightEnvelopeConfig{}, true);
+      FlightEnvelopeConfig{}, StaticRouteReplacementPolicy::kAllowSafetyReplan);
 
   EXPECT_TRUE(result.accepted);
+}
+
+TEST(StaticRouteExtensionTest, OrdinaryExtensionCannotReplaceRouteWithoutProgress) {
+  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
+                                std::numeric_limits<float>::infinity());
+
+  const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
+      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
+      FlightEnvelopeConfig{},
+      StaticRouteReplacementPolicy::kRequireEndpointImprovement);
+
+  EXPECT_FALSE(result.accepted);
+  EXPECT_EQ(result.status, StaticRouteCandidateStatus::kNoEndpointImprovement);
+}
+
+TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {
+  EXPECT_EQ(staticRouteReplacementPolicyName(
+                StaticRouteReplacementPolicy::kRequireEndpointImprovement),
+            "require_endpoint_improvement");
+  EXPECT_EQ(staticRouteReplacementPolicyName(
+                StaticRouteReplacementPolicy::kAllowSafetyReplan),
+            "allow_safety_replan");
 }
 
 TEST(StaticRouteExtensionTest, RejectsRouteOutsideFlightEnvelope) {

@@ -86,6 +86,10 @@ void ProductionMppiNode::processStaticGuideSearch(
   prepared.topology_critical_exposure_m = lattice.critical_exposure_m;
   prepared.continuation_validation_ms = lattice.continuation_validation_ms;
   prepared.route_fingerprint = lattice.route_fingerprint;
+  const StaticRouteReplacementPolicy replacement_policy =
+      world.static_route_replan_request
+          ? StaticRouteReplacementPolicy::kAllowSafetyReplan
+          : StaticRouteReplacementPolicy::kRequireEndpointImprovement;
 
   StaticRouteCandidateValidation validation{.status =
                                                 StaticRouteCandidateStatus::kEmpty};
@@ -158,7 +162,7 @@ void ProductionMppiNode::processStaticGuideSearch(
           *mutable_route, world.grid, *world.distances_m, mission_goal,
           static_route_extension_config_.minimum_endpoint_improvement_m,
           lattice.reached_mission_goal, lattice_3d_config_.flight_envelope,
-          world.static_route_extension_request || world.static_route_replan_request,
+          replacement_policy,
           SweptFootprintConfig{
               .radius_m = lattice_3d_config_.physical_footprint_radius_m,
               .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
@@ -308,7 +312,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       " activated=%s activation_status=%.*s revision_matches=%s "
       "generation_matches=%s objective_matches=%s extension=%s replan=%s "
       "base_generation=%" PRIu64 " replan_reason=%s"
-      " validation=%.*s endpoint_improvement_m=%.2f status=%s termination=%s "
+      " replacement_policy=%.*s validation=%.*s endpoint_improvement_m=%.2f "
+      "status=%s termination=%s "
       "points=%zu samples=%zu spans=%zu expansions=%zu expansion_limit=%zu "
       "deadline_ms=%.2f "
       "risk_stage=%s start=(%.2f,%.2f,%.2f) planning_goal=(%.2f,%.2f,%.2f) "
@@ -354,6 +359,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       world.static_route_replan_request ? world.static_route_replan_base_generation
                                         : world.static_route_extension_base_generation,
       globalGuideReleaseReasonName(world.static_route_replan_reason),
+      static_cast<int>(staticRouteReplacementPolicyName(replacement_policy).size()),
+      staticRouteReplacementPolicyName(replacement_policy).data(),
       static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
       staticRouteCandidateStatusName(validation.status).data(),
       validation.endpoint_improvement_m, lattice3DStatusName(lattice.status),

@@ -263,7 +263,8 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
     const std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
     const std::span<const float> esdf_m, const Point3& mission_goal,
     const double minimum_endpoint_improvement_m, const bool reaches_mission_goal,
-    const FlightEnvelopeConfig& flight_envelope, const bool required_continuation,
+    const FlightEnvelopeConfig& flight_envelope,
+    const StaticRouteReplacementPolicy replacement_policy,
     const SweptFootprintConfig& footprint_config) noexcept {
   if (candidate_route.size() < 2U) {
     return {.status = StaticRouteCandidateStatus::kEmpty};
@@ -291,7 +292,9 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
   if (!active_route.empty()) {
     improvement_m = distance3D(active_route.back().position, mission_goal) -
                     distance3D(candidate_route.back().position, mission_goal);
-    if (!required_continuation && !reaches_mission_goal &&
+    if (replacement_policy ==
+            StaticRouteReplacementPolicy::kRequireEndpointImprovement &&
+        !reaches_mission_goal &&
         improvement_m + 1.0e-9 < std::max(0.0, minimum_endpoint_improvement_m)) {
       return {.status = StaticRouteCandidateStatus::kNoEndpointImprovement,
               .endpoint_improvement_m = improvement_m};
@@ -300,6 +303,17 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
   return {.status = StaticRouteCandidateStatus::kAccepted,
           .endpoint_improvement_m = improvement_m,
           .accepted = true};
+}
+
+std::string_view
+staticRouteReplacementPolicyName(const StaticRouteReplacementPolicy policy) noexcept {
+  switch (policy) {
+    case StaticRouteReplacementPolicy::kRequireEndpointImprovement:
+      return "require_endpoint_improvement";
+    case StaticRouteReplacementPolicy::kAllowSafetyReplan:
+      return "allow_safety_replan";
+  }
+  return "unknown";
 }
 
 std::string_view

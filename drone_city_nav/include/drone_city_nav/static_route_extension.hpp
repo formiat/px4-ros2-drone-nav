@@ -154,6 +154,11 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
   kNoEndpointImprovement,
 };
 
+enum class StaticRouteReplacementPolicy : std::uint8_t {
+  kRequireEndpointImprovement,
+  kAllowSafetyReplan,
+};
+
 enum class StaticRouteActivationStatus : std::uint8_t {
   kNotAttempted,
   kActivated,
@@ -214,8 +219,13 @@ staticRouteObjectiveMatches(const StaticRouteObjective& route_objective,
     std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
     std::span<const float> esdf_m, const Point3& mission_goal,
     double minimum_endpoint_improvement_m, bool reaches_mission_goal,
-    const FlightEnvelopeConfig& flight_envelope, bool required_continuation = false,
+    const FlightEnvelopeConfig& flight_envelope,
+    StaticRouteReplacementPolicy replacement_policy =
+        StaticRouteReplacementPolicy::kRequireEndpointImprovement,
     const SweptFootprintConfig& footprint_config = {}) noexcept;
+
+[[nodiscard]] std::string_view
+staticRouteReplacementPolicyName(StaticRouteReplacementPolicy policy) noexcept;
 
 [[nodiscard]] std::string_view
 staticRouteCandidateStatusName(StaticRouteCandidateStatus status) noexcept;
