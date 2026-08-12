@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -8,20 +9,27 @@
 
 namespace drone_city_nav {
 
+struct DynamicAgentLidarVolume {
+  Point3 position{};
+  double radius_m{0.0};
+  double lower_extent_m{0.0};
+  double upper_extent_m{0.0};
+};
+
 struct TrackedAgentLidarFilterInput {
-  Pose2 scan_pose{};
-  double scan_altitude_m{0.0};
+  std::span<const LidarProjectionPose> beam_projection_poses{};
+  LidarProjectionConfig projection_config{};
+  double range_min_m{0.0};
+  double range_max_m{0.0};
   double angle_min_rad{0.0};
   double angle_increment_rad{0.0};
-  double scan_yaw_offset_rad{0.0};
-  Point3 agent_position{};
-  double agent_radius_m{1.0};
-  double vertical_tolerance_m{1.0};
+  std::span<const DynamicAgentLidarVolume> agents{};
 };
 
 struct TrackedAgentLidarFilterResult {
   std::vector<float> ranges;
   std::size_t filtered_beams{0U};
+  std::size_t matched_agents{0U};
 };
 
 [[nodiscard]] TrackedAgentLidarFilterResult

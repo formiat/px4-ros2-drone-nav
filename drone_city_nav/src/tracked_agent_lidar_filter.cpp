@@ -2,34 +2,60 @@
 
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] bool validVolume(const DynamicAgentLidarVolume& agent) noexcept {
+  return std::isfinite(agent.position.x) && std::isfinite(agent.position.y) &&
+         std::isfinite(agent.position.z) && agent.radius_m > 0.0 &&
+         agent.lower_extent_m >= 0.0 && agent.upper_extent_m >= 0.0;
+}
+
+[[nodiscard]] bool contains(const DynamicAgentLidarVolume& agent,
+                            const Point3& endpoint) noexcept {
+  return endpoint.z >= agent.position.z - agent.lower_extent_m &&
+         endpoint.z <= agent.position.z + agent.upper_extent_m &&
+         std::hypot(endpoint.x - agent.position.x, endpoint.y - agent.position.y) <=
+             agent.radius_m;
+}
+
+} // namespace
 
 TrackedAgentLidarFilterResult
 filterTrackedAgentLidarHits(const std::span<const float> ranges,
                             const TrackedAgentLidarFilterInput& input) {
   TrackedAgentLidarFilterResult result;
   result.ranges.assign(ranges.begin(), ranges.end());
-  if (!(input.agent_radius_m > 0.0) || input.vertical_tolerance_m < 0.0 ||
-      std::abs(input.agent_position.z - input.scan_altitude_m) >
-          input.vertical_tolerance_m) {
+  if (ranges.empty() || input.beam_projection_poses.size() != ranges.size() ||
+      input.agents.empty()) {
     return result;
   }
-  for (std::size_t index = 0U; index < result.ranges.size(); ++index) {
-    const double range = static_cast<double>(result.ranges[index]);
-    if (!std::isfinite(range) || range <= 0.0) {
+
+  std::vector<bool> matched_agents(input.agents.size(), false);
+  for (std::size_t beam_index = 0U; beam_index < result.ranges.size(); ++beam_index) {
+    const LidarBeamProjection projection = projectLidarBeam(
+        input.beam_projection_poses[beam_index], input.projection_config,
+        input.range_min_m, input.range_max_m, input.angle_min_rad,
+        input.angle_increment_rad, beam_index, result.ranges[beam_index]);
+    if (!projection.hit || !projection.endpoint_xyz_valid) {
       continue;
     }
-    const double angle = input.scan_pose.yaw_rad + input.scan_yaw_offset_rad +
-                         input.angle_min_rad +
-                         static_cast<double>(index) * input.angle_increment_rad;
-    const Point2 endpoint{input.scan_pose.position.x + range * std::cos(angle),
-                          input.scan_pose.position.y + range * std::sin(angle)};
-    if (std::hypot(endpoint.x - input.agent_position.x,
-                   endpoint.y - input.agent_position.y) <= input.agent_radius_m) {
-      result.ranges[index] = std::numeric_limits<float>::quiet_NaN();
+    for (std::size_t agent_index = 0U; agent_index < input.agents.size();
+         ++agent_index) {
+      const DynamicAgentLidarVolume& agent = input.agents[agent_index];
+      if (!validVolume(agent) || !contains(agent, projection.endpoint_map_m)) {
+        continue;
+      }
+      result.ranges[beam_index] = std::numeric_limits<float>::quiet_NaN();
+      matched_agents[agent_index] = true;
       ++result.filtered_beams;
+      break;
     }
+  }
+  for (const bool matched : matched_agents) {
+    result.matched_agents += matched ? 1U : 0U;
   }
   return result;
 }

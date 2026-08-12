@@ -1,8 +1,10 @@
 #pragma once
 
 #include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
+#include "drone_city_nav/dynamic_agent_lidar_state.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
+#include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
@@ -10,13 +12,16 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/time.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
 
 #include <builtin_interfaces/msg/time.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -68,5 +73,45 @@ declareGroundLidarRejectionConfig(rclcpp::Node& node, double max_lidar_range_m);
 
 [[nodiscard]] LidarIngestionConfidenceConfig
 declareLidarIngestionConfidenceConfig(rclcpp::Node& node);
+
+[[nodiscard]] DynamicAgentLidarStateConfig
+declareDynamicAgentLidarStateConfig(rclcpp::Node& node);
+
+struct DynamicAgentLidarScanView {
+  std::span<const float> ranges{};
+  std::span<const LidarProjectionPose> beam_projection_poses{};
+  LidarProjectionConfig projection_config{};
+  double range_min_m{0.0};
+  double range_max_m{0.0};
+  double angle_min_rad{0.0};
+  double angle_increment_rad{0.0};
+};
+
+[[nodiscard]] DynamicAgentLidarScanView makeDynamicAgentLidarScanView(
+    const sensor_msgs::msg::LaserScan& scan,
+    std::span<const LidarProjectionPose> beam_projection_poses,
+    const LidarProjectionConfig& projection_config) noexcept;
+
+struct DynamicAgentLidarScanFilterResult {
+  std::vector<float> tracked_agent_ranges;
+  std::vector<float> cooperative_memory_ranges;
+  std::size_t tracked_agent_filtered_beams{0U};
+  std::size_t tracked_agent_matches{0U};
+  std::size_t cooperative_filtered_beams{0U};
+  std::size_t cooperative_peer_matches{0U};
+  bool tracked_agent_filter_applied{false};
+  bool cooperative_filter_applied{false};
+  bool tracked_agent_excluded_from_latest_safety{false};
+
+  [[nodiscard]] std::span<const float>
+  persistentRanges(std::span<const float> raw_ranges) const noexcept;
+
+  [[nodiscard]] std::span<const float>
+  latestSafetyRanges(std::span<const float> raw_ranges) const noexcept;
+};
+
+[[nodiscard]] DynamicAgentLidarScanFilterResult
+filterDynamicAgentsFromLidarScan(const DynamicAgentLidarScanView& scan,
+                                 const DynamicAgentLidarFilterPlan& filter_plan);
 
 } // namespace drone_city_nav

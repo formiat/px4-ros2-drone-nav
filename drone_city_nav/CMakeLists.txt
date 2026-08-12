@@ -157,6 +157,7 @@ add_library(
   src/distance_field.cpp
   src/distance_field_3d.cpp
   src/direct_tracking_maneuver_lifecycle.cpp
+  src/dynamic_agent_lidar_state.cpp
   src/esdf_query.cpp
   src/flight_envelope.cpp
   src/global_guide_candidate.cpp

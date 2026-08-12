@@ -247,4 +247,109 @@ declareLidarIngestionConfidenceConfig(rclcpp::Node& node) {
   };
 }
 
+DynamicAgentLidarStateConfig declareDynamicAgentLidarStateConfig(rclcpp::Node& node) {
+  const auto maximum_peers = static_cast<std::size_t>(std::clamp<std::int64_t>(
+      node.declare_parameter<std::int64_t>("cooperative_maximum_peers", 32), 1, 1024));
+  return DynamicAgentLidarStateConfig{
+      .cooperative_enabled =
+          node.declare_parameter<bool>("cooperative_traffic_enabled", false),
+      .own_vehicle_id = node.declare_parameter<std::string>("vehicle_id", ""),
+      .tracked_agent_radius_m =
+          node.declare_parameter<double>("tracked_agent_filter_radius_m", 1.0),
+      .tracked_agent_vertical_tolerance_m = node.declare_parameter<double>(
+          "tracked_agent_filter_vertical_tolerance_m", 1.0),
+      .tracked_agent_maximum_age_s =
+          node.declare_parameter<double>("tracked_agent_maximum_age_s", 0.5),
+      .tracked_agent_excluded_from_latest_safety = node.declare_parameter<bool>(
+          "tracked_agent_filter_latest_lidar_safety", true),
+      .cooperative_peer_horizontal_margin_m = node.declare_parameter<double>(
+          "cooperative_peer_filter_horizontal_margin_m", 0.0),
+      .cooperative_peer_vertical_margin_m = node.declare_parameter<double>(
+          "cooperative_peer_filter_vertical_margin_m", 0.0),
+      .cooperative_alignment_extrapolation_s = node.declare_parameter<double>(
+          "cooperative_peer_filter_alignment_extrapolation_s", 0.5),
+      .peer_store =
+          CooperativePeerStoreConfig{
+              .maximum_publication_age_s = node.declare_parameter<double>(
+                  "cooperative_peer_maximum_publication_age_s", 0.5),
+              .maximum_peers = maximum_peers,
+          },
+  };
+}
+
+DynamicAgentLidarScanView makeDynamicAgentLidarScanView(
+    const sensor_msgs::msg::LaserScan& scan,
+    const std::span<const LidarProjectionPose> beam_projection_poses,
+    const LidarProjectionConfig& projection_config) noexcept {
+  return DynamicAgentLidarScanView{
+      .ranges = scan.ranges,
+      .beam_projection_poses = beam_projection_poses,
+      .projection_config = projection_config,
+      .range_min_m = static_cast<double>(scan.range_min),
+      .range_max_m = static_cast<double>(scan.range_max),
+      .angle_min_rad = static_cast<double>(scan.angle_min),
+      .angle_increment_rad = static_cast<double>(scan.angle_increment),
+  };
+}
+
+std::span<const float> DynamicAgentLidarScanFilterResult::persistentRanges(
+    const std::span<const float> raw_ranges) const noexcept {
+  if (cooperative_filter_applied) {
+    return cooperative_memory_ranges;
+  }
+  if (tracked_agent_filter_applied) {
+    return tracked_agent_ranges;
+  }
+  return raw_ranges;
+}
+
+std::span<const float> DynamicAgentLidarScanFilterResult::latestSafetyRanges(
+    const std::span<const float> raw_ranges) const noexcept {
+  if (tracked_agent_filter_applied && tracked_agent_excluded_from_latest_safety) {
+    return tracked_agent_ranges;
+  }
+  return raw_ranges;
+}
+
+DynamicAgentLidarScanFilterResult
+filterDynamicAgentsFromLidarScan(const DynamicAgentLidarScanView& scan,
+                                 const DynamicAgentLidarFilterPlan& filter_plan) {
+  DynamicAgentLidarScanFilterResult result;
+  const auto make_filter_input =
+      [&](const std::span<const DynamicAgentLidarVolume> agents) {
+        return TrackedAgentLidarFilterInput{
+            .beam_projection_poses = scan.beam_projection_poses,
+            .projection_config = scan.projection_config,
+            .range_min_m = scan.range_min_m,
+            .range_max_m = scan.range_max_m,
+            .angle_min_rad = scan.angle_min_rad,
+            .angle_increment_rad = scan.angle_increment_rad,
+            .agents = agents,
+        };
+      };
+
+  std::span<const float> persistent_ranges = scan.ranges;
+  if (!filter_plan.tracked_agent_exclusions.empty()) {
+    TrackedAgentLidarFilterResult filtered = filterTrackedAgentLidarHits(
+        scan.ranges, make_filter_input(filter_plan.tracked_agent_exclusions));
+    result.tracked_agent_filtered_beams = filtered.filtered_beams;
+    result.tracked_agent_matches = filtered.matched_agents;
+    result.tracked_agent_ranges = std::move(filtered.ranges);
+    result.tracked_agent_filter_applied = true;
+    result.tracked_agent_excluded_from_latest_safety =
+        filter_plan.tracked_agent_excluded_from_latest_safety;
+    persistent_ranges = result.tracked_agent_ranges;
+  }
+  if (!filter_plan.cooperative_memory_exclusions.empty()) {
+    TrackedAgentLidarFilterResult filtered = filterTrackedAgentLidarHits(
+        persistent_ranges,
+        make_filter_input(filter_plan.cooperative_memory_exclusions));
+    result.cooperative_filtered_beams = filtered.filtered_beams;
+    result.cooperative_peer_matches = filtered.matched_agents;
+    result.cooperative_memory_ranges = std::move(filtered.ranges);
+    result.cooperative_filter_applied = true;
+  }
+  return result;
+}
+
 } // namespace drone_city_nav

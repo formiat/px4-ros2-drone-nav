@@ -1,3 +1,5 @@
+#include "drone_city_nav/cooperative_traffic_ros.hpp"
+#include "drone_city_nav/dynamic_agent_lidar_state.hpp"
 #include "drone_city_nav/grid_config.hpp"
 #include "drone_city_nav/latest_lidar_scan_safety.hpp"
 #include "drone_city_nav/latest_lidar_scan_safety_ros.hpp"
@@ -8,6 +10,7 @@
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/mapping_lifecycle.hpp"
+#include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/latest_lidar_safety_scan.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/msg/target_track.hpp"
@@ -229,12 +232,10 @@ public:
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status_v1");
     const std::string tracked_agent_track_topic =
         declare_parameter<std::string>("tracked_agent_track_topic", "");
-    tracked_agent_filter_radius_m_ =
-        declare_parameter<double>("tracked_agent_filter_radius_m", 1.0);
-    tracked_agent_filter_vertical_tolerance_m_ =
-        declare_parameter<double>("tracked_agent_filter_vertical_tolerance_m", 1.0);
-    tracked_agent_maximum_age_ns_ = static_cast<std::int64_t>(
-        declare_parameter<double>("tracked_agent_maximum_age_s", 0.5) * 1.0e9);
+    const DynamicAgentLidarStateConfig dynamic_agent_config =
+        declareDynamicAgentLidarStateConfig(*this);
+    dynamic_agent_lidar_state_ =
+        std::make_unique<DynamicAgentLidarState>(dynamic_agent_config);
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     latest_lidar_safety_scan_pub_ = create_publisher<msg::LatestLidarSafetyScan>(
         declare_parameter<std::string>("latest_lidar_safety_scan_topic",
@@ -271,13 +272,28 @@ public:
       tracked_agent_track_sub_ = create_subscription<msg::TargetTrack>(
           tracked_agent_track_topic, rclcpp::QoS{1}.reliable().transient_local(),
           [this](const msg::TargetTrack::SharedPtr track) {
-            tracked_agent_position_ =
-                Point3{track->position.x, track->position.y, track->position.z};
-            tracked_agent_velocity_ =
-                Vec3{track->velocity.x, track->velocity.y, track->velocity.z};
-            tracked_agent_position_valid_ = track->position_valid;
-            tracked_agent_velocity_valid_ = track->velocity_valid;
-            tracked_agent_stamp_ns_ = rclcpp::Time{track->header.stamp}.nanoseconds();
+            dynamic_agent_lidar_state_->updateTrackedAgent(
+                Point3{track->position.x, track->position.y, track->position.z},
+                Vec3{track->velocity.x, track->velocity.y, track->velocity.z},
+                track->position_valid, track->velocity_valid,
+                rclcpp::Time{track->header.stamp}.nanoseconds());
+          });
+    }
+    if (dynamic_agent_config.cooperative_enabled) {
+      cooperative_intent_sub_ = create_subscription<msg::CooperativeFlightIntent>(
+          declare_parameter<std::string>("cooperative_flight_intent_topic",
+                                         "/cooperative_traffic/flight_intents"),
+          rclcpp::QoS{32}.reliable(),
+          [this](const msg::CooperativeFlightIntent::SharedPtr intent) {
+            const std::int64_t now_ns = get_clock()->now().nanoseconds();
+            const CooperativePeerUpdateStatus status =
+                dynamic_agent_lidar_state_->updateCooperativeIntent(
+                    cooperativeFlightIntentData(*intent), now_ns);
+            if (status == CooperativePeerUpdateStatus::kInvalid) {
+              RCLCPP_WARN_THROTTLE(
+                  get_logger(), *get_clock(), 1000,
+                  "COOPERATIVE_LIDAR_PEER rejected=true reason=invalid");
+            }
           });
     }
     spectator_target_sub_ = subscribeSpectatorDiagnosticsSelection(
@@ -574,48 +590,41 @@ private:
         .applied = std::hypot(acquisition_shift.x, acquisition_shift.y) > 0.0,
     };
 
-    std::vector<float> filtered_ranges;
-    std::span<const float> scan_ranges{scan.ranges.data(), scan.ranges.size()};
-    if (tracked_agent_position_valid_ && tracked_agent_stamp_ns_ > 0 &&
-        now_ns >= tracked_agent_stamp_ns_ &&
-        now_ns - tracked_agent_stamp_ns_ <= tracked_agent_maximum_age_ns_) {
-      const double track_age_s =
-          static_cast<double>(now_ns - tracked_agent_stamp_ns_) * 1.0e-9;
-      const Point3 tracked_agent_position{
-          tracked_agent_position_.x + (tracked_agent_velocity_valid_
-                                           ? tracked_agent_velocity_.x * track_age_s
-                                           : 0.0),
-          tracked_agent_position_.y + (tracked_agent_velocity_valid_
-                                           ? tracked_agent_velocity_.y * track_age_s
-                                           : 0.0),
-          tracked_agent_position_.z + (tracked_agent_velocity_valid_
-                                           ? tracked_agent_velocity_.z * track_age_s
-                                           : 0.0),
-      };
-      TrackedAgentLidarFilterResult filter = filterTrackedAgentLidarHits(
-          scan_ranges,
-          TrackedAgentLidarFilterInput{
-              .scan_pose = scan_pose,
-              .scan_altitude_m = first_beam_pose.altitude_m,
-              .angle_min_rad = static_cast<double>(scan.angle_min),
-              .angle_increment_rad = static_cast<double>(scan.angle_increment),
-              .scan_yaw_offset_rad = scan_yaw_offset_rad_,
-              .agent_position = tracked_agent_position,
-              .agent_radius_m = tracked_agent_filter_radius_m_,
-              .vertical_tolerance_m = tracked_agent_filter_vertical_tolerance_m_,
-          });
-      if (filter.filtered_beams > 0U) {
-        RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "TRACKED_AGENT_LIDAR_FILTER filtered_beams=%zu agent=(%.2f,%.2f,%.2f)",
-            filter.filtered_beams, tracked_agent_position.x, tracked_agent_position.y,
-            tracked_agent_position.z);
-      }
-      filtered_ranges = std::move(filter.ranges);
-      scan_ranges = filtered_ranges;
+    const std::int64_t acquisition_stamp_ns =
+        acquisition_pose.adjusted_timing.first_beam_stamp_ns;
+    const DynamicAgentLidarFilterPlan filter_plan =
+        dynamic_agent_lidar_state_->makeFilterPlan(now_ns, acquisition_stamp_ns);
+    const std::span<const float> raw_scan_ranges{scan.ranges.data(),
+                                                 scan.ranges.size()};
+    const DynamicAgentLidarScanFilterResult filtered_scan =
+        filterDynamicAgentsFromLidarScan(
+            makeDynamicAgentLidarScanView(scan, acquisition_pose.alignment.poses,
+                                          lidarProjectionConfig()),
+            filter_plan);
+    if (filtered_scan.tracked_agent_filter_applied) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "TRACKED_AGENT_LIDAR_FILTER filtered_beams=%zu matched_agents=%zu "
+          "latest_safety_excluded=%s",
+          filtered_scan.tracked_agent_filtered_beams,
+          filtered_scan.tracked_agent_matches,
+          filtered_scan.tracked_agent_excluded_from_latest_safety ? "true" : "false");
     }
+    if (filtered_scan.cooperative_filter_applied) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=%zu matched_peers=%zu "
+          "known_peers=%zu latest_safety_excluded=false",
+          filtered_scan.cooperative_filtered_beams,
+          filtered_scan.cooperative_peer_matches,
+          filter_plan.cooperative_memory_exclusions.size());
+    }
+    const std::span<const float> persistent_scan_ranges =
+        filtered_scan.persistentRanges(raw_scan_ranges);
+    const std::span<const float> safety_scan_ranges =
+        filtered_scan.latestSafetyRanges(raw_scan_ranges);
     LaserScan2DView scan_view{};
-    scan_view.ranges = scan_ranges;
+    scan_view.ranges = persistent_scan_ranges;
     scan_view.angle_min_rad = static_cast<double>(scan.angle_min);
     scan_view.angle_increment_rad = static_cast<double>(scan.angle_increment);
     scan_view.range_min_m = static_cast<double>(scan.range_min);
@@ -640,9 +649,9 @@ private:
     scan_view.beam_projection_poses = acquisition_pose.alignment.poses;
     scan_view.projection_pose_source =
         LidarProjectionPoseSource::kSourceTimestampAligned;
-    publishLatestLidarSafetyScan(scan, scan_ranges, acquisition_pose.alignment.poses,
-                                 lidar_pose_history_.generation(),
-                                 acquisition_pose.adjusted_timing.first_beam_stamp_ns);
+    publishLatestLidarSafetyScan(
+        scan, safety_scan_ranges, acquisition_pose.alignment.poses,
+        lidar_pose_history_.generation(), acquisition_stamp_ns);
     if (!persistent_memory_enabled_ || !persistent_memory_selection_.selected()) {
       if (!scan_seen_) {
         scan_seen_ = true;
@@ -944,14 +953,7 @@ private:
   std::array<double, 4> lidar_flu_to_body_frd_quaternion_{0.0, 1.0, 0.0, 0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
-  double tracked_agent_filter_radius_m_{1.0};
-  double tracked_agent_filter_vertical_tolerance_m_{1.0};
-  std::int64_t tracked_agent_maximum_age_ns_{500'000'000LL};
-  std::int64_t tracked_agent_stamp_ns_{0};
-  Point3 tracked_agent_position_{};
-  Vec3 tracked_agent_velocity_{};
-  bool tracked_agent_position_valid_{false};
-  bool tracked_agent_velocity_valid_{false};
+  std::unique_ptr<DynamicAgentLidarState> dynamic_agent_lidar_state_;
   std::string lidar_memory_hit_dump_path_;
   std::uint64_t lidar_memory_hit_dump_max_records_{10000U};
   LidarMemoryHitDumpWriter lidar_memory_hit_dump_;
@@ -980,6 +982,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_track_sub_;
+  rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr cooperative_intent_sub_;
   rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
   rclcpp::Publisher<msg::LatestLidarSafetyScan>::SharedPtr
       latest_lidar_safety_scan_pub_;
