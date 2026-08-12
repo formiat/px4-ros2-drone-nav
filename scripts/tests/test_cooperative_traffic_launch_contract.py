@@ -31,7 +31,7 @@ SPEC.loader.exec_module(SCENARIO_MODULE)
 
 
 class CooperativeTrafficLaunchContractTest(unittest.TestCase):
-    def test_scenario_contains_four_equal_altitude_crossing_routes(self) -> None:
+    def test_scenario_contains_four_equal_altitude_opposing_routes(self) -> None:
         scenario = SCENARIO_MODULE.load_multi_vehicle_scenario(SCENARIO)
 
         self.assertEqual(scenario["mission_name"], "cooperative_traffic")
@@ -51,6 +51,10 @@ class CooperativeTrafficLaunchContractTest(unittest.TestCase):
         starts = {vehicle["map_start_m"][:2] for vehicle in scenario["vehicles"]}
         goals = {goal["goal_m"][:2] for goal in scenario["vehicle_goals"]}
         self.assertEqual(starts, goals)
+        self.assertEqual(
+            starts,
+            {(-4.0, 54.0), (4.0, 54.0), (-4.0, 378.0), (4.0, 378.0)},
+        )
 
     def test_launch_reuses_generic_navigation_stack_and_enables_cooperation(self) -> None:
         wrapper = WRAPPER.read_text(encoding="utf-8")
