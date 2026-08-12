@@ -337,6 +337,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<std::int64_t>("physical_footprint_radial_rings", 2));
   safety_config_.physical_footprint_axial_samples = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("physical_footprint_axial_samples", 3));
+  const double static_route_tracking_margin_m =
+      declare_parameter<double>("static_route_tracking_margin_m", 0.75);
+  if (!(static_route_tracking_margin_m >= 0.0)) {
+    throw std::invalid_argument{"static route tracking margin must be non-negative"};
+  }
   mppi_config_.footprint = mppi::FootprintConfig{
       .radius_m = static_cast<float>(safety_config_.physical_footprint_radius_m),
       .lower_extent_m =
@@ -579,11 +584,14 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_config_.physical_footprint_axial_samples =
       safety_config_.physical_footprint_axial_samples;
   lattice_3d_config_.physical_footprint_radius_m =
-      safety_config_.physical_footprint_radius_m;
+      safety_config_.physical_footprint_radius_m +
+      (use_static_map_ ? static_route_tracking_margin_m : 0.0);
   lattice_3d_config_.physical_footprint_lower_extent_m =
-      safety_config_.physical_footprint_lower_extent_m;
+      safety_config_.physical_footprint_lower_extent_m +
+      (use_static_map_ ? static_route_tracking_margin_m : 0.0);
   lattice_3d_config_.physical_footprint_upper_extent_m =
-      safety_config_.physical_footprint_upper_extent_m;
+      safety_config_.physical_footprint_upper_extent_m +
+      (use_static_map_ ? static_route_tracking_margin_m : 0.0);
   lattice_3d_config_.physical_footprint_samples =
       safety_config_.physical_footprint_samples;
   lattice_3d_config_.physical_footprint_radial_rings =

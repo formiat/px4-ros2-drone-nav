@@ -82,6 +82,39 @@ TEST(MppiSpeedPolicyTest, ContinuousTrackingDoesNotBrakeForMovingGoal) {
   EXPECT_NE(result.active_limiter, MppiSpeedLimiter::kGoal);
 }
 
+TEST(MppiSpeedPolicyTest, FrontierRouteCanStopBeforeUnextendedEndpoint) {
+  MppiSpeedPolicyConfig config;
+  config.maximum_braking_acceleration_mps2 = 8.0;
+  config.reaction_latency_s = 0.1;
+  config.goal_margin_m = 2.0;
+  MppiSpeedPolicyInput input;
+  input.mission_goal = Point3{300.0, 0.0, 18.0};
+  input.route_endpoint_remaining_m = 6.0;
+
+  const MppiSpeedPolicyResult approaching = evaluateMppiSpeedPolicy(config, input);
+
+  EXPECT_NEAR(approaching.route_endpoint_limit_mps, 7.23, 0.01);
+  EXPECT_DOUBLE_EQ(approaching.reference_speed_mps,
+                   approaching.route_endpoint_limit_mps);
+  EXPECT_EQ(approaching.active_limiter, MppiSpeedLimiter::kRouteEndpoint);
+
+  input.route_endpoint_remaining_m = 2.0;
+  const MppiSpeedPolicyResult at_margin = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(at_margin.route_endpoint_limit_mps, 0.0);
+  EXPECT_DOUBLE_EQ(at_margin.reference_speed_mps, 0.0);
+}
+
+TEST(MppiSpeedPolicyTest, TerminalRouteUsesMissionGoalLimitOnly) {
+  MppiSpeedPolicyConfig config;
+  MppiSpeedPolicyInput input;
+  input.mission_goal = Point3{100.0, 0.0, 18.0};
+
+  const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
+
+  EXPECT_TRUE(std::isinf(result.route_endpoint_limit_mps));
+  EXPECT_NE(result.active_limiter, MppiSpeedLimiter::kRouteEndpoint);
+}
+
 TEST(MppiSpeedPolicyTest, NoStaticProfileTracksTenMetersPerSecondAtFixedLookahead) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 10.0;

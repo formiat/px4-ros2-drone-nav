@@ -100,9 +100,9 @@ void ProductionMppiNode::processStaticGuideSearch(
     StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
         *mutable_route, initial_spans, world.grid, *world.distances_m,
         SweptFootprintConfig{
-            .radius_m = safety_config_.physical_footprint_radius_m,
-            .lower_extent_m = safety_config_.physical_footprint_lower_extent_m,
-            .upper_extent_m = safety_config_.physical_footprint_upper_extent_m,
+            .radius_m = lattice_3d_config_.physical_footprint_radius_m,
+            .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
+            .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
             .perimeter_samples = safety_config_.physical_footprint_samples,
             .radial_rings = safety_config_.physical_footprint_radial_rings,
             .axial_samples = safety_config_.physical_footprint_axial_samples,
@@ -160,9 +160,9 @@ void ProductionMppiNode::processStaticGuideSearch(
           lattice.reached_mission_goal, lattice_3d_config_.flight_envelope,
           world.static_route_extension_request || world.static_route_replan_request,
           SweptFootprintConfig{
-              .radius_m = safety_config_.physical_footprint_radius_m,
-              .lower_extent_m = safety_config_.physical_footprint_lower_extent_m,
-              .upper_extent_m = safety_config_.physical_footprint_upper_extent_m,
+              .radius_m = lattice_3d_config_.physical_footprint_radius_m,
+              .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
+              .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
               .perimeter_samples = safety_config_.physical_footprint_samples,
               .radial_rings = safety_config_.physical_footprint_radial_rings,
               .axial_samples = safety_config_.physical_footprint_axial_samples,

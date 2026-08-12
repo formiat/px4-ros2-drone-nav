@@ -5,7 +5,12 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 #include <queue>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -37,30 +42,62 @@ struct OffsetKeyHash {
 struct Candidate {
   OffsetKey key{};
   Point3 point{};
+  double goal_distance_m{0.0};
+  double goal_altitude_error_m{0.0};
+  std::size_t hops{0U};
+  std::uint64_t sequence{0U};
+};
+
+struct CandidateGreater {
+  [[nodiscard]] bool operator()(const Candidate& left,
+                                const Candidate& right) const noexcept {
+    return std::tuple{left.goal_altitude_error_m, left.goal_distance_m, left.hops,
+                      left.sequence} > std::tuple{right.goal_altitude_error_m,
+                                                  right.goal_distance_m, right.hops,
+                                                  right.sequence};
+  }
 };
 
 } // namespace
 
 Lattice3DContinuationMetrics evaluateLattice3DContinuation(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const Point3& terminal, const Vec3& incoming_direction,
+    const Point3& terminal, const Vec3& incoming_direction, const Point3& planning_goal,
     const Lattice3DRiskStage stage, const RiskAwareLattice3DConfig& config,
     BoundedWorkerPool* const worker_pool) {
   constexpr std::array<int, 3> kHorizontalOffsets{-1, 0, 1};
   constexpr std::array<int, 3> kVerticalOffsets{0, 1, -1};
   const std::size_t maximum_states =
       std::max<std::size_t>(1U, config.frontier_validation_maximum_states);
-  std::queue<Candidate> pending;
+  std::priority_queue<Candidate, std::vector<Candidate>, CandidateGreater> pending;
   std::unordered_set<OffsetKey, OffsetKeyHash> visited;
+  std::unordered_map<OffsetKey, OffsetKey, OffsetKeyHash> parents;
   const OffsetKey origin{};
-  pending.push(Candidate{.key = origin, .point = terminal});
+  std::uint64_t sequence = 0U;
+  pending.push(
+      Candidate{.key = origin,
+                .point = terminal,
+                .goal_distance_m = distance3D(terminal, planning_goal),
+                .goal_altitude_error_m = std::abs(terminal.z - planning_goal.z),
+                .hops = 0U,
+                .sequence = sequence++});
   visited.insert(origin);
   Lattice3DContinuationMetrics result;
-  while (!pending.empty() && result.reachable_states < maximum_states &&
-         result.reachable_depth_m + 1.0e-9 <
-             config.frontier_minimum_reachable_depth_m) {
-    const Candidate current = pending.front();
+  OffsetKey best_key = origin;
+  Point3 best_point = terminal;
+  double best_depth_m = 0.0;
+  double best_goal_distance_m = distance3D(terminal, planning_goal);
+  std::uint64_t best_sequence = std::numeric_limits<std::uint64_t>::max();
+  while (!pending.empty() && result.reachable_states < maximum_states) {
+    const Candidate current = pending.top();
     pending.pop();
+    const double current_depth_m = distance3D(terminal, current.point);
+    if (!(current.key == origin) &&
+        current_depth_m + 1.0e-9 >= config.frontier_minimum_reachable_depth_m) {
+      best_key = current.key;
+      best_point = current.point;
+      break;
+    }
     const auto collection_started = std::chrono::steady_clock::now();
 
     struct NeighborEvaluation {
@@ -81,7 +118,6 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
           if (visited.contains(next)) {
             continue;
           }
-          visited.insert(next);
           const Point3 successor{
               terminal.x + static_cast<double>(next.x) * config.horizontal_step_m,
               terminal.y + static_cast<double>(next.y) * config.horizontal_step_m,
@@ -99,7 +135,14 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
             }
           }
           evaluations.push_back(NeighborEvaluation{
-              .candidate = Candidate{.key = next, .point = successor}});
+              .candidate = Candidate{
+                  .key = next,
+                  .point = successor,
+                  .goal_distance_m = distance3D(successor, planning_goal),
+                  .goal_altitude_error_m = std::abs(successor.z - planning_goal.z),
+                  .hops = current.hops + 1U,
+                  .sequence = sequence++,
+              }});
         }
       }
     }
@@ -122,12 +165,27 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
       if (evaluation.edge.status != Lattice3DEdgeEvaluationStatus::kValid) {
         continue;
       }
+      if (!visited.insert(evaluation.candidate.key).second) {
+        continue;
+      }
       if (current.key == origin) {
         ++result.immediate_successors;
       }
       ++result.reachable_states;
-      result.reachable_depth_m = std::max(
-          result.reachable_depth_m, distance3D(terminal, evaluation.candidate.point));
+      const double candidate_depth_m = distance3D(terminal, evaluation.candidate.point);
+      const double candidate_goal_distance_m = evaluation.candidate.goal_distance_m;
+      result.reachable_depth_m = std::max(result.reachable_depth_m, candidate_depth_m);
+      parents[evaluation.candidate.key] = current.key;
+      if (std::tuple{-candidate_depth_m, evaluation.candidate.goal_altitude_error_m,
+                     candidate_goal_distance_m, evaluation.candidate.sequence} <
+          std::tuple{-best_depth_m, std::abs(best_point.z - planning_goal.z),
+                     best_goal_distance_m, best_sequence}) {
+        best_key = evaluation.candidate.key;
+        best_point = evaluation.candidate.point;
+        best_depth_m = candidate_depth_m;
+        best_goal_distance_m = candidate_goal_distance_m;
+        best_sequence = evaluation.candidate.sequence;
+      }
       pending.push(evaluation.candidate);
     }
     ++result.successor_profile.collection_calls;
@@ -142,6 +200,19 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   collection_started)
             .count();
+  }
+  if (!(best_key == origin)) {
+    std::vector<Point3> reverse_path;
+    OffsetKey current = best_key;
+    reverse_path.push_back(best_point);
+    while (!(current == origin)) {
+      current = parents.at(current);
+      reverse_path.push_back(
+          Point3{terminal.x + static_cast<double>(current.x) * config.horizontal_step_m,
+                 terminal.y + static_cast<double>(current.y) * config.horizontal_step_m,
+                 terminal.z + static_cast<double>(current.z) * config.vertical_step_m});
+    }
+    result.path.assign(reverse_path.rbegin(), reverse_path.rend());
   }
   return result;
 }

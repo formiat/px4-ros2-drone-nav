@@ -289,6 +289,11 @@ void ProductionMppiNode::planningTick() {
           .state = navigation.state,
           .mission_goal = mission_goal,
           .guide = guide,
+          .route_endpoint_remaining_m =
+              route_usable && route_projection.valid &&
+                      !esdf->global_guide_reaches_mission_goal
+                  ? std::optional<double>{route_projection.remaining_m}
+                  : std::nullopt,
           .route_constraint_speed_limit_mps =
               route_control.active
                   ? std::optional<double>{route_control.speed_limit_mps}

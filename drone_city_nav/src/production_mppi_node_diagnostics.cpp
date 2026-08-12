@@ -388,6 +388,8 @@ void ProductionMppiNode::processDiagnostics(
        << " observation_speed_limit_mps="
        << finiteOrNegative(speed_policy.observation_limit_mps)
        << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
+       << " route_endpoint_speed_limit_mps="
+       << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
        << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
        << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
        << detail::cooperativeInfoFields(snapshot.cooperative, result)
@@ -834,6 +836,8 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"observation_speed_limit_mps\":"
         << finiteOrNegative(speed_policy.observation_limit_mps)
         << ",\"goal_speed_limit_mps\":" << finiteOrNegative(speed_policy.goal_limit_mps)
+        << ",\"route_endpoint_speed_limit_mps\":"
+        << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
         << ",\"active_rollouts\":" << result.active_rollouts
         << ",\"rollout_budget_reason\":\""
         << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason) << '"'

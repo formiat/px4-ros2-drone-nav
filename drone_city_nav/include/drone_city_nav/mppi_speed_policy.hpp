@@ -17,6 +17,7 @@ enum class MppiSpeedLimiter : std::uint8_t {
   kCurvature,
   kObservation,
   kGoal,
+  kRouteEndpoint,
   kRouteConstraint,
 };
 
@@ -40,6 +41,7 @@ struct MppiSpeedPolicyInput {
   mppi::State state{};
   Point3 mission_goal{};
   std::span<const Point2> guide;
+  std::optional<double> route_endpoint_remaining_m;
   std::optional<double> route_constraint_speed_limit_mps;
   bool terminal_goal_limit_enabled{true};
 };
@@ -52,6 +54,7 @@ struct MppiSpeedPolicyResult {
   double curvature_limit_mps{std::numeric_limits<double>::infinity()};
   double observation_limit_mps{std::numeric_limits<double>::infinity()};
   double goal_limit_mps{std::numeric_limits<double>::infinity()};
+  double route_endpoint_limit_mps{std::numeric_limits<double>::infinity()};
   double route_constraint_limit_mps{std::numeric_limits<double>::infinity()};
   double maximum_preview_curvature_1pm{0.0};
   double target_lookahead_m{0.0};

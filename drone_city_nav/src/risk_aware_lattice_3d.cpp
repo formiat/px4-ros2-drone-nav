@@ -735,7 +735,8 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const detail::Lattice3DContinuationMetrics continuation =
         detail::evaluateLattice3DContinuation(
             grid, esdf_m, pointFor(best, start, channels, config),
-            records.at(best).incoming_direction, stage, config, worker_pool);
+            records.at(best).incoming_direction, planning_goal, stage, config,
+            worker_pool);
     result.terminal_successor_count = continuation.immediate_successors;
     result.continuation_reachable_states = continuation.reachable_states;
     result.continuation_reachable_depth_m = continuation.reachable_depth_m;
@@ -744,17 +745,64 @@ searchStage(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   continuation_started)
             .count();
-    if (result.status == Lattice3DStatus::kViableFrontier &&
-        (continuation.immediate_successors == 0U ||
-         continuation.reachable_depth_m + 1.0e-9 <
-             config.frontier_minimum_reachable_depth_m)) {
+    const bool continuation_viable = continuation.immediate_successors > 0U &&
+                                     continuation.reachable_depth_m + 1.0e-9 >=
+                                         config.frontier_minimum_reachable_depth_m &&
+                                     continuation.path.size() >= 2U;
+    const bool continuation_materializable =
+        continuation_viable &&
+        termination == Lattice3DSearchTermination::kDeadlineReached;
+    bool continuation_route_accepted = false;
+    if (result.status == Lattice3DStatus::kViableFrontier && !continuation_viable) {
       result.status =
           termination == Lattice3DSearchTermination::kDeadlineReached ||
                   termination == Lattice3DSearchTermination::kExpansionBudgetExhausted
               ? Lattice3DStatus::kSearchIncomplete
               : Lattice3DStatus::kMotionGraphExhausted;
     }
+    if (continuation_materializable) {
+      CostMetrics continuation_metrics;
+      Vec3 incoming_direction = records.at(best).incoming_direction;
+      double continuation_clearance_m = records.at(best).minimum_clearance_m;
+      Lattice3DEdgeEvaluationStatus continuation_status{
+          Lattice3DEdgeEvaluationStatus::kValid};
+      bool continuation_accepted = true;
+      for (std::size_t index = 1U; index < continuation.path.size(); ++index) {
+        if (!appendEvaluatedSegment(
+                grid, esdf_m, continuation.path[index - 1U], continuation.path[index],
+                stage, preferred_direction, config, incoming_direction,
+                continuation_metrics, continuation_clearance_m, continuation_status)) {
+          continuation_accepted = false;
+          break;
+        }
+      }
+      if (continuation_accepted) {
+        accumulate(metrics, continuation_metrics);
+        result.minimum_clearance_m =
+            std::min(result.minimum_clearance_m, continuation_clearance_m);
+        result.achieved_progress_m =
+            std::max(result.achieved_progress_m,
+                     distance3D(start, planning_goal) -
+                         distance3D(continuation.path.back(), planning_goal));
+        result.status = Lattice3DStatus::kViableFrontier;
+        continuation_route_accepted = true;
+      }
+    }
+    if (result.status == Lattice3DStatus::kViableFrontier &&
+        continuation_route_accepted) {
+      double station_m = result.route_length_m;
+      for (std::size_t index = 1U; index < continuation.path.size(); ++index) {
+        appendUnique(result.points, continuation.path[index], station_m);
+      }
+    }
   }
+  result.objective_cost = metrics.objective_cost;
+  result.route_length_m = metrics.route_length_m;
+  result.estimated_travel_time_s = metrics.travel_time_s;
+  result.vertical_alignment_time_s = metrics.vertical_alignment_time_s;
+  result.planning_exposure_m = metrics.planning_exposure_m;
+  result.critical_exposure_m = metrics.critical_exposure_m;
+  result.turn_cost = metrics.turn_cost;
   result.route = sampleRoute3D(result.points, config.sample_step_m,
                                config.nominal_horizontal_speed_mps);
   result.topology_candidates.reserve(channels.size());
@@ -861,7 +909,7 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
       .worker_ms = 0.0,
   });
   const std::size_t topology_group_count =
-      worker_pool != nullptr && worker_pool->workerCount() > 1U &&
+      worker_pool != nullptr && worker_pool->workerCount() > 2U &&
               channel_edges.size() > 1U
           ? std::min(channel_edges.size(), worker_pool->workerCount() - 1U)
           : 0U;

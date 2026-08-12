@@ -27,9 +27,9 @@ void ProductionMppiNode::configureCooperativeTraffic() {
   cooperative_channel_lane_config_.maximum_lane_count =
       static_cast<std::size_t>(maximum_lane_count);
   cooperative_channel_lane_config_.footprint = SweptFootprintConfig{
-      .radius_m = safety_config_.physical_footprint_radius_m,
-      .lower_extent_m = safety_config_.physical_footprint_lower_extent_m,
-      .upper_extent_m = safety_config_.physical_footprint_upper_extent_m,
+      .radius_m = lattice_3d_config_.physical_footprint_radius_m,
+      .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
+      .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
       .perimeter_samples = safety_config_.physical_footprint_samples,
       .radial_rings = safety_config_.physical_footprint_radial_rings,
       .axial_samples = safety_config_.physical_footprint_axial_samples,

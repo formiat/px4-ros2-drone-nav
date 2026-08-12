@@ -117,6 +117,13 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
         stoppingLimitedSpeed(goal_distance, 0.0, config.reaction_latency_s,
                              config.maximum_braking_acceleration_mps2);
   }
+  if (input.route_endpoint_remaining_m.has_value()) {
+    const double route_endpoint_distance =
+        std::max(0.0, *input.route_endpoint_remaining_m - config.goal_margin_m);
+    result.route_endpoint_limit_mps =
+        stoppingLimitedSpeed(route_endpoint_distance, 0.0, config.reaction_latency_s,
+                             config.maximum_braking_acceleration_mps2);
+  }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =
         std::max(0.0, *input.route_constraint_speed_limit_mps);
@@ -146,16 +153,17 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     }
   }
 
-  result.reference_speed_mps =
-      std::min({result.cruise_limit_mps, result.absolute_limit_mps,
-                result.curvature_limit_mps, result.observation_limit_mps,
-                result.goal_limit_mps, result.route_constraint_limit_mps});
+  result.reference_speed_mps = std::min(
+      {result.cruise_limit_mps, result.absolute_limit_mps, result.curvature_limit_mps,
+       result.observation_limit_mps, result.goal_limit_mps,
+       result.route_endpoint_limit_mps, result.route_constraint_limit_mps});
   const std::array limits{
       std::pair{result.cruise_limit_mps, MppiSpeedLimiter::kCruise},
       std::pair{result.absolute_limit_mps, MppiSpeedLimiter::kAbsolute},
       std::pair{result.curvature_limit_mps, MppiSpeedLimiter::kCurvature},
       std::pair{result.observation_limit_mps, MppiSpeedLimiter::kObservation},
       std::pair{result.goal_limit_mps, MppiSpeedLimiter::kGoal},
+      std::pair{result.route_endpoint_limit_mps, MppiSpeedLimiter::kRouteEndpoint},
       std::pair{result.route_constraint_limit_mps, MppiSpeedLimiter::kRouteConstraint},
   };
   result.active_limiter = std::min_element(limits.begin(), limits.end(),
@@ -181,6 +189,8 @@ const char* mppiSpeedLimiterName(const MppiSpeedLimiter limiter) noexcept {
       return "observation";
     case MppiSpeedLimiter::kGoal:
       return "goal";
+    case MppiSpeedLimiter::kRouteEndpoint:
+      return "route_endpoint";
     case MppiSpeedLimiter::kRouteConstraint:
       return "route_constraint";
   }

@@ -624,17 +624,105 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
 
   const RiskAwareLattice3DResult serial = planRiskAwareLattice3D(
       grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, channels, config);
+  BoundedWorkerPool two_worker_pool{2U};
+  const RiskAwareLattice3DResult two_worker =
+      planRiskAwareLattice3D(grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal,
+                             channels, config, &two_worker_pool);
   BoundedWorkerPool worker_pool{4U};
   const RiskAwareLattice3DResult parallel =
       planRiskAwareLattice3D(grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal,
                              channels, config, &worker_pool);
 
   ASSERT_EQ(serial.status, Lattice3DStatus::kReachedPlanningGoal);
+  ASSERT_EQ(two_worker.status, serial.status);
+  EXPECT_EQ(two_worker.route_fingerprint, serial.route_fingerprint);
+  EXPECT_EQ(two_worker.topology_searches, 1U);
+  EXPECT_EQ(two_worker.parallel_topology_searches, 0U);
+  EXPECT_GT(two_worker.successor_profiling.search.parallel_collection_calls, 0U);
+  EXPECT_GT(two_worker.successor_profiling.search.parallel_candidates, 0U);
   ASSERT_EQ(parallel.status, serial.status);
   EXPECT_EQ(parallel.route_fingerprint, serial.route_fingerprint);
   EXPECT_EQ(parallel.topology_searches, 3U);
   EXPECT_EQ(parallel.parallel_topology_searches, parallel.topology_searches);
   EXPECT_GT(parallel.topology_search_worker_ms, 0.0);
+}
+
+TEST(Route3DTest, MaterializesValidatedContinuationWhenSearchSliceExpires) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 20, 12}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 40.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.maximum_search_time_ms = 0.001;
+  config.frontier_minimum_reachable_depth_m = 8.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+  const Point3 start{2.5, 10.5, 5.5};
+  const Point3 goal{30.5, 10.5, 5.5};
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, {}, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier);
+  EXPECT_EQ(result.termination, Lattice3DSearchTermination::kDeadlineReached);
+  EXPECT_GE(result.continuation_reachable_depth_m,
+            config.frontier_minimum_reachable_depth_m);
+  EXPECT_GE(result.route_length_m, config.frontier_minimum_reachable_depth_m);
+  ASSERT_GE(result.points.size(), 2U);
+  EXPECT_LT(distance3D(result.points.back(), goal), distance3D(start, goal));
+  EXPECT_NEAR(result.points.back().y, start.y, 1.0e-9);
+  EXPECT_NEAR(result.points.back().z, start.z, 1.0e-9);
+}
+
+TEST(Route3DTest, MaterializedContinuationCommitsToGoalDirectedWallDetour) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 30, 12}};
+  for (int y = 11; y <= 19; ++y) {
+    for (int z = 0; z < 8; ++z) {
+      occupancy.setOccupied(GridIndex3D{8, y, z});
+    }
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 40.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.maximum_search_time_ms = 0.001;
+  config.frontier_minimum_reachable_depth_m = 8.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+  const Point3 start{2.5, 15.5, 5.5};
+  const Point3 goal{30.5, 15.5, 5.5};
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, {}, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier);
+  EXPECT_EQ(result.termination, Lattice3DSearchTermination::kDeadlineReached);
+  ASSERT_GE(result.points.size(), 2U);
+  EXPECT_LT(distance3D(result.points.back(), goal), distance3D(start, goal));
+  EXPECT_GT(std::abs(result.points.back().y - start.y), 1.0);
+  EXPECT_NEAR(result.points.back().z, start.z, 1.0e-9);
 }
 
 TEST(Route3DTest, EqualCostSearchKeepsLevelAltitudeBeforeVerticalAlternatives) {
