@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <vector>
 
 namespace drone_city_nav::mppi {
 
@@ -29,6 +31,34 @@ struct MovingTargetReference {
   float minimum_z_m{0.0F};
   float maximum_z_m{0.0F};
   bool bounded_vertical_motion{false};
+};
+
+enum class CooperativeManeuver : std::uint8_t {
+  kKeep = 0,
+  kClimb = 1,
+  kDescend = 2,
+  kLeft = 3,
+  kRight = 4,
+  kSlow = 5,
+};
+
+struct CooperativePeerSample {
+  float x{0.0F};
+  float y{0.0F};
+  float z{0.0F};
+};
+
+struct CooperativePeerTrajectory {
+  std::shared_ptr<const std::vector<CooperativePeerSample>> samples;
+  float footprint_radius_m{0.0F};
+};
+
+struct CooperativeManeuverPreference {
+  CooperativeManeuver maneuver{CooperativeManeuver::kKeep};
+  float direction_x{0.0F};
+  float direction_y{0.0F};
+  float direction_z{0.0F};
+  std::uint64_t generation{0U};
 };
 
 #if defined(__CUDACC__)
@@ -83,6 +113,8 @@ struct CostBreakdown {
   float jerk{0.0F};
   float yaw_change{0.0F};
   float control_effort{0.0F};
+  float peer_separation{0.0F};
+  float maneuver_preference{0.0F};
   float terminal{0.0F};
 };
 
@@ -94,6 +126,7 @@ struct RolloutMetrics {
   float planning_exposure_m{0.0F};
   float minimum_clearance_m{0.0F};
   float minimum_target_separation_m{0.0F};
+  float minimum_peer_separation_m{0.0F};
   float predicted_capture_time_s{-1.0F};
   RiskTier worst_tier{RiskTier::kPreferred};
   bool collision{false};

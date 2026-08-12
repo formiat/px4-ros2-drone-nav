@@ -55,10 +55,18 @@ struct CostConfig {
   float jerk_weight{0.02F};
   float yaw_change_weight{0.1F};
   float control_effort_weight{0.01F};
+  float peer_separation_weight{80.0F};
+  float cooperative_maneuver_preference_weight{1.5F};
   float terminal_weight{2.0F};
   float planning_exposure_weight{2.0F};
   float critical_exposure_weight{20.0F};
   float temperature{8.0F};
+};
+
+struct CooperativeConfig {
+  float desired_minimum_separation_m{5.0F};
+  float candidate_acceleration_fraction{0.75F};
+  float candidate_duration_s{1.5F};
 };
 
 struct BenchmarkConfig {
@@ -75,6 +83,7 @@ struct BenchmarkConfig {
   RiskConfig risk{};
   FootprintConfig footprint{};
   CostConfig costs{};
+  CooperativeConfig cooperative{};
   HorizonSamplingConfig horizon_sampling{};
 };
 

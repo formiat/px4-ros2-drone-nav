@@ -26,6 +26,7 @@ constexpr std::size_t kControlUpdateRolloutLanes{8U};
 constexpr std::size_t kControlUpdatePartitions{16U};
 constexpr std::size_t kMaximumKnownSolids{2048U};
 constexpr std::size_t kMaximumRoutePoints{512U};
+constexpr std::size_t kMaximumCooperativePeers{16U};
 constexpr std::size_t kRepairCandidateCount{6U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
@@ -235,6 +236,8 @@ struct DeviceBuffers {
   DeviceBuffer<float> weight_sum;
   DeviceBuffer<KnownSolid> solids{kMaximumKnownSolids};
   DeviceBuffer<RouteSample3D> route_points{kMaximumRoutePoints};
+  DeviceBuffer<CooperativePeerSample> cooperative_peer_samples;
+  DeviceBuffer<float> cooperative_peer_radii{kMaximumCooperativePeers};
 
   DeviceBuffers(const std::size_t rollouts, const std::size_t steps)
       : noise_ax{rollouts * steps},
@@ -259,7 +262,8 @@ struct DeviceBuffers {
         best_critical{1U},
         best_planning{1U},
         minimum_soft{1U},
-        weight_sum{1U} {
+        weight_sum{1U},
+        cooperative_peer_samples{kMaximumCooperativePeers * steps} {
   }
 
   [[nodiscard]] std::size_t bytes() const noexcept {
@@ -270,7 +274,8 @@ struct DeviceBuffers {
            updated.bytes() + control_update_partials.bytes() + best_eligible.bytes() +
            repair_candidates.bytes() + best_tier.bytes() + best_rollout.bytes() +
            best_critical.bytes() + best_planning.bytes() + minimum_soft.bytes() +
-           weight_sum.bytes() + solids.bytes() + route_points.bytes();
+           weight_sum.bytes() + solids.bytes() + route_points.bytes() +
+           cooperative_peer_samples.bytes() + cooperative_peer_radii.bytes();
   }
 };
 
@@ -293,6 +298,13 @@ public:
         reacquisition_noise_ay_(config_.steps),
         reacquisition_noise_az_(config_.steps),
         reacquisition_noise_yaw_(config_.steps),
+        cooperative_peer_samples_(kMaximumCooperativePeers * config_.steps),
+        cooperative_peer_radii_(kMaximumCooperativePeers),
+        cooperative_candidates_(kCooperativeManeuverCandidateCount * config_.steps),
+        cooperative_noise_ax_(kCooperativeManeuverCandidateCount * config_.steps),
+        cooperative_noise_ay_(kCooperativeManeuverCandidateCount * config_.steps),
+        cooperative_noise_az_(kCooperativeManeuverCandidateCount * config_.steps),
+        cooperative_noise_yaw_(kCooperativeManeuverCandidateCount * config_.steps),
         zero_noise_(config_.steps) {
     if (!benchmarkConfigIsValid(config_)) {
       throw std::invalid_argument{"invalid MPPI engine configuration"};
@@ -369,6 +381,28 @@ public:
             moving_target.state.z < moving_target.minimum_z_m ||
             moving_target.state.z > moving_target.maximum_z_m))) {
         throw std::invalid_argument{"invalid moving target reference"};
+      }
+    }
+    if (input.conflicting_peers.size() > kMaximumCooperativePeers) {
+      throw std::invalid_argument{"too many cooperative peers for MPPI engine"};
+    }
+    for (const CooperativePeerTrajectory& peer : input.conflicting_peers) {
+      if (!peer.samples || peer.samples->size() != config_.steps ||
+          !std::isfinite(peer.footprint_radius_m) ||
+          !(peer.footprint_radius_m >= 0.0F) ||
+          !std::ranges::all_of(*peer.samples, [](const CooperativePeerSample& sample) {
+            return std::isfinite(sample.x) && std::isfinite(sample.y) &&
+                   std::isfinite(sample.z);
+          })) {
+        throw std::invalid_argument{"invalid cooperative peer trajectory"};
+      }
+    }
+    if (input.cooperative_maneuver.has_value()) {
+      const CooperativeManeuverPreference& preference = *input.cooperative_maneuver;
+      if (!std::isfinite(preference.direction_x) ||
+          !std::isfinite(preference.direction_y) ||
+          !std::isfinite(preference.direction_z)) {
+        throw std::invalid_argument{"invalid cooperative maneuver preference"};
       }
     }
     const auto host_started = std::chrono::steady_clock::now();
@@ -456,12 +490,65 @@ public:
             reacquisition_candidate_[step].yaw_accel - nominal_[step].yaw_accel;
       }
     }
+    const bool cooperative_avoidance_enabled =
+        !input.conflicting_peers.empty() &&
+        active_rollouts >= kCooperativeManeuverCandidateCount +
+                               (target_directed_reacquisition_enabled ? 1U : 0U);
+    const std::size_t cooperative_candidate_offset =
+        target_directed_reacquisition_enabled ? 1U : 0U;
+    if (cooperative_avoidance_enabled) {
+      cooperative_candidates_ = buildCooperativeManeuverCandidates(
+          input.initial_state, input.target, nominal_, config_.dynamics,
+          config_.cooperative, previous_applied_control, first_control_interval_s);
+      for (std::size_t index = 0U; index < cooperative_candidates_.size(); ++index) {
+        const std::size_t step = index % config_.steps;
+        cooperative_noise_ax_[index] =
+            cooperative_candidates_[index].ax - nominal_[step].ax;
+        cooperative_noise_ay_[index] =
+            cooperative_candidates_[index].ay - nominal_[step].ay;
+        cooperative_noise_az_[index] =
+            cooperative_candidates_[index].az - nominal_[step].az;
+        cooperative_noise_yaw_[index] =
+            cooperative_candidates_[index].yaw_accel - nominal_[step].yaw_accel;
+      }
+    }
+    const std::size_t cooperative_peer_count = input.conflicting_peers.size();
+    for (std::size_t peer_index = 0U; peer_index < cooperative_peer_count;
+         ++peer_index) {
+      const CooperativePeerTrajectory& peer = input.conflicting_peers[peer_index];
+      std::ranges::copy(*peer.samples,
+                        cooperative_peer_samples_.begin() +
+                            static_cast<std::ptrdiff_t>(peer_index * config_.steps));
+      cooperative_peer_radii_[peer_index] = peer.footprint_radius_m;
+    }
+    const Control cooperative_preferred_acceleration =
+        input.cooperative_maneuver.has_value()
+            ? resolveCooperativePreferredAcceleration(
+                  *input.cooperative_maneuver, config_.dynamics, config_.cooperative)
+            : Control{};
+    const std::size_t cooperative_preference_steps = std::clamp<std::size_t>(
+        static_cast<std::size_t>(std::ceil(config_.cooperative.candidate_duration_s /
+                                           config_.dynamics.dt_s)),
+        1U, config_.steps);
 
     started_.record(stream_);
     checkCuda(cudaMemcpyAsync(buffers_.nominal.get(), nominal_.data(),
                               nominal_.size() * sizeof(Control), cudaMemcpyHostToDevice,
                               stream_),
               "copy time-shifted nominal controls");
+    if (cooperative_peer_count > 0U) {
+      checkCuda(cudaMemcpyAsync(buffers_.cooperative_peer_samples.get(),
+                                cooperative_peer_samples_.data(),
+                                cooperative_peer_count * config_.steps *
+                                    sizeof(CooperativePeerSample),
+                                cudaMemcpyHostToDevice, stream_),
+                "upload cooperative peer trajectories");
+      checkCuda(cudaMemcpyAsync(buffers_.cooperative_peer_radii.get(),
+                                cooperative_peer_radii_.data(),
+                                cooperative_peer_count * sizeof(float),
+                                cudaMemcpyHostToDevice, stream_),
+                "upload cooperative peer radii");
+    }
     warm_done_.record(stream_);
     generateNoise<<<noise_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
@@ -483,6 +570,29 @@ public:
                                 cudaMemcpyHostToDevice, stream_),
                 "inject target-directed yaw acceleration");
     }
+    if (cooperative_avoidance_enabled) {
+      const std::size_t candidate_value_count =
+          kCooperativeManeuverCandidateCount * config_.steps;
+      const std::size_t destination_offset =
+          cooperative_candidate_offset * config_.steps;
+      const std::size_t bytes = candidate_value_count * sizeof(float);
+      checkCuda(cudaMemcpyAsync(buffers_.noise_ax.get() + destination_offset,
+                                cooperative_noise_ax_.data(), bytes,
+                                cudaMemcpyHostToDevice, stream_),
+                "inject cooperative acceleration x");
+      checkCuda(cudaMemcpyAsync(buffers_.noise_ay.get() + destination_offset,
+                                cooperative_noise_ay_.data(), bytes,
+                                cudaMemcpyHostToDevice, stream_),
+                "inject cooperative acceleration y");
+      checkCuda(cudaMemcpyAsync(buffers_.noise_az.get() + destination_offset,
+                                cooperative_noise_az_.data(), bytes,
+                                cudaMemcpyHostToDevice, stream_),
+                "inject cooperative acceleration z");
+      checkCuda(cudaMemcpyAsync(buffers_.noise_yaw.get() + destination_offset,
+                                cooperative_noise_yaw_.data(), bytes,
+                                cudaMemcpyHostToDevice, stream_),
+                "inject cooperative yaw acceleration");
+    }
     noise_done_.record(stream_);
     simulate<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
@@ -495,8 +605,11 @@ public:
         config_.costs, config_.horizon_sampling, textures_[active_texture_].grid(),
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
-        route_active ? input.route->initial_station_m : 0.0F, previous_applied_control,
-        first_control_interval_s, input.reference_speed_mps,
+        route_active ? input.route->initial_station_m : 0.0F,
+        buffers_.cooperative_peer_samples.get(), buffers_.cooperative_peer_radii.get(),
+        cooperative_peer_count, config_.cooperative, cooperative_preferred_acceleration,
+        cooperative_preference_steps, input.cooperative_maneuver.has_value(),
+        previous_applied_control, first_control_interval_s, input.reference_speed_mps,
         config_.early_exit_on_collision, nullptr);
     simulation_done_.record(stream_);
     initializeReduction<<<1, 1, 0U, stream_>>>(
@@ -641,6 +754,8 @@ public:
     result.target_directed_candidate_best_eligible =
         target_directed_reacquisition_enabled && best_rollout_index == 0;
     result.target_directed_candidate_weight = reacquisition_weight;
+    result.cooperative_candidates_injected = cooperative_avoidance_enabled;
+    result.cooperative_peer_count = cooperative_peer_count;
     const auto evaluate_controls = [&](const std::span<const Control> controls) {
       EvaluatedControlSequence evaluation;
       evaluation.metrics = simulateReference(
@@ -648,7 +763,8 @@ public:
           config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
           input.target.x, input.target.y, config_.early_exit_on_collision,
           previous_applied_control, input.reference_speed_mps, config_.footprint,
-          input.moving_target, &evaluation.trace);
+          input.moving_target, &evaluation.trace, input.conflicting_peers,
+          input.cooperative_maneuver, config_.cooperative);
       evaluation.known_solid_collision = hostSweptSolidCollision(
           evaluation.trace.horizon, controls, config_.footprint, known_solids_);
       evaluation.classification = classifyMppiPostUpdate(
@@ -710,6 +826,10 @@ public:
           textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
           buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
           route_active ? input.route->initial_station_m : 0.0F,
+          buffers_.cooperative_peer_samples.get(),
+          buffers_.cooperative_peer_radii.get(), cooperative_peer_count,
+          config_.cooperative, cooperative_preferred_acceleration,
+          cooperative_preference_steps, input.cooperative_maneuver.has_value(),
           previous_applied_control, first_control_interval_s, input.reference_speed_mps,
           config_.early_exit_on_collision, buffers_.repair_candidates.get());
       checkCuda(cudaMemcpyAsync(
@@ -817,6 +937,8 @@ public:
     result.planning_exposure_m = metrics.planning_exposure_m;
     result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
     result.minimum_target_separation_m = metrics.minimum_target_separation_m;
+    result.minimum_peer_separation_m = metrics.minimum_peer_separation_m;
+    result.peer_separation_cost = metrics.costs.peer_separation;
     result.predicted_capture_time_s = metrics.predicted_capture_time_s;
     result.selected_tier =
         result.known_solid_collision ? RiskTier::kCollision : metrics.worst_tier;
@@ -922,6 +1044,13 @@ private:
   std::vector<float> reacquisition_noise_ay_;
   std::vector<float> reacquisition_noise_az_;
   std::vector<float> reacquisition_noise_yaw_;
+  std::vector<CooperativePeerSample> cooperative_peer_samples_;
+  std::vector<float> cooperative_peer_radii_;
+  std::vector<Control> cooperative_candidates_;
+  std::vector<float> cooperative_noise_ax_;
+  std::vector<float> cooperative_noise_ay_;
+  std::vector<float> cooperative_noise_az_;
+  std::vector<float> cooperative_noise_yaw_;
   std::array<float, kRepairCandidateCount> repair_critical_exposure_{};
   std::array<float, kRepairCandidateCount> repair_planning_exposure_{};
   std::array<std::uint8_t, kRepairCandidateCount> repair_worst_tier_{};

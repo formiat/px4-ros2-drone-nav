@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <stdexcept>
 
 namespace drone_city_nav::mppi {
 namespace {
@@ -53,7 +54,46 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
                     target_z - state.z);
 }
 
+[[nodiscard]] float peerDistance(const State& state,
+                                 const CooperativePeerSample& peer) noexcept {
+  return std::hypot(std::hypot(peer.x - state.x, peer.y - state.y), peer.z - state.z);
+}
+
+[[nodiscard]] Control
+preferredCooperativeAccelerationImpl(const CooperativeManeuverPreference& preference,
+                                     const DynamicsConfig& dynamics,
+                                     const CooperativeConfig& cooperative) noexcept {
+  const float norm =
+      std::hypot(std::hypot(preference.direction_x, preference.direction_y),
+                 preference.direction_z);
+  if (!(norm > 1.0e-5F)) {
+    return {};
+  }
+  const float horizontal_norm =
+      std::hypot(preference.direction_x, preference.direction_y);
+  const float horizontal_magnitude = cooperative.candidate_acceleration_fraction *
+                                     dynamics.maximum_horizontal_acceleration_mps2;
+  const float vertical_magnitude = cooperative.candidate_acceleration_fraction *
+                                   dynamics.maximum_vertical_acceleration_mps2;
+  return Control{
+      .ax = horizontal_norm > 1.0e-5F
+                ? horizontal_magnitude * preference.direction_x / horizontal_norm
+                : 0.0F,
+      .ay = horizontal_norm > 1.0e-5F
+                ? horizontal_magnitude * preference.direction_y / horizontal_norm
+                : 0.0F,
+      .az = vertical_magnitude * preference.direction_z / norm,
+  };
+}
+
 } // namespace
+
+Control
+resolveCooperativePreferredAcceleration(const CooperativeManeuverPreference& preference,
+                                        const DynamicsConfig& dynamics,
+                                        const CooperativeConfig& cooperative) noexcept {
+  return preferredCooperativeAccelerationImpl(preference, dynamics, cooperative);
+}
 
 bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
   return !config.scenario.empty() && config.rollouts > 0U && config.steps >= 2U &&
@@ -67,6 +107,17 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.head_progress_weight >= 0.0F &&
          std::isfinite(config.costs.speed_tracking_weight) &&
          config.costs.speed_tracking_weight >= 0.0F &&
+         std::isfinite(config.costs.peer_separation_weight) &&
+         config.costs.peer_separation_weight >= 0.0F &&
+         std::isfinite(config.costs.cooperative_maneuver_preference_weight) &&
+         config.costs.cooperative_maneuver_preference_weight >= 0.0F &&
+         std::isfinite(config.cooperative.desired_minimum_separation_m) &&
+         config.cooperative.desired_minimum_separation_m > 0.0F &&
+         std::isfinite(config.cooperative.candidate_acceleration_fraction) &&
+         config.cooperative.candidate_acceleration_fraction > 0.0F &&
+         config.cooperative.candidate_acceleration_fraction <= 1.0F &&
+         std::isfinite(config.cooperative.candidate_duration_s) &&
+         config.cooperative.candidate_duration_s > 0.0F &&
          horizonSamplingConfigIsValid(config.horizon_sampling) &&
          config.footprint.radius_m >= 0.0F && config.footprint.lower_extent_m >= 0.0F &&
          config.footprint.upper_extent_m >= 0.0F &&
@@ -126,9 +177,19 @@ RolloutMetrics simulateReference(
     const bool early_exit_on_collision, const Control previous_applied_control,
     const float reference_speed_mps, const FootprintConfig& footprint,
     const std::optional<MovingTargetReference> moving_target,
-    ReferenceSimulationTrace* const trace) {
+    ReferenceSimulationTrace* const trace,
+    const std::span<const CooperativePeerTrajectory> conflicting_peers,
+    const std::optional<CooperativeManeuverPreference> cooperative_maneuver,
+    const CooperativeConfig& cooperative) {
+  for (const CooperativePeerTrajectory& peer : conflicting_peers) {
+    if (!peer.samples || peer.samples->size() < nominal_controls.size() ||
+        !(peer.footprint_radius_m >= 0.0F)) {
+      throw std::invalid_argument{"invalid cooperative peer trajectory"};
+    }
+  }
   RolloutMetrics metrics{};
   metrics.minimum_clearance_m = std::numeric_limits<float>::infinity();
+  metrics.minimum_peer_separation_m = std::numeric_limits<float>::infinity();
   State state = initial_state;
   if (trace != nullptr) {
     trace->horizon.clear();
@@ -144,6 +205,15 @@ RolloutMetrics simulateReference(
   const std::size_t head_steps =
       std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
                                   costs.head_progress_horizon_s / dynamics.dt_s)),
+                              1U, nominal_controls.size());
+  const Control preferred_acceleration =
+      cooperative_maneuver.has_value()
+          ? resolveCooperativePreferredAcceleration(*cooperative_maneuver, dynamics,
+                                                    cooperative)
+          : Control{};
+  const std::size_t cooperative_preference_steps =
+      std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
+                                  cooperative.candidate_duration_s / dynamics.dt_s)),
                               1U, nominal_controls.size());
   std::size_t simulated_steps = 0U;
   for (std::size_t step = 0U; step < nominal_controls.size(); ++step) {
@@ -196,6 +266,22 @@ RolloutMetrics simulateReference(
     if (moving_target.has_value() && metrics.predicted_capture_time_s < 0.0F &&
         target_distance <= moving_target->capture_radius_m) {
       metrics.predicted_capture_time_s = static_cast<float>(step + 1U) * dynamics.dt_s;
+    }
+    for (const CooperativePeerTrajectory& peer : conflicting_peers) {
+      const float separation_m = peerDistance(state, (*peer.samples)[step]);
+      metrics.minimum_peer_separation_m =
+          std::min(metrics.minimum_peer_separation_m, separation_m);
+      const float desired_separation_m =
+          std::max(cooperative.desired_minimum_separation_m,
+                   footprint.radius_m + peer.footprint_radius_m);
+      const float shortfall_m = std::max(0.0F, desired_separation_m - separation_m);
+      metrics.costs.peer_separation += squared(shortfall_m);
+    }
+    if (cooperative_maneuver.has_value() && step < cooperative_preference_steps) {
+      metrics.costs.maneuver_preference +=
+          squared(control.ax - preferred_acceleration.ax) +
+          squared(control.ay - preferred_acceleration.ay) +
+          squared(control.az - preferred_acceleration.az);
     }
     if (step + 1U == head_steps) {
       metrics.costs.head_progress = initial_target_distance - target_distance;
@@ -250,6 +336,9 @@ RolloutMetrics simulateReference(
       costs.jerk_weight * metrics.costs.jerk +
       costs.yaw_change_weight * metrics.costs.yaw_change +
       costs.control_effort_weight * dynamics.dt_s * metrics.costs.control_effort +
+      costs.peer_separation_weight * dynamics.dt_s * metrics.costs.peer_separation +
+      costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
+          metrics.costs.maneuver_preference +
       costs.terminal_weight * metrics.costs.terminal;
   metrics.terminal_state = state;
   return metrics;

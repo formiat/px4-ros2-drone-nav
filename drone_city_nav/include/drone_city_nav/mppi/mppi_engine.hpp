@@ -61,6 +61,8 @@ struct MppiTickInput {
   RiskTier maximum_eligible_risk_tier{RiskTier::kPreferred};
   std::optional<MovingTargetReference> moving_target;
   std::optional<RouteReference> route;
+  std::vector<CooperativePeerTrajectory> conflicting_peers;
+  std::optional<CooperativeManeuverPreference> cooperative_maneuver;
   std::optional<std::size_t> active_rollouts;
   bool target_directed_reacquisition_enabled{false};
 };
@@ -127,6 +129,8 @@ struct MppiTickResult {
   float head_progress_m{0.0F};
   float terminal_progress_m{0.0F};
   float minimum_target_separation_m{0.0F};
+  float minimum_peer_separation_m{0.0F};
+  float peer_separation_cost{0.0F};
   float predicted_capture_time_s{-1.0F};
   float maximum_acceleration_mps2{0.0F};
   float maximum_jerk_mps3{0.0F};
@@ -137,6 +141,8 @@ struct MppiTickResult {
   bool target_directed_candidate_raw_safe{false};
   bool target_directed_candidate_best_eligible{false};
   float target_directed_candidate_weight{0.0F};
+  bool cooperative_candidates_injected{false};
+  std::size_t cooperative_peer_count{0U};
   std::uint64_t esdf_revision{0U};
   std::size_t active_rollouts{0U};
   MppiStageTimings timings{};

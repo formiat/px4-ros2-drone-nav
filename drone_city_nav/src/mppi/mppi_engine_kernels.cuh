@@ -389,6 +389,10 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          cudaTextureObject_t esdf_texture, const KnownSolid* solids,
          std::size_t solid_count, const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
+         const CooperativePeerSample* cooperative_peer_samples,
+         const float* cooperative_peer_radii, std::size_t cooperative_peer_count,
+         CooperativeConfig cooperative, Control cooperative_preferred_acceleration,
+         std::size_t cooperative_preference_steps, bool cooperative_preference_enabled,
          Control previous_applied_control, float first_control_interval_s,
          float reference_speed_mps, bool early_exit, const Control* direct_controls) {
   const std::size_t rollout =
@@ -404,6 +408,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float yaw_cost = 0.0F;
   float altitude_cost = 0.0F;
   float speed_tracking_cost = 0.0F;
+  float peer_separation_cost = 0.0F;
+  float maneuver_preference_cost = 0.0F;
   float critical_m = 0.0F;
   float planning_m = 0.0F;
   float minimum_clearance_m = kInfinity;
@@ -486,6 +492,26 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                      movingTargetAltitudeAt(moving_target, target_elapsed_s) - state.z)
             : hypotf(target.x - state.x, target.y - state.y);
     minimum_target_separation_m = fminf(minimum_target_separation_m, target_distance);
+    for (std::size_t peer_index = 0U; peer_index < cooperative_peer_count;
+         ++peer_index) {
+      const CooperativePeerSample peer =
+          cooperative_peer_samples[peer_index * steps + step];
+      const float peer_separation_m =
+          hypotf(hypotf(peer.x - state.x, peer.y - state.y), peer.z - state.z);
+      const float desired_separation_m =
+          fmaxf(cooperative.desired_minimum_separation_m,
+                footprint.radius_m + cooperative_peer_radii[peer_index]);
+      const float shortfall_m = fmaxf(0.0F, desired_separation_m - peer_separation_m);
+      peer_separation_cost += shortfall_m * shortfall_m;
+    }
+    if (cooperative_preference_enabled && step < cooperative_preference_steps) {
+      const float preference_ax = control.ax - cooperative_preferred_acceleration.ax;
+      const float preference_ay = control.ay - cooperative_preferred_acceleration.ay;
+      const float preference_az = control.az - cooperative_preferred_acceleration.az;
+      maneuver_preference_cost += preference_ax * preference_ax +
+                                  preference_ay * preference_ay +
+                                  preference_az * preference_az;
+    }
     const HorizonCostSample path_cost_sample =
         route_point_count >= 2U
             ? horizonCostSample(step, steps, dynamics.dt_s,
@@ -559,6 +585,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
       costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
       costs.jerk_weight * jerk_cost + costs.yaw_change_weight * yaw_cost +
+      costs.peer_separation_weight * dynamics.dt_s * peer_separation_cost +
+      costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
+          maneuver_preference_cost +
       costs.planning_exposure_weight * planning_m +
       costs.critical_exposure_weight * critical_m +
       costs.terminal_weight * terminal_distance;

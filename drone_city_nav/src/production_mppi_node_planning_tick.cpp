@@ -108,6 +108,8 @@ void ProductionMppiNode::planningTick() {
         .reference_speed_mps = 0.0F,
         .moving_target = std::nullopt,
         .route = std::nullopt,
+        .conflicting_peers = {},
+        .cooperative_maneuver = std::nullopt,
         .active_rollouts = std::nullopt,
     };
     const MppiHorizonSafetyResult fallback =
@@ -556,6 +558,8 @@ void ProductionMppiNode::planningTick() {
                     .initial_station_m = static_cast<float>(route_projection.station_m),
                 }}
               : std::nullopt,
+      .conflicting_peers = {},
+      .cooperative_maneuver = std::nullopt,
       .active_rollouts = rollout_budget.active_rollouts,
       .target_directed_reacquisition_enabled = direct_tracking_interception,
   };

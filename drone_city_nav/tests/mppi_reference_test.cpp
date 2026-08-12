@@ -232,6 +232,57 @@ TEST(MppiReferenceTest, ReferenceSpeedAddsTrackingCost) {
   EXPECT_LT(matched.soft_cost, faster.soft_cost);
 }
 
+TEST(MppiReferenceTest, PeerSeparationIsSoftAndTimeIndexed) {
+  constexpr int kWidth = 40;
+  constexpr int kHeight = 10;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 40.0F);
+  const std::array<Control, 4> controls{};
+  const std::array<Control, 4> noise{};
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.5F;
+  dynamics.linear_drag_1ps = 0.0F;
+  const auto near_samples = std::make_shared<const std::vector<CooperativePeerSample>>(
+      std::vector<CooperativePeerSample>(4U, CooperativePeerSample{.x = 4.0F}));
+  const auto far_samples = std::make_shared<const std::vector<CooperativePeerSample>>(
+      std::vector<CooperativePeerSample>(4U, CooperativePeerSample{.x = 20.0F}));
+  const std::array near_peer{
+      CooperativePeerTrajectory{.samples = near_samples, .footprint_radius_m = 0.82F}};
+  const std::array far_peer{
+      CooperativePeerTrajectory{.samples = far_samples, .footprint_radius_m = 0.82F}};
+  const State initial{.vx = 2.0F};
+
+  const RolloutMetrics near =
+      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
+                        grid, esdf, 30.0F, 0.0F, false, Control{}, -1.0F,
+                        FootprintConfig{}, std::nullopt, nullptr, near_peer);
+  const RolloutMetrics far =
+      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
+                        grid, esdf, 30.0F, 0.0F, false, Control{}, -1.0F,
+                        FootprintConfig{}, std::nullopt, nullptr, far_peer);
+
+  EXPECT_FALSE(near.collision);
+  EXPECT_GT(near.costs.peer_separation, 0.0F);
+  EXPECT_LT(near.minimum_peer_separation_m, 5.0F);
+  EXPECT_FLOAT_EQ(far.costs.peer_separation, 0.0F);
+  EXPECT_GT(near.soft_cost, far.soft_cost);
+}
+
+TEST(MppiReferenceTest, NoPeersAddsNoCooperativeCost) {
+  const EsdfGrid grid{10, 10, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(100U, 20.0F);
+  const std::array<Control, 2> controls{};
+  const std::array<Control, 2> noise{};
+
+  const RolloutMetrics metrics =
+      simulateReference(State{}, controls, noise, DynamicsConfig{}, RiskConfig{},
+                        CostConfig{}, grid, esdf, 5.0F, 0.0F, false);
+
+  EXPECT_FLOAT_EQ(metrics.costs.peer_separation, 0.0F);
+  EXPECT_FLOAT_EQ(metrics.costs.maneuver_preference, 0.0F);
+  EXPECT_TRUE(std::isinf(metrics.minimum_peer_separation_m));
+}
+
 TEST(MppiReferenceTest, MovingTargetUsesClosestApproachInsteadOfTerminalPoint) {
   constexpr int kWidth = 30;
   constexpr int kHeight = 4;

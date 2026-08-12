@@ -183,6 +183,79 @@ std::vector<Control> buildGuideDirectedNominalSeed(
   return seed;
 }
 
+std::vector<Control> buildCooperativeManeuverCandidates(
+    const State& initial, const State& target, const std::span<const Control> nominal,
+    const DynamicsConfig& dynamics, const CooperativeConfig& cooperative,
+    const Control previous_applied_control, const float first_control_interval_s) {
+  if (nominal.empty() || !(dynamics.dt_s > 0.0F) ||
+      !(cooperative.candidate_acceleration_fraction > 0.0F) ||
+      cooperative.candidate_acceleration_fraction > 1.0F ||
+      !(cooperative.candidate_duration_s > 0.0F)) {
+    throw std::invalid_argument{"invalid cooperative maneuver candidate input"};
+  }
+  std::vector<Control> candidates(kCooperativeManeuverCandidateCount * nominal.size());
+  const float target_dx = target.x - initial.x;
+  const float target_dy = target.y - initial.y;
+  const float horizontal_speed = std::hypot(initial.vx, initial.vy);
+  const float target_distance = std::hypot(target_dx, target_dy);
+  float forward_x = 1.0F;
+  float forward_y = 0.0F;
+  if (horizontal_speed > 0.5F) {
+    forward_x = initial.vx / horizontal_speed;
+    forward_y = initial.vy / horizontal_speed;
+  } else if (target_distance > 1.0e-3F) {
+    forward_x = target_dx / target_distance;
+    forward_y = target_dy / target_distance;
+  }
+  const float horizontal_bias = cooperative.candidate_acceleration_fraction *
+                                dynamics.maximum_horizontal_acceleration_mps2;
+  const float vertical_bias = cooperative.candidate_acceleration_fraction *
+                              dynamics.maximum_vertical_acceleration_mps2;
+  const std::size_t active_steps =
+      std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
+                                  cooperative.candidate_duration_s / dynamics.dt_s)),
+                              1U, nominal.size());
+  const auto bias_for = [&](const CooperativeManeuver maneuver) {
+    switch (maneuver) {
+      case CooperativeManeuver::kKeep:
+        return Control{};
+      case CooperativeManeuver::kClimb:
+        return Control{.az = vertical_bias};
+      case CooperativeManeuver::kDescend:
+        return Control{.az = -vertical_bias};
+      case CooperativeManeuver::kLeft:
+        return Control{.ax = -forward_y * horizontal_bias,
+                       .ay = forward_x * horizontal_bias};
+      case CooperativeManeuver::kRight:
+        return Control{.ax = forward_y * horizontal_bias,
+                       .ay = -forward_x * horizontal_bias};
+      case CooperativeManeuver::kSlow:
+        return Control{.ax = -forward_x * horizontal_bias,
+                       .ay = -forward_y * horizontal_bias};
+    }
+    return Control{};
+  };
+  for (std::size_t candidate_index = 0U;
+       candidate_index < kCooperativeManeuverCandidateCount; ++candidate_index) {
+    const CooperativeManeuver maneuver =
+        static_cast<CooperativeManeuver>(candidate_index);
+    const Control bias = bias_for(maneuver);
+    std::span<Control> candidate =
+        std::span{candidates}.subspan(candidate_index * nominal.size(), nominal.size());
+    for (std::size_t step = 0U; step < nominal.size(); ++step) {
+      candidate[step] = nominal[step];
+      if (step < active_steps) {
+        candidate[step].ax += bias.ax;
+        candidate[step].ay += bias.ay;
+        candidate[step].az += bias.az;
+      }
+    }
+    limitControlSequence(candidate, dynamics, previous_applied_control,
+                         first_control_interval_s);
+  }
+  return candidates;
+}
+
 std::optional<float>
 projectForwardRouteStation(const std::span<const RouteSample3D> route,
                            const State& state, const float minimum_station_m) noexcept {

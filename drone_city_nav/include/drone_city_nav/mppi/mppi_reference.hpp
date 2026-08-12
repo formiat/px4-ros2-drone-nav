@@ -20,6 +20,11 @@ struct MppiProgressDiagnostics {
   float terminal_progress_m{0.0F};
 };
 
+[[nodiscard]] Control
+resolveCooperativePreferredAcceleration(const CooperativeManeuverPreference& preference,
+                                        const DynamicsConfig& dynamics,
+                                        const CooperativeConfig& cooperative) noexcept;
+
 [[nodiscard]] MppiProgressDiagnostics
 resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
                                    bool moving_target_enabled,
@@ -34,6 +39,9 @@ resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
     bool early_exit_on_collision, Control previous_applied_control = {},
     float reference_speed_mps = -1.0F, const FootprintConfig& footprint = {},
     std::optional<MovingTargetReference> moving_target = std::nullopt,
-    ReferenceSimulationTrace* trace = nullptr);
+    ReferenceSimulationTrace* trace = nullptr,
+    std::span<const CooperativePeerTrajectory> conflicting_peers = {},
+    std::optional<CooperativeManeuverPreference> cooperative_maneuver = std::nullopt,
+    const CooperativeConfig& cooperative = {});
 
 } // namespace drone_city_nav::mppi
