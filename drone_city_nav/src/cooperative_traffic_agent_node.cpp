@@ -1,6 +1,7 @@
 #include "drone_city_nav/cooperative_traffic_agent_node.hpp"
 
 #include "drone_city_nav/cooperative_channel_coordination.hpp"
+#include "drone_city_nav/cooperative_space_time.hpp"
 #include "drone_city_nav/cooperative_traffic.hpp"
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 #include "drone_city_nav/msg/cooperative_channel_intent.hpp"
@@ -16,6 +17,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
@@ -99,6 +101,30 @@ public:
         .minimum_maneuver_latch_s = 0.0,
         .release_confirmation_s = 0.0,
     };
+    space_time_config_ = CooperativeSpaceTimeConfig{
+        .prediction_horizon_s =
+            declare_parameter<double>("space_time_prediction_horizon_s", 5.0),
+        .desired_minimum_separation_m =
+            declare_parameter<double>("space_time_desired_minimum_separation_m", 5.0),
+        .spatial_transition_s =
+            declare_parameter<double>("space_time_spatial_transition_s", 1.5),
+        .minimum_spatial_offset_m =
+            declare_parameter<double>("space_time_minimum_spatial_offset_m", 0.5),
+        .maximum_spatial_offset_m =
+            declare_parameter<double>("space_time_maximum_spatial_offset_m", 5.0),
+        .minimum_time_shift_s =
+            declare_parameter<double>("space_time_minimum_shift_s", 0.25),
+        .maximum_time_shift_s =
+            declare_parameter<double>("space_time_maximum_shift_s", 2.0),
+        .sample_period_s = declare_parameter<double>("space_time_sample_period_s", 0.1),
+        .spatial_margin_m =
+            declare_parameter<double>("space_time_spatial_margin_m", 0.25),
+        .incumbent_hysteresis_m =
+            declare_parameter<double>("space_time_incumbent_hysteresis_m", 0.25),
+    };
+    if (!cooperativeSpaceTimeConfigIsValid(space_time_config_)) {
+      throw std::invalid_argument{"invalid cooperative space-time configuration"};
+    }
 
     const auto state_qos = rclcpp::QoS{10}.best_effort();
     const auto horizon_qos = rclcpp::QoS{4}.reliable();
@@ -233,10 +259,31 @@ private:
         peer_store_.activeIntents(now_ns);
     const CooperativeAvoidanceDecision avoidance =
         conflict_lifecycle_.update(now_ns, *ownship, peers);
+    if (!avoidance.active ||
+        avoidance.conflict_generation != last_space_time_conflict_generation_) {
+      last_space_time_maneuver_.reset();
+    }
+    const CooperativeSpaceTimeDecision space_time =
+        optimizeCooperativeSpaceTime(*ownship, avoidance.peers, now_ns,
+                                     space_time_config_, last_space_time_maneuver_);
+    CooperativeAvoidanceDecision coordinated_avoidance = avoidance;
+    if (space_time.valid) {
+      coordinated_avoidance.preferred_maneuver = space_time.maneuver;
+      coordinated_avoidance.preferred_acceleration_direction =
+          space_time.preferred_acceleration_direction;
+      coordinated_avoidance.predicted_minimum_separation_m =
+          space_time.predicted_minimum_separation_m;
+      coordinated_avoidance.time_to_minimum_s = space_time.time_to_minimum_s;
+      last_space_time_maneuver_ = space_time.maneuver;
+      last_space_time_conflict_generation_ = avoidance.conflict_generation;
+    } else if (!avoidance.active) {
+      last_space_time_conflict_generation_ = 0U;
+    }
     const CooperativeChannelDecision channel =
         coordinateCooperativeChannel(*ownship, peers, channel_config_);
-    ownship->maneuver_state = channel.yield_before_entry ? CooperativeManeuver::kSlow
-                                                         : avoidance.preferred_maneuver;
+    ownship->maneuver_state = channel.yield_before_entry
+                                  ? CooperativeManeuver::kSlow
+                                  : coordinated_avoidance.preferred_maneuver;
     ownship->conflict_generation = avoidance.conflict_generation;
     ownship->conflicting_vehicle_ids.reserve(avoidance.peers.size());
     for (const CooperativeConflictPeer& peer : avoidance.peers) {
@@ -245,22 +292,29 @@ private:
     last_maneuver_ = ownship->maneuver_state;
     last_conflict_generation_ = ownship->conflict_generation;
     intent_pub_->publish(cooperativeFlightIntentMessage(*ownship));
-    publishCommand(now_ns, *ownship, avoidance, channel);
+    publishCommand(now_ns, *ownship, coordinated_avoidance, space_time, channel);
     if (avoidance.changed || channel.yield_before_entry != last_channel_yield_ ||
-        avoidance.primary_peer_id != last_primary_peer_id_) {
+        avoidance.primary_peer_id != last_primary_peer_id_ || space_time.changed) {
       RCLCPP_INFO(get_logger(),
                   "COOPERATIVE_CONFLICT vehicle_id='%s' active=%s generation=%" PRIu64
                   " maneuver=%s primary_peer='%s' predicted_minimum_m=%.3f "
                   "time_to_minimum_s=%.3f channel_yield=%s yield_to='%s' "
-                  "channel_offset_m=%.3f entry_not_before_ns=%" PRId64,
+                  "channel_offset_m=%.3f entry_not_before_ns=%" PRId64
+                  " space_time_active=%s space_time_lateral_m=%.3f "
+                  "space_time_vertical_m=%.3f space_time_shift_s=%.3f "
+                  "space_time_candidates=%zu space_time_shortfall_m2_s=%.3f",
                   vehicle_id_.c_str(), avoidance.active ? "true" : "false",
                   avoidance.conflict_generation,
                   cooperativeManeuverName(ownship->maneuver_state).data(),
                   avoidance.primary_peer_id.c_str(),
-                  avoidance.predicted_minimum_separation_m, avoidance.time_to_minimum_s,
+                  coordinated_avoidance.predicted_minimum_separation_m,
+                  coordinated_avoidance.time_to_minimum_s,
                   channel.yield_before_entry ? "true" : "false",
                   channel.yield_to_vehicle_id.c_str(), channel.lateral_offset_m,
-                  channel.entry_not_before_ns);
+                  channel.entry_not_before_ns, space_time.active ? "true" : "false",
+                  space_time.lateral_offset_m, space_time.vertical_offset_m,
+                  space_time.time_shift_s, space_time.evaluated_candidate_count,
+                  space_time.integrated_separation_shortfall_m2_s);
     }
     last_channel_yield_ = channel.yield_before_entry;
     last_primary_peer_id_ = avoidance.primary_peer_id;
@@ -269,6 +323,7 @@ private:
   void publishCommand(const std::int64_t now_ns,
                       const CooperativeFlightIntentData& ownship,
                       const CooperativeAvoidanceDecision& avoidance,
+                      const CooperativeSpaceTimeDecision& space_time,
                       const CooperativeChannelDecision& channel) {
     msg::CooperativeManeuverCommand command;
     command.header.stamp = cooperativeTimeMessage(now_ns);
@@ -291,6 +346,17 @@ private:
     command.time_to_closest_approach_s =
         static_cast<float>(avoidance.time_to_minimum_s);
     command.conflicting_vehicle_ids = ownship.conflicting_vehicle_ids;
+    command.space_time_plan_active = space_time.valid;
+    command.space_time_lateral_offset_m = space_time.lateral_offset_m;
+    command.space_time_vertical_offset_m = space_time.vertical_offset_m;
+    command.space_time_shift_s = space_time.time_shift_s;
+    command.space_time_predicted_minimum_separation_m =
+        space_time.predicted_minimum_separation_m;
+    command.space_time_integrated_shortfall_m2_s =
+        space_time.integrated_separation_shortfall_m2_s;
+    command.space_time_evaluated_candidate_count = static_cast<std::uint32_t>(
+        std::min<std::size_t>(space_time.evaluated_candidate_count,
+                              std::numeric_limits<std::uint32_t>::max()));
     command.channel_yield_required = channel.yield_before_entry;
     command.channel_yield_to_vehicle_id = channel.yield_to_vehicle_id;
     command.channel_id = ownship.channel.channel_id;
@@ -321,6 +387,7 @@ private:
   CooperativePeerStore peer_store_;
   CooperativeConflictLifecycle conflict_lifecycle_;
   CooperativeChannelCoordinationConfig channel_config_{};
+  CooperativeSpaceTimeConfig space_time_config_{};
   std::optional<msg::VehicleNavigationState> navigation_state_;
   std::optional<msg::MppiTrajectoryHorizon> execution_horizon_;
   std::optional<CooperativeChannelUse> channel_state_;
@@ -331,6 +398,8 @@ private:
   std::uint64_t command_generation_{0U};
   std::uint64_t last_conflict_generation_{0U};
   CooperativeManeuver last_maneuver_{CooperativeManeuver::kKeep};
+  std::optional<CooperativeManeuver> last_space_time_maneuver_;
+  std::uint64_t last_space_time_conflict_generation_{0U};
   bool last_channel_yield_{false};
   std::string last_primary_peer_id_;
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr state_sub_;

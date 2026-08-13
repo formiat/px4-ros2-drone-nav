@@ -9,6 +9,13 @@ uint64 conflict_generation
 float32 predicted_minimum_separation_m
 float32 time_to_closest_approach_s
 string[] conflicting_vehicle_ids
+bool space_time_plan_active
+float64 space_time_lateral_offset_m
+float64 space_time_vertical_offset_m
+float64 space_time_shift_s
+float64 space_time_predicted_minimum_separation_m
+float64 space_time_integrated_shortfall_m2_s
+uint32 space_time_evaluated_candidate_count
 bool channel_yield_required
 string channel_yield_to_vehicle_id
 string channel_id

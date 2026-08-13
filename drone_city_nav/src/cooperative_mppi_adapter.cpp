@@ -33,7 +33,18 @@ CooperativeMppiAdapterResult adaptCooperativeMppiCommand(
   }
   if (planning_stamp_ns <= 0 || steps == 0U || !std::isfinite(dt_s) || !(dt_s > 0.0F) ||
       command.stamp_ns <= 0 || command.valid_until_ns < command.stamp_ns ||
-      !finite(command.preferred_acceleration_direction)) {
+      !finite(command.preferred_acceleration_direction) ||
+      (command.space_time_plan_active &&
+       (!command.avoidance_active ||
+        (!std::isfinite(command.space_time_lateral_offset_m) ||
+         !std::isfinite(command.space_time_vertical_offset_m) ||
+         !std::isfinite(command.space_time_shift_s) ||
+         command.space_time_shift_s < 0.0 ||
+         !std::isfinite(command.space_time_predicted_minimum_separation_m) ||
+         command.space_time_predicted_minimum_separation_m < 0.0 ||
+         !std::isfinite(command.space_time_integrated_shortfall_m2_s) ||
+         command.space_time_integrated_shortfall_m2_s < 0.0 ||
+         command.space_time_evaluated_candidate_count == 0U)))) {
     result.status = CooperativeMppiAdapterStatus::kInvalid;
     return result;
   }
@@ -41,6 +52,16 @@ CooperativeMppiAdapterResult adaptCooperativeMppiCommand(
     result.status = CooperativeMppiAdapterStatus::kStale;
     return result;
   }
+  result.space_time_plan_active = command.space_time_plan_active;
+  result.space_time_lateral_offset_m = command.space_time_lateral_offset_m;
+  result.space_time_vertical_offset_m = command.space_time_vertical_offset_m;
+  result.space_time_shift_s = command.space_time_shift_s;
+  result.space_time_predicted_minimum_separation_m =
+      command.space_time_predicted_minimum_separation_m;
+  result.space_time_integrated_shortfall_m2_s =
+      command.space_time_integrated_shortfall_m2_s;
+  result.space_time_evaluated_candidate_count =
+      command.space_time_evaluated_candidate_count;
   if (!command.avoidance_active) {
     result.status = CooperativeMppiAdapterStatus::kAccepted;
     return result;

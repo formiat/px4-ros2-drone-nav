@@ -26,6 +26,13 @@ struct CooperativeMppiAdapterResult {
   std::optional<mppi::CooperativeManeuverPreference> maneuver;
   std::optional<mppi::CooperativeSeparationAcquisition> acquisition;
   bool avoidance_active{false};
+  bool space_time_plan_active{false};
+  double space_time_lateral_offset_m{0.0};
+  double space_time_vertical_offset_m{0.0};
+  double space_time_shift_s{0.0};
+  double space_time_predicted_minimum_separation_m{0.0};
+  double space_time_integrated_shortfall_m2_s{0.0};
+  std::size_t space_time_evaluated_candidate_count{0U};
 
   [[nodiscard]] bool accepted() const noexcept {
     return status == CooperativeMppiAdapterStatus::kAccepted;

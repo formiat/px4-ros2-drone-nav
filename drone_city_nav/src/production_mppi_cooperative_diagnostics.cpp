@@ -45,6 +45,20 @@ void appendFields(std::ostringstream& output,
            << ",\"cooperative_minimum_peer_separation_m\":"
            << finiteOrNegative(result.minimum_peer_separation_m)
            << ",\"cooperative_peer_separation_cost\":" << result.peer_separation_cost
+           << ",\"cooperative_space_time_plan_active\":"
+           << (cooperative.mppi.space_time_plan_active ? "true" : "false")
+           << ",\"cooperative_space_time_lateral_offset_m\":"
+           << cooperative.mppi.space_time_lateral_offset_m
+           << ",\"cooperative_space_time_vertical_offset_m\":"
+           << cooperative.mppi.space_time_vertical_offset_m
+           << ",\"cooperative_space_time_shift_s\":"
+           << cooperative.mppi.space_time_shift_s
+           << ",\"cooperative_space_time_predicted_minimum_separation_m\":"
+           << cooperative.mppi.space_time_predicted_minimum_separation_m
+           << ",\"cooperative_space_time_integrated_shortfall_m2_s\":"
+           << cooperative.mppi.space_time_integrated_shortfall_m2_s
+           << ",\"cooperative_space_time_evaluated_candidate_count\":"
+           << cooperative.mppi.space_time_evaluated_candidate_count
            << ",\"cooperative_channel_phase\":\""
            << cooperativeChannelPhaseName(cooperative.channel.phase) << '"'
            << ",\"cooperative_channel_lateral_offset_m\":"
@@ -96,6 +110,19 @@ void appendFields(std::ostringstream& output,
          << " cooperative_minimum_peer_separation_m="
          << finiteOrNegative(result.minimum_peer_separation_m)
          << " cooperative_peer_separation_cost=" << result.peer_separation_cost
+         << " cooperative_space_time_plan_active="
+         << (cooperative.mppi.space_time_plan_active ? "true" : "false")
+         << " cooperative_space_time_lateral_offset_m="
+         << cooperative.mppi.space_time_lateral_offset_m
+         << " cooperative_space_time_vertical_offset_m="
+         << cooperative.mppi.space_time_vertical_offset_m
+         << " cooperative_space_time_shift_s=" << cooperative.mppi.space_time_shift_s
+         << " cooperative_space_time_predicted_minimum_separation_m="
+         << cooperative.mppi.space_time_predicted_minimum_separation_m
+         << " cooperative_space_time_integrated_shortfall_m2_s="
+         << cooperative.mppi.space_time_integrated_shortfall_m2_s
+         << " cooperative_space_time_evaluated_candidate_count="
+         << cooperative.mppi.space_time_evaluated_candidate_count
          << " cooperative_channel_phase="
          << cooperativeChannelPhaseName(cooperative.channel.phase)
          << " cooperative_channel_lateral_offset_m="

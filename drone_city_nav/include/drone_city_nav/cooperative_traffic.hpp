@@ -96,6 +96,13 @@ struct CooperativeManeuverCommandData {
   CooperativeManeuver preferred_maneuver{CooperativeManeuver::kKeep};
   Vec3 preferred_acceleration_direction{};
   std::uint64_t conflict_generation{0U};
+  bool space_time_plan_active{false};
+  double space_time_lateral_offset_m{0.0};
+  double space_time_vertical_offset_m{0.0};
+  double space_time_shift_s{0.0};
+  double space_time_predicted_minimum_separation_m{0.0};
+  double space_time_integrated_shortfall_m2_s{0.0};
+  std::size_t space_time_evaluated_candidate_count{0U};
   bool channel_yield_required{false};
   std::string channel_yield_to_vehicle_id;
   std::string channel_id;
@@ -175,6 +182,15 @@ struct CooperativeConflictPeer {
   CooperativeFlightIntentData intent;
   CooperativeConflictPrediction prediction{};
 };
+
+struct CooperativePairManeuverPreference {
+  CooperativeManeuver maneuver{CooperativeManeuver::kKeep};
+  Vec3 acceleration_direction{};
+};
+
+[[nodiscard]] CooperativePairManeuverPreference
+preferredCooperativePairManeuver(const CooperativeFlightIntentData& ownship,
+                                 const CooperativeFlightIntentData& peer) noexcept;
 
 struct CooperativeAvoidanceDecision {
   bool active{false};

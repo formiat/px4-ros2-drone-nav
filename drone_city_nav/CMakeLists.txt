@@ -154,6 +154,7 @@ add_library(
   src/cooperative_channel_route.cpp
   src/cooperative_channel_coordination.cpp
   src/cooperative_mppi_adapter.cpp
+  src/cooperative_space_time.cpp
   src/cooperative_traffic.cpp
   src/cooperative_traffic_mission.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
@@ -813,6 +814,12 @@ if(BUILD_TESTING)
   target_compile_features(cooperative_traffic_test PRIVATE cxx_std_20)
   target_link_libraries(cooperative_traffic_test drone_city_nav_core)
   enable_project_warnings(cooperative_traffic_test)
+
+  ament_add_gtest(cooperative_space_time_test
+                  tests/cooperative_space_time_test.cpp)
+  target_compile_features(cooperative_space_time_test PRIVATE cxx_std_20)
+  target_link_libraries(cooperative_space_time_test drone_city_nav_core)
+  enable_project_warnings(cooperative_space_time_test)
 
   ament_add_gtest(cooperative_traffic_mission_test
                   tests/cooperative_traffic_mission_test.cpp)

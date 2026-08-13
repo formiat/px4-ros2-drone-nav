@@ -265,8 +265,11 @@ At 20 Hz, each vehicle publishes a typed `CooperativeFlightIntent` containing
 its current state, physical footprint, bounded-validity MPPI horizon, and active
 channel use. Every cooperative agent independently rejects stale or out-of-order
 peer intents, predicts the continuous closest approach over a five-second
-horizon, and chooses a deterministic complementary climb, descent, or lateral
-maneuver. Conflict state is latched briefly and released with hysteresis. The
+horizon, and optimizes a deterministic space-time maneuver against all current
+conflicting trajectories together. Candidate plans combine continuous lateral or
+vertical displacement with an optional bounded entry-time shift; safe plans are
+ranked by separation, route progress, effort, and stable pair preference. Conflict
+and incumbent-plan state are latched briefly and released with hysteresis. The
 result is a soft planner preference and peer-separation cost, not a prohibited
 grid, inflated obstacle, or hard exclusion volume; raw physical obstacles remain
 the only hard collision constraint.

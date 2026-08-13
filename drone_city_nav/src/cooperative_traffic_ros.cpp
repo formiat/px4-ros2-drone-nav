@@ -240,6 +240,16 @@ cooperativeManeuverCommandData(const msg::CooperativeManeuverCommand& message) {
       .preferred_acceleration_direction =
           vector(message.preferred_acceleration_direction),
       .conflict_generation = message.conflict_generation,
+      .space_time_plan_active = message.space_time_plan_active,
+      .space_time_lateral_offset_m = message.space_time_lateral_offset_m,
+      .space_time_vertical_offset_m = message.space_time_vertical_offset_m,
+      .space_time_shift_s = message.space_time_shift_s,
+      .space_time_predicted_minimum_separation_m =
+          message.space_time_predicted_minimum_separation_m,
+      .space_time_integrated_shortfall_m2_s =
+          message.space_time_integrated_shortfall_m2_s,
+      .space_time_evaluated_candidate_count =
+          message.space_time_evaluated_candidate_count,
       .channel_yield_required = message.channel_yield_required,
       .channel_yield_to_vehicle_id = message.channel_yield_to_vehicle_id,
       .channel_id = message.channel_id,

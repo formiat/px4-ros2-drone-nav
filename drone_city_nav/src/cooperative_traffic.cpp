@@ -111,20 +111,18 @@ void appendTimesWithin(const CooperativeFlightIntentData& intent,
   return hash;
 }
 
-struct ManeuverPreference {
-  CooperativeManeuver maneuver{CooperativeManeuver::kKeep};
-  Vec3 acceleration_direction{};
-};
+} // namespace
 
-[[nodiscard]] ManeuverPreference
-pairPreference(const CooperativeFlightIntentData& ownship,
-               const CooperativeFlightIntentData& peer) noexcept {
+CooperativePairManeuverPreference
+preferredCooperativePairManeuver(const CooperativeFlightIntentData& ownship,
+                                 const CooperativeFlightIntentData& peer) noexcept {
   const bool ownship_is_first = ownship.vehicle_id < peer.vehicle_id;
   if ((stablePairHash(ownship.vehicle_id, peer.vehicle_id) & 1U) == 0U) {
     return ownship_is_first
-               ? ManeuverPreference{CooperativeManeuver::kClimb, Vec3{0.0, 0.0, 1.0}}
-               : ManeuverPreference{CooperativeManeuver::kDescend,
-                                    Vec3{0.0, 0.0, -1.0}};
+               ? CooperativePairManeuverPreference{CooperativeManeuver::kClimb,
+                                                   Vec3{0.0, 0.0, 1.0}}
+               : CooperativePairManeuverPreference{CooperativeManeuver::kDescend,
+                                                   Vec3{0.0, 0.0, -1.0}};
   }
 
   const Point3 first_position =
@@ -145,17 +143,19 @@ pairPreference(const CooperativeFlightIntentData& ownship,
   const double own_speed =
       std::hypot(ownship.current_velocity.x, ownship.current_velocity.y);
   if (own_speed <= 1.0e-6) {
-    return ManeuverPreference{ownship_is_first ? CooperativeManeuver::kLeft
-                                               : CooperativeManeuver::kRight,
-                              own_direction};
+    return CooperativePairManeuverPreference{
+        ownship_is_first ? CooperativeManeuver::kLeft : CooperativeManeuver::kRight,
+        own_direction};
   }
   const Vec3 own_left{-ownship.current_velocity.y / own_speed,
                       ownship.current_velocity.x / own_speed, 0.0};
-  return ManeuverPreference{dot(own_direction, own_left) >= 0.0
-                                ? CooperativeManeuver::kLeft
-                                : CooperativeManeuver::kRight,
-                            own_direction};
+  return CooperativePairManeuverPreference{dot(own_direction, own_left) >= 0.0
+                                               ? CooperativeManeuver::kLeft
+                                               : CooperativeManeuver::kRight,
+                                           own_direction};
 }
+
+namespace {
 
 [[nodiscard]] std::int64_t secondsToNanoseconds(const double seconds) noexcept {
   return static_cast<std::int64_t>(std::llround(seconds * kNanosecondsPerSecond));
@@ -395,7 +395,8 @@ CooperativeAvoidanceDecision CooperativeConflictLifecycle::update(
     }
     auto conflict = conflicts_.find(peer.vehicle_id);
     if (conflict == conflicts_.end() && prediction.conflict_predicted) {
-      const ManeuverPreference preference = pairPreference(ownship, peer);
+      const CooperativePairManeuverPreference preference =
+          preferredCooperativePairManeuver(ownship, peer);
       conflict =
           conflicts_
               .emplace(peer.vehicle_id,
