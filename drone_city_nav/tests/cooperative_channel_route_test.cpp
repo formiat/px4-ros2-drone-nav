@@ -62,8 +62,8 @@ namespace {
       .maximum_lateral_offset_m = 6.0,
       .minimum_secondary_offset_m = -4.0,
       .maximum_secondary_offset_m = 4.0,
-      .minimum_physical_width_m = 14.0,
-      .minimum_physical_secondary_extent_m = 9.0,
+      .minimum_physical_width_m = 13.0,
+      .minimum_physical_secondary_extent_m = 9.5,
       .cross_sections = std::move(sections),
       .raw_validated = true,
   };
@@ -236,10 +236,24 @@ TEST(CooperativeChannelRoute, UsesPhysicalCrossSectionForExecutionEnvelope) {
   ASSERT_FALSE(result.constrained_spans.front().envelope.empty());
   for (const RouteEnvelopeSample& envelope :
        result.constrained_spans.front().envelope) {
-    EXPECT_LT(envelope.min_z_m, envelope.reference_z_m);
-    EXPECT_GT(envelope.max_z_m, envelope.reference_z_m);
-    EXPECT_GE(envelope.max_z_m - envelope.min_z_m, 2.0 - 1.0e-9);
+    EXPECT_NEAR(envelope.min_z_m, 3.75, 1.0e-9);
+    EXPECT_NEAR(envelope.max_z_m, 6.25, 1.0e-9);
+    EXPECT_NEAR(envelope.lateral_free_left_m + envelope.lateral_free_right_m,
+                passage.minimum_physical_width_m, 1.0e-9);
   }
+
+  const ConstrainedRouteSpan& transformed_span = result.constrained_spans.front();
+  const double entry_station_m = transformed_span.begin_station_m;
+  const RouteSample3D entry = sampleRoute3DAtStation(result.route, entry_station_m);
+  const ConstrainedRouteObservation observation = observeConstrainedRoute(
+      result.route, result.constrained_spans, constrained.route_generation,
+      entry_station_m, entry.position, Vec3{0.0, 0.0, 0.1}, RouteEnvelopeConfig{},
+      30.0);
+  ConstrainedRouteCoordinator coordinator;
+  const ConstrainedRouteControl control =
+      coordinator.update(observation, 20.0, ConstrainedRouteControlConfig{});
+  EXPECT_TRUE(control.vertical_ready);
+  EXPECT_FALSE(control.hold_xy);
 }
 
 } // namespace

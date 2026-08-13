@@ -387,18 +387,24 @@ CooperativeChannelRouteResult applyCooperativeChannelCorridors(
               section.secondary_axis.z * section.maximum_secondary_offset_m,
       };
       const double lateral_left_m =
+          config.footprint.radius_m +
           std::max(0.0, section.maximum_lateral_offset_m - route_relative_offset_m);
       const double lateral_right_m =
+          config.footprint.radius_m +
           std::max(0.0, route_relative_offset_m - section.minimum_lateral_offset_m);
       const double secondary_clearance_m =
           std::max(0.0, std::min(-section.minimum_secondary_offset_m,
                                  section.maximum_secondary_offset_m));
+      const double minimum_center_z_m =
+          std::min(first_secondary_boundary.z, second_secondary_boundary.z);
+      const double maximum_center_z_m =
+          std::max(first_secondary_boundary.z, second_secondary_boundary.z);
       transformed.envelope.push_back(RouteEnvelopeSample{
           .station_m = mapped_station_m,
           .lateral_free_left_m = lateral_left_m,
           .lateral_free_right_m = lateral_right_m,
-          .min_z_m = std::min(first_secondary_boundary.z, second_secondary_boundary.z),
-          .max_z_m = std::max(first_secondary_boundary.z, second_secondary_boundary.z),
+          .min_z_m = minimum_center_z_m - config.footprint.lower_extent_m,
+          .max_z_m = maximum_center_z_m + config.footprint.upper_extent_m,
           .minimum_clearance_m =
               config.footprint.radius_m +
               std::min({lateral_left_m, lateral_right_m, secondary_clearance_m}),
