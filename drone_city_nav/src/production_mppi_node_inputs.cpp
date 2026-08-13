@@ -143,7 +143,7 @@ void ProductionMppiNode::onLocalPosition(
       latest_prediction_error_.valid = true;
     }
   }
-  if (navigation.valid && use_static_map_ && vehicle_navigation_ready_.load() &&
+  if (navigation.valid && use_static_map_ && navigationObjective() &&
       !world_ready_.load()) {
     requestStaticEsdfWork();
   }
@@ -254,9 +254,14 @@ void ProductionMppiNode::queueRawWorld(const RawObstacleGridState& state,
 }
 
 void ProductionMppiNode::requestStaticEsdfWork(const bool force_refresh) {
-  if (!use_static_map_ || !vehicle_navigation_ready_.load(std::memory_order_acquire) ||
-      !navigationObjective()) {
+  if (!use_static_map_ || !navigationObjective()) {
     return;
+  }
+  {
+    const std::scoped_lock lock{input_mutex_};
+    if (!navigation_.valid) {
+      return;
+    }
   }
   {
     const std::scoped_lock lock{raw_queue_mutex_};
@@ -615,8 +620,7 @@ void ProductionMppiNode::onNavigationObjective(
       });
   navigation_objective_.store(objective, std::memory_order_release);
   publishRadarTrackModeCommand(*objective, radar_cadence_reason);
-  if (use_static_map_ && vehicle_navigation_ready_.load(std::memory_order_acquire) &&
-      !world_ready_.load(std::memory_order_acquire)) {
+  if (use_static_map_ && !world_ready_.load(std::memory_order_acquire)) {
     requestStaticEsdfWork();
   }
 

@@ -45,6 +45,17 @@ CooperativeMppiAdapterResult adaptCooperativeMppiCommand(
     result.status = CooperativeMppiAdapterStatus::kAccepted;
     return result;
   }
+  result.avoidance_active = true;
+  result.maneuver = mppi::CooperativeManeuverPreference{
+      .maneuver = mppiManeuver(command.preferred_maneuver),
+      .direction_x = static_cast<float>(command.preferred_acceleration_direction.x),
+      .direction_y = static_cast<float>(command.preferred_acceleration_direction.y),
+      .direction_z = static_cast<float>(command.preferred_acceleration_direction.z),
+      .generation = command.conflict_generation,
+  };
+  result.acquisition = mppi::CooperativeSeparationAcquisition{
+      .preference = *result.maneuver,
+  };
 
   result.conflicting_peers.reserve(command.conflicting_peers.size());
   for (const CooperativePeerTrajectoryData& peer : command.conflicting_peers) {
@@ -90,13 +101,6 @@ CooperativeMppiAdapterResult adaptCooperativeMppiCommand(
     result.status = CooperativeMppiAdapterStatus::kNoTrajectoryCoverage;
     return result;
   }
-  result.maneuver = mppi::CooperativeManeuverPreference{
-      .maneuver = mppiManeuver(command.preferred_maneuver),
-      .direction_x = static_cast<float>(command.preferred_acceleration_direction.x),
-      .direction_y = static_cast<float>(command.preferred_acceleration_direction.y),
-      .direction_z = static_cast<float>(command.preferred_acceleration_direction.z),
-      .generation = command.conflict_generation,
-  };
   result.status = CooperativeMppiAdapterStatus::kAccepted;
   return result;
 }

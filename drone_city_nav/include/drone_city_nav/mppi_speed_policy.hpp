@@ -42,6 +42,7 @@ struct MppiSpeedPolicyInput {
   Point3 mission_goal{};
   std::span<const Point2> guide;
   std::optional<double> route_endpoint_remaining_m;
+  std::optional<double> route_endpoint_terminal_speed_mps;
   std::optional<double> route_constraint_speed_limit_mps;
   bool terminal_goal_limit_enabled{true};
 };

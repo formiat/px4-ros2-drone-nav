@@ -56,6 +56,7 @@ private:
     std::unique_ptr<InterceptorHoldConfirmation> hold_confirmation;
     bool world_ready{false};
     bool track_ready{false};
+    bool executable_horizon_ready{false};
     bool destroyed{false};
     bool destruction_requested{false};
     bool disabled{false};
@@ -85,6 +86,7 @@ private:
     std::string capturing_interceptor_id;
     TargetOutcome outcome{TargetOutcome::kActive};
     bool world_ready{false};
+    bool executable_horizon_ready{false};
     bool destroyed{false};
     bool destruction_requested{false};
     bool hold_requested{false};
@@ -92,6 +94,7 @@ private:
     std::uint64_t objective_sequence{0U};
     rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr state_sub;
     rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr truth_state_sub;
+    rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr world_ready_sub;
     rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr destroyed_sub;
     rclcpp::Publisher<msg::NavigationObjective>::SharedPtr objective_pub;

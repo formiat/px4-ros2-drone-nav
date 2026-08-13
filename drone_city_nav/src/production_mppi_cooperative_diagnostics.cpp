@@ -24,6 +24,24 @@ void appendFields(std::ostringstream& output,
            << ",\"cooperative_peer_count\":" << result.cooperative_peer_count
            << ",\"cooperative_candidates_injected\":"
            << (result.cooperative_candidates_injected ? "true" : "false")
+           << ",\"cooperative_acquisition_reseeded\":"
+           << (result.cooperative_acquisition_reseeded ? "true" : "false")
+           << ",\"cooperative_release_reseeded\":"
+           << (result.cooperative_release_reseeded ? "true" : "false")
+           << ",\"cooperative_acquisition_available\":"
+           << (result.cooperative_acquisition_available ? "true" : "false")
+           << ",\"cooperative_acquisition_positive_progress\":"
+           << (result.cooperative_acquisition_positive_progress ? "true" : "false")
+           << ",\"cooperative_acquisition_backward_fallback\":"
+           << (result.cooperative_acquisition_backward_fallback ? "true" : "false")
+           << ",\"cooperative_acquisition_candidate_index\":"
+           << result.cooperative_acquisition_candidate_index
+           << ",\"cooperative_acquisition_head_progress_m\":"
+           << result.cooperative_acquisition_head_progress_m
+           << ",\"cooperative_acquisition_terminal_progress_m\":"
+           << result.cooperative_acquisition_terminal_progress_m
+           << ",\"cooperative_acquisition_separation_gain_m\":"
+           << result.cooperative_acquisition_separation_gain_m
            << ",\"cooperative_minimum_peer_separation_m\":"
            << finiteOrNegative(result.minimum_peer_separation_m)
            << ",\"cooperative_peer_separation_cost\":" << result.peer_separation_cost
@@ -51,6 +69,24 @@ void appendFields(std::ostringstream& output,
          << " cooperative_peer_count=" << result.cooperative_peer_count
          << " cooperative_candidates_injected="
          << (result.cooperative_candidates_injected ? "true" : "false")
+         << " cooperative_acquisition_reseeded="
+         << (result.cooperative_acquisition_reseeded ? "true" : "false")
+         << " cooperative_release_reseeded="
+         << (result.cooperative_release_reseeded ? "true" : "false")
+         << " cooperative_acquisition_available="
+         << (result.cooperative_acquisition_available ? "true" : "false")
+         << " cooperative_acquisition_positive_progress="
+         << (result.cooperative_acquisition_positive_progress ? "true" : "false")
+         << " cooperative_acquisition_backward_fallback="
+         << (result.cooperative_acquisition_backward_fallback ? "true" : "false")
+         << " cooperative_acquisition_candidate_index="
+         << result.cooperative_acquisition_candidate_index
+         << " cooperative_acquisition_head_progress_m="
+         << result.cooperative_acquisition_head_progress_m
+         << " cooperative_acquisition_terminal_progress_m="
+         << result.cooperative_acquisition_terminal_progress_m
+         << " cooperative_acquisition_separation_gain_m="
+         << result.cooperative_acquisition_separation_gain_m
          << " cooperative_minimum_peer_separation_m="
          << finiteOrNegative(result.minimum_peer_separation_m)
          << " cooperative_peer_separation_cost=" << result.peer_separation_cost

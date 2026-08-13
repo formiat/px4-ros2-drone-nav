@@ -1,4 +1,6 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
+#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/mppi_separation_acquisition.hpp"
 
 #include <gtest/gtest.h>
 
@@ -116,6 +118,58 @@ TEST(MppiControlSequenceTest, BuildsAllDeterministicCooperativeCandidates) {
   EXPECT_LT(first(CooperativeManeuver::kSlow).ax, 0.0F);
 }
 
+TEST(MppiControlSequenceTest, RouteCruiseExtrapolatesTemporaryFrontier) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.maximum_control_jerk_mps3 = 100.0F;
+  const State initial{};
+  const State target{.x = 5.0F};
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 5.0F, .tangent_x = 1.0F, .station_m = 5.0F},
+  };
+
+  const std::vector<Control> controls = buildRouteDirectedCruiseSeed(
+      initial, target, route, 0.0F, 5.0F, dynamics, 30U, Control{});
+  State terminal = initial;
+  for (const Control& control : controls) {
+    terminal = integrateReference(terminal, control, dynamics);
+  }
+
+  EXPECT_GT(terminal.x, route.back().x_m);
+}
+
+TEST(MppiControlSequenceTest, AcquisitionCombinesRouteAccelerationAndClimb) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.maximum_control_jerk_mps3 = 100.0F;
+  const State initial{.z = 10.0F};
+  const State target{.x = 100.0F, .z = 10.0F};
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .z_m = 10.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{
+          .x_m = 100.0F, .z_m = 10.0F, .tangent_x = 1.0F, .station_m = 100.0F},
+  };
+  const CooperativeSeparationAcquisition acquisition{
+      .preference =
+          CooperativeManeuverPreference{
+              .maneuver = CooperativeManeuver::kClimb,
+              .direction_z = 1.0F,
+              .generation = 1U,
+          },
+  };
+
+  const std::vector<Control> candidates =
+      buildCooperativeSeparationAcquisitionCandidates(
+          initial, target, route, 0.0F, 10.0F, acquisition, dynamics,
+          CooperativeConfig{}, 20U, Control{}, dynamics.dt_s);
+
+  ASSERT_EQ(candidates.size(), kCooperativeAcquisitionCandidateCount * 20U);
+  EXPECT_GT(candidates.front().ax, 0.0F);
+  EXPECT_GT(candidates.front().az, 0.0F);
+  EXPECT_LT(candidates[(kCooperativeAcquisitionCandidateCount - 1U) * 20U].ax, 0.0F);
+}
+
 TEST(MppiControlSequenceTest, CudaEngineEvaluatesCooperativePeers) {
   BenchmarkConfig config;
   config.rollouts = 64U;
@@ -149,6 +203,158 @@ TEST(MppiControlSequenceTest, CudaEngineEvaluatesCooperativePeers) {
   EXPECT_EQ(result.cooperative_peer_count, 1U);
   EXPECT_TRUE(std::isfinite(result.minimum_peer_separation_m));
   EXPECT_GT(result.peer_separation_cost, 0.0F);
+}
+
+TEST(MppiControlSequenceTest, ReverseAcquisitionIsOnlyABackwardFallback) {
+  BenchmarkConfig config;
+  config.steps = 30U;
+  config.dynamics.dt_s = 0.1F;
+  config.dynamics.maximum_control_jerk_mps3 = 100.0F;
+  const EsdfGrid grid{.width = 40,
+                      .height = 20,
+                      .resolution_m = 1.0F,
+                      .origin_x_m = 0.0F,
+                      .origin_y_m = 0.0F,
+                      .depth = 20,
+                      .origin_z_m = 0.0F};
+  constexpr std::size_t kEsdfCellCount = static_cast<std::size_t>(40U) * 20U * 20U;
+  const std::vector<float> esdf(kEsdfCellCount, 20.0F);
+  const std::array route{
+      RouteSample3D{.x_m = 5.0F,
+                    .y_m = 10.0F,
+                    .z_m = 10.0F,
+                    .tangent_x = 1.0F,
+                    .station_m = 0.0F},
+      RouteSample3D{.x_m = 30.0F,
+                    .y_m = 10.0F,
+                    .z_m = 10.0F,
+                    .tangent_x = 1.0F,
+                    .station_m = 25.0F},
+  };
+  const auto peer_samples = std::make_shared<const std::vector<CooperativePeerSample>>(
+      config.steps, CooperativePeerSample{.x = 25.0F, .y = 10.0F, .z = 10.0F});
+  const std::array peers{CooperativePeerTrajectory{
+      .samples = peer_samples,
+      .footprint_radius_m = 0.82F,
+      .active_steps = config.steps,
+  }};
+
+  const CooperativeSeparationAcquisitionResult result =
+      evaluateCooperativeSeparationAcquisition(
+          CooperativeSeparationAcquisitionEvaluationInput{
+              .initial_state = State{.x = 5.0F, .y = 10.0F, .z = 10.0F},
+              .target = State{.x = 30.0F, .y = 10.0F, .z = 10.0F},
+              .route = route,
+              .initial_route_station_m = 0.0F,
+              .reference_speed_mps = 5.0F,
+              .previous_applied_control = {},
+              .first_control_interval_s = config.dynamics.dt_s,
+              .grid = grid,
+              .esdf = esdf,
+              .known_solids = {},
+              .peers = peers,
+              .acquisition = CooperativeSeparationAcquisition{},
+              .config = config,
+          });
+
+  ASSERT_TRUE(result.available);
+  EXPECT_TRUE(result.backward_fallback);
+  EXPECT_FALSE(result.positive_progress);
+  EXPECT_LT(result.terminal_progress_m, 0.0F);
+}
+
+TEST(MppiControlSequenceTest, AvoidanceReseedsOnceOnEntryAndRelease) {
+  BenchmarkConfig config;
+  config.rollouts = 64U;
+  config.steps = 20U;
+  config.dynamics.dt_s = 0.1F;
+  config.dynamics.maximum_control_jerk_mps3 = 100.0F;
+  MppiCudaEngine engine{config};
+  const EsdfGrid grid{.width = 40,
+                      .height = 20,
+                      .resolution_m = 1.0F,
+                      .origin_x_m = 0.0F,
+                      .origin_y_m = 0.0F,
+                      .depth = 20,
+                      .origin_z_m = 0.0F};
+  constexpr std::size_t kEsdfCellCount = static_cast<std::size_t>(40U) * 20U * 20U;
+  const std::vector<float> esdf(kEsdfCellCount, 20.0F);
+  ASSERT_TRUE(engine.updateEsdf(EsdfSnapshot{grid, esdf, 1U}).accepted);
+  auto route =
+      std::make_shared<const std::vector<RouteSample3D>>(std::vector<RouteSample3D>{
+          RouteSample3D{.x_m = 5.0F,
+                        .y_m = 10.0F,
+                        .z_m = 10.0F,
+                        .tangent_x = 1.0F,
+                        .station_m = 0.0F},
+          RouteSample3D{.x_m = 30.0F,
+                        .y_m = 10.0F,
+                        .z_m = 10.0F,
+                        .tangent_x = 1.0F,
+                        .station_m = 25.0F},
+      });
+  auto peers = std::make_shared<const std::vector<CooperativePeerSample>>(
+      config.steps, CooperativePeerSample{.x = 8.0F, .y = 10.0F, .z = 10.0F});
+  MppiTickInput input;
+  input.initial_state = State{.x = 5.0F, .y = 10.0F, .z = 10.0F};
+  input.target = State{.x = 30.0F, .y = 10.0F, .z = 10.0F};
+  input.planning_stamp_ns = 1;
+  input.reference_speed_mps = 5.0F;
+  input.route = RouteReference{.points = route, .generation = 1U};
+  input.conflicting_peers = {CooperativePeerTrajectory{
+      .samples = peers, .footprint_radius_m = 0.82F, .active_steps = config.steps}};
+  input.cooperative_maneuver = CooperativeManeuverPreference{
+      .maneuver = CooperativeManeuver::kClimb,
+      .direction_z = 1.0F,
+      .generation = 1U,
+  };
+  input.cooperative_acquisition = CooperativeSeparationAcquisition{
+      .preference = *input.cooperative_maneuver,
+  };
+  input.cooperative_avoidance_active = true;
+
+  const MppiTickResult entered = engine.plan(input);
+  EXPECT_TRUE(entered.cooperative_acquisition_reseeded);
+  EXPECT_TRUE(entered.cooperative_acquisition_available);
+  EXPECT_TRUE(entered.cooperative_acquisition_positive_progress);
+  EXPECT_FALSE(entered.cooperative_acquisition_backward_fallback);
+
+  input.planning_stamp_ns = 100'000'001;
+  input.conflicting_peers.clear();
+  input.cooperative_maneuver.reset();
+  input.cooperative_acquisition.reset();
+  input.cooperative_avoidance_active = false;
+  const MppiTickResult released = engine.plan(input);
+  EXPECT_TRUE(released.cooperative_release_reseeded);
+
+  input.planning_stamp_ns = 200'000'001;
+  const MppiTickResult steady = engine.plan(input);
+  EXPECT_FALSE(steady.cooperative_release_reseeded);
+}
+
+TEST(MppiControlSequenceTest, AvoidanceWithoutPeerCoverageDoesNotReseed) {
+  BenchmarkConfig config;
+  config.rollouts = 64U;
+  config.steps = 20U;
+  MppiCudaEngine engine{config};
+  const EsdfGrid grid{20, 20, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(400U, 20.0F);
+  ASSERT_TRUE(engine.updateEsdf(EsdfSnapshot{grid, esdf, 1U}).accepted);
+  MppiTickInput input;
+  input.initial_state = State{.x = 5.0F, .y = 10.0F};
+  input.target = State{.x = 15.0F, .y = 10.0F};
+  input.planning_stamp_ns = 1;
+  input.cooperative_acquisition = CooperativeSeparationAcquisition{};
+  input.cooperative_avoidance_active = true;
+
+  const MppiTickResult entered_without_coverage = engine.plan(input);
+  EXPECT_FALSE(entered_without_coverage.cooperative_acquisition_reseeded);
+
+  input.planning_stamp_ns = 100'000'001;
+  input.cooperative_acquisition.reset();
+  input.cooperative_avoidance_active = false;
+  const MppiTickResult released_without_acquisition = engine.plan(input);
+  EXPECT_FALSE(released_without_acquisition.cooperative_release_reseeded);
 }
 
 TEST(MppiControlSequenceTest, RouteProjectionNeverMovesBehindPreviousStation) {

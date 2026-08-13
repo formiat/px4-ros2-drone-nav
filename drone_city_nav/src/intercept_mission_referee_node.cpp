@@ -137,7 +137,8 @@ void InterceptMissionRefereeNode::configureInterceptors(
     runtime.horizon_sub = create_subscription<msg::MppiTrajectoryHorizon>(
         topics.execution_horizon[index], rclcpp::QoS{10}.best_effort(),
         [this, index](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
-          interceptors_[index].hold_horizon = HoldHorizon{
+          InterceptorRuntime& interceptor = interceptors_[index];
+          interceptor.hold_horizon = HoldHorizon{
               .position = Point3{horizon->stationary_hold_position.x,
                                  horizon->stationary_hold_position.y,
                                  horizon->stationary_hold_position.z},
@@ -146,6 +147,12 @@ void InterceptMissionRefereeNode::configureInterceptors(
                         horizon->execution_mode ==
                             msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
           };
+          interceptor.executable_horizon_ready =
+              interceptor.executable_horizon_ready ||
+              (horizon->sequence > 0U &&
+               horizon->execution_mode ==
+                   msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+               !horizon->emergency_braking && horizon->points.size() >= 2U);
         });
     runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
         topics.world_readiness[index], latched_qos,
@@ -215,6 +222,17 @@ void InterceptMissionRefereeNode::configureTargets(
           if (state->vehicle_id == targets_[index].id) {
             targets_[index].truth_state = detail::physicalTruthState(*state);
           }
+        });
+    runtime.horizon_sub = create_subscription<msg::MppiTrajectoryHorizon>(
+        topics.execution_horizon[index], rclcpp::QoS{10}.best_effort(),
+        [this, index](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
+          TargetRuntime& target = targets_[index];
+          target.executable_horizon_ready =
+              target.executable_horizon_ready ||
+              (horizon->sequence > 0U &&
+               horizon->execution_mode ==
+                   msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+               !horizon->emergency_braking && horizon->points.size() >= 2U);
         });
     runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
         topics.world_readiness[index], latched_qos,
@@ -361,13 +379,14 @@ bool InterceptMissionRefereeNode::missionReady() const {
   const bool targets_ready =
       std::ranges::all_of(targets_, [](const TargetRuntime& target) {
         return !target.destroyed && target.state && target.truth_state &&
-               target.state->navigation_ready && target.world_ready;
+               target.state->navigation_ready && target.world_ready &&
+               target.executable_horizon_ready;
       });
   const bool interceptors_ready =
       std::ranges::all_of(interceptors_, [](const InterceptorRuntime& interceptor) {
         return !interceptor.destroyed && interceptor.state && interceptor.truth_state &&
                interceptor.state->navigation_ready && interceptor.world_ready &&
-               interceptor.track_ready;
+               interceptor.track_ready && interceptor.executable_horizon_ready;
       });
   return targets_ready && interceptors_ready;
 }
@@ -435,7 +454,8 @@ void InterceptMissionRefereeNode::publishMissionStart() {
   RCLCPP_INFO(get_logger(),
               "INTERCEPT_MISSION state=running mission='%s' epoch=%" PRIu64
               " interceptor_count=%zu target_count=%zu "
-              "startup_coordinate_contract_latched=true",
+              "startup_coordinate_contract_latched=true "
+              "all_executable_horizons_ready=true",
               mission_name_.c_str(), mission_epoch_, interceptors_.size(),
               targets_.size());
 }

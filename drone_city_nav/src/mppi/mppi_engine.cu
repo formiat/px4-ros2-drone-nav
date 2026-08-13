@@ -1,6 +1,8 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
+#include "drone_city_nav/mppi/mppi_input_validation.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/mppi_separation_acquisition.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
@@ -196,49 +198,7 @@ public:
     if (!textures_[active_texture_].ready()) {
       throw std::runtime_error{"MPPI engine has no ESDF"};
     }
-    if (input.moving_target.has_value()) {
-      const MovingTargetReference& moving_target = input.moving_target.value();
-      if (!std::isfinite(moving_target.state.x) ||
-          !std::isfinite(moving_target.state.y) ||
-          !std::isfinite(moving_target.state.z) ||
-          !std::isfinite(moving_target.state.vx) ||
-          !std::isfinite(moving_target.state.vy) ||
-          !std::isfinite(moving_target.state.vz) ||
-          !(moving_target.capture_radius_m > 0.0F) ||
-          (moving_target.bounded_vertical_motion &&
-           (!std::isfinite(moving_target.vertical_deceleration_mps2) ||
-            !(moving_target.vertical_deceleration_mps2 > 0.0F) ||
-            !std::isfinite(moving_target.minimum_z_m) ||
-            !std::isfinite(moving_target.maximum_z_m) ||
-            !(moving_target.maximum_z_m > moving_target.minimum_z_m) ||
-            moving_target.state.z < moving_target.minimum_z_m ||
-            moving_target.state.z > moving_target.maximum_z_m))) {
-        throw std::invalid_argument{"invalid moving target reference"};
-      }
-    }
-    if (input.conflicting_peers.size() > kMaximumCooperativePeers) {
-      throw std::invalid_argument{"too many cooperative peers for MPPI engine"};
-    }
-    for (const CooperativePeerTrajectory& peer : input.conflicting_peers) {
-      if (!peer.samples || peer.samples->size() != config_.steps ||
-          peer.active_steps == 0U || peer.active_steps > config_.steps ||
-          !std::isfinite(peer.footprint_radius_m) ||
-          !(peer.footprint_radius_m >= 0.0F) ||
-          !std::ranges::all_of(*peer.samples, [](const CooperativePeerSample& sample) {
-            return std::isfinite(sample.x) && std::isfinite(sample.y) &&
-                   std::isfinite(sample.z);
-          })) {
-        throw std::invalid_argument{"invalid cooperative peer trajectory"};
-      }
-    }
-    if (input.cooperative_maneuver.has_value()) {
-      const CooperativeManeuverPreference& preference = *input.cooperative_maneuver;
-      if (!std::isfinite(preference.direction_x) ||
-          !std::isfinite(preference.direction_y) ||
-          !std::isfinite(preference.direction_z)) {
-        throw std::invalid_argument{"invalid cooperative maneuver preference"};
-      }
-    }
+    validateMppiTickInput(input, config_.steps, kMaximumCooperativePeers);
     const auto host_started = std::chrono::steady_clock::now();
     const std::size_t active_rollouts =
         resolveMppiActiveRollouts(config_.rollouts, input.active_rollouts);
@@ -272,17 +232,17 @@ public:
             : config_.dynamics.dt_s;
     const bool route_active = input.route.has_value() && input.route->points &&
                               input.route->points->size() >= 2U;
+    const std::span<const RouteSample3D> active_route =
+        route_active ? std::span<const RouteSample3D>{*input.route->points}
+                     : std::span<const RouteSample3D>{};
     const MovingTargetReference moving_target =
         input.moving_target.value_or(MovingTargetReference{});
     const bool moving_target_enabled = input.moving_target.has_value();
-    const bool nominal_reseeded =
+    const bool external_nominal_reseeded =
         input.nominal_reseed_generation > nominal_reseed_generation_;
-    if (nominal_reseeded) {
-      const std::span<const RouteSample3D> route =
-          route_active ? std::span<const RouteSample3D>{*input.route->points}
-                       : std::span<const RouteSample3D>{};
+    if (external_nominal_reseeded) {
       nominal_ = buildGuideDirectedNominalSeed(
-          input.initial_state, input.target, route,
+          input.initial_state, input.target, active_route,
           route_active ? input.route->initial_station_m : 0.0F,
           input.reference_speed_mps, config_.dynamics, config_.steps,
           previous_applied_control);
@@ -290,6 +250,36 @@ public:
     } else if (has_updated_) {
       nominal_ = shiftControlSequence(updated_, config_.dynamics.dt_s, elapsed_s);
     }
+    CooperativeSeparationAcquisitionLifecycleResult acquisition_lifecycle =
+        cooperative_acquisition_lifecycle_.update(
+            CooperativeSeparationAcquisitionLifecycleInput{
+                .avoidance_active = input.cooperative_avoidance_active,
+                .acquisition = input.cooperative_acquisition,
+                .evaluation =
+                    CooperativeSeparationAcquisitionEvaluationInput{
+                        .initial_state = input.initial_state,
+                        .target = input.target,
+                        .route = active_route,
+                        .initial_route_station_m =
+                            route_active ? input.route->initial_station_m : 0.0F,
+                        .reference_speed_mps =
+                            std::max(0.0F, input.reference_speed_mps),
+                        .previous_applied_control = previous_applied_control,
+                        .first_control_interval_s = first_control_interval_s,
+                        .grid = textures_[active_texture_].grid(),
+                        .esdf = activeEsdfHost(),
+                        .known_solids = known_solids_,
+                        .peers = input.conflicting_peers,
+                        .config = config_,
+                    },
+            });
+    if (acquisition_lifecycle.nominal_reseed) {
+      nominal_ = std::move(*acquisition_lifecycle.nominal_reseed);
+    }
+    CooperativeSeparationAcquisitionResult acquisition =
+        std::move(acquisition_lifecycle.acquisition);
+    const bool acquisition_reseeded = acquisition_lifecycle.acquisition_reseeded;
+    const bool release_reseeded = acquisition_lifecycle.release_reseeded;
     if (route_active) {
       if (input.route->points->size() > kMaximumRoutePoints) {
         throw std::invalid_argument{"MPPI route exceeds device route capacity"};
@@ -307,12 +297,26 @@ public:
         route_uploaded_ = true;
       }
     }
-    const bool target_directed_reacquisition_enabled =
-        input.target_directed_reacquisition_enabled && active_rollouts > 0U;
-    if (target_directed_reacquisition_enabled) {
-      reacquisition_candidate_ = buildGuideDirectedNominalSeed(
-          input.initial_state, input.target, {}, 0.0F, input.reference_speed_mps,
-          config_.dynamics, config_.steps, previous_applied_control);
+    const bool target_directed_candidate =
+        input.deterministic_candidate ==
+        DeterministicCandidateKind::kTargetDirectedReacquisition;
+    const bool route_directed_candidate =
+        input.deterministic_candidate ==
+            DeterministicCandidateKind::kRouteDirectedCruise &&
+        route_active;
+    const bool deterministic_candidate_enabled =
+        active_rollouts > 0U && (target_directed_candidate || route_directed_candidate);
+    if (deterministic_candidate_enabled) {
+      reacquisition_candidate_ =
+          route_directed_candidate
+              ? buildRouteDirectedCruiseSeed(
+                    input.initial_state, input.target, active_route,
+                    input.route->initial_station_m, input.reference_speed_mps,
+                    config_.dynamics, config_.steps, previous_applied_control)
+              : buildGuideDirectedNominalSeed(input.initial_state, input.target, {},
+                                              0.0F, input.reference_speed_mps,
+                                              config_.dynamics, config_.steps,
+                                              previous_applied_control);
       for (std::size_t step = 0U; step < config_.steps; ++step) {
         reacquisition_noise_ax_[step] =
             reacquisition_candidate_[step].ax - nominal_[step].ax;
@@ -327,9 +331,9 @@ public:
     const bool cooperative_avoidance_enabled =
         !input.conflicting_peers.empty() &&
         active_rollouts >= kCooperativeManeuverCandidateCount +
-                               (target_directed_reacquisition_enabled ? 1U : 0U);
+                               (deterministic_candidate_enabled ? 1U : 0U);
     const std::size_t cooperative_candidate_offset =
-        target_directed_reacquisition_enabled ? 1U : 0U;
+        deterministic_candidate_enabled ? 1U : 0U;
     if (cooperative_avoidance_enabled) {
       cooperative_candidates_ = buildCooperativeManeuverCandidates(
           input.initial_state, input.target, nominal_, config_.dynamics,
@@ -395,7 +399,7 @@ public:
         buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
         buffers_.noise_yaw.get(), noise_count, config_.seed, tick_sequence_++,
         config_.noise);
-    if (target_directed_reacquisition_enabled) {
+    if (deterministic_candidate_enabled) {
       const std::size_t bytes = config_.steps * sizeof(float);
       checkCuda(cudaMemcpyAsync(buffers_.noise_ax.get(), reacquisition_noise_ax_.data(),
                                 bytes, cudaMemcpyHostToDevice, stream_),
@@ -545,7 +549,7 @@ public:
                               sizeof(eligible_weight_sum), cudaMemcpyDeviceToHost,
                               stream_),
               "copy eligible weight sum");
-    if (target_directed_reacquisition_enabled) {
+    if (deterministic_candidate_enabled) {
       checkCuda(cudaMemcpyAsync(&best_rollout_index, buffers_.best_rollout.get(),
                                 sizeof(best_rollout_index), cudaMemcpyDeviceToHost,
                                 stream_),
@@ -589,13 +593,34 @@ public:
         .planning_exposure_tolerance_m = config_.risk.planning_exposure_tolerance_m,
         .weight_sum = eligible_weight_sum,
     };
-    result.target_directed_candidate_injected = target_directed_reacquisition_enabled;
-    result.target_directed_candidate_raw_safe = target_directed_reacquisition_enabled &&
+    result.target_directed_candidate_injected = target_directed_candidate;
+    result.target_directed_candidate_raw_safe = target_directed_candidate &&
                                                 reacquisition_raw_collision == 0U &&
                                                 reacquisition_solid_collision == 0U;
     result.target_directed_candidate_best_eligible =
-        target_directed_reacquisition_enabled && best_rollout_index == 0;
-    result.target_directed_candidate_weight = reacquisition_weight;
+        target_directed_candidate && best_rollout_index == 0;
+    result.target_directed_candidate_weight =
+        target_directed_candidate ? reacquisition_weight : 0.0F;
+    result.route_directed_candidate_injected = route_directed_candidate;
+    result.route_directed_candidate_raw_safe = route_directed_candidate &&
+                                               reacquisition_raw_collision == 0U &&
+                                               reacquisition_solid_collision == 0U;
+    result.route_directed_candidate_best_eligible =
+        route_directed_candidate && best_rollout_index == 0;
+    result.route_directed_candidate_weight =
+        route_directed_candidate ? reacquisition_weight : 0.0F;
+    result.route_directed_candidate_generation =
+        route_directed_candidate ? input.route->generation : 0U;
+    result.cooperative_acquisition_reseeded = acquisition_reseeded;
+    result.cooperative_release_reseeded = release_reseeded;
+    result.cooperative_acquisition_available = acquisition.available;
+    result.cooperative_acquisition_positive_progress = acquisition.positive_progress;
+    result.cooperative_acquisition_backward_fallback = acquisition.backward_fallback;
+    result.cooperative_acquisition_candidate_index = acquisition.candidate_index;
+    result.cooperative_acquisition_head_progress_m = acquisition.head_progress_m;
+    result.cooperative_acquisition_terminal_progress_m =
+        acquisition.terminal_progress_m;
+    result.cooperative_acquisition_separation_gain_m = acquisition.separation_gain_m;
     result.cooperative_candidates_injected = cooperative_avoidance_enabled;
     result.cooperative_peer_count = cooperative_peer_count;
     const auto evaluate_controls = [&](const std::span<const Control> controls) {
@@ -745,7 +770,8 @@ public:
     }
     result.controls = updated_;
     result.warm_start_shift_s = elapsed_s;
-    result.nominal_reseeded = nominal_reseeded;
+    result.nominal_reseeded =
+        external_nominal_reseeded || acquisition_reseeded || release_reseeded;
     result.esdf_revision = textures_[active_texture_].revision();
     result.active_rollouts = active_rollouts;
     result.timings.warm_start_ms = elapsedMs(started_, warm_done_);
@@ -904,6 +930,7 @@ private:
   std::optional<Control> last_output_control_;
   std::int64_t last_planning_stamp_ns_{0};
   std::uint64_t nominal_reseed_generation_{0U};
+  CooperativeSeparationAcquisitionLifecycle cooperative_acquisition_lifecycle_;
   bool has_updated_{false};
   std::uint64_t tick_sequence_{0U};
   cudaStream_t stream_{nullptr};

@@ -49,6 +49,12 @@ struct RouteReference {
   float initial_station_m{0.0F};
 };
 
+enum class DeterministicCandidateKind : std::uint8_t {
+  kDisabled,
+  kTargetDirectedReacquisition,
+  kRouteDirectedCruise,
+};
+
 struct MppiTickInput {
   State initial_state{};
   State target{};
@@ -63,8 +69,11 @@ struct MppiTickInput {
   std::optional<RouteReference> route;
   std::vector<CooperativePeerTrajectory> conflicting_peers;
   std::optional<CooperativeManeuverPreference> cooperative_maneuver;
+  std::optional<CooperativeSeparationAcquisition> cooperative_acquisition;
   std::optional<std::size_t> active_rollouts;
-  bool target_directed_reacquisition_enabled{false};
+  DeterministicCandidateKind deterministic_candidate{
+      DeterministicCandidateKind::kDisabled};
+  bool cooperative_avoidance_active{false};
 };
 
 [[nodiscard]] inline std::size_t
@@ -141,6 +150,20 @@ struct MppiTickResult {
   bool target_directed_candidate_raw_safe{false};
   bool target_directed_candidate_best_eligible{false};
   float target_directed_candidate_weight{0.0F};
+  bool route_directed_candidate_injected{false};
+  bool route_directed_candidate_raw_safe{false};
+  bool route_directed_candidate_best_eligible{false};
+  float route_directed_candidate_weight{0.0F};
+  std::uint64_t route_directed_candidate_generation{0U};
+  bool cooperative_acquisition_reseeded{false};
+  bool cooperative_release_reseeded{false};
+  bool cooperative_acquisition_available{false};
+  bool cooperative_acquisition_positive_progress{false};
+  bool cooperative_acquisition_backward_fallback{false};
+  std::size_t cooperative_acquisition_candidate_index{0U};
+  float cooperative_acquisition_head_progress_m{0.0F};
+  float cooperative_acquisition_terminal_progress_m{0.0F};
+  float cooperative_acquisition_separation_gain_m{0.0F};
   bool cooperative_candidates_injected{false};
   std::size_t cooperative_peer_count{0U};
   std::uint64_t esdf_revision{0U};

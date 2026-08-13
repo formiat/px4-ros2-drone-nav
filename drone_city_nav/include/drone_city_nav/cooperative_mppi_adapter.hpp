@@ -24,6 +24,8 @@ struct CooperativeMppiAdapterResult {
   CooperativeMppiAdapterStatus status{CooperativeMppiAdapterStatus::kDisabled};
   std::vector<mppi::CooperativePeerTrajectory> conflicting_peers;
   std::optional<mppi::CooperativeManeuverPreference> maneuver;
+  std::optional<mppi::CooperativeSeparationAcquisition> acquisition;
+  bool avoidance_active{false};
 
   [[nodiscard]] bool accepted() const noexcept {
     return status == CooperativeMppiAdapterStatus::kAccepted;

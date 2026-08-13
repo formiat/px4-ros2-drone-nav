@@ -95,7 +95,10 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     drone_city_nav_mppi_cuda
     src/mppi/mppi_engine.cu
     src/mppi/mppi_control_sequence.cpp
+    src/mppi/mppi_input_validation.cpp
     src/mppi/mppi_reference.cpp)
+  target_sources(drone_city_nav_mppi_cuda PRIVATE
+                 src/mppi/mppi_separation_acquisition.cpp)
   target_compile_features(drone_city_nav_mppi_cuda PUBLIC cxx_std_20)
   set_target_properties(
     drone_city_nav_mppi_cuda

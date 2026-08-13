@@ -90,6 +90,8 @@ declareTargetTopicConfig(rclcpp::Node& node,
       .physical_truth_state = node.declare_parameter<std::vector<std::string>>(
           "target_truth_state_topics",
           vehicleTopics(vehicle_ids, "/simulation_truth/vehicles/", "/state")),
+      .execution_horizon = node.declare_parameter<std::vector<std::string>>(
+          "target_execution_horizon_topics", vehicleDefault("/mppi/execution_horizon")),
       .world_readiness = node.declare_parameter<std::vector<std::string>>(
           "target_world_readiness_topics", vehicleDefault("/mppi/world_ready")),
       .destroyed = node.declare_parameter<std::vector<std::string>>(
@@ -103,6 +105,7 @@ declareTargetTopicConfig(rclcpp::Node& node,
        std::vector<std::pair<const std::vector<std::string>*, std::string>>{
            {&config.navigation_state, "target_state_topics"},
            {&config.physical_truth_state, "target_truth_state_topics"},
+           {&config.execution_horizon, "target_execution_horizon_topics"},
            {&config.world_readiness, "target_world_readiness_topics"},
            {&config.destroyed, "target_destroyed_topics"},
            {&config.objective, "target_objective_topics"},

@@ -120,9 +120,13 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   if (input.route_endpoint_remaining_m.has_value()) {
     const double route_endpoint_distance =
         std::max(0.0, *input.route_endpoint_remaining_m - config.goal_margin_m);
+    const double terminal_speed_mps =
+        std::max(0.0, input.route_endpoint_terminal_speed_mps.value_or(0.0));
     result.route_endpoint_limit_mps =
-        stoppingLimitedSpeed(route_endpoint_distance, 0.0, config.reaction_latency_s,
-                             config.maximum_braking_acceleration_mps2);
+        std::max(terminal_speed_mps,
+                 stoppingLimitedSpeed(route_endpoint_distance, terminal_speed_mps,
+                                      config.reaction_latency_s,
+                                      config.maximum_braking_acceleration_mps2));
   }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =

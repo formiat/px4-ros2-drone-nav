@@ -29,6 +29,7 @@ struct InterceptorTopicConfig {
 struct TargetTopicConfig {
   std::vector<std::string> navigation_state;
   std::vector<std::string> physical_truth_state;
+  std::vector<std::string> execution_horizon;
   std::vector<std::string> world_readiness;
   std::vector<std::string> destroyed;
   std::vector<std::string> objective;

@@ -11,6 +11,7 @@
 namespace drone_city_nav::mppi {
 
 inline constexpr std::size_t kCooperativeManeuverCandidateCount{6U};
+inline constexpr std::size_t kCooperativeAcquisitionCandidateCount{6U};
 
 [[nodiscard]] Control interpolateControl(const Control& first, const Control& second,
                                          float ratio) noexcept;
@@ -28,6 +29,20 @@ buildGuideDirectedNominalSeed(const State& initial, const State& target,
                               float initial_route_station_m, float reference_speed_mps,
                               const DynamicsConfig& dynamics, std::size_t steps,
                               Control previous_applied_control);
+
+[[nodiscard]] std::vector<Control>
+buildRouteDirectedCruiseSeed(const State& initial, const State& target,
+                             std::span<const RouteSample3D> route,
+                             float initial_route_station_m, float reference_speed_mps,
+                             const DynamicsConfig& dynamics, std::size_t steps,
+                             Control previous_applied_control);
+
+[[nodiscard]] std::vector<Control> buildCooperativeSeparationAcquisitionCandidates(
+    const State& initial, const State& target, std::span<const RouteSample3D> route,
+    float initial_route_station_m, float reference_speed_mps,
+    const CooperativeSeparationAcquisition& acquisition, const DynamicsConfig& dynamics,
+    const CooperativeConfig& cooperative, std::size_t steps,
+    Control previous_applied_control, float first_control_interval_s);
 
 [[nodiscard]] std::vector<Control> buildCooperativeManeuverCandidates(
     const State& initial, const State& target, std::span<const Control> nominal,

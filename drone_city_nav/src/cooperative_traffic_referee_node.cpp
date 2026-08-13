@@ -247,7 +247,8 @@ void CooperativeTrafficRefereeNode::configureVehicles(
     runtime.horizon_sub = create_subscription<msg::MppiTrajectoryHorizon>(
         horizon_topics[index], horizon_qos,
         [this, index](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
-          vehicles_[index].hold_horizon = HoldHorizon{
+          VehicleRuntime& vehicle = vehicles_[index];
+          vehicle.hold_horizon = HoldHorizon{
               .position = Point3{horizon->stationary_hold_position.x,
                                  horizon->stationary_hold_position.y,
                                  horizon->stationary_hold_position.z},
@@ -256,6 +257,17 @@ void CooperativeTrafficRefereeNode::configureVehicles(
                         horizon->execution_mode ==
                             msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
           };
+          if (!vehicle.executable_horizon_ready && horizon->sequence > 0U &&
+              horizon->execution_mode ==
+                  msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+              !horizon->emergency_braking && horizon->points.size() >= 2U) {
+            vehicle.executable_horizon_ready = true;
+            vehicle.first_executable_horizon_sequence = horizon->sequence;
+            RCLCPP_INFO(get_logger(),
+                        "COOPERATIVE_EXECUTABLE_HORIZON_READY vehicle_id='%s' "
+                        "sequence=%" PRIu64,
+                        vehicle.id.c_str(), horizon->sequence);
+          }
         });
     runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
         world_topics[index], latched_qos,
@@ -428,7 +440,8 @@ bool CooperativeTrafficRefereeNode::missionReady(const std::int64_t now_ns) cons
   return std::ranges::all_of(vehicles_, [this, now_ns](const VehicleRuntime& vehicle) {
     return !vehicle.destroyed && vehicle.navigation_state && vehicle.truth_state &&
            vehicle.navigation_state->navigation_ready && vehicle.world_ready &&
-           vehicle.intent_ready && vehicle.latest_intent_receive_ns > 0 &&
+           vehicle.executable_horizon_ready && vehicle.intent_ready &&
+           vehicle.latest_intent_receive_ns > 0 &&
            now_ns >= vehicle.latest_intent_receive_ns &&
            now_ns - vehicle.latest_intent_receive_ns <= maximum_intent_age_ns_ &&
            now_ns <= vehicle.latest_intent_valid_until_ns;
@@ -450,7 +463,8 @@ void CooperativeTrafficRefereeNode::publishMissionStart() {
   RCLCPP_INFO(get_logger(),
               "COOPERATIVE_TRAFFIC_MISSION state=running vehicle_count=%zu "
               "mission_epoch=%" PRIu64
-              " startup_coordinate_contract_latched=true all_intents_ready=true",
+              " startup_coordinate_contract_latched=true all_intents_ready=true "
+              "all_executable_horizons_ready=true",
               vehicles_.size(), mission_epoch_);
 }
 

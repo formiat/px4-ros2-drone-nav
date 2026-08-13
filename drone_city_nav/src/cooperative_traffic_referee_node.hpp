@@ -49,11 +49,13 @@ private:
     std::optional<Point3> requested_hold_position;
     bool world_ready{false};
     bool intent_ready{false};
+    bool executable_horizon_ready{false};
     bool destroyed{false};
     bool goal_hold_confirmed{false};
     bool hold_requested{false};
     std::uint64_t objective_sequence{0U};
     std::uint64_t latest_intent_generation{0U};
+    std::uint64_t first_executable_horizon_sequence{0U};
     std::uint64_t hold_request_horizon_sequence{0U};
     std::int64_t latest_intent_receive_ns{0};
     std::int64_t latest_intent_valid_until_ns{0};

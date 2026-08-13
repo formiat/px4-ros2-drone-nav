@@ -3,9 +3,11 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <ranges>
 #include <stdexcept>
 
 namespace drone_city_nav::mppi {
@@ -30,14 +32,44 @@ struct RouteSample {
   float z_m{0.0F};
   float tangent_x{1.0F};
   float tangent_y{0.0F};
+  float tangent_z{0.0F};
   float station_m{0.0F};
   bool valid{false};
 };
 
 [[nodiscard]] RouteSample sampleRoute(const std::span<const RouteSample3D> route,
-                                      const float requested_station_m) noexcept {
+                                      const float requested_station_m,
+                                      const bool extrapolate_endpoint) noexcept {
   if (route.size() < 2U) {
     return {};
+  }
+  if (extrapolate_endpoint && requested_station_m > route.back().station_m) {
+    const RouteSample3D& endpoint = route.back();
+    const RouteSample3D& previous = route[route.size() - 2U];
+    const float station_length_m = endpoint.station_m - previous.station_m;
+    if (!(station_length_m > 1.0e-5F)) {
+      return {};
+    }
+    const float tangent_x = std::abs(endpoint.tangent_x) > 1.0e-5F
+                                ? endpoint.tangent_x
+                                : (endpoint.x_m - previous.x_m) / station_length_m;
+    const float tangent_y = std::abs(endpoint.tangent_y) > 1.0e-5F
+                                ? endpoint.tangent_y
+                                : (endpoint.y_m - previous.y_m) / station_length_m;
+    const float tangent_z = std::abs(endpoint.tangent_z) > 1.0e-5F
+                                ? endpoint.tangent_z
+                                : (endpoint.z_m - previous.z_m) / station_length_m;
+    const float extension_m = requested_station_m - endpoint.station_m;
+    return RouteSample{
+        .x_m = endpoint.x_m + extension_m * tangent_x,
+        .y_m = endpoint.y_m + extension_m * tangent_y,
+        .z_m = endpoint.z_m + extension_m * tangent_z,
+        .tangent_x = tangent_x,
+        .tangent_y = tangent_y,
+        .tangent_z = tangent_z,
+        .station_m = requested_station_m,
+        .valid = true,
+    };
   }
   const float station_m =
       std::clamp(requested_station_m, route.front().station_m, route.back().station_m);
@@ -64,6 +96,9 @@ struct RouteSample {
         .z_m = std::lerp(first.z_m, second.z_m, ratio),
         .tangent_x = dx / length_m,
         .tangent_y = dy / length_m,
+        .tangent_z = station_length_m > 1.0e-5F
+                         ? (second.z_m - first.z_m) / station_length_m
+                         : 0.0F,
         .station_m = station_m,
         .valid = true,
     };
@@ -141,11 +176,16 @@ void limitControlSequence(const std::span<Control> controls,
   }
 }
 
-std::vector<Control> buildGuideDirectedNominalSeed(
-    const State& initial, const State& target,
-    const std::span<const RouteSample3D> route, const float initial_route_station_m,
-    const float reference_speed_mps, const DynamicsConfig& dynamics,
-    const std::size_t steps, const Control previous_applied_control) {
+namespace {
+
+std::vector<Control> buildGuideDirectedSeed(const State& initial, const State& target,
+                                            const std::span<const RouteSample3D> route,
+                                            const float initial_route_station_m,
+                                            const float reference_speed_mps,
+                                            const DynamicsConfig& dynamics,
+                                            const std::size_t steps,
+                                            const Control previous_applied_control,
+                                            const bool extrapolate_endpoint) {
   std::vector<Control> seed(steps);
   const float dx = target.x - initial.x;
   const float dy = target.y - initial.y;
@@ -159,7 +199,8 @@ std::vector<Control> buildGuideDirectedNominalSeed(
   for (std::size_t index = 0U; index < steps; ++index) {
     const float elapsed_s = static_cast<float>(index + 1U) * dynamics.dt_s;
     const RouteSample route_sample =
-        sampleRoute(route, initial_route_station_m + requested_speed_mps * elapsed_s);
+        sampleRoute(route, initial_route_station_m + requested_speed_mps * elapsed_s,
+                    extrapolate_endpoint);
     const float tangent_x = route_sample.valid ? route_sample.tangent_x : direction_x;
     const float tangent_y = route_sample.valid ? route_sample.tangent_y : direction_y;
     const float position_error_x =
@@ -181,6 +222,91 @@ std::vector<Control> buildGuideDirectedNominalSeed(
     predicted = integrateReference(predicted, seed[index], dynamics);
   }
   return seed;
+}
+
+} // namespace
+
+std::vector<Control> buildGuideDirectedNominalSeed(
+    const State& initial, const State& target,
+    const std::span<const RouteSample3D> route, const float initial_route_station_m,
+    const float reference_speed_mps, const DynamicsConfig& dynamics,
+    const std::size_t steps, const Control previous_applied_control) {
+  return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
+                                reference_speed_mps, dynamics, steps,
+                                previous_applied_control, false);
+}
+
+std::vector<Control> buildRouteDirectedCruiseSeed(
+    const State& initial, const State& target,
+    const std::span<const RouteSample3D> route, const float initial_route_station_m,
+    const float reference_speed_mps, const DynamicsConfig& dynamics,
+    const std::size_t steps, const Control previous_applied_control) {
+  return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
+                                reference_speed_mps, dynamics, steps,
+                                previous_applied_control, true);
+}
+
+std::vector<Control> buildCooperativeSeparationAcquisitionCandidates(
+    const State& initial, const State& target,
+    const std::span<const RouteSample3D> route, const float initial_route_station_m,
+    const float reference_speed_mps,
+    const CooperativeSeparationAcquisition& acquisition, const DynamicsConfig& dynamics,
+    const CooperativeConfig& cooperative, const std::size_t steps,
+    const Control previous_applied_control, const float first_control_interval_s) {
+  if (steps == 0U || !(reference_speed_mps >= 0.0F)) {
+    throw std::invalid_argument{"invalid cooperative acquisition input"};
+  }
+  constexpr std::array speed_scales{1.0F, 0.8F, 0.6F, 0.4F, 0.0F, -0.35F};
+  constexpr std::array separation_scales{1.0F, 1.0F, 0.9F, 0.8F, 1.0F, 1.0F};
+  const RouteSample current_route = sampleRoute(route, initial_route_station_m, true);
+  const float target_distance = std::hypot(target.x - initial.x, target.y - initial.y);
+  float forward_x = 1.0F;
+  float forward_y = 0.0F;
+  if (current_route.valid) {
+    forward_x = current_route.tangent_x;
+    forward_y = current_route.tangent_y;
+  } else if (target_distance > 1.0e-3F) {
+    forward_x = (target.x - initial.x) / target_distance;
+    forward_y = (target.y - initial.y) / target_distance;
+  }
+  const float reverse_distance_m = std::max(10.0F, 2.0F * reference_speed_mps);
+  const State reverse_target{.x = initial.x - reverse_distance_m * forward_x,
+                             .y = initial.y - reverse_distance_m * forward_y,
+                             .z = initial.z};
+  const Control separation = resolveCooperativePreferredAcceleration(
+      acquisition.preference, dynamics, cooperative);
+  const std::size_t active_steps =
+      std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
+                                  cooperative.candidate_duration_s / dynamics.dt_s)),
+                              1U, steps);
+  std::vector<Control> candidates(kCooperativeAcquisitionCandidateCount * steps);
+  for (std::size_t candidate_index = 0U;
+       candidate_index < kCooperativeAcquisitionCandidateCount; ++candidate_index) {
+    const float speed_scale = speed_scales.at(candidate_index);
+    std::vector<Control> candidate;
+    if (speed_scale > 0.0F) {
+      candidate = buildRouteDirectedCruiseSeed(
+          initial, target, route, initial_route_station_m,
+          reference_speed_mps * speed_scale, dynamics, steps, previous_applied_control);
+    } else if (speed_scale < 0.0F) {
+      candidate = buildGuideDirectedNominalSeed(
+          initial, reverse_target, {}, 0.0F, -reference_speed_mps * speed_scale,
+          dynamics, steps, previous_applied_control);
+    } else {
+      candidate = buildGuideDirectedNominalSeed(
+          initial, initial, {}, 0.0F, 0.0F, dynamics, steps, previous_applied_control);
+    }
+    for (std::size_t step = 0U; step < active_steps; ++step) {
+      candidate[step].ax += separation_scales.at(candidate_index) * separation.ax;
+      candidate[step].ay += separation_scales.at(candidate_index) * separation.ay;
+      candidate[step].az += separation_scales.at(candidate_index) * separation.az;
+    }
+    limitControlSequence(candidate, dynamics, previous_applied_control,
+                         first_control_interval_s);
+    std::ranges::copy(candidate, candidates.begin() + static_cast<std::ptrdiff_t>(
+                                                          candidate_index * steps));
+  }
+  return candidates;
 }
 
 std::vector<Control> buildCooperativeManeuverCandidates(

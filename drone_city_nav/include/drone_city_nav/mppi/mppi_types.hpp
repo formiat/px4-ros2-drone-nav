@@ -63,6 +63,12 @@ struct CooperativeManeuverPreference {
   std::uint64_t generation{0U};
 };
 
+struct CooperativeSeparationAcquisition {
+  CooperativeManeuverPreference preference{};
+  float minimum_positive_progress_m{0.05F};
+  float minimum_separation_gain_m{0.05F};
+};
+
 #if defined(__CUDACC__)
 #define DRONE_CITY_NAV_MPPI_HOST_DEVICE __host__ __device__
 #else

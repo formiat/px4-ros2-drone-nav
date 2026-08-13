@@ -63,6 +63,8 @@ TEST(CooperativeMppiAdapter, AlignsPeerTrajectoryToPlannerSteps) {
   EXPECT_FLOAT_EQ(result.conflicting_peers.front().samples->at(0U).x, 1.0F);
   EXPECT_FLOAT_EQ(result.conflicting_peers.front().samples->at(3U).x, 4.0F);
   ASSERT_TRUE(result.maneuver.has_value());
+  ASSERT_TRUE(result.acquisition.has_value());
+  EXPECT_TRUE(result.avoidance_active);
   const mppi::CooperativeManeuverPreference maneuver =
       result.maneuver.value_or(mppi::CooperativeManeuverPreference{});
   EXPECT_EQ(maneuver.maneuver, mppi::CooperativeManeuver::kClimb);
@@ -104,6 +106,8 @@ TEST(CooperativeMppiAdapter, InactiveCommandAddsNoPeerCostOrBias) {
   EXPECT_TRUE(result.accepted());
   EXPECT_TRUE(result.conflicting_peers.empty());
   EXPECT_FALSE(result.maneuver.has_value());
+  EXPECT_FALSE(result.acquisition.has_value());
+  EXPECT_FALSE(result.avoidance_active);
 }
 
 } // namespace

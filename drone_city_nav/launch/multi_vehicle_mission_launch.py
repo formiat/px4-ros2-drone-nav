@@ -138,6 +138,10 @@ def make_intercept_mission_nodes(
                     "target_truth_state_topics": [
                         _truth_state_topic(target_id) for target_id in target_ids
                     ],
+                    "target_execution_horizon_topics": [
+                        f"{prefix}/mppi/execution_horizon"
+                        for prefix in target_prefixes
+                    ],
                     "truth_alignment_status_topic": "/simulation_truth/alignment",
                     "target_navigation_observer_fqns": [
                         "/intercept_spectator_node",

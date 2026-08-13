@@ -381,6 +381,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   double snapshot_ms{0.0};
   double stability_ms{0.0};
   bool route_projection_valid{false};
+  bool temporary_frontier_continuation_ready{false};
   bool liveness_reseed_requested{false};
   bool pose_predicted{false};
   MppiRolloutBudgetDecision rollout_budget{};

@@ -114,7 +114,10 @@ void ProductionMppiNode::planningTick() {
         .route = std::nullopt,
         .conflicting_peers = {},
         .cooperative_maneuver = std::nullopt,
+        .cooperative_acquisition = std::nullopt,
         .active_rollouts = std::nullopt,
+        .deterministic_candidate = mppi::DeterministicCandidateKind::kDisabled,
+        .cooperative_avoidance_active = false,
     };
     const MppiHorizonSafetyResult fallback =
         buildMppiBrakingFallback(input.initial_state, safety_config_);
@@ -286,6 +289,13 @@ void ProductionMppiNode::planningTick() {
                 .terminal_route_available = esdf->global_guide_reaches_mission_goal,
             })
           : MissionGoalCaptureResult{};
+  const bool temporary_frontier_continuation_ready =
+      route_usable && route_projection.valid &&
+      !esdf->global_guide_reaches_mission_goal && previous_result_ &&
+      previous_result_->route_directed_candidate_injected &&
+      previous_result_->route_directed_candidate_raw_safe &&
+      previous_result_->route_directed_candidate_generation ==
+          esdf->global_guide_generation;
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
       speed_policy_config_,
       MppiSpeedPolicyInput{
@@ -296,6 +306,10 @@ void ProductionMppiNode::planningTick() {
               route_usable && route_projection.valid &&
                       !esdf->global_guide_reaches_mission_goal
                   ? std::optional<double>{route_projection.remaining_m}
+                  : std::nullopt,
+          .route_endpoint_terminal_speed_mps =
+              temporary_frontier_continuation_ready
+                  ? std::optional<double>{speed_policy_config_.cruise_speed_mps}
                   : std::nullopt,
           .route_constraint_speed_limit_mps =
               route_control.active
@@ -577,6 +591,15 @@ void ProductionMppiNode::planningTick() {
                                     ? mppi::RiskTier::kPreferred
                                     : maximum_eligible_risk_tier_,
       });
+  mppi::DeterministicCandidateKind deterministic_candidate =
+      mppi::DeterministicCandidateKind::kDisabled;
+  if (direct_tracking_interception) {
+    deterministic_candidate =
+        mppi::DeterministicCandidateKind::kTargetDirectedReacquisition;
+  } else if (planning_state == ProductionMppiPlanningState::kPlanned && route_usable &&
+             route_projection.valid && !route_control.hold_xy) {
+    deterministic_candidate = mppi::DeterministicCandidateKind::kRouteDirectedCruise;
+  }
   mppi::MppiTickInput input{
       .initial_state = navigation.state,
       .target = target,
@@ -603,8 +626,10 @@ void ProductionMppiNode::planningTick() {
               : std::nullopt,
       .conflicting_peers = cooperative.mppi.conflicting_peers,
       .cooperative_maneuver = cooperative.mppi.maneuver,
+      .cooperative_acquisition = cooperative.mppi.acquisition,
       .active_rollouts = rollout_budget.active_rollouts,
-      .target_directed_reacquisition_enabled = direct_tracking_interception,
+      .deterministic_candidate = deterministic_candidate,
+      .cooperative_avoidance_active = cooperative.mppi.avoidance_active,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
@@ -650,6 +675,26 @@ void ProductionMppiNode::planningTick() {
       requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts,
                           esdf->global_guide_generation);
     }
+  }
+  if (result.cooperative_acquisition_reseeded) {
+    RCLCPP_INFO(get_logger(),
+                "COOPERATIVE_SEPARATION_ACQUISITION_RESEED available=%s "
+                "positive_progress=%s backward_fallback=%s candidate_index=%zu "
+                "head_progress_m=%.3f terminal_progress_m=%.3f separation_gain_m=%.3f "
+                "route_generation=%" PRIu64,
+                result.cooperative_acquisition_available ? "true" : "false",
+                result.cooperative_acquisition_positive_progress ? "true" : "false",
+                result.cooperative_acquisition_backward_fallback ? "true" : "false",
+                result.cooperative_acquisition_candidate_index,
+                static_cast<double>(result.cooperative_acquisition_head_progress_m),
+                static_cast<double>(result.cooperative_acquisition_terminal_progress_m),
+                static_cast<double>(result.cooperative_acquisition_separation_gain_m),
+                esdf->global_guide_generation);
+  }
+  if (result.cooperative_release_reseeded) {
+    RCLCPP_INFO(get_logger(),
+                "COOPERATIVE_SEPARATION_RELEASE_RESEED route_generation=%" PRIu64,
+                esdf->global_guide_generation);
   }
   ++tick_sequence_;
   recordTickStatistics(result, planning_state,
@@ -721,6 +766,33 @@ void ProductionMppiNode::planningTick() {
       result.target_directed_candidate_best_eligible;
   diagnostic_result.target_directed_candidate_weight =
       result.target_directed_candidate_weight;
+  diagnostic_result.route_directed_candidate_injected =
+      result.route_directed_candidate_injected;
+  diagnostic_result.route_directed_candidate_raw_safe =
+      result.route_directed_candidate_raw_safe;
+  diagnostic_result.route_directed_candidate_best_eligible =
+      result.route_directed_candidate_best_eligible;
+  diagnostic_result.route_directed_candidate_weight =
+      result.route_directed_candidate_weight;
+  diagnostic_result.route_directed_candidate_generation =
+      result.route_directed_candidate_generation;
+  diagnostic_result.cooperative_acquisition_reseeded =
+      result.cooperative_acquisition_reseeded;
+  diagnostic_result.cooperative_release_reseeded = result.cooperative_release_reseeded;
+  diagnostic_result.cooperative_acquisition_available =
+      result.cooperative_acquisition_available;
+  diagnostic_result.cooperative_acquisition_positive_progress =
+      result.cooperative_acquisition_positive_progress;
+  diagnostic_result.cooperative_acquisition_backward_fallback =
+      result.cooperative_acquisition_backward_fallback;
+  diagnostic_result.cooperative_acquisition_candidate_index =
+      result.cooperative_acquisition_candidate_index;
+  diagnostic_result.cooperative_acquisition_head_progress_m =
+      result.cooperative_acquisition_head_progress_m;
+  diagnostic_result.cooperative_acquisition_terminal_progress_m =
+      result.cooperative_acquisition_terminal_progress_m;
+  diagnostic_result.cooperative_acquisition_separation_gain_m =
+      result.cooperative_acquisition_separation_gain_m;
   diagnostic_result.cooperative_candidates_injected =
       result.cooperative_candidates_injected;
   diagnostic_result.cooperative_peer_count = result.cooperative_peer_count;
@@ -759,6 +831,7 @@ void ProductionMppiNode::planningTick() {
       .snapshot_ms = snapshot_ms,
       .stability_ms = stability_ms,
       .route_projection_valid = route_projection.valid,
+      .temporary_frontier_continuation_ready = temporary_frontier_continuation_ready,
       .liveness_reseed_requested = liveness.reseed_requested,
       .pose_predicted = pose_predicted,
       .rollout_budget = rollout_budget,
