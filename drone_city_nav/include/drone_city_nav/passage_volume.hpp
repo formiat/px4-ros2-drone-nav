@@ -30,6 +30,9 @@ struct PassageCrossSection {
   Vec3 tangent{};
   Vec3 lateral_axis{};
   Vec3 secondary_axis{};
+  // Full raw-validated center-position range. Cooperative wall clearance is
+  // intentionally not applied here because these bounds become the physical
+  // execution envelope for the selected route.
   double minimum_lateral_offset_m{0.0};
   double maximum_lateral_offset_m{0.0};
   double minimum_secondary_offset_m{0.0};
@@ -50,6 +53,8 @@ struct PassageVolume {
   std::size_t span_index{0U};
   double begin_station_m{0.0};
   double end_station_m{0.0};
+  // Intersection of cross-section ranges after applying the requested wall
+  // clearance. These bounds constrain cooperative offset selection only.
   double minimum_lateral_offset_m{0.0};
   double maximum_lateral_offset_m{0.0};
   double minimum_secondary_offset_m{0.0};

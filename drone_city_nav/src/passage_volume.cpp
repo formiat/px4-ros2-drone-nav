@@ -165,7 +165,17 @@ struct CrossSectionFrame {
       break;
     }
   }
-  return std::max(0.0, accepted_distance_m - config.minimum_wall_clearance_m);
+  return accepted_distance_m;
+}
+
+[[nodiscard]] double conservativeMinimumOffset(const double raw_minimum_offset_m,
+                                               const double wall_clearance_m) noexcept {
+  return std::min(0.0, raw_minimum_offset_m + wall_clearance_m);
+}
+
+[[nodiscard]] double conservativeMaximumOffset(const double raw_maximum_offset_m,
+                                               const double wall_clearance_m) noexcept {
+  return std::max(0.0, raw_maximum_offset_m - wall_clearance_m);
 }
 
 [[nodiscard]] PassageCrossSection
@@ -240,22 +250,28 @@ derivePassageVolume(const std::span<const RouteSample3D> route,
       return result;
     }
     result.minimum_lateral_offset_m =
-        std::max(result.minimum_lateral_offset_m, section.minimum_lateral_offset_m);
+        std::max(result.minimum_lateral_offset_m,
+                 conservativeMinimumOffset(section.minimum_lateral_offset_m,
+                                           config.minimum_wall_clearance_m));
     result.maximum_lateral_offset_m =
-        std::min(result.maximum_lateral_offset_m, section.maximum_lateral_offset_m);
+        std::min(result.maximum_lateral_offset_m,
+                 conservativeMaximumOffset(section.maximum_lateral_offset_m,
+                                           config.minimum_wall_clearance_m));
     result.minimum_secondary_offset_m =
-        std::max(result.minimum_secondary_offset_m, section.minimum_secondary_offset_m);
+        std::max(result.minimum_secondary_offset_m,
+                 conservativeMinimumOffset(section.minimum_secondary_offset_m,
+                                           config.minimum_wall_clearance_m));
     result.maximum_secondary_offset_m =
-        std::min(result.maximum_secondary_offset_m, section.maximum_secondary_offset_m);
+        std::min(result.maximum_secondary_offset_m,
+                 conservativeMaximumOffset(section.maximum_secondary_offset_m,
+                                           config.minimum_wall_clearance_m));
     result.minimum_physical_width_m =
         std::min(result.minimum_physical_width_m,
-                 section.usableWidthM() + 2.0 * (config.footprint.radius_m +
-                                                 config.minimum_wall_clearance_m));
+                 section.usableWidthM() + 2.0 * config.footprint.radius_m);
     result.minimum_physical_secondary_extent_m =
         std::min(result.minimum_physical_secondary_extent_m,
                  section.usableSecondaryExtentM() + config.footprint.lower_extent_m +
-                     config.footprint.upper_extent_m + 2.0 * config.footprint.radius_m +
-                     2.0 * config.minimum_wall_clearance_m);
+                     config.footprint.upper_extent_m + 2.0 * config.footprint.radius_m);
     result.cross_sections.push_back(section);
   }
   result.raw_validated =

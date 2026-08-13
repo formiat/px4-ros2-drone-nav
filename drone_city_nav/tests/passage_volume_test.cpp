@@ -127,6 +127,34 @@ TEST(PassageVolume, BuildsOrthonormalFramesForSlopedRoutes) {
   }
 }
 
+TEST(PassageVolume, KeepsPhysicalCrossSectionWhenCooperativeMarginDoesNotFit) {
+  PassageVolumeConfig narrow_coordination = config();
+  narrow_coordination.maximum_cross_section_probe_m = 2.0;
+  narrow_coordination.minimum_wall_clearance_m = 3.0;
+  const OccupancyGrid3D occupancy{GridBounds3D{-5.0, -5.0, 0.0, 1.0, 30, 10, 12}};
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{2.5, 0.5, 5.5}, {17.5, 0.5, 5.5}}, 1.0, 10.0);
+
+  const std::vector<PassageVolume> volumes =
+      derivePassageVolumes(route, std::vector<ConstrainedRouteSpan>{span(1.0, 14.0)},
+                           occupancy, narrow_coordination);
+
+  ASSERT_EQ(volumes.size(), 1U);
+  const PassageVolume& volume = volumes.front();
+  ASSERT_TRUE(volume.raw_validated);
+  EXPECT_DOUBLE_EQ(volume.minimum_lateral_offset_m, 0.0);
+  EXPECT_DOUBLE_EQ(volume.maximum_lateral_offset_m, 0.0);
+  EXPECT_DOUBLE_EQ(volume.minimum_secondary_offset_m, 0.0);
+  EXPECT_DOUBLE_EQ(volume.maximum_secondary_offset_m, 0.0);
+  ASSERT_FALSE(volume.cross_sections.empty());
+  for (const PassageCrossSection& section : volume.cross_sections) {
+    EXPECT_LT(section.minimum_lateral_offset_m, 0.0);
+    EXPECT_GT(section.maximum_lateral_offset_m, 0.0);
+    EXPECT_LT(section.minimum_secondary_offset_m, 0.0);
+    EXPECT_GT(section.maximum_secondary_offset_m, 0.0);
+  }
+}
+
 TEST(PassageVolume, RejectsCrossSectionWhoseRouteCenterIsOccupied) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, -5.0, 0.0, 1.0, 20, 10, 12}};
   occupancy.setOccupied(GridIndex3D{10, 5, 5});

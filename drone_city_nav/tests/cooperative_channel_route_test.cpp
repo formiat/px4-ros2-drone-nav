@@ -215,5 +215,32 @@ TEST(CooperativeChannelRoute, UsesCenteredModeWhenTransitionDoesNotFit) {
   EXPECT_DOUBLE_EQ(result.assignments.front().applied_lateral_offset_m, 0.0);
 }
 
+TEST(CooperativeChannelRoute, UsesPhysicalCrossSectionForExecutionEnvelope) {
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{-10.0, 0.0, 5.0}, {30.0, 0.0, 5.0}}, 1.0, 10.0);
+  const ConstrainedRouteSpan constrained = span(1);
+  PassageVolume passage = volume(route, constrained);
+  passage.minimum_secondary_offset_m = 0.0;
+  passage.maximum_secondary_offset_m = 0.0;
+  for (PassageCrossSection& section : passage.cross_sections) {
+    section.minimum_secondary_offset_m = -1.0;
+    section.maximum_secondary_offset_m = 1.0;
+  }
+
+  const CooperativeChannelRouteResult result = applyCooperativeChannelCorridors(
+      route, std::vector<ConstrainedRouteSpan>{constrained},
+      std::vector<PassageVolume>{passage}, emptyOccupancy(), routeConfig());
+
+  ASSERT_TRUE(result.valid);
+  ASSERT_EQ(result.constrained_spans.size(), 1U);
+  ASSERT_FALSE(result.constrained_spans.front().envelope.empty());
+  for (const RouteEnvelopeSample& envelope :
+       result.constrained_spans.front().envelope) {
+    EXPECT_LT(envelope.min_z_m, envelope.reference_z_m);
+    EXPECT_GT(envelope.max_z_m, envelope.reference_z_m);
+    EXPECT_GE(envelope.max_z_m - envelope.min_z_m, 2.0 - 1.0e-9);
+  }
+}
+
 } // namespace
 } // namespace drone_city_nav
