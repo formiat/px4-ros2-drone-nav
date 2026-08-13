@@ -52,11 +52,11 @@ class CooperativeTrafficLaunchContractTest(unittest.TestCase):
         goals = {goal["goal_m"][:2] for goal in scenario["vehicle_goals"]}
         self.assertEqual(
             starts,
-            {(215.0, 54.0), (217.0, 54.0), (215.0, 378.0), (217.0, 378.0)},
+            {(53.0, 54.0), (55.0, 54.0), (53.0, 378.0), (55.0, 378.0)},
         )
         self.assertEqual(
             goals,
-            {(212.0, 54.0), (220.0, 54.0), (212.0, 378.0), (220.0, 378.0)},
+            {(50.0, 54.0), (58.0, 54.0), (50.0, 378.0), (58.0, 378.0)},
         )
 
     def test_launch_reuses_generic_navigation_stack_and_enables_cooperation(self) -> None:

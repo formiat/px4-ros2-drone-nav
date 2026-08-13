@@ -9,8 +9,8 @@
       "px4_namespace": "civilian_0",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_0",
-      "map_start_m": [215.0, 54.0, 0.3],
-      "goal_m": [212.0, 378.0, 18.0],
+      "map_start_m": [53.0, 54.0, 0.3],
+      "goal_m": [50.0, 378.0, 18.0],
       "yaw_rad": 0.0
     },
     {
@@ -19,8 +19,8 @@
       "px4_namespace": "civilian_1",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_1",
-      "map_start_m": [217.0, 54.0, 0.3],
-      "goal_m": [220.0, 378.0, 18.0],
+      "map_start_m": [55.0, 54.0, 0.3],
+      "goal_m": [58.0, 378.0, 18.0],
       "yaw_rad": 0.0
     },
     {
@@ -29,8 +29,8 @@
       "px4_namespace": "civilian_2",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_2",
-      "map_start_m": [215.0, 378.0, 0.3],
-      "goal_m": [212.0, 54.0, 18.0],
+      "map_start_m": [53.0, 378.0, 0.3],
+      "goal_m": [50.0, 54.0, 18.0],
       "yaw_rad": 3.141592653589793
     },
     {
@@ -39,8 +39,8 @@
       "px4_namespace": "civilian_3",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_3",
-      "map_start_m": [217.0, 378.0, 0.3],
-      "goal_m": [220.0, 54.0, 18.0],
+      "map_start_m": [55.0, 378.0, 0.3],
+      "goal_m": [58.0, 54.0, 18.0],
       "yaw_rad": 3.141592653589793
     }
   ]
