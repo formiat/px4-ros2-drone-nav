@@ -3,8 +3,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iomanip>
+#include <locale>
+#include <memory>
+#include <mutex>
 #include <ranges>
+#include <sstream>
 #include <stdexcept>
+#include <string>
+#include <unordered_map>
 
 namespace drone_city_nav {
 namespace {
@@ -122,6 +129,33 @@ selectBestRun(const std::span<const double> offsets,
   return best_available ? best : ValidOffsetRun{};
 }
 
+[[nodiscard]] std::string
+corridorResourceKey(const std::span<const ConstrainedFreeSpaceEdge> channels,
+                    const ChannelCorridorConfig& config,
+                    const OccupancyGrid3D& occupancy) {
+  std::ostringstream stream;
+  stream.imbue(std::locale::classic());
+  stream << occupancy.fingerprint() << '|' << std::hexfloat
+         << config.desired_center_separation_m << '|' << config.minimum_wall_clearance_m
+         << '|' << config.lateral_probe_step_m << '|'
+         << config.directional_offset_fraction << '|' << config.footprint.radius_m
+         << '|' << config.footprint.lower_extent_m << '|'
+         << config.footprint.upper_extent_m << '|' << config.footprint.sweep_step_m
+         << '|' << std::defaultfloat << config.footprint.perimeter_samples << '|'
+         << config.footprint.radial_rings << '|' << config.footprint.axial_samples
+         << '|' << channels.size();
+  for (const ConstrainedFreeSpaceEdge& channel : channels) {
+    stream << '|' << channel.id.size() << ':' << channel.id << '|' << std::hexfloat
+           << channel.min_z_m << '|' << channel.max_z_m << '|' << channel.width_m << '|'
+           << channel.height_m << '|' << channel.centerline.size();
+    for (const RouteSample3D& sample : channel.centerline) {
+      stream << '|' << sample.position.x << ',' << sample.position.y << ','
+             << sample.position.z;
+    }
+  }
+  return stream.str();
+}
+
 } // namespace
 
 std::vector<RouteSample3D>
@@ -237,6 +271,39 @@ makeRawCollisionValidatedChannelCorridor(const ConstrainedFreeSpaceEdge& channel
       .minimum_wall_clearance_m = config.minimum_wall_clearance_m,
       .raw_validated = std::ranges::any_of(
           accepted, [](const std::uint8_t value) { return value != 0U; }),
+  };
+}
+
+ChannelCorridorResource acquireRawValidatedChannelCorridors(
+    const std::span<const ConstrainedFreeSpaceEdge> channels,
+    const ChannelCorridorConfig& config, const OccupancyGrid3D& occupancy) {
+  validateConfig(config);
+  const std::string key = corridorResourceKey(channels, config, occupancy);
+  using CorridorVector = std::vector<ChannelCorridor>;
+  static std::mutex registry_mutex;
+  static std::unordered_map<std::string, std::weak_ptr<const CorridorVector>> registry;
+  const std::scoped_lock registry_lock{registry_mutex};
+  if (const auto found = registry.find(key); found != registry.end()) {
+    if (std::shared_ptr<const CorridorVector> existing = found->second.lock()) {
+      return ChannelCorridorResource{
+          .corridors = std::move(existing),
+          .shared_resource_reused = true,
+      };
+    }
+    registry.erase(found);
+  }
+
+  auto mutable_corridors = std::make_shared<CorridorVector>();
+  mutable_corridors->reserve(channels.size());
+  for (const ConstrainedFreeSpaceEdge& channel : channels) {
+    mutable_corridors->push_back(
+        makeRawCollisionValidatedChannelCorridor(channel, config, occupancy));
+  }
+  std::shared_ptr<const CorridorVector> corridors = std::move(mutable_corridors);
+  registry.emplace(key, corridors);
+  return ChannelCorridorResource{
+      .corridors = std::move(corridors),
+      .shared_resource_reused = false,
   };
 }
 

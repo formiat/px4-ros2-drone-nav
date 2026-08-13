@@ -3,6 +3,7 @@
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -35,6 +36,11 @@ struct ChannelCorridor {
   }
 };
 
+struct ChannelCorridorResource {
+  std::shared_ptr<const std::vector<ChannelCorridor>> corridors;
+  bool shared_resource_reused{false};
+};
+
 [[nodiscard]] std::vector<RouteSample3D>
 offsetChannelCenterline(std::span<const RouteSample3D> centerline,
                         double lateral_offset_m);
@@ -47,6 +53,11 @@ makeGeometricChannelCorridor(const ConstrainedFreeSpaceEdge& channel,
 makeRawCollisionValidatedChannelCorridor(const ConstrainedFreeSpaceEdge& channel,
                                          const ChannelCorridorConfig& config,
                                          const OccupancyGrid3D& occupancy);
+
+[[nodiscard]] ChannelCorridorResource
+acquireRawValidatedChannelCorridors(std::span<const ConstrainedFreeSpaceEdge> channels,
+                                    const ChannelCorridorConfig& config,
+                                    const OccupancyGrid3D& occupancy);
 
 [[nodiscard]] double
 preferredDirectionalChannelOffset(const ChannelCorridor& corridor, int direction_sign,

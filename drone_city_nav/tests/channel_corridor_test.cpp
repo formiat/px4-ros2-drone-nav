@@ -112,5 +112,29 @@ TEST(ChannelCorridor, GroupsAlternativeMovementsIntoOneConflictResource) {
   EXPECT_EQ(channelConflictResourceId("channel_straight"), "channel_straight");
 }
 
+TEST(ChannelCorridor, ReusesImmutableResourceForIdenticalWorldAndConfiguration) {
+  const std::vector<ConstrainedFreeSpaceEdge> channels{straightChannel()};
+  const OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 14, 12}};
+
+  const ChannelCorridorResource first =
+      acquireRawValidatedChannelCorridors(channels, corridorConfig(), occupancy);
+  const ChannelCorridorResource second =
+      acquireRawValidatedChannelCorridors(channels, corridorConfig(), occupancy);
+
+  ASSERT_TRUE(first.corridors);
+  ASSERT_TRUE(second.corridors);
+  EXPECT_FALSE(first.shared_resource_reused);
+  EXPECT_TRUE(second.shared_resource_reused);
+  EXPECT_EQ(first.corridors.get(), second.corridors.get());
+
+  ChannelCorridorConfig changed = corridorConfig();
+  changed.minimum_wall_clearance_m += 0.1;
+  const ChannelCorridorResource different =
+      acquireRawValidatedChannelCorridors(channels, changed, occupancy);
+  ASSERT_TRUE(different.corridors);
+  EXPECT_FALSE(different.shared_resource_reused);
+  EXPECT_NE(first.corridors.get(), different.corridors.get());
+}
+
 } // namespace
 } // namespace drone_city_nav

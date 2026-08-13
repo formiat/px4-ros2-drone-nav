@@ -1,6 +1,7 @@
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <ranges>
@@ -91,25 +92,35 @@ void ProductionMppiNode::initializeCooperativeChannelCorridors() {
   if (!static_occupancy_3d_ || !static_channel_edges_) {
     throw std::runtime_error{"cooperative static channel geometry is unavailable"};
   }
-  auto corridors = std::make_shared<std::vector<ChannelCorridor>>();
-  corridors->reserve(static_channel_edges_->size());
-  for (const ConstrainedFreeSpaceEdge& channel : *static_channel_edges_) {
-    ChannelCorridor corridor = makeRawCollisionValidatedChannelCorridor(
-        channel, cooperative_channel_corridor_config_, *static_occupancy_3d_);
+  const auto started = std::chrono::steady_clock::now();
+  ChannelCorridorResource resource = acquireRawValidatedChannelCorridors(
+      *static_channel_edges_, cooperative_channel_corridor_config_,
+      *static_occupancy_3d_);
+  const double duration_ms = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - started)
+                                 .count();
+  RCLCPP_INFO(get_logger(),
+              "COOPERATIVE_CHANNEL_RESOURCE corridors=%zu build_ms=%.2f "
+              "shared_resource_reused=%s",
+              resource.corridors ? resource.corridors->size() : 0U, duration_ms,
+              resource.shared_resource_reused ? "true" : "false");
+  if (!resource.corridors) {
+    throw std::runtime_error{"cooperative channel corridor resource is unavailable"};
+  }
+  for (const ChannelCorridor& corridor : *resource.corridors) {
     RCLCPP_INFO(get_logger(),
                 "COOPERATIVE_CHANNEL_CORRIDOR channel='%s' physical_width_m=%.2f "
                 "minimum_offset_m=%.2f maximum_offset_m=%.2f usable_width_m=%.2f "
                 "raw_validated=%s exclusive=%s",
-                channel.id.c_str(), corridor.physical_width_m,
+                corridor.channel_id.c_str(), corridor.physical_width_m,
                 corridor.minimum_lateral_offset_m, corridor.maximum_lateral_offset_m,
                 corridor.usableWidthM(), corridor.raw_validated ? "true" : "false",
                 corridor.exclusive(
                     cooperative_channel_corridor_config_.desired_center_separation_m)
                     ? "true"
                     : "false");
-    corridors->push_back(std::move(corridor));
   }
-  static_channel_corridors_ = std::move(corridors);
+  static_channel_corridors_ = std::move(resource.corridors);
 }
 
 void ProductionMppiNode::createCooperativeTrafficInterfaces(
