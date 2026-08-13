@@ -2,7 +2,7 @@
 
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
-#include "drone_city_nav/channel_lanes.hpp"
+#include "drone_city_nav/channel_corridor.hpp"
 #include "drone_city_nav/cooperative_channel_execution.hpp"
 #include "drone_city_nav/cooperative_channel_route.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
@@ -191,8 +191,8 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> channel_edges;
-  std::shared_ptr<const std::vector<ChannelLaneSet>> channel_lane_sets;
-  std::shared_ptr<const std::vector<CooperativeChannelLaneAssignment>>
+  std::shared_ptr<const std::vector<ChannelCorridor>> channel_corridors;
+  std::shared_ptr<const std::vector<CooperativeChannelAssignment>>
       cooperative_channel_assignments;
   std::shared_ptr<const std::vector<std::string>> selected_channel_ids;
   StaticRouteObjective search_objective{};
@@ -455,7 +455,7 @@ private:
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void configureCooperativeTraffic();
-  void initializeCooperativeChannelLanes();
+  void initializeCooperativeChannelCorridors();
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);
   [[nodiscard]] ProductionMppiCooperativeUpdate
@@ -566,7 +566,7 @@ private:
   StaticRouteExtensionConfig static_route_extension_config_{};
   StaticRouteSearchRetryConfig static_route_search_retry_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};
-  ChannelLaneConfig cooperative_channel_lane_config_{};
+  ChannelCorridorConfig cooperative_channel_corridor_config_{};
   CooperativeChannelRouteConfig cooperative_channel_route_config_{};
   CooperativeChannelTimingConfig cooperative_channel_timing_config_{};
   CooperativeChannelYieldConfig cooperative_channel_yield_config_{};
@@ -575,7 +575,7 @@ private:
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;
-  std::shared_ptr<const std::vector<ChannelLaneSet>> static_channel_lane_sets_;
+  std::shared_ptr<const std::vector<ChannelCorridor>> static_channel_corridors_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   bool static_esdf_uploaded_{false};

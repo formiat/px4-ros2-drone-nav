@@ -271,10 +271,11 @@ result is a soft planner preference and peer-separation cost, not a prohibited
 grid, inflated obstacle, or hard exclusion volume; raw physical obstacles remain
 the only hard collision constraint.
 
-Static-map channel routes derive their lane capacity from raw-validated channel
-geometry and the full drone footprint. Opposite traffic uses separate lanes when
-the passage has enough capacity. An exclusive or conflicting channel instead
-uses deterministic right-of-way and a route-safe hold before entry; an active
+Static-map channel routes derive a continuous lateral-offset interval from
+raw-validated channel geometry and the full drone footprint. Opposing traffic
+uses deterministic offsets when the passage provides enough separation. A
+narrow or otherwise conflicting channel instead schedules entry time with
+deterministic right-of-way and a route-safe hold before entry; an active
 constrained span is never replaced mid-traversal. In no-static mode, peer lidar
 returns are removed only from persistent obstacle memory. The unchanged latest
 scan still reaches immediate safety validation, so cooperative filtering cannot

@@ -37,7 +37,7 @@ ownshipWinsRightOfWay(const CooperativeFlightIntentData& ownship,
     return false;
   }
   const std::int64_t headway_ns =
-      secondsToNanoseconds(config.same_lane_entry_headway_s);
+      secondsToNanoseconds(config.same_path_entry_headway_s);
   if (ownship.channel.predicted_entry_ns + headway_ns <
       peer.channel.predicted_entry_ns) {
     return true;
@@ -49,14 +49,33 @@ ownshipWinsRightOfWay(const CooperativeFlightIntentData& ownship,
   return ownship.vehicle_id < peer.vehicle_id;
 }
 
+[[nodiscard]] double sharedUsableWidthM(const CooperativeChannelUse& first,
+                                        const CooperativeChannelUse& second) noexcept {
+  return std::max(
+      0.0,
+      std::min(first.maximum_lateral_offset_m, second.maximum_lateral_offset_m) -
+          std::max(first.minimum_lateral_offset_m, second.minimum_lateral_offset_m));
+}
+
+[[nodiscard]] std::int64_t
+requestedEntryTime(const CooperativeChannelUse& peer, const bool same_direction,
+                   const CooperativeChannelCoordinationConfig& config) noexcept {
+  if (same_direction) {
+    return peer.predicted_entry_ns +
+           secondsToNanoseconds(config.same_path_entry_headway_s);
+  }
+  return peer.predicted_exit_ns +
+         secondsToNanoseconds(config.reservation_time_margin_s);
+}
+
 } // namespace
 
-std::size_t assignCooperativeChannelLane(const int direction_sign,
-                                         const std::size_t lane_count) noexcept {
-  if (lane_count <= 1U || direction_sign >= 0) {
-    return 0U;
+double channelLateralSeparationM(const CooperativeChannelUse& first,
+                                 const CooperativeChannelUse& second) noexcept {
+  if (first.channel_id != second.channel_id) {
+    return 0.0;
   }
-  return lane_count - 1U;
+  return std::abs(first.lateral_offset_m - second.lateral_offset_m);
 }
 
 CooperativeChannelDecision coordinateCooperativeChannel(
@@ -65,13 +84,12 @@ CooperativeChannelDecision coordinateCooperativeChannel(
     const CooperativeChannelCoordinationConfig& config) noexcept {
   CooperativeChannelDecision result;
   if (!ownship.channel.active() || !(config.reservation_time_margin_s >= 0.0) ||
-      !(config.same_lane_entry_headway_s >= 0.0)) {
+      !(config.same_path_entry_headway_s >= 0.0) ||
+      !(config.lateral_separation_tolerance_m >= 0.0)) {
     return result;
   }
   result.active = true;
-  result.lane_count = ownship.channel.lane_count;
-  result.lane_index = assignCooperativeChannelLane(ownship.channel.direction_sign,
-                                                   ownship.channel.lane_count);
+  result.lateral_offset_m = ownship.channel.lateral_offset_m;
   if (ownship.channel.phase != CooperativeChannelPhase::kApproach) {
     return result;
   }
@@ -84,35 +102,39 @@ CooperativeChannelDecision coordinateCooperativeChannel(
                             config.reservation_time_margin_s)) {
       continue;
     }
-    const std::size_t shared_lane_count =
-        std::min(ownship.channel.lane_count, peer.channel.lane_count);
-    const bool exclusive_resource = shared_lane_count <= 1U;
     const bool different_movement =
         ownship.channel.channel_id != peer.channel.channel_id;
-    const std::size_t peer_lane =
-        assignCooperativeChannelLane(peer.channel.direction_sign, shared_lane_count);
-    const std::size_t own_lane =
-        assignCooperativeChannelLane(ownship.channel.direction_sign, shared_lane_count);
-    const bool same_direction =
-        ownship.channel.direction_sign == peer.channel.direction_sign;
-    const bool separate_opposite_lanes =
-        !same_direction && shared_lane_count > 1U && own_lane != peer_lane;
-    if (!exclusive_resource && !different_movement && separate_opposite_lanes) {
+    const bool same_direction = !different_movement && ownship.channel.direction_sign ==
+                                                           peer.channel.direction_sign;
+    const double required_separation_m =
+        std::max(ownship.channel.desired_center_separation_m,
+                 peer.channel.desired_center_separation_m);
+    const bool exclusive_resource = sharedUsableWidthM(ownship.channel, peer.channel) +
+                                        config.lateral_separation_tolerance_m <
+                                    required_separation_m;
+    const bool offsets_separated =
+        !different_movement &&
+        channelLateralSeparationM(ownship.channel, peer.channel) +
+                config.lateral_separation_tolerance_m >=
+            required_separation_m;
+    if (!exclusive_resource && offsets_separated) {
       continue;
     }
 
     const CooperativeConflictPrediction prediction =
         predictCooperativeConflict(ownship, peer, ownship.stamp_ns, config.conflict);
-    const bool same_lane_following =
-        !different_movement && same_direction && own_lane == peer_lane;
     const bool conflict_relevant =
-        exclusive_resource || ((different_movement || same_lane_following) &&
-                               prediction.valid && prediction.conflict_predicted);
+        exclusive_resource ||
+        ((different_movement || same_direction || !offsets_separated) &&
+         prediction.valid && prediction.conflict_predicted);
     if (!conflict_relevant || ownshipWinsRightOfWay(ownship, peer, config)) {
       continue;
     }
     result.yield_before_entry = true;
     result.conflict_zone_only = different_movement && !exclusive_resource;
+    result.entry_not_before_ns =
+        std::max(result.entry_not_before_ns,
+                 requestedEntryTime(peer.channel, same_direction, config));
     if (result.yield_to_vehicle_id.empty() ||
         peer.vehicle_id < result.yield_to_vehicle_id) {
       result.yield_to_vehicle_id = peer.vehicle_id;

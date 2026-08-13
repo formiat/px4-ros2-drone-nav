@@ -15,18 +15,15 @@ void ProductionMppiNode::configureCooperativeTraffic() {
   cooperative_traffic_enabled_ =
       declare_parameter<bool>("cooperative_traffic_enabled", false);
   vehicle_id_ = declare_parameter<std::string>("vehicle_id", "");
-  cooperative_channel_lane_config_.minimum_center_separation_m =
-      declare_parameter<double>("cooperative_channel_minimum_lane_separation_m", 5.0);
-  cooperative_channel_lane_config_.minimum_wall_clearance_m =
+  cooperative_channel_corridor_config_.desired_center_separation_m =
+      declare_parameter<double>("cooperative_channel_desired_center_separation_m", 5.0);
+  cooperative_channel_corridor_config_.minimum_wall_clearance_m =
       declare_parameter<double>("cooperative_channel_minimum_wall_clearance_m", 1.0);
-  const std::int64_t maximum_lane_count =
-      declare_parameter<std::int64_t>("cooperative_channel_maximum_lane_count", 5);
-  if (maximum_lane_count < 1 || maximum_lane_count > 32) {
-    throw std::invalid_argument{"cooperative channel lane count must be in [1, 32]"};
-  }
-  cooperative_channel_lane_config_.maximum_lane_count =
-      static_cast<std::size_t>(maximum_lane_count);
-  cooperative_channel_lane_config_.footprint = SweptFootprintConfig{
+  cooperative_channel_corridor_config_.lateral_probe_step_m =
+      declare_parameter<double>("cooperative_channel_lateral_probe_step_m", 0.5);
+  cooperative_channel_corridor_config_.directional_offset_fraction =
+      declare_parameter<double>("cooperative_channel_directional_offset_fraction", 0.5);
+  cooperative_channel_corridor_config_.footprint = SweptFootprintConfig{
       .radius_m = lattice_3d_config_.physical_footprint_radius_m,
       .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
       .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
@@ -39,8 +36,12 @@ void ProductionMppiNode::configureCooperativeTraffic() {
       declare_parameter<double>("cooperative_channel_preferred_transition_m", 10.0);
   cooperative_channel_route_config_.minimum_transition_length_m =
       declare_parameter<double>("cooperative_channel_minimum_transition_m", 3.0);
+  cooperative_channel_route_config_.desired_center_separation_m =
+      cooperative_channel_corridor_config_.desired_center_separation_m;
+  cooperative_channel_route_config_.directional_offset_fraction =
+      cooperative_channel_corridor_config_.directional_offset_fraction;
   cooperative_channel_route_config_.footprint =
-      cooperative_channel_lane_config_.footprint;
+      cooperative_channel_corridor_config_.footprint;
   cooperative_channel_timing_config_.minimum_prediction_speed_mps =
       declare_parameter<double>("cooperative_channel_minimum_prediction_speed_mps",
                                 1.0);
@@ -65,8 +66,11 @@ void ProductionMppiNode::configureCooperativeTraffic() {
       declare_parameter<double>("cooperative_maneuver_preference_weight", 1.5));
 
   if ((cooperative_traffic_enabled_ && vehicle_id_.empty()) ||
-      !(cooperative_channel_lane_config_.minimum_center_separation_m > 0.0) ||
-      !(cooperative_channel_lane_config_.minimum_wall_clearance_m >= 0.0) ||
+      !(cooperative_channel_corridor_config_.desired_center_separation_m > 0.0) ||
+      !(cooperative_channel_corridor_config_.minimum_wall_clearance_m >= 0.0) ||
+      !(cooperative_channel_corridor_config_.lateral_probe_step_m > 0.0) ||
+      !(cooperative_channel_corridor_config_.directional_offset_fraction >= 0.0) ||
+      !(cooperative_channel_corridor_config_.directional_offset_fraction <= 1.0) ||
       !(cooperative_channel_route_config_.preferred_transition_length_m > 0.0) ||
       !(cooperative_channel_route_config_.minimum_transition_length_m > 0.0) ||
       cooperative_channel_route_config_.minimum_transition_length_m >
@@ -80,26 +84,32 @@ void ProductionMppiNode::configureCooperativeTraffic() {
   }
 }
 
-void ProductionMppiNode::initializeCooperativeChannelLanes() {
+void ProductionMppiNode::initializeCooperativeChannelCorridors() {
   if (!cooperative_traffic_enabled_ || !use_static_map_) {
     return;
   }
   if (!static_occupancy_3d_ || !static_channel_edges_) {
     throw std::runtime_error{"cooperative static channel geometry is unavailable"};
   }
-  auto lane_sets = std::make_shared<std::vector<ChannelLaneSet>>();
-  lane_sets->reserve(static_channel_edges_->size());
+  auto corridors = std::make_shared<std::vector<ChannelCorridor>>();
+  corridors->reserve(static_channel_edges_->size());
   for (const ConstrainedFreeSpaceEdge& channel : *static_channel_edges_) {
-    ChannelLaneSet lanes = makeRawCollisionValidatedChannelLanes(
-        channel, cooperative_channel_lane_config_, *static_occupancy_3d_);
+    ChannelCorridor corridor = makeRawCollisionValidatedChannelCorridor(
+        channel, cooperative_channel_corridor_config_, *static_occupancy_3d_);
     RCLCPP_INFO(get_logger(),
-                "COOPERATIVE_CHANNEL_CAPACITY channel='%s' physical_width_m=%.2f "
-                "usable_center_width_m=%.2f validated_lanes=%zu exclusive=%s",
-                channel.id.c_str(), lanes.physical_width_m, lanes.usable_center_width_m,
-                lanes.lanes.size(), lanes.exclusive() ? "true" : "false");
-    lane_sets->push_back(std::move(lanes));
+                "COOPERATIVE_CHANNEL_CORRIDOR channel='%s' physical_width_m=%.2f "
+                "minimum_offset_m=%.2f maximum_offset_m=%.2f usable_width_m=%.2f "
+                "raw_validated=%s exclusive=%s",
+                channel.id.c_str(), corridor.physical_width_m,
+                corridor.minimum_lateral_offset_m, corridor.maximum_lateral_offset_m,
+                corridor.usableWidthM(), corridor.raw_validated ? "true" : "false",
+                corridor.exclusive(
+                    cooperative_channel_corridor_config_.desired_center_separation_m)
+                    ? "true"
+                    : "false");
+    corridors->push_back(std::move(corridor));
   }
-  static_channel_lane_sets_ = std::move(lane_sets);
+  static_channel_corridors_ = std::move(corridors);
 }
 
 void ProductionMppiNode::createCooperativeTrafficInterfaces(
@@ -162,10 +172,10 @@ ProductionMppiCooperativeUpdate ProductionMppiNode::prepareCooperativeTick(
     return result;
   }
 
-  const CooperativeChannelLaneAssignment* assignment = nullptr;
+  const CooperativeChannelAssignment* assignment = nullptr;
   if (route_observation.span_available && esdf.cooperative_channel_assignments &&
       route_observation.span_index < esdf.cooperative_channel_assignments->size()) {
-    const CooperativeChannelLaneAssignment& candidate =
+    const CooperativeChannelAssignment& candidate =
         (*esdf.cooperative_channel_assignments)[route_observation.span_index];
     if (candidate.span_index == route_observation.span_index &&
         candidate.route_generation == route_observation.route_generation &&

@@ -1,10 +1,7 @@
 #include "drone_city_nav/cooperative_channel_route.hpp"
 
-#include "drone_city_nav/cooperative_channel_coordination.hpp"
-
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <optional>
 #include <ranges>
 #include <utility>
@@ -12,13 +9,11 @@
 namespace drone_city_nav {
 namespace {
 
-struct LaneApplication {
+struct OffsetApplication {
   std::size_t span_index{0U};
-  const ChannelLaneSet* lane_set{nullptr};
-  const ChannelLane* lane{nullptr};
   double transition_before_m{0.0};
   double transition_after_m{0.0};
-  bool reverse_lane{false};
+  std::vector<RouteSample3D> offset_route;
 };
 
 [[nodiscard]] bool finitePositive(const double value) noexcept {
@@ -28,13 +23,6 @@ struct LaneApplication {
 [[nodiscard]] double smoothStep(const double value) noexcept {
   const double bounded = std::clamp(value, 0.0, 1.0);
   return bounded * bounded * (3.0 - 2.0 * bounded);
-}
-
-[[nodiscard]] Point3 interpolatePoint(const Point3& first, const Point3& second,
-                                      const double ratio) noexcept {
-  return Point3{std::lerp(first.x, second.x, ratio),
-                std::lerp(first.y, second.y, ratio),
-                std::lerp(first.z, second.z, ratio)};
 }
 
 [[nodiscard]] Vec3 difference(const Point3& first, const Point3& second) noexcept {
@@ -47,57 +35,12 @@ struct LaneApplication {
                 point.z + scale * offset.z};
 }
 
-[[nodiscard]] const ChannelLaneSet*
-findLaneSet(const std::span<const ChannelLaneSet> lane_sets,
-            const std::string& channel_id) noexcept {
+[[nodiscard]] const ChannelCorridor*
+findCorridor(const std::span<const ChannelCorridor> corridors,
+             const std::string& channel_id) noexcept {
   const auto match =
-      std::ranges::find(lane_sets, channel_id, &ChannelLaneSet::channel_id);
-  return match == lane_sets.end() ? nullptr : &*match;
-}
-
-[[nodiscard]] std::vector<Point3> orientedLanePoints(const ChannelLane& lane,
-                                                     const bool reverse) {
-  std::vector<Point3> points;
-  points.reserve(lane.centerline.size());
-  if (reverse) {
-    for (const RouteSample3D& sample : std::views::reverse(lane.centerline)) {
-      points.push_back(sample.position);
-    }
-  } else {
-    for (const RouteSample3D& sample : lane.centerline) {
-      points.push_back(sample.position);
-    }
-  }
-  return points;
-}
-
-[[nodiscard]] Point3 samplePolylineFraction(const std::span<const Point3> points,
-                                            const double fraction) noexcept {
-  if (points.empty()) {
-    return {};
-  }
-  if (points.size() == 1U) {
-    return points.front();
-  }
-  double total_length_m = 0.0;
-  for (std::size_t index = 1U; index < points.size(); ++index) {
-    total_length_m += distance3D(points[index - 1U], points[index]);
-  }
-  if (!(total_length_m > 1.0e-9)) {
-    return points.front();
-  }
-  const double target_m = std::clamp(fraction, 0.0, 1.0) * total_length_m;
-  double station_m = 0.0;
-  for (std::size_t index = 1U; index < points.size(); ++index) {
-    const double segment_m = distance3D(points[index - 1U], points[index]);
-    if (target_m <= station_m + segment_m || index + 1U == points.size()) {
-      const double ratio =
-          segment_m > 1.0e-9 ? (target_m - station_m) / segment_m : 0.0;
-      return interpolatePoint(points[index - 1U], points[index], ratio);
-    }
-    station_m += segment_m;
-  }
-  return points.back();
+      std::ranges::find(corridors, channel_id, &ChannelCorridor::channel_id);
+  return match == corridors.end() ? nullptr : &*match;
 }
 
 [[nodiscard]] double mapStation(const std::span<const RouteSample3D> original,
@@ -159,73 +102,82 @@ void recomputeRouteGeometry(std::vector<RouteSample3D>& route) noexcept {
   return true;
 }
 
-void makeAssignmentsExclusive(
-    std::vector<CooperativeChannelLaneAssignment>& assignments,
-    const CooperativeChannelLaneRouteStatus status) noexcept {
-  for (CooperativeChannelLaneAssignment& assignment : assignments) {
-    assignment.lane_index = 0U;
-    assignment.lane_count = 1U;
-    assignment.lateral_offset_m = 0.0;
+void makeAssignmentsCentered(std::vector<CooperativeChannelAssignment>& assignments,
+                             const CooperativeChannelRouteStatus status) noexcept {
+  for (CooperativeChannelAssignment& assignment : assignments) {
+    assignment.applied_lateral_offset_m = 0.0;
     assignment.status = status;
   }
 }
 
+[[nodiscard]] ChannelCorridorConfig
+corridorConfig(const CooperativeChannelRouteConfig& config) noexcept {
+  return ChannelCorridorConfig{
+      .desired_center_separation_m = config.desired_center_separation_m,
+      .minimum_wall_clearance_m = 0.0,
+      .lateral_probe_step_m = 0.5,
+      .directional_offset_fraction = config.directional_offset_fraction,
+      .footprint = config.footprint,
+  };
+}
+
 } // namespace
 
-CooperativeChannelRouteResult applyCooperativeChannelLanes(
+CooperativeChannelRouteResult applyCooperativeChannelCorridors(
     const std::span<const RouteSample3D> route,
     const std::span<const ConstrainedRouteSpan> constrained_spans,
-    const std::span<const ChannelLaneSet> lane_sets, const OccupancyGrid3D& occupancy,
+    const std::span<const ChannelCorridor> corridors, const OccupancyGrid3D& occupancy,
     const CooperativeChannelRouteConfig& config) {
   CooperativeChannelRouteResult result{
       .route = std::vector<RouteSample3D>{route.begin(), route.end()},
       .constrained_spans = std::vector<ConstrainedRouteSpan>{constrained_spans.begin(),
                                                              constrained_spans.end()},
       .assignments = {},
-      .applied_lane_count = 0U,
+      .applied_offset_count = 0U,
       .valid = false,
   };
   result.assignments.reserve(constrained_spans.size());
   for (std::size_t index = 0U; index < constrained_spans.size(); ++index) {
-    result.assignments.push_back(CooperativeChannelLaneAssignment{
+    result.assignments.push_back(CooperativeChannelAssignment{
         .channel_id = constrained_spans[index].channel_id,
         .route_generation = constrained_spans[index].route_generation,
         .span_index = index,
+        .desired_center_separation_m = config.desired_center_separation_m,
     });
   }
   if (route.size() < 2U || !finitePositive(config.preferred_transition_length_m) ||
       !finitePositive(config.minimum_transition_length_m) ||
+      !finitePositive(config.desired_center_separation_m) ||
+      !(config.directional_offset_fraction >= 0.0) ||
+      !(config.directional_offset_fraction <= 1.0) ||
       config.minimum_transition_length_m > config.preferred_transition_length_m ||
       !std::ranges::is_sorted(route, {}, &RouteSample3D::station_m) ||
       !std::ranges::is_sorted(constrained_spans, {},
                               &ConstrainedRouteSpan::begin_station_m)) {
-    makeAssignmentsExclusive(result.assignments,
-                             CooperativeChannelLaneRouteStatus::kInvalidInput);
+    makeAssignmentsCentered(result.assignments,
+                            CooperativeChannelRouteStatus::kInvalidInput);
     return result;
   }
 
-  std::vector<LaneApplication> applications;
+  std::vector<OffsetApplication> applications;
   applications.reserve(constrained_spans.size());
+  const ChannelCorridorConfig lateral_config = corridorConfig(config);
   for (std::size_t index = 0U; index < constrained_spans.size(); ++index) {
     const ConstrainedRouteSpan& span = constrained_spans[index];
-    CooperativeChannelLaneAssignment& assignment = result.assignments[index];
-    const ChannelLaneSet* const lane_set = findLaneSet(lane_sets, span.channel_id);
-    if (lane_set == nullptr || lane_set->lanes.empty()) {
-      assignment.status = CooperativeChannelLaneRouteStatus::kMissingLaneGeometry;
+    CooperativeChannelAssignment& assignment = result.assignments[index];
+    const ChannelCorridor* const corridor = findCorridor(corridors, span.channel_id);
+    if (corridor == nullptr || !corridor->raw_validated) {
+      assignment.status = CooperativeChannelRouteStatus::kMissingCorridorGeometry;
       continue;
     }
-    const std::size_t lane_index =
-        assignCooperativeChannelLane(span.direction_sign, lane_set->lanes.size());
-    const ChannelLane& lane = lane_set->lanes[lane_index];
-    if (lane.centerline.size() < 2U) {
-      assignment.status = CooperativeChannelLaneRouteStatus::kMissingLaneGeometry;
-      continue;
-    }
-    assignment.lane_index = lane_index;
-    assignment.lane_count = lane_set->lanes.size();
-    assignment.lateral_offset_m = lane.lateral_offset_m;
-    if (lane_set->exclusive() || std::abs(lane.lateral_offset_m) <= 1.0e-9) {
-      assignment.status = CooperativeChannelLaneRouteStatus::kExclusive;
+    assignment.physical_width_m = corridor->physical_width_m;
+    assignment.minimum_lateral_offset_m = corridor->minimum_lateral_offset_m;
+    assignment.maximum_lateral_offset_m = corridor->maximum_lateral_offset_m;
+    assignment.requested_lateral_offset_m = preferredDirectionalChannelOffset(
+        *corridor, span.direction_sign, lateral_config);
+    if (corridor->exclusive(config.desired_center_separation_m) ||
+        std::abs(assignment.requested_lateral_offset_m) <= 1.0e-9) {
+      assignment.status = CooperativeChannelRouteStatus::kCentered;
       continue;
     }
 
@@ -245,46 +197,29 @@ CooperativeChannelRouteResult applyCooperativeChannelLanes(
                  after_share * std::max(0.0, next_boundary_m - span.end_station_m));
     if (transition_before_m + 1.0e-9 < config.minimum_transition_length_m ||
         transition_after_m + 1.0e-9 < config.minimum_transition_length_m) {
-      assignment.lane_index = 0U;
-      assignment.lane_count = 1U;
-      assignment.lateral_offset_m = 0.0;
-      assignment.status = CooperativeChannelLaneRouteStatus::kInsufficientTransition;
+      assignment.status = CooperativeChannelRouteStatus::kInsufficientTransition;
       continue;
     }
-    const Point3 route_entry =
-        sampleRoute3DAtStation(route, span.begin_station_m).position;
-    const bool reverse_lane = distance3D(route_entry, lane.centerline.back().position) <
-                              distance3D(route_entry, lane.centerline.front().position);
-    applications.push_back(LaneApplication{
+    const double route_relative_offset_m = assignment.requested_lateral_offset_m *
+                                           static_cast<double>(span.direction_sign);
+    std::vector<RouteSample3D> offset_route =
+        offsetChannelCenterline(route, route_relative_offset_m);
+    if (offset_route.size() != route.size()) {
+      assignment.status = CooperativeChannelRouteStatus::kMissingCorridorGeometry;
+      continue;
+    }
+    applications.push_back(OffsetApplication{
         .span_index = index,
-        .lane_set = lane_set,
-        .lane = &lane,
         .transition_before_m = transition_before_m,
         .transition_after_m = transition_after_m,
-        .reverse_lane = reverse_lane,
+        .offset_route = std::move(offset_route),
     });
-    assignment.status = CooperativeChannelLaneRouteStatus::kApplied;
+    assignment.applied_lateral_offset_m = assignment.requested_lateral_offset_m;
+    assignment.status = CooperativeChannelRouteStatus::kApplied;
   }
 
-  for (const LaneApplication& application : applications) {
+  for (const OffsetApplication& application : applications) {
     const ConstrainedRouteSpan& span = constrained_spans[application.span_index];
-    const std::vector<Point3> lane_points =
-        orientedLanePoints(*application.lane, application.reverse_lane);
-    if (lane_points.size() < 2U) {
-      CooperativeChannelLaneAssignment& assignment =
-          result.assignments[application.span_index];
-      assignment.lane_index = 0U;
-      assignment.lane_count = 1U;
-      assignment.lateral_offset_m = 0.0;
-      assignment.status = CooperativeChannelLaneRouteStatus::kMissingLaneGeometry;
-      continue;
-    }
-    const Point3 original_entry =
-        sampleRoute3DAtStation(route, span.begin_station_m).position;
-    const Point3 original_exit =
-        sampleRoute3DAtStation(route, span.end_station_m).position;
-    const Vec3 entry_offset = difference(lane_points.front(), original_entry);
-    const Vec3 exit_offset = difference(lane_points.back(), original_exit);
     const double influence_begin_m =
         span.begin_station_m - application.transition_before_m;
     const double influence_end_m = span.end_station_m + application.transition_after_m;
@@ -294,31 +229,26 @@ CooperativeChannelRouteResult applyCooperativeChannelLanes(
           station_m - 1.0e-9 > influence_end_m) {
         continue;
       }
+      const Vec3 offset = difference(application.offset_route[route_index].position,
+                                     route[route_index].position);
+      double ratio = 1.0;
       if (station_m < span.begin_station_m) {
-        const double ratio = smoothStep((station_m - influence_begin_m) /
-                                        application.transition_before_m);
-        result.route[route_index].position =
-            translated(route[route_index].position, entry_offset, ratio);
-      } else if (station_m <= span.end_station_m) {
-        const double fraction =
-            (station_m - span.begin_station_m) /
-            std::max(1.0e-9, span.end_station_m - span.begin_station_m);
-        result.route[route_index].position =
-            samplePolylineFraction(lane_points, fraction);
-      } else {
-        const double ratio =
+        ratio = smoothStep((station_m - influence_begin_m) /
+                           application.transition_before_m);
+      } else if (station_m > span.end_station_m) {
+        ratio =
             smoothStep((influence_end_m - station_m) / application.transition_after_m);
-        result.route[route_index].position =
-            translated(route[route_index].position, exit_offset, ratio);
       }
+      result.route[route_index].position =
+          translated(route[route_index].position, offset, ratio);
     }
   }
   recomputeRouteGeometry(result.route);
   if (!rawRouteAccepted(result.route, occupancy, config.footprint)) {
     result.route.assign(route.begin(), route.end());
     result.constrained_spans.assign(constrained_spans.begin(), constrained_spans.end());
-    makeAssignmentsExclusive(result.assignments,
-                             CooperativeChannelLaneRouteStatus::kRawValidationRejected);
+    makeAssignmentsCentered(result.assignments,
+                            CooperativeChannelRouteStatus::kRawValidationRejected);
     result.valid = true;
     return result;
   }
@@ -329,43 +259,42 @@ CooperativeChannelRouteResult applyCooperativeChannelLanes(
     transformed.begin_station_m =
         mapStation(route, result.route, original.begin_station_m);
     transformed.end_station_m = mapStation(route, result.route, original.end_station_m);
-    const CooperativeChannelLaneAssignment& assignment = result.assignments[index];
-    const ChannelLaneSet* const lane_set =
-        assignment.applied() ? findLaneSet(lane_sets, assignment.channel_id) : nullptr;
+    const CooperativeChannelAssignment& assignment = result.assignments[index];
     for (RouteEnvelopeSample& envelope : transformed.envelope) {
       envelope.station_m = mapStation(route, result.route, envelope.station_m);
-      if (lane_set == nullptr) {
+      if (!assignment.applied()) {
         continue;
       }
       const double route_relative_offset_m =
-          assignment.lateral_offset_m * static_cast<double>(original.direction_sign);
-      const double half_width_m = 0.5 * lane_set->physical_width_m;
+          assignment.applied_lateral_offset_m *
+          static_cast<double>(original.direction_sign);
+      const double half_width_m = 0.5 * assignment.physical_width_m;
       envelope.lateral_free_left_m =
           std::max(0.0, half_width_m - route_relative_offset_m);
       envelope.lateral_free_right_m =
           std::max(0.0, half_width_m + route_relative_offset_m);
     }
   }
-  result.applied_lane_count = static_cast<std::size_t>(std::ranges::count_if(
-      result.assignments, &CooperativeChannelLaneAssignment::applied));
+  result.applied_offset_count = static_cast<std::size_t>(std::ranges::count_if(
+      result.assignments, &CooperativeChannelAssignment::applied));
   result.valid = true;
   return result;
 }
 
-const char* cooperativeChannelLaneRouteStatusName(
-    const CooperativeChannelLaneRouteStatus status) noexcept {
+const char*
+cooperativeChannelRouteStatusName(const CooperativeChannelRouteStatus status) noexcept {
   switch (status) {
-    case CooperativeChannelLaneRouteStatus::kExclusive:
-      return "exclusive";
-    case CooperativeChannelLaneRouteStatus::kApplied:
+    case CooperativeChannelRouteStatus::kCentered:
+      return "centered";
+    case CooperativeChannelRouteStatus::kApplied:
       return "applied";
-    case CooperativeChannelLaneRouteStatus::kMissingLaneGeometry:
-      return "missing_lane_geometry";
-    case CooperativeChannelLaneRouteStatus::kInsufficientTransition:
+    case CooperativeChannelRouteStatus::kMissingCorridorGeometry:
+      return "missing_corridor_geometry";
+    case CooperativeChannelRouteStatus::kInsufficientTransition:
       return "insufficient_transition";
-    case CooperativeChannelLaneRouteStatus::kRawValidationRejected:
+    case CooperativeChannelRouteStatus::kRawValidationRejected:
       return "raw_validation_rejected";
-    case CooperativeChannelLaneRouteStatus::kInvalidInput:
+    case CooperativeChannelRouteStatus::kInvalidInput:
       return "invalid_input";
   }
   return "unknown";

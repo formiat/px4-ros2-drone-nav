@@ -34,7 +34,7 @@ cooperativePhase(const ConstrainedRoutePhase phase) noexcept {
 
 CooperativeChannelUse
 makeCooperativeChannelUse(const ConstrainedRouteObservation& observation,
-                          const CooperativeChannelLaneAssignment& assignment,
+                          const CooperativeChannelAssignment& assignment,
                           const std::int64_t now_ns, const double planned_speed_mps,
                           const CooperativeChannelTimingConfig& config) noexcept {
   CooperativeChannelUse result;
@@ -42,7 +42,8 @@ makeCooperativeChannelUse(const ConstrainedRouteObservation& observation,
   if (!observation.span_available || phase == CooperativeChannelPhase::kNone ||
       observation.channel_id != assignment.channel_id ||
       observation.route_generation != assignment.route_generation ||
-      assignment.lane_count == 0U || now_ns <= 0 ||
+      !assignment.corridorAvailable() ||
+      !(assignment.desired_center_separation_m > 0.0) || now_ns <= 0 ||
       !(config.minimum_prediction_speed_mps > 0.0) ||
       !(config.maximum_prediction_horizon_s > 0.0)) {
     return result;
@@ -62,8 +63,10 @@ makeCooperativeChannelUse(const ConstrainedRouteObservation& observation,
       .conflict_resource_id = channelConflictResourceId(observation.channel_id),
       .route_generation = observation.route_generation,
       .phase = phase,
-      .lane_index = assignment.lane_index,
-      .lane_count = assignment.lane_count,
+      .lateral_offset_m = assignment.applied_lateral_offset_m,
+      .minimum_lateral_offset_m = assignment.minimum_lateral_offset_m,
+      .maximum_lateral_offset_m = assignment.maximum_lateral_offset_m,
+      .desired_center_separation_m = assignment.desired_center_separation_m,
       .direction_sign = observation.direction_sign,
       .station_m = observation.station_m,
       .distance_to_entry_m = observation.distance_to_entry_m,
@@ -102,9 +105,17 @@ CooperativeChannelYieldDecision evaluateCooperativeChannelYield(
     result.status = CooperativeChannelYieldStatus::kChannelMismatch;
     return result;
   }
-  if (command.channel_lane_count != channel.lane_count ||
-      command.channel_lane_index != channel.lane_index) {
-    result.status = CooperativeChannelYieldStatus::kLaneMismatch;
+  if (std::abs(command.channel_lateral_offset_m - channel.lateral_offset_m) > 1.0e-6 ||
+      std::abs(command.channel_minimum_lateral_offset_m -
+               channel.minimum_lateral_offset_m) > 1.0e-6 ||
+      std::abs(command.channel_maximum_lateral_offset_m -
+               channel.maximum_lateral_offset_m) > 1.0e-6) {
+    result.status = CooperativeChannelYieldStatus::kCorridorMismatch;
+    return result;
+  }
+  if (command.channel_entry_not_before_ns > 0 &&
+      now_ns >= command.channel_entry_not_before_ns) {
+    result.status = CooperativeChannelYieldStatus::kEntryTimeSatisfied;
     return result;
   }
   if (channel.phase != CooperativeChannelPhase::kApproach ||
@@ -129,6 +140,7 @@ CooperativeChannelYieldDecision evaluateCooperativeChannelYield(
                 2.0 * acceleration * available_braking_distance_m);
   result.status = CooperativeChannelYieldStatus::kAccepted;
   result.active = true;
+  result.entry_not_before_ns = command.channel_entry_not_before_ns;
   result.hold_station_m =
       std::max(0.0, observation.begin_station_m - config.stopping_buffer_m);
   result.maximum_speed_mps = std::max(0.0, maximum_speed_mps);
@@ -152,8 +164,10 @@ cooperativeChannelYieldStatusName(const CooperativeChannelYieldStatus status) no
       return "route_mismatch";
     case CooperativeChannelYieldStatus::kChannelMismatch:
       return "channel_mismatch";
-    case CooperativeChannelYieldStatus::kLaneMismatch:
-      return "lane_mismatch";
+    case CooperativeChannelYieldStatus::kCorridorMismatch:
+      return "corridor_mismatch";
+    case CooperativeChannelYieldStatus::kEntryTimeSatisfied:
+      return "entry_time_satisfied";
     case CooperativeChannelYieldStatus::kNotApproaching:
       return "not_approaching";
     case CooperativeChannelYieldStatus::kAccepted:

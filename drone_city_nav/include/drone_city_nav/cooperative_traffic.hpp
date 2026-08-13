@@ -39,8 +39,10 @@ struct CooperativeChannelUse {
   std::string conflict_resource_id;
   std::uint64_t route_generation{0U};
   CooperativeChannelPhase phase{CooperativeChannelPhase::kNone};
-  std::size_t lane_index{0U};
-  std::size_t lane_count{0U};
+  double lateral_offset_m{0.0};
+  double minimum_lateral_offset_m{0.0};
+  double maximum_lateral_offset_m{0.0};
+  double desired_center_separation_m{0.0};
   int direction_sign{0};
   double station_m{0.0};
   double distance_to_entry_m{0.0};
@@ -50,7 +52,9 @@ struct CooperativeChannelUse {
 
   [[nodiscard]] bool active() const noexcept {
     return phase != CooperativeChannelPhase::kNone && !channel_id.empty() &&
-           !conflict_resource_id.empty() && lane_count > 0U;
+           !conflict_resource_id.empty() &&
+           maximum_lateral_offset_m >= minimum_lateral_offset_m &&
+           desired_center_separation_m > 0.0;
   }
 };
 
@@ -97,8 +101,10 @@ struct CooperativeManeuverCommandData {
   std::string channel_id;
   std::string channel_conflict_resource_id;
   std::uint64_t channel_route_generation{0U};
-  std::size_t channel_lane_index{0U};
-  std::size_t channel_lane_count{0U};
+  double channel_lateral_offset_m{0.0};
+  double channel_minimum_lateral_offset_m{0.0};
+  double channel_maximum_lateral_offset_m{0.0};
+  std::int64_t channel_entry_not_before_ns{0};
   std::vector<CooperativePeerTrajectoryData> conflicting_peers;
 };
 

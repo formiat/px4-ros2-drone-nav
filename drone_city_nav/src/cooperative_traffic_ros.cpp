@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <limits>
 
 namespace drone_city_nav {
 namespace {
@@ -53,8 +52,10 @@ channelUseImpl(const msg::CooperativeChannelIntent& message) {
       .conflict_resource_id = message.conflict_resource_id,
       .route_generation = message.route_generation,
       .phase = channelPhase(message.phase),
-      .lane_index = message.lane_index,
-      .lane_count = message.lane_count,
+      .lateral_offset_m = message.lateral_offset_m,
+      .minimum_lateral_offset_m = message.minimum_lateral_offset_m,
+      .maximum_lateral_offset_m = message.maximum_lateral_offset_m,
+      .desired_center_separation_m = message.desired_center_separation_m,
       .direction_sign = message.direction_sign,
       .station_m = message.station_m,
       .distance_to_entry_m = message.distance_to_entry_m,
@@ -70,12 +71,10 @@ void assignChannel(msg::CooperativeChannelIntent& message,
   message.conflict_resource_id = channel.conflict_resource_id;
   message.route_generation = channel.route_generation;
   message.phase = static_cast<std::uint8_t>(channel.phase);
-  message.lane_index = static_cast<std::uint16_t>(
-      std::min(channel.lane_index,
-               static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max())));
-  message.lane_count = static_cast<std::uint16_t>(
-      std::min(channel.lane_count,
-               static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max())));
+  message.lateral_offset_m = channel.lateral_offset_m;
+  message.minimum_lateral_offset_m = channel.minimum_lateral_offset_m;
+  message.maximum_lateral_offset_m = channel.maximum_lateral_offset_m;
+  message.desired_center_separation_m = channel.desired_center_separation_m;
   message.direction_sign =
       static_cast<std::int8_t>(std::clamp(channel.direction_sign, -1, 1));
   message.station_m = channel.station_m;
@@ -246,8 +245,11 @@ cooperativeManeuverCommandData(const msg::CooperativeManeuverCommand& message) {
       .channel_id = message.channel_id,
       .channel_conflict_resource_id = message.channel_conflict_resource_id,
       .channel_route_generation = message.channel_route_generation,
-      .channel_lane_index = message.channel_lane_index,
-      .channel_lane_count = message.channel_lane_count,
+      .channel_lateral_offset_m = message.channel_lateral_offset_m,
+      .channel_minimum_lateral_offset_m = message.channel_minimum_lateral_offset_m,
+      .channel_maximum_lateral_offset_m = message.channel_maximum_lateral_offset_m,
+      .channel_entry_not_before_ns =
+          cooperativeTimeNanoseconds(message.channel_entry_not_before),
       .conflicting_peers = {},
   };
   result.conflicting_peers.reserve(message.conflicting_peers.size());

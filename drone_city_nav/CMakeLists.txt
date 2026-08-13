@@ -149,7 +149,7 @@ add_library(
   src/active_global_guide.cpp
   src/ambiguous_lidar_hit_tracker.cpp
   src/bounded_worker_pool.cpp
-  src/channel_lanes.cpp
+  src/channel_corridor.cpp
   src/cooperative_channel_execution.cpp
   src/cooperative_channel_route.cpp
   src/cooperative_channel_coordination.cpp
@@ -792,10 +792,10 @@ if(BUILD_TESTING)
     PRIVATE TEST_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.occupancy3d")
   enable_project_warnings(occupancy_grid_3d_test)
 
-  ament_add_gtest(channel_lanes_test tests/channel_lanes_test.cpp)
-  target_compile_features(channel_lanes_test PRIVATE cxx_std_20)
-  target_link_libraries(channel_lanes_test drone_city_nav_core)
-  enable_project_warnings(channel_lanes_test)
+  ament_add_gtest(channel_corridor_test tests/channel_corridor_test.cpp)
+  target_compile_features(channel_corridor_test PRIVATE cxx_std_20)
+  target_link_libraries(channel_corridor_test drone_city_nav_core)
+  enable_project_warnings(channel_corridor_test)
 
   ament_add_gtest(cooperative_channel_route_test
                   tests/cooperative_channel_route_test.cpp)

@@ -27,15 +27,18 @@ constexpr std::int64_t kSecondNs{1'000'000'000LL};
   };
 }
 
-[[nodiscard]] CooperativeChannelLaneAssignment assignment() {
-  return CooperativeChannelLaneAssignment{
+[[nodiscard]] CooperativeChannelAssignment assignment() {
+  return CooperativeChannelAssignment{
       .channel_id = "channel_t:west_east",
       .route_generation = 9U,
       .span_index = 0U,
-      .lane_index = 0U,
-      .lane_count = 3U,
-      .lateral_offset_m = -5.0,
-      .status = CooperativeChannelLaneRouteStatus::kApplied,
+      .physical_width_m = 14.0,
+      .minimum_lateral_offset_m = -6.0,
+      .maximum_lateral_offset_m = 6.0,
+      .requested_lateral_offset_m = -3.0,
+      .applied_lateral_offset_m = -3.0,
+      .desired_center_separation_m = 5.0,
+      .status = CooperativeChannelRouteStatus::kApplied,
   };
 }
 
@@ -54,25 +57,28 @@ constexpr std::int64_t kSecondNs{1'000'000'000LL};
       .channel_id = "channel_t:west_east",
       .channel_conflict_resource_id = "channel_t",
       .channel_route_generation = 9U,
-      .channel_lane_index = 0U,
-      .channel_lane_count = 3U,
+      .channel_lateral_offset_m = -3.0,
+      .channel_minimum_lateral_offset_m = -6.0,
+      .channel_maximum_lateral_offset_m = 6.0,
+      .channel_entry_not_before_ns = 11 * kSecondNs,
       .conflicting_peers = {},
   };
 }
 
-TEST(CooperativeChannelExecution, PublishesCapacityAndTimeWindow) {
+TEST(CooperativeChannelExecution, PublishesCorridorOffsetAndTimeWindow) {
   const CooperativeChannelUse channel = makeCooperativeChannelUse(
       approach(), assignment(), 10 * kSecondNs, 10.0, CooperativeChannelTimingConfig{});
 
   ASSERT_TRUE(channel.active());
   EXPECT_EQ(channel.conflict_resource_id, "channel_t");
-  EXPECT_EQ(channel.lane_index, 0U);
-  EXPECT_EQ(channel.lane_count, 3U);
+  EXPECT_DOUBLE_EQ(channel.lateral_offset_m, -3.0);
+  EXPECT_DOUBLE_EQ(channel.minimum_lateral_offset_m, -6.0);
+  EXPECT_DOUBLE_EQ(channel.maximum_lateral_offset_m, 6.0);
   EXPECT_EQ(channel.predicted_entry_ns, 11 * kSecondNs);
   EXPECT_EQ(channel.predicted_exit_ns, 14 * kSecondNs);
 }
 
-TEST(CooperativeChannelExecution, AcceptsOnlyCurrentRouteAndLaneYield) {
+TEST(CooperativeChannelExecution, AcceptsOnlyCurrentRouteAndCorridorYield) {
   const ConstrainedRouteObservation observation = approach();
   const CooperativeChannelUse channel =
       makeCooperativeChannelUse(observation, assignment(), 10 * kSecondNs, 10.0,
@@ -86,6 +92,7 @@ TEST(CooperativeChannelExecution, AcceptsOnlyCurrentRouteAndLaneYield) {
   EXPECT_EQ(accepted.status, CooperativeChannelYieldStatus::kAccepted);
   EXPECT_DOUBLE_EQ(accepted.hold_station_m, 23.0);
   EXPECT_GT(accepted.maximum_speed_mps, 0.0);
+  EXPECT_EQ(accepted.entry_not_before_ns, 11 * kSecondNs);
 
   CooperativeManeuverCommandData stale_route = yieldCommand();
   stale_route.channel_route_generation = 8U;
@@ -95,13 +102,27 @@ TEST(CooperativeChannelExecution, AcceptsOnlyCurrentRouteAndLaneYield) {
                 .status,
             CooperativeChannelYieldStatus::kRouteMismatch);
 
-  CooperativeManeuverCommandData wrong_lane = yieldCommand();
-  wrong_lane.channel_lane_index = 2U;
-  EXPECT_EQ(evaluateCooperativeChannelYield(wrong_lane, channel, observation,
+  CooperativeManeuverCommandData wrong_offset = yieldCommand();
+  wrong_offset.channel_lateral_offset_m = 2.0;
+  EXPECT_EQ(evaluateCooperativeChannelYield(wrong_offset, channel, observation,
                                             "civilian_0", 10 * kSecondNs, 5.0,
                                             CooperativeChannelYieldConfig{})
                 .status,
-            CooperativeChannelYieldStatus::kLaneMismatch);
+            CooperativeChannelYieldStatus::kCorridorMismatch);
+}
+
+TEST(CooperativeChannelExecution, ReleasesSatisfiedEntryTime) {
+  const ConstrainedRouteObservation observation = approach();
+  const CooperativeChannelUse channel =
+      makeCooperativeChannelUse(observation, assignment(), 10 * kSecondNs, 10.0,
+                                CooperativeChannelTimingConfig{});
+
+  const CooperativeChannelYieldDecision decision = evaluateCooperativeChannelYield(
+      yieldCommand(), channel, observation, "civilian_0", 11 * kSecondNs, 5.0,
+      CooperativeChannelYieldConfig{});
+
+  EXPECT_FALSE(decision.active);
+  EXPECT_EQ(decision.status, CooperativeChannelYieldStatus::kEntryTimeSatisfied);
 }
 
 TEST(CooperativeChannelExecution, CommandsHoldAtConfiguredEntryBuffer) {

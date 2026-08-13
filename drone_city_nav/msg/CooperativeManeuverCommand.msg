@@ -14,6 +14,8 @@ string channel_yield_to_vehicle_id
 string channel_id
 string channel_conflict_resource_id
 uint64 channel_route_generation
-uint16 channel_lane_index
-uint16 channel_lane_count
+float64 channel_lateral_offset_m
+float64 channel_minimum_lateral_offset_m
+float64 channel_maximum_lateral_offset_m
+builtin_interfaces/Time channel_entry_not_before
 CooperativePeerTrajectory[] conflicting_peers

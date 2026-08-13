@@ -7,8 +7,10 @@ string channel_id
 string conflict_resource_id
 uint64 route_generation
 uint8 phase
-uint16 lane_index
-uint16 lane_count
+float64 lateral_offset_m
+float64 minimum_lateral_offset_m
+float64 maximum_lateral_offset_m
+float64 desired_center_separation_m
 int8 direction_sign
 float64 station_m
 float64 distance_to_entry_m

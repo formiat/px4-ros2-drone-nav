@@ -47,8 +47,12 @@ void appendFields(std::ostringstream& output,
            << ",\"cooperative_peer_separation_cost\":" << result.peer_separation_cost
            << ",\"cooperative_channel_phase\":\""
            << cooperativeChannelPhaseName(cooperative.channel.phase) << '"'
-           << ",\"cooperative_channel_lane_index\":" << cooperative.channel.lane_index
-           << ",\"cooperative_channel_lane_count\":" << cooperative.channel.lane_count
+           << ",\"cooperative_channel_lateral_offset_m\":"
+           << cooperative.channel.lateral_offset_m
+           << ",\"cooperative_channel_minimum_lateral_offset_m\":"
+           << cooperative.channel.minimum_lateral_offset_m
+           << ",\"cooperative_channel_maximum_lateral_offset_m\":"
+           << cooperative.channel.maximum_lateral_offset_m
            << ",\"cooperative_yield_status\":\""
            << cooperativeChannelYieldStatusName(cooperative.yield.status) << '"'
            << ",\"cooperative_yield_active\":"
@@ -58,7 +62,9 @@ void appendFields(std::ostringstream& output,
            << ",\"cooperative_yield_hold_station_m\":"
            << cooperative.yield.hold_station_m
            << ",\"cooperative_yield_maximum_speed_mps\":"
-           << cooperative.yield.maximum_speed_mps;
+           << cooperative.yield.maximum_speed_mps
+           << ",\"cooperative_yield_entry_not_before_ns\":"
+           << cooperative.yield.entry_not_before_ns;
     return;
   }
 
@@ -92,8 +98,12 @@ void appendFields(std::ostringstream& output,
          << " cooperative_peer_separation_cost=" << result.peer_separation_cost
          << " cooperative_channel_phase="
          << cooperativeChannelPhaseName(cooperative.channel.phase)
-         << " cooperative_channel_lane=" << cooperative.channel.lane_index << '/'
-         << cooperative.channel.lane_count << " cooperative_yield_status="
+         << " cooperative_channel_lateral_offset_m="
+         << cooperative.channel.lateral_offset_m
+         << " cooperative_channel_offset_interval_m=["
+         << cooperative.channel.minimum_lateral_offset_m << ','
+         << cooperative.channel.maximum_lateral_offset_m
+         << "] cooperative_yield_status="
          << cooperativeChannelYieldStatusName(cooperative.yield.status)
          << " cooperative_yield_active="
          << (cooperative.yield.active ? "true" : "false") << " cooperative_yield_hold="

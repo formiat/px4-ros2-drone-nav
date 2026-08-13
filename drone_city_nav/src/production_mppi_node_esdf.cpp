@@ -285,7 +285,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.grid = static_esdf_grid_;
       prepared.distances_m = static_esdf_3d_;
       prepared.channel_edges = static_channel_edges_;
-      prepared.channel_lane_sets = static_channel_lane_sets_;
+      prepared.channel_corridors = static_channel_corridors_;
       if (objective) {
         prepared.search_objective = makeStaticRouteObjective(*objective);
       }

@@ -145,15 +145,18 @@ void ProductionMppiNode::processDiagnostics(
   if (snapshot.cooperative.yield.active) {
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "COOPERATIVE_CHANNEL_YIELD vehicle='%s' channel='%s' lane=%zu/%zu "
-        "status=%s hold=%s hold_station_m=%.2f maximum_speed_mps=%.2f",
+        "COOPERATIVE_CHANNEL_YIELD vehicle='%s' channel='%s' offset_m=%.2f "
+        "offset_interval_m=[%.2f,%.2f] status=%s hold=%s hold_station_m=%.2f "
+        "maximum_speed_mps=%.2f entry_not_before_ns=%" PRId64,
         vehicle_id_.c_str(), snapshot.cooperative.channel.channel_id.c_str(),
-        snapshot.cooperative.channel.lane_index,
-        snapshot.cooperative.channel.lane_count,
+        snapshot.cooperative.channel.lateral_offset_m,
+        snapshot.cooperative.channel.minimum_lateral_offset_m,
+        snapshot.cooperative.channel.maximum_lateral_offset_m,
         cooperativeChannelYieldStatusName(snapshot.cooperative.yield.status),
         snapshot.cooperative.yield.hold_at_entry ? "true" : "false",
         snapshot.cooperative.yield.hold_station_m,
-        snapshot.cooperative.yield.maximum_speed_mps);
+        snapshot.cooperative.yield.maximum_speed_mps,
+        snapshot.cooperative.yield.entry_not_before_ns);
   }
   if (snapshot.goal_capture.newly_latched) {
     RCLCPP_INFO(get_logger(),

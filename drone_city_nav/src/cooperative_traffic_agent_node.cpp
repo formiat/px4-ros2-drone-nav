@@ -85,8 +85,10 @@ public:
     }
     channel_config_.reservation_time_margin_s =
         declare_parameter<double>("channel_reservation_time_margin_s", 0.5);
-    channel_config_.same_lane_entry_headway_s =
-        declare_parameter<double>("channel_same_lane_entry_headway_s", 1.0);
+    channel_config_.same_path_entry_headway_s =
+        declare_parameter<double>("channel_same_path_entry_headway_s", 1.0);
+    channel_config_.lateral_separation_tolerance_m =
+        declare_parameter<double>("channel_lateral_separation_tolerance_m", 0.1);
     channel_config_.conflict = CooperativeConflictConfig{
         .prediction_horizon_s =
             declare_parameter<double>("channel_conflict_prediction_horizon_s", 5.0),
@@ -233,10 +235,6 @@ private:
         conflict_lifecycle_.update(now_ns, *ownship, peers);
     const CooperativeChannelDecision channel =
         coordinateCooperativeChannel(*ownship, peers, channel_config_);
-    if (channel.active) {
-      ownship->channel.lane_index = channel.lane_index;
-      ownship->channel.lane_count = channel.lane_count;
-    }
     ownship->maneuver_state = channel.yield_before_entry ? CooperativeManeuver::kSlow
                                                          : avoidance.preferred_maneuver;
     ownship->conflict_generation = avoidance.conflict_generation;
@@ -250,17 +248,19 @@ private:
     publishCommand(now_ns, *ownship, avoidance, channel);
     if (avoidance.changed || channel.yield_before_entry != last_channel_yield_ ||
         avoidance.primary_peer_id != last_primary_peer_id_) {
-      RCLCPP_INFO(
-          get_logger(),
-          "COOPERATIVE_CONFLICT vehicle_id='%s' active=%s generation=%" PRIu64
-          " maneuver=%s primary_peer='%s' predicted_minimum_m=%.3f "
-          "time_to_minimum_s=%.3f channel_yield=%s yield_to='%s' lane=%zu/%zu",
-          vehicle_id_.c_str(), avoidance.active ? "true" : "false",
-          avoidance.conflict_generation,
-          cooperativeManeuverName(ownship->maneuver_state).data(),
-          avoidance.primary_peer_id.c_str(), avoidance.predicted_minimum_separation_m,
-          avoidance.time_to_minimum_s, channel.yield_before_entry ? "true" : "false",
-          channel.yield_to_vehicle_id.c_str(), channel.lane_index, channel.lane_count);
+      RCLCPP_INFO(get_logger(),
+                  "COOPERATIVE_CONFLICT vehicle_id='%s' active=%s generation=%" PRIu64
+                  " maneuver=%s primary_peer='%s' predicted_minimum_m=%.3f "
+                  "time_to_minimum_s=%.3f channel_yield=%s yield_to='%s' "
+                  "channel_offset_m=%.3f entry_not_before_ns=%" PRId64,
+                  vehicle_id_.c_str(), avoidance.active ? "true" : "false",
+                  avoidance.conflict_generation,
+                  cooperativeManeuverName(ownship->maneuver_state).data(),
+                  avoidance.primary_peer_id.c_str(),
+                  avoidance.predicted_minimum_separation_m, avoidance.time_to_minimum_s,
+                  channel.yield_before_entry ? "true" : "false",
+                  channel.yield_to_vehicle_id.c_str(), channel.lateral_offset_m,
+                  channel.entry_not_before_ns);
     }
     last_channel_yield_ = channel.yield_before_entry;
     last_primary_peer_id_ = avoidance.primary_peer_id;
@@ -296,8 +296,11 @@ private:
     command.channel_id = ownship.channel.channel_id;
     command.channel_conflict_resource_id = ownship.channel.conflict_resource_id;
     command.channel_route_generation = ownship.channel.route_generation;
-    command.channel_lane_index = static_cast<std::uint16_t>(channel.lane_index);
-    command.channel_lane_count = static_cast<std::uint16_t>(channel.lane_count);
+    command.channel_lateral_offset_m = ownship.channel.lateral_offset_m;
+    command.channel_minimum_lateral_offset_m = ownship.channel.minimum_lateral_offset_m;
+    command.channel_maximum_lateral_offset_m = ownship.channel.maximum_lateral_offset_m;
+    command.channel_entry_not_before =
+        cooperativeTimeMessage(channel.entry_not_before_ns);
     command.conflicting_peers.reserve(avoidance.peers.size());
     for (const CooperativeConflictPeer& peer : avoidance.peers) {
       command.conflicting_peers.push_back(

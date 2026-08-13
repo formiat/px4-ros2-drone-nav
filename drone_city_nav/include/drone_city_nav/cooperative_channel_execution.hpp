@@ -16,7 +16,7 @@ struct CooperativeChannelTimingConfig {
 
 [[nodiscard]] CooperativeChannelUse
 makeCooperativeChannelUse(const ConstrainedRouteObservation& observation,
-                          const CooperativeChannelLaneAssignment& assignment,
+                          const CooperativeChannelAssignment& assignment,
                           std::int64_t now_ns, double planned_speed_mps,
                           const CooperativeChannelTimingConfig& config) noexcept;
 
@@ -27,7 +27,8 @@ enum class CooperativeChannelYieldStatus : std::uint8_t {
   kVehicleMismatch,
   kRouteMismatch,
   kChannelMismatch,
-  kLaneMismatch,
+  kCorridorMismatch,
+  kEntryTimeSatisfied,
   kNotApproaching,
   kAccepted,
 };
@@ -44,6 +45,7 @@ struct CooperativeChannelYieldDecision {
   bool hold_at_entry{false};
   double hold_station_m{0.0};
   double maximum_speed_mps{0.0};
+  std::int64_t entry_not_before_ns{0};
 };
 
 [[nodiscard]] CooperativeChannelYieldDecision evaluateCooperativeChannelYield(
