@@ -105,11 +105,12 @@ The event and `mppi_ticks.jsonl` expose:
 - actual horizontal/vertical speed and constrained reference speed;
 - execution mode and reason at every lifecycle transition.
 
-Generated channel edges retain their semantic channel id. Selected edges create
-constrained spans directly and are correlated by
+Derived traversal edges retain their geometry-stable passage-region id. Selected
+edges create constrained spans directly and are correlated by
 `route_generation + channel_id + span_index`. Entry and exit coordinates lie on
-the exterior portal planes. `approach` is not proof of entry; only `traversal`
-means the measured 3D route station crossed the span boundary.
+the automatically extracted exterior portal planes. `approach` is not proof of
+entry; only `traversal` means the measured 3D route station crossed the span
+boundary.
 
 ## Offboard Diagnostics
 

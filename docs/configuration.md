@@ -88,7 +88,7 @@ Static world:
 - planning/critical exposure and turn-cost parameters rank complete route
   candidates with finite costs;
 - `global_lattice_3d_channel_connection_distance_m` connects ordinary lattice
-  states to generated channel entries; root topology candidates also evaluate a
+  states to derived portal entries; root topology candidates also evaluate a
   collision-free direct connection from the current start to each external
   portal plane;
 - frontier continuation-depth parameters reject short endpoints that have no

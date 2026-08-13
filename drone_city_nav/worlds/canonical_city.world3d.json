@@ -11,7 +11,17 @@
     "origin_m": [-30.0, -30.0, 0.0],
     "size_m": [345.0, 525.0, 40.0],
     "resolution_m": 0.5,
-    "chunk_size": 16
+    "chunk_size": 16,
+    "portal_graph": {
+      "minimum_opening_area_m2": 4.0,
+      "speed_limit_mps": 10.0,
+      "validation_capsule": {
+        "radius_m": 0.82,
+        "lower_extent_m": 0.23,
+        "upper_extent_m": 0.35,
+        "sweep_step_m": 0.25
+      }
+    }
   },
   "ground": {
     "center_m": [135.0, 225.0, -0.05],
@@ -34,7 +44,7 @@
         {"id": "south", "center_m": [108.0, 135.0], "size_m": [30.0, 24.0, 32.0], "blocked": false},
         {"id": "north", "center_m": [108.0, 189.0], "size_m": [30.0, 24.0, 32.0], "blocked": true}
       ],
-      "centerline_m": [[108.0, 135.0, 5.0], [108.0, 162.0, 5.0], [135.0, 162.0, 5.0]],
+      "opening_center_z_m": 5.0,
       "width_m": 24.0,
       "height_m": 7.0,
       "speed_limit_mps": 10.0
@@ -50,7 +60,7 @@
         {"id": "south", "center_m": [54.0, 135.0], "size_m": [30.0, 24.0, 32.0], "blocked": false},
         {"id": "north", "center_m": [54.0, 189.0], "size_m": [30.0, 24.0, 32.0], "blocked": false}
       ],
-      "centerline_m": [[54.0, 135.0, 5.0], [54.0, 162.0, 5.0], [54.0, 189.0, 5.0]],
+      "opening_center_z_m": 5.0,
       "width_m": 24.0,
       "height_m": 7.0,
       "speed_limit_mps": 10.0
@@ -66,7 +76,7 @@
         {"id": "south", "center_m": [108.0, 189.0], "size_m": [30.0, 24.0, 32.0], "blocked": true},
         {"id": "north", "center_m": [108.0, 243.0], "size_m": [30.0, 24.0, 32.0], "blocked": false}
       ],
-      "centerline_m": [[81.0, 216.0, 5.0], [108.0, 216.0, 5.0], [108.0, 243.0, 5.0]],
+      "opening_center_z_m": 5.0,
       "width_m": 24.0,
       "height_m": 7.0,
       "speed_limit_mps": 10.0
@@ -82,11 +92,7 @@
         {"id": "south", "center_m": [108.0, 81.0], "size_m": [30.0, 24.0, 32.0], "blocked": true},
         {"id": "north", "center_m": [108.0, 135.0], "size_m": [30.0, 24.0, 32.0], "blocked": false}
       ],
-      "edges": [
-        {"id": "west_east", "centerline_m": [[81.0, 108.0, 5.0], [108.0, 108.0, 5.0], [135.0, 108.0, 5.0]]},
-        {"id": "west_north", "centerline_m": [[81.0, 108.0, 5.0], [108.0, 108.0, 5.0], [108.0, 135.0, 5.0]]},
-        {"id": "east_north", "centerline_m": [[135.0, 108.0, 5.0], [108.0, 108.0, 5.0], [108.0, 135.0, 5.0]]}
-      ],
+      "opening_center_z_m": 5.0,
       "width_m": 24.0,
       "height_m": 7.0,
       "speed_limit_mps": 10.0

@@ -98,6 +98,18 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         route_y_coordinates = {
             vehicle["map_start_m"][1] for vehicle in scenario["vehicles"]
         } | {goal["goal_m"][1] for goal in scenario["vehicle_goals"]}
+        open_bridges = [
+            bridge for bridge in straight_channel["bridges"]
+            if not bridge["blocked"]
+        ]
+        physical_passage_min_y_m = min(
+            bridge["center_m"][1] - 0.5 * bridge["size_m"][1]
+            for bridge in open_bridges
+        )
+        physical_passage_max_y_m = max(
+            bridge["center_m"][1] + 0.5 * bridge["size_m"][1]
+            for bridge in open_bridges
+        )
 
         self.assertEqual(route_x_coordinates, {50.0, 53.0, 55.0, 58.0})
         self.assertGreater(min(route_x_coordinates), street_left_m)
@@ -109,12 +121,8 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
             )
         )
         self.assertEqual(sum(route_x_coordinates) / len(route_x_coordinates), 54.0)
-        self.assertLess(
-            min(route_y_coordinates), straight_channel["centerline_m"][0][1]
-        )
-        self.assertGreater(
-            max(route_y_coordinates), straight_channel["centerline_m"][-1][1]
-        )
+        self.assertLess(min(route_y_coordinates), physical_passage_min_y_m)
+        self.assertGreater(max(route_y_coordinates), physical_passage_max_y_m)
 
         start_positions = {
             vehicle["id"]: vehicle["map_start_m"][:2]

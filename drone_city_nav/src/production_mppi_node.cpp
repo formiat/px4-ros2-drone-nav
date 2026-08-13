@@ -741,15 +741,17 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                   "STATIC_ESDF_CACHE_FALLBACK path=%s reason=load_failed error=%s",
                   cache_path.c_str(), error.what());
     }
-    static_channel_edges_ =
+    const DerivedPortalGraph& portal_graph = static_occupancy_3d_->portalGraph();
+    static_portal_edges_ =
         std::make_shared<const std::vector<ConstrainedFreeSpaceEdge>>(
-            static_occupancy_3d_->channelEdges());
+            portal_graph.traversal_edges);
     RCLCPP_INFO(get_logger(),
                 "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
-                " occupied_voxels=%zu channels=%zu dimensions=%dx%dx%d",
+                " occupied_voxels=%zu passage_regions=%zu portals=%zu "
+                "portal_edges=%zu dimensions=%dx%dx%d",
                 occupancy_path.c_str(), static_occupancy_3d_->fingerprint(),
-                static_occupancy_3d_->occupiedVoxelCount(),
-                static_channel_edges_->size(),
+                static_occupancy_3d_->occupiedVoxelCount(), portal_graph.regions.size(),
+                portal_graph.portals.size(), static_portal_edges_->size(),
                 static_occupancy_3d_->bounds().width_cells,
                 static_occupancy_3d_->bounds().height_cells,
                 static_occupancy_3d_->bounds().depth_cells);

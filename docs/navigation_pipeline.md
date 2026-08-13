@@ -82,12 +82,12 @@ goal is forbidden. The planner publishes braking/hold behavior instead.
 
 ## 5. Constrained Route Spans
 
-Static air channels are ordinary physical free space represented by generated
-constrained graph edges. Global search explicitly evaluates
+Static air channels are ordinary physical free space represented by traversal
+edges in the globally derived portal graph. Global search explicitly evaluates
 `start -> entry -> channel -> exit -> planning goal` topology candidates. A
-selected channel edge creates its constrained station interval directly; local
-clearance analysis remains a validation step rather than a nearest-opening
-selector or separate passage lifecycle.
+selected traversal edge creates its constrained station interval directly;
+local clearance analysis remains a validation step rather than a
+nearest-opening selector or separate passage lifecycle.
 
 ## 6. GPU MPPI
 

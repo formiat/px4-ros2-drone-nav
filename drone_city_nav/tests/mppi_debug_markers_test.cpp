@@ -127,6 +127,9 @@ TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedChannelEdges) {
   const std::vector<ConstrainedFreeSpaceEdge> channels{
       ConstrainedFreeSpaceEdge{
           .id = "selected",
+          .region_id = "selected_region",
+          .entry_portal_id = "selected_entry",
+          .exit_portal_id = "selected_exit",
           .centerline = sampleRoute3D(
               std::vector<Point3>{{1.0, 2.0, 5.0}, {3.0, 2.0, 5.0}}, 0.5, 10.0),
           .min_z_m = 1.5,
@@ -137,6 +140,9 @@ TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedChannelEdges) {
           .speed_limit_mps = 10.0},
       ConstrainedFreeSpaceEdge{
           .id = "candidate",
+          .region_id = "candidate_region",
+          .entry_portal_id = "candidate_entry",
+          .exit_portal_id = "candidate_exit",
           .centerline = sampleRoute3D(
               std::vector<Point3>{{4.0, 2.0, 5.0}, {6.0, 2.0, 5.0}}, 0.5, 10.0),
           .min_z_m = 1.5,

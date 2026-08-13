@@ -505,6 +505,9 @@ TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
                             static_cast<float>(bounds.origin_z)};
   const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
       .id = "direct_channel",
+      .region_id = "direct_region",
+      .entry_portal_id = "direct_entry",
+      .exit_portal_id = "direct_exit",
       .centerline = sampleRoute3D(
           std::vector<Point3>{{0.5, 0.5, 5.5}, {12.5, 8.5, 5.5}}, 0.5, 10.0),
       .entry = Point3{0.5, 0.5, 5.5},
@@ -552,6 +555,9 @@ TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
                             static_cast<float>(bounds.origin_z)};
   const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
       .id = "far_channel",
+      .region_id = "far_region",
+      .entry_portal_id = "far_entry",
+      .exit_portal_id = "far_exit",
       .centerline = sampleRoute3D(
           std::vector<Point3>{{8.5, 2.5, 5.5}, {18.5, 2.5, 5.5}}, 0.5, 10.0),
       .entry = Point3{8.5, 2.5, 5.5},
@@ -597,6 +603,9 @@ TEST(Route3DTest, MaterializesRequiredChannelWhenUnconstrainedSlicePrefersFronti
                             static_cast<float>(bounds.origin_z)};
   const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
       .id = "required_channel",
+      .region_id = "required_region",
+      .entry_portal_id = "required_entry",
+      .exit_portal_id = "required_exit",
       .centerline = sampleRoute3D(
           std::vector<Point3>{{30.5, 5.5, 5.5}, {60.5, 5.5, 5.5}}, 0.5, 10.0),
       .entry = Point3{30.5, 5.5, 5.5},
@@ -645,6 +654,9 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
                             static_cast<float>(bounds.origin_z)};
   const auto channel = [](const std::string& id, const std::vector<Point3>& points) {
     return ConstrainedFreeSpaceEdge{.id = id,
+                                    .region_id = id + "_region",
+                                    .entry_portal_id = id + "_entry",
+                                    .exit_portal_id = id + "_exit",
                                     .centerline = sampleRoute3D(points, 0.5, 10.0),
                                     .entry = points.front(),
                                     .exit = points.back(),

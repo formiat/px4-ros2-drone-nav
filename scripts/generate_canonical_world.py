@@ -8,14 +8,21 @@ import hashlib
 import json
 import math
 import struct
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 from xml.etree import ElementTree as ET
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from world_compiler_portal_graph import DerivedPortalGraph, derive_portal_graph
+
 
 OCCUPANCY_MAGIC = b"DCNOCC3D"
-OCCUPANCY_VERSION = 3
+OCCUPANCY_VERSION = 4
 NO_STATIC_SOLID_VISIBILITY = 0x08000000
 NO_STATIC_OCCLUDER_VISIBILITY = 0x04000000
 BUILDING_GRID_CENTER_M = 27.0
@@ -41,15 +48,6 @@ class Box:
     visibility_flags: int | None = None
 
 
-@dataclass(frozen=True)
-class ChannelEdge:
-    id: str
-    centerline: tuple[tuple[float, float, float], ...]
-    width_m: float
-    height_m: float
-    speed_limit_mps: float
-
-
 def building_color(x: float, y: float) -> tuple[float, float, float, float]:
     """Return the deterministic color used by the RViz static-map palette."""
     building_x = round((x - BUILDING_GRID_CENTER_M) / BUILDING_GRID_SPACING_M)
@@ -58,28 +56,6 @@ def building_color(x: float, y: float) -> tuple[float, float, float, float]:
         (building_x + 3 * building_y) % len(BUILDING_PALETTE_RGB)
     ]
     return red / 255.0, green / 255.0, blue / 255.0, 1.0
-
-
-def external_portal_point(channel: dict,
-                          point: tuple[float, float, float]) -> tuple[float, float, float]:
-    intersection_x, intersection_y = map(float, channel["intersection_center_m"])
-    for bridge in channel["bridges"]:
-        bridge_x, bridge_y = map(float, bridge["center_m"])
-        if bridge.get("blocked", False) or abs(point[0] - bridge_x) > 1.0e-6 or \
-                abs(point[1] - bridge_y) > 1.0e-6:
-            continue
-        size_x, size_y, _ = map(float, bridge["size_m"])
-        delta_x = bridge_x - intersection_x
-        delta_y = bridge_y - intersection_y
-        if abs(delta_x) > abs(delta_y):
-            return (bridge_x + math.copysign(0.5 * size_x, delta_x), bridge_y,
-                    point[2])
-        if abs(delta_y) > 1.0e-6:
-            return (bridge_x, bridge_y + math.copysign(0.5 * size_y, delta_y),
-                    point[2])
-    raise ValueError(
-        f"channel {channel['id']} centerline endpoint {point} must match an open bridge center"
-    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -98,49 +74,9 @@ def load_spec(path: Path) -> dict:
     return spec
 
 
-def channel_edges(channel: dict) -> list[ChannelEdge]:
-    edge_specs = channel.get("edges")
-    if edge_specs is None:
-        edge_specs = [{"id": None, "centerline_m": channel["centerline_m"]}]
-    if not edge_specs:
-        raise ValueError(f"channel {channel['id']} needs at least one edge")
-
-    width = float(channel["width_m"])
-    height = float(channel["height_m"])
-    default_speed_limit = float(channel.get("speed_limit_mps", 10.0))
-    edges: list[ChannelEdge] = []
-    for edge_spec in edge_specs:
-        suffix = edge_spec.get("id")
-        edge_id = channel["id"] if suffix is None else f"{channel['id']}:{suffix}"
-        centerline = tuple(
-            tuple(map(float, point)) for point in edge_spec["centerline_m"]
-        )
-        speed_limit = float(edge_spec.get("speed_limit_mps", default_speed_limit))
-        if not edge_id or len(centerline) < 2:
-            raise ValueError(f"channel edge {edge_id} needs at least two points")
-        if width <= 0.0 or height <= 0.0 or speed_limit <= 0.0:
-            raise ValueError(f"channel edge {edge_id} has invalid constraints")
-        entry = external_portal_point(channel, centerline[0])
-        exit = external_portal_point(channel, centerline[-1])
-        generated_centerline = (entry, *centerline, exit)
-        edges.append(ChannelEdge(edge_id, generated_centerline, width, height,
-                                 speed_limit))
-    if len({edge.id for edge in edges}) != len(edges):
-        raise ValueError(f"channel {channel['id']} has duplicate edge ids")
-    return edges
-
-
-def channel_points(channel: dict) -> list[tuple[float, float, float]]:
-    points = [point for edge in channel_edges(channel) for point in edge.centerline]
-    reference_z = points[0][2]
-    if any(abs(point[2] - reference_z) > 1.0e-6 for point in points):
-        raise ValueError(f"channel {channel['id']} centerlines must have constant Z")
-    return points
-
-
 def channel_boxes(channel: dict) -> list[Box]:
     height = float(channel["height_m"])
-    points = channel_points(channel)
+    z_reference = float(channel["opening_center_z_m"])
     kind = channel["kind"]
     boxes: list[Box] = []
 
@@ -159,7 +95,6 @@ def channel_boxes(channel: dict) -> list[Box]:
     if kind == "straight":
         center_x, center_y = map(float, channel["structure_center_m"])
         size_x, size_y, size_z = map(float, channel["structure_size_m"])
-        z_reference = points[len(points) // 2][2]
         opening_min = z_reference - 0.5 * height
         opening_max = z_reference + 0.5 * height
         append_box("lower", center_x, center_y, 0.0, opening_min, size_x, size_y)
@@ -167,7 +102,6 @@ def channel_boxes(channel: dict) -> list[Box]:
     elif kind == "intersection":
         center_x, center_y = map(float, channel["intersection_center_m"])
         size_x, size_y, size_z = map(float, channel["intersection_size_m"])
-        z_reference = points[1][2]
         opening_min = z_reference - 0.5 * height
         opening_max = z_reference + 0.5 * height
         append_box("intersection_lower", center_x, center_y, 0.0, opening_min,
@@ -192,10 +126,10 @@ def channel_boxes(channel: dict) -> list[Box]:
 
 
 def channel_occluder_boxes(channel: dict) -> list[Box]:
-    points = channel_points(channel)
     height = float(channel["height_m"])
-    z_min = min(point[2] for point in points) - 0.5 * height
-    z_max = max(point[2] for point in points) + 0.5 * height
+    z_reference = float(channel["opening_center_z_m"])
+    z_min = z_reference - 0.5 * height
+    z_max = z_reference + 0.5 * height
     if channel["kind"] != "intersection":
         center_x, center_y = map(float, channel["structure_center_m"])
         size_x, size_y, _ = map(float, channel["structure_size_m"])
@@ -381,6 +315,7 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
     chunk_size = int(occupancy["chunk_size"])
     dimensions = tuple(int(math.ceil(axis / resolution)) for axis in size)
     chunks: dict[tuple[int, int, int], int] = {}
+    column_masks: dict[tuple[int, int], int] = {}
     physical = list(boxes)
     for box in physical:
         minimum = tuple(box.center[axis] - 0.5 * box.size[axis]
@@ -392,12 +327,28 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
         ends = tuple(min(dimensions[axis],
                          int(math.ceil((maximum[axis] - origin[axis]) / resolution - 0.5)))
                      for axis in range(3))
+        z_mask = ((1 << (ends[2] - starts[2])) - 1) << starts[2]
+        for y in range(starts[1], ends[1]):
+            for x in range(starts[0], ends[0]):
+                column_masks[(x, y)] = column_masks.get((x, y), 0) | z_mask
         for z in range(starts[2], ends[2]):
             for y in range(starts[1], ends[1]):
                 for x in range(starts[0], ends[0]):
                     chunk = (x // chunk_size, y // chunk_size, z // chunk_size)
                     local = ((z % chunk_size) * chunk_size + y % chunk_size) * chunk_size + x % chunk_size
                     chunks[chunk] = chunks.get(chunk, 0) | (1 << local)
+
+    portal_config = occupancy["portal_graph"]
+    validation_capsule = portal_config["validation_capsule"]
+    portal_graph = derive_portal_graph(
+        column_masks, dimensions, origin, resolution,
+        minimum_opening_area_m2=float(portal_config["minimum_opening_area_m2"]),
+        speed_limit_mps=float(portal_config["speed_limit_mps"]),
+        validation_radius_m=float(validation_capsule["radius_m"]),
+        validation_lower_extent_m=float(validation_capsule["lower_extent_m"]),
+        validation_upper_extent_m=float(validation_capsule["upper_extent_m"]),
+        validation_sweep_step_m=float(validation_capsule["sweep_step_m"]),
+    )
 
     canonical_bytes = json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()
     fingerprint = int.from_bytes(hashlib.sha256(canonical_bytes).digest()[:8], "little")
@@ -420,28 +371,45 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
             stream.write(struct.pack("<3i", *chunk))
             stream.write(b"".join(struct.pack("<Q", (bits >> (64 * word)) & ((1 << 64) - 1))
                                   for word in range(words_per_chunk)))
-        generated_edges = [
-            edge for channel in spec["channels"] for edge in channel_edges(channel)
-        ]
-        stream.write(struct.pack("<I", len(generated_edges)))
-        for edge in generated_edges:
-            channel_id = edge.id.encode("utf-8")
-            if not channel_id or len(channel_id) > 0xFFFF:
-                raise ValueError("channel id must contain 1..65535 UTF-8 bytes")
-            centerline = edge.centerline
-            reference_z = centerline[len(centerline) // 2][2]
-            min_z = reference_z - 0.5 * edge.height_m
-            max_z = reference_z + 0.5 * edge.height_m
-            minimum_clearance = 0.5 * min(edge.width_m, edge.height_m)
-            stream.write(struct.pack("<H", len(channel_id)))
-            stream.write(channel_id)
-            stream.write(struct.pack("<I", len(centerline)))
-            for point in centerline:
-                stream.write(struct.pack("<3f", *point))
-            stream.write(struct.pack(
-                "<6f", min_z, max_z, edge.width_m, edge.height_m,
-                minimum_clearance, edge.speed_limit_mps
-            ))
+        write_portal_graph(stream, portal_graph)
+
+
+def write_string(stream, value: str) -> None:
+    encoded = value.encode("utf-8")
+    if not encoded or len(encoded) > 0xFFFF:
+        raise ValueError("world artifact string must contain 1..65535 UTF-8 bytes")
+    stream.write(struct.pack("<H", len(encoded)))
+    stream.write(encoded)
+
+
+def write_points(stream, points: Iterable[tuple[float, float, float]]) -> None:
+    materialized = tuple(points)
+    stream.write(struct.pack("<I", len(materialized)))
+    for point in materialized:
+        stream.write(struct.pack("<3f", *point))
+
+
+def write_portal_graph(stream, graph: DerivedPortalGraph) -> None:
+    stream.write(struct.pack("<I", len(graph.regions)))
+    for region in graph.regions:
+        write_string(stream, region.id)
+        stream.write(struct.pack("<I", len(region.portals)))
+        for portal in region.portals:
+            write_string(stream, portal.id)
+            stream.write(struct.pack("<3f", *portal.center))
+            stream.write(struct.pack("<3f", *portal.outward_normal))
+            write_points(stream, portal.opening_polygon)
+    stream.write(struct.pack("<I", len(graph.traversal_edges)))
+    for edge in graph.traversal_edges:
+        write_string(stream, edge.id)
+        write_string(stream, edge.region_id)
+        write_string(stream, edge.entry_portal_id)
+        write_string(stream, edge.exit_portal_id)
+        write_points(stream, edge.centerline)
+        stream.write(struct.pack(
+            "<6f", edge.min_z_m, edge.max_z_m, edge.width_m, edge.height_m,
+            edge.minimum_clearance_m, edge.speed_limit_mps
+        ))
 
 
 def main() -> None:

@@ -575,7 +575,7 @@ private:
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
-  std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;
+  std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_portal_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   bool static_esdf_uploaded_{false};

@@ -286,6 +286,12 @@ persistent obstacle memory. The unchanged latest scan still reaches immediate
 safety validation, so cooperative filtering cannot hide a real close-range
 obstacle.
 
+Passage topology is also derived rather than hand-authored. The offline world
+compiler segments every roofed free-space component in raw `Occupancy3D`, extracts
+its exterior portal planes and opening polygons, and builds deterministic 3D
+traversal edges between portal pairs. Canonical channel declarations describe
+physical masses only; they contain no planner centerlines or graph edges.
+
 The mission referee uses Gazebo ground truth only for readiness and physical
 adjudication. Headless success requires all four drones to reach and physically
 hold at their own goals, no vehicle destruction or building collision, and a
@@ -387,11 +393,12 @@ Static mode loads `generated_city.occupancy3d` and its fingerprint-bound,
 precomputed chunked `generated_city.esdf3d` in `production_mppi_node`. The map,
 distance cache, and `generated_city.sdf` are generated from the same canonical
 world specification. The current city is a `5 x 8` Manhattan
-building grid with two horizontal L-shaped air channels, one straight-through
-channel, and one T junction. Static planning loads the generated constrained
-free-space graph embedded in Occupancy3D and objectively compares ordinary and
-channel routes; no channel is mandatory. Selected channel edges directly create
-typed route spans. There is no separate passage file or nearest-portal selector.
+building grid with two horizontal L-shaped air-channel structures, one
+straight-through structure, and one T junction. Static planning loads the
+derived portal graph embedded in Occupancy3D and objectively compares ordinary
+and portal routes; no passage is mandatory. Selected traversal edges directly
+create typed route spans. There is no hand-authored planner centerline, separate
+passage file, or nearest-portal selector.
 No-static mode uses the accumulated raw 2D lidar-memory world; collisionless lidar
 occluders make all four channels appear closed in that mode. Source contracts are documented in
 `docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
