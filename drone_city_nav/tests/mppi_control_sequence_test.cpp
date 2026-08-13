@@ -1,5 +1,6 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/mppi_route_projection.hpp"
 #include "drone_city_nav/mppi/mppi_separation_acquisition.hpp"
 
 #include <gtest/gtest.h>
@@ -7,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <numbers>
 #include <vector>
 
 namespace drone_city_nav::mppi {
@@ -72,6 +74,87 @@ TEST(MppiControlSequenceTest, ReseedUsesCurrentRouteAltitudeProfile) {
 
   ASSERT_FALSE(seed.empty());
   EXPECT_NEAR(seed.front().az, 0.0F, 1.0e-6F);
+}
+
+TEST(MppiControlSequenceTest, RouteProjectionSupportsPureVerticalSegments) {
+  const std::array route{
+      RouteSample3D{.x_m = 4.0F,
+                    .y_m = 7.0F,
+                    .z_m = 2.0F,
+                    .station_m = 0.0F,
+                    .reference_speed_mps = 3.0F},
+      RouteSample3D{.x_m = 4.0F,
+                    .y_m = 7.0F,
+                    .z_m = 12.0F,
+                    .station_m = 10.0F,
+                    .reference_speed_mps = 5.0F},
+  };
+
+  const MppiRouteProjection3D projection =
+      projectOntoMppiRoute3D(State{.x = 4.5F, .y = 7.0F, .z = 8.0F}, route, 0.0F);
+
+  ASSERT_TRUE(projection.valid);
+  EXPECT_NEAR(projection.station_m, 6.0F, 1.0e-5F);
+  EXPECT_NEAR(projection.distance_m, 0.5F, 1.0e-5F);
+  EXPECT_NEAR(projection.reference_z_m, 8.0F, 1.0e-5F);
+  EXPECT_NEAR(projection.reference_speed_mps, 4.2F, 1.0e-5F);
+}
+
+TEST(MppiControlSequenceTest, RouteProjectionUsesZToDisambiguateStackedSegments) {
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .z_m = 0.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 10.0F, .z_m = 0.0F, .station_m = 10.0F},
+      RouteSample3D{.x_m = 10.0F, .z_m = 10.0F, .station_m = 20.0F},
+      RouteSample3D{.x_m = 0.0F, .z_m = 10.0F, .station_m = 30.0F},
+  };
+
+  const MppiRouteProjection3D projection =
+      projectOntoMppiRoute3D(State{.x = 2.0F, .z = 9.0F}, route, 0.0F);
+
+  ASSERT_TRUE(projection.valid);
+  EXPECT_NEAR(projection.station_m, 28.0F, 1.0e-5F);
+  EXPECT_NEAR(projection.reference_x_m, 2.0F, 1.0e-5F);
+  EXPECT_NEAR(projection.reference_z_m, 10.0F, 1.0e-5F);
+}
+
+TEST(MppiControlSequenceTest, VerticalRouteProjectionNeverMovesBehindPreviousStation) {
+  const std::array route{
+      RouteSample3D{.z_m = 0.0F, .station_m = 0.0F},
+      RouteSample3D{.z_m = 10.0F, .station_m = 10.0F},
+      RouteSample3D{.z_m = 0.0F, .station_m = 20.0F},
+  };
+
+  const std::optional<float> station =
+      projectForwardRouteStation(route, State{.z = 2.0F}, 15.0F);
+
+  EXPECT_EQ(station, std::optional<float>{18.0F});
+}
+
+TEST(MppiControlSequenceTest, RouteSeedTracksThreeDimensionalTangentVelocity) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.maximum_control_jerk_mps3 = 100.0F;
+  const float diagonal_tangent = 1.0F / std::numbers::sqrt2_v<float>;
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F,
+                    .z_m = 0.0F,
+                    .tangent_x = diagonal_tangent,
+                    .tangent_z = diagonal_tangent,
+                    .station_m = 0.0F},
+      RouteSample3D{.x_m = 10.0F,
+                    .z_m = 10.0F,
+                    .tangent_x = diagonal_tangent,
+                    .tangent_z = diagonal_tangent,
+                    .station_m = 10.0F * std::numbers::sqrt2_v<float>},
+  };
+
+  const std::vector<Control> seed =
+      buildGuideDirectedNominalSeed(State{}, State{.x = 10.0F, .z = 10.0F}, route, 0.0F,
+                                    5.0F, dynamics, 8U, Control{});
+
+  ASSERT_FALSE(seed.empty());
+  EXPECT_GT(seed.front().ax, 1.0F);
+  EXPECT_GT(seed.front().az, 1.0F);
 }
 
 TEST(MppiControlSequenceTest, HostLimiterMatchesAccelerationAndJerkContract) {

@@ -2,6 +2,7 @@
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_input_validation.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/mppi_route_projection.hpp"
 #include "drone_city_nav/mppi/mppi_separation_acquisition.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 

@@ -1,11 +1,11 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/mppi_route_projection.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
@@ -37,6 +37,22 @@ struct RouteSample {
   bool valid{false};
 };
 
+[[nodiscard]] std::array<float, 3U>
+normalizedRouteTangent(const RouteSample3D& sample, const float fallback_x,
+                       const float fallback_y, const float fallback_z) noexcept {
+  const float configured_norm =
+      std::hypot(std::hypot(sample.tangent_x, sample.tangent_y), sample.tangent_z);
+  if (configured_norm > 1.0e-5F) {
+    return {sample.tangent_x / configured_norm, sample.tangent_y / configured_norm,
+            sample.tangent_z / configured_norm};
+  }
+  const float length_m = std::hypot(std::hypot(fallback_x, fallback_y), fallback_z);
+  if (!(length_m > 1.0e-5F)) {
+    return {};
+  }
+  return {fallback_x / length_m, fallback_y / length_m, fallback_z / length_m};
+}
+
 [[nodiscard]] RouteSample sampleRoute(const std::span<const RouteSample3D> route,
                                       const float requested_station_m,
                                       const bool extrapolate_endpoint) noexcept {
@@ -50,23 +66,17 @@ struct RouteSample {
     if (!(station_length_m > 1.0e-5F)) {
       return {};
     }
-    const float tangent_x = std::abs(endpoint.tangent_x) > 1.0e-5F
-                                ? endpoint.tangent_x
-                                : (endpoint.x_m - previous.x_m) / station_length_m;
-    const float tangent_y = std::abs(endpoint.tangent_y) > 1.0e-5F
-                                ? endpoint.tangent_y
-                                : (endpoint.y_m - previous.y_m) / station_length_m;
-    const float tangent_z = std::abs(endpoint.tangent_z) > 1.0e-5F
-                                ? endpoint.tangent_z
-                                : (endpoint.z_m - previous.z_m) / station_length_m;
+    const std::array<float, 3U> tangent = normalizedRouteTangent(
+        endpoint, endpoint.x_m - previous.x_m, endpoint.y_m - previous.y_m,
+        endpoint.z_m - previous.z_m);
     const float extension_m = requested_station_m - endpoint.station_m;
     return RouteSample{
-        .x_m = endpoint.x_m + extension_m * tangent_x,
-        .y_m = endpoint.y_m + extension_m * tangent_y,
-        .z_m = endpoint.z_m + extension_m * tangent_z,
-        .tangent_x = tangent_x,
-        .tangent_y = tangent_y,
-        .tangent_z = tangent_z,
+        .x_m = endpoint.x_m + extension_m * tangent[0U],
+        .y_m = endpoint.y_m + extension_m * tangent[1U],
+        .z_m = endpoint.z_m + extension_m * tangent[2U],
+        .tangent_x = tangent[0U],
+        .tangent_y = tangent[1U],
+        .tangent_z = tangent[2U],
         .station_m = requested_station_m,
         .valid = true,
     };
@@ -81,7 +91,8 @@ struct RouteSample {
     }
     const float dx = second.x_m - first.x_m;
     const float dy = second.y_m - first.y_m;
-    const float length_m = std::hypot(dx, dy);
+    const float dz = second.z_m - first.z_m;
+    const float length_m = std::hypot(std::hypot(dx, dy), dz);
     if (!(length_m > 1.0e-5F)) {
       continue;
     }
@@ -96,9 +107,7 @@ struct RouteSample {
         .z_m = std::lerp(first.z_m, second.z_m, ratio),
         .tangent_x = dx / length_m,
         .tangent_y = dy / length_m,
-        .tangent_z = station_length_m > 1.0e-5F
-                         ? (second.z_m - first.z_m) / station_length_m
-                         : 0.0F,
+        .tangent_z = dz / length_m,
         .station_m = station_m,
         .valid = true,
     };
@@ -209,11 +218,13 @@ std::vector<Control> buildGuideDirectedSeed(const State& initial, const State& t
         (route_sample.valid ? route_sample.y_m : target.y) - predicted.y;
     const float desired_vx = requested_speed_mps * tangent_x;
     const float desired_vy = requested_speed_mps * tangent_y;
+    const float desired_vz =
+        requested_speed_mps * (route_sample.valid ? route_sample.tangent_z : 0.0F);
     const float desired_z = route_sample.valid ? route_sample.z_m : target.z;
     seed[index] = Control{
         .ax = 0.8F * (desired_vx - predicted.vx) + 0.35F * position_error_x,
         .ay = 0.8F * (desired_vy - predicted.vy) + 0.35F * position_error_y,
-        .az = 0.8F * (desired_z - predicted.z) - 0.5F * predicted.vz,
+        .az = 0.8F * (desired_z - predicted.z) + 0.5F * (desired_vz - predicted.vz),
         .yaw_accel = 0.0F,
     };
     limitControlSequence(std::span<Control>{&seed[index], 1U}, dynamics, previous,
@@ -388,36 +399,10 @@ projectForwardRouteStation(const std::span<const RouteSample3D> route,
   if (route.size() < 2U || !std::isfinite(minimum_station_m)) {
     return std::nullopt;
   }
-  float best_squared_distance = std::numeric_limits<float>::infinity();
-  float best_station_m = minimum_station_m;
-  for (std::size_t index = 0U; index + 1U < route.size(); ++index) {
-    const RouteSample3D& first = route[index];
-    const RouteSample3D& second = route[index + 1U];
-    if (second.station_m + 1.0e-5F < minimum_station_m) {
-      continue;
-    }
-    const float dx = second.x_m - first.x_m;
-    const float dy = second.y_m - first.y_m;
-    const float squared_length = dx * dx + dy * dy;
-    const float station_length_m = second.station_m - first.station_m;
-    if (!(squared_length > 1.0e-8F) || !(station_length_m > 1.0e-5F)) {
-      continue;
-    }
-    const float minimum_ratio = std::clamp(
-        (minimum_station_m - first.station_m) / station_length_m, 0.0F, 1.0F);
-    const float ratio = std::clamp(
-        ((state.x - first.x_m) * dx + (state.y - first.y_m) * dy) / squared_length,
-        minimum_ratio, 1.0F);
-    const float offset_x = state.x - (first.x_m + ratio * dx);
-    const float offset_y = state.y - (first.y_m + ratio * dy);
-    const float squared_distance = offset_x * offset_x + offset_y * offset_y;
-    if (squared_distance < best_squared_distance) {
-      best_squared_distance = squared_distance;
-      best_station_m = first.station_m + ratio * station_length_m;
-    }
-  }
-  return std::isfinite(best_squared_distance)
-             ? std::optional<float>{std::max(best_station_m, minimum_station_m)}
+  const MppiRouteProjection3D projection =
+      projectOntoMppiRoute3D(state, route, minimum_station_m);
+  return projection.valid
+             ? std::optional<float>{std::max(projection.station_m, minimum_station_m)}
              : std::nullopt;
 }
 

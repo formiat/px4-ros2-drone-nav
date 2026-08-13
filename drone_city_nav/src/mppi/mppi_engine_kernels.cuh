@@ -158,57 +158,6 @@ __device__ bool intersectsSolid(const State& state, const DeviceBodyAxis body_ax
                                     footprint);
 }
 
-struct RouteProjection {
-  float station_m{0.0F};
-  float cross_track_m{0.0F};
-  float reference_z_m{0.0F};
-  float reference_speed_mps{0.0F};
-  bool valid{false};
-};
-
-__device__ RouteProjection projectOntoRoute(const State& state,
-                                            const RouteSample3D* route_points,
-                                            const std::size_t route_point_count,
-                                            const float minimum_station_m) {
-  RouteProjection result;
-  float best_squared_distance = kInfinity;
-  for (std::size_t index = 0U; index + 1U < route_point_count; ++index) {
-    const RouteSample3D first = route_points[index];
-    const RouteSample3D second = route_points[index + 1U];
-    if (second.station_m + 1.0e-5F < minimum_station_m) {
-      continue;
-    }
-    const float dx = second.x_m - first.x_m;
-    const float dy = second.y_m - first.y_m;
-    const float squared_length = dx * dx + dy * dy;
-    const float station_length_m = second.station_m - first.station_m;
-    if (!(squared_length > 1.0e-8F) || !(station_length_m > 1.0e-5F)) {
-      continue;
-    }
-    const float minimum_ratio = clampValue(
-        (minimum_station_m - first.station_m) / station_length_m, 0.0F, 1.0F);
-    const float ratio = clampValue(
-        ((state.x - first.x_m) * dx + (state.y - first.y_m) * dy) / squared_length,
-        minimum_ratio, 1.0F);
-    const float projected_x = first.x_m + ratio * dx;
-    const float projected_y = first.y_m + ratio * dy;
-    const float offset_x = state.x - projected_x;
-    const float offset_y = state.y - projected_y;
-    const float squared_distance = offset_x * offset_x + offset_y * offset_y;
-    if (squared_distance < best_squared_distance) {
-      best_squared_distance = squared_distance;
-      result.station_m = first.station_m + ratio * station_length_m;
-      result.cross_track_m = sqrtf(squared_distance);
-      result.reference_z_m = first.z_m + ratio * (second.z_m - first.z_m);
-      result.reference_speed_mps =
-          first.reference_speed_mps +
-          ratio * (second.reference_speed_mps - first.reference_speed_mps);
-      result.valid = true;
-    }
-  }
-  return result;
-}
-
 struct DeviceEsdfQuery {
   float clearance_m;
   bool raw_collision;
@@ -446,7 +395,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     const State previous_state = state;
     state = integrate(state, control, dynamics);
     const float segment_length_m =
-        hypotf(state.x - previous_state.x, state.y - previous_state.y);
+        hypotf(hypotf(state.x - previous_state.x, state.y - previous_state.y),
+               state.z - previous_state.z);
     const float validation_step_m = fmaxf(0.05F, 0.5F * grid.resolution_m);
     const int validation_samples =
         max(1, static_cast<int>(ceilf(segment_length_m / validation_step_m)));
@@ -474,7 +424,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
     raw_hit = raw_hit || segment_raw_hit;
-    const float segment_m = dynamics.dt_s * hypotf(state.vx, state.vy);
+    const float segment_m =
+        dynamics.dt_s * hypotf(hypotf(state.vx, state.vy), state.vz);
     if (raw_hit || solid_hit) {
       tier = static_cast<std::uint8_t>(RiskTier::kCollision);
     } else if (clearance < risk.critical_distance_m) {
@@ -522,18 +473,18 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
             ? horizonCostSample(step, steps, dynamics.dt_s,
                                 costs.head_progress_horizon_s, horizon_sampling)
             : HorizonCostSample{1U, true};
-    RouteProjection route_projection;
+    MppiRouteProjection3D route_projection;
     if (path_cost_sample.evaluate && route_point_count >= 2U) {
-      route_projection = projectOntoRoute(state, route_points, route_point_count,
-                                          rollout_route_station_m);
+      route_projection = projectOntoMppiRoute3D(state, route_points, route_point_count,
+                                                rollout_route_station_m);
     }
     if (path_cost_sample.evaluate) {
       const float sample_weight =
           static_cast<float>(path_cost_sample.represented_steps);
       if (route_projection.valid) {
         rollout_route_station_m = route_projection.station_m;
-        guide_cost += sample_weight * route_projection.cross_track_m *
-                      route_projection.cross_track_m;
+        guide_cost +=
+            sample_weight * route_projection.distance_m * route_projection.distance_m;
         terminal_route_progress = route_projection.station_m - initial_route_station_m;
       } else {
         const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
@@ -552,8 +503,10 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
               ? fminf(reference_speed_mps, route_projection.reference_speed_mps)
               : reference_speed_mps;
       if (active_reference_speed_mps >= 0.0F) {
-        const float speed_error =
-            hypotf(state.vx, state.vy) - active_reference_speed_mps;
+        const float speed_mps = route_projection.valid
+                                    ? hypotf(hypotf(state.vx, state.vy), state.vz)
+                                    : hypotf(state.vx, state.vy);
+        const float speed_error = speed_mps - active_reference_speed_mps;
         speed_tracking_cost += sample_weight * speed_error * speed_error;
       }
     }

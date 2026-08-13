@@ -244,7 +244,8 @@ RolloutMetrics simulateReference(
         footprint_result.status == SweptFootprintStatus::kInvalidEsdf;
     const float clearance = static_cast<float>(footprint_result.minimum_clearance_m);
     metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
-    const float segment_m = dynamics.dt_s * std::hypot(state.vx, state.vy);
+    const float segment_m =
+        dynamics.dt_s * std::hypot(std::hypot(state.vx, state.vy), state.vz);
     if (raw_collision) {
       metrics.collision = true;
       metrics.worst_tier = RiskTier::kCollision;

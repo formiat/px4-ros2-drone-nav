@@ -74,7 +74,8 @@ hostFootprintConfig(const FootprintConfig& footprint) noexcept {
     const FootprintBodyAxis body_axis = hostBodyAxis(control);
     const State& previous = horizon[index];
     const State& next = horizon[index + 1U];
-    const float segment_length_m = std::hypot(next.x - previous.x, next.y - previous.y);
+    const float segment_length_m = std::hypot(
+        std::hypot(next.x - previous.x, next.y - previous.y), next.z - previous.z);
     const std::size_t samples = std::max<std::size_t>(
         1U, static_cast<std::size_t>(std::ceil(segment_length_m / 0.25F)));
     for (std::size_t sample = 1U; sample <= samples; ++sample) {

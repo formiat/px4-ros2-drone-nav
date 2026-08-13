@@ -792,9 +792,19 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiPreparedEsdf& e
                      static_cast<float>(mission_goal.z)};
   target_source = "mission_goal_direct";
   target_station_m = 0.0;
+  const double desired_station_m = current_station_m + std::max(0.0, lookahead_m);
+  if (esdf.route_3d && !esdf.route_3d->empty()) {
+    const RouteSample3D sample =
+        sampleRoute3DAtStation(*esdf.route_3d, desired_station_m);
+    target.x = static_cast<float>(sample.position.x);
+    target.y = static_cast<float>(sample.position.y);
+    target.z = static_cast<float>(sample.position.z);
+    target_station_m = sample.station_m;
+    target_source = "global_route_3d";
+    return target;
+  }
   if (esdf.mppi_route && !esdf.mppi_route->empty()) {
-    const float desired_station =
-        static_cast<float>(current_station_m + std::max(0.0, lookahead_m));
+    const float desired_station = static_cast<float>(desired_station_m);
     const auto selected = std::ranges::lower_bound(*esdf.mppi_route, desired_station,
                                                    {}, &mppi::RouteSample3D::station_m);
     const mppi::RouteSample3D& sample =
