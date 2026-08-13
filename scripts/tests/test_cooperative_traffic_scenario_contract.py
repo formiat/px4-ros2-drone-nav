@@ -18,6 +18,9 @@ SCENARIO_PATH = (
     / "config"
     / "cooperative_traffic_scenario.json"
 )
+INTERCEPT_SCENARIO_PATH = (
+    REPOSITORY / "drone_city_nav" / "config" / "intercept_scenario.json"
+)
 LOADER_PATH = REPOSITORY / "drone_city_nav" / "launch" / "intercept_scenario.py"
 VEHICLE_DESTROYED_PATH = (
     REPOSITORY / "drone_city_nav" / "msg" / "VehicleDestroyed.msg"
@@ -30,7 +33,7 @@ SPEC.loader.exec_module(SCENARIO_MODULE)
 
 
 class CooperativeTrafficScenarioContractTest(unittest.TestCase):
-    def test_four_civilians_have_opposing_outer_edge_routes(self) -> None:
+    def test_four_civilians_have_opposing_eastern_street_routes(self) -> None:
         scenario = SCENARIO_MODULE.load_multi_vehicle_scenario(SCENARIO_PATH)
 
         self.assertEqual(scenario["mission_name"], "cooperative_traffic")
@@ -43,19 +46,19 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         self.assertEqual(
             [vehicle["map_start_m"] for vehicle in scenario["vehicles"]],
             [
-                (-4.0, 54.0, 0.3),
-                (4.0, 54.0, 0.3),
-                (-4.0, 378.0, 0.3),
-                (4.0, 378.0, 0.3),
+                (215.0, 54.0, 0.3),
+                (217.0, 54.0, 0.3),
+                (215.0, 378.0, 0.3),
+                (217.0, 378.0, 0.3),
             ],
         )
         self.assertEqual(
             [vehicle["gazebo_spawn_m"] for vehicle in scenario["vehicles"]],
             [
-                (-171.0, -139.0, 0.3),
-                (-171.0, -131.0, 0.3),
-                (153.0, -139.0, 0.3),
-                (153.0, -131.0, 0.3),
+                (-171.0, 80.0, 0.3),
+                (-171.0, 82.0, 0.3),
+                (153.0, 80.0, 0.3),
+                (153.0, 82.0, 0.3),
             ],
         )
         self.assertEqual(
@@ -66,17 +69,20 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         self.assertEqual(
             goals,
             {
-                "civilian_0": (-4.0, 378.0, 18.0),
-                "civilian_1": (4.0, 378.0, 18.0),
-                "civilian_2": (-4.0, 54.0, 18.0),
-                "civilian_3": (4.0, 54.0, 18.0),
+                "civilian_0": (212.0, 378.0, 18.0),
+                "civilian_1": (220.0, 378.0, 18.0),
+                "civilian_2": (212.0, 54.0, 18.0),
+                "civilian_3": (220.0, 54.0, 18.0),
             },
         )
         for vehicle in scenario["vehicles"]:
             self.assertNotEqual(vehicle["map_start_m"][:2], goals[vehicle["id"]][:2])
 
-    def test_routes_stay_in_a_channel_free_outer_corridor(self) -> None:
+    def test_routes_stay_in_a_channel_free_eastern_street_corridor(self) -> None:
         scenario = SCENARIO_MODULE.load_multi_vehicle_scenario(SCENARIO_PATH)
+        intercept = SCENARIO_MODULE.load_multi_vehicle_scenario(
+            INTERCEPT_SCENARIO_PATH
+        )
         world = json.loads(
             scenario["canonical_world_path"].read_text(encoding="utf-8")
         )
@@ -84,19 +90,27 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         route_x_coordinates = {
             vehicle["map_start_m"][0] for vehicle in scenario["vehicles"]
         } | {goal["goal_m"][0] for goal in scenario["vehicle_goals"]}
-        first_building_west_face_m = (
-            min(world["building_grid"]["x_centers_m"])
-            - 0.5 * world["building_grid"]["size_m"][0]
-        )
-        nearest_channel_x_m = min(
+        building_x_centers_m = sorted(world["building_grid"]["x_centers_m"])
+        half_building_width_m = 0.5 * world["building_grid"]["size_m"][0]
+        street_left_m = building_x_centers_m[-2] + half_building_width_m
+        street_right_m = building_x_centers_m[-1] - half_building_width_m
+        nearest_channel_x_m = max(
             channel["intersection_center_m"][0] for channel in world["channels"]
         )
+        evader = next(
+            vehicle for vehicle in intercept["vehicles"] if vehicle["role"] == "evader"
+        )
 
-        self.assertEqual(route_x_coordinates, {-4.0, 4.0})
-        self.assertLess(max(route_x_coordinates), first_building_west_face_m)
+        self.assertEqual(route_x_coordinates, {212.0, 215.0, 217.0, 220.0})
+        self.assertGreater(min(route_x_coordinates), street_left_m)
+        self.assertLess(max(route_x_coordinates), street_right_m)
         self.assertGreaterEqual(
-            nearest_channel_x_m - max(route_x_coordinates),
-            50.0,
+            min(route_x_coordinates) - nearest_channel_x_m,
+            100.0,
+        )
+        self.assertEqual(
+            sum(route_x_coordinates) / len(route_x_coordinates),
+            evader["map_start_m"][0],
         )
 
         start_positions = {
@@ -104,14 +118,16 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
             for vehicle in scenario["vehicles"]
         }
         goals = {goal["id"]: goal["goal_m"][:2] for goal in scenario["vehicle_goals"]}
-        self.assertEqual(start_positions["civilian_0"], goals["civilian_2"])
-        self.assertEqual(start_positions["civilian_1"], goals["civilian_3"])
-        self.assertEqual(start_positions["civilian_2"], goals["civilian_0"])
-        self.assertEqual(start_positions["civilian_3"], goals["civilian_1"])
         self.assertEqual(
             start_positions["civilian_1"][0] - start_positions["civilian_0"][0],
-            8.0,
+            2.0,
         )
+        self.assertEqual(
+            start_positions["civilian_3"][0] - start_positions["civilian_2"][0],
+            2.0,
+        )
+        self.assertEqual(goals["civilian_1"][0] - goals["civilian_0"][0], 8.0)
+        self.assertEqual(goals["civilian_3"][0] - goals["civilian_2"][0], 8.0)
 
     def test_cooperative_schema_rejects_mixed_roles(self) -> None:
         document = json.loads(SCENARIO_PATH.read_text(encoding="utf-8"))

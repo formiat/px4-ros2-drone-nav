@@ -253,11 +253,12 @@ Run the cooperative civilian traffic mission:
 
 The finite scenario in
 `drone_city_nav/config/cooperative_traffic_scenario.json` launches two pairs of
-civilian drones from opposite ends of the channel-free outer city corridor. Two
-parallel lanes are separated by 8 m, and each lane contains an opposing
-point-to-point route. Every vehicle owns its own PX4, navigation, mapping, and
-MPPI pipeline. All vehicles start and cruise at the same altitude; no fixed
-altitude layers are assigned.
+civilian drones from opposite ends of a channel-free eastern interior street.
+The two parallel routes start only 2 m apart, deliberately forcing cooperative
+separation immediately after launch, then fan out to destinations separated by
+8 m. Each route carries opposing traffic between the building rows. Every
+vehicle owns its own PX4, navigation, mapping, and MPPI pipeline. All vehicles
+start and cruise at the same altitude; no fixed altitude layers are assigned.
 
 At 20 Hz, each vehicle publishes a typed `CooperativeFlightIntent` containing
 its current state, physical footprint, bounded-validity MPPI horizon, and active
