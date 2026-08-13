@@ -132,15 +132,25 @@ void ProductionMppiNode::processStaticGuideSearch(
       span.route_generation = candidate_generation;
     }
     std::vector<CooperativeChannelAssignment> channel_assignments;
+    std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
     bool cooperative_route_valid = true;
     if (cooperative_traffic_enabled_ && static_occupancy_3d_) {
-      const std::span<const ChannelCorridor> corridors =
-          world.channel_corridors
-              ? std::span<const ChannelCorridor>{*world.channel_corridors}
-              : std::span<const ChannelCorridor>{};
+      const auto passage_started = std::chrono::steady_clock::now();
+      PassageVolumeResource volume_resource = acquireDerivedPassageVolumes(
+          *mutable_route, geometry.constrained_spans, *static_occupancy_3d_,
+          cooperative_passage_volume_config_);
+      prepared.passage_volume_build_ms =
+          std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                    passage_started)
+              .count();
+      prepared.passage_volume_resource_reused = volume_resource.shared_resource_reused;
+      passage_volumes = std::move(volume_resource.volumes);
+      const std::span<const PassageVolume> volumes =
+          passage_volumes ? std::span<const PassageVolume>{*passage_volumes}
+                          : std::span<const PassageVolume>{};
       CooperativeChannelRouteResult cooperative_route =
           applyCooperativeChannelCorridors(*mutable_route, geometry.constrained_spans,
-                                           corridors, *static_occupancy_3d_,
+                                           volumes, *static_occupancy_3d_,
                                            cooperative_channel_route_config_);
       cooperative_route_valid = cooperative_route.valid;
       if (cooperative_route.valid) {
@@ -206,6 +216,7 @@ void ProductionMppiNode::processStaticGuideSearch(
     prepared.route_3d = route;
     prepared.route_2d_projection = projectRouteTo2D(*route);
     prepared.constrained_spans = spans;
+    prepared.passage_volumes = std::move(passage_volumes);
     prepared.cooperative_channel_assignments =
         std::make_shared<const std::vector<CooperativeChannelAssignment>>(
             std::move(channel_assignments));
@@ -298,16 +309,22 @@ void ProductionMppiNode::processStaticGuideSearch(
   if (activated && prepared.cooperative_channel_assignments) {
     for (const CooperativeChannelAssignment& assignment :
          *prepared.cooperative_channel_assignments) {
-      RCLCPP_INFO(get_logger(),
-                  "COOPERATIVE_CHANNEL_ROUTE route_generation=%" PRIu64
-                  " span_index=%zu channel='%s' offset_interval_m=[%.2f,%.2f] "
-                  "requested_offset_m=%.2f applied_offset_m=%.2f status=%s",
-                  assignment.route_generation, assignment.span_index,
-                  assignment.channel_id.c_str(), assignment.minimum_lateral_offset_m,
-                  assignment.maximum_lateral_offset_m,
-                  assignment.requested_lateral_offset_m,
-                  assignment.applied_lateral_offset_m,
-                  cooperativeChannelRouteStatusName(assignment.status));
+      RCLCPP_INFO(
+          get_logger(),
+          "COOPERATIVE_CHANNEL_ROUTE route_generation=%" PRIu64
+          " span_index=%zu channel='%s' offset_interval_m=[%.2f,%.2f] "
+          "secondary_interval_m=[%.2f,%.2f] cross_sections=%zu "
+          "raw_volume=%s requested_offset_m=%.2f applied_offset_m=%.2f "
+          "status=%s volume_build_ms=%.2f volume_resource_reused=%s",
+          assignment.route_generation, assignment.span_index,
+          assignment.channel_id.c_str(), assignment.minimum_lateral_offset_m,
+          assignment.maximum_lateral_offset_m, assignment.minimum_secondary_offset_m,
+          assignment.maximum_secondary_offset_m, assignment.passage_cross_section_count,
+          assignment.passage_volume_raw_validated ? "true" : "false",
+          assignment.requested_lateral_offset_m, assignment.applied_lateral_offset_m,
+          cooperativeChannelRouteStatusName(assignment.status),
+          prepared.passage_volume_build_ms,
+          prepared.passage_volume_resource_reused ? "true" : "false");
     }
   }
   RCLCPP_INFO(

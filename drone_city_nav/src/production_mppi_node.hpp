@@ -2,7 +2,6 @@
 
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
-#include "drone_city_nav/channel_corridor.hpp"
 #include "drone_city_nav/cooperative_channel_execution.hpp"
 #include "drone_city_nav/cooperative_channel_route.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
@@ -34,6 +33,7 @@
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
@@ -175,12 +175,14 @@ struct ProductionMppiPreparedEsdf {
   double route_smoothing_ms{0.0};
   double route_shortcut_validation_ms{0.0};
   double route_corner_validation_ms{0.0};
+  double passage_volume_build_ms{0.0};
   std::size_t route_shortcuts_applied{0U};
   std::size_t route_corners_smoothed{0U};
   std::size_t route_shortcut_candidates{0U};
   std::size_t route_parallel_shortcut_candidates{0U};
   std::size_t route_corner_candidates{0U};
   std::size_t route_parallel_corner_candidates{0U};
+  bool passage_volume_resource_reused{false};
   double candidate_validation_ms{0.0};
   std::uint64_t route_fingerprint{0U};
   mppi::EsdfGrid grid{};
@@ -191,7 +193,7 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> channel_edges;
-  std::shared_ptr<const std::vector<ChannelCorridor>> channel_corridors;
+  std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
   std::shared_ptr<const std::vector<CooperativeChannelAssignment>>
       cooperative_channel_assignments;
   std::shared_ptr<const std::vector<std::string>> selected_channel_ids;
@@ -455,7 +457,6 @@ private:
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void configureCooperativeTraffic();
-  void initializeCooperativeChannelCorridors();
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);
   [[nodiscard]] ProductionMppiCooperativeUpdate
@@ -566,7 +567,7 @@ private:
   StaticRouteExtensionConfig static_route_extension_config_{};
   StaticRouteSearchRetryConfig static_route_search_retry_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};
-  ChannelCorridorConfig cooperative_channel_corridor_config_{};
+  PassageVolumeConfig cooperative_passage_volume_config_{};
   CooperativeChannelRouteConfig cooperative_channel_route_config_{};
   CooperativeChannelTimingConfig cooperative_channel_timing_config_{};
   CooperativeChannelYieldConfig cooperative_channel_yield_config_{};
@@ -575,7 +576,6 @@ private:
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
   std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_channel_edges_;
-  std::shared_ptr<const std::vector<ChannelCorridor>> static_channel_corridors_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   bool static_esdf_uploaded_{false};

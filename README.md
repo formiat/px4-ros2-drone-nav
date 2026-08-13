@@ -274,15 +274,17 @@ result is a soft planner preference and peer-separation cost, not a prohibited
 grid, inflated obstacle, or hard exclusion volume; raw physical obstacles remain
 the only hard collision constraint.
 
-Static-map channel routes derive a continuous lateral-offset interval from
-raw-validated channel geometry and the full drone footprint. Opposing traffic
-uses deterministic offsets when the passage provides enough separation. A
-narrow or otherwise conflicting channel instead schedules entry time with
-deterministic right-of-way and a route-safe hold before entry; an active
-constrained span is never replaced mid-traversal. In no-static mode, peer lidar
-returns are removed only from persistent obstacle memory. The unchanged latest
-scan still reaches immediate safety validation, so cooperative filtering cannot
-hide a real close-range obstacle.
+Static-map passage geometry is derived after global route selection. The planner
+samples route-orthogonal cross-sections directly from raw `Occupancy3D`, validates
+the full drone footprint in both transverse axes, and builds a continuous local
+free-space volume. Opposing traffic uses deterministic continuous offsets when
+the derived volume provides enough separation. A narrow or otherwise conflicting
+passage instead schedules entry time with deterministic right-of-way and a
+route-safe hold before entry; an active constrained span is never replaced
+mid-traversal. In no-static mode, peer lidar returns are removed only from
+persistent obstacle memory. The unchanged latest scan still reaches immediate
+safety validation, so cooperative filtering cannot hide a real close-range
+obstacle.
 
 The mission referee uses Gazebo ground truth only for readiness and physical
 adjudication. Headless success requires all four drones to reach and physically

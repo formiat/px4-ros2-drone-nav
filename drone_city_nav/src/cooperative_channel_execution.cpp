@@ -2,11 +2,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace drone_city_nav {
 namespace {
 
 constexpr double kNanosecondsPerSecond{1.0e9};
+
+[[nodiscard]] std::string conflictResourceId(const std::string& channel_id) {
+  const std::size_t separator = channel_id.find(':');
+  return channel_id.substr(0U, separator);
+}
 
 [[nodiscard]] CooperativeChannelPhase
 cooperativePhase(const ConstrainedRoutePhase phase) noexcept {
@@ -60,7 +66,7 @@ makeCooperativeChannelUse(const ConstrainedRouteObservation& observation,
                  entry_delay_s, config.maximum_prediction_horizon_s);
   result = CooperativeChannelUse{
       .channel_id = observation.channel_id,
-      .conflict_resource_id = channelConflictResourceId(observation.channel_id),
+      .conflict_resource_id = conflictResourceId(observation.channel_id),
       .route_generation = observation.route_generation,
       .phase = phase,
       .lateral_offset_m = assignment.applied_lateral_offset_m,

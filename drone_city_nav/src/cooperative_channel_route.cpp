@@ -35,12 +35,73 @@ struct OffsetApplication {
                 point.z + scale * offset.z};
 }
 
-[[nodiscard]] const ChannelCorridor*
-findCorridor(const std::span<const ChannelCorridor> corridors,
-             const std::string& channel_id) noexcept {
-  const auto match =
-      std::ranges::find(corridors, channel_id, &ChannelCorridor::channel_id);
-  return match == corridors.end() ? nullptr : &*match;
+[[nodiscard]] double dot(const Vec3& first, const Vec3& second) noexcept {
+  return first.x * second.x + first.y * second.y + first.z * second.z;
+}
+
+[[nodiscard]] double norm(const Vec3& value) noexcept {
+  return std::hypot(std::hypot(value.x, value.y), value.z);
+}
+
+[[nodiscard]] Vec3 lateralOffsetVector(const PassageVolume& volume,
+                                       const double station_m,
+                                       const double offset_m) noexcept {
+  const auto upper = std::ranges::lower_bound(volume.cross_sections, station_m, {},
+                                              &PassageCrossSection::station_m);
+  std::size_t previous_index = 0U;
+  std::size_t next_index = 0U;
+  if (upper == volume.cross_sections.end()) {
+    previous_index = volume.cross_sections.size() - 1U;
+    next_index = previous_index;
+  } else {
+    next_index =
+        static_cast<std::size_t>(std::distance(volume.cross_sections.begin(), upper));
+    previous_index = next_index == 0U ? 0U : next_index - 1U;
+    if (std::abs(upper->station_m - station_m) <= 1.0e-9 &&
+        next_index + 1U < volume.cross_sections.size()) {
+      ++next_index;
+    }
+  }
+  const Vec3& previous = volume.cross_sections[previous_index].lateral_axis;
+  const Vec3& next = volume.cross_sections[next_index].lateral_axis;
+  const Vec3 sum{previous.x + next.x, previous.y + next.y, previous.z + next.z};
+  const double sum_length = norm(sum);
+  if (sum_length <= 1.0e-9) {
+    return Vec3{offset_m * previous.x, offset_m * previous.y, offset_m * previous.z};
+  }
+  const Vec3 miter{sum.x / sum_length, sum.y / sum_length, sum.z / sum_length};
+  const double denominator = dot(miter, previous);
+  if (denominator <= 0.25) {
+    return Vec3{offset_m * previous.x, offset_m * previous.y, offset_m * previous.z};
+  }
+  const double scale = offset_m / denominator;
+  return Vec3{scale * miter.x, scale * miter.y, scale * miter.z};
+}
+
+[[nodiscard]] std::vector<RouteSample3D>
+offsetRouteWithinPassage(const std::span<const RouteSample3D> route,
+                         const PassageVolume& volume, const double lateral_offset_m) {
+  if (route.size() < 2U || volume.cross_sections.empty() ||
+      !std::isfinite(lateral_offset_m)) {
+    return {};
+  }
+  std::vector<RouteSample3D> result(route.begin(), route.end());
+  for (std::size_t index = 0U; index < route.size(); ++index) {
+    const Vec3 offset =
+        lateralOffsetVector(volume, route[index].station_m, lateral_offset_m);
+    result[index].position = translated(route[index].position, offset, 1.0);
+  }
+  return result;
+}
+
+[[nodiscard]] const PassageVolume*
+findPassageVolume(const std::span<const PassageVolume> volumes,
+                  const ConstrainedRouteSpan& span,
+                  const std::size_t span_index) noexcept {
+  const auto match = std::ranges::find_if(volumes, [&](const PassageVolume& volume) {
+    return volume.span_index == span_index && volume.passage_id == span.channel_id;
+  });
+  return match == volumes.end() ? nullptr : &*match;
 }
 
 [[nodiscard]] double mapStation(const std::span<const RouteSample3D> original,
@@ -110,15 +171,38 @@ void makeAssignmentsCentered(std::vector<CooperativeChannelAssignment>& assignme
   }
 }
 
-[[nodiscard]] ChannelCorridorConfig
-corridorConfig(const CooperativeChannelRouteConfig& config) noexcept {
-  return ChannelCorridorConfig{
-      .desired_center_separation_m = config.desired_center_separation_m,
-      .minimum_wall_clearance_m = 0.0,
-      .lateral_probe_step_m = 0.5,
-      .directional_offset_fraction = config.directional_offset_fraction,
-      .footprint = config.footprint,
-  };
+[[nodiscard]] double
+preferredDirectionalOffset(const PassageVolume& volume, const int direction_sign,
+                           const CooperativeChannelRouteConfig& config) noexcept {
+  if (!volume.raw_validated || direction_sign == 0) {
+    return 0.0;
+  }
+  const double available_route_right_m =
+      std::max(0.0, -volume.minimum_lateral_offset_m);
+  const double desired_route_offset_m =
+      std::min(available_route_right_m,
+               std::max(0.5 * config.desired_center_separation_m,
+                        config.directional_offset_fraction * available_route_right_m));
+  return -desired_route_offset_m * static_cast<double>(direction_sign);
+}
+
+[[nodiscard]] const RouteEnvelopeSample*
+nearestOriginalEnvelope(const ConstrainedRouteSpan& span,
+                        const double station_m) noexcept {
+  if (span.envelope.empty()) {
+    return nullptr;
+  }
+  const auto upper = std::ranges::lower_bound(span.envelope, station_m, {},
+                                              &RouteEnvelopeSample::station_m);
+  if (upper == span.envelope.begin()) {
+    return &span.envelope.front();
+  }
+  if (upper == span.envelope.end()) {
+    return &span.envelope.back();
+  }
+  const RouteEnvelopeSample& previous = *std::prev(upper);
+  return station_m - previous.station_m <= upper->station_m - station_m ? &previous
+                                                                        : &*upper;
 }
 
 } // namespace
@@ -126,8 +210,8 @@ corridorConfig(const CooperativeChannelRouteConfig& config) noexcept {
 CooperativeChannelRouteResult applyCooperativeChannelCorridors(
     const std::span<const RouteSample3D> route,
     const std::span<const ConstrainedRouteSpan> constrained_spans,
-    const std::span<const ChannelCorridor> corridors, const OccupancyGrid3D& occupancy,
-    const CooperativeChannelRouteConfig& config) {
+    const std::span<const PassageVolume> passage_volumes,
+    const OccupancyGrid3D& occupancy, const CooperativeChannelRouteConfig& config) {
   CooperativeChannelRouteResult result{
       .route = std::vector<RouteSample3D>{route.begin(), route.end()},
       .constrained_spans = std::vector<ConstrainedRouteSpan>{constrained_spans.begin(),
@@ -161,21 +245,28 @@ CooperativeChannelRouteResult applyCooperativeChannelCorridors(
 
   std::vector<OffsetApplication> applications;
   applications.reserve(constrained_spans.size());
-  const ChannelCorridorConfig lateral_config = corridorConfig(config);
   for (std::size_t index = 0U; index < constrained_spans.size(); ++index) {
     const ConstrainedRouteSpan& span = constrained_spans[index];
     CooperativeChannelAssignment& assignment = result.assignments[index];
-    const ChannelCorridor* const corridor = findCorridor(corridors, span.channel_id);
-    if (corridor == nullptr || !corridor->raw_validated) {
+    const PassageVolume* const volume = findPassageVolume(passage_volumes, span, index);
+    if (volume == nullptr || !volume->raw_validated) {
       assignment.status = CooperativeChannelRouteStatus::kMissingCorridorGeometry;
       continue;
     }
-    assignment.physical_width_m = corridor->physical_width_m;
-    assignment.minimum_lateral_offset_m = corridor->minimum_lateral_offset_m;
-    assignment.maximum_lateral_offset_m = corridor->maximum_lateral_offset_m;
-    assignment.requested_lateral_offset_m = preferredDirectionalChannelOffset(
-        *corridor, span.direction_sign, lateral_config);
-    if (corridor->exclusive(config.desired_center_separation_m) ||
+    assignment.physical_width_m = volume->minimum_physical_width_m;
+    const double first_bound_m =
+        volume->minimum_lateral_offset_m * static_cast<double>(span.direction_sign);
+    const double second_bound_m =
+        volume->maximum_lateral_offset_m * static_cast<double>(span.direction_sign);
+    assignment.minimum_lateral_offset_m = std::min(first_bound_m, second_bound_m);
+    assignment.maximum_lateral_offset_m = std::max(first_bound_m, second_bound_m);
+    assignment.minimum_secondary_offset_m = volume->minimum_secondary_offset_m;
+    assignment.maximum_secondary_offset_m = volume->maximum_secondary_offset_m;
+    assignment.passage_cross_section_count = volume->cross_sections.size();
+    assignment.passage_volume_raw_validated = volume->raw_validated;
+    assignment.requested_lateral_offset_m =
+        preferredDirectionalOffset(*volume, span.direction_sign, config);
+    if (volume->exclusive(config.desired_center_separation_m) ||
         std::abs(assignment.requested_lateral_offset_m) <= 1.0e-9) {
       assignment.status = CooperativeChannelRouteStatus::kCentered;
       continue;
@@ -203,7 +294,7 @@ CooperativeChannelRouteResult applyCooperativeChannelCorridors(
     const double route_relative_offset_m = assignment.requested_lateral_offset_m *
                                            static_cast<double>(span.direction_sign);
     std::vector<RouteSample3D> offset_route =
-        offsetChannelCenterline(route, route_relative_offset_m);
+        offsetRouteWithinPassage(route, *volume, route_relative_offset_m);
     if (offset_route.size() != route.size()) {
       assignment.status = CooperativeChannelRouteStatus::kMissingCorridorGeometry;
       continue;
@@ -260,19 +351,62 @@ CooperativeChannelRouteResult applyCooperativeChannelCorridors(
         mapStation(route, result.route, original.begin_station_m);
     transformed.end_station_m = mapStation(route, result.route, original.end_station_m);
     const CooperativeChannelAssignment& assignment = result.assignments[index];
-    for (RouteEnvelopeSample& envelope : transformed.envelope) {
-      envelope.station_m = mapStation(route, result.route, envelope.station_m);
-      if (!assignment.applied()) {
-        continue;
+    const PassageVolume* const volume =
+        findPassageVolume(passage_volumes, original, index);
+    if (volume == nullptr || !volume->raw_validated) {
+      for (RouteEnvelopeSample& envelope : transformed.envelope) {
+        envelope.station_m = mapStation(route, result.route, envelope.station_m);
       }
-      const double route_relative_offset_m =
-          assignment.applied_lateral_offset_m *
-          static_cast<double>(original.direction_sign);
-      const double half_width_m = 0.5 * assignment.physical_width_m;
-      envelope.lateral_free_left_m =
-          std::max(0.0, half_width_m - route_relative_offset_m);
-      envelope.lateral_free_right_m =
-          std::max(0.0, half_width_m + route_relative_offset_m);
+      continue;
+    }
+    const double route_relative_offset_m = assignment.applied_lateral_offset_m *
+                                           static_cast<double>(original.direction_sign);
+    transformed.envelope.clear();
+    transformed.envelope.reserve(volume->cross_sections.size());
+    for (const PassageCrossSection& section : volume->cross_sections) {
+      const RouteEnvelopeSample* const original_envelope =
+          nearestOriginalEnvelope(original, section.station_m);
+      const double mapped_station_m =
+          mapStation(route, result.route, section.station_m);
+      const RouteSample3D transformed_sample =
+          sampleRoute3DAtStation(result.route, mapped_station_m);
+      const Point3 first_secondary_boundary{
+          section.center.x +
+              section.secondary_axis.x * section.minimum_secondary_offset_m,
+          section.center.y +
+              section.secondary_axis.y * section.minimum_secondary_offset_m,
+          section.center.z +
+              section.secondary_axis.z * section.minimum_secondary_offset_m,
+      };
+      const Point3 second_secondary_boundary{
+          section.center.x +
+              section.secondary_axis.x * section.maximum_secondary_offset_m,
+          section.center.y +
+              section.secondary_axis.y * section.maximum_secondary_offset_m,
+          section.center.z +
+              section.secondary_axis.z * section.maximum_secondary_offset_m,
+      };
+      const double lateral_left_m =
+          std::max(0.0, section.maximum_lateral_offset_m - route_relative_offset_m);
+      const double lateral_right_m =
+          std::max(0.0, route_relative_offset_m - section.minimum_lateral_offset_m);
+      const double secondary_clearance_m =
+          std::max(0.0, std::min(-section.minimum_secondary_offset_m,
+                                 section.maximum_secondary_offset_m));
+      transformed.envelope.push_back(RouteEnvelopeSample{
+          .station_m = mapped_station_m,
+          .lateral_free_left_m = lateral_left_m,
+          .lateral_free_right_m = lateral_right_m,
+          .min_z_m = std::min(first_secondary_boundary.z, second_secondary_boundary.z),
+          .max_z_m = std::max(first_secondary_boundary.z, second_secondary_boundary.z),
+          .minimum_clearance_m =
+              config.footprint.radius_m +
+              std::min({lateral_left_m, lateral_right_m, secondary_clearance_m}),
+          .reference_z_m = transformed_sample.position.z,
+          .reference_speed_mps = original_envelope != nullptr
+                                     ? original_envelope->reference_speed_mps
+                                     : transformed_sample.reference_speed_mps,
+      });
     }
   }
   result.applied_offset_count = static_cast<std::size_t>(std::ranges::count_if(

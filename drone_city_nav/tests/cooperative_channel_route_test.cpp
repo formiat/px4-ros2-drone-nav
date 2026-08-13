@@ -32,13 +32,39 @@ namespace {
   return OccupancyGrid3D{GridBounds3D{-15.0, -10.0, 0.0, 1.0, 50, 50, 10}};
 }
 
-[[nodiscard]] ChannelCorridor corridor() {
-  return ChannelCorridor{
-      .channel_id = "channel_test",
-      .physical_width_m = 14.0,
+[[nodiscard]] PassageVolume volume(const std::span<const RouteSample3D> route,
+                                   const ConstrainedRouteSpan& constrained) {
+  std::vector<PassageCrossSection> sections;
+  for (const RouteSample3D& sample : route) {
+    if (sample.station_m + 1.0e-9 < constrained.begin_station_m ||
+        sample.station_m - 1.0e-9 > constrained.end_station_m) {
+      continue;
+    }
+    sections.push_back(PassageCrossSection{
+        .station_m = sample.station_m,
+        .center = sample.position,
+        .tangent = sample.tangent,
+        .lateral_axis = Vec3{-sample.tangent.y, sample.tangent.x, 0.0},
+        .secondary_axis = Vec3{0.0, 0.0, 1.0},
+        .minimum_lateral_offset_m = -6.0,
+        .maximum_lateral_offset_m = 6.0,
+        .minimum_secondary_offset_m = -4.0,
+        .maximum_secondary_offset_m = 4.0,
+        .raw_validated = true,
+    });
+  }
+  return PassageVolume{
+      .passage_id = constrained.channel_id,
+      .span_index = 0U,
+      .begin_station_m = constrained.begin_station_m,
+      .end_station_m = constrained.end_station_m,
       .minimum_lateral_offset_m = -6.0,
       .maximum_lateral_offset_m = 6.0,
-      .minimum_wall_clearance_m = 0.5,
+      .minimum_secondary_offset_m = -4.0,
+      .maximum_secondary_offset_m = 4.0,
+      .minimum_physical_width_m = 14.0,
+      .minimum_physical_secondary_extent_m = 9.0,
+      .cross_sections = std::move(sections),
       .raw_validated = true,
   };
 }
@@ -80,10 +106,12 @@ TEST(CooperativeChannelRoute, AppliesContinuousOppositeOffsetsByDirection) {
   const std::vector<RouteSample3D> forward = sampleRoute3D(
       std::vector<Point3>{{-10.0, 0.0, 5.0}, {30.0, 0.0, 5.0}}, 1.0, 10.0);
   const OccupancyGrid3D occupancy = emptyOccupancy();
+  const ConstrainedRouteSpan forward_span = span(1);
 
   const CooperativeChannelRouteResult forward_result = applyCooperativeChannelCorridors(
-      forward, std::vector<ConstrainedRouteSpan>{span(1)},
-      std::vector<ChannelCorridor>{corridor()}, occupancy, routeConfig());
+      forward, std::vector<ConstrainedRouteSpan>{forward_span},
+      std::vector<PassageVolume>{volume(forward, forward_span)}, occupancy,
+      routeConfig());
 
   ASSERT_TRUE(forward_result.valid);
   ASSERT_EQ(forward_result.assignments.size(), 1U);
@@ -99,9 +127,11 @@ TEST(CooperativeChannelRoute, AppliesContinuousOppositeOffsetsByDirection) {
 
   const std::vector<RouteSample3D> reverse = sampleRoute3D(
       std::vector<Point3>{{30.0, 0.0, 5.0}, {-10.0, 0.0, 5.0}}, 1.0, 10.0);
+  const ConstrainedRouteSpan reverse_span = span(-1);
   const CooperativeChannelRouteResult reverse_result = applyCooperativeChannelCorridors(
-      reverse, std::vector<ConstrainedRouteSpan>{span(-1)},
-      std::vector<ChannelCorridor>{corridor()}, occupancy, routeConfig());
+      reverse, std::vector<ConstrainedRouteSpan>{reverse_span},
+      std::vector<PassageVolume>{volume(reverse, reverse_span)}, occupancy,
+      routeConfig());
 
   ASSERT_TRUE(reverse_result.valid);
   ASSERT_EQ(reverse_result.assignments.size(), 1U);
@@ -121,10 +151,11 @@ TEST(CooperativeChannelRoute, FallsBackToCenterlineOnRawCollision) {
       occupancy.worldToCell(Point3{10.0, -3.0, 5.0});
   ASSERT_TRUE(obstacle.has_value());
   occupancy.setOccupied(obstacle.value_or(GridIndex3D{}));
+  const ConstrainedRouteSpan constrained = span(1);
 
   const CooperativeChannelRouteResult result = applyCooperativeChannelCorridors(
-      route, std::vector<ConstrainedRouteSpan>{span(1)},
-      std::vector<ChannelCorridor>{corridor()}, occupancy, routeConfig());
+      route, std::vector<ConstrainedRouteSpan>{constrained},
+      std::vector<PassageVolume>{volume(route, constrained)}, occupancy, routeConfig());
 
   ASSERT_TRUE(result.valid);
   ASSERT_EQ(result.assignments.size(), 1U);
@@ -150,7 +181,8 @@ TEST(CooperativeChannelRoute, PreservesContinuousOffsetThroughRightAngle) {
 
   const CooperativeChannelRouteResult result = applyCooperativeChannelCorridors(
       route, std::vector<ConstrainedRouteSpan>{constrained},
-      std::vector<ChannelCorridor>{corridor()}, emptyOccupancy(), routeConfig());
+      std::vector<PassageVolume>{volume(route, constrained)}, emptyOccupancy(),
+      routeConfig());
 
   ASSERT_TRUE(result.valid);
   ASSERT_EQ(result.assignments.size(), 1U);
@@ -173,7 +205,8 @@ TEST(CooperativeChannelRoute, UsesCenteredModeWhenTransitionDoesNotFit) {
 
   const CooperativeChannelRouteResult result = applyCooperativeChannelCorridors(
       route, std::vector<ConstrainedRouteSpan>{constrained},
-      std::vector<ChannelCorridor>{corridor()}, emptyOccupancy(), routeConfig());
+      std::vector<PassageVolume>{volume(route, constrained)}, emptyOccupancy(),
+      routeConfig());
 
   ASSERT_TRUE(result.valid);
   ASSERT_EQ(result.assignments.size(), 1U);

@@ -744,7 +744,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     static_channel_edges_ =
         std::make_shared<const std::vector<ConstrainedFreeSpaceEdge>>(
             static_occupancy_3d_->channelEdges());
-    initializeCooperativeChannelCorridors();
     RCLCPP_INFO(get_logger(),
                 "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
                 " occupied_voxels=%zu channels=%zu dimensions=%dx%dx%d",

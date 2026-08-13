@@ -1,7 +1,7 @@
 #pragma once
 
-#include "drone_city_nav/channel_corridor.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
+#include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
@@ -29,9 +29,13 @@ struct CooperativeChannelAssignment {
   double physical_width_m{0.0};
   double minimum_lateral_offset_m{0.0};
   double maximum_lateral_offset_m{0.0};
+  double minimum_secondary_offset_m{0.0};
+  double maximum_secondary_offset_m{0.0};
   double requested_lateral_offset_m{0.0};
   double applied_lateral_offset_m{0.0};
   double desired_center_separation_m{0.0};
+  std::size_t passage_cross_section_count{0U};
+  bool passage_volume_raw_validated{false};
   CooperativeChannelRouteStatus status{CooperativeChannelRouteStatus::kCentered};
 
   [[nodiscard]] bool applied() const noexcept {
@@ -62,7 +66,7 @@ struct CooperativeChannelRouteResult {
 [[nodiscard]] CooperativeChannelRouteResult applyCooperativeChannelCorridors(
     std::span<const RouteSample3D> route,
     std::span<const ConstrainedRouteSpan> constrained_spans,
-    std::span<const ChannelCorridor> corridors, const OccupancyGrid3D& occupancy,
+    std::span<const PassageVolume> passage_volumes, const OccupancyGrid3D& occupancy,
     const CooperativeChannelRouteConfig& config);
 
 [[nodiscard]] const char*

@@ -85,6 +85,18 @@ TEST(CooperativeChannelExecution, PublishesCorridorOffsetAndTimeWindow) {
   EXPECT_EQ(channel.predicted_exit_ns, 14 * kSecondNs);
 }
 
+TEST(CooperativeChannelExecution, GroupsPortalMovementsIntoOneConflictResource) {
+  ConstrainedRouteObservation observation = approach();
+  observation.channel_id = "channel_t:west_north";
+  CooperativeChannelAssignment movement = assignment();
+  movement.channel_id = observation.channel_id;
+
+  const CooperativeChannelUse channel = makeCooperativeChannelUse(
+      observation, movement, 10 * kSecondNs, 10.0, CooperativeChannelTimingConfig{});
+
+  EXPECT_EQ(channel.conflict_resource_id, "channel_t");
+}
+
 TEST(CooperativeChannelExecution, AcceptsOnlyCurrentRouteAndCorridorYield) {
   const ConstrainedRouteObservation observation = approach();
   const CooperativeChannelUse channel =
