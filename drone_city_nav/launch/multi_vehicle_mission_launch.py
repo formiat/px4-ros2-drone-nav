@@ -42,6 +42,10 @@ def _intercept_tracking_settings(context):
         "radar_maximum_interval_step_s",
         "radar_interval_step_correlation",
         "radar_track_interval_s",
+        "noncooperative_radar_rate_hz",
+        "noncooperative_radar_maximum_range_m",
+        "noncooperative_radar_los_sample_spacing_m",
+        "noncooperative_track_maximum_age_s",
     )
     settings = {
         name: float(LaunchConfiguration(name).perform(context)) for name in names
@@ -60,6 +64,7 @@ def make_intercept_mission_nodes(
     interceptor_speed_mps,
     control_prefix,
     shutdown_on_terminal_outcome,
+    physical_occupancy_3d_path,
 ):
     interceptor_ids = [
         vehicle_id
@@ -73,6 +78,7 @@ def make_intercept_mission_nodes(
         interceptor_speed_mps,
         control_prefix,
         _intercept_tracking_settings(context),
+        physical_occupancy_3d_path,
     )
     interceptor_prefixes = [f"/vehicles/{vehicle_id}" for vehicle_id in interceptor_ids]
     target_ids = [target["id"] for target in scenario["evaders"]]
@@ -122,6 +128,14 @@ def make_intercept_mission_nodes(
                     "radar_simulator_node_fqns": [
                         f"{prefix}/radar_simulator_node"
                         for prefix in interceptor_prefixes
+                    ],
+                    "avoidance_radar_simulator_node_fqns": [
+                        f"{prefix}/airborne_radar_simulator_node"
+                        for prefix in target_prefixes
+                    ],
+                    "avoidance_tracker_node_fqns": [
+                        f"{prefix}/avoidance_radar_target_tracker_node"
+                        for prefix in target_prefixes
                     ],
                     "target_ids": target_ids,
                     "target_detection_ids": [

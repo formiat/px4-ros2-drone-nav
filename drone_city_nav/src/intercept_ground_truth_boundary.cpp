@@ -80,19 +80,32 @@ std::unique_ptr<InterceptGroundTruthBoundary> makeInterceptGroundTruthBoundary(
     const std::string& referee_fqn, const std::string& adapter_fqn,
     const std::vector<TargetTruthEndpoint>& target_endpoints,
     const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints,
+    const std::vector<std::string>& avoidance_radar_simulator_fqns,
     const std::vector<std::string>& target_navigation_observer_fqns) {
   std::vector<GroundTruthTopicContract> contracts;
   std::unordered_set<std::string> target_truth_subscribers{referee_fqn};
   for (const InterceptorTruthEndpoint& endpoint : interceptor_endpoints) {
+    std::unordered_set<std::string> physical_truth_subscribers{
+        referee_fqn, endpoint.radar_simulator_fqn};
+    physical_truth_subscribers.insert(avoidance_radar_simulator_fqns.begin(),
+                                      avoidance_radar_simulator_fqns.end());
     contracts.push_back(GroundTruthTopicContract{
         .topic = endpoint.physical_truth_topic,
-        .allowed_subscribers = {referee_fqn, endpoint.radar_simulator_fqn},
-        .required_subscribers = {referee_fqn, endpoint.radar_simulator_fqn},
+        .allowed_subscribers = physical_truth_subscribers,
+        .required_subscribers = physical_truth_subscribers,
     });
     target_truth_subscribers.insert(endpoint.radar_simulator_fqn);
   }
+  target_truth_subscribers.insert(avoidance_radar_simulator_fqns.begin(),
+                                  avoidance_radar_simulator_fqns.end());
   for (const TargetTruthEndpoint& endpoint : target_endpoints) {
     std::unordered_set<std::string> navigation_subscribers{referee_fqn, adapter_fqn};
+    if (!endpoint.own_radar_simulator_fqn.empty()) {
+      navigation_subscribers.insert(endpoint.own_radar_simulator_fqn);
+    }
+    if (!endpoint.own_tracker_fqn.empty()) {
+      navigation_subscribers.insert(endpoint.own_tracker_fqn);
+    }
     navigation_subscribers.insert(target_navigation_observer_fqns.begin(),
                                   target_navigation_observer_fqns.end());
     contracts.push_back(GroundTruthTopicContract{
@@ -114,14 +127,20 @@ std::unique_ptr<InterceptGroundTruthBoundary> makeInterceptGroundTruthBoundary(
     const std::string& evader_navigation_topic,
     const std::string& evader_physical_truth_topic,
     const std::vector<InterceptorTruthEndpoint>& interceptor_endpoints,
+    const std::vector<std::string>& avoidance_radar_simulator_fqns,
     const std::vector<std::string>& target_navigation_observer_fqns) {
   return makeInterceptGroundTruthBoundary(
       referee_fqn, adapter_fqn,
       std::vector<TargetTruthEndpoint>{{
           .navigation_topic = evader_navigation_topic,
           .physical_truth_topic = evader_physical_truth_topic,
+          .own_radar_simulator_fqn = avoidance_radar_simulator_fqns.empty()
+                                         ? std::string{}
+                                         : avoidance_radar_simulator_fqns.front(),
+          .own_tracker_fqn = {},
       }},
-      interceptor_endpoints, target_navigation_observer_fqns);
+      interceptor_endpoints, avoidance_radar_simulator_fqns,
+      target_navigation_observer_fqns);
 }
 
 std::unique_ptr<InterceptGroundTruthBoundary>

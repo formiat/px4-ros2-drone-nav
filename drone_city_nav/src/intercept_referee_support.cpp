@@ -100,6 +100,12 @@ declareTargetTopicConfig(rclcpp::Node& node,
           "target_objective_topics", vehicleDefault("/navigation_objective")),
       .mission_start = node.declare_parameter<std::vector<std::string>>(
           "target_start_topics", vehicleDefault("/mission_start")),
+      .avoidance_radar_simulator_fqn = node.declare_parameter<std::vector<std::string>>(
+          "avoidance_radar_simulator_node_fqns",
+          vehicleDefault("/airborne_radar_simulator_node")),
+      .avoidance_tracker_fqn = node.declare_parameter<std::vector<std::string>>(
+          "avoidance_tracker_node_fqns",
+          vehicleDefault("/avoidance_radar_target_tracker_node")),
   };
   for (const auto& [values, parameter_name] :
        std::vector<std::pair<const std::vector<std::string>*, std::string>>{
@@ -109,7 +115,10 @@ declareTargetTopicConfig(rclcpp::Node& node,
            {&config.world_readiness, "target_world_readiness_topics"},
            {&config.destroyed, "target_destroyed_topics"},
            {&config.objective, "target_objective_topics"},
-           {&config.mission_start, "target_start_topics"}}) {
+           {&config.mission_start, "target_start_topics"},
+           {&config.avoidance_radar_simulator_fqn,
+            "avoidance_radar_simulator_node_fqns"},
+           {&config.avoidance_tracker_fqn, "avoidance_tracker_node_fqns"}}) {
     requireCount(*values, vehicle_ids.size(), parameter_name);
   }
   return config;

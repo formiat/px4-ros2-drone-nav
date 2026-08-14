@@ -1,6 +1,7 @@
 #include "drone_city_nav/radar_cadence.hpp"
 #include "drone_city_nav/radar_model.hpp"
 #include "drone_city_nav/radar_target_tracker.hpp"
+#include "drone_city_nav/radar_visibility.hpp"
 
 #include <gtest/gtest.h>
 
@@ -93,6 +94,29 @@ TEST(RadarCadence, UsesExplicitFastTrackModeWithoutRangePolicy) {
   EXPECT_DOUBLE_EQ(cadence.nextIntervalSeconds(true), 0.05);
   EXPECT_DOUBLE_EQ(cadence.nextIntervalSeconds(true), 0.05);
   EXPECT_GT(cadence.nextIntervalSeconds(false), 0.0);
+}
+
+TEST(RadarVisibility, UsesPhysicalOccupancyWithoutArtificialInflation) {
+  OccupancyGrid3D occupancy{GridBounds3D{
+      .origin_x = 0.0,
+      .origin_y = 0.0,
+      .origin_z = 0.0,
+      .resolution_m = 1.0,
+      .width_cells = 20,
+      .height_cells = 20,
+      .depth_cells = 10,
+  }};
+  occupancy.setOccupied(GridIndex3D{.x = 5, .y = 5, .z = 5});
+
+  EXPECT_EQ(radarLineOfSightStatus(occupancy, Point3{1.5, 5.5, 5.5},
+                                   Point3{9.5, 5.5, 5.5}, 0.25),
+            RadarVisibilityStatus::kOccluded);
+  EXPECT_EQ(radarLineOfSightStatus(occupancy, Point3{1.5, 4.5, 5.5},
+                                   Point3{9.5, 4.5, 5.5}, 0.25),
+            RadarVisibilityStatus::kVisible);
+  EXPECT_EQ(radarLineOfSightStatus(occupancy, Point3{-1.0, 4.5, 5.5},
+                                   Point3{9.5, 4.5, 5.5}, 0.25),
+            RadarVisibilityStatus::kOutsideWorld);
 }
 
 TEST(RadarOwnshipHistory, InterpolatesPositionVelocityAndWrappedHeading) {

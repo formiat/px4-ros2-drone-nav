@@ -187,6 +187,7 @@ add_library(
   src/radar_cadence.cpp
   src/radar_model.cpp
   src/radar_target_tracker.cpp
+  src/radar_visibility.cpp
   src/target_assignment.cpp
   src/raw_guide_validation.cpp
   src/risk_aware_lattice.cpp
@@ -358,7 +359,7 @@ add_executable(radar_simulator_node src/radar_simulator_node.cpp)
 target_compile_features(radar_simulator_node PRIVATE cxx_std_20)
 target_link_libraries(radar_simulator_node drone_city_nav_core
                       ${cpp_typesupport_target})
-ament_target_dependencies(radar_simulator_node rclcpp)
+ament_target_dependencies(radar_simulator_node ament_index_cpp rclcpp)
 enable_project_warnings(radar_simulator_node)
 
 add_executable(simulation_truth_adapter_node

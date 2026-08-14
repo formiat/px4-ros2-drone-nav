@@ -4,13 +4,16 @@
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 #include "drone_city_nav/radar_cadence.hpp"
 #include "drone_city_nav/radar_model.hpp"
+#include "drone_city_nav/radar_visibility.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -34,6 +37,8 @@ namespace {
       return "observed_target_visible";
     case msg::RadarTrackModeCommand::REASON_WORLD_UNAVAILABLE:
       return "world_unavailable";
+    case msg::RadarTrackModeCommand::REASON_NONCOOPERATIVE_SURVEILLANCE:
+      return "noncooperative_surveillance";
     default:
       return "unknown";
   }
@@ -67,8 +72,35 @@ public:
     radar_frame_id_ = declare_parameter<std::string>("radar_frame_id", "radar_yaw");
     maximum_state_alignment_s_ =
         declare_parameter<double>("maximum_state_alignment_s", 0.1);
-    if (!(maximum_state_alignment_s_ > 0.0)) {
-      throw std::invalid_argument{"maximum radar state alignment must be positive"};
+    maximum_detection_range_m_ =
+        declare_parameter<double>("maximum_detection_range_m", 0.0);
+    fixed_track_mode_ = declare_parameter<bool>("fixed_track_mode", false);
+    physical_los_required_ = declare_parameter<bool>("physical_los_required", false);
+    los_sample_spacing_m_ = declare_parameter<double>("los_sample_spacing_m", 0.25);
+    if (!(maximum_state_alignment_s_ > 0.0) || maximum_detection_range_m_ < 0.0 ||
+        !(los_sample_spacing_m_ > 0.0)) {
+      throw std::invalid_argument{
+          "invalid radar alignment, range, or LOS configuration"};
+    }
+    if (physical_los_required_) {
+      std::filesystem::path occupancy_path = declare_parameter<std::string>(
+          "physical_occupancy_3d_path", "worlds/generated_city.occupancy3d");
+      if (occupancy_path.is_relative()) {
+        occupancy_path =
+            std::filesystem::path{
+                ament_index_cpp::get_package_share_directory("drone_city_nav")} /
+            occupancy_path;
+      }
+      physical_occupancy_ = OccupancyGrid3D::load(occupancy_path);
+      RCLCPP_INFO(get_logger(),
+                  "RADAR_PHYSICAL_WORLD_READY path='%s' fingerprint=%lu "
+                  "occupied_voxels=%zu",
+                  occupancy_path.c_str(),
+                  static_cast<unsigned long>(physical_occupancy_->fingerprint()),
+                  physical_occupancy_->occupiedVoxelCount());
+    } else {
+      static_cast<void>(declare_parameter<std::string>(
+          "physical_occupancy_3d_path", "worlds/generated_city.occupancy3d"));
     }
     cadence_ = std::make_unique<CorrelatedRadarCadence>(RadarCadenceConfig{
         .minimum_interval_s = declare_parameter<double>("minimum_scan_interval_s", 0.1),
@@ -127,27 +159,36 @@ public:
         declare_parameter<std::string>("radar_scan_topic",
                                        "/vehicles/interceptor/radar/scan"),
         rclcpp::QoS{10}.reliable());
-    track_mode_command_sub_ = create_subscription<msg::RadarTrackModeCommand>(
-        declare_parameter<std::string>(
-            "track_mode_command_topic",
-            "/vehicles/interceptor/radar/track_mode_command"),
-        rclcpp::QoS{1}.reliable().transient_local(),
-        [this](const msg::RadarTrackModeCommand::SharedPtr command) {
-          onTrackModeCommand(*command);
-        });
+    const std::string track_mode_command_topic = declare_parameter<std::string>(
+        "track_mode_command_topic", "/vehicles/interceptor/radar/track_mode_command");
+    if (fixed_track_mode_) {
+      track_mode_active_ = true;
+      track_mode_reason_ =
+          msg::RadarTrackModeCommand::REASON_NONCOOPERATIVE_SURVEILLANCE;
+    } else {
+      track_mode_command_sub_ = create_subscription<msg::RadarTrackModeCommand>(
+          track_mode_command_topic, rclcpp::QoS{1}.reliable().transient_local(),
+          [this](const msg::RadarTrackModeCommand::SharedPtr command) {
+            onTrackModeCommand(*command);
+          });
+    }
     timer_ = create_wall_timer(std::chrono::milliseconds{20}, [this] { tick(); });
     RCLCPP_INFO(get_logger(),
                 "Radar simulator ready: frame='%s' cadence=[%.3f,%.3f]s "
-                "track_interval=%.3fs targets=%zu track_control=los_command",
+                "track_interval=%.3fs targets=%zu track_control=%s range_m=%.1f "
+                "physical_los=%s",
                 radar_frame_id_.c_str(), cadenceMinimumInterval(),
                 cadenceMaximumInterval(), get_parameter("track_interval_s").as_double(),
-                target_truth_states_.size());
+                target_truth_states_.size(),
+                fixed_track_mode_ ? "fixed_surveillance" : "los_command",
+                maximum_detection_range_m_, physical_los_required_ ? "true" : "false");
   }
 
 private:
   void onTrackModeCommand(const msg::RadarTrackModeCommand& command) {
     if (command.mode > msg::RadarTrackModeCommand::MODE_TRACK ||
-        command.reason > msg::RadarTrackModeCommand::REASON_WORLD_UNAVAILABLE ||
+        command.reason >
+            msg::RadarTrackModeCommand::REASON_NONCOOPERATIVE_SURVEILLANCE ||
         command.mission_epoch < track_mode_mission_epoch_ ||
         (command.mission_epoch == track_mode_mission_epoch_ &&
          command.objective_sample_sequence <= track_mode_objective_sequence_)) {
@@ -216,24 +257,42 @@ private:
                                            : msg::RadarScan::CADENCE_MODE_SEARCH;
     scan.cadence_reason = track_mode_reason_;
     double minimum_range_m = std::numeric_limits<double>::infinity();
+    std::size_t unavailable_targets = 0U;
+    std::size_t out_of_range_targets = 0U;
+    std::size_t occluded_targets = 0U;
     scan.detections.reserve(target_truth_states_.size());
     for (std::size_t index = 0U; index < target_truth_states_.size(); ++index) {
       const std::optional<TimedVehicleState>& target_truth =
           target_truth_states_[index];
       if (!target_truth.has_value()) {
-        return;
+        ++unavailable_targets;
+        continue;
       }
       const std::optional<TimedVehicleState> target = stateAt(
           target_truth.value(), measurement_stamp_ns, maximum_state_alignment_s_);
       if (!target.has_value()) {
-        return;
+        ++unavailable_targets;
+        continue;
       }
       const std::optional<RadarDetectionSample> detection = simulateIdealRadarDetection(
           radar, target.value(), target_detection_ids_[index]);
       if (!detection.has_value()) {
-        return;
+        ++unavailable_targets;
+        continue;
       }
       const RadarDetectionSample& resolved_detection = detection.value();
+      if (maximum_detection_range_m_ > 0.0 &&
+          resolved_detection.range_m > maximum_detection_range_m_) {
+        ++out_of_range_targets;
+        continue;
+      }
+      if (physical_occupancy_.has_value() &&
+          radarLineOfSightStatus(*physical_occupancy_, radar.position, target->position,
+                                 los_sample_spacing_m_) !=
+              RadarVisibilityStatus::kVisible) {
+        ++occluded_targets;
+        continue;
+      }
       msg::RadarDetection radar_detection;
       radar_detection.detection_id = resolved_detection.detection_id;
       radar_detection.range_m = resolved_detection.range_m;
@@ -244,6 +303,9 @@ private:
       minimum_range_m = std::min(minimum_range_m, resolved_detection.range_m);
     }
     scan_pub_->publish(scan);
+    if (scan.detections.empty()) {
+      minimum_range_m = -1.0;
+    }
 
     const double next_interval_s = cadence_->nextIntervalSeconds(track_mode_active_);
     next_scan_due_ns_ = now_ns + static_cast<std::int64_t>(next_interval_s * 1.0e9);
@@ -256,11 +318,13 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "RADAR_SCAN published=true sequence=%lu detections=%zu minimum_range_m=%.3f "
+        "unavailable_targets=%zu out_of_range_targets=%zu occluded_targets=%zu "
         "actual_interval_s=%.3f next_interval_s=%.3f track_mode=%s cadence_reason=%s "
         "source=gazebo_physical_truth",
         static_cast<unsigned long>(scan.scan_sequence), scan.detections.size(),
-        minimum_range_m, actual_interval_s, next_interval_s,
-        track_mode_active_ ? "true" : "false", cadenceReasonName(track_mode_reason_));
+        minimum_range_m, unavailable_targets, out_of_range_targets, occluded_targets,
+        actual_interval_s, next_interval_s, track_mode_active_ ? "true" : "false",
+        cadenceReasonName(track_mode_reason_));
   }
 
   std::unique_ptr<CorrelatedRadarCadence> cadence_;
@@ -270,6 +334,8 @@ private:
   std::vector<std::uint64_t> target_detection_ids_;
   std::string radar_frame_id_;
   double maximum_state_alignment_s_{0.1};
+  double maximum_detection_range_m_{0.0};
+  double los_sample_spacing_m_{0.25};
   std::int64_t next_scan_due_ns_{0};
   std::int64_t previous_scan_stamp_ns_{0};
   std::uint64_t scan_sequence_{0U};
@@ -278,6 +344,9 @@ private:
   std::uint8_t track_mode_reason_{
       msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE};
   bool track_mode_active_{false};
+  bool fixed_track_mode_{false};
+  bool physical_los_required_{false};
+  std::optional<OccupancyGrid3D> physical_occupancy_;
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr
       radar_navigation_state_sub_;
   rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr radar_truth_state_sub_;

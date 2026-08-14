@@ -196,6 +196,34 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertNotIn('executable="intercept_mission_node"', text)
         self.assertIn('scenario["interceptor_ids"]', text)
         self.assertIn('"radar_simulator_node_fqns"', text)
+        self.assertIn('name="airborne_radar_simulator_node"', tracking)
+        self.assertIn('"fixed_track_mode": True', tracking)
+        self.assertIn('"physical_los_required": True', tracking)
+        self.assertIn('"maximum_detection_range_m": settings[', tracking)
+        self.assertIn('"target_detection_ids": list(', tracking)
+        self.assertIn('"target_track_array_topic": f"{prefix}/avoidance_tracks"', tracking)
+        self.assertIn('"avoidance_radar_simulator_node_fqns"', launch)
+        self.assertIn('"avoidance_tracker_node_fqns"', launch)
+
+    def test_attacker_tracking_pipeline_has_no_cooperative_or_truth_bypass(self) -> None:
+        tracking = TRACKING_LAUNCH.read_text(encoding="utf-8")
+        attacker_pipeline = tracking.split(
+            "for evader_index, evader in enumerate", 1
+        )[1].split("prefixes =", 1)[0]
+        self.assertIn("/avoidance_radar/scan", attacker_pipeline)
+        self.assertIn("/avoidance_tracks", attacker_pipeline)
+        self.assertNotIn("CooperativeFlightIntent", attacker_pipeline)
+        self.assertNotIn("cooperative/command", attacker_pipeline)
+        self.assertNotIn("target_assignment", attacker_pipeline)
+        self.assertNotIn("vehicle_role", attacker_pipeline)
+        self.assertNotIn("detection_id\"]", attacker_pipeline)
+
+    def test_truth_boundary_allows_only_sensor_simulators_and_referee(self) -> None:
+        boundary = GROUND_TRUTH_BOUNDARY.read_text(encoding="utf-8")
+        support = REFEREE_SUPPORT.read_text(encoding="utf-8")
+        self.assertIn("avoidance_radar_simulator_fqns", boundary)
+        self.assertIn("target_truth_subscribers.insert(", boundary)
+        self.assertIn("avoidance_radar_simulator_node_fqns", support)
 
     def test_assignment_drops_destroyed_and_capturing_interceptors(self) -> None:
         coordinator = ASSIGNMENT_COORDINATOR.read_text(encoding="utf-8")

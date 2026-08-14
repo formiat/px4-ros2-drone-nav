@@ -74,7 +74,7 @@ public:
 
 private:
   void onRadarScan(const msg::RadarScan& scan) {
-    if (scan.header.frame_id != expected_radar_frame_ || scan.detections.empty() ||
+    if (scan.header.frame_id != expected_radar_frame_ ||
         scan.cadence_mode > msg::RadarScan::CADENCE_MODE_TRACK) {
       RCLCPP_WARN(get_logger(),
                   "RADAR_TRACK rejected=true reason=invalid_scan frame='%s' "
@@ -173,9 +173,7 @@ private:
           static_cast<unsigned int>(pending_scan_->cadence_reason),
           estimate.velocity_correction_gain);
     }
-    if (!output.tracks.empty()) {
-      track_array_pub_->publish(output);
-    }
+    track_array_pub_->publish(output);
     last_scan_sequence_ = pending_scan_->scan_sequence;
     pending_scan_.reset();
   }

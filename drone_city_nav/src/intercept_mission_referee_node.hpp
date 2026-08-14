@@ -76,6 +76,8 @@ private:
 
   struct TargetRuntime {
     std::string id;
+    std::string avoidance_radar_simulator_fqn;
+    std::string avoidance_tracker_fqn;
     std::string state_topic;
     std::string truth_state_topic;
     Point3 goal{};

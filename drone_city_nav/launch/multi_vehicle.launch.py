@@ -662,6 +662,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     interceptor_speed_mps,
                     control_prefix,
                     shutdown_on_terminal_outcome,
+                    static_path,
                 )
             )
         diagnostics_components.extend(
@@ -789,6 +790,18 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 "radar_interval_step_correlation", default_value="0.85"
             ),
             DeclareLaunchArgument("radar_track_interval_s", default_value="0.05"),
+            DeclareLaunchArgument(
+                "noncooperative_radar_rate_hz", default_value="20.0"
+            ),
+            DeclareLaunchArgument(
+                "noncooperative_radar_maximum_range_m", default_value="100.0"
+            ),
+            DeclareLaunchArgument(
+                "noncooperative_radar_los_sample_spacing_m", default_value="0.25"
+            ),
+            DeclareLaunchArgument(
+                "noncooperative_track_maximum_age_s", default_value="0.75"
+            ),
             DeclareLaunchArgument("radar_random_seed", default_value="42"),
             DeclareLaunchArgument("evader_speed_scale", default_value="1.0"),
             DeclareLaunchArgument(

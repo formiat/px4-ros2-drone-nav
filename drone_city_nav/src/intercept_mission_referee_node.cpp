@@ -207,6 +207,8 @@ void InterceptMissionRefereeNode::configureTargets(
     }
     TargetRuntime& runtime = targets_[index];
     runtime.id = ids[index];
+    runtime.avoidance_radar_simulator_fqn = topics.avoidance_radar_simulator_fqn[index];
+    runtime.avoidance_tracker_fqn = topics.avoidance_tracker_fqn[index];
     runtime.state_topic = topics.navigation_state[index];
     runtime.truth_state_topic = topics.physical_truth_state[index];
     runtime.goal = goal;
@@ -254,6 +256,11 @@ void InterceptMissionRefereeNode::configureTargets(
 }
 
 void InterceptMissionRefereeNode::configureGroundTruthBoundary() {
+  std::vector<std::string> avoidance_radar_simulator_fqns;
+  avoidance_radar_simulator_fqns.reserve(targets_.size());
+  for (const TargetRuntime& target : targets_) {
+    avoidance_radar_simulator_fqns.push_back(target.avoidance_radar_simulator_fqn);
+  }
   std::vector<InterceptorTruthEndpoint> interceptor_endpoints;
   interceptor_endpoints.reserve(interceptors_.size());
   for (const InterceptorRuntime& interceptor : interceptors_) {
@@ -268,13 +275,15 @@ void InterceptMissionRefereeNode::configureGroundTruthBoundary() {
     target_endpoints.push_back(TargetTruthEndpoint{
         .navigation_topic = target.state_topic,
         .physical_truth_topic = target.truth_state_topic,
+        .own_radar_simulator_fqn = target.avoidance_radar_simulator_fqn,
+        .own_tracker_fqn = target.avoidance_tracker_fqn,
     });
   }
   ground_truth_boundary_ = makeInterceptGroundTruthBoundary(
       get_fully_qualified_name(),
       declare_parameter<std::string>("simulation_truth_adapter_node_fqn",
                                      "/simulation_truth_adapter_node"),
-      target_endpoints, interceptor_endpoints,
+      target_endpoints, interceptor_endpoints, avoidance_radar_simulator_fqns,
       declare_parameter<std::vector<std::string>>("target_navigation_observer_fqns",
                                                   std::vector<std::string>{}));
 }

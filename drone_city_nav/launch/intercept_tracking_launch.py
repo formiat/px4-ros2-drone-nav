@@ -76,7 +76,10 @@ def make_interceptor_tracking_pipeline(
     interceptor_speed_mps,
     control_prefix,
     settings,
+    physical_occupancy_3d_path,
 ):
+    if settings["noncooperative_radar_rate_hz"] <= 0.0:
+        raise RuntimeError("Non-cooperative radar rate must be positive")
     interceptor_ids = scenario["interceptor_ids"]
     target_truth_topics = [
         f"/simulation_truth/vehicles/{target['id']}/state"
@@ -143,12 +146,9 @@ def make_interceptor_tracking_pipeline(
                             "use_sim_time": True,
                             "ownship_state_topic": f"{prefix}/state",
                             "radar_scan_topic": f"{prefix}/radar/scan",
-                            "target_track_array_topic": (
-                                f"{prefix}/target_tracks"
-                            ),
+                            "target_track_array_topic": f"{prefix}/target_tracks",
                             "maximum_update_interval_s": (
-                                settings["radar_maximum_scan_interval_s"]
-                                + 1.0
+                                settings["radar_maximum_scan_interval_s"] + 1.0
                             ),
                             "high_rate_velocity_correction_gain": 1.0,
                         }
@@ -175,6 +175,75 @@ def make_interceptor_tracking_pipeline(
             ]
         )
 
+    vehicle_ids = list(roles)
+    for evader_index, evader in enumerate(scenario["evaders"]):
+        evader_id = evader["id"]
+        prefix = f"/vehicles/{evader_id}"
+        observed_vehicle_ids = [
+            vehicle_id for vehicle_id in vehicle_ids if vehicle_id != evader_id
+        ]
+        nodes.append(
+            Node(
+                package="drone_city_nav",
+                executable="radar_simulator_node",
+                namespace=f"vehicles/{evader_id}",
+                name="airborne_radar_simulator_node",
+                output="screen",
+                prefix=control_prefix,
+                parameters=[
+                    {
+                        "use_sim_time": True,
+                        "radar_navigation_state_topic": f"{prefix}/state",
+                        "radar_truth_state_topic": (
+                            f"/simulation_truth/vehicles/{evader_id}/state"
+                        ),
+                        "target_truth_state_topics": [
+                            f"/simulation_truth/vehicles/{vehicle_id}/state"
+                            for vehicle_id in observed_vehicle_ids
+                        ],
+                        "target_detection_ids": list(
+                            range(1, len(observed_vehicle_ids) + 1)
+                        ),
+                        "radar_scan_topic": f"{prefix}/avoidance_radar/scan",
+                        "fixed_track_mode": True,
+                        "track_interval_s": 1.0
+                        / settings["noncooperative_radar_rate_hz"],
+                        "maximum_detection_range_m": settings[
+                            "noncooperative_radar_maximum_range_m"
+                        ],
+                        "physical_los_required": True,
+                        "physical_occupancy_3d_path": physical_occupancy_3d_path,
+                        "los_sample_spacing_m": settings[
+                            "noncooperative_radar_los_sample_spacing_m"
+                        ],
+                        "random_seed": (
+                            settings["radar_random_seed"] + 1000 + evader_index
+                        ),
+                    }
+                ],
+            )
+        )
+        components.append(
+            ComposableNode(
+                package="drone_city_nav",
+                plugin="drone_city_nav::RadarTargetTrackerNode",
+                namespace=f"vehicles/{evader_id}",
+                name="avoidance_radar_target_tracker_node",
+                parameters=[
+                    {
+                        "use_sim_time": True,
+                        "ownship_state_topic": f"{prefix}/state",
+                        "radar_scan_topic": f"{prefix}/avoidance_radar/scan",
+                        "target_track_array_topic": f"{prefix}/avoidance_tracks",
+                        "maximum_update_interval_s": settings[
+                            "noncooperative_track_maximum_age_s"
+                        ],
+                        "high_rate_velocity_correction_gain": 1.0,
+                    }
+                ],
+                extra_arguments=[{"use_intra_process_comms": True}],
+            )
+        )
     prefixes = [f"/vehicles/{vehicle_id}" for vehicle_id in interceptor_ids]
     components.append(
         ComposableNode(
@@ -225,7 +294,9 @@ def make_interceptor_tracking_pipeline(
             prefix=control_prefix,
             parameters=[
                 {
-                    "thread_num": max(2, len(interceptor_ids) + 1),
+                    "thread_num": max(
+                        2, len(interceptor_ids) + len(scenario["evaders"]) + 1
+                    ),
                     "use_sim_time": True,
                 }
             ],

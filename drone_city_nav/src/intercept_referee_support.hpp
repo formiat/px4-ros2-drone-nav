@@ -34,6 +34,8 @@ struct TargetTopicConfig {
   std::vector<std::string> destroyed;
   std::vector<std::string> objective;
   std::vector<std::string> mission_start;
+  std::vector<std::string> avoidance_radar_simulator_fqn;
+  std::vector<std::string> avoidance_tracker_fqn;
 };
 
 [[nodiscard]] InterceptorTopicConfig
