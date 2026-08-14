@@ -43,6 +43,40 @@ enum class CooperativeManeuver : std::uint8_t {
   kSlow = 5,
 };
 
+enum class NonCooperativeManeuver : std::uint8_t {
+  kRouteCruise = 0,
+  kAway = 1,
+  kLeft = 2,
+  kRight = 3,
+  kClimb = 4,
+  kDescend = 5,
+  kBrake = 6,
+  kBackward = 7,
+};
+
+[[nodiscard]] inline const char*
+nonCooperativeManeuverName(const NonCooperativeManeuver maneuver) noexcept {
+  switch (maneuver) {
+    case NonCooperativeManeuver::kRouteCruise:
+      return "route_cruise";
+    case NonCooperativeManeuver::kAway:
+      return "away";
+    case NonCooperativeManeuver::kLeft:
+      return "left";
+    case NonCooperativeManeuver::kRight:
+      return "right";
+    case NonCooperativeManeuver::kClimb:
+      return "climb";
+    case NonCooperativeManeuver::kDescend:
+      return "descend";
+    case NonCooperativeManeuver::kBrake:
+      return "brake";
+    case NonCooperativeManeuver::kBackward:
+      return "backward";
+  }
+  return "unknown";
+}
+
 struct DynamicAircraftSample {
   float x{0.0F};
   float y{0.0F};
@@ -53,6 +87,15 @@ struct DynamicAircraftTrajectory {
   std::shared_ptr<const std::vector<DynamicAircraftSample>> samples;
   float footprint_radius_m{0.0F};
   std::size_t active_steps{0U};
+};
+
+struct DynamicAircraftCostPolicy {
+  float strong_separation_m{5.0F};
+  float anticipation_separation_m{5.0F};
+  float strong_weight{80.0F};
+  float anticipation_weight{0.0F};
+  float time_to_collision_gain_s{0.0F};
+  float maximum_time_to_collision_multiplier{1.0F};
 };
 
 struct CooperativeManeuverPreference {
@@ -69,11 +112,55 @@ struct CooperativeSeparationAcquisition {
   float minimum_separation_gain_m{0.05F};
 };
 
+struct NonCooperativeSeparationAcquisition {
+  float threat_direction_x{0.0F};
+  float threat_direction_y{0.0F};
+  float threat_direction_z{0.0F};
+  float candidate_acceleration_fraction{0.95F};
+  float candidate_duration_s{1.5F};
+  std::uint64_t generation{0U};
+};
+
 #if defined(__CUDACC__)
 #define DRONE_CITY_NAV_MPPI_HOST_DEVICE __host__ __device__
 #else
 #define DRONE_CITY_NAV_MPPI_HOST_DEVICE
 #endif
+
+struct DynamicAircraftCostContribution {
+  float strong{0.0F};
+  float anticipation{0.0F};
+};
+
+[[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline float
+mppiMaximum(const float first, const float second) noexcept {
+  return first > second ? first : second;
+}
+
+[[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline float
+mppiMinimum(const float first, const float second) noexcept {
+  return first < second ? first : second;
+}
+
+[[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline DynamicAircraftCostContribution
+dynamicAircraftCostContribution(const float separation_m, const float elapsed_s,
+                                const DynamicAircraftCostPolicy& policy) noexcept {
+  const float bounded_elapsed_s = mppiMaximum(0.05F, elapsed_s);
+  const float multiplier =
+      mppiMinimum(policy.maximum_time_to_collision_multiplier,
+                  1.0F + policy.time_to_collision_gain_s / bounded_elapsed_s);
+  const float strong_shortfall_m =
+      mppiMaximum(0.0F, policy.strong_separation_m - separation_m);
+  const float anticipation_shortfall_m =
+      mppiMaximum(0.0F, policy.anticipation_separation_m -
+                            mppiMaximum(separation_m, policy.strong_separation_m));
+  return DynamicAircraftCostContribution{
+      .strong =
+          multiplier * policy.strong_weight * strong_shortfall_m * strong_shortfall_m,
+      .anticipation = multiplier * policy.anticipation_weight *
+                      anticipation_shortfall_m * anticipation_shortfall_m,
+  };
+}
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline float
 clampMovingTargetAltitude(const float z_m, const float minimum_z_m,
@@ -122,6 +209,8 @@ struct CostBreakdown {
   float yaw_change{0.0F};
   float control_effort{0.0F};
   float peer_separation{0.0F};
+  float dynamic_aircraft_anticipation{0.0F};
+  float dynamic_aircraft_survival{0.0F};
   float maneuver_preference{0.0F};
   float terminal{0.0F};
 };

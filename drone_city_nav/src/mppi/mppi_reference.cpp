@@ -181,7 +181,8 @@ RolloutMetrics simulateReference(
     ReferenceSimulationTrace* const trace,
     const std::span<const DynamicAircraftTrajectory> dynamic_aircraft,
     const std::optional<CooperativeManeuverPreference> cooperative_maneuver,
-    const CooperativeConfig& cooperative) {
+    const CooperativeConfig& cooperative,
+    const std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy) {
   for (const DynamicAircraftTrajectory& aircraft : dynamic_aircraft) {
     if (!aircraft.samples || aircraft.samples->size() < nominal_controls.size() ||
         aircraft.active_steps == 0U ||
@@ -189,6 +190,21 @@ RolloutMetrics simulateReference(
         !(aircraft.footprint_radius_m >= 0.0F)) {
       throw std::invalid_argument{"invalid dynamic aircraft trajectory"};
     }
+  }
+  const DynamicAircraftCostPolicy aircraft_cost_policy =
+      dynamic_aircraft_cost_policy.value_or(DynamicAircraftCostPolicy{
+          .strong_separation_m = cooperative.desired_minimum_separation_m,
+          .anticipation_separation_m = cooperative.desired_minimum_separation_m,
+          .strong_weight = costs.peer_separation_weight,
+      });
+  if (!(aircraft_cost_policy.strong_separation_m > 0.0F) ||
+      aircraft_cost_policy.anticipation_separation_m <
+          aircraft_cost_policy.strong_separation_m ||
+      !(aircraft_cost_policy.strong_weight >= 0.0F) ||
+      !(aircraft_cost_policy.anticipation_weight >= 0.0F) ||
+      !(aircraft_cost_policy.time_to_collision_gain_s >= 0.0F) ||
+      aircraft_cost_policy.maximum_time_to_collision_multiplier < 1.0F) {
+    throw std::invalid_argument{"invalid dynamic aircraft cost policy"};
   }
   RolloutMetrics metrics{};
   metrics.minimum_clearance_m = std::numeric_limits<float>::infinity();
@@ -279,10 +295,21 @@ RolloutMetrics simulateReference(
       metrics.minimum_peer_separation_m =
           std::min(metrics.minimum_peer_separation_m, separation_m);
       const float desired_separation_m =
-          std::max(cooperative.desired_minimum_separation_m,
+          std::max(aircraft_cost_policy.strong_separation_m,
                    footprint.radius_m + aircraft.footprint_radius_m);
       const float shortfall_m = std::max(0.0F, desired_separation_m - separation_m);
       metrics.costs.peer_separation += squared(shortfall_m);
+      DynamicAircraftCostPolicy effective_policy = aircraft_cost_policy;
+      effective_policy.strong_separation_m = desired_separation_m;
+      effective_policy.anticipation_separation_m =
+          std::max(effective_policy.anticipation_separation_m, desired_separation_m);
+      const DynamicAircraftCostContribution contribution =
+          dynamicAircraftCostContribution(separation_m,
+                                          static_cast<float>(step + 1U) * dynamics.dt_s,
+                                          effective_policy);
+      metrics.costs.dynamic_aircraft_anticipation += contribution.anticipation;
+      metrics.costs.dynamic_aircraft_survival +=
+          contribution.strong + contribution.anticipation;
     }
     if (cooperative_maneuver.has_value() && step < cooperative_preference_steps) {
       metrics.costs.maneuver_preference +=
@@ -343,7 +370,7 @@ RolloutMetrics simulateReference(
       costs.jerk_weight * metrics.costs.jerk +
       costs.yaw_change_weight * metrics.costs.yaw_change +
       costs.control_effort_weight * dynamics.dt_s * metrics.costs.control_effort +
-      costs.peer_separation_weight * dynamics.dt_s * metrics.costs.peer_separation +
+      dynamics.dt_s * metrics.costs.dynamic_aircraft_survival +
       costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
           metrics.costs.maneuver_preference +
       costs.terminal_weight * metrics.costs.terminal;

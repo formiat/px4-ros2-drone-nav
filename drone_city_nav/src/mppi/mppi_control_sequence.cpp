@@ -320,6 +320,100 @@ std::vector<Control> buildCooperativeSeparationAcquisitionCandidates(
   return candidates;
 }
 
+std::vector<Control> buildNonCooperativeSeparationAcquisitionCandidates(
+    const State& initial, const State& target,
+    const std::span<const RouteSample3D> route, const float initial_route_station_m,
+    const float reference_speed_mps,
+    const NonCooperativeSeparationAcquisition& acquisition,
+    const DynamicsConfig& dynamics, const std::size_t steps,
+    const Control previous_applied_control, const float first_control_interval_s) {
+  if (steps == 0U || !(reference_speed_mps >= 0.0F) ||
+      !(acquisition.candidate_acceleration_fraction > 0.0F) ||
+      acquisition.candidate_acceleration_fraction > 1.0F ||
+      !(acquisition.candidate_duration_s > 0.0F)) {
+    throw std::invalid_argument{"invalid non-cooperative acquisition input"};
+  }
+  const RouteSample current_route = sampleRoute(route, initial_route_station_m, true);
+  const float target_dx = target.x - initial.x;
+  const float target_dy = target.y - initial.y;
+  const float target_distance_m = std::hypot(target_dx, target_dy);
+  float forward_x = 1.0F;
+  float forward_y = 0.0F;
+  if (current_route.valid) {
+    forward_x = current_route.tangent_x;
+    forward_y = current_route.tangent_y;
+  } else if (target_distance_m > 1.0e-3F) {
+    forward_x = target_dx / target_distance_m;
+    forward_y = target_dy / target_distance_m;
+  }
+  const float horizontal_acceleration = acquisition.candidate_acceleration_fraction *
+                                        dynamics.maximum_horizontal_acceleration_mps2;
+  const float vertical_acceleration = acquisition.candidate_acceleration_fraction *
+                                      dynamics.maximum_vertical_acceleration_mps2;
+  const float away_horizontal_norm =
+      std::hypot(acquisition.threat_direction_x, acquisition.threat_direction_y);
+  Control away;
+  if (away_horizontal_norm > 1.0e-5F) {
+    away.ax = -horizontal_acceleration * acquisition.threat_direction_x /
+              away_horizontal_norm;
+    away.ay = -horizontal_acceleration * acquisition.threat_direction_y /
+              away_horizontal_norm;
+  }
+  away.az = std::clamp(-vertical_acceleration * acquisition.threat_direction_z,
+                       -vertical_acceleration, vertical_acceleration);
+  const std::array biases{
+      Control{},
+      away,
+      Control{.ax = -forward_y * horizontal_acceleration,
+              .ay = forward_x * horizontal_acceleration},
+      Control{.ax = forward_y * horizontal_acceleration,
+              .ay = -forward_x * horizontal_acceleration},
+      Control{.az = vertical_acceleration},
+      Control{.az = -vertical_acceleration},
+      Control{.ax = -forward_x * horizontal_acceleration,
+              .ay = -forward_y * horizontal_acceleration},
+      Control{},
+  };
+  const std::size_t active_steps =
+      std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
+                                  acquisition.candidate_duration_s / dynamics.dt_s)),
+                              1U, steps);
+  const float reverse_distance_m = std::max(10.0F, 2.0F * reference_speed_mps);
+  const State reverse_target{.x = initial.x - reverse_distance_m * forward_x,
+                             .y = initial.y - reverse_distance_m * forward_y,
+                             .z = initial.z};
+  std::vector<Control> candidates(kNonCooperativeAcquisitionCandidateCount * steps);
+  for (std::size_t candidate_index = 0U;
+       candidate_index < kNonCooperativeAcquisitionCandidateCount; ++candidate_index) {
+    const NonCooperativeManeuver maneuver =
+        static_cast<NonCooperativeManeuver>(candidate_index);
+    std::vector<Control> candidate;
+    if (maneuver == NonCooperativeManeuver::kBackward) {
+      candidate = buildGuideDirectedNominalSeed(initial, reverse_target, {}, 0.0F,
+                                                reference_speed_mps, dynamics, steps,
+                                                previous_applied_control);
+    } else if (maneuver == NonCooperativeManeuver::kBrake) {
+      candidate = buildGuideDirectedNominalSeed(
+          initial, initial, {}, 0.0F, 0.0F, dynamics, steps, previous_applied_control);
+    } else {
+      candidate = buildRouteDirectedCruiseSeed(
+          initial, target, route, initial_route_station_m, reference_speed_mps,
+          dynamics, steps, previous_applied_control);
+    }
+    const Control bias = biases.at(candidate_index);
+    for (std::size_t step = 0U; step < active_steps; ++step) {
+      candidate[step].ax += bias.ax;
+      candidate[step].ay += bias.ay;
+      candidate[step].az += bias.az;
+    }
+    limitControlSequence(candidate, dynamics, previous_applied_control,
+                         first_control_interval_s);
+    std::ranges::copy(candidate, candidates.begin() + static_cast<std::ptrdiff_t>(
+                                                          candidate_index * steps));
+  }
+  return candidates;
+}
+
 std::vector<Control> buildCooperativeManeuverCandidates(
     const State& initial, const State& target, const std::span<const Control> nominal,
     const DynamicsConfig& dynamics, const CooperativeConfig& cooperative,

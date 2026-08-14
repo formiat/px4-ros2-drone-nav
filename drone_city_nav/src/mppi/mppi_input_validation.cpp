@@ -41,6 +41,26 @@ void validateMppiTickInput(const MppiTickInput& input, const std::size_t expecte
       throw std::invalid_argument{"invalid dynamic aircraft trajectory"};
     }
   }
+  if (input.cooperative_avoidance_active && input.noncooperative_avoidance_active) {
+    throw std::invalid_argument{
+        "cooperative and non-cooperative avoidance cannot be active together"};
+  }
+  if (input.dynamic_aircraft_cost_policy) {
+    const DynamicAircraftCostPolicy& policy = *input.dynamic_aircraft_cost_policy;
+    if (!std::isfinite(policy.strong_separation_m) ||
+        !(policy.strong_separation_m > 0.0F) ||
+        !std::isfinite(policy.anticipation_separation_m) ||
+        policy.anticipation_separation_m < policy.strong_separation_m ||
+        !std::isfinite(policy.strong_weight) || !(policy.strong_weight >= 0.0F) ||
+        !std::isfinite(policy.anticipation_weight) ||
+        !(policy.anticipation_weight >= 0.0F) ||
+        !std::isfinite(policy.time_to_collision_gain_s) ||
+        !(policy.time_to_collision_gain_s >= 0.0F) ||
+        !std::isfinite(policy.maximum_time_to_collision_multiplier) ||
+        policy.maximum_time_to_collision_multiplier < 1.0F) {
+      throw std::invalid_argument{"invalid dynamic aircraft cost policy"};
+    }
+  }
   const auto valid_preference = [](const CooperativeManeuverPreference& preference) {
     return std::isfinite(preference.direction_x) &&
            std::isfinite(preference.direction_y) &&
@@ -54,6 +74,20 @@ void validateMppiTickInput(const MppiTickInput& input, const std::size_t expecte
        !(input.cooperative_acquisition->minimum_positive_progress_m >= 0.0F) ||
        !(input.cooperative_acquisition->minimum_separation_gain_m >= 0.0F))) {
     throw std::invalid_argument{"invalid cooperative separation acquisition"};
+  }
+  if (input.noncooperative_acquisition) {
+    const NonCooperativeSeparationAcquisition& acquisition =
+        *input.noncooperative_acquisition;
+    if (!std::isfinite(acquisition.threat_direction_x) ||
+        !std::isfinite(acquisition.threat_direction_y) ||
+        !std::isfinite(acquisition.threat_direction_z) ||
+        !std::isfinite(acquisition.candidate_acceleration_fraction) ||
+        !(acquisition.candidate_acceleration_fraction > 0.0F) ||
+        acquisition.candidate_acceleration_fraction > 1.0F ||
+        !std::isfinite(acquisition.candidate_duration_s) ||
+        !(acquisition.candidate_duration_s > 0.0F)) {
+      throw std::invalid_argument{"invalid non-cooperative separation acquisition"};
+    }
   }
 }
 

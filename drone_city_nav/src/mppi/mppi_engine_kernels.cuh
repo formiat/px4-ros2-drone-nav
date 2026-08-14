@@ -341,8 +341,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          const DynamicAircraftSample* dynamic_aircraft_samples,
          const float* dynamic_aircraft_radii,
          const std::uint32_t* dynamic_aircraft_active_steps,
-         std::size_t dynamic_aircraft_count, CooperativeConfig cooperative,
-         Control cooperative_preferred_acceleration,
+         std::size_t dynamic_aircraft_count,
+         DynamicAircraftCostPolicy dynamic_aircraft_cost_policy,
+         CooperativeConfig cooperative, Control cooperative_preferred_acceleration,
          std::size_t cooperative_preference_steps, bool cooperative_preference_enabled,
          Control previous_applied_control, float first_control_interval_s,
          float reference_speed_mps, bool early_exit, const Control* direct_controls) {
@@ -359,7 +360,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float yaw_cost = 0.0F;
   float altitude_cost = 0.0F;
   float speed_tracking_cost = 0.0F;
-  float peer_separation_cost = 0.0F;
+  float dynamic_aircraft_survival_cost = 0.0F;
   float maneuver_preference_cost = 0.0F;
   float critical_m = 0.0F;
   float planning_m = 0.0F;
@@ -454,11 +455,18 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           dynamic_aircraft_samples[aircraft_index * steps + step];
       const float peer_separation_m = hypotf(
           hypotf(aircraft.x - state.x, aircraft.y - state.y), aircraft.z - state.z);
-      const float desired_separation_m =
-          fmaxf(cooperative.desired_minimum_separation_m,
+      DynamicAircraftCostPolicy effective_policy = dynamic_aircraft_cost_policy;
+      effective_policy.strong_separation_m =
+          fmaxf(effective_policy.strong_separation_m,
                 footprint.radius_m + dynamic_aircraft_radii[aircraft_index]);
-      const float shortfall_m = fmaxf(0.0F, desired_separation_m - peer_separation_m);
-      peer_separation_cost += shortfall_m * shortfall_m;
+      effective_policy.anticipation_separation_m =
+          fmaxf(effective_policy.anticipation_separation_m,
+                effective_policy.strong_separation_m);
+      const DynamicAircraftCostContribution contribution =
+          dynamicAircraftCostContribution(peer_separation_m,
+                                          static_cast<float>(step + 1U) * dynamics.dt_s,
+                                          effective_policy);
+      dynamic_aircraft_survival_cost += contribution.strong + contribution.anticipation;
     }
     if (cooperative_preference_enabled && step < cooperative_preference_steps) {
       const float preference_ax = control.ax - cooperative_preferred_acceleration.ax;
@@ -543,7 +551,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
       costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
       costs.jerk_weight * jerk_cost + costs.yaw_change_weight * yaw_cost +
-      costs.peer_separation_weight * dynamics.dt_s * peer_separation_cost +
+      dynamics.dt_s * dynamic_aircraft_survival_cost +
       costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
           maneuver_preference_cost +
       costs.planning_exposure_weight * planning_m +

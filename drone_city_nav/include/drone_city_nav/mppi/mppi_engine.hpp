@@ -68,12 +68,15 @@ struct MppiTickInput {
   std::optional<MovingTargetReference> moving_target;
   std::optional<RouteReference> route;
   std::vector<DynamicAircraftTrajectory> dynamic_aircraft;
+  std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy;
   std::optional<CooperativeManeuverPreference> cooperative_maneuver;
   std::optional<CooperativeSeparationAcquisition> cooperative_acquisition;
+  std::optional<NonCooperativeSeparationAcquisition> noncooperative_acquisition;
   std::optional<std::size_t> active_rollouts;
   DeterministicCandidateKind deterministic_candidate{
       DeterministicCandidateKind::kDisabled};
   bool cooperative_avoidance_active{false};
+  bool noncooperative_avoidance_active{false};
 };
 
 [[nodiscard]] inline std::size_t
@@ -140,6 +143,9 @@ struct MppiTickResult {
   float minimum_target_separation_m{0.0F};
   float minimum_peer_separation_m{0.0F};
   float peer_separation_cost{0.0F};
+  float dynamic_aircraft_anticipation_cost{0.0F};
+  float dynamic_aircraft_survival_cost{0.0F};
+  float dynamic_aircraft_survival_cost_ratio{0.0F};
   float predicted_capture_time_s{-1.0F};
   float maximum_acceleration_mps2{0.0F};
   float maximum_jerk_mps3{0.0F};
@@ -165,6 +171,16 @@ struct MppiTickResult {
   float cooperative_acquisition_terminal_progress_m{0.0F};
   float cooperative_acquisition_separation_gain_m{0.0F};
   bool cooperative_candidates_injected{false};
+  bool noncooperative_acquisition_reseeded{false};
+  bool noncooperative_release_reseeded{false};
+  bool noncooperative_acquisition_available{false};
+  std::size_t noncooperative_acquisition_candidate_index{0U};
+  NonCooperativeManeuver noncooperative_acquisition_maneuver{
+      NonCooperativeManeuver::kRouteCruise};
+  float noncooperative_acquisition_minimum_separation_m{0.0F};
+  float noncooperative_acquisition_separation_gain_m{0.0F};
+  float noncooperative_acquisition_head_progress_m{0.0F};
+  float noncooperative_acquisition_terminal_progress_m{0.0F};
   std::size_t dynamic_aircraft_count{0U};
   std::uint64_t esdf_revision{0U};
   std::size_t active_rollouts{0U};

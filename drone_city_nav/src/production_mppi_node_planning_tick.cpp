@@ -113,11 +113,14 @@ void ProductionMppiNode::planningTick() {
         .moving_target = std::nullopt,
         .route = std::nullopt,
         .dynamic_aircraft = {},
+        .dynamic_aircraft_cost_policy = std::nullopt,
         .cooperative_maneuver = std::nullopt,
         .cooperative_acquisition = std::nullopt,
+        .noncooperative_acquisition = std::nullopt,
         .active_rollouts = std::nullopt,
         .deterministic_candidate = mppi::DeterministicCandidateKind::kDisabled,
         .cooperative_avoidance_active = false,
+        .noncooperative_avoidance_active = false,
     };
     const MppiHorizonSafetyResult fallback =
         buildMppiBrakingFallback(input.initial_state, safety_config_);
@@ -625,11 +628,14 @@ void ProductionMppiNode::planningTick() {
                 }}
               : std::nullopt,
       .dynamic_aircraft = cooperative.mppi.dynamic_aircraft,
+      .dynamic_aircraft_cost_policy = std::nullopt,
       .cooperative_maneuver = cooperative.mppi.maneuver,
       .cooperative_acquisition = cooperative.mppi.acquisition,
+      .noncooperative_acquisition = std::nullopt,
       .active_rollouts = rollout_budget.active_rollouts,
       .deterministic_candidate = deterministic_candidate,
       .cooperative_avoidance_active = cooperative.mppi.avoidance_active,
+      .noncooperative_avoidance_active = false,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)

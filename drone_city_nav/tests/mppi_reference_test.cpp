@@ -268,6 +268,45 @@ TEST(MppiReferenceTest, PeerSeparationIsSoftAndTimeIndexed) {
   EXPECT_GT(near.soft_cost, far.soft_cost);
 }
 
+TEST(MppiReferenceTest, NonCooperativeSurvivalCostDominatesInsideTenMeters) {
+  constexpr int kWidth = 40;
+  constexpr int kHeight = 10;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 40.0F);
+  const std::array<Control, 4> controls{};
+  const std::array<Control, 4> noise{};
+  const auto samples_at = [](const float x_m) {
+    return std::make_shared<const std::vector<DynamicAircraftSample>>(
+        4U, DynamicAircraftSample{.x = x_m});
+  };
+  const std::array strong_aircraft{DynamicAircraftTrajectory{
+      .samples = samples_at(8.0F), .footprint_radius_m = 0.82F, .active_steps = 4U}};
+  const std::array anticipated_aircraft{DynamicAircraftTrajectory{
+      .samples = samples_at(15.0F), .footprint_radius_m = 0.82F, .active_steps = 4U}};
+  const DynamicAircraftCostPolicy policy{
+      .strong_separation_m = 10.0F,
+      .anticipation_separation_m = 20.0F,
+      .strong_weight = 4000.0F,
+      .anticipation_weight = 40.0F,
+      .time_to_collision_gain_s = 1.0F,
+      .maximum_time_to_collision_multiplier = 4.0F,
+  };
+
+  const RolloutMetrics strong = simulateReference(
+      State{}, controls, noise, DynamicsConfig{}, RiskConfig{}, CostConfig{}, grid,
+      esdf, 30.0F, 0.0F, false, Control{}, -1.0F, FootprintConfig{}, std::nullopt,
+      nullptr, strong_aircraft, std::nullopt, CooperativeConfig{}, policy);
+  const RolloutMetrics anticipated = simulateReference(
+      State{}, controls, noise, DynamicsConfig{}, RiskConfig{}, CostConfig{}, grid,
+      esdf, 30.0F, 0.0F, false, Control{}, -1.0F, FootprintConfig{}, std::nullopt,
+      nullptr, anticipated_aircraft, std::nullopt, CooperativeConfig{}, policy);
+
+  EXPECT_GT(strong.costs.dynamic_aircraft_survival,
+            anticipated.costs.dynamic_aircraft_survival * 10.0F);
+  EXPECT_GT(strong.soft_cost, anticipated.soft_cost * 10.0F);
+  EXPECT_GT(anticipated.costs.dynamic_aircraft_anticipation, 0.0F);
+}
+
 TEST(MppiReferenceTest, NoPeersAddsNoCooperativeCost) {
   const EsdfGrid grid{10, 10, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf(100U, 20.0F);

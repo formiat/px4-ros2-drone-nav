@@ -42,6 +42,8 @@ resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
     ReferenceSimulationTrace* trace = nullptr,
     std::span<const DynamicAircraftTrajectory> dynamic_aircraft = {},
     std::optional<CooperativeManeuverPreference> cooperative_maneuver = std::nullopt,
-    const CooperativeConfig& cooperative = {});
+    const CooperativeConfig& cooperative = {},
+    std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy =
+        std::nullopt);
 
 } // namespace drone_city_nav::mppi

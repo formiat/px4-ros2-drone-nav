@@ -279,6 +279,7 @@ TEST(MppiControlSequenceTest, CudaEngineEvaluatesCooperativePeers) {
       .direction_y = 1.0F,
       .generation = 1U,
   };
+  input.cooperative_avoidance_active = true;
 
   const MppiTickResult result = engine.plan(input);
 

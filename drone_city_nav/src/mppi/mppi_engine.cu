@@ -1,9 +1,10 @@
+#include "drone_city_nav/mppi/mppi_acquisition_diagnostics.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_input_validation.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
-#include "drone_city_nav/mppi/mppi_separation_acquisition.hpp"
+#include "drone_city_nav/mppi/mppi_separation_acquisition_coordinator.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
@@ -239,6 +240,13 @@ public:
     const MovingTargetReference moving_target =
         input.moving_target.value_or(MovingTargetReference{});
     const bool moving_target_enabled = input.moving_target.has_value();
+    const DynamicAircraftCostPolicy dynamic_aircraft_cost_policy =
+        input.dynamic_aircraft_cost_policy.value_or(DynamicAircraftCostPolicy{
+            .strong_separation_m = config_.cooperative.desired_minimum_separation_m,
+            .anticipation_separation_m =
+                config_.cooperative.desired_minimum_separation_m,
+            .strong_weight = config_.costs.peer_separation_weight,
+        });
     const bool external_nominal_reseeded =
         input.nominal_reseed_generation > nominal_reseed_generation_;
     if (external_nominal_reseeded) {
@@ -251,36 +259,30 @@ public:
     } else if (has_updated_) {
       nominal_ = shiftControlSequence(updated_, config_.dynamics.dt_s, elapsed_s);
     }
-    CooperativeSeparationAcquisitionLifecycleResult acquisition_lifecycle =
-        cooperative_acquisition_lifecycle_.update(
-            CooperativeSeparationAcquisitionLifecycleInput{
-                .avoidance_active = input.cooperative_avoidance_active,
-                .acquisition = input.cooperative_acquisition,
-                .evaluation =
-                    CooperativeSeparationAcquisitionEvaluationInput{
-                        .initial_state = input.initial_state,
-                        .target = input.target,
-                        .route = active_route,
-                        .initial_route_station_m =
-                            route_active ? input.route->initial_station_m : 0.0F,
-                        .reference_speed_mps =
-                            std::max(0.0F, input.reference_speed_mps),
-                        .previous_applied_control = previous_applied_control,
-                        .first_control_interval_s = first_control_interval_s,
-                        .grid = textures_[active_texture_].grid(),
-                        .esdf = activeEsdfHost(),
-                        .known_solids = known_solids_,
-                        .aircraft = input.dynamic_aircraft,
-                        .config = config_,
-                    },
-            });
+    SeparationAcquisitionCoordinatorResult acquisition_lifecycle =
+        acquisition_coordinator_.update(SeparationAcquisitionCoordinatorInput{
+            .cooperative_avoidance_active = input.cooperative_avoidance_active,
+            .noncooperative_avoidance_active = input.noncooperative_avoidance_active,
+            .cooperative_acquisition = input.cooperative_acquisition,
+            .noncooperative_acquisition = input.noncooperative_acquisition,
+            .initial_state = input.initial_state,
+            .target = input.target,
+            .route = active_route,
+            .initial_route_station_m =
+                route_active ? input.route->initial_station_m : 0.0F,
+            .reference_speed_mps = std::max(0.0F, input.reference_speed_mps),
+            .previous_applied_control = previous_applied_control,
+            .first_control_interval_s = first_control_interval_s,
+            .grid = textures_[active_texture_].grid(),
+            .esdf = activeEsdfHost(),
+            .known_solids = known_solids_,
+            .aircraft = input.dynamic_aircraft,
+            .dynamic_aircraft_cost_policy = dynamic_aircraft_cost_policy,
+            .config = config_,
+        });
     if (acquisition_lifecycle.nominal_reseed) {
       nominal_ = std::move(*acquisition_lifecycle.nominal_reseed);
     }
-    CooperativeSeparationAcquisitionResult acquisition =
-        std::move(acquisition_lifecycle.acquisition);
-    const bool acquisition_reseeded = acquisition_lifecycle.acquisition_reseeded;
-    const bool release_reseeded = acquisition_lifecycle.release_reseeded;
     if (route_active) {
       if (input.route->points->size() > kMaximumRoutePoints) {
         throw std::invalid_argument{"MPPI route exceeds device route capacity"};
@@ -330,7 +332,7 @@ public:
       }
     }
     const bool cooperative_avoidance_enabled =
-        !input.dynamic_aircraft.empty() &&
+        input.cooperative_avoidance_active && !input.dynamic_aircraft.empty() &&
         active_rollouts >= kCooperativeManeuverCandidateCount +
                                (deterministic_candidate_enabled ? 1U : 0U);
     const std::size_t cooperative_candidate_offset =
@@ -455,9 +457,10 @@ public:
         route_active ? input.route->initial_station_m : 0.0F,
         buffers_.dynamic_aircraft_samples.get(), buffers_.dynamic_aircraft_radii.get(),
         buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
-        config_.cooperative, cooperative_preferred_acceleration,
-        cooperative_preference_steps, input.cooperative_maneuver.has_value(),
-        previous_applied_control, first_control_interval_s, input.reference_speed_mps,
+        dynamic_aircraft_cost_policy, config_.cooperative,
+        cooperative_preferred_acceleration, cooperative_preference_steps,
+        input.cooperative_maneuver.has_value(), previous_applied_control,
+        first_control_interval_s, input.reference_speed_mps,
         config_.early_exit_on_collision, nullptr);
     simulation_done_.record(stream_);
     initializeReduction<<<1, 1, 0U, stream_>>>(
@@ -613,18 +616,9 @@ public:
         route_directed_candidate ? reacquisition_weight : 0.0F;
     result.route_directed_candidate_generation =
         route_directed_candidate ? input.route->generation : 0U;
-    result.cooperative_acquisition_reseeded = acquisition_reseeded;
-    result.cooperative_release_reseeded = release_reseeded;
-    result.cooperative_acquisition_available = acquisition.available;
-    result.cooperative_acquisition_positive_progress = acquisition.positive_progress;
-    result.cooperative_acquisition_backward_fallback = acquisition.backward_fallback;
-    result.cooperative_acquisition_candidate_index = acquisition.candidate_index;
-    result.cooperative_acquisition_head_progress_m = acquisition.head_progress_m;
-    result.cooperative_acquisition_terminal_progress_m =
-        acquisition.terminal_progress_m;
-    result.cooperative_acquisition_separation_gain_m = acquisition.separation_gain_m;
-    result.cooperative_candidates_injected = cooperative_avoidance_enabled;
-    result.dynamic_aircraft_count = dynamic_aircraft_count;
+    populateSeparationAcquisitionResult(result, acquisition_lifecycle,
+                                        cooperative_avoidance_enabled,
+                                        dynamic_aircraft_count);
     const auto evaluate_controls = [&](const std::span<const Control> controls) {
       EvaluatedControlSequence evaluation;
       evaluation.metrics = simulateReference(
@@ -633,7 +627,8 @@ public:
           input.target.x, input.target.y, config_.early_exit_on_collision,
           previous_applied_control, input.reference_speed_mps, config_.footprint,
           input.moving_target, &evaluation.trace, input.dynamic_aircraft,
-          input.cooperative_maneuver, config_.cooperative);
+          input.cooperative_maneuver, config_.cooperative,
+          dynamic_aircraft_cost_policy);
       evaluation.known_solid_collision = hostSweptSolidCollision(
           evaluation.trace.horizon, controls, config_.footprint, known_solids_);
       evaluation.classification = classifyMppiPostUpdate(
@@ -698,9 +693,10 @@ public:
           buffers_.dynamic_aircraft_samples.get(),
           buffers_.dynamic_aircraft_radii.get(),
           buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
-          config_.cooperative, cooperative_preferred_acceleration,
-          cooperative_preference_steps, input.cooperative_maneuver.has_value(),
-          previous_applied_control, first_control_interval_s, input.reference_speed_mps,
+          dynamic_aircraft_cost_policy, config_.cooperative,
+          cooperative_preferred_acceleration, cooperative_preference_steps,
+          input.cooperative_maneuver.has_value(), previous_applied_control,
+          first_control_interval_s, input.reference_speed_mps,
           config_.early_exit_on_collision, buffers_.repair_candidates.get());
       checkCuda(cudaMemcpyAsync(
                     repair_critical_exposure_.data(), buffers_.critical_exposure.get(),
@@ -773,7 +769,11 @@ public:
     result.controls = updated_;
     result.warm_start_shift_s = elapsed_s;
     result.nominal_reseeded =
-        external_nominal_reseeded || acquisition_reseeded || release_reseeded;
+        external_nominal_reseeded ||
+        acquisition_lifecycle.cooperative_acquisition_reseeded ||
+        acquisition_lifecycle.cooperative_release_reseeded ||
+        acquisition_lifecycle.noncooperative_acquisition_reseeded ||
+        acquisition_lifecycle.noncooperative_release_reseeded;
     result.esdf_revision = textures_[active_texture_].revision();
     result.active_rollouts = active_rollouts;
     result.timings.warm_start_ms = elapsedMs(started_, warm_done_);
@@ -810,6 +810,14 @@ public:
     result.minimum_target_separation_m = metrics.minimum_target_separation_m;
     result.minimum_peer_separation_m = metrics.minimum_peer_separation_m;
     result.peer_separation_cost = metrics.costs.peer_separation;
+    result.dynamic_aircraft_anticipation_cost =
+        config_.dynamics.dt_s * metrics.costs.dynamic_aircraft_anticipation;
+    result.dynamic_aircraft_survival_cost =
+        config_.dynamics.dt_s * metrics.costs.dynamic_aircraft_survival;
+    const float non_survival_cost =
+        std::abs(metrics.soft_cost - result.dynamic_aircraft_survival_cost);
+    result.dynamic_aircraft_survival_cost_ratio =
+        result.dynamic_aircraft_survival_cost / std::max(1.0e-3F, non_survival_cost);
     result.predicted_capture_time_s = metrics.predicted_capture_time_s;
     result.selected_tier =
         result.known_solid_collision ? RiskTier::kCollision : metrics.worst_tier;
@@ -932,7 +940,7 @@ private:
   std::optional<Control> last_output_control_;
   std::int64_t last_planning_stamp_ns_{0};
   std::uint64_t nominal_reseed_generation_{0U};
-  CooperativeSeparationAcquisitionLifecycle cooperative_acquisition_lifecycle_;
+  SeparationAcquisitionCoordinator acquisition_coordinator_;
   bool has_updated_{false};
   std::uint64_t tick_sequence_{0U};
   cudaStream_t stream_{nullptr};

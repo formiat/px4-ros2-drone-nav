@@ -93,12 +93,15 @@ endfunction()
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
     drone_city_nav_mppi_cuda
+    src/mppi/mppi_acquisition_diagnostics.cpp
     src/mppi/mppi_engine.cu
     src/mppi/mppi_control_sequence.cpp
     src/mppi/mppi_input_validation.cpp
+    src/mppi/mppi_noncooperative_acquisition.cpp
     src/mppi/mppi_reference.cpp)
   target_sources(drone_city_nav_mppi_cuda PRIVATE
-                 src/mppi/mppi_separation_acquisition.cpp)
+                 src/mppi/mppi_separation_acquisition.cpp
+                 src/mppi/mppi_separation_acquisition_coordinator.cpp)
   target_compile_features(drone_city_nav_mppi_cuda PUBLIC cxx_std_20)
   set_target_properties(
     drone_city_nav_mppi_cuda
@@ -218,6 +221,7 @@ add_library(
   src/mppi_rollout_budget.cpp
   src/mppi_speed_policy.cpp
   src/navigation_state_prediction.cpp
+  src/noncooperative_collision_avoidance.cpp
   src/no_static_route_cycle.cpp
   src/passage_volume.cpp
   src/navigation_pose.cpp
@@ -609,6 +613,12 @@ if(BUILD_TESTING)
   target_link_libraries(direct_tracking_maneuver_lifecycle_test drone_city_nav_core)
   enable_project_warnings(direct_tracking_maneuver_lifecycle_test)
 
+  ament_add_gtest(noncooperative_collision_avoidance_test
+                  tests/noncooperative_collision_avoidance_test.cpp)
+  target_compile_features(noncooperative_collision_avoidance_test PRIVATE cxx_std_20)
+  target_link_libraries(noncooperative_collision_avoidance_test drone_city_nav_core)
+  enable_project_warnings(noncooperative_collision_avoidance_test)
+
   ament_add_gtest(tracking_objective_test tests/tracking_objective_test.cpp)
   target_compile_features(tracking_objective_test PRIVATE cxx_std_20)
   target_link_libraries(tracking_objective_test drone_city_nav_core)
@@ -750,6 +760,13 @@ if(BUILD_TESTING)
     target_link_libraries(mppi_control_sequence_test_current
                           drone_city_nav_mppi_cuda)
     enable_project_warnings(mppi_control_sequence_test_current)
+
+    ament_add_gtest(mppi_noncooperative_acquisition_test
+                    tests/mppi_noncooperative_acquisition_test.cpp)
+    target_compile_features(mppi_noncooperative_acquisition_test PRIVATE cxx_std_20)
+    target_link_libraries(mppi_noncooperative_acquisition_test
+                          drone_city_nav_mppi_cuda)
+    enable_project_warnings(mppi_noncooperative_acquisition_test)
   endif()
 
   ament_add_gtest(risk_aware_lattice_test
