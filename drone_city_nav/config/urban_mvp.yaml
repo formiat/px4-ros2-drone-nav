@@ -226,11 +226,13 @@ production_mppi_node:
     applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     diagnostics_output_dir: log/mppi
     execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
-    safety_reaction_latency_s: 0.10
+    safety_reaction_latency_s: 0.25
     safety_maximum_braking_acceleration_mps2: 8.0
+    safety_guaranteed_braking_deceleration_mps2: 3.0
     safety_minimum_time_to_collision_s: 0.50
     safety_swept_validation_step_m: 0.25
     safety_position_hold_capture_speed_mps: 0.20
+    safety_braking_release_safe_observations: 5
     static_safety_fallback_duration_s: 3.0
     no_static_safety_fallback_duration_s: 3.0
     liveness_enabled: true

@@ -257,8 +257,11 @@ class InterceptRadarContractTest(unittest.TestCase):
         execution = EXECUTION.read_text(encoding="utf-8")
 
         active_guard = planning_tick.split(
-            "if (noncooperative.avoidance.active)", 1
+            "if (noncooperative.enabled && "
+            "noncooperative.avoidance.fresh_track_count > 0U)",
+            1,
         )[1].split("const EsdfQueryResult", 1)[0]
+        self.assertIn("fresh_track_count > 0U", planning_tick)
         self.assertIn("maximum_eligible_risk_tier_", active_guard)
         self.assertIn("std::min", active_guard)
         self.assertIn("route_required_risk_tier", active_guard)

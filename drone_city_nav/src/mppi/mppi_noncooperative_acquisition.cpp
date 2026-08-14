@@ -23,7 +23,20 @@ struct CandidateEvaluation {
   float head_progress_m{0.0F};
   float terminal_progress_m{0.0F};
   bool raw_safe{false};
+  bool preserves_required_separation{false};
+  bool positive_progress{false};
+  bool backward_candidate{false};
 };
+
+[[nodiscard]] float
+requiredSeparation(const NonCooperativeAcquisitionEvaluationInput& input) noexcept {
+  float required_m = input.cost_policy.strong_separation_m;
+  for (const DynamicAircraftTrajectory& aircraft : input.aircraft) {
+    required_m = std::max(required_m, input.config.footprint.radius_m +
+                                          aircraft.footprint_radius_m);
+  }
+  return required_m;
+}
 
 [[nodiscard]] std::pair<float, float>
 routeDirection(const NonCooperativeAcquisitionEvaluationInput& input) noexcept {
@@ -50,7 +63,8 @@ routeDirection(const NonCooperativeAcquisitionEvaluationInput& input) noexcept {
 evaluateCandidate(const NonCooperativeAcquisitionEvaluationInput& input,
                   const std::span<const Control> controls, const std::size_t index,
                   const std::pair<float, float> direction,
-                  const std::span<const Control> zero_noise) {
+                  const std::span<const Control> zero_noise,
+                  const float required_separation_m) {
   ReferenceSimulationTrace trace;
   const RolloutMetrics metrics = simulateReference(
       input.initial_state, controls, zero_noise, input.config.dynamics,
@@ -69,17 +83,45 @@ evaluateCandidate(const NonCooperativeAcquisitionEvaluationInput& input,
     return (state.x - input.initial_state.x) * direction.first +
            (state.y - input.initial_state.y) * direction.second;
   };
+  const float head_progress_m = progress(trace.horizon[head_step]);
+  const float terminal_progress_m = progress(trace.horizon.back());
+  const bool backward_candidate =
+      index == static_cast<std::size_t>(NonCooperativeManeuver::kBackward);
   return CandidateEvaluation{
       .index = index,
       .minimum_separation_m = metrics.minimum_peer_separation_m,
-      .head_progress_m = progress(trace.horizon[head_step]),
-      .terminal_progress_m = progress(trace.horizon.back()),
+      .head_progress_m = head_progress_m,
+      .terminal_progress_m = terminal_progress_m,
       .raw_safe = !metrics.collision && !solid_collision,
+      .preserves_required_separation =
+          metrics.minimum_peer_separation_m >= required_separation_m,
+      .positive_progress =
+          !backward_candidate && head_progress_m >= 0.0F && terminal_progress_m >= 0.0F,
+      .backward_candidate = backward_candidate,
   };
 }
 
-[[nodiscard]] bool betterCandidate(const CandidateEvaluation& candidate,
-                                   const CandidateEvaluation& selected) noexcept {
+[[nodiscard]] bool
+betterPositiveProgress(const CandidateEvaluation& candidate,
+                       const CandidateEvaluation& selected) noexcept {
+  return std::tie(candidate.head_progress_m, candidate.terminal_progress_m,
+                  candidate.minimum_separation_m) >
+         std::tie(selected.head_progress_m, selected.terminal_progress_m,
+                  selected.minimum_separation_m);
+}
+
+[[nodiscard]] bool
+betterProgressFallback(const CandidateEvaluation& candidate,
+                       const CandidateEvaluation& selected) noexcept {
+  return std::tie(candidate.terminal_progress_m, candidate.head_progress_m,
+                  candidate.minimum_separation_m) >
+         std::tie(selected.terminal_progress_m, selected.head_progress_m,
+                  selected.minimum_separation_m);
+}
+
+[[nodiscard]] bool
+betterSurvivalFallback(const CandidateEvaluation& candidate,
+                       const CandidateEvaluation& selected) noexcept {
   return std::tie(candidate.minimum_separation_m, candidate.head_progress_m,
                   candidate.terminal_progress_m) >
          std::tie(selected.minimum_separation_m, selected.head_progress_m,
@@ -102,21 +144,55 @@ NonCooperativeAcquisitionResult evaluateNonCooperativeAcquisition(
           input.first_control_interval_s);
   const std::vector<Control> zero_noise(input.config.steps);
   const std::pair<float, float> direction = routeDirection(input);
+  const float required_separation_m = requiredSeparation(input);
   std::optional<CandidateEvaluation> baseline;
-  std::optional<CandidateEvaluation> selected;
+  std::optional<CandidateEvaluation> positive_progress;
+  std::optional<CandidateEvaluation> non_backward_fallback;
+  std::optional<CandidateEvaluation> preserving_fallback;
+  std::optional<CandidateEvaluation> survival_fallback;
   for (std::size_t index = 0U; index < kNonCooperativeAcquisitionCandidateCount;
        ++index) {
     const std::span<const Control> controls =
         std::span<const Control>{candidates}.subspan(index * input.config.steps,
                                                      input.config.steps);
-    const CandidateEvaluation evaluation =
-        evaluateCandidate(input, controls, index, direction, zero_noise);
+    const CandidateEvaluation evaluation = evaluateCandidate(
+        input, controls, index, direction, zero_noise, required_separation_m);
     if (index == static_cast<std::size_t>(NonCooperativeManeuver::kRouteCruise)) {
       baseline = evaluation;
     }
-    if (evaluation.raw_safe && (!selected || betterCandidate(evaluation, *selected))) {
-      selected = evaluation;
+    if (!evaluation.raw_safe) {
+      continue;
     }
+    if (!survival_fallback || betterSurvivalFallback(evaluation, *survival_fallback)) {
+      survival_fallback = evaluation;
+    }
+    if (!evaluation.preserves_required_separation) {
+      continue;
+    }
+    if (!preserving_fallback ||
+        betterProgressFallback(evaluation, *preserving_fallback)) {
+      preserving_fallback = evaluation;
+    }
+    if (!evaluation.backward_candidate &&
+        (!non_backward_fallback ||
+         betterProgressFallback(evaluation, *non_backward_fallback))) {
+      non_backward_fallback = evaluation;
+    }
+    if (evaluation.positive_progress &&
+        (!positive_progress ||
+         betterPositiveProgress(evaluation, *positive_progress))) {
+      positive_progress = evaluation;
+    }
+  }
+  std::optional<CandidateEvaluation> selected = positive_progress;
+  if (!selected) {
+    selected = non_backward_fallback;
+  }
+  if (!selected) {
+    selected = preserving_fallback;
+  }
+  if (!selected) {
+    selected = survival_fallback;
   }
   if (!selected) {
     return result;

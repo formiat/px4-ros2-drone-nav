@@ -567,6 +567,13 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   safety_config_.maximum_braking_acceleration_mps2 = std::min(
       declare_parameter<double>("safety_maximum_braking_acceleration_mps2", 8.0),
       static_cast<double>(mppi_config_.dynamics.maximum_horizontal_acceleration_mps2));
+  safety_config_.guaranteed_braking_deceleration_mps2 =
+      declare_parameter<double>("safety_guaranteed_braking_deceleration_mps2", 3.0);
+  if (!(safety_config_.guaranteed_braking_deceleration_mps2 > 0.0) ||
+      safety_config_.guaranteed_braking_deceleration_mps2 >
+          safety_config_.maximum_braking_acceleration_mps2) {
+    throw std::invalid_argument{"invalid guaranteed braking deceleration"};
+  }
   safety_config_.minimum_time_to_collision_s =
       declare_parameter<double>("safety_minimum_time_to_collision_s", 0.50);
   safety_config_.swept_validation_step_m =
@@ -604,6 +611,13 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   configureNonCooperativeAvoidance();
   safety_config_.position_hold_capture_speed_mps =
       declare_parameter<double>("safety_position_hold_capture_speed_mps", 0.20);
+  const std::int64_t braking_release_safe_observations =
+      declare_parameter<std::int64_t>("safety_braking_release_safe_observations", 5);
+  if (braking_release_safe_observations <= 0) {
+    throw std::invalid_argument{"invalid braking release observation count"};
+  }
+  safety_config_.braking_release_safe_observations =
+      static_cast<std::size_t>(braking_release_safe_observations);
   const double static_safety_fallback_duration_s =
       declare_parameter<double>("static_safety_fallback_duration_s", 3.0);
   const double no_static_safety_fallback_duration_s =
@@ -614,7 +628,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   const double minimum_fallback_duration_s =
       safety_config_.reaction_latency_s +
       speed_policy_config_.absolute_speed_limit_mps /
-          std::max(1.0e-3, safety_config_.maximum_braking_acceleration_mps2) +
+          safety_config_.guaranteed_braking_deceleration_mps2 +
       mppi_config_.dynamics.dt_s;
   safety_config_.fallback_duration_s =
       std::max(configured_fallback_duration_s, minimum_fallback_duration_s);
@@ -662,6 +676,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       safety_config_.physical_footprint_radial_rings == 0U ||
       safety_config_.physical_footprint_axial_samples < 2U ||
       !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
+      safety_config_.braking_release_safe_observations == 0U ||
       !(frontier_blacklist_ttl_s_ > 0.0) || !(no_static_soft_tabu_penalty_ >= 0.0) ||
       !(no_static_soft_tabu_sample_spacing_m_ > 0.0) ||
       !(no_static_adaptive_reachable_depth_m_ > 0.0) ||

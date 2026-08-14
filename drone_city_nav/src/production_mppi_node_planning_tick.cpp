@@ -205,7 +205,7 @@ void ProductionMppiNode::planningTick() {
       !route_objective_matches) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "TRACKING_ROUTE_HANDOFF status=waiting_for_current_route "
+        "ROUTE_HANDOFF status=waiting_for_current_route continuous_tracking=true "
         "current_epoch=%" PRIu64 " current_sample=%" PRIu64 " required_sample=%" PRIu64
         " route_epoch=%" PRIu64 " route_sample=%" PRIu64,
         objective->mission_epoch, objective->sample_sequence, required_route_sample,
@@ -213,6 +213,7 @@ void ProductionMppiNode::planningTick() {
   }
   bool route_usable = !direct_tracking_interception && route_objective_matches;
   bool route_cross_track_rejected = false;
+  bool route_projection_rejected = false;
   const std::span<const Point2> guide =
       route_usable && esdf->route_2d_projection
           ? std::span<const Point2>{*esdf->route_2d_projection}
@@ -252,14 +253,29 @@ void ProductionMppiNode::planningTick() {
     route_cross_track_rejected = true;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "TRACKING_ROUTE_HANDOFF status=rejected_cross_track "
+        "ROUTE_HANDOFF status=rejected_cross_track continuous_tracking=%s "
         "route_generation=%" PRIu64 " cross_track_m=%.2f maximum_m=%.2f",
+        objective && objective->continuous_tracking ? "true" : "false",
         esdf->global_guide_generation, measured_route_projection.cross_track_m,
         active_guide_config_.maximum_cross_track_m);
     requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged,
                         esdf->global_guide_generation);
     measured_route_projection = {};
   }
+  if (route_usable && !measured_route_projection.valid) {
+    route_usable = false;
+    route_projection_rejected = true;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "ROUTE_HANDOFF status=rejected_projection continuous_tracking=%s "
+        "route_generation=%" PRIu64,
+        objective && objective->continuous_tracking ? "true" : "false",
+        esdf->global_guide_generation);
+    requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged,
+                        esdf->global_guide_generation);
+  }
+  const bool route_execution_blocked =
+      !direct_tracking_interception && objective && !route_usable;
   GlobalGuideProjection route_projection = measured_route_projection;
   if (route_projection.valid) {
     route_projection.station_m = tracked_route_station_m_;
@@ -351,10 +367,21 @@ void ProductionMppiNode::planningTick() {
                             tracking_objective->predicted_intercept_path_clear
                         ? "tracking_direct_full_prediction"
                         : "tracking_direct_shortened_prediction";
-  } else if (!route_usable && objective && objective->continuous_tracking) {
+  } else if (route_execution_blocked) {
     target = navigation.state;
-    target_source = route_cross_track_rejected ? "tracking_route_cross_track_rejected"
-                                               : "tracking_route_objective_mismatch";
+    if (route_cross_track_rejected) {
+      target_source = objective->continuous_tracking
+                          ? "tracking_route_cross_track_rejected"
+                          : "route_cross_track_rejected";
+    } else if (route_projection_rejected) {
+      target_source = objective->continuous_tracking
+                          ? "tracking_route_projection_rejected"
+                          : "route_projection_rejected";
+    } else {
+      target_source = objective->continuous_tracking
+                          ? "tracking_route_objective_mismatch"
+                          : "route_objective_mismatch";
+    }
   } else {
     target =
         selectTarget(*esdf, tracked_route_station_m_, speed_policy.target_lookahead_m,
@@ -417,9 +444,7 @@ void ProductionMppiNode::planningTick() {
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "cooperative_channel_yield_hold";
-  } else if (target_source == "mission_goal_direct" ||
-             target_source == "tracking_route_objective_mismatch" ||
-             target_source == "tracking_route_cross_track_rejected") {
+  } else if (target_source == "mission_goal_direct" || route_execution_blocked) {
     planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
     target = navigation.state;
     speed_policy.reference_speed_mps = 0.0;
@@ -577,7 +602,9 @@ void ProductionMppiNode::planningTick() {
             })
             .maximum_eligible_tier;
   }
-  if (noncooperative.avoidance.active) {
+  // Evasive cost may redirect the vehicle, but it cannot spend more obstacle risk
+  // than the currently executable route requires.
+  if (noncooperative.enabled && noncooperative.avoidance.fresh_track_count > 0U) {
     maximum_eligible_risk_tier_ = static_cast<mppi::RiskTier>(
         std::min(static_cast<std::uint8_t>(maximum_eligible_risk_tier_),
                  static_cast<std::uint8_t>(route_required_risk_tier)));

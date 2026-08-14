@@ -165,7 +165,34 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                                result.post_update_classification.classification),
                            mppi::mppiPostUpdateRepairName(result.post_update_repair));
     }
-    intervention = safety_intervention_tracker_.update(now_ns, safety);
+    const double current_speed_mps =
+        std::hypot(std::hypot(input.initial_state.vx, input.initial_state.vy),
+                   input.initial_state.vz);
+    intervention =
+        safety_intervention_tracker_.update(MppiSafetyInterventionObservation{
+            .now_ns = now_ns,
+            .decision = safety.decision,
+            .latest_safe_intervention_time_s = safety.latest_safe_intervention_time_s,
+            .current_speed_mps = current_speed_mps,
+            .release_speed_mps = safety_config_.position_hold_capture_speed_mps,
+            .required_safe_release_observations =
+                safety_config_.braking_release_safe_observations,
+            .persistent_braking_required = safety.raw_stopping_path_collision ||
+                                           safety.latest_lidar_stopping_path_collision,
+        });
+    if (intervention.latch_entered) {
+      RCLCPP_WARN(get_logger(),
+                  "SAFETY_BRAKING_LATCH state=entered speed_mps=%.3f "
+                  "raw_stopping_collision=%s lidar_stopping_collision=%s",
+                  current_speed_mps,
+                  safety.raw_stopping_path_collision ? "true" : "false",
+                  safety.latest_lidar_stopping_path_collision ? "true" : "false");
+    } else if (intervention.latch_released) {
+      RCLCPP_INFO(get_logger(),
+                  "SAFETY_BRAKING_LATCH state=released speed_mps=%.3f "
+                  "safe_observations=%zu",
+                  current_speed_mps, intervention.safe_release_observations);
+    }
     if (safety.global_raw_fallback_samples > 0U) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                            "STATIC_SAFETY_GLOBAL_RAW_FALLBACK samples=%zu collision=%s",
@@ -179,6 +206,17 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           safety.global_raw_validation_samples,
           safety.global_raw_collision ? "true" : "false",
           latest_raw_world ? latest_raw_world->revision : 0U);
+    }
+    if (safety.raw_stopping_path_collision) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "RAW_STOPPING_SAFETY collision=true speed_mps=%.3f "
+          "stopping_distance_m=%.3f time_to_collision_s=%.3f "
+          "validation_samples=%zu footprint_checks=%zu action=brake",
+          std::hypot(std::hypot(input.initial_state.vx, input.initial_state.vy),
+                     input.initial_state.vz),
+          safety.stopping_distance_m, safety.raw_stopping_time_to_collision_s,
+          safety.raw_stopping_validation_samples, safety.raw_stopping_footprint_checks);
     }
     if (latest_lidar_safety_fresh) {
       RCLCPP_INFO_THROTTLE(

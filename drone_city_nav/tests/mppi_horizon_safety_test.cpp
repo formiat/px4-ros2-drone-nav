@@ -63,22 +63,90 @@ TEST(MppiHorizonSafetyTest, DelaysInterventionForDistantCollision) {
 
 TEST(MppiHorizonSafetyTest, KeepsEarliestInterventionDeadlineAcrossTicks) {
   MppiSafetyInterventionTracker tracker;
-  MppiHorizonSafetyResult first;
-  first.decision = MppiHorizonSafetyDecision::kExecuteUntilDeadline;
-  first.latest_safe_intervention_time_s = 1.0;
-  const MppiSafetyInterventionUpdate first_update =
-      tracker.update(1'000'000'000, first);
+  const MppiSafetyInterventionObservation first{
+      .now_ns = 1'000'000'000,
+      .decision = MppiHorizonSafetyDecision::kExecuteUntilDeadline,
+      .latest_safe_intervention_time_s = 1.0,
+      .current_speed_mps = 2.0,
+  };
+  const MppiSafetyInterventionUpdate first_update = tracker.update(first);
 
-  MppiHorizonSafetyResult later = first;
+  MppiSafetyInterventionObservation later = first;
+  later.now_ns = 1'500'000'000;
   later.latest_safe_intervention_time_s = 2.0;
-  const MppiSafetyInterventionUpdate later_update =
-      tracker.update(1'500'000'000, later);
-  const MppiSafetyInterventionUpdate expired = tracker.update(2'000'000'000, later);
+  const MppiSafetyInterventionUpdate later_update = tracker.update(later);
+  later.now_ns = 2'000'000'000;
+  const MppiSafetyInterventionUpdate expired = tracker.update(later);
 
   ASSERT_TRUE(first_update.deadline_ns.has_value());
   EXPECT_EQ(later_update.deadline_ns, first_update.deadline_ns);
   EXPECT_EQ(later_update.decision, MppiHorizonSafetyDecision::kExecuteUntilDeadline);
   EXPECT_EQ(expired.decision, MppiHorizonSafetyDecision::kBrake);
+  EXPECT_FALSE(expired.braking_latched);
+  EXPECT_FALSE(expired.latch_entered);
+}
+
+TEST(MppiHorizonSafetyTest, LatchesEmergencyBrakingUntilStoppedAndPersistentlySafe) {
+  MppiSafetyInterventionTracker tracker;
+  MppiSafetyInterventionObservation observation{
+      .now_ns = 1'000'000'000,
+      .decision = MppiHorizonSafetyDecision::kBrake,
+      .current_speed_mps = 8.0,
+      .release_speed_mps = 0.2,
+      .required_safe_release_observations = 3U,
+      .persistent_braking_required = true,
+  };
+
+  const MppiSafetyInterventionUpdate entered = tracker.update(observation);
+  EXPECT_EQ(entered.decision, MppiHorizonSafetyDecision::kBrake);
+  EXPECT_TRUE(entered.braking_latched);
+  EXPECT_TRUE(entered.latch_entered);
+
+  observation.now_ns += 20'000'000;
+  observation.decision = MppiHorizonSafetyDecision::kExecute;
+  observation.current_speed_mps = 2.0;
+  const MppiSafetyInterventionUpdate still_moving = tracker.update(observation);
+  EXPECT_EQ(still_moving.decision, MppiHorizonSafetyDecision::kBrake);
+  EXPECT_EQ(still_moving.safe_release_observations, 0U);
+
+  observation.current_speed_mps = 0.1;
+  observation.now_ns += 20'000'000;
+  const MppiSafetyInterventionUpdate first_safe = tracker.update(observation);
+  observation.now_ns += 20'000'000;
+  const MppiSafetyInterventionUpdate second_safe = tracker.update(observation);
+  observation.now_ns += 20'000'000;
+  const MppiSafetyInterventionUpdate released = tracker.update(observation);
+
+  EXPECT_EQ(first_safe.decision, MppiHorizonSafetyDecision::kBrake);
+  EXPECT_EQ(first_safe.safe_release_observations, 1U);
+  EXPECT_EQ(second_safe.safe_release_observations, 2U);
+  EXPECT_EQ(released.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_TRUE(released.latch_released);
+  EXPECT_FALSE(released.braking_latched);
+  EXPECT_EQ(released.safe_release_observations, 3U);
+}
+
+TEST(MppiHorizonSafetyTest, DoesNotLatchTransientCandidateHorizonBrake) {
+  MppiSafetyInterventionTracker tracker;
+  const MppiSafetyInterventionUpdate braking =
+      tracker.update(MppiSafetyInterventionObservation{
+          .now_ns = 1'000'000'000,
+          .decision = MppiHorizonSafetyDecision::kBrake,
+          .current_speed_mps = 8.0,
+          .persistent_braking_required = false,
+      });
+  const MppiSafetyInterventionUpdate recovered =
+      tracker.update(MppiSafetyInterventionObservation{
+          .now_ns = 1'020'000'000,
+          .decision = MppiHorizonSafetyDecision::kExecute,
+          .current_speed_mps = 7.8,
+          .persistent_braking_required = false,
+      });
+
+  EXPECT_EQ(braking.decision, MppiHorizonSafetyDecision::kBrake);
+  EXPECT_FALSE(braking.braking_latched);
+  EXPECT_EQ(recovered.decision, MppiHorizonSafetyDecision::kExecute);
+  EXPECT_FALSE(recovered.braking_latched);
 }
 
 TEST(MppiHorizonSafetyTest, ProducesFallbackForEngineOnlyCollision) {
@@ -309,6 +377,39 @@ TEST(MppiHorizonSafetyTest,
   EXPECT_GT(result.latest_lidar_stopping_point_checks, 0U);
 }
 
+TEST(MppiHorizonSafetyTest,
+     BrakesForGlobalRawObstacleOnStoppingPathWhenNominalHorizonTurnsAway) {
+  const mppi::EsdfGrid local_grid{20, 20, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> local_esdf(400U, 10.0F);
+  OccupancyGrid3D global_raw{GridBounds3D{0.0, 0.0, 0.0, 0.25, 80, 20, 40}};
+  global_raw.setOccupied(GridIndex3D{16, 4, 20});
+  mppi::State current{1.0F, 1.0F, 5.0F};
+  current.vx = 8.0F;
+  const std::vector<mppi::State> horizon{current, mppi::State{1.0F, 4.0F, 5.0F}};
+
+  const MppiHorizonSafetyResult result = evaluateMppiHorizonSafety(
+      current, horizon, local_esdf, local_grid,
+      MppiHorizonSafetyConfig{.reaction_latency_s = 0.1,
+                              .maximum_braking_acceleration_mps2 = 8.0,
+                              .guaranteed_braking_deceleration_mps2 = 3.0,
+                              .minimum_time_to_collision_s = 0.1,
+                              .fallback_duration_s = 3.0,
+                              .dt_s = 0.05,
+                              .swept_validation_step_m = 0.25,
+                              .physical_footprint_radius_m = 0.25,
+                              .physical_footprint_lower_extent_m = 0.2,
+                              .physical_footprint_upper_extent_m = 0.3},
+      false, {}, &global_raw);
+
+  EXPECT_EQ(result.decision, MppiHorizonSafetyDecision::kBrake);
+  EXPECT_TRUE(result.global_raw_collision);
+  EXPECT_TRUE(result.raw_stopping_path_collision);
+  EXPECT_FALSE(result.latest_lidar_stopping_path_collision);
+  EXPECT_TRUE(std::isfinite(result.raw_stopping_time_to_collision_s));
+  EXPECT_GT(result.raw_stopping_validation_samples, 0U);
+  EXPECT_GT(result.raw_stopping_footprint_checks, 0U);
+}
+
 TEST(MppiHorizonSafetyTest, AllowsLatestLidarHitOutsideStoppingFootprint) {
   const mppi::EsdfGrid local_grid{20, 20, 1.0F, 0.0F, 0.0F};
   const std::vector<float> local_esdf(400U, 10.0F);
@@ -363,6 +464,27 @@ TEST(MppiHorizonSafetyTest, ExplicitFallbackBrakesWithoutAPlannedHorizon) {
   ASSERT_FALSE(result.fallback_controls.empty());
   ASSERT_EQ(result.fallback_horizon.size(), result.fallback_controls.size() + 1U);
   EXPECT_FLOAT_EQ(result.fallback_horizon.front().vx, 10.0F);
+  EXPECT_NEAR(result.fallback_horizon.back().vx, 0.0F, 1.0e-4F);
+}
+
+TEST(MppiHorizonSafetyTest,
+     UsesGuaranteedDecelerationForStoppingMetricsAndMaximumCommandForFallback) {
+  mppi::State current{1.0F, 2.0F, 3.0F};
+  current.vx = 12.0F;
+  const MppiHorizonSafetyConfig config{
+      .reaction_latency_s = 0.25,
+      .maximum_braking_acceleration_mps2 = 8.0,
+      .guaranteed_braking_deceleration_mps2 = 3.0,
+      .fallback_duration_s = 5.0,
+      .dt_s = 0.05,
+  };
+
+  const MppiHorizonSafetyResult result = buildMppiBrakingFallback(current, config);
+
+  EXPECT_NEAR(result.stopping_time_s, 4.25, 1.0e-6);
+  EXPECT_NEAR(result.stopping_distance_m, 27.0, 1.0e-6);
+  ASSERT_FALSE(result.fallback_controls.empty());
+  EXPECT_NEAR(result.fallback_controls.front().ax, -8.0F, 1.0e-5F);
   EXPECT_NEAR(result.fallback_horizon.back().vx, 0.0F, 1.0e-4F);
 }
 
