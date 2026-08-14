@@ -398,6 +398,45 @@ def validate_intercept_radar_pipeline(ros_log: str, errors: list[str]) -> None:
         print("OK: no evader ground-truth boundary violation")
 
 
+def validate_noncooperative_avoidance(ros_log: str, errors: list[str]) -> None:
+    startup = re.search(
+        r"INTERCEPT_MISSION state=running .*target_count=([0-9]+)", ros_log
+    )
+    expected_targets = int(startup.group(1)) if startup else 1
+    enabled_vehicles = set(
+        re.findall(
+            r"NONCOOPERATIVE_AVOIDANCE_CONFIG enabled=true "
+            r"vehicle_id='([^']+)'",
+            ros_log,
+        )
+    )
+    if len(enabled_vehicles) < expected_targets:
+        errors.append(
+            "FAIL: every attacker has an independent non-cooperative avoidance "
+            f"planner ({len(enabled_vehicles)} < {expected_targets})"
+        )
+    else:
+        print(
+            "OK: every attacker has independent non-cooperative avoidance "
+            f"({len(enabled_vehicles)})"
+        )
+    require(
+        "attacker planner consumes fresh radar-derived aircraft tracks",
+        ros_log,
+        r"PRODUCTION_MPPI_TICK .*noncooperative_avoidance_enabled=true .*"
+        r"noncooperative_fresh_track_count=[1-9][0-9]*",
+        errors,
+    )
+    require(
+        "attacker planner evaluates or enters a collision-avoidance response",
+        ros_log,
+        r"NONCOOPERATIVE_AVOIDANCE state=(?:entered|holding)|"
+        r"noncooperative_(?:anticipation|survival)_cost=(?!0(?:\.0+)?(?:\s|$))"
+        r"[0-9.]+",
+        errors,
+    )
+
+
 def validate_multi_intercept_settlement(ros_log: str, errors: list[str]) -> None:
     result = re.search(
         r"MISSION_RESULT success=true mission=multi_intercept "
@@ -745,6 +784,7 @@ def main() -> int:
         )
         if args.mission_type in {"intercept", "multi_intercept"}:
             validate_intercept_radar_pipeline(ros_log, errors)
+            validate_noncooperative_avoidance(ros_log, errors)
         if args.mission_type == "intercept":
             require(
                 "intercept mission reports a technical outcome",

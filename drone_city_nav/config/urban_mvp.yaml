@@ -197,6 +197,22 @@ production_mppi_node:
     direct_tracking_closing_recovery_speed_mps: 1.5
     direct_tracking_no_closing_reseed_delay_s: 1.0
     direct_tracking_minimum_reseed_interval_s: 0.5
+    noncooperative_avoidance_enabled: false
+    noncooperative_tracks_topic: /drone_city_nav/noncooperative_tracks
+    noncooperative_prediction_horizon_s: 4.0
+    noncooperative_strong_separation_m: 10.0
+    noncooperative_anticipation_separation_m: 20.0
+    noncooperative_release_separation_m: 15.0
+    noncooperative_release_hysteresis_s: 1.0
+    noncooperative_maximum_track_age_s: 0.75
+    noncooperative_tracked_aircraft_radius_m: 0.82
+    noncooperative_minimum_relative_speed_mps: 0.05
+    noncooperative_candidate_acceleration_fraction: 0.95
+    noncooperative_candidate_duration_s: 1.5
+    noncooperative_strong_cost_weight: 4000.0
+    noncooperative_anticipation_cost_weight: 40.0
+    noncooperative_time_to_collision_gain_s: 1.0
+    noncooperative_maximum_ttc_multiplier: 4.0
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot

@@ -257,6 +257,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
         cooperative_desired_separation_m = 5.0
         cooperative_release_separation_m = 7.0
         cooperative_prediction_horizon_s = 5.0
+        noncooperative_track_maximum_age_s = float(
+            LaunchConfiguration("noncooperative_track_maximum_age_s").perform(context)
+        )
         if cooperative_traffic:
             cooperative_desired_separation_m = float(
                 LaunchConfiguration(
@@ -436,6 +439,13 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     ),
                     "diagnostics_output_dir": f"log/{mission_kind}/{role}/mppi",
                     "cooperative_traffic_enabled": cooperative_traffic,
+                    "noncooperative_avoidance_enabled": (
+                        not cooperative_traffic and config["role"] == "evader"
+                    ),
+                    "noncooperative_tracks_topic": f"{prefix}/avoidance_tracks",
+                    "noncooperative_maximum_track_age_s": (
+                        noncooperative_track_maximum_age_s
+                    ),
                     "vehicle_id": role,
                     "cooperative_maneuver_command_topic": (
                         f"{prefix}/cooperative/command"

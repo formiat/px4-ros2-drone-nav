@@ -29,6 +29,8 @@ ASSIGNMENT_COORDINATOR = SOURCE / "target_assignment_coordinator_node.cpp"
 TRUTH_ADAPTER = SOURCE / "simulation_truth_adapter_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
+EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
+NONCOOPERATIVE_PLANNER = SOURCE / "production_mppi_node_noncooperative.cpp"
 NAVIGATION_OBJECTIVE = PACKAGE / "msg" / "NavigationObjective.msg"
 
 
@@ -204,6 +206,16 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn('"target_track_array_topic": f"{prefix}/avoidance_tracks"', tracking)
         self.assertIn('"avoidance_radar_simulator_node_fqns"', launch)
         self.assertIn('"avoidance_tracker_node_fqns"', launch)
+        planner_parameters = launch.split("planner_params =", 1)[1].split(
+            "planner_components.append", 1
+        )[0]
+        memory_parameters = launch.split("memory_params =", 1)[1].split(
+            "planner_params =", 1
+        )[0]
+        self.assertIn('"noncooperative_avoidance_enabled": (', planner_parameters)
+        self.assertIn('config["role"] == "evader"', planner_parameters)
+        self.assertIn('f"{prefix}/avoidance_tracks"', planner_parameters)
+        self.assertNotIn("noncooperative_avoidance_enabled", memory_parameters)
 
     def test_attacker_tracking_pipeline_has_no_cooperative_or_truth_bypass(self) -> None:
         tracking = TRACKING_LAUNCH.read_text(encoding="utf-8")
@@ -217,6 +229,49 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertNotIn("target_assignment", attacker_pipeline)
         self.assertNotIn("vehicle_role", attacker_pipeline)
         self.assertNotIn("detection_id\"]", attacker_pipeline)
+
+    def test_attacker_planner_consumes_only_local_anonymous_tracks(self) -> None:
+        planner = NONCOOPERATIVE_PLANNER.read_text(encoding="utf-8")
+        planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
+
+        self.assertIn("create_subscription<msg::TargetTrackArray>", planner)
+        self.assertIn("track.track_id", planner)
+        self.assertIn("prepareNonCooperativeTick", planning_tick)
+        self.assertRegex(
+            planning_tick, r"noncooperative\.avoidance\s*\.cost_policy"
+        )
+        self.assertIn("noncooperative.avoidance.acquisition", planning_tick)
+        for forbidden in (
+            "SimulationTruthState",
+            "source_detection_id",
+            "TargetAssignment",
+            "CooperativeFlightIntent",
+            "vehicle_role",
+            "target_truth_state_topic",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, planner)
+
+    def test_attacker_avoidance_preserves_physical_obstacle_safety(self) -> None:
+        planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
+        execution = EXECUTION.read_text(encoding="utf-8")
+
+        active_guard = planning_tick.split(
+            "if (noncooperative.avoidance.active)", 1
+        )[1].split("const EsdfQueryResult", 1)[0]
+        self.assertIn("maximum_eligible_risk_tier_", active_guard)
+        self.assertIn("std::min", active_guard)
+        self.assertIn("route_required_risk_tier", active_guard)
+        self.assertIn("noncooperative_contract_violation", execution)
+        self.assertIn("result.eligible_risk_contract.available", execution)
+        self.assertIn(
+            "!result.post_update_classification.contract_preserved", execution
+        )
+        self.assertRegex(
+            execution,
+            r"evaluateMppiHorizonSafety\([\s\S]*?"
+            r"noncooperative_contract_violation",
+        )
 
     def test_truth_boundary_allows_only_sensor_simulators_and_referee(self) -> None:
         boundary = GROUND_TRUTH_BOUNDARY.read_text(encoding="utf-8")

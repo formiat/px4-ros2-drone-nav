@@ -8,6 +8,7 @@
 
 #include "production_mppi_cooperative_diagnostics.hpp"
 #include "production_mppi_node.hpp"
+#include "production_mppi_noncooperative_diagnostics.hpp"
 #include "successor_profiling_diagnostics.hpp"
 #include "tracking_objective_diagnostics.hpp"
 
@@ -395,6 +396,7 @@ void ProductionMppiNode::processDiagnostics(
       << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
       << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
       << detail::cooperativeInfoFields(snapshot.cooperative, result)
+      << detail::nonCooperativeInfoFields(snapshot.noncooperative, result)
       << " gpu_warm_start_ms=" << result.timings.warm_start_ms
       << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
       << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
@@ -852,6 +854,7 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"rollout_budget_reason\":\""
         << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason) << '"'
         << detail::cooperativeJsonFields(snapshot.cooperative, result)
+        << detail::nonCooperativeJsonFields(snapshot.noncooperative, result)
         << ",\"gpu_warm_start_ms\":" << result.timings.warm_start_ms
         << ",\"gpu_noise_generation_ms\":" << result.timings.noise_generation_ms
         << ",\"gpu_rollout_simulation_ms\":" << result.timings.rollout_simulation_ms

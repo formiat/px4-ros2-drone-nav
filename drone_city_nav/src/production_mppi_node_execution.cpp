@@ -148,11 +148,23 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     if (!esdf.distances_m) {
       return publication;
     }
+    const bool noncooperative_contract_violation =
+        input.noncooperative_avoidance_active &&
+        result.eligible_risk_contract.available &&
+        !result.post_update_classification.contract_preserved;
     safety = evaluateMppiHorizonSafety(
         input.initial_state, result.horizon, *esdf.distances_m, esdf.grid,
-        safety_config_, false, {},
+        safety_config_, noncooperative_contract_violation, {},
         use_static_map_ && static_occupancy_3d_ ? &*static_occupancy_3d_ : nullptr,
         latest_raw_occupancy, latest_lidar_hit_points);
+    if (noncooperative_contract_violation) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "NONCOOPERATIVE_CONTRACT_SAFETY_FALLBACK classification=%s "
+                           "repair=%s action=brake",
+                           mppi::mppiPostUpdateClassificationName(
+                               result.post_update_classification.classification),
+                           mppi::mppiPostUpdateRepairName(result.post_update_repair));
+    }
     intervention = safety_intervention_tracker_.update(now_ns, safety);
     if (safety.global_raw_fallback_samples > 0U) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,

@@ -509,6 +509,8 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node.cpp
     src/production_mppi_node_cooperative.cpp
     src/production_mppi_cooperative_diagnostics.cpp
+    src/production_mppi_node_noncooperative.cpp
+    src/production_mppi_noncooperative_diagnostics.cpp
     src/production_mppi_node_esdf.cpp
     src/production_mppi_node_inputs.cpp
     src/production_mppi_node_planning_tick.cpp

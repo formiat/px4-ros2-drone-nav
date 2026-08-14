@@ -48,6 +48,7 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiPredictionError prediction;
   ProductionMppiAppliedControl applied_control;
   std::optional<ProductionMppiCooperativeCommand> cooperative_command;
+  ProductionMppiNonCooperativeTracks noncooperative_tracks;
   std::uint64_t memory_sequence{0U};
   {
     const std::scoped_lock lock{input_mutex_};
@@ -55,6 +56,7 @@ void ProductionMppiNode::planningTick() {
     prediction = latest_prediction_error_;
     applied_control = applied_control_;
     cooperative_command = cooperative_command_;
+    noncooperative_tracks = noncooperative_tracks_;
     memory_sequence = memory_sequence_;
   }
   std::optional<ProductionMppiPreparedEsdf> esdf;
@@ -101,6 +103,8 @@ void ProductionMppiNode::planningTick() {
         esdf.value_or(ProductionMppiPreparedEsdf{});
     const ProductionMppiCooperativeUpdate cooperative = prepareCooperativeTick(
         stale_esdf, ConstrainedRouteObservation{}, cooperative_command, now_ns, 0.0);
+    const ProductionMppiNonCooperativeUpdate noncooperative =
+        prepareNonCooperativeTick(navigation.state, noncooperative_tracks, now_ns);
     mppi::MppiTickInput input{
         .initial_state = navigation.state,
         .target = navigation.state,
@@ -182,6 +186,7 @@ void ProductionMppiNode::planningTick() {
         .liveness_reseed_requested = false,
         .pose_predicted = pose_predicted,
         .cooperative = cooperative,
+        .noncooperative = noncooperative,
         .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
     });
     previous_result_ = std::move(result);
@@ -323,6 +328,8 @@ void ProductionMppiNode::planningTick() {
   const ProductionMppiCooperativeUpdate cooperative =
       prepareCooperativeTick(*esdf, route_constraint, cooperative_command, now_ns,
                              speed_policy.reference_speed_mps);
+  const ProductionMppiNonCooperativeUpdate noncooperative =
+      prepareNonCooperativeTick(navigation.state, noncooperative_tracks, now_ns);
   if (cooperative.yield.active) {
     speed_policy.reference_speed_mps =
         std::min(speed_policy.reference_speed_mps, cooperative.yield.maximum_speed_mps);
@@ -570,6 +577,11 @@ void ProductionMppiNode::planningTick() {
             })
             .maximum_eligible_tier;
   }
+  if (noncooperative.avoidance.active) {
+    maximum_eligible_risk_tier_ = static_cast<mppi::RiskTier>(
+        std::min(static_cast<std::uint8_t>(maximum_eligible_risk_tier_),
+                 static_cast<std::uint8_t>(route_required_risk_tier)));
+  }
   const EsdfQueryResult current_clearance =
       queryConservativeEsdf3D(esdf->grid, *esdf->distances_m, navigation.state.x,
                               navigation.state.y, navigation.state.z);
@@ -627,15 +639,20 @@ void ProductionMppiNode::planningTick() {
                     .initial_station_m = static_cast<float>(route_projection.station_m),
                 }}
               : std::nullopt,
-      .dynamic_aircraft = cooperative.mppi.dynamic_aircraft,
-      .dynamic_aircraft_cost_policy = std::nullopt,
+      .dynamic_aircraft = noncooperative.enabled ? noncooperative.avoidance.trajectories
+                                                 : cooperative.mppi.dynamic_aircraft,
+      .dynamic_aircraft_cost_policy =
+          noncooperative.enabled
+              ? std::optional<mppi::DynamicAircraftCostPolicy>{noncooperative.avoidance
+                                                                   .cost_policy}
+              : std::nullopt,
       .cooperative_maneuver = cooperative.mppi.maneuver,
       .cooperative_acquisition = cooperative.mppi.acquisition,
-      .noncooperative_acquisition = std::nullopt,
+      .noncooperative_acquisition = noncooperative.avoidance.acquisition,
       .active_rollouts = rollout_budget.active_rollouts,
       .deterministic_candidate = deterministic_candidate,
       .cooperative_avoidance_active = cooperative.mppi.avoidance_active,
-      .noncooperative_avoidance_active = false,
+      .noncooperative_avoidance_active = noncooperative.avoidance.active,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
@@ -702,6 +719,28 @@ void ProductionMppiNode::planningTick() {
                 "COOPERATIVE_SEPARATION_RELEASE_RESEED route_generation=%" PRIu64,
                 esdf->global_guide_generation);
   }
+  if (result.noncooperative_acquisition_reseeded) {
+    RCLCPP_INFO(
+        get_logger(),
+        "NONCOOPERATIVE_SEPARATION_ACQUISITION_RESEED available=%s "
+        "candidate_index=%zu maneuver=%s minimum_separation_m=%.3f "
+        "separation_gain_m=%.3f head_progress_m=%.3f terminal_progress_m=%.3f "
+        "lifecycle_generation=%" PRIu64,
+        result.noncooperative_acquisition_available ? "true" : "false",
+        result.noncooperative_acquisition_candidate_index,
+        mppi::nonCooperativeManeuverName(result.noncooperative_acquisition_maneuver),
+        static_cast<double>(result.noncooperative_acquisition_minimum_separation_m),
+        static_cast<double>(result.noncooperative_acquisition_separation_gain_m),
+        static_cast<double>(result.noncooperative_acquisition_head_progress_m),
+        static_cast<double>(result.noncooperative_acquisition_terminal_progress_m),
+        noncooperative.avoidance.lifecycle_generation);
+  }
+  if (result.noncooperative_release_reseeded) {
+    RCLCPP_INFO(get_logger(),
+                "NONCOOPERATIVE_SEPARATION_RELEASE_RESEED "
+                "lifecycle_generation=%" PRIu64,
+                noncooperative.avoidance.lifecycle_generation);
+  }
   ++tick_sequence_;
   recordTickStatistics(result, planning_state,
                        liveness.reseed_requested ||
@@ -758,6 +797,12 @@ void ProductionMppiNode::planningTick() {
   diagnostic_result.minimum_target_separation_m = result.minimum_target_separation_m;
   diagnostic_result.minimum_peer_separation_m = result.minimum_peer_separation_m;
   diagnostic_result.peer_separation_cost = result.peer_separation_cost;
+  diagnostic_result.dynamic_aircraft_anticipation_cost =
+      result.dynamic_aircraft_anticipation_cost;
+  diagnostic_result.dynamic_aircraft_survival_cost =
+      result.dynamic_aircraft_survival_cost;
+  diagnostic_result.dynamic_aircraft_survival_cost_ratio =
+      result.dynamic_aircraft_survival_cost_ratio;
   diagnostic_result.predicted_capture_time_s = result.predicted_capture_time_s;
   diagnostic_result.maximum_acceleration_mps2 = result.maximum_acceleration_mps2;
   diagnostic_result.maximum_jerk_mps3 = result.maximum_jerk_mps3;
@@ -801,6 +846,24 @@ void ProductionMppiNode::planningTick() {
       result.cooperative_acquisition_separation_gain_m;
   diagnostic_result.cooperative_candidates_injected =
       result.cooperative_candidates_injected;
+  diagnostic_result.noncooperative_acquisition_reseeded =
+      result.noncooperative_acquisition_reseeded;
+  diagnostic_result.noncooperative_release_reseeded =
+      result.noncooperative_release_reseeded;
+  diagnostic_result.noncooperative_acquisition_available =
+      result.noncooperative_acquisition_available;
+  diagnostic_result.noncooperative_acquisition_candidate_index =
+      result.noncooperative_acquisition_candidate_index;
+  diagnostic_result.noncooperative_acquisition_maneuver =
+      result.noncooperative_acquisition_maneuver;
+  diagnostic_result.noncooperative_acquisition_minimum_separation_m =
+      result.noncooperative_acquisition_minimum_separation_m;
+  diagnostic_result.noncooperative_acquisition_separation_gain_m =
+      result.noncooperative_acquisition_separation_gain_m;
+  diagnostic_result.noncooperative_acquisition_head_progress_m =
+      result.noncooperative_acquisition_head_progress_m;
+  diagnostic_result.noncooperative_acquisition_terminal_progress_m =
+      result.noncooperative_acquisition_terminal_progress_m;
   diagnostic_result.dynamic_aircraft_count = result.dynamic_aircraft_count;
   diagnostic_result.esdf_revision = result.esdf_revision;
   diagnostic_result.active_rollouts = result.active_rollouts;
@@ -842,6 +905,7 @@ void ProductionMppiNode::planningTick() {
       .pose_predicted = pose_predicted,
       .rollout_budget = rollout_budget,
       .cooperative = cooperative,
+      .noncooperative = noncooperative,
       .route_required_risk_tier = route_required_risk_tier,
       .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
   });

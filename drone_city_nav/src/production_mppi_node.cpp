@@ -601,6 +601,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_3d_config_.physical_footprint_sweep_step_m =
       safety_config_.swept_validation_step_m;
   configureCooperativeTraffic();
+  configureNonCooperativeAvoidance();
   safety_config_.position_hold_capture_speed_mps =
       declare_parameter<double>("safety_position_hold_capture_speed_mps", 0.20);
   const double static_safety_fallback_duration_s =
@@ -834,6 +835,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       },
       input_subscription_options);
   createCooperativeTrafficInterfaces(input_subscription_options);
+  createNonCooperativeAvoidanceInterface(input_subscription_options);
   radar_track_mode_command_pub_ = create_publisher<msg::RadarTrackModeCommand>(
       declare_parameter<std::string>("radar_track_mode_command_topic",
                                      "/drone_city_nav/radar/track_mode_command"),

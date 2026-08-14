@@ -30,8 +30,10 @@
 #include "drone_city_nav/msg/radar_track_mode_command.hpp"
 #include "drone_city_nav/msg/raw_obstacle_delta.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
+#include "drone_city_nav/msg/target_track_array.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
+#include "drone_city_nav/noncooperative_collision_avoidance.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
@@ -316,6 +318,19 @@ struct ProductionMppiCooperativeUpdate {
   double command_age_ms{-1.0};
 };
 
+struct ProductionMppiNonCooperativeTracks {
+  std::vector<NonCooperativeAircraftTrack> tracks;
+  std::uint64_t source_scan_sequence{0U};
+  std::int64_t receive_stamp_ns{0};
+};
+
+struct ProductionMppiNonCooperativeUpdate {
+  NonCooperativeAvoidanceUpdate avoidance{};
+  std::uint64_t source_scan_sequence{0U};
+  double transport_age_ms{-1.0};
+  bool enabled{false};
+};
+
 struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> candidate_horizon;
   std::vector<mppi::State> previous_horizon;
@@ -388,6 +403,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   bool pose_predicted{false};
   MppiRolloutBudgetDecision rollout_budget{};
   ProductionMppiCooperativeUpdate cooperative{};
+  ProductionMppiNonCooperativeUpdate noncooperative{};
   mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
   mppi::RiskTier maximum_eligible_risk_tier{mppi::RiskTier::kPreferred};
 };
@@ -464,6 +480,14 @@ private:
                          const ConstrainedRouteObservation& route_observation,
                          const std::optional<ProductionMppiCooperativeCommand>& command,
                          std::int64_t now_ns, double planned_speed_mps);
+  void configureNonCooperativeAvoidance();
+  void createNonCooperativeAvoidanceInterface(
+      const rclcpp::SubscriptionOptions& subscription_options);
+  void onNonCooperativeTracks(const msg::TargetTrackArray& message);
+  [[nodiscard]] ProductionMppiNonCooperativeUpdate
+  prepareNonCooperativeTick(const mppi::State& ownship,
+                            const ProductionMppiNonCooperativeTracks& tracks,
+                            std::int64_t now_ns);
   void planningTick();
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);
@@ -531,6 +555,8 @@ private:
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
   bool cooperative_traffic_enabled_{false};
+  bool noncooperative_avoidance_enabled_{false};
+  std::string noncooperative_tracks_topic_;
   std::string vehicle_id_;
   float constrained_route_speed_limit_mps_{10.0F};
   double route_constraint_diagnostics_distance_m_{30.0};
@@ -571,6 +597,8 @@ private:
   CooperativeChannelRouteConfig cooperative_channel_route_config_{};
   CooperativeChannelTimingConfig cooperative_channel_timing_config_{};
   CooperativeChannelYieldConfig cooperative_channel_yield_config_{};
+  NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
+  std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
@@ -597,6 +625,7 @@ private:
   ProductionMppiNavigation navigation_{};
   ProductionMppiAppliedControl applied_control_{};
   std::optional<ProductionMppiCooperativeCommand> cooperative_command_;
+  ProductionMppiNonCooperativeTracks noncooperative_tracks_{};
   std::uint64_t memory_sequence_{0U};
   std::int64_t memory_receive_stamp_ns_{0};
   std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
@@ -686,6 +715,7 @@ private:
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;
   rclcpp::Subscription<msg::CooperativeManeuverCommand>::SharedPtr
       cooperative_command_sub_;
+  rclcpp::Subscription<msg::TargetTrackArray>::SharedPtr noncooperative_tracks_sub_;
   rclcpp::Publisher<msg::RadarTrackModeCommand>::SharedPtr
       radar_track_mode_command_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;

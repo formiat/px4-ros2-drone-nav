@@ -162,31 +162,35 @@ supported headless contract requires every vehicle to settle at its own goal
 without physical loss. Both static-map and no-static-map scenarios have passed
 this full mission validation.
 
-## 6.1. Non-Cooperative Collision Avoidance in Interception Missions
+## 6.1. Non-Cooperative Collision Avoidance in Interception Missions (Completed)
 
-After the cooperative air-traffic work in section 6 establishes reusable
-collision-avoidance behavior, adapt and strengthen it for attacking drones in
-interception missions.
+Every attacker carries an independent high-rate simulated airborne radar. It
+reports anonymous relative detections of all aircraft within physical range and
+line of sight; it does not expose roles, mission assignments, global routes, or
+the intent channel used by cooperative civilian traffic. A local variable-time
+tracker converts those measurements into anonymous position and velocity tracks.
 
-Each attacker should carry a simulated high-rate onboard radar that reports
-relative observations of every nearby aircraft. The sensor must not classify a
-detection as an attacker or interceptor, and attackers must not exchange state
-or coordinate avoidance maneuvers with one another. Each attacker therefore
-reacts independently to all nearby drones using only its own state and onboard
-radar measurements.
+The attacker evaluates current separation and continuous closest approach for
+every fresh track. A strong finite trajectory cost applies below 10 m, with a
+lower anticipation cost between 10 m and 20 m and additional time-to-collision
+weighting. The cost covers the full MPPI rollout. On entry into a strong threat,
+a raw-validated maximin acquisition selects among route-directed, lateral,
+vertical, braking, and reverse candidates; normal route progress breaks ties.
+Lifecycle hysteresis and one-time entry and release reseeds prevent maneuver
+flapping.
 
-The interception policy should request stronger separation than the cooperative
-civilian policy. An initial target is approximately 10 m from every detected
-aircraft, compared with an approximately 5 m target for ordinary cooperative
-traffic. This separation is a strong optimization preference, not a reachability
-constraint: proximity should add a substantial trajectory cost and encourage a
-clear avoidance maneuver, but it must never create a prohibited grid, inflated
-obstacle, hard exclusion volume, or equivalent mandatory boundary around another
-drone.
+Physical obstacle safety remains lexicographically stronger than aircraft
+separation. Avoidance cannot escalate obstacle risk beyond that required by the
+active route, and an unrepaired MPPI risk-contract violation triggers a checked
+braking fallback. Separation is still a soft objective: the implementation does
+not create prohibited grids, inflated obstacles, hard exclusion volumes, or an
+equivalent mandatory boundary around another drone. Physical interception
+therefore remains possible.
 
-This keeps unavoidable close approaches and physical interception possible
-while making an attacker actively attempt to avoid collisions instead of flying
-as if other aircraft did not exist.
+Headless validation verifies the radar-only data boundary, fresh independent
+tracks for every attacker, observable avoidance activity or cost, physical
+mission settlement, and zero building collisions. The `3x1` and `2x2` scenarios
+have passed this contract with and without a static map.
 
 ## 7. Advanced 3D Passages
 

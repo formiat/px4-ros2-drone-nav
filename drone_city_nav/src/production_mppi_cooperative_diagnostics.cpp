@@ -21,7 +21,7 @@ void appendFields(std::ostringstream& output,
            << ",\"cooperative_command_age_ms\":" << cooperative.command_age_ms
            << ",\"cooperative_adapter_status\":\""
            << cooperativeMppiAdapterStatusName(cooperative.mppi.status) << '"'
-           << ",\"cooperative_peer_count\":" << result.dynamic_aircraft_count
+           << ",\"cooperative_peer_count\":" << cooperative.mppi.dynamic_aircraft.size()
            << ",\"cooperative_candidates_injected\":"
            << (result.cooperative_candidates_injected ? "true" : "false")
            << ",\"cooperative_acquisition_reseeded\":"
@@ -86,7 +86,7 @@ void appendFields(std::ostringstream& output,
          << " cooperative_command_age_ms=" << cooperative.command_age_ms
          << " cooperative_adapter_status="
          << cooperativeMppiAdapterStatusName(cooperative.mppi.status)
-         << " cooperative_peer_count=" << result.dynamic_aircraft_count
+         << " cooperative_peer_count=" << cooperative.mppi.dynamic_aircraft.size()
          << " cooperative_candidates_injected="
          << (result.cooperative_candidates_injected ? "true" : "false")
          << " cooperative_acquisition_reseeded="
