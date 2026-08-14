@@ -89,6 +89,7 @@ load_multi_vehicle_sim_scenario "${mission_type}" "${multi_vehicle_scenario_over
 multi_vehicle_spectator_initial_vehicle_id=""
 multi_vehicle_spectator_initial_model=""
 multi_vehicle_spectator_reselection_policy="${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-first_living}}"
+multi_vehicle_spectator_reselection_delay_s="${MULTI_VEHICLE_SPECTATOR_RESELECTION_DELAY_S:-${INTERCEPT_SPECTATOR_RESELECTION_DELAY_S:-3.0}}"
 if bool_is_true "${multi_vehicle_mission}"; then
   multi_vehicle_spectator_initial_vehicle_id="${MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID:-${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-${multi_vehicle_ids[0]}}}"
   case "${multi_vehicle_spectator_reselection_policy}" in
@@ -671,7 +672,7 @@ echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_f
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'" |
   tee -a "${gz_log_file}"
 if bool_is_true "${multi_vehicle_mission}"; then
-  echo "Multi-vehicle spectator: initial_vehicle_id=${multi_vehicle_spectator_initial_vehicle_id} reselection_policy=${multi_vehicle_spectator_reselection_policy}" |
+  echo "Multi-vehicle spectator: initial_vehicle_id=${multi_vehicle_spectator_initial_vehicle_id} reselection_policy=${multi_vehicle_spectator_reselection_policy} reselection_delay_s=${multi_vehicle_spectator_reselection_delay_s}" |
     tee -a "${gz_log_file}"
 fi
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
@@ -874,6 +875,7 @@ if bool_is_true "${multi_vehicle_mission}"; then
     intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"
     spectator_initial_vehicle_id:="${multi_vehicle_spectator_initial_vehicle_id}"
     spectator_reselection_policy:="${multi_vehicle_spectator_reselection_policy}"
+    spectator_reselection_delay_s:="${multi_vehicle_spectator_reselection_delay_s}"
     shutdown_on_terminal_outcome:="${multi_vehicle_shutdown_on_terminal_outcome}"
     control_cpu_list:="${control_cpu_list}"
     planning_cpu_list:="${planning_cpu_list}"

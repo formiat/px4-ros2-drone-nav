@@ -32,6 +32,7 @@ def make_selected_diagnostics_components(
     gazebo_models,
     initial_vehicle_id,
     reselection_policy,
+    reselection_delay_s,
 ):
     spectator = ComposableNode(
         package="drone_city_nav",
@@ -52,6 +53,7 @@ def make_selected_diagnostics_components(
                 "gazebo_models": gazebo_models,
                 "initial_vehicle_id": initial_vehicle_id,
                 "reselection_policy": reselection_policy,
+                "reselection_delay_s": reselection_delay_s,
             }
         ],
         extra_arguments=[{"use_intra_process_comms": True}],

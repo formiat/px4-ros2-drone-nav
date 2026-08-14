@@ -190,9 +190,10 @@ surviving interceptors stop tracking, brake, and enter confirmed stationary
 position hold; no vehicle is disarmed. A later inertial approach cannot change
 the first outcome, although entering the capture radius still applies the normal
 pair disarm. Evader goal arrival is an intercept failure but still a technically
-successful simulation outcome. RViz and Gazebo initially follow `interceptor_0`.
-The default `first_living` policy selects the first surviving scenario vehicle
-after the observed vehicle dies. RViz keeps the lightweight route and direction
+successful simulation outcome. In the GUI workflow, RViz and Gazebo initially
+follow the attacker `evader`. The default `first_living` policy selects the
+first surviving scenario vehicle three seconds after the observed vehicle dies.
+RViz keeps the lightweight route and direction
 arrow of every interceptor visible. Its
 full MPPI, memory, and lidar layers are routed from the current spectator only
 and switch with the same spectator selection; optional per-interceptor memory
@@ -239,10 +240,10 @@ position hold, and no vehicle to collide with a building. Directional motion
 hypotheses are disabled in this supported scenario.
 
 The `2x2` GUI starts with `evader_0` as the spectator and uses the cyclic
-`next_living` policy. After its destruction, the camera selects `evader_1` when
-it is alive; otherwise it continues through the scenario order and wraps to the
-first living vehicle. Gazebo, the RViz `drone_follow` frame, and selected planner
-diagnostics consume the same typed spectator selection.
+`next_living` policy. Three seconds after its destruction, the camera selects
+`evader_1` when it is alive; otherwise it continues through the scenario order
+and wraps to the first living vehicle. Gazebo, the RViz `drone_follow` frame,
+and selected planner diagnostics consume the same typed spectator selection.
 
 Run the cooperative civilian traffic mission:
 
@@ -345,7 +346,8 @@ Intercept scripts expose `INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID` and
 `INTERCEPT_SPECTATOR_RESELECTION_POLICY`. The latter accepts `first_living` or
 `next_living`. `first_living` always selects the lowest-index living scenario
 vehicle; `next_living` scans forward from the destroyed vehicle and wraps at the
-end of the scenario list.
+end of the scenario list. `INTERCEPT_SPECTATOR_RESELECTION_DELAY_S` controls the
+handoff delay and defaults to three seconds.
 
 By default, RViz also opens in a follow-camera debug view that targets the
 visualization-only `drone_follow` TF frame. Disable that behavior with

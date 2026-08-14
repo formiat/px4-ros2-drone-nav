@@ -294,6 +294,16 @@ def generate_multi_vehicle_launch_description(mission_kind):
             raise RuntimeError(
                 "spectator_reselection_policy must be first_living or next_living"
             )
+        spectator_reselection_delay_s = float(
+            LaunchConfiguration("spectator_reselection_delay_s").perform(context)
+        )
+        if (
+            not math.isfinite(spectator_reselection_delay_s)
+            or spectator_reselection_delay_s < 0.0
+        ):
+            raise RuntimeError(
+                "spectator_reselection_delay_s must be finite and non-negative"
+            )
         planner_worker_budget = int(
             LaunchConfiguration("planner_worker_budget").perform(context)
         )
@@ -683,6 +693,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 [roles[role]["model"] for role in role_names],
                 spectator_initial_vehicle_id,
                 spectator_reselection_policy,
+                spectator_reselection_delay_s,
             )
         )
         nodes.append(
@@ -833,6 +844,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
             DeclareLaunchArgument("spectator_initial_vehicle_id", default_value=""),
             DeclareLaunchArgument(
                 "spectator_reselection_policy", default_value="first_living"
+            ),
+            DeclareLaunchArgument(
+                "spectator_reselection_delay_s", default_value="3.0"
             ),
             DeclareLaunchArgument(
                 "shutdown_on_terminal_outcome", default_value="true"

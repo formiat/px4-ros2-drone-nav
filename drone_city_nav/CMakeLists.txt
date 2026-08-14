@@ -945,6 +945,20 @@ if(BUILD_TESTING)
   target_compile_features(spectator_selection_test PRIVATE cxx_std_20)
   target_link_libraries(spectator_selection_test drone_city_nav_core)
   enable_project_warnings(spectator_selection_test)
+
+  ament_add_gtest(spectator_reselection_lifecycle_test
+                  tests/spectator_reselection_lifecycle_test.cpp)
+  target_compile_features(spectator_reselection_lifecycle_test PRIVATE cxx_std_20)
+  target_link_libraries(
+    spectator_reselection_lifecycle_test
+    drone_city_nav_diagnostics_components
+    ${cpp_typesupport_target})
+  ament_target_dependencies(spectator_reselection_lifecycle_test rclcpp)
+  set_tests_properties(
+    spectator_reselection_lifecycle_test
+    PROPERTIES ENVIRONMENT
+               "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
+  enable_project_warnings(spectator_reselection_lifecycle_test)
 endif()
 
 ament_export_include_directories(include)

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -96,9 +97,15 @@ public:
           "reselection_policy must be first_living or next_living"};
     }
     reselection_policy_ = policy.value();
+    reselection_delay_s_ = declare_parameter<double>("reselection_delay_s", 3.0);
+    if (!std::isfinite(reselection_delay_s_) || reselection_delay_s_ < 0.0) {
+      throw std::invalid_argument{
+          "reselection_delay_s must be finite and non-negative"};
+    }
     const auto initial_index =
         static_cast<std::size_t>(std::distance(ids_.begin(), initial_iterator));
     selection_.emplace(ids_.size(), initial_index, reselection_policy_);
+    displayed_index_ = initial_index;
 
     states_.resize(ids_.size());
     const auto state_qos = rclcpp::QoS{10}.best_effort();
@@ -112,24 +119,7 @@ public:
       destroyed_subs_.push_back(create_subscription<msg::VehicleDestroyed>(
           destroyed_topics[index], latched_qos,
           [this, index](const msg::VehicleDestroyed::SharedPtr destroyed) {
-            if (destroyed->vehicle_role != expected_roles_[index] ||
-                destroyed->vehicle_id != ids_[index] ||
-                (destroyed->mission_epoch != 0U &&
-                 destroyed->mission_epoch != mission_epoch_)) {
-              return;
-            }
-            const bool selected = selection_->currentIndex() == index;
-            const std::optional<std::size_t> replacement =
-                selection_->markDestroyed(index);
-            if (selected && replacement.has_value()) {
-              publishSelection();
-            } else if (selected) {
-              RCLCPP_WARN(
-                  get_logger(),
-                  "SPECTATOR_TARGET retained_last=true reason=no_living_vehicle "
-                  "vehicle_id='%s' mission_epoch=%" PRIu64,
-                  ids_[index].c_str(), mission_epoch_);
-            }
+            onVehicleDestroyed(index, *destroyed);
           }));
     }
     target_pub_ = create_publisher<msg::SpectatorTarget>(
@@ -137,7 +127,10 @@ public:
                                        "/drone_city_nav/spectator_target"),
         latched_qos);
     publishSelection();
-    timer_ = create_wall_timer(std::chrono::milliseconds{50}, [this] { publishTf(); });
+    timer_ = create_wall_timer(std::chrono::milliseconds{50}, [this] {
+      completePendingReselection();
+      publishTf();
+    });
   }
 
 private:
@@ -154,11 +147,88 @@ private:
     return values;
   }
 
+  void onVehicleDestroyed(const std::size_t index,
+                          const msg::VehicleDestroyed& destroyed) {
+    if (!selection_.has_value()) {
+      return;
+    }
+    SpectatorSelection& selection = selection_.value();
+    if (destroyed.vehicle_role != expected_roles_[index] ||
+        destroyed.vehicle_id != ids_[index] ||
+        (destroyed.mission_epoch != 0U && destroyed.mission_epoch != mission_epoch_) ||
+        selection.destroyed(index)) {
+      return;
+    }
+
+    const bool displayed = displayed_index_ == index;
+    const bool pending_candidate =
+        pending_reselection_deadline_.has_value() && selection.currentIndex() == index;
+    const std::optional<std::size_t> replacement = selection.markDestroyed(index);
+    if (displayed) {
+      beginReselection(replacement);
+      return;
+    }
+    if (!pending_candidate) {
+      return;
+    }
+    if (!replacement.has_value()) {
+      pending_reselection_deadline_.reset();
+      logRetainedSelection(index);
+      return;
+    }
+    RCLCPP_INFO(get_logger(),
+                "SPECTATOR_RESELECTION_PENDING candidate_updated=true "
+                "vehicle_id='%s' replacement_vehicle_id='%s'",
+                ids_[index].c_str(), ids_[replacement.value()].c_str());
+  }
+
+  void beginReselection(const std::optional<std::size_t> replacement) {
+    if (!replacement.has_value()) {
+      logRetainedSelection(displayed_index_);
+      return;
+    }
+    if (reselection_delay_s_ == 0.0) {
+      displayed_index_ = replacement.value();
+      publishSelection();
+      return;
+    }
+    pending_reselection_deadline_ =
+        now() + rclcpp::Duration::from_seconds(reselection_delay_s_);
+    RCLCPP_INFO(get_logger(),
+                "SPECTATOR_RESELECTION_PENDING vehicle_id='%s' "
+                "replacement_vehicle_id='%s' delay_s=%.3f",
+                ids_[displayed_index_].c_str(), ids_[replacement.value()].c_str(),
+                reselection_delay_s_);
+  }
+
+  void completePendingReselection() {
+    if (!selection_.has_value() || !pending_reselection_deadline_.has_value() ||
+        now() < pending_reselection_deadline_.value()) {
+      return;
+    }
+    pending_reselection_deadline_.reset();
+    SpectatorSelection& selection = selection_.value();
+    const std::size_t replacement = selection.currentIndex();
+    if (selection.destroyed(replacement)) {
+      logRetainedSelection(displayed_index_);
+      return;
+    }
+    displayed_index_ = replacement;
+    publishSelection();
+  }
+
+  void logRetainedSelection(const std::size_t destroyed_index) const {
+    RCLCPP_WARN(get_logger(),
+                "SPECTATOR_TARGET retained_last=true reason=no_living_vehicle "
+                "vehicle_id='%s' mission_epoch=%" PRIu64,
+                ids_[destroyed_index].c_str(), mission_epoch_);
+  }
+
   void publishSelection() {
     if (!selection_.has_value()) {
       return;
     }
-    const std::size_t selected_index = selection_->currentIndex();
+    const std::size_t selected_index = displayed_index_;
     msg::SpectatorTarget target;
     target.stamp = now();
     target.mission_epoch = mission_epoch_;
@@ -176,7 +246,7 @@ private:
     if (!selection_.has_value()) {
       return;
     }
-    const std::size_t selected_index = selection_->currentIndex();
+    const std::size_t selected_index = displayed_index_;
     const std::optional<msg::VehicleNavigationState> state = states_[selected_index];
     if (!state.has_value()) {
       return;
@@ -200,8 +270,11 @@ private:
   std::vector<std::uint8_t> expected_roles_;
   std::vector<std::optional<msg::VehicleNavigationState>> states_;
   std::optional<SpectatorSelection> selection_;
+  std::optional<rclcpp::Time> pending_reselection_deadline_;
   SpectatorReselectionPolicy reselection_policy_{
       SpectatorReselectionPolicy::kFirstLiving};
+  std::size_t displayed_index_{0U};
+  double reselection_delay_s_{3.0};
   std::string parent_frame_;
   std::string follow_frame_;
   std::uint64_t mission_epoch_{1U};

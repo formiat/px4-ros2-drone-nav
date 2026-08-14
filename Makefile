@@ -46,7 +46,9 @@ sim-headless: build
 
 .PHONY: sim-intercept-gui
 sim-intercept-gui: build
-	MISSION_TYPE=intercept ./scripts/run_drone_nav_sim.sh
+	MISSION_TYPE=intercept \
+		INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader}" \
+		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-intercept-headless
 sim-intercept-headless: build

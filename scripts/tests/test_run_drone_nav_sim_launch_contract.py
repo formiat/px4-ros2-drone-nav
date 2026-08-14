@@ -125,6 +125,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_intercept_spectator_selection_is_launch_configurable(self) -> None:
         for variable in (
             "INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID",
+            "INTERCEPT_SPECTATOR_RESELECTION_DELAY_S",
             "INTERCEPT_SPECTATOR_RESELECTION_POLICY",
         ):
             with self.subTest(variable=variable):
@@ -132,6 +133,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 self.assertIn(variable, self.container_text)
         self.assertIn('spectator_initial_vehicle_id:=', self.text)
         self.assertIn('spectator_reselection_policy:=', self.text)
+        self.assertIn('spectator_reselection_delay_s:=', self.text)
         self.assertIn(
             'DeclareLaunchArgument("spectator_initial_vehicle_id"',
             self.intercept_launch_text,
@@ -139,6 +141,17 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn(
             '"spectator_reselection_policy", default_value="first_living"',
             self.intercept_launch_text,
+        )
+        self.assertIn(
+            '"spectator_reselection_delay_s", default_value="3.0"',
+            self.intercept_launch_text,
+        )
+
+    def test_single_intercept_gui_observes_attacker_first(self) -> None:
+        self.assertIn(
+            'INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${'
+            'INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader}"',
+            self.makefile_text,
         )
 
     def test_multi_intercept_observes_first_evader_then_next_living(self) -> None:
