@@ -112,7 +112,7 @@ void ProductionMppiNode::planningTick() {
         .reference_speed_mps = 0.0F,
         .moving_target = std::nullopt,
         .route = std::nullopt,
-        .conflicting_peers = {},
+        .dynamic_aircraft = {},
         .cooperative_maneuver = std::nullopt,
         .cooperative_acquisition = std::nullopt,
         .active_rollouts = std::nullopt,
@@ -624,7 +624,7 @@ void ProductionMppiNode::planningTick() {
                     .initial_station_m = static_cast<float>(route_projection.station_m),
                 }}
               : std::nullopt,
-      .conflicting_peers = cooperative.mppi.conflicting_peers,
+      .dynamic_aircraft = cooperative.mppi.dynamic_aircraft,
       .cooperative_maneuver = cooperative.mppi.maneuver,
       .cooperative_acquisition = cooperative.mppi.acquisition,
       .active_rollouts = rollout_budget.active_rollouts,
@@ -795,7 +795,7 @@ void ProductionMppiNode::planningTick() {
       result.cooperative_acquisition_separation_gain_m;
   diagnostic_result.cooperative_candidates_injected =
       result.cooperative_candidates_injected;
-  diagnostic_result.cooperative_peer_count = result.cooperative_peer_count;
+  diagnostic_result.dynamic_aircraft_count = result.dynamic_aircraft_count;
   diagnostic_result.esdf_revision = result.esdf_revision;
   diagnostic_result.active_rollouts = result.active_rollouts;
   diagnostic_result.timings = result.timings;

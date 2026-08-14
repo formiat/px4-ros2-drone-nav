@@ -20,7 +20,7 @@ struct CooperativeSeparationAcquisitionEvaluationInput {
   EsdfGrid grid{};
   std::span<const float> esdf;
   std::span<const KnownSolid> known_solids;
-  std::span<const CooperativePeerTrajectory> peers;
+  std::span<const DynamicAircraftTrajectory> aircraft;
   CooperativeSeparationAcquisition acquisition{};
   BenchmarkConfig config{};
 };

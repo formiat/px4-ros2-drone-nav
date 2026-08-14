@@ -54,9 +54,10 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
                     target_z - state.z);
 }
 
-[[nodiscard]] float peerDistance(const State& state,
-                                 const CooperativePeerSample& peer) noexcept {
-  return std::hypot(std::hypot(peer.x - state.x, peer.y - state.y), peer.z - state.z);
+[[nodiscard]] float aircraftDistance(const State& state,
+                                     const DynamicAircraftSample& aircraft) noexcept {
+  return std::hypot(std::hypot(aircraft.x - state.x, aircraft.y - state.y),
+                    aircraft.z - state.z);
 }
 
 [[nodiscard]] Control
@@ -178,14 +179,15 @@ RolloutMetrics simulateReference(
     const float reference_speed_mps, const FootprintConfig& footprint,
     const std::optional<MovingTargetReference> moving_target,
     ReferenceSimulationTrace* const trace,
-    const std::span<const CooperativePeerTrajectory> conflicting_peers,
+    const std::span<const DynamicAircraftTrajectory> dynamic_aircraft,
     const std::optional<CooperativeManeuverPreference> cooperative_maneuver,
     const CooperativeConfig& cooperative) {
-  for (const CooperativePeerTrajectory& peer : conflicting_peers) {
-    if (!peer.samples || peer.samples->size() < nominal_controls.size() ||
-        peer.active_steps == 0U || peer.active_steps > nominal_controls.size() ||
-        !(peer.footprint_radius_m >= 0.0F)) {
-      throw std::invalid_argument{"invalid cooperative peer trajectory"};
+  for (const DynamicAircraftTrajectory& aircraft : dynamic_aircraft) {
+    if (!aircraft.samples || aircraft.samples->size() < nominal_controls.size() ||
+        aircraft.active_steps == 0U ||
+        aircraft.active_steps > nominal_controls.size() ||
+        !(aircraft.footprint_radius_m >= 0.0F)) {
+      throw std::invalid_argument{"invalid dynamic aircraft trajectory"};
     }
   }
   RolloutMetrics metrics{};
@@ -269,16 +271,16 @@ RolloutMetrics simulateReference(
         target_distance <= moving_target->capture_radius_m) {
       metrics.predicted_capture_time_s = static_cast<float>(step + 1U) * dynamics.dt_s;
     }
-    for (const CooperativePeerTrajectory& peer : conflicting_peers) {
-      if (step >= peer.active_steps) {
+    for (const DynamicAircraftTrajectory& aircraft : dynamic_aircraft) {
+      if (step >= aircraft.active_steps) {
         continue;
       }
-      const float separation_m = peerDistance(state, (*peer.samples)[step]);
+      const float separation_m = aircraftDistance(state, (*aircraft.samples)[step]);
       metrics.minimum_peer_separation_m =
           std::min(metrics.minimum_peer_separation_m, separation_m);
       const float desired_separation_m =
           std::max(cooperative.desired_minimum_separation_m,
-                   footprint.radius_m + peer.footprint_radius_m);
+                   footprint.radius_m + aircraft.footprint_radius_m);
       const float shortfall_m = std::max(0.0F, desired_separation_m - separation_m);
       metrics.costs.peer_separation += squared(shortfall_m);
     }

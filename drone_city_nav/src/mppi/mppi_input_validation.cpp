@@ -8,7 +8,7 @@
 namespace drone_city_nav::mppi {
 
 void validateMppiTickInput(const MppiTickInput& input, const std::size_t expected_steps,
-                           const std::size_t maximum_cooperative_peers) {
+                           const std::size_t maximum_dynamic_aircraft) {
   if (input.moving_target.has_value()) {
     const MovingTargetReference& target = *input.moving_target;
     const bool invalid_vertical =
@@ -25,18 +25,20 @@ void validateMppiTickInput(const MppiTickInput& input, const std::size_t expecte
       throw std::invalid_argument{"invalid moving target reference"};
     }
   }
-  if (input.conflicting_peers.size() > maximum_cooperative_peers) {
-    throw std::invalid_argument{"too many cooperative peers for MPPI engine"};
+  if (input.dynamic_aircraft.size() > maximum_dynamic_aircraft) {
+    throw std::invalid_argument{"too many dynamic aircraft for MPPI engine"};
   }
-  for (const CooperativePeerTrajectory& peer : input.conflicting_peers) {
-    if (!peer.samples || peer.samples->size() != expected_steps ||
-        peer.active_steps == 0U || peer.active_steps > expected_steps ||
-        !std::isfinite(peer.footprint_radius_m) || !(peer.footprint_radius_m >= 0.0F) ||
-        !std::ranges::all_of(*peer.samples, [](const CooperativePeerSample& sample) {
-          return std::isfinite(sample.x) && std::isfinite(sample.y) &&
-                 std::isfinite(sample.z);
-        })) {
-      throw std::invalid_argument{"invalid cooperative peer trajectory"};
+  for (const DynamicAircraftTrajectory& aircraft : input.dynamic_aircraft) {
+    if (!aircraft.samples || aircraft.samples->size() != expected_steps ||
+        aircraft.active_steps == 0U || aircraft.active_steps > expected_steps ||
+        !std::isfinite(aircraft.footprint_radius_m) ||
+        !(aircraft.footprint_radius_m >= 0.0F) ||
+        !std::ranges::all_of(
+            *aircraft.samples, [](const DynamicAircraftSample& sample) {
+              return std::isfinite(sample.x) && std::isfinite(sample.y) &&
+                     std::isfinite(sample.z);
+            })) {
+      throw std::invalid_argument{"invalid dynamic aircraft trajectory"};
     }
   }
   const auto valid_preference = [](const CooperativeManeuverPreference& preference) {

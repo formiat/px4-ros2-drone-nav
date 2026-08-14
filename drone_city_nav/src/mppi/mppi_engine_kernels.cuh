@@ -338,10 +338,10 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          cudaTextureObject_t esdf_texture, const KnownSolid* solids,
          std::size_t solid_count, const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
-         const CooperativePeerSample* cooperative_peer_samples,
-         const float* cooperative_peer_radii,
-         const std::uint32_t* cooperative_peer_active_steps,
-         std::size_t cooperative_peer_count, CooperativeConfig cooperative,
+         const DynamicAircraftSample* dynamic_aircraft_samples,
+         const float* dynamic_aircraft_radii,
+         const std::uint32_t* dynamic_aircraft_active_steps,
+         std::size_t dynamic_aircraft_count, CooperativeConfig cooperative,
          Control cooperative_preferred_acceleration,
          std::size_t cooperative_preference_steps, bool cooperative_preference_enabled,
          Control previous_applied_control, float first_control_interval_s,
@@ -445,18 +445,18 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                      movingTargetAltitudeAt(moving_target, target_elapsed_s) - state.z)
             : hypotf(target.x - state.x, target.y - state.y);
     minimum_target_separation_m = fminf(minimum_target_separation_m, target_distance);
-    for (std::size_t peer_index = 0U; peer_index < cooperative_peer_count;
-         ++peer_index) {
-      if (step >= cooperative_peer_active_steps[peer_index]) {
+    for (std::size_t aircraft_index = 0U; aircraft_index < dynamic_aircraft_count;
+         ++aircraft_index) {
+      if (step >= dynamic_aircraft_active_steps[aircraft_index]) {
         continue;
       }
-      const CooperativePeerSample peer =
-          cooperative_peer_samples[peer_index * steps + step];
-      const float peer_separation_m =
-          hypotf(hypotf(peer.x - state.x, peer.y - state.y), peer.z - state.z);
+      const DynamicAircraftSample aircraft =
+          dynamic_aircraft_samples[aircraft_index * steps + step];
+      const float peer_separation_m = hypotf(
+          hypotf(aircraft.x - state.x, aircraft.y - state.y), aircraft.z - state.z);
       const float desired_separation_m =
           fmaxf(cooperative.desired_minimum_separation_m,
-                footprint.radius_m + cooperative_peer_radii[peer_index]);
+                footprint.radius_m + dynamic_aircraft_radii[aircraft_index]);
       const float shortfall_m = fmaxf(0.0F, desired_separation_m - peer_separation_m);
       peer_separation_cost += shortfall_m * shortfall_m;
     }

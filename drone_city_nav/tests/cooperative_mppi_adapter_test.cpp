@@ -66,11 +66,11 @@ TEST(CooperativeMppiAdapter, AlignsPeerTrajectoryToPlannerSteps) {
       adaptCooperativeMppiCommand(command(), "civilian_0", 10 * kSecondNs, 4U, 0.5F);
 
   ASSERT_TRUE(result.accepted());
-  ASSERT_EQ(result.conflicting_peers.size(), 1U);
-  ASSERT_TRUE(result.conflicting_peers.front().samples);
-  EXPECT_EQ(result.conflicting_peers.front().active_steps, 4U);
-  EXPECT_FLOAT_EQ(result.conflicting_peers.front().samples->at(0U).x, 1.0F);
-  EXPECT_FLOAT_EQ(result.conflicting_peers.front().samples->at(3U).x, 4.0F);
+  ASSERT_EQ(result.dynamic_aircraft.size(), 1U);
+  ASSERT_TRUE(result.dynamic_aircraft.front().samples);
+  EXPECT_EQ(result.dynamic_aircraft.front().active_steps, 4U);
+  EXPECT_FLOAT_EQ(result.dynamic_aircraft.front().samples->at(0U).x, 1.0F);
+  EXPECT_FLOAT_EQ(result.dynamic_aircraft.front().samples->at(3U).x, 4.0F);
   ASSERT_TRUE(result.maneuver.has_value());
   ASSERT_TRUE(result.acquisition.has_value());
   EXPECT_TRUE(result.avoidance_active);
@@ -95,10 +95,10 @@ TEST(CooperativeMppiAdapter, StopsAtPeerValidityBoundary) {
       adaptCooperativeMppiCommand(input, "civilian_0", 10 * kSecondNs, 6U, 0.5F);
 
   ASSERT_TRUE(result.accepted());
-  ASSERT_EQ(result.conflicting_peers.size(), 1U);
-  EXPECT_EQ(result.conflicting_peers.front().active_steps, 2U);
-  EXPECT_FLOAT_EQ(result.conflicting_peers.front().samples->at(2U).x,
-                  result.conflicting_peers.front().samples->at(1U).x);
+  ASSERT_EQ(result.dynamic_aircraft.size(), 1U);
+  EXPECT_EQ(result.dynamic_aircraft.front().active_steps, 2U);
+  EXPECT_FLOAT_EQ(result.dynamic_aircraft.front().samples->at(2U).x,
+                  result.dynamic_aircraft.front().samples->at(1U).x);
 }
 
 TEST(CooperativeMppiAdapter, RejectsStaleOrWrongVehicleCommand) {
@@ -131,7 +131,7 @@ TEST(CooperativeMppiAdapter, InactiveCommandAddsNoPeerCostOrBias) {
       adaptCooperativeMppiCommand(input, "civilian_0", 10 * kSecondNs, 4U, 0.5F);
 
   EXPECT_TRUE(result.accepted());
-  EXPECT_TRUE(result.conflicting_peers.empty());
+  EXPECT_TRUE(result.dynamic_aircraft.empty());
   EXPECT_FALSE(result.maneuver.has_value());
   EXPECT_FALSE(result.acquisition.has_value());
   EXPECT_FALSE(result.avoidance_active);

@@ -30,7 +30,7 @@ constexpr std::size_t kControlUpdateRolloutLanes{8U};
 constexpr std::size_t kControlUpdatePartitions{16U};
 constexpr std::size_t kMaximumKnownSolids{2048U};
 constexpr std::size_t kMaximumRoutePoints{512U};
-constexpr std::size_t kMaximumCooperativePeers{16U};
+constexpr std::size_t kMaximumDynamicAircraft{16U};
 constexpr std::size_t kRepairCandidateCount{6U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
@@ -69,9 +69,9 @@ struct DeviceBuffers {
   DeviceBuffer<float> weight_sum;
   DeviceBuffer<KnownSolid> solids{kMaximumKnownSolids};
   DeviceBuffer<RouteSample3D> route_points{kMaximumRoutePoints};
-  DeviceBuffer<CooperativePeerSample> cooperative_peer_samples;
-  DeviceBuffer<float> cooperative_peer_radii{kMaximumCooperativePeers};
-  DeviceBuffer<std::uint32_t> cooperative_peer_active_steps{kMaximumCooperativePeers};
+  DeviceBuffer<DynamicAircraftSample> dynamic_aircraft_samples;
+  DeviceBuffer<float> dynamic_aircraft_radii{kMaximumDynamicAircraft};
+  DeviceBuffer<std::uint32_t> dynamic_aircraft_active_steps{kMaximumDynamicAircraft};
 
   DeviceBuffers(const std::size_t rollouts, const std::size_t steps)
       : noise_ax{rollouts * steps},
@@ -97,7 +97,7 @@ struct DeviceBuffers {
         best_planning{1U},
         minimum_soft{1U},
         weight_sum{1U},
-        cooperative_peer_samples{kMaximumCooperativePeers * steps} {
+        dynamic_aircraft_samples{kMaximumDynamicAircraft * steps} {
   }
 
   [[nodiscard]] std::size_t bytes() const noexcept {
@@ -109,8 +109,8 @@ struct DeviceBuffers {
            repair_candidates.bytes() + best_tier.bytes() + best_rollout.bytes() +
            best_critical.bytes() + best_planning.bytes() + minimum_soft.bytes() +
            weight_sum.bytes() + solids.bytes() + route_points.bytes() +
-           cooperative_peer_samples.bytes() + cooperative_peer_radii.bytes() +
-           cooperative_peer_active_steps.bytes();
+           dynamic_aircraft_samples.bytes() + dynamic_aircraft_radii.bytes() +
+           dynamic_aircraft_active_steps.bytes();
   }
 };
 
@@ -133,9 +133,9 @@ public:
         reacquisition_noise_ay_(config_.steps),
         reacquisition_noise_az_(config_.steps),
         reacquisition_noise_yaw_(config_.steps),
-        cooperative_peer_samples_(kMaximumCooperativePeers * config_.steps),
-        cooperative_peer_radii_(kMaximumCooperativePeers),
-        cooperative_peer_active_steps_(kMaximumCooperativePeers),
+        dynamic_aircraft_samples_(kMaximumDynamicAircraft * config_.steps),
+        dynamic_aircraft_radii_(kMaximumDynamicAircraft),
+        dynamic_aircraft_active_steps_(kMaximumDynamicAircraft),
         cooperative_candidates_(kCooperativeManeuverCandidateCount * config_.steps),
         cooperative_noise_ax_(kCooperativeManeuverCandidateCount * config_.steps),
         cooperative_noise_ay_(kCooperativeManeuverCandidateCount * config_.steps),
@@ -199,7 +199,7 @@ public:
     if (!textures_[active_texture_].ready()) {
       throw std::runtime_error{"MPPI engine has no ESDF"};
     }
-    validateMppiTickInput(input, config_.steps, kMaximumCooperativePeers);
+    validateMppiTickInput(input, config_.steps, kMaximumDynamicAircraft);
     const auto host_started = std::chrono::steady_clock::now();
     const std::size_t active_rollouts =
         resolveMppiActiveRollouts(config_.rollouts, input.active_rollouts);
@@ -270,7 +270,7 @@ public:
                         .grid = textures_[active_texture_].grid(),
                         .esdf = activeEsdfHost(),
                         .known_solids = known_solids_,
-                        .peers = input.conflicting_peers,
+                        .aircraft = input.dynamic_aircraft,
                         .config = config_,
                     },
             });
@@ -330,7 +330,7 @@ public:
       }
     }
     const bool cooperative_avoidance_enabled =
-        !input.conflicting_peers.empty() &&
+        !input.dynamic_aircraft.empty() &&
         active_rollouts >= kCooperativeManeuverCandidateCount +
                                (deterministic_candidate_enabled ? 1U : 0U);
     const std::size_t cooperative_candidate_offset =
@@ -351,16 +351,17 @@ public:
             cooperative_candidates_[index].yaw_accel - nominal_[step].yaw_accel;
       }
     }
-    const std::size_t cooperative_peer_count = input.conflicting_peers.size();
-    for (std::size_t peer_index = 0U; peer_index < cooperative_peer_count;
-         ++peer_index) {
-      const CooperativePeerTrajectory& peer = input.conflicting_peers[peer_index];
-      std::ranges::copy(*peer.samples,
-                        cooperative_peer_samples_.begin() +
-                            static_cast<std::ptrdiff_t>(peer_index * config_.steps));
-      cooperative_peer_radii_[peer_index] = peer.footprint_radius_m;
-      cooperative_peer_active_steps_[peer_index] =
-          static_cast<std::uint32_t>(peer.active_steps);
+    const std::size_t dynamic_aircraft_count = input.dynamic_aircraft.size();
+    for (std::size_t aircraft_index = 0U; aircraft_index < dynamic_aircraft_count;
+         ++aircraft_index) {
+      const DynamicAircraftTrajectory& aircraft =
+          input.dynamic_aircraft[aircraft_index];
+      std::ranges::copy(*aircraft.samples, dynamic_aircraft_samples_.begin() +
+                                               static_cast<std::ptrdiff_t>(
+                                                   aircraft_index * config_.steps));
+      dynamic_aircraft_radii_[aircraft_index] = aircraft.footprint_radius_m;
+      dynamic_aircraft_active_steps_[aircraft_index] =
+          static_cast<std::uint32_t>(aircraft.active_steps);
     }
     const Control cooperative_preferred_acceleration =
         input.cooperative_maneuver.has_value()
@@ -377,23 +378,23 @@ public:
                               nominal_.size() * sizeof(Control), cudaMemcpyHostToDevice,
                               stream_),
               "copy time-shifted nominal controls");
-    if (cooperative_peer_count > 0U) {
-      checkCuda(cudaMemcpyAsync(buffers_.cooperative_peer_samples.get(),
-                                cooperative_peer_samples_.data(),
-                                cooperative_peer_count * config_.steps *
-                                    sizeof(CooperativePeerSample),
+    if (dynamic_aircraft_count > 0U) {
+      checkCuda(cudaMemcpyAsync(buffers_.dynamic_aircraft_samples.get(),
+                                dynamic_aircraft_samples_.data(),
+                                dynamic_aircraft_count * config_.steps *
+                                    sizeof(DynamicAircraftSample),
                                 cudaMemcpyHostToDevice, stream_),
-                "upload cooperative peer trajectories");
-      checkCuda(cudaMemcpyAsync(buffers_.cooperative_peer_radii.get(),
-                                cooperative_peer_radii_.data(),
-                                cooperative_peer_count * sizeof(float),
+                "upload dynamic aircraft trajectories");
+      checkCuda(cudaMemcpyAsync(buffers_.dynamic_aircraft_radii.get(),
+                                dynamic_aircraft_radii_.data(),
+                                dynamic_aircraft_count * sizeof(float),
                                 cudaMemcpyHostToDevice, stream_),
-                "upload cooperative peer radii");
-      checkCuda(cudaMemcpyAsync(buffers_.cooperative_peer_active_steps.get(),
-                                cooperative_peer_active_steps_.data(),
-                                cooperative_peer_count * sizeof(std::uint32_t),
+                "upload dynamic aircraft radii");
+      checkCuda(cudaMemcpyAsync(buffers_.dynamic_aircraft_active_steps.get(),
+                                dynamic_aircraft_active_steps_.data(),
+                                dynamic_aircraft_count * sizeof(std::uint32_t),
                                 cudaMemcpyHostToDevice, stream_),
-                "upload cooperative peer active steps");
+                "upload dynamic aircraft active steps");
     }
     warm_done_.record(stream_);
     generateNoise<<<noise_blocks, kThreadsPerBlock, 0U, stream_>>>(
@@ -452,8 +453,8 @@ public:
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
         route_active ? input.route->initial_station_m : 0.0F,
-        buffers_.cooperative_peer_samples.get(), buffers_.cooperative_peer_radii.get(),
-        buffers_.cooperative_peer_active_steps.get(), cooperative_peer_count,
+        buffers_.dynamic_aircraft_samples.get(), buffers_.dynamic_aircraft_radii.get(),
+        buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
         config_.cooperative, cooperative_preferred_acceleration,
         cooperative_preference_steps, input.cooperative_maneuver.has_value(),
         previous_applied_control, first_control_interval_s, input.reference_speed_mps,
@@ -623,7 +624,7 @@ public:
         acquisition.terminal_progress_m;
     result.cooperative_acquisition_separation_gain_m = acquisition.separation_gain_m;
     result.cooperative_candidates_injected = cooperative_avoidance_enabled;
-    result.cooperative_peer_count = cooperative_peer_count;
+    result.dynamic_aircraft_count = dynamic_aircraft_count;
     const auto evaluate_controls = [&](const std::span<const Control> controls) {
       EvaluatedControlSequence evaluation;
       evaluation.metrics = simulateReference(
@@ -631,7 +632,7 @@ public:
           config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
           input.target.x, input.target.y, config_.early_exit_on_collision,
           previous_applied_control, input.reference_speed_mps, config_.footprint,
-          input.moving_target, &evaluation.trace, input.conflicting_peers,
+          input.moving_target, &evaluation.trace, input.dynamic_aircraft,
           input.cooperative_maneuver, config_.cooperative);
       evaluation.known_solid_collision = hostSweptSolidCollision(
           evaluation.trace.horizon, controls, config_.footprint, known_solids_);
@@ -694,9 +695,9 @@ public:
           textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
           buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
           route_active ? input.route->initial_station_m : 0.0F,
-          buffers_.cooperative_peer_samples.get(),
-          buffers_.cooperative_peer_radii.get(),
-          buffers_.cooperative_peer_active_steps.get(), cooperative_peer_count,
+          buffers_.dynamic_aircraft_samples.get(),
+          buffers_.dynamic_aircraft_radii.get(),
+          buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
           config_.cooperative, cooperative_preferred_acceleration,
           cooperative_preference_steps, input.cooperative_maneuver.has_value(),
           previous_applied_control, first_control_interval_s, input.reference_speed_mps,
@@ -914,9 +915,9 @@ private:
   std::vector<float> reacquisition_noise_ay_;
   std::vector<float> reacquisition_noise_az_;
   std::vector<float> reacquisition_noise_yaw_;
-  std::vector<CooperativePeerSample> cooperative_peer_samples_;
-  std::vector<float> cooperative_peer_radii_;
-  std::vector<std::uint32_t> cooperative_peer_active_steps_;
+  std::vector<DynamicAircraftSample> dynamic_aircraft_samples_;
+  std::vector<float> dynamic_aircraft_radii_;
+  std::vector<std::uint32_t> dynamic_aircraft_active_steps_;
   std::vector<Control> cooperative_candidates_;
   std::vector<float> cooperative_noise_ax_;
   std::vector<float> cooperative_noise_ay_;

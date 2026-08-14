@@ -22,7 +22,7 @@ enum class CooperativeMppiAdapterStatus : std::uint8_t {
 
 struct CooperativeMppiAdapterResult {
   CooperativeMppiAdapterStatus status{CooperativeMppiAdapterStatus::kDisabled};
-  std::vector<mppi::CooperativePeerTrajectory> conflicting_peers;
+  std::vector<mppi::DynamicAircraftTrajectory> dynamic_aircraft;
   std::optional<mppi::CooperativeManeuverPreference> maneuver;
   std::optional<mppi::CooperativeSeparationAcquisition> acquisition;
   bool avoidance_active{false};

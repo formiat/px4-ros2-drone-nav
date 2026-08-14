@@ -43,14 +43,14 @@ enum class CooperativeManeuver : std::uint8_t {
   kSlow = 5,
 };
 
-struct CooperativePeerSample {
+struct DynamicAircraftSample {
   float x{0.0F};
   float y{0.0F};
   float z{0.0F};
 };
 
-struct CooperativePeerTrajectory {
-  std::shared_ptr<const std::vector<CooperativePeerSample>> samples;
+struct DynamicAircraftTrajectory {
+  std::shared_ptr<const std::vector<DynamicAircraftSample>> samples;
   float footprint_radius_m{0.0F};
   std::size_t active_steps{0U};
 };

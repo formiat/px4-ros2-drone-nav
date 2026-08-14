@@ -7,6 +7,6 @@
 namespace drone_city_nav::mppi {
 
 void validateMppiTickInput(const MppiTickInput& input, std::size_t expected_steps,
-                           std::size_t maximum_cooperative_peers);
+                           std::size_t maximum_dynamic_aircraft);
 
 } // namespace drone_city_nav::mppi

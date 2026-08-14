@@ -242,13 +242,13 @@ TEST(MppiReferenceTest, PeerSeparationIsSoftAndTimeIndexed) {
   DynamicsConfig dynamics;
   dynamics.dt_s = 0.5F;
   dynamics.linear_drag_1ps = 0.0F;
-  const auto near_samples = std::make_shared<const std::vector<CooperativePeerSample>>(
-      std::vector<CooperativePeerSample>(4U, CooperativePeerSample{.x = 4.0F}));
-  const auto far_samples = std::make_shared<const std::vector<CooperativePeerSample>>(
-      std::vector<CooperativePeerSample>(4U, CooperativePeerSample{.x = 20.0F}));
-  const std::array near_peer{CooperativePeerTrajectory{
+  const auto near_samples = std::make_shared<const std::vector<DynamicAircraftSample>>(
+      std::vector<DynamicAircraftSample>(4U, DynamicAircraftSample{.x = 4.0F}));
+  const auto far_samples = std::make_shared<const std::vector<DynamicAircraftSample>>(
+      std::vector<DynamicAircraftSample>(4U, DynamicAircraftSample{.x = 20.0F}));
+  const std::array near_peer{DynamicAircraftTrajectory{
       .samples = near_samples, .footprint_radius_m = 0.82F, .active_steps = 4U}};
-  const std::array far_peer{CooperativePeerTrajectory{
+  const std::array far_peer{DynamicAircraftTrajectory{
       .samples = far_samples, .footprint_radius_m = 0.82F, .active_steps = 4U}};
   const State initial{.vx = 2.0F};
 

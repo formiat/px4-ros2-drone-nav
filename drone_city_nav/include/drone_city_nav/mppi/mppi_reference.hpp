@@ -40,7 +40,7 @@ resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
     float reference_speed_mps = -1.0F, const FootprintConfig& footprint = {},
     std::optional<MovingTargetReference> moving_target = std::nullopt,
     ReferenceSimulationTrace* trace = nullptr,
-    std::span<const CooperativePeerTrajectory> conflicting_peers = {},
+    std::span<const DynamicAircraftTrajectory> dynamic_aircraft = {},
     std::optional<CooperativeManeuverPreference> cooperative_maneuver = std::nullopt,
     const CooperativeConfig& cooperative = {});
 

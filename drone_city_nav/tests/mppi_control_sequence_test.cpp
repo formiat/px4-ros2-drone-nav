@@ -263,15 +263,15 @@ TEST(MppiControlSequenceTest, CudaEngineEvaluatesCooperativePeers) {
   const EsdfGrid grid{40, 20, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf(800U, 20.0F);
   ASSERT_TRUE(engine.updateEsdf(EsdfSnapshot{grid, esdf, 1U}).accepted);
-  auto peer_samples = std::make_shared<const std::vector<CooperativePeerSample>>(
-      config.steps, CooperativePeerSample{.x = 8.0F, .y = 10.0F});
+  auto peer_samples = std::make_shared<const std::vector<DynamicAircraftSample>>(
+      config.steps, DynamicAircraftSample{.x = 8.0F, .y = 10.0F});
 
   MppiTickInput input;
   input.initial_state = State{.x = 5.0F, .y = 10.0F, .vx = 2.0F};
   input.target = State{.x = 30.0F, .y = 10.0F};
   input.planning_stamp_ns = 1;
-  input.conflicting_peers = {
-      CooperativePeerTrajectory{.samples = std::move(peer_samples),
+  input.dynamic_aircraft = {
+      DynamicAircraftTrajectory{.samples = std::move(peer_samples),
                                 .footprint_radius_m = 0.82F,
                                 .active_steps = config.steps}};
   input.cooperative_maneuver = CooperativeManeuverPreference{
@@ -283,7 +283,7 @@ TEST(MppiControlSequenceTest, CudaEngineEvaluatesCooperativePeers) {
   const MppiTickResult result = engine.plan(input);
 
   EXPECT_TRUE(result.cooperative_candidates_injected);
-  EXPECT_EQ(result.cooperative_peer_count, 1U);
+  EXPECT_EQ(result.dynamic_aircraft_count, 1U);
   EXPECT_TRUE(std::isfinite(result.minimum_peer_separation_m));
   EXPECT_GT(result.peer_separation_cost, 0.0F);
 }
@@ -314,9 +314,9 @@ TEST(MppiControlSequenceTest, ReverseAcquisitionIsOnlyABackwardFallback) {
                     .tangent_x = 1.0F,
                     .station_m = 25.0F},
   };
-  const auto peer_samples = std::make_shared<const std::vector<CooperativePeerSample>>(
-      config.steps, CooperativePeerSample{.x = 25.0F, .y = 10.0F, .z = 10.0F});
-  const std::array peers{CooperativePeerTrajectory{
+  const auto peer_samples = std::make_shared<const std::vector<DynamicAircraftSample>>(
+      config.steps, DynamicAircraftSample{.x = 25.0F, .y = 10.0F, .z = 10.0F});
+  const std::array peers{DynamicAircraftTrajectory{
       .samples = peer_samples,
       .footprint_radius_m = 0.82F,
       .active_steps = config.steps,
@@ -335,7 +335,7 @@ TEST(MppiControlSequenceTest, ReverseAcquisitionIsOnlyABackwardFallback) {
               .grid = grid,
               .esdf = esdf,
               .known_solids = {},
-              .peers = peers,
+              .aircraft = peers,
               .acquisition = CooperativeSeparationAcquisition{},
               .config = config,
           });
@@ -376,15 +376,15 @@ TEST(MppiControlSequenceTest, AvoidanceReseedsOnceOnEntryAndRelease) {
                         .tangent_x = 1.0F,
                         .station_m = 25.0F},
       });
-  auto peers = std::make_shared<const std::vector<CooperativePeerSample>>(
-      config.steps, CooperativePeerSample{.x = 8.0F, .y = 10.0F, .z = 10.0F});
+  auto peers = std::make_shared<const std::vector<DynamicAircraftSample>>(
+      config.steps, DynamicAircraftSample{.x = 8.0F, .y = 10.0F, .z = 10.0F});
   MppiTickInput input;
   input.initial_state = State{.x = 5.0F, .y = 10.0F, .z = 10.0F};
   input.target = State{.x = 30.0F, .y = 10.0F, .z = 10.0F};
   input.planning_stamp_ns = 1;
   input.reference_speed_mps = 5.0F;
   input.route = RouteReference{.points = route, .generation = 1U};
-  input.conflicting_peers = {CooperativePeerTrajectory{
+  input.dynamic_aircraft = {DynamicAircraftTrajectory{
       .samples = peers, .footprint_radius_m = 0.82F, .active_steps = config.steps}};
   input.cooperative_maneuver = CooperativeManeuverPreference{
       .maneuver = CooperativeManeuver::kClimb,
@@ -403,7 +403,7 @@ TEST(MppiControlSequenceTest, AvoidanceReseedsOnceOnEntryAndRelease) {
   EXPECT_FALSE(entered.cooperative_acquisition_backward_fallback);
 
   input.planning_stamp_ns = 100'000'001;
-  input.conflicting_peers.clear();
+  input.dynamic_aircraft.clear();
   input.cooperative_maneuver.reset();
   input.cooperative_acquisition.reset();
   input.cooperative_avoidance_active = false;

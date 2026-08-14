@@ -49,17 +49,17 @@ routeDirection(const CooperativeSeparationAcquisitionEvaluationInput& input) noe
                               : std::pair{1.0F, 0.0F};
 }
 
-[[nodiscard]] float minimumPeerSeparationGain(
+[[nodiscard]] float minimumAircraftSeparationGain(
     const State& initial_state, const std::span<const State> horizon,
-    const std::span<const CooperativePeerTrajectory> peers) noexcept {
+    const std::span<const DynamicAircraftTrajectory> aircraft) noexcept {
   float separation_gain_m = std::numeric_limits<float>::infinity();
-  for (const CooperativePeerTrajectory& peer : peers) {
-    if (!peer.samples || peer.active_steps == 0U) {
+  for (const DynamicAircraftTrajectory& tracked_aircraft : aircraft) {
+    if (!tracked_aircraft.samples || tracked_aircraft.active_steps == 0U) {
       continue;
     }
-    const CooperativePeerSample& first = peer.samples->front();
-    const std::size_t step = peer.active_steps - 1U;
-    const CooperativePeerSample& last = (*peer.samples)[step];
+    const DynamicAircraftSample& first = tracked_aircraft.samples->front();
+    const std::size_t step = tracked_aircraft.active_steps - 1U;
+    const DynamicAircraftSample& last = (*tracked_aircraft.samples)[step];
     const State& terminal = horizon[std::min(step + 1U, horizon.size() - 1U)];
     const float initial_separation_m =
         std::hypot(std::hypot(first.x - initial_state.x, first.y - initial_state.y),
@@ -83,7 +83,7 @@ evaluateCandidate(const CooperativeSeparationAcquisitionEvaluationInput& input,
       input.config.risk, input.config.costs, input.grid, input.esdf, input.target.x,
       input.target.y, input.config.early_exit_on_collision,
       input.previous_applied_control, input.reference_speed_mps, input.config.footprint,
-      std::nullopt, &trace, input.peers, input.acquisition.preference,
+      std::nullopt, &trace, input.aircraft, input.acquisition.preference,
       input.config.cooperative);
   const bool solid_collision = hostSweptSolidCollision(
       trace.horizon, controls, input.config.footprint, input.known_solids);
@@ -98,7 +98,7 @@ evaluateCandidate(const CooperativeSeparationAcquisitionEvaluationInput& input,
            (state.y - input.initial_state.y) * direction.second;
   };
   const float separation_gain_m =
-      minimumPeerSeparationGain(input.initial_state, trace.horizon, input.peers);
+      minimumAircraftSeparationGain(input.initial_state, trace.horizon, input.aircraft);
   const float head_progress_m = progress(head);
   const bool backward_candidate = index + 1U == kCooperativeAcquisitionCandidateCount;
   return CandidateEvaluation{
@@ -139,7 +139,7 @@ betterNonBackwardFallback(const CandidateEvaluation& candidate,
 CooperativeSeparationAcquisitionResult evaluateCooperativeSeparationAcquisition(
     const CooperativeSeparationAcquisitionEvaluationInput& input) {
   CooperativeSeparationAcquisitionResult result;
-  if (input.peers.empty() || input.config.steps == 0U || input.esdf.empty()) {
+  if (input.aircraft.empty() || input.config.steps == 0U || input.esdf.empty()) {
     return result;
   }
   const std::vector<Control> candidates =
@@ -206,7 +206,7 @@ CooperativeSeparationAcquisitionLifecycle::update(
   avoidance_active_ = input.avoidance_active;
   acquisition_pending_ = entered || (acquisition_pending_ && input.avoidance_active);
 
-  if (acquisition_pending_ && input.acquisition && !input.evaluation.peers.empty()) {
+  if (acquisition_pending_ && input.acquisition && !input.evaluation.aircraft.empty()) {
     CooperativeSeparationAcquisitionEvaluationInput evaluation = input.evaluation;
     evaluation.acquisition = *input.acquisition;
     result.acquisition = evaluateCooperativeSeparationAcquisition(evaluation);

@@ -67,7 +67,7 @@ struct MppiTickInput {
   RiskTier maximum_eligible_risk_tier{RiskTier::kPreferred};
   std::optional<MovingTargetReference> moving_target;
   std::optional<RouteReference> route;
-  std::vector<CooperativePeerTrajectory> conflicting_peers;
+  std::vector<DynamicAircraftTrajectory> dynamic_aircraft;
   std::optional<CooperativeManeuverPreference> cooperative_maneuver;
   std::optional<CooperativeSeparationAcquisition> cooperative_acquisition;
   std::optional<std::size_t> active_rollouts;
@@ -165,7 +165,7 @@ struct MppiTickResult {
   float cooperative_acquisition_terminal_progress_m{0.0F};
   float cooperative_acquisition_separation_gain_m{0.0F};
   bool cooperative_candidates_injected{false};
-  std::size_t cooperative_peer_count{0U};
+  std::size_t dynamic_aircraft_count{0U};
   std::uint64_t esdf_revision{0U};
   std::size_t active_rollouts{0U};
   MppiStageTimings timings{};

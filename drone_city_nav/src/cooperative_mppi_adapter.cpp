@@ -78,7 +78,7 @@ CooperativeMppiAdapterResult adaptCooperativeMppiCommand(
       .preference = *result.maneuver,
   };
 
-  result.conflicting_peers.reserve(command.conflicting_peers.size());
+  result.dynamic_aircraft.reserve(command.conflicting_peers.size());
   for (const CooperativePeerTrajectoryData& peer : command.conflicting_peers) {
     if (peer.vehicle_id.empty() || !(peer.footprint_radius_m >= 0.0) ||
         peer.footprint_radius_m > std::numeric_limits<float>::max() ||
@@ -86,7 +86,7 @@ CooperativeMppiAdapterResult adaptCooperativeMppiCommand(
         peer.trajectory.empty()) {
       continue;
     }
-    auto samples = std::make_shared<std::vector<mppi::CooperativePeerSample>>(steps);
+    auto samples = std::make_shared<std::vector<mppi::DynamicAircraftSample>>(steps);
     std::size_t active_steps = 0U;
     for (std::size_t step = 0U; step < steps; ++step) {
       const std::int64_t offset_ns = static_cast<std::int64_t>(std::llround(
@@ -100,7 +100,7 @@ CooperativeMppiAdapterResult adaptCooperativeMppiCommand(
       if (!sample.has_value()) {
         break;
       }
-      (*samples)[step] = mppi::CooperativePeerSample{
+      (*samples)[step] = mppi::DynamicAircraftSample{
           .x = static_cast<float>(sample->position.x),
           .y = static_cast<float>(sample->position.y),
           .z = static_cast<float>(sample->position.z),
@@ -112,13 +112,13 @@ CooperativeMppiAdapterResult adaptCooperativeMppiCommand(
     }
     std::fill(samples->begin() + static_cast<std::ptrdiff_t>(active_steps),
               samples->end(), (*samples)[active_steps - 1U]);
-    result.conflicting_peers.push_back(mppi::CooperativePeerTrajectory{
+    result.dynamic_aircraft.push_back(mppi::DynamicAircraftTrajectory{
         .samples = std::move(samples),
         .footprint_radius_m = static_cast<float>(peer.footprint_radius_m),
         .active_steps = active_steps,
     });
   }
-  if (result.conflicting_peers.empty()) {
+  if (result.dynamic_aircraft.empty()) {
     result.status = CooperativeMppiAdapterStatus::kNoTrajectoryCoverage;
     return result;
   }
