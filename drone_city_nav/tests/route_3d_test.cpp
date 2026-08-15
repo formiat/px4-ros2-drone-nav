@@ -518,7 +518,8 @@ TEST(Route3DTest, SelectsEmbeddedPassageEdgeWhenItsObjectiveCostIsLower) {
       .width_m = 24.0,
       .height_m = 7.0,
       .minimum_clearance_m = 3.5,
-      .speed_limit_mps = 10.0}};
+      .speed_limit_mps = 10.0,
+      .segment_ids = {}}};
   RiskAwareLattice3DConfig config;
   config.horizontal_step_m = 4.0;
   config.vertical_step_m = 1.0;
@@ -569,7 +570,8 @@ TEST(Route3DTest, SeedsCollisionValidatedPassageBeyondLocalConnectionRadius) {
       .width_m = 24.0,
       .height_m = 7.0,
       .minimum_clearance_m = 3.5,
-      .speed_limit_mps = 10.0}};
+      .speed_limit_mps = 10.0,
+      .segment_ids = {}}};
   RiskAwareLattice3DConfig config;
   config.horizontal_step_m = 4.0;
   config.vertical_step_m = 1.0;
@@ -618,7 +620,8 @@ TEST(Route3DTest, MaterializesRequiredPassageWhenUnconstrainedSlicePrefersFronti
       .width_m = 24.0,
       .height_m = 7.0,
       .minimum_clearance_m = 3.5,
-      .speed_limit_mps = 10.0}};
+      .speed_limit_mps = 10.0,
+      .segment_ids = {}}};
   RiskAwareLattice3DConfig config;
   config.horizontal_step_m = 2.0;
   config.vertical_step_m = 1.0;
@@ -669,7 +672,8 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
                                 .width_m = 24.0,
                                 .height_m = 7.0,
                                 .minimum_clearance_m = 3.5,
-                                .speed_limit_mps = 10.0};
+                                .speed_limit_mps = 10.0,
+                                .segment_ids = {}};
   };
   const std::vector<PassageTraversalEdge> passages{
       passage("direct", {{0.5, 2.5, 5.5}, {18.5, 2.5, 5.5}}),
@@ -711,6 +715,59 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
   EXPECT_EQ(parallel.topology_searches, 3U);
   EXPECT_EQ(parallel.parallel_topology_searches, parallel.topology_searches);
   EXPECT_GT(parallel.topology_search_worker_ms, 0.0);
+}
+
+TEST(Route3DTest, SpatiallyIndexesPassageEntriesDuringLatticeExpansion) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 20, 10}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  std::vector<PassageTraversalEdge> passages;
+  for (std::size_t index = 0U; index < 40U; ++index) {
+    const double y = 100.5 + 4.0 * static_cast<double>(index);
+    const std::string id = "remote_" + std::to_string(index);
+    passages.push_back(PassageTraversalEdge{
+        .id = id,
+        .region_id = id + "_region",
+        .entry_portal_id = id + "_entry",
+        .exit_portal_id = id + "_exit",
+        .centerline = sampleRoute3D(std::vector<Point3>{{4.5, y, 5.5}, {12.5, y, 5.5}},
+                                    0.5, 10.0),
+        .entry = Point3{4.5, y, 5.5},
+        .exit = Point3{12.5, y, 5.5},
+        .min_z_m = 1.5,
+        .max_z_m = 8.5,
+        .width_m = 8.0,
+        .height_m = 7.0,
+        .minimum_clearance_m = 3.5,
+        .speed_limit_mps = 10.0,
+        .segment_ids = {},
+    });
+  }
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.maximum_topology_search_groups = 0U;
+  config.maximum_search_time_ms = 1000.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      grid, field.distancesM(), Point3{2.5, 2.5, 5.5}, Vec3{1.0, 0.0, 0.0},
+      Point3{20.5, 2.5, 5.5}, passages, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_EQ(result.successor_profiling.search.maximum_candidates, passages.size() * 2U);
+  EXPECT_TRUE(result.selected_passage_traversals.empty());
 }
 
 TEST(Route3DTest, MaterializesValidatedContinuationWhenSearchSliceExpires) {

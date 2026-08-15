@@ -6,7 +6,9 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <compare>
 #include <limits>
+#include <map>
 #include <optional>
 #include <queue>
 #include <ranges>
@@ -75,6 +77,71 @@ struct CostMetrics {
 struct PassageTransition {
   std::size_t passage_index{0U};
   bool reversed{false};
+};
+
+struct OrientedPassageCandidate {
+  std::size_t passage_index{0U};
+  bool reversed{false};
+
+  [[nodiscard]] bool
+  operator==(const OrientedPassageCandidate&) const noexcept = default;
+};
+
+struct PassageEntryBucket {
+  int x{0};
+  int y{0};
+  int z{0};
+
+  [[nodiscard]] auto operator<=>(const PassageEntryBucket&) const noexcept = default;
+};
+
+class PassageEntrySpatialIndex {
+public:
+  PassageEntrySpatialIndex(const std::span<const PassageTraversalEdge> passages,
+                           const double bucket_size_m)
+      : bucket_size_m_{bucket_size_m} {
+    for (std::size_t index = 0U; index < passages.size(); ++index) {
+      entries_[bucketFor(passages[index].entry)].push_back(
+          OrientedPassageCandidate{.passage_index = index, .reversed = false});
+      entries_[bucketFor(passages[index].exit)].push_back(
+          OrientedPassageCandidate{.passage_index = index, .reversed = true});
+    }
+  }
+
+  [[nodiscard]] std::vector<OrientedPassageCandidate> near(const Point3& point) const {
+    const PassageEntryBucket center = bucketFor(point);
+    std::vector<OrientedPassageCandidate> result;
+    for (int dz = -1; dz <= 1; ++dz) {
+      for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+          const auto found = entries_.find(PassageEntryBucket{
+              .x = center.x + dx, .y = center.y + dy, .z = center.z + dz});
+          if (found != entries_.end()) {
+            result.insert(result.end(), found->second.begin(), found->second.end());
+          }
+        }
+      }
+    }
+    std::ranges::sort(result, [](const OrientedPassageCandidate& first,
+                                 const OrientedPassageCandidate& second) {
+      return std::tie(first.passage_index, first.reversed) <
+             std::tie(second.passage_index, second.reversed);
+    });
+    result.erase(std::unique(result.begin(), result.end()), result.end());
+    return result;
+  }
+
+private:
+  [[nodiscard]] PassageEntryBucket bucketFor(const Point3& point) const noexcept {
+    return PassageEntryBucket{
+        .x = static_cast<int>(std::floor(point.x / bucket_size_m_)),
+        .y = static_cast<int>(std::floor(point.y / bucket_size_m_)),
+        .z = static_cast<int>(std::floor(point.z / bucket_size_m_)),
+    };
+  }
+
+  double bucket_size_m_{1.0};
+  std::map<PassageEntryBucket, std::vector<OrientedPassageCandidate>> entries_;
 };
 
 struct Record {
@@ -440,6 +507,8 @@ reconstruct(const Key& terminal, const Point3& origin,
                                            config.maximum_search_time_ms / 3.0);
   std::priority_queue<QueueEntry, std::vector<QueueEntry>, Greater> open;
   std::unordered_map<Key, Record, KeyHash> records;
+  const PassageEntrySpatialIndex passage_entry_index{
+      passages, config.passage_connection_distance_m};
   const Key root{};
   records[root].g = 0.0;
   std::uint64_t sequence = 0U;
@@ -686,15 +755,18 @@ reconstruct(const Key& terminal, const Point3& origin,
       records_peak = std::max(records_peak, records.size());
     }
 
-    const std::size_t passage_candidate_count = passages.size() * 2U;
+    const std::vector<OrientedPassageCandidate> passage_candidates =
+        passage_entry_index.near(current);
+    const std::size_t passage_candidate_count = passage_candidates.size();
     std::vector<PassageEvaluation> passage_evaluations(passage_candidate_count);
     const auto evaluate_passage = [&](const std::size_t candidate_index) {
-      const std::size_t passage_index = candidate_index / 2U;
-      const bool reversed = candidate_index % 2U != 0U;
+      const OrientedPassageCandidate& passage_candidate =
+          passage_candidates[candidate_index];
       PassageEvaluation evaluation;
       evaluation.candidate = passageSuccessorRecord(
-          grid, esdf_m, current, found->second, passages[passage_index], passage_index,
-          reversed, stage, preferred_direction, config,
+          grid, esdf_m, current, found->second,
+          passages[passage_candidate.passage_index], passage_candidate.passage_index,
+          passage_candidate.reversed, stage, preferred_direction, config,
           config.passage_connection_distance_m, evaluation.diagnostics);
       passage_evaluations[candidate_index] = evaluation;
     };
@@ -711,8 +783,10 @@ reconstruct(const Key& terminal, const Point3& origin,
     }
     for (std::size_t candidate_index = 0U; candidate_index < passage_candidate_count;
          ++candidate_index) {
-      const std::size_t passage_index = candidate_index / 2U;
-      const bool reversed = candidate_index % 2U != 0U;
+      const OrientedPassageCandidate& passage_candidate =
+          passage_candidates[candidate_index];
+      const std::size_t passage_index = passage_candidate.passage_index;
+      const bool reversed = passage_candidate.reversed;
       PassageEvaluation& evaluation = passage_evaluations[candidate_index];
       ++successor_diagnostics.passage_generated;
       detail::accumulateLattice3DSuccessorDiagnostics(successor_diagnostics,

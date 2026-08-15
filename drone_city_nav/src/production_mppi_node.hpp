@@ -9,6 +9,7 @@
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
+#include "drone_city_nav/free_space_topology_router.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
@@ -619,6 +620,7 @@ private:
   std::unique_ptr<NoStaticRouteCycleDetector> no_static_cycle_detector_;
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
+  FreeSpaceTopologyRouterConfig free_space_topology_router_config_{};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
@@ -635,6 +637,7 @@ private:
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<FreeSpaceTopology3D> static_free_space_topology_3d_;
+  std::unique_ptr<FreeSpaceTopologyRouter> static_free_space_topology_router_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
   std::shared_ptr<const std::vector<PassageTraversalEdge>> static_portal_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;

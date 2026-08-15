@@ -137,7 +137,8 @@ TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedPassageEdges) {
           .width_m = 24.0,
           .height_m = 7.0,
           .minimum_clearance_m = 3.5,
-          .speed_limit_mps = 10.0},
+          .speed_limit_mps = 10.0,
+          .segment_ids = {}},
       PassageTraversalEdge{
           .id = "candidate",
           .region_id = "candidate_region",
@@ -150,7 +151,8 @@ TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedPassageEdges) {
           .width_m = 24.0,
           .height_m = 7.0,
           .minimum_clearance_m = 3.5,
-          .speed_limit_mps = 10.0}};
+          .speed_limit_mps = 10.0,
+          .segment_ids = {}}};
   const std::vector<PassageTraversalId> selected{"selected"};
   MppiDebugMarkerInput input = markerInput();
   input.passage_traversals = passages;

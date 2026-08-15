@@ -29,10 +29,16 @@ void ProductionMppiNode::processStaticGuideSearch(
              mission_goal.z - navigation.state.z};
   }
   const auto search_started = std::chrono::steady_clock::now();
+  std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_resource =
+      world.passage_traversals;
+  if (static_free_space_topology_router_) {
+    passage_resource =
+        static_free_space_topology_router_->resolve(search_start, mission_goal)
+            .traversals;
+  }
   const std::span<const PassageTraversalEdge> passage_traversals =
-      world.passage_traversals
-          ? std::span<const PassageTraversalEdge>{*world.passage_traversals}
-          : std::span<const PassageTraversalEdge>{};
+      passage_resource ? std::span<const PassageTraversalEdge>{*passage_resource}
+                       : std::span<const PassageTraversalEdge>{};
   const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
       world.grid, *world.distances_m, search_start, preferred_direction, mission_goal,
       passage_traversals, lattice_3d_config_, planning_worker_pool_.get());
@@ -40,6 +46,7 @@ void ProductionMppiNode::processStaticGuideSearch(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
   ProductionMppiPreparedEsdf prepared = world;
+  prepared.passage_traversals = std::move(passage_resource);
   prepared.global_guide_search_ms = search_ms;
   prepared.planning_search_kind = ProductionPlanningSearchKind::kLattice3D;
   prepared.planning_search_start = search_start;
