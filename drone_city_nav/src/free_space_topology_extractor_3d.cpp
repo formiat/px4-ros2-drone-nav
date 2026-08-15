@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -15,6 +16,7 @@
 #include <queue>
 #include <ranges>
 #include <set>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -52,6 +54,32 @@ struct SegmentDraft {
   std::size_t first_cell{0U};
   std::size_t second_cell{0U};
   std::vector<std::size_t> cells;
+};
+
+class ClearanceView {
+public:
+  ClearanceView(const std::span<const float> center_distances_m,
+                const double voxel_half_diagonal_m) noexcept
+      : center_distances_m_{center_distances_m},
+        voxel_half_diagonal_m_{voxel_half_diagonal_m} {
+  }
+
+  [[nodiscard]] std::size_t size() const noexcept {
+    return center_distances_m_.size();
+  }
+
+  [[nodiscard]] float operator[](const std::size_t index) const noexcept {
+    const float center_distance_m = center_distances_m_[index];
+    if (!std::isfinite(center_distance_m)) {
+      return center_distance_m;
+    }
+    return static_cast<float>(
+        std::max(0.0, static_cast<double>(center_distance_m) - voxel_half_diagonal_m_));
+  }
+
+private:
+  std::span<const float> center_distances_m_;
+  double voxel_half_diagonal_m_{0.0};
 };
 
 [[nodiscard]] bool finitePositive(const double value) noexcept {
@@ -122,6 +150,22 @@ struct SegmentDraft {
           GridIndex3D{0, 1, 0},  GridIndex3D{0, 0, -1}, GridIndex3D{0, 0, 1}};
 }
 
+[[nodiscard]] const std::vector<GridIndex3D>& antipodalNeighborDirections() {
+  static const std::vector<GridIndex3D> directions = [] {
+    std::vector<GridIndex3D> result;
+    result.reserve(13U);
+    for (const GridIndex3D direction : neighbors26()) {
+      if (direction.z > 0 ||
+          (direction.z == 0 &&
+           (direction.y > 0 || (direction.y == 0 && direction.x > 0)))) {
+        result.push_back(direction);
+      }
+    }
+    return result;
+  }();
+  return directions;
+}
+
 [[nodiscard]] GridIndex3D offset(const GridIndex3D cell,
                                  const GridIndex3D delta) noexcept {
   return GridIndex3D{cell.x + delta.x, cell.y + delta.y, cell.z + delta.z};
@@ -174,112 +218,176 @@ footprintInsideBounds(const Point3& center, const GridBounds3D& bounds,
          center.z + footprint.upper_extent_m <= maximum_z;
 }
 
-[[nodiscard]] std::vector<float>
-buildChunkedClearance(const OccupancyGrid3D& occupancy,
-                      const FreeSpaceTopologyExtractorConfig& config,
-                      FreeSpaceTopologyExtractionStats& stats) {
-  const GridBounds3D& bounds = occupancy.bounds();
-  std::vector<float> clearance(voxelCount(bounds), 0.0F);
-  const int chunk_size = static_cast<int>(config.chunk_size_cells);
-  const int halo =
-      static_cast<int>(std::ceil(config.maximum_clearance_m / bounds.resolution_m)) + 1;
-  const double voxel_half_diagonal_m =
-      0.5 * std::numbers::sqrt3_v<double> * bounds.resolution_m;
+[[nodiscard]] bool sameBounds(const GridBounds3D& first,
+                              const GridBounds3D& second) noexcept {
+  constexpr double tolerance = 1.0e-6;
+  return std::abs(first.origin_x - second.origin_x) <= tolerance &&
+         std::abs(first.origin_y - second.origin_y) <= tolerance &&
+         std::abs(first.origin_z - second.origin_z) <= tolerance &&
+         std::abs(first.resolution_m - second.resolution_m) <= tolerance &&
+         first.width_cells == second.width_cells &&
+         first.height_cells == second.height_cells &&
+         first.depth_cells == second.depth_cells;
+}
 
-  for (int core_z = 0; core_z < bounds.depth_cells; core_z += chunk_size) {
-    for (int core_y = 0; core_y < bounds.height_cells; core_y += chunk_size) {
-      for (int core_x = 0; core_x < bounds.width_cells; core_x += chunk_size) {
-        const int core_end_x = std::min(bounds.width_cells, core_x + chunk_size);
-        const int core_end_y = std::min(bounds.height_cells, core_y + chunk_size);
-        const int core_end_z = std::min(bounds.depth_cells, core_z + chunk_size);
-        const int local_x = std::max(0, core_x - halo);
-        const int local_y = std::max(0, core_y - halo);
-        const int local_z = std::max(0, core_z - halo);
-        const int local_end_x = std::min(bounds.width_cells, core_end_x + halo);
-        const int local_end_y = std::min(bounds.height_cells, core_end_y + halo);
-        const int local_end_z = std::min(bounds.depth_cells, core_end_z + halo);
-        const GridBounds3D local_bounds{
-            .origin_x =
-                bounds.origin_x + static_cast<double>(local_x) * bounds.resolution_m,
-            .origin_y =
-                bounds.origin_y + static_cast<double>(local_y) * bounds.resolution_m,
-            .origin_z =
-                bounds.origin_z + static_cast<double>(local_z) * bounds.resolution_m,
-            .resolution_m = bounds.resolution_m,
-            .width_cells = local_end_x - local_x,
-            .height_cells = local_end_y - local_y,
-            .depth_cells = local_end_z - local_z,
-        };
-        const DistanceField3D field = DistanceField3D::buildLocal(
-            occupancy, local_bounds, config.maximum_clearance_m);
-        ++stats.processed_chunks;
-        for (int z = core_z; z < core_end_z; ++z) {
-          for (int y = core_y; y < core_end_y; ++y) {
-            for (int x = core_x; x < core_end_x; ++x) {
-              const GridIndex3D global{x, y, z};
-              if (occupancy.isOccupied(global)) {
-                continue;
-              }
-              const float distance =
-                  field.distanceAt(GridIndex3D{x - local_x, y - local_y, z - local_z});
-              const double center_distance_m = std::isfinite(distance)
-                                                   ? static_cast<double>(distance)
-                                                   : config.maximum_clearance_m;
-              clearance[linearIndex(bounds, global)] = static_cast<float>(
-                  std::max(0.0, center_distance_m - voxel_half_diagonal_m));
-            }
-          }
-        }
-      }
-    }
-  }
-  return clearance;
+[[nodiscard]] bool centerInsideExtractionEnvelope(
+    const Point3& center, const FreeSpaceTopologyExtractorConfig& config) noexcept {
+  return (!config.minimum_center_z_m.has_value() ||
+          center.z + kEpsilon >= *config.minimum_center_z_m) &&
+         (!config.maximum_center_z_m.has_value() ||
+          center.z < *config.maximum_center_z_m - kEpsilon);
 }
 
 void classifyVoxels(const OccupancyGrid3D& occupancy,
                     const FreeSpaceTopologyExtractorConfig& config,
-                    const std::vector<float>& clearance,
+                    const ClearanceView& clearance,
                     std::vector<std::uint8_t>& classification,
                     FreeSpaceTopologyExtractionStats& stats) {
   const GridBounds3D& bounds = occupancy.bounds();
   const double bounding_radius_m =
       std::hypot(config.footprint.radius_m, std::max(config.footprint.lower_extent_m,
                                                      config.footprint.upper_extent_m));
-  for (std::size_t linear = 0U; linear < clearance.size(); ++linear) {
-    const GridIndex3D cell = cellFor(bounds, linear);
-    if (occupancy.isOccupied(cell)) {
-      continue;
-    }
-    ++stats.free_voxels;
-    const Point3 center = occupancy.cellCenter(cell);
-    if (!footprintInsideBounds(center, bounds, config.footprint)) {
-      continue;
-    }
-    const bool clearance_proves_feasible =
-        static_cast<double>(clearance[linear]) + 1.0e-6 >= bounding_radius_m;
-    if (!clearance_proves_feasible &&
-        !validateRawFootprintAt(occupancy, center, FootprintBodyAxis{},
-                                config.footprint)
-             .accepted()) {
-      continue;
-    }
-    ++stats.footprint_feasible_voxels;
-    if (static_cast<double>(clearance[linear]) + 1.0e-6 >=
-        config.open_space_clearance_m) {
-      classification[linear] = kOpen;
-      ++stats.open_space_voxels;
-    } else {
-      classification[linear] = kConstrained;
-      ++stats.constrained_voxels;
+  const int chunk_size = static_cast<int>(config.chunk_size_cells);
+  for (int core_z = 0; core_z < bounds.depth_cells; core_z += chunk_size) {
+    for (int core_y = 0; core_y < bounds.height_cells; core_y += chunk_size) {
+      for (int core_x = 0; core_x < bounds.width_cells; core_x += chunk_size) {
+        ++stats.processed_chunks;
+        const int end_x = std::min(bounds.width_cells, core_x + chunk_size);
+        const int end_y = std::min(bounds.height_cells, core_y + chunk_size);
+        const int end_z = std::min(bounds.depth_cells, core_z + chunk_size);
+        for (int z = core_z; z < end_z; ++z) {
+          for (int y = core_y; y < end_y; ++y) {
+            for (int x = core_x; x < end_x; ++x) {
+              const GridIndex3D cell{x, y, z};
+              const std::size_t linear = linearIndex(bounds, cell);
+              const double cell_clearance_m = static_cast<double>(clearance[linear]);
+              // The topology compiler only needs the finite ESDF neighborhood of
+              // physical geometry. Capped infinity is known wide-open space.
+              if (!std::isfinite(cell_clearance_m)) {
+                continue;
+              }
+              if (occupancy.isOccupied(cell)) {
+                continue;
+              }
+              ++stats.free_voxels;
+              const Point3 center = occupancy.cellCenter(cell);
+              if (!centerInsideExtractionEnvelope(center, config) ||
+                  !footprintInsideBounds(center, bounds, config.footprint)) {
+                continue;
+              }
+              const bool clearance_proves_feasible =
+                  cell_clearance_m + 1.0e-6 >= bounding_radius_m;
+              if (!clearance_proves_feasible &&
+                  !validateRawFootprintAt(occupancy, center, FootprintBodyAxis{},
+                                          config.footprint)
+                       .accepted()) {
+                continue;
+              }
+              ++stats.footprint_feasible_voxels;
+              if (cell_clearance_m + 1.0e-6 >= config.open_space_clearance_m) {
+                classification[linear] = kOpen;
+                ++stats.open_space_voxels;
+              } else {
+                classification[linear] = kConstrained;
+                ++stats.constrained_voxels;
+              }
+            }
+          }
+        }
+      }
     }
   }
+}
+
+void retainMedialBand(const GridBounds3D& bounds,
+                      const FreeSpaceTopologyExtractorConfig& config,
+                      const ClearanceView& clearance,
+                      std::vector<std::uint8_t>& classification,
+                      FreeSpaceTopologyExtractionStats& stats) {
+  std::vector<std::uint8_t> medial(classification.size(), kBlocked);
+  std::vector<std::uint16_t> distance_cells(classification.size(),
+                                            std::numeric_limits<std::uint16_t>::max());
+  std::queue<std::size_t> pending;
+  const double tolerance_m = 0.05 * bounds.resolution_m;
+  for (std::size_t linear = 0U; linear < classification.size(); ++linear) {
+    if (classification[linear] == kOpen) {
+      medial[linear] = kOpen;
+      continue;
+    }
+    if (classification[linear] != kConstrained) {
+      continue;
+    }
+    const GridIndex3D cell = cellFor(bounds, linear);
+    const double center_clearance_m = static_cast<double>(clearance[linear]);
+    const bool ridge = std::ranges::any_of(
+        antipodalNeighborDirections(), [&](const GridIndex3D direction) {
+          const GridIndex3D first = offset(cell, direction);
+          const GridIndex3D second =
+              offset(cell, GridIndex3D{-direction.x, -direction.y, -direction.z});
+          if (!contains(bounds, first) || !contains(bounds, second)) {
+            return false;
+          }
+          const std::size_t first_linear = linearIndex(bounds, first);
+          const std::size_t second_linear = linearIndex(bounds, second);
+          if (classification[first_linear] == kBlocked ||
+              classification[second_linear] == kBlocked) {
+            return false;
+          }
+          const double first_clearance_m = static_cast<double>(clearance[first_linear]);
+          const double second_clearance_m =
+              static_cast<double>(clearance[second_linear]);
+          if (!std::isfinite(first_clearance_m) || !std::isfinite(second_clearance_m)) {
+            return false;
+          }
+          return std::max(first_clearance_m, second_clearance_m) <=
+                     center_clearance_m + tolerance_m &&
+                 center_clearance_m - std::min(first_clearance_m, second_clearance_m) +
+                         tolerance_m >=
+                     config.medial_ridge_prominence_m;
+        });
+    if (!ridge) {
+      continue;
+    }
+    medial[linear] = kConstrained;
+    distance_cells[linear] = 0U;
+    pending.push(linear);
+    ++stats.medial_ridge_voxels;
+  }
+
+  while (!pending.empty()) {
+    const std::size_t current = pending.front();
+    pending.pop();
+    const std::uint16_t current_distance = distance_cells[current];
+    if (static_cast<std::size_t>(current_distance) >= config.medial_band_radius_cells) {
+      continue;
+    }
+    const GridIndex3D current_cell = cellFor(bounds, current);
+    for (const GridIndex3D direction : neighbors26()) {
+      const GridIndex3D neighbor = offset(current_cell, direction);
+      if (!contains(bounds, neighbor)) {
+        continue;
+      }
+      const std::size_t neighbor_linear = linearIndex(bounds, neighbor);
+      if (classification[neighbor_linear] != kConstrained ||
+          distance_cells[neighbor_linear] !=
+              std::numeric_limits<std::uint16_t>::max()) {
+        continue;
+      }
+      distance_cells[neighbor_linear] =
+          static_cast<std::uint16_t>(current_distance + 1U);
+      medial[neighbor_linear] = kConstrained;
+      pending.push(neighbor_linear);
+    }
+  }
+  stats.medial_band_voxels = static_cast<std::size_t>(
+      std::ranges::count(medial, static_cast<std::uint8_t>(kConstrained)));
+  classification = std::move(medial);
 }
 
 [[nodiscard]] std::vector<Component>
 labelComponents(const GridBounds3D& bounds, std::vector<std::uint8_t>& classification,
                 const std::uint8_t target, const std::size_t minimum_voxels,
-                const std::vector<float>& clearance,
-                std::vector<std::uint32_t>& labels) {
+                const ClearanceView& clearance, std::vector<std::uint32_t>& labels) {
   std::vector<Component> components;
   std::vector<bool> visited(classification.size(), false);
   std::queue<std::size_t> pending;
@@ -477,7 +585,7 @@ derivePortalPatches(const GridBounds3D& bounds, const Component& component,
 [[nodiscard]] PassagePortal
 makePortal(const OccupancyGrid3D& occupancy, const Component& constrained_component,
            const PortalPatch& patch, const FreeSpaceRegionId& region_id,
-           const PassagePortalId& portal_id, const std::vector<float>& clearance,
+           const PassagePortalId& portal_id, const ClearanceView& clearance,
            const std::vector<std::uint32_t>& open_labels) {
   const GridBounds3D& bounds = occupancy.bounds();
   Point3 center{};
@@ -553,8 +661,7 @@ makePortal(const OccupancyGrid3D& occupancy, const Component& constrained_compon
 
 [[nodiscard]] std::map<std::size_t, std::set<std::size_t>>
 buildMedialTree(const GridBounds3D& bounds, const Component& component,
-                const std::vector<std::size_t>& anchors,
-                const std::vector<float>& clearance,
+                const std::vector<std::size_t>& anchors, const ClearanceView& clearance,
                 const std::vector<std::uint32_t>& constrained_labels,
                 const FreeSpaceTopologyExtractorConfig& config) {
   std::map<std::size_t, std::set<std::size_t>> tree;
@@ -717,35 +824,63 @@ makeCenterline(const OccupancyGrid3D& occupancy, const std::vector<std::size_t>&
 
 bool freeSpaceTopologyExtractorConfigIsValid(
     const FreeSpaceTopologyExtractorConfig& config) noexcept {
+  const bool valid_minimum_z = !config.minimum_center_z_m.has_value() ||
+                               std::isfinite(*config.minimum_center_z_m);
+  const bool valid_maximum_z = !config.maximum_center_z_m.has_value() ||
+                               std::isfinite(*config.maximum_center_z_m);
+  const bool valid_z_interval = !config.minimum_center_z_m.has_value() ||
+                                !config.maximum_center_z_m.has_value() ||
+                                *config.minimum_center_z_m < *config.maximum_center_z_m;
   return finitePositive(config.maximum_clearance_m) &&
          finitePositive(config.open_space_clearance_m) &&
          config.maximum_clearance_m > config.open_space_clearance_m &&
          finitePositive(config.speed_limit_mps) &&
          std::isfinite(config.medial_clearance_weight) &&
-         config.medial_clearance_weight >= 0.0 && config.chunk_size_cells > 0U &&
-         config.minimum_open_region_voxels > 0U &&
+         config.medial_clearance_weight >= 0.0 &&
+         finitePositive(config.medial_ridge_prominence_m) &&
+         config.medial_band_radius_cells <=
+             static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()) &&
+         config.chunk_size_cells > 0U && config.minimum_open_region_voxels > 0U &&
          config.minimum_constrained_component_voxels > 0U &&
          config.minimum_portal_voxels > 0U &&
          std::isfinite(config.footprint.radius_m) && config.footprint.radius_m >= 0.0 &&
          std::isfinite(config.footprint.lower_extent_m) &&
          config.footprint.lower_extent_m >= 0.0 &&
          std::isfinite(config.footprint.upper_extent_m) &&
-         config.footprint.upper_extent_m >= 0.0;
+         config.footprint.upper_extent_m >= 0.0 && valid_minimum_z && valid_maximum_z &&
+         valid_z_interval;
 }
 
 ExtractedFreeSpaceTopology3D
 extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
+                           const DistanceField3D& clearance_field,
                            const FreeSpaceTopologyExtractorConfig& config) {
+  const auto started = std::chrono::steady_clock::now();
   if (!freeSpaceTopologyExtractorConfigIsValid(config)) {
     throw std::invalid_argument{"invalid FreeSpaceTopologyExtractor3D config"};
   }
+  if (!sameBounds(occupancy.bounds(), clearance_field.bounds()) ||
+      clearance_field.maximumDistanceM() + 1.0e-6 < config.maximum_clearance_m ||
+      clearance_field.distancesM().size() != voxelCount(occupancy.bounds())) {
+    throw std::invalid_argument{
+        "clearance field does not match FreeSpaceTopologyExtractor3D input"};
+  }
   ExtractedFreeSpaceTopology3D result;
   const GridBounds3D& bounds = occupancy.bounds();
-  const std::vector<float> clearance =
-      buildChunkedClearance(occupancy, config, result.stats);
+  result.stats.clearance_ms = clearance_field.stats().duration_ms;
+  const ClearanceView clearance{clearance_field.distancesM(),
+                                0.5 * std::numbers::sqrt3_v<double> *
+                                    occupancy.bounds().resolution_m};
   std::vector<std::uint8_t> classification(clearance.size(), kBlocked);
+  const auto classification_started = std::chrono::steady_clock::now();
   classifyVoxels(occupancy, config, clearance, classification, result.stats);
+  retainMedialBand(bounds, config, clearance, classification, result.stats);
+  result.stats.classification_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                classification_started)
+          .count();
 
+  const auto component_labeling_started = std::chrono::steady_clock::now();
   std::vector<std::uint32_t> open_labels(clearance.size(), 0U);
   std::vector<Component> open_components =
       labelComponents(bounds, classification, kOpen, config.minimum_open_region_voxels,
@@ -773,7 +908,12 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
     }
   }
   result.stats.constrained_components = constrained_components.size();
+  result.stats.component_labeling_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                component_labeling_started)
+          .count();
 
+  const auto topology_build_started = std::chrono::steady_clock::now();
   std::map<std::uint32_t, std::vector<PassagePortalId>> region_portals;
   std::size_t portal_number = 0U;
   std::size_t segment_number = 0U;
@@ -781,8 +921,10 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
     std::vector<PortalPatch> patches =
         derivePortalPatches(bounds, component, open_labels, constrained_labels,
                             config.minimum_portal_voxels);
+    result.stats.portal_patches += patches.size();
     if (patches.size() < 2U) {
       ++result.stats.rejected_constrained_components;
+      ++result.stats.rejected_for_insufficient_portals;
       continue;
     }
 
@@ -816,6 +958,7 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
         compressMedialTree(medial_tree, portal_anchors);
     if (drafts.empty()) {
       ++result.stats.rejected_constrained_components;
+      ++result.stats.rejected_for_disconnected_medial_graph;
       continue;
     }
 
@@ -836,6 +979,7 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
           .speed_limit_mps = config.speed_limit_mps,
       };
       if (!rawSafeCenterline(occupancy, segment.centerline, config.footprint)) {
+        ++result.stats.raw_unsafe_segments;
         continue;
       }
       for (const std::size_t cell : draft.cells) {
@@ -861,6 +1005,7 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
     }
     if (component_segments.empty()) {
       ++result.stats.rejected_constrained_components;
+      ++result.stats.rejected_for_no_safe_segments;
       continue;
     }
     for (const auto& [endpoint, segment_indices] : segment_indices_by_endpoint) {
@@ -906,6 +1051,31 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
         .portal_ids = portal_ids->second,
     });
   }
+  result.stats.topology_build_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                topology_build_started)
+          .count();
+  result.stats.duration_ms = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - started)
+                                 .count();
+  return result;
+}
+
+ExtractedFreeSpaceTopology3D
+extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
+                           const FreeSpaceTopologyExtractorConfig& config) {
+  if (!freeSpaceTopologyExtractorConfigIsValid(config)) {
+    throw std::invalid_argument{"invalid FreeSpaceTopologyExtractor3D config"};
+  }
+  const auto started = std::chrono::steady_clock::now();
+  const DistanceField3D clearance_field =
+      DistanceField3D::build(occupancy, config.maximum_clearance_m);
+  ExtractedFreeSpaceTopology3D result =
+      extractFreeSpaceTopology3D(occupancy, clearance_field, config);
+  result.stats.clearance_ms = clearance_field.stats().duration_ms;
+  result.stats.duration_ms = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - started)
+                                 .count();
   return result;
 }
 

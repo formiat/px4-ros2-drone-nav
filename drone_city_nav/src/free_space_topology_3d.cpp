@@ -799,10 +799,11 @@ void FreeSpaceTopology3D::validate() const {
       const bool endpoint_matches =
           distance3D(segment.centerline.front().position, portal_center) <= 1.0e-5 ||
           distance3D(segment.centerline.back().position, portal_center) <= 1.0e-5;
-      if (!endpoint_matches || !segment_portals.insert(portal_id).second) {
+      if (!endpoint_matches) {
         throw std::invalid_argument{
             "invalid FreeSpaceTopology3D segment portal ownership"};
       }
+      segment_portals.insert(portal_id);
     }
   }
   for (const PassageSegment& segment : segments_) {

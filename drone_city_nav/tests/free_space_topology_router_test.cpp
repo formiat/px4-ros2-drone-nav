@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <ranges>
 #include <utility>
 
@@ -28,6 +29,8 @@ extractTopology(const AdvancedPassageFixture& fixture) {
                              .minimum_open_region_voxels = 16U,
                              .minimum_constrained_component_voxels = 16U,
                              .minimum_portal_voxels = 4U,
+                             .minimum_center_z_m = std::nullopt,
+                             .maximum_center_z_m = std::nullopt,
                          });
   return FreeSpaceTopology3D{fixture.occupancy.fingerprint(),
                              fixture.occupancy.bounds(), std::move(extracted.regions),

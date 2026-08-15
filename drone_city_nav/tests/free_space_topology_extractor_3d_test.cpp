@@ -1,11 +1,14 @@
+#include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/free_space_topology_extractor_3d.hpp"
+#include "drone_city_nav/static_esdf_cache.hpp"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <optional>
 #include <ranges>
 #include <utility>
 
@@ -26,6 +29,8 @@ extract(const AdvancedPassageFixture& fixture) {
                                         .minimum_open_region_voxels = 16U,
                                         .minimum_constrained_component_voxels = 16U,
                                         .minimum_portal_voxels = 4U,
+                                        .minimum_center_z_m = std::nullopt,
+                                        .maximum_center_z_m = std::nullopt,
                                     });
 }
 
@@ -157,6 +162,40 @@ TEST(FreeSpaceTopologyExtractor3D, SparseArtifactRoundTripsAuthoritativeGeometry
   EXPECT_FALSE(loaded.portals().front().surface_voxels.empty());
   ASSERT_FALSE(loaded.segments().empty());
   EXPECT_FALSE(loaded.segments().front().centerline.empty());
+}
+
+TEST(FreeSpaceTopologyExtractor3D, ReusesCompatibleStaticEsdfArtifact) {
+  const AdvancedPassageFixture fixture =
+      buildAdvancedPassageFixture(AdvancedPassageFixtureKind::kCurvedTunnel);
+  const DistanceField3D field = DistanceField3D::build(fixture.occupancy, 6.0);
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "drone_city_nav_topology_extractor_static_esdf.esdf3d";
+  StaticEsdfCache::write(path, fixture.occupancy, field);
+  const StaticEsdfCache cache = StaticEsdfCache::load(path);
+  const StaticEsdfCacheExtraction cached =
+      cache.extract(fixture.occupancy.bounds(), 6.0);
+  std::filesystem::remove(path);
+
+  const ExtractedFreeSpaceTopology3D direct = extract(fixture);
+  const ExtractedFreeSpaceTopology3D reused = extractFreeSpaceTopology3D(
+      fixture.occupancy, cached.field,
+      FreeSpaceTopologyExtractorConfig{.maximum_clearance_m = 6.0,
+                                       .open_space_clearance_m = 3.0,
+                                       .speed_limit_mps = 10.0,
+                                       .medial_clearance_weight = 2.0,
+                                       .medial_ridge_prominence_m = 0.1,
+                                       .medial_band_radius_cells = 1U,
+                                       .chunk_size_cells = 32U,
+                                       .minimum_open_region_voxels = 16U,
+                                       .minimum_constrained_component_voxels = 16U,
+                                       .minimum_portal_voxels = 4U,
+                                       .minimum_center_z_m = std::nullopt,
+                                       .maximum_center_z_m = std::nullopt});
+  EXPECT_EQ(reused.regions.size(), direct.regions.size());
+  EXPECT_EQ(reused.portals.size(), direct.portals.size());
+  EXPECT_EQ(reused.segments.size(), direct.segments.size());
+  EXPECT_EQ(reused.stats.medial_ridge_voxels, direct.stats.medial_ridge_voxels);
 }
 
 } // namespace

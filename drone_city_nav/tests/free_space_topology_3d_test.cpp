@@ -126,6 +126,64 @@ TEST(FreeSpaceTopology3D, RejectsDifferentOccupancyFingerprint) {
   EXPECT_FALSE(topology.compatibleWith(different_occupancy));
 }
 
+TEST(FreeSpaceTopology3D, AllowsPortalNodeSharedBySparseSegments) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 10, 10, 10};
+  const FreeSpaceRegionId region_id{"region:shared-portal"};
+  const auto portal = [&region_id](const char* id, const Point3 center,
+                                   const GridIndex3D voxel) {
+    return PassagePortal{
+        .id = PassagePortalId{id},
+        .region_id = region_id,
+        .center = center,
+        .outward_normal = {1.0, 0.0, 0.0},
+        .opening_polygon = {{center.x, center.y - 0.5, center.z - 0.5},
+                            {center.x, center.y + 0.5, center.z - 0.5},
+                            {center.x, center.y, center.z + 0.5}},
+        .surface_voxels = {voxel},
+        .traversable_anchors = {center},
+        .local_u_axis = {0.0, 1.0, 0.0},
+        .local_v_axis = {0.0, 0.0, 1.0},
+        .minimum_clearance_m = 1.0,
+        .mean_clearance_m = 1.5,
+        .maximum_clearance_m = 2.0,
+    };
+  };
+  const PassagePortal shared = portal("portal:shared", {5.5, 5.5, 5.5}, {5, 5, 5});
+  const PassagePortal first = portal("portal:first", {2.5, 5.5, 5.5}, {2, 5, 5});
+  const PassagePortal second = portal("portal:second", {5.5, 8.5, 5.5}, {5, 8, 5});
+  const PassageSegmentId first_segment_id{"segment:first"};
+  const PassageSegmentId second_segment_id{"segment:second"};
+  const PassageSegment first_segment{
+      .id = first_segment_id,
+      .centerline = {{.position = shared.center}, {.position = first.center}},
+      .endpoint_portal_ids = {shared.id, first.id},
+      .first_endpoint_neighbors = {second_segment_id},
+      .second_endpoint_neighbors = {},
+      .minimum_clearance_m = 1.0,
+      .speed_limit_mps = 5.0,
+  };
+  const PassageSegment second_segment{
+      .id = second_segment_id,
+      .centerline = {{.position = shared.center}, {.position = second.center}},
+      .endpoint_portal_ids = {shared.id, second.id},
+      .first_endpoint_neighbors = {first_segment_id},
+      .second_endpoint_neighbors = {},
+      .minimum_clearance_m = 1.0,
+      .speed_limit_mps = 5.0,
+  };
+
+  EXPECT_NO_THROW(static_cast<void>(FreeSpaceTopology3D{
+      42U,
+      bounds,
+      {FreeSpaceRegion{.id = region_id,
+                       .representative = {5.5, 5.5, 5.5},
+                       .maximum_clearance_m = 2.0,
+                       .portal_ids = {shared.id, first.id, second.id}}},
+      {shared, first, second},
+      {first_segment, second_segment},
+  }));
+}
+
 TEST(FreeSpaceTopology3D, SupportsEmptyAccelerationIndex) {
   const GridBounds3D bounds{-1.0, -2.0, -3.0, 0.5, 20, 30, 40};
   const FreeSpaceTopology3D topology{42U, bounds, std::vector<FreeSpaceRegion>{},
