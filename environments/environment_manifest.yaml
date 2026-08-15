@@ -1,0 +1,197 @@
+schema: drone_city_nav_environment_manifest_v1
+artifact_release:
+  tag: environment-assets-v1
+  published: false
+  base_urls:
+  - https://github.com/formiat/px4-ros2-drone-nav/releases/download/environment-assets-v1
+  local_mirror: external/environment-artifacts/releases/environment-assets-v1
+environments:
+- id: finals_prize_round_world_07
+  display_name: Finals Prize Round World 07
+  role: primary
+  classification: confirmed_fit
+  distribution: release
+  source:
+    provider: gazebo_fuel
+    url: https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Finals%20Prize%20Round%20World%2007
+    version: 1
+    bundle_artifact_id: source
+    entrypoint: fuel/fuel.gazebosim.org/openrobotics/worlds/finals%20prize%20round%20world%2007/1/final_event_07.sdf
+    license:
+      spdx: CC-BY-4.0
+      url: https://creativecommons.org/licenses/by/4.0/
+      attribution: Open Robotics, DARPA Subterranean Challenge environment assets
+    license_inventory:
+      path: environments/licenses/finals_prize_round_world_07.json
+      sha256: 7ef738b6be459a07c4dddc2237f79787e71abb48e92932b79bb3d0eae5aff14d
+      size_bytes: 27520
+  artifacts:
+  - id: source
+    kind: source_bundle
+    filename: finals_prize_round_world_07-source-v1.tar.gz
+    sha256: 6c9e6cd5134505ba8f43174c31b9d6926870cf0bd1e0889bc14e9f3fc8903335
+    size_bytes: 591634393
+    build:
+      world: fuel/fuel.gazebosim.org/openrobotics/worlds/finals%20prize%20round%20world%2007/1/final_event_07.sdf
+      materialization_report: work/final_event_07_materialization.json
+  - id: static_r050
+    kind: static_map_bundle
+    filename: finals_prize_round_world_07-static-r050-v1.tar.gz
+    sha256: 231f76533a2e42c0333c20965ed40962cb8009fdf332fb4332d81066c36af56c
+    size_bytes: 39902767
+    build:
+      files:
+      - source: work/final_event_07_r050.occupancy3d
+        destination: maps/r050/world.occupancy3d
+      - source: work/final_event_07_r050.esdf3d
+        destination: maps/r050/world.esdf3d
+      - source: work/final_event_07_materialization.json
+        destination: reports/materialization.json
+      - source: work/final_event_07_r050_voxelization.json
+        destination: reports/voxelization_r050.json
+  static_maps:
+  - id: r050
+    artifact_id: static_r050
+    resolution_m: 0.5
+    origin_m:
+    - -66.5
+    - -263.0
+    - -55.5
+    dimensions:
+    - 892
+    - 843
+    - 136
+    dense_voxel_count: 102266016
+    collision_triangles: 2100372
+    occupied_voxels: 747205
+    occupied_chunks: 2175
+    maximum_distance_m: 26.0
+    occupancy:
+      path: maps/r050/world.occupancy3d
+      sha256: 1107ca8ecfe0fd86e258fed61ea49f37062abe882b29cd37a6a914645a8d99cb
+      size_bytes: 1139764
+    esdf:
+      path: maps/r050/world.esdf3d
+      sha256: 3e0298c043ff422abdf003b9004eb2b47f32878e7b3253368add6e16acc75f49
+      size_bytes: 39912212
+- id: cave_circuit_practice_01
+  display_name: Cave Circuit Practice 01
+  role: vertical_stress
+  classification: confirmed_fit
+  distribution: release
+  source:
+    provider: gazebo_fuel
+    url: https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Cave%20Circuit%20Practice%2001
+    version: 2
+    bundle_artifact_id: source
+    entrypoint: fuel/fuel.gazebosim.org/openrobotics/worlds/cave%20circuit%20practice%2001/2/cave_circuit_practice_01.sdf
+    license:
+      spdx: CC-BY-4.0
+      url: https://creativecommons.org/licenses/by/4.0/
+      attribution: Open Robotics, DARPA Subterranean Challenge environment assets
+    license_inventory:
+      path: environments/licenses/cave_circuit_practice_01.json
+      sha256: 4683bccae9d0ce56d34f1ab2c5ab1f69c6b8f5f8ef8c625d0d0ba3fb3899d2e8
+      size_bytes: 15513
+  artifacts:
+  - id: source
+    kind: source_bundle
+    filename: cave_circuit_practice_01-source-v2.tar.gz
+    sha256: 5708bca08c3a2399822a3edacae1f5e8c45ea218d8163db7c5d8d781847fd472
+    size_bytes: 103199087
+    build:
+      world: fuel/fuel.gazebosim.org/openrobotics/worlds/cave%20circuit%20practice%2001/2/cave_circuit_practice_01.sdf
+      materialization_report: work/cave_practice_01_materialization.json
+  - id: static_r100
+    kind: static_map_bundle
+    filename: cave_circuit_practice_01-static-r100-v1.tar.gz
+    sha256: 1550fc2fd66c733022d5ca8dee90d6f29730a85fd86d89b77ef27379170a234c
+    size_bytes: 11052272
+    build:
+      files:
+      - source: work/cave_practice_01_r100.occupancy3d
+        destination: maps/r100/world.occupancy3d
+      - source: work/cave_practice_01_r100.esdf3d
+        destination: maps/r100/world.esdf3d
+      - source: work/cave_practice_01_materialization.json
+        destination: reports/materialization.json
+      - source: work/cave_practice_01_r100_voxelization.json
+        destination: reports/voxelization_r100.json
+  static_maps:
+  - id: r100
+    artifact_id: static_r100
+    resolution_m: 1.0
+    origin_m:
+    - -55.0
+    - -398.0
+    - -79.0
+    dimensions:
+    - 602
+    - 478
+    - 230
+    dense_voxel_count: 66183880
+    collision_triangles: 1335543
+    occupied_voxels: 377852
+    occupied_chunks: 1210
+    maximum_distance_m: 26.0
+    occupancy:
+      path: maps/r100/world.occupancy3d
+      sha256: 8c5d25c948be4c6d0361e75f36abc9c4d7ba24708611798e8b49a1ce86e5bea3
+      size_bytes: 634104
+    esdf:
+      path: maps/r100/world.esdf3d
+      sha256: 2a403bbcb6fc4426cfb870937cdfd276261e9787089a33d208e1592f0a0daa79
+      size_bytes: 10992532
+- id: compact_3d_passage_fixture
+  display_name: Compact 3D Passage Fixture
+  role: integration_fixture
+  classification: test_fixture
+  distribution: repository
+  source:
+    provider: repository
+    url: repository:environments/fixtures/compact_3d_passage/world.sdf
+    version: 1
+    license:
+      spdx: MIT
+      url: repository:LICENSE
+      attribution: Alexander Aglerimov and project contributors
+  repository_files:
+  - path: environments/fixtures/compact_3d_passage/README.md
+    sha256: 59c9f21e35d7cd6f57f927e404ac12afb5b1af7799f3b78ca60bf053af9634d3
+    size_bytes: 545
+  - path: environments/fixtures/compact_3d_passage/world.sdf
+    sha256: 744529694eab2f7d56b79223cff582aed4c4cd350c6e82e14a5d0d491d392058
+    size_bytes: 5287
+  - path: environments/fixtures/compact_3d_passage/world.collisions.sdf
+    sha256: 36f4d6136701b4aff4273a4de5b6aed269023821ec456ee799d27eaaab7aa100
+    size_bytes: 4495
+  - path: environments/fixtures/compact_3d_passage/world.occupancy3d
+    sha256: fc2c1b339567c21179711b687bbc1bd916d6cebe8acd29eaa21c7ea300206396
+    size_bytes: 46176
+  - path: environments/fixtures/compact_3d_passage/world.esdf3d
+    sha256: 805362ca6e732754c555418fd5a6ece263b7be58338494abce09f46ead76a901
+    size_bytes: 38090
+  static_maps:
+  - id: r025
+    resolution_m: 0.25
+    origin_m:
+    - -13.0
+    - -7.0
+    - -1.5
+    dimensions:
+    - 104
+    - 56
+    - 60
+    dense_voxel_count: 349440
+    collision_triangles: 144
+    occupied_voxels: 32604
+    occupied_chunks: 88
+    maximum_distance_m: 8.0
+    occupancy:
+      path: environments/fixtures/compact_3d_passage/world.occupancy3d
+      sha256: fc2c1b339567c21179711b687bbc1bd916d6cebe8acd29eaa21c7ea300206396
+      size_bytes: 46176
+    esdf:
+      path: environments/fixtures/compact_3d_passage/world.esdf3d
+      sha256: 805362ca6e732754c555418fd5a6ece263b7be58338494abce09f46ead76a901
+      size_bytes: 38090

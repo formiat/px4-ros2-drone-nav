@@ -1,0 +1,161 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.10">
+  <world name="compact_3d_passage_collisions">
+    <model name="passage_shell_passage_shell_floor_collision_1">
+      <static>true</static>
+      <pose>0 0 -0.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24 12 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_north_wall_collision_2">
+      <static>true</static>
+      <pose>0 5.75 3 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24 0.5 6</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_south_wall_collision_3">
+      <static>true</static>
+      <pose>0 -5.75 3 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>24 0.5 6</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_west_roof_collision_4">
+      <static>true</static>
+      <pose>-7 0 6.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>10 12 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_east_roof_collision_5">
+      <static>true</static>
+      <pose>7 0 6.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>10 12 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_north_center_roof_collision_6">
+      <static>true</static>
+      <pose>0 4 6.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>4 4 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_south_center_roof_collision_7">
+      <static>true</static>
+      <pose>0 -4 6.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>4 4 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_shaft_west_wall_collision_8">
+      <static>true</static>
+      <pose>-2.25 0 9.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.5 4 6.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_shaft_east_wall_collision_9">
+      <static>true</static>
+      <pose>2.25 0 9.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.5 4 6.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_shaft_north_wall_collision_10">
+      <static>true</static>
+      <pose>0 2.25 9.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>5 0.5 6.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_shaft_south_wall_collision_11">
+      <static>true</static>
+      <pose>0 -2.25 9.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>5 0.5 6.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="passage_shell_passage_shell_angled_baffle_collision_12">
+      <static>true</static>
+      <pose>-6 0 1.75 0 -0 0.35</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.5 4 3.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+  </world>
+</sdf>

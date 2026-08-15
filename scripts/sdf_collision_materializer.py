@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import math
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -412,6 +413,13 @@ class CollisionWorldMaterializer:
 
 
 def write_materialized_world(tree: ET.ElementTree, output: Path) -> str:
+    output = output.resolve()
+    for mesh_uri in tree.getroot().iterfind(".//mesh/uri"):
+        mesh_path = Path(mesh_uri.text or "")
+        if mesh_path.is_absolute():
+            mesh_uri.text = Path(
+                os.path.relpath(mesh_path, start=output.parent)
+            ).as_posix()
     ET.indent(tree.getroot(), space="  ")
     output.parent.mkdir(parents=True, exist_ok=True)
     tree.write(output, encoding="utf-8", xml_declaration=True)

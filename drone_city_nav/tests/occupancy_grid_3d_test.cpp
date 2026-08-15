@@ -156,5 +156,22 @@ TEST(OccupancyGrid3D, LoadsDerivedPortalGraphFromGeneratedArtifact) {
   ASSERT_NE(straight, graph.traversal_edges.end());
 }
 
+TEST(OccupancyGrid3D, LoadsCommittedCompactPassageFixture) {
+  const OccupancyGrid3D grid =
+      OccupancyGrid3D::load(TEST_COMPACT_PASSAGE_OCCUPANCY3D_PATH);
+  const GridBounds3D& bounds = grid.bounds();
+
+  EXPECT_DOUBLE_EQ(bounds.origin_x, -13.0);
+  EXPECT_DOUBLE_EQ(bounds.origin_y, -7.0);
+  EXPECT_DOUBLE_EQ(bounds.origin_z, -1.5);
+  EXPECT_DOUBLE_EQ(bounds.resolution_m, 0.25);
+  EXPECT_EQ(bounds.width_cells, 104);
+  EXPECT_EQ(bounds.height_cells, 56);
+  EXPECT_EQ(bounds.depth_cells, 60);
+  EXPECT_EQ(grid.occupiedVoxelCount(), 32604U);
+  EXPECT_EQ(grid.occupiedChunkCount(), 88U);
+  EXPECT_TRUE(grid.portalGraph().regions.empty());
+}
+
 } // namespace
 } // namespace drone_city_nav

@@ -4,6 +4,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -54,6 +56,32 @@ TEST(CollisionVoxelizer, FingerprintChangesWithCollisionMeshContent) {
 
   std::filesystem::remove_all(directory);
   EXPECT_NE(original, changed);
+}
+
+TEST(CollisionVoxelizer, FingerprintDoesNotDependOnInstallationRoot) {
+  const std::filesystem::path directory =
+      std::filesystem::temp_directory_path() /
+      "drone_city_nav_collision_fingerprint_root_test";
+  const auto create_inputs = [&](const std::string& root_name) {
+    const std::filesystem::path root = directory / root_name;
+    const std::filesystem::path work = root / "work";
+    const std::filesystem::path fuel = root / "fuel";
+    std::filesystem::create_directories(work);
+    std::filesystem::create_directories(fuel);
+    std::ofstream{work / "world.sdf"}
+        << "<mesh><uri>../fuel/collision.dae</uri></mesh>";
+    std::ofstream{fuel / "collision.dae"} << "identical collision mesh";
+    return std::pair{work / "world.sdf", fuel / "collision.dae"};
+  };
+  std::filesystem::remove_all(directory);
+  const auto [first_sdf, first_mesh] = create_inputs("first");
+  const auto [second_sdf, second_mesh] = create_inputs("second");
+
+  const std::uint64_t first = fingerprintCollisionInputs(first_sdf, {first_mesh});
+  const std::uint64_t second = fingerprintCollisionInputs(second_sdf, {second_mesh});
+
+  std::filesystem::remove_all(directory);
+  EXPECT_EQ(first, second);
 }
 
 } // namespace

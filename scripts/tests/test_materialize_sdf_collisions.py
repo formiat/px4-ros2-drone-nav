@@ -217,7 +217,8 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             output_mesh = Path(
                 output_model.findtext("./link/collision/geometry/mesh/uri", "")
             )
-            self.assertEqual(mesh.resolve(), output_mesh)
+            self.assertFalse(output_mesh.is_absolute())
+            self.assertEqual(mesh.resolve(), (output_sdf.parent / output_mesh).resolve())
             self.assertEqual(1, report.collision_instances)
             self.assertEqual(1, report.dynamic_models_skipped)
             saved_report = json.loads(output_report.read_text(encoding="utf-8"))

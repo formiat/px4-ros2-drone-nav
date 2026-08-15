@@ -1,0 +1,153 @@
+<?xml version="1.0" ?>
+<sdf version="1.10">
+  <world name="compact_3d_passage">
+    <gravity>0 0 -9.81</gravity>
+    <physics name="default_physics" type="ignored">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <model name="passage_shell">
+      <static>true</static>
+      <link name="floor">
+        <pose>0 0 -0.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>24 12 0.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>24 12 0.5</size></box></geometry>
+          <material><diffuse>0.32 0.34 0.36 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="north_wall">
+        <pose>0 5.75 3 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>24 0.5 6</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>24 0.5 6</size></box></geometry>
+          <material><diffuse>0.44 0.45 0.47 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="south_wall">
+        <pose>0 -5.75 3 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>24 0.5 6</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>24 0.5 6</size></box></geometry>
+          <material><diffuse>0.44 0.45 0.47 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="west_roof">
+        <pose>-7 0 6.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>10 12 0.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>10 12 0.5</size></box></geometry>
+          <material><diffuse>0.38 0.39 0.41 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="east_roof">
+        <pose>7 0 6.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>10 12 0.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>10 12 0.5</size></box></geometry>
+          <material><diffuse>0.38 0.39 0.41 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="north_center_roof">
+        <pose>0 4 6.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>4 4 0.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 4 0.5</size></box></geometry>
+          <material><diffuse>0.38 0.39 0.41 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="south_center_roof">
+        <pose>0 -4 6.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>4 4 0.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 4 0.5</size></box></geometry>
+          <material><diffuse>0.38 0.39 0.41 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="shaft_west_wall">
+        <pose>-2.25 0 9.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>0.5 4 6.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.5 4 6.5</size></box></geometry>
+          <material><diffuse>0.50 0.45 0.32 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="shaft_east_wall">
+        <pose>2.25 0 9.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>0.5 4 6.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.5 4 6.5</size></box></geometry>
+          <material><diffuse>0.50 0.45 0.32 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="shaft_north_wall">
+        <pose>0 2.25 9.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>5 0.5 6.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>5 0.5 6.5</size></box></geometry>
+          <material><diffuse>0.50 0.45 0.32 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="shaft_south_wall">
+        <pose>0 -2.25 9.25 0 0 0</pose>
+        <collision name="collision">
+          <geometry><box><size>5 0.5 6.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>5 0.5 6.5</size></box></geometry>
+          <material><diffuse>0.50 0.45 0.32 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="angled_baffle">
+        <pose>-6 0 1.75 0 0 0.35</pose>
+        <collision name="collision">
+          <geometry><box><size>0.5 4 3.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.5 4 3.5</size></box></geometry>
+          <material><diffuse>0.55 0.28 0.22 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <light name="sun" type="directional">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 20 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.2 -0.8</direction>
+    </light>
+  </world>
+</sdf>

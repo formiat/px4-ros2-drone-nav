@@ -264,6 +264,10 @@ loadSources(const std::filesystem::path& path) {
           }
           source.kind = SourceKind::kMesh;
           source.mesh_path = mesh->Uri();
+          if (source.mesh_path.is_relative()) {
+            source.mesh_path = std::filesystem::weakly_canonical(path.parent_path() /
+                                                                 source.mesh_path);
+          }
           source.submesh = mesh->Submesh();
           source.scale = mesh->Scale();
           if (!source.mesh_path.is_absolute() || source.scale.X() <= 0.0 ||

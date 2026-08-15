@@ -835,7 +835,9 @@ if(BUILD_TESTING)
   target_link_libraries(occupancy_grid_3d_test drone_city_nav_core)
   target_compile_definitions(
     occupancy_grid_3d_test
-    PRIVATE TEST_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.occupancy3d")
+    PRIVATE
+      TEST_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.occupancy3d"
+      TEST_COMPACT_PASSAGE_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../environments/fixtures/compact_3d_passage/world.occupancy3d")
   enable_project_warnings(occupancy_grid_3d_test)
 
   ament_add_gtest(collision_voxelizer_test tests/collision_voxelizer_test.cpp)
@@ -891,6 +893,11 @@ if(BUILD_TESTING)
   ament_add_gtest(static_esdf_cache_test tests/static_esdf_cache_test.cpp)
   target_compile_features(static_esdf_cache_test PRIVATE cxx_std_20)
   target_link_libraries(static_esdf_cache_test drone_city_nav_core)
+  target_compile_definitions(
+    static_esdf_cache_test
+    PRIVATE
+      TEST_COMPACT_PASSAGE_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../environments/fixtures/compact_3d_passage/world.occupancy3d"
+      TEST_COMPACT_PASSAGE_ESDF3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../environments/fixtures/compact_3d_passage/world.esdf3d")
   enable_project_warnings(static_esdf_cache_test)
 
   ament_add_gtest(route_3d_test tests/route_3d_test.cpp)

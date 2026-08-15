@@ -15,6 +15,12 @@ Downloaded source assets and generated candidate artifacts are stored under
 `external/environment-candidates/`. The complete local working set is about
 2.0 GB and is intentionally ignored by Git.
 
+The distribution contract is committed as
+`environments/environment_manifest.yaml`. It intentionally contains only the
+primary world, the vertical-passage stress world, and one compact repository
+fixture. Candidate evaluation data is broader than the supported distribution
+set.
+
 ## Selection Criteria
 
 A primary candidate must satisfy all of the following:
@@ -87,13 +93,99 @@ an arbitrary coordinate clamp.
 
 The local source set uses these upstream resources:
 
-- Open Robotics Fuel worlds: [Finals Prize Round World 07 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Finals%20Prize%20Round%20World%2007/1), [Cave Circuit Practice 01 v2](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Cave%20Circuit%20Practice%2001/2), [Urban Circuit Practice 01 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Urban%20Circuit%20Practice%2001/1), [Tunnel Circuit Practice 01 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Tunnel%20Circuit%20Practice%2001/1), [Cave World v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Cave%20World/1), and [Industrial-Warehouse v4](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Industrial-warehouse/4). Fuel metadata reported CC BY 4.0 during retrieval.
+- Open Robotics Fuel worlds: [Finals Prize Round World 07 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Finals%20Prize%20Round%20World%2007/1),
+  [Cave Circuit Practice 01 v2](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Cave%20Circuit%20Practice%2001/2),
+  [Urban Circuit Practice 01 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Urban%20Circuit%20Practice%2001/1),
+  [Tunnel Circuit Practice 01 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Tunnel%20Circuit%20Practice%2001/1),
+  [Cave World v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Cave%20World/1),
+  and [Industrial-Warehouse v4](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Industrial-warehouse/4).
+  World-level Fuel metadata reported CC BY 4.0 during retrieval; distributed
+  transitive model licenses are pinned separately.
 - [AWS RoboMaker Hospital World](https://github.com/aws-robotics/aws-robomaker-hospital-world) and [AWS RoboMaker Small Warehouse World](https://github.com/aws-robotics/aws-robomaker-small-warehouse-world), both under the MIT license in their checked-out repositories.
 - [OSRF Gazebo Models](https://github.com/osrf/gazebo_models) at commit `8163eb4b5e7e21985c6591d1c0bfb56468c0093f`, sparse-checkout of `sun` and `ground_plane`, under Apache-2.0.
 
 The AWS repositories are archived legacy assets. Their source geometry is useful
 for comparison, but their plugins, resource URIs, and rendering materials must
 not be treated as native Gazebo Harmonic content.
+
+## Versioned Distribution Contract
+
+Large environment binaries are not stored in normal Git history. The manifest
+pins, for every distributed environment:
+
+- upstream URL and version;
+- world SPDX license identifier, license URL, and attribution;
+- a committed SHA-pinned license inventory for every transitive Fuel resource;
+- classification and project role;
+- artifact filename, byte size, and SHA-256;
+- map resolution, origin, dimensions, collision triangles, occupied voxels,
+  and occupied chunks;
+- independent SHA-256 contracts for Occupancy3D and ESDF3D.
+
+The staged `environment-assets-v1` release contains four deterministic bundles:
+
+| Artifact | Approximate compressed size |
+|---|---:|
+| Finals Prize Round World 07 source | 565 MB |
+| Finals Prize Round World 07 0.5 m static map | 39 MB |
+| Cave Circuit Practice 01 source | 99 MB |
+| Cave Circuit Practice 01 1.0 m static map | 11 MB |
+
+Each source bundle contains the selected Fuel world and the exact transitive
+model versions needed by its physical geometry. Each map bundle contains the
+Occupancy3D, ESDF3D, normalized generation reports, attribution, and a
+per-member checksum manifest. Every bundle also carries `LICENSES.json`; the
+Finals inventory contains 60 CC-BY-4.0 and 23 CC0-1.0 resources, while the Cave
+inventory contains 40 CC-BY-4.0 and 5 CC0-1.0 resources. Archives use stable
+ordering, timestamps, ownership, permissions, and gzip metadata.
+
+The local release mirror is
+`external/environment-artifacts/releases/environment-assets-v1/`. It is ignored
+by Git. `artifact_release.published` remains `false` until those exact files are
+uploaded to the release URL recorded in the manifest. This prevents a fresh
+checkout from silently treating a nonexistent remote release as available.
+
+The repository-owned compact fixture is stored under
+`environments/fixtures/compact_3d_passage/`. Its horizontal corridor, roof
+opening, and vertical shaft use only SDF boxes and have no external resources.
+Its source, collision-only SDF, Occupancy3D, and ESDF3D are small enough to keep
+in Git and are checked by both Python contract tests and C++ loaders.
+
+List and verify the complete local contract:
+
+```bash
+./scripts/dev_shell.sh python3 scripts/manage_environment_assets.py list
+./scripts/dev_shell.sh python3 scripts/manage_environment_assets.py verify
+```
+
+Install one artifact from the verified local mirror, or from the published
+release after `published` becomes `true`:
+
+```bash
+./scripts/dev_shell.sh python3 scripts/manage_environment_assets.py fetch \
+  --environment finals_prize_round_world_07 --artifact static_r050
+```
+
+Rebuild all release files after intentionally changing source inputs or map
+generation:
+
+```bash
+./scripts/dev_shell.sh python3 scripts/build_environment_release.py \
+  --update-manifest
+```
+
+Refresh the pinned Fuel metadata only when source dependency versions change:
+
+```bash
+./scripts/dev_shell.sh python3 scripts/resolve_environment_licenses.py \
+  --environment finals_prize_round_world_07
+./scripts/dev_shell.sh python3 scripts/resolve_environment_licenses.py \
+  --environment cave_circuit_practice_01
+```
+
+The builder updates all artifact and repository-fixture hashes atomically in the
+typed manifest. Publishing is intentionally a separate authenticated operation;
+the repository workflow never pushes a release implicitly.
 
 ## Reproducible Import Pipeline
 
@@ -104,7 +196,7 @@ Build through the project container first:
 ```
 
 Materialize one source world into an include-free, collision-only SDF. Every
-mesh URI becomes an absolute local path, nested poses are composed, static
+mesh URI becomes relative to the generated SDF, nested poses are composed, static
 collision instances are flattened, and unsupported or unresolved geometry is a
 hard error:
 
@@ -139,9 +231,10 @@ Generate the normal project ESDF cache:
 `voxelize_sdf_collisions` supports collision meshes, boxes, and planes. It uses
 exact triangle-versus-voxel intersection tests rather than marking every cell in
 a triangle AABB. Output dimensions and the total dense domain are checked before
-allocation. The map fingerprint covers both the materialized SDF and every
-unique collision mesh, and the sparse Occupancy3D writer preserves the current
-schema and portal graph.
+allocation. The map fingerprint covers both the path-independent materialized
+SDF and every unique collision mesh. Rebuilding the same unpacked source in a
+different root therefore produces byte-identical Occupancy3D and ESDF3D. The
+sparse Occupancy3D writer preserves the current schema and portal graph.
 
 ## Current Limits And Next Decision
 

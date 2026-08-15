@@ -155,13 +155,18 @@ std::uint64_t
 fingerprintCollisionInputs(const std::filesystem::path& sdf,
                            const std::vector<std::filesystem::path>& mesh_paths) {
   std::uint64_t hash{1469598103934665603ULL};
+  const std::filesystem::path absolute_sdf = std::filesystem::weakly_canonical(sdf);
   updateFingerprint(hash, std::string_view{"sdf\0", 4U});
-  updateFingerprint(hash, sdf);
+  updateFingerprint(hash, absolute_sdf);
   const std::set<std::filesystem::path> unique_mesh_paths{mesh_paths.begin(),
                                                           mesh_paths.end()};
   for (const std::filesystem::path& mesh_path : unique_mesh_paths) {
     updateFingerprint(hash, std::string_view{"mesh\0", 5U});
-    const std::string path_text = mesh_path.generic_string();
+    const std::string path_text =
+        mesh_path.lexically_relative(absolute_sdf.parent_path()).generic_string();
+    if (path_text.empty()) {
+      throw std::runtime_error{"failed to derive relative collision mesh identity"};
+    }
     updateFingerprint(hash, std::string_view{path_text});
     updateFingerprint(hash, std::string_view{"\0", 1U});
     updateFingerprint(hash, mesh_path);

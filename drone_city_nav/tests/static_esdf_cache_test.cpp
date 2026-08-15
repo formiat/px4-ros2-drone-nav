@@ -186,5 +186,17 @@ TEST(StaticEsdfCache, DetectsCorruptedChunkAtExtraction) {
   EXPECT_THROW(static_cast<void>(cache.extract(testBounds(), 6.0)), std::runtime_error);
 }
 
+TEST(StaticEsdfCache, LoadsCommittedCompactPassageFixture) {
+  const OccupancyGrid3D occupancy =
+      OccupancyGrid3D::load(TEST_COMPACT_PASSAGE_OCCUPANCY3D_PATH);
+  const StaticEsdfCache cache = StaticEsdfCache::load(TEST_COMPACT_PASSAGE_ESDF3D_PATH);
+
+  ASSERT_TRUE(cache.compatibleWith(occupancy, 8.0));
+  EXPECT_GT(cache.storedChunkCount(), 0U);
+  const StaticEsdfCacheExtraction extraction = cache.extract(occupancy.bounds(), 8.0);
+  EXPECT_EQ(extraction.field.distancesM().size(), 349440U);
+  EXPECT_GT(extraction.stats.finite_voxels, 0U);
+}
+
 } // namespace
 } // namespace drone_city_nav
