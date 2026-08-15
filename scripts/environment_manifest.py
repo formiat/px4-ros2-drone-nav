@@ -47,28 +47,36 @@ def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
 
 
 def validate_manifest(manifest: dict[str, Any]) -> None:
-    if _string(manifest.get("schema"), "schema") != "drone_city_nav_environment_manifest_v1":
+    if _string(manifest.get("schema"), "schema") != "drone_city_nav_environment_manifest_v2":
         raise ManifestError("unsupported environment manifest schema")
 
-    release = _mapping(manifest.get("artifact_release"), "artifact_release")
-    _string(release.get("tag"), "artifact_release.tag")
-    if not isinstance(release.get("published"), bool):
-        raise ManifestError("artifact_release.published must be a boolean")
-    base_urls = _sequence(release.get("base_urls"), "artifact_release.base_urls")
-    if not base_urls:
-        raise ManifestError("artifact_release.base_urls must not be empty")
-    for index, url in enumerate(base_urls):
-        value = _string(url, f"artifact_release.base_urls[{index}]")
-        if not value.startswith(("https://", "http://", "file://")):
-            raise ManifestError(f"unsupported artifact base URL: {value}")
-    _relative_path(release.get("local_mirror"), "artifact_release.local_mirror")
+    releases = _sequence(manifest.get("artifact_releases"), "artifact_releases")
+    if not releases:
+        raise ManifestError("artifact_releases must not be empty")
+    release_ids: set[str] = set()
+    release_tags: set[str] = set()
+    release_mirrors: set[str] = set()
+    for index, raw_release in enumerate(releases):
+        release = _mapping(raw_release, f"artifact_releases[{index}]")
+        release_id = _validate_artifact_release(release, index)
+        if release_id in release_ids:
+            raise ManifestError(f"duplicate artifact release id: {release_id}")
+        release_ids.add(release_id)
+        tag = release["tag"]
+        if tag in release_tags:
+            raise ManifestError(f"duplicate artifact release tag: {tag}")
+        release_tags.add(tag)
+        local_mirror = release["local_mirror"]
+        if local_mirror in release_mirrors:
+            raise ManifestError(f"duplicate artifact release mirror: {local_mirror}")
+        release_mirrors.add(local_mirror)
 
     environments = _sequence(manifest.get("environments"), "environments")
     if not environments:
         raise ManifestError("environments must not be empty")
     environment_ids: set[str] = set()
-    release_count = 0
-    repository_count = 0
+    referenced_release_ids: set[str] = set()
+    artifact_filenames_by_release = {release_id: set() for release_id in release_ids}
     for index, raw_environment in enumerate(environments):
         environment = _mapping(raw_environment, f"environments[{index}]")
         environment_id = _identifier(
@@ -96,14 +104,30 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         _validate_source(environment_id, environment.get("source"))
         _validate_static_maps(environment_id, environment.get("static_maps"))
         if distribution == "release":
-            release_count += 1
+            release_id = _identifier(
+                environment.get("artifact_release_id"),
+                f"{environment_id}.artifact_release_id",
+            )
+            if release_id not in release_ids:
+                raise ManifestError(
+                    f"{environment_id} references unknown artifact release {release_id}"
+                )
+            referenced_release_ids.add(release_id)
             _validate_release_environment(environment_id, environment)
+            release_filenames = artifact_filenames_by_release[release_id]
+            for artifact in environment["artifacts"]:
+                filename = artifact["filename"]
+                if filename in release_filenames:
+                    raise ManifestError(
+                        f"duplicate artifact filename in {release_id}: {filename}"
+                    )
+                release_filenames.add(filename)
         else:
-            repository_count += 1
             _validate_repository_environment(environment_id, environment)
-    if release_count != 2 or repository_count != 1:
+    if referenced_release_ids != release_ids:
+        unused = ", ".join(sorted(release_ids - referenced_release_ids))
         raise ManifestError(
-            "distribution contract must contain two release environments and one fixture"
+            f"artifact releases must be referenced by an environment: {unused}"
         )
 
 
@@ -126,11 +150,47 @@ def find_environment(manifest: dict[str, Any], environment_id: str) -> dict[str,
     raise ManifestError(f"unknown environment id: {environment_id}")
 
 
+def find_artifact_release(
+    manifest: dict[str, Any], release_id: str
+) -> dict[str, Any]:
+    for release in manifest["artifact_releases"]:
+        if release["id"] == release_id:
+            return release
+    raise ManifestError(f"unknown artifact release: {release_id}")
+
+
+def artifact_release_for_environment(
+    manifest: dict[str, Any], environment: dict[str, Any]
+) -> dict[str, Any]:
+    if environment["distribution"] != "release":
+        raise ManifestError(
+            f"repository environment has no artifact release: {environment['id']}"
+        )
+    return find_artifact_release(manifest, environment["artifact_release_id"])
+
+
 def repository_root(manifest_path: Path) -> Path:
     resolved = manifest_path.resolve()
     if resolved.parent.name != "environments":
         raise ManifestError("manifest must be stored in the repository environments directory")
     return resolved.parent.parent
+
+
+def _validate_artifact_release(release: dict[str, Any], index: int) -> str:
+    field = f"artifact_releases[{index}]"
+    release_id = _identifier(release.get("id"), f"{field}.id")
+    _string(release.get("tag"), f"{field}.tag")
+    if not isinstance(release.get("published"), bool):
+        raise ManifestError(f"{field}.published must be a boolean")
+    base_urls = _sequence(release.get("base_urls"), f"{field}.base_urls")
+    if not base_urls:
+        raise ManifestError(f"{field}.base_urls must not be empty")
+    for url_index, url in enumerate(base_urls):
+        value = _string(url, f"{field}.base_urls[{url_index}]")
+        if not value.startswith(("https://", "http://", "file://")):
+            raise ManifestError(f"unsupported artifact base URL: {value}")
+    _relative_path(release.get("local_mirror"), f"{field}.local_mirror")
+    return release_id
 
 
 def _validate_source(environment_id: str, raw_source: Any) -> None:

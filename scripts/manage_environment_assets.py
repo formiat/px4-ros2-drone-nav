@@ -13,7 +13,12 @@ from environment_artifacts import (
     verify_release_artifacts,
     verify_repository_files,
 )
-from environment_manifest import find_environment, load_manifest, repository_root
+from environment_manifest import (
+    artifact_release_for_environment,
+    find_environment,
+    load_manifest,
+    repository_root,
+)
 
 
 DEFAULT_MANIFEST = Path("environments/environment_manifest.yaml")
@@ -51,15 +56,14 @@ def main() -> None:
         _list_environments(manifest)
         return
 
-    default_release = repository / manifest["artifact_release"]["local_mirror"]
-    release_directory = (args.release_dir or default_release).resolve()
     if args.command == "verify":
         repository_files = verify_repository_files(manifest, manifest_path)
         release_files = verify_release_artifacts(
             manifest,
-            release_directory,
+            repository,
             environment_id=args.environment,
             inspect_contents=not args.skip_bundle_contents,
+            release_directory_override=args.release_dir,
         )
         print(
             "ENVIRONMENT_ASSETS_VERIFIED"
@@ -85,6 +89,9 @@ def main() -> None:
         raise ArtifactError(
             f"unknown artifact for {environment['id']}: {args.artifact}"
         )
+    release = artifact_release_for_environment(manifest, environment)
+    default_release = repository / release["local_mirror"]
+    release_directory = (args.release_dir or default_release).resolve()
     cache_directory = (
         args.cache_dir
         or repository / "external/environment-artifacts/download-cache"
@@ -113,11 +120,17 @@ def _list_environments(manifest: dict) -> None:
         artifacts = ",".join(
             artifact["id"] for artifact in environment.get("artifacts", [])
         )
+        release = (
+            artifact_release_for_environment(manifest, environment)["tag"]
+            if environment["distribution"] == "release"
+            else "repository"
+        )
         print(
             f"{environment['id']}"
             f" role={environment['role']}"
             f" classification={environment['classification']}"
             f" distribution={environment['distribution']}"
+            f" release={release}"
             f" artifacts={artifacts or 'repository'}"
         )
 

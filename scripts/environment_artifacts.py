@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import urlopen
 
-from environment_manifest import sha256_file
+from environment_manifest import artifact_release_for_environment, sha256_file
 from fuel_license_inventory import summarize_licenses
 
 
@@ -28,17 +28,34 @@ def build_release_artifacts(
     manifest: dict[str, Any],
     repository_root: Path,
     candidate_root: Path,
-    release_directory: Path,
+    release_directory_override: Path | None = None,
     selected_environment_ids: set[str] | None = None,
 ) -> list[Path]:
+    repository_root = repository_root.resolve()
     candidate_root = candidate_root.resolve()
-    release_directory.mkdir(parents=True, exist_ok=True)
+    environments = _selected_release_environments(
+        manifest, selected_environment_ids
+    )
+    release_ids = {
+        environment["artifact_release_id"] for environment in environments
+    }
+    if release_directory_override is not None and len(release_ids) != 1:
+        raise ArtifactError(
+            "--release-dir requires environments from exactly one artifact release"
+        )
+    override = (
+        release_directory_override.resolve()
+        if release_directory_override is not None
+        else None
+    )
     built: list[Path] = []
-    for environment in manifest["environments"]:
-        if environment["distribution"] != "release":
-            continue
-        if selected_environment_ids and environment["id"] not in selected_environment_ids:
-            continue
+    touched_releases: dict[str, Path] = {}
+    for environment in environments:
+        release_directory = override or _release_directory(
+            manifest, environment, repository_root
+        )
+        release_directory.mkdir(parents=True, exist_ok=True)
+        touched_releases[environment["artifact_release_id"]] = release_directory
         for artifact in environment["artifacts"]:
             output = release_directory / artifact["filename"]
             if artifact["kind"] == "source_bundle":
@@ -56,7 +73,8 @@ def build_release_artifacts(
             artifact["size_bytes"] = output.stat().st_size
             verify_bundle_contents(output, environment["id"], artifact["id"])
             built.append(output)
-    write_release_checksums(manifest, release_directory)
+    for release_id, release_directory in touched_releases.items():
+        write_release_checksums(manifest, release_directory, release_id)
     return built
 
 
@@ -118,16 +136,28 @@ def update_repository_file_contracts(
 
 def verify_release_artifacts(
     manifest: dict[str, Any],
-    release_directory: Path,
+    repository_root: Path,
     environment_id: str | None = None,
     inspect_contents: bool = True,
+    release_directory_override: Path | None = None,
 ) -> list[Path]:
+    environments = _selected_release_environments(
+        manifest, {environment_id} if environment_id is not None else None
+    )
+    release_ids = {
+        environment["artifact_release_id"] for environment in environments
+    }
+    if release_directory_override is not None and len(release_ids) != 1:
+        raise ArtifactError(
+            "--release-dir requires --environment when multiple releases exist"
+        )
     verified: list[Path] = []
-    for environment in manifest["environments"]:
-        if environment["distribution"] != "release":
-            continue
-        if environment_id is not None and environment["id"] != environment_id:
-            continue
+    for environment in environments:
+        release_directory = (
+            release_directory_override.resolve()
+            if release_directory_override is not None
+            else _release_directory(manifest, environment, repository_root)
+        )
         for artifact in environment["artifacts"]:
             path = release_directory / artifact["filename"]
             verify_file_contract(path, artifact)
@@ -162,7 +192,7 @@ def fetch_artifact(
     if base_url_override is not None:
         base_urls = [base_url_override]
     else:
-        release = manifest["artifact_release"]
+        release = artifact_release_for_environment(manifest, environment)
         if not release["published"]:
             raise ArtifactError(
                 "artifact release is staged locally but not published; provide "
@@ -203,15 +233,50 @@ def install_artifact(archive: Path, destination: Path) -> Path:
 
 
 def write_release_checksums(
-    manifest: dict[str, Any], release_directory: Path
+    manifest: dict[str, Any], release_directory: Path, release_id: str
 ) -> Path:
     lines: list[str] = []
     for environment in manifest["environments"]:
+        if environment.get("artifact_release_id") != release_id:
+            continue
         for artifact in environment.get("artifacts", []):
+            verify_file_contract(release_directory / artifact["filename"], artifact)
             lines.append(f"{artifact['sha256']}  {artifact['filename']}")
+    if not lines:
+        raise ArtifactError(f"artifact release has no files: {release_id}")
     output = release_directory / "SHA256SUMS"
     output.write_text("\n".join(sorted(lines)) + "\n", encoding="ascii")
     return output
+
+
+def _selected_release_environments(
+    manifest: dict[str, Any], selected_environment_ids: set[str] | None
+) -> list[dict[str, Any]]:
+    release_environments = [
+        environment
+        for environment in manifest["environments"]
+        if environment["distribution"] == "release"
+    ]
+    if selected_environment_ids is None:
+        return release_environments
+    known_ids = {environment["id"] for environment in release_environments}
+    unknown_ids = selected_environment_ids - known_ids
+    if unknown_ids:
+        raise ArtifactError(
+            "unknown release environment(s): " + ", ".join(sorted(unknown_ids))
+        )
+    return [
+        environment
+        for environment in release_environments
+        if environment["id"] in selected_environment_ids
+    ]
+
+
+def _release_directory(
+    manifest: dict[str, Any], environment: dict[str, Any], repository_root: Path
+) -> Path:
+    release = artifact_release_for_environment(manifest, environment)
+    return (repository_root / release["local_mirror"]).resolve()
 
 
 def verify_file_contract(path: Path, contract: dict[str, Any]) -> None:

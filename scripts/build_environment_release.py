@@ -35,26 +35,25 @@ def main() -> None:
     manifest_path = args.manifest.resolve()
     manifest = load_manifest(manifest_path)
     repository = manifest_path.parent.parent
-    release_directory = (
-        args.release_dir
-        or repository / manifest["artifact_release"]["local_mirror"]
-    ).resolve()
     selected = set(args.environment) or None
     update_repository_file_contracts(manifest, manifest_path)
     built = build_release_artifacts(
         manifest,
         repository,
         args.candidate_root.resolve(),
-        release_directory,
+        args.release_dir,
         selected,
     )
     if args.update_manifest:
         write_manifest(manifest_path, manifest)
-    snapshot = release_directory / "environment_manifest.yaml"
-    write_manifest(snapshot, manifest)
+    release_directories = sorted({path.parent for path in built})
+    for release_directory in release_directories:
+        snapshot = release_directory / "environment_manifest.yaml"
+        write_manifest(snapshot, manifest)
     for path in built:
         print(f"ENVIRONMENT_ARTIFACT_BUILT path={path}")
-    print(f"ENVIRONMENT_RELEASE_STAGED path={release_directory}")
+    for release_directory in release_directories:
+        print(f"ENVIRONMENT_RELEASE_STAGED path={release_directory}")
 
 
 if __name__ == "__main__":

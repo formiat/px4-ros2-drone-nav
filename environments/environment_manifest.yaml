@@ -1,16 +1,24 @@
-schema: drone_city_nav_environment_manifest_v1
-artifact_release:
+schema: drone_city_nav_environment_manifest_v2
+artifact_releases:
+- id: core_v1
   tag: environment-assets-v1
   published: true
   base_urls:
   - https://github.com/formiat/px4-ros2-drone-nav/releases/download/environment-assets-v1
   local_mirror: external/environment-artifacts/releases/environment-assets-v1
+- id: urban_v1
+  tag: environment-assets-urban-v1
+  published: false
+  base_urls:
+  - https://github.com/formiat/px4-ros2-drone-nav/releases/download/environment-assets-urban-v1
+  local_mirror: external/environment-artifacts/releases/environment-assets-urban-v1
 environments:
 - id: finals_prize_round_world_07
   display_name: Finals Prize Round World 07
   role: primary
   classification: confirmed_fit
   distribution: release
+  artifact_release_id: core_v1
   source:
     provider: gazebo_fuel
     url: https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Finals%20Prize%20Round%20World%2007
@@ -79,6 +87,7 @@ environments:
   role: vertical_stress
   classification: confirmed_fit
   distribution: release
+  artifact_release_id: core_v1
   source:
     provider: gazebo_fuel
     url: https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Cave%20Circuit%20Practice%2001
@@ -142,6 +151,75 @@ environments:
       path: maps/r100/world.esdf3d
       sha256: 2a403bbcb6fc4426cfb870937cdfd276261e9787089a33d208e1592f0a0daa79
       size_bytes: 10992532
+- id: urban_circuit_practice_01
+  display_name: Urban Circuit Practice 01
+  role: secondary_urban
+  classification: confirmed_fit
+  distribution: release
+  artifact_release_id: urban_v1
+  source:
+    provider: gazebo_fuel
+    url: https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Urban%20Circuit%20Practice%2001
+    version: 1
+    bundle_artifact_id: source
+    entrypoint: fuel/fuel.gazebosim.org/openrobotics/worlds/urban%20circuit%20practice%2001/1/urban_circuit_practice_01.sdf
+    license:
+      spdx: CC-BY-4.0
+      url: https://creativecommons.org/licenses/by/4.0/
+      attribution: Open Robotics, DARPA Subterranean Challenge environment assets
+    license_inventory:
+      path: environments/licenses/urban_circuit_practice_01.json
+      sha256: 29429f875ea38967acf85aaa1904b758c174cb9980f4f522ec61935045057590
+      size_bytes: 10812
+  artifacts:
+  - id: source
+    kind: source_bundle
+    filename: urban_circuit_practice_01-source-v1.tar.gz
+    sha256: 06233dc64ad4ef4b9b002d85f96cc989e5dcee26225f3ba331c74f354bb9525c
+    size_bytes: 32716249
+    build:
+      world: fuel/fuel.gazebosim.org/openrobotics/worlds/urban%20circuit%20practice%2001/1/urban_circuit_practice_01.sdf
+      materialization_report: work/urban_practice_01_materialization.json
+  - id: static_r050
+    kind: static_map_bundle
+    filename: urban_circuit_practice_01-static-r050-v1.tar.gz
+    sha256: 8d74d322304cf03ae6c024b9e4f6e7151c55c305fc6115d84382d79ed81c32a6
+    size_bytes: 10276975
+    build:
+      files:
+      - source: work/urban_practice_01_r050.occupancy3d
+        destination: maps/r050/world.occupancy3d
+      - source: work/urban_practice_01_r050.esdf3d
+        destination: maps/r050/world.esdf3d
+      - source: work/urban_practice_01_materialization.json
+        destination: reports/materialization.json
+      - source: work/urban_practice_01_r050_voxelization.json
+        destination: reports/voxelization_r050.json
+  static_maps:
+  - id: r050
+    artifact_id: static_r050
+    resolution_m: 0.5
+    origin_m:
+    - -152.0
+    - -216.0
+    - -13.0
+    dimensions:
+    - 605
+    - 528
+    - 73
+    dense_voxel_count: 23319120
+    collision_triangles: 1811856
+    occupied_voxels: 356853
+    occupied_chunks: 1219
+    maximum_distance_m: 26.0
+    occupancy:
+      path: maps/r050/world.occupancy3d
+      sha256: 1070340f663c2462ea1b17ffc75c74f22153b9792b7b7c15ca12c1df29225fbb
+      size_bytes: 638820
+    esdf:
+      path: maps/r050/world.esdf3d
+      sha256: 1162abd12e8d6238246154802cc160519a0f35c216b18b858e54d5b83bd117f6
+      size_bytes: 10321251
 - id: compact_3d_passage_fixture
   display_name: Compact 3D Passage Fixture
   role: integration_fixture

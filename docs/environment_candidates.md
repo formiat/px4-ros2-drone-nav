@@ -16,10 +16,9 @@ Downloaded source assets and generated candidate artifacts are stored under
 2.0 GB and is intentionally ignored by Git.
 
 The distribution contract is committed as
-`environments/environment_manifest.yaml`. It intentionally contains only the
-primary world, the vertical-passage stress world, and one compact repository
-fixture. Candidate evaluation data is broader than the supported distribution
-set.
+`environments/environment_manifest.yaml`. It contains all three confirmed-fit
+external worlds and one compact repository fixture. Candidate evaluation data
+is broader than the supported distribution set.
 
 ## Selection Criteria
 
@@ -122,28 +121,32 @@ pins, for every distributed environment:
   and occupied chunks;
 - independent SHA-256 contracts for Occupancy3D and ESDF3D.
 
-The staged `environment-assets-v1` release contains four deterministic bundles:
+The release registry contains six deterministic bundles split between the
+immutable core and Urban releases:
 
-| Artifact | Approximate compressed size |
-|---|---:|
-| Finals Prize Round World 07 source | 565 MB |
-| Finals Prize Round World 07 0.5 m static map | 39 MB |
-| Cave Circuit Practice 01 source | 99 MB |
-| Cave Circuit Practice 01 1.0 m static map | 11 MB |
+| Release | Artifact | Approximate compressed size |
+|---|---|---:|
+| `environment-assets-v1` | Finals Prize Round World 07 source | 565 MB |
+| `environment-assets-v1` | Finals Prize Round World 07 0.5 m static map | 39 MB |
+| `environment-assets-v1` | Cave Circuit Practice 01 source | 99 MB |
+| `environment-assets-v1` | Cave Circuit Practice 01 1.0 m static map | 11 MB |
+| `environment-assets-urban-v1` | Urban Circuit Practice 01 source | 32 MB |
+| `environment-assets-urban-v1` | Urban Circuit Practice 01 0.5 m static map | 9.9 MB |
 
 Each source bundle contains the selected Fuel world and the exact transitive
 model versions needed by its physical geometry. Each map bundle contains the
 Occupancy3D, ESDF3D, normalized generation reports, attribution, and a
 per-member checksum manifest. Every bundle also carries `LICENSES.json`; the
 Finals inventory contains 60 CC-BY-4.0 and 23 CC0-1.0 resources, while the Cave
-inventory contains 40 CC-BY-4.0 and 5 CC0-1.0 resources. Archives use stable
-ordering, timestamps, ownership, permissions, and gzip metadata.
+inventory contains 40 CC-BY-4.0 and 5 CC0-1.0 resources. The Urban inventory
+contains 24 CC-BY-4.0 and 8 CC0-1.0 resources. Archives use stable ordering,
+timestamps, ownership, permissions, and gzip metadata.
 
-The published release is identified by `environment-assets-v1` and its URL is
-recorded in the manifest. The verified local mirror remains under
-`external/environment-artifacts/releases/environment-assets-v1/` and is ignored
-by Git. With `artifact_release.published` set to `true`, a fresh checkout can
-download the exact SHA-pinned files when no local mirror is available.
+Every published release and its URL are recorded in `artifact_releases`; each
+external environment references one release by typed ID. Verified local mirrors
+remain under `external/environment-artifacts/releases/` and are ignored by Git.
+With the selected release marked `published`, a fresh checkout can download the
+exact SHA-pinned files when no local mirror is available.
 
 The repository-owned compact fixture is stored under
 `environments/fixtures/compact_3d_passage/`. Its horizontal corridor, roof
@@ -166,12 +169,12 @@ release after `published` becomes `true`:
   --environment finals_prize_round_world_07 --artifact static_r050
 ```
 
-Rebuild all release files after intentionally changing source inputs or map
-generation:
+Rebuild one release environment after intentionally changing source inputs or
+map generation. Omitting `--environment` rebuilds every configured release:
 
 ```bash
 ./scripts/dev_shell.sh python3 scripts/build_environment_release.py \
-  --update-manifest
+  --environment urban_circuit_practice_01 --update-manifest
 ```
 
 Refresh the pinned Fuel metadata only when source dependency versions change:
@@ -181,6 +184,8 @@ Refresh the pinned Fuel metadata only when source dependency versions change:
   --environment finals_prize_round_world_07
 ./scripts/dev_shell.sh python3 scripts/resolve_environment_licenses.py \
   --environment cave_circuit_practice_01
+./scripts/dev_shell.sh python3 scripts/resolve_environment_licenses.py \
+  --environment urban_circuit_practice_01
 ```
 
 The builder updates all artifact and repository-fixture hashes atomically in the

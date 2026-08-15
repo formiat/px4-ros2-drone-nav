@@ -27,6 +27,7 @@ from environment_artifacts import (  # noqa: E402
 )
 from environment_manifest import (  # noqa: E402
     ManifestError,
+    artifact_release_for_environment,
     load_manifest,
     validate_manifest,
 )
@@ -48,17 +49,21 @@ class EnvironmentManifestTest(unittest.TestCase):
             {
                 "finals_prize_round_world_07",
                 "cave_circuit_practice_01",
+                "urban_circuit_practice_01",
                 "compact_3d_passage_fixture",
             },
             {environment["id"] for environment in manifest["environments"]},
         )
-        self.assertTrue(manifest["artifact_release"]["published"])
+        self.assertEqual(
+            {"core_v1", "urban_v1"},
+            {release["id"] for release in manifest["artifact_releases"]},
+        )
         release_environments = [
             environment
             for environment in manifest["environments"]
             if environment["distribution"] == "release"
         ]
-        self.assertEqual(2, len(release_environments))
+        self.assertEqual(3, len(release_environments))
         for environment in release_environments:
             self.assertEqual(
                 {"source_bundle", "static_map_bundle"},
@@ -91,7 +96,26 @@ class EnvironmentManifestTest(unittest.TestCase):
 
         verified = verify_repository_files(manifest, MANIFEST_PATH)
 
-        self.assertEqual(7, len(verified))
+        self.assertEqual(8, len(verified))
+
+    def test_environments_select_their_immutable_release(self) -> None:
+        manifest = load_manifest(MANIFEST_PATH)
+        releases_by_environment = {
+            environment["id"]: artifact_release_for_environment(
+                manifest, environment
+            )["tag"]
+            for environment in manifest["environments"]
+            if environment["distribution"] == "release"
+        }
+
+        self.assertEqual(
+            {
+                "finals_prize_round_world_07": "environment-assets-v1",
+                "cave_circuit_practice_01": "environment-assets-v1",
+                "urban_circuit_practice_01": "environment-assets-urban-v1",
+            },
+            releases_by_environment,
+        )
 
     def test_duplicate_environment_id_is_rejected(self) -> None:
         manifest = load_manifest(MANIFEST_PATH)
@@ -99,6 +123,23 @@ class EnvironmentManifestTest(unittest.TestCase):
         manifest["environments"].append(duplicate)
 
         with self.assertRaisesRegex(ManifestError, "duplicate environment id"):
+            validate_manifest(manifest)
+
+    def test_duplicate_artifact_release_id_is_rejected(self) -> None:
+        manifest = load_manifest(MANIFEST_PATH)
+        duplicate = copy.deepcopy(manifest["artifact_releases"][0])
+        duplicate["tag"] = "duplicate-release"
+        duplicate["local_mirror"] = "external/duplicate-release"
+        manifest["artifact_releases"].append(duplicate)
+
+        with self.assertRaisesRegex(ManifestError, "duplicate artifact release id"):
+            validate_manifest(manifest)
+
+    def test_unknown_artifact_release_reference_is_rejected(self) -> None:
+        manifest = load_manifest(MANIFEST_PATH)
+        manifest["environments"][0]["artifact_release_id"] = "missing_release"
+
+        with self.assertRaisesRegex(ManifestError, "unknown artifact release"):
             validate_manifest(manifest)
 
     def test_duplicate_artifact_kind_is_rejected(self) -> None:
@@ -110,6 +151,15 @@ class EnvironmentManifestTest(unittest.TestCase):
         environment["artifacts"].append(duplicate)
 
         with self.assertRaisesRegex(ManifestError, "one source and one static-map"):
+            validate_manifest(manifest)
+
+    def test_duplicate_filename_within_release_is_rejected(self) -> None:
+        manifest = load_manifest(MANIFEST_PATH)
+        first = manifest["environments"][0]
+        second = manifest["environments"][1]
+        second["artifacts"][0]["filename"] = first["artifacts"][0]["filename"]
+
+        with self.assertRaisesRegex(ManifestError, "duplicate artifact filename"):
             validate_manifest(manifest)
 
 
@@ -170,9 +220,15 @@ class EnvironmentArtifactTest(unittest.TestCase):
                 "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
             }
             manifest = {
-                "artifact_release": {"published": False, "base_urls": []}
+                "artifact_releases": [
+                    {"id": "test_release", "published": False, "base_urls": []}
+                ]
             }
-            environment = {"id": "test_environment"}
+            environment = {
+                "id": "test_environment",
+                "distribution": "release",
+                "artifact_release_id": "test_release",
+            }
 
             fetched = fetch_artifact(
                 manifest,
