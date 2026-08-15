@@ -201,6 +201,10 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn('scenario["interceptor_ids"]', text)
         self.assertIn('"radar_simulator_node_fqns"', text)
         self.assertIn('name="airborne_radar_simulator_node"', tracking)
+        self.assertIn(
+            'scenario["evaders"] if noncooperative_avoidance_enabled else ()',
+            tracking,
+        )
         self.assertIn('"fixed_track_mode": True', tracking)
         self.assertIn('"physical_los_required": True', tracking)
         self.assertIn('"maximum_detection_range_m": settings[', tracking)
@@ -215,6 +219,9 @@ class InterceptRadarContractTest(unittest.TestCase):
             "planner_params =", 1
         )[0]
         self.assertIn('"noncooperative_avoidance_enabled": (', planner_parameters)
+        self.assertIn(
+            "noncooperative_avoidance_enabled", planner_parameters
+        )
         self.assertIn('config["role"] == "evader"', planner_parameters)
         self.assertIn('f"{prefix}/avoidance_tracks"', planner_parameters)
         self.assertNotIn("noncooperative_avoidance_enabled", memory_parameters)
@@ -302,9 +309,15 @@ class InterceptRadarContractTest(unittest.TestCase):
     def test_truth_boundary_allows_only_sensor_simulators_and_referee(self) -> None:
         boundary = GROUND_TRUTH_BOUNDARY.read_text(encoding="utf-8")
         support = REFEREE_SUPPORT.read_text(encoding="utf-8")
+        referee = REFEREE.read_text(encoding="utf-8")
         self.assertIn("avoidance_radar_simulator_fqns", boundary)
         self.assertIn("target_truth_subscribers.insert(", boundary)
         self.assertIn("avoidance_radar_simulator_node_fqns", support)
+        self.assertIn(
+            'declare_parameter<bool>("target_avoidance_pipeline_enabled", false)',
+            referee,
+        )
+        self.assertIn("if (target_avoidance_pipeline_enabled_)", referee)
 
     def test_assignment_drops_destroyed_and_capturing_interceptors(self) -> None:
         coordinator = ASSIGNMENT_COORDINATOR.read_text(encoding="utf-8")

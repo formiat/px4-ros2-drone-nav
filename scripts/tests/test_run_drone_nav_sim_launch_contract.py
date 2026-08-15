@@ -364,6 +364,29 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.intercept_launch_text,
         )
 
+    def test_intercept_attacker_avoidance_is_disabled_by_default(self) -> None:
+        self.assertIn(
+            "INTERCEPT_NONCOOPERATIVE_AVOIDANCE_ENABLED:-false", self.text
+        )
+        self.assertIn(
+            "intercept_noncooperative_avoidance_enabled:="
+            '"${intercept_noncooperative_avoidance_enabled}"',
+            self.text,
+        )
+        self.assertIn(
+            "INTERCEPT_NONCOOPERATIVE_AVOIDANCE_ENABLED", self.container_text
+        )
+        self.assertRegex(
+            self.intercept_launch_text,
+            r'"intercept_noncooperative_avoidance_enabled",\s*'
+            r'default_value="false"',
+        )
+        self.assertIn(
+            '--expect-noncooperative-avoidance '
+            '"${intercept_noncooperative_avoidance_enabled}"',
+            self.intercept_runtime_text,
+        )
+
     def test_intercept_launch_configures_los_driven_radar_track_mode(self) -> None:
         self.assertRegex(
             self.intercept_launch_text,

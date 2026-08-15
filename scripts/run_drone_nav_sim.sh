@@ -214,6 +214,9 @@ evader_speed_scale="${EVADER_SPEED_SCALE:-1.0}"
 intercept_directional_hypotheses_enabled="$(
   normalize_bool "${INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED:-false}"
 )"
+intercept_noncooperative_avoidance_enabled="$(
+  normalize_bool "${INTERCEPT_NONCOOPERATIVE_AVOIDANCE_ENABLED:-false}"
+)"
 cooperative_desired_minimum_separation_m="${COOPERATIVE_DESIRED_MINIMUM_SEPARATION_M:-5.0}"
 cooperative_release_separation_m="${COOPERATIVE_RELEASE_SEPARATION_M:-7.0}"
 cooperative_prediction_horizon_s="${COOPERATIVE_PREDICTION_HORIZON_S:-5.0}"
@@ -872,6 +875,7 @@ if bool_is_true "${multi_vehicle_mission}"; then
     enable_rviz:="${enable_rviz}"
     evader_speed_scale:="${evader_speed_scale}"
     intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"
+    intercept_noncooperative_avoidance_enabled:="${intercept_noncooperative_avoidance_enabled}"
     spectator_initial_vehicle_id:="${multi_vehicle_spectator_initial_vehicle_id}"
     spectator_reselection_policy:="${multi_vehicle_spectator_reselection_policy}"
     spectator_reselection_delay_s:="${multi_vehicle_spectator_reselection_delay_s}"

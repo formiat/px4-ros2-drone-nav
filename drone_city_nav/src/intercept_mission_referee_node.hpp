@@ -187,6 +187,7 @@ private:
   bool mission_started_{false};
   bool result_reported_{false};
   bool shutdown_on_terminal_outcome_{true};
+  bool target_avoidance_pipeline_enabled_{false};
   bool boundary_verified_{false};
   rclcpp::Subscription<msg::SimulationTruthAlignment>::SharedPtr truth_alignment_sub_;
   rclcpp::Publisher<msg::InterceptTargetStatus>::SharedPtr target_status_pub_;

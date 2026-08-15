@@ -436,6 +436,25 @@ def validate_noncooperative_avoidance(ros_log: str, errors: list[str]) -> None:
     )
 
 
+def validate_noncooperative_avoidance_disabled(
+    ros_log: str, errors: list[str]
+) -> None:
+    unexpected_activity = re.search(
+        r"target_avoidance_pipeline_enabled=true|"
+        r"NONCOOPERATIVE_AVOIDANCE_CONFIG enabled=true|"
+        r"PRODUCTION_MPPI_TICK .*noncooperative_avoidance_enabled=true|"
+        r"airborne_radar_simulator_node|"
+        r"avoidance_radar_target_tracker_node",
+        ros_log,
+    )
+    if unexpected_activity is not None:
+        errors.append(
+            "FAIL: attacker non-cooperative collision avoidance is disabled"
+        )
+    else:
+        print("OK: attacker non-cooperative collision avoidance is disabled")
+
+
 def validate_multi_intercept_settlement(ros_log: str, errors: list[str]) -> None:
     result = re.search(
         r"MISSION_RESULT success=true mission=multi_intercept "
@@ -641,6 +660,11 @@ def main() -> int:
     parser.add_argument("--expected-static", default="")
     parser.add_argument("--expected-memory", default="")
     parser.add_argument("--enable-lidar-debug", default="true")
+    parser.add_argument(
+        "--expect-noncooperative-avoidance",
+        choices=("true", "false"),
+        default="false",
+    )
     parser.add_argument("--mission-check", action="store_true")
     parser.add_argument("--allow-mission-failure", action="store_true")
     args = parser.parse_args()
@@ -770,7 +794,10 @@ def main() -> int:
         )
         if args.mission_type in {"intercept", "multi_intercept"}:
             validate_intercept_radar_pipeline(ros_log, errors)
-            validate_noncooperative_avoidance(ros_log, errors)
+            if args.expect_noncooperative_avoidance == "true":
+                validate_noncooperative_avoidance(ros_log, errors)
+            else:
+                validate_noncooperative_avoidance_disabled(ros_log, errors)
         if args.mission_type == "intercept":
             require(
                 "intercept mission reports a technical outcome",

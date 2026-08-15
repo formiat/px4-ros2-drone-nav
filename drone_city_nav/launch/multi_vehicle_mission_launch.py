@@ -64,6 +64,7 @@ def make_intercept_mission_nodes(
     interceptor_speed_mps,
     control_prefix,
     shutdown_on_terminal_outcome,
+    noncooperative_avoidance_enabled,
     physical_occupancy_3d_path,
 ):
     interceptor_ids = [
@@ -78,6 +79,7 @@ def make_intercept_mission_nodes(
         interceptor_speed_mps,
         control_prefix,
         _intercept_tracking_settings(context),
+        noncooperative_avoidance_enabled,
         physical_occupancy_3d_path,
     )
     interceptor_prefixes = [f"/vehicles/{vehicle_id}" for vehicle_id in interceptor_ids]
@@ -174,6 +176,9 @@ def make_intercept_mission_nodes(
                         f"{prefix}/mission_start" for prefix in target_prefixes
                     ],
                     "target_status_topic": "/intercept/target_status",
+                    "target_avoidance_pipeline_enabled": (
+                        noncooperative_avoidance_enabled
+                    ),
                     "shutdown_on_terminal_outcome": shutdown_on_terminal_outcome,
                 }
             ],

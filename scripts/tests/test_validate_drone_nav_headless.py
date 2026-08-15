@@ -40,6 +40,42 @@ class SafetyRelevantRosLogTest(unittest.TestCase):
             "FAIL: interceptor data path accessed evader ground truth", errors
         )
 
+    def test_disabled_attacker_avoidance_accepts_absent_pipeline(self) -> None:
+        errors: list[str] = []
+
+        VALIDATOR.validate_noncooperative_avoidance_disabled(
+            "target_avoidance_pipeline_enabled=false\n", errors
+        )
+
+        self.assertEqual(errors, [])
+
+    def test_disabled_attacker_avoidance_rejects_active_pipeline(self) -> None:
+        errors: list[str] = []
+
+        VALIDATOR.validate_noncooperative_avoidance_disabled(
+            "NONCOOPERATIVE_AVOIDANCE_CONFIG enabled=true vehicle_id='evader'\n",
+            errors,
+        )
+
+        self.assertEqual(
+            errors,
+            ["FAIL: attacker non-cooperative collision avoidance is disabled"],
+        )
+
+    def test_enabled_attacker_avoidance_keeps_activity_contract(self) -> None:
+        log = (
+            "INTERCEPT_MISSION state=running target_count=1\n"
+            "NONCOOPERATIVE_AVOIDANCE_CONFIG enabled=true vehicle_id='evader'\n"
+            "PRODUCTION_MPPI_TICK noncooperative_avoidance_enabled=true "
+            "noncooperative_fresh_track_count=1 "
+            "noncooperative_survival_cost=12.0\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_noncooperative_avoidance(log, errors)
+
+        self.assertEqual(errors, [])
+
     def test_intercept_ignores_contact_after_terminal_result(self) -> None:
         log = (
             "INTERCEPT_OUTCOME outcome=intercepted\n"

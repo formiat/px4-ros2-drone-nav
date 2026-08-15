@@ -106,6 +106,7 @@ check_headless_run() {
     --expected-static "${expected_static_map}"
     --expected-memory "${expected_obstacle_memory}"
     --enable-lidar-debug "${enable_lidar_debug}"
+    --expect-noncooperative-avoidance "${intercept_noncooperative_avoidance_enabled}"
   )
   if bool_is_true "${multi_vehicle_mission}"; then
     validation_args+=(--expected-vehicles "${#multi_vehicle_ids[@]}")

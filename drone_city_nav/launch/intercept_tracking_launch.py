@@ -76,9 +76,13 @@ def make_interceptor_tracking_pipeline(
     interceptor_speed_mps,
     control_prefix,
     settings,
+    noncooperative_avoidance_enabled,
     physical_occupancy_3d_path,
 ):
-    if settings["noncooperative_radar_rate_hz"] <= 0.0:
+    if (
+        noncooperative_avoidance_enabled
+        and settings["noncooperative_radar_rate_hz"] <= 0.0
+    ):
         raise RuntimeError("Non-cooperative radar rate must be positive")
     interceptor_ids = scenario["interceptor_ids"]
     target_truth_topics = [
@@ -176,7 +180,10 @@ def make_interceptor_tracking_pipeline(
         )
 
     vehicle_ids = list(roles)
-    for evader_index, evader in enumerate(scenario["evaders"]):
+    avoidance_evaders = (
+        scenario["evaders"] if noncooperative_avoidance_enabled else ()
+    )
+    for evader_index, evader in enumerate(avoidance_evaders):
         evader_id = evader["id"]
         prefix = f"/vehicles/{evader_id}"
         observed_vehicle_ids = [

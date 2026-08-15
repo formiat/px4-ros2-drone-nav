@@ -206,10 +206,17 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ]
         )
         directional_hypotheses_enabled = False
+        noncooperative_avoidance_enabled = False
         if not cooperative_traffic:
             directional_hypotheses_enabled = _optional_bool(
                 LaunchConfiguration(
                     "intercept_directional_hypotheses_enabled"
+                ).perform(context),
+                False,
+            )
+            noncooperative_avoidance_enabled = _optional_bool(
+                LaunchConfiguration(
+                    "intercept_noncooperative_avoidance_enabled"
                 ).perform(context),
                 False,
             )
@@ -454,7 +461,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "diagnostics_output_dir": f"log/{mission_kind}/{role}/mppi",
                     "cooperative_traffic_enabled": cooperative_traffic,
                     "noncooperative_avoidance_enabled": (
-                        not cooperative_traffic and config["role"] == "evader"
+                        noncooperative_avoidance_enabled
+                        and config["role"] == "evader"
                     ),
                     "noncooperative_tracks_topic": f"{prefix}/avoidance_tracks",
                     "noncooperative_maximum_track_age_s": (
@@ -686,6 +694,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     interceptor_speed_mps,
                     control_prefix,
                     shutdown_on_terminal_outcome,
+                    noncooperative_avoidance_enabled,
                     static_path,
                 )
             )
@@ -788,6 +797,10 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument(
                 "intercept_directional_hypotheses_enabled", default_value="false"
+            ),
+            DeclareLaunchArgument(
+                "intercept_noncooperative_avoidance_enabled",
+                default_value="false",
             ),
             DeclareLaunchArgument(
                 "intercept_hypothesis_zero_distance_m", default_value="30.0"

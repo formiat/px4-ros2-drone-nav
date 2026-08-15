@@ -68,6 +68,8 @@ InterceptMissionRefereeNode::InterceptMissionRefereeNode()
       declare_parameter<double>("mission_readiness_timeout_s", 30.0));
   shutdown_on_terminal_outcome_ =
       declare_parameter<bool>("shutdown_on_terminal_outcome", true);
+  target_avoidance_pipeline_enabled_ =
+      declare_parameter<bool>("target_avoidance_pipeline_enabled", false);
 
   target_status_pub_ = create_publisher<msg::InterceptTargetStatus>(
       declare_parameter<std::string>("target_status_topic", "/intercept/target_status"),
@@ -96,9 +98,11 @@ InterceptMissionRefereeNode::InterceptMissionRefereeNode()
   timer_ = create_wall_timer(std::chrono::milliseconds{50}, [this] { tick(); });
   RCLCPP_INFO(get_logger(),
               "Intercept mission referee ready: mission='%s' epoch=%" PRIu64
-              " interceptors=%zu targets=%zu capture_radius_m=%.2f",
+              " interceptors=%zu targets=%zu capture_radius_m=%.2f "
+              "target_avoidance_pipeline_enabled=%s",
               mission_name_.c_str(), mission_epoch_, interceptors_.size(),
-              targets_.size(), capture_radius_m_);
+              targets_.size(), capture_radius_m_,
+              target_avoidance_pipeline_enabled_ ? "true" : "false");
 }
 
 void InterceptMissionRefereeNode::configureInterceptors(
@@ -257,9 +261,11 @@ void InterceptMissionRefereeNode::configureTargets(
 
 void InterceptMissionRefereeNode::configureGroundTruthBoundary() {
   std::vector<std::string> avoidance_radar_simulator_fqns;
-  avoidance_radar_simulator_fqns.reserve(targets_.size());
-  for (const TargetRuntime& target : targets_) {
-    avoidance_radar_simulator_fqns.push_back(target.avoidance_radar_simulator_fqn);
+  if (target_avoidance_pipeline_enabled_) {
+    avoidance_radar_simulator_fqns.reserve(targets_.size());
+    for (const TargetRuntime& target : targets_) {
+      avoidance_radar_simulator_fqns.push_back(target.avoidance_radar_simulator_fqn);
+    }
   }
   std::vector<InterceptorTruthEndpoint> interceptor_endpoints;
   interceptor_endpoints.reserve(interceptors_.size());
@@ -275,8 +281,12 @@ void InterceptMissionRefereeNode::configureGroundTruthBoundary() {
     target_endpoints.push_back(TargetTruthEndpoint{
         .navigation_topic = target.state_topic,
         .physical_truth_topic = target.truth_state_topic,
-        .own_radar_simulator_fqn = target.avoidance_radar_simulator_fqn,
-        .own_tracker_fqn = target.avoidance_tracker_fqn,
+        .own_radar_simulator_fqn = target_avoidance_pipeline_enabled_
+                                       ? target.avoidance_radar_simulator_fqn
+                                       : std::string{},
+        .own_tracker_fqn = target_avoidance_pipeline_enabled_
+                               ? target.avoidance_tracker_fqn
+                               : std::string{},
     });
   }
   ground_truth_boundary_ = makeInterceptGroundTruthBoundary(
