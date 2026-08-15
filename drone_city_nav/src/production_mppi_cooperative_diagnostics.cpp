@@ -59,16 +59,16 @@ void appendFields(std::ostringstream& output,
            << cooperative.mppi.space_time_integrated_shortfall_m2_s
            << ",\"cooperative_space_time_evaluated_candidate_count\":"
            << cooperative.mppi.space_time_evaluated_candidate_count
-           << ",\"cooperative_channel_phase\":\""
-           << cooperativeChannelPhaseName(cooperative.channel.phase) << '"'
-           << ",\"cooperative_channel_lateral_offset_m\":"
-           << cooperative.channel.lateral_offset_m
-           << ",\"cooperative_channel_minimum_lateral_offset_m\":"
-           << cooperative.channel.minimum_lateral_offset_m
-           << ",\"cooperative_channel_maximum_lateral_offset_m\":"
-           << cooperative.channel.maximum_lateral_offset_m
+           << ",\"cooperative_passage_phase\":\""
+           << cooperativePassagePhaseName(cooperative.passage.phase) << '"'
+           << ",\"cooperative_passage_lateral_offset_m\":"
+           << cooperative.passage.lateral_offset_m
+           << ",\"cooperative_passage_minimum_lateral_offset_m\":"
+           << cooperative.passage.minimum_lateral_offset_m
+           << ",\"cooperative_passage_maximum_lateral_offset_m\":"
+           << cooperative.passage.maximum_lateral_offset_m
            << ",\"cooperative_yield_status\":\""
-           << cooperativeChannelYieldStatusName(cooperative.yield.status) << '"'
+           << cooperativePassageYieldStatusName(cooperative.yield.status) << '"'
            << ",\"cooperative_yield_active\":"
            << (cooperative.yield.active ? "true" : "false")
            << ",\"cooperative_yield_hold\":"
@@ -123,15 +123,15 @@ void appendFields(std::ostringstream& output,
          << cooperative.mppi.space_time_integrated_shortfall_m2_s
          << " cooperative_space_time_evaluated_candidate_count="
          << cooperative.mppi.space_time_evaluated_candidate_count
-         << " cooperative_channel_phase="
-         << cooperativeChannelPhaseName(cooperative.channel.phase)
-         << " cooperative_channel_lateral_offset_m="
-         << cooperative.channel.lateral_offset_m
-         << " cooperative_channel_offset_interval_m=["
-         << cooperative.channel.minimum_lateral_offset_m << ','
-         << cooperative.channel.maximum_lateral_offset_m
+         << " cooperative_passage_phase="
+         << cooperativePassagePhaseName(cooperative.passage.phase)
+         << " cooperative_passage_lateral_offset_m="
+         << cooperative.passage.lateral_offset_m
+         << " cooperative_passage_offset_interval_m=["
+         << cooperative.passage.minimum_lateral_offset_m << ','
+         << cooperative.passage.maximum_lateral_offset_m
          << "] cooperative_yield_status="
-         << cooperativeChannelYieldStatusName(cooperative.yield.status)
+         << cooperativePassageYieldStatusName(cooperative.yield.status)
          << " cooperative_yield_active="
          << (cooperative.yield.active ? "true" : "false") << " cooperative_yield_hold="
          << (cooperative.yield.hold_at_entry ? "true" : "false");

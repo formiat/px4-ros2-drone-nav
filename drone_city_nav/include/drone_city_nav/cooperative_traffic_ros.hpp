@@ -1,9 +1,9 @@
 #pragma once
 
 #include "drone_city_nav/cooperative_traffic.hpp"
-#include "drone_city_nav/msg/cooperative_channel_intent.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
+#include "drone_city_nav/msg/cooperative_passage_intent.hpp"
 #include "drone_city_nav/msg/cooperative_peer_trajectory.hpp"
 
 #include <builtin_interfaces/msg/time.hpp>
@@ -20,11 +20,11 @@ cooperativeTimeMessage(std::int64_t nanoseconds) noexcept;
 [[nodiscard]] CooperativeFlightIntentData
 cooperativeFlightIntentData(const msg::CooperativeFlightIntent& message);
 
-[[nodiscard]] CooperativeChannelUse
-cooperativeChannelUseData(const msg::CooperativeChannelIntent& message);
+[[nodiscard]] CooperativePassageUse
+cooperativePassageUseData(const msg::CooperativePassageIntent& message);
 
-[[nodiscard]] msg::CooperativeChannelIntent
-cooperativeChannelIntentMessage(const CooperativeChannelUse& channel);
+[[nodiscard]] msg::CooperativePassageIntent
+cooperativePassageIntentMessage(const CooperativePassageUse& passage);
 
 [[nodiscard]] msg::CooperativeFlightIntent
 cooperativeFlightIntentMessage(const CooperativeFlightIntentData& intent);

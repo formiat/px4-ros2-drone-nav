@@ -132,14 +132,14 @@ void ProductionMppiNode::processDiagnostics(
   if (snapshot.cooperative.yield.active) {
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "COOPERATIVE_CHANNEL_YIELD vehicle='%s' channel='%s' offset_m=%.2f "
+        "COOPERATIVE_PASSAGE_YIELD vehicle='%s' passage='%s' offset_m=%.2f "
         "offset_interval_m=[%.2f,%.2f] status=%s hold=%s hold_station_m=%.2f "
         "maximum_speed_mps=%.2f entry_not_before_ns=%" PRId64,
-        vehicle_id_.c_str(), snapshot.cooperative.channel.channel_id.c_str(),
-        snapshot.cooperative.channel.lateral_offset_m,
-        snapshot.cooperative.channel.minimum_lateral_offset_m,
-        snapshot.cooperative.channel.maximum_lateral_offset_m,
-        cooperativeChannelYieldStatusName(snapshot.cooperative.yield.status),
+        vehicle_id_.c_str(), snapshot.cooperative.passage.passage_traversal_id.c_str(),
+        snapshot.cooperative.passage.lateral_offset_m,
+        snapshot.cooperative.passage.minimum_lateral_offset_m,
+        snapshot.cooperative.passage.maximum_lateral_offset_m,
+        cooperativePassageYieldStatusName(snapshot.cooperative.yield.status),
         snapshot.cooperative.yield.hold_at_entry ? "true" : "false",
         snapshot.cooperative.yield.hold_station_m,
         snapshot.cooperative.yield.maximum_speed_mps,
@@ -251,8 +251,10 @@ void ProductionMppiNode::processDiagnostics(
       << " guide_station_m=" << snapshot.route_station_m
       << " guide_remaining_m=" << snapshot.route_remaining_m
       << " route_constraint_phase=" << constrainedRoutePhaseName(route_constraint.phase)
-      << " route_constraint_channel="
-      << (route_constraint.channel_id.empty() ? "none" : route_constraint.channel_id)
+      << " route_constraint_passage="
+      << (route_constraint.passage_traversal_id.empty()
+              ? "none"
+              : route_constraint.passage_traversal_id)
       << " route_constraint_span_index="
       << (route_constraint.span_available
               ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
@@ -321,8 +323,10 @@ void ProductionMppiNode::processDiagnostics(
       << esdf.topology_vertical_alignment_time_s
       << " topology_planning_exposure_m=" << esdf.topology_planning_exposure_m
       << " topology_critical_exposure_m=" << esdf.topology_critical_exposure_m
-      << " topology_selected_channels="
-      << (esdf.selected_channel_ids ? esdf.selected_channel_ids->size() : 0U)
+      << " topology_selected_passage_traversals="
+      << (esdf.selected_passage_traversal_ids
+              ? esdf.selected_passage_traversal_ids->size()
+              : 0U)
       << " lattice_stale_pops=" << esdf.lattice_stale_queue_pops
       << " lattice_open_peak=" << esdf.lattice_open_peak
       << " lattice_records_peak=" << esdf.lattice_records_peak
@@ -351,26 +355,26 @@ void ProductionMppiNode::processDiagnostics(
       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
       << " lattice_3d_successor_reject_cost="
       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
-      << " channel_successor_generated="
-      << esdf.lattice_3d_successor_diagnostics.channel_generated
-      << " channel_successor_accepted="
-      << esdf.lattice_3d_successor_diagnostics.channel_accepted
-      << " channel_successor_rejected="
-      << esdf.lattice_3d_successor_diagnostics.channel_rejected
-      << " channel_successor_reject_connection="
-      << esdf.lattice_3d_successor_diagnostics.channel_rejected_connection_distance
-      << " channel_successor_reject_grid="
-      << esdf.lattice_3d_successor_diagnostics.channel_rejected_outside_grid
-      << " channel_successor_reject_envelope="
-      << esdf.lattice_3d_successor_diagnostics.channel_rejected_flight_envelope
-      << " channel_successor_reject_invalid="
-      << esdf.lattice_3d_successor_diagnostics.channel_rejected_invalid_esdf
-      << " channel_successor_reject_collision="
-      << esdf.lattice_3d_successor_diagnostics.channel_rejected_raw_collision
-      << " channel_successor_reject_risk="
-      << esdf.lattice_3d_successor_diagnostics.channel_rejected_risk_stage
-      << " channel_successor_reject_cost="
-      << esdf.lattice_3d_successor_diagnostics.channel_rejected_no_cost_improvement
+      << " passage_successor_generated="
+      << esdf.lattice_3d_successor_diagnostics.passage_generated
+      << " passage_successor_accepted="
+      << esdf.lattice_3d_successor_diagnostics.passage_accepted
+      << " passage_successor_rejected="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected
+      << " passage_successor_reject_connection="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected_connection_distance
+      << " passage_successor_reject_grid="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected_outside_grid
+      << " passage_successor_reject_envelope="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected_flight_envelope
+      << " passage_successor_reject_invalid="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected_invalid_esdf
+      << " passage_successor_reject_collision="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected_raw_collision
+      << " passage_successor_reject_risk="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected_risk_stage
+      << " passage_successor_reject_cost="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected_no_cost_improvement
       << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
       << " target_lookahead_m=" << speed_policy.target_lookahead_m
       << " reference_speed_mps=" << input.reference_speed_mps
@@ -655,8 +659,10 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"guide_remaining_m\":" << snapshot.route_remaining_m
         << ",\"route_constraint_phase\":\""
         << constrainedRoutePhaseName(route_constraint.phase) << '"'
-        << ",\"route_constraint_channel\":\""
-        << (route_constraint.channel_id.empty() ? "none" : route_constraint.channel_id)
+        << ",\"route_constraint_passage\":\""
+        << (route_constraint.passage_traversal_id.empty()
+                ? "none"
+                : route_constraint.passage_traversal_id)
         << '"' << ",\"route_constraint_span_available\":"
         << (route_constraint.span_available ? "true" : "false")
         << ",\"route_constraint_span_index\":"
@@ -761,8 +767,10 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.topology_vertical_alignment_time_s
         << ",\"topology_planning_exposure_m\":" << esdf.topology_planning_exposure_m
         << ",\"topology_critical_exposure_m\":" << esdf.topology_critical_exposure_m
-        << ",\"topology_selected_channel_count\":"
-        << (esdf.selected_channel_ids ? esdf.selected_channel_ids->size() : 0U)
+        << ",\"topology_selected_passage_count\":"
+        << (esdf.selected_passage_traversal_ids
+                ? esdf.selected_passage_traversal_ids->size()
+                : 0U)
         << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
         << ",\"lattice_open_peak\":" << esdf.lattice_open_peak
         << ",\"lattice_records_peak\":" << esdf.lattice_records_peak
@@ -815,26 +823,26 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
         << ",\"lattice_3d_successors_rejected_no_cost_improvement\":"
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
-        << ",\"channel_successors_generated\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_generated
-        << ",\"channel_successors_accepted\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_accepted
-        << ",\"channel_successors_rejected\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_rejected
-        << ",\"channel_successors_rejected_connection_distance\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_rejected_connection_distance
-        << ",\"channel_successors_rejected_outside_grid\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_rejected_outside_grid
-        << ",\"channel_successors_rejected_flight_envelope\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_rejected_flight_envelope
-        << ",\"channel_successors_rejected_invalid_esdf\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_rejected_invalid_esdf
-        << ",\"channel_successors_rejected_raw_collision\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_rejected_raw_collision
-        << ",\"channel_successors_rejected_risk_stage\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_rejected_risk_stage
-        << ",\"channel_successors_rejected_no_cost_improvement\":"
-        << esdf.lattice_3d_successor_diagnostics.channel_rejected_no_cost_improvement
+        << ",\"passage_successors_generated\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_generated
+        << ",\"passage_successors_accepted\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_accepted
+        << ",\"passage_successors_rejected\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected
+        << ",\"passage_successors_rejected_connection_distance\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected_connection_distance
+        << ",\"passage_successors_rejected_outside_grid\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected_outside_grid
+        << ",\"passage_successors_rejected_flight_envelope\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected_flight_envelope
+        << ",\"passage_successors_rejected_invalid_esdf\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected_invalid_esdf
+        << ",\"passage_successors_rejected_raw_collision\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected_raw_collision
+        << ",\"passage_successors_rejected_risk_stage\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected_risk_stage
+        << ",\"passage_successors_rejected_no_cost_improvement\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected_no_cost_improvement
         << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
         << ",\"lattice_planning_goal_reached\":"
         << (esdf.lattice_planning_goal_reached ? "true" : "false")

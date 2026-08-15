@@ -102,9 +102,9 @@ not trigger this hold.
 
 ## 5. Constrained Route Spans
 
-Static air channels are ordinary physical free space represented by traversal
+Static air passages are ordinary physical free space represented by traversal
 edges in the globally derived portal graph. Global search explicitly evaluates
-`start -> entry -> channel -> exit -> planning goal` topology candidates. A
+`start -> entry -> passage -> exit -> planning goal` topology candidates. A
 selected traversal edge creates its constrained station interval directly;
 local clearance analysis remains a validation step rather than a
 nearest-opening selector or separate passage lifecycle.

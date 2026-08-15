@@ -123,9 +123,9 @@ TEST(MppiDebugMarkers, SeparatesCandidateAndPublishedExecutionHorizons) {
   EXPECT_DOUBLE_EQ(execution_marker.points.back().x, 12.0);
 }
 
-TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedChannelEdges) {
-  const std::vector<ConstrainedFreeSpaceEdge> channels{
-      ConstrainedFreeSpaceEdge{
+TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedPassageEdges) {
+  const std::vector<PassageTraversalEdge> passages{
+      PassageTraversalEdge{
           .id = "selected",
           .region_id = "selected_region",
           .entry_portal_id = "selected_entry",
@@ -138,7 +138,7 @@ TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedChannelEdges) {
           .height_m = 7.0,
           .minimum_clearance_m = 3.5,
           .speed_limit_mps = 10.0},
-      ConstrainedFreeSpaceEdge{
+      PassageTraversalEdge{
           .id = "candidate",
           .region_id = "candidate_region",
           .entry_portal_id = "candidate_entry",
@@ -151,16 +151,16 @@ TEST(MppiDebugMarkers, DistinguishesCandidateAndSelectedChannelEdges) {
           .height_m = 7.0,
           .minimum_clearance_m = 3.5,
           .speed_limit_mps = 10.0}};
-  const std::vector<std::string> selected{"selected"};
+  const std::vector<PassageTraversalId> selected{"selected"};
   MppiDebugMarkerInput input = markerInput();
-  input.channel_edges = channels;
-  input.selected_channel_ids = selected;
+  input.passage_traversals = passages;
+  input.selected_passage_traversal_ids = selected;
 
   const auto markers = buildMppiDebugMarkers(input);
 
-  const auto& candidate = findMarker(markers, "channel_candidate_edges", 0);
-  const auto& selected_marker = findMarker(markers, "selected_channel_edges", 0);
-  const auto& unselected_marker = findMarker(markers, "selected_channel_edges", 1);
+  const auto& candidate = findMarker(markers, "passage_candidate_traversals", 0);
+  const auto& selected_marker = findMarker(markers, "selected_passage_traversals", 0);
+  const auto& unselected_marker = findMarker(markers, "selected_passage_traversals", 1);
   EXPECT_EQ(candidate.action, visualization_msgs::msg::Marker::ADD);
   EXPECT_EQ(selected_marker.action, visualization_msgs::msg::Marker::ADD);
   EXPECT_GT(selected_marker.scale.x, candidate.scale.x);

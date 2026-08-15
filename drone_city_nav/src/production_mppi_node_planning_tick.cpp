@@ -317,11 +317,11 @@ void ProductionMppiNode::planningTick() {
   if (route_control.active) {
     target.z = static_cast<float>(route_control.reference_z_m);
     if (route_control.hold_xy) {
-      target_source = "channel_vertical_alignment_hold";
+      target_source = "passage_vertical_alignment_hold";
     } else if (route_control.vertical_ready) {
-      target_source = "channel_traversal";
+      target_source = "passage_traversal";
     } else {
-      target_source = "channel_vertical_alignment";
+      target_source = "passage_vertical_alignment";
     }
     if (route_control.hold_xy) {
       target.x = navigation.state.x;
@@ -339,8 +339,8 @@ void ProductionMppiNode::planningTick() {
     target.z = static_cast<float>(hold_sample.position.z);
     target_station_m = hold_sample.station_m;
     target_source = cooperative.yield.hold_at_entry
-                        ? "cooperative_channel_yield_hold"
-                        : "cooperative_channel_yield_deceleration";
+                        ? "cooperative_passage_yield_hold"
+                        : "cooperative_passage_yield_deceleration";
   }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
   if (objective && objective->immediate_hold) {
@@ -371,10 +371,10 @@ void ProductionMppiNode::planningTick() {
     speed_policy.target_lookahead_m = 0.0;
   } else if (cooperative.yield.active && cooperative.yield.hold_at_entry &&
              !route_control.hold_xy) {
-    planning_state = ProductionMppiPlanningState::kCooperativeChannelYieldHold;
+    planning_state = ProductionMppiPlanningState::kCooperativePassageYieldHold;
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
-    target_source = "cooperative_channel_yield_hold";
+    target_source = "cooperative_passage_yield_hold";
   }
   const bool control_feedback_fresh =
       applied_control.valid && control_feedback_age_ms >= 0.0 &&
@@ -691,8 +691,8 @@ void ProductionMppiNode::planningTick() {
                                                          : std::vector<mppi::State>{},
         .execution_horizon = execution.horizon,
         .route = std::move(rviz_route),
-        .channel_edges = esdf->channel_edges,
-        .selected_channel_ids = esdf->selected_channel_ids,
+        .passage_traversals = esdf->passage_traversals,
+        .selected_passage_traversal_ids = esdf->selected_passage_traversal_ids,
     };
     last_rviz_stamp_ns_ = now_ns;
   }

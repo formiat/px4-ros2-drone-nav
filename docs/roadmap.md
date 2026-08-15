@@ -142,7 +142,7 @@ preassigned.
 
 The drones exchange typed, bounded-validity flight intents at 20 Hz. Each intent
 contains the vehicle's physical footprint, current position and velocity,
-predicted MPPI trajectory, maneuver state, and constrained-channel use. Every
+predicted MPPI trajectory, maneuver state, and constrained-passage use. Every
 vehicle independently validates peer freshness, predicts continuous closest
 approach over the shared horizon, and selects deterministic complementary
 vertical or lateral maneuvers. Latching and release hysteresis prevent rapid
@@ -168,7 +168,7 @@ this full mission validation.
 Every attacker carries an independent high-rate simulated airborne radar. It
 reports anonymous relative detections of all aircraft within physical range and
 line of sight; it does not expose roles, mission assignments, global routes, or
-the intent channel used by cooperative civilian traffic. A local variable-time
+the intent communication channel used by cooperative civilian traffic. A local variable-time
 tracker converts those measurements into anonymous position and velocity tracks.
 
 The attacker evaluates current separation and continuous closest approach for
@@ -220,7 +220,7 @@ geometrically varied than the current regular test city, with realistic street
 layouts, building shapes, heights, materials, and urban topology.
 
 Where practical, include complex physically traversable 3D passages and
-channels such as multi-turn routes, junctions, and entry and exit points at
+passages such as multi-turn routes, junctions, and entry and exit points at
 different altitudes. Imported visual assets must have explicit provenance and a
 license compatible with the repository. Rendering meshes, collision geometry,
 lidar-visible surfaces, static occupancy, and generated planning artifacts must

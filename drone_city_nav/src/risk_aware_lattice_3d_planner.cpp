@@ -16,7 +16,7 @@ namespace drone_city_nav {
 namespace {
 
 struct TopologySearchBatch {
-  std::vector<ConstrainedFreeSpaceEdge> channels;
+  std::vector<PassageTraversalEdge> passages;
   detail::Lattice3DTopologyRequirement requirement{
       detail::Lattice3DTopologyRequirement::kUnconstrained};
   std::vector<RiskAwareLattice3DResult> stage_results;
@@ -35,7 +35,7 @@ struct TopologySearchBatch {
          config.sample_step_m > 0.0 && config.physical_footprint_sweep_step_m > 0.0 &&
          config.nominal_horizontal_speed_mps > 0.0 &&
          config.nominal_vertical_speed_mps > 0.0 &&
-         config.channel_connection_distance_m > 0.0 &&
+         config.passage_connection_distance_m > 0.0 &&
          evaluateFlightEnvelopeAltitude(start.z, config.flight_envelope) ==
              FlightEnvelopeStatus::kValid &&
          evaluateFlightEnvelopeAltitude(mission_goal.z, config.flight_envelope) ==
@@ -52,29 +52,30 @@ struct TopologySearchBatch {
 }
 
 [[nodiscard]] std::vector<TopologySearchBatch>
-makeTopologySearches(const std::span<const ConstrainedFreeSpaceEdge> channel_edges,
+makeTopologySearches(const std::span<const PassageTraversalEdge> passage_traversals,
                      const std::size_t maximum_group_count) {
   std::vector<TopologySearchBatch> searches;
   searches.push_back(TopologySearchBatch{
-      .channels = std::vector<ConstrainedFreeSpaceEdge>{channel_edges.begin(),
-                                                        channel_edges.end()},
+      .passages = std::vector<PassageTraversalEdge>{passage_traversals.begin(),
+                                                    passage_traversals.end()},
       .requirement = detail::Lattice3DTopologyRequirement::kUnconstrained,
       .stage_results = {},
       .worker_ms = 0.0,
   });
-  const std::size_t group_count = std::min(channel_edges.size(), maximum_group_count);
+  const std::size_t group_count =
+      std::min(passage_traversals.size(), maximum_group_count);
   searches.resize(1U + group_count);
   for (std::size_t group_index = 0U; group_index < group_count; ++group_index) {
     searches[1U + group_index].requirement =
-        detail::Lattice3DTopologyRequirement::kRequireChannelTraversal;
+        detail::Lattice3DTopologyRequirement::kRequirePassageTraversal;
   }
-  for (std::size_t channel_index = 0U; channel_index < channel_edges.size();
-       ++channel_index) {
+  for (std::size_t passage_index = 0U; passage_index < passage_traversals.size();
+       ++passage_index) {
     if (group_count == 0U) {
       break;
     }
-    searches[1U + channel_index % group_count].channels.push_back(
-        channel_edges[channel_index]);
+    searches[1U + passage_index % group_count].passages.push_back(
+        passage_traversals[passage_index]);
   }
   return searches;
 }
@@ -98,7 +99,7 @@ void accumulateSearchProfiling(
 RiskAwareLattice3DResult planRiskAwareLattice3D(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const Point3& start, const Vec3& preferred_direction, const Point3& mission_goal,
-    const std::span<const ConstrainedFreeSpaceEdge> channel_edges,
+    const std::span<const PassageTraversalEdge> passage_traversals,
     const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool) {
   const auto search_started = std::chrono::steady_clock::now();
   if (!validSearchInput(grid, esdf_m, start, mission_goal, config)) {
@@ -107,7 +108,7 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
   const Point3 planning_goal =
       planningGoal(start, mission_goal, config.planning_goal_distance_m);
   std::vector<TopologySearchBatch> topology_searches =
-      makeTopologySearches(channel_edges, config.maximum_topology_search_groups);
+      makeTopologySearches(passage_traversals, config.maximum_topology_search_groups);
 
   const auto run_topology_search = [&](const std::size_t search_index) {
     const auto topology_started = std::chrono::steady_clock::now();
@@ -118,7 +119,7 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
           Lattice3DRiskStage::kCriticalAllowed}) {
       topology.stage_results.push_back(detail::searchRiskAwareLattice3DStage(
           grid, esdf_m, start, preferred_direction, planning_goal, mission_goal,
-          topology.channels, stage, topology.requirement, config, worker_pool));
+          topology.passages, stage, topology.requirement, config, worker_pool));
     }
     topology.worker_ms = std::chrono::duration<double, std::milli>(
                              std::chrono::steady_clock::now() - topology_started)
@@ -147,7 +148,7 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
   }
 
   detail::Lattice3DStageSelection selection =
-      detail::selectLattice3DStageResult(stage_results, channel_edges.size());
+      detail::selectLattice3DStageResult(stage_results, passage_traversals.size());
   Lattice3DSuccessorProfiling aggregate_successor_profiling;
   double aggregate_continuation_validation_ms = 0.0;
   accumulateSearchProfiling(stage_results, aggregate_successor_profiling,
@@ -160,7 +161,8 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
   result.continuation_validation_ms = aggregate_continuation_validation_ms;
   result.planning_goal = planning_goal;
   result.topology_candidates = std::move(selection.diagnostics);
-  result.route_fingerprint = routeFingerprint(result.route, result.selected_channels);
+  result.route_fingerprint =
+      routeFingerprint(result.route, result.selected_passage_traversals);
   result.search_ms = std::chrono::duration<double, std::milli>(
                          std::chrono::steady_clock::now() - search_started)
                          .count();

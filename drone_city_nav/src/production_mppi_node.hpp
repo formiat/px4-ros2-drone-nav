@@ -2,9 +2,9 @@
 
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
-#include "drone_city_nav/cooperative_channel_execution.hpp"
-#include "drone_city_nav/cooperative_channel_route.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
+#include "drone_city_nav/cooperative_passage_execution.hpp"
+#include "drone_city_nav/cooperative_passage_route.hpp"
 #include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
@@ -19,8 +19,8 @@
 #include "drone_city_nav/mppi_nominal_reseed.hpp"
 #include "drone_city_nav/mppi_rollout_budget.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
-#include "drone_city_nav/msg/cooperative_channel_intent.hpp"
 #include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
+#include "drone_city_nav/msg/cooperative_passage_intent.hpp"
 #include "drone_city_nav/msg/latest_lidar_obstacle_scan.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
@@ -202,11 +202,11 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
-  std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> channel_edges;
+  std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_traversals;
   std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
-  std::shared_ptr<const std::vector<CooperativeChannelAssignment>>
-      cooperative_channel_assignments;
-  std::shared_ptr<const std::vector<std::string>> selected_channel_ids;
+  std::shared_ptr<const std::vector<CooperativePassageAssignment>>
+      cooperative_passage_assignments;
+  std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
   StaticRouteObjective search_objective{};
   StaticRouteObjective route_objective{};
   std::vector<Lattice3DTopologyCandidate> topology_candidates;
@@ -319,8 +319,8 @@ struct ProductionMppiCooperativeCommand {
 
 struct ProductionMppiCooperativeUpdate {
   CooperativeMppiAdapterResult mppi{};
-  CooperativeChannelUse channel{};
-  CooperativeChannelYieldDecision yield{};
+  CooperativePassageUse passage{};
+  CooperativePassageYieldDecision yield{};
   std::uint64_t command_generation{0U};
   double command_age_ms{-1.0};
 };
@@ -343,8 +343,8 @@ struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> previous_horizon;
   std::vector<mppi::State> execution_horizon;
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> route;
-  std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> channel_edges;
-  std::shared_ptr<const std::vector<std::string>> selected_channel_ids;
+  std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_traversals;
+  std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
 };
 
 enum class ProductionMppiExecutionMode : std::uint8_t {
@@ -356,8 +356,8 @@ enum class ProductionMppiExecutionReason : std::uint8_t {
   kNone = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE,
   kNoExecutableHorizon =
       msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_HORIZON,
-  kCooperativeChannelYield =
-      msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_CHANNEL_YIELD,
+  kCooperativePassageYield =
+      msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_PASSAGE_YIELD,
   kGoalCapture = msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE,
   kNoExecutableRoute = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_ROUTE,
 };
@@ -392,7 +392,7 @@ struct ProductionMppiActiveFiniteExecutionPath {
 enum class ProductionMppiPlanningState {
   kPlanned,
   kMissionCommandPositionHold,
-  kCooperativeChannelYieldHold,
+  kCooperativePassageYieldHold,
   kMissionGoalPositionHold,
   kNoExecutableRouteHold,
 };
@@ -625,16 +625,16 @@ private:
   StaticRouteSearchRetryConfig static_route_search_retry_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};
   PassageVolumeConfig cooperative_passage_volume_config_{};
-  CooperativeChannelRouteConfig cooperative_channel_route_config_{};
-  CooperativeChannelTimingConfig cooperative_channel_timing_config_{};
-  CooperativeChannelYieldConfig cooperative_channel_yield_config_{};
+  CooperativePassageRouteConfig cooperative_passage_route_config_{};
+  CooperativePassageTimingConfig cooperative_passage_timing_config_{};
+  CooperativePassageYieldConfig cooperative_passage_yield_config_{};
   NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
-  std::shared_ptr<const std::vector<ConstrainedFreeSpaceEdge>> static_portal_edges_;
+  std::shared_ptr<const std::vector<PassageTraversalEdge>> static_portal_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   bool static_esdf_uploaded_{false};
@@ -763,8 +763,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr world_readiness_pub_;
   rclcpp::Publisher<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_pub_;
-  rclcpp::Publisher<msg::CooperativeChannelIntent>::SharedPtr
-      cooperative_channel_state_pub_;
+  rclcpp::Publisher<msg::CooperativePassageIntent>::SharedPtr
+      cooperative_passage_state_pub_;
   rclcpp::TimerBase::SharedPtr planning_start_timer_;
   rclcpp::TimerBase::SharedPtr planning_timer_;
 };

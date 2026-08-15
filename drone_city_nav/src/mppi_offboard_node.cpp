@@ -70,8 +70,8 @@ namespace {
       return "none";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_HORIZON:
       return "no_executable_horizon";
-    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_CHANNEL_YIELD:
-      return "cooperative_channel_yield";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_PASSAGE_YIELD:
+      return "cooperative_passage_yield";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE:
       return "goal_capture";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_ROUTE:

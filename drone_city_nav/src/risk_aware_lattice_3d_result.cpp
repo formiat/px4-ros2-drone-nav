@@ -11,16 +11,16 @@ namespace drone_city_nav {
 namespace {
 
 [[nodiscard]] std::string
-topologyName(const std::span<const SelectedChannelTraversal> traversals) {
+topologyName(const std::span<const SelectedPassageTraversal> traversals) {
   if (traversals.empty()) {
     return "lattice";
   }
-  std::string result{"channel:"};
+  std::string result{"passage:"};
   for (std::size_t index = 0U; index < traversals.size(); ++index) {
     if (index > 0U) {
       result += '+';
     }
-    result += traversals[index].channel_id;
+    result += traversals[index].passage_traversal_id.value();
   }
   return result;
 }
@@ -53,7 +53,7 @@ namespace detail {
 
 Lattice3DStageSelection selectLattice3DStageResult(
     const std::span<const RiskAwareLattice3DResult> stage_results,
-    const std::size_t channel_count) {
+    const std::size_t passage_count) {
   std::optional<std::size_t> selected;
   for (std::size_t index = 0U; index < stage_results.size(); ++index) {
     if (stage_results[index].status != Lattice3DStatus::kReachedPlanningGoal) {
@@ -87,14 +87,14 @@ Lattice3DStageSelection selectLattice3DStageResult(
   }
 
   std::vector<Lattice3DTopologyCandidate> diagnostics;
-  diagnostics.reserve(stage_results.size() * (channel_count + 1U));
+  diagnostics.reserve(stage_results.size() * (passage_count + 1U));
   for (std::size_t index = 0U; index < stage_results.size(); ++index) {
     const RiskAwareLattice3DResult& result = stage_results[index];
     const bool is_selected = index == *selected;
     diagnostics.insert(diagnostics.end(), result.topology_candidates.begin(),
                        result.topology_candidates.end());
     diagnostics.push_back(Lattice3DTopologyCandidate{
-        .topology = topologyName(result.selected_channels),
+        .topology = topologyName(result.selected_passage_traversals),
         .risk_stage = result.risk_stage,
         .status = result.status,
         .termination = result.termination,

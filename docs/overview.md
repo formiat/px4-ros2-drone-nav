@@ -21,8 +21,8 @@ real-aircraft operation.
 - Timestamped execution horizons consumed by the MPPI offboard node.
 - Typed position hold when no physically executable route is available.
 - Terminal-point or current-position hold when no fresh finite path is available.
-- Canonical 3D static world with a `5 x 8` Manhattan grid, two L-shaped channels,
-  and one straight-through channel.
+- Canonical 3D static world with a `5 x 8` Manhattan grid, two L-shaped passages,
+  and one straight-through passage.
 - Typed vehicle destruction from Gazebo contact or 5 m proximity intercept.
 - Swept oriented 3D drone-footprint collision checks.
 - A configured half-open flight envelope, currently `1.0 <= z < 32.0 m`.
@@ -51,8 +51,8 @@ real-aircraft operation.
 profile. `ENABLE_STATIC_MAP=false` uses lidar memory as the world source and the
 shorter, conservative no-static profile.
 
-Only static mode can execute the canonical air channels. No-static has no
-channel semantics or 3D perception; collisionless lidar occluders make every
+Only static mode can execute the canonical air passages. No-static has no
+passage semantics or 3D perception; collisionless lidar occluders make every
 open bridge and intersection appear occupied.
 
 All build, test, quality, and simulation commands must run through the
@@ -77,7 +77,7 @@ repository container workflow.
 
 - The lattice search is recomputed; it is not AD*, LPA*, or D* Lite.
 - No persistent no-static topological memory exists yet.
-- No-static does not infer 3D channels because the vehicle has a 2D lidar.
+- No-static does not infer 3D passages because the vehicle has a 2D lidar.
 - Current-position hold is not a substitute for finding a physically executable
   route.
 

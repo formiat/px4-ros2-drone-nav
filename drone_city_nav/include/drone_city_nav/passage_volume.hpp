@@ -49,7 +49,7 @@ struct PassageCrossSection {
 };
 
 struct PassageVolume {
-  std::string passage_id;
+  PassageTraversalId passage_traversal_id;
   std::size_t span_index{0U};
   double begin_station_m{0.0};
   double end_station_m{0.0};

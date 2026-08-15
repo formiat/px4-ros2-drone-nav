@@ -215,7 +215,7 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
   result.route = sampleRoute3D(smoothed, geometry_config.sample_step_m,
                                route.front().reference_speed_mps);
 
-  std::vector<SelectedChannelTraversal> traversals;
+  std::vector<SelectedPassageTraversal> traversals;
   traversals.reserve(constrained_spans.size());
   for (const ConstrainedRouteSpan& span : constrained_spans) {
     if (span.envelope.empty()) {
@@ -231,8 +231,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
       continue;
     }
     const RouteEnvelopeSample& envelope = span.envelope.front();
-    traversals.push_back(SelectedChannelTraversal{
-        .channel_id = span.channel_id,
+    traversals.push_back(SelectedPassageTraversal{
+        .passage_traversal_id = span.passage_traversal_id,
         .direction_sign = span.direction_sign,
         .begin_station_m = new_entry.station_m,
         .end_station_m = new_exit.station_m,

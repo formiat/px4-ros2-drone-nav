@@ -15,6 +15,6 @@ struct Lattice3DStageSelection {
 
 [[nodiscard]] Lattice3DStageSelection
 selectLattice3DStageResult(std::span<const RiskAwareLattice3DResult> stage_results,
-                           std::size_t channel_count);
+                           std::size_t passage_count);
 
 } // namespace drone_city_nav::detail

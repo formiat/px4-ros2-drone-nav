@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/passage_ids.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstdint>
@@ -39,7 +40,7 @@ struct RouteEnvelopeSample {
 };
 
 struct ConstrainedRouteSpan {
-  std::string channel_id;
+  PassageTraversalId passage_traversal_id;
   std::uint64_t route_generation{0U};
   int direction_sign{0};
   double begin_station_m{0.0};
@@ -47,8 +48,8 @@ struct ConstrainedRouteSpan {
   std::vector<RouteEnvelopeSample> envelope;
 };
 
-struct SelectedChannelTraversal {
-  std::string channel_id;
+struct SelectedPassageTraversal {
+  PassageTraversalId passage_traversal_id;
   int direction_sign{0};
   double begin_station_m{0.0};
   double end_station_m{0.0};
@@ -84,7 +85,7 @@ struct ConstrainedRouteObservation {
   std::size_t span_index{0U};
   std::size_t span_count{0U};
   bool span_available{false};
-  std::string channel_id;
+  PassageTraversalId passage_traversal_id;
   int direction_sign{0};
   bool within_vertical_window{false};
   double station_m{0.0};
@@ -162,7 +163,7 @@ observeConstrainedRoute(std::span<const RouteSample3D> route,
 
 [[nodiscard]] std::uint64_t
 routeFingerprint(std::span<const RouteSample3D> route,
-                 std::span<const SelectedChannelTraversal> traversals = {}) noexcept;
+                 std::span<const SelectedPassageTraversal> traversals = {}) noexcept;
 
 [[nodiscard]] std::uint64_t routeFingerprint(std::span<const Point2> route) noexcept;
 
@@ -178,7 +179,7 @@ projectOntoRoute3D(std::span<const RouteSample3D> route, const Point3& position,
 
 [[nodiscard]] std::vector<ConstrainedRouteSpan>
 makeConstrainedRouteSpans(std::span<const RouteSample3D> route,
-                          std::span<const SelectedChannelTraversal> traversals,
+                          std::span<const SelectedPassageTraversal> traversals,
                           std::uint64_t route_generation,
                           const RouteEnvelopeConfig& config);
 

@@ -22,8 +22,8 @@ constexpr std::string_view kPredictedTrackingTargetNamespace{
     "tracking_target_predicted"};
 constexpr std::string_view kResolvedTrackingTargetNamespace{"tracking_target_resolved"};
 constexpr std::string_view kGlobalGuideNamespace{"global_lattice_guide"};
-constexpr std::string_view kChannelCandidateNamespace{"channel_candidate_edges"};
-constexpr std::string_view kSelectedChannelNamespace{"selected_channel_edges"};
+constexpr std::string_view kPassageCandidateNamespace{"passage_candidate_traversals"};
+constexpr std::string_view kSelectedPassageNamespace{"selected_passage_traversals"};
 
 [[nodiscard]] std_msgs::msg::ColorRGBA riskColor(const mppi::RiskTier tier) {
   if (tier == mppi::RiskTier::kPreferred) {
@@ -160,24 +160,24 @@ globalGuideMarker(const MppiDebugMarkerInput& input) {
   return marker;
 }
 
-[[nodiscard]] bool isSelectedChannel(const MppiDebugMarkerInput& input,
-                                     const std::string& channel_id) {
-  return std::ranges::find(input.selected_channel_ids, channel_id) !=
-         input.selected_channel_ids.end();
+[[nodiscard]] bool isSelectedPassage(const MppiDebugMarkerInput& input,
+                                     const PassageTraversalId& passage_traversal_id) {
+  return std::ranges::find(input.selected_passage_traversal_ids,
+                           passage_traversal_id) !=
+         input.selected_passage_traversal_ids.end();
 }
 
 [[nodiscard]] visualization_msgs::msg::Marker
-channelMarker(const MppiDebugMarkerInput& input,
-              const ConstrainedFreeSpaceEdge& channel, const int marker_id,
-              const bool selected) {
+passageMarker(const MppiDebugMarkerInput& input, const PassageTraversalEdge& passage,
+              const int marker_id, const bool selected) {
   visualization_msgs::msg::Marker marker = makeMarker(
-      input.header, selected ? kSelectedChannelNamespace : kChannelCandidateNamespace,
+      input.header, selected ? kSelectedPassageNamespace : kPassageCandidateNamespace,
       marker_id, visualization_msgs::msg::Marker::LINE_STRIP);
   marker.scale.x = selected ? 0.70 : 0.30;
   marker.color =
       selected ? rgba(0.15F, 1.0F, 0.25F, 1.0F) : rgba(0.35F, 0.65F, 1.0F, 0.55F);
-  marker.points.reserve(channel.centerline.size());
-  for (const RouteSample3D& sample : channel.centerline) {
+  marker.points.reserve(passage.centerline.size());
+  for (const RouteSample3D& sample : passage.centerline) {
     marker.points.push_back(gazeboAlignedRvizMarkerPoint(sample.position));
   }
   return marker;
@@ -204,15 +204,15 @@ buildMppiDebugMarkers(const MppiDebugMarkerInput& input) {
   markers.markers.push_back(missionMarker(input, true));
   markers.markers.push_back(missionMarker(input, false));
   markers.markers.push_back(globalGuideMarker(input));
-  for (std::size_t index = 0U; index < input.channel_edges.size(); ++index) {
+  for (std::size_t index = 0U; index < input.passage_traversals.size(); ++index) {
     const int marker_id = static_cast<int>(index);
-    const ConstrainedFreeSpaceEdge& channel = input.channel_edges[index];
-    markers.markers.push_back(channelMarker(input, channel, marker_id, false));
-    if (isSelectedChannel(input, channel.id)) {
-      markers.markers.push_back(channelMarker(input, channel, marker_id, true));
+    const PassageTraversalEdge& passage = input.passage_traversals[index];
+    markers.markers.push_back(passageMarker(input, passage, marker_id, false));
+    if (isSelectedPassage(input, passage.id)) {
+      markers.markers.push_back(passageMarker(input, passage, marker_id, true));
     } else {
       markers.markers.push_back(
-          deleteMarker(input.header, kSelectedChannelNamespace, marker_id,
+          deleteMarker(input.header, kSelectedPassageNamespace, marker_id,
                        visualization_msgs::msg::Marker::LINE_STRIP));
     }
   }

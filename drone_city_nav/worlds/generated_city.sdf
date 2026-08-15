@@ -1240,7 +1240,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_intersection_lower">
+    <model name="passage_structure_11_19_l_intersection_lower">
       <static>true</static>
       <pose>-63.000 -27.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1264,7 +1264,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_intersection_upper">
+    <model name="passage_structure_11_19_l_intersection_upper">
       <static>true</static>
       <pose>-63.000 -27.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1288,7 +1288,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_west_lower">
+    <model name="passage_structure_11_19_l_west_lower">
       <static>true</static>
       <pose>-63.000 -54.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1312,7 +1312,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_west_upper">
+    <model name="passage_structure_11_19_l_west_upper">
       <static>true</static>
       <pose>-63.000 -54.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1336,7 +1336,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_west_middle">
+    <model name="passage_structure_11_19_l_west_middle">
       <static>true</static>
       <pose>-63.000 -54.000 5.000 0 0 0</pose>
       <link name="link">
@@ -1360,7 +1360,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_east_lower">
+    <model name="passage_structure_11_19_l_east_lower">
       <static>true</static>
       <pose>-63.000 0.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1384,7 +1384,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_east_upper">
+    <model name="passage_structure_11_19_l_east_upper">
       <static>true</static>
       <pose>-63.000 0.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1408,7 +1408,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_south_lower">
+    <model name="passage_structure_11_19_l_south_lower">
       <static>true</static>
       <pose>-90.000 -27.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1432,7 +1432,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_south_upper">
+    <model name="passage_structure_11_19_l_south_upper">
       <static>true</static>
       <pose>-90.000 -27.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1456,7 +1456,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_north_lower">
+    <model name="passage_structure_11_19_l_north_lower">
       <static>true</static>
       <pose>-36.000 -27.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1480,7 +1480,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_north_upper">
+    <model name="passage_structure_11_19_l_north_upper">
       <static>true</static>
       <pose>-36.000 -27.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1504,7 +1504,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_north_middle">
+    <model name="passage_structure_11_19_l_north_middle">
       <static>true</static>
       <pose>-36.000 -27.000 5.000 0 0 0</pose>
       <link name="link">
@@ -1528,7 +1528,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_intersection_lower">
+    <model name="passage_structure_54_162_straight_intersection_lower">
       <static>true</static>
       <pose>-63.000 -81.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1552,7 +1552,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_intersection_upper">
+    <model name="passage_structure_54_162_straight_intersection_upper">
       <static>true</static>
       <pose>-63.000 -81.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1576,7 +1576,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_west_lower">
+    <model name="passage_structure_54_162_straight_west_lower">
       <static>true</static>
       <pose>-63.000 -108.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1600,7 +1600,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_west_upper">
+    <model name="passage_structure_54_162_straight_west_upper">
       <static>true</static>
       <pose>-63.000 -108.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1624,7 +1624,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_west_middle">
+    <model name="passage_structure_54_162_straight_west_middle">
       <static>true</static>
       <pose>-63.000 -108.000 5.000 0 0 0</pose>
       <link name="link">
@@ -1648,7 +1648,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_south_lower">
+    <model name="passage_structure_54_162_straight_south_lower">
       <static>true</static>
       <pose>-90.000 -81.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1672,7 +1672,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_south_upper">
+    <model name="passage_structure_54_162_straight_south_upper">
       <static>true</static>
       <pose>-90.000 -81.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1696,7 +1696,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_north_lower">
+    <model name="passage_structure_54_162_straight_north_lower">
       <static>true</static>
       <pose>-36.000 -81.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1720,7 +1720,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_north_upper">
+    <model name="passage_structure_54_162_straight_north_upper">
       <static>true</static>
       <pose>-36.000 -81.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1744,7 +1744,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_intersection_lower">
+    <model name="passage_structure_108_216_l_intersection_lower">
       <static>true</static>
       <pose>-9.000 -27.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1768,7 +1768,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_intersection_upper">
+    <model name="passage_structure_108_216_l_intersection_upper">
       <static>true</static>
       <pose>-9.000 -27.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1792,7 +1792,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_west_lower">
+    <model name="passage_structure_108_216_l_west_lower">
       <static>true</static>
       <pose>-9.000 -54.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1816,7 +1816,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_west_upper">
+    <model name="passage_structure_108_216_l_west_upper">
       <static>true</static>
       <pose>-9.000 -54.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1840,7 +1840,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_east_lower">
+    <model name="passage_structure_108_216_l_east_lower">
       <static>true</static>
       <pose>-9.000 0.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1864,7 +1864,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_east_upper">
+    <model name="passage_structure_108_216_l_east_upper">
       <static>true</static>
       <pose>-9.000 0.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1888,7 +1888,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_east_middle">
+    <model name="passage_structure_108_216_l_east_middle">
       <static>true</static>
       <pose>-9.000 0.000 5.000 0 0 0</pose>
       <link name="link">
@@ -1912,7 +1912,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_north_lower">
+    <model name="passage_structure_108_216_l_north_lower">
       <static>true</static>
       <pose>18.000 -27.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1936,7 +1936,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_north_upper">
+    <model name="passage_structure_108_216_l_north_upper">
       <static>true</static>
       <pose>18.000 -27.000 20.250 0 0 0</pose>
       <link name="link">
@@ -1960,7 +1960,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_intersection_lower">
+    <model name="passage_structure_108_108_t_intersection_lower">
       <static>true</static>
       <pose>-117.000 -27.000 0.750 0 0 0</pose>
       <link name="link">
@@ -1984,7 +1984,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_intersection_upper">
+    <model name="passage_structure_108_108_t_intersection_upper">
       <static>true</static>
       <pose>-117.000 -27.000 20.250 0 0 0</pose>
       <link name="link">
@@ -2008,7 +2008,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_west_lower">
+    <model name="passage_structure_108_108_t_west_lower">
       <static>true</static>
       <pose>-117.000 -54.000 0.750 0 0 0</pose>
       <link name="link">
@@ -2032,7 +2032,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_west_upper">
+    <model name="passage_structure_108_108_t_west_upper">
       <static>true</static>
       <pose>-117.000 -54.000 20.250 0 0 0</pose>
       <link name="link">
@@ -2056,7 +2056,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_east_lower">
+    <model name="passage_structure_108_108_t_east_lower">
       <static>true</static>
       <pose>-117.000 0.000 0.750 0 0 0</pose>
       <link name="link">
@@ -2080,7 +2080,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_east_upper">
+    <model name="passage_structure_108_108_t_east_upper">
       <static>true</static>
       <pose>-117.000 0.000 20.250 0 0 0</pose>
       <link name="link">
@@ -2104,7 +2104,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_south_lower">
+    <model name="passage_structure_108_108_t_south_lower">
       <static>true</static>
       <pose>-144.000 -27.000 0.750 0 0 0</pose>
       <link name="link">
@@ -2128,7 +2128,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_south_upper">
+    <model name="passage_structure_108_108_t_south_upper">
       <static>true</static>
       <pose>-144.000 -27.000 20.250 0 0 0</pose>
       <link name="link">
@@ -2152,7 +2152,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_south_middle">
+    <model name="passage_structure_108_108_t_south_middle">
       <static>true</static>
       <pose>-144.000 -27.000 5.000 0 0 0</pose>
       <link name="link">
@@ -2176,7 +2176,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_intersection_no_static_occluder">
+    <model name="passage_structure_11_19_l_intersection_no_static_occluder">
       <static>true</static>
       <pose>-63.000 -27.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2192,7 +2192,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_east_no_static_occluder">
+    <model name="passage_structure_11_19_l_east_no_static_occluder">
       <static>true</static>
       <pose>-63.000 0.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2208,7 +2208,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_11_19_l_south_no_static_occluder">
+    <model name="passage_structure_11_19_l_south_no_static_occluder">
       <static>true</static>
       <pose>-90.000 -27.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2224,7 +2224,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_intersection_no_static_occluder">
+    <model name="passage_structure_54_162_straight_intersection_no_static_occluder">
       <static>true</static>
       <pose>-63.000 -81.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2240,7 +2240,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_south_no_static_occluder">
+    <model name="passage_structure_54_162_straight_south_no_static_occluder">
       <static>true</static>
       <pose>-90.000 -81.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2256,7 +2256,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_54_162_straight_north_no_static_occluder">
+    <model name="passage_structure_54_162_straight_north_no_static_occluder">
       <static>true</static>
       <pose>-36.000 -81.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2272,7 +2272,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_intersection_no_static_occluder">
+    <model name="passage_structure_108_216_l_intersection_no_static_occluder">
       <static>true</static>
       <pose>-9.000 -27.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2288,7 +2288,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_west_no_static_occluder">
+    <model name="passage_structure_108_216_l_west_no_static_occluder">
       <static>true</static>
       <pose>-9.000 -54.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2304,7 +2304,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_216_l_north_no_static_occluder">
+    <model name="passage_structure_108_216_l_north_no_static_occluder">
       <static>true</static>
       <pose>18.000 -27.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2320,7 +2320,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_intersection_no_static_occluder">
+    <model name="passage_structure_108_108_t_intersection_no_static_occluder">
       <static>true</static>
       <pose>-117.000 -27.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2336,7 +2336,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_west_no_static_occluder">
+    <model name="passage_structure_108_108_t_west_no_static_occluder">
       <static>true</static>
       <pose>-117.000 -54.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2352,7 +2352,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_east_no_static_occluder">
+    <model name="passage_structure_108_108_t_east_no_static_occluder">
       <static>true</static>
       <pose>-117.000 0.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">
@@ -2368,7 +2368,7 @@
         </visual>
       </link>
     </model>
-    <model name="channel_108_108_t_north_no_static_occluder">
+    <model name="passage_structure_108_108_t_north_no_static_occluder">
       <static>true</static>
       <pose>-90.000 -27.000 5.000 0 0 0</pose>
       <link name="no_static_lidar_occluder">

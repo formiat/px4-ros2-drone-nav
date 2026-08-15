@@ -39,25 +39,25 @@ class ConfigureLidarVisibilityTest(unittest.TestCase):
             returned_mask = visibility.configure_model(destination, mode)
             return returned_mask, read_mask(destination)
 
-    def test_static_mode_excludes_channel_masses_and_virtual_occluders(self) -> None:
+    def test_static_mode_excludes_passage_masses_and_virtual_occluders(self) -> None:
         returned_mask, written_mask = self.configure_copy("static")
 
         self.assertEqual(visibility.STATIC_VISIBILITY_MASK, returned_mask)
         self.assertEqual(returned_mask, written_mask)
         self.assertEqual(
-            0, returned_mask & visibility.STATIC_CHANNEL_MASS_VISIBILITY_FLAG
+            0, returned_mask & visibility.STATIC_PASSAGE_MASS_VISIBILITY_FLAG
         )
         self.assertEqual(
             0, returned_mask & visibility.NO_STATIC_OCCLUDER_VISIBILITY_FLAG
         )
 
-    def test_no_static_mode_sees_channel_masses_and_virtual_occluders(self) -> None:
+    def test_no_static_mode_sees_passage_masses_and_virtual_occluders(self) -> None:
         returned_mask, written_mask = self.configure_copy("no-static")
 
         self.assertEqual(visibility.GZ_VISIBILITY_ALL, returned_mask)
         self.assertEqual(returned_mask, written_mask)
         self.assertNotEqual(
-            0, returned_mask & visibility.STATIC_CHANNEL_MASS_VISIBILITY_FLAG
+            0, returned_mask & visibility.STATIC_PASSAGE_MASS_VISIBILITY_FLAG
         )
         self.assertNotEqual(
             0, returned_mask & visibility.NO_STATIC_OCCLUDER_VISIBILITY_FLAG

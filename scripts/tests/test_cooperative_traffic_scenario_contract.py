@@ -30,7 +30,7 @@ SPEC.loader.exec_module(SCENARIO_MODULE)
 
 
 class CooperativeTrafficScenarioContractTest(unittest.TestCase):
-    def test_four_civilians_have_opposing_straight_channel_routes(self) -> None:
+    def test_four_civilians_have_opposing_straight_passage_routes(self) -> None:
         scenario = SCENARIO_MODULE.load_multi_vehicle_scenario(SCENARIO_PATH)
 
         self.assertEqual(scenario["mission_name"], "cooperative_traffic")
@@ -75,7 +75,7 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         for vehicle in scenario["vehicles"]:
             self.assertNotEqual(vehicle["map_start_m"][:2], goals[vehicle["id"]][:2])
 
-    def test_routes_cross_the_western_straight_channel(self) -> None:
+    def test_routes_cross_the_western_straight_passage_structure(self) -> None:
         scenario = SCENARIO_MODULE.load_multi_vehicle_scenario(SCENARIO_PATH)
         world = json.loads(
             scenario["canonical_world_path"].read_text(encoding="utf-8")
@@ -88,18 +88,18 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         half_building_width_m = 0.5 * world["building_grid"]["size_m"][0]
         street_left_m = building_x_centers_m[0] + half_building_width_m
         street_right_m = building_x_centers_m[1] - half_building_width_m
-        straight_channel = next(
-            channel
-            for channel in world["channels"]
-            if channel["id"] == "channel_54_162_straight"
+        straight_passage_structure = next(
+            passage_structure
+            for passage_structure in world["passage_structures"]
+            if passage_structure["id"] == "passage_structure_54_162_straight"
         )
-        channel_x_m = straight_channel["intersection_center_m"][0]
-        channel_half_width_m = 0.5 * straight_channel["width_m"]
+        passage_x_m = straight_passage_structure["intersection_center_m"][0]
+        passage_half_width_m = 0.5 * straight_passage_structure["width_m"]
         route_y_coordinates = {
             vehicle["map_start_m"][1] for vehicle in scenario["vehicles"]
         } | {goal["goal_m"][1] for goal in scenario["vehicle_goals"]}
         open_bridges = [
-            bridge for bridge in straight_channel["bridges"]
+            bridge for bridge in straight_passage_structure["bridges"]
             if not bridge["blocked"]
         ]
         physical_passage_min_y_m = min(
@@ -116,7 +116,7 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         self.assertLess(max(route_x_coordinates), street_right_m)
         self.assertTrue(
             all(
-                abs(x_m - channel_x_m) < channel_half_width_m
+                abs(x_m - passage_x_m) < passage_half_width_m
                 for x_m in route_x_coordinates
             )
         )

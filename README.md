@@ -256,7 +256,7 @@ Run the cooperative civilian traffic mission:
 The finite scenario in
 `drone_city_nav/config/cooperative_traffic_scenario.json` launches two pairs of
 civilian drones from opposite ends of the western interior street containing
-the straight `channel_54_162_straight` 3D passage. The two parallel routes start
+the straight `passage_structure_54_162_straight` 3D passage. The two parallel routes start
 only 2 m apart, deliberately forcing cooperative separation immediately after
 launch, then fan out to destinations separated by 8 m. Each route carries
 opposing traffic through the passage between the building rows. Every vehicle
@@ -265,7 +265,7 @@ cruise at the same altitude; no fixed altitude layers are assigned.
 
 At 20 Hz, each vehicle publishes a typed `CooperativeFlightIntent` containing
 its current state, physical footprint, bounded-validity MPPI horizon, and active
-channel use. Every cooperative agent independently rejects stale or out-of-order
+passage use. Every cooperative agent independently rejects stale or out-of-order
 peer intents, predicts the continuous closest approach over a five-second
 horizon, and optimizes a deterministic space-time maneuver against all current
 conflicting trajectories together. Candidate plans combine continuous lateral or
@@ -291,7 +291,7 @@ obstacle.
 Passage topology is also derived rather than hand-authored. The offline world
 compiler segments every roofed free-space component in raw `Occupancy3D`, extracts
 its exterior portal planes and opening polygons, and builds deterministic 3D
-traversal edges between portal pairs. Canonical channel declarations describe
+traversal edges between portal pairs. Canonical passage declarations describe
 physical masses only; they contain no planner centerlines or graph edges.
 
 The mission referee uses Gazebo ground truth only for readiness and physical
@@ -396,14 +396,14 @@ Static mode loads `generated_city.occupancy3d` and its fingerprint-bound,
 precomputed chunked `generated_city.esdf3d` in `production_mppi_node`. The map,
 distance cache, and `generated_city.sdf` are generated from the same canonical
 world specification. The current city is a `5 x 8` Manhattan
-building grid with two horizontal L-shaped air-channel structures, one
+building grid with two horizontal L-shaped air-passage structures, one
 straight-through structure, and one T junction. Static planning loads the
 derived portal graph embedded in Occupancy3D and objectively compares ordinary
 and portal routes; no passage is mandatory. Selected traversal edges directly
 create typed route spans. There is no hand-authored planner centerline, separate
 passage file, or nearest-portal selector.
 No-static mode uses the accumulated raw 2D lidar-memory world; collisionless lidar
-occluders make all four channels appear closed in that mode. Source contracts are documented in
+occluders make all four passages appear closed in that mode. Source contracts are documented in
 `docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
 
 Obstacle topics follow a strict raw/runtime/debug contract.

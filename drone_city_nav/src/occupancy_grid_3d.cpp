@@ -150,13 +150,14 @@ void writePoints(std::ostream& stream, const std::vector<Point3>& points,
     throw std::runtime_error{
         "Occupancy3D portal graph region count exceeds supported range"};
   }
-  std::set<PassageRegionId> region_ids;
-  std::map<PortalId, PassageRegionId> portal_regions;
-  std::map<PortalId, Point3> portal_centers;
+  std::set<FreeSpaceRegionId> region_ids;
+  std::map<PassagePortalId, FreeSpaceRegionId> portal_regions;
+  std::map<PassagePortalId, Point3> portal_centers;
   graph.regions.reserve(region_count);
   for (std::uint32_t region_number = 0U; region_number < region_count;
        ++region_number) {
-    PassageRegion region{.id = readString(stream, "passage region id"),
+    PassageRegion region{.id =
+                             FreeSpaceRegionId{readString(stream, "passage region id")},
                          .portal_ids = {}};
     if (!region_ids.insert(region.id).second) {
       throw std::runtime_error{"duplicate Occupancy3D passage region id"};
@@ -170,7 +171,7 @@ void writePoints(std::ostream& stream, const std::vector<Point3>& points,
     for (std::uint32_t portal_number = 0U; portal_number < portal_count;
          ++portal_number) {
       PassagePortal portal{
-          .id = readString(stream, "portal id"),
+          .id = PassagePortalId{readString(stream, "portal id")},
           .region_id = region.id,
           .center = readPoint(stream, "portal center"),
           .outward_normal = readVector(stream, "portal outward normal"),
@@ -199,14 +200,17 @@ void writePoints(std::ostream& stream, const std::vector<Point3>& points,
   if (edge_count > kMaximumTraversalEdgeCount) {
     throw std::runtime_error{"Occupancy3D portal edge count exceeds supported range"};
   }
-  std::set<ChannelId> edge_ids;
+  std::set<PassageTraversalId> edge_ids;
   graph.traversal_edges.reserve(edge_count);
   for (std::uint32_t edge_number = 0U; edge_number < edge_count; ++edge_number) {
-    ConstrainedFreeSpaceEdge edge;
-    edge.id = readString(stream, "portal traversal edge id");
-    edge.region_id = readString(stream, "portal traversal region id");
-    edge.entry_portal_id = readString(stream, "portal traversal entry id");
-    edge.exit_portal_id = readString(stream, "portal traversal exit id");
+    PassageTraversalEdge edge;
+    edge.id = PassageTraversalId{readString(stream, "portal traversal edge id")};
+    edge.region_id =
+        FreeSpaceRegionId{readString(stream, "portal traversal region id")};
+    edge.entry_portal_id =
+        PassagePortalId{readString(stream, "portal traversal entry id")};
+    edge.exit_portal_id =
+        PassagePortalId{readString(stream, "portal traversal exit id")};
     const std::vector<Point3> points = readPoints(
         stream, "portal traversal point count", "portal traversal point", 2U);
     edge.min_z_m = static_cast<double>(readValue<float>(stream, "portal minimum z"));
@@ -385,18 +389,18 @@ void OccupancyGrid3D::write(const std::filesystem::path& path) const {
                           "portal graph regions"),
              "portal graph region count");
   for (const PassageRegion& region : portal_graph_.regions) {
-    writeString(stream, region.id, "passage region id");
+    writeString(stream, region.id.value(), "passage region id");
     writeValue(stream,
                checkedCount(region.portal_ids.size(), kMaximumPortalCount,
                             "passage region portals"),
                "passage region portal count");
-    for (const PortalId& portal_id : region.portal_ids) {
+    for (const PassagePortalId& portal_id : region.portal_ids) {
       const auto portal =
           std::ranges::find(portal_graph_.portals, portal_id, &PassagePortal::id);
       if (portal == portal_graph_.portals.end() || portal->region_id != region.id) {
         throw std::runtime_error{"invalid portal graph while writing Occupancy3D"};
       }
-      writeString(stream, portal->id, "portal id");
+      writeString(stream, portal->id.value(), "portal id");
       writePoint(stream, portal->center, "portal center");
       writeVector(stream, portal->outward_normal, "portal outward normal");
       writePoints(stream, portal->opening_polygon, "portal polygon points");
@@ -406,11 +410,11 @@ void OccupancyGrid3D::write(const std::filesystem::path& path) const {
              checkedCount(portal_graph_.traversal_edges.size(),
                           kMaximumTraversalEdgeCount, "portal traversal edges"),
              "portal traversal edge count");
-  for (const ConstrainedFreeSpaceEdge& edge : portal_graph_.traversal_edges) {
-    writeString(stream, edge.id, "portal traversal edge id");
-    writeString(stream, edge.region_id, "portal traversal region id");
-    writeString(stream, edge.entry_portal_id, "portal traversal entry id");
-    writeString(stream, edge.exit_portal_id, "portal traversal exit id");
+  for (const PassageTraversalEdge& edge : portal_graph_.traversal_edges) {
+    writeString(stream, edge.id.value(), "portal traversal edge id");
+    writeString(stream, edge.region_id.value(), "portal traversal region id");
+    writeString(stream, edge.entry_portal_id.value(), "portal traversal entry id");
+    writeString(stream, edge.exit_portal_id.value(), "portal traversal exit id");
     std::vector<Point3> centerline;
     centerline.reserve(edge.centerline.size());
     std::ranges::transform(edge.centerline, std::back_inserter(centerline),

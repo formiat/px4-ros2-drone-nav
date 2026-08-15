@@ -91,7 +91,7 @@ layers represent different lifecycle stages.
 
 - A short blue horizon is expected; MPPI executes receding horizons.
 - A distant global guide is not the command currently sent to PX4.
-- The current static city contains four air-channel structures. Generated channel
+- The current static city contains four air-passage structures. Generated passage
   graph candidates and selected edges replace legacy semantic passage markers.
 - RViz path publication can be throttled below MPPI tick rate.
 - A follow-camera failure is a visualization problem unless vehicle state or

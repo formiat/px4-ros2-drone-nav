@@ -1,6 +1,6 @@
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 
-#include "drone_city_nav/msg/cooperative_channel_intent.hpp"
+#include "drone_city_nav/msg/cooperative_passage_intent.hpp"
 #include "drone_city_nav/msg/cooperative_trajectory_point.hpp"
 
 #include <algorithm>
@@ -38,20 +38,21 @@ void assign(geometry_msgs::msg::Vector3& target, const Vec3& source) noexcept {
   return CooperativeManeuver::kKeep;
 }
 
-[[nodiscard]] CooperativeChannelPhase channelPhase(const std::uint8_t value) noexcept {
-  if (value <= static_cast<std::uint8_t>(CooperativeChannelPhase::kDeparture)) {
-    return static_cast<CooperativeChannelPhase>(value);
+[[nodiscard]] CooperativePassagePhase passagePhase(const std::uint8_t value) noexcept {
+  if (value <= static_cast<std::uint8_t>(CooperativePassagePhase::kDeparture)) {
+    return static_cast<CooperativePassagePhase>(value);
   }
-  return CooperativeChannelPhase::kNone;
+  return CooperativePassagePhase::kNone;
 }
 
-[[nodiscard]] CooperativeChannelUse
-channelUseImpl(const msg::CooperativeChannelIntent& message) {
-  return CooperativeChannelUse{
-      .channel_id = message.channel_id,
-      .conflict_resource_id = message.conflict_resource_id,
+[[nodiscard]] CooperativePassageUse
+passageUseImpl(const msg::CooperativePassageIntent& message) {
+  return CooperativePassageUse{
+      .passage_traversal_id = PassageTraversalId{message.passage_traversal_id},
+      .conflict_resource_id =
+          CooperativeConflictResourceId{message.conflict_resource_id},
       .route_generation = message.route_generation,
-      .phase = channelPhase(message.phase),
+      .phase = passagePhase(message.phase),
       .lateral_offset_m = message.lateral_offset_m,
       .minimum_lateral_offset_m = message.minimum_lateral_offset_m,
       .maximum_lateral_offset_m = message.maximum_lateral_offset_m,
@@ -65,23 +66,23 @@ channelUseImpl(const msg::CooperativeChannelIntent& message) {
   };
 }
 
-void assignChannel(msg::CooperativeChannelIntent& message,
-                   const CooperativeChannelUse& channel) {
-  message.channel_id = channel.channel_id;
-  message.conflict_resource_id = channel.conflict_resource_id;
-  message.route_generation = channel.route_generation;
-  message.phase = static_cast<std::uint8_t>(channel.phase);
-  message.lateral_offset_m = channel.lateral_offset_m;
-  message.minimum_lateral_offset_m = channel.minimum_lateral_offset_m;
-  message.maximum_lateral_offset_m = channel.maximum_lateral_offset_m;
-  message.desired_center_separation_m = channel.desired_center_separation_m;
+void assignPassage(msg::CooperativePassageIntent& message,
+                   const CooperativePassageUse& passage) {
+  message.passage_traversal_id = passage.passage_traversal_id.value();
+  message.conflict_resource_id = passage.conflict_resource_id.value();
+  message.route_generation = passage.route_generation;
+  message.phase = static_cast<std::uint8_t>(passage.phase);
+  message.lateral_offset_m = passage.lateral_offset_m;
+  message.minimum_lateral_offset_m = passage.minimum_lateral_offset_m;
+  message.maximum_lateral_offset_m = passage.maximum_lateral_offset_m;
+  message.desired_center_separation_m = passage.desired_center_separation_m;
   message.direction_sign =
-      static_cast<std::int8_t>(std::clamp(channel.direction_sign, -1, 1));
-  message.station_m = channel.station_m;
-  message.distance_to_entry_m = channel.distance_to_entry_m;
-  message.distance_to_exit_m = channel.distance_to_exit_m;
-  message.predicted_entry = cooperativeTimeMessage(channel.predicted_entry_ns);
-  message.predicted_exit = cooperativeTimeMessage(channel.predicted_exit_ns);
+      static_cast<std::int8_t>(std::clamp(passage.direction_sign, -1, 1));
+  message.station_m = passage.station_m;
+  message.distance_to_entry_m = passage.distance_to_entry_m;
+  message.distance_to_exit_m = passage.distance_to_exit_m;
+  message.predicted_entry = cooperativeTimeMessage(passage.predicted_entry_ns);
+  message.predicted_exit = cooperativeTimeMessage(passage.predicted_exit_ns);
 }
 
 [[nodiscard]] msg::CooperativeTrajectoryPoint
@@ -114,15 +115,15 @@ cooperativeTimeMessage(const std::int64_t nanoseconds) noexcept {
   return result;
 }
 
-CooperativeChannelUse
-cooperativeChannelUseData(const msg::CooperativeChannelIntent& message) {
-  return channelUseImpl(message);
+CooperativePassageUse
+cooperativePassageUseData(const msg::CooperativePassageIntent& message) {
+  return passageUseImpl(message);
 }
 
-msg::CooperativeChannelIntent
-cooperativeChannelIntentMessage(const CooperativeChannelUse& channel) {
-  msg::CooperativeChannelIntent message;
-  assignChannel(message, channel);
+msg::CooperativePassageIntent
+cooperativePassageIntentMessage(const CooperativePassageUse& passage) {
+  msg::CooperativePassageIntent message;
+  assignPassage(message, passage);
   return message;
 }
 
@@ -143,7 +144,7 @@ cooperativeFlightIntentData(const msg::CooperativeFlightIntent& message) {
       .maneuver_state = maneuver(message.maneuver_state),
       .conflict_generation = message.conflict_generation,
       .conflicting_vehicle_ids = message.conflicting_vehicle_ids,
-      .channel = cooperativeChannelUseData(message.channel),
+      .passage = cooperativePassageUseData(message.passage),
       .trajectory = {},
   };
   result.trajectory.reserve(message.trajectory.size());
@@ -178,7 +179,7 @@ cooperativeFlightIntentMessage(const CooperativeFlightIntentData& intent) {
   message.maneuver_state = static_cast<std::uint8_t>(intent.maneuver_state);
   message.conflict_generation = intent.conflict_generation;
   message.conflicting_vehicle_ids = intent.conflicting_vehicle_ids;
-  assignChannel(message.channel, intent.channel);
+  assignPassage(message.passage, intent.passage);
   message.trajectory.reserve(intent.trajectory.size());
   for (const CooperativeTrajectorySample& sample : intent.trajectory) {
     message.trajectory.push_back(trajectoryPointMessage(sample, intent.valid_from_ns));
@@ -250,16 +251,17 @@ cooperativeManeuverCommandData(const msg::CooperativeManeuverCommand& message) {
           message.space_time_integrated_shortfall_m2_s,
       .space_time_evaluated_candidate_count =
           message.space_time_evaluated_candidate_count,
-      .channel_yield_required = message.channel_yield_required,
-      .channel_yield_to_vehicle_id = message.channel_yield_to_vehicle_id,
-      .channel_id = message.channel_id,
-      .channel_conflict_resource_id = message.channel_conflict_resource_id,
-      .channel_route_generation = message.channel_route_generation,
-      .channel_lateral_offset_m = message.channel_lateral_offset_m,
-      .channel_minimum_lateral_offset_m = message.channel_minimum_lateral_offset_m,
-      .channel_maximum_lateral_offset_m = message.channel_maximum_lateral_offset_m,
-      .channel_entry_not_before_ns =
-          cooperativeTimeNanoseconds(message.channel_entry_not_before),
+      .passage_yield_required = message.passage_yield_required,
+      .passage_yield_to_vehicle_id = message.passage_yield_to_vehicle_id,
+      .passage_traversal_id = PassageTraversalId{message.passage_traversal_id},
+      .passage_conflict_resource_id =
+          CooperativeConflictResourceId{message.passage_conflict_resource_id},
+      .passage_route_generation = message.passage_route_generation,
+      .passage_lateral_offset_m = message.passage_lateral_offset_m,
+      .passage_minimum_lateral_offset_m = message.passage_minimum_lateral_offset_m,
+      .passage_maximum_lateral_offset_m = message.passage_maximum_lateral_offset_m,
+      .passage_entry_not_before_ns =
+          cooperativeTimeNanoseconds(message.passage_entry_not_before),
       .conflicting_peers = {},
   };
   result.conflicting_peers.reserve(message.conflicting_peers.size());

@@ -91,9 +91,8 @@ TEST(OccupancyGrid3D, PreservesDerivedPortalGraphWhenRewritten) {
               original_graph.regions[index].portal_ids);
   }
   for (std::size_t index = 0U; index < original_graph.traversal_edges.size(); ++index) {
-    const ConstrainedFreeSpaceEdge& original_edge =
-        original_graph.traversal_edges[index];
-    const ConstrainedFreeSpaceEdge& loaded_edge = loaded_graph.traversal_edges[index];
+    const PassageTraversalEdge& original_edge = original_graph.traversal_edges[index];
+    const PassageTraversalEdge& loaded_edge = loaded_graph.traversal_edges[index];
     EXPECT_EQ(loaded_edge.id, original_edge.id);
     EXPECT_EQ(loaded_edge.region_id, original_edge.region_id);
     EXPECT_EQ(loaded_edge.entry_portal_id, original_edge.entry_portal_id);
@@ -126,9 +125,9 @@ TEST(OccupancyGrid3D, LoadsDerivedPortalGraphFromGeneratedArtifact) {
                           portal.outward_normal.z * portal.outward_normal.z),
                 1.0, 1.0e-9);
   }
-  for (const ConstrainedFreeSpaceEdge& edge : graph.traversal_edges) {
-    EXPECT_EQ(edge.id.find("channel_"), std::string::npos);
-    EXPECT_EQ(edge.region_id.find("passage_region_"), 0U);
+  for (const PassageTraversalEdge& edge : graph.traversal_edges) {
+    EXPECT_EQ(edge.id.value().find("passage_structure_"), std::string::npos);
+    EXPECT_EQ(edge.region_id.value().find("passage_region_"), 0U);
     EXPECT_GT(edge.centerline.size(), 2U);
     EXPECT_DOUBLE_EQ(edge.min_z_m, 1.5);
     EXPECT_DOUBLE_EQ(edge.max_z_m, 8.5);
@@ -146,8 +145,8 @@ TEST(OccupancyGrid3D, LoadsDerivedPortalGraphFromGeneratedArtifact) {
     }
   }
 
-  const auto straight = std::ranges::find_if(
-      graph.traversal_edges, [](const ConstrainedFreeSpaceEdge& edge) {
+  const auto straight =
+      std::ranges::find_if(graph.traversal_edges, [](const PassageTraversalEdge& edge) {
         return std::abs(edge.entry.x - 54.0) < 1.0e-6 &&
                std::abs(edge.exit.x - 54.0) < 1.0e-6 &&
                std::abs(edge.entry.y - 123.0) < 1.0e-6 &&

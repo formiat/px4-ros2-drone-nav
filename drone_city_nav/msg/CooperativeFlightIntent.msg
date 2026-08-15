@@ -18,5 +18,5 @@ geometry_msgs/Vector3 current_velocity
 uint8 maneuver_state
 uint64 conflict_generation
 string[] conflicting_vehicle_ids
-CooperativeChannelIntent channel
+CooperativePassageIntent passage
 CooperativeTrajectoryPoint[] trajectory

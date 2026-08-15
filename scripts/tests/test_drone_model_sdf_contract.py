@@ -18,10 +18,10 @@ WORLD_SDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.sdf"
 WORLD_SPEC = REPO_ROOT / "drone_city_nav/worlds/canonical_city.world3d.json"
 
 GZ_VISIBILITY_ALL = 0x0FFFFFFF
-STATIC_CHANNEL_MASS_VISIBILITY_FLAG = 0x08000000
+STATIC_PASSAGE_MASS_VISIBILITY_FLAG = 0x08000000
 NO_STATIC_OCCLUDER_VISIBILITY_FLAG = 0x04000000
 LIDAR_VISIBILITY_MASK = GZ_VISIBILITY_ALL & ~(
-    STATIC_CHANNEL_MASS_VISIBILITY_FLAG | NO_STATIC_OCCLUDER_VISIBILITY_FLAG
+    STATIC_PASSAGE_MASS_VISIBILITY_FLAG | NO_STATIC_OCCLUDER_VISIBILITY_FLAG
 )
 
 
@@ -105,7 +105,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertAlmostEqual(2.0 * math.pi, max_angle - min_angle, places=5)
         self.assertLessEqual((max_angle - min_angle) / (samples - 1), 0.01)
 
-    def test_static_lidar_default_excludes_channel_masses_and_occluders(self) -> None:
+    def test_static_lidar_default_excludes_passage_masses_and_occluders(self) -> None:
         lidar_root = parse_sdf(LIDAR_SDF)
         world_root = parse_sdf(WORLD_SDF)
         sensor = next(
@@ -116,34 +116,34 @@ class DroneModelSdfContractTest(unittest.TestCase):
         lidar_mask = int(sensor.findtext("ray/visibility_mask", ""))
 
         self.assertEqual(LIDAR_VISIBILITY_MASK, lidar_mask)
-        self.assertEqual(0, lidar_mask & STATIC_CHANNEL_MASS_VISIBILITY_FLAG)
+        self.assertEqual(0, lidar_mask & STATIC_PASSAGE_MASS_VISIBILITY_FLAG)
 
         flagged_visuals = [
             visual
             for visual in world_root.iter("visual")
             if int(visual.findtext("visibility_flags", "0"))
-            & STATIC_CHANNEL_MASS_VISIBILITY_FLAG
+            & STATIC_PASSAGE_MASS_VISIBILITY_FLAG
         ]
         self.assertGreater(len(flagged_visuals), 0)
         for visual in flagged_visuals:
             self.assertEqual(
-                STATIC_CHANNEL_MASS_VISIBILITY_FLAG,
+                STATIC_PASSAGE_MASS_VISIBILITY_FLAG,
                 int(visual.findtext("visibility_flags", "")),
             )
-            self.assertEqual(0, lidar_mask & STATIC_CHANNEL_MASS_VISIBILITY_FLAG)
+            self.assertEqual(0, lidar_mask & STATIC_PASSAGE_MASS_VISIBILITY_FLAG)
 
-    def test_channels_have_collisionless_no_static_lidar_occluders(self) -> None:
+    def test_passage_structures_have_collisionless_no_static_lidar_occluders(self) -> None:
         world_root = parse_sdf(WORLD_SDF)
         spec = json.loads(WORLD_SPEC.read_text(encoding="utf-8"))
         expected_names = set()
-        for channel in spec["channels"]:
-            self.assertEqual("intersection", channel["kind"])
+        for passage_structure in spec["passage_structures"]:
+            self.assertEqual("intersection", passage_structure["kind"])
             expected_names.add(
-                f"{channel['id']}_intersection_no_static_occluder"
+                f"{passage_structure['id']}_intersection_no_static_occluder"
             )
             expected_names.update(
-                f"{channel['id']}_{bridge['id']}_no_static_occluder"
-                for bridge in channel["bridges"]
+                f"{passage_structure['id']}_{bridge['id']}_no_static_occluder"
+                for bridge in passage_structure["bridges"]
                 if not bridge["blocked"]
             )
         occluder_models = {

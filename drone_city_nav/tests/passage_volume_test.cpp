@@ -36,7 +36,7 @@ namespace {
 [[nodiscard]] ConstrainedRouteSpan span(const double begin_station_m,
                                         const double end_station_m) {
   return ConstrainedRouteSpan{
-      .channel_id = "derived_passage",
+      .passage_traversal_id = "derived_passage",
       .route_generation = 9U,
       .direction_sign = 1,
       .begin_station_m = begin_station_m,
@@ -92,7 +92,7 @@ TEST(PassageVolume, DerivesVaryingCrossSectionsFromRawOccupancy) {
   ASSERT_EQ(volumes.size(), 1U);
   const PassageVolume& volume = volumes.front();
   ASSERT_TRUE(volume.raw_validated);
-  EXPECT_EQ(volume.passage_id, constrained.channel_id);
+  EXPECT_EQ(volume.passage_traversal_id, constrained.passage_traversal_id);
   EXPECT_GE(volume.cross_sections.size(), 20U);
   EXPECT_TRUE(std::isfinite(volume.minimum_lateral_offset_m));
   EXPECT_TRUE(std::isfinite(volume.maximum_lateral_offset_m));

@@ -252,13 +252,13 @@ production_mppi_node:
     global_lattice_3d_nominal_vertical_speed_mps: 4.0
     global_lattice_3d_vertical_alignment_cost_weight: 0.0
     global_lattice_3d_route_shape_turn_cost_per_rad: 0.10
-    global_lattice_3d_channel_topology_transition_cost: 0.0
+    global_lattice_3d_passage_topology_transition_cost: 0.0
     static_route_maximum_shortcut_length_m: 30.0
     static_route_corner_smoothing_distance_m: 2.0
     static_route_corner_curve_samples: 4
     global_lattice_3d_planning_exposure_cost_per_m: 0.0
     global_lattice_3d_critical_exposure_cost_per_m: 0.0
-    global_lattice_3d_channel_connection_distance_m: 3.0
+    global_lattice_3d_passage_connection_distance_m: 3.0
     global_lattice_3d_frontier_reachable_depth_m: 8.0
     global_lattice_3d_frontier_validation_maximum_states: 2048
     no_static_global_lattice_deadline_ms: 100.0

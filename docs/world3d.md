@@ -8,10 +8,10 @@ source of static geometry. It declares:
 - the `map` frame and the map-to-SDF coordinate transform;
 - Occupancy3D origin, dimensions, resolution, and chunk size;
 - ground and regular building geometry;
-- an optional array of generated air-channel structures;
+- an optional array of generated air-passage structures;
 - mission start and goal positions.
 
-The current city contains 40 ordinary buildings plus four horizontal channels:
+The current city contains 40 ordinary buildings plus four horizontal passages:
 
 - straight-through at `(54, 162)`, open south/north;
 - left turn at `(108, 162)`, open south/east;
@@ -59,7 +59,7 @@ python3 scripts/generate_canonical_world.py \
 `make test-scripts` regenerates both artifacts in a temporary directory and
 checks the SDF and Occupancy3D byte-for-byte. It also verifies that the committed
 ESDF cache carries the same grid metadata and canonical-world fingerprint, plus
-all physical channel cross-sections, derived portal topology, opening polygons,
+all physical passage cross-sections, derived portal topology, opening polygons,
 deduplicated shared bridge masses, and lidar visibility contract. C++ tests
 verify raw-safe traversal edges, exact cache round-tripping, ROI extraction,
 distance capping, and corruption handling.
@@ -76,7 +76,7 @@ clearance, and speed limit. Entry and exit lie on exterior portal planes, so
 approach and departure route segments remain outside the roofed component.
 
 The graph is computed from voxel occupancy after physical geometry has been
-voxelized. Canonical channel records do not provide centerlines, portal IDs, or
+voxelized. Canonical passage records do not provide centerlines, portal IDs, or
 planner edges. The current world compiles into three physically connected
 passage regions, seven exterior portals, and five pairwise traversal edges. Two
 adjacent canonical structures that share one continuous roofed free volume are
@@ -109,26 +109,26 @@ layer. Only raw Occupancy3D cells remain hard obstacles. Using the global field
 also preserves distance information from physical objects immediately outside a
 local computational ROI; the ROI boundary itself is not an obstacle.
 
-## Physical Channel Geometry
+## Physical Passage Geometry
 
-The canonical `channels` array describes physical world construction only. Its
+The canonical `passage_structures` array describes physical world construction only. Its
 identifiers remain useful for SDF model names and source-level geometry tests,
 but they are not planner topology IDs.
 
 ### Straight
 
-A straight channel contains one structure volume and an opening-center altitude.
+A straight passage contains one structure volume and an opening-center altitude.
 The generator creates a physical lower mass and upper mass, leaving one
 continuous free opening. No route through the opening is supplied.
 
 ### Four-Building Intersection
 
-An `intersection` channel contains one center volume plus four bridge volumes
+An `intersection` passage contains one center volume plus four bridge volumes
 between four neighboring buildings. The `blocked` state of each bridge defines
 the route shape:
 
-- opposite open bridges produce a straight-through channel;
-- adjacent open bridges produce an L-shaped channel;
+- opposite open bridges produce a straight-through passage;
+- adjacent open bridges produce an L-shaped passage;
 - three open bridges produce a T junction;
 - blocked bridges receive physical middle masses;
 - lower and upper physical masses on every bridge;
@@ -136,11 +136,11 @@ the route shape:
 
 This produces one continuous free volume. It is not a staircase and is not a
 set of independent openings selected by a passage coordinator. Shared bridge
-masses between adjacent channel declarations are deduplicated by physical
+masses between adjacent passage declarations are deduplicated by physical
 geometry before SDF and Occupancy3D generation.
 
 A T junction exposes three physical openings. The portal compiler, not the
-channel declaration, decides which openings belong to one free-space component
+passage declaration, decides which openings belong to one free-space component
 and creates every pairwise traversal through that component.
 
 Every currently generated lower, upper, and middle mass is an axis-aligned box
@@ -187,7 +187,7 @@ ordinary omnidirectional 3D lattice edges
 
 Every edge is validated against the current raw Occupancy3D/ESDF3D before use.
 At the root, search explicitly evaluates collision-free
-`start -> entry -> channel -> exit` candidates for every channel direction;
+`start -> entry -> passage -> exit` candidates for every passage direction;
 ordinary lattice expansion remains available for entries that cannot be reached
 directly. Partial lattice frontiers require measured continuation depth beyond
 their endpoint before they can be executed.
@@ -195,10 +195,10 @@ Physical occupied voxels remain the only hard geometry. Preferred, planning, and
 critical stages all run, and all complete routes are compared by finite objective
 cost instead of returning the first preferred route. The objective records travel
 time, vertical-alignment time, risk exposure, and turn cost. The extra vertical
-alignment weight is intentionally `0.0` during channel development; vertical
+alignment weight is intentionally `0.0` during passage development; vertical
 motion still contributes through physical travel time.
 
-No channel is mandatory and there is no required channel sequence. A channel is
+No passage is mandatory and there is no required passage sequence. A passage is
 selected only when its validated route has the better objective cost. The accepted
 points are sampled as `RouteSample3D` values containing:
 
@@ -207,7 +207,7 @@ points are sampled as `RouteSample3D` values containing:
 - cumulative route station;
 - a reference-speed field populated for MPPI route execution.
 
-When the selected graph path traverses a channel edge, that transition directly
+When the selected graph path traverses a passage edge, that transition directly
 creates a typed `ConstrainedRouteSpan` with `approach -> traversal -> departure`
 station semantics. The complete route and span are revalidated against the latest
 raw ESDF before atomic activation. A span contains:
@@ -228,7 +228,7 @@ The observable lifecycle is derived from route station:
 approach -> traversal -> departure -> unconstrained
 ```
 
-Use `route_generation + channel_id + span_index` to correlate a diagnostic event
+Use `route_generation + passage_id + span_index` to correlate a diagnostic event
 with a derived graph edge. Portal graph IDs intentionally follow geometry, so a
 physical topology change may produce a new ID.
 
@@ -237,23 +237,23 @@ physical topology change may produce a new ID.
 No-static mode intentionally remains 2D:
 
 - it does not load Occupancy3D for planning;
-- it does not create `RouteSample3D` channel routes or constrained spans;
+- it does not create `RouteSample3D` passage routes or constrained spans;
 - it does not identify, infer, or traverse semantic passages;
-- it has no 3D lidar or 3D channel perception.
+- it has no 3D lidar or 3D passage perception.
 
-The generated SDF gives channel lower/upper/middle masses one dedicated
+The generated SDF gives passage lower/upper/middle masses one dedicated
 visibility flag and adds transparent, collisionless lidar occluders across each
 intersection and open bridge. Before each run,
 `scripts/configure_lidar_visibility.py` changes the GPU lidar mask:
 
-- static mode hides both channel masses and no-static occluders from the 2D
+- static mode hides both passage masses and no-static occluders from the 2D
   lidar because Occupancy3D is authoritative;
 - no-static mode exposes both sets, making every connector appear as an ordinary
   obstacle to lidar memory.
 
 Occluders have no Gazebo collision element and are not written to Occupancy3D.
-They are a simulation-only sensor contract used to disable channel traversal in
-no-static mode. Physical channel masses remain real Gazebo collisions in both
+They are a simulation-only sensor contract used to disable passage traversal in
+no-static mode. Physical passage masses remain real Gazebo collisions in both
 modes.
 
 ## Visualization
@@ -267,17 +267,17 @@ RViz shows the accepted route at its planned Z through the MPPI marker array.
 Derived candidate portal edges are thin translucent blue lines; traversal edges
 selected by the active route are thicker green lines. Tick JSONL and guide logs
 include selected topology, objective cost, route length, travel time, vertical
-alignment time, risk exposure, channel id, and acceptance/rejection reason.
+alignment time, risk exposure, passage id, and acceptance/rejection reason.
 
 ## Change Checklist
 
-When changing static geometry or physical channel structures:
+When changing static geometry or physical passage structures:
 
 1. Edit only `canonical_city.world3d.json`.
 2. Regenerate all three committed artifacts.
 3. Run `make test-scripts` and `make quality` in the container.
 4. Check Occupancy3D points against Gazebo geometry in RViz.
 5. If passages are derived, verify static route Z and constrained-span
-   diagnostics through each changed channel.
+   diagnostics through each changed passage.
 6. If passages are derived, verify no-static lidar sees each opening as blocked
    and routes around it.

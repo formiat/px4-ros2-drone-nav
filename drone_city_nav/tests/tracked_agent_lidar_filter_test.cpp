@@ -32,7 +32,7 @@ namespace {
       .maneuver_state = CooperativeManeuver::kKeep,
       .conflict_generation = 0U,
       .conflicting_vehicle_ids = {},
-      .channel = {},
+      .passage = {},
       .trajectory =
           {
               CooperativeTrajectorySample{

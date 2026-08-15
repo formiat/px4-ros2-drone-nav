@@ -473,7 +473,7 @@ TEST(StaticRouteExtensionTest, ProtectsConstrainedSuffixThroughDeparture) {
   const std::vector<RouteSample3D> active =
       sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 10.0);
   const std::vector<ConstrainedRouteSpan> spans{ConstrainedRouteSpan{
-      .channel_id = "channel",
+      .passage_traversal_id = "passage",
       .route_generation = 3U,
       .direction_sign = 1,
       .begin_station_m = 5.0,

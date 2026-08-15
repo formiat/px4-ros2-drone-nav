@@ -114,7 +114,7 @@ The event and `mppi_ticks.jsonl` expose:
 
 Derived traversal edges retain their geometry-stable passage-region id. Selected
 edges create constrained spans directly and are correlated by
-`route_generation + channel_id + span_index`. Entry and exit coordinates lie on
+`route_generation + passage_id + span_index`. Entry and exit coordinates lie on
 the automatically extracted exterior portal planes. `approach` is not proof of
 entry; only `traversal` means the measured 3D route station crossed the span
 boundary.
@@ -143,7 +143,7 @@ Use lidar snapshots to verify:
 - raw returns and map-frame points agree;
 - memory contains plausible retained evidence;
 - static/no-static source selection is correct;
-- no-static lidar returns are independent of static channel metadata.
+- no-static lidar returns are independent of static passage metadata.
 
 ## Run Analysis Order
 
@@ -153,6 +153,6 @@ Use lidar snapshots to verify:
 3. Inspect active global guide and target source.
 4. Inspect selected MPPI tier and collision flags.
 5. Inspect head progress, actual motion, and liveness.
-6. Inspect the constrained span if the route enters an air channel.
+6. Inspect the constrained span if the route enters an air passage.
 7. Inspect the finite-path deadline, in-path arrival profile, and final hold.
 8. Only then tune costs or dynamics.

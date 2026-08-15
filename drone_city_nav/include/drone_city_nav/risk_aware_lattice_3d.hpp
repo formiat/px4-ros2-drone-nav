@@ -49,16 +49,16 @@ struct Lattice3DSuccessorDiagnostics {
   std::size_t lattice_rejected_raw_collision{0U};
   std::size_t lattice_rejected_risk_stage{0U};
   std::size_t lattice_rejected_no_cost_improvement{0U};
-  std::size_t channel_generated{0U};
-  std::size_t channel_accepted{0U};
-  std::size_t channel_rejected{0U};
-  std::size_t channel_rejected_connection_distance{0U};
-  std::size_t channel_rejected_outside_grid{0U};
-  std::size_t channel_rejected_flight_envelope{0U};
-  std::size_t channel_rejected_invalid_esdf{0U};
-  std::size_t channel_rejected_raw_collision{0U};
-  std::size_t channel_rejected_risk_stage{0U};
-  std::size_t channel_rejected_no_cost_improvement{0U};
+  std::size_t passage_generated{0U};
+  std::size_t passage_accepted{0U};
+  std::size_t passage_rejected{0U};
+  std::size_t passage_rejected_connection_distance{0U};
+  std::size_t passage_rejected_outside_grid{0U};
+  std::size_t passage_rejected_flight_envelope{0U};
+  std::size_t passage_rejected_invalid_esdf{0U};
+  std::size_t passage_rejected_raw_collision{0U};
+  std::size_t passage_rejected_risk_stage{0U};
+  std::size_t passage_rejected_no_cost_improvement{0U};
 };
 
 struct Lattice3DSuccessorBatchProfile {
@@ -96,10 +96,10 @@ struct RiskAwareLattice3DConfig {
   double nominal_vertical_speed_mps{4.0};
   double vertical_alignment_cost_weight{0.0};
   double route_shape_turn_cost_per_rad{0.10};
-  double channel_topology_transition_cost{0.0};
+  double passage_topology_transition_cost{0.0};
   double planning_exposure_cost_per_m{0.05};
   double critical_exposure_cost_per_m{0.50};
-  double channel_connection_distance_m{3.0};
+  double passage_connection_distance_m{3.0};
   double frontier_minimum_reachable_depth_m{8.0};
   std::size_t frontier_validation_maximum_states{2048U};
   std::size_t maximum_topology_search_groups{3U};
@@ -165,14 +165,14 @@ struct RiskAwareLattice3DResult {
   std::uint64_t route_fingerprint{0U};
   Lattice3DSuccessorDiagnostics successor_diagnostics{};
   Lattice3DSuccessorProfiling successor_profiling{};
-  std::vector<SelectedChannelTraversal> selected_channels;
+  std::vector<SelectedPassageTraversal> selected_passage_traversals;
   std::vector<Lattice3DTopologyCandidate> topology_candidates;
 };
 
 [[nodiscard]] RiskAwareLattice3DResult planRiskAwareLattice3D(
     const mppi::EsdfGrid& grid, std::span<const float> esdf_m, const Point3& start,
     const Vec3& preferred_direction, const Point3& mission_goal,
-    std::span<const ConstrainedFreeSpaceEdge> channel_edges,
+    std::span<const PassageTraversalEdge> passage_traversals,
     const RiskAwareLattice3DConfig& config, BoundedWorkerPool* worker_pool = nullptr);
 
 [[nodiscard]] const char* lattice3DStatusName(Lattice3DStatus status) noexcept;

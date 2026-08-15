@@ -49,8 +49,8 @@ fall into a sensor blind sector.
 
 Lidar evidence is never filtered against hand-authored passage geometry. Static
 planning reads Occupancy3D. No-static uses the 2D lidar-memory result, and its
-runtime sensor mask exposes channel masses plus collisionless connector
-occluders as ordinary obstacles. Every current channel has an occluder across
+runtime sensor mask exposes passage masses plus collisionless connector
+occluders as ordinary obstacles. Every current passage has an occluder across
 its intersection and each open bridge. See `world3d.md` for that mode contract.
 
 ## Obstacle Memory
@@ -68,7 +68,7 @@ Memory uses hit/miss scoring:
 - `free_score`
 
 Mapping activates after the vehicle first reaches `min_mapping_altitude_m` and
-remains latched for the airborne mission. Descending through a low channel does
+remains latched for the airborne mission. Descending through a low passage does
 not freeze lidar snapshots.
 
 All first occupied transitions are additionally written to a bounded JSONL dump
@@ -257,7 +257,7 @@ Provider failures are isolated. Disabling ground rejection is reported as
 `disabled`; invalid ground parameters or missing required 3D attitude geometry
 are reported as `unavailable`. The generic ingestion library can represent
 multiple expected-surface providers, but production does not configure a static
-channel provider.
+passage provider.
 
 The projected-altitude filter remains a final non-mutating veto. Ground
 classification happens first for diagnostics, including beams whose endpoint

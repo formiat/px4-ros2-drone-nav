@@ -90,14 +90,14 @@ Static world:
 - `static_occupancy_3d_path` selects the generated Occupancy3D artifact;
 - `static_esdf_3d_cache_path` selects its fingerprint-bound precomputed ESDF
   artifact; an empty value derives the `.esdf3d` path from Occupancy3D;
-- Occupancy3D embeds the generated constrained channel graph;
+- Occupancy3D embeds the generated constrained passage graph;
 - `global_lattice_3d_nominal_vertical_speed_mps` participates in physical travel
   time estimation;
 - `global_lattice_3d_vertical_alignment_cost_weight` is the additional vertical
-  preference and is intentionally `0.0` during channel development;
+  preference and is intentionally `0.0` during passage development;
 - planning/critical exposure and turn-cost parameters rank complete route
   candidates with finite costs;
-- `global_lattice_3d_channel_connection_distance_m` connects ordinary lattice
+- `global_lattice_3d_passage_connection_distance_m` connects ordinary lattice
   states to derived portal entries; root topology candidates also evaluate a
   collision-free direct connection from the current start to each external
   portal plane;
@@ -106,7 +106,7 @@ Static world:
 - route-envelope parameters control typed constrained-span execution data;
 - constrained-span speed is encoded in 3D route samples.
 - `minimum_target_z_m` and `maximum_target_z_m` define the half-open flight
-  envelope used by objectives, 3D successors, channel edges, smoothed routes,
+  envelope used by objectives, 3D successors, passage edges, smoothed routes,
   activation, dynamic vertical stopping validation, and offboard publication;
 - `physical_footprint_radius_m`, `physical_footprint_lower_extent_m`, and
   `physical_footprint_upper_extent_m` define the actual oriented drone volume;

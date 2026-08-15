@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/passage_ids.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstdint>
@@ -21,7 +22,7 @@ enum class CooperativeManeuver : std::uint8_t {
   kSlow,
 };
 
-enum class CooperativeChannelPhase : std::uint8_t {
+enum class CooperativePassagePhase : std::uint8_t {
   kNone,
   kApproach,
   kTraversal,
@@ -34,11 +35,11 @@ struct CooperativeTrajectorySample {
   Vec3 velocity{};
 };
 
-struct CooperativeChannelUse {
-  std::string channel_id;
-  std::string conflict_resource_id;
+struct CooperativePassageUse {
+  PassageTraversalId passage_traversal_id;
+  CooperativeConflictResourceId conflict_resource_id;
   std::uint64_t route_generation{0U};
-  CooperativeChannelPhase phase{CooperativeChannelPhase::kNone};
+  CooperativePassagePhase phase{CooperativePassagePhase::kNone};
   double lateral_offset_m{0.0};
   double minimum_lateral_offset_m{0.0};
   double maximum_lateral_offset_m{0.0};
@@ -51,7 +52,7 @@ struct CooperativeChannelUse {
   std::int64_t predicted_exit_ns{0};
 
   [[nodiscard]] bool active() const noexcept {
-    return phase != CooperativeChannelPhase::kNone && !channel_id.empty() &&
+    return phase != CooperativePassagePhase::kNone && !passage_traversal_id.empty() &&
            !conflict_resource_id.empty() &&
            maximum_lateral_offset_m >= minimum_lateral_offset_m &&
            desired_center_separation_m > 0.0;
@@ -73,7 +74,7 @@ struct CooperativeFlightIntentData {
   CooperativeManeuver maneuver_state{CooperativeManeuver::kKeep};
   std::uint64_t conflict_generation{0U};
   std::vector<std::string> conflicting_vehicle_ids;
-  CooperativeChannelUse channel{};
+  CooperativePassageUse passage{};
   std::vector<CooperativeTrajectorySample> trajectory;
 };
 
@@ -103,15 +104,15 @@ struct CooperativeManeuverCommandData {
   double space_time_predicted_minimum_separation_m{0.0};
   double space_time_integrated_shortfall_m2_s{0.0};
   std::size_t space_time_evaluated_candidate_count{0U};
-  bool channel_yield_required{false};
-  std::string channel_yield_to_vehicle_id;
-  std::string channel_id;
-  std::string channel_conflict_resource_id;
-  std::uint64_t channel_route_generation{0U};
-  double channel_lateral_offset_m{0.0};
-  double channel_minimum_lateral_offset_m{0.0};
-  double channel_maximum_lateral_offset_m{0.0};
-  std::int64_t channel_entry_not_before_ns{0};
+  bool passage_yield_required{false};
+  std::string passage_yield_to_vehicle_id;
+  PassageTraversalId passage_traversal_id;
+  CooperativeConflictResourceId passage_conflict_resource_id;
+  std::uint64_t passage_route_generation{0U};
+  double passage_lateral_offset_m{0.0};
+  double passage_minimum_lateral_offset_m{0.0};
+  double passage_maximum_lateral_offset_m{0.0};
+  std::int64_t passage_entry_not_before_ns{0};
   std::vector<CooperativePeerTrajectoryData> conflicting_peers;
 };
 
@@ -232,6 +233,6 @@ private:
 cooperativeManeuverName(CooperativeManeuver maneuver) noexcept;
 
 [[nodiscard]] std::string_view
-cooperativeChannelPhaseName(CooperativeChannelPhase phase) noexcept;
+cooperativePassagePhaseName(CooperativePassagePhase phase) noexcept;
 
 } // namespace drone_city_nav

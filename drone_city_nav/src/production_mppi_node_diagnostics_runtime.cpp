@@ -113,22 +113,22 @@ void ProductionMppiNode::publishRviz(
   const std::span<const mppi::RouteSample3D> global_route =
       rviz.route ? std::span<const mppi::RouteSample3D>{*rviz.route}
                  : std::span<const mppi::RouteSample3D>{};
-  const std::span<const ConstrainedFreeSpaceEdge> channel_edges =
-      rviz.channel_edges
-          ? std::span<const ConstrainedFreeSpaceEdge>{*rviz.channel_edges}
-          : std::span<const ConstrainedFreeSpaceEdge>{};
-  const std::span<const std::string> selected_channel_ids =
-      rviz.selected_channel_ids
-          ? std::span<const std::string>{*rviz.selected_channel_ids}
-          : std::span<const std::string>{};
+  const std::span<const PassageTraversalEdge> passage_traversals =
+      rviz.passage_traversals
+          ? std::span<const PassageTraversalEdge>{*rviz.passage_traversals}
+          : std::span<const PassageTraversalEdge>{};
+  const std::span<const PassageTraversalId> selected_passage_traversal_ids =
+      rviz.selected_passage_traversal_ids
+          ? std::span<const PassageTraversalId>{*rviz.selected_passage_traversal_ids}
+          : std::span<const PassageTraversalId>{};
   MppiDebugMarkerInput marker_input{
       .header = path.header,
       .horizon = rviz.candidate_horizon,
       .previous_horizon = previous_horizon,
       .execution_horizon = execution_horizon,
       .global_route = global_route,
-      .channel_edges = channel_edges,
-      .selected_channel_ids = selected_channel_ids,
+      .passage_traversals = passage_traversals,
+      .selected_passage_traversal_ids = selected_passage_traversal_ids,
       .initial_state = snapshot.input.initial_state,
       .target = snapshot.input.target,
       .mission_start = mission_start_,

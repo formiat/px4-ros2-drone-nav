@@ -35,7 +35,7 @@ Inspect in this order:
 6. `no_executable_horizon` entry and exit transitions;
 7. offboard deadline and applied command.
 
-For air channels, inspect the 3D route samples and constrained route spans.
+For air passages, inspect the 3D route samples and constrained route spans.
 
 ## Drone Stalls At A Wall
 
@@ -58,7 +58,7 @@ guide release reasons. If the guide remains stable but the blue MPPI horizon
 flaps, inspect warm-start shift, first-control delta, horizon stability, and
 local cost hierarchy.
 
-## Constrained Channel Traversal Stalls
+## Constrained Passage Traversal Stalls
 
 Check:
 
@@ -66,7 +66,7 @@ Check:
 - current route station and 3D reference sample;
 - vertical/lateral tracking error and reference speed;
 - fresh horizon reception;
-- physical channel occupancy around the route.
+- physical passage occupancy around the route.
 
 The constraint must come from the accepted 3D route, never from proximity to an
 opening.

@@ -214,7 +214,7 @@ derivePassageVolume(const std::span<const RouteSample3D> route,
                     const OccupancyGrid3D& occupancy,
                     const PassageVolumeConfig& config) {
   PassageVolume result{
-      .passage_id = span.channel_id,
+      .passage_traversal_id = span.passage_traversal_id,
       .span_index = span_index,
       .begin_station_m = span.begin_station_m,
       .end_station_m = span.end_station_m,
@@ -227,7 +227,7 @@ derivePassageVolume(const std::span<const RouteSample3D> route,
       .cross_sections = {},
       .raw_validated = false,
   };
-  if (route.size() < 2U || span.channel_id.empty() ||
+  if (route.size() < 2U || span.passage_traversal_id.empty() ||
       !(span.end_station_m > span.begin_station_m)) {
     return result;
   }
@@ -298,8 +298,9 @@ resourceKey(const std::span<const RouteSample3D> route,
          << config.footprint.upper_extent_m << '|' << std::defaultfloat
          << constrained_spans.size();
   for (const ConstrainedRouteSpan& span : constrained_spans) {
-    stream << '|' << span.channel_id.size() << ':' << span.channel_id << '|'
-           << std::hexfloat << span.begin_station_m << '|' << span.end_station_m;
+    stream << '|' << span.passage_traversal_id.value().size() << ':'
+           << span.passage_traversal_id.value() << '|' << std::hexfloat
+           << span.begin_station_m << '|' << span.end_station_m;
   }
   return stream.str();
 }

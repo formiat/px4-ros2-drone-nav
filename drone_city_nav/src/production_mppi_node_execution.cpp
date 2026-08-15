@@ -438,10 +438,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     return publish_no_executable_path_hold(
         ProductionMppiExecutionReason::kNoExecutableRoute);
   }
-  if (planning_state == ProductionMppiPlanningState::kCooperativeChannelYieldHold) {
+  if (planning_state == ProductionMppiPlanningState::kCooperativePassageYieldHold) {
     return publish_explicit_hold(
         Point3{input.target.x, input.target.y, input.target.z},
-        ProductionMppiExecutionReason::kCooperativeChannelYield);
+        ProductionMppiExecutionReason::kCooperativePassageYield);
   }
 
   const std::span<const mppi::State> states{result.horizon};

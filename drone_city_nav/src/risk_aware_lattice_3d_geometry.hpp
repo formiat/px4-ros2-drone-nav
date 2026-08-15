@@ -39,6 +39,6 @@ void accumulateLattice3DSuccessorDiagnostics(
 
 void recordLattice3DRejectedEdge(Lattice3DSuccessorDiagnostics& diagnostics,
                                  Lattice3DEdgeEvaluationStatus status,
-                                 bool channel) noexcept;
+                                 bool passage) noexcept;
 
 } // namespace drone_city_nav::detail

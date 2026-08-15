@@ -48,13 +48,13 @@ TEST(Route3DTest, ProjectsProgressUsingThreeDimensionalStation) {
   EXPECT_NEAR(projection.remaining_m, 5.0, 1.0e-6);
 }
 
-TEST(Route3DTest, CoordinatesVerticalAlignmentBeforeChannelEntry) {
+TEST(Route3DTest, CoordinatesVerticalAlignmentBeforePassageEntry) {
   const std::vector<RouteSample3D> route = sampleRoute3D(
       std::vector<Point3>{{0.0, 0.0, 18.0}, {80.0, 0.0, 5.0}, {100.0, 0.0, 5.0}}, 1.0,
       20.0);
   const double entry_station = route[route.size() - 21U].station_m;
   const std::vector<ConstrainedRouteSpan> spans{ConstrainedRouteSpan{
-      .channel_id = "channel",
+      .passage_traversal_id = "passage",
       .route_generation = 4U,
       .direction_sign = 1,
       .begin_station_m = entry_station,
@@ -95,7 +95,7 @@ TEST(Route3DTest, ObservesConstrainedSpanLifecycleAndMotionMetrics) {
   const std::vector<RouteSample3D> route = sampleRoute3D(route_points, 5.0, 20.0);
   const std::vector<ConstrainedRouteSpan> spans{
       ConstrainedRouteSpan{
-          .channel_id = "test_channel",
+          .passage_traversal_id = "test_passage",
           .route_generation = 7U,
           .direction_sign = -1,
           .begin_station_m = 40.0,
@@ -305,7 +305,7 @@ TEST(Route3DTest, ReportsRawCollisionSuccessorRejectionsWhenGraphIsExhausted) {
   EXPECT_EQ(lattice3DRiskStageName(result.risk_stage), std::string_view{"critical"});
 }
 
-TEST(Route3DTest, LatticeTraversesLShapedChannel) {
+TEST(Route3DTest, LatticeTraversesLShapedPassage) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 20, 4}};
   for (int y = 0; y < 12; ++y) {
     for (int z = 0; z < 4; ++z) {
@@ -418,12 +418,12 @@ TEST(Route3DTest, FartherPlanningFrontierBeatsBlockedPreferredFrontier) {
   EXPECT_GE(result.successor_profiling.continuation.worker_ms, 0.0);
 }
 
-TEST(Route3DTest, BuildsTypedSpanFromSelectedChannelTraversal) {
+TEST(Route3DTest, BuildsTypedSpanFromSelectedPassageTraversal) {
   const std::vector<RouteSample3D> route = sampleRoute3D(
       std::vector<Point3>{{0.0, 0.0, 5.0}, {5.0, 0.0, 5.0}, {10.0, 0.0, 5.0}}, 0.5,
       20.0);
-  const std::vector<SelectedChannelTraversal> traversals{
-      SelectedChannelTraversal{.channel_id = "test_channel",
+  const std::vector<SelectedPassageTraversal> traversals{
+      SelectedPassageTraversal{.passage_traversal_id = "test_passage",
                                .direction_sign = -1,
                                .begin_station_m = 2.0,
                                .end_station_m = 8.0,
@@ -438,7 +438,7 @@ TEST(Route3DTest, BuildsTypedSpanFromSelectedChannelTraversal) {
       makeConstrainedRouteSpans(route, traversals, 12U, RouteEnvelopeConfig{});
 
   ASSERT_EQ(spans.size(), 1U);
-  EXPECT_EQ(spans.front().channel_id, "test_channel");
+  EXPECT_EQ(spans.front().passage_traversal_id, "test_passage");
   EXPECT_EQ(spans.front().route_generation, 12U);
   EXPECT_EQ(spans.front().direction_sign, -1);
   ASSERT_FALSE(spans.front().envelope.empty());
@@ -493,7 +493,7 @@ TEST(Route3DTest, ComparesReachedRoutesAcrossAllRiskStages) {
   EXPECT_NE(result.risk_stage, Lattice3DRiskStage::kPreferredOnly);
 }
 
-TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
+TEST(Route3DTest, SelectsEmbeddedPassageEdgeWhenItsObjectiveCostIsLower) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 20, 10}};
   const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
   const GridBounds3D& bounds = field.bounds();
@@ -504,8 +504,8 @@ TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
                             static_cast<float>(bounds.origin_y),
                             bounds.depth_cells,
                             static_cast<float>(bounds.origin_z)};
-  const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
-      .id = "direct_channel",
+  const std::vector<PassageTraversalEdge> passages{PassageTraversalEdge{
+      .id = "direct_passage",
       .region_id = "direct_region",
       .entry_portal_id = "direct_entry",
       .exit_portal_id = "direct_exit",
@@ -527,23 +527,24 @@ TEST(Route3DTest, SelectsEmbeddedChannelEdgeWhenItsObjectiveCostIsLower) {
   config.critical_distance_m = 0.0;
   config.heading_bias_cost_per_rad = 0.0;
   config.route_shape_turn_cost_per_rad = 0.0;
-  config.channel_connection_distance_m = 1.0;
+  config.passage_connection_distance_m = 1.0;
   config.maximum_search_time_ms = 1000.0;
   config.physical_footprint_radius_m = 0.0;
   config.physical_footprint_samples = 0U;
 
   const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
       grid, field.distancesM(), Point3{0.5, 0.5, 5.5}, Vec3{1.0, 0.0, 0.0},
-      Point3{12.5, 8.5, 5.5}, channels, config);
+      Point3{12.5, 8.5, 5.5}, passages, config);
 
   ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
-  ASSERT_EQ(result.selected_channels.size(), 1U);
-  EXPECT_EQ(result.selected_channels.front().channel_id, "direct_channel");
-  EXPECT_GT(result.selected_channels.front().end_station_m,
-            result.selected_channels.front().begin_station_m);
+  ASSERT_EQ(result.selected_passage_traversals.size(), 1U);
+  EXPECT_EQ(result.selected_passage_traversals.front().passage_traversal_id,
+            "direct_passage");
+  EXPECT_GT(result.selected_passage_traversals.front().end_station_m,
+            result.selected_passage_traversals.front().begin_station_m);
 }
 
-TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
+TEST(Route3DTest, SeedsCollisionValidatedPassageBeyondLocalConnectionRadius) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 8, 10}};
   const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
   const GridBounds3D& bounds = field.bounds();
@@ -554,8 +555,8 @@ TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
                             static_cast<float>(bounds.origin_y),
                             bounds.depth_cells,
                             static_cast<float>(bounds.origin_z)};
-  const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
-      .id = "far_channel",
+  const std::vector<PassageTraversalEdge> passages{PassageTraversalEdge{
+      .id = "far_passage",
       .region_id = "far_region",
       .entry_portal_id = "far_entry",
       .exit_portal_id = "far_exit",
@@ -577,21 +578,22 @@ TEST(Route3DTest, SeedsCollisionValidatedChannelBeyondLocalConnectionRadius) {
   config.critical_distance_m = 0.0;
   config.heading_bias_cost_per_rad = 0.0;
   config.route_shape_turn_cost_per_rad = 0.0;
-  config.channel_connection_distance_m = 1.0;
+  config.passage_connection_distance_m = 1.0;
   config.maximum_search_time_ms = 1000.0;
   config.physical_footprint_radius_m = 0.0;
   config.physical_footprint_samples = 0U;
 
   const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
       grid, field.distancesM(), Point3{0.5, 2.5, 8.5}, Vec3{1.0, 0.0, 0.0},
-      Point3{22.5, 2.5, 5.5}, channels, config);
+      Point3{22.5, 2.5, 5.5}, passages, config);
 
   ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
-  ASSERT_EQ(result.selected_channels.size(), 1U);
-  EXPECT_EQ(result.selected_channels.front().channel_id, "far_channel");
+  ASSERT_EQ(result.selected_passage_traversals.size(), 1U);
+  EXPECT_EQ(result.selected_passage_traversals.front().passage_traversal_id,
+            "far_passage");
 }
 
-TEST(Route3DTest, MaterializesRequiredChannelWhenUnconstrainedSlicePrefersFrontier) {
+TEST(Route3DTest, MaterializesRequiredPassageWhenUnconstrainedSlicePrefersFrontier) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 80, 12, 10}};
   const DistanceField3D field = DistanceField3D::build(occupancy, 100.0);
   const GridBounds3D& bounds = field.bounds();
@@ -602,8 +604,8 @@ TEST(Route3DTest, MaterializesRequiredChannelWhenUnconstrainedSlicePrefersFronti
                             static_cast<float>(bounds.origin_y),
                             bounds.depth_cells,
                             static_cast<float>(bounds.origin_z)};
-  const std::vector<ConstrainedFreeSpaceEdge> channels{ConstrainedFreeSpaceEdge{
-      .id = "required_channel",
+  const std::vector<PassageTraversalEdge> passages{PassageTraversalEdge{
+      .id = "required_passage",
       .region_id = "required_region",
       .entry_portal_id = "required_entry",
       .exit_portal_id = "required_exit",
@@ -625,7 +627,7 @@ TEST(Route3DTest, MaterializesRequiredChannelWhenUnconstrainedSlicePrefersFronti
   config.critical_distance_m = 0.0;
   config.heading_bias_cost_per_rad = 0.0;
   config.route_shape_turn_cost_per_rad = 0.0;
-  config.channel_topology_transition_cost = 100.0;
+  config.passage_topology_transition_cost = 100.0;
   config.maximum_topology_search_groups = 1U;
   config.maximum_expansions = 8U;
   config.maximum_search_time_ms = 1000.0;
@@ -634,11 +636,12 @@ TEST(Route3DTest, MaterializesRequiredChannelWhenUnconstrainedSlicePrefersFronti
 
   const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
       grid, field.distancesM(), Point3{2.5, 5.5, 5.5}, Vec3{1.0, 0.0, 0.0},
-      Point3{74.5, 5.5, 5.5}, channels, config);
+      Point3{74.5, 5.5, 5.5}, passages, config);
 
   EXPECT_EQ(result.topology_searches, 2U);
-  ASSERT_EQ(result.selected_channels.size(), 1U);
-  EXPECT_EQ(result.selected_channels.front().channel_id, "required_channel");
+  ASSERT_EQ(result.selected_passage_traversals.size(), 1U);
+  EXPECT_EQ(result.selected_passage_traversals.front().passage_traversal_id,
+            "required_passage");
   EXPECT_GT(result.achieved_progress_m, 50.0);
 }
 
@@ -653,24 +656,24 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
                             static_cast<float>(bounds.origin_y),
                             bounds.depth_cells,
                             static_cast<float>(bounds.origin_z)};
-  const auto channel = [](const std::string& id, const std::vector<Point3>& points) {
-    return ConstrainedFreeSpaceEdge{.id = id,
-                                    .region_id = id + "_region",
-                                    .entry_portal_id = id + "_entry",
-                                    .exit_portal_id = id + "_exit",
-                                    .centerline = sampleRoute3D(points, 0.5, 10.0),
-                                    .entry = points.front(),
-                                    .exit = points.back(),
-                                    .min_z_m = 1.5,
-                                    .max_z_m = 8.5,
-                                    .width_m = 24.0,
-                                    .height_m = 7.0,
-                                    .minimum_clearance_m = 3.5,
-                                    .speed_limit_mps = 10.0};
+  const auto passage = [](const std::string& id, const std::vector<Point3>& points) {
+    return PassageTraversalEdge{.id = id,
+                                .region_id = id + "_region",
+                                .entry_portal_id = id + "_entry",
+                                .exit_portal_id = id + "_exit",
+                                .centerline = sampleRoute3D(points, 0.5, 10.0),
+                                .entry = points.front(),
+                                .exit = points.back(),
+                                .min_z_m = 1.5,
+                                .max_z_m = 8.5,
+                                .width_m = 24.0,
+                                .height_m = 7.0,
+                                .minimum_clearance_m = 3.5,
+                                .speed_limit_mps = 10.0};
   };
-  const std::vector<ConstrainedFreeSpaceEdge> channels{
-      channel("direct", {{0.5, 2.5, 5.5}, {18.5, 2.5, 5.5}}),
-      channel("detour", {{0.5, 2.5, 5.5}, {9.5, 15.5, 5.5}, {18.5, 2.5, 5.5}})};
+  const std::vector<PassageTraversalEdge> passages{
+      passage("direct", {{0.5, 2.5, 5.5}, {18.5, 2.5, 5.5}}),
+      passage("detour", {{0.5, 2.5, 5.5}, {9.5, 15.5, 5.5}, {18.5, 2.5, 5.5}})};
   RiskAwareLattice3DConfig config;
   config.horizontal_step_m = 2.0;
   config.vertical_step_m = 1.0;
@@ -686,15 +689,15 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
   const Point3 goal{20.5, 2.5, 5.5};
 
   const RiskAwareLattice3DResult serial = planRiskAwareLattice3D(
-      grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, channels, config);
+      grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, passages, config);
   BoundedWorkerPool two_worker_pool{2U};
   const RiskAwareLattice3DResult two_worker =
       planRiskAwareLattice3D(grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal,
-                             channels, config, &two_worker_pool);
+                             passages, config, &two_worker_pool);
   BoundedWorkerPool worker_pool{4U};
   const RiskAwareLattice3DResult parallel =
       planRiskAwareLattice3D(grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal,
-                             channels, config, &worker_pool);
+                             passages, config, &worker_pool);
 
   ASSERT_EQ(serial.status, Lattice3DStatus::kReachedPlanningGoal);
   EXPECT_EQ(serial.topology_searches, 3U);

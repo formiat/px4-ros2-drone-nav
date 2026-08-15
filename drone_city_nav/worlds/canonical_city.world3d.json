@@ -32,9 +32,9 @@
     "y_centers_m": [27.0, 81.0, 135.0, 189.0, 243.0, 297.0, 351.0, 405.0],
     "size_m": [24.0, 24.0, 32.0]
   },
-  "channels": [
+  "passage_structures": [
     {
-      "id": "channel_11_19_l",
+      "id": "passage_structure_11_19_l",
       "kind": "intersection",
       "intersection_center_m": [108.0, 162.0],
       "intersection_size_m": [30.0, 30.0, 32.0],
@@ -50,7 +50,7 @@
       "speed_limit_mps": 10.0
     },
     {
-      "id": "channel_54_162_straight",
+      "id": "passage_structure_54_162_straight",
       "kind": "intersection",
       "intersection_center_m": [54.0, 162.0],
       "intersection_size_m": [30.0, 30.0, 32.0],
@@ -66,7 +66,7 @@
       "speed_limit_mps": 10.0
     },
     {
-      "id": "channel_108_216_l",
+      "id": "passage_structure_108_216_l",
       "kind": "intersection",
       "intersection_center_m": [108.0, 216.0],
       "intersection_size_m": [30.0, 30.0, 32.0],
@@ -82,7 +82,7 @@
       "speed_limit_mps": 10.0
     },
     {
-      "id": "channel_108_108_t",
+      "id": "passage_structure_108_108_t",
       "kind": "intersection",
       "intersection_center_m": [108.0, 108.0],
       "intersection_size_m": [30.0, 30.0, 32.0],

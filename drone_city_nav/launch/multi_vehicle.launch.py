@@ -472,8 +472,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "cooperative_maneuver_command_topic": (
                         f"{prefix}/cooperative/command"
                     ),
-                    "cooperative_channel_state_topic": (
-                        f"{prefix}/cooperative/channel_state"
+                    "cooperative_passage_state_topic": (
+                        f"{prefix}/cooperative/passage_state"
                     ),
                     "cooperative_desired_minimum_separation_m": (
                         cooperative_desired_separation_m

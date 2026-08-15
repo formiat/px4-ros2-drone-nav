@@ -99,45 +99,45 @@ void accumulateLattice3DSuccessorDiagnostics(
   target.lattice_rejected_risk_stage += addition.lattice_rejected_risk_stage;
   target.lattice_rejected_no_cost_improvement +=
       addition.lattice_rejected_no_cost_improvement;
-  target.channel_generated += addition.channel_generated;
-  target.channel_accepted += addition.channel_accepted;
-  target.channel_rejected += addition.channel_rejected;
-  target.channel_rejected_connection_distance +=
-      addition.channel_rejected_connection_distance;
-  target.channel_rejected_outside_grid += addition.channel_rejected_outside_grid;
-  target.channel_rejected_flight_envelope += addition.channel_rejected_flight_envelope;
-  target.channel_rejected_invalid_esdf += addition.channel_rejected_invalid_esdf;
-  target.channel_rejected_raw_collision += addition.channel_rejected_raw_collision;
-  target.channel_rejected_risk_stage += addition.channel_rejected_risk_stage;
-  target.channel_rejected_no_cost_improvement +=
-      addition.channel_rejected_no_cost_improvement;
+  target.passage_generated += addition.passage_generated;
+  target.passage_accepted += addition.passage_accepted;
+  target.passage_rejected += addition.passage_rejected;
+  target.passage_rejected_connection_distance +=
+      addition.passage_rejected_connection_distance;
+  target.passage_rejected_outside_grid += addition.passage_rejected_outside_grid;
+  target.passage_rejected_flight_envelope += addition.passage_rejected_flight_envelope;
+  target.passage_rejected_invalid_esdf += addition.passage_rejected_invalid_esdf;
+  target.passage_rejected_raw_collision += addition.passage_rejected_raw_collision;
+  target.passage_rejected_risk_stage += addition.passage_rejected_risk_stage;
+  target.passage_rejected_no_cost_improvement +=
+      addition.passage_rejected_no_cost_improvement;
 }
 
 void recordLattice3DRejectedEdge(Lattice3DSuccessorDiagnostics& diagnostics,
                                  const Lattice3DEdgeEvaluationStatus status,
-                                 const bool channel) noexcept {
+                                 const bool passage) noexcept {
   std::size_t* counter = nullptr;
   switch (status) {
     case Lattice3DEdgeEvaluationStatus::kValid:
       return;
     case Lattice3DEdgeEvaluationStatus::kOutsideFlightEnvelope:
-      counter = channel ? &diagnostics.channel_rejected_flight_envelope
+      counter = passage ? &diagnostics.passage_rejected_flight_envelope
                         : &diagnostics.lattice_rejected_flight_envelope;
       break;
     case Lattice3DEdgeEvaluationStatus::kOutsideGrid:
-      counter = channel ? &diagnostics.channel_rejected_outside_grid
+      counter = passage ? &diagnostics.passage_rejected_outside_grid
                         : &diagnostics.lattice_rejected_outside_grid;
       break;
     case Lattice3DEdgeEvaluationStatus::kInvalidEsdf:
-      counter = channel ? &diagnostics.channel_rejected_invalid_esdf
+      counter = passage ? &diagnostics.passage_rejected_invalid_esdf
                         : &diagnostics.lattice_rejected_invalid_esdf;
       break;
     case Lattice3DEdgeEvaluationStatus::kRawCollision:
-      counter = channel ? &diagnostics.channel_rejected_raw_collision
+      counter = passage ? &diagnostics.passage_rejected_raw_collision
                         : &diagnostics.lattice_rejected_raw_collision;
       break;
     case Lattice3DEdgeEvaluationStatus::kRiskStageRejected:
-      counter = channel ? &diagnostics.channel_rejected_risk_stage
+      counter = passage ? &diagnostics.passage_rejected_risk_stage
                         : &diagnostics.lattice_rejected_risk_stage;
       break;
   }

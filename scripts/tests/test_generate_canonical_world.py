@@ -111,15 +111,15 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             }
             self.assertIn("building_001", collision_models)
             self.assertIn("building_040", collision_models)
-            self.assertIn("channel_11_19_l_intersection_lower", collision_models)
-            self.assertIn("channel_11_19_l_west_middle", collision_models)
-            self.assertIn("channel_11_19_l_north_middle", collision_models)
-            self.assertNotIn("channel_11_19_l_east_middle", collision_models)
-            self.assertNotIn("channel_11_19_l_south_middle", collision_models)
-            self.assertIn("channel_108_108_t_south_middle", collision_models)
-            self.assertNotIn("channel_108_108_t_west_middle", collision_models)
-            self.assertNotIn("channel_108_108_t_east_middle", collision_models)
-            self.assertNotIn("channel_108_108_t_north_middle", collision_models)
+            self.assertIn("passage_structure_11_19_l_intersection_lower", collision_models)
+            self.assertIn("passage_structure_11_19_l_west_middle", collision_models)
+            self.assertIn("passage_structure_11_19_l_north_middle", collision_models)
+            self.assertNotIn("passage_structure_11_19_l_east_middle", collision_models)
+            self.assertNotIn("passage_structure_11_19_l_south_middle", collision_models)
+            self.assertIn("passage_structure_108_108_t_south_middle", collision_models)
+            self.assertNotIn("passage_structure_108_108_t_west_middle", collision_models)
+            self.assertNotIn("passage_structure_108_108_t_east_middle", collision_models)
+            self.assertNotIn("passage_structure_108_108_t_north_middle", collision_models)
 
             building_diffuse = {
                 model.attrib["name"]: tuple(
@@ -157,8 +157,18 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                                  sorted(len(region["portals"])
                                         for region in regions))
                 self.assertEqual(5, len(edges))
-                self.assertTrue(all("channel_" not in edge["id"]
-                                    for edge in edges))
+                physical_structure_ids = {
+                    structure["id"] for structure in spec["passage_structures"]
+                }
+                self.assertTrue(
+                    all(
+                        all(
+                            structure_id not in edge["id"]
+                            for structure_id in physical_structure_ids
+                        )
+                        for edge in edges
+                    )
+                )
                 for edge in edges:
                     min_z, max_z, width, height, clearance, speed_limit = \
                         edge["geometry"]
@@ -176,21 +186,27 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                 self.assertGreaterEqual(len(straight["centerline"]), 4)
                 self.assertEqual(b"", stream.read())
 
-    def test_spec_describes_left_straight_and_t_channels(self) -> None:
+    def test_spec_describes_left_straight_and_t_passage_structures(self) -> None:
         with SPEC_PATH.open(encoding="utf-8") as stream:
             spec = json.load(stream)
         self.assertEqual(5, len(spec["building_grid"]["x_centers_m"]))
         self.assertEqual(8, len(spec["building_grid"]["y_centers_m"]))
-        self.assertEqual(4, len(spec["channels"]))
-        channels = {channel["id"]: channel for channel in spec["channels"]}
+        self.assertEqual(4, len(spec["passage_structures"]))
+        passage_structures = {
+            passage_structure["id"]: passage_structure
+            for passage_structure in spec["passage_structures"]
+        }
         self.assertTrue(
-            all(channel["kind"] == "intersection" for channel in channels.values())
+            all(
+                passage_structure["kind"] == "intersection"
+                for passage_structure in passage_structures.values()
+            )
         )
         self.assertEqual(
             {"west", "north"},
             {
                 bridge["id"]
-                for bridge in channels["channel_11_19_l"]["bridges"]
+                for bridge in passage_structures["passage_structure_11_19_l"]["bridges"]
                 if bridge["blocked"]
             },
         )
@@ -198,7 +214,7 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             {"west", "east"},
             {
                 bridge["id"]
-                for bridge in channels["channel_54_162_straight"]["bridges"]
+                for bridge in passage_structures["passage_structure_54_162_straight"]["bridges"]
                 if bridge["blocked"]
             },
         )
@@ -206,7 +222,7 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             {"east", "south"},
             {
                 bridge["id"]
-                for bridge in channels["channel_108_216_l"]["bridges"]
+                for bridge in passage_structures["passage_structure_108_216_l"]["bridges"]
                 if bridge["blocked"]
             },
         )
@@ -214,15 +230,15 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             {"south"},
             {
                 bridge["id"]
-                for bridge in channels["channel_108_108_t"]["bridges"]
+                for bridge in passage_structures["passage_structure_108_108_t"]["bridges"]
                 if bridge["blocked"]
             },
         )
-        self.assertTrue(all(channel["opening_center_z_m"] == 5.0
-                            for channel in channels.values()))
-        self.assertTrue(all("centerline_m" not in channel
-                            and "edges" not in channel
-                            for channel in channels.values()))
+        self.assertTrue(all(passage_structure["opening_center_z_m"] == 5.0
+                            for passage_structure in passage_structures.values()))
+        self.assertTrue(all("centerline_m" not in passage_structure
+                            and "edges" not in passage_structure
+                            for passage_structure in passage_structures.values()))
 
         boxes = generator.physical_boxes(spec)
         self.assertEqual(79, len(boxes))
@@ -267,7 +283,7 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             generator.building_color(81.0, 27.0),
         )
 
-    def test_l_channel_cross_sections_match_left_turn_as_seen_from_start(self) -> None:
+    def test_l_passage_cross_sections_match_left_turn_as_seen_from_start(self) -> None:
         spec = generator.load_spec(SPEC_PATH)
         boxes = generator.physical_boxes(spec)
 
@@ -297,7 +313,7 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                 all(occupied(x, y, z) for row in sample_xy for x, y in row)
             )
 
-    def test_new_channel_cross_sections_match_rviz_annotations(self) -> None:
+    def test_new_passage_cross_sections_match_rviz_annotations(self) -> None:
         spec = generator.load_spec(SPEC_PATH)
         boxes = generator.physical_boxes(spec)
 

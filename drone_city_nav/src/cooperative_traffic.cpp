@@ -513,15 +513,15 @@ std::string_view cooperativeManeuverName(const CooperativeManeuver maneuver) noe
 }
 
 std::string_view
-cooperativeChannelPhaseName(const CooperativeChannelPhase phase) noexcept {
+cooperativePassagePhaseName(const CooperativePassagePhase phase) noexcept {
   switch (phase) {
-    case CooperativeChannelPhase::kNone:
+    case CooperativePassagePhase::kNone:
       return "none";
-    case CooperativeChannelPhase::kApproach:
+    case CooperativePassagePhase::kApproach:
       return "approach";
-    case CooperativeChannelPhase::kTraversal:
+    case CooperativePassagePhase::kTraversal:
       return "traversal";
-    case CooperativeChannelPhase::kDeparture:
+    case CooperativePassagePhase::kDeparture:
       return "departure";
   }
   return "unknown";

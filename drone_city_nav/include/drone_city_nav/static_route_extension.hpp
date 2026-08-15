@@ -172,7 +172,7 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
   kInvalidEsdf,
   kRawCollision,
   kOutsideFlightEnvelope,
-  kInvalidChannelSpan,
+  kInvalidPassageSpan,
   kProtectedConstrainedSuffix,
   kNoEndpointImprovement,
 };

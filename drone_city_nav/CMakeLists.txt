@@ -71,7 +71,7 @@ rosidl_generate_interfaces(
   "msg/SimulationTruthState.msg"
   "msg/VehicleNavigationState.msg"
   "msg/CooperativeTrajectoryPoint.msg"
-  "msg/CooperativeChannelIntent.msg"
+  "msg/CooperativePassageIntent.msg"
   "msg/CooperativeFlightIntent.msg"
   "msg/CooperativePeerTrajectory.msg"
   "msg/CooperativeManeuverCommand.msg"
@@ -154,9 +154,9 @@ add_library(
   src/active_global_guide.cpp
   src/ambiguous_lidar_hit_tracker.cpp
   src/bounded_worker_pool.cpp
-  src/cooperative_channel_execution.cpp
-  src/cooperative_channel_route.cpp
-  src/cooperative_channel_coordination.cpp
+  src/cooperative_passage_execution.cpp
+  src/cooperative_passage_route.cpp
+  src/cooperative_passage_coordination.cpp
   src/cooperative_mppi_adapter.cpp
   src/cooperative_space_time.cpp
   src/cooperative_traffic.cpp
@@ -850,17 +850,17 @@ if(BUILD_TESTING)
   target_link_libraries(passage_volume_test drone_city_nav_core)
   enable_project_warnings(passage_volume_test)
 
-  ament_add_gtest(cooperative_channel_route_test
-                  tests/cooperative_channel_route_test.cpp)
-  target_compile_features(cooperative_channel_route_test PRIVATE cxx_std_20)
-  target_link_libraries(cooperative_channel_route_test drone_city_nav_core)
-  enable_project_warnings(cooperative_channel_route_test)
+  ament_add_gtest(cooperative_passage_route_test
+                  tests/cooperative_passage_route_test.cpp)
+  target_compile_features(cooperative_passage_route_test PRIVATE cxx_std_20)
+  target_link_libraries(cooperative_passage_route_test drone_city_nav_core)
+  enable_project_warnings(cooperative_passage_route_test)
 
-  ament_add_gtest(cooperative_channel_execution_test
-                  tests/cooperative_channel_execution_test.cpp)
-  target_compile_features(cooperative_channel_execution_test PRIVATE cxx_std_20)
-  target_link_libraries(cooperative_channel_execution_test drone_city_nav_core)
-  enable_project_warnings(cooperative_channel_execution_test)
+  ament_add_gtest(cooperative_passage_execution_test
+                  tests/cooperative_passage_execution_test.cpp)
+  target_compile_features(cooperative_passage_execution_test PRIVATE cxx_std_20)
+  target_link_libraries(cooperative_passage_execution_test drone_city_nav_core)
+  enable_project_warnings(cooperative_passage_execution_test)
 
   ament_add_gtest(cooperative_traffic_test tests/cooperative_traffic_test.cpp)
   target_compile_features(cooperative_traffic_test PRIVATE cxx_std_20)

@@ -74,10 +74,10 @@ def load_spec(path: Path) -> dict:
     return spec
 
 
-def channel_boxes(channel: dict) -> list[Box]:
-    height = float(channel["height_m"])
-    z_reference = float(channel["opening_center_z_m"])
-    kind = channel["kind"]
+def passage_structure_boxes(passage_structure: dict) -> list[Box]:
+    height = float(passage_structure["height_m"])
+    z_reference = float(passage_structure["opening_center_z_m"])
+    kind = passage_structure["kind"]
     boxes: list[Box] = []
 
     def append_box(suffix: str, cx: float, cy: float, z_min: float, z_max: float,
@@ -85,7 +85,7 @@ def channel_boxes(channel: dict) -> list[Box]:
         if sx <= 1.0e-6 or sy <= 1.0e-6 or z_max <= z_min + 1.0e-6:
             return
         boxes.append(Box(
-            id=f"{channel['id']}_{suffix}",
+            id=f"{passage_structure['id']}_{suffix}",
             center=(cx, cy, 0.5 * (z_min + z_max)),
             size=(sx, sy, z_max - z_min),
             color=(0.43, 0.47, 0.55, 1.0),
@@ -93,22 +93,22 @@ def channel_boxes(channel: dict) -> list[Box]:
         ))
 
     if kind == "straight":
-        center_x, center_y = map(float, channel["structure_center_m"])
-        size_x, size_y, size_z = map(float, channel["structure_size_m"])
+        center_x, center_y = map(float, passage_structure["structure_center_m"])
+        size_x, size_y, size_z = map(float, passage_structure["structure_size_m"])
         opening_min = z_reference - 0.5 * height
         opening_max = z_reference + 0.5 * height
         append_box("lower", center_x, center_y, 0.0, opening_min, size_x, size_y)
         append_box("upper", center_x, center_y, opening_max, size_z, size_x, size_y)
     elif kind == "intersection":
-        center_x, center_y = map(float, channel["intersection_center_m"])
-        size_x, size_y, size_z = map(float, channel["intersection_size_m"])
+        center_x, center_y = map(float, passage_structure["intersection_center_m"])
+        size_x, size_y, size_z = map(float, passage_structure["intersection_size_m"])
         opening_min = z_reference - 0.5 * height
         opening_max = z_reference + 0.5 * height
         append_box("intersection_lower", center_x, center_y, 0.0, opening_min,
                    size_x, size_y)
         append_box("intersection_upper", center_x, center_y, opening_max, size_z,
                    size_x, size_y)
-        for bridge in channel["bridges"]:
+        for bridge in passage_structure["bridges"]:
             bridge_x, bridge_y = map(float, bridge["center_m"])
             bridge_size_x, bridge_size_y, bridge_size_z = map(
                 float, bridge["size_m"])
@@ -121,34 +121,34 @@ def channel_boxes(channel: dict) -> list[Box]:
                 append_box(f"{bridge_id}_middle", bridge_x, bridge_y,
                            opening_min, opening_max, bridge_size_x, bridge_size_y)
     else:
-        raise ValueError(f"unsupported channel kind: {kind}")
+        raise ValueError(f"unsupported passage structure kind: {kind}")
     return boxes
 
 
-def channel_occluder_boxes(channel: dict) -> list[Box]:
-    height = float(channel["height_m"])
-    z_reference = float(channel["opening_center_z_m"])
+def passage_structure_occluder_boxes(passage_structure: dict) -> list[Box]:
+    height = float(passage_structure["height_m"])
+    z_reference = float(passage_structure["opening_center_z_m"])
     z_min = z_reference - 0.5 * height
     z_max = z_reference + 0.5 * height
-    if channel["kind"] != "intersection":
-        center_x, center_y = map(float, channel["structure_center_m"])
-        size_x, size_y, _ = map(float, channel["structure_size_m"])
-        return [Box(f"{channel['id']}_no_static_occluder",
+    if passage_structure["kind"] != "intersection":
+        center_x, center_y = map(float, passage_structure["structure_center_m"])
+        size_x, size_y, _ = map(float, passage_structure["structure_size_m"])
+        return [Box(f"{passage_structure['id']}_no_static_occluder",
                     (center_x, center_y, 0.5 * (z_min + z_max)),
                     (size_x, size_y, z_max - z_min))]
 
     boxes = []
-    center_x, center_y = map(float, channel["intersection_center_m"])
-    size_x, size_y, _ = map(float, channel["intersection_size_m"])
-    boxes.append(Box(f"{channel['id']}_intersection_no_static_occluder",
+    center_x, center_y = map(float, passage_structure["intersection_center_m"])
+    size_x, size_y, _ = map(float, passage_structure["intersection_size_m"])
+    boxes.append(Box(f"{passage_structure['id']}_intersection_no_static_occluder",
                      (center_x, center_y, 0.5 * (z_min + z_max)),
                      (size_x, size_y, z_max - z_min)))
-    for bridge in channel["bridges"]:
+    for bridge in passage_structure["bridges"]:
         if bridge["blocked"]:
             continue
         bridge_x, bridge_y = map(float, bridge["center_m"])
         bridge_size_x, bridge_size_y, _ = map(float, bridge["size_m"])
-        boxes.append(Box(f"{channel['id']}_{bridge['id']}_no_static_occluder",
+        boxes.append(Box(f"{passage_structure['id']}_{bridge['id']}_no_static_occluder",
                          (bridge_x, bridge_y, 0.5 * (z_min + z_max)),
                          (bridge_size_x, bridge_size_y, z_max - z_min)))
     return boxes
@@ -164,8 +164,8 @@ def physical_boxes(spec: dict) -> list[Box]:
             boxes.append(Box(f"building_{index:03d}", (x, y, 0.5 * size_z),
                              (size_x, size_y, size_z), building_color(x, y)))
             index += 1
-    for channel in spec["channels"]:
-        boxes.extend(channel_boxes(channel))
+    for passage_structure in spec["passage_structures"]:
+        boxes.extend(passage_structure_boxes(passage_structure))
 
     unique: list[Box] = []
     seen_geometry: set[
@@ -286,8 +286,8 @@ def generate_sdf(spec: dict, boxes: Iterable[Box], output: Path) -> None:
     for box in boxes:
         add_box_model(world, spec, box)
 
-    for channel in spec["channels"]:
-        for occluder in channel_occluder_boxes(channel):
+    for passage_structure in spec["passage_structures"]:
+        for occluder in passage_structure_occluder_boxes(passage_structure):
             model = ET.SubElement(world, "model", {"name": occluder.id})
             add_text(model, "static", "true")
             px, py, pz = sdf_pose(spec, occluder.center)

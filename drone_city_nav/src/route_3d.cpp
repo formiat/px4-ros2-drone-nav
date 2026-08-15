@@ -107,7 +107,7 @@ RouteSample3D sampleRoute3DAtStation(const std::span<const RouteSample3D> route,
 
 std::uint64_t
 routeFingerprint(const std::span<const RouteSample3D> route,
-                 const std::span<const SelectedChannelTraversal> traversals) noexcept {
+                 const std::span<const SelectedPassageTraversal> traversals) noexcept {
   std::uint64_t hash = kFnvOffsetBasis;
   for (const RouteSample3D& sample : route) {
     hashSigned(hash,
@@ -118,8 +118,8 @@ routeFingerprint(const std::span<const RouteSample3D> route,
                static_cast<std::int64_t>(std::llround(sample.position.z * 1000.0)));
     hashByte(hash, static_cast<std::uint8_t>(sample.required_risk_tier));
   }
-  for (const SelectedChannelTraversal& traversal : traversals) {
-    hashText(hash, traversal.channel_id);
+  for (const SelectedPassageTraversal& traversal : traversals) {
+    hashText(hash, traversal.passage_traversal_id.value());
     hashSigned(hash, static_cast<std::int64_t>(
                          std::llround(traversal.begin_station_m * 1000.0)));
     hashSigned(hash, static_cast<std::int64_t>(
@@ -165,7 +165,7 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
                              : ConstrainedRoutePhase::kUnconstrained,
       .route_generation = route_generation,
       .span_count = spans.size(),
-      .channel_id = {},
+      .passage_traversal_id = {},
       .station_m = current_station_m,
       .actual_horizontal_speed_mps = std::hypot(actual_velocity.x, actual_velocity.y),
       .actual_vertical_speed_mps = actual_velocity.z,
@@ -216,7 +216,7 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
   observation.phase = selected_phase;
   observation.span_index = *selected_index;
   observation.span_available = true;
-  observation.channel_id = span.channel_id;
+  observation.passage_traversal_id = span.passage_traversal_id;
   observation.direction_sign = span.direction_sign;
   observation.begin_station_m = span.begin_station_m;
   observation.end_station_m = span.end_station_m;
@@ -446,17 +446,17 @@ RouteProjection3D projectOntoRoute3D(const std::span<const RouteSample3D> route,
 
 std::vector<ConstrainedRouteSpan>
 makeConstrainedRouteSpans(const std::span<const RouteSample3D> route,
-                          const std::span<const SelectedChannelTraversal> traversals,
+                          const std::span<const SelectedPassageTraversal> traversals,
                           const std::uint64_t route_generation,
                           const RouteEnvelopeConfig& config) {
   std::vector<ConstrainedRouteSpan> spans;
   spans.reserve(traversals.size());
-  for (const SelectedChannelTraversal& traversal : traversals) {
+  for (const SelectedPassageTraversal& traversal : traversals) {
     if (traversal.end_station_m - traversal.begin_station_m <
         config.minimum_span_length_m) {
       continue;
     }
-    ConstrainedRouteSpan span{.channel_id = traversal.channel_id,
+    ConstrainedRouteSpan span{.passage_traversal_id = traversal.passage_traversal_id,
                               .route_generation = route_generation,
                               .direction_sign = traversal.direction_sign,
                               .begin_station_m = traversal.begin_station_m,

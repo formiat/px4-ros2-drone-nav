@@ -28,7 +28,7 @@ makeLinearIntent(std::string vehicle_id, const Point3& start, const Vec3& veloci
       .current_velocity = velocity,
       .maneuver_state = CooperativeManeuver::kKeep,
       .conflicting_vehicle_ids = {},
-      .channel = {},
+      .passage = {},
       .trajectory = {},
   };
   for (std::size_t index = 0U; index <= static_cast<std::size_t>(duration_s * 10.0);

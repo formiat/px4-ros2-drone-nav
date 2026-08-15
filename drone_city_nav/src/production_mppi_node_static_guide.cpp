@@ -29,13 +29,13 @@ void ProductionMppiNode::processStaticGuideSearch(
              mission_goal.z - navigation.state.z};
   }
   const auto search_started = std::chrono::steady_clock::now();
-  const std::span<const ConstrainedFreeSpaceEdge> channel_edges =
-      world.channel_edges
-          ? std::span<const ConstrainedFreeSpaceEdge>{*world.channel_edges}
-          : std::span<const ConstrainedFreeSpaceEdge>{};
+  const std::span<const PassageTraversalEdge> passage_traversals =
+      world.passage_traversals
+          ? std::span<const PassageTraversalEdge>{*world.passage_traversals}
+          : std::span<const PassageTraversalEdge>{};
   const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
       world.grid, *world.distances_m, search_start, preferred_direction, mission_goal,
-      channel_edges, lattice_3d_config_, planning_worker_pool_.get());
+      passage_traversals, lattice_3d_config_, planning_worker_pool_.get());
   const double search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
@@ -100,7 +100,7 @@ void ProductionMppiNode::processStaticGuideSearch(
     auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(lattice.route);
     const std::uint64_t candidate_generation = static_route_generation_ + 1U;
     std::vector<ConstrainedRouteSpan> initial_spans =
-        makeConstrainedRouteSpans(*mutable_route, lattice.selected_channels,
+        makeConstrainedRouteSpans(*mutable_route, lattice.selected_passage_traversals,
                                   candidate_generation, route_envelope_config_);
     const auto smoothing_started = std::chrono::steady_clock::now();
     StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
@@ -133,7 +133,7 @@ void ProductionMppiNode::processStaticGuideSearch(
     for (ConstrainedRouteSpan& span : geometry.constrained_spans) {
       span.route_generation = candidate_generation;
     }
-    std::vector<CooperativeChannelAssignment> channel_assignments;
+    std::vector<CooperativePassageAssignment> passage_assignments;
     std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
     bool cooperative_route_valid = true;
     if (cooperative_traffic_enabled_ && static_occupancy_3d_) {
@@ -150,22 +150,22 @@ void ProductionMppiNode::processStaticGuideSearch(
       const std::span<const PassageVolume> volumes =
           passage_volumes ? std::span<const PassageVolume>{*passage_volumes}
                           : std::span<const PassageVolume>{};
-      CooperativeChannelRouteResult cooperative_route =
-          applyCooperativeChannelCorridors(*mutable_route, geometry.constrained_spans,
+      CooperativePassageRouteResult cooperative_route =
+          applyCooperativePassageCorridors(*mutable_route, geometry.constrained_spans,
                                            volumes, *static_occupancy_3d_,
-                                           cooperative_channel_route_config_);
+                                           cooperative_passage_route_config_);
       cooperative_route_valid = cooperative_route.valid;
       if (cooperative_route.valid) {
         *mutable_route = std::move(cooperative_route.route);
         geometry.constrained_spans = std::move(cooperative_route.constrained_spans);
       }
-      channel_assignments = std::move(cooperative_route.assignments);
+      passage_assignments = std::move(cooperative_route.assignments);
     }
     auto mutable_spans = std::make_shared<std::vector<ConstrainedRouteSpan>>(
         std::move(geometry.constrained_spans));
     if (!cooperative_route_valid) {
       validation = StaticRouteCandidateValidation{
-          .status = StaticRouteCandidateStatus::kInvalidChannelSpan};
+          .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
     } else if (assignRouteRiskTiers(*mutable_route, world.grid, *world.distances_m,
                                     mppi_config_.risk.critical_distance_m,
                                     mppi_config_.risk.preferred_distance_m)) {
@@ -193,12 +193,12 @@ void ProductionMppiNode::processStaticGuideSearch(
         mutable_spans;
     if (validation.accepted && spans->size() != initial_spans.size()) {
       validation = StaticRouteCandidateValidation{
-          .status = StaticRouteCandidateStatus::kInvalidChannelSpan};
+          .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
     }
     if (validation.accepted && !validateConstrainedRouteSpans(
                                    *route, *spans, world.grid, *world.distances_m)) {
       validation = StaticRouteCandidateValidation{
-          .status = StaticRouteCandidateStatus::kInvalidChannelSpan};
+          .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
     }
     const bool protected_suffix =
         (world.static_route_extension_request || world.static_route_replan_request) &&
@@ -210,26 +210,29 @@ void ProductionMppiNode::processStaticGuideSearch(
       validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kProtectedConstrainedSuffix};
     }
-    std::vector<std::string> selected_channel_ids;
-    selected_channel_ids.reserve(lattice.selected_channels.size());
-    for (const SelectedChannelTraversal& traversal : lattice.selected_channels) {
-      selected_channel_ids.push_back(traversal.channel_id);
+    std::vector<PassageTraversalId> selected_passage_traversal_ids;
+    selected_passage_traversal_ids.reserve(lattice.selected_passage_traversals.size());
+    for (const SelectedPassageTraversal& traversal :
+         lattice.selected_passage_traversals) {
+      selected_passage_traversal_ids.push_back(traversal.passage_traversal_id);
     }
     prepared.route_3d = route;
     prepared.route_2d_projection = projectRouteTo2D(*route);
     prepared.constrained_spans = spans;
     prepared.passage_volumes = std::move(passage_volumes);
-    prepared.cooperative_channel_assignments =
-        std::make_shared<const std::vector<CooperativeChannelAssignment>>(
-            std::move(channel_assignments));
-    prepared.selected_channel_ids = std::make_shared<const std::vector<std::string>>(
-        std::move(selected_channel_ids));
+    prepared.cooperative_passage_assignments =
+        std::make_shared<const std::vector<CooperativePassageAssignment>>(
+            std::move(passage_assignments));
+    prepared.selected_passage_traversal_ids =
+        std::make_shared<const std::vector<PassageTraversalId>>(
+            std::move(selected_passage_traversal_ids));
     prepared.mppi_route =
         makeMppiRoute3D(*route, *spans, speed_policy_config_.cruise_speed_mps,
                         constrained_route_speed_limit_mps_);
     prepared.global_guide_projection = projectOntoGlobalGuide(
         *prepared.route_2d_projection, Point2{navigation.state.x, navigation.state.y});
-    prepared.route_fingerprint = routeFingerprint(*route, lattice.selected_channels);
+    prepared.route_fingerprint =
+        routeFingerprint(*route, lattice.selected_passage_traversals);
     prepared.candidate_validation_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   validation_started)
@@ -335,23 +338,23 @@ void ProductionMppiNode::processStaticGuideSearch(
       activation_status = StaticRouteActivationStatus::kDynamicHandoffRejected;
     }
   }
-  if (activated && prepared.cooperative_channel_assignments) {
-    for (const CooperativeChannelAssignment& assignment :
-         *prepared.cooperative_channel_assignments) {
+  if (activated && prepared.cooperative_passage_assignments) {
+    for (const CooperativePassageAssignment& assignment :
+         *prepared.cooperative_passage_assignments) {
       RCLCPP_INFO(
           get_logger(),
-          "COOPERATIVE_CHANNEL_ROUTE route_generation=%" PRIu64
-          " span_index=%zu channel='%s' offset_interval_m=[%.2f,%.2f] "
+          "COOPERATIVE_PASSAGE_ROUTE route_generation=%" PRIu64
+          " span_index=%zu passage='%s' offset_interval_m=[%.2f,%.2f] "
           "secondary_interval_m=[%.2f,%.2f] cross_sections=%zu "
           "raw_volume=%s requested_offset_m=%.2f applied_offset_m=%.2f "
           "status=%s volume_build_ms=%.2f volume_resource_reused=%s",
           assignment.route_generation, assignment.span_index,
-          assignment.channel_id.c_str(), assignment.minimum_lateral_offset_m,
+          assignment.passage_traversal_id.c_str(), assignment.minimum_lateral_offset_m,
           assignment.maximum_lateral_offset_m, assignment.minimum_secondary_offset_m,
           assignment.maximum_secondary_offset_m, assignment.passage_cross_section_count,
           assignment.passage_volume_raw_validated ? "true" : "false",
           assignment.requested_lateral_offset_m, assignment.applied_lateral_offset_m,
-          cooperativeChannelRouteStatusName(assignment.status),
+          cooperativePassageRouteStatusName(assignment.status),
           prepared.passage_volume_build_ms,
           prepared.passage_volume_resource_reused ? "true" : "false");
     }
@@ -379,12 +382,12 @@ void ProductionMppiNode::processStaticGuideSearch(
       "lattice_successor_reject_invalid=%zu "
       "lattice_successor_reject_collision=%zu lattice_successor_reject_risk=%zu "
       "lattice_successor_reject_cost=%zu "
-      "channel_successor_generated=%zu channel_successor_accepted=%zu "
-      "channel_successor_rejected=%zu channel_successor_reject_connection=%zu "
-      "channel_successor_reject_grid=%zu channel_successor_reject_envelope=%zu "
-      "channel_successor_reject_invalid=%zu "
-      "channel_successor_reject_collision=%zu channel_successor_reject_risk=%zu "
-      "channel_successor_reject_cost=%zu "
+      "passage_successor_generated=%zu passage_successor_accepted=%zu "
+      "passage_successor_rejected=%zu passage_successor_reject_connection=%zu "
+      "passage_successor_reject_grid=%zu passage_successor_reject_envelope=%zu "
+      "passage_successor_reject_invalid=%zu "
+      "passage_successor_reject_collision=%zu passage_successor_reject_risk=%zu "
+      "passage_successor_reject_cost=%zu "
       "successor_search_batches=%zu successor_search_candidates=%zu "
       "successor_search_batch_max=%zu successor_search_worker_ms=%.3f "
       "successor_continuation_batches=%zu "
@@ -393,7 +396,7 @@ void ProductionMppiNode::processStaticGuideSearch(
       "successor_continuation_worker_ms=%.3f "
       "objective=%.3f route_length_m=%.2f travel_time_s=%.2f "
       "vertical_alignment_time_s=%.2f planning_exposure_m=%.2f "
-      "critical_exposure_m=%.2f selected_channels=%zu search_ms=%.2f "
+      "critical_exposure_m=%.2f selected_passage_traversals=%zu search_ms=%.2f "
       "topology_searches=%zu parallel_topology_searches=%zu "
       "topology_search_worker_ms=%.2f "
       "continuation_ms=%.2f validation_ms=%.2f smoothing_ms=%.2f "
@@ -443,16 +446,16 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.successor_diagnostics.lattice_rejected_raw_collision,
       lattice.successor_diagnostics.lattice_rejected_risk_stage,
       lattice.successor_diagnostics.lattice_rejected_no_cost_improvement,
-      lattice.successor_diagnostics.channel_generated,
-      lattice.successor_diagnostics.channel_accepted,
-      lattice.successor_diagnostics.channel_rejected,
-      lattice.successor_diagnostics.channel_rejected_connection_distance,
-      lattice.successor_diagnostics.channel_rejected_outside_grid,
-      lattice.successor_diagnostics.channel_rejected_flight_envelope,
-      lattice.successor_diagnostics.channel_rejected_invalid_esdf,
-      lattice.successor_diagnostics.channel_rejected_raw_collision,
-      lattice.successor_diagnostics.channel_rejected_risk_stage,
-      lattice.successor_diagnostics.channel_rejected_no_cost_improvement,
+      lattice.successor_diagnostics.passage_generated,
+      lattice.successor_diagnostics.passage_accepted,
+      lattice.successor_diagnostics.passage_rejected,
+      lattice.successor_diagnostics.passage_rejected_connection_distance,
+      lattice.successor_diagnostics.passage_rejected_outside_grid,
+      lattice.successor_diagnostics.passage_rejected_flight_envelope,
+      lattice.successor_diagnostics.passage_rejected_invalid_esdf,
+      lattice.successor_diagnostics.passage_rejected_raw_collision,
+      lattice.successor_diagnostics.passage_rejected_risk_stage,
+      lattice.successor_diagnostics.passage_rejected_no_cost_improvement,
       lattice.successor_profiling.search.collection_calls,
       lattice.successor_profiling.search.candidates,
       lattice.successor_profiling.search.maximum_candidates,
@@ -463,8 +466,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.successor_profiling.continuation.worker_ms, lattice.objective_cost,
       lattice.route_length_m, lattice.estimated_travel_time_s,
       lattice.vertical_alignment_time_s, lattice.planning_exposure_m,
-      lattice.critical_exposure_m, lattice.selected_channels.size(), search_ms,
-      lattice.topology_searches, lattice.parallel_topology_searches,
+      lattice.critical_exposure_m, lattice.selected_passage_traversals.size(),
+      search_ms, lattice.topology_searches, lattice.parallel_topology_searches,
       lattice.topology_search_worker_ms, prepared.continuation_validation_ms,
       prepared.candidate_validation_ms, prepared.route_smoothing_ms,
       prepared.route_shortcut_validation_ms, prepared.route_corner_validation_ms,

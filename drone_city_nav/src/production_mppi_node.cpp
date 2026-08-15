@@ -18,8 +18,8 @@ productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcep
       return "planned";
     case ProductionMppiPlanningState::kMissionCommandPositionHold:
       return "mission_command_position_hold";
-    case ProductionMppiPlanningState::kCooperativeChannelYieldHold:
-      return "cooperative_channel_yield_hold";
+    case ProductionMppiPlanningState::kCooperativePassageYieldHold:
+      return "cooperative_passage_yield_hold";
     case ProductionMppiPlanningState::kMissionGoalPositionHold:
       return "mission_goal_position_hold";
     case ProductionMppiPlanningState::kNoExecutableRouteHold:
@@ -59,8 +59,8 @@ productionMppiExecutionReasonName(const ProductionMppiExecutionReason reason) no
       return "none";
     case ProductionMppiExecutionReason::kNoExecutableHorizon:
       return "no_executable_horizon";
-    case ProductionMppiExecutionReason::kCooperativeChannelYield:
-      return "cooperative_channel_yield";
+    case ProductionMppiExecutionReason::kCooperativePassageYield:
+      return "cooperative_passage_yield";
     case ProductionMppiExecutionReason::kGoalCapture:
       return "goal_capture";
     case ProductionMppiExecutionReason::kNoExecutableRoute:
@@ -517,8 +517,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "global_lattice_3d_vertical_alignment_cost_weight", 0.0);
   lattice_3d_config_.route_shape_turn_cost_per_rad = declare_parameter<double>(
       "global_lattice_3d_route_shape_turn_cost_per_rad", 0.10);
-  lattice_3d_config_.channel_topology_transition_cost = declare_parameter<double>(
-      "global_lattice_3d_channel_topology_transition_cost", 0.0);
+  lattice_3d_config_.passage_topology_transition_cost = declare_parameter<double>(
+      "global_lattice_3d_passage_topology_transition_cost", 0.0);
   static_route_geometry_config_.sample_step_m = lattice_3d_config_.sample_step_m;
   static_route_geometry_config_.maximum_shortcut_length_m =
       declare_parameter<double>("static_route_maximum_shortcut_length_m", 30.0);
@@ -530,8 +530,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("global_lattice_3d_planning_exposure_cost_per_m", 0.05);
   lattice_3d_config_.critical_exposure_cost_per_m =
       declare_parameter<double>("global_lattice_3d_critical_exposure_cost_per_m", 0.50);
-  lattice_3d_config_.channel_connection_distance_m =
-      declare_parameter<double>("global_lattice_3d_channel_connection_distance_m", 3.0);
+  lattice_3d_config_.passage_connection_distance_m =
+      declare_parameter<double>("global_lattice_3d_passage_connection_distance_m", 3.0);
   lattice_3d_config_.frontier_minimum_reachable_depth_m =
       declare_parameter<double>("global_lattice_3d_frontier_reachable_depth_m", 8.0);
   lattice_3d_config_.frontier_validation_maximum_states =
@@ -646,13 +646,13 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_.nominal_vertical_speed_mps > 0.0) ||
       !(lattice_3d_config_.vertical_alignment_cost_weight >= 0.0) ||
       !(lattice_3d_config_.route_shape_turn_cost_per_rad >= 0.0) ||
-      !(lattice_3d_config_.channel_topology_transition_cost >= 0.0) ||
+      !(lattice_3d_config_.passage_topology_transition_cost >= 0.0) ||
       !(static_route_geometry_config_.maximum_shortcut_length_m > 0.0) ||
       !(static_route_geometry_config_.corner_smoothing_distance_m >= 0.0) ||
       static_route_geometry_config_.corner_curve_samples < 2U ||
       !(lattice_3d_config_.planning_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.critical_exposure_cost_per_m >= 0.0) ||
-      !(lattice_3d_config_.channel_connection_distance_m > 0.0) ||
+      !(lattice_3d_config_.passage_connection_distance_m > 0.0) ||
       !(lattice_3d_config_.frontier_minimum_reachable_depth_m > 0.0) ||
       lattice_3d_config_.frontier_validation_maximum_states == 0U ||
       !(physical_footprint_config_.sweep_step_m > 0.0) ||
@@ -758,9 +758,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                   cache_path.c_str(), error.what());
     }
     const DerivedPortalGraph& portal_graph = static_occupancy_3d_->portalGraph();
-    static_portal_edges_ =
-        std::make_shared<const std::vector<ConstrainedFreeSpaceEdge>>(
-            portal_graph.traversal_edges);
+    static_portal_edges_ = std::make_shared<const std::vector<PassageTraversalEdge>>(
+        portal_graph.traversal_edges);
     RCLCPP_INFO(get_logger(),
                 "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
                 " occupied_voxels=%zu passage_regions=%zu portals=%zu "

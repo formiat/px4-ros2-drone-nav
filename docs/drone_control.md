@@ -47,7 +47,7 @@ The old horizon is not extended beyond its validity deadline.
 ## Constrained Route Execution
 
 Static `RouteSample3D` references carry altitude and speed constraints along
-canonical air-channel spans. MPPI follows the same typed route continuously;
+canonical air-passage spans. MPPI follows the same typed route continuously;
 there is no separate passage hold or nearest-opening selector.
 
 ## Vehicle Destruction

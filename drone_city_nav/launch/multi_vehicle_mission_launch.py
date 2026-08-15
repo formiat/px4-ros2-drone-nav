@@ -218,8 +218,8 @@ def make_cooperative_mission_nodes(
                         "execution_horizon_topic": (
                             f"{prefix}/mppi/execution_horizon"
                         ),
-                        "channel_state_topic": (
-                            f"{prefix}/cooperative/channel_state"
+                        "passage_state_topic": (
+                            f"{prefix}/cooperative/passage_state"
                         ),
                         "flight_intent_topic": intent_topic,
                         "flight_intent_publish_topic": intent_topic,
@@ -228,15 +228,15 @@ def make_cooperative_mission_nodes(
                         ),
                         "maximum_intent_horizon_s": prediction_horizon_s,
                         "conflict_prediction_horizon_s": prediction_horizon_s,
-                        "channel_conflict_prediction_horizon_s": (
+                        "passage_conflict_prediction_horizon_s": (
                             prediction_horizon_s
                         ),
                         "desired_minimum_separation_m": desired_separation_m,
                         "release_separation_m": release_separation_m,
-                        "channel_desired_minimum_separation_m": (
+                        "passage_desired_minimum_separation_m": (
                             desired_separation_m
                         ),
-                        "channel_release_separation_m": release_separation_m,
+                        "passage_release_separation_m": release_separation_m,
                         "footprint_radius_m": planner[
                             "physical_footprint_radius_m"
                         ],

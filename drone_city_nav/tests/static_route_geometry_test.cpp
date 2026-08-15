@@ -31,7 +31,7 @@ TEST(StaticRouteGeometryTest, ShortcutsOpenUnconstrainedZigzag) {
   EXPECT_LT(result.route.back().station_m, route.back().station_m);
 }
 
-TEST(StaticRouteGeometryTest, PreservesConstrainedChannelGeometry) {
+TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
   const mppi::EsdfGrid grid{80, 80, 1.0F, 0.0F, 0.0F, 20, 0.0F};
   const std::vector<float> esdf(
       static_cast<std::size_t>(grid.width * grid.height * grid.depth),
@@ -40,8 +40,8 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedChannelGeometry) {
       std::vector<Point3>{
           {5.0, 5.0, 5.0}, {15.0, 5.0, 5.0}, {15.0, 15.0, 5.0}, {25.0, 15.0, 5.0}},
       0.5, 20.0);
-  const std::vector<SelectedChannelTraversal> traversals{
-      SelectedChannelTraversal{.channel_id = "channel",
+  const std::vector<SelectedPassageTraversal> traversals{
+      SelectedPassageTraversal{.passage_traversal_id = "passage",
                                .direction_sign = 1,
                                .begin_station_m = 10.0,
                                .end_station_m = 20.0,
@@ -60,7 +60,7 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedChannelGeometry) {
       StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
 
   ASSERT_EQ(result.constrained_spans.size(), 1U);
-  EXPECT_EQ(result.constrained_spans.front().channel_id, "channel");
+  EXPECT_EQ(result.constrained_spans.front().passage_traversal_id, "passage");
   EXPECT_EQ(result.constrained_spans.front().direction_sign, 1);
   EXPECT_TRUE(std::ranges::any_of(result.route, [](const RouteSample3D& sample) {
     return distance3D(sample.position, Point3{15.0, 5.0, 5.0}) < 0.25;

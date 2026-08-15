@@ -12,12 +12,12 @@ void ProductionMppiNode::configureCooperativeTraffic() {
   cooperative_traffic_enabled_ =
       declare_parameter<bool>("cooperative_traffic_enabled", false);
   vehicle_id_ = declare_parameter<std::string>("vehicle_id", "");
-  cooperative_channel_route_config_.desired_center_separation_m =
-      declare_parameter<double>("cooperative_channel_desired_center_separation_m", 5.0);
+  cooperative_passage_route_config_.desired_center_separation_m =
+      declare_parameter<double>("cooperative_passage_desired_center_separation_m", 5.0);
   cooperative_passage_volume_config_.minimum_wall_clearance_m =
-      declare_parameter<double>("cooperative_channel_minimum_wall_clearance_m", 1.0);
+      declare_parameter<double>("cooperative_passage_minimum_wall_clearance_m", 1.0);
   cooperative_passage_volume_config_.lateral_probe_step_m =
-      declare_parameter<double>("cooperative_channel_lateral_probe_step_m", 0.5);
+      declare_parameter<double>("cooperative_passage_lateral_probe_step_m", 0.5);
   cooperative_passage_volume_config_.cross_section_spacing_m =
       declare_parameter<double>("cooperative_passage_cross_section_spacing_m", 1.0);
   cooperative_passage_volume_config_.secondary_probe_step_m =
@@ -34,26 +34,26 @@ void ProductionMppiNode::configureCooperativeTraffic() {
       .axial_samples = physical_footprint_config_.axial_samples,
       .sweep_step_m = physical_footprint_config_.sweep_step_m,
   };
-  cooperative_channel_route_config_.preferred_transition_length_m =
-      declare_parameter<double>("cooperative_channel_preferred_transition_m", 10.0);
-  cooperative_channel_route_config_.minimum_transition_length_m =
-      declare_parameter<double>("cooperative_channel_minimum_transition_m", 3.0);
-  cooperative_channel_route_config_.directional_offset_fraction =
-      declare_parameter<double>("cooperative_channel_directional_offset_fraction", 0.5);
-  cooperative_channel_route_config_.footprint =
+  cooperative_passage_route_config_.preferred_transition_length_m =
+      declare_parameter<double>("cooperative_passage_preferred_transition_m", 10.0);
+  cooperative_passage_route_config_.minimum_transition_length_m =
+      declare_parameter<double>("cooperative_passage_minimum_transition_m", 3.0);
+  cooperative_passage_route_config_.directional_offset_fraction =
+      declare_parameter<double>("cooperative_passage_directional_offset_fraction", 0.5);
+  cooperative_passage_route_config_.footprint =
       cooperative_passage_volume_config_.footprint;
-  cooperative_channel_timing_config_.minimum_prediction_speed_mps =
-      declare_parameter<double>("cooperative_channel_minimum_prediction_speed_mps",
+  cooperative_passage_timing_config_.minimum_prediction_speed_mps =
+      declare_parameter<double>("cooperative_passage_minimum_prediction_speed_mps",
                                 1.0);
-  cooperative_channel_timing_config_.maximum_prediction_horizon_s =
-      declare_parameter<double>("cooperative_channel_maximum_prediction_horizon_s",
+  cooperative_passage_timing_config_.maximum_prediction_horizon_s =
+      declare_parameter<double>("cooperative_passage_maximum_prediction_horizon_s",
                                 30.0);
-  cooperative_channel_yield_config_.stopping_buffer_m =
-      declare_parameter<double>("cooperative_channel_stopping_buffer_m", 2.0);
-  cooperative_channel_yield_config_.reaction_latency_s =
-      declare_parameter<double>("cooperative_channel_reaction_latency_s", 0.1);
-  cooperative_channel_yield_config_.maximum_braking_acceleration_mps2 =
-      declare_parameter<double>("cooperative_channel_maximum_braking_mps2", 8.0);
+  cooperative_passage_yield_config_.stopping_buffer_m =
+      declare_parameter<double>("cooperative_passage_stopping_buffer_m", 2.0);
+  cooperative_passage_yield_config_.reaction_latency_s =
+      declare_parameter<double>("cooperative_passage_reaction_latency_s", 0.1);
+  cooperative_passage_yield_config_.maximum_braking_acceleration_mps2 =
+      declare_parameter<double>("cooperative_passage_maximum_braking_mps2", 8.0);
   mppi_config_.cooperative.desired_minimum_separation_m = static_cast<float>(
       declare_parameter<double>("cooperative_desired_minimum_separation_m", 5.0));
   mppi_config_.cooperative.candidate_acceleration_fraction = static_cast<float>(
@@ -67,18 +67,18 @@ void ProductionMppiNode::configureCooperativeTraffic() {
 
   if ((cooperative_traffic_enabled_ && vehicle_id_.empty()) ||
       !passageVolumeConfigIsValid(cooperative_passage_volume_config_) ||
-      !(cooperative_channel_route_config_.desired_center_separation_m > 0.0) ||
-      !(cooperative_channel_route_config_.directional_offset_fraction >= 0.0) ||
-      !(cooperative_channel_route_config_.directional_offset_fraction <= 1.0) ||
-      !(cooperative_channel_route_config_.preferred_transition_length_m > 0.0) ||
-      !(cooperative_channel_route_config_.minimum_transition_length_m > 0.0) ||
-      cooperative_channel_route_config_.minimum_transition_length_m >
-          cooperative_channel_route_config_.preferred_transition_length_m ||
-      !(cooperative_channel_timing_config_.minimum_prediction_speed_mps > 0.0) ||
-      !(cooperative_channel_timing_config_.maximum_prediction_horizon_s > 0.0) ||
-      !(cooperative_channel_yield_config_.stopping_buffer_m >= 0.0) ||
-      !(cooperative_channel_yield_config_.reaction_latency_s >= 0.0) ||
-      !(cooperative_channel_yield_config_.maximum_braking_acceleration_mps2 > 0.0)) {
+      !(cooperative_passage_route_config_.desired_center_separation_m > 0.0) ||
+      !(cooperative_passage_route_config_.directional_offset_fraction >= 0.0) ||
+      !(cooperative_passage_route_config_.directional_offset_fraction <= 1.0) ||
+      !(cooperative_passage_route_config_.preferred_transition_length_m > 0.0) ||
+      !(cooperative_passage_route_config_.minimum_transition_length_m > 0.0) ||
+      cooperative_passage_route_config_.minimum_transition_length_m >
+          cooperative_passage_route_config_.preferred_transition_length_m ||
+      !(cooperative_passage_timing_config_.minimum_prediction_speed_mps > 0.0) ||
+      !(cooperative_passage_timing_config_.maximum_prediction_horizon_s > 0.0) ||
+      !(cooperative_passage_yield_config_.stopping_buffer_m >= 0.0) ||
+      !(cooperative_passage_yield_config_.reaction_latency_s >= 0.0) ||
+      !(cooperative_passage_yield_config_.maximum_braking_acceleration_mps2 > 0.0)) {
     throw std::invalid_argument{"invalid cooperative planner configuration"};
   }
 }
@@ -97,9 +97,9 @@ void ProductionMppiNode::createCooperativeTrafficInterfaces(
         onCooperativeManeuverCommand(*message);
       },
       subscription_options);
-  cooperative_channel_state_pub_ = create_publisher<msg::CooperativeChannelIntent>(
-      declare_parameter<std::string>("cooperative_channel_state_topic",
-                                     "/drone_city_nav/cooperative/channel_state"),
+  cooperative_passage_state_pub_ = create_publisher<msg::CooperativePassageIntent>(
+      declare_parameter<std::string>("cooperative_passage_state_topic",
+                                     "/drone_city_nav/cooperative/passage_state"),
       command_qos);
 }
 
@@ -143,25 +143,25 @@ ProductionMppiCooperativeUpdate ProductionMppiNode::prepareCooperativeTick(
     return result;
   }
 
-  const CooperativeChannelAssignment* assignment = nullptr;
-  if (route_observation.span_available && esdf.cooperative_channel_assignments &&
-      route_observation.span_index < esdf.cooperative_channel_assignments->size()) {
-    const CooperativeChannelAssignment& candidate =
-        (*esdf.cooperative_channel_assignments)[route_observation.span_index];
+  const CooperativePassageAssignment* assignment = nullptr;
+  if (route_observation.span_available && esdf.cooperative_passage_assignments &&
+      route_observation.span_index < esdf.cooperative_passage_assignments->size()) {
+    const CooperativePassageAssignment& candidate =
+        (*esdf.cooperative_passage_assignments)[route_observation.span_index];
     if (candidate.span_index == route_observation.span_index &&
         candidate.route_generation == route_observation.route_generation &&
-        candidate.channel_id == route_observation.channel_id) {
+        candidate.passage_traversal_id == route_observation.passage_traversal_id) {
       assignment = &candidate;
     }
   }
   if (assignment != nullptr) {
-    result.channel = makeCooperativeChannelUse(route_observation, *assignment, now_ns,
+    result.passage = makeCooperativePassageUse(route_observation, *assignment, now_ns,
                                                planned_speed_mps,
-                                               cooperative_channel_timing_config_);
+                                               cooperative_passage_timing_config_);
   }
-  if (cooperative_channel_state_pub_) {
-    cooperative_channel_state_pub_->publish(
-        cooperativeChannelIntentMessage(result.channel));
+  if (cooperative_passage_state_pub_) {
+    cooperative_passage_state_pub_->publish(
+        cooperativePassageIntentMessage(result.passage));
   }
   if (!command.has_value()) {
     return result;
@@ -175,9 +175,9 @@ ProductionMppiCooperativeUpdate ProductionMppiNode::prepareCooperativeTick(
   result.mppi =
       adaptCooperativeMppiCommand(command->data, vehicle_id_, now_ns,
                                   mppi_config_.steps, mppi_config_.dynamics.dt_s);
-  result.yield = evaluateCooperativeChannelYield(
-      command->data, result.channel, route_observation, vehicle_id_, now_ns,
-      route_observation.actual_horizontal_speed_mps, cooperative_channel_yield_config_);
+  result.yield = evaluateCooperativePassageYield(
+      command->data, result.passage, route_observation, vehicle_id_, now_ns,
+      route_observation.actual_horizontal_speed_mps, cooperative_passage_yield_config_);
   return result;
 }
 

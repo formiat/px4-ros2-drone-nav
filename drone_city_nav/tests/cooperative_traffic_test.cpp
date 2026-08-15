@@ -1,4 +1,4 @@
-#include "drone_city_nav/cooperative_channel_coordination.hpp"
+#include "drone_city_nav/cooperative_passage_coordination.hpp"
 #include "drone_city_nav/cooperative_traffic.hpp"
 
 #include <gtest/gtest.h>
@@ -14,7 +14,7 @@ constexpr std::int64_t kNowNs{1'000'000'000LL};
 
 [[nodiscard]] CooperativeFlightIntentData
 linearIntent(const std::string& vehicle_id, const Point3& first, const Point3& second,
-             const Vec3& velocity, const CooperativeChannelUse& channel = {}) {
+             const Vec3& velocity, const CooperativePassageUse& passage = {}) {
   return CooperativeFlightIntentData{
       .vehicle_id = vehicle_id,
       .frame_id = "map",
@@ -30,7 +30,7 @@ linearIntent(const std::string& vehicle_id, const Point3& first, const Point3& s
       .maneuver_state = CooperativeManeuver::kKeep,
       .conflict_generation = 0U,
       .conflicting_vehicle_ids = {},
-      .channel = channel,
+      .passage = passage,
       .trajectory =
           {
               CooperativeTrajectorySample{
@@ -48,13 +48,13 @@ linearIntent(const std::string& vehicle_id, const Point3& first, const Point3& s
   };
 }
 
-[[nodiscard]] CooperativeChannelUse
-channelUse(const std::string& channel_id, const std::string& resource_id,
+[[nodiscard]] CooperativePassageUse
+passageUse(const std::string& passage_traversal_id, const std::string& resource_id,
            const double lateral_offset_m, const double minimum_offset_m,
            const double maximum_offset_m, const int direction_sign,
-           const CooperativeChannelPhase phase = CooperativeChannelPhase::kApproach) {
-  return CooperativeChannelUse{
-      .channel_id = channel_id,
+           const CooperativePassagePhase phase = CooperativePassagePhase::kApproach) {
+  return CooperativePassageUse{
+      .passage_traversal_id = passage_traversal_id,
       .conflict_resource_id = resource_id,
       .route_generation = 1U,
       .phase = phase,
@@ -201,41 +201,41 @@ TEST(CooperativeConflictLifecycle, LatchesPrimaryPeerDuringThreeVehicleConflict)
   EXPECT_EQ(updated.preferred_maneuver, initial_maneuver);
 }
 
-TEST(CooperativeChannelCoordination, MeasuresContinuousLateralSeparation) {
-  const CooperativeChannelUse first =
-      channelUse("channel", "channel", -3.0, -6.0, 6.0, 1);
-  const CooperativeChannelUse second =
-      channelUse("channel", "channel", 3.0, -6.0, 6.0, -1);
+TEST(CooperativePassageCoordination, MeasuresContinuousLateralSeparation) {
+  const CooperativePassageUse first =
+      passageUse("passage", "passage", -3.0, -6.0, 6.0, 1);
+  const CooperativePassageUse second =
+      passageUse("passage", "passage", 3.0, -6.0, 6.0, -1);
 
-  EXPECT_DOUBLE_EQ(channelLateralSeparationM(first, second), 6.0);
+  EXPECT_DOUBLE_EQ(passageLateralSeparationM(first, second), 6.0);
 }
 
-TEST(CooperativeChannelCoordination, AllowsSeparatedOppositeContinuousOffsets) {
+TEST(CooperativePassageCoordination, AllowsSeparatedOppositeContinuousOffsets) {
   const CooperativeFlightIntentData ownship = linearIntent(
       "civilian_1", Point3{-10.0, 0.0, 10.0}, Point3{10.0, 0.0, 10.0},
-      Vec3{10.0, 0.0, 0.0}, channelUse("channel", "channel", -3.0, -6.0, 6.0, 1));
+      Vec3{10.0, 0.0, 0.0}, passageUse("passage", "passage", -3.0, -6.0, 6.0, 1));
   const CooperativeFlightIntentData peer = linearIntent(
       "civilian_0", Point3{10.0, 0.0, 10.0}, Point3{-10.0, 0.0, 10.0},
-      Vec3{-10.0, 0.0, 0.0}, channelUse("channel", "channel", 3.0, -6.0, 6.0, -1));
+      Vec3{-10.0, 0.0, 0.0}, passageUse("passage", "passage", 3.0, -6.0, 6.0, -1));
 
-  const CooperativeChannelDecision decision =
-      coordinateCooperativeChannel(ownship, std::vector{peer});
+  const CooperativePassageDecision decision =
+      coordinateCooperativePassage(ownship, std::vector{peer});
 
   EXPECT_TRUE(decision.active);
   EXPECT_DOUBLE_EQ(decision.lateral_offset_m, -3.0);
   EXPECT_FALSE(decision.yield_before_entry);
 }
 
-TEST(CooperativeChannelCoordination, OrdersAnExclusiveNarrowCorridorInTime) {
+TEST(CooperativePassageCoordination, OrdersAnExclusiveNarrowCorridorInTime) {
   const CooperativeFlightIntentData ownship = linearIntent(
       "civilian_1", Point3{-10.0, 0.0, 10.0}, Point3{10.0, 0.0, 10.0},
-      Vec3{10.0, 0.0, 0.0}, channelUse("channel", "channel", -2.0, -2.0, 2.0, 1));
+      Vec3{10.0, 0.0, 0.0}, passageUse("passage", "passage", -2.0, -2.0, 2.0, 1));
   const CooperativeFlightIntentData peer = linearIntent(
       "civilian_0", Point3{10.0, 0.0, 10.0}, Point3{-10.0, 0.0, 10.0},
-      Vec3{-10.0, 0.0, 0.0}, channelUse("channel", "channel", 2.0, -2.0, 2.0, -1));
+      Vec3{-10.0, 0.0, 0.0}, passageUse("passage", "passage", 2.0, -2.0, 2.0, -1));
 
-  const CooperativeChannelDecision decision =
-      coordinateCooperativeChannel(ownship, std::vector{peer});
+  const CooperativePassageDecision decision =
+      coordinateCooperativePassage(ownship, std::vector{peer});
 
   EXPECT_TRUE(decision.yield_before_entry);
   EXPECT_EQ(decision.yield_to_vehicle_id, "civilian_0");
@@ -243,36 +243,36 @@ TEST(CooperativeChannelCoordination, OrdersAnExclusiveNarrowCorridorInTime) {
   EXPECT_EQ(decision.entry_not_before_ns, kNowNs + 4'500'000'000LL);
 }
 
-TEST(CooperativeChannelCoordination, ReservesOnlyAConflictingJunctionMovement) {
+TEST(CooperativePassageCoordination, ReservesOnlyAConflictingJunctionMovement) {
   const CooperativeFlightIntentData ownship =
       linearIntent("civilian_1", Point3{-10.0, 0.0, 10.0}, Point3{10.0, 0.0, 10.0},
                    Vec3{10.0, 0.0, 0.0},
-                   channelUse("junction:west_east", "junction", -3.0, -6.0, 6.0, 1));
+                   passageUse("junction:west_east", "junction", -3.0, -6.0, 6.0, 1));
   const CooperativeFlightIntentData peer =
       linearIntent("civilian_0", Point3{0.0, -10.0, 10.0}, Point3{0.0, 10.0, 10.0},
                    Vec3{0.0, 10.0, 0.0},
-                   channelUse("junction:south_north", "junction", -3.0, -6.0, 6.0, 1));
+                   passageUse("junction:south_north", "junction", -3.0, -6.0, 6.0, 1));
 
-  const CooperativeChannelDecision decision =
-      coordinateCooperativeChannel(ownship, std::vector{peer});
+  const CooperativePassageDecision decision =
+      coordinateCooperativePassage(ownship, std::vector{peer});
 
   EXPECT_TRUE(decision.yield_before_entry);
   EXPECT_TRUE(decision.conflict_zone_only);
   EXPECT_EQ(decision.yield_to_vehicle_id, "civilian_0");
 }
 
-TEST(CooperativeChannelCoordination, SamePathNeedsNoDelayWhenSpacingIsSafe) {
+TEST(CooperativePassageCoordination, SamePathNeedsNoDelayWhenSpacingIsSafe) {
   CooperativeFlightIntentData ownship = linearIntent(
       "civilian_1", Point3{-20.0, 0.0, 10.0}, Point3{-10.0, 0.0, 10.0},
-      Vec3{5.0, 0.0, 0.0}, channelUse("channel", "channel", -3.0, -6.0, 6.0, 1));
+      Vec3{5.0, 0.0, 0.0}, passageUse("passage", "passage", -3.0, -6.0, 6.0, 1));
   CooperativeFlightIntentData peer = linearIntent(
       "civilian_0", Point3{10.0, 0.0, 10.0}, Point3{20.0, 0.0, 10.0},
-      Vec3{5.0, 0.0, 0.0}, channelUse("channel", "channel", -3.0, -6.0, 6.0, 1));
-  ownship.channel.predicted_entry_ns = kNowNs + 2'000'000'000LL;
-  peer.channel.predicted_entry_ns = kNowNs + 1'000'000'000LL;
+      Vec3{5.0, 0.0, 0.0}, passageUse("passage", "passage", -3.0, -6.0, 6.0, 1));
+  ownship.passage.predicted_entry_ns = kNowNs + 2'000'000'000LL;
+  peer.passage.predicted_entry_ns = kNowNs + 1'000'000'000LL;
 
-  const CooperativeChannelDecision decision =
-      coordinateCooperativeChannel(ownship, std::vector{peer});
+  const CooperativePassageDecision decision =
+      coordinateCooperativePassage(ownship, std::vector{peer});
 
   EXPECT_FALSE(decision.yield_before_entry);
   EXPECT_EQ(decision.entry_not_before_ns, 0);

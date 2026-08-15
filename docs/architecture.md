@@ -67,7 +67,7 @@ Gazebo contact involving the drone
 - builds and maintains the active global lattice guide;
 - selects local lookahead targets;
 - runs the persistent CUDA MPPI engine;
-- follows typed 3D route samples and constrained channel spans;
+- follows typed 3D route samples and constrained passage spans;
 - converts the reconstructed horizon into one finite path whose speed profile
   reaches a terminal rest state;
 - validates that complete path against physical occupancy and fresh direct raw
@@ -142,7 +142,7 @@ Static production planning uses:
 - typed 3D routes with constrained spans inferred from the route envelope.
 
 No-static production planning uses the raw 2D obstacle snapshot and a
-2D distance field. It does not load channel metadata or the canonical 3D map.
+2D distance field. It does not load passage metadata or the canonical 3D map.
 
 There are no separately materialized planner/prohibited inflated grids,
 artificial hard collision envelopes around raw cells, inflation relaxation, or
@@ -366,7 +366,7 @@ scheduling.
 - Static planning is not incremental AD* yet.
 - Static mode currently plans only against canonical Occupancy3D; lidar memory
   is not fused into its 3D collision map.
-- No-static perception remains 2D and intentionally has no channel semantics.
+- No-static perception remains 2D and intentionally has no passage semantics.
 - Collision validation uses a swept oriented 3D footprint against physical raw
   occupancy. No additional artificial footprint inflation is part of the
   planning contract.

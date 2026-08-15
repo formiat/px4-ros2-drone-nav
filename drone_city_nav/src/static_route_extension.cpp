@@ -395,8 +395,8 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
       return "raw_collision";
     case StaticRouteCandidateStatus::kOutsideFlightEnvelope:
       return "outside_flight_envelope";
-    case StaticRouteCandidateStatus::kInvalidChannelSpan:
-      return "invalid_channel_span";
+    case StaticRouteCandidateStatus::kInvalidPassageSpan:
+      return "invalid_passage_span";
     case StaticRouteCandidateStatus::kProtectedConstrainedSuffix:
       return "protected_constrained_suffix";
     case StaticRouteCandidateStatus::kNoEndpointImprovement:
