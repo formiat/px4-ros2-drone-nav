@@ -595,5 +595,27 @@ TEST(MppiReferenceTest, FlightEnvelopeRequiresJerkLimitedVerticalStoppingRoom) {
       State{.z = 27.0F, .vz = 5.0F}, Control{.az = 4.0F}, dynamics, envelope));
 }
 
+TEST(MppiReferenceTest,
+     FlightEnvelopeUsesGuaranteedVerticalStoppingAndReactionLatency) {
+  DynamicsConfig dynamics;
+  dynamics.maximum_vertical_acceleration_mps2 = 4.0F;
+  dynamics.maximum_control_jerk_mps3 = 20.0F;
+  const AltitudeEnvelopeConfig envelope{
+      .minimum_z_m = 1.0F,
+      .maximum_z_m = 32.0F,
+      .guaranteed_vertical_deceleration_mps2 = 2.0F,
+      .reaction_latency_s = 0.1F,
+  };
+  const Control accelerating_down{.az = -4.0F};
+
+  EXPECT_NEAR(
+      verticalStoppingDistanceM(-5.0F, accelerating_down.az, dynamics, 2.0F, 0.1F),
+      10.3525F, 1.0e-3F);
+  EXPECT_FALSE(altitudeEnvelopeDynamicallyRecoverable(
+      State{.z = 11.0F, .vz = -5.0F}, accelerating_down, dynamics, envelope));
+  EXPECT_TRUE(altitudeEnvelopeDynamicallyRecoverable(
+      State{.z = 12.0F, .vz = -5.0F}, accelerating_down, dynamics, envelope));
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

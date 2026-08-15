@@ -106,7 +106,7 @@ TEST(MppiFiniteHorizon, UsesConservativeHorizontalDecelerationInArrivalProfile) 
   const std::vector<Control> controls(120U);
   const std::vector<State> states = simulate(State{.vx = 10.0F}, controls, dynamics);
   FiniteHorizonConfig config;
-  config.maximum_horizontal_deceleration_mps2 = 4.0F;
+  config.stopping_capability.guaranteed_horizontal_deceleration_mps2 = 4.0;
 
   const std::optional<FiniteHorizon> finite =
       buildFiniteHorizon(states, controls, 0U, dynamics, Control{}, config);
@@ -115,7 +115,49 @@ TEST(MppiFiniteHorizon, UsesConservativeHorizontalDecelerationInArrivalProfile) 
   const FiniteHorizon path = finite.value_or(FiniteHorizon{});
   for (const Control& control : path.controls) {
     EXPECT_LE(std::hypot(control.ax, control.ay),
-              config.maximum_horizontal_deceleration_mps2 + 1.0e-4F);
+              config.stopping_capability.guaranteed_horizontal_deceleration_mps2 +
+                  1.0e-4);
+  }
+  EXPECT_TRUE(finiteHorizonHasTerminalRestState(path));
+}
+
+TEST(MppiFiniteHorizon, PreservesCommandedAndGuaranteedStoppingLimits) {
+  const StoppingCapability capability{
+      .maximum_commanded_horizontal_deceleration_mps2 = 8.0,
+      .guaranteed_horizontal_deceleration_mps2 = 4.0,
+      .guaranteed_vertical_deceleration_mps2 = 2.0,
+      .reaction_latency_s = 0.1,
+  };
+  const FiniteHorizonConfig config = makeFiniteHorizonConfig(capability);
+
+  EXPECT_DOUBLE_EQ(
+      config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2,
+      capability.maximum_commanded_horizontal_deceleration_mps2);
+  EXPECT_DOUBLE_EQ(config.stopping_capability.guaranteed_horizontal_deceleration_mps2,
+                   capability.guaranteed_horizontal_deceleration_mps2);
+  EXPECT_DOUBLE_EQ(config.stopping_capability.guaranteed_vertical_deceleration_mps2,
+                   capability.guaranteed_vertical_deceleration_mps2);
+  EXPECT_DOUBLE_EQ(config.stopping_capability.reaction_latency_s,
+                   capability.reaction_latency_s);
+}
+
+TEST(MppiFiniteHorizon, UsesGuaranteedVerticalDecelerationInArrivalProfile) {
+  DynamicsConfig dynamics;
+  dynamics.maximum_vertical_acceleration_mps2 = 4.0F;
+  const std::vector<Control> controls(120U);
+  const std::vector<State> states = simulate(State{.vz = -5.0F}, controls, dynamics);
+  FiniteHorizonConfig config;
+  config.stopping_capability.guaranteed_vertical_deceleration_mps2 = 2.0;
+
+  const std::optional<FiniteHorizon> finite =
+      buildFiniteHorizon(states, controls, 0U, dynamics, Control{}, config);
+
+  ASSERT_TRUE(finite.has_value());
+  const FiniteHorizon path = finite.value_or(FiniteHorizon{});
+  for (const Control& control : path.controls) {
+    EXPECT_LE(std::abs(control.az),
+              config.stopping_capability.guaranteed_vertical_deceleration_mps2 +
+                  1.0e-4);
   }
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(path));
 }
@@ -133,7 +175,7 @@ TEST(MppiFiniteHorizon, FitsNoStaticCruiseArrivalInsideFourSecondPath) {
   };
   const std::vector<State> states = simulate(initial, controls, dynamics);
   FiniteHorizonConfig config;
-  config.maximum_horizontal_deceleration_mps2 = 4.0F;
+  config.stopping_capability.guaranteed_horizontal_deceleration_mps2 = 4.0;
   const Control previous{.ax = 2.0F, .ay = 1.0F, .az = -2.8F};
 
   const std::optional<FiniteHorizon> finite =

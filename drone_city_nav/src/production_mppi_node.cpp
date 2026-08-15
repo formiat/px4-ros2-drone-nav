@@ -259,9 +259,15 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("static_absolute_speed_limit_mps", 20.0);
   static_speed_policy_config.maximum_lateral_acceleration_mps2 =
       declare_parameter<double>("static_maximum_lateral_acceleration_mps2", 5.0);
-  static_speed_policy_config.maximum_braking_acceleration_mps2 =
+  static_speed_policy_config.stopping_capability
+      .maximum_commanded_horizontal_deceleration_mps2 =
       declare_parameter<double>("static_maximum_braking_acceleration_mps2", 8.0);
-  static_speed_policy_config.reaction_latency_s =
+  static_speed_policy_config.stopping_capability
+      .guaranteed_horizontal_deceleration_mps2 =
+      declare_parameter<double>("static_guaranteed_stopping_deceleration_mps2", 4.0);
+  static_speed_policy_config.stopping_capability.guaranteed_vertical_deceleration_mps2 =
+      declare_parameter<double>("guaranteed_vertical_stopping_deceleration_mps2", 2.0);
+  static_speed_policy_config.stopping_capability.reaction_latency_s =
       declare_parameter<double>("static_speed_reaction_latency_s", 0.10);
   static_speed_policy_config.observation_distance_m =
       declare_parameter<double>("static_observation_distance_m", 30.0);
@@ -293,7 +299,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("no_static_maximum_control_jerk_mps3", 12.0);
   no_static_speed_policy_config.maximum_lateral_acceleration_mps2 =
       no_static_maximum_horizontal_acceleration_mps2;
-  no_static_speed_policy_config.maximum_braking_acceleration_mps2 =
+  no_static_speed_policy_config.stopping_capability
+      .maximum_commanded_horizontal_deceleration_mps2 =
+      no_static_maximum_horizontal_acceleration_mps2;
+  no_static_speed_policy_config.stopping_capability
+      .guaranteed_horizontal_deceleration_mps2 =
       no_static_maximum_horizontal_acceleration_mps2;
   no_static_speed_policy_config.curvature_preview_distance_m =
       declare_parameter<double>("no_static_curvature_preview_distance_m", 60.0);
@@ -308,14 +318,18 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 = static_cast<float>(
       use_static_map_ ? static_maximum_horizontal_acceleration_mps2
                       : no_static_maximum_horizontal_acceleration_mps2);
-  finite_horizon_config_.maximum_horizontal_deceleration_mps2 =
-      static_cast<float>(declare_parameter<double>(
-          "finite_path_arrival_maximum_horizontal_deceleration_mps2", 4.0));
+  finite_horizon_config_ =
+      mppi::makeFiniteHorizonConfig(speed_policy_config_.stopping_capability);
   mppi_config_.dynamics.maximum_control_jerk_mps3 =
       static_cast<float>(use_static_map_ ? static_maximum_control_jerk_mps3
                                          : no_static_maximum_control_jerk_mps3);
   mppi_config_.dynamics.maximum_vertical_acceleration_mps2 = static_cast<float>(
       declare_parameter<double>("maximum_vertical_acceleration_mps2", 4.0));
+  mppi_config_.altitude_envelope.guaranteed_vertical_deceleration_mps2 =
+      static_cast<float>(speed_policy_config_.stopping_capability
+                             .guaranteed_vertical_deceleration_mps2);
+  mppi_config_.altitude_envelope.reaction_latency_s =
+      static_cast<float>(speed_policy_config_.stopping_capability.reaction_latency_s);
   mppi_config_.dynamics.maximum_vertical_speed_mps =
       static_cast<float>(declare_parameter<double>("maximum_vertical_speed_mps", 5.0));
   constrained_route_control_config_.maximum_vertical_acceleration_mps2 =
@@ -650,9 +664,18 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(mppi_config_.costs.obstacle_approach_weight >= 0.0F) ||
       !(mppi_config_.risk.obstacle_approach_response_time_s >= 0.0F) ||
       !(mppi_config_.risk.obstacle_approach_deceleration_mps2 > 0.0F) ||
-      !(finite_horizon_config_.maximum_horizontal_deceleration_mps2 > 0.0F) ||
-      finite_horizon_config_.maximum_horizontal_deceleration_mps2 >
-          mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 ||
+      !stoppingCapabilityIsValid(speed_policy_config_.stopping_capability) ||
+      speed_policy_config_.stopping_capability
+              .maximum_commanded_horizontal_deceleration_mps2 >
+          static_cast<double>(
+              mppi_config_.dynamics.maximum_horizontal_acceleration_mps2) ||
+      finite_horizon_config_.stopping_capability
+              .guaranteed_horizontal_deceleration_mps2 >
+          static_cast<double>(
+              mppi_config_.dynamics.maximum_horizontal_acceleration_mps2) ||
+      finite_horizon_config_.stopping_capability.guaranteed_vertical_deceleration_mps2 >
+          static_cast<double>(
+              mppi_config_.dynamics.maximum_vertical_acceleration_mps2) ||
       physical_footprint_config_.perimeter_samples == 0U ||
       physical_footprint_config_.radial_rings == 0U ||
       physical_footprint_config_.axial_samples < 2U ||

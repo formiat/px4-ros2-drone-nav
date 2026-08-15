@@ -117,6 +117,7 @@ StaticRouteSearchRetryDecision StaticRouteFailedSearchLatch::evaluate(
   const bool objective_identity_changed =
       failure.objective.available != context.objective.available ||
       failure.objective.mission_epoch != context.objective.mission_epoch ||
+      !staticRouteAssignmentMatches(failure.objective, context.objective) ||
       failure.objective.continuous_tracking != context.objective.continuous_tracking ||
       failure.minimum_tracking_sample_sequence !=
           context.minimum_tracking_sample_sequence;
@@ -276,13 +277,26 @@ bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid, const Point3& point,
          point.z >= static_cast<double>(grid.origin_z_m) && point.z < maximum_z;
 }
 
+bool staticRouteAssignmentMatches(const StaticRouteObjective& first,
+                                  const StaticRouteObjective& second) noexcept {
+  if (!first.continuous_tracking && !second.continuous_tracking) {
+    return true;
+  }
+  return first.assignment_generation != 0U &&
+         first.assignment_generation == second.assignment_generation &&
+         first.target_detection_id != 0U &&
+         first.target_detection_id == second.target_detection_id &&
+         first.target_track_id != 0U && first.target_track_id == second.target_track_id;
+}
+
 bool staticRouteObjectiveMatches(const StaticRouteObjective& route_objective,
                                  const StaticRouteObjective& current_objective,
                                  const std::uint64_t minimum_tracking_sample_sequence,
                                  const double maximum_tracking_goal_error_m) noexcept {
   if (!route_objective.available || !current_objective.available ||
       route_objective.mission_epoch != current_objective.mission_epoch ||
-      route_objective.continuous_tracking != current_objective.continuous_tracking) {
+      route_objective.continuous_tracking != current_objective.continuous_tracking ||
+      !staticRouteAssignmentMatches(route_objective, current_objective)) {
     return false;
   }
   if (!current_objective.continuous_tracking) {

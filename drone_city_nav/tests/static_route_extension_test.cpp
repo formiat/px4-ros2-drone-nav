@@ -259,6 +259,9 @@ TEST(StaticRouteExtensionTest, SuppressesEquivalentFailedSearchUntilRetryInterva
       .objective = StaticRouteObjective{.goal = Point3{100.0, 200.0, 18.0},
                                         .mission_epoch = 3U,
                                         .sample_sequence = 40U,
+                                        .assignment_generation = 5U,
+                                        .target_detection_id = 1U,
+                                        .target_track_id = 101U,
                                         .continuous_tracking = true,
                                         .available = true},
       .minimum_tracking_sample_sequence = 30U,
@@ -288,6 +291,9 @@ TEST(StaticRouteExtensionTest, FailedSearchRetriesAfterMeaningfulStateChange) {
       .objective = StaticRouteObjective{.goal = Point3{100.0, 200.0, 18.0},
                                         .mission_epoch = 3U,
                                         .sample_sequence = 40U,
+                                        .assignment_generation = 5U,
+                                        .target_detection_id = 1U,
+                                        .target_track_id = 101U,
                                         .continuous_tracking = true,
                                         .available = true},
       .minimum_tracking_sample_sequence = 30U,
@@ -361,6 +367,9 @@ TEST(StaticRouteExtensionTest, RejectsRouteOlderThanLosHandoffSample) {
   const StaticRouteObjective current{.goal = Point3{100.0, 50.0, 18.0},
                                      .mission_epoch = 7U,
                                      .sample_sequence = 120U,
+                                     .assignment_generation = 8U,
+                                     .target_detection_id = 2U,
+                                     .target_track_id = 202U,
                                      .continuous_tracking = true,
                                      .available = true};
   StaticRouteObjective route = current;
@@ -375,6 +384,9 @@ TEST(StaticRouteExtensionTest, RequiresSameEpochAndNearbyTrackingObjective) {
   const StaticRouteObjective current{.goal = Point3{100.0, 50.0, 18.0},
                                      .mission_epoch = 7U,
                                      .sample_sequence = 120U,
+                                     .assignment_generation = 8U,
+                                     .target_detection_id = 2U,
+                                     .target_track_id = 202U,
                                      .continuous_tracking = true,
                                      .available = true};
   StaticRouteObjective route = current;
@@ -384,6 +396,77 @@ TEST(StaticRouteExtensionTest, RequiresSameEpochAndNearbyTrackingObjective) {
   route = current;
   route.goal.x += 6.0;
   EXPECT_FALSE(staticRouteObjectiveMatches(route, current, 0U, 5.0));
+}
+
+TEST(StaticRouteExtensionTest,
+     ReassignmentNeverExecutesRouteForPreviousTargetBehindObstacle) {
+  const StaticRouteObjective current{.goal = Point3{100.0, 50.0, 18.0},
+                                     .mission_epoch = 7U,
+                                     .sample_sequence = 220U,
+                                     .assignment_generation = 12U,
+                                     .target_detection_id = 2U,
+                                     .target_track_id = 202U,
+                                     .continuous_tracking = true,
+                                     .available = true};
+  StaticRouteObjective stale_route = current;
+  stale_route.sample_sequence = 219U;
+  stale_route.assignment_generation = 11U;
+  stale_route.target_detection_id = 1U;
+  stale_route.target_track_id = 101U;
+
+  EXPECT_FALSE(staticRouteObjectiveMatches(stale_route, current, 0U, 1000.0));
+  EXPECT_FALSE(staticRouteAssignmentMatches(stale_route, current));
+
+  StaticRouteObjective replacement = current;
+  EXPECT_TRUE(staticRouteObjectiveMatches(replacement, current, 220U, 5.0));
+}
+
+TEST(StaticRouteExtensionTest,
+     RepeatedRadarSamplesKeepRouteIdentityUntilAssignmentChanges) {
+  const StaticRouteObjective route_objective{.goal = Point3{100.0, 50.0, 18.0},
+                                             .mission_epoch = 7U,
+                                             .sample_sequence = 300U,
+                                             .assignment_generation = 15U,
+                                             .target_detection_id = 2U,
+                                             .target_track_id = 202U,
+                                             .continuous_tracking = true,
+                                             .available = true};
+  StaticRouteObjective current = route_objective;
+  for (std::uint64_t sample = 301U; sample <= 320U; ++sample) {
+    current.sample_sequence = sample;
+    current.goal.x += 0.1;
+    EXPECT_TRUE(staticRouteObjectiveMatches(route_objective, current, 300U, 5.0));
+  }
+
+  current.assignment_generation = 16U;
+  current.target_detection_id = 1U;
+  current.target_track_id = 101U;
+  EXPECT_FALSE(staticRouteObjectiveMatches(route_objective, current, 300U, 5.0));
+}
+
+TEST(StaticRouteExtensionTest, RepeatedLosLossAdvancesOnlyTheRequiredRouteSample) {
+  StaticRouteObjective current{.goal = Point3{100.0, 50.0, 18.0},
+                               .mission_epoch = 7U,
+                               .sample_sequence = 400U,
+                               .assignment_generation = 15U,
+                               .target_detection_id = 2U,
+                               .target_track_id = 202U,
+                               .continuous_tracking = true,
+                               .available = true};
+  StaticRouteObjective route = current;
+
+  for (std::uint64_t cycle = 1U; cycle <= 3U; ++cycle) {
+    const std::uint64_t loss_sample = 400U + cycle * 10U;
+    current.sample_sequence = loss_sample;
+    EXPECT_FALSE(staticRouteObjectiveMatches(route, current, loss_sample, 5.0));
+
+    route = current;
+    EXPECT_TRUE(staticRouteObjectiveMatches(route, current, loss_sample, 5.0));
+
+    current.sample_sequence = loss_sample + 1U;
+    current.goal.x += 0.1;
+    EXPECT_TRUE(staticRouteObjectiveMatches(route, current, loss_sample, 5.0));
+  }
 }
 
 TEST(StaticRouteExtensionTest, ProtectsConstrainedSuffixThroughDeparture) {

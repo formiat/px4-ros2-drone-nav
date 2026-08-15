@@ -50,6 +50,8 @@ struct FootprintConfig {
 struct AltitudeEnvelopeConfig {
   float minimum_z_m{-std::numeric_limits<float>::max()};
   float maximum_z_m{std::numeric_limits<float>::max()};
+  float guaranteed_vertical_deceleration_mps2{4.0F};
+  float reaction_latency_s{0.0F};
 };
 
 struct CostConfig {

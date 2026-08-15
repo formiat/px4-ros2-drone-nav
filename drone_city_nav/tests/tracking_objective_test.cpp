@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
+
 namespace drone_city_nav {
 namespace {
 
@@ -200,6 +202,24 @@ TEST(TrackingLineOfSightLifecycle, ConfirmsEntryAndLeavesImmediatelyWhenBlocked)
   EXPECT_FALSE(blocked.active);
   EXPECT_TRUE(blocked.newly_inactive);
   EXPECT_EQ(blocked.generation, 1U);
+}
+
+TEST(TrackingLineOfSightLifecycle, RepeatedFlappingCreatesOneGenerationPerEntry) {
+  TrackingLineOfSightLifecycle lifecycle{
+      TrackingLineOfSightConfig{.clear_confirmations = 2U}};
+
+  for (std::uint64_t generation = 1U; generation <= 3U; ++generation) {
+    EXPECT_FALSE(lifecycle.update(true).active);
+    const TrackingLineOfSightUpdate entered = lifecycle.update(true);
+    EXPECT_TRUE(entered.active);
+    EXPECT_TRUE(entered.newly_active);
+    EXPECT_EQ(entered.generation, generation);
+
+    const TrackingLineOfSightUpdate blocked = lifecycle.update(false);
+    EXPECT_FALSE(blocked.active);
+    EXPECT_TRUE(blocked.newly_inactive);
+    EXPECT_EQ(blocked.generation, generation);
+  }
 }
 
 } // namespace

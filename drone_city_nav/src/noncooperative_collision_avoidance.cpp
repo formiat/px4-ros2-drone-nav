@@ -137,7 +137,8 @@ NonCooperativeCollisionAvoidance::update(const NonCooperativeAvoidanceInput& inp
           static_cast<float>(config_.maximum_time_to_collision_multiplier),
   };
   if (input.now_ns <= 0 || input.horizon_steps == 0U || !(input.step_s > 0.0)) {
-    result.active = active_;
+    result.influence.evasive_maneuver_active = active_;
+    result.influence.cost_influence_active = active_;
     return result;
   }
 
@@ -257,7 +258,14 @@ NonCooperativeCollisionAvoidance::update(const NonCooperativeAvoidanceInput& inp
     }
   }
 
-  result.active = active_;
+  const bool relevant_threat_present =
+      result.primary_threat.has_value() &&
+      result.primary_threat->reason != NonCooperativeThreatReason::kNone;
+  result.influence = NonCooperativeInfluenceGate{
+      .track_available = result.fresh_track_count != 0U,
+      .cost_influence_active = relevant_threat_present || active_,
+      .evasive_maneuver_active = active_,
+  };
   result.lifecycle_generation = lifecycle_generation_;
   if (entered) {
     result.lifecycle_state = NonCooperativeAvoidanceLifecycleState::kEntered;

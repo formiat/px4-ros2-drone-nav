@@ -172,6 +172,10 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                          .goal = candidate.objective_goal,
                          .mission_epoch = candidate.objective_mission_epoch,
                          .sample_sequence = candidate.objective_sample_sequence,
+                         .assignment_generation =
+                             candidate.objective_assignment_generation,
+                         .target_detection_id = candidate.objective_target_detection_id,
+                         .target_track_id = candidate.objective_target_track_id,
                          .continuous_tracking = candidate.objective_continuous_tracking,
                          .available = candidate.objective_available},
                      makeStaticRouteObjective(*current_objective),
@@ -317,6 +321,11 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                 .objective_goal = world->search_objective.goal,
                 .objective_mission_epoch = world->search_objective.mission_epoch,
                 .objective_sample_sequence = world->search_objective.sample_sequence,
+                .objective_assignment_generation =
+                    world->search_objective.assignment_generation,
+                .objective_target_detection_id =
+                    world->search_objective.target_detection_id,
+                .objective_target_track_id = world->search_objective.target_track_id,
                 .objective_continuous_tracking =
                     world->search_objective.continuous_tracking,
                 .objective_available = world->search_objective.available,
@@ -420,6 +429,11 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                 .objective_goal = world->search_objective.goal,
                 .objective_mission_epoch = world->search_objective.mission_epoch,
                 .objective_sample_sequence = world->search_objective.sample_sequence,
+                .objective_assignment_generation =
+                    world->search_objective.assignment_generation,
+                .objective_target_detection_id =
+                    world->search_objective.target_detection_id,
+                .objective_target_track_id = world->search_objective.target_track_id,
                 .objective_continuous_tracking =
                     world->search_objective.continuous_tracking,
                 .objective_available = world->search_objective.available,
@@ -536,6 +550,9 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           .goal = activated_candidate->objective_goal,
           .mission_epoch = activated_candidate->objective_mission_epoch,
           .sample_sequence = activated_candidate->objective_sample_sequence,
+          .assignment_generation = activated_candidate->objective_assignment_generation,
+          .target_detection_id = activated_candidate->objective_target_detection_id,
+          .target_track_id = activated_candidate->objective_target_track_id,
           .continuous_tracking = activated_candidate->objective_continuous_tracking,
           .available = activated_candidate->objective_available,
       };

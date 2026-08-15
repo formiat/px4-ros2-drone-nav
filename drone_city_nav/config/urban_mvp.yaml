@@ -152,9 +152,10 @@ production_mppi_node:
     static_cruise_speed_mps: 20.0
     static_absolute_speed_limit_mps: 20.0
     static_maximum_horizontal_acceleration_mps2: 8.0
-    finite_path_arrival_maximum_horizontal_deceleration_mps2: 4.0
     static_maximum_lateral_acceleration_mps2: 5.0
     static_maximum_braking_acceleration_mps2: 8.0
+    static_guaranteed_stopping_deceleration_mps2: 4.0
+    guaranteed_vertical_stopping_deceleration_mps2: 2.0
     static_maximum_control_jerk_mps3: 20.0
     no_static_cruise_speed_mps: 10.0
     no_static_absolute_speed_limit_mps: 10.0

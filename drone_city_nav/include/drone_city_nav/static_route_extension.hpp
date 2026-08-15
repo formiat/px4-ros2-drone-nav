@@ -31,9 +31,16 @@ struct StaticRouteObjective {
   Point3 goal{};
   std::uint64_t mission_epoch{0U};
   std::uint64_t sample_sequence{0U};
+  std::uint64_t assignment_generation{0U};
+  std::uint64_t target_detection_id{0U};
+  std::uint64_t target_track_id{0U};
   bool continuous_tracking{false};
   bool available{false};
 };
+
+[[nodiscard]] bool
+staticRouteAssignmentMatches(const StaticRouteObjective& first,
+                             const StaticRouteObjective& second) noexcept;
 
 struct StaticRouteSearchRetryConfig {
   double minimum_pose_change_m{2.0};

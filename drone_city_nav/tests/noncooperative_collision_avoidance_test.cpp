@@ -37,7 +37,9 @@ TEST(NonCooperativeCollisionAvoidanceTest,
   ASSERT_TRUE(update.primary_threat.has_value());
   const NonCooperativeClosestApproach threat =
       update.primary_threat.value_or(NonCooperativeClosestApproach{});
-  EXPECT_TRUE(update.active);
+  EXPECT_TRUE(update.influence.track_available);
+  EXPECT_TRUE(update.influence.cost_influence_active);
+  EXPECT_TRUE(update.influence.evasive_maneuver_active);
   EXPECT_EQ(update.lifecycle_state, NonCooperativeAvoidanceLifecycleState::kEntered);
   EXPECT_EQ(threat.reason, NonCooperativeThreatReason::kStrongPredictedClosestApproach);
   EXPECT_GT(threat.current_range_m, 10.0);
@@ -63,7 +65,7 @@ TEST(NonCooperativeCollisionAvoidanceTest,
   ASSERT_TRUE(update.primary_threat.has_value());
   const NonCooperativeClosestApproach threat =
       update.primary_threat.value_or(NonCooperativeClosestApproach{});
-  EXPECT_TRUE(update.active);
+  EXPECT_TRUE(update.influence.evasive_maneuver_active);
   EXPECT_EQ(threat.reason, NonCooperativeThreatReason::kStrongPredictedClosestApproach);
   EXPECT_NEAR(threat.time_to_closest_approach_s, 3.0, 1.0e-6);
   EXPECT_NEAR(threat.closest_approach_distance_m, 0.0, 1.0e-6);
@@ -85,7 +87,9 @@ TEST(NonCooperativeCollisionAvoidanceTest,
   const NonCooperativeClosestApproach threat =
       update.primary_threat.value_or(NonCooperativeClosestApproach{});
   EXPECT_EQ(threat.reason, NonCooperativeThreatReason::kNearby);
-  EXPECT_FALSE(update.active);
+  EXPECT_TRUE(update.influence.track_available);
+  EXPECT_TRUE(update.influence.cost_influence_active);
+  EXPECT_FALSE(update.influence.evasive_maneuver_active);
   EXPECT_FALSE(update.acquisition.has_value());
   EXPECT_EQ(update.fresh_track_count, 1U);
 }
@@ -102,12 +106,15 @@ TEST(NonCooperativeCollisionAvoidanceTest, ReleaseRequiresContinuousClearHystere
     });
   };
 
-  EXPECT_TRUE(update_at(kSecondNs, Point3{5.0, 0.0, 0.0}).active);
-  EXPECT_TRUE(update_at(2 * kSecondNs, Point3{30.0, 0.0, 0.0}).active);
-  EXPECT_TRUE(update_at(2 * kSecondNs + 900000000LL, Point3{30.0, 0.0, 0.0}).active);
+  EXPECT_TRUE(
+      update_at(kSecondNs, Point3{5.0, 0.0, 0.0}).influence.evasive_maneuver_active);
+  EXPECT_TRUE(update_at(2 * kSecondNs, Point3{30.0, 0.0, 0.0})
+                  .influence.evasive_maneuver_active);
+  EXPECT_TRUE(update_at(2 * kSecondNs + 900000000LL, Point3{30.0, 0.0, 0.0})
+                  .influence.evasive_maneuver_active);
   const NonCooperativeAvoidanceUpdate released =
       update_at(3 * kSecondNs + 100000000LL, Point3{30.0, 0.0, 0.0});
-  EXPECT_FALSE(released.active);
+  EXPECT_FALSE(released.influence.evasive_maneuver_active);
   EXPECT_EQ(released.lifecycle_state, NonCooperativeAvoidanceLifecycleState::kReleased);
 }
 
@@ -126,6 +133,32 @@ TEST(NonCooperativeCollisionAvoidanceTest, StaleTracksAreNotCoastedIndefinitely)
   EXPECT_EQ(update.fresh_track_count, 0U);
   EXPECT_TRUE(update.trajectories.empty());
   EXPECT_FALSE(update.primary_threat.has_value());
+  EXPECT_FALSE(update.influence.track_available);
+  EXPECT_FALSE(update.influence.cost_influence_active);
+  EXPECT_FALSE(update.influence.evasive_maneuver_active);
+}
+
+TEST(NonCooperativeCollisionAvoidanceTest,
+     DistantNonConvergingTrackRemainsAvailableWithoutInfluencingMppi) {
+  NonCooperativeCollisionAvoidance avoidance{NonCooperativeAvoidanceConfig{}};
+  const NonCooperativeAvoidanceUpdate update =
+      avoidance.update(NonCooperativeAvoidanceInput{
+          .ownship = mppi::State{.vx = 5.0F},
+          .tracks = {track(Point3{60.0, 20.0, 0.0}, Vec3{5.0, 0.0, 0.0})},
+          .now_ns = kSecondNs,
+          .horizon_steps = 80U,
+          .step_s = 0.05,
+      });
+
+  ASSERT_TRUE(update.primary_threat.has_value());
+  const NonCooperativeClosestApproach threat =
+      update.primary_threat.value_or(NonCooperativeClosestApproach{});
+  EXPECT_EQ(threat.reason, NonCooperativeThreatReason::kNone);
+  EXPECT_TRUE(update.influence.track_available);
+  EXPECT_FALSE(update.influence.cost_influence_active);
+  EXPECT_FALSE(update.influence.evasive_maneuver_active);
+  EXPECT_FALSE(update.acquisition.has_value());
+  EXPECT_EQ(update.trajectories.size(), 1U);
 }
 
 } // namespace

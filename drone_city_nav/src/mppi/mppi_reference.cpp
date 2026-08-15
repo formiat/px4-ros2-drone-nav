@@ -125,6 +125,13 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          std::isfinite(config.altitude_envelope.minimum_z_m) &&
          std::isfinite(config.altitude_envelope.maximum_z_m) &&
          config.altitude_envelope.maximum_z_m > config.altitude_envelope.minimum_z_m &&
+         std::isfinite(
+             config.altitude_envelope.guaranteed_vertical_deceleration_mps2) &&
+         config.altitude_envelope.guaranteed_vertical_deceleration_mps2 > 0.0F &&
+         config.altitude_envelope.guaranteed_vertical_deceleration_mps2 <=
+             config.dynamics.maximum_vertical_acceleration_mps2 &&
+         std::isfinite(config.altitude_envelope.reaction_latency_s) &&
+         config.altitude_envelope.reaction_latency_s >= 0.0F &&
          std::isfinite(config.cooperative.desired_minimum_separation_m) &&
          config.cooperative.desired_minimum_separation_m > 0.0F &&
          std::isfinite(config.cooperative.candidate_acceleration_fraction) &&

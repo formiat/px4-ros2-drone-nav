@@ -78,6 +78,12 @@ struct NonCooperativeAvoidanceInput {
   double step_s{0.0};
 };
 
+struct NonCooperativeInfluenceGate {
+  bool track_available{false};
+  bool cost_influence_active{false};
+  bool evasive_maneuver_active{false};
+};
+
 struct NonCooperativeAvoidanceUpdate {
   std::vector<mppi::DynamicAircraftTrajectory> trajectories;
   std::optional<NonCooperativeClosestApproach> primary_threat;
@@ -89,7 +95,7 @@ struct NonCooperativeAvoidanceUpdate {
   std::size_t fresh_track_count{0U};
   double maximum_radar_age_s{-1.0};
   std::uint64_t lifecycle_generation{0U};
-  bool active{false};
+  NonCooperativeInfluenceGate influence{};
 };
 
 class NonCooperativeCollisionAvoidance {

@@ -19,6 +19,12 @@ OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
 HORIZON_MESSAGE = PACKAGE / "msg" / "MppiTrajectoryHorizon.msg"
 SPEED_POLICY = PACKAGE / "include" / "drone_city_nav" / "mppi_speed_policy.hpp"
+FINITE_HORIZON_HEADER = (
+    PACKAGE / "include" / "drone_city_nav" / "mppi" / "mppi_finite_horizon.hpp"
+)
+STOPPING_CAPABILITY = (
+    PACKAGE / "include" / "drone_city_nav" / "stopping_capability.hpp"
+)
 MPPI_REFERENCE = SOURCE / "mppi" / "mppi_reference.cpp"
 MPPI_KERNELS = SOURCE / "mppi" / "mppi_engine_kernels.cuh"
 FINITE_HORIZON = SOURCE / "mppi" / "mppi_finite_horizon.cpp"
@@ -59,6 +65,8 @@ class PlannerReadinessContractTest(unittest.TestCase):
         planner = PLANNER.read_text(encoding="utf-8")
         horizon_message = HORIZON_MESSAGE.read_text(encoding="utf-8")
         speed_policy = SPEED_POLICY.read_text(encoding="utf-8")
+        finite_horizon_header = FINITE_HORIZON_HEADER.read_text(encoding="utf-8")
+        stopping_capability = STOPPING_CAPABILITY.read_text(encoding="utf-8")
         finite_horizon = FINITE_HORIZON.read_text(encoding="utf-8")
         finite_execution_path = FINITE_EXECUTION_PATH.read_text(encoding="utf-8")
 
@@ -85,11 +93,34 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("buildValidatedFiniteExecutionPath", execution)
         self.assertIn("buildFiniteHorizon", finite_execution_path)
         self.assertIn("finiteHorizonHasTerminalRestState", finite_horizon)
-        self.assertIn(
+        self.assertNotIn(
             "finite_path_arrival_maximum_horizontal_deceleration_mps2", planner
         )
+        self.assertRegex(
+            planner,
+            r"makeFiniteHorizonConfig\(\s*"
+            r"speed_policy_config_\.stopping_capability\)",
+        )
+        self.assertIn("StoppingCapability stopping_capability", speed_policy)
+        self.assertIn("StoppingCapability stopping_capability", finite_horizon_header)
+        self.assertIn(
+            "maximum_commanded_horizontal_deceleration_mps2", stopping_capability
+        )
+        self.assertIn(
+            "guaranteed_horizontal_deceleration_mps2", stopping_capability
+        )
+        self.assertIn("guaranteed_vertical_deceleration_mps2", stopping_capability)
+        self.assertIn(
+            '"static_guaranteed_stopping_deceleration_mps2"', planner
+        )
+        self.assertIn(
+            '"guaranteed_vertical_stopping_deceleration_mps2"', planner
+        )
+        self.assertIn(
+            "altitude_envelope.guaranteed_vertical_deceleration_mps2", planner
+        )
         self.assertIn("finite_horizon_config_", execution)
-        self.assertIn("maximum_horizontal_deceleration_mps2", finite_horizon)
+        self.assertIn("guaranteed_horizontal_deceleration_mps2", finite_horizon)
         self.assertIn("validateFiniteExecutionTrajectoryContinuation", execution)
         self.assertIn("validateFiniteExecutionPathContinuation", execution)
         self.assertIn("actual_state_validation.accepted()", execution)

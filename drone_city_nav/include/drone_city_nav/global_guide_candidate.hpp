@@ -17,6 +17,9 @@ struct GlobalGuideCandidate {
   Point3 objective_goal{};
   std::uint64_t objective_mission_epoch{0U};
   std::uint64_t objective_sample_sequence{0U};
+  std::uint64_t objective_assignment_generation{0U};
+  std::uint64_t objective_target_detection_id{0U};
+  std::uint64_t objective_target_track_id{0U};
   bool objective_continuous_tracking{false};
   bool objective_available{false};
   bool reaches_mission_goal{false};

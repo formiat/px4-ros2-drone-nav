@@ -58,7 +58,12 @@ void appendFields(std::ostringstream& output,
            << ",\"noncooperative_lifecycle_state\":\""
            << nonCooperativeAvoidanceLifecycleStateName(update.lifecycle_state) << '"'
            << ",\"noncooperative_lifecycle_generation\":" << update.lifecycle_generation
-           << ",\"noncooperative_active\":" << (update.active ? "true" : "false")
+           << ",\"noncooperative_track_available\":"
+           << (update.influence.track_available ? "true" : "false")
+           << ",\"noncooperative_cost_influence_active\":"
+           << (update.influence.cost_influence_active ? "true" : "false")
+           << ",\"noncooperative_evasive_maneuver_active\":"
+           << (update.influence.evasive_maneuver_active ? "true" : "false")
            << ",\"noncooperative_acquisition_reseeded\":"
            << (result.noncooperative_acquisition_reseeded ? "true" : "false")
            << ",\"noncooperative_release_reseeded\":"
@@ -106,7 +111,12 @@ void appendFields(std::ostringstream& output,
          << " noncooperative_lifecycle_state="
          << nonCooperativeAvoidanceLifecycleStateName(update.lifecycle_state)
          << " noncooperative_lifecycle_generation=" << update.lifecycle_generation
-         << " noncooperative_active=" << (update.active ? "true" : "false")
+         << " noncooperative_track_available="
+         << (update.influence.track_available ? "true" : "false")
+         << " noncooperative_cost_influence_active="
+         << (update.influence.cost_influence_active ? "true" : "false")
+         << " noncooperative_evasive_maneuver_active="
+         << (update.influence.evasive_maneuver_active ? "true" : "false")
          << " noncooperative_acquisition_reseeded="
          << (result.noncooperative_acquisition_reseeded ? "true" : "false")
          << " noncooperative_release_reseeded="

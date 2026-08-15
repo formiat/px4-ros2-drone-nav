@@ -443,7 +443,8 @@ void ProductionMppiNode::onNavigationObjective(
        (!finitePoint(message.observed_target_position) ||
         !finiteVector(message.observed_target_velocity) ||
         !std::isfinite(message.prediction_horizon_s) ||
-        message.prediction_horizon_s < 0.0 || message.target_track_id == 0U ||
+        message.prediction_horizon_s < 0.0 || message.assignment_generation == 0U ||
+        message.target_detection_id == 0U || message.target_track_id == 0U ||
         timeNanoseconds(message.observation_stamp) <= 0 ||
         message.terminal_policy !=
             msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING))) {
@@ -567,13 +568,11 @@ void ProductionMppiNode::onNavigationObjective(
     }
     const bool epoch_changed =
         !previous || previous->mission_epoch != message.mission_epoch;
-    const std::uint64_t previous_target_track_id =
-        previous
-            ? previous->tracking.value_or(ProductionTrackingObjective{}).target_track_id
-            : 0U;
-    const bool target_track_changed =
-        previous_target_track_id != message.target_track_id;
-    if (epoch_changed || target_track_changed) {
+    const bool assignment_changed =
+        !previous || previous->assignment_generation != message.assignment_generation ||
+        previous->target_detection_id != message.target_detection_id ||
+        previous->target_track_id != message.target_track_id;
+    if (epoch_changed || assignment_changed) {
       tracking_line_of_sight_lifecycle_.reset();
     }
     line_of_sight = tracking_line_of_sight_lifecycle_.update(
@@ -623,6 +622,9 @@ void ProductionMppiNode::onNavigationObjective(
           .tracking = tracking_objective,
           .mission_epoch = message.mission_epoch,
           .sample_sequence = message.sample_sequence,
+          .assignment_generation = tracking ? message.assignment_generation : 0U,
+          .target_detection_id = tracking ? message.target_detection_id : 0U,
+          .target_track_id = tracking ? message.target_track_id : 0U,
           .stamp_ns = objective_stamp_ns,
           .continuous_tracking =
               message.terminal_policy ==
@@ -630,12 +632,6 @@ void ProductionMppiNode::onNavigationObjective(
           .immediate_hold = message.terminal_policy ==
                             msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD,
       });
-  navigation_objective_.store(objective, std::memory_order_release);
-  publishRadarTrackModeCommand(*objective, radar_cadence_reason);
-  if (use_static_map_ && !world_ready_.load(std::memory_order_acquire)) {
-    requestStaticEsdfWork();
-  }
-
   bool request_replan = false;
   bool require_new_tracking_route = false;
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
@@ -643,6 +639,11 @@ void ProductionMppiNode::onNavigationObjective(
     const std::scoped_lock lock{objective_replan_mutex_};
     const bool epoch_changed =
         !previous || previous->mission_epoch != message.mission_epoch;
+    const bool assignment_changed =
+        tracking && (!previous ||
+                     previous->assignment_generation != message.assignment_generation ||
+                     previous->target_detection_id != message.target_detection_id ||
+                     previous->target_track_id != message.target_track_id);
     const bool moved = pointDistance(goal, objective_replan_anchor_) >=
                        dynamic_objective_replan_distance_m_;
     const bool period_elapsed =
@@ -658,22 +659,27 @@ void ProductionMppiNode::onNavigationObjective(
     const bool direct_interception_lost =
         previous_direct_interception && !current_direct_interception;
     require_new_tracking_route =
-        tracking && (epoch_changed || direct_interception_lost);
-    request_replan =
-        epoch_changed || direct_interception_lost || (moved && period_elapsed);
+        tracking && (epoch_changed || assignment_changed || direct_interception_lost);
+    request_replan = epoch_changed || assignment_changed || direct_interception_lost ||
+                     (moved && period_elapsed);
     if (request_replan) {
       objective_replan_anchor_ = goal;
       objective_replan_stamp_ns_ = now_ns;
     }
   }
   if (require_new_tracking_route) {
-    minimum_tracking_route_mission_epoch_.store(message.mission_epoch,
-                                                std::memory_order_release);
     minimum_tracking_route_sample_sequence_.store(message.sample_sequence,
                                                   std::memory_order_release);
+    minimum_tracking_route_mission_epoch_.store(message.mission_epoch,
+                                                std::memory_order_release);
   } else if (!tracking) {
-    minimum_tracking_route_mission_epoch_.store(0U, std::memory_order_release);
     minimum_tracking_route_sample_sequence_.store(0U, std::memory_order_release);
+    minimum_tracking_route_mission_epoch_.store(0U, std::memory_order_release);
+  }
+  navigation_objective_.store(objective, std::memory_order_release);
+  publishRadarTrackModeCommand(*objective, radar_cadence_reason);
+  if (use_static_map_ && !world_ready_.load(std::memory_order_acquire)) {
+    requestStaticEsdfWork();
   }
   if (request_replan) {
     requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
@@ -684,6 +690,7 @@ void ProductionMppiNode::onNavigationObjective(
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
+        " assignment_generation=%" PRIu64 " detection_id=%" PRIu64 " track_id=%" PRIu64
         " type=tracking_prediction mode=%s horizon_s=%.3f "
         "observed=(%.2f,%.2f,%.2f) predicted=(%.2f,%.2f,%.2f) "
         "current=(%.2f,%.2f,%.2f) resolved=(%.2f,%.2f,%.2f) resolution=%s "
@@ -691,7 +698,8 @@ void ProductionMppiNode::onNavigationObjective(
         "vertical_prediction_clipped=%s observed_target_visible=%s "
         "predicted_intercept_path_clear=%s direct_interception=%s "
         "los_generation=%" PRIu64 " radar_cadence_reason=%s replan=%s",
-        message.mission_epoch, message.sample_sequence,
+        message.mission_epoch, message.sample_sequence, message.assignment_generation,
+        message.target_detection_id, message.target_track_id,
         interceptGuidanceModeName(tracking_data.guidance_mode),
         tracking_data.prediction_horizon_s, tracking_data.observed_position.x,
         tracking_data.observed_position.y, tracking_data.observed_position.z,

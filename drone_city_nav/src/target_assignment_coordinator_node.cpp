@@ -384,12 +384,12 @@ private:
     }
     runtime.assigned_detection_id = decision.detection_id;
     runtime.assigned_track_id = decision.track_id;
-    runtime.assignment_generation = update.generation;
     runtime.assigned_frame_id = selected->header.frame_id;
     publishReadiness(runtime, true);
-    if (!update.changed && !assignment_changed) {
+    if (!assignment_changed) {
       return;
     }
+    runtime.assignment_generation = update.generation;
     msg::TargetAssignment message;
     message.header.stamp = now();
     message.header.frame_id = selected->header.frame_id;

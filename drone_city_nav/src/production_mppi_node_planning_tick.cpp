@@ -261,6 +261,12 @@ void ProductionMppiNode::planningTick() {
                              speed_policy.reference_speed_mps);
   const ProductionMppiNonCooperativeUpdate noncooperative =
       prepareNonCooperativeTick(navigation.state, noncooperative_tracks, now_ns);
+  const bool noncooperative_cost_influence_active =
+      noncooperative.enabled &&
+      noncooperative.avoidance.influence.cost_influence_active;
+  const bool noncooperative_evasive_maneuver_active =
+      noncooperative.enabled &&
+      noncooperative.avoidance.influence.evasive_maneuver_active;
   if (cooperative.yield.active) {
     speed_policy.reference_speed_mps =
         std::min(speed_policy.reference_speed_mps, cooperative.yield.maximum_speed_mps);
@@ -557,20 +563,23 @@ void ProductionMppiNode::planningTick() {
                     .initial_station_m = static_cast<float>(route_projection.station_m),
                 }}
               : std::nullopt,
-      .dynamic_aircraft = noncooperative.enabled ? noncooperative.avoidance.trajectories
-                                                 : cooperative.mppi.dynamic_aircraft,
+      .dynamic_aircraft = noncooperative_cost_influence_active
+                              ? noncooperative.avoidance.trajectories
+                              : cooperative.mppi.dynamic_aircraft,
       .dynamic_aircraft_cost_policy =
-          noncooperative.enabled
+          noncooperative_cost_influence_active
               ? std::optional<mppi::DynamicAircraftCostPolicy>{noncooperative.avoidance
                                                                    .cost_policy}
               : std::nullopt,
       .cooperative_maneuver = cooperative.mppi.maneuver,
       .cooperative_acquisition = cooperative.mppi.acquisition,
-      .noncooperative_acquisition = noncooperative.avoidance.acquisition,
+      .noncooperative_acquisition = noncooperative_evasive_maneuver_active
+                                        ? noncooperative.avoidance.acquisition
+                                        : std::nullopt,
       .active_rollouts = rollout_budget.active_rollouts,
       .deterministic_candidate = deterministic_candidate,
       .cooperative_avoidance_active = cooperative.mppi.avoidance_active,
-      .noncooperative_avoidance_active = noncooperative.avoidance.active,
+      .noncooperative_avoidance_active = noncooperative_evasive_maneuver_active,
   };
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)

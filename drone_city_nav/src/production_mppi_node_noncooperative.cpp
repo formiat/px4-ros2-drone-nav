@@ -158,14 +158,18 @@ ProductionMppiNonCooperativeUpdate ProductionMppiNode::prepareNonCooperativeTick
     if (throttle) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "NONCOOPERATIVE_AVOIDANCE state=%s active=%s generation=%" PRIu64
-          " fresh_tracks=%zu track_id=%" PRIu64
+          "NONCOOPERATIVE_AVOIDANCE state=%s generation=%" PRIu64
+          " track_available=%s cost_influence_active=%s "
+          "evasive_maneuver_active=%s fresh_tracks=%zu track_id=%" PRIu64
           " reason=%s radar_age_s=%.3f range_m=%.3f closing_speed_mps=%.3f "
           "tcpa_s=%.3f dcpa_m=%.3f",
           nonCooperativeAvoidanceLifecycleStateName(state),
-          result.avoidance.active ? "true" : "false",
-          result.avoidance.lifecycle_generation, result.avoidance.fresh_track_count,
-          track_id, reason, result.avoidance.maximum_radar_age_s,
+          result.avoidance.lifecycle_generation,
+          result.avoidance.influence.track_available ? "true" : "false",
+          result.avoidance.influence.cost_influence_active ? "true" : "false",
+          result.avoidance.influence.evasive_maneuver_active ? "true" : "false",
+          result.avoidance.fresh_track_count, track_id, reason,
+          result.avoidance.maximum_radar_age_s,
           diagnosticValue(threat, &NonCooperativeClosestApproach::current_range_m),
           diagnosticValue(threat, &NonCooperativeClosestApproach::closing_speed_mps),
           diagnosticValue(threat,
@@ -176,14 +180,18 @@ ProductionMppiNonCooperativeUpdate ProductionMppiNode::prepareNonCooperativeTick
     }
     RCLCPP_INFO(
         get_logger(),
-        "NONCOOPERATIVE_AVOIDANCE state=%s active=%s generation=%" PRIu64
-        " fresh_tracks=%zu track_id=%" PRIu64
+        "NONCOOPERATIVE_AVOIDANCE state=%s generation=%" PRIu64
+        " track_available=%s cost_influence_active=%s "
+        "evasive_maneuver_active=%s fresh_tracks=%zu track_id=%" PRIu64
         " reason=%s radar_age_s=%.3f range_m=%.3f closing_speed_mps=%.3f "
         "tcpa_s=%.3f dcpa_m=%.3f",
         nonCooperativeAvoidanceLifecycleStateName(state),
-        result.avoidance.active ? "true" : "false",
-        result.avoidance.lifecycle_generation, result.avoidance.fresh_track_count,
-        track_id, reason, result.avoidance.maximum_radar_age_s,
+        result.avoidance.lifecycle_generation,
+        result.avoidance.influence.track_available ? "true" : "false",
+        result.avoidance.influence.cost_influence_active ? "true" : "false",
+        result.avoidance.influence.evasive_maneuver_active ? "true" : "false",
+        result.avoidance.fresh_track_count, track_id, reason,
+        result.avoidance.maximum_radar_age_s,
         diagnosticValue(threat, &NonCooperativeClosestApproach::current_range_m),
         diagnosticValue(threat, &NonCooperativeClosestApproach::closing_speed_mps),
         diagnosticValue(threat,
@@ -194,7 +202,7 @@ ProductionMppiNonCooperativeUpdate ProductionMppiNode::prepareNonCooperativeTick
   if (state == NonCooperativeAvoidanceLifecycleState::kEntered ||
       state == NonCooperativeAvoidanceLifecycleState::kReleased) {
     log_lifecycle(false);
-  } else if (result.avoidance.active) {
+  } else if (result.avoidance.influence.cost_influence_active) {
     log_lifecycle(true);
   }
   return result;

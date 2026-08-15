@@ -187,6 +187,8 @@ protected:
         std::ranges::any_of(objectives_, [](const msg::NavigationObjective& objective) {
           return objective.objective_type ==
                      msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION &&
+                 objective.assignment_generation != 0U &&
+                 objective.target_detection_id == 1U &&
                  objective.target_track_id == 101U;
         });
     return active_assignment && tracking_objective;

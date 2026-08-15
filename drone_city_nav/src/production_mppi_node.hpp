@@ -108,6 +108,9 @@ struct ProductionNavigationObjective {
   std::optional<ProductionTrackingObjective> tracking;
   std::uint64_t mission_epoch{0U};
   std::uint64_t sample_sequence{0U};
+  std::uint64_t assignment_generation{0U};
+  std::uint64_t target_detection_id{0U};
+  std::uint64_t target_track_id{0U};
   std::int64_t stamp_ns{0};
   bool continuous_tracking{false};
   bool immediate_hold{false};
@@ -119,6 +122,9 @@ makeStaticRouteObjective(const ProductionNavigationObjective& objective) noexcep
       .goal = objective.goal,
       .mission_epoch = objective.mission_epoch,
       .sample_sequence = objective.sample_sequence,
+      .assignment_generation = objective.assignment_generation,
+      .target_detection_id = objective.target_detection_id,
+      .target_track_id = objective.target_track_id,
       .continuous_tracking = objective.continuous_tracking,
       .available = true,
   };

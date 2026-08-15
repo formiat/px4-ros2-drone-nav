@@ -12,8 +12,8 @@ TEST(MppiSpeedPolicyTest, ObservationRangeLimitsStoppingSpeed) {
   MppiSpeedPolicyConfig config;
   config.observation_distance_m = 30.0;
   config.observation_margin_m = 3.0;
-  config.maximum_braking_acceleration_mps2 = 8.0;
-  config.reaction_latency_s = 0.1;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 8.0;
+  config.stopping_capability.reaction_latency_s = 0.1;
 
   const MppiSpeedPolicyResult result =
       evaluateMppiSpeedPolicy(config, MppiSpeedPolicyInput{});
@@ -84,8 +84,8 @@ TEST(MppiSpeedPolicyTest, ContinuousTrackingDoesNotBrakeForMovingGoal) {
 
 TEST(MppiSpeedPolicyTest, FrontierRouteCanStopBeforeUnextendedEndpoint) {
   MppiSpeedPolicyConfig config;
-  config.maximum_braking_acceleration_mps2 = 8.0;
-  config.reaction_latency_s = 0.1;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 8.0;
+  config.stopping_capability.reaction_latency_s = 0.1;
   config.goal_margin_m = 2.0;
   MppiSpeedPolicyInput input;
   input.mission_goal = Point3{300.0, 0.0, 18.0};
@@ -120,7 +120,7 @@ TEST(MppiSpeedPolicyTest, NoStaticProfileTracksTenMetersPerSecondAtFixedLookahea
   config.cruise_speed_mps = 10.0;
   config.absolute_speed_limit_mps = 10.0;
   config.maximum_lateral_acceleration_mps2 = 4.0;
-  config.maximum_braking_acceleration_mps2 = 4.0;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 4.0;
   config.horizon_duration_s = 4.0;
   config.minimum_target_lookahead_m = 30.0;
   config.maximum_target_lookahead_m = 30.0;
@@ -142,7 +142,7 @@ TEST(MppiSpeedPolicyTest, RouteConstraintLimitOverridesCruiseSpeed) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 10.0;
   config.absolute_speed_limit_mps = 10.0;
-  config.maximum_braking_acceleration_mps2 = 4.0;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 4.0;
   config.minimum_target_lookahead_m = 30.0;
   config.maximum_target_lookahead_m = 30.0;
   MppiSpeedPolicyInput input;

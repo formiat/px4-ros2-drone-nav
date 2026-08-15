@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/stopping_capability.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -25,8 +26,7 @@ struct MppiSpeedPolicyConfig {
   double cruise_speed_mps{20.0};
   double absolute_speed_limit_mps{20.0};
   double maximum_lateral_acceleration_mps2{5.0};
-  double maximum_braking_acceleration_mps2{8.0};
-  double reaction_latency_s{0.10};
+  StoppingCapability stopping_capability{};
   double observation_distance_m{30.0};
   double observation_margin_m{2.0};
   double goal_margin_m{2.0};
@@ -62,10 +62,9 @@ struct MppiSpeedPolicyResult {
   bool terminal_goal_limit_enabled{true};
 };
 
-[[nodiscard]] double stoppingLimitedSpeed(double available_distance_m,
-                                          double terminal_speed_mps,
-                                          double reaction_latency_s,
-                                          double braking_acceleration_mps2) noexcept;
+[[nodiscard]] double
+stoppingLimitedSpeed(double available_distance_m, double terminal_speed_mps,
+                     const StoppingCapability& capability) noexcept;
 
 [[nodiscard]] MppiSpeedPolicyResult
 evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,

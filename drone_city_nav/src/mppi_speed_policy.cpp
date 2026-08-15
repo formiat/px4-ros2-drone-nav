@@ -67,8 +67,7 @@ namespace {
 void validateConfig(const MppiSpeedPolicyConfig& config) {
   if (!(config.cruise_speed_mps > 0.0) || !(config.absolute_speed_limit_mps > 0.0) ||
       !(config.maximum_lateral_acceleration_mps2 > 0.0) ||
-      !(config.maximum_braking_acceleration_mps2 > 0.0) ||
-      !(config.reaction_latency_s >= 0.0) ||
+      !stoppingCapabilityIsValid(config.stopping_capability) ||
       !(config.observation_distance_m > config.observation_margin_m) ||
       !(config.observation_margin_m >= 0.0) || !(config.goal_margin_m >= 0.0) ||
       !(config.curvature_preview_distance_m > 0.0) ||
@@ -84,8 +83,10 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
 
 double stoppingLimitedSpeed(const double available_distance_m,
                             const double terminal_speed_mps,
-                            const double reaction_latency_s,
-                            const double braking_acceleration_mps2) noexcept {
+                            const StoppingCapability& capability) noexcept {
+  const double braking_acceleration_mps2 =
+      capability.maximum_commanded_horizontal_deceleration_mps2;
+  const double reaction_latency_s = capability.reaction_latency_s;
   if (!(available_distance_m > 0.0) || !(braking_acceleration_mps2 > 0.0) ||
       !(terminal_speed_mps >= 0.0) || !(reaction_latency_s >= 0.0)) {
     return 0.0;
@@ -105,24 +106,22 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.cruise_limit_mps = config.cruise_speed_mps;
   result.absolute_limit_mps = config.absolute_speed_limit_mps;
   result.terminal_goal_limit_enabled = input.terminal_goal_limit_enabled;
-  result.observation_limit_mps = stoppingLimitedSpeed(
-      config.observation_distance_m - config.observation_margin_m, 0.0,
-      config.reaction_latency_s, config.maximum_braking_acceleration_mps2);
+  result.observation_limit_mps =
+      stoppingLimitedSpeed(config.observation_distance_m - config.observation_margin_m,
+                           0.0, config.stopping_capability);
   if (input.terminal_goal_limit_enabled) {
     const double goal_distance =
         std::max(0.0, std::hypot(input.mission_goal.x - input.state.x,
                                  input.mission_goal.y - input.state.y) -
                           config.goal_margin_m);
     result.goal_limit_mps =
-        stoppingLimitedSpeed(goal_distance, 0.0, config.reaction_latency_s,
-                             config.maximum_braking_acceleration_mps2);
+        stoppingLimitedSpeed(goal_distance, 0.0, config.stopping_capability);
   }
   if (input.route_endpoint_remaining_m.has_value()) {
     const double route_endpoint_distance =
         std::max(0.0, *input.route_endpoint_remaining_m - config.goal_margin_m);
     result.route_endpoint_limit_mps =
-        stoppingLimitedSpeed(route_endpoint_distance, 0.0, config.reaction_latency_s,
-                             config.maximum_braking_acceleration_mps2);
+        stoppingLimitedSpeed(route_endpoint_distance, 0.0, config.stopping_capability);
   }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =
@@ -146,9 +145,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       }
       const double turn_speed =
           std::sqrt(config.maximum_lateral_acceleration_mps2 / curvature);
-      const double approach_limit = stoppingLimitedSpeed(
-          distance_to_turn_m, turn_speed, config.reaction_latency_s,
-          config.maximum_braking_acceleration_mps2);
+      const double approach_limit = stoppingLimitedSpeed(distance_to_turn_m, turn_speed,
+                                                         config.stopping_capability);
       result.curvature_limit_mps = std::min(result.curvature_limit_mps, approach_limit);
     }
   }

@@ -297,6 +297,8 @@ private:
     objective.stamp = now();
     objective.mission_epoch = mission_epoch_;
     objective.sample_sequence = ++objective_sequence_;
+    objective.assignment_generation = 0U;
+    objective.target_detection_id = 0U;
     objective.target_track_id = 0U;
     objective.position.x = position.x;
     objective.position.y = position.y;
@@ -353,6 +355,8 @@ private:
     objective.observation_stamp = detail::timeMessage(guidance.observation_stamp_ns);
     objective.mission_epoch = mission_epoch_;
     objective.sample_sequence = ++objective_sequence_;
+    objective.assignment_generation = assignment_generation_;
+    objective.target_detection_id = active_assignment_detection_id_;
     objective.target_track_id = target_track_->track_id;
     objective.position.x = guidance.predicted_position.x;
     objective.position.y = guidance.predicted_position.y;

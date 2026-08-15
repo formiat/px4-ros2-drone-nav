@@ -154,6 +154,11 @@ buildArrivalControls(const State& initial, const DynamicsConfig& dynamics,
 
 } // namespace
 
+FiniteHorizonConfig
+makeFiniteHorizonConfig(const StoppingCapability& capability) noexcept {
+  return FiniteHorizonConfig{.stopping_capability = capability};
+}
+
 std::optional<FiniteHorizon> buildFiniteHorizon(
     const std::span<const State> planned_states,
     const std::span<const Control> planned_controls,
@@ -163,7 +168,7 @@ std::optional<FiniteHorizon> buildFiniteHorizon(
       nominal_prefix_control_count > planned_controls.size() ||
       !(dynamics.dt_s > 0.0F) || !(dynamics.maximum_control_jerk_mps3 > 0.0F) ||
       !(config.terminal_velocity_tolerance_mps > 0.0F) ||
-      !(config.maximum_horizontal_deceleration_mps2 > 0.0F)) {
+      !stoppingCapabilityIsValid(config.stopping_capability)) {
     throw std::invalid_argument{"invalid finite MPPI horizon input"};
   }
 
@@ -196,7 +201,12 @@ std::optional<FiniteHorizon> buildFiniteHorizon(
   DynamicsConfig arrival_dynamics = dynamics;
   arrival_dynamics.maximum_horizontal_acceleration_mps2 =
       std::min(dynamics.maximum_horizontal_acceleration_mps2,
-               config.maximum_horizontal_deceleration_mps2);
+               static_cast<float>(
+                   config.stopping_capability.guaranteed_horizontal_deceleration_mps2));
+  arrival_dynamics.maximum_vertical_acceleration_mps2 =
+      std::min(dynamics.maximum_vertical_acceleration_mps2,
+               static_cast<float>(
+                   config.stopping_capability.guaranteed_vertical_deceleration_mps2));
   const std::optional<std::vector<Control>> arrival_controls =
       buildArrivalControls(horizon.states.back(), arrival_dynamics, remaining_steps,
                            config.terminal_velocity_tolerance_mps);

@@ -206,350 +206,353 @@ void ProductionMppiNode::processDiagnostics(
   last_route_constraint_observation_ = route_constraint;
 
   std::ostringstream line;
-  line << std::fixed << std::setprecision(3)
-       << "PRODUCTION_MPPI_TICK tick=" << snapshot.tick_sequence
-       << " pose_revision=" << input.pose_revision
-       << " raw_revision=" << input.obstacle_revision
-       << " esdf_revision=" << result.esdf_revision
-       << " memory_sequence=" << snapshot.memory_sequence
-       << " pose_age_ms=" << snapshot.pose_age_ms
-       << " esdf_age_ms=" << snapshot.esdf_age_ms
-       << " control_feedback_age_ms=" << snapshot.control_feedback_age_ms
-       << " state_position=(" << input.initial_state.x << ',' << input.initial_state.y
-       << ',' << input.initial_state.z << ") state_velocity=(" << input.initial_state.vx
-       << ',' << input.initial_state.vy << ',' << input.initial_state.vz << ')'
-       << " planning_mode=" << (use_static_map_ ? "static" : "no_static")
-       << " planning_state=" << productionMppiPlanningStateName(planning_state)
-       << detail::executionInfoFields(snapshot.execution) << " horizon_s="
-       << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
-       << " target_source=" << target_source << " target=(" << input.target.x << ','
-       << input.target.y << ',' << input.target.z << ")"
-       << " guide_generation=" << esdf.global_guide_generation
-       << " route_objective_epoch=" << esdf.route_objective.mission_epoch
-       << " route_objective_sample=" << esdf.route_objective.sample_sequence
-       << " search_objective_epoch=" << esdf.search_objective.mission_epoch
-       << " search_objective_sample=" << esdf.search_objective.sample_sequence
-       << " guide_reused=" << (esdf.global_guide_reused ? "true" : "false")
-       << " guide_reaches_mission_goal="
-       << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
-       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
-       << " goal_distance_m=" << snapshot.goal_capture.horizontal_distance_m
-       << " guide_release="
-       << globalGuideReleaseReasonName(esdf.global_guide_release_reason)
-       << " guide_heading_source="
-       << globalGuideHeadingSourceName(esdf.global_guide_heading_source)
-       << " guide_risk=" << globalGuideRiskTierName(esdf.global_guide_risk)
-       << " guide_acceptance="
-       << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason)
-       << " guide_station_m=" << snapshot.route_station_m
-       << " guide_remaining_m=" << snapshot.route_remaining_m
-       << " route_constraint_phase="
-       << constrainedRoutePhaseName(route_constraint.phase)
-       << " route_constraint_channel="
-       << (route_constraint.channel_id.empty() ? "none" : route_constraint.channel_id)
-       << " route_constraint_span_index="
-       << (route_constraint.span_available
-               ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
-               : static_cast<std::ptrdiff_t>(-1))
-       << " route_constraint_span_count=" << route_constraint.span_count
-       << " route_constraint_distance_to_entry_m="
-       << route_constraint.distance_to_entry_m
-       << " route_constraint_distance_to_exit_m=" << route_constraint.distance_to_exit_m
-       << " route_constraint_reference_z_m=" << route_constraint.reference_z_m
-       << " route_constraint_vertical_error_m=" << route_constraint.vertical_error_m
-       << " route_constraint_lateral_width_m=" << route_constraint.lateral_width_m
-       << " route_constraint_vertical_height_m=" << route_constraint.vertical_height_m
-       << " route_constraint_lateral="
-       << (route_constraint.lateral_constrained ? "true" : "false")
-       << " route_constraint_vertical="
-       << (route_constraint.vertical_constrained ? "true" : "false")
-       << " route_constraint_cross_track_error_m="
-       << route_constraint.cross_track_error_m
-       << " route_constraint_vertical_window_ok="
-       << (route_constraint.within_vertical_window ? "true" : "false")
-       << " guide_progress_action="
-       << globalGuideProgressActionName(snapshot.guide_progress.action)
-       << " guide_local_reseed_generation="
-       << snapshot.guide_progress.local_reseed_generation << " planning_search_kind="
-       << productionPlanningSearchKindName(esdf.planning_search_kind)
-       << " planning_search_start=(" << esdf.planning_search_start.x << ','
-       << esdf.planning_search_start.y << ',' << esdf.planning_search_start.z << ')'
-       << " planning_search_goal=(" << esdf.planning_search_goal.x << ','
-       << esdf.planning_search_goal.y << ',' << esdf.planning_search_goal.z << ')'
-       << " planning_candidate_endpoint=(" << esdf.planning_candidate_endpoint.x << ','
-       << esdf.planning_candidate_endpoint.y << ','
-       << esdf.planning_candidate_endpoint.z << ')' << " planning_search_direction=("
-       << esdf.planning_search_direction.x << ',' << esdf.planning_search_direction.y
-       << ',' << esdf.planning_search_direction.z << ')'
-       << " planning_candidate_points=" << esdf.planning_candidate_points
-       << " planning_candidate_samples=" << esdf.planning_candidate_samples
-       << " lattice_search_performed="
-       << (esdf.lattice_search_performed ? "true" : "false")
-       << " lattice_status=" << planningStatusName(esdf)
-       << " lattice_termination=" << planningTerminationName(esdf)
-       << " lattice_continuation_attempt=" << esdf.lattice_continuation_attempt
-       << " lattice_search_session_resumed="
-       << (esdf.lattice_search_session_resumed ? "true" : "false")
-       << " lattice_search_session_complete="
-       << (esdf.lattice_search_session_complete ? "true" : "false")
-       << " lattice_search_revision=" << esdf.lattice_search_revision
-       << " lattice_validation_revision=" << esdf.lattice_validation_revision
-       << " lattice_raw_validation="
-       << rawGuideValidationStatusName(esdf.lattice_raw_validation_status)
-       << " guide_candidate_validation="
-       << productionGuideCandidateValidationStatusName(
-              esdf.guide_candidate_validation_status)
-       << " lattice_risk_stage=" << planningRiskStageName(esdf)
-       << " lattice_3d_minimum_clearance_m=" << esdf.lattice_3d_minimum_clearance_m
-       << " static_route_candidate="
-       << staticRouteCandidateStatusName(esdf.static_route_candidate_status)
-       << " static_route_activation="
-       << staticRouteActivationStatusName(esdf.static_route_activation_status)
-       << " static_route_revision_matches="
-       << (esdf.static_route_revision_matches ? "true" : "false")
-       << " static_route_generation_matches="
-       << (esdf.static_route_generation_matches ? "true" : "false")
-       << " topology_objective=" << esdf.topology_objective_cost
-       << " topology_route_length_m=" << esdf.topology_route_length_m
-       << " topology_travel_time_s=" << esdf.topology_travel_time_s
-       << " topology_vertical_alignment_time_s="
-       << esdf.topology_vertical_alignment_time_s
-       << " topology_planning_exposure_m=" << esdf.topology_planning_exposure_m
-       << " topology_critical_exposure_m=" << esdf.topology_critical_exposure_m
-       << " topology_selected_channels="
-       << (esdf.selected_channel_ids ? esdf.selected_channel_ids->size() : 0U)
-       << " lattice_stale_pops=" << esdf.lattice_stale_queue_pops
-       << " lattice_open_peak=" << esdf.lattice_open_peak
-       << " lattice_records_peak=" << esdf.lattice_records_peak
-       << " lattice_continuation_states=" << esdf.lattice_continuation_reachable_states
-       << " lattice_reachable_depth_m=" << esdf.lattice_reachable_depth_m
-       << " lattice_frontier_endpoint_displacement_m="
-       << esdf.lattice_frontier_endpoint_displacement_m
-       << " lattice_frontier_selection_score=" << esdf.lattice_frontier_selection_score
-       << " lattice_3d_successor_generated="
-       << esdf.lattice_3d_successor_diagnostics.lattice_generated
-       << " lattice_3d_successor_accepted="
-       << esdf.lattice_3d_successor_diagnostics.lattice_accepted
-       << " lattice_3d_successor_reject_edge="
-       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
-       << " lattice_3d_successor_reject_zero="
-       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
-       << " lattice_3d_successor_reject_grid="
-       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
-       << " lattice_3d_successor_reject_envelope="
-       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
-       << " lattice_3d_successor_reject_invalid="
-       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
-       << " lattice_3d_successor_reject_collision="
-       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_raw_collision
-       << " lattice_3d_successor_reject_risk="
-       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
-       << " lattice_3d_successor_reject_cost="
-       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
-       << " channel_successor_generated="
-       << esdf.lattice_3d_successor_diagnostics.channel_generated
-       << " channel_successor_accepted="
-       << esdf.lattice_3d_successor_diagnostics.channel_accepted
-       << " channel_successor_rejected="
-       << esdf.lattice_3d_successor_diagnostics.channel_rejected
-       << " channel_successor_reject_connection="
-       << esdf.lattice_3d_successor_diagnostics.channel_rejected_connection_distance
-       << " channel_successor_reject_grid="
-       << esdf.lattice_3d_successor_diagnostics.channel_rejected_outside_grid
-       << " channel_successor_reject_envelope="
-       << esdf.lattice_3d_successor_diagnostics.channel_rejected_flight_envelope
-       << " channel_successor_reject_invalid="
-       << esdf.lattice_3d_successor_diagnostics.channel_rejected_invalid_esdf
-       << " channel_successor_reject_collision="
-       << esdf.lattice_3d_successor_diagnostics.channel_rejected_raw_collision
-       << " channel_successor_reject_risk="
-       << esdf.lattice_3d_successor_diagnostics.channel_rejected_risk_stage
-       << " channel_successor_reject_cost="
-       << esdf.lattice_3d_successor_diagnostics.channel_rejected_no_cost_improvement
-       << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
-       << " target_lookahead_m=" << speed_policy.target_lookahead_m
-       << " reference_speed_mps=" << input.reference_speed_mps
-       << detail::trackingPursuitInfoFields(pursuit_diagnostics, speed_policy, result)
-       << " curvature_speed_limit_mps="
-       << finiteOrNegative(speed_policy.curvature_limit_mps)
-       << " observation_speed_limit_mps="
-       << finiteOrNegative(speed_policy.observation_limit_mps)
-       << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
-       << " route_endpoint_speed_limit_mps="
-       << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
-       << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
-       << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
-       << detail::cooperativeInfoFields(snapshot.cooperative, result)
-       << detail::nonCooperativeInfoFields(snapshot.noncooperative, result)
-       << " gpu_warm_start_ms=" << result.timings.warm_start_ms
-       << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
-       << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
-       << " gpu_risk_reduction_ms=" << result.timings.risk_reduction_ms
-       << " gpu_weight_calculation_ms=" << result.timings.weight_calculation_ms
-       << " gpu_control_update_ms=" << result.timings.control_update_ms
-       << " gpu_repair_validation_ms=" << result.timings.repair_validation_ms
-       << " post_update_evaluation_ms=" << result.timings.post_update_evaluation_ms
-       << " gpu_ms=" << result.timings.gpu_total_ms
-       << " horizon_reconstruction_ms=" << result.timings.horizon_reconstruction_ms
-       << " total_ms=" << result.timings.host_total_ms
-       << " snapshot_ms=" << snapshot.snapshot_ms
-       << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
-       << " deadline_missed="
-       << (result.timings.host_total_ms > deadline_ms_ ? "true" : "false")
-       << " risk_tier=" << mppi::mppiRiskTierName(result.selected_tier)
-       << " altitude_envelope_violation="
-       << (result.altitude_envelope_violation ? "true" : "false")
-       << " raw_collision=" << (result.raw_collision ? "true" : "false")
-       << " known_solid_collision=" << (result.known_solid_collision ? "true" : "false")
-       << " critical_exposure_m=" << result.critical_exposure_m
-       << " planning_exposure_m=" << result.planning_exposure_m
-       << " critical_clearance_proximity_s=" << result.critical_clearance_proximity_s
-       << " obstacle_approach_m2_s=" << result.obstacle_approach_m2_s
-       << " feasible_available="
-       << (result.feasibility_contract.available ? "true" : "false")
-       << " feasible_weight_sum="
-       << finiteOrNegative(result.feasibility_contract.weight_sum)
-       << " post_update_classification="
-       << mppi::mppiPostUpdateClassificationName(
-              result.post_update_classification.classification)
-       << " post_update_executable="
-       << (result.post_update_classification.executable ? "true" : "false")
-       << " post_update_repair="
-       << mppi::mppiPostUpdateRepairName(result.post_update_repair)
-       << " post_update_backtrack_ratio=" << result.post_update_backtrack_ratio
-       << " minimum_esdf_m=" << result.minimum_esdf_distance_m
-       << " head_progress_m=" << result.head_progress_m
-       << " terminal_progress_m=" << result.terminal_progress_m
-       << " warm_start_shift_ms=" << result.warm_start_shift_s * 1000.0
-       << " previous_control_source="
-       << productionMppiPreviousControlSourceName(snapshot.previous_control_source)
-       << " nominal_reseeded=" << (result.nominal_reseeded ? "true" : "false")
-       << " direct_maneuver_reseed="
-       << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
-       << " direct_maneuver_reason="
-       << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
-       << " direct_bearing_change_deg="
-       << snapshot.direct_tracking_maneuver.bearing_change_rad * 180.0 / std::acos(-1.0)
-       << " direct_closing_speed_mps="
-       << snapshot.direct_tracking_maneuver.closing_speed_mps
-       << " direct_no_closing_duration_s="
-       << snapshot.direct_tracking_maneuver.no_closing_duration_s
-       << " target_directed_candidate_injected="
-       << (result.target_directed_candidate_injected ? "true" : "false")
-       << " target_directed_candidate_raw_safe="
-       << (result.target_directed_candidate_raw_safe ? "true" : "false")
-       << " target_directed_candidate_best_feasible="
-       << (result.target_directed_candidate_best_feasible ? "true" : "false")
-       << " target_directed_candidate_weight="
-       << result.target_directed_candidate_weight
-       << " route_directed_candidate_injected="
-       << (result.route_directed_candidate_injected ? "true" : "false")
-       << " route_directed_candidate_raw_safe="
-       << (result.route_directed_candidate_raw_safe ? "true" : "false")
-       << " route_directed_candidate_best_feasible="
-       << (result.route_directed_candidate_best_feasible ? "true" : "false")
-       << " route_directed_candidate_generation="
-       << result.route_directed_candidate_generation
-       << " temporary_frontier_is_terminal="
-       << (snapshot.temporary_frontier_is_terminal ? "true" : "false")
-       << " no_eligible_phase="
-       << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase)
-       << " no_eligible_recovery_generation="
-       << snapshot.no_eligible_recovery.no_eligible_recovery_generation
-       << " no_eligible_guide_replan="
-       << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
-       << " liveness_state=" << mppiLivenessStateName(liveness.state)
-       << " liveness_window_s=" << liveness.observation_age_s
-       << " liveness_actual_displacement_m=" << liveness.actual_displacement_m
-       << " liveness_actual_route_progress_m=" << liveness.actual_route_progress_m
-       << " liveness_route_progress_used="
-       << (liveness.used_route_progress ? "true" : "false")
-       << " liveness_reseed_generation=" << liveness.reseed_generation
-       << " route_required_risk_tier="
-       << mppi::mppiRiskTierName(snapshot.route_required_risk_tier)
-       << " maximum_acceleration_mps2=" << result.maximum_acceleration_mps2
-       << " maximum_jerk_mps3=" << result.maximum_jerk_mps3
-       << " first_control_delta=" << result.first_control_delta
-       << " horizon_stability_rms="
-       << (stability.valid ? stability.position_rms_m : -1.0)
-       << " shifted_horizon_first_control_delta="
-       << (stability.valid ? stability.first_control_delta : -1.0)
-       << " prediction_position_error_m="
-       << (prediction.valid ? prediction.position_m : -1.0)
-       << " esdf_build_ms=" << esdf.build_ms
-       << " esdf_x_pass_ms=" << esdf.esdf_x_pass_ms
-       << " esdf_y_pass_ms=" << esdf.esdf_y_pass_ms
-       << " esdf_z_pass_ms=" << esdf.esdf_z_pass_ms
-       << " esdf_finalize_ms=" << esdf.esdf_finalize_ms
-       << " guide_search_ms=" << esdf.global_guide_search_ms
-       << " continuation_validation_ms=" << esdf.continuation_validation_ms
-       << " successor_search_batches="
-       << esdf.lattice_successor_profiling.search.collection_calls
-       << " successor_search_parallel_batches="
-       << esdf.lattice_successor_profiling.search.parallel_collection_calls
-       << " successor_search_candidates="
-       << esdf.lattice_successor_profiling.search.candidates
-       << " successor_search_parallel_candidates="
-       << esdf.lattice_successor_profiling.search.parallel_candidates
-       << " successor_search_batch_max="
-       << esdf.lattice_successor_profiling.search.maximum_candidates
-       << " successor_search_worker_ms="
-       << esdf.lattice_successor_profiling.search.worker_ms
-       << " expansion_prefetch_batches="
-       << esdf.lattice_successor_profiling.expansion_prefetch.batches
-       << " expansion_prefetch_entries="
-       << esdf.lattice_successor_profiling.expansion_prefetch.entries
-       << " expansion_prefetch_parallel_entries="
-       << esdf.lattice_successor_profiling.expansion_prefetch.parallel_entries
-       << " expansion_prefetch_cache_hits="
-       << esdf.lattice_successor_profiling.expansion_prefetch.cache_hits
-       << " expansion_prefetch_discarded_entries="
-       << esdf.lattice_successor_profiling.expansion_prefetch.discarded_entries
-       << " expansion_prefetch_worker_ms="
-       << esdf.lattice_successor_profiling.expansion_prefetch.worker_ms
-       << " successor_continuation_batches="
-       << esdf.lattice_successor_profiling.continuation.collection_calls
-       << " successor_continuation_parallel_batches="
-       << esdf.lattice_successor_profiling.continuation.parallel_collection_calls
-       << " successor_continuation_candidates="
-       << esdf.lattice_successor_profiling.continuation.candidates
-       << " successor_continuation_batch_max="
-       << esdf.lattice_successor_profiling.continuation.maximum_candidates
-       << " successor_continuation_worker_ms="
-       << esdf.lattice_successor_profiling.continuation.worker_ms
-       << " successor_3d_search_batches="
-       << esdf.lattice_3d_successor_profiling.search.collection_calls
-       << " successor_3d_search_parallel_batches="
-       << esdf.lattice_3d_successor_profiling.search.parallel_collection_calls
-       << " successor_3d_search_candidates="
-       << esdf.lattice_3d_successor_profiling.search.candidates
-       << " successor_3d_search_batch_max="
-       << esdf.lattice_3d_successor_profiling.search.maximum_candidates
-       << " successor_3d_search_worker_ms="
-       << esdf.lattice_3d_successor_profiling.search.worker_ms
-       << " successor_3d_continuation_batches="
-       << esdf.lattice_3d_successor_profiling.continuation.collection_calls
-       << " successor_3d_continuation_parallel_batches="
-       << esdf.lattice_3d_successor_profiling.continuation.parallel_collection_calls
-       << " successor_3d_continuation_candidates="
-       << esdf.lattice_3d_successor_profiling.continuation.candidates
-       << " successor_3d_continuation_batch_max="
-       << esdf.lattice_3d_successor_profiling.continuation.maximum_candidates
-       << " successor_3d_continuation_worker_ms="
-       << esdf.lattice_3d_successor_profiling.continuation.worker_ms
-       << " route_smoothing_ms=" << esdf.route_smoothing_ms
-       << " route_shortcuts_applied=" << esdf.route_shortcuts_applied
-       << " route_corners_smoothed=" << esdf.route_corners_smoothed
-       << " candidate_validation_ms=" << esdf.candidate_validation_ms
-       << " route_fingerprint=" << esdf.route_fingerprint
-       << " search_session_age_ms=" << esdf.lattice_search_session_age_ms
-       << " no_static_cycle_detected="
-       << (esdf.no_static_cycle_detected ? "true" : "false")
-       << " no_static_adaptive_search="
-       << (esdf.no_static_adaptive_search ? "true" : "false")
-       << " no_static_soft_tabu_entries=" << esdf.no_static_soft_tabu_entries
-       << " esdf_upload_ms=" << esdf.upload_ms << " dropped_diagnostics="
-       << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed);
+  line
+      << std::fixed << std::setprecision(3)
+      << "PRODUCTION_MPPI_TICK tick=" << snapshot.tick_sequence
+      << " pose_revision=" << input.pose_revision
+      << " raw_revision=" << input.obstacle_revision
+      << " esdf_revision=" << result.esdf_revision
+      << " memory_sequence=" << snapshot.memory_sequence
+      << " pose_age_ms=" << snapshot.pose_age_ms
+      << " esdf_age_ms=" << snapshot.esdf_age_ms
+      << " control_feedback_age_ms=" << snapshot.control_feedback_age_ms
+      << " state_position=(" << input.initial_state.x << ',' << input.initial_state.y
+      << ',' << input.initial_state.z << ") state_velocity=(" << input.initial_state.vx
+      << ',' << input.initial_state.vy << ',' << input.initial_state.vz << ')'
+      << " planning_mode=" << (use_static_map_ ? "static" : "no_static")
+      << " planning_state=" << productionMppiPlanningStateName(planning_state)
+      << detail::executionInfoFields(snapshot.execution) << " horizon_s="
+      << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
+      << " target_source=" << target_source << " target=(" << input.target.x << ','
+      << input.target.y << ',' << input.target.z << ")"
+      << " guide_generation=" << esdf.global_guide_generation
+      << " route_objective_epoch=" << esdf.route_objective.mission_epoch
+      << " route_objective_sample=" << esdf.route_objective.sample_sequence
+      << " route_assignment_generation=" << esdf.route_objective.assignment_generation
+      << " route_target_detection_id=" << esdf.route_objective.target_detection_id
+      << " route_target_track_id=" << esdf.route_objective.target_track_id
+      << " search_objective_epoch=" << esdf.search_objective.mission_epoch
+      << " search_objective_sample=" << esdf.search_objective.sample_sequence
+      << " search_assignment_generation=" << esdf.search_objective.assignment_generation
+      << " search_target_detection_id=" << esdf.search_objective.target_detection_id
+      << " search_target_track_id=" << esdf.search_objective.target_track_id
+      << " guide_reused=" << (esdf.global_guide_reused ? "true" : "false")
+      << " guide_reaches_mission_goal="
+      << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
+      << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
+      << " goal_distance_m=" << snapshot.goal_capture.horizontal_distance_m
+      << " guide_release="
+      << globalGuideReleaseReasonName(esdf.global_guide_release_reason)
+      << " guide_heading_source="
+      << globalGuideHeadingSourceName(esdf.global_guide_heading_source)
+      << " guide_risk=" << globalGuideRiskTierName(esdf.global_guide_risk)
+      << " guide_acceptance="
+      << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason)
+      << " guide_station_m=" << snapshot.route_station_m
+      << " guide_remaining_m=" << snapshot.route_remaining_m
+      << " route_constraint_phase=" << constrainedRoutePhaseName(route_constraint.phase)
+      << " route_constraint_channel="
+      << (route_constraint.channel_id.empty() ? "none" : route_constraint.channel_id)
+      << " route_constraint_span_index="
+      << (route_constraint.span_available
+              ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
+              : static_cast<std::ptrdiff_t>(-1))
+      << " route_constraint_span_count=" << route_constraint.span_count
+      << " route_constraint_distance_to_entry_m="
+      << route_constraint.distance_to_entry_m
+      << " route_constraint_distance_to_exit_m=" << route_constraint.distance_to_exit_m
+      << " route_constraint_reference_z_m=" << route_constraint.reference_z_m
+      << " route_constraint_vertical_error_m=" << route_constraint.vertical_error_m
+      << " route_constraint_lateral_width_m=" << route_constraint.lateral_width_m
+      << " route_constraint_vertical_height_m=" << route_constraint.vertical_height_m
+      << " route_constraint_lateral="
+      << (route_constraint.lateral_constrained ? "true" : "false")
+      << " route_constraint_vertical="
+      << (route_constraint.vertical_constrained ? "true" : "false")
+      << " route_constraint_cross_track_error_m="
+      << route_constraint.cross_track_error_m << " route_constraint_vertical_window_ok="
+      << (route_constraint.within_vertical_window ? "true" : "false")
+      << " guide_progress_action="
+      << globalGuideProgressActionName(snapshot.guide_progress.action)
+      << " guide_local_reseed_generation="
+      << snapshot.guide_progress.local_reseed_generation << " planning_search_kind="
+      << productionPlanningSearchKindName(esdf.planning_search_kind)
+      << " planning_search_start=(" << esdf.planning_search_start.x << ','
+      << esdf.planning_search_start.y << ',' << esdf.planning_search_start.z << ')'
+      << " planning_search_goal=(" << esdf.planning_search_goal.x << ','
+      << esdf.planning_search_goal.y << ',' << esdf.planning_search_goal.z << ')'
+      << " planning_candidate_endpoint=(" << esdf.planning_candidate_endpoint.x << ','
+      << esdf.planning_candidate_endpoint.y << ',' << esdf.planning_candidate_endpoint.z
+      << ')' << " planning_search_direction=(" << esdf.planning_search_direction.x
+      << ',' << esdf.planning_search_direction.y << ','
+      << esdf.planning_search_direction.z << ')'
+      << " planning_candidate_points=" << esdf.planning_candidate_points
+      << " planning_candidate_samples=" << esdf.planning_candidate_samples
+      << " lattice_search_performed="
+      << (esdf.lattice_search_performed ? "true" : "false")
+      << " lattice_status=" << planningStatusName(esdf)
+      << " lattice_termination=" << planningTerminationName(esdf)
+      << " lattice_continuation_attempt=" << esdf.lattice_continuation_attempt
+      << " lattice_search_session_resumed="
+      << (esdf.lattice_search_session_resumed ? "true" : "false")
+      << " lattice_search_session_complete="
+      << (esdf.lattice_search_session_complete ? "true" : "false")
+      << " lattice_search_revision=" << esdf.lattice_search_revision
+      << " lattice_validation_revision=" << esdf.lattice_validation_revision
+      << " lattice_raw_validation="
+      << rawGuideValidationStatusName(esdf.lattice_raw_validation_status)
+      << " guide_candidate_validation="
+      << productionGuideCandidateValidationStatusName(
+             esdf.guide_candidate_validation_status)
+      << " lattice_risk_stage=" << planningRiskStageName(esdf)
+      << " lattice_3d_minimum_clearance_m=" << esdf.lattice_3d_minimum_clearance_m
+      << " static_route_candidate="
+      << staticRouteCandidateStatusName(esdf.static_route_candidate_status)
+      << " static_route_activation="
+      << staticRouteActivationStatusName(esdf.static_route_activation_status)
+      << " static_route_revision_matches="
+      << (esdf.static_route_revision_matches ? "true" : "false")
+      << " static_route_generation_matches="
+      << (esdf.static_route_generation_matches ? "true" : "false")
+      << " topology_objective=" << esdf.topology_objective_cost
+      << " topology_route_length_m=" << esdf.topology_route_length_m
+      << " topology_travel_time_s=" << esdf.topology_travel_time_s
+      << " topology_vertical_alignment_time_s="
+      << esdf.topology_vertical_alignment_time_s
+      << " topology_planning_exposure_m=" << esdf.topology_planning_exposure_m
+      << " topology_critical_exposure_m=" << esdf.topology_critical_exposure_m
+      << " topology_selected_channels="
+      << (esdf.selected_channel_ids ? esdf.selected_channel_ids->size() : 0U)
+      << " lattice_stale_pops=" << esdf.lattice_stale_queue_pops
+      << " lattice_open_peak=" << esdf.lattice_open_peak
+      << " lattice_records_peak=" << esdf.lattice_records_peak
+      << " lattice_continuation_states=" << esdf.lattice_continuation_reachable_states
+      << " lattice_reachable_depth_m=" << esdf.lattice_reachable_depth_m
+      << " lattice_frontier_endpoint_displacement_m="
+      << esdf.lattice_frontier_endpoint_displacement_m
+      << " lattice_frontier_selection_score=" << esdf.lattice_frontier_selection_score
+      << " lattice_3d_successor_generated="
+      << esdf.lattice_3d_successor_diagnostics.lattice_generated
+      << " lattice_3d_successor_accepted="
+      << esdf.lattice_3d_successor_diagnostics.lattice_accepted
+      << " lattice_3d_successor_reject_edge="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
+      << " lattice_3d_successor_reject_zero="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
+      << " lattice_3d_successor_reject_grid="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
+      << " lattice_3d_successor_reject_envelope="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
+      << " lattice_3d_successor_reject_invalid="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
+      << " lattice_3d_successor_reject_collision="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_raw_collision
+      << " lattice_3d_successor_reject_risk="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
+      << " lattice_3d_successor_reject_cost="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
+      << " channel_successor_generated="
+      << esdf.lattice_3d_successor_diagnostics.channel_generated
+      << " channel_successor_accepted="
+      << esdf.lattice_3d_successor_diagnostics.channel_accepted
+      << " channel_successor_rejected="
+      << esdf.lattice_3d_successor_diagnostics.channel_rejected
+      << " channel_successor_reject_connection="
+      << esdf.lattice_3d_successor_diagnostics.channel_rejected_connection_distance
+      << " channel_successor_reject_grid="
+      << esdf.lattice_3d_successor_diagnostics.channel_rejected_outside_grid
+      << " channel_successor_reject_envelope="
+      << esdf.lattice_3d_successor_diagnostics.channel_rejected_flight_envelope
+      << " channel_successor_reject_invalid="
+      << esdf.lattice_3d_successor_diagnostics.channel_rejected_invalid_esdf
+      << " channel_successor_reject_collision="
+      << esdf.lattice_3d_successor_diagnostics.channel_rejected_raw_collision
+      << " channel_successor_reject_risk="
+      << esdf.lattice_3d_successor_diagnostics.channel_rejected_risk_stage
+      << " channel_successor_reject_cost="
+      << esdf.lattice_3d_successor_diagnostics.channel_rejected_no_cost_improvement
+      << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
+      << " target_lookahead_m=" << speed_policy.target_lookahead_m
+      << " reference_speed_mps=" << input.reference_speed_mps
+      << detail::trackingPursuitInfoFields(pursuit_diagnostics, speed_policy, result)
+      << " curvature_speed_limit_mps="
+      << finiteOrNegative(speed_policy.curvature_limit_mps)
+      << " observation_speed_limit_mps="
+      << finiteOrNegative(speed_policy.observation_limit_mps)
+      << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
+      << " route_endpoint_speed_limit_mps="
+      << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
+      << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
+      << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
+      << detail::cooperativeInfoFields(snapshot.cooperative, result)
+      << detail::nonCooperativeInfoFields(snapshot.noncooperative, result)
+      << " gpu_warm_start_ms=" << result.timings.warm_start_ms
+      << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
+      << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
+      << " gpu_risk_reduction_ms=" << result.timings.risk_reduction_ms
+      << " gpu_weight_calculation_ms=" << result.timings.weight_calculation_ms
+      << " gpu_control_update_ms=" << result.timings.control_update_ms
+      << " gpu_repair_validation_ms=" << result.timings.repair_validation_ms
+      << " post_update_evaluation_ms=" << result.timings.post_update_evaluation_ms
+      << " gpu_ms=" << result.timings.gpu_total_ms
+      << " horizon_reconstruction_ms=" << result.timings.horizon_reconstruction_ms
+      << " total_ms=" << result.timings.host_total_ms
+      << " snapshot_ms=" << snapshot.snapshot_ms
+      << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
+      << " deadline_missed="
+      << (result.timings.host_total_ms > deadline_ms_ ? "true" : "false")
+      << " risk_tier=" << mppi::mppiRiskTierName(result.selected_tier)
+      << " altitude_envelope_violation="
+      << (result.altitude_envelope_violation ? "true" : "false")
+      << " raw_collision=" << (result.raw_collision ? "true" : "false")
+      << " known_solid_collision=" << (result.known_solid_collision ? "true" : "false")
+      << " critical_exposure_m=" << result.critical_exposure_m
+      << " planning_exposure_m=" << result.planning_exposure_m
+      << " critical_clearance_proximity_s=" << result.critical_clearance_proximity_s
+      << " obstacle_approach_m2_s=" << result.obstacle_approach_m2_s
+      << " feasible_available="
+      << (result.feasibility_contract.available ? "true" : "false")
+      << " feasible_weight_sum="
+      << finiteOrNegative(result.feasibility_contract.weight_sum)
+      << " post_update_classification="
+      << mppi::mppiPostUpdateClassificationName(
+             result.post_update_classification.classification)
+      << " post_update_executable="
+      << (result.post_update_classification.executable ? "true" : "false")
+      << " post_update_repair="
+      << mppi::mppiPostUpdateRepairName(result.post_update_repair)
+      << " post_update_backtrack_ratio=" << result.post_update_backtrack_ratio
+      << " minimum_esdf_m=" << result.minimum_esdf_distance_m
+      << " head_progress_m=" << result.head_progress_m
+      << " terminal_progress_m=" << result.terminal_progress_m
+      << " warm_start_shift_ms=" << result.warm_start_shift_s * 1000.0
+      << " previous_control_source="
+      << productionMppiPreviousControlSourceName(snapshot.previous_control_source)
+      << " nominal_reseeded=" << (result.nominal_reseeded ? "true" : "false")
+      << " direct_maneuver_reseed="
+      << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
+      << " direct_maneuver_reason="
+      << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
+      << " direct_bearing_change_deg="
+      << snapshot.direct_tracking_maneuver.bearing_change_rad * 180.0 / std::acos(-1.0)
+      << " direct_closing_speed_mps="
+      << snapshot.direct_tracking_maneuver.closing_speed_mps
+      << " direct_no_closing_duration_s="
+      << snapshot.direct_tracking_maneuver.no_closing_duration_s
+      << " target_directed_candidate_injected="
+      << (result.target_directed_candidate_injected ? "true" : "false")
+      << " target_directed_candidate_raw_safe="
+      << (result.target_directed_candidate_raw_safe ? "true" : "false")
+      << " target_directed_candidate_best_feasible="
+      << (result.target_directed_candidate_best_feasible ? "true" : "false")
+      << " target_directed_candidate_weight=" << result.target_directed_candidate_weight
+      << " route_directed_candidate_injected="
+      << (result.route_directed_candidate_injected ? "true" : "false")
+      << " route_directed_candidate_raw_safe="
+      << (result.route_directed_candidate_raw_safe ? "true" : "false")
+      << " route_directed_candidate_best_feasible="
+      << (result.route_directed_candidate_best_feasible ? "true" : "false")
+      << " route_directed_candidate_generation="
+      << result.route_directed_candidate_generation
+      << " temporary_frontier_is_terminal="
+      << (snapshot.temporary_frontier_is_terminal ? "true" : "false")
+      << " no_eligible_phase="
+      << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase)
+      << " no_eligible_recovery_generation="
+      << snapshot.no_eligible_recovery.no_eligible_recovery_generation
+      << " no_eligible_guide_replan="
+      << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
+      << " liveness_state=" << mppiLivenessStateName(liveness.state)
+      << " liveness_window_s=" << liveness.observation_age_s
+      << " liveness_actual_displacement_m=" << liveness.actual_displacement_m
+      << " liveness_actual_route_progress_m=" << liveness.actual_route_progress_m
+      << " liveness_route_progress_used="
+      << (liveness.used_route_progress ? "true" : "false")
+      << " liveness_reseed_generation=" << liveness.reseed_generation
+      << " route_required_risk_tier="
+      << mppi::mppiRiskTierName(snapshot.route_required_risk_tier)
+      << " maximum_acceleration_mps2=" << result.maximum_acceleration_mps2
+      << " maximum_jerk_mps3=" << result.maximum_jerk_mps3
+      << " first_control_delta=" << result.first_control_delta
+      << " horizon_stability_rms="
+      << (stability.valid ? stability.position_rms_m : -1.0)
+      << " shifted_horizon_first_control_delta="
+      << (stability.valid ? stability.first_control_delta : -1.0)
+      << " prediction_position_error_m="
+      << (prediction.valid ? prediction.position_m : -1.0)
+      << " esdf_build_ms=" << esdf.build_ms << " esdf_x_pass_ms=" << esdf.esdf_x_pass_ms
+      << " esdf_y_pass_ms=" << esdf.esdf_y_pass_ms
+      << " esdf_z_pass_ms=" << esdf.esdf_z_pass_ms
+      << " esdf_finalize_ms=" << esdf.esdf_finalize_ms
+      << " guide_search_ms=" << esdf.global_guide_search_ms
+      << " continuation_validation_ms=" << esdf.continuation_validation_ms
+      << " successor_search_batches="
+      << esdf.lattice_successor_profiling.search.collection_calls
+      << " successor_search_parallel_batches="
+      << esdf.lattice_successor_profiling.search.parallel_collection_calls
+      << " successor_search_candidates="
+      << esdf.lattice_successor_profiling.search.candidates
+      << " successor_search_parallel_candidates="
+      << esdf.lattice_successor_profiling.search.parallel_candidates
+      << " successor_search_batch_max="
+      << esdf.lattice_successor_profiling.search.maximum_candidates
+      << " successor_search_worker_ms="
+      << esdf.lattice_successor_profiling.search.worker_ms
+      << " expansion_prefetch_batches="
+      << esdf.lattice_successor_profiling.expansion_prefetch.batches
+      << " expansion_prefetch_entries="
+      << esdf.lattice_successor_profiling.expansion_prefetch.entries
+      << " expansion_prefetch_parallel_entries="
+      << esdf.lattice_successor_profiling.expansion_prefetch.parallel_entries
+      << " expansion_prefetch_cache_hits="
+      << esdf.lattice_successor_profiling.expansion_prefetch.cache_hits
+      << " expansion_prefetch_discarded_entries="
+      << esdf.lattice_successor_profiling.expansion_prefetch.discarded_entries
+      << " expansion_prefetch_worker_ms="
+      << esdf.lattice_successor_profiling.expansion_prefetch.worker_ms
+      << " successor_continuation_batches="
+      << esdf.lattice_successor_profiling.continuation.collection_calls
+      << " successor_continuation_parallel_batches="
+      << esdf.lattice_successor_profiling.continuation.parallel_collection_calls
+      << " successor_continuation_candidates="
+      << esdf.lattice_successor_profiling.continuation.candidates
+      << " successor_continuation_batch_max="
+      << esdf.lattice_successor_profiling.continuation.maximum_candidates
+      << " successor_continuation_worker_ms="
+      << esdf.lattice_successor_profiling.continuation.worker_ms
+      << " successor_3d_search_batches="
+      << esdf.lattice_3d_successor_profiling.search.collection_calls
+      << " successor_3d_search_parallel_batches="
+      << esdf.lattice_3d_successor_profiling.search.parallel_collection_calls
+      << " successor_3d_search_candidates="
+      << esdf.lattice_3d_successor_profiling.search.candidates
+      << " successor_3d_search_batch_max="
+      << esdf.lattice_3d_successor_profiling.search.maximum_candidates
+      << " successor_3d_search_worker_ms="
+      << esdf.lattice_3d_successor_profiling.search.worker_ms
+      << " successor_3d_continuation_batches="
+      << esdf.lattice_3d_successor_profiling.continuation.collection_calls
+      << " successor_3d_continuation_parallel_batches="
+      << esdf.lattice_3d_successor_profiling.continuation.parallel_collection_calls
+      << " successor_3d_continuation_candidates="
+      << esdf.lattice_3d_successor_profiling.continuation.candidates
+      << " successor_3d_continuation_batch_max="
+      << esdf.lattice_3d_successor_profiling.continuation.maximum_candidates
+      << " successor_3d_continuation_worker_ms="
+      << esdf.lattice_3d_successor_profiling.continuation.worker_ms
+      << " route_smoothing_ms=" << esdf.route_smoothing_ms
+      << " route_shortcuts_applied=" << esdf.route_shortcuts_applied
+      << " route_corners_smoothed=" << esdf.route_corners_smoothed
+      << " candidate_validation_ms=" << esdf.candidate_validation_ms
+      << " route_fingerprint=" << esdf.route_fingerprint
+      << " search_session_age_ms=" << esdf.lattice_search_session_age_ms
+      << " no_static_cycle_detected="
+      << (esdf.no_static_cycle_detected ? "true" : "false")
+      << " no_static_adaptive_search="
+      << (esdf.no_static_adaptive_search ? "true" : "false")
+      << " no_static_soft_tabu_entries=" << esdf.no_static_soft_tabu_entries
+      << " esdf_upload_ms=" << esdf.upload_ms << " dropped_diagnostics="
+      << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed);
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   if (now_ns - last_diagnostics_info_stamp_ns_ >= diagnostics_info_period_ns_) {
     RCLCPP_INFO(get_logger(), "%s", line.str().c_str());
@@ -624,8 +627,17 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"guide_generation\":" << esdf.global_guide_generation
         << ",\"route_objective_epoch\":" << esdf.route_objective.mission_epoch
         << ",\"route_objective_sample\":" << esdf.route_objective.sample_sequence
+        << ",\"route_assignment_generation\":"
+        << esdf.route_objective.assignment_generation
+        << ",\"route_target_detection_id\":" << esdf.route_objective.target_detection_id
+        << ",\"route_target_track_id\":" << esdf.route_objective.target_track_id
         << ",\"search_objective_epoch\":" << esdf.search_objective.mission_epoch
         << ",\"search_objective_sample\":" << esdf.search_objective.sample_sequence
+        << ",\"search_assignment_generation\":"
+        << esdf.search_objective.assignment_generation
+        << ",\"search_target_detection_id\":"
+        << esdf.search_objective.target_detection_id
+        << ",\"search_target_track_id\":" << esdf.search_objective.target_track_id
         << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
         << ",\"guide_reaches_mission_goal\":"
         << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
