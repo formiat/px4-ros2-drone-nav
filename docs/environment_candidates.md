@@ -139,11 +139,11 @@ Finals inventory contains 60 CC-BY-4.0 and 23 CC0-1.0 resources, while the Cave
 inventory contains 40 CC-BY-4.0 and 5 CC0-1.0 resources. Archives use stable
 ordering, timestamps, ownership, permissions, and gzip metadata.
 
-The local release mirror is
-`external/environment-artifacts/releases/environment-assets-v1/`. It is ignored
-by Git. `artifact_release.published` remains `false` until those exact files are
-uploaded to the release URL recorded in the manifest. This prevents a fresh
-checkout from silently treating a nonexistent remote release as available.
+The published release is identified by `environment-assets-v1` and its URL is
+recorded in the manifest. The verified local mirror remains under
+`external/environment-artifacts/releases/environment-assets-v1/` and is ignored
+by Git. With `artifact_release.published` set to `true`, a fresh checkout can
+download the exact SHA-pinned files when no local mirror is available.
 
 The repository-owned compact fixture is stored under
 `environments/fixtures/compact_3d_passage/`. Its horizontal corridor, roof

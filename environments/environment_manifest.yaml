@@ -1,7 +1,7 @@
 schema: drone_city_nav_environment_manifest_v1
 artifact_release:
   tag: environment-assets-v1
-  published: false
+  published: true
   base_urls:
   - https://github.com/formiat/px4-ros2-drone-nav/releases/download/environment-assets-v1
   local_mirror: external/environment-artifacts/releases/environment-assets-v1
