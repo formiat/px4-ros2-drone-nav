@@ -281,6 +281,54 @@ derivePassageVolume(const std::span<const RouteSample3D> route,
   return result;
 }
 
+[[nodiscard]] const PassageVolume*
+matchingVolume(const std::span<const PassageVolume> passage_volumes,
+               const ConstrainedRouteSpan& span,
+               const std::size_t span_index) noexcept {
+  const auto found =
+      std::ranges::find_if(passage_volumes, [&](const PassageVolume& volume) {
+        return volume.span_index == span_index &&
+               volume.passage_traversal_id == span.passage_traversal_id;
+      });
+  return found == passage_volumes.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const RouteEnvelopeSample*
+nearestEnvelope(const std::span<const RouteEnvelopeSample> envelope,
+                const double station_m) noexcept {
+  if (envelope.empty()) {
+    return nullptr;
+  }
+  const auto upper = std::ranges::lower_bound(envelope, station_m, {},
+                                              &RouteEnvelopeSample::station_m);
+  if (upper == envelope.begin()) {
+    return &envelope.front();
+  }
+  if (upper == envelope.end()) {
+    return &envelope.back();
+  }
+  const RouteEnvelopeSample& previous = *std::prev(upper);
+  return station_m - previous.station_m <= upper->station_m - station_m ? &previous
+                                                                        : &*upper;
+}
+
+[[nodiscard]] std::pair<double, double>
+verticalCenterRange(const PassageCrossSection& section) noexcept {
+  double minimum_z_m = std::numeric_limits<double>::infinity();
+  double maximum_z_m = -std::numeric_limits<double>::infinity();
+  for (const double lateral_m :
+       {section.minimum_lateral_offset_m, section.maximum_lateral_offset_m}) {
+    for (const double secondary_m :
+         {section.minimum_secondary_offset_m, section.maximum_secondary_offset_m}) {
+      const double z_m = section.center.z + section.lateral_axis.z * lateral_m +
+                         section.secondary_axis.z * secondary_m;
+      minimum_z_m = std::min(minimum_z_m, z_m);
+      maximum_z_m = std::max(maximum_z_m, z_m);
+    }
+  }
+  return {minimum_z_m, maximum_z_m};
+}
+
 [[nodiscard]] std::string
 resourceKey(const std::span<const RouteSample3D> route,
             const std::span<const ConstrainedRouteSpan> constrained_spans,
@@ -363,6 +411,47 @@ PassageVolumeResource acquireDerivedPassageVolumes(
       .volumes = std::move(volumes),
       .shared_resource_reused = false,
   };
+}
+
+std::size_t
+projectPassageVolumeEnvelopes(const std::span<ConstrainedRouteSpan> constrained_spans,
+                              const std::span<const PassageVolume> passage_volumes,
+                              const SweptFootprintConfig& footprint) noexcept {
+  std::size_t projected_count = 0U;
+  for (std::size_t index = 0U; index < constrained_spans.size(); ++index) {
+    ConstrainedRouteSpan& span = constrained_spans[index];
+    const PassageVolume* const volume = matchingVolume(passage_volumes, span, index);
+    if (volume == nullptr || !volume->raw_validated || volume->cross_sections.empty()) {
+      continue;
+    }
+    const std::vector<RouteEnvelopeSample> original_envelope = span.envelope;
+    span.envelope.clear();
+    span.envelope.reserve(volume->cross_sections.size());
+    for (const PassageCrossSection& section : volume->cross_sections) {
+      const RouteEnvelopeSample* const original =
+          nearestEnvelope(original_envelope, section.station_m);
+      const auto [minimum_center_z_m, maximum_center_z_m] =
+          verticalCenterRange(section);
+      const double minimum_center_clearance_m =
+          std::max(0.0, std::min({-section.minimum_lateral_offset_m,
+                                  section.maximum_lateral_offset_m,
+                                  -section.minimum_secondary_offset_m,
+                                  section.maximum_secondary_offset_m}));
+      span.envelope.push_back(RouteEnvelopeSample{
+          .station_m = section.station_m,
+          .lateral_free_left_m = footprint.radius_m + section.maximum_lateral_offset_m,
+          .lateral_free_right_m = footprint.radius_m - section.minimum_lateral_offset_m,
+          .min_z_m = minimum_center_z_m - footprint.lower_extent_m,
+          .max_z_m = maximum_center_z_m + footprint.upper_extent_m,
+          .minimum_clearance_m = footprint.radius_m + minimum_center_clearance_m,
+          .reference_z_m = section.center.z,
+          .reference_speed_mps =
+              original != nullptr ? original->reference_speed_mps : 0.0,
+      });
+    }
+    ++projected_count;
+  }
+  return projected_count;
 }
 
 const PassageCrossSection* nearestPassageCrossSection(const PassageVolume& volume,

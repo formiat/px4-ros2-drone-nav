@@ -93,6 +93,11 @@ acquireDerivedPassageVolumes(std::span<const RouteSample3D> route,
                              const OccupancyGrid3D& occupancy,
                              const PassageVolumeConfig& config);
 
+[[nodiscard]] std::size_t
+projectPassageVolumeEnvelopes(std::span<ConstrainedRouteSpan> constrained_spans,
+                              std::span<const PassageVolume> passage_volumes,
+                              const SweptFootprintConfig& footprint) noexcept;
+
 [[nodiscard]] const PassageCrossSection*
 nearestPassageCrossSection(const PassageVolume& volume, double station_m) noexcept;
 

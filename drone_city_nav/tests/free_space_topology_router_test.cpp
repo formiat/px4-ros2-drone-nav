@@ -1,6 +1,7 @@
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/free_space_topology_extractor_3d.hpp"
 #include "drone_city_nav/free_space_topology_router.hpp"
+#include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <gtest/gtest.h>
@@ -91,6 +92,72 @@ TEST(FreeSpaceTopologyRouter, BoundsJunctionCandidatesWithoutPairwiseMaterializa
       std::ranges::all_of(*route.traversals, [](const PassageTraversalEdge& traversal) {
         return !traversal.segment_ids.empty() && traversal.centerline.size() >= 2U;
       }));
+}
+
+TEST(FreeSpaceTopologyRouter, BuildsVaryingFull3DEnvelopeForGeneralizedTraversals) {
+  for (const AdvancedPassageFixtureKind kind :
+       {AdvancedPassageFixtureKind::kSlopedTunnel,
+        AdvancedPassageFixtureKind::kVerticalShaft,
+        AdvancedPassageFixtureKind::kCurvedTunnel}) {
+    const AdvancedPassageFixture fixture = buildAdvancedPassageFixture(kind);
+    const FreeSpaceTopology3D topology = extractTopology(fixture);
+    const FreeSpaceTopologyRouter router{topology};
+    const FreeSpaceTopologyRoute resolved =
+        router.resolve(fixture.expectation.open_space_seeds.front(),
+                       fixture.expectation.open_space_seeds.back());
+    ASSERT_NE(resolved.traversals, nullptr) << fixture.name;
+    ASSERT_FALSE(resolved.traversals->empty()) << fixture.name;
+    const PassageTraversalEdge& traversal = resolved.traversals->front();
+    const std::vector<SelectedPassageTraversal> selected{SelectedPassageTraversal{
+        .passage_traversal_id = traversal.id,
+        .direction_sign = 1,
+        .begin_station_m = traversal.centerline.front().station_m,
+        .end_station_m = traversal.centerline.back().station_m,
+        .min_z_m = traversal.min_z_m,
+        .max_z_m = traversal.max_z_m,
+        .width_m = traversal.width_m,
+        .height_m = traversal.height_m,
+        .minimum_clearance_m = traversal.minimum_clearance_m,
+        .speed_limit_mps = traversal.speed_limit_mps,
+    }};
+    std::vector<ConstrainedRouteSpan> spans =
+        makeConstrainedRouteSpans(traversal.centerline, selected, 1U,
+                                  RouteEnvelopeConfig{.minimum_span_length_m = 1.0});
+    ASSERT_EQ(spans.size(), 1U) << fixture.name;
+    const PassageVolumeConfig volume_config{
+        .cross_section_spacing_m = 1.0,
+        .lateral_probe_step_m = 0.5,
+        .secondary_probe_step_m = 0.5,
+        .maximum_cross_section_probe_m = 8.0,
+        .minimum_wall_clearance_m = 0.0,
+    };
+    const std::vector<PassageVolume> volumes = derivePassageVolumes(
+        traversal.centerline, spans, fixture.occupancy, volume_config);
+    ASSERT_EQ(volumes.size(), 1U) << fixture.name;
+    ASSERT_TRUE(volumes.front().raw_validated) << fixture.name;
+    ASSERT_GT(volumes.front().cross_sections.size(), 2U) << fixture.name;
+    EXPECT_EQ(projectPassageVolumeEnvelopes(spans, volumes, volume_config.footprint),
+              1U)
+        << fixture.name;
+    EXPECT_EQ(spans.front().envelope.size(), volumes.front().cross_sections.size())
+        << fixture.name;
+    for (const PassageCrossSection& section : volumes.front().cross_sections) {
+      const auto dot = [](const Vec3& first, const Vec3& second) {
+        return first.x * second.x + first.y * second.y + first.z * second.z;
+      };
+      EXPECT_NEAR(dot(section.tangent, section.lateral_axis), 0.0, 1.0e-6)
+          << fixture.name;
+      EXPECT_NEAR(dot(section.tangent, section.secondary_axis), 0.0, 1.0e-6)
+          << fixture.name;
+      EXPECT_TRUE(section.raw_validated) << fixture.name;
+    }
+    if (kind == AdvancedPassageFixtureKind::kVerticalShaft) {
+      EXPECT_TRUE(std::ranges::any_of(volumes.front().cross_sections,
+                                      [](const PassageCrossSection& section) {
+                                        return std::abs(section.tangent.z) > 0.9;
+                                      }));
+    }
+  }
 }
 
 TEST(FreeSpaceTopologyRouter, PreservesLegacyEagerTraversals) {

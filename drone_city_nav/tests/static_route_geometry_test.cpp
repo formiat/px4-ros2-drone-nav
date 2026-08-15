@@ -51,8 +51,15 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
                                .height_m = 6.0,
                                .minimum_clearance_m = 3.0,
                                .speed_limit_mps = 10.0}};
-  const std::vector<ConstrainedRouteSpan> spans =
+  std::vector<ConstrainedRouteSpan> spans =
       makeConstrainedRouteSpans(route, traversals, 2U, RouteEnvelopeConfig{});
+  ASSERT_EQ(spans.size(), 1U);
+  for (RouteEnvelopeSample& envelope : spans.front().envelope) {
+    const double ratio = (envelope.station_m - spans.front().begin_station_m) /
+                         (spans.front().end_station_m - spans.front().begin_station_m);
+    envelope.min_z_m = 2.0 + ratio;
+    envelope.max_z_m = 8.0 + ratio;
+  }
 
   const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
       route, spans, grid, esdf,
@@ -62,6 +69,9 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
   ASSERT_EQ(result.constrained_spans.size(), 1U);
   EXPECT_EQ(result.constrained_spans.front().passage_traversal_id, "passage");
   EXPECT_EQ(result.constrained_spans.front().direction_sign, 1);
+  ASSERT_GT(result.constrained_spans.front().envelope.size(), 1U);
+  EXPECT_LT(result.constrained_spans.front().envelope.front().min_z_m,
+            result.constrained_spans.front().envelope.back().min_z_m);
   EXPECT_TRUE(std::ranges::any_of(result.route, [](const RouteSample3D& sample) {
     return distance3D(sample.position, Point3{15.0, 5.0, 5.0}) < 0.25;
   }));

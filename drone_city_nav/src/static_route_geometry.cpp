@@ -215,8 +215,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
   result.route = sampleRoute3D(smoothed, geometry_config.sample_step_m,
                                route.front().reference_speed_mps);
 
-  std::vector<SelectedPassageTraversal> traversals;
-  traversals.reserve(constrained_spans.size());
+  result.constrained_spans.clear();
+  result.constrained_spans.reserve(constrained_spans.size());
   for (const ConstrainedRouteSpan& span : constrained_spans) {
     if (span.envelope.empty()) {
       continue;
@@ -227,25 +227,49 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     const RouteProjection3D new_entry = projectOntoRoute3D(result.route, old_entry);
     const RouteProjection3D new_exit = projectOntoRoute3D(result.route, old_exit);
     if (!new_entry.valid || !new_exit.valid ||
-        new_exit.station_m <= new_entry.station_m) {
+        new_exit.station_m - new_entry.station_m <
+            envelope_config.minimum_span_length_m) {
       continue;
     }
-    const RouteEnvelopeSample& envelope = span.envelope.front();
-    traversals.push_back(SelectedPassageTraversal{
-        .passage_traversal_id = span.passage_traversal_id,
-        .direction_sign = span.direction_sign,
-        .begin_station_m = new_entry.station_m,
-        .end_station_m = new_exit.station_m,
-        .min_z_m = envelope.min_z_m,
-        .max_z_m = envelope.max_z_m,
-        .width_m = envelope.lateral_free_left_m + envelope.lateral_free_right_m,
-        .height_m = envelope.max_z_m - envelope.min_z_m,
-        .minimum_clearance_m = envelope.minimum_clearance_m,
-        .speed_limit_mps = envelope.reference_speed_mps,
-    });
+    ConstrainedRouteSpan transformed = span;
+    transformed.begin_station_m = new_entry.station_m;
+    transformed.end_station_m = new_exit.station_m;
+    transformed.envelope.clear();
+    transformed.envelope.reserve(span.envelope.size());
+    for (const RouteEnvelopeSample& envelope : span.envelope) {
+      const Point3 old_position =
+          sampleRoute3DAtStation(route, envelope.station_m).position;
+      const RouteProjection3D projected =
+          projectOntoRoute3D(result.route, old_position, new_entry.station_m);
+      if (!projected.valid ||
+          projected.station_m + 1.0e-6 < transformed.begin_station_m ||
+          projected.station_m - 1.0e-6 > transformed.end_station_m) {
+        continue;
+      }
+      RouteEnvelopeSample remapped = envelope;
+      remapped.station_m = std::clamp(projected.station_m, transformed.begin_station_m,
+                                      transformed.end_station_m);
+      remapped.reference_z_m =
+          sampleRoute3DAtStation(result.route, remapped.station_m).position.z;
+      transformed.envelope.push_back(remapped);
+    }
+    std::ranges::sort(transformed.envelope, {}, &RouteEnvelopeSample::station_m);
+    transformed.envelope.erase(
+        std::unique(
+            transformed.envelope.begin(), transformed.envelope.end(),
+            [](const RouteEnvelopeSample& first, const RouteEnvelopeSample& second) {
+              return std::abs(first.station_m - second.station_m) <= 1.0e-6;
+            }),
+        transformed.envelope.end());
+    if (transformed.envelope.empty()) {
+      RouteEnvelopeSample fallback = span.envelope.front();
+      fallback.station_m = transformed.begin_station_m;
+      fallback.reference_z_m =
+          sampleRoute3DAtStation(result.route, transformed.begin_station_m).position.z;
+      transformed.envelope.push_back(fallback);
+    }
+    result.constrained_spans.push_back(std::move(transformed));
   }
-  result.constrained_spans =
-      makeConstrainedRouteSpans(result.route, traversals, 0U, envelope_config);
   return result;
 }
 

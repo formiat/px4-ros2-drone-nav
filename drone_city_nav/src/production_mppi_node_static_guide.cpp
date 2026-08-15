@@ -143,7 +143,10 @@ void ProductionMppiNode::processStaticGuideSearch(
     std::vector<CooperativePassageAssignment> passage_assignments;
     std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
     bool cooperative_route_valid = true;
-    if (cooperative_traffic_enabled_ && static_occupancy_3d_) {
+    const bool passage_geometry_required =
+        static_occupancy_3d_.has_value() && !geometry.constrained_spans.empty() &&
+        (cooperative_traffic_enabled_ || static_free_space_topology_router_ != nullptr);
+    if (passage_geometry_required) {
       const auto passage_started = std::chrono::steady_clock::now();
       PassageVolumeResource volume_resource = acquireDerivedPassageVolumes(
           *mutable_route, geometry.constrained_spans, *static_occupancy_3d_,
@@ -157,16 +160,21 @@ void ProductionMppiNode::processStaticGuideSearch(
       const std::span<const PassageVolume> volumes =
           passage_volumes ? std::span<const PassageVolume>{*passage_volumes}
                           : std::span<const PassageVolume>{};
-      CooperativePassageRouteResult cooperative_route =
-          applyCooperativePassageCorridors(*mutable_route, geometry.constrained_spans,
-                                           volumes, *static_occupancy_3d_,
-                                           cooperative_passage_route_config_);
-      cooperative_route_valid = cooperative_route.valid;
-      if (cooperative_route.valid) {
-        *mutable_route = std::move(cooperative_route.route);
-        geometry.constrained_spans = std::move(cooperative_route.constrained_spans);
+      static_cast<void>(
+          projectPassageVolumeEnvelopes(geometry.constrained_spans, volumes,
+                                        cooperative_passage_volume_config_.footprint));
+      if (cooperative_traffic_enabled_) {
+        CooperativePassageRouteResult cooperative_route =
+            applyCooperativePassageCorridors(*mutable_route, geometry.constrained_spans,
+                                             volumes, *static_occupancy_3d_,
+                                             cooperative_passage_route_config_);
+        cooperative_route_valid = cooperative_route.valid;
+        if (cooperative_route.valid) {
+          *mutable_route = std::move(cooperative_route.route);
+          geometry.constrained_spans = std::move(cooperative_route.constrained_spans);
+        }
+        passage_assignments = std::move(cooperative_route.assignments);
       }
-      passage_assignments = std::move(cooperative_route.assignments);
     }
     auto mutable_spans = std::make_shared<std::vector<ConstrainedRouteSpan>>(
         std::move(geometry.constrained_spans));
