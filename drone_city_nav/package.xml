@@ -14,6 +14,7 @@
   <depend>builtin_interfaces</depend>
   <depend>geometry_msgs</depend>
   <depend>gz-msgs10</depend>
+  <depend>gz-common5</depend>
   <depend>gz-sim8</depend>
   <depend>gz-transport13</depend>
   <depend>nav_msgs</depend>
@@ -22,6 +23,7 @@
   <depend>rclcpp_components</depend>
   <depend>ros_gz_interfaces</depend>
   <depend>sensor_msgs</depend>
+  <depend>sdformat14</depend>
   <depend>std_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>visualization_msgs</depend>

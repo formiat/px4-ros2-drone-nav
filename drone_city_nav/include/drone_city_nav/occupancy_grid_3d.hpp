@@ -38,6 +38,7 @@ public:
   explicit OccupancyGrid3D(const GridBounds3D& bounds, std::uint64_t fingerprint = 0U);
 
   [[nodiscard]] static OccupancyGrid3D load(const std::filesystem::path& path);
+  void write(const std::filesystem::path& path) const;
 
   [[nodiscard]] const GridBounds3D& bounds() const noexcept;
   [[nodiscard]] std::uint64_t fingerprint() const noexcept;

@@ -513,6 +513,7 @@ Key pages:
 - `docs/roadmap.md`
 - `docs/navigation_pipeline.md`
 - `docs/world3d.md`
+- `docs/environment_candidates.md`
 - `docs/trajectory_optimization.md`
 - `docs/drone_control.md`
 - `docs/terminal_capture.md`

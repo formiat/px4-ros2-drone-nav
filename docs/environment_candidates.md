@@ -1,0 +1,165 @@
+# External Environment Candidates
+
+## Scope
+
+This document records the environment-selection and import-feasibility work that
+precedes roadmap items 7, 8, and 9. It does not claim that any imported world is
+already integrated into a mission or that full-mission validation is complete.
+
+The current generated city remains the deterministic regression fixture. The
+external candidates are intended to expose the planner to irregular collision
+meshes, non-axis-aligned walls, tunnels, caverns, ramps, and vertical shafts
+before the generic passage work starts.
+
+Downloaded source assets and generated candidate artifacts are stored under
+`external/environment-candidates/`. The complete local working set is about
+2.0 GB and is intentionally ignored by Git.
+
+## Selection Criteria
+
+A primary candidate must satisfy all of the following:
+
+- redistribution and local use are permitted by an explicit license;
+- collision geometry represents the openings rather than closing them with a
+  coarse bounding box;
+- the world has enough metric clearance for the configured swept vehicle
+  footprint;
+- geometry can be resolved deterministically without silently dropping models;
+- collision meshes can be converted into raw Occupancy3D without artificial
+  clearance inflation;
+- the resulting map has bounded dimensions and a practical ESDF representation;
+- the environment exercises genuine 3D navigation rather than only a planar
+  maze.
+
+The classification below concerns suitability for the next environment-import
+and passage-planning stage. It is not evidence that current missions can already
+fly through these worlds.
+
+## Classification
+
+| Candidate | Source revision | Classification | Reason |
+|---|---:|---|---|
+| Finals Prize Round World 07 | Fuel world v1 | **Confirmed fit** | Large hybrid SubT environment combining tunnel, urban, and cave geometry. Collision import, 0.5 m Occupancy3D, ESDF3D generation, and a collision-only Gazebo Harmonic server load all succeeded. This is the primary candidate. |
+| Cave Circuit Practice 01 | Fuel world v2 | **Confirmed fit** | Contains elevation pieces, caverns, and multiple explicit vertical-shaft assets. Both 0.5 m and 1.0 m static maps were generated. The 0.5 m map is expensive, so this is the vertical-passage stress world rather than the default world. |
+| Urban Circuit Practice 01 | Fuel world v1 | **Confirmed fit** | Multi-level rooms, corridors, bends, and elevation changes. Collision import and a compact 0.5 m static map succeeded. It is a useful secondary indoor/urban candidate. |
+| Tunnel Circuit Practice 01 | Fuel world v1 | **Uncertain** | Import and static-map generation succeeded, but the world is mostly a wide, repetitive, near-planar tunnel network. It tests scale and mesh complexity better than arbitrary 3D passages. |
+| AWS RoboMaker Hospital, three floors | commit `7161eb8448f5cba6a469da7a79ae5d660b0b7f58` | **Uncertain** | Visually realistic and multi-floor, but it is a legacy Gazebo Classic world with tight indoor clearance. Several disabled props are hidden at approximately `z=-757768997 m`; strict map generation therefore rejects the unmodified world instead of guessing which geometry to discard. A typed migration/filter policy is required. |
+| Cave World | Fuel world v1 | **Rejected as primary** | The irregular cave collision mesh imports correctly, but the physical extent is only about 21 x 25 x 8.5 m. Retained locally as a compact mesh-import smoke fixture. |
+| AWS RoboMaker Small Warehouse | commit `ee0af733315e78432408c3cd98d378ecee5f767c` | **Rejected as primary** | Only about 18 x 25 x 15 m and has no useful complex 3D passage. Static import is valid, so it remains a small regression candidate. |
+| Industrial-Warehouse | Fuel world v4 | **Rejected as primary** | Similar small footprint and no meaningful vertical passage. One dynamic object is correctly omitted from the static map. |
+
+The three confirmed candidates come from the Open Robotics DARPA Subterranean
+Challenge environment set. Upstream describes the set as tile-based Tunnel,
+Urban, and Cave worlds containing vertical pits and shafts, with larger worlds
+spanning hundreds to thousands of metres:
+<https://www.openrobotics.org/blog/2022/2/3/subt-part-2-robots-and-environments>.
+
+## Static Map Evidence
+
+All successful maps below were generated from collision geometry at 0.5 m
+resolution, except the explicitly listed 1.0 m Cave variant. The ESDF uses the
+existing sparse, chunked project format.
+
+| Candidate | Grid dimensions | Dense voxel domain | Collision triangles | Occupied voxels | Occupancy3D | ESDF3D |
+|---|---:|---:|---:|---:|---:|---:|
+| Finals Prize Round World 07 | 892 x 843 x 136 | 102,266,016 | 2,100,372 | 747,205 | 1.1 MB | 39 MB |
+| Cave Circuit Practice 01, 0.5 m | 1203 x 956 x 458 | 526,731,144 | 1,335,543 | 1,638,744 | 2.3 MB | 100 MB |
+| Cave Circuit Practice 01, 1.0 m | 602 x 478 x 230 | 66,183,880 | 1,335,543 | 377,852 | 620 KB | 11 MB |
+| Urban Circuit Practice 01 | 605 x 528 x 73 | 23,319,120 | 1,811,856 | 356,853 | 624 KB | 9.9 MB |
+| Tunnel Circuit Practice 01 | 668 x 668 x 56 | 24,988,544 | 2,586,956 | 1,271,276 | 1.5 MB | 12 MB |
+| Cave World | 42 x 50 x 17 | 35,700 | 74,353 | 1,684 | 4 KB | 24 KB |
+| AWS Small Warehouse | 36 x 50 x 30 | 54,000 | 1,612 | 9,005 | 8 KB | 8 KB |
+| Industrial-Warehouse | 36 x 50 x 30 | 54,000 | 920 | 6,675 | 8 KB | 12 KB |
+
+The Cave 0.5 m build intentionally required an explicit
+`--maximum-voxel-count 600000000`. This makes the memory cost visible rather
+than silently lowering map resolution. Its 1.0 m derivative is the practical
+initial integration artifact, while 0.5 m remains available for geometry and
+clearance studies.
+
+The Hospital collision materialization produced 540 collision instances from
+69 mesh files, but voxelization stopped at a computed
+`208 x 208 x 1515538028` grid. No partial map was accepted. The outlier geometry
+must be removed by an explicit source migration based on model identity, not by
+an arbitrary coordinate clamp.
+
+## Sources And Licenses
+
+The local source set uses these upstream resources:
+
+- Open Robotics Fuel worlds: [Finals Prize Round World 07 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Finals%20Prize%20Round%20World%2007/1), [Cave Circuit Practice 01 v2](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Cave%20Circuit%20Practice%2001/2), [Urban Circuit Practice 01 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Urban%20Circuit%20Practice%2001/1), [Tunnel Circuit Practice 01 v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Tunnel%20Circuit%20Practice%2001/1), [Cave World v1](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Cave%20World/1), and [Industrial-Warehouse v4](https://fuel.gazebosim.org/1.0/OpenRobotics/worlds/Industrial-warehouse/4). Fuel metadata reported CC BY 4.0 during retrieval.
+- [AWS RoboMaker Hospital World](https://github.com/aws-robotics/aws-robomaker-hospital-world) and [AWS RoboMaker Small Warehouse World](https://github.com/aws-robotics/aws-robomaker-small-warehouse-world), both under the MIT license in their checked-out repositories.
+- [OSRF Gazebo Models](https://github.com/osrf/gazebo_models) at commit `8163eb4b5e7e21985c6591d1c0bfb56468c0093f`, sparse-checkout of `sun` and `ground_plane`, under Apache-2.0.
+
+The AWS repositories are archived legacy assets. Their source geometry is useful
+for comparison, but their plugins, resource URIs, and rendering materials must
+not be treated as native Gazebo Harmonic content.
+
+## Reproducible Import Pipeline
+
+Build through the project container first:
+
+```bash
+./scripts/build.sh
+```
+
+Materialize one source world into an include-free, collision-only SDF. Every
+mesh URI becomes an absolute local path, nested poses are composed, static
+collision instances are flattened, and unsupported or unresolved geometry is a
+hard error:
+
+```bash
+./scripts/dev_shell.sh python3 scripts/materialize_sdf_collisions.py \
+  --world "external/environment-candidates/fuel/fuel.gazebosim.org/openrobotics/worlds/finals%20prize%20round%20world%2007/1/final_event_07.sdf" \
+  --fuel-cache external/environment-candidates/fuel \
+  --model-path external/environment-candidates/sources/gazebo_models \
+  --output-sdf external/environment-candidates/work/final_event_07_collisions.sdf \
+  --report external/environment-candidates/work/final_event_07_materialization.json
+```
+
+Voxelize the physical collision triangles without clearance inflation:
+
+```bash
+./scripts/dev_shell.sh ./build/drone_city_nav/voxelize_sdf_collisions \
+  --sdf external/environment-candidates/work/final_event_07_collisions.sdf \
+  --output external/environment-candidates/work/final_event_07_r050.occupancy3d \
+  --report external/environment-candidates/work/final_event_07_r050_voxelization.json \
+  --resolution-m 0.5 --margin-m 2
+```
+
+Generate the normal project ESDF cache:
+
+```bash
+./scripts/dev_shell.sh ./build/drone_city_nav/generate_static_esdf_cache \
+  --occupancy external/environment-candidates/work/final_event_07_r050.occupancy3d \
+  --output external/environment-candidates/work/final_event_07_r050.esdf3d \
+  --maximum-distance-m 26 --workers 8
+```
+
+`voxelize_sdf_collisions` supports collision meshes, boxes, and planes. It uses
+exact triangle-versus-voxel intersection tests rather than marking every cell in
+a triangle AABB. Output dimensions and the total dense domain are checked before
+allocation. The map fingerprint covers both the materialized SDF and every
+unique collision mesh, and the sparse Occupancy3D writer preserves the current
+schema and portal graph.
+
+## Current Limits And Next Decision
+
+- The imported Occupancy3D artifacts do not yet contain a derived portal graph.
+  Generic portal and free-volume extraction belongs to roadmap item 7.
+- Candidate visuals are not yet a production Harmonic world. The Finals
+  collision-only world loads in a Harmonic server, but the original legacy
+  materials and resource URIs still need a visual migration pass.
+- Mission starts, goals, map-to-SDF transforms, world launch selection, and
+  flight-envelope bounds have not been defined for any candidate.
+- No navigation, interception, or cooperative mission was run in an imported
+  environment during this selection stage.
+- A static map proves deterministic collision conversion, not route
+  reachability. Passage width and swept-footprint feasibility must be measured
+  after generic free-volume extraction.
+
+Proceed with Finals Prize Round World 07 as the primary integration target,
+Cave Circuit Practice 01 as the vertical-shaft stress target, and Urban Circuit
+Practice 01 as the smaller secondary target. Do not replace the current city
+fixture until at least one complete mission is reproducibly validated in the
+new environment.

@@ -25,6 +25,7 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(gz-common5 REQUIRED COMPONENTS graphics)
 find_package(gz-msgs10 REQUIRED)
 find_package(gz-sim8 REQUIRED)
 find_package(gz-transport13 REQUIRED)
@@ -36,6 +37,7 @@ find_package(rclcpp_components REQUIRED)
 find_package(ros_gz_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(sdformat14 REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
@@ -159,6 +161,7 @@ add_library(
   src/cooperative_space_time.cpp
   src/cooperative_traffic.cpp
   src/cooperative_traffic_mission.cpp
+  src/collision_voxelizer.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
   src/debug_image.cpp
   src/distance_field.cpp
@@ -243,6 +246,13 @@ add_executable(generate_static_esdf_cache tools/generate_static_esdf_cache.cpp)
 target_compile_features(generate_static_esdf_cache PRIVATE cxx_std_20)
 target_link_libraries(generate_static_esdf_cache drone_city_nav_core)
 enable_project_warnings(generate_static_esdf_cache)
+
+add_executable(voxelize_sdf_collisions tools/voxelize_sdf_collisions.cpp)
+target_compile_features(voxelize_sdf_collisions PRIVATE cxx_std_20)
+target_link_libraries(
+  voxelize_sdf_collisions
+  PRIVATE drone_city_nav_core gz-common5::graphics sdformat14::sdformat14)
+enable_project_warnings(voxelize_sdf_collisions)
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   target_link_libraries(drone_city_nav_mppi_cuda PUBLIC drone_city_nav_core)
@@ -585,6 +595,7 @@ install(
     intercept_spectator_node
     intercept_diagnostics_mux_node
     generate_static_esdf_cache
+    voxelize_sdf_collisions
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -826,6 +837,11 @@ if(BUILD_TESTING)
     occupancy_grid_3d_test
     PRIVATE TEST_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.occupancy3d")
   enable_project_warnings(occupancy_grid_3d_test)
+
+  ament_add_gtest(collision_voxelizer_test tests/collision_voxelizer_test.cpp)
+  target_compile_features(collision_voxelizer_test PRIVATE cxx_std_20)
+  target_link_libraries(collision_voxelizer_test drone_city_nav_core)
+  enable_project_warnings(collision_voxelizer_test)
 
   ament_add_gtest(passage_volume_test tests/passage_volume_test.cpp)
   target_compile_features(passage_volume_test PRIVATE cxx_std_20)

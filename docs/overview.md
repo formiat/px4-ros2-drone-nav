@@ -87,6 +87,8 @@ repository container workflow.
 - `architecture.md`: node ownership and data flow.
 - `navigation_pipeline.md`: current world-to-control pipeline.
 - `world3d.md`: canonical world generation, Occupancy3D, and constrained spans.
+- `environment_candidates.md`: external world selection and static-map import
+  evidence.
 - `trajectory_optimization.md`: GPU MPPI optimization.
 - `replanning.md`: receding-horizon updates, guide replacement, and liveness.
 - `obstacle_mapping.md`: static, lidar, memory, and raw snapshot sources.

@@ -36,6 +36,61 @@ template<typename Value>
   return value;
 }
 
+template<typename Value>
+void writeValue(std::ostream& stream, const Value& value, const char* description) {
+  static_assert(std::is_trivially_copyable_v<Value>);
+  // Binary world artifacts intentionally expose trivially-copyable storage.
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  stream.write(reinterpret_cast<const char*>(&value),
+               static_cast<std::streamsize>(sizeof(Value)));
+  if (!stream) {
+    throw std::runtime_error{std::string{"failed to write Occupancy3D "} + description};
+  }
+}
+
+[[nodiscard]] std::uint32_t checkedCount(const std::size_t count,
+                                         const std::uint32_t maximum,
+                                         const char* description) {
+  if (count > maximum) {
+    throw std::runtime_error{std::string{"too many Occupancy3D "} + description};
+  }
+  return static_cast<std::uint32_t>(count);
+}
+
+void writeString(std::ostream& stream, const std::string& value,
+                 const char* description) {
+  if (value.empty() || value.size() > std::numeric_limits<std::uint16_t>::max()) {
+    throw std::runtime_error{std::string{"invalid Occupancy3D "} + description};
+  }
+  writeValue(stream, static_cast<std::uint16_t>(value.size()), description);
+  stream.write(value.data(), static_cast<std::streamsize>(value.size()));
+  if (!stream) {
+    throw std::runtime_error{std::string{"failed to write Occupancy3D "} + description};
+  }
+}
+
+void writePoint(std::ostream& stream, const Point3& point, const char* description) {
+  writeValue(stream, static_cast<float>(point.x), description);
+  writeValue(stream, static_cast<float>(point.y), description);
+  writeValue(stream, static_cast<float>(point.z), description);
+}
+
+void writeVector(std::ostream& stream, const Vec3& vector, const char* description) {
+  writeValue(stream, static_cast<float>(vector.x), description);
+  writeValue(stream, static_cast<float>(vector.y), description);
+  writeValue(stream, static_cast<float>(vector.z), description);
+}
+
+void writePoints(std::ostream& stream, const std::vector<Point3>& points,
+                 const char* description) {
+  writeValue(stream,
+             checkedCount(points.size(), kMaximumGeometryPointCount, description),
+             description);
+  for (const Point3& point : points) {
+    writePoint(stream, point, description);
+  }
+}
+
 [[nodiscard]] std::string readString(std::istream& stream, const char* description) {
   const std::uint16_t size = readValue<std::uint16_t>(stream, description);
   if (size == 0U) {
@@ -281,6 +336,94 @@ OccupancyGrid3D OccupancyGrid3D::load(const std::filesystem::path& path) {
     throw std::runtime_error{"trailing data in Occupancy3D artifact"};
   }
   return grid;
+}
+
+void OccupancyGrid3D::write(const std::filesystem::path& path) const {
+  if (!path.parent_path().empty()) {
+    std::filesystem::create_directories(path.parent_path());
+  }
+  std::ofstream stream{path, std::ios::binary};
+  if (!stream) {
+    throw std::runtime_error{"failed to create Occupancy3D: " + path.string()};
+  }
+
+  stream.write(kMagic.data(), static_cast<std::streamsize>(kMagic.size()));
+  writeValue(stream, kVersion, "version");
+  writeValue(stream, static_cast<std::uint32_t>(kChunkSize), "chunk size");
+  writeValue(stream, static_cast<float>(bounds_.resolution_m), "resolution");
+  writeValue(stream, static_cast<float>(bounds_.origin_x), "origin x");
+  writeValue(stream, static_cast<float>(bounds_.origin_y), "origin y");
+  writeValue(stream, static_cast<float>(bounds_.origin_z), "origin z");
+  writeValue(stream, static_cast<std::uint32_t>(bounds_.width_cells), "width");
+  writeValue(stream, static_cast<std::uint32_t>(bounds_.height_cells), "height");
+  writeValue(stream, static_cast<std::uint32_t>(bounds_.depth_cells), "depth");
+  writeValue(stream, fingerprint_, "fingerprint");
+  writeValue(
+      stream,
+      checkedCount(chunks_.size(), std::numeric_limits<std::uint32_t>::max(), "chunks"),
+      "chunk count");
+
+  std::vector<std::pair<OccupancyChunkIndex3D, const Chunk*>> sorted_chunks;
+  sorted_chunks.reserve(chunks_.size());
+  for (const auto& [index, chunk] : chunks_) {
+    sorted_chunks.emplace_back(index, &chunk);
+  }
+  std::ranges::sort(sorted_chunks, {}, [](const auto& item) {
+    return std::tuple{item.first.x, item.first.y, item.first.z};
+  });
+  for (const auto& [index, chunk] : sorted_chunks) {
+    writeValue(stream, static_cast<std::int32_t>(index.x), "chunk x");
+    writeValue(stream, static_cast<std::int32_t>(index.y), "chunk y");
+    writeValue(stream, static_cast<std::int32_t>(index.z), "chunk z");
+    for (const std::uint64_t word : *chunk) {
+      writeValue(stream, word, "chunk word");
+    }
+  }
+
+  writeValue(stream,
+             checkedCount(portal_graph_.regions.size(), kMaximumRegionCount,
+                          "portal graph regions"),
+             "portal graph region count");
+  for (const PassageRegion& region : portal_graph_.regions) {
+    writeString(stream, region.id, "passage region id");
+    writeValue(stream,
+               checkedCount(region.portal_ids.size(), kMaximumPortalCount,
+                            "passage region portals"),
+               "passage region portal count");
+    for (const PortalId& portal_id : region.portal_ids) {
+      const auto portal =
+          std::ranges::find(portal_graph_.portals, portal_id, &PassagePortal::id);
+      if (portal == portal_graph_.portals.end() || portal->region_id != region.id) {
+        throw std::runtime_error{"invalid portal graph while writing Occupancy3D"};
+      }
+      writeString(stream, portal->id, "portal id");
+      writePoint(stream, portal->center, "portal center");
+      writeVector(stream, portal->outward_normal, "portal outward normal");
+      writePoints(stream, portal->opening_polygon, "portal polygon points");
+    }
+  }
+  writeValue(stream,
+             checkedCount(portal_graph_.traversal_edges.size(),
+                          kMaximumTraversalEdgeCount, "portal traversal edges"),
+             "portal traversal edge count");
+  for (const ConstrainedFreeSpaceEdge& edge : portal_graph_.traversal_edges) {
+    writeString(stream, edge.id, "portal traversal edge id");
+    writeString(stream, edge.region_id, "portal traversal region id");
+    writeString(stream, edge.entry_portal_id, "portal traversal entry id");
+    writeString(stream, edge.exit_portal_id, "portal traversal exit id");
+    std::vector<Point3> centerline;
+    centerline.reserve(edge.centerline.size());
+    std::ranges::transform(edge.centerline, std::back_inserter(centerline),
+                           [](const RouteSample3D& sample) { return sample.position; });
+    writePoints(stream, centerline, "portal traversal points");
+    writeValue(stream, static_cast<float>(edge.min_z_m), "portal minimum z");
+    writeValue(stream, static_cast<float>(edge.max_z_m), "portal maximum z");
+    writeValue(stream, static_cast<float>(edge.width_m), "portal width");
+    writeValue(stream, static_cast<float>(edge.height_m), "portal height");
+    writeValue(stream, static_cast<float>(edge.minimum_clearance_m),
+               "portal minimum clearance");
+    writeValue(stream, static_cast<float>(edge.speed_limit_mps), "portal speed limit");
+  }
 }
 
 const GridBounds3D& OccupancyGrid3D::bounds() const noexcept {
