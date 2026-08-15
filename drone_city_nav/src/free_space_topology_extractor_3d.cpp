@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "free_space_topology_extractor_3d_geometry.hpp"
+#include "free_space_topology_extractor_3d_graph.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -35,6 +36,7 @@ using topology_extractor_detail::indexedId;
 using topology_extractor_detail::linearIndex;
 using topology_extractor_detail::normalized;
 using topology_extractor_detail::offset;
+using topology_extractor_detail::retainNavigableSegmentComponents;
 using topology_extractor_detail::translated;
 using topology_extractor_detail::voxelCount;
 
@@ -382,7 +384,9 @@ labelComponents(const GridBounds3D& bounds, std::vector<std::uint8_t>& classific
 derivePortalPatches(const GridBounds3D& bounds, const Component& component,
                     const std::vector<std::uint32_t>& open_labels,
                     const std::vector<std::uint32_t>& constrained_labels,
-                    const std::size_t minimum_portal_voxels) {
+                    const std::size_t minimum_portal_voxels,
+                    const std::size_t maximum_portal_voxels,
+                    std::size_t& rejected_oversized_patches) {
   std::map<std::uint32_t, std::set<std::size_t>> boundary_by_region;
   for (const std::size_t linear : component.cells) {
     const GridIndex3D cell = cellFor(bounds, linear);
@@ -429,11 +433,16 @@ derivePortalPatches(const GridBounds3D& bounds, const Component& component,
           pending.push(neighbor_linear);
         }
       }
-      if (cells.size() >= minimum_portal_voxels) {
-        std::ranges::sort(cells);
-        patches.push_back(
-            PortalPatch{.open_region_label = open_label, .cells = std::move(cells)});
+      if (cells.size() < minimum_portal_voxels) {
+        continue;
       }
+      if (cells.size() > maximum_portal_voxels) {
+        ++rejected_oversized_patches;
+        continue;
+      }
+      std::ranges::sort(cells);
+      patches.push_back(
+          PortalPatch{.open_region_label = open_label, .cells = std::move(cells)});
     }
   }
   std::ranges::sort(patches, [](const PortalPatch& first, const PortalPatch& second) {
@@ -779,6 +788,9 @@ bool freeSpaceTopologyExtractorConfigIsValid(
          config.chunk_size_cells > 0U && config.minimum_open_region_voxels > 0U &&
          config.minimum_constrained_component_voxels > 0U &&
          config.minimum_portal_voxels > 0U &&
+         config.maximum_portal_voxels >= config.minimum_portal_voxels &&
+         config.maximum_portal_voxels <=
+             FreeSpaceTopologyFormatLimits::maximum_geometry_point_count &&
          std::isfinite(config.footprint.radius_m) && config.footprint.radius_m >= 0.0 &&
          std::isfinite(config.footprint.lower_extent_m) &&
          config.footprint.lower_extent_m >= 0.0 &&
@@ -856,7 +868,8 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
   for (const Component& component : constrained_components) {
     std::vector<PortalPatch> patches =
         derivePortalPatches(bounds, component, open_labels, constrained_labels,
-                            config.minimum_portal_voxels);
+                            config.minimum_portal_voxels, config.maximum_portal_voxels,
+                            result.stats.rejected_oversized_portal_patches);
     result.stats.portal_patches += patches.size();
     if (patches.size() < 2U) {
       ++result.stats.rejected_constrained_components;
@@ -962,15 +975,28 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
         std::ranges::sort(neighbors);
       }
     }
+    topology_extractor_detail::NavigablePassageGraph navigable_graph =
+        retainNavigableSegmentComponents(std::move(component_segments));
+    result.stats.pruned_nontraversable_segments += navigable_graph.pruned_segment_count;
+    if (navigable_graph.segments.empty()) {
+      ++result.stats.rejected_constrained_components;
+      ++result.stats.rejected_for_no_safe_segments;
+      continue;
+    }
+    result.stats.pruned_unconnected_portals +=
+        component_portals.size() - navigable_graph.attached_portal_ids.size();
     for (std::size_t portal_index = 0U; portal_index < component_portals.size();
          ++portal_index) {
       PassagePortal& portal = component_portals[portal_index];
+      if (!navigable_graph.attached_portal_ids.contains(portal.id)) {
+        continue;
+      }
       region_portals[patches[portal_index].open_region_label].push_back(portal.id);
       result.portals.push_back(std::move(portal));
     }
     result.segments.insert(result.segments.end(),
-                           std::make_move_iterator(component_segments.begin()),
-                           std::make_move_iterator(component_segments.end()));
+                           std::make_move_iterator(navigable_graph.segments.begin()),
+                           std::make_move_iterator(navigable_graph.segments.end()));
   }
 
   for (const Component& open_component : open_components) {

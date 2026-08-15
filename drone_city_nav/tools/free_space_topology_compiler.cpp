@@ -87,6 +87,9 @@ struct Options {
     } else if (argument == "--minimum-portal-voxels") {
       options.extractor.minimum_portal_voxels =
           parseSize(value(), "minimum portal voxel count");
+    } else if (argument == "--maximum-portal-voxels") {
+      options.extractor.maximum_portal_voxels =
+          parseSize(value(), "maximum portal voxel count");
     } else if (argument == "--minimum-center-z-m") {
       options.extractor.minimum_center_z_m = parseDouble(value(), "minimum center z");
     } else if (argument == "--maximum-center-z-m") {
@@ -198,6 +201,12 @@ int main(const int argc, const char* const argv[]) {
               << " rejected_disconnected_medial="
               << extracted.stats.rejected_for_disconnected_medial_graph
               << " raw_unsafe_segments=" << extracted.stats.raw_unsafe_segments
+              << " rejected_oversized_portals="
+              << extracted.stats.rejected_oversized_portal_patches
+              << " pruned_nontraversable_segments="
+              << extracted.stats.pruned_nontraversable_segments
+              << " pruned_unconnected_portals="
+              << extracted.stats.pruned_unconnected_portals
               << " rejected_no_safe_segments="
               << extracted.stats.rejected_for_no_safe_segments
               << " regions=" << region_count << " portals=" << portal_count

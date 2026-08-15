@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/free_space_topology_format_limits.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/portal_graph.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -23,6 +24,8 @@ struct FreeSpaceTopologyExtractorConfig {
   std::size_t minimum_open_region_voxels{16U};
   std::size_t minimum_constrained_component_voxels{16U};
   std::size_t minimum_portal_voxels{4U};
+  std::size_t maximum_portal_voxels{
+      FreeSpaceTopologyFormatLimits::maximum_geometry_point_count};
   SweptFootprintConfig footprint{};
   std::optional<double> minimum_center_z_m;
   std::optional<double> maximum_center_z_m;
@@ -43,6 +46,9 @@ struct FreeSpaceTopologyExtractionStats {
   std::size_t rejected_for_insufficient_portals{0U};
   std::size_t rejected_for_disconnected_medial_graph{0U};
   std::size_t raw_unsafe_segments{0U};
+  std::size_t rejected_oversized_portal_patches{0U};
+  std::size_t pruned_nontraversable_segments{0U};
+  std::size_t pruned_unconnected_portals{0U};
   std::size_t rejected_for_no_safe_segments{0U};
   double clearance_ms{0.0};
   double classification_ms{0.0};

@@ -173,6 +173,7 @@ add_library(
   src/flight_envelope.cpp
   src/free_space_topology_3d.cpp
   src/free_space_topology_extractor_3d.cpp
+  src/free_space_topology_extractor_3d_graph.cpp
   src/free_space_topology_extractor_3d_geometry.cpp
   src/free_space_topology_router.cpp
   src/global_guide_candidate.cpp

@@ -135,6 +135,32 @@ TEST(FreeSpaceTopologyExtractor3D, RejectsWideRoofedHangar) {
   EXPECT_GT(topology.stats.rejected_constrained_components, 0U);
 }
 
+TEST(FreeSpaceTopologyExtractor3D, RejectsPortalPatchesOutsideArtifactLimits) {
+  const AdvancedPassageFixture fixture =
+      buildAdvancedPassageFixture(AdvancedPassageFixtureKind::kArchTunnel);
+  const ExtractedFreeSpaceTopology3D topology = extractFreeSpaceTopology3D(
+      fixture.occupancy, FreeSpaceTopologyExtractorConfig{
+                             .maximum_clearance_m = 6.0,
+                             .open_space_clearance_m = 3.0,
+                             .minimum_portal_voxels = 4U,
+                             .maximum_portal_voxels = 4U,
+                             .minimum_center_z_m = std::nullopt,
+                             .maximum_center_z_m = std::nullopt,
+                         });
+
+  EXPECT_GT(topology.stats.rejected_oversized_portal_patches, 0U);
+  EXPECT_TRUE(std::ranges::all_of(topology.portals, [](const PassagePortal& portal) {
+    return portal.surface_voxels.size() <= 4U;
+  }));
+
+  FreeSpaceTopologyExtractorConfig invalid;
+  invalid.maximum_portal_voxels =
+      static_cast<std::size_t>(
+          FreeSpaceTopologyFormatLimits::maximum_geometry_point_count) +
+      1U;
+  EXPECT_FALSE(freeSpaceTopologyExtractorConfigIsValid(invalid));
+}
+
 TEST(FreeSpaceTopologyExtractor3D, SparseArtifactRoundTripsAuthoritativeGeometry) {
   const AdvancedPassageFixture fixture =
       buildAdvancedPassageFixture(AdvancedPassageFixtureKind::kXJunction);

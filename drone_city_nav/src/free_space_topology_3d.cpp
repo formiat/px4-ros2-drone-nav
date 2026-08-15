@@ -1,5 +1,6 @@
 #include "drone_city_nav/free_space_topology_3d.hpp"
 
+#include "drone_city_nav/free_space_topology_format_limits.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 
 #include <algorithm>
@@ -24,12 +25,18 @@ namespace {
 constexpr std::array<char, 8U> kMagic{'D', 'C', 'N', 'F', 'T', 'O', 'P', '3'};
 constexpr std::uint32_t kVersion{2U};
 constexpr std::uint32_t kLegacyVersion{1U};
-constexpr std::uint32_t kMaximumRegionCount{10000U};
-constexpr std::uint32_t kMaximumPortalCount{100000U};
-constexpr std::uint32_t kMaximumSegmentCount{1000000U};
-constexpr std::uint32_t kMaximumTraversalEdgeCount{100000U};
-constexpr std::uint32_t kMaximumGeometryPointCount{100000U};
-constexpr std::size_t kMaximumTotalGeometryPointCount{10000000U};
+constexpr std::uint32_t kMaximumRegionCount{
+    FreeSpaceTopologyFormatLimits::maximum_region_count};
+constexpr std::uint32_t kMaximumPortalCount{
+    FreeSpaceTopologyFormatLimits::maximum_portal_count};
+constexpr std::uint32_t kMaximumSegmentCount{
+    FreeSpaceTopologyFormatLimits::maximum_segment_count};
+constexpr std::uint32_t kMaximumTraversalEdgeCount{
+    FreeSpaceTopologyFormatLimits::maximum_traversal_edge_count};
+constexpr std::uint32_t kMaximumGeometryPointCount{
+    FreeSpaceTopologyFormatLimits::maximum_geometry_point_count};
+constexpr std::size_t kMaximumTotalGeometryPointCount{
+    FreeSpaceTopologyFormatLimits::maximum_total_geometry_point_count};
 
 template<typename Value>
 [[nodiscard]] Value readValue(std::istream& stream, const char* description) {
