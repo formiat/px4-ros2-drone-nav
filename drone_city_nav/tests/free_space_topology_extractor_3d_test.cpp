@@ -1,10 +1,13 @@
+#include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/free_space_topology_extractor_3d.hpp"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <ranges>
+#include <utility>
 
 #include "advanced_passage_fixture.hpp"
 
@@ -125,6 +128,35 @@ TEST(FreeSpaceTopologyExtractor3D, RejectsWideRoofedHangar) {
   EXPECT_TRUE(topology.portals.empty());
   EXPECT_TRUE(topology.segments.empty());
   EXPECT_GT(topology.stats.rejected_constrained_components, 0U);
+}
+
+TEST(FreeSpaceTopologyExtractor3D, SparseArtifactRoundTripsAuthoritativeGeometry) {
+  const AdvancedPassageFixture fixture =
+      buildAdvancedPassageFixture(AdvancedPassageFixtureKind::kXJunction);
+  ExtractedFreeSpaceTopology3D extracted = extract(fixture);
+  const std::size_t expected_regions = extracted.regions.size();
+  const std::size_t expected_portals = extracted.portals.size();
+  const std::size_t expected_segments = extracted.segments.size();
+  const FreeSpaceTopology3D topology{
+      fixture.occupancy.fingerprint(), fixture.occupancy.bounds(),
+      std::move(extracted.regions), std::move(extracted.portals),
+      std::move(extracted.segments)};
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "drone_city_nav_sparse_topology_round_trip.topology3d";
+  topology.write(path);
+  const FreeSpaceTopology3D loaded = FreeSpaceTopology3D::load(path);
+  std::filesystem::remove(path);
+
+  EXPECT_TRUE(loaded.compatibleWith(fixture.occupancy));
+  EXPECT_EQ(loaded.regions().size(), expected_regions);
+  EXPECT_EQ(loaded.portals().size(), expected_portals);
+  EXPECT_EQ(loaded.segments().size(), expected_segments);
+  EXPECT_TRUE(loaded.traversalEdges().empty());
+  ASSERT_FALSE(loaded.portals().empty());
+  EXPECT_FALSE(loaded.portals().front().surface_voxels.empty());
+  ASSERT_FALSE(loaded.segments().empty());
+  EXPECT_FALSE(loaded.segments().front().centerline.empty());
 }
 
 } // namespace

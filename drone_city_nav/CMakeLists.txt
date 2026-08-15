@@ -249,6 +249,12 @@ target_compile_features(generate_static_esdf_cache PRIVATE cxx_std_20)
 target_link_libraries(generate_static_esdf_cache drone_city_nav_core)
 enable_project_warnings(generate_static_esdf_cache)
 
+add_executable(free_space_topology_compiler
+               tools/free_space_topology_compiler.cpp)
+target_compile_features(free_space_topology_compiler PRIVATE cxx_std_20)
+target_link_libraries(free_space_topology_compiler drone_city_nav_core)
+enable_project_warnings(free_space_topology_compiler)
+
 add_executable(voxelize_sdf_collisions tools/voxelize_sdf_collisions.cpp)
 target_compile_features(voxelize_sdf_collisions PRIVATE cxx_std_20)
 target_link_libraries(
@@ -597,6 +603,7 @@ install(
     intercept_spectator_node
     intercept_diagnostics_mux_node
     generate_static_esdf_cache
+    free_space_topology_compiler
     voxelize_sdf_collisions
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib

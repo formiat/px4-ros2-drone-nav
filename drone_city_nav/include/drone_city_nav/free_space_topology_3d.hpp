@@ -18,6 +18,12 @@ public:
                       std::vector<FreeSpaceRegion> regions,
                       std::vector<PassagePortal> portals,
                       std::vector<PassageTraversalEdge> traversal_edges);
+  FreeSpaceTopology3D(std::uint64_t occupancy_fingerprint,
+                      const GridBounds3D& occupancy_bounds,
+                      std::vector<FreeSpaceRegion> regions,
+                      std::vector<PassagePortal> portals,
+                      std::vector<PassageSegment> segments,
+                      std::vector<PassageTraversalEdge> legacy_traversal_edges = {});
 
   [[nodiscard]] static FreeSpaceTopology3D load(const std::filesystem::path& path);
   void write(const std::filesystem::path& path) const;
@@ -27,6 +33,7 @@ public:
   [[nodiscard]] bool compatibleWith(const OccupancyGrid3D& occupancy) const noexcept;
   [[nodiscard]] const std::vector<FreeSpaceRegion>& regions() const noexcept;
   [[nodiscard]] const std::vector<PassagePortal>& portals() const noexcept;
+  [[nodiscard]] const std::vector<PassageSegment>& segments() const noexcept;
   [[nodiscard]] const std::vector<PassageTraversalEdge>&
   traversalEdges() const noexcept;
 
@@ -37,6 +44,7 @@ private:
   GridBounds3D occupancy_bounds_{};
   std::vector<FreeSpaceRegion> regions_;
   std::vector<PassagePortal> portals_;
+  std::vector<PassageSegment> segments_;
   std::vector<PassageTraversalEdge> traversal_edges_;
 };
 

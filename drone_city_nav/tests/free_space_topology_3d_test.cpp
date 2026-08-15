@@ -128,7 +128,9 @@ TEST(FreeSpaceTopology3D, RejectsDifferentOccupancyFingerprint) {
 
 TEST(FreeSpaceTopology3D, SupportsEmptyAccelerationIndex) {
   const GridBounds3D bounds{-1.0, -2.0, -3.0, 0.5, 20, 30, 40};
-  const FreeSpaceTopology3D topology{42U, bounds, {}, {}, {}};
+  const FreeSpaceTopology3D topology{42U, bounds, std::vector<FreeSpaceRegion>{},
+                                     std::vector<PassagePortal>{},
+                                     std::vector<PassageTraversalEdge>{}};
 
   EXPECT_EQ(topology.occupancyFingerprint(), 42U);
   EXPECT_EQ(topology.occupancyBounds(), bounds);
