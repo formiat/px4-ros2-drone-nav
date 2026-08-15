@@ -15,7 +15,7 @@ class FreeSpaceTopology3D {
 public:
   FreeSpaceTopology3D(std::uint64_t occupancy_fingerprint,
                       const GridBounds3D& occupancy_bounds,
-                      std::vector<PassageRegion> regions,
+                      std::vector<FreeSpaceRegion> regions,
                       std::vector<PassagePortal> portals,
                       std::vector<PassageTraversalEdge> traversal_edges);
 
@@ -25,7 +25,7 @@ public:
   [[nodiscard]] std::uint64_t occupancyFingerprint() const noexcept;
   [[nodiscard]] const GridBounds3D& occupancyBounds() const noexcept;
   [[nodiscard]] bool compatibleWith(const OccupancyGrid3D& occupancy) const noexcept;
-  [[nodiscard]] const std::vector<PassageRegion>& regions() const noexcept;
+  [[nodiscard]] const std::vector<FreeSpaceRegion>& regions() const noexcept;
   [[nodiscard]] const std::vector<PassagePortal>& portals() const noexcept;
   [[nodiscard]] const std::vector<PassageTraversalEdge>&
   traversalEdges() const noexcept;
@@ -35,7 +35,7 @@ private:
 
   std::uint64_t occupancy_fingerprint_{0U};
   GridBounds3D occupancy_bounds_{};
-  std::vector<PassageRegion> regions_;
+  std::vector<FreeSpaceRegion> regions_;
   std::vector<PassagePortal> portals_;
   std::vector<PassageTraversalEdge> traversal_edges_;
 };

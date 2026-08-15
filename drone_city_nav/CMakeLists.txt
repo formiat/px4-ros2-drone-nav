@@ -171,6 +171,7 @@ add_library(
   src/esdf_query.cpp
   src/flight_envelope.cpp
   src/free_space_topology_3d.cpp
+  src/free_space_topology_extractor_3d.cpp
   src/global_guide_candidate.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
@@ -858,6 +859,14 @@ if(BUILD_TESTING)
   target_compile_features(advanced_passage_fixture_test PRIVATE cxx_std_20)
   target_link_libraries(advanced_passage_fixture_test drone_city_nav_core)
   enable_project_warnings(advanced_passage_fixture_test)
+
+  ament_add_gtest(
+    free_space_topology_extractor_3d_test
+    tests/advanced_passage_fixture.cpp
+    tests/free_space_topology_extractor_3d_test.cpp)
+  target_compile_features(free_space_topology_extractor_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(free_space_topology_extractor_3d_test drone_city_nav_core)
+  enable_project_warnings(free_space_topology_extractor_3d_test)
 
   ament_add_gtest(collision_voxelizer_test tests/collision_voxelizer_test.cpp)
   target_compile_features(collision_voxelizer_test PRIVATE cxx_std_20)

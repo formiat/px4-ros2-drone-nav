@@ -24,7 +24,7 @@ TEST(FreeSpaceTopology3D, LoadsFingerprintBoundGeneratedArtifact) {
   ASSERT_EQ(topology.portals().size(), 7U);
   ASSERT_EQ(topology.traversalEdges().size(), 5U);
   EXPECT_EQ(std::ranges::count_if(topology.regions(),
-                                  [](const PassageRegion& region) {
+                                  [](const FreeSpaceRegion& region) {
                                     return region.portal_ids.size() == 3U;
                                   }),
             1);

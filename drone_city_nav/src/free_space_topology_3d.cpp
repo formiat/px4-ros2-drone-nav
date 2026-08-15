@@ -227,7 +227,7 @@ restoreCenterline(const std::span<const Point3> points,
 
 FreeSpaceTopology3D::FreeSpaceTopology3D(
     const std::uint64_t occupancy_fingerprint, const GridBounds3D& occupancy_bounds,
-    std::vector<PassageRegion> regions, std::vector<PassagePortal> portals,
+    std::vector<FreeSpaceRegion> regions, std::vector<PassagePortal> portals,
     std::vector<PassageTraversalEdge> traversal_edges)
     : occupancy_fingerprint_{occupancy_fingerprint},
       occupancy_bounds_{occupancy_bounds},
@@ -260,14 +260,16 @@ FreeSpaceTopology3D FreeSpaceTopology3D::load(const std::filesystem::path& path)
     throw std::runtime_error{
         "FreeSpaceTopology3D region count exceeds supported range"};
   }
-  std::vector<PassageRegion> regions;
+  std::vector<FreeSpaceRegion> regions;
   std::vector<PassagePortal> portals;
   std::size_t total_geometry_point_count{0U};
   regions.reserve(region_count);
   for (std::uint32_t region_number = 0U; region_number < region_count;
        ++region_number) {
-    PassageRegion region{
+    FreeSpaceRegion region{
         .id = FreeSpaceRegionId{readString(stream, "free-space region id")},
+        .representative = {},
+        .maximum_clearance_m = 0.0,
         .portal_ids = {},
     };
     const std::uint32_t portal_count =
@@ -287,6 +289,13 @@ FreeSpaceTopology3D FreeSpaceTopology3D::load(const std::filesystem::path& path)
           .outward_normal = readVector(stream, "passage portal outward normal"),
           .opening_polygon = readPoints(stream, "passage portal polygon point count",
                                         "passage portal polygon point", 3U),
+          .surface_voxels = {},
+          .traversable_anchors = {},
+          .local_u_axis = {},
+          .local_v_axis = {},
+          .minimum_clearance_m = 0.0,
+          .mean_clearance_m = 0.0,
+          .maximum_clearance_m = 0.0,
       };
       total_geometry_point_count += portal.opening_polygon.size();
       if (total_geometry_point_count > kMaximumTotalGeometryPointCount) {
@@ -358,7 +367,7 @@ void FreeSpaceTopology3D::write(const std::filesystem::path& path) const {
   writeBounds(stream, occupancy_bounds_);
   writeValue(stream, checkedCount(regions_.size(), kMaximumRegionCount, "regions"),
              "region count");
-  for (const PassageRegion& region : regions_) {
+  for (const FreeSpaceRegion& region : regions_) {
     writeString(stream, region.id.value(), "free-space region id");
     writeValue(
         stream,
@@ -416,7 +425,7 @@ bool FreeSpaceTopology3D::compatibleWith(
          occupancy_bounds_ == occupancy.bounds();
 }
 
-const std::vector<PassageRegion>& FreeSpaceTopology3D::regions() const noexcept {
+const std::vector<FreeSpaceRegion>& FreeSpaceTopology3D::regions() const noexcept {
   return regions_;
 }
 
@@ -465,7 +474,7 @@ void FreeSpaceTopology3D::validate() const {
   }
 
   std::set<PassagePortalId> referenced_portals;
-  for (const PassageRegion& region : regions_) {
+  for (const FreeSpaceRegion& region : regions_) {
     if (region.id.empty() || !region_ids.insert(region.id).second ||
         region.portal_ids.size() < 2U ||
         region.portal_ids.size() > kMaximumPortalCount) {
