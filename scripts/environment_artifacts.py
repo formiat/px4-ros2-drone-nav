@@ -10,6 +10,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 from urllib.error import HTTPError, URLError
@@ -609,15 +610,21 @@ def _normalize_recorded_paths(value: Any, candidate_root: Path) -> Any:
 
 def _download_verified(url: str, destination: Path, contract: dict[str, Any]) -> None:
     temporary = destination.with_name(f".{destination.name}.part")
-    temporary.unlink(missing_ok=True)
-    try:
-        with urlopen(url, timeout=120) as response, temporary.open("wb") as output:
-            shutil.copyfileobj(response, output, length=1024 * 1024)
-        verify_file_contract(temporary, contract)
-        os.replace(temporary, destination)
-    except (HTTPError, URLError, TimeoutError, OSError, ArtifactError) as exc:
+    last_error: Exception | None = None
+    for attempt in range(3):
         temporary.unlink(missing_ok=True)
-        raise ArtifactError(f"download failed for {url}: {exc}") from exc
+        try:
+            with urlopen(url, timeout=120) as response, temporary.open("wb") as output:
+                shutil.copyfileobj(response, output, length=1024 * 1024)
+            verify_file_contract(temporary, contract)
+            os.replace(temporary, destination)
+            return
+        except (HTTPError, URLError, TimeoutError, OSError, ArtifactError) as exc:
+            last_error = exc
+            temporary.unlink(missing_ok=True)
+            if attempt < 2:
+                time.sleep(float(attempt + 1))
+    raise ArtifactError(f"download failed for {url}: {last_error}") from last_error
 
 
 def _safe_extract(bundle: tarfile.TarFile, destination: Path) -> None:

@@ -9,6 +9,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -247,6 +248,51 @@ class EnvironmentArtifactTest(unittest.TestCase):
                 '<sdf version="1.10"/>\n',
                 (installed / "test/source/world.sdf").read_text(encoding="utf-8"),
             )
+
+    @mock.patch("environment_artifacts.time.sleep")
+    @mock.patch("environment_artifacts.urlopen")
+    def test_fetch_retries_transient_download_failure(
+        self, urlopen_mock: mock.Mock, sleep_mock: mock.Mock
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload = b"verified remote artifact"
+            artifact = {
+                "id": "source",
+                "filename": "remote.tar.gz",
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            manifest = {
+                "artifact_releases": [
+                    {
+                        "id": "test_release",
+                        "published": True,
+                        "base_urls": ["https://artifacts.invalid"],
+                    }
+                ]
+            }
+            environment = {
+                "id": "test_environment",
+                "distribution": "release",
+                "artifact_release_id": "test_release",
+            }
+            urlopen_mock.side_effect = [
+                TimeoutError("transient timeout"),
+                io.BytesIO(payload),
+            ]
+
+            fetched = fetch_artifact(
+                manifest,
+                environment,
+                artifact,
+                root / "release",
+                root / "cache",
+            )
+
+            self.assertEqual(payload, fetched.read_bytes())
+            self.assertEqual(2, urlopen_mock.call_count)
+            sleep_mock.assert_called_once_with(1.0)
 
     def test_bundle_with_parent_traversal_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
