@@ -406,7 +406,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             'obstacle_memory_overrides["persistent_memory_enabled"]',
             self.launch_text,
         )
-        self.assertIn('expected_current_lidar="true"', self.text)
+        self.assertNotIn("expected_current_lidar", self.text)
 
     def test_static_map_override_reaches_production_mppi(self) -> None:
         self.assertIn("production_mppi_parameters", self.launch_text)

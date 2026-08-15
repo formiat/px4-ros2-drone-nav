@@ -60,15 +60,22 @@ __device__ State integrate(State state, Control control, DynamicsConfig config) 
       clampValue(control.yaw_accel, -config.maximum_yaw_acceleration_radps2,
                  config.maximum_yaw_acceleration_radps2);
   const float drag = fmaxf(0.0F, 1.0F - config.linear_drag_1ps * config.dt_s);
+  const float inherited_horizontal_speed_mps = hypotf(state.vx, state.vy);
+  const float inherited_vertical_speed_mps = fabsf(state.vz);
+  const float inherited_yaw_rate_radps = fabsf(state.yaw_rate);
   state.vx = state.vx * drag + control.ax * config.dt_s;
   state.vy = state.vy * drag + control.ay * config.dt_s;
   state.vz = state.vz * drag + control.az * config.dt_s;
-  clampHorizontal(state.vx, state.vy, config.maximum_horizontal_speed_mps);
-  state.vz = clampValue(state.vz, -config.maximum_vertical_speed_mps,
-                        config.maximum_vertical_speed_mps);
-  state.yaw_rate =
-      clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,
-                 -config.maximum_yaw_rate_radps, config.maximum_yaw_rate_radps);
+  clampHorizontal(
+      state.vx, state.vy,
+      fmaxf(config.maximum_horizontal_speed_mps, inherited_horizontal_speed_mps));
+  const float vertical_speed_limit_mps =
+      fmaxf(config.maximum_vertical_speed_mps, inherited_vertical_speed_mps);
+  state.vz = clampValue(state.vz, -vertical_speed_limit_mps, vertical_speed_limit_mps);
+  const float yaw_rate_limit_radps =
+      fmaxf(config.maximum_yaw_rate_radps, inherited_yaw_rate_radps);
+  state.yaw_rate = clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,
+                              -yaw_rate_limit_radps, yaw_rate_limit_radps);
   state.x += state.vx * config.dt_s;
   state.y += state.vy * config.dt_s;
   state.z += state.vz * config.dt_s;
@@ -329,11 +336,12 @@ __global__ void
 simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          const float* noise_yaw, const Control* nominal, float* soft_cost,
          float* critical_exposure, float* planning_exposure, float* minimum_clearance,
-         std::uint8_t* worst_tier, std::uint8_t* raw_collision,
-         std::uint8_t* solid_collision, std::size_t rollouts, std::size_t steps,
-         State initial, State target, MovingTargetReference moving_target,
-         bool moving_target_enabled, DynamicsConfig dynamics, RiskConfig risk,
-         FootprintConfig footprint, CostConfig costs,
+         std::uint8_t* altitude_envelope_violation, std::uint8_t* worst_tier,
+         std::uint8_t* raw_collision, std::uint8_t* solid_collision,
+         std::size_t rollouts, std::size_t steps, State initial, State target,
+         MovingTargetReference moving_target, bool moving_target_enabled,
+         DynamicsConfig dynamics, RiskConfig risk, FootprintConfig footprint,
+         AltitudeEnvelopeConfig altitude_envelope, CostConfig costs,
          HorizonSamplingConfig horizon_sampling, EsdfGrid grid,
          cudaTextureObject_t esdf_texture, const KnownSolid* solids,
          std::size_t solid_count, const RouteSample3D* route_points,
@@ -364,9 +372,14 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float maneuver_preference_cost = 0.0F;
   float critical_m = 0.0F;
   float planning_m = 0.0F;
+  float critical_clearance_proximity_s = 0.0F;
+  float obstacle_approach_m2_s = 0.0F;
   float minimum_clearance_m = kInfinity;
+  float previous_clearance_m = kInfinity;
   bool raw_hit = false;
   bool solid_hit = false;
+  bool altitude_envelope_hit = !altitudeEnvelopeDynamicallyRecoverable(
+      initial, previous_applied_control, dynamics, altitude_envelope);
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
   const float initial_distance =
       moving_target_enabled ? hypotf(hypotf(moving_target.state.x - initial.x,
@@ -395,6 +408,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                                step == 0U ? first_control_interval_s : dynamics.dt_s);
     const State previous_state = state;
     state = integrate(state, control, dynamics);
+    altitude_envelope_hit =
+        altitude_envelope_hit || !altitudeEnvelopeDynamicallyRecoverable(
+                                     state, control, dynamics, altitude_envelope);
     const float segment_length_m =
         hypotf(hypotf(state.x - previous_state.x, state.y - previous_state.y),
                state.z - previous_state.z);
@@ -425,17 +441,27 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
     raw_hit = raw_hit || segment_raw_hit;
-    const float segment_m =
-        dynamics.dt_s * hypotf(hypotf(state.vx, state.vy), state.vz);
+    const float segment_speed_mps = hypotf(hypotf(state.vx, state.vy), state.vz);
+    const float segment_m = dynamics.dt_s * segment_speed_mps;
     if (raw_hit || solid_hit) {
       tier = static_cast<std::uint8_t>(RiskTier::kCollision);
     } else if (clearance < risk.critical_distance_m) {
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kCritical));
       critical_m += segment_m;
+      critical_clearance_proximity_s +=
+          dynamics.dt_s *
+          criticalClearanceProximitySeverity(clearance, risk.critical_distance_m);
     } else if (clearance < risk.preferred_distance_m) {
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kPlanning));
       planning_m += segment_m;
     }
+    obstacle_approach_m2_s +=
+        dynamics.dt_s *
+        obstacleApproachSeverityM2(previous_clearance_m, clearance, segment_speed_mps,
+                                   dynamics.dt_s, risk.critical_distance_m,
+                                   risk.obstacle_approach_response_time_s,
+                                   risk.obstacle_approach_deceleration_mps2);
+    previous_clearance_m = clearance;
     const float target_elapsed_s = static_cast<float>(step + 1U) * dynamics.dt_s;
     const float target_distance =
         moving_target_enabled
@@ -512,7 +538,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
               : reference_speed_mps;
       if (active_reference_speed_mps >= 0.0F) {
         const float speed_mps = route_projection.valid
-                                    ? hypotf(hypotf(state.vx, state.vy), state.vz)
+                                    ? routeTrackingSpeedMps(state, route_projection)
                                     : hypotf(state.vx, state.vy);
         const float speed_error = speed_mps - active_reference_speed_mps;
         speed_tracking_cost += sample_weight * speed_error * speed_error;
@@ -532,7 +558,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                  (control.az - previous.az) * (control.az - previous.az);
     yaw_cost += control.yaw_accel * control.yaw_accel;
     previous = control;
-    if ((raw_hit || solid_hit) && early_exit) {
+    if ((raw_hit || solid_hit || altitude_envelope_hit) && early_exit) {
       break;
     }
   }
@@ -556,10 +582,13 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           maneuver_preference_cost +
       costs.planning_exposure_weight * planning_m +
       costs.critical_exposure_weight * critical_m +
+      costs.critical_clearance_proximity_weight * critical_clearance_proximity_s +
+      costs.obstacle_approach_weight * obstacle_approach_m2_s +
       costs.terminal_weight * terminal_distance;
   critical_exposure[rollout] = critical_m;
   planning_exposure[rollout] = planning_m;
   minimum_clearance[rollout] = minimum_clearance_m;
+  altitude_envelope_violation[rollout] = altitude_envelope_hit ? 1U : 0U;
   worst_tier[rollout] = tier;
   raw_collision[rollout] = raw_hit ? 1U : 0U;
   solid_collision[rollout] = solid_hit ? 1U : 0U;
@@ -579,13 +608,9 @@ __device__ float atomicMinFloat(float* address, float value) {
   return __int_as_float(old);
 }
 
-__global__ void initializeReduction(int* best_tier, float* best_critical,
-                                    float* best_planning, float* minimum_soft,
-                                    float* weight_sum, int* best_rollout) {
+__global__ void initializeReduction(float* minimum_soft, float* weight_sum,
+                                    int* best_rollout) {
   if (blockIdx.x == 0 && threadIdx.x == 0) {
-    *best_tier = static_cast<int>(RiskTier::kCollision);
-    *best_critical = kInfinity;
-    *best_planning = kInfinity;
     *minimum_soft = kInfinity;
     *weight_sum = 0.0F;
     *best_rollout = INT_MAX;
@@ -640,7 +665,7 @@ __device__ float blockSum(float value) {
   return value;
 }
 
-__global__ void selectBestEligibleRollout(const float* weights, const float* soft_cost,
+__global__ void selectBestFeasibleRollout(const float* weights, const float* soft_cost,
                                           const float* minimum_soft,
                                           const std::size_t count, int* best_rollout) {
   const std::size_t index =
@@ -656,8 +681,8 @@ __global__ void selectBestEligibleRollout(const float* weights, const float* sof
   }
 }
 
-__global__ void buildBestEligibleControls(
-    const Control* nominal, Control* best_eligible, const float* noise_ax,
+__global__ void buildBestFeasibleControls(
+    const Control* nominal, Control* best_feasible, const float* noise_ax,
     const float* noise_ay, const float* noise_az, const float* noise_yaw,
     const int* best_rollout, const std::size_t rollouts, const std::size_t steps) {
   const std::size_t step =
@@ -667,89 +692,26 @@ __global__ void buildBestEligibleControls(
   }
   const int rollout = *best_rollout;
   if (rollout < 0 || static_cast<std::size_t>(rollout) >= rollouts) {
-    best_eligible[step] = nominal[step];
+    best_feasible[step] = nominal[step];
     return;
   }
   const std::size_t index = static_cast<std::size_t>(rollout) * steps + step;
-  best_eligible[step] = Control{
+  best_feasible[step] = Control{
       nominal[step].ax + noise_ax[index], nominal[step].ay + noise_ay[index],
       nominal[step].az + noise_az[index], nominal[step].yaw_accel + noise_yaw[index]};
 }
 
-__global__ void reduceTier(const std::uint8_t* tier, const std::uint8_t* raw_collision,
-                           const std::uint8_t* solid_collision, std::size_t count,
-                           int maximum_tier, int* best_tier) {
-  const std::size_t index =
-      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  int candidate = static_cast<int>(RiskTier::kCollision);
-  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
-      static_cast<int>(tier[index]) <= maximum_tier) {
-    candidate = static_cast<int>(tier[index]);
-  }
-  const int block_candidate =
-      blockMinimum(candidate, static_cast<int>(RiskTier::kCollision));
-  if (threadIdx.x == 0) {
-    atomicMin(best_tier, block_candidate);
-  }
-}
-
-__global__ void reduceCritical(const std::uint8_t* tier, const float* critical,
-                               const std::uint8_t* raw_collision,
-                               const std::uint8_t* solid_collision, std::size_t count,
-                               const int* best_tier, float* best_critical) {
-  const std::size_t index =
-      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  float candidate = kInfinity;
-  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
-      static_cast<int>(tier[index]) == *best_tier) {
-    candidate = critical[index];
-  }
-  const float block_candidate = blockMinimum(candidate, kInfinity);
-  if (threadIdx.x == 0) {
-    atomicMinFloat(best_critical, block_candidate);
-  }
-}
-
-__global__ void reducePlanning(const std::uint8_t* tier, const float* critical,
-                               const float* planning, const std::uint8_t* raw_collision,
-                               const std::uint8_t* solid_collision, std::size_t count,
-                               const int* best_tier, const float* best_critical,
-                               float critical_tolerance, float* best_planning) {
-  const std::size_t index =
-      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  float candidate = kInfinity;
-  if (index < count && raw_collision[index] == 0U && solid_collision[index] == 0U &&
-      static_cast<int>(tier[index]) == *best_tier &&
-      critical[index] <= *best_critical + critical_tolerance) {
-    candidate = planning[index];
-  }
-  const float block_candidate = blockMinimum(candidate, kInfinity);
-  if (threadIdx.x == 0) {
-    atomicMinFloat(best_planning, block_candidate);
-  }
-}
-
-__global__ void reduceSoft(const std::uint8_t* tier, const float* critical,
-                           const float* planning, const float* soft,
+__global__ void reduceSoft(const float* soft,
+                           const std::uint8_t* altitude_envelope_violation,
                            const std::uint8_t* raw_collision,
                            const std::uint8_t* solid_collision, std::size_t count,
-                           const int* best_tier, const float* best_critical,
-                           const float* best_planning, float* minimum_soft,
-                           RiskConfig risk, int maximum_tier) {
+                           float* minimum_soft) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const bool valid = index < count;
-  const bool escalated = maximum_tier > static_cast<int>(RiskTier::kPreferred);
-  const bool eligible =
-      valid &&
-      (escalated ? static_cast<int>(tier[index]) <= maximum_tier
-                 : static_cast<int>(tier[index]) == *best_tier &&
-                       critical[index] <=
-                           *best_critical + risk.critical_exposure_tolerance_m &&
-                       planning[index] <=
-                           *best_planning + risk.planning_exposure_tolerance_m);
   float candidate = kInfinity;
-  if (valid && raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
+  if (valid && altitude_envelope_violation[index] == 0U && raw_collision[index] == 0U &&
+      solid_collision[index] == 0U) {
     candidate = soft[index];
   }
   const float block_candidate = blockMinimum(candidate, kInfinity);
@@ -758,27 +720,18 @@ __global__ void reduceSoft(const std::uint8_t* tier, const float* critical,
   }
 }
 
-__global__ void
-calculateWeights(const std::uint8_t* tier, const float* critical, const float* planning,
-                 const float* soft, const std::uint8_t* raw_collision,
-                 const std::uint8_t* solid_collision, float* weights, std::size_t count,
-                 const int* best_tier, const float* best_critical,
-                 const float* best_planning, const float* minimum_soft, RiskConfig risk,
-                 float temperature, int maximum_tier, float* weight_sum) {
+__global__ void calculateWeights(const float* soft,
+                                 const std::uint8_t* altitude_envelope_violation,
+                                 const std::uint8_t* raw_collision,
+                                 const std::uint8_t* solid_collision, float* weights,
+                                 std::size_t count, const float* minimum_soft,
+                                 float temperature, float* weight_sum) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const bool valid = index < count;
   float weight = 0.0F;
-  const bool escalated = maximum_tier > static_cast<int>(RiskTier::kPreferred);
-  const bool eligible =
-      valid &&
-      (escalated ? static_cast<int>(tier[index]) <= maximum_tier
-                 : static_cast<int>(tier[index]) == *best_tier &&
-                       critical[index] <=
-                           *best_critical + risk.critical_exposure_tolerance_m &&
-                       planning[index] <=
-                           *best_planning + risk.planning_exposure_tolerance_m);
-  if (valid && raw_collision[index] == 0U && solid_collision[index] == 0U && eligible) {
+  if (valid && altitude_envelope_violation[index] == 0U && raw_collision[index] == 0U &&
+      solid_collision[index] == 0U) {
     weight = expf(-(soft[index] - *minimum_soft) / temperature);
   }
   if (valid) {

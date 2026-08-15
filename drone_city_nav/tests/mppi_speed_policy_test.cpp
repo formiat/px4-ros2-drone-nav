@@ -104,20 +104,6 @@ TEST(MppiSpeedPolicyTest, FrontierRouteCanStopBeforeUnextendedEndpoint) {
   EXPECT_DOUBLE_EQ(at_margin.reference_speed_mps, 0.0);
 }
 
-TEST(MppiSpeedPolicyTest, RawSafeTemporaryContinuationDoesNotBrakeToZero) {
-  MppiSpeedPolicyConfig config;
-  MppiSpeedPolicyInput input;
-  input.mission_goal = Point3{300.0, 0.0, 18.0};
-  input.route_endpoint_remaining_m = 2.0;
-  input.route_endpoint_terminal_speed_mps = config.cruise_speed_mps;
-
-  const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
-
-  EXPECT_GE(result.route_endpoint_limit_mps, config.cruise_speed_mps);
-  EXPECT_DOUBLE_EQ(result.reference_speed_mps, config.cruise_speed_mps);
-  EXPECT_NE(result.active_limiter, MppiSpeedLimiter::kRouteEndpoint);
-}
-
 TEST(MppiSpeedPolicyTest, TerminalRouteUsesMissionGoalLimitOnly) {
   MppiSpeedPolicyConfig config;
   MppiSpeedPolicyInput input;

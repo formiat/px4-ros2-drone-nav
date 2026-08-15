@@ -126,11 +126,10 @@ def validate_cooperative_traffic(
         print("OK: cooperative traffic has no vehicle destruction")
     if expected_memory is True:
         require(
-            "cooperative peer memory filtering is active without weakening latest lidar safety",
+            "cooperative peer memory filtering is active",
             ros_log,
             r"COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=[0-9]+ "
-            r"matched_peers=[0-9]+ known_peers=[1-9][0-9]* "
-            r"latest_safety_excluded=false",
+            r"matched_peers=[0-9]+ known_peers=[1-9][0-9]*",
             errors,
         )
 
@@ -641,7 +640,6 @@ def main() -> int:
     parser.add_argument("--expected-vehicles", type=int, default=0)
     parser.add_argument("--expected-static", default="")
     parser.add_argument("--expected-memory", default="")
-    parser.add_argument("--expected-current-lidar", default="")
     parser.add_argument("--enable-lidar-debug", default="true")
     parser.add_argument("--mission-check", action="store_true")
     parser.add_argument("--allow-mission-failure", action="store_true")
@@ -652,7 +650,6 @@ def main() -> int:
     px4_log = "\n".join(px4_logs)
     expected_static = parse_bool(args.expected_static)
     expected_memory = parse_bool(args.expected_memory)
-    expected_current_lidar = parse_bool(args.expected_current_lidar)
     enable_lidar_debug = parse_bool(args.enable_lidar_debug) is not False
     errors: list[str] = []
     safety_ros_log = safety_relevant_ros_log(ros_log, args.mission_type)
@@ -689,17 +686,6 @@ def main() -> int:
         errors.append("FAIL: obstacle memory is disabled")
     else:
         print("OK: obstacle memory is disabled")
-    if expected_current_lidar is True:
-        require(
-            "latest lidar safety source is active",
-            ros_log,
-            r"LATEST_LIDAR_SAFETY_SCAN published=true",
-            errors,
-        )
-    elif expected_current_lidar is False and re.search(
-        r"LATEST_LIDAR_SAFETY_SCAN published=true", ros_log
-    ):
-        errors.append("FAIL: latest lidar safety source is disabled")
     require(
         "production MPPI is ready",
         ros_log,

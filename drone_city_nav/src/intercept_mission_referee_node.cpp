@@ -152,7 +152,7 @@ void InterceptMissionRefereeNode::configureInterceptors(
               (horizon->sequence > 0U &&
                horizon->execution_mode ==
                    msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-               !horizon->emergency_braking && horizon->points.size() >= 2U);
+               horizon->points.size() >= 2U);
         });
     runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
         topics.world_readiness[index], latched_qos,
@@ -234,7 +234,7 @@ void InterceptMissionRefereeNode::configureTargets(
               (horizon->sequence > 0U &&
                horizon->execution_mode ==
                    msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-               !horizon->emergency_braking && horizon->points.size() >= 2U);
+               horizon->points.size() >= 2U);
         });
     runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
         topics.world_readiness[index], latched_qos,

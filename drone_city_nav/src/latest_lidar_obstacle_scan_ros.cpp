@@ -1,4 +1,4 @@
-#include "drone_city_nav/latest_lidar_scan_safety_ros.hpp"
+#include "drone_city_nav/latest_lidar_obstacle_scan_ros.hpp"
 
 #include <geometry_msgs/msg/point32.hpp>
 #include <rclcpp/time.hpp>
@@ -9,12 +9,12 @@
 
 namespace drone_city_nav {
 
-msg::LatestLidarSafetyScan makeLatestLidarSafetyScanMessage(
-    const LatestLidarSafetyScanBuildResult& scan,
+msg::LatestLidarObstacleScan makeLatestLidarObstacleScanMessage(
+    const LatestLidarObstacleScanBuildResult& scan,
     const std_msgs::msg::Header& source_header, const std::string_view frame_id,
     const std::int64_t acquisition_stamp_ns, const std::uint64_t sequence,
     const std::uint64_t pose_generation) {
-  msg::LatestLidarSafetyScan message;
+  msg::LatestLidarObstacleScan message;
   message.header = source_header;
   message.header.stamp = rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME};
   message.header.frame_id = std::string{frame_id};

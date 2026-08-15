@@ -41,22 +41,9 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
 
   if (!config_.enabled || !observation.controller_active || observation.stamp_ns <= 0) {
     anchor_.reset();
-    emergency_braking_started_ns_.reset();
     result.state = MppiLivenessState::kInactive;
     return result;
   }
-  if (observation.emergency_braking) {
-    if (!emergency_braking_started_ns_.has_value() ||
-        observation.stamp_ns < *emergency_braking_started_ns_) {
-      emergency_braking_started_ns_ = observation.stamp_ns;
-    }
-    result.emergency_braking_duration_s =
-        static_cast<double>(observation.stamp_ns - *emergency_braking_started_ns_) /
-        1.0e9;
-    result.state = MppiLivenessState::kEmergencyBraking;
-    return result;
-  }
-  emergency_braking_started_ns_.reset();
   const bool route_progress_available = observation.route_station_valid &&
                                         observation.route_generation != 0U &&
                                         std::isfinite(observation.route_station_m);
@@ -110,15 +97,12 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
 
 void MppiLivenessSupervisor::reset() noexcept {
   anchor_.reset();
-  emergency_braking_started_ns_.reset();
 }
 
 const char* mppiLivenessStateName(const MppiLivenessState state) noexcept {
   switch (state) {
     case MppiLivenessState::kInactive:
       return "inactive";
-    case MppiLivenessState::kEmergencyBraking:
-      return "emergency_braking";
     case MppiLivenessState::kMonitoring:
       return "monitoring";
     case MppiLivenessState::kMoving:

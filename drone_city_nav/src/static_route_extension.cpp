@@ -21,8 +21,6 @@ deferredReplanPriority(const GlobalGuideReleaseReason reason) noexcept {
   switch (reason) {
     case GlobalGuideReleaseReason::kObjectiveChanged:
       return 7U;
-    case GlobalGuideReleaseReason::kPersistentSafetyRejection:
-      return 6U;
     case GlobalGuideReleaseReason::kNoEligibleRollouts:
       return 5U;
     case GlobalGuideReleaseReason::kDiverged:
@@ -410,6 +408,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "stale_route_generation";
     case StaticRouteActivationStatus::kStaleObjective:
       return "stale_objective";
+    case StaticRouteActivationStatus::kDynamicHandoffRejected:
+      return "dynamic_handoff_rejected";
   }
   return "unknown";
 }

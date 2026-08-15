@@ -1,8 +1,8 @@
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 #include "drone_city_nav/dynamic_agent_lidar_state.hpp"
 #include "drone_city_nav/grid_config.hpp"
-#include "drone_city_nav/latest_lidar_scan_safety.hpp"
-#include "drone_city_nav/latest_lidar_scan_safety_ros.hpp"
+#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
+#include "drone_city_nav/latest_lidar_obstacle_scan_ros.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
@@ -11,7 +11,6 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/mapping_lifecycle.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
-#include "drone_city_nav/msg/latest_lidar_safety_scan.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
@@ -237,9 +236,9 @@ public:
     dynamic_agent_lidar_state_ =
         std::make_unique<DynamicAgentLidarState>(dynamic_agent_config);
     const auto sensor_qos = rclcpp::SensorDataQoS{};
-    latest_lidar_safety_scan_pub_ = create_publisher<msg::LatestLidarSafetyScan>(
-        declare_parameter<std::string>("latest_lidar_safety_scan_topic",
-                                       "/drone_city_nav/latest_lidar_safety_scan"),
+    latest_lidar_obstacle_scan_pub_ = create_publisher<msg::LatestLidarObstacleScan>(
+        declare_parameter<std::string>("latest_lidar_obstacle_scan_topic",
+                                       "/drone_city_nav/latest_lidar_obstacle_scan"),
         sensor_qos);
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
         lidar_topic, sensor_qos,
@@ -604,25 +603,21 @@ private:
     if (filtered_scan.tracked_agent_filter_applied) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "TRACKED_AGENT_LIDAR_FILTER filtered_beams=%zu matched_agents=%zu "
-          "latest_safety_excluded=%s",
+          "TRACKED_AGENT_LIDAR_FILTER filtered_beams=%zu matched_agents=%zu",
           filtered_scan.tracked_agent_filtered_beams,
-          filtered_scan.tracked_agent_matches,
-          filtered_scan.tracked_agent_excluded_from_latest_safety ? "true" : "false");
+          filtered_scan.tracked_agent_matches);
     }
     if (filtered_scan.cooperative_filter_applied) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=%zu matched_peers=%zu "
-          "known_peers=%zu latest_safety_excluded=false",
+          "known_peers=%zu",
           filtered_scan.cooperative_filtered_beams,
           filtered_scan.cooperative_peer_matches,
           filter_plan.cooperative_memory_exclusions.size());
     }
     const std::span<const float> persistent_scan_ranges =
         filtered_scan.persistentRanges(raw_scan_ranges);
-    const std::span<const float> safety_scan_ranges =
-        filtered_scan.latestSafetyRanges(raw_scan_ranges);
     LaserScan2DView scan_view{};
     scan_view.ranges = persistent_scan_ranges;
     scan_view.angle_min_rad = static_cast<double>(scan.angle_min);
@@ -649,15 +644,15 @@ private:
     scan_view.beam_projection_poses = acquisition_pose.alignment.poses;
     scan_view.projection_pose_source =
         LidarProjectionPoseSource::kSourceTimestampAligned;
-    publishLatestLidarSafetyScan(
-        scan, safety_scan_ranges, acquisition_pose.alignment.poses,
+    publishLatestLidarObstacleScan(
+        scan, persistent_scan_ranges, acquisition_pose.alignment.poses,
         lidar_pose_history_.generation(), acquisition_stamp_ns);
     if (!persistent_memory_enabled_ || !persistent_memory_selection_.selected()) {
       if (!scan_seen_) {
         scan_seen_ = true;
         RCLCPP_INFO(
             get_logger(),
-            "First lidar safety scan: beams=%zu range=[%.2f, %.2f] "
+            "First raw lidar obstacle scan: beams=%zu range=[%.2f, %.2f] "
             "angle=[%.2f, %.2f] attitude_valid=%s",
             scan.ranges.size(), static_cast<double>(scan.range_min),
             static_cast<double>(scan.range_max), static_cast<double>(scan.angle_min),
@@ -811,15 +806,15 @@ private:
     };
   }
 
-  void publishLatestLidarSafetyScan(
+  void publishLatestLidarObstacleScan(
       const sensor_msgs::msg::LaserScan& scan, const std::span<const float> ranges,
       const std::span<const LidarProjectionPose> beam_projection_poses,
       const std::uint64_t pose_generation, const std::int64_t acquisition_stamp_ns) {
-    if (!latest_lidar_safety_scan_pub_) {
+    if (!latest_lidar_obstacle_scan_pub_) {
       return;
     }
-    const LatestLidarSafetyScanBuildResult safety_scan =
-        buildLatestLidarSafetyScan(LatestLidarSafetyScanBuildInput{
+    const LatestLidarObstacleScanBuildResult obstacle_scan =
+        buildLatestLidarObstacleScan(LatestLidarObstacleScanBuildInput{
             .ranges = ranges,
             .beam_projection_poses = beam_projection_poses,
             .projection_config = lidarProjectionConfig(),
@@ -828,21 +823,21 @@ private:
             .angle_min_rad = static_cast<double>(scan.angle_min),
             .angle_increment_rad = static_cast<double>(scan.angle_increment),
         });
-    if (!safety_scan.valid) {
+    if (!obstacle_scan.valid) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "LATEST_LIDAR_SAFETY_SCAN published=false reason=projection_failed "
+          "LATEST_LIDAR_OBSTACLE_SCAN published=false reason=projection_failed "
           "source_beams=%zu invalid_beams=%zu",
-          safety_scan.source_beam_count, safety_scan.invalid_beam_count);
+          obstacle_scan.source_beam_count, obstacle_scan.invalid_beam_count);
       return;
     }
-    msg::LatestLidarSafetyScan message = makeLatestLidarSafetyScanMessage(
-        safety_scan, scan.header, frame_id_, acquisition_stamp_ns,
-        ++latest_lidar_safety_scan_sequence_, pose_generation);
-    latest_lidar_safety_scan_pub_->publish(message);
+    msg::LatestLidarObstacleScan message = makeLatestLidarObstacleScanMessage(
+        obstacle_scan, scan.header, frame_id_, acquisition_stamp_ns,
+        ++latest_lidar_obstacle_scan_sequence_, pose_generation);
+    latest_lidar_obstacle_scan_pub_->publish(message);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "LATEST_LIDAR_SAFETY_SCAN published=true sequence=%" PRIu64
+        "LATEST_LIDAR_OBSTACLE_SCAN published=true sequence=%" PRIu64
         " source_beams=%u hit_points=%zu invalid_beams=%u pose_generation=%" PRIu64,
         message.sequence, message.source_beam_count, message.hit_points_body_frd.size(),
         message.invalid_beam_count, message.pose_generation);
@@ -959,7 +954,7 @@ private:
   LidarMemoryHitDumpWriter lidar_memory_hit_dump_;
   LatestValueMailbox<LidarMemoryHitDiagnosticBatch> lidar_diagnostics_mailbox_;
   std::atomic<std::uint64_t> dropped_lidar_diagnostic_batches_{0U};
-  std::uint64_t latest_lidar_safety_scan_sequence_{0U};
+  std::uint64_t latest_lidar_obstacle_scan_sequence_{0U};
   std::size_t lidar_scan_alignment_queue_capacity_{8U};
   std::deque<PendingLidarScan> pending_lidar_scans_;
   std::jthread lidar_diagnostics_worker_;
@@ -984,8 +979,8 @@ private:
   rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_track_sub_;
   rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr cooperative_intent_sub_;
   rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
-  rclcpp::Publisher<msg::LatestLidarSafetyScan>::SharedPtr
-      latest_lidar_safety_scan_pub_;
+  rclcpp::Publisher<msg::LatestLidarObstacleScan>::SharedPtr
+      latest_lidar_obstacle_scan_pub_;
 };
 
 } // namespace drone_city_nav

@@ -119,14 +119,13 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
         errors: list[str] = []
         VALIDATOR.validate_cooperative_traffic(
             "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=0 matched_peers=0 "
-            "known_peers=3 latest_safety_excluded=false",
+            "known_peers=3",
             4,
             True,
             errors,
         )
         self.assertNotIn(
-            "FAIL: cooperative peer memory filtering is active without weakening "
-            "latest lidar safety",
+            "FAIL: cooperative peer memory filtering is active",
             errors,
         )
 
@@ -134,14 +133,13 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
         errors: list[str] = []
         VALIDATOR.validate_cooperative_traffic(
             "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=0 matched_peers=0 "
-            "known_peers=0 latest_safety_excluded=false",
+            "known_peers=0",
             4,
             True,
             errors,
         )
         self.assertIn(
-            "FAIL: cooperative peer memory filtering is active without weakening "
-            "latest lidar safety",
+            "FAIL: cooperative peer memory filtering is active",
             errors,
         )
 

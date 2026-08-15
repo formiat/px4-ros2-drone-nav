@@ -260,8 +260,6 @@ DynamicAgentLidarStateConfig declareDynamicAgentLidarStateConfig(rclcpp::Node& n
           "tracked_agent_filter_vertical_tolerance_m", 1.0),
       .tracked_agent_maximum_age_s =
           node.declare_parameter<double>("tracked_agent_maximum_age_s", 0.5),
-      .tracked_agent_excluded_from_latest_safety = node.declare_parameter<bool>(
-          "tracked_agent_filter_latest_lidar_safety", true),
       .cooperative_peer_horizontal_margin_m = node.declare_parameter<double>(
           "cooperative_peer_filter_horizontal_margin_m", 0.0),
       .cooperative_peer_vertical_margin_m = node.declare_parameter<double>(
@@ -303,14 +301,6 @@ std::span<const float> DynamicAgentLidarScanFilterResult::persistentRanges(
   return raw_ranges;
 }
 
-std::span<const float> DynamicAgentLidarScanFilterResult::latestSafetyRanges(
-    const std::span<const float> raw_ranges) const noexcept {
-  if (tracked_agent_filter_applied && tracked_agent_excluded_from_latest_safety) {
-    return tracked_agent_ranges;
-  }
-  return raw_ranges;
-}
-
 DynamicAgentLidarScanFilterResult
 filterDynamicAgentsFromLidarScan(const DynamicAgentLidarScanView& scan,
                                  const DynamicAgentLidarFilterPlan& filter_plan) {
@@ -336,8 +326,6 @@ filterDynamicAgentsFromLidarScan(const DynamicAgentLidarScanView& scan,
     result.tracked_agent_matches = filtered.matched_agents;
     result.tracked_agent_ranges = std::move(filtered.ranges);
     result.tracked_agent_filter_applied = true;
-    result.tracked_agent_excluded_from_latest_safety =
-        filter_plan.tracked_agent_excluded_from_latest_safety;
     persistent_ranges = result.tracked_agent_ranges;
   }
   if (!filter_plan.cooperative_memory_exclusions.empty()) {

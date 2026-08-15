@@ -249,7 +249,7 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             planner_text,
         )
         self.assertIn(
-            f"safety_swept_validation_step_m: {capsule['sweep_step_m']}",
+            f"physical_footprint_sweep_step_m: {capsule['sweep_step_m']}",
             planner_text,
         )
 

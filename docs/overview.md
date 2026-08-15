@@ -2,8 +2,8 @@
 
 This repository is a ROS 2 workspace for PX4/Gazebo drone navigation. Its
 production navigation stack uses raw occupancy, a distance field, a
-risk-aware motion-primitive lattice guide, GPU MPPI, and an independent
-braking supervisor.
+risk-aware motion-primitive lattice guide, and GPU MPPI with explicit route
+availability and execution-horizon contracts.
 
 The project is a simulation-oriented research system. It is not certified for
 real-aircraft operation.
@@ -19,7 +19,8 @@ real-aircraft operation.
 - CUDA MPPI local planning at a receding horizon.
 - Static and no-static speed policies.
 - Timestamped execution horizons consumed by the MPPI offboard node.
-- Braking fallback when the selected horizon is not executable.
+- Typed position hold when no physically executable route is available.
+- Terminal-point or current-position hold when no fresh finite path is available.
 - Canonical 3D static world with a `5 x 8` Manhattan grid, two L-shaped channels,
   and one straight-through channel.
 - Typed vehicle destruction from Gazebo contact or 5 m proximity intercept.
@@ -77,8 +78,8 @@ repository container workflow.
 - The lattice search is recomputed; it is not AD*, LPA*, or D* Lite.
 - No persistent no-static topological memory exists yet.
 - No-static does not infer 3D channels because the vehicle has a 2D lidar.
-- The braking fallback is an approximate reachable braking trajectory, not a
-  full reachable-set solver.
+- Current-position hold is not a substitute for finding a physically executable
+  route.
 
 ## Documentation Map
 

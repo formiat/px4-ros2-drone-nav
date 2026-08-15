@@ -1,4 +1,5 @@
 #include "drone_city_nav/distance_field.hpp"
+#include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
 #include "drone_city_nav/mppi/mppi_cuda.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"

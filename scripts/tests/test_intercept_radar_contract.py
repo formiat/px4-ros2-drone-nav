@@ -30,6 +30,7 @@ TRUTH_ADAPTER = SOURCE / "simulation_truth_adapter_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
+MPPI_ENGINE = SOURCE / "mppi" / "mppi_engine.cu"
 NONCOOPERATIVE_PLANNER = SOURCE / "production_mppi_node_noncooperative.cpp"
 NAVIGATION_OBJECTIVE = PACKAGE / "msg" / "NavigationObjective.msg"
 
@@ -145,13 +146,14 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("uint8 TERMINAL_POLICY_IMMEDIATE_HOLD=2", objective)
         self.assertIn("TERMINAL_POLICY_IMMEDIATE_HOLD", guidance)
         self.assertIn("objective->immediate_hold", planning)
-        self.assertIn("kObstacleAwareHold", planning)
-        self.assertIn("mission_command_obstacle_aware_hold", planning)
+        self.assertIn("kMissionCommandPositionHold", planning)
+        self.assertIn("mission_command_position_hold", planning)
         execution = (
             SOURCE / "production_mppi_node_execution.cpp"
         ).read_text(encoding="utf-8")
-        self.assertIn("braking || obstacle_aware_hold", execution)
-        self.assertIn("!forced_braking_hold", execution)
+        self.assertIn("publish_position_hold", execution)
+        self.assertIn("ProductionMppiPlanningState::kMissionCommandPositionHold", execution)
+        self.assertNotIn("forced_braking_hold", execution)
         self.assertIn(
             "interceptor_execution_horizon_topics",
             REFEREE_SUPPORT.read_text(encoding="utf-8"),
@@ -255,26 +257,47 @@ class InterceptRadarContractTest(unittest.TestCase):
     def test_attacker_avoidance_preserves_physical_obstacle_safety(self) -> None:
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         execution = EXECUTION.read_text(encoding="utf-8")
+        engine = MPPI_ENGINE.read_text(encoding="utf-8")
 
-        active_guard = planning_tick.split(
-            "if (noncooperative.enabled && "
-            "noncooperative.avoidance.fresh_track_count > 0U)",
-            1,
-        )[1].split("const EsdfQueryResult", 1)[0]
-        self.assertIn("fresh_track_count > 0U", planning_tick)
-        self.assertIn("maximum_eligible_risk_tier_", active_guard)
-        self.assertIn("std::min", active_guard)
-        self.assertIn("route_required_risk_tier", active_guard)
-        self.assertIn("noncooperative_contract_violation", execution)
-        self.assertIn("result.eligible_risk_contract.available", execution)
-        self.assertIn(
-            "!result.post_update_classification.contract_preserved", execution
+        self.assertNotIn("maximum_eligible_risk_tier", planning_tick)
+        self.assertNotIn("MppiRiskEscalation", planning_tick)
+        self.assertNotIn("mppi_risk_recovery_stable_cycles", planning_tick)
+        self.assertNotIn("maximum_eligible_risk_tier", engine)
+        self.assertNotIn("reduceTier<<<", engine)
+        self.assertIn("result.feasibility_contract.available", engine)
+        self.assertIn("evaluate_controls", engine)
+        self.assertIn("altitude_envelope_violation", engine)
+        self.assertIn("result.raw_collision = metrics.collision", engine)
+        self.assertIn("result.known_solid_collision", engine)
+        self.assertIn("action=hold_no_executable_path", execution)
+        self.assertNotIn("action=execute_soft_risk_ranked_sequence", execution)
+
+    def test_planner_has_no_obstacle_triggered_braking_or_hold_latch(self) -> None:
+        planner = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (
+                SOURCE / "production_mppi_node.cpp",
+                SOURCE / "production_mppi_node.hpp",
+                PLANNING_TICK,
+                EXECUTION,
+            )
         )
-        self.assertRegex(
-            execution,
-            r"evaluateMppiHorizonSafety\([\s\S]*?"
-            r"noncooperative_contract_violation",
-        )
+        for forbidden in (
+            "MppiHorizonSafety",
+            "buildMppiBrakingFallback",
+            "SAFETY_BRAKING_LATCH",
+            "RAW_STOPPING_SAFETY",
+            "clearance-increasing",
+            "action=braking_hold",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, planner)
+        self.assertIn("planning_exposure_weight", planner)
+        self.assertIn("critical_exposure_weight", planner)
+        self.assertIn("critical_clearance_proximity_weight", planner)
+        self.assertIn("obstacle_approach_weight", planner)
+        self.assertIn("obstacle_approach_response_time_s", planner)
+        self.assertIn("obstacle_approach_deceleration_mps2", planner)
 
     def test_truth_boundary_allows_only_sensor_simulators_and_referee(self) -> None:
         boundary = GROUND_TRUTH_BOUNDARY.read_text(encoding="utf-8")

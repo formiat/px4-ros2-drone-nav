@@ -60,7 +60,7 @@ SegmentEvaluation evaluateLatticeSegment(const mppi::EsdfGrid& grid,
                                          const RiskAwareLatticeConfig& config,
                                          const LatticeRiskStage stage) {
   SegmentEvaluation result{.valid = true};
-  const SweptFootprintResult footprint = validateSweptFootprint(
+  const SweptFootprintClearanceProfile profile = profileSweptFootprintClearance(
       grid, esdf_m, Point3{start.x, start.y, 0.0}, Point3{endpoint.x, endpoint.y, 0.0},
       SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
                            .lower_extent_m = config.physical_footprint_lower_extent_m,
@@ -68,7 +68,9 @@ SegmentEvaluation evaluateLatticeSegment(const mppi::EsdfGrid& grid,
                            .perimeter_samples = config.physical_footprint_samples,
                            .radial_rings = config.physical_footprint_radial_rings,
                            .axial_samples = config.physical_footprint_axial_samples,
-                           .sweep_step_m = config.primitive_sample_step_m});
+                           .sweep_step_m = config.primitive_sample_step_m},
+      config.critical_distance_m, config.preferred_distance_m);
+  const SweptFootprintResult& footprint = profile.validation;
   if (!footprint.accepted()) {
     result.valid = false;
     switch (footprint.status) {
@@ -86,42 +88,12 @@ SegmentEvaluation evaluateLatticeSegment(const mppi::EsdfGrid& grid,
     }
     return result;
   }
-  const double length_m = distance(start, endpoint);
-  const int sample_count =
-      static_cast<int>(std::ceil(length_m / config.primitive_sample_step_m));
-  for (int sample_index = 1; sample_index <= sample_count; ++sample_index) {
-    const double sample_distance = std::min(
-        length_m, static_cast<double>(sample_index) * config.primitive_sample_step_m);
-    const double ratio = length_m > 0.0 ? sample_distance / length_m : 1.0;
-    const Point2 sample{std::lerp(start.x, endpoint.x, ratio),
-                        std::lerp(start.y, endpoint.y, ratio)};
-    const EsdfQueryResult query = queryLatticeEsdf(grid, esdf_m, sample);
-    if (query.status == EsdfQueryStatus::kOutsideGrid) {
-      result.valid = false;
-      result.rejection_reason = SegmentEvaluation::RejectionReason::kOutsideGrid;
-      return result;
-    }
-    if (query.status != EsdfQueryStatus::kValid) {
-      result.valid = false;
-      result.rejection_reason = SegmentEvaluation::RejectionReason::kInvalidClearance;
-      return result;
-    }
-    if (query.raw_occupied) {
-      result.valid = false;
-      result.rejection_reason = SegmentEvaluation::RejectionReason::kRawCollision;
-      return result;
-    }
-    const float clearance = query.clearance_m;
-    if (std::isinf(clearance) && clearance > 0.0F) {
-      continue;
-    }
-    if (clearance < config.critical_distance_m) {
-      result.worst_tier = mppi::RiskTier::kCritical;
-      result.critical_exposure_m += config.primitive_sample_step_m;
-    } else if (clearance < config.preferred_distance_m) {
-      result.worst_tier = std::max(result.worst_tier, mppi::RiskTier::kPlanning);
-      result.planning_exposure_m += config.primitive_sample_step_m;
-    }
+  result.critical_exposure_m = profile.critical_exposure_m;
+  result.planning_exposure_m = profile.planning_exposure_m;
+  if (result.critical_exposure_m > 0.0) {
+    result.worst_tier = mppi::RiskTier::kCritical;
+  } else if (result.planning_exposure_m > 0.0) {
+    result.worst_tier = mppi::RiskTier::kPlanning;
   }
   if (!riskAllowed(result.worst_tier, stage)) {
     result.valid = false;

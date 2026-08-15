@@ -37,7 +37,7 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
   if (!(length > 1.0e-9)) {
     return Lattice3DEdgeEvaluation{.status = Lattice3DEdgeEvaluationStatus::kValid};
   }
-  const SweptFootprintResult footprint = validateSweptFootprint(
+  const SweptFootprintClearanceProfile profile = profileSweptFootprintClearance(
       grid, esdf_m, first, second,
       SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
                            .lower_extent_m = config.physical_footprint_lower_extent_m,
@@ -45,7 +45,9 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
                            .perimeter_samples = config.physical_footprint_samples,
                            .radial_rings = config.physical_footprint_radial_rings,
                            .axial_samples = config.physical_footprint_axial_samples,
-                           .sweep_step_m = config.physical_footprint_sweep_step_m});
+                           .sweep_step_m = config.physical_footprint_sweep_step_m},
+      config.critical_distance_m, config.preferred_distance_m);
+  const SweptFootprintResult& footprint = profile.validation;
   if (!footprint.accepted()) {
     switch (footprint.status) {
       case SweptFootprintStatus::kOutsideGrid:
@@ -61,43 +63,14 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
         break;
     }
   }
-  const std::size_t samples = std::max<std::size_t>(
-      1U, static_cast<std::size_t>(std::ceil(length / config.sample_step_m)));
-  Lattice3DEdgeEvaluation result{.status = Lattice3DEdgeEvaluationStatus::kValid};
-  const double exposure_per_sample = length / static_cast<double>(samples);
-  for (std::size_t sample = 1U; sample <= samples; ++sample) {
-    const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
-    const Point3 point{std::lerp(first.x, second.x, ratio),
-                       std::lerp(first.y, second.y, ratio),
-                       std::lerp(first.z, second.z, ratio)};
-    const EsdfQueryResult query = queryConservativeEsdf3D(
-        grid, esdf_m, static_cast<float>(point.x), static_cast<float>(point.y),
-        static_cast<float>(point.z));
-    if (query.status == EsdfQueryStatus::kOutsideGrid) {
-      return Lattice3DEdgeEvaluation{.status =
-                                         Lattice3DEdgeEvaluationStatus::kOutsideGrid};
-    }
-    if (query.status != EsdfQueryStatus::kValid) {
-      return Lattice3DEdgeEvaluation{.status =
-                                         Lattice3DEdgeEvaluationStatus::kInvalidEsdf};
-    }
-    if (query.raw_occupied) {
-      return Lattice3DEdgeEvaluation{.status =
-                                         Lattice3DEdgeEvaluationStatus::kRawCollision};
-    }
-    if (!stageAllows(stage, query.clearance_m, config)) {
-      return Lattice3DEdgeEvaluation{
-          .status = Lattice3DEdgeEvaluationStatus::kRiskStageRejected};
-    }
-    result.minimum_clearance_m =
-        std::min(result.minimum_clearance_m, static_cast<double>(query.clearance_m));
-    if (query.clearance_m < config.critical_distance_m) {
-      result.critical_exposure_m += exposure_per_sample;
-    } else if (query.clearance_m < config.preferred_distance_m) {
-      result.planning_exposure_m += exposure_per_sample;
-    }
+  if (!stageAllows(stage, footprint.minimum_clearance_m, config)) {
+    return Lattice3DEdgeEvaluation{
+        .status = Lattice3DEdgeEvaluationStatus::kRiskStageRejected};
   }
-  return result;
+  return Lattice3DEdgeEvaluation{.status = Lattice3DEdgeEvaluationStatus::kValid,
+                                 .minimum_clearance_m = footprint.minimum_clearance_m,
+                                 .planning_exposure_m = profile.planning_exposure_m,
+                                 .critical_exposure_m = profile.critical_exposure_m};
 }
 
 void accumulateLattice3DSuccessorProfile(

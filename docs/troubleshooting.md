@@ -18,7 +18,8 @@ Check:
 - `production_mppi_node` started and CUDA is available;
 - raw obstacle and ESDF revisions advance;
 - pose and ESDF age remain below configured limits;
-- target source is not `no_guide_braking_hold`;
+- target source is not `no_executable_route_*`;
+- execution reason is not `no_executable_horizon`;
 - selected horizon is not collision-classified;
 - offboard receives fresh increasing horizon sequences.
 
@@ -30,8 +31,9 @@ Inspect in this order:
 2. ESDF revision and age;
 3. lattice guide status and target source;
 4. post-update collision classification;
-5. braking decision and time-to-collision;
-6. offboard deadline and applied command.
+5. route availability and unresolved-frontier terminal speed;
+6. `no_executable_horizon` entry and exit transitions;
+7. offboard deadline and applied command.
 
 For air channels, inspect the 3D route samples and constrained route spans.
 

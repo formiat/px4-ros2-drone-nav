@@ -47,11 +47,21 @@ Execution cadence:
 - `rollouts`, `dt_s`, mode-specific horizon duration;
 - deadline and maximum input ages.
 
+No-static direct raw validation:
+
+- `latest_lidar_obstacle_scan_topic` selects the timestamp-aligned raw-hit
+  stream produced by obstacle memory;
+- `latest_lidar_obstacle_maximum_age_ms` bounds how long that direct evidence
+  participates in complete finite-path validation. Stale or missing data does
+  not create an obstacle.
+
 Mode policy:
 
 - `use_static_map`;
 - static/no-static cruise and absolute speed;
 - acceleration, lateral acceleration, braking, and jerk limits;
+- the conservative terminal-path horizontal deceleration limit, independently
+  of the larger acceleration available to ordinary manoeuvres;
 - mode-specific lookahead and curvature preview;
 - mode-specific observation and goal limits.
 
@@ -97,7 +107,7 @@ Static world:
 - constrained-span speed is encoded in 3D route samples.
 - `minimum_target_z_m` and `maximum_target_z_m` define the half-open flight
   envelope used by objectives, 3D successors, channel edges, smoothed routes,
-  activation, safety, and offboard publication;
+  activation, dynamic vertical stopping validation, and offboard publication;
 - `physical_footprint_radius_m`, `physical_footprint_lower_extent_m`, and
   `physical_footprint_upper_extent_m` define the actual oriented drone volume;
   radial, axial, and swept sampling parameters control raw-occupancy validation.
@@ -107,18 +117,17 @@ a distance derived from measured `z`/`vz` and configured vertical dynamics. XY
 hold is reserved for the final configured distance before the entry plane when
 the measured altitude has not reached the retained capture window.
 
-Safety and liveness:
+Speed policy and liveness:
 
-- reaction latency and braking acceleration;
-- fallback duration;
-- time-to-collision threshold;
+- reaction latency and available stopping acceleration;
+- unresolved-frontier and mission-goal stopping margins;
 - actual-displacement and predicted-progress thresholds.
 
 ## `mppi_offboard_node`
 
 - execution-horizon and PX4 topics;
 - maximum receive age and control lookahead;
-- fallback braking acceleration;
+- finite-path receive age, deadline, and control lookahead;
 - takeoff altitude and hover time;
 - the same minimum/maximum target altitude contract as the planner;
 - expected vehicle role, mission epoch, and destruction topic;
@@ -153,9 +162,12 @@ overrides.
 
 1. Verify frame transforms and raw obstacle evidence.
 2. Verify mode-specific PX4 limits match MPPI limits.
-3. Verify horizon safety and braking behavior.
+3. Verify physical finite-path validation, route-unavailable hold, and terminal
+   path hold behavior.
 4. Tune reference speed and lookahead.
-5. Tune risk-band exposure.
+5. Tune risk-band exposure and `critical_clearance_proximity_weight`. The latter
+   is a bounded soft cost inside the critical band; it must not be used as a
+   reachability or hold threshold.
 6. Tune smoothness and control costs.
 7. Tune liveness and guide lifecycle only from observed failure cases.
 

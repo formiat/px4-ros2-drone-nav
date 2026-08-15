@@ -44,6 +44,12 @@ struct SweptFootprintResult {
   }
 };
 
+struct SweptFootprintClearanceProfile {
+  SweptFootprintResult validation{};
+  double planning_exposure_m{0.0};
+  double critical_exposure_m{0.0};
+};
+
 [[nodiscard]] SweptFootprintResult
 validateFootprintAt(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
                     const Point3& position,
@@ -58,6 +64,11 @@ validateFootprintAt(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
 validateSweptFootprint(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
                        const Point3& first, const Point3& second,
                        const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintClearanceProfile profileSweptFootprintClearance(
+    const mppi::EsdfGrid& grid, std::span<const float> esdf_m, const Point3& first,
+    const Point3& second, const SweptFootprintConfig& config,
+    double critical_distance_m, double preferred_distance_m) noexcept;
 
 [[nodiscard]] SweptFootprintResult
 validateRawFootprintAt(const OccupancyGrid2D& occupancy, const Point3& position,
@@ -83,6 +94,16 @@ validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
                           const Point3& second,
                           const FootprintBodyAxis& second_body_axis,
                           const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult validateRawPointCloudFootprintAt(
+    std::span<const Point3> obstacle_points, const Point3& position,
+    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult validateRawPointCloudSweptFootprint(
+    std::span<const Point3> obstacle_points, const Point3& first,
+    const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const FootprintBodyAxis& second_body_axis,
+    const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] SweptFootprintResult
 validateSweptFootprint(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,

@@ -176,5 +176,35 @@ TEST(SweptFootprintTest, RawWorldBoundaryIsNotAnArtificialObstacle) {
                   .accepted());
 }
 
+TEST(SweptFootprintTest, RawPointCloudSweepRejectsPhysicalSideContact) {
+  const std::vector<Point3> obstacle_points{{5.0, 0.75, 5.0}};
+  const SweptFootprintConfig footprint{.radius_m = 0.82,
+                                       .lower_extent_m = 0.23,
+                                       .upper_extent_m = 0.35,
+                                       .sweep_step_m = 0.25};
+
+  const SweptFootprintResult result = validateRawPointCloudSweptFootprint(
+      obstacle_points, Point3{0.0, 0.0, 5.0}, FootprintBodyAxis{},
+      Point3{10.0, 0.0, 5.0}, FootprintBodyAxis{}, footprint);
+
+  EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
+  EXPECT_DOUBLE_EQ(result.failure_point.x, obstacle_points.front().x);
+  EXPECT_DOUBLE_EQ(result.failure_point.y, obstacle_points.front().y);
+}
+
+TEST(SweptFootprintTest, RawPointCloudFootprintUsesRequestedBodyAxis) {
+  const std::vector<Point3> obstacle_points{{0.8, 0.0, 0.0}};
+  const SweptFootprintConfig footprint{
+      .radius_m = 0.2, .lower_extent_m = 0.2, .upper_extent_m = 1.0};
+
+  EXPECT_TRUE(validateRawPointCloudFootprintAt(obstacle_points, Point3{},
+                                               FootprintBodyAxis{}, footprint)
+                  .accepted());
+  EXPECT_EQ(validateRawPointCloudFootprintAt(
+                obstacle_points, Point3{}, FootprintBodyAxis{1.0, 0.0, 0.0}, footprint)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+}
+
 } // namespace
 } // namespace drone_city_nav

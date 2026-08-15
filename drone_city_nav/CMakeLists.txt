@@ -48,7 +48,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryProvenance.msg"
   "msg/ObstacleMemorySnapshot.msg"
   "msg/ObstacleMemoryStatus.msg"
-  "msg/LatestLidarSafetyScan.msg"
+  "msg/LatestLidarObstacleScan.msg"
   "msg/RawObstacleDelta.msg"
   "msg/RawObstacleSnapshot.msg"
   "msg/VehicleDestroyed.msg"
@@ -98,7 +98,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/mppi/mppi_control_sequence.cpp
     src/mppi/mppi_input_validation.cpp
     src/mppi/mppi_noncooperative_acquisition.cpp
-    src/mppi/mppi_reference.cpp)
+    src/mppi/static_route_handoff.cpp)
   target_sources(drone_city_nav_mppi_cuda PRIVATE
                  src/mppi/mppi_separation_acquisition.cpp
                  src/mppi/mppi_separation_acquisition_coordinator.cpp)
@@ -173,7 +173,7 @@ add_library(
   src/intercept_guidance.cpp
   src/intercept_mission.cpp
   src/known_static_lidar_hit_classifier.cpp
-  src/latest_lidar_scan_safety.cpp
+  src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_debug_snapshot_pipeline.cpp
@@ -213,11 +213,12 @@ add_library(
   src/tracked_agent_lidar_filter.cpp
   src/tracking_objective.cpp
   src/lidar_snapshot_writer.cpp
+  src/mppi/finite_execution_path.cpp
+  src/mppi/mppi_finite_horizon.cpp
   src/mppi/mppi_post_update_classification.cpp
-  src/mppi_horizon_safety.cpp
+  src/mppi/mppi_reference.cpp
   src/mppi_liveness.cpp
   src/mppi_nominal_reseed.cpp
-  src/mppi_risk_escalation.cpp
   src/mppi_rollout_budget.cpp
   src/mppi_speed_policy.cpp
   src/navigation_state_prediction.cpp
@@ -258,8 +259,8 @@ enable_project_warnings(drone_contact_system)
 add_library(
   drone_city_nav_ros_adapters
   src/cooperative_traffic_ros.cpp
+  src/latest_lidar_obstacle_scan_ros.cpp
   src/lidar_debug_node_config.cpp
-  src/latest_lidar_scan_safety_ros.cpp
   src/memory_provenance_audit_tracker.cpp
   src/obstacle_memory_provenance_ros.cpp
   src/px4_offboard_setpoint_io.cpp
@@ -521,6 +522,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_static_guide.cpp
     src/production_mppi_node_diagnostics.cpp
     src/production_mppi_node_diagnostics_runtime.cpp
+    src/production_mppi_execution_diagnostics.cpp
     src/production_mppi_node_summary.cpp
     src/tracking_objective_diagnostics.cpp
     src/production_mppi_node_execution.cpp)
@@ -656,18 +658,17 @@ if(BUILD_TESTING)
   target_link_libraries(tracked_agent_lidar_filter_test drone_city_nav_core)
   enable_project_warnings(tracked_agent_lidar_filter_test)
 
-  ament_add_gtest(mppi_reference_test_current tests/mppi_reference_test.cpp
-                  src/mppi/mppi_reference.cpp)
+  ament_add_gtest(latest_lidar_obstacle_scan_test
+                  tests/latest_lidar_obstacle_scan_test.cpp)
+  target_compile_features(latest_lidar_obstacle_scan_test PRIVATE cxx_std_20)
+  target_link_libraries(latest_lidar_obstacle_scan_test drone_city_nav_core)
+  enable_project_warnings(latest_lidar_obstacle_scan_test)
+
+  ament_add_gtest(mppi_reference_test_current tests/mppi_reference_test.cpp)
   target_compile_features(mppi_reference_test_current PRIVATE cxx_std_20)
   target_include_directories(mppi_reference_test_current PRIVATE include)
   target_link_libraries(mppi_reference_test_current drone_city_nav_core)
   enable_project_warnings(mppi_reference_test_current)
-
-  ament_add_gtest(mppi_horizon_safety_test_current
-                  tests/mppi_horizon_safety_test.cpp)
-  target_compile_features(mppi_horizon_safety_test_current PRIVATE cxx_std_20)
-  target_link_libraries(mppi_horizon_safety_test_current drone_city_nav_core)
-  enable_project_warnings(mppi_horizon_safety_test_current)
 
   ament_add_gtest(esdf_query_test tests/esdf_query_test.cpp)
   target_compile_features(esdf_query_test PRIVATE cxx_std_20)
@@ -694,16 +695,16 @@ if(BUILD_TESTING)
   target_link_libraries(swept_footprint_test drone_city_nav_core)
   enable_project_warnings(swept_footprint_test)
 
+  ament_add_gtest(finite_execution_path_test
+                  tests/finite_execution_path_test.cpp)
+  target_compile_features(finite_execution_path_test PRIVATE cxx_std_20)
+  target_link_libraries(finite_execution_path_test drone_city_nav_core)
+  enable_project_warnings(finite_execution_path_test)
+
   ament_add_gtest(mppi_liveness_test_current tests/mppi_liveness_test.cpp)
   target_compile_features(mppi_liveness_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_liveness_test_current drone_city_nav_core)
   enable_project_warnings(mppi_liveness_test_current)
-
-  ament_add_gtest(mppi_risk_escalation_test
-                  tests/mppi_risk_escalation_test.cpp)
-  target_compile_features(mppi_risk_escalation_test PRIVATE cxx_std_20)
-  target_link_libraries(mppi_risk_escalation_test drone_city_nav_core)
-  enable_project_warnings(mppi_risk_escalation_test)
 
   ament_add_gtest(mission_goal_capture_test tests/mission_goal_capture_test.cpp)
   target_compile_features(mission_goal_capture_test PRIVATE cxx_std_20)
@@ -763,17 +764,30 @@ if(BUILD_TESTING)
                           drone_city_nav_mppi_cuda)
     enable_project_warnings(mppi_control_sequence_test_current)
 
+    ament_add_gtest(mppi_finite_horizon_test
+                    tests/mppi_finite_horizon_test.cpp)
+    target_compile_features(mppi_finite_horizon_test PRIVATE cxx_std_20)
+    target_link_libraries(mppi_finite_horizon_test drone_city_nav_mppi_cuda)
+    enable_project_warnings(mppi_finite_horizon_test)
+
     ament_add_gtest(mppi_noncooperative_acquisition_test
                     tests/mppi_noncooperative_acquisition_test.cpp)
     target_compile_features(mppi_noncooperative_acquisition_test PRIVATE cxx_std_20)
     target_link_libraries(mppi_noncooperative_acquisition_test
                           drone_city_nav_mppi_cuda)
     enable_project_warnings(mppi_noncooperative_acquisition_test)
+
+    ament_add_gtest(static_route_handoff_test
+                    tests/static_route_handoff_test.cpp)
+    target_compile_features(static_route_handoff_test PRIVATE cxx_std_20)
+    target_link_libraries(static_route_handoff_test drone_city_nav_mppi_cuda)
+    enable_project_warnings(static_route_handoff_test)
   endif()
 
   ament_add_gtest(risk_aware_lattice_test
                   tests/risk_aware_lattice_test.cpp)
   target_compile_features(risk_aware_lattice_test PRIVATE cxx_std_20)
+  target_include_directories(risk_aware_lattice_test PRIVATE src)
   target_link_libraries(risk_aware_lattice_test drone_city_nav_core)
   enable_project_warnings(risk_aware_lattice_test)
 
@@ -928,12 +942,6 @@ if(BUILD_TESTING)
   target_compile_features(lidar_acquisition_pose_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_acquisition_pose_test drone_city_nav_core)
   enable_project_warnings(lidar_acquisition_pose_test)
-
-  ament_add_gtest(latest_lidar_scan_safety_test
-                  tests/latest_lidar_scan_safety_test.cpp)
-  target_compile_features(latest_lidar_scan_safety_test PRIVATE cxx_std_20)
-  target_link_libraries(latest_lidar_scan_safety_test drone_city_nav_core)
-  enable_project_warnings(latest_lidar_scan_safety_test)
 
   ament_add_gtest(spectator_diagnostics_selection_test
                   tests/spectator_diagnostics_selection_test.cpp)

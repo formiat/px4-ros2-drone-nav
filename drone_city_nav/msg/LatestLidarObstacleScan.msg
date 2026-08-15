@@ -1,6 +1,6 @@
-# The scan stamp includes the calibrated sensor time offset and identifies the
-# resolved first-beam acquisition pose. The body frame is fixed at that pose;
-# points never use persistent obstacle memory.
+# The stamp includes the calibrated sensor time offset and identifies the
+# resolved first-beam acquisition pose. Points are current raw lidar returns;
+# they never contain persistent obstacle-memory cells.
 std_msgs/Header header
 uint64 sequence
 uint64 pose_generation

@@ -57,8 +57,6 @@ namespace {
   switch (mode) {
     case msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED:
       return "planned";
-    case msg::MppiTrajectoryHorizon::EXECUTION_MODE_BRAKING:
-      return "braking";
     case msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD:
       return "position_hold";
     default:
@@ -70,14 +68,14 @@ namespace {
   switch (reason) {
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE:
       return "none";
-    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_HORIZON_SAFETY:
-      return "horizon_safety";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_HORIZON:
+      return "no_executable_horizon";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_CHANNEL_YIELD:
       return "cooperative_channel_yield";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE:
       return "goal_capture";
-    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_GUIDE:
-      return "no_guide";
+    case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_ROUTE:
+      return "no_executable_route";
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD:
       return "unavailable_world";
     default:
@@ -135,8 +133,6 @@ public:
     }
     takeoff_hover_s_ = declare_parameter<double>("takeoff_hover_s", 1.0);
     control_lookahead_s_ = declare_parameter<double>("mppi_control_lookahead_s", 0.05);
-    fallback_braking_acceleration_mps2_ =
-        declare_parameter<double>("mppi_fallback_braking_acceleration_mps2", 8.0);
     warmup_setpoints_ =
         static_cast<int>(declare_parameter<std::int64_t>("warmup_setpoints", 20));
     command_resend_period_s_ =
@@ -296,9 +292,8 @@ public:
         now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
     timer_ =
         create_wall_timer(std::chrono::milliseconds{20}, [this]() { controlTick(); });
-    RCLCPP_INFO(get_logger(),
-                "Production MPPI offboard ready: altitude=%.1f braking=%.1fmps2",
-                initial_altitude_m_, fallback_braking_acceleration_mps2_);
+    RCLCPP_INFO(get_logger(), "Production MPPI offboard ready: altitude=%.1f",
+                initial_altitude_m_);
   }
 
 private:
@@ -446,6 +441,13 @@ private:
     } else if (horizon.execution_reason >
                msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD) {
       rejection_reason = "invalid_execution_reason";
+    } else if (horizon.execution_mode ==
+                   msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+               (std::hypot(std::hypot(horizon.points.back().velocity.x,
+                                      horizon.points.back().velocity.y),
+                           horizon.points.back().velocity.z) > 1.0e-3 ||
+                std::abs(horizon.points.back().yaw_rate_radps) > 1.0e-3)) {
+      rejection_reason = "planned_horizon_without_terminal_rest_state";
     }
     if (rejection_reason != nullptr) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -459,6 +461,7 @@ private:
         horizon_->execution_reason != horizon.execution_reason;
     horizon_ = horizon;
     horizon_sequence_ = horizon.sequence;
+    unavailable_path_hold_target_.reset();
     if (execution_changed) {
       RCLCPP_INFO(get_logger(),
                   "EXECUTION_HORIZON mode=%s reason=%s sequence=%" PRIu64 " hold=%s"
@@ -483,6 +486,24 @@ private:
 
   [[nodiscard]] bool stationaryPositionHoldActive() const noexcept {
     return horizon_.has_value() && horizon_->stationary_position_hold;
+  }
+
+  [[nodiscard]] double currentSpeedMps() const noexcept {
+    return std::hypot(std::hypot(velocity_x_, velocity_y_), velocity_up_mps_);
+  }
+
+  [[nodiscard]] bool plannedFinitePathFresh() const {
+    return horizon_.has_value() &&
+           horizon_->execution_mode ==
+               msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+           horizonFresh();
+  }
+
+  [[nodiscard]] bool plannedFinitePathCompleted() const {
+    return horizon_.has_value() &&
+           horizon_->execution_mode ==
+               msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+           now().nanoseconds() >= timeNanoseconds(horizon_->valid_until);
   }
 
   void controlTick() {
@@ -520,9 +541,12 @@ private:
     const bool navigating =
         takeoff_ready && (!require_mission_start_signal_ || mission_started_);
     const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
-    const OffboardSetpointMode mode = navigating && !stationary_position_hold
-                                          ? OffboardSetpointMode::kVelocityCruise
-                                          : OffboardSetpointMode::kPositionHold;
+    const bool planned_path_fresh = navigating && plannedFinitePathFresh();
+    const bool planned_path_completed = navigating && plannedFinitePathCompleted();
+    OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
+    if (planned_path_fresh) {
+      mode = OffboardSetpointMode::kTrajectoryPositionTracking;
+    }
     offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
     if (!navigating) {
       publishTakeoffSetpoint();
@@ -532,8 +556,10 @@ private:
       }
     } else if (stationary_position_hold) {
       publishStationaryPositionHoldSetpoint();
+    } else if (planned_path_completed) {
+      publishCompletedFinitePathHoldSetpoint();
     } else if (!publishHorizonSetpoint()) {
-      publishBrakingSetpoint();
+      publishUnavailablePathHoldSetpoint();
     }
     if (warmup_count_ < warmup_setpoints_) {
       ++warmup_count_;
@@ -572,7 +598,26 @@ private:
                               target.y - px4_local_origin_.y};
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(nowMicros(), local_target,
                                                            target.z, heading_rad_));
-    publishAppliedControlFeedback(Point2{}, 0.0, 0.0, false);
+    publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
+  }
+
+  void publishCompletedFinitePathHoldSetpoint() {
+    if (!horizon_.has_value() || horizon_->points.empty()) {
+      return;
+    }
+    const msg::MppiHorizonPoint& terminal = horizon_->points.back();
+    const Point2 local_target{terminal.position.x - px4_local_origin_.x,
+                              terminal.position.y - px4_local_origin_.y};
+    setpoint_pub_->publish(buildPositionTrajectorySetpoint(
+        nowMicros(), local_target, terminal.position.z, terminal.yaw_rad));
+    publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "FINITE_EXECUTION_PATH terminal_hold=true sequence=%" PRIu64
+                         " target=(%.3f,%.3f,%.3f) current=(%.3f,%.3f,%.3f) speed=%.3f",
+                         horizon_sequence_, terminal.position.x, terminal.position.y,
+                         terminal.position.z, local_x_ + px4_local_origin_.x,
+                         local_y_ + px4_local_origin_.y, altitude_m_,
+                         currentSpeedMps());
   }
 
   [[nodiscard]] bool publishHorizonSetpoint() {
@@ -601,6 +646,11 @@ private:
         duration > 1.0e-6
             ? std::clamp((elapsed_s - first.time_from_start_s) / duration, 0.0, 1.0)
             : 0.0;
+    const Point2 map_position{interpolate(first.position.x, second.position.x, ratio),
+                              interpolate(first.position.y, second.position.y, ratio)};
+    const Point2 local_position{map_position.x - px4_local_origin_.x,
+                                map_position.y - px4_local_origin_.y};
+    const double altitude = interpolate(first.position.z, second.position.z, ratio);
     const Point2 velocity{interpolate(first.velocity.x, second.velocity.x, ratio),
                           interpolate(first.velocity.y, second.velocity.y, ratio)};
     const double vertical_velocity =
@@ -613,47 +663,37 @@ private:
     const double yaw = interpolate(first.yaw_rad, second.yaw_rad, ratio);
     const double yaw_rate =
         interpolate(first.yaw_rate_radps, second.yaw_rate_radps, ratio);
-    setpoint_pub_->publish(buildMppiTrajectorySetpoint(
-        nowMicros(), velocity, vertical_velocity, acceleration, vertical_acceleration,
-        yaw, yaw_rate));
-    publishAppliedControlFeedback(acceleration, vertical_acceleration, yaw_rate,
-                                  horizon.emergency_braking);
+    setpoint_pub_->publish(buildMppiPathTrajectorySetpoint(
+        nowMicros(), local_position, altitude, velocity, vertical_velocity,
+        acceleration, vertical_acceleration, yaw, yaw_rate));
+    publishAppliedControlFeedback(acceleration, vertical_acceleration, yaw_rate);
     return true;
   }
 
-  void publishBrakingSetpoint() {
-    const double speed =
-        std::hypot(std::hypot(velocity_x_, velocity_y_), velocity_up_mps_);
-    if (speed <= 0.15) {
-      setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-          nowMicros(), Point2{local_x_, local_y_}, altitude_m_, heading_rad_));
-      publishAppliedControlFeedback(Point2{}, 0.0, 0.0, true);
-      return;
+  void publishUnavailablePathHoldSetpoint() {
+    if (!unavailable_path_hold_target_.has_value()) {
+      unavailable_path_hold_target_ = Point3{
+          local_x_,
+          local_y_,
+          altitude_m_,
+      };
+      RCLCPP_WARN(get_logger(),
+                  "FINITE_EXECUTION_PATH unavailable=true action=position_hold "
+                  "target=(%.3f,%.3f,%.3f)",
+                  unavailable_path_hold_target_->x + px4_local_origin_.x,
+                  unavailable_path_hold_target_->y + px4_local_origin_.y,
+                  unavailable_path_hold_target_->z);
     }
-    constexpr double kControlPeriodS{0.02};
-    const double scale = std::max(0.0, 1.0 - fallback_braking_acceleration_mps2_ *
-                                                 kControlPeriodS / speed);
-    const Point2 acceleration{
-        -fallback_braking_acceleration_mps2_ * velocity_x_ / speed,
-        -fallback_braking_acceleration_mps2_ * velocity_y_ / speed};
-    const double vertical_acceleration =
-        -fallback_braking_acceleration_mps2_ * velocity_up_mps_ / speed;
-    setpoint_pub_->publish(buildMppiTrajectorySetpoint(
-        nowMicros(), Point2{velocity_x_ * scale, velocity_y_ * scale},
-        velocity_up_mps_ * scale, acceleration, vertical_acceleration, heading_rad_,
-        0.0));
-    publishAppliedControlFeedback(acceleration, vertical_acceleration, 0.0, true);
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "MPPI_HORIZON_DEADLINE_MISSED action=dynamic_braking sequence=%" PRIu64
-        " speed=%.2f",
-        horizon_sequence_, speed);
+    setpoint_pub_->publish(buildPositionTrajectorySetpoint(
+        nowMicros(),
+        Point2{unavailable_path_hold_target_->x, unavailable_path_hold_target_->y},
+        unavailable_path_hold_target_->z, heading_rad_));
+    publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
   }
 
   void publishAppliedControlFeedback(const Point2 acceleration,
                                      const double vertical_acceleration,
-                                     const double yaw_rate,
-                                     const bool emergency_braking) {
+                                     const double yaw_rate) {
     if (!applied_control_feedback_pub_) {
       return;
     }
@@ -665,7 +705,6 @@ private:
     feedback.acceleration.y = acceleration.y;
     feedback.acceleration.z = vertical_acceleration;
     feedback.yaw_rate_radps = static_cast<float>(yaw_rate);
-    feedback.emergency_braking = emergency_braking;
     applied_control_feedback_pub_->publish(feedback);
   }
 
@@ -684,7 +723,6 @@ private:
   FlightEnvelopeConfig flight_envelope_config_{};
   double takeoff_hover_s_{1.0};
   double control_lookahead_s_{0.05};
-  double fallback_braking_acceleration_mps2_{8.0};
   double command_resend_period_s_{2.0};
   double local_x_{0.0};
   double local_y_{0.0};
@@ -713,6 +751,7 @@ private:
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
+  std::optional<Point3> unavailable_path_hold_target_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
   std::optional<bool> last_navigation_readiness_;
   std::uint64_t horizon_sequence_{0U};

@@ -1,6 +1,8 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
 #include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
+#include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
@@ -108,10 +110,21 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.head_progress_weight >= 0.0F &&
          std::isfinite(config.costs.speed_tracking_weight) &&
          config.costs.speed_tracking_weight >= 0.0F &&
+         std::isfinite(config.costs.planning_exposure_weight) &&
+         config.costs.planning_exposure_weight >= 0.0F &&
+         std::isfinite(config.costs.critical_exposure_weight) &&
+         config.costs.critical_exposure_weight >= 0.0F &&
+         std::isfinite(config.costs.critical_clearance_proximity_weight) &&
+         config.costs.critical_clearance_proximity_weight >= 0.0F &&
+         std::isfinite(config.costs.obstacle_approach_weight) &&
+         config.costs.obstacle_approach_weight >= 0.0F &&
          std::isfinite(config.costs.peer_separation_weight) &&
          config.costs.peer_separation_weight >= 0.0F &&
          std::isfinite(config.costs.cooperative_maneuver_preference_weight) &&
          config.costs.cooperative_maneuver_preference_weight >= 0.0F &&
+         std::isfinite(config.altitude_envelope.minimum_z_m) &&
+         std::isfinite(config.altitude_envelope.maximum_z_m) &&
+         config.altitude_envelope.maximum_z_m > config.altitude_envelope.minimum_z_m &&
          std::isfinite(config.cooperative.desired_minimum_separation_m) &&
          config.cooperative.desired_minimum_separation_m > 0.0F &&
          std::isfinite(config.cooperative.candidate_acceleration_fraction) &&
@@ -127,7 +140,9 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
            config.footprint.radial_rings > 0U &&
            config.footprint.axial_samples >= 2U)) &&
          config.risk.critical_distance_m > 0.0F &&
-         config.risk.preferred_distance_m >= config.risk.critical_distance_m;
+         config.risk.preferred_distance_m >= config.risk.critical_distance_m &&
+         config.risk.obstacle_approach_response_time_s >= 0.0F &&
+         config.risk.obstacle_approach_deceleration_mps2 > 0.0F;
 }
 
 MppiProgressDiagnostics resolveUnroutedProgressDiagnostics(
@@ -154,20 +169,40 @@ State integrateReference(State state, Control control,
       clampMagnitude(control.yaw_accel, config.maximum_yaw_acceleration_radps2);
 
   const float drag = std::max(0.0F, 1.0F - config.linear_drag_1ps * config.dt_s);
+  const float inherited_horizontal_speed_mps = std::hypot(state.vx, state.vy);
+  const float inherited_vertical_speed_mps = std::abs(state.vz);
+  const float inherited_yaw_rate_radps = std::abs(state.yaw_rate);
   state.vx = state.vx * drag + control.ax * config.dt_s;
   state.vy = state.vy * drag + control.ay * config.dt_s;
   state.vz = state.vz * drag + control.az * config.dt_s;
-  clampHorizontal(state.vx, state.vy, config.maximum_horizontal_speed_mps);
-  state.vz = clampMagnitude(state.vz, config.maximum_vertical_speed_mps);
+  clampHorizontal(
+      state.vx, state.vy,
+      std::max(config.maximum_horizontal_speed_mps, inherited_horizontal_speed_mps));
+  state.vz = clampMagnitude(state.vz, std::max(config.maximum_vertical_speed_mps,
+                                               inherited_vertical_speed_mps));
 
-  state.yaw_rate = clampMagnitude(state.yaw_rate + control.yaw_accel * config.dt_s,
-                                  config.maximum_yaw_rate_radps);
+  state.yaw_rate =
+      clampMagnitude(state.yaw_rate + control.yaw_accel * config.dt_s,
+                     std::max(config.maximum_yaw_rate_radps, inherited_yaw_rate_radps));
   state.x += state.vx * config.dt_s;
   state.y += state.vy * config.dt_s;
   state.z += state.vz * config.dt_s;
   state.yaw = std::remainder(state.yaw + state.yaw_rate * config.dt_s,
                              2.0F * std::numbers::pi_v<float>);
   return state;
+}
+
+Control equivalentControlFromMeasuredAcceleration(
+    const State& state, const float measured_ax_mps2, const float measured_ay_mps2,
+    const float measured_az_mps2, const DynamicsConfig& config) noexcept {
+  Control control{
+      .ax = measured_ax_mps2 + config.linear_drag_1ps * state.vx,
+      .ay = measured_ay_mps2 + config.linear_drag_1ps * state.vy,
+      .az = measured_az_mps2 + config.linear_drag_1ps * state.vz,
+  };
+  clampHorizontal(control.ax, control.ay, config.maximum_horizontal_acceleration_mps2);
+  control.az = clampMagnitude(control.az, config.maximum_vertical_acceleration_mps2);
+  return control;
 }
 
 RolloutMetrics simulateReference(
@@ -182,7 +217,8 @@ RolloutMetrics simulateReference(
     const std::span<const DynamicAircraftTrajectory> dynamic_aircraft,
     const std::optional<CooperativeManeuverPreference> cooperative_maneuver,
     const CooperativeConfig& cooperative,
-    const std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy) {
+    const std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy,
+    const AltitudeEnvelopeConfig altitude_envelope) {
   for (const DynamicAircraftTrajectory& aircraft : dynamic_aircraft) {
     if (!aircraft.samples || aircraft.samples->size() < nominal_controls.size() ||
         aircraft.active_steps == 0U ||
@@ -207,6 +243,8 @@ RolloutMetrics simulateReference(
     throw std::invalid_argument{"invalid dynamic aircraft cost policy"};
   }
   RolloutMetrics metrics{};
+  metrics.altitude_envelope_violation = !altitudeEnvelopeDynamicallyRecoverable(
+      initial_state, previous_applied_control, dynamics, altitude_envelope);
   metrics.minimum_clearance_m = std::numeric_limits<float>::infinity();
   metrics.minimum_peer_separation_m = std::numeric_limits<float>::infinity();
   State state = initial_state;
@@ -216,6 +254,7 @@ RolloutMetrics simulateReference(
     trace->horizon.push_back(state);
   }
   Control previous = previous_applied_control;
+  float previous_clearance_m = std::numeric_limits<float>::infinity();
   const float initial_target_distance =
       moving_target.has_value()
           ? targetDistance(state, *moving_target, 0.0F)
@@ -248,6 +287,10 @@ RolloutMetrics simulateReference(
       trace->horizon.push_back(state);
     }
     simulated_steps = step + 1U;
+    metrics.altitude_envelope_violation =
+        metrics.altitude_envelope_violation ||
+        !altitudeEnvelopeDynamicallyRecoverable(state, control, dynamics,
+                                                altitude_envelope);
     const float validation_step_m = std::max(0.05F, 0.5F * grid.resolution_m);
     const FootprintBodyAxis body_axis =
         bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
@@ -262,18 +305,29 @@ RolloutMetrics simulateReference(
         footprint_result.status == SweptFootprintStatus::kInvalidEsdf;
     const float clearance = static_cast<float>(footprint_result.minimum_clearance_m);
     metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
-    const float segment_m =
-        dynamics.dt_s * std::hypot(std::hypot(state.vx, state.vy), state.vz);
+    const float segment_speed_mps =
+        std::hypot(std::hypot(state.vx, state.vy), state.vz);
+    const float segment_m = dynamics.dt_s * segment_speed_mps;
     if (raw_collision) {
       metrics.collision = true;
       metrics.worst_tier = RiskTier::kCollision;
     } else if (clearance < risk.critical_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kCritical);
       metrics.critical_exposure_m += segment_m;
+      metrics.costs.critical_clearance_proximity_s +=
+          dynamics.dt_s *
+          criticalClearanceProximitySeverity(clearance, risk.critical_distance_m);
     } else if (clearance < risk.preferred_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kPlanning);
       metrics.planning_exposure_m += segment_m;
     }
+    metrics.costs.obstacle_approach_m2_s +=
+        dynamics.dt_s *
+        obstacleApproachSeverityM2(previous_clearance_m, clearance, segment_speed_mps,
+                                   dynamics.dt_s, risk.critical_distance_m,
+                                   risk.obstacle_approach_response_time_s,
+                                   risk.obstacle_approach_deceleration_mps2);
+    previous_clearance_m = clearance;
 
     const float target_distance =
         moving_target.has_value()
@@ -338,7 +392,8 @@ RolloutMetrics simulateReference(
                                                       moving_target->capture_radius_m)
                                  : target_distance;
     previous = control;
-    if (metrics.collision && early_exit_on_collision) {
+    if ((metrics.collision || metrics.altitude_envelope_violation) &&
+        early_exit_on_collision) {
       break;
     }
   }
@@ -370,6 +425,11 @@ RolloutMetrics simulateReference(
       costs.jerk_weight * metrics.costs.jerk +
       costs.yaw_change_weight * metrics.costs.yaw_change +
       costs.control_effort_weight * dynamics.dt_s * metrics.costs.control_effort +
+      costs.planning_exposure_weight * metrics.planning_exposure_m +
+      costs.critical_exposure_weight * metrics.critical_exposure_m +
+      costs.critical_clearance_proximity_weight *
+          metrics.costs.critical_clearance_proximity_s +
+      costs.obstacle_approach_weight * metrics.costs.obstacle_approach_m2_s +
       dynamics.dt_s * metrics.costs.dynamic_aircraft_survival +
       costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
           metrics.costs.maneuver_preference +

@@ -1,3 +1,5 @@
+#include "drone_city_nav/mppi/mppi_reference.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
@@ -119,6 +121,15 @@ void ProductionMppiNode::onLocalPosition(
     navigation.state.vz = -message.vz;
     if (message.heading_good_for_control && std::isfinite(message.heading)) {
       navigation.state.yaw = message.heading;
+    }
+    navigation.measured_acceleration_valid = std::isfinite(message.ax) &&
+                                             std::isfinite(message.ay) &&
+                                             std::isfinite(message.az);
+    if (navigation.measured_acceleration_valid) {
+      navigation.measured_equivalent_control =
+          mppi::equivalentControlFromMeasuredAcceleration(navigation.state, message.ax,
+                                                          message.ay, -message.az,
+                                                          mppi_config_.dynamics);
     }
   }
   {
@@ -301,10 +312,10 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
   memory_receive_stamp_ns_ = get_clock()->now().nanoseconds();
 }
 
-void ProductionMppiNode::onLatestLidarSafetyScan(
-    const msg::LatestLidarSafetyScan& message) {
-  constexpr std::size_t kMaximumSafetyBeamCount{20'000U};
-  if (!latest_lidar_safety_enabled_) {
+void ProductionMppiNode::onLatestLidarObstacleScan(
+    const msg::LatestLidarObstacleScan& message) {
+  constexpr std::size_t kMaximumObstacleBeamCount{20'000U};
+  if (use_static_map_) {
     return;
   }
   const std::int64_t acquisition_stamp_ns = timeNanoseconds(message.header.stamp);
@@ -320,37 +331,39 @@ void ProductionMppiNode::onLatestLidarSafetyScan(
       .valid = true,
   };
   const bool valid_counts =
-      message.source_beam_count <= kMaximumSafetyBeamCount &&
+      message.source_beam_count <= kMaximumObstacleBeamCount &&
       message.hit_points_body_frd.size() <= message.source_beam_count;
   if (message.header.frame_id != frame_id_ || acquisition_stamp_ns <= 0 ||
       !valid_counts || !validBodyFrame(frame)) {
-    rejected_lidar_safety_scans_.fetch_add(1U, std::memory_order_relaxed);
+    rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "LATEST_LIDAR_SAFETY rejected=true reason=invalid_contract sequence=%" PRIu64
-        " frame='%s' acquisition_stamp_ns=%" PRId64 " source_beams=%u hit_points=%zu",
+        "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=invalid_contract "
+        "sequence=%" PRIu64 " frame='%s' acquisition_stamp_ns=%" PRId64
+        " source_beams=%u hit_points=%zu",
         message.sequence, message.header.frame_id.c_str(), acquisition_stamp_ns,
         message.source_beam_count, message.hit_points_body_frd.size());
     return;
   }
 
-  auto snapshot = std::make_shared<LatestLidarSafetySnapshot>();
+  auto snapshot = std::make_shared<LatestLidarObstacleSnapshot>();
   snapshot->hit_points_map_m.reserve(message.hit_points_body_frd.size());
   for (const geometry_msgs::msg::Point32& point : message.hit_points_body_frd) {
     const Point3 body_point{point.x, point.y, point.z};
     if (!std::isfinite(body_point.x) || !std::isfinite(body_point.y) ||
         !std::isfinite(body_point.z)) {
-      rejected_lidar_safety_scans_.fetch_add(1U, std::memory_order_relaxed);
+      rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "LATEST_LIDAR_SAFETY rejected=true reason=non_finite_hit sequence=%" PRIu64,
+          "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=non_finite_hit "
+          "sequence=%" PRIu64,
           message.sequence);
       return;
     }
     const Point3 map_point = lidarBodyPointToMap(frame, body_point);
     if (!std::isfinite(map_point.x) || !std::isfinite(map_point.y) ||
         !std::isfinite(map_point.z)) {
-      rejected_lidar_safety_scans_.fetch_add(1U, std::memory_order_relaxed);
+      rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
       return;
     }
     snapshot->hit_points_map_m.push_back(map_point);
@@ -361,14 +374,13 @@ void ProductionMppiNode::onLatestLidarSafetyScan(
   snapshot->pose_generation = message.pose_generation;
   snapshot->source_beam_count = message.source_beam_count;
   snapshot->invalid_beam_count = message.invalid_beam_count;
-  latest_lidar_safety_scan_.store(std::move(snapshot), std::memory_order_release);
+  latest_lidar_obstacle_scan_.store(std::move(snapshot), std::memory_order_release);
 }
 
 void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& message) {
   ProductionMppiAppliedControl feedback;
   feedback.receive_stamp_ns = get_clock()->now().nanoseconds();
   feedback.horizon_sequence = message.horizon_sequence;
-  feedback.emergency_braking = message.emergency_braking;
   feedback.valid =
       message.header.frame_id == frame_id_ && std::isfinite(message.acceleration.x) &&
       std::isfinite(message.acceleration.y) && std::isfinite(message.acceleration.z);
@@ -511,12 +523,12 @@ void ProductionMppiNode::onNavigationObjective(
     const Point3 current_position{navigation.state.x, navigation.state.y,
                                   navigation.state.z};
     const SweptFootprintConfig footprint{
-        .radius_m = safety_config_.physical_footprint_radius_m,
-        .lower_extent_m = safety_config_.physical_footprint_lower_extent_m,
-        .upper_extent_m = safety_config_.physical_footprint_upper_extent_m,
-        .perimeter_samples = safety_config_.physical_footprint_samples,
-        .radial_rings = safety_config_.physical_footprint_radial_rings,
-        .axial_samples = safety_config_.physical_footprint_axial_samples,
+        .radius_m = physical_footprint_config_.radius_m,
+        .lower_extent_m = physical_footprint_config_.lower_extent_m,
+        .upper_extent_m = physical_footprint_config_.upper_extent_m,
+        .perimeter_samples = physical_footprint_config_.perimeter_samples,
+        .radial_rings = physical_footprint_config_.radial_rings,
+        .axial_samples = physical_footprint_config_.axial_samples,
         .sweep_step_m = tracking_objective_ray_sample_spacing_m_};
     bool world_available = false;
     if (use_static_map_ && static_occupancy_3d_) {

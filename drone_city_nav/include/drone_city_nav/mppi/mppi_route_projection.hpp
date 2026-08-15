@@ -21,8 +21,20 @@ struct MppiRouteProjection3D {
   float reference_y_m{0.0F};
   float reference_z_m{0.0F};
   float reference_speed_mps{0.0F};
+  float tangent_x{0.0F};
+  float tangent_y{0.0F};
+  float tangent_z{0.0F};
   bool valid{false};
 };
+
+[[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline float
+routeTrackingSpeedMps(const State& state,
+                      const MppiRouteProjection3D& projection) noexcept {
+  const float along_route_speed_mps = state.vx * projection.tangent_x +
+                                      state.vy * projection.tangent_y +
+                                      state.vz * projection.tangent_z;
+  return fmaxf(0.0F, along_route_speed_mps);
+}
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline MppiRouteProjection3D
 projectOntoMppiRoute3D(const State& state, const RouteSample3D* route_points,
@@ -70,6 +82,10 @@ projectOntoMppiRoute3D(const State& state, const RouteSample3D* route_points,
       result.reference_speed_mps =
           first.reference_speed_mps +
           ratio * (second.reference_speed_mps - first.reference_speed_mps);
+      const float inverse_length = 1.0F / sqrtf(squared_length);
+      result.tangent_x = dx * inverse_length;
+      result.tangent_y = dy * inverse_length;
+      result.tangent_z = dz * inverse_length;
       result.valid = true;
     }
   }

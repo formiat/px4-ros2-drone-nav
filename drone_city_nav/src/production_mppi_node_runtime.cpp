@@ -61,6 +61,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
   double active_guide_cost = 0.0;
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<Point2>> route_source;
+  std::optional<double> route_altitude_m;
   std::shared_ptr<const ProductionMppiPreparedEsdf> world;
   RiskAwareLatticeSearchSession search_session;
   std::optional<ProductionMppiNavigation> search_navigation;
@@ -254,9 +255,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       }
       if (frontier_blacklist_enabled_ && !guide_update.active &&
           previous_active_guide && previous_active_guide->size() >= 2U &&
-          (guide_update.release_reason == GlobalGuideReleaseReason::kStalled ||
-           guide_update.release_reason ==
-               GlobalGuideReleaseReason::kPersistentSafetyRejection)) {
+          guide_update.release_reason == GlobalGuideReleaseReason::kStalled) {
         const GlobalGuideProjection failure_projection =
             projectOntoGlobalGuide(*previous_active_guide, position);
         const Point2 failure_point =
@@ -523,11 +522,14 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     if (!guide) {
       mppi_route.reset();
       route_source.reset();
+      route_altitude_m.reset();
       active_route_objective = {};
-    } else if (guide.get() != route_source.get()) {
+    } else if (guide.get() != route_source.get() || !route_altitude_m.has_value() ||
+               std::abs(*route_altitude_m - mission_goal.z) > 1.0e-3) {
       mppi_route = makeMppiRoute2D(*guide, mission_goal.z,
                                    speed_policy_config_.cruise_speed_mps);
       route_source = guide;
+      route_altitude_m = mission_goal.z;
     }
     if (activated_candidate.has_value()) {
       active_route_objective = StaticRouteObjective{

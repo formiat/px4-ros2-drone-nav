@@ -64,7 +64,6 @@ struct MppiTickInput {
   std::optional<Control> previous_applied_control;
   std::uint64_t nominal_reseed_generation{0U};
   float reference_speed_mps{-1.0F};
-  RiskTier maximum_eligible_risk_tier{RiskTier::kPreferred};
   std::optional<MovingTargetReference> moving_target;
   std::optional<RouteReference> route;
   std::vector<DynamicAircraftTrajectory> dynamic_aircraft;
@@ -106,7 +105,8 @@ struct MppiStageTimings {
 enum class MppiPostUpdateRepair : std::uint8_t {
   kNotRequired,
   kBacktracked,
-  kBestEligibleRollout,
+  kBestFeasibleRollout,
+  kDeterministicCandidate,
   kFailed,
 };
 
@@ -117,8 +117,10 @@ mppiPostUpdateRepairName(const MppiPostUpdateRepair repair) noexcept {
       return "not_required";
     case MppiPostUpdateRepair::kBacktracked:
       return "backtracked";
-    case MppiPostUpdateRepair::kBestEligibleRollout:
-      return "best_eligible_rollout";
+    case MppiPostUpdateRepair::kBestFeasibleRollout:
+      return "best_feasible_rollout";
+    case MppiPostUpdateRepair::kDeterministicCandidate:
+      return "deterministic_candidate";
     case MppiPostUpdateRepair::kFailed:
       return "failed";
   }
@@ -128,15 +130,18 @@ mppiPostUpdateRepairName(const MppiPostUpdateRepair repair) noexcept {
 struct MppiTickResult {
   std::vector<State> horizon;
   std::vector<Control> controls;
-  MppiEligibleRiskContract eligible_risk_contract{};
+  MppiFeasibilityContract feasibility_contract{};
   MppiPostUpdateClassificationResult post_update_classification{};
   MppiPostUpdateRepair post_update_repair{MppiPostUpdateRepair::kNotRequired};
   float post_update_backtrack_ratio{1.0F};
   RiskTier selected_tier{RiskTier::kCollision};
+  bool altitude_envelope_violation{false};
   bool raw_collision{true};
   bool known_solid_collision{false};
   float critical_exposure_m{0.0F};
   float planning_exposure_m{0.0F};
+  float critical_clearance_proximity_s{0.0F};
+  float obstacle_approach_m2_s{0.0F};
   float minimum_esdf_distance_m{0.0F};
   float head_progress_m{0.0F};
   float terminal_progress_m{0.0F};
@@ -154,11 +159,11 @@ struct MppiTickResult {
   bool nominal_reseeded{false};
   bool target_directed_candidate_injected{false};
   bool target_directed_candidate_raw_safe{false};
-  bool target_directed_candidate_best_eligible{false};
+  bool target_directed_candidate_best_feasible{false};
   float target_directed_candidate_weight{0.0F};
   bool route_directed_candidate_injected{false};
   bool route_directed_candidate_raw_safe{false};
-  bool route_directed_candidate_best_eligible{false};
+  bool route_directed_candidate_best_feasible{false};
   float route_directed_candidate_weight{0.0F};
   std::uint64_t route_directed_candidate_generation{0U};
   bool cooperative_acquisition_reseeded{false};

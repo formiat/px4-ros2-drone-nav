@@ -16,16 +16,27 @@ productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcep
   switch (state) {
     case ProductionMppiPlanningState::kPlanned:
       return "planned";
-    case ProductionMppiPlanningState::kObstacleAwareHold:
-      return "obstacle_aware_hold";
+    case ProductionMppiPlanningState::kMissionCommandPositionHold:
+      return "mission_command_position_hold";
     case ProductionMppiPlanningState::kCooperativeChannelYieldHold:
       return "cooperative_channel_yield_hold";
-    case ProductionMppiPlanningState::kNoGuideBrakingHold:
-      return "no_guide_braking_hold";
-    case ProductionMppiPlanningState::kUnavailableWorldBrakingHold:
-      return "unavailable_world_braking_hold";
     case ProductionMppiPlanningState::kMissionGoalPositionHold:
       return "mission_goal_position_hold";
+    case ProductionMppiPlanningState::kNoExecutableRouteHold:
+      return "no_executable_route_hold";
+  }
+  return "unknown";
+}
+
+const char* productionMppiPreviousControlSourceName(
+    const ProductionMppiPreviousControlSource source) noexcept {
+  switch (source) {
+    case ProductionMppiPreviousControlSource::kEngineFallback:
+      return "engine_fallback";
+    case ProductionMppiPreviousControlSource::kMeasuredAcceleration:
+      return "measured_acceleration";
+    case ProductionMppiPreviousControlSource::kOffboardFeedback:
+      return "offboard_feedback";
   }
   return "unknown";
 }
@@ -35,8 +46,6 @@ productionMppiExecutionModeName(const ProductionMppiExecutionMode mode) noexcept
   switch (mode) {
     case ProductionMppiExecutionMode::kPlanned:
       return "planned";
-    case ProductionMppiExecutionMode::kBraking:
-      return "braking";
     case ProductionMppiExecutionMode::kPositionHold:
       return "position_hold";
   }
@@ -48,16 +57,14 @@ productionMppiExecutionReasonName(const ProductionMppiExecutionReason reason) no
   switch (reason) {
     case ProductionMppiExecutionReason::kNone:
       return "none";
-    case ProductionMppiExecutionReason::kHorizonSafety:
-      return "horizon_safety";
+    case ProductionMppiExecutionReason::kNoExecutableHorizon:
+      return "no_executable_horizon";
     case ProductionMppiExecutionReason::kCooperativeChannelYield:
       return "cooperative_channel_yield";
     case ProductionMppiExecutionReason::kGoalCapture:
       return "goal_capture";
-    case ProductionMppiExecutionReason::kNoGuide:
-      return "no_guide";
-    case ProductionMppiExecutionReason::kUnavailableWorld:
-      return "unavailable_world";
+    case ProductionMppiExecutionReason::kNoExecutableRoute:
+      return "no_executable_route";
   }
   return "unknown";
 }
@@ -120,10 +127,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
   maximum_control_feedback_age_ms_ =
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
-  latest_lidar_safety_enabled_ =
-      declare_parameter<bool>("latest_lidar_safety_enabled", true);
-  latest_lidar_safety_maximum_age_ms_ =
-      declare_parameter<double>("latest_lidar_safety_maximum_age_ms", 250.0);
+  latest_lidar_obstacle_maximum_age_ms_ =
+      declare_parameter<double>("latest_lidar_obstacle_maximum_age_ms", 250.0);
   const std::int64_t planner_worker_count =
       declare_parameter<std::int64_t>("planner_worker_count", 4);
   if (planner_worker_count < 1 || planner_worker_count > 8) {
@@ -141,13 +146,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("no_static_esdf_half_extent_m", 100.0);
   no_static_esdf_recenter_margin_m_ =
       declare_parameter<double>("no_static_esdf_recenter_margin_m", 70.0);
-  const std::int64_t risk_recovery_stable_cycles =
-      declare_parameter<std::int64_t>("mppi_risk_recovery_stable_cycles", 20);
-  if (risk_recovery_stable_cycles <= 0) {
-    throw std::invalid_argument{"MPPI risk recovery stable cycles must be positive"};
-  }
-  const std::size_t risk_recovery_cycles =
-      static_cast<std::size_t>(risk_recovery_stable_cycles);
   constrained_route_speed_limit_mps_ = static_cast<float>(
       declare_parameter<double>("constrained_route_speed_limit_mps", 10.0));
   route_constraint_diagnostics_distance_m_ =
@@ -168,6 +166,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("minimum_target_z_m", 1.0);
   flight_envelope_config_.maximum_target_z_m =
       declare_parameter<double>("maximum_target_z_m", 32.0);
+  mppi_config_.altitude_envelope = mppi::AltitudeEnvelopeConfig{
+      .minimum_z_m = static_cast<float>(flight_envelope_config_.minimum_target_z_m),
+      .maximum_z_m = static_cast<float>(flight_envelope_config_.maximum_target_z_m),
+  };
   dynamic_objective_replan_distance_m_ =
       declare_parameter<double>("dynamic_objective_replan_distance_m", 5.0);
   dynamic_objective_replan_period_s_ =
@@ -306,6 +308,9 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 = static_cast<float>(
       use_static_map_ ? static_maximum_horizontal_acceleration_mps2
                       : no_static_maximum_horizontal_acceleration_mps2);
+  finite_horizon_config_.maximum_horizontal_deceleration_mps2 =
+      static_cast<float>(declare_parameter<double>(
+          "finite_path_arrival_maximum_horizontal_deceleration_mps2", 4.0));
   mppi_config_.dynamics.maximum_control_jerk_mps3 =
       static_cast<float>(use_static_map_ ? static_maximum_control_jerk_mps3
                                          : no_static_maximum_control_jerk_mps3);
@@ -325,17 +330,17 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("constrained_route_vertical_capture_margin_m", 0.5);
   constrained_route_control_config_.vertical_capture_speed_mps =
       declare_parameter<double>("constrained_route_vertical_capture_speed_mps", 0.75);
-  safety_config_.physical_footprint_radius_m =
+  physical_footprint_config_.radius_m =
       declare_parameter<double>("physical_footprint_radius_m", 0.82);
-  safety_config_.physical_footprint_lower_extent_m =
+  physical_footprint_config_.lower_extent_m =
       declare_parameter<double>("physical_footprint_lower_extent_m", 0.23);
-  safety_config_.physical_footprint_upper_extent_m =
+  physical_footprint_config_.upper_extent_m =
       declare_parameter<double>("physical_footprint_upper_extent_m", 0.35);
-  safety_config_.physical_footprint_samples = static_cast<std::size_t>(
+  physical_footprint_config_.perimeter_samples = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("physical_footprint_samples", 12));
-  safety_config_.physical_footprint_radial_rings = static_cast<std::size_t>(
+  physical_footprint_config_.radial_rings = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("physical_footprint_radial_rings", 2));
-  safety_config_.physical_footprint_axial_samples = static_cast<std::size_t>(
+  physical_footprint_config_.axial_samples = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("physical_footprint_axial_samples", 3));
   const double static_route_tracking_margin_m =
       declare_parameter<double>("static_route_tracking_margin_m", 0.75);
@@ -343,17 +348,15 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     throw std::invalid_argument{"static route tracking margin must be non-negative"};
   }
   mppi_config_.footprint = mppi::FootprintConfig{
-      .radius_m = static_cast<float>(safety_config_.physical_footprint_radius_m),
-      .lower_extent_m =
-          static_cast<float>(safety_config_.physical_footprint_lower_extent_m),
-      .upper_extent_m =
-          static_cast<float>(safety_config_.physical_footprint_upper_extent_m),
+      .radius_m = static_cast<float>(physical_footprint_config_.radius_m),
+      .lower_extent_m = static_cast<float>(physical_footprint_config_.lower_extent_m),
+      .upper_extent_m = static_cast<float>(physical_footprint_config_.upper_extent_m),
       .perimeter_samples =
-          static_cast<std::uint32_t>(safety_config_.physical_footprint_samples),
+          static_cast<std::uint32_t>(physical_footprint_config_.perimeter_samples),
       .radial_rings =
-          static_cast<std::uint32_t>(safety_config_.physical_footprint_radial_rings),
+          static_cast<std::uint32_t>(physical_footprint_config_.radial_rings),
       .axial_samples =
-          static_cast<std::uint32_t>(safety_config_.physical_footprint_axial_samples),
+          static_cast<std::uint32_t>(physical_footprint_config_.axial_samples),
   };
   mppi_config_.footprint.clearance_broad_phase_enabled =
       declare_parameter<bool>("mppi_footprint_clearance_broad_phase_enabled", true);
@@ -361,6 +364,14 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
       static_cast<float>(declare_parameter<double>("head_progress_weight", 8.0));
+  mppi_config_.costs.planning_exposure_weight =
+      static_cast<float>(declare_parameter<double>("planning_exposure_weight", 2.0));
+  mppi_config_.costs.critical_exposure_weight =
+      static_cast<float>(declare_parameter<double>("critical_exposure_weight", 20.0));
+  mppi_config_.costs.critical_clearance_proximity_weight = static_cast<float>(
+      declare_parameter<double>("critical_clearance_proximity_weight", 400.0));
+  mppi_config_.costs.obstacle_approach_weight =
+      static_cast<float>(declare_parameter<double>("obstacle_approach_weight", 40.0));
   mppi_config_.horizon_sampling.full_rate_duration_s = static_cast<float>(
       declare_parameter<double>("far_horizon_full_rate_duration_s", 2.0));
   mppi_config_.horizon_sampling.far_cost_stride = static_cast<std::uint32_t>(
@@ -375,6 +386,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<float>(declare_parameter<double>("critical_distance_m", 1.0));
   mppi_config_.risk.preferred_distance_m =
       static_cast<float>(declare_parameter<double>("preferred_distance_m", 6.0));
+  mppi_config_.risk.obstacle_approach_response_time_s = static_cast<float>(
+      declare_parameter<double>("obstacle_approach_response_time_s", 0.25));
+  mppi_config_.risk.obstacle_approach_deceleration_mps2 = static_cast<float>(
+      declare_parameter<double>("obstacle_approach_deceleration_mps2", 4.0));
   mppi_config_.seed = static_cast<std::uint64_t>(declare_parameter<int>("seed", 42));
   lattice_config_.heading_bins = static_cast<int>(
       declare_parameter<std::int64_t>("global_lattice_heading_bins", 16));
@@ -559,81 +574,39 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("global_guide_stall_minimum_progress_m", 0.5);
   guide_progress_config_.minimum_predicted_head_progress_m = declare_parameter<double>(
       "global_guide_stall_minimum_predicted_head_progress_m", 0.5);
-  guide_progress_config_.persistent_safety_rejection_window_s =
-      declare_parameter<double>("persistent_safety_rejection_window_s", 1.0);
   mppi_config_.early_exit_on_collision = true;
-  safety_config_.reaction_latency_s =
-      declare_parameter<double>("safety_reaction_latency_s", 0.10);
-  safety_config_.maximum_braking_acceleration_mps2 = std::min(
-      declare_parameter<double>("safety_maximum_braking_acceleration_mps2", 8.0),
-      static_cast<double>(mppi_config_.dynamics.maximum_horizontal_acceleration_mps2));
-  safety_config_.guaranteed_braking_deceleration_mps2 =
-      declare_parameter<double>("safety_guaranteed_braking_deceleration_mps2", 3.0);
-  if (!(safety_config_.guaranteed_braking_deceleration_mps2 > 0.0) ||
-      safety_config_.guaranteed_braking_deceleration_mps2 >
-          safety_config_.maximum_braking_acceleration_mps2) {
-    throw std::invalid_argument{"invalid guaranteed braking deceleration"};
-  }
-  safety_config_.minimum_time_to_collision_s =
-      declare_parameter<double>("safety_minimum_time_to_collision_s", 0.50);
-  safety_config_.swept_validation_step_m =
-      declare_parameter<double>("safety_swept_validation_step_m", 0.25);
-  lattice_config_.physical_footprint_radius_m =
-      safety_config_.physical_footprint_radius_m;
+  physical_footprint_config_.sweep_step_m =
+      declare_parameter<double>("physical_footprint_sweep_step_m", 0.25);
+  lattice_config_.physical_footprint_radius_m = physical_footprint_config_.radius_m;
   lattice_config_.physical_footprint_lower_extent_m =
-      safety_config_.physical_footprint_lower_extent_m;
+      physical_footprint_config_.lower_extent_m;
   lattice_config_.physical_footprint_upper_extent_m =
-      safety_config_.physical_footprint_upper_extent_m;
+      physical_footprint_config_.upper_extent_m;
   lattice_config_.physical_footprint_samples =
-      safety_config_.physical_footprint_samples;
+      physical_footprint_config_.perimeter_samples;
   lattice_config_.physical_footprint_radial_rings =
-      safety_config_.physical_footprint_radial_rings;
+      physical_footprint_config_.radial_rings;
   lattice_config_.physical_footprint_axial_samples =
-      safety_config_.physical_footprint_axial_samples;
+      physical_footprint_config_.axial_samples;
   lattice_3d_config_.physical_footprint_radius_m =
-      safety_config_.physical_footprint_radius_m +
+      physical_footprint_config_.radius_m +
       (use_static_map_ ? static_route_tracking_margin_m : 0.0);
   lattice_3d_config_.physical_footprint_lower_extent_m =
-      safety_config_.physical_footprint_lower_extent_m +
+      physical_footprint_config_.lower_extent_m +
       (use_static_map_ ? static_route_tracking_margin_m : 0.0);
   lattice_3d_config_.physical_footprint_upper_extent_m =
-      safety_config_.physical_footprint_upper_extent_m +
+      physical_footprint_config_.upper_extent_m +
       (use_static_map_ ? static_route_tracking_margin_m : 0.0);
   lattice_3d_config_.physical_footprint_samples =
-      safety_config_.physical_footprint_samples;
+      physical_footprint_config_.perimeter_samples;
   lattice_3d_config_.physical_footprint_radial_rings =
-      safety_config_.physical_footprint_radial_rings;
+      physical_footprint_config_.radial_rings;
   lattice_3d_config_.physical_footprint_axial_samples =
-      safety_config_.physical_footprint_axial_samples;
+      physical_footprint_config_.axial_samples;
   lattice_3d_config_.physical_footprint_sweep_step_m =
-      safety_config_.swept_validation_step_m;
+      physical_footprint_config_.sweep_step_m;
   configureCooperativeTraffic();
   configureNonCooperativeAvoidance();
-  safety_config_.position_hold_capture_speed_mps =
-      declare_parameter<double>("safety_position_hold_capture_speed_mps", 0.20);
-  const std::int64_t braking_release_safe_observations =
-      declare_parameter<std::int64_t>("safety_braking_release_safe_observations", 5);
-  if (braking_release_safe_observations <= 0) {
-    throw std::invalid_argument{"invalid braking release observation count"};
-  }
-  safety_config_.braking_release_safe_observations =
-      static_cast<std::size_t>(braking_release_safe_observations);
-  const double static_safety_fallback_duration_s =
-      declare_parameter<double>("static_safety_fallback_duration_s", 3.0);
-  const double no_static_safety_fallback_duration_s =
-      declare_parameter<double>("no_static_safety_fallback_duration_s", 3.0);
-  const double configured_fallback_duration_s =
-      use_static_map_ ? static_safety_fallback_duration_s
-                      : no_static_safety_fallback_duration_s;
-  const double minimum_fallback_duration_s =
-      safety_config_.reaction_latency_s +
-      speed_policy_config_.absolute_speed_limit_mps /
-          safety_config_.guaranteed_braking_deceleration_mps2 +
-      mppi_config_.dynamics.dt_s;
-  safety_config_.fallback_duration_s =
-      std::max(configured_fallback_duration_s, minimum_fallback_duration_s);
-  safety_config_.dt_s = mppi_config_.dynamics.dt_s;
-  safety_config_.flight_envelope = flight_envelope_config_;
   liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", true);
   liveness_config_.observation_window_s =
       declare_parameter<double>("liveness_observation_window_s", 1.0);
@@ -651,7 +624,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(diagnostics_info_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
       !(diagnostics_file_rate_hz_ > 0.0) || !(diagnostics_flush_period_s_ > 0.0) ||
       !(maximum_control_feedback_age_ms_ > 0.0) ||
-      !(latest_lidar_safety_maximum_age_ms_ > 0.0) ||
+      !(latest_lidar_obstacle_maximum_age_ms_ > 0.0) ||
       !std::isfinite(constrained_route_speed_limit_mps_) ||
       constrained_route_speed_limit_mps_ < 0.0F ||
       !(route_constraint_diagnostics_distance_m_ >= 0.0) ||
@@ -668,15 +641,21 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_.channel_connection_distance_m > 0.0) ||
       !(lattice_3d_config_.frontier_minimum_reachable_depth_m > 0.0) ||
       lattice_3d_config_.frontier_validation_maximum_states == 0U ||
-      !(safety_config_.swept_validation_step_m > 0.0) ||
-      !(safety_config_.physical_footprint_radius_m >= 0.0) ||
-      !(safety_config_.physical_footprint_lower_extent_m >= 0.0) ||
-      !(safety_config_.physical_footprint_upper_extent_m >= 0.0) ||
-      safety_config_.physical_footprint_samples == 0U ||
-      safety_config_.physical_footprint_radial_rings == 0U ||
-      safety_config_.physical_footprint_axial_samples < 2U ||
-      !(safety_config_.position_hold_capture_speed_mps >= 0.0) ||
-      safety_config_.braking_release_safe_observations == 0U ||
+      !(physical_footprint_config_.sweep_step_m > 0.0) ||
+      !(physical_footprint_config_.radius_m >= 0.0) ||
+      !(physical_footprint_config_.lower_extent_m >= 0.0) ||
+      !(physical_footprint_config_.upper_extent_m >= 0.0) ||
+      !(mppi_config_.costs.planning_exposure_weight >= 0.0F) ||
+      !(mppi_config_.costs.critical_exposure_weight >= 0.0F) ||
+      !(mppi_config_.costs.obstacle_approach_weight >= 0.0F) ||
+      !(mppi_config_.risk.obstacle_approach_response_time_s >= 0.0F) ||
+      !(mppi_config_.risk.obstacle_approach_deceleration_mps2 > 0.0F) ||
+      !(finite_horizon_config_.maximum_horizontal_deceleration_mps2 > 0.0F) ||
+      finite_horizon_config_.maximum_horizontal_deceleration_mps2 >
+          mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 ||
+      physical_footprint_config_.perimeter_samples == 0U ||
+      physical_footprint_config_.radial_rings == 0U ||
+      physical_footprint_config_.axial_samples < 2U ||
       !(frontier_blacklist_ttl_s_ > 0.0) || !(no_static_soft_tabu_penalty_ >= 0.0) ||
       !(no_static_soft_tabu_sample_spacing_m_ > 0.0) ||
       !(no_static_adaptive_reachable_depth_m_ > 0.0) ||
@@ -699,8 +678,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   }
 
   liveness_supervisor_ = std::make_unique<MppiLivenessSupervisor>(liveness_config_);
-  risk_escalation_ = std::make_unique<MppiRiskEscalation>(
-      MppiRiskEscalationConfig{.recovery_stable_cycles = risk_recovery_cycles});
   active_guide_lifecycle_ =
       std::make_unique<ActiveGlobalGuideLifecycle>(active_guide_config_);
   guide_progress_tracker_ =
@@ -817,12 +794,12 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
         onRawObstacleDelta(std::move(message));
       },
       input_subscription_options);
-  latest_lidar_safety_scan_sub_ = create_subscription<msg::LatestLidarSafetyScan>(
-      declare_parameter<std::string>("latest_lidar_safety_scan_topic",
-                                     "/drone_city_nav/latest_lidar_safety_scan"),
-      sensor_qos,
-      [this](const msg::LatestLidarSafetyScan::SharedPtr message) {
-        onLatestLidarSafetyScan(*message);
+  latest_lidar_obstacle_scan_sub_ = create_subscription<msg::LatestLidarObstacleScan>(
+      declare_parameter<std::string>("latest_lidar_obstacle_scan_topic",
+                                     "/drone_city_nav/latest_lidar_obstacle_scan"),
+      rclcpp::SensorDataQoS{},
+      [this](const msg::LatestLidarObstacleScan::SharedPtr message) {
+        onLatestLidarObstacleScan(*message);
       },
       input_subscription_options);
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(

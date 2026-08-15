@@ -29,10 +29,10 @@ void ProductionMppiNode::configureCooperativeTraffic() {
       .radius_m = lattice_3d_config_.physical_footprint_radius_m,
       .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
       .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
-      .perimeter_samples = safety_config_.physical_footprint_samples,
-      .radial_rings = safety_config_.physical_footprint_radial_rings,
-      .axial_samples = safety_config_.physical_footprint_axial_samples,
-      .sweep_step_m = safety_config_.swept_validation_step_m,
+      .perimeter_samples = physical_footprint_config_.perimeter_samples,
+      .radial_rings = physical_footprint_config_.radial_rings,
+      .axial_samples = physical_footprint_config_.axial_samples,
+      .sweep_step_m = physical_footprint_config_.sweep_step_m,
   };
   cooperative_channel_route_config_.preferred_transition_length_m =
       declare_parameter<double>("cooperative_channel_preferred_transition_m", 10.0);

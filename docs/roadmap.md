@@ -94,7 +94,8 @@ motion direction by default. Optional long-range directional hypotheses add
 attacker and cannot move the predicted point more than 70 m laterally.
 
 The first interceptor within 5 m of the attacker destroys that pair. Surviving
-interceptors brake and enter confirmed stationary position hold.
+interceptors receive a typed hold objective and enter confirmed stationary
+position hold.
 Interceptor-to-interceptor separation within 5 m is accepted as collateral
 damage; only that pair is destroyed and the pursuit continues. The spectator
 camera starts on `interceptor_0` and uses the configurable living-vehicle
@@ -155,7 +156,7 @@ physical width permits it, while exclusive or conflicting use is resolved by
 deterministic right-of-way and a route-safe hold before entry.
 
 In no-static mode, cooperative peer returns are filtered from persistent lidar
-memory without being removed from the latest-scan safety path. A dedicated
+memory and from direct raw obstacle-path validation. A dedicated
 referee verifies coordinate readiness, physical minimum separation, goal
 arrival, stationary hold, vehicle destruction, and building collisions. The
 supported headless contract requires every vehicle to settle at its own goal
@@ -175,14 +176,14 @@ every fresh track. A strong finite trajectory cost applies below 10 m, with a
 lower anticipation cost between 10 m and 20 m and additional time-to-collision
 weighting. The cost covers the full MPPI rollout. On entry into a strong threat,
 a raw-validated maximin acquisition selects among route-directed, lateral,
-vertical, braking, and reverse candidates; normal route progress breaks ties.
+vertical, speed-reduction, and reverse candidates; normal route progress breaks
+ties.
 Lifecycle hysteresis and one-time entry and release reseeds prevent maneuver
 flapping.
 
-Physical obstacle safety remains lexicographically stronger than aircraft
-separation. Avoidance cannot escalate obstacle risk beyond that required by the
-active route, and an unrepaired MPPI risk-contract violation triggers a checked
-braking fallback. Separation is still a soft objective: the implementation does
+Physical obstacle validity remains stronger than aircraft separation. Avoidance
+cannot select a trajectory that intersects raw occupancy or violates the flight
+envelope. Separation is still a soft objective: the implementation does
 not create prohibited grids, inflated obstacles, hard exclusion volumes, or an
 equivalent mandatory boundary around another drone. Physical interception
 therefore remains possible.

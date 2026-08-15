@@ -10,19 +10,18 @@
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
-#include "drone_city_nav/latest_lidar_scan_safety.hpp"
+#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
+#include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
-#include "drone_city_nav/mppi_horizon_safety.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
 #include "drone_city_nav/mppi_nominal_reseed.hpp"
-#include "drone_city_nav/mppi_risk_escalation.hpp"
 #include "drone_city_nav/mppi_rollout_budget.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/msg/cooperative_channel_intent.hpp"
 #include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
-#include "drone_city_nav/msg/latest_lidar_safety_scan.hpp"
+#include "drone_city_nav/msg/latest_lidar_obstacle_scan.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
@@ -44,6 +43,7 @@
 #include "drone_city_nav/static_esdf_cache.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -73,8 +73,10 @@ namespace drone_city_nav {
 
 struct ProductionMppiNavigation {
   mppi::State state{};
+  mppi::Control measured_equivalent_control{};
   std::int64_t receive_stamp_ns{0};
   std::uint64_t revision{0U};
+  bool measured_acceleration_valid{false};
   bool valid{false};
 };
 
@@ -301,7 +303,6 @@ struct ProductionMppiAppliedControl {
   mppi::Control control{};
   std::int64_t receive_stamp_ns{0};
   std::uint64_t horizon_sequence{0U};
-  bool emergency_braking{false};
   bool valid{false};
 };
 
@@ -341,34 +342,59 @@ struct ProductionMppiRvizSnapshot {
 };
 
 enum class ProductionMppiExecutionMode : std::uint8_t {
-  kPlanned,
-  kBraking,
-  kPositionHold,
+  kPlanned = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED,
+  kPositionHold = msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
 };
 
 enum class ProductionMppiExecutionReason : std::uint8_t {
-  kNone,
-  kHorizonSafety,
-  kCooperativeChannelYield,
-  kGoalCapture,
-  kNoGuide,
-  kUnavailableWorld,
+  kNone = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE,
+  kNoExecutableHorizon =
+      msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_HORIZON,
+  kCooperativeChannelYield =
+      msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_CHANNEL_YIELD,
+  kGoalCapture = msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE,
+  kNoExecutableRoute = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_ROUTE,
 };
 
 struct ProductionMppiExecutionPublication {
   std::vector<mppi::State> horizon;
   ProductionMppiExecutionMode mode{ProductionMppiExecutionMode::kPlanned};
   ProductionMppiExecutionReason reason{ProductionMppiExecutionReason::kNone};
+  std::size_t planned_control_count{0U};
+  std::size_t nominal_prefix_control_count{0U};
+  std::size_t arrival_control_count{0U};
+  std::size_t arrival_shaping_attempts{0U};
+  mppi::Control first_control{};
+  std::uint64_t latest_lidar_obstacle_sequence{0U};
+  std::size_t latest_lidar_obstacle_hit_count{0U};
+  double latest_lidar_obstacle_age_ms{-1.0};
+  bool finite_path_validation_backoff{false};
+  bool latest_lidar_obstacle_fresh{false};
+  bool latest_lidar_path_validation_backoff{false};
+  bool retained_previous_finite_path{false};
+  bool terminal_rest_state{false};
+  bool first_control_available{false};
   bool published{false};
+};
+
+struct ProductionMppiActiveFiniteExecutionPath {
+  msg::MppiTrajectoryHorizon message;
+  ProductionMppiExecutionPublication publication;
+  std::optional<mppi::FiniteExecutionPathTerminalBoundary> terminal_boundary;
 };
 
 enum class ProductionMppiPlanningState {
   kPlanned,
-  kObstacleAwareHold,
+  kMissionCommandPositionHold,
   kCooperativeChannelYieldHold,
-  kNoGuideBrakingHold,
-  kUnavailableWorldBrakingHold,
   kMissionGoalPositionHold,
+  kNoExecutableRouteHold,
+};
+
+enum class ProductionMppiPreviousControlSource {
+  kEngineFallback,
+  kMeasuredAcceleration,
+  kOffboardFeedback,
 };
 
 struct ProductionMppiDiagnosticsSnapshot {
@@ -398,18 +424,21 @@ struct ProductionMppiDiagnosticsSnapshot {
   double snapshot_ms{0.0};
   double stability_ms{0.0};
   bool route_projection_valid{false};
-  bool temporary_frontier_continuation_ready{false};
+  bool temporary_frontier_is_terminal{false};
   bool liveness_reseed_requested{false};
   bool pose_predicted{false};
+  ProductionMppiPreviousControlSource previous_control_source{
+      ProductionMppiPreviousControlSource::kEngineFallback};
   MppiRolloutBudgetDecision rollout_budget{};
   ProductionMppiCooperativeUpdate cooperative{};
   ProductionMppiNonCooperativeUpdate noncooperative{};
   mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
-  mppi::RiskTier maximum_eligible_risk_tier{mppi::RiskTier::kPreferred};
 };
 
 [[nodiscard]] const char*
 productionMppiPlanningStateName(ProductionMppiPlanningState state) noexcept;
+[[nodiscard]] const char* productionMppiPreviousControlSourceName(
+    ProductionMppiPreviousControlSource source) noexcept;
 [[nodiscard]] const char*
 productionMppiExecutionModeName(ProductionMppiExecutionMode mode) noexcept;
 [[nodiscard]] const char*
@@ -434,7 +463,7 @@ private:
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onRawObstacleDelta(msg::RawObstacleDelta::ConstSharedPtr message);
-  void onLatestLidarSafetyScan(const msg::LatestLidarSafetyScan& message);
+  void onLatestLidarObstacleScan(const msg::LatestLidarObstacleScan& message);
   void queueRawWorld(const RawObstacleGridState& state, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
@@ -494,6 +523,7 @@ private:
   void enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot snapshot);
   void recordTickStatistics(const mppi::MppiTickResult& result,
                             ProductionMppiPlanningState planning_state,
+                            const ProductionMppiExecutionPublication& execution,
                             bool liveness_reseed_requested);
   void publishSummary();
   [[nodiscard]] ProductionMppiExecutionPublication publishExecutionHorizon(
@@ -520,10 +550,7 @@ private:
   double maximum_esdf_age_ms_{1000.0};
   double stale_esdf_execution_window_ms_{4000.0};
   double maximum_control_feedback_age_ms_{200.0};
-  double latest_lidar_safety_maximum_age_ms_{250.0};
-  bool latest_lidar_safety_enabled_{true};
-  bool latest_lidar_stopping_collision_active_{false};
-  std::int64_t latest_lidar_stopping_collision_log_ns_{0};
+  double latest_lidar_obstacle_maximum_age_ms_{250.0};
   double no_static_guide_lookahead_m_{30.0};
   bool frontier_blacklist_enabled_{false};
   double frontier_blacklist_ttl_s_{15.0};
@@ -571,15 +598,13 @@ private:
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
 
   mppi::BenchmarkConfig mppi_config_{};
-  MppiHorizonSafetyConfig safety_config_{};
-  MppiSafetyInterventionTracker safety_intervention_tracker_{};
-  MppiBrakeHoldLifecycle brake_hold_lifecycle_{};
+  SweptFootprintConfig physical_footprint_config_{};
   MppiLivenessConfig liveness_config_{};
   MppiSpeedPolicyConfig speed_policy_config_{};
+  mppi::FiniteHorizonConfig finite_horizon_config_{};
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
-  std::unique_ptr<MppiRiskEscalation> risk_escalation_;
   MppiNominalReseedTracker nominal_reseed_tracker_{};
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
@@ -640,8 +665,8 @@ private:
   std::condition_variable_any raw_queue_condition_;
   std::shared_ptr<const ProductionMppiRawWorld2D> pending_raw_world_;
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
-  std::atomic<std::shared_ptr<const LatestLidarSafetySnapshot>>
-      latest_lidar_safety_scan_;
+  std::atomic<std::shared_ptr<const LatestLidarObstacleSnapshot>>
+      latest_lidar_obstacle_scan_;
   std::mutex raw_reconstruction_mutex_;
   RawObstacleDeltaAccumulator raw_delta_accumulator_;
   msg::RawObstacleDelta::ConstSharedPtr pending_raw_delta_;
@@ -649,7 +674,7 @@ private:
   std::atomic<std::uint64_t> no_static_raw_updates_{0U};
   std::atomic<std::uint64_t> no_static_esdf_builds_{0U};
   std::atomic<std::uint64_t> no_static_esdf_throttled_updates_{0U};
-  std::atomic<std::uint64_t> rejected_lidar_safety_scans_{0U};
+  std::atomic<std::uint64_t> rejected_lidar_obstacle_scans_{0U};
   bool pending_static_esdf_work_{false};
   bool static_esdf_work_in_progress_{false};
   std::atomic_bool vehicle_navigation_ready_{false};
@@ -671,21 +696,30 @@ private:
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
 
   std::optional<mppi::MppiTickResult> previous_result_;
+  std::optional<Point3> no_executable_route_hold_position_;
+  std::optional<Point3> no_executable_path_hold_position_;
+  std::optional<ProductionMppiActiveFiniteExecutionPath> active_finite_execution_path_;
   std::optional<mppi::State> previous_predicted_next_state_;
   std::int64_t previous_prediction_stamp_ns_{0};
   ProductionMppiPredictionError latest_prediction_error_{};
   std::uint64_t tick_sequence_{0U};
-  mppi::RiskTier maximum_eligible_risk_tier_{mppi::RiskTier::kPreferred};
   std::uint64_t completed_ticks_{0U};
   std::uint64_t deadline_misses_{0U};
+  std::uint64_t altitude_envelope_violation_horizons_{0U};
   std::uint64_t raw_collision_horizons_{0U};
   std::uint64_t solid_collision_horizons_{0U};
   std::uint64_t post_update_contract_violations_{0U};
   std::uint64_t no_progress_horizons_{0U};
   std::uint64_t liveness_reseeds_{0U};
-  std::uint64_t no_guide_braking_hold_ticks_{0U};
-  std::uint64_t unavailable_world_braking_hold_ticks_{0U};
   std::uint64_t mission_goal_position_hold_ticks_{0U};
+  std::uint64_t no_executable_route_hold_ticks_{0U};
+  std::uint64_t no_executable_horizon_hold_ticks_{0U};
+  std::uint64_t terminal_rest_horizon_ticks_{0U};
+  std::uint64_t finite_path_validation_backoff_ticks_{0U};
+  std::uint64_t latest_lidar_path_validation_backoff_ticks_{0U};
+  std::uint64_t retained_previous_finite_path_ticks_{0U};
+  std::uint64_t arrival_control_total_{0U};
+  std::uint64_t arrival_shaping_attempt_total_{0U};
   std::uint64_t full_rollout_ticks_{0U};
   std::uint64_t reduced_rollout_ticks_{0U};
   std::uint64_t active_rollout_total_{0U};
@@ -708,8 +742,8 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
   rclcpp::Subscription<msg::RawObstacleDelta>::SharedPtr raw_delta_sub_;
-  rclcpp::Subscription<msg::LatestLidarSafetyScan>::SharedPtr
-      latest_lidar_safety_scan_sub_;
+  rclcpp::Subscription<msg::LatestLidarObstacleScan>::SharedPtr
+      latest_lidar_obstacle_scan_sub_;
   rclcpp::Subscription<msg::ObstacleMemoryStatus>::SharedPtr memory_status_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;

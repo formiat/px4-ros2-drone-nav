@@ -1,4 +1,6 @@
 #include "drone_city_nav/mppi/mppi_acquisition_diagnostics.hpp"
+#include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
+#include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_input_validation.hpp"
@@ -32,7 +34,7 @@ constexpr std::size_t kControlUpdatePartitions{16U};
 constexpr std::size_t kMaximumKnownSolids{2048U};
 constexpr std::size_t kMaximumRoutePoints{512U};
 constexpr std::size_t kMaximumDynamicAircraft{16U};
-constexpr std::size_t kRepairCandidateCount{6U};
+constexpr std::size_t kMaximumRepairCandidateCount{7U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
 static_assert(kControlUpdateStepTile * kControlUpdateRolloutLanes ==
@@ -53,6 +55,7 @@ struct DeviceBuffers {
   DeviceBuffer<float> critical_exposure;
   DeviceBuffer<float> planning_exposure;
   DeviceBuffer<float> minimum_clearance;
+  DeviceBuffer<std::uint8_t> altitude_envelope_violation;
   DeviceBuffer<std::uint8_t> worst_tier;
   DeviceBuffer<std::uint8_t> raw_collision;
   DeviceBuffer<std::uint8_t> solid_collision;
@@ -60,12 +63,9 @@ struct DeviceBuffers {
   DeviceBuffer<Control> nominal;
   DeviceBuffer<Control> updated;
   DeviceBuffer<Control> control_update_partials;
-  DeviceBuffer<Control> best_eligible;
+  DeviceBuffer<Control> best_feasible;
   DeviceBuffer<Control> repair_candidates;
-  DeviceBuffer<int> best_tier;
   DeviceBuffer<int> best_rollout;
-  DeviceBuffer<float> best_critical;
-  DeviceBuffer<float> best_planning;
   DeviceBuffer<float> minimum_soft;
   DeviceBuffer<float> weight_sum;
   DeviceBuffer<KnownSolid> solids{kMaximumKnownSolids};
@@ -83,6 +83,7 @@ struct DeviceBuffers {
         critical_exposure{rollouts},
         planning_exposure{rollouts},
         minimum_clearance{rollouts},
+        altitude_envelope_violation{rollouts},
         worst_tier{rollouts},
         raw_collision{rollouts},
         solid_collision{rollouts},
@@ -90,12 +91,9 @@ struct DeviceBuffers {
         nominal{steps},
         updated{steps},
         control_update_partials{kControlUpdatePartitions * steps},
-        best_eligible{steps},
-        repair_candidates{kRepairCandidateCount * steps},
-        best_tier{1U},
+        best_feasible{steps},
+        repair_candidates{kMaximumRepairCandidateCount * steps},
         best_rollout{1U},
-        best_critical{1U},
-        best_planning{1U},
         minimum_soft{1U},
         weight_sum{1U},
         dynamic_aircraft_samples{kMaximumDynamicAircraft * steps} {
@@ -104,11 +102,11 @@ struct DeviceBuffers {
   [[nodiscard]] std::size_t bytes() const noexcept {
     return noise_ax.bytes() + noise_ay.bytes() + noise_az.bytes() + noise_yaw.bytes() +
            soft_cost.bytes() + critical_exposure.bytes() + planning_exposure.bytes() +
-           minimum_clearance.bytes() + worst_tier.bytes() + raw_collision.bytes() +
-           solid_collision.bytes() + weights.bytes() + nominal.bytes() +
-           updated.bytes() + control_update_partials.bytes() + best_eligible.bytes() +
-           repair_candidates.bytes() + best_tier.bytes() + best_rollout.bytes() +
-           best_critical.bytes() + best_planning.bytes() + minimum_soft.bytes() +
+           minimum_clearance.bytes() + altitude_envelope_violation.bytes() +
+           worst_tier.bytes() + raw_collision.bytes() + solid_collision.bytes() +
+           weights.bytes() + nominal.bytes() + updated.bytes() +
+           control_update_partials.bytes() + best_feasible.bytes() +
+           repair_candidates.bytes() + best_rollout.bytes() + minimum_soft.bytes() +
            weight_sum.bytes() + solids.bytes() + route_points.bytes() +
            dynamic_aircraft_samples.bytes() + dynamic_aircraft_radii.bytes() +
            dynamic_aircraft_active_steps.bytes();
@@ -127,8 +125,8 @@ public:
         buffers_{config_.rollouts, config_.steps},
         nominal_(config_.steps),
         updated_(config_.steps),
-        best_eligible_(config_.steps),
-        repair_candidates_(kRepairCandidateCount * config_.steps),
+        best_feasible_(config_.steps),
+        repair_candidates_(kMaximumRepairCandidateCount * config_.steps),
         reacquisition_candidate_(config_.steps),
         reacquisition_noise_ax_(config_.steps),
         reacquisition_noise_ay_(config_.steps),
@@ -447,10 +445,11 @@ public:
         buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
         buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
         buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
-        buffers_.minimum_clearance.get(), buffers_.worst_tier.get(),
-        buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
-        config_.steps, input.initial_state, input.target, moving_target,
-        moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
+        buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
+        buffers_.worst_tier.get(), buffers_.raw_collision.get(),
+        buffers_.solid_collision.get(), active_rollouts, config_.steps,
+        input.initial_state, input.target, moving_target, moving_target_enabled,
+        config_.dynamics, config_.risk, config_.footprint, config_.altitude_envelope,
         config_.costs, config_.horizon_sampling, textures_[active_texture_].grid(),
         textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
         buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
@@ -463,41 +462,20 @@ public:
         first_control_interval_s, input.reference_speed_mps,
         config_.early_exit_on_collision, nullptr);
     simulation_done_.record(stream_);
-    initializeReduction<<<1, 1, 0U, stream_>>>(
-        buffers_.best_tier.get(), buffers_.best_critical.get(),
-        buffers_.best_planning.get(), buffers_.minimum_soft.get(),
-        buffers_.weight_sum.get(), buffers_.best_rollout.get());
-    reduceTier<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.worst_tier.get(), buffers_.raw_collision.get(),
-        buffers_.solid_collision.get(), active_rollouts,
-        static_cast<int>(input.maximum_eligible_risk_tier), buffers_.best_tier.get());
-    reduceCritical<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
-        buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
-        buffers_.best_tier.get(), buffers_.best_critical.get());
-    reducePlanning<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
-        buffers_.planning_exposure.get(), buffers_.raw_collision.get(),
-        buffers_.solid_collision.get(), active_rollouts, buffers_.best_tier.get(),
-        buffers_.best_critical.get(), config_.risk.critical_exposure_tolerance_m,
-        buffers_.best_planning.get());
+    initializeReduction<<<1, 1, 0U, stream_>>>(buffers_.minimum_soft.get(),
+                                               buffers_.weight_sum.get(),
+                                               buffers_.best_rollout.get());
     reduceSoft<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
-        buffers_.planning_exposure.get(), buffers_.soft_cost.get(),
+        buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
         buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
-        buffers_.best_tier.get(), buffers_.best_critical.get(),
-        buffers_.best_planning.get(), buffers_.minimum_soft.get(), config_.risk,
-        static_cast<int>(input.maximum_eligible_risk_tier));
+        buffers_.minimum_soft.get());
     reduction_done_.record(stream_);
     calculateWeights<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.worst_tier.get(), buffers_.critical_exposure.get(),
-        buffers_.planning_exposure.get(), buffers_.soft_cost.get(),
+        buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
         buffers_.raw_collision.get(), buffers_.solid_collision.get(),
-        buffers_.weights.get(), active_rollouts, buffers_.best_tier.get(),
-        buffers_.best_critical.get(), buffers_.best_planning.get(),
-        buffers_.minimum_soft.get(), config_.risk, config_.costs.temperature,
-        static_cast<int>(input.maximum_eligible_risk_tier), buffers_.weight_sum.get());
-    selectBestEligibleRollout<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
+        buffers_.weights.get(), active_rollouts, buffers_.minimum_soft.get(),
+        config_.costs.temperature, buffers_.weight_sum.get());
+    selectBestFeasibleRollout<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.weights.get(), buffers_.soft_cost.get(), buffers_.minimum_soft.get(),
         active_rollouts, buffers_.best_rollout.get());
     weights_done_.record(stream_);
@@ -514,19 +492,17 @@ public:
     limitControls<<<1, 1, 0U, stream_>>>(buffers_.updated.get(), config_.steps,
                                          config_.dynamics, previous_applied_control,
                                          first_control_interval_s);
-    buildBestEligibleControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.nominal.get(), buffers_.best_eligible.get(), buffers_.noise_ax.get(),
+    buildBestFeasibleControls<<<control_blocks, kThreadsPerBlock, 0U, stream_>>>(
+        buffers_.nominal.get(), buffers_.best_feasible.get(), buffers_.noise_ax.get(),
         buffers_.noise_ay.get(), buffers_.noise_az.get(), buffers_.noise_yaw.get(),
         buffers_.best_rollout.get(), active_rollouts, config_.steps);
-    limitControls<<<1, 1, 0U, stream_>>>(buffers_.best_eligible.get(), config_.steps,
+    limitControls<<<1, 1, 0U, stream_>>>(buffers_.best_feasible.get(), config_.steps,
                                          config_.dynamics, previous_applied_control,
                                          first_control_interval_s);
     update_done_.record(stream_);
-    int eligible_tier_value = static_cast<int>(RiskTier::kCollision);
-    float best_critical_exposure_m = kInfinity;
-    float best_planning_exposure_m = kInfinity;
-    float eligible_weight_sum = 0.0F;
+    float feasible_weight_sum = 0.0F;
     int best_rollout_index = -1;
+    std::uint8_t reacquisition_altitude_envelope_violation = 1U;
     std::uint8_t reacquisition_raw_collision = 1U;
     std::uint8_t reacquisition_solid_collision = 1U;
     float reacquisition_weight = 0.0F;
@@ -534,31 +510,24 @@ public:
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,
                               stream_),
               "copy selected controls");
-    checkCuda(cudaMemcpyAsync(best_eligible_.data(), buffers_.best_eligible.get(),
-                              best_eligible_.size() * sizeof(Control),
+    checkCuda(cudaMemcpyAsync(best_feasible_.data(), buffers_.best_feasible.get(),
+                              best_feasible_.size() * sizeof(Control),
                               cudaMemcpyDeviceToHost, stream_),
-              "copy best eligible controls");
-    checkCuda(cudaMemcpyAsync(&eligible_tier_value, buffers_.best_tier.get(),
-                              sizeof(eligible_tier_value), cudaMemcpyDeviceToHost,
+              "copy best feasible controls");
+    checkCuda(cudaMemcpyAsync(&feasible_weight_sum, buffers_.weight_sum.get(),
+                              sizeof(feasible_weight_sum), cudaMemcpyDeviceToHost,
                               stream_),
-              "copy eligible risk tier");
-    checkCuda(cudaMemcpyAsync(&best_critical_exposure_m, buffers_.best_critical.get(),
-                              sizeof(best_critical_exposure_m), cudaMemcpyDeviceToHost,
-                              stream_),
-              "copy eligible critical exposure");
-    checkCuda(cudaMemcpyAsync(&best_planning_exposure_m, buffers_.best_planning.get(),
-                              sizeof(best_planning_exposure_m), cudaMemcpyDeviceToHost,
-                              stream_),
-              "copy eligible planning exposure");
-    checkCuda(cudaMemcpyAsync(&eligible_weight_sum, buffers_.weight_sum.get(),
-                              sizeof(eligible_weight_sum), cudaMemcpyDeviceToHost,
-                              stream_),
-              "copy eligible weight sum");
+              "copy feasible weight sum");
     if (deterministic_candidate_enabled) {
       checkCuda(cudaMemcpyAsync(&best_rollout_index, buffers_.best_rollout.get(),
                                 sizeof(best_rollout_index), cudaMemcpyDeviceToHost,
                                 stream_),
                 "copy best rollout index");
+      checkCuda(cudaMemcpyAsync(&reacquisition_altitude_envelope_violation,
+                                buffers_.altitude_envelope_violation.get(),
+                                sizeof(reacquisition_altitude_envelope_violation),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy deterministic candidate altitude envelope status");
       checkCuda(cudaMemcpyAsync(&reacquisition_raw_collision,
                                 buffers_.raw_collision.get(),
                                 sizeof(reacquisition_raw_collision),
@@ -579,38 +548,23 @@ public:
     checkCuda(cudaGetLastError(), "MPPI engine kernels");
 
     MppiTickResult result;
-    const bool eligible_tier_available =
-        eligible_tier_value >= static_cast<int>(RiskTier::kPreferred) &&
-        eligible_tier_value < static_cast<int>(RiskTier::kCollision);
-    if (input.maximum_eligible_risk_tier != RiskTier::kPreferred &&
-        eligible_tier_available) {
-      eligible_tier_value = static_cast<int>(input.maximum_eligible_risk_tier);
-      best_critical_exposure_m = std::numeric_limits<float>::max() * 0.25F;
-      best_planning_exposure_m = std::numeric_limits<float>::max() * 0.25F;
-    }
-    result.eligible_risk_contract = MppiEligibleRiskContract{
-        .available = eligible_tier_available && eligible_weight_sum > 0.0F,
-        .tier = eligible_tier_available ? static_cast<RiskTier>(eligible_tier_value)
-                                        : RiskTier::kCollision,
-        .best_critical_exposure_m = best_critical_exposure_m,
-        .best_planning_exposure_m = best_planning_exposure_m,
-        .critical_exposure_tolerance_m = config_.risk.critical_exposure_tolerance_m,
-        .planning_exposure_tolerance_m = config_.risk.planning_exposure_tolerance_m,
-        .weight_sum = eligible_weight_sum,
+    result.feasibility_contract = MppiFeasibilityContract{
+        .available = std::isfinite(feasible_weight_sum) && feasible_weight_sum > 0.0F,
+        .weight_sum = feasible_weight_sum,
     };
     result.target_directed_candidate_injected = target_directed_candidate;
-    result.target_directed_candidate_raw_safe = target_directed_candidate &&
-                                                reacquisition_raw_collision == 0U &&
-                                                reacquisition_solid_collision == 0U;
-    result.target_directed_candidate_best_eligible =
+    result.target_directed_candidate_raw_safe =
+        target_directed_candidate && reacquisition_altitude_envelope_violation == 0U &&
+        reacquisition_raw_collision == 0U && reacquisition_solid_collision == 0U;
+    result.target_directed_candidate_best_feasible =
         target_directed_candidate && best_rollout_index == 0;
     result.target_directed_candidate_weight =
         target_directed_candidate ? reacquisition_weight : 0.0F;
     result.route_directed_candidate_injected = route_directed_candidate;
-    result.route_directed_candidate_raw_safe = route_directed_candidate &&
-                                               reacquisition_raw_collision == 0U &&
-                                               reacquisition_solid_collision == 0U;
-    result.route_directed_candidate_best_eligible =
+    result.route_directed_candidate_raw_safe =
+        route_directed_candidate && reacquisition_altitude_envelope_violation == 0U &&
+        reacquisition_raw_collision == 0U && reacquisition_solid_collision == 0U;
+    result.route_directed_candidate_best_feasible =
         route_directed_candidate && best_rollout_index == 0;
     result.route_directed_candidate_weight =
         route_directed_candidate ? reacquisition_weight : 0.0F;
@@ -627,27 +581,25 @@ public:
           input.target.x, input.target.y, config_.early_exit_on_collision,
           previous_applied_control, input.reference_speed_mps, config_.footprint,
           input.moving_target, &evaluation.trace, input.dynamic_aircraft,
-          input.cooperative_maneuver, config_.cooperative,
-          dynamic_aircraft_cost_policy);
+          input.cooperative_maneuver, config_.cooperative, dynamic_aircraft_cost_policy,
+          config_.altitude_envelope);
       evaluation.known_solid_collision = hostSweptSolidCollision(
           evaluation.trace.horizon, controls, config_.footprint, known_solids_);
       evaluation.classification = classifyMppiPostUpdate(
-          result.eligible_risk_contract,
+          result.feasibility_contract,
           MppiPostUpdateObservation{
-              .tier = evaluation.known_solid_collision ? RiskTier::kCollision
-                                                       : evaluation.metrics.worst_tier,
+              .altitude_envelope_violation =
+                  evaluation.metrics.altitude_envelope_violation,
               .raw_collision = evaluation.metrics.collision,
               .known_solid_collision = evaluation.known_solid_collision,
-              .critical_exposure_m = evaluation.metrics.critical_exposure_m,
-              .planning_exposure_m = evaluation.metrics.planning_exposure_m,
           });
       return evaluation;
     };
     const auto post_update_evaluation_started = std::chrono::steady_clock::now();
     EvaluatedControlSequence selected_evaluation = evaluate_controls(updated_);
     double repair_validation_ms{0.0};
-    if (!selected_evaluation.classification.contract_preserved &&
-        result.eligible_risk_contract.available) {
+    if (!selected_evaluation.classification.executable &&
+        result.feasibility_contract.available) {
       std::vector<Control> limited_nominal = nominal_;
       limitControlSequence(limited_nominal, config_.dynamics, previous_applied_control,
                            first_control_interval_s);
@@ -665,27 +617,35 @@ public:
                              first_control_interval_s);
       }
       std::ranges::copy(
-          best_eligible_,
+          best_feasible_,
           repair_candidates_.begin() +
               static_cast<std::ptrdiff_t>(backtrack_ratios.size() * config_.steps));
+      std::size_t candidate_count = backtrack_ratios.size() + 1U;
+      if (deterministic_candidate_enabled) {
+        std::ranges::copy(
+            reacquisition_candidate_,
+            repair_candidates_.begin() +
+                static_cast<std::ptrdiff_t>(candidate_count * config_.steps));
+        ++candidate_count;
+      }
 
       repair_started_.record(stream_);
       checkCuda(cudaMemcpyAsync(buffers_.repair_candidates.get(),
                                 repair_candidates_.data(),
-                                repair_candidates_.size() * sizeof(Control),
+                                candidate_count * config_.steps * sizeof(Control),
                                 cudaMemcpyHostToDevice, stream_),
                 "upload post-update repair candidates");
-      constexpr std::size_t candidate_count = kRepairCandidateCount;
       const int repair_blocks = static_cast<int>(
           (candidate_count + kThreadsPerBlock - 1U) / kThreadsPerBlock);
       simulate<<<repair_blocks, kThreadsPerBlock, 0U, stream_>>>(
           buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
           buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
           buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
-          buffers_.minimum_clearance.get(), buffers_.worst_tier.get(),
-          buffers_.raw_collision.get(), buffers_.solid_collision.get(), candidate_count,
-          config_.steps, input.initial_state, input.target, moving_target,
-          moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
+          buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
+          buffers_.worst_tier.get(), buffers_.raw_collision.get(),
+          buffers_.solid_collision.get(), candidate_count, config_.steps,
+          input.initial_state, input.target, moving_target, moving_target_enabled,
+          config_.dynamics, config_.risk, config_.footprint, config_.altitude_envelope,
           config_.costs, config_.horizon_sampling, textures_[active_texture_].grid(),
           textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
           buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
@@ -698,18 +658,11 @@ public:
           input.cooperative_maneuver.has_value(), previous_applied_control,
           first_control_interval_s, input.reference_speed_mps,
           config_.early_exit_on_collision, buffers_.repair_candidates.get());
-      checkCuda(cudaMemcpyAsync(
-                    repair_critical_exposure_.data(), buffers_.critical_exposure.get(),
-                    candidate_count * sizeof(float), cudaMemcpyDeviceToHost, stream_),
-                "copy repair critical exposure");
-      checkCuda(cudaMemcpyAsync(
-                    repair_planning_exposure_.data(), buffers_.planning_exposure.get(),
-                    candidate_count * sizeof(float), cudaMemcpyDeviceToHost, stream_),
-                "copy repair planning exposure");
-      checkCuda(cudaMemcpyAsync(repair_worst_tier_.data(), buffers_.worst_tier.get(),
+      checkCuda(cudaMemcpyAsync(repair_altitude_envelope_violation_.data(),
+                                buffers_.altitude_envelope_violation.get(),
                                 candidate_count * sizeof(std::uint8_t),
                                 cudaMemcpyDeviceToHost, stream_),
-                "copy repair risk tiers");
+                "copy repair altitude envelope status");
       checkCuda(cudaMemcpyAsync(repair_raw_collision_.data(),
                                 buffers_.raw_collision.get(),
                                 candidate_count * sizeof(std::uint8_t),
@@ -731,23 +684,20 @@ public:
         const bool solid_collision = repair_solid_collision_[candidate_index] != 0U;
         const MppiPostUpdateClassificationResult gpu_classification =
             classifyMppiPostUpdate(
-                result.eligible_risk_contract,
+                result.feasibility_contract,
                 MppiPostUpdateObservation{
-                    .tier = solid_collision ? RiskTier::kCollision
-                                            : static_cast<RiskTier>(
-                                                  repair_worst_tier_[candidate_index]),
+                    .altitude_envelope_violation =
+                        repair_altitude_envelope_violation_[candidate_index] != 0U,
                     .raw_collision = repair_raw_collision_[candidate_index] != 0U,
                     .known_solid_collision = solid_collision,
-                    .critical_exposure_m = repair_critical_exposure_[candidate_index],
-                    .planning_exposure_m = repair_planning_exposure_[candidate_index],
                 });
-        if (!gpu_classification.contract_preserved) {
+        if (!gpu_classification.executable) {
           continue;
         }
         const std::span<const Control> candidate{
             repair_candidates_.data() + candidate_index * config_.steps, config_.steps};
         EvaluatedControlSequence confirmed = evaluate_controls(candidate);
-        if (!confirmed.classification.contract_preserved) {
+        if (!confirmed.classification.executable) {
           continue;
         }
         std::ranges::copy(candidate, updated_.begin());
@@ -755,8 +705,11 @@ public:
         if (candidate_index < backtrack_ratios.size()) {
           result.post_update_repair = MppiPostUpdateRepair::kBacktracked;
           result.post_update_backtrack_ratio = backtrack_ratios[candidate_index];
+        } else if (candidate_index == backtrack_ratios.size()) {
+          result.post_update_repair = MppiPostUpdateRepair::kBestFeasibleRollout;
+          result.post_update_backtrack_ratio = 0.0F;
         } else {
-          result.post_update_repair = MppiPostUpdateRepair::kBestEligibleRollout;
+          result.post_update_repair = MppiPostUpdateRepair::kDeterministicCandidate;
           result.post_update_backtrack_ratio = 0.0F;
         }
         repaired = true;
@@ -802,10 +755,14 @@ public:
         input.route.has_value() ? input.route->initial_station_m : 0.0F;
     std::optional<float> latest_route_station;
     const RolloutMetrics& metrics = selected_evaluation.metrics;
+    result.altitude_envelope_violation = metrics.altitude_envelope_violation;
     result.raw_collision = metrics.collision;
     result.known_solid_collision = selected_evaluation.known_solid_collision;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;
+    result.critical_clearance_proximity_s =
+        metrics.costs.critical_clearance_proximity_s;
+    result.obstacle_approach_m2_s = metrics.costs.obstacle_approach_m2_s;
     result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
     result.minimum_target_separation_m = metrics.minimum_target_separation_m;
     result.minimum_peer_separation_m = metrics.minimum_peer_separation_m;
@@ -916,7 +873,7 @@ private:
   bool route_uploaded_{false};
   std::vector<Control> nominal_;
   std::vector<Control> updated_;
-  std::vector<Control> best_eligible_;
+  std::vector<Control> best_feasible_;
   std::vector<Control> repair_candidates_;
   std::vector<Control> reacquisition_candidate_;
   std::vector<float> reacquisition_noise_ax_;
@@ -931,11 +888,10 @@ private:
   std::vector<float> cooperative_noise_ay_;
   std::vector<float> cooperative_noise_az_;
   std::vector<float> cooperative_noise_yaw_;
-  std::array<float, kRepairCandidateCount> repair_critical_exposure_{};
-  std::array<float, kRepairCandidateCount> repair_planning_exposure_{};
-  std::array<std::uint8_t, kRepairCandidateCount> repair_worst_tier_{};
-  std::array<std::uint8_t, kRepairCandidateCount> repair_raw_collision_{};
-  std::array<std::uint8_t, kRepairCandidateCount> repair_solid_collision_{};
+  std::array<std::uint8_t, kMaximumRepairCandidateCount>
+      repair_altitude_envelope_violation_{};
+  std::array<std::uint8_t, kMaximumRepairCandidateCount> repair_raw_collision_{};
+  std::array<std::uint8_t, kMaximumRepairCandidateCount> repair_solid_collision_{};
   std::vector<Control> zero_noise_;
   std::optional<Control> last_output_control_;
   std::int64_t last_planning_stamp_ns_{0};

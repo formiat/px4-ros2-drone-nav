@@ -15,7 +15,7 @@ inline constexpr float kPx4ForceDisarmMagicParam2{21196.0F};
 
 enum class OffboardSetpointMode : std::uint8_t {
   kPositionHold,
-  kTerminalPositionCapture,
+  kTrajectoryPositionTracking,
   kVelocityCruise,
 };
 
@@ -47,6 +47,11 @@ buildMppiTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,
                             double vertical_velocity_up_mps, Point2 acceleration_xy,
                             double vertical_acceleration_up_mps2, double yaw_rad,
                             double yaw_rate_radps);
+
+[[nodiscard]] px4_msgs::msg::TrajectorySetpoint buildMppiPathTrajectorySetpoint(
+    std::uint64_t timestamp_us, Point2 local_position_xy, double altitude_m,
+    Point2 velocity_xy, double vertical_velocity_up_mps, Point2 acceleration_xy,
+    double vertical_acceleration_up_mps2, double yaw_rad, double yaw_rate_radps);
 
 [[nodiscard]] px4_msgs::msg::VehicleCommand
 buildVehicleCommand(std::uint64_t timestamp_us, std::uint32_t command, float param1,

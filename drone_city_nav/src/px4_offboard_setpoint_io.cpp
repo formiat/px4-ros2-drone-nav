@@ -11,8 +11,8 @@ offboardSetpointModeName(const OffboardSetpointMode mode) noexcept {
   switch (mode) {
     case OffboardSetpointMode::kPositionHold:
       return "position_hold";
-    case OffboardSetpointMode::kTerminalPositionCapture:
-      return "terminal_position_capture";
+    case OffboardSetpointMode::kTrajectoryPositionTracking:
+      return "trajectory_position_tracking";
     case OffboardSetpointMode::kVelocityCruise:
       return "velocity_cruise";
   }
@@ -36,7 +36,7 @@ buildOffboardControlMode(const std::uint64_t timestamp_us,
   px4_msgs::msg::OffboardControlMode msg;
   msg.timestamp = timestamp_us;
   msg.position = mode == OffboardSetpointMode::kPositionHold ||
-                 mode == OffboardSetpointMode::kTerminalPositionCapture;
+                 mode == OffboardSetpointMode::kTrajectoryPositionTracking;
   msg.velocity = mode == OffboardSetpointMode::kVelocityCruise;
   msg.acceleration = false;
   msg.attitude = false;
@@ -105,6 +105,21 @@ buildMppiTrajectorySetpoint(const std::uint64_t timestamp_us, const Point2 veloc
   msg.jerk = std::array<float, 3>{nan, nan, nan};
   msg.yaw = static_cast<float>(yaw_rad);
   msg.yawspeed = static_cast<float>(yaw_rate_radps);
+  return msg;
+}
+
+px4_msgs::msg::TrajectorySetpoint buildMppiPathTrajectorySetpoint(
+    const std::uint64_t timestamp_us, const Point2 local_position_xy,
+    const double altitude_m, const Point2 velocity_xy,
+    const double vertical_velocity_up_mps, const Point2 acceleration_xy,
+    const double vertical_acceleration_up_mps2, const double yaw_rad,
+    const double yaw_rate_radps) {
+  px4_msgs::msg::TrajectorySetpoint msg = buildMppiTrajectorySetpoint(
+      timestamp_us, velocity_xy, vertical_velocity_up_mps, acceleration_xy,
+      vertical_acceleration_up_mps2, yaw_rad, yaw_rate_radps);
+  msg.position = std::array<float, 3>{static_cast<float>(local_position_xy.x),
+                                      static_cast<float>(local_position_xy.y),
+                                      static_cast<float>(-altitude_m)};
   return msg;
 }
 

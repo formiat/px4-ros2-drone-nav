@@ -1,12 +1,11 @@
 std_msgs/Header header
 uint8 EXECUTION_MODE_PLANNED=0
-uint8 EXECUTION_MODE_BRAKING=1
-uint8 EXECUTION_MODE_POSITION_HOLD=2
+uint8 EXECUTION_MODE_POSITION_HOLD=1
 uint8 EXECUTION_REASON_NONE=0
-uint8 EXECUTION_REASON_HORIZON_SAFETY=1
+uint8 EXECUTION_REASON_NO_EXECUTABLE_HORIZON=1
 uint8 EXECUTION_REASON_COOPERATIVE_CHANNEL_YIELD=2
 uint8 EXECUTION_REASON_GOAL_CAPTURE=3
-uint8 EXECUTION_REASON_NO_GUIDE=4
+uint8 EXECUTION_REASON_NO_EXECUTABLE_ROUTE=4
 uint8 EXECUTION_REASON_UNAVAILABLE_WORLD=5
 uint64 sequence
 builtin_interfaces/Time valid_from
@@ -16,7 +15,6 @@ uint64 obstacle_revision
 uint8 risk_tier
 uint8 execution_mode
 uint8 execution_reason
-bool emergency_braking
 bool route_constrained
 bool stationary_position_hold
 geometry_msgs/Point stationary_hold_position

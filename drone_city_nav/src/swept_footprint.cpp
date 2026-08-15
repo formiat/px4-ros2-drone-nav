@@ -201,6 +201,66 @@ void accumulate(SweptFootprintResult& result,
           .minimum_clearance_m = std::numeric_limits<double>::infinity()};
 }
 
+[[nodiscard]] bool pointIntersectsBody(const Point3& point, const Point3& center,
+                                       const FootprintBodyAxis& requested_axis,
+                                       const SweptFootprintConfig& config) noexcept {
+  const FootprintBodyAxis axis = normalized(requested_axis);
+  const Point3 delta{point.x - center.x, point.y - center.y, point.z - center.z};
+  const double axial = delta.x * axis.x + delta.y * axis.y + delta.z * axis.z;
+  if (axial < -std::max(0.0, config.lower_extent_m) ||
+      axial > std::max(0.0, config.upper_extent_m)) {
+    return false;
+  }
+  const double distance_squared =
+      delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+  const double radial_squared = std::max(0.0, distance_squared - axial * axial);
+  const double radius = std::max(0.0, config.radius_m);
+  return radial_squared <= radius * radius;
+}
+
+[[nodiscard]] SweptFootprintClearanceProfile sampleSweptFootprint(
+    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+    const Point3& first, const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
+    const double critical_distance_m, const double preferred_distance_m) noexcept {
+  const double length_m = distance3D(first, second);
+  const double step_m = std::max(1.0e-3, config.sweep_step_m);
+  const std::size_t samples =
+      std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
+  const double exposure_per_sample = length_m / static_cast<double>(samples);
+  SweptFootprintClearanceProfile profile{
+      .validation = {.status = SweptFootprintStatus::kValid,
+                     .minimum_clearance_m = std::numeric_limits<double>::infinity()}};
+  for (std::size_t sample = 0U; sample <= samples; ++sample) {
+    const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
+    const Point3 position{std::lerp(first.x, second.x, ratio),
+                          std::lerp(first.y, second.y, ratio),
+                          std::lerp(first.z, second.z, ratio)};
+    const FootprintBodyAxis body_axis = normalized(FootprintBodyAxis{
+        std::lerp(first_body_axis.x, second_body_axis.x, ratio),
+        std::lerp(first_body_axis.y, second_body_axis.y, ratio),
+        std::lerp(first_body_axis.z, second_body_axis.z, ratio),
+    });
+    const SweptFootprintResult point =
+        validateFootprintAt(grid, esdf_m, position, body_axis, config);
+    if (!point.accepted()) {
+      profile.validation = point;
+      return profile;
+    }
+    profile.validation.minimum_clearance_m =
+        std::min(profile.validation.minimum_clearance_m, point.minimum_clearance_m);
+    if (sample == 0U) {
+      continue;
+    }
+    if (point.minimum_clearance_m < critical_distance_m) {
+      profile.critical_exposure_m += exposure_per_sample;
+    } else if (point.minimum_clearance_m < preferred_distance_m) {
+      profile.planning_exposure_m += exposure_per_sample;
+    }
+  }
+  return profile;
+}
+
 template<typename Occupancy>
 [[nodiscard]] SweptFootprintResult
 validateRawFootprintAt2D(const Occupancy& occupancy, const Point3& position,
@@ -338,32 +398,18 @@ validateSweptFootprint(const mppi::EsdfGrid& grid, const std::span<const float> 
                        const Point3& first, const FootprintBodyAxis& first_body_axis,
                        const Point3& second, const FootprintBodyAxis& second_body_axis,
                        const SweptFootprintConfig& config) noexcept {
-  const double length_m = distance3D(first, second);
-  const double step_m = std::max(1.0e-3, config.sweep_step_m);
-  const std::size_t samples =
-      std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
-  SweptFootprintResult result{.status = SweptFootprintStatus::kValid,
-                              .minimum_clearance_m =
-                                  std::numeric_limits<double>::infinity()};
-  for (std::size_t sample = 0U; sample <= samples; ++sample) {
-    const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
-    const Point3 position{std::lerp(first.x, second.x, ratio),
-                          std::lerp(first.y, second.y, ratio),
-                          std::lerp(first.z, second.z, ratio)};
-    const FootprintBodyAxis body_axis = normalized(FootprintBodyAxis{
-        std::lerp(first_body_axis.x, second_body_axis.x, ratio),
-        std::lerp(first_body_axis.y, second_body_axis.y, ratio),
-        std::lerp(first_body_axis.z, second_body_axis.z, ratio),
-    });
-    const SweptFootprintResult point =
-        validateFootprintAt(grid, esdf_m, position, body_axis, config);
-    if (!point.accepted()) {
-      return point;
-    }
-    result.minimum_clearance_m =
-        std::min(result.minimum_clearance_m, point.minimum_clearance_m);
-  }
-  return result;
+  return sampleSweptFootprint(grid, esdf_m, first, first_body_axis, second,
+                              second_body_axis, config, 0.0, 0.0)
+      .validation;
+}
+
+SweptFootprintClearanceProfile profileSweptFootprintClearance(
+    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+    const Point3& first, const Point3& second, const SweptFootprintConfig& config,
+    const double critical_distance_m, const double preferred_distance_m) noexcept {
+  return sampleSweptFootprint(grid, esdf_m, first, FootprintBodyAxis{}, second,
+                              FootprintBodyAxis{}, config, critical_distance_m,
+                              preferred_distance_m);
 }
 
 SweptFootprintResult
@@ -481,6 +527,45 @@ validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
                               std::lerp(first_body_axis.y, second_body_axis.y, ratio),
                               std::lerp(first_body_axis.z, second_body_axis.z, ratio)}),
         config);
+    if (!result.accepted()) {
+      return result;
+    }
+  }
+  return validRawFootprint();
+}
+
+SweptFootprintResult validateRawPointCloudFootprintAt(
+    const std::span<const Point3> obstacle_points, const Point3& position,
+    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config) noexcept {
+  for (const Point3& point : obstacle_points) {
+    if (pointIntersectsBody(point, position, body_axis, config)) {
+      return {.status = SweptFootprintStatus::kRawCollision, .failure_point = point};
+    }
+  }
+  return validRawFootprint();
+}
+
+SweptFootprintResult validateRawPointCloudSweptFootprint(
+    const std::span<const Point3> obstacle_points, const Point3& first,
+    const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const FootprintBodyAxis& second_body_axis,
+    const SweptFootprintConfig& config) noexcept {
+  const double length_m = distance3D(first, second);
+  const double step_m = std::max(1.0e-3, config.sweep_step_m);
+  const std::size_t samples =
+      std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
+  for (std::size_t sample = 0U; sample <= samples; ++sample) {
+    const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
+    const Point3 position{std::lerp(first.x, second.x, ratio),
+                          std::lerp(first.y, second.y, ratio),
+                          std::lerp(first.z, second.z, ratio)};
+    const FootprintBodyAxis body_axis{
+        std::lerp(first_body_axis.x, second_body_axis.x, ratio),
+        std::lerp(first_body_axis.y, second_body_axis.y, ratio),
+        std::lerp(first_body_axis.z, second_body_axis.z, ratio),
+    };
+    const SweptFootprintResult result =
+        validateRawPointCloudFootprintAt(obstacle_points, position, body_axis, config);
     if (!result.accepted()) {
       return result;
     }

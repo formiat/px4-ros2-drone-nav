@@ -454,6 +454,30 @@ TEST(MppiControlSequenceTest, RouteProjectionNeverMovesBehindPreviousStation) {
   EXPECT_EQ(station, std::optional<float>{18.0F});
 }
 
+TEST(MppiControlSequenceTest, RouteTrackingSpeedUsesTheThreeDimensionalTangent) {
+  const std::array flat_route{
+      RouteSample3D{.x_m = 0.0F, .z_m = 10.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 10.0F, .z_m = 10.0F, .station_m = 10.0F},
+  };
+  const MppiRouteProjection3D flat =
+      projectOntoMppiRoute3D(State{.x = 5.0F, .z = 10.0F}, flat_route, 0.0F);
+  ASSERT_TRUE(flat.valid);
+  EXPECT_FLOAT_EQ(routeTrackingSpeedMps(State{.vx = 5.0F, .vz = 8.0F}, flat), 5.0F);
+
+  const float diagonal_length = std::sqrt(200.0F);
+  const std::array climbing_route{
+      RouteSample3D{.station_m = 0.0F},
+      RouteSample3D{.x_m = 10.0F, .z_m = 10.0F, .station_m = diagonal_length},
+  };
+  const MppiRouteProjection3D climbing =
+      projectOntoMppiRoute3D(State{.x = 5.0F, .z = 5.0F}, climbing_route, 0.0F);
+  ASSERT_TRUE(climbing.valid);
+  EXPECT_NEAR(routeTrackingSpeedMps(State{.vx = 5.0F, .vz = 5.0F}, climbing),
+              std::sqrt(50.0F), 1.0e-5F);
+  EXPECT_FLOAT_EQ(routeTrackingSpeedMps(State{.vx = -5.0F, .vz = -5.0F}, climbing),
+                  0.0F);
+}
+
 TEST(MppiControlSequenceTest, RequiredRiskTierIsLocalToRouteInterval) {
   const std::array route{
       RouteSample3D{.station_m = 0.0F, .required_risk_tier = RiskTier::kPreferred},

@@ -14,12 +14,12 @@ TEST(Px4OffboardSetpointIo, BuildsPositionAndVelocityControlModes) {
   EXPECT_FALSE(position.velocity);
   EXPECT_FALSE(position.acceleration);
 
-  const auto terminal =
-      buildOffboardControlMode(13U, OffboardSetpointMode::kTerminalPositionCapture);
-  EXPECT_EQ(terminal.timestamp, 13U);
-  EXPECT_TRUE(terminal.position);
-  EXPECT_FALSE(terminal.velocity);
-  EXPECT_FALSE(terminal.acceleration);
+  const auto trajectory =
+      buildOffboardControlMode(13U, OffboardSetpointMode::kTrajectoryPositionTracking);
+  EXPECT_EQ(trajectory.timestamp, 13U);
+  EXPECT_TRUE(trajectory.position);
+  EXPECT_FALSE(trajectory.velocity);
+  EXPECT_FALSE(trajectory.acceleration);
 
   const auto velocity =
       buildOffboardControlMode(12U, OffboardSetpointMode::kVelocityCruise);
@@ -66,6 +66,25 @@ TEST(Px4OffboardSetpointIo, AddsVerticalFeedforwardToPositionSetpoint) {
   EXPECT_FLOAT_EQ(msg.velocity[2], 2.0F);
 }
 
+TEST(Px4OffboardSetpointIo, BuildsPathPositionWithDynamicFeedforward) {
+  const auto msg =
+      buildMppiPathTrajectorySetpoint(201U, Point2{3.0, -4.0}, 12.5, Point2{5.0, -6.0},
+                                      0.75, Point2{1.5, -2.5}, -0.4, 1.2, -0.3);
+
+  EXPECT_EQ(msg.timestamp, 201U);
+  EXPECT_FLOAT_EQ(msg.position[0], 3.0F);
+  EXPECT_FLOAT_EQ(msg.position[1], -4.0F);
+  EXPECT_FLOAT_EQ(msg.position[2], -12.5F);
+  EXPECT_FLOAT_EQ(msg.velocity[0], 5.0F);
+  EXPECT_FLOAT_EQ(msg.velocity[1], -6.0F);
+  EXPECT_FLOAT_EQ(msg.velocity[2], -0.75F);
+  EXPECT_FLOAT_EQ(msg.acceleration[0], 1.5F);
+  EXPECT_FLOAT_EQ(msg.acceleration[1], -2.5F);
+  EXPECT_FLOAT_EQ(msg.acceleration[2], 0.4F);
+  EXPECT_FLOAT_EQ(msg.yaw, 1.2F);
+  EXPECT_FLOAT_EQ(msg.yawspeed, -0.3F);
+}
+
 TEST(Px4OffboardSetpointIo, BuildsVehicleCommandEndpoint) {
   const VehicleCommandEndpoint endpoint{2U, 3U, 4U, 5U};
   const auto msg = buildVehicleCommand(
@@ -85,8 +104,9 @@ TEST(Px4OffboardSetpointIo, BuildsVehicleCommandEndpoint) {
   EXPECT_STREQ(commandName(msg.command), "VEHICLE_CMD_COMPONENT_ARM_DISARM");
   EXPECT_STREQ(offboardSetpointModeName(OffboardSetpointMode::kPositionHold),
                "position_hold");
-  EXPECT_STREQ(offboardSetpointModeName(OffboardSetpointMode::kTerminalPositionCapture),
-               "terminal_position_capture");
+  EXPECT_STREQ(
+      offboardSetpointModeName(OffboardSetpointMode::kTrajectoryPositionTracking),
+      "trajectory_position_tracking");
   EXPECT_STREQ(offboardSetpointModeName(OffboardSetpointMode::kVelocityCruise),
                "velocity_cruise");
 }

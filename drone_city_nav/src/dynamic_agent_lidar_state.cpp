@@ -80,8 +80,6 @@ DynamicAgentLidarState::makeFilterPlan(const std::int64_t now_ns,
         .lower_extent_m = config_.tracked_agent_vertical_tolerance_m,
         .upper_extent_m = config_.tracked_agent_vertical_tolerance_m,
     });
-    result.tracked_agent_excluded_from_latest_safety =
-        config_.tracked_agent_excluded_from_latest_safety;
   }
 
   if (!peer_store_ || acquisition_stamp_ns <= 0) {

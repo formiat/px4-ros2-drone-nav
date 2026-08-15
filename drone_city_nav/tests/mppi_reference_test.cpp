@@ -1,3 +1,5 @@
+#include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
+#include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
@@ -37,6 +39,35 @@ TEST(MppiReferenceTest, DynamicsClampsAccelerationAndVelocity) {
   EXPECT_FLOAT_EQ(state.vz, 0.5F);
   EXPECT_FLOAT_EQ(state.yaw_rate, 0.75F);
   EXPECT_NEAR(state.yaw, 0.75F, 1.0e-5F);
+}
+
+TEST(MppiReferenceTest, MeasuredAccelerationResolvesEquivalentDynamicControl) {
+  DynamicsConfig config{};
+  config.linear_drag_1ps = 0.1F;
+  config.maximum_horizontal_acceleration_mps2 = 20.0F;
+  config.maximum_vertical_acceleration_mps2 = 10.0F;
+  const State state{.vx = 10.0F, .vy = -5.0F, .vz = 2.0F};
+
+  const Control control =
+      equivalentControlFromMeasuredAcceleration(state, 1.0F, 2.0F, -0.5F, config);
+
+  EXPECT_FLOAT_EQ(control.ax, 2.0F);
+  EXPECT_FLOAT_EQ(control.ay, 1.5F);
+  EXPECT_FLOAT_EQ(control.az, -0.3F);
+  EXPECT_FLOAT_EQ(control.yaw_accel, 0.0F);
+}
+
+TEST(MppiReferenceTest, MeasuredAccelerationControlRespectsDynamicLimits) {
+  DynamicsConfig config{};
+  config.linear_drag_1ps = 0.0F;
+  config.maximum_horizontal_acceleration_mps2 = 4.0F;
+  config.maximum_vertical_acceleration_mps2 = 2.0F;
+
+  const Control control =
+      equivalentControlFromMeasuredAcceleration(State{}, 10.0F, 10.0F, -3.0F, config);
+
+  EXPECT_NEAR(std::hypot(control.ax, control.ay), 4.0F, 1.0e-5F);
+  EXPECT_FLOAT_EQ(control.az, -2.0F);
 }
 
 TEST(MppiReferenceTest, SimulationClassifiesPlanningExposure) {
@@ -118,6 +149,84 @@ TEST(MppiReferenceTest, NearWallFreeCellIsCriticalRatherThanCollision) {
 
   EXPECT_FALSE(metrics.collision);
   EXPECT_EQ(metrics.worst_tier, RiskTier::kCritical);
+}
+
+TEST(MppiReferenceTest, ClearanceExposureIsStronglyPenalizedWithoutBlockingMotion) {
+  constexpr int kWidth = 20;
+  constexpr int kHeight = 4;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> clear_esdf(static_cast<std::size_t>(kWidth * kHeight),
+                                      10.0F);
+  const std::vector<float> planning_esdf(static_cast<std::size_t>(kWidth * kHeight),
+                                         3.0F);
+  const std::vector<float> critical_esdf(static_cast<std::size_t>(kWidth * kHeight),
+                                         0.5F);
+  const std::array<Control, 2> controls{Control{.ax = 1.0F}, Control{.ax = 1.0F}};
+  const std::array<Control, 2> noise{};
+  DynamicsConfig dynamics{};
+  dynamics.dt_s = 0.5F;
+  dynamics.linear_drag_1ps = 0.0F;
+  CostConfig costs{};
+
+  const auto simulate = [&](const std::span<const float> esdf) {
+    return simulateReference(State{1.5F, 1.5F, 0.0F}, controls, noise, dynamics,
+                             RiskConfig{}, costs, grid, esdf, 10.0F, 1.5F, false);
+  };
+  const RolloutMetrics clear = simulate(clear_esdf);
+  const RolloutMetrics planning = simulate(planning_esdf);
+  const RolloutMetrics critical = simulate(critical_esdf);
+
+  EXPECT_FALSE(clear.collision);
+  EXPECT_FALSE(planning.collision);
+  EXPECT_FALSE(critical.collision);
+  EXPECT_EQ(planning.worst_tier, RiskTier::kPlanning);
+  EXPECT_EQ(critical.worst_tier, RiskTier::kCritical);
+  EXPECT_GT(planning.soft_cost, clear.soft_cost);
+  EXPECT_GT(critical.soft_cost, planning.soft_cost);
+}
+
+TEST(MppiReferenceTest, CriticalClearanceProximityCostIsContinuousAndMonotonic) {
+  EXPECT_FLOAT_EQ(criticalClearanceProximitySeverity(1.0F, 1.0F), 0.0F);
+  EXPECT_NEAR(criticalClearanceProximitySeverity(0.9F, 1.0F), 0.01F, 1.0e-6F);
+  EXPECT_NEAR(criticalClearanceProximitySeverity(0.1F, 1.0F), 0.81F, 1.0e-6F);
+  EXPECT_FLOAT_EQ(criticalClearanceProximitySeverity(0.0F, 1.0F), 1.0F);
+
+  const EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  const std::array<Control, 4> controls{};
+  const std::array<Control, 4> noise{};
+  DynamicsConfig dynamics{};
+  dynamics.dt_s = 0.25F;
+  CostConfig costs{};
+  costs.critical_exposure_weight = 0.0F;
+  costs.critical_clearance_proximity_weight = 400.0F;
+  const auto simulate = [&](const float clearance_m) {
+    const std::array esdf{clearance_m, clearance_m};
+    return simulateReference(State{.x = 0.5F, .y = 0.5F}, controls, noise, dynamics,
+                             RiskConfig{}, costs, grid, esdf, 0.5F, 0.5F, false);
+  };
+
+  const RolloutMetrics outside = simulate(10.0F);
+  const RolloutMetrics deep = simulate(0.5F);
+
+  EXPECT_FLOAT_EQ(outside.costs.critical_clearance_proximity_s, 0.0F);
+  EXPECT_GT(deep.costs.critical_clearance_proximity_s, 0.0F);
+  EXPECT_GT(deep.soft_cost, outside.soft_cost);
+  EXPECT_FALSE(deep.collision);
+}
+
+TEST(MppiReferenceTest, ObstacleApproachCostIsSoftAndDirectionSensitive) {
+  EXPECT_FLOAT_EQ(
+      obstacleApproachSeverityM2(10.0F, 10.0F, 10.0F, 0.1F, 1.0F, 0.25F, 4.0F), 0.0F);
+  EXPECT_FLOAT_EQ(
+      obstacleApproachSeverityM2(9.0F, 10.0F, 10.0F, 0.1F, 1.0F, 0.25F, 4.0F), 0.0F);
+
+  const float moderate =
+      obstacleApproachSeverityM2(9.0F, 8.0F, 10.0F, 0.1F, 1.0F, 0.25F, 4.0F);
+  const float close =
+      obstacleApproachSeverityM2(5.0F, 4.0F, 10.0F, 0.1F, 1.0F, 0.25F, 4.0F);
+
+  EXPECT_GT(moderate, 0.0F);
+  EXPECT_GT(close, moderate);
 }
 
 TEST(MppiReferenceTest, PhysicalFootprintRejectsAdjacentRawCell) {
@@ -230,6 +339,55 @@ TEST(MppiReferenceTest, ReferenceSpeedAddsTrackingCost) {
   EXPECT_FLOAT_EQ(disabled.costs.speed_tracking, 0.0F);
   EXPECT_LT(matched.costs.speed_tracking, faster.costs.speed_tracking);
   EXPECT_LT(matched.soft_cost, faster.soft_cost);
+}
+
+TEST(MppiReferenceTest, VerticalVelocityDoesNotSatisfyHorizontalReferenceSpeed) {
+  constexpr int kWidth = 20;
+  constexpr int kHeight = 20;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 20.0F);
+  const std::array<Control, 2> controls{};
+  const std::array<Control, 2> noise{};
+  DynamicsConfig dynamics;
+  dynamics.linear_drag_1ps = 0.0F;
+
+  const RolloutMetrics vertical_only = simulateReference(
+      State{.x = 1.5F, .y = 1.5F, .vz = 5.0F}, controls, noise, dynamics, RiskConfig{},
+      CostConfig{}, grid, esdf, 10.0F, 1.5F, false, Control{}, 5.0F);
+  const RolloutMetrics horizontal = simulateReference(
+      State{.x = 1.5F, .y = 1.5F, .vx = 5.0F, .vz = 5.0F}, controls, noise, dynamics,
+      RiskConfig{}, CostConfig{}, grid, esdf, 10.0F, 1.5F, false, Control{}, 5.0F);
+
+  EXPECT_GT(vertical_only.costs.speed_tracking, horizontal.costs.speed_tracking);
+  EXPECT_FLOAT_EQ(horizontal.costs.speed_tracking, 0.0F);
+}
+
+TEST(MppiReferenceTest, InheritedSpeedAboveModelLimitDecaysWithoutTeleporting) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  dynamics.linear_drag_1ps = 0.0F;
+  dynamics.maximum_horizontal_speed_mps = 10.0F;
+  dynamics.maximum_vertical_speed_mps = 5.0F;
+  dynamics.maximum_yaw_rate_radps = 1.5F;
+
+  const State initial{
+      .vx = 12.0F,
+      .vz = -6.0F,
+      .yaw_rate = 2.0F,
+  };
+  const State unchanged = integrateReference(initial, Control{}, dynamics);
+  EXPECT_FLOAT_EQ(unchanged.vx, initial.vx);
+  EXPECT_FLOAT_EQ(unchanged.vz, initial.vz);
+  EXPECT_FLOAT_EQ(unchanged.yaw_rate, initial.yaw_rate);
+
+  const State recovering = integrateReference(
+      initial, Control{.ax = -4.0F, .az = 4.0F, .yaw_accel = -2.0F}, dynamics);
+  EXPECT_LT(recovering.vx, initial.vx);
+  EXPECT_GT(recovering.vz, initial.vz);
+  EXPECT_LT(recovering.yaw_rate, initial.yaw_rate);
+  EXPECT_GT(recovering.vx, dynamics.maximum_horizontal_speed_mps);
+  EXPECT_LT(recovering.vz, -dynamics.maximum_vertical_speed_mps);
+  EXPECT_GT(recovering.yaw_rate, dynamics.maximum_yaw_rate_radps);
 }
 
 TEST(MppiReferenceTest, PeerSeparationIsSoftAndTimeIndexed) {
@@ -395,6 +553,46 @@ TEST(MppiReferenceTest, FloatConversionCannotReopenHalfOpenUpperEnvelope) {
   EXPECT_FLOAT_EQ(clampMovingTargetAltitude(rounded_double_boundary, 1.0F, maximum_z),
                   maximum_z);
   EXPECT_LT(clampMovingTargetAltitude(rounded_double_boundary, 1.0F, maximum_z), 32.0F);
+}
+
+TEST(MppiReferenceTest, DetectsAltitudeEnvelopeViolationInsideRollout) {
+  const EsdfGrid grid{10, 10, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(100U, 20.0F);
+  const std::array<Control, 4> controls{};
+  const std::array<Control, 4> noise{};
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.2F;
+  dynamics.linear_drag_1ps = 0.0F;
+
+  const RolloutMetrics metrics = simulateReference(
+      State{.x = 1.5F, .y = 1.5F, .z = 1.1F, .vz = -1.0F}, controls, noise, dynamics,
+      RiskConfig{}, CostConfig{}, grid, esdf, 5.0F, 1.5F, true, Control{}, -1.0F,
+      FootprintConfig{}, std::nullopt, nullptr, {}, std::nullopt, CooperativeConfig{},
+      std::nullopt, AltitudeEnvelopeConfig{.minimum_z_m = 1.0F, .maximum_z_m = 32.0F});
+
+  EXPECT_TRUE(metrics.altitude_envelope_violation);
+  EXPECT_FALSE(metrics.collision);
+}
+
+TEST(MppiReferenceTest, FlightEnvelopeRequiresJerkLimitedVerticalStoppingRoom) {
+  DynamicsConfig dynamics;
+  dynamics.maximum_vertical_acceleration_mps2 = 4.0F;
+  dynamics.maximum_control_jerk_mps3 = 20.0F;
+  const AltitudeEnvelopeConfig envelope{.minimum_z_m = 1.0F, .maximum_z_m = 32.0F};
+
+  const State descending{.z = 7.0F, .vz = -5.0F};
+  const Control accelerating_down{.az = -4.0F};
+  EXPECT_NEAR(verticalStoppingDistanceM(descending.vz, accelerating_down.az, dynamics),
+              5.2317F, 1.0e-3F);
+  EXPECT_TRUE(altitudeEnvelopeDynamicallyRecoverable(descending, accelerating_down,
+                                                     dynamics, envelope));
+  EXPECT_FALSE(altitudeEnvelopeDynamicallyRecoverable(
+      State{.z = 6.0F, .vz = -5.0F}, accelerating_down, dynamics, envelope));
+
+  EXPECT_TRUE(altitudeEnvelopeDynamicallyRecoverable(
+      State{.z = 26.0F, .vz = 5.0F}, Control{.az = 4.0F}, dynamics, envelope));
+  EXPECT_FALSE(altitudeEnvelopeDynamicallyRecoverable(
+      State{.z = 27.0F, .vz = 5.0F}, Control{.az = 4.0F}, dynamics, envelope));
 }
 
 } // namespace

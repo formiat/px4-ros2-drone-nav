@@ -33,6 +33,13 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 - horizon stability and first-control delta;
 - liveness action;
 - post-update classification;
+- typed execution mode and reason, including `no_executable_route` hold and
+  `no_executable_horizon` hold;
+- finite-path nominal and arrival-profile control counts, terminal-rest
+  confirmation, arrival-shaping attempts, and whether the current tick retained
+  a revalidated previous finite path;
+- latest raw lidar sequence, age, hit count, freshness, and whether it forced an
+  earlier in-path deceleration start;
 - dropped diagnostic snapshots.
 
 The JSONL record carries the same data in machine-readable form.
@@ -118,13 +125,14 @@ Important events:
 
 - horizon rejection reason;
 - `MPPI_HORIZON_DEADLINE_MISSED`;
-- dynamic braking activation;
-- safety or mission hold activation;
+- completed-path or unavailable-path hold activation;
+- route-unavailable, cooperative, or mission hold activation;
 - applied-control feedback age;
 - PX4 mode/arming state.
 
-An expired horizon must result in braking or hold, never continued open-loop
-execution.
+An expired planned path must already be at its terminal rest state. Offboard
+then holds that terminal point and never extrapolates the path beyond its
+deadline.
 
 ## Lidar Diagnostics
 
@@ -146,5 +154,5 @@ Use lidar snapshots to verify:
 4. Inspect selected MPPI tier and collision flags.
 5. Inspect head progress, actual motion, and liveness.
 6. Inspect the constrained span if the route enters an air channel.
-7. Inspect offboard deadline/braking behavior.
+7. Inspect the finite-path deadline, in-path arrival profile, and final hold.
 8. Only then tune costs or dynamics.

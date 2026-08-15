@@ -1,5 +1,6 @@
 #include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
+#include "drone_city_nav/esdf_query.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 
@@ -364,7 +365,7 @@ TEST(Route3DTest, FullPlanningRouteBeatsPreferredFrontier) {
   config.vertical_step_m = 1.0;
   config.planning_goal_distance_m = 30.0;
   config.preferred_distance_m = 2.0;
-  config.critical_distance_m = 0.1;
+  config.critical_distance_m = 0.0;
   config.maximum_search_time_ms = 1000.0;
 
   const RiskAwareLattice3DResult result =
@@ -400,7 +401,7 @@ TEST(Route3DTest, FartherPlanningFrontierBeatsBlockedPreferredFrontier) {
   config.vertical_step_m = 1.0;
   config.planning_goal_distance_m = 30.0;
   config.preferred_distance_m = 2.0;
-  config.critical_distance_m = 0.1;
+  config.critical_distance_m = 0.0;
   config.maximum_search_time_ms = 1000.0;
 
   const RiskAwareLattice3DResult result =
@@ -856,6 +857,47 @@ TEST(Route3DTest, EdgeFootprintUsesSafetySweepStepIndependentOfRouteSampling) {
                                           Lattice3DRiskStage::kPreferredOnly, safety)
                 .status,
             detail::Lattice3DEdgeEvaluationStatus::kRawCollision);
+}
+
+TEST(Route3DTest, EdgeRiskStageUsesPhysicalFootprintClearance) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 12, 10}};
+  for (int y = 0; y < 12; ++y) {
+    for (int z = 0; z < 10; ++z) {
+      occupancy.setOccupied(GridIndex3D{6, y, z});
+    }
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 20.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.critical_distance_m = 1.25;
+  config.preferred_distance_m = 4.0;
+  const Point3 first{3.5, 4.5, 4.5};
+  const Point3 second{3.5, 6.5, 4.5};
+
+  const EsdfQueryResult center =
+      queryConservativeEsdf3D(grid, field.distancesM(), static_cast<float>(first.x),
+                              static_cast<float>(first.y), static_cast<float>(first.z));
+  ASSERT_EQ(center.status, EsdfQueryStatus::kValid);
+  ASSERT_GE(center.clearance_m, config.critical_distance_m);
+
+  const detail::Lattice3DEdgeEvaluation planning =
+      detail::evaluateLattice3DEdge(grid, field.distancesM(), first, second,
+                                    Lattice3DRiskStage::kPlanningAllowed, config);
+  const detail::Lattice3DEdgeEvaluation critical =
+      detail::evaluateLattice3DEdge(grid, field.distancesM(), first, second,
+                                    Lattice3DRiskStage::kCriticalAllowed, config);
+
+  EXPECT_EQ(planning.status, detail::Lattice3DEdgeEvaluationStatus::kRiskStageRejected);
+  ASSERT_EQ(critical.status, detail::Lattice3DEdgeEvaluationStatus::kValid);
+  EXPECT_LT(critical.minimum_clearance_m, config.critical_distance_m);
+  EXPECT_GT(critical.critical_exposure_m, 0.0);
 }
 
 } // namespace

@@ -66,15 +66,22 @@ __device__ State integrateDevice(State state, Control control,
       clampValue(control.yaw_accel, -config.maximum_yaw_acceleration_radps2,
                  config.maximum_yaw_acceleration_radps2);
   const float drag = fmaxf(0.0F, 1.0F - config.linear_drag_1ps * config.dt_s);
+  const float inherited_horizontal_speed_mps = hypotf(state.vx, state.vy);
+  const float inherited_vertical_speed_mps = fabsf(state.vz);
+  const float inherited_yaw_rate_radps = fabsf(state.yaw_rate);
   state.vx = state.vx * drag + control.ax * config.dt_s;
   state.vy = state.vy * drag + control.ay * config.dt_s;
   state.vz = state.vz * drag + control.az * config.dt_s;
-  clampHorizontalDevice(state.vx, state.vy, config.maximum_horizontal_speed_mps);
-  state.vz = clampValue(state.vz, -config.maximum_vertical_speed_mps,
-                        config.maximum_vertical_speed_mps);
-  state.yaw_rate =
-      clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,
-                 -config.maximum_yaw_rate_radps, config.maximum_yaw_rate_radps);
+  clampHorizontalDevice(
+      state.vx, state.vy,
+      fmaxf(config.maximum_horizontal_speed_mps, inherited_horizontal_speed_mps));
+  const float vertical_speed_limit_mps =
+      fmaxf(config.maximum_vertical_speed_mps, inherited_vertical_speed_mps);
+  state.vz = clampValue(state.vz, -vertical_speed_limit_mps, vertical_speed_limit_mps);
+  const float yaw_rate_limit_radps =
+      fmaxf(config.maximum_yaw_rate_radps, inherited_yaw_rate_radps);
+  state.yaw_rate = clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,
+                              -yaw_rate_limit_radps, yaw_rate_limit_radps);
   state.x += state.vx * config.dt_s;
   state.y += state.vy * config.dt_s;
   state.z += state.vz * config.dt_s;
@@ -140,7 +147,10 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
   float effort_cost = 0.0F;
   float critical_m = 0.0F;
   float planning_m = 0.0F;
+  float critical_clearance_proximity_s = 0.0F;
+  float obstacle_approach_m2_s = 0.0F;
   float minimum_clearance_m = kInfinity;
+  float previous_clearance_m = kInfinity;
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
   bool collided = false;
   const float initial_distance = hypotf(target_x - state.x, target_y - state.y);
@@ -163,17 +173,28 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
     const DeviceEsdfQuery esdf_query = queryEsdf(state, grid, esdf_texture);
     const float clearance = esdf_query.clearance_m;
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
-    const float segment_m = dynamics.dt_s * hypotf(state.vx, state.vy);
+    const float segment_speed_mps = hypotf(state.vx, state.vy);
+    const float segment_m = dynamics.dt_s * segment_speed_mps;
     if (esdf_query.raw_collision) {
       collided = true;
       tier = static_cast<std::uint8_t>(RiskTier::kCollision);
     } else if (clearance < risk.critical_distance_m) {
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kCritical));
       critical_m += segment_m;
+      critical_clearance_proximity_s +=
+          dynamics.dt_s *
+          criticalClearanceProximitySeverity(clearance, risk.critical_distance_m);
     } else if (clearance < risk.preferred_distance_m) {
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kPlanning));
       planning_m += segment_m;
     }
+    obstacle_approach_m2_s +=
+        dynamics.dt_s *
+        obstacleApproachSeverityM2(previous_clearance_m, clearance, segment_speed_mps,
+                                   dynamics.dt_s, risk.critical_distance_m,
+                                   risk.obstacle_approach_response_time_s,
+                                   risk.obstacle_approach_deceleration_mps2);
+    previous_clearance_m = clearance;
     guide_cost += (state.y - initial.y) * (state.y - initial.y);
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
@@ -193,14 +214,18 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
   }
   const float terminal_distance = hypotf(target_x - state.x, target_y - state.y);
   const float progress_cost = -(initial_distance - terminal_distance);
-  soft_cost[rollout] = costs.head_progress_weight * -head_progress +
-                       costs.progress_weight * progress_cost +
-                       costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
-                       costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
-                       costs.jerk_weight * jerk_cost +
-                       costs.yaw_change_weight * yaw_cost +
-                       costs.control_effort_weight * dynamics.dt_s * effort_cost +
-                       costs.terminal_weight * terminal_distance;
+  soft_cost[rollout] =
+      costs.head_progress_weight * -head_progress +
+      costs.progress_weight * progress_cost +
+      costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
+      costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
+      costs.jerk_weight * jerk_cost + costs.yaw_change_weight * yaw_cost +
+      costs.control_effort_weight * dynamics.dt_s * effort_cost +
+      costs.planning_exposure_weight * planning_m +
+      costs.critical_exposure_weight * critical_m +
+      costs.critical_clearance_proximity_weight * critical_clearance_proximity_s +
+      costs.obstacle_approach_weight * obstacle_approach_m2_s +
+      costs.terminal_weight * terminal_distance;
   critical_exposure[rollout] = critical_m;
   planning_exposure[rollout] = planning_m;
   minimum_clearance[rollout] = minimum_clearance_m;

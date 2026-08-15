@@ -129,7 +129,6 @@ TEST(DynamicAgentLidarStateTest, AlignsTrackedTargetAndPeerToScanTime) {
       .tracked_agent_radius_m = 1.0,
       .tracked_agent_vertical_tolerance_m = 1.0,
       .tracked_agent_maximum_age_s = 0.5,
-      .tracked_agent_excluded_from_latest_safety = true,
       .cooperative_peer_horizontal_margin_m = 0.0,
       .cooperative_peer_vertical_margin_m = 0.0,
       .cooperative_alignment_extrapolation_s = 0.5,
@@ -150,7 +149,6 @@ TEST(DynamicAgentLidarStateTest, AlignsTrackedTargetAndPeerToScanTime) {
 
   ASSERT_EQ(plan.tracked_agent_exclusions.size(), 1U);
   EXPECT_NEAR(plan.tracked_agent_exclusions.front().position.x, 5.1, 1.0e-9);
-  EXPECT_TRUE(plan.tracked_agent_excluded_from_latest_safety);
   ASSERT_EQ(plan.cooperative_memory_exclusions.size(), 1U);
   EXPECT_NEAR(plan.cooperative_memory_exclusions.front().position.x, 8.2, 1.0e-9);
   EXPECT_DOUBLE_EQ(plan.cooperative_memory_exclusions.front().radius_m, 0.8);

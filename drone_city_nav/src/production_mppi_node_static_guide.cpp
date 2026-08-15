@@ -1,3 +1,5 @@
+#include "drone_city_nav/mppi/static_route_handoff.hpp"
+
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
@@ -107,10 +109,10 @@ void ProductionMppiNode::processStaticGuideSearch(
             .radius_m = lattice_3d_config_.physical_footprint_radius_m,
             .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
             .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
-            .perimeter_samples = safety_config_.physical_footprint_samples,
-            .radial_rings = safety_config_.physical_footprint_radial_rings,
-            .axial_samples = safety_config_.physical_footprint_axial_samples,
-            .sweep_step_m = safety_config_.swept_validation_step_m},
+            .perimeter_samples = physical_footprint_config_.perimeter_samples,
+            .radial_rings = physical_footprint_config_.radial_rings,
+            .axial_samples = physical_footprint_config_.axial_samples,
+            .sweep_step_m = physical_footprint_config_.sweep_step_m},
         static_route_geometry_config_, route_envelope_config_,
         planning_worker_pool_.get());
     prepared.route_smoothing_ms =
@@ -178,10 +180,10 @@ void ProductionMppiNode::processStaticGuideSearch(
               .radius_m = lattice_3d_config_.physical_footprint_radius_m,
               .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
               .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
-              .perimeter_samples = safety_config_.physical_footprint_samples,
-              .radial_rings = safety_config_.physical_footprint_radial_rings,
-              .axial_samples = safety_config_.physical_footprint_axial_samples,
-              .sweep_step_m = safety_config_.swept_validation_step_m});
+              .perimeter_samples = physical_footprint_config_.perimeter_samples,
+              .radial_rings = physical_footprint_config_.radial_rings,
+              .axial_samples = physical_footprint_config_.axial_samples,
+              .sweep_step_m = physical_footprint_config_.sweep_step_m});
     } else {
       validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kInvalidEsdf};
@@ -268,6 +270,30 @@ void ProductionMppiNode::processStaticGuideSearch(
       .route = prepared.route_3d,
       .constrained_spans = prepared.constrained_spans,
   };
+  ProductionMppiNavigation handoff_navigation;
+  ProductionMppiAppliedControl handoff_applied_control;
+  {
+    const std::scoped_lock input_lock{input_mutex_};
+    handoff_navigation = navigation_;
+    handoff_applied_control = applied_control_;
+  }
+  const std::int64_t handoff_now_ns = get_clock()->now().nanoseconds();
+  const bool handoff_control_fresh =
+      handoff_applied_control.valid && handoff_applied_control.receive_stamp_ns > 0 &&
+      handoff_now_ns >= handoff_applied_control.receive_stamp_ns &&
+      static_cast<double>(handoff_now_ns - handoff_applied_control.receive_stamp_ns) *
+              1.0e-6 <=
+          maximum_control_feedback_age_ms_;
+  mppi::StaticRouteHandoffResult handoff;
+  if (route_candidate.executable && route_candidate.validation.accepted &&
+      prepared.mppi_route && handoff_navigation.valid) {
+    handoff = mppi::validateStaticRouteHandoff(
+        handoff_navigation.state,
+        handoff_control_fresh ? handoff_applied_control.control : mppi::Control{},
+        *prepared.mppi_route, static_cast<float>(speed_policy_config_.cruise_speed_mps),
+        static_cast<float>(active_guide_config_.maximum_cross_track_m), mppi_config_,
+        prepared.grid, *prepared.distances_m);
+  }
 
   bool activated = false;
   {
@@ -282,8 +308,9 @@ void ProductionMppiNode::processStaticGuideSearch(
          prepared_esdf_->global_guide_generation == required_base_generation);
     revision_matches = prepared_esdf_ && prepared_esdf_->revision == prepared.revision;
     if (route_candidate.executable && route_candidate.validation.accepted &&
-        route_candidate.route && route_candidate.constrained_spans &&
-        revision_matches && generation_matches && objective_matches) {
+        handoff.accepted && route_candidate.route &&
+        route_candidate.constrained_spans && revision_matches && generation_matches &&
+        objective_matches) {
       activation_status = StaticRouteActivationStatus::kActivated;
       prepared.static_route_activation_status = activation_status;
       prepared.static_route_revision_matches = true;
@@ -304,6 +331,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       activation_status = StaticRouteActivationStatus::kStaleRouteGeneration;
     } else if (route_candidate.validation.accepted && !objective_matches) {
       activation_status = StaticRouteActivationStatus::kStaleObjective;
+    } else if (route_candidate.validation.accepted && !handoff.accepted) {
+      activation_status = StaticRouteActivationStatus::kDynamicHandoffRejected;
     }
   }
   if (activated && prepared.cooperative_channel_assignments) {
@@ -334,6 +363,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       "generation_matches=%s objective_matches=%s extension=%s replan=%s "
       "base_generation=%" PRIu64 " replan_reason=%s"
       " replacement_policy=%.*s validation=%.*s endpoint_improvement_m=%.2f "
+      "handoff=%s handoff_cross_track_m=%.2f handoff_minimum_clearance_m=%.2f "
+      "handoff_planning_exposure_m=%.2f handoff_critical_exposure_m=%.2f "
       "status=%s termination=%s "
       "points=%zu samples=%zu spans=%zu expansions=%zu expansion_limit=%zu "
       "deadline_ms=%.2f "
@@ -384,7 +415,10 @@ void ProductionMppiNode::processStaticGuideSearch(
       staticRouteReplacementPolicyName(replacement_policy).data(),
       static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
       staticRouteCandidateStatusName(validation.status).data(),
-      validation.endpoint_improvement_m, lattice3DStatusName(lattice.status),
+      validation.endpoint_improvement_m,
+      mppi::staticRouteHandoffStatusName(handoff.status), handoff.cross_track_m,
+      handoff.minimum_clearance_m, handoff.planning_exposure_m,
+      handoff.critical_exposure_m, lattice3DStatusName(lattice.status),
       lattice3DSearchTerminationName(lattice.termination), lattice.points.size(),
       lattice.route.size(),
       prepared.constrained_spans ? prepared.constrained_spans->size() : 0U,

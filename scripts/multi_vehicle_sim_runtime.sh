@@ -105,7 +105,6 @@ check_headless_run() {
     --mission-type "${mission_type}"
     --expected-static "${expected_static_map}"
     --expected-memory "${expected_obstacle_memory}"
-    --expected-current-lidar "${expected_current_lidar}"
     --enable-lidar-debug "${enable_lidar_debug}"
   )
   if bool_is_true "${multi_vehicle_mission}"; then

@@ -172,33 +172,34 @@ debug alike.
 
 The same concepts appear in obstacle-memory and lidar-debug configuration.
 
-## Latest-Scan Safety
+## Latest Raw Obstacle Scan
 
-Each strictly aligned scan also publishes its actual hit endpoints on
-`/drone_city_nav/latest_lidar_safety_scan`. Endpoints are expressed in a fixed
-body-FRD frame at the adjusted first-beam acquisition pose. The message contains
-no persistent-memory cells and no free-space interpretation. Tracked drone hits
-are filtered before publication, using the same input scan as mapping.
+Every accepted, acquisition-time-aligned scan publishes its actual hit endpoints
+on `/drone_city_nav/latest_lidar_obstacle_scan`. Endpoints are expressed in a
+fixed body-FRD frame at the adjusted first-beam acquisition pose. The message
+contains no persistent-memory cells, inflation, clearance boundary, or free-space
+interpretation. Dynamic-agent hits selected by the mapping contract are filtered
+before publication.
 
-The planner reconstructs those endpoints in `map` and, while the scan is fresh,
-checks every swept horizon sample against the configured physical 3D cylinder
-of the vehicle. A hit blocks execution only when it intersects that physical
-volume. A point above or below the body does not create a vertical column, and
-no radius beyond the real footprint is added. Missing or stale latest-scan data
-does not turn unknown space into a hard zone; the existing raw world and normal
-safety lifecycle continue to apply.
+The planner reconstructs the endpoints in `map`. While the scan is fresh, it
+validates the complete finite path against the configured physical 3D footprint,
+including every sample of its nominal motion and arrival profile. A hit
+rejects a path only when it intersects the real swept vehicle volume. Missing or
+stale scan data does not turn unknown space into a hard zone; persistent raw
+occupancy remains the normal world source.
 
-This safety input is intentionally independent of scored persistent memory. A
-later free-space update cannot erase the physical return from the latest scan
-before the planner evaluates it. When persistent memory is disabled, the same
-node runs in a lightweight safety-only mode: it keeps acquisition-time pose
-histories and publishes latest-scan returns, but it does not allocate a memory
-grid, integrate hits, publish snapshots, or start the memory diagnostics worker.
+This direct raw evidence is independent of persistent-memory integration latency.
+It does not implement a separate stopping controller or obstacle-triggered latch.
+The planner still constructs one self-contained finite path whose endpoint is at
+rest. Proximity and ESDF clearance remain soft ranking costs.
+
+When persistent memory is disabled, the obstacle-memory node keeps the pose and
+scan-alignment lifecycle but does not allocate a memory grid, integrate hits,
+publish snapshots, or start the memory diagnostics worker.
 Static intercept GUI runs additionally gate diagnostic memory by the latched
 spectator target. Only the selected vehicle integrates and publishes this
-memory; all other vehicles remain in latest-scan safety mode. No-static mode does
-not apply this gate because every vehicle requires its own persistent map for
-navigation.
+memory. No-static mode does not apply this gate because every vehicle requires
+its own persistent map for navigation.
 
 ## Per-Beam Expected-Surface Rejection
 
@@ -270,9 +271,9 @@ builds an occupied-distance field. It does not materialize prohibited or
 planning-clearance occupancy grids.
 
 The current default critical boundary is 1 m and the preferred boundary is 6 m.
-Raw occupied cells and evaluation bounds are hard rejects. MPPI first selects
-the best eligible risk class, then applies its soft dynamics and progress cost
-within that class.
+Raw occupied cells and evaluation bounds are hard rejects. MPPI applies strong
+critical- and planning-exposure costs together with its dynamics and progress
+costs; a risk band does not independently remove a physically free rollout.
 
 ## Memory Transport
 
@@ -304,7 +305,7 @@ Useful visualization topics:
 - `/drone_city_nav/obstacle_memory_status`
 - `/drone_city_nav/raw_obstacle_snapshot`
 - `/drone_city_nav/raw_obstacle_grid`
-- `/drone_city_nav/latest_lidar_safety_scan`
+- `/drone_city_nav/latest_lidar_obstacle_scan`
 - `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/raw_lidar_hit_points_3d`
 - `/drone_city_nav/remembered_lidar_points`

@@ -13,7 +13,7 @@ obstacle_memory_node:
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
     raw_obstacle_delta_topic: /drone_city_nav/raw_obstacle_delta
-    latest_lidar_safety_scan_topic: /drone_city_nav/latest_lidar_safety_scan
+    latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
     raw_obstacle_delta_chunk_size_cells: 32
     use_static_map: true
     risk_critical_distance_m: 1.0
@@ -121,6 +121,12 @@ production_mppi_node:
     maximum_vertical_speed_mps: 5.0
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
+    planning_exposure_weight: 8.0
+    critical_exposure_weight: 2000.0
+    critical_clearance_proximity_weight: 4000.0
+    obstacle_approach_weight: 40.0
+    obstacle_approach_response_time_s: 0.25
+    obstacle_approach_deceleration_mps2: 4.0
     far_horizon_full_rate_duration_s: 2.0
     far_horizon_cost_stride: 2
     static_speed_tracking_weight: 1.0
@@ -136,6 +142,8 @@ production_mppi_node:
     no_static_esdf_update_rate_hz: 2.5
     no_static_esdf_half_extent_m: 100.0
     no_static_esdf_recenter_margin_m: 70.0
+    latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
+    latest_lidar_obstacle_maximum_age_ms: 250.0
     static_minimum_target_lookahead_m: 30.0
     static_maximum_target_lookahead_m: 100.0
     use_static_map: true
@@ -144,6 +152,7 @@ production_mppi_node:
     static_cruise_speed_mps: 20.0
     static_absolute_speed_limit_mps: 20.0
     static_maximum_horizontal_acceleration_mps2: 8.0
+    finite_path_arrival_maximum_horizontal_deceleration_mps2: 4.0
     static_maximum_lateral_acceleration_mps2: 5.0
     static_maximum_braking_acceleration_mps2: 8.0
     static_maximum_control_jerk_mps3: 20.0
@@ -169,6 +178,7 @@ production_mppi_node:
     physical_footprint_samples: 12
     physical_footprint_radial_rings: 2
     physical_footprint_axial_samples: 3
+    physical_footprint_sweep_step_m: 0.25
     static_route_tracking_margin_m: 0.75
     mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
@@ -217,29 +227,16 @@ production_mppi_node:
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
     raw_obstacle_delta_topic: /drone_city_nav/raw_obstacle_delta
-    latest_lidar_safety_scan_topic: /drone_city_nav/latest_lidar_safety_scan
-    latest_lidar_safety_enabled: true
-    latest_lidar_safety_maximum_age_ms: 250.0
     path_topic: /drone_city_nav/mppi/path
     markers_topic: /drone_city_nav/mppi/markers
     status_topic: /drone_city_nav/mppi/status
     applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     diagnostics_output_dir: log/mppi
     execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
-    safety_reaction_latency_s: 0.25
-    safety_maximum_braking_acceleration_mps2: 8.0
-    safety_guaranteed_braking_deceleration_mps2: 3.0
-    safety_minimum_time_to_collision_s: 0.50
-    safety_swept_validation_step_m: 0.25
-    safety_position_hold_capture_speed_mps: 0.20
-    safety_braking_release_safe_observations: 5
-    static_safety_fallback_duration_s: 3.0
-    no_static_safety_fallback_duration_s: 3.0
     liveness_enabled: true
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5
     liveness_minimum_predicted_terminal_progress_m: 5.0
-    mppi_risk_recovery_stable_cycles: 20
     global_lattice_heading_bins: 16
     global_lattice_primitive_length_m: 4.0
     global_lattice_short_primitive_length_m: 2.0
@@ -307,7 +304,6 @@ production_mppi_node:
     global_guide_stall_observation_window_s: 1.0
     global_guide_stall_minimum_progress_m: 0.5
     global_guide_stall_minimum_predicted_head_progress_m: 0.5
-    persistent_safety_rejection_window_s: 1.0
 
 mppi_offboard_node:
   ros__parameters:
@@ -317,7 +313,6 @@ mppi_offboard_node:
     applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     applied_control_feedback_frame_id: map
     mppi_control_lookahead_s: 0.05
-    mppi_fallback_braking_acceleration_mps2: 8.0
     initial_altitude_m: 18.0
     minimum_target_z_m: 1.0
     maximum_target_z_m: 32.0

@@ -35,36 +35,51 @@ shift nominal controls by elapsed time
 -> generate counter-based control noise
 -> simulate rollouts on CUDA
 -> query local ESDF3D against physical Occupancy3D
--> choose eligible categorical risk class
+-> reject only physical collisions and flight-envelope violations
 -> compute MPPI weights
 -> update controls
 -> constrain first control against applied feedback
 -> reconstruct nominal horizon
 -> classify and validate
+-> shape an arrival-to-rest profile within the existing finite horizon
+-> validate the complete finite path against raw physical obstacles
 ```
+
+The arrival-to-rest profile occupies existing path samples and is part of the
+published path contract. It is not a second execution phase. If a
+later optimization tick fails, the unchanged remaining trajectory continues
+only when both its geometry and its remaining controls from the measured state
+are physically valid. Otherwise
+the remaining path may be rebuilt from the measured state, with its arrival
+profile shaped again and the complete rebuilt path physically validated.
+The previous validity deadline is never extended.
 
 The warm start is shifted by real elapsed time, including fractional
 interpolation. This keeps the nominal sequence aligned with commands already
 executed by PX4.
 
-## Risk Hierarchy
+## Feasibility And Soft Clearance Cost
 
-Rollout eligibility is hierarchical:
+Rollout feasibility has a narrow physical contract:
 
-1. physical occupied-cell collision;
-2. worst risk tier;
-3. critical exposure;
-4. planning exposure;
-5. soft motion cost within the eligible class.
+1. every state remains inside the flight envelope and is dynamically recoverable
+   before either altitude boundary;
+2. the swept physical footprint does not intersect raw occupancy;
+3. the generic known-solid collision contract is not violated.
 
-Soft cost includes guide deviation, mission progress, early/head progress,
-altitude error, speed tracking, acceleration, jerk, yaw motion, terminal error,
-and control effort.
+Critical and planning clearance exposure are strong soft costs. Inside the
+critical band, a bounded quadratic proximity term additionally distinguishes a
+shallow exposure from a trajectory that nearly touches a wall. The term is
+integrated over time, so remaining stationary near a wall does not avoid its
+cost. These terms rank safe rollouts together with guide deviation, mission
+progress, early/head progress, altitude error, speed tracking, acceleration,
+jerk, yaw motion, terminal error, and control effort. Low clearance alone cannot
+make a rollout unreachable or force a position hold.
 
-Risk tiers are not a continuously varying clearance penalty. Conservative ESDF
-distance classifies the critical and planning bands. Hard raw collision is
-reported when the swept oriented physical footprint intersects a raw occupied
-cell; there is no additional prohibited inflation layer.
+Conservative ESDF distance classifies the critical and planning bands and feeds
+the soft proximity term. Hard raw collision is reported only when the swept
+oriented physical footprint intersects a raw occupied cell; there is no
+additional prohibited inflation layer.
 
 ## Static And No-Static Profiles
 
@@ -72,8 +87,8 @@ Static mode uses a longer horizon, larger target lookahead, larger lattice
 window, and higher cruise/cap because the city geometry is known.
 
 No-static mode uses a shorter horizon and lower acceleration, jerk, cruise, and
-absolute speed limits. Unknown space remains traversable, but observed-space
-and braking constraints bound speed.
+absolute speed limits. Unknown space remains traversable, while sensor range
+and physical stopping capability bound speed.
 
 Exact defaults live in `config/urban_mvp.yaml`.
 
@@ -83,9 +98,22 @@ The weighted control update can produce a nominal horizon different from every
 individual sampled rollout. The reconstructed horizon is therefore classified
 again for physical occupied-cell collision and risk exposure.
 
-Collision results activate the braking fallback. The post-update
-classification also remains available in diagnostics to expose invalid updates
-without hiding them inside aggregate cost.
+Collision results reject the horizon. Route unavailability is handled by a
+separate typed position hold. An expired finite path already ends at rest, and
+offboard holds that path's terminal point. Post-update classification remains
+available in diagnostics without hiding physical invalidity inside aggregate
+cost.
+
+The published planned path always ends at a terminal rest state. Its speed
+profile reaches zero inside the configured path duration. If the resulting
+physical path is invalid, arrival shaping is retried from an earlier path sample;
+an old or colliding path is never
+executed as a fallback.
+
+Arrival shaping uses
+`finite_path_arrival_maximum_horizontal_deceleration_mps2`, a conservative contract
+separate from the higher acceleration available to ordinary manoeuvres. This
+prevents a finite path from claiming stopping performance that PX4 cannot track.
 
 ## Continuity And Liveness
 

@@ -81,19 +81,6 @@ TEST(MppiNominalReseedTrackerTest, ReseedsAgainstReplacementGuide) {
   EXPECT_EQ(replacement.no_eligible_phase, MppiNoEligiblePhase::kAwaitingReseedResult);
 }
 
-TEST(MppiNominalReseedTrackerTest, ReseedsOnPersistentSafetyRejection) {
-  MppiNominalReseedTracker tracker;
-  static_cast<void>(
-      tracker.update(MppiNominalReseedObservation{.guide_generation = 1U}));
-
-  const MppiNominalReseedUpdate update = tracker.update(MppiNominalReseedObservation{
-      .guide_generation = 1U,
-      .safety_rejection_generation = 3U,
-  });
-
-  EXPECT_TRUE(update.requested);
-}
-
 TEST(MppiNominalReseedTrackerTest, ReseedsOnDirectTrackingManeuver) {
   MppiNominalReseedTracker tracker;
   static_cast<void>(

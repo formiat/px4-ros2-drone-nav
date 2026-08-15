@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 namespace drone_city_nav::mppi {
@@ -30,6 +31,8 @@ struct NoiseConfig {
 struct RiskConfig {
   float critical_distance_m{1.0F};
   float preferred_distance_m{6.0F};
+  float obstacle_approach_response_time_s{0.25F};
+  float obstacle_approach_deceleration_mps2{4.0F};
   float critical_exposure_tolerance_m{0.5F};
   float planning_exposure_tolerance_m{1.0F};
 };
@@ -42,6 +45,11 @@ struct FootprintConfig {
   std::uint32_t radial_rings{0U};
   std::uint32_t axial_samples{0U};
   bool clearance_broad_phase_enabled{true};
+};
+
+struct AltitudeEnvelopeConfig {
+  float minimum_z_m{-std::numeric_limits<float>::max()};
+  float maximum_z_m{std::numeric_limits<float>::max()};
 };
 
 struct CostConfig {
@@ -60,6 +68,8 @@ struct CostConfig {
   float terminal_weight{2.0F};
   float planning_exposure_weight{2.0F};
   float critical_exposure_weight{20.0F};
+  float critical_clearance_proximity_weight{400.0F};
+  float obstacle_approach_weight{40.0F};
   float temperature{8.0F};
 };
 
@@ -82,6 +92,7 @@ struct BenchmarkConfig {
   NoiseConfig noise{};
   RiskConfig risk{};
   FootprintConfig footprint{};
+  AltitudeEnvelopeConfig altitude_envelope{};
   CostConfig costs{};
   CooperativeConfig cooperative{};
   HorizonSamplingConfig horizon_sampling{};

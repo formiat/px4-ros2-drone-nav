@@ -361,7 +361,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 if primary
                 else f"{prefix}/obstacle_memory_status"
             )
-            latest_lidar_safety_scan = f"{prefix}/latest_lidar_safety_scan"
+            latest_lidar_obstacle_scan = f"{prefix}/latest_lidar_obstacle_scan"
             path_topic = f"{prefix}/mppi/path"
             marker_topic = f"{prefix}/mppi/markers"
             role_persistent_memory_enabled = obstacle_memory_enabled
@@ -398,7 +398,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "obstacle_memory_status_topic": memory_status,
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "raw_obstacle_delta_topic": raw_delta,
-                    "latest_lidar_safety_scan_topic": latest_lidar_safety_scan,
+                    "latest_lidar_obstacle_scan_topic": (
+                        latest_lidar_obstacle_scan
+                    ),
                     "tracked_agent_track_topic": (
                         f"{prefix}/target_track" if config["is_interceptor"] else ""
                     ),
@@ -435,8 +437,10 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "raw_obstacle_delta_topic": raw_delta,
+                    "latest_lidar_obstacle_scan_topic": (
+                        latest_lidar_obstacle_scan
+                    ),
                     "obstacle_memory_status_topic": memory_status,
-                    "latest_lidar_safety_scan_topic": latest_lidar_safety_scan,
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",
                     "execution_horizon_topic": f"{prefix}/mppi/execution_horizon",
                     "status_topic": f"{prefix}/mppi/status",

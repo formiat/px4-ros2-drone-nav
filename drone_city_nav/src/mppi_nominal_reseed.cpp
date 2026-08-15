@@ -10,21 +10,18 @@ MppiNominalReseedUpdate MppiNominalReseedTracker::update(
       observation.local_liveness_generation > local_liveness_generation_;
   const bool guide_liveness_changed =
       observation.guide_liveness_generation > guide_liveness_generation_;
-  const bool safety_rejection_changed =
-      observation.safety_rejection_generation > safety_rejection_generation_;
   const bool direct_tracking_maneuver_changed =
       observation.direct_tracking_maneuver_generation >
       direct_tracking_maneuver_generation_;
   const bool no_eligible_reseed_pending =
       no_eligible_phase_ == MppiNoEligiblePhase::kReseedPending;
   const bool requested = guide_changed || local_liveness_changed ||
-                         guide_liveness_changed || safety_rejection_changed ||
-                         direct_tracking_maneuver_changed || no_eligible_reseed_pending;
+                         guide_liveness_changed || direct_tracking_maneuver_changed ||
+                         no_eligible_reseed_pending;
 
   guide_generation_ = observation.guide_generation;
   local_liveness_generation_ = observation.local_liveness_generation;
   guide_liveness_generation_ = observation.guide_liveness_generation;
-  safety_rejection_generation_ = observation.safety_rejection_generation;
   direct_tracking_maneuver_generation_ =
       observation.direct_tracking_maneuver_generation;
   if (requested) {

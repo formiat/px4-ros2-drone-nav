@@ -17,7 +17,6 @@ struct DynamicAgentLidarStateConfig {
   double tracked_agent_radius_m{1.0};
   double tracked_agent_vertical_tolerance_m{1.0};
   double tracked_agent_maximum_age_s{0.5};
-  bool tracked_agent_excluded_from_latest_safety{true};
   double cooperative_peer_horizontal_margin_m{0.0};
   double cooperative_peer_vertical_margin_m{0.0};
   double cooperative_alignment_extrapolation_s{0.5};
@@ -27,7 +26,6 @@ struct DynamicAgentLidarStateConfig {
 struct DynamicAgentLidarFilterPlan {
   std::vector<DynamicAgentLidarVolume> tracked_agent_exclusions;
   std::vector<DynamicAgentLidarVolume> cooperative_memory_exclusions;
-  bool tracked_agent_excluded_from_latest_safety{false};
 };
 
 class DynamicAgentLidarState final {

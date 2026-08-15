@@ -181,12 +181,13 @@ converge continuously to zero below 30 m and their lateral lead is capped at
 A physically measured swept Gazebo separation of 5 m between any interceptor
 and the evader publishes
 typed `VehicleDestroyed` events for that pair. Their offboard nodes force-disarm
-and confirm both deaths, while the other interceptors brake and enter confirmed
-stationary position hold. A physical or 5 m proximity collision between
+and confirm both deaths, while the other interceptors receive a typed hold objective
+and settle into confirmed stationary position hold. A physical or 5 m proximity
+collision between
 interceptors destroys only the involved vehicles and the mission continues
 while another interceptor is available. If the evader reaches its goal first,
 the first airborne sample inside the goal radius latches that outcome, all
-surviving interceptors stop tracking, brake, and enter confirmed stationary
+surviving interceptors stop tracking and settle into confirmed stationary
 position hold; no vehicle is disarmed. A later inertial approach cannot change
 the first outcome, although entering the capture radius still applies the normal
 pair disarm. Evader goal arrival is an intercept failure but still a technically
@@ -307,7 +308,7 @@ Mission outcome and vehicle death are separate contracts. Mission failures never
 request disarm. Force-disarm is owned only by the latched death lifecycle and is
 accepted only for a physical Gazebo collision or a typed 5 m proximity death. If the
 evader physically crashes, its death/disarm is confirmed and a surviving
-interceptor is braked into a confirmed stationary position hold. A typed proximity
+interceptor receives a typed objective for confirmed stationary position hold. A typed proximity
 collision between two interceptors is the same physical death contract, not a
 mission-failure disarm path.
 
@@ -410,7 +411,10 @@ Obstacle topics follow a strict raw/runtime/debug contract.
 while `/drone_city_nav/raw_obstacle_snapshot` carries the current raw grid used by
 no-static planning. The larger atomic memory/provenance snapshot is published at
 the debug cadence and is not deserialized by the planner. Raw grids contain only
-direct obstacle evidence. In no-static mode the planner builds a
+direct obstacle evidence. Each timestamp-aligned scan also publishes
+`/drone_city_nav/latest_lidar_obstacle_scan`; while fresh, those physical hit
+points validate the complete finite path without waiting for persistent-memory
+integration. In no-static mode the planner builds a
 distance-derived risk field from that raw 2D world without materializing
 inflated grids. Static mode instead loads canonical Occupancy3D directly. The
 atomic `/drone_city_nav/raw_obstacle_snapshot` remains the runtime sensor-world
@@ -423,6 +427,21 @@ All published targets and execution horizons use the configured flight envelope
 footprint, including horizontal radius and upper/lower body extents. This is
 physical vehicle geometry, not an inflated prohibited region; ESDF risk bands
 remain finite route-ranking costs.
+
+Every normal execution path uses the configured horizon duration and includes
+an arrival speed profile within its own samples. Its final point has zero
+translational velocity and yaw rate. No separate motion phase is appended after
+the endpoint. Arrival shaping uses a conservative horizontal deceleration limit that is
+independent of the larger acceleration available to ordinary static-map manoeuvres.
+When a new valid receding-horizon path arrives it immediately supersedes the
+previous path or a temporary no-executable position hold. If one planning
+update cannot provide a replacement, both the remaining path geometry and its
+remaining controls from the measured vehicle state are validated. A divergent
+path is rebuilt from that measured state, with a complete arrival profile inside
+the remaining control slots. It continues
+only after complete raw-world validation and never past the previous deadline.
+It therefore reaches its own terminal rest instead of being discarded solely
+because the next update failed.
 
 After a headless run, validate lidar projection snapshots without GUI:
 

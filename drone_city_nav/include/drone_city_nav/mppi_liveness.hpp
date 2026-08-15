@@ -16,7 +16,6 @@ struct MppiLivenessConfig {
 
 enum class MppiLivenessState : std::uint8_t {
   kInactive,
-  kEmergencyBraking,
   kMonitoring,
   kMoving,
   kReseedRequested,
@@ -26,7 +25,6 @@ struct MppiLivenessObservation {
   std::int64_t stamp_ns{0};
   mppi::State actual_state{};
   bool controller_active{false};
-  bool emergency_braking{false};
   double predicted_head_progress_m{0.0};
   double predicted_terminal_progress_m{0.0};
   std::uint64_t route_generation{0U};
@@ -44,7 +42,6 @@ struct MppiLivenessResult {
   double actual_speed_mps{0.0};
   double predicted_head_progress_m{0.0};
   double predicted_terminal_progress_m{0.0};
-  double emergency_braking_duration_s{0.0};
   std::uint64_t reseed_generation{0U};
 };
 
@@ -66,7 +63,6 @@ private:
 
   MppiLivenessConfig config_;
   std::optional<Anchor> anchor_;
-  std::optional<std::int64_t> emergency_braking_started_ns_;
   std::uint64_t reseed_generation_{0U};
 };
 

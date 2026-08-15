@@ -19,7 +19,7 @@ no-static:
 
 selected route/guide
   -> GPU MPPI local horizon
-  -> post-update classification + braking supervisor
+  -> post-update physical validation + route-availability state
   -> timestamped execution horizon
   -> mppi_offboard_node
   -> PX4 trajectory setpoints
@@ -50,6 +50,8 @@ Gazebo contact involving the drone
 - publishes `/drone_city_nav/raw_obstacle_snapshot` on every no-static update and
   at the debug cadence in static mode;
 - publishes the full atomic memory/provenance snapshot at the debug cadence;
+- publishes timestamp-aligned raw lidar hit endpoints independently of
+  persistent-memory integration;
 - does not load or merge the canonical static map.
 
 ### `production_mppi_node`
@@ -66,7 +68,20 @@ Gazebo contact involving the drone
 - selects local lookahead targets;
 - runs the persistent CUDA MPPI engine;
 - follows typed 3D route samples and constrained channel spans;
-- validates the reconstructed horizon;
+- converts the reconstructed horizon into one finite path whose speed profile
+  reaches a terminal rest state;
+- validates that complete path against physical occupancy and fresh direct raw
+  lidar evidence where required;
+- publishes a typed position hold while no physically executable route exists;
+- retains the remaining trajectory of the previous finite path only when both
+  its geometry and its remaining controls from the measured vehicle state are
+  physically valid; otherwise it may rebuild the
+  remaining path from the measured state, shape its arrival profile again, and
+  validate the rebuilt path without extending the previous validity
+  window;
+- publishes a typed position hold only when neither a new path nor the
+  remaining previous path is physically executable, and resumes immediately
+  when a new finite path validates;
 - publishes `/drone_city_nav/mppi/execution_horizon`;
 - publishes MPPI RViz and diagnostic outputs.
 
@@ -95,9 +110,13 @@ the mission referee, and radar simulators.
 
 - consumes only fresh `MppiTrajectoryHorizon` messages;
 - applies timestamp lookahead to the current horizon;
-- emits PX4 velocity or position setpoints;
+- tracks finite path positions with velocity and acceleration feed-forward;
+- holds the validated terminal path point after its deadline if no replacement
+  command arrives;
+- emits PX4 trajectory or position setpoints;
 - executes safety and mission position holds when explicitly requested;
-- falls back to braking when no fresh executable horizon is available;
+- holds the current admissible position when no finite path or explicit hold
+  command has provided an executable terminal state;
 - publishes the applied-control feedback used by MPPI continuity logic;
 - accepts typed destruction events for its configured role and mission epoch;
 - owns the only force-disarm command path, after a valid destruction event;
@@ -128,9 +147,9 @@ No-static production planning uses the raw 2D obstacle snapshot and a
 There are no separately materialized planner/prohibited inflated grids,
 artificial hard collision envelopes around raw cells, inflation relaxation, or
 escape tunnels. Conservative ESDF clearance is used only to classify the
-critical and planning risk bands. A free center cell remains executable at zero
-clearance unless the drone's actual swept physical footprint intersects a raw
-occupied cell.
+critical and planning risk bands and compute soft exposure cost. A rollout
+remains executable at low clearance unless the drone's actual swept physical
+footprint intersects a raw occupied cell.
 
 ## Global And Local Planning
 
@@ -181,7 +200,7 @@ visible concurrently. Selector-gated lidar debug nodes retain pose and
 latest-map context for every scenario vehicle, but only the current spectator
 projects scans, integrates diagnostic memory, writes a bounded startup snapshot,
 and publishes detailed lidar layers. Non-selected vehicles continue publishing
-their latest physical lidar returns for stopping safety, but do not build
+their latest physical lidar returns for finite-path validation, but do not build
 static-mode diagnostic memory. These
 visualization-only nodes share the diagnostics component container; their
 outputs never participate in route selection or vehicle control.
@@ -250,7 +269,7 @@ configured goal radius, without a stop-speed or hold-time delay. An intercept
 records the result only after both typed destruction events, both PX4 disarm
 confirmations, and confirmed holds from every surviving interceptor. If the
 evader reaches its goal first, the coordinator commands every surviving
-interceptor to brake and transition into stationary position hold. It records
+interceptor to transition to a typed stationary position hold. It records
 the result only after a post-command position-hold horizon is active and all
 positions and speeds remain inside the configured hold tolerances. No mission
 termination or disarm is requested in that branch.
@@ -290,10 +309,11 @@ prohibited zone or relax collision checks against raw physical occupancy.
 
 - sequence and obstacle/pose revisions;
 - `valid_from` and `valid_until`;
-- risk and braking state;
+- risk diagnostics plus execution mode and reason;
 - optional constrained-route speed and altitude state;
 - time-indexed position, velocity, acceleration, yaw, and yaw rate;
-- an explicit stationary position-hold request used by safety or goal capture.
+- an explicit stationary position-hold request used for mission commands, goal
+  capture, cooperative yield, or route unavailability.
 
 Offboard executes only the current fresh horizon. There is no legacy path-id,
 suffix ACK, partial-replan, safe-truncation, or moving/after-hold protocol.
@@ -304,10 +324,16 @@ suffix ACK, partial-replan, safe-truncation, or moving/after-hold protocol.
   result.
 - Intersecting a raw occupied cell with the swept oriented drone footprint is a
   hard physical collision result.
-- Route targets and execution horizons must remain in `1.0 <= z < 32.0 m`.
+- Route targets and execution horizons must remain in `1.0 <= z < 32.0 m` and
+  retain enough vertical stopping room under the configured acceleration and
+  jerk limits.
 - Risk-band exposure ranks candidates but is not physical crash detection.
-- The braking supervisor evaluates the selected horizon and can publish a
-  dynamically generated fallback.
+- Critical and planning clearance exposure remain strong soft costs and never
+  create a hold or reachability gate by themselves.
+- A missing executable route produces a typed stationary hold; a newly accepted
+  route atomically resumes planned execution.
+- Offboard stops only when its timestamped execution horizon expires; it never
+  continues an old horizon open loop.
 - Gazebo physical contact is the authoritative simulated crash event.
 
 Debug topics, RViz markers, and JSONL files never feed back into control.

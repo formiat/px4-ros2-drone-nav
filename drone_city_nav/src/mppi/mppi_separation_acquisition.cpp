@@ -84,7 +84,7 @@ evaluateCandidate(const CooperativeSeparationAcquisitionEvaluationInput& input,
       input.target.y, input.config.early_exit_on_collision,
       input.previous_applied_control, input.reference_speed_mps, input.config.footprint,
       std::nullopt, &trace, input.aircraft, input.acquisition.preference,
-      input.config.cooperative);
+      input.config.cooperative, std::nullopt, input.config.altitude_envelope);
   const bool solid_collision = hostSweptSolidCollision(
       trace.horizon, controls, input.config.footprint, input.known_solids);
   const std::size_t head_step = std::clamp<std::size_t>(
@@ -106,7 +106,8 @@ evaluateCandidate(const CooperativeSeparationAcquisitionEvaluationInput& input,
       .head_progress_m = head_progress_m,
       .terminal_progress_m = progress(terminal),
       .separation_gain_m = separation_gain_m,
-      .raw_safe = !metrics.collision && !solid_collision,
+      .raw_safe = !metrics.altitude_envelope_violation && !metrics.collision &&
+                  !solid_collision,
       .separating = std::isfinite(separation_gain_m) &&
                     separation_gain_m >= input.acquisition.minimum_separation_gain_m,
       .positive_progress =

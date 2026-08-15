@@ -212,6 +212,8 @@ struct CostBreakdown {
   float dynamic_aircraft_anticipation{0.0F};
   float dynamic_aircraft_survival{0.0F};
   float maneuver_preference{0.0F};
+  float critical_clearance_proximity_s{0.0F};
+  float obstacle_approach_m2_s{0.0F};
   float terminal{0.0F};
 };
 
@@ -227,6 +229,7 @@ struct RolloutMetrics {
   float predicted_capture_time_s{-1.0F};
   RiskTier worst_tier{RiskTier::kPreferred};
   bool collision{false};
+  bool altitude_envelope_violation{false};
 };
 
 struct EsdfGrid {

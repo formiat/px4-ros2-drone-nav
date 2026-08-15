@@ -90,7 +90,7 @@ TEST(StaticRouteExtensionTest, DefersLifecycleReleaseButNeverRawBlockedRelease) 
   EXPECT_TRUE(deferStaticRouteReleaseDuringExtension(
       true, GlobalGuideReleaseReason::kExhausted));
   EXPECT_TRUE(deferStaticRouteReleaseDuringExtension(
-      true, GlobalGuideReleaseReason::kPersistentSafetyRejection));
+      true, GlobalGuideReleaseReason::kNoEligibleRollouts));
   EXPECT_FALSE(
       deferStaticRouteReleaseDuringExtension(true, GlobalGuideReleaseReason::kBlocked));
   EXPECT_FALSE(deferStaticRouteReleaseDuringExtension(
@@ -115,9 +115,9 @@ TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterRejectedExtension) {
 
 TEST(StaticRouteExtensionTest, DropsDeferredReplanAfterActivatedExtension) {
   StaticRouteDeferredReplanLatch latch;
-  latch.defer(StaticRouteDeferredReplan{
-      .reason = GlobalGuideReleaseReason::kPersistentSafetyRejection,
-      .route_generation = 12U});
+  latch.defer(
+      StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kNoEligibleRollouts,
+                                .route_generation = 12U});
 
   EXPECT_FALSE(latch.finishExtension(12U, true).has_value());
   EXPECT_FALSE(latch.pending());
@@ -127,9 +127,9 @@ TEST(StaticRouteExtensionTest, KeepsStrongestDeferredReplanReason) {
   StaticRouteDeferredReplanLatch latch;
   latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kStalled,
                                         .route_generation = 12U});
-  latch.defer(StaticRouteDeferredReplan{
-      .reason = GlobalGuideReleaseReason::kPersistentSafetyRejection,
-      .route_generation = 12U});
+  latch.defer(
+      StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kNoEligibleRollouts,
+                                .route_generation = 12U});
   latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kExhausted,
                                         .route_generation = 12U});
 
@@ -138,7 +138,7 @@ TEST(StaticRouteExtensionTest, KeepsStrongestDeferredReplanReason) {
 
   ASSERT_NE(replay, std::nullopt);
   EXPECT_EQ(replay.value_or(StaticRouteDeferredReplan{}).reason,
-            GlobalGuideReleaseReason::kPersistentSafetyRejection);
+            GlobalGuideReleaseReason::kNoEligibleRollouts);
 }
 
 TEST(StaticRouteExtensionTest, CandidateMustImproveEndpointAndAvoidRawOccupancy) {

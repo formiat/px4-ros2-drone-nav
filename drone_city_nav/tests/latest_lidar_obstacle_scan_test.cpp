@@ -1,4 +1,4 @@
-#include "drone_city_nav/latest_lidar_scan_safety.hpp"
+#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
 
 #include <gtest/gtest.h>
 
@@ -8,7 +8,7 @@
 namespace drone_city_nav {
 namespace {
 
-TEST(LatestLidarScanSafetyTest, PreservesAHitInTheAcquisitionBodyFrame) {
+TEST(LatestLidarObstacleScanTest, PreservesHitInAcquisitionBodyFrame) {
   LidarProjectionPose pose;
   pose.position = Point2{10.0, 20.0};
   pose.altitude_m = 5.0;
@@ -27,8 +27,8 @@ TEST(LatestLidarScanSafetyTest, PreservesAHitInTheAcquisitionBodyFrame) {
       .compensate_attitude = true,
   };
 
-  const LatestLidarSafetyScanBuildResult result =
-      buildLatestLidarSafetyScan(LatestLidarSafetyScanBuildInput{
+  const LatestLidarObstacleScanBuildResult result =
+      buildLatestLidarObstacleScan(LatestLidarObstacleScanBuildInput{
           .ranges = ranges,
           .beam_projection_poses = poses,
           .projection_config = projection_config,
@@ -50,7 +50,7 @@ TEST(LatestLidarScanSafetyTest, PreservesAHitInTheAcquisitionBodyFrame) {
   EXPECT_NEAR(reconstructed.z, expected.endpoint_map_m.z, 1.0e-9);
 }
 
-TEST(LatestLidarScanSafetyTest, UsesEveryBeamPoseInsteadOfPersistentMemory) {
+TEST(LatestLidarObstacleScanTest, UsesTimestampAlignedPoseForEveryBeam) {
   LidarProjectionPose first_pose;
   first_pose.position = Point2{10.0, 10.0};
   first_pose.altitude_m = 5.0;
@@ -63,8 +63,8 @@ TEST(LatestLidarScanSafetyTest, UsesEveryBeamPoseInsteadOfPersistentMemory) {
   const LidarProjectionConfig config{.min_projected_altitude_m = -100.0,
                                      .max_projected_altitude_m = 100.0};
 
-  const LatestLidarSafetyScanBuildResult result =
-      buildLatestLidarSafetyScan(LatestLidarSafetyScanBuildInput{
+  const LatestLidarObstacleScanBuildResult result =
+      buildLatestLidarObstacleScan(LatestLidarObstacleScanBuildInput{
           .ranges = ranges,
           .beam_projection_poses = poses,
           .projection_config = config,

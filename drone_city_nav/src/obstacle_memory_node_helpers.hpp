@@ -101,13 +101,9 @@ struct DynamicAgentLidarScanFilterResult {
   std::size_t cooperative_peer_matches{0U};
   bool tracked_agent_filter_applied{false};
   bool cooperative_filter_applied{false};
-  bool tracked_agent_excluded_from_latest_safety{false};
 
   [[nodiscard]] std::span<const float>
   persistentRanges(std::span<const float> raw_ranges) const noexcept;
-
-  [[nodiscard]] std::span<const float>
-  latestSafetyRanges(std::span<const float> raw_ranges) const noexcept;
 };
 
 [[nodiscard]] DynamicAgentLidarScanFilterResult

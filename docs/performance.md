@@ -87,8 +87,8 @@ make mppi-benchmark \
 ```
 
 The benchmark includes real dynamics integration, ESDF texture queries,
-categorical risk, weighted update, and warm start. It does not include ROS,
-Gazebo, or live ESDF rebuild contention.
+clearance-cost evaluation, weighted update, and warm start. It does not include
+ROS, Gazebo, or live ESDF rebuild contention.
 
 ## Production Profiling
 
@@ -100,9 +100,9 @@ For a real run, compare:
 4. deadline misses;
 5. dropped ESDF and diagnostic snapshots;
 6. offboard horizon receive age;
-7. liveness and braking frequency.
+7. liveness, route-unavailable hold, and unavailable-path hold frequency;
 8. planner process/thread count and CUDA process count in multi-vehicle runs.
 
-Do not lower collision checking or shorten braking horizons solely to improve
-timing. First reduce redundant ESDF work, stale revisions, diagnostic load, or
-rollout count based on measured bottlenecks.
+Do not lower collision checking or weaken finite-path validation solely to
+improve timing. First reduce redundant ESDF work, stale revisions, diagnostic
+load, or rollout count based on measured bottlenecks.

@@ -260,7 +260,7 @@ void CooperativeTrafficRefereeNode::configureVehicles(
           if (!vehicle.executable_horizon_ready && horizon->sequence > 0U &&
               horizon->execution_mode ==
                   msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-              !horizon->emergency_braking && horizon->points.size() >= 2U) {
+              horizon->points.size() >= 2U) {
             vehicle.executable_horizon_ready = true;
             vehicle.first_executable_horizon_sequence = horizon->sequence;
             RCLCPP_INFO(get_logger(),

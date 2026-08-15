@@ -73,12 +73,32 @@ Reference speed is bounded by:
 
 - mode cruise and absolute limits;
 - curvature preview;
-- observed-space/braking constraints;
+- sensor-observation range and physical stopping capability;
 - goal approach;
+- an unresolved route frontier, whose terminal speed is zero until an actual
+  route extension is accepted;
 - constrained-route span limits.
 
-When no guide exists in no-static mode, direct flight to the distant mission
-goal is forbidden. The planner publishes braking/hold behavior instead.
+When no executable route exists in either mode, direct flight to the distant
+mission goal is forbidden. The planner publishes a typed stationary hold while
+route search continues. Direct interception remains valid without a global route
+only when the current target is visible and the direct swept path is physically
+validated.
+
+Route availability and local-horizon executability are separate contracts. If
+the active route or validated direct interception exists but MPPI produces no
+physically executable next horizon, the planner first validates the unchanged
+remaining trajectory of the previously published finite path against the
+current raw world. If that trajectory became invalid, the planner may rebuild
+the remaining control intent from the measured state, embed endpoint
+deceleration inside the remaining control slots, and validate the complete
+rebuilt path. Either continuation retains the previous validity deadline and
+ends at rest. Only when neither path is executable does the planner publish a
+`no_executable_horizon` position hold. A newly validated finite path supersedes
+that hold immediately;
+recovery does not wait for the vehicle to become stationary. Loss of the global
+route first preserves any still-executable finite path, and clearance tiers do
+not trigger this hold.
 
 ## 5. Constrained Route Spans
 
@@ -97,23 +117,47 @@ Each planning tick:
 2. generates CUDA control perturbations;
 3. simulates thousands of dynamic-state rollouts;
 4. queries the 3D ESDF with the swept oriented physical footprint;
-5. selects the best eligible risk class;
+5. rejects physically infeasible rollouts and applies strong soft clearance
+   exposure costs to the remaining rollouts;
 6. computes the weighted control update;
 7. limits the first control relative to applied-control feedback;
-8. reconstructs the selected nominal horizon on the host.
+8. reconstructs the selected nominal horizon on the host;
+9. uses the final control slots of that same path for dynamically bounded
+   deceleration, so the endpoint has zero translational and yaw velocity without
+   adding samples beyond the configured duration;
+10. validates the complete finite path before publication.
 
 MPPI optimizes a short receding horizon. It does not publish a long mission
 path for open-loop execution.
 
-## 7. Post-Update Checks And Braking
+## 7. Post-Update And Route-Availability Checks
 
-The reconstructed horizon receives an observational post-update
-classification. Raw physical collision causes execution to switch to the
-braking fallback. The independent horizon safety check estimates
-time-to-collision and stopping capability against the current ESDF. Targets and
-all published horizon states must remain inside the configured flight envelope.
-The braking hold cannot latch a ground position outside that envelope; after
-takeoff it captures the current admissible low-speed position instead.
+The reconstructed horizon is validated against the physical occupancy and the
+configured flight envelope. Every state must retain enough vertical stopping
+room under the configured acceleration and jerk limits, not merely lie inside
+the numeric altitude interval. In no-static mode, the newest timestamp-aligned
+raw lidar returns additionally validate the complete finite path, independently
+of persistent-memory integration latency. A path that intersects raw occupancy
+or cannot remain inside the flight envelope is not published. The planner moves
+the start of the in-path deceleration earlier until the path validates; it never
+appends motion after the finite endpoint. Critical or planning clearance exposure
+affects cost and diagnostics, but cannot independently reject motion or latch a
+hold.
+
+A failed replacement update does not invalidate the previous path by itself.
+The planner first checks its remaining timed trajectory using raw occupancy, the
+full swept footprint, and fresh direct lidar returns. The already published path
+continues without republishing when that trajectory remains valid. If it does
+not, the planner may re-simulate the unexecuted controls from the current state,
+reshape the arrival profile in the remaining duration, and validate the
+complete rebuilt path. The rebuilt command starts at the current timestamp, but
+its deadline never exceeds the previous `valid_until`.
+
+Route validity is checked separately. An unresolved frontier receives a zero
+terminal speed so normal speed policy can stop before its endpoint. If no
+physically executable route remains, the planner latches the current admissible
+position and publishes `no_executable_route` hold horizons until a replacement
+route is atomically accepted.
 
 The liveness monitor compares predicted and actual progress. Persistent
 prediction without real movement can reseed the MPPI nominal controls and
@@ -128,8 +172,8 @@ batched flush period; a bounded recent-record ring is dumped when a collision
 episode begins.
 
 Offboard consumes the fresh horizon, interpolates by timestamp, and emits PX4
-trajectory setpoints. If the horizon expires, offboard brakes instead of
-continuing an old path.
+trajectory setpoints. The finite path reaches zero velocity by its deadline;
+offboard then holds its terminal point instead of extrapolating motion.
 
 ## Removed Legacy Stages
 

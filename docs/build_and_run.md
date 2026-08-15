@@ -123,7 +123,7 @@ shortens the lead while preserving direct mode.
 The headless command validates all four PX4 logs. An intercept result requires
 typed Gazebo physical-proximity evidence at or below 5 m, confirmed disarm of
 the capturing pair, and confirmed holds from every surviving
-interceptor. Survivors first brake, then must publish and maintain a stationary
+interceptor. Survivors must publish and maintain a stationary
 position-hold horizon. An evader-goal result requires all surviving interceptors
 to stop tracking and confirm the same hold transition without disarming. If
 inertial motion causes a late capture after evader goal arrival, both pair

@@ -244,7 +244,9 @@ ActiveGlobalGuideUpdate ActiveGlobalGuideLifecycle::update(
     } else {
       status_.active = true;
       status_.retained = true;
-      status_.requires_replan = status_.current_risk == GlobalGuideRiskTier::kCritical;
+      status_.requires_replan =
+          status_.current_risk == GlobalGuideRiskTier::kCritical ||
+          status_.current_risk > accepted_risk_;
       status_.release_reason = GlobalGuideReleaseReason::kNone;
       return status_;
     }
@@ -354,8 +356,7 @@ GlobalGuideProgressTracker::GlobalGuideProgressTracker(
     const GlobalGuideProgressConfig& config)
     : config_{config} {
   if (!(config_.observation_window_s > 0.0) || !(config_.minimum_progress_m >= 0.0) ||
-      !(config_.minimum_predicted_head_progress_m >= 0.0) ||
-      !(config_.persistent_safety_rejection_window_s > 0.0)) {
+      !(config_.minimum_predicted_head_progress_m >= 0.0)) {
     throw std::invalid_argument{"invalid global guide progress configuration"};
   }
 }
@@ -372,36 +373,9 @@ GlobalGuideProgressUpdate GlobalGuideProgressTracker::evaluate(
       !std::isfinite(observation.predicted_head_progress_m) ||
       !observation.controller_active) {
     anchor_valid_ = false;
-    safety_rejection_anchor_valid_ = false;
     local_reseed_pending_ = false;
     return update;
   }
-  if (observation.emergency_braking) {
-    if (!safety_rejection_anchor_valid_ ||
-        safety_rejection_guide_generation_ != observation.guide_generation ||
-        observation.stamp_ns < safety_rejection_anchor_stamp_ns_) {
-      safety_rejection_anchor_valid_ = true;
-      safety_rejection_anchor_stamp_ns_ = observation.stamp_ns;
-      safety_rejection_guide_generation_ = observation.guide_generation;
-      return update;
-    }
-    update.observation_age_s =
-        static_cast<double>(observation.stamp_ns - safety_rejection_anchor_stamp_ns_) /
-        1.0e9;
-    if (update.observation_age_s < config_.persistent_safety_rejection_window_s) {
-      return update;
-    }
-    ++stall_generation_;
-    update.action = GlobalGuideProgressAction::kReleasePersistentSafetyRejection;
-    update.stalled = true;
-    update.persistent_safety_rejection = true;
-    update.stall_generation = stall_generation_;
-    safety_rejection_anchor_stamp_ns_ = observation.stamp_ns;
-    anchor_valid_ = false;
-    local_reseed_pending_ = false;
-    return update;
-  }
-  safety_rejection_anchor_valid_ = false;
   if (!anchor_valid_ || observation.guide_generation != anchor_guide_generation_ ||
       observation.stamp_ns < anchor_stamp_ns_) {
     local_reseed_pending_ = false;
@@ -481,8 +455,6 @@ globalGuideReleaseReasonName(const GlobalGuideReleaseReason reason) noexcept {
       return "exhausted";
     case GlobalGuideReleaseReason::kStalled:
       return "stalled";
-    case GlobalGuideReleaseReason::kPersistentSafetyRejection:
-      return "persistent_safety_rejection";
     case GlobalGuideReleaseReason::kNoEligibleRollouts:
       return "no_eligible_rollouts";
     case GlobalGuideReleaseReason::kDiverged:
@@ -556,8 +528,6 @@ globalGuideProgressActionName(const GlobalGuideProgressAction action) noexcept {
       return "release_low_predicted_progress";
     case GlobalGuideProgressAction::kReleasePredictionMismatch:
       return "release_prediction_mismatch";
-    case GlobalGuideProgressAction::kReleasePersistentSafetyRejection:
-      return "release_persistent_safety_rejection";
   }
   return "unknown";
 }

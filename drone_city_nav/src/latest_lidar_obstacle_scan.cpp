@@ -1,12 +1,12 @@
-#include "drone_city_nav/latest_lidar_scan_safety.hpp"
+#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
 
 #include <cmath>
 
 namespace drone_city_nav {
 
-LatestLidarSafetyScanBuildResult
-buildLatestLidarSafetyScan(const LatestLidarSafetyScanBuildInput& input) {
-  LatestLidarSafetyScanBuildResult result{};
+LatestLidarObstacleScanBuildResult
+buildLatestLidarObstacleScan(const LatestLidarObstacleScanBuildInput& input) {
+  LatestLidarObstacleScanBuildResult result{};
   result.source_beam_count = input.ranges.size();
   if (input.ranges.empty() ||
       input.beam_projection_poses.size() != input.ranges.size()) {

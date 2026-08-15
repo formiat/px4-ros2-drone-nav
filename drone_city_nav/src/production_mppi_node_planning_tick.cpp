@@ -99,97 +99,11 @@ void ProductionMppiNode::planningTick() {
   }
   if (!esdf.has_value() || esdf_age_ms < 0.0 ||
       esdf_age_ms > maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_) {
-    const ProductionMppiPreparedEsdf stale_esdf =
-        esdf.value_or(ProductionMppiPreparedEsdf{});
-    const ProductionMppiCooperativeUpdate cooperative = prepareCooperativeTick(
-        stale_esdf, ConstrainedRouteObservation{}, cooperative_command, now_ns, 0.0);
-    const ProductionMppiNonCooperativeUpdate noncooperative =
-        prepareNonCooperativeTick(navigation.state, noncooperative_tracks, now_ns);
-    mppi::MppiTickInput input{
-        .initial_state = navigation.state,
-        .target = navigation.state,
-        .pose_revision = navigation.revision,
-        .obstacle_revision = raw_revision(stale_esdf.revision),
-        .planning_stamp_ns = now_ns,
-        .previous_applied_control = std::nullopt,
-        .nominal_reseed_generation = 0U,
-        .reference_speed_mps = 0.0F,
-        .moving_target = std::nullopt,
-        .route = std::nullopt,
-        .dynamic_aircraft = {},
-        .dynamic_aircraft_cost_policy = std::nullopt,
-        .cooperative_maneuver = std::nullopt,
-        .cooperative_acquisition = std::nullopt,
-        .noncooperative_acquisition = std::nullopt,
-        .active_rollouts = std::nullopt,
-        .deterministic_candidate = mppi::DeterministicCandidateKind::kDisabled,
-        .cooperative_avoidance_active = false,
-        .noncooperative_avoidance_active = false,
-    };
-    const MppiHorizonSafetyResult fallback =
-        buildMppiBrakingFallback(input.initial_state, safety_config_);
-    mppi::MppiTickResult result;
-    result.horizon = fallback.fallback_horizon;
-    result.controls = fallback.fallback_controls;
-    result.selected_tier = mppi::RiskTier::kPreferred;
-    result.raw_collision = false;
-    result.known_solid_collision = false;
-    result.esdf_revision = stale_esdf.revision;
-    result.timings.host_total_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  snapshot_started)
-            .count();
-    const ProductionMppiPlanningState planning_state =
-        ProductionMppiPlanningState::kUnavailableWorldBrakingHold;
-    ++tick_sequence_;
-    recordTickStatistics(result, planning_state, false);
-    ProductionMppiExecutionPublication execution =
-        publishExecutionHorizon(input, result, stale_esdf, planning_state, now_ns);
-    std::optional<ProductionMppiRvizSnapshot> rviz;
-    if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
-      rviz = ProductionMppiRvizSnapshot{
-          .candidate_horizon = result.horizon,
-          .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
-                                                           : std::vector<mppi::State>{},
-          .execution_horizon = execution.horizon,
-          .route = stale_esdf.mppi_route,
-          .channel_edges = stale_esdf.channel_edges,
-          .selected_channel_ids = stale_esdf.selected_channel_ids,
-      };
-      last_rviz_stamp_ns_ = now_ns;
-    }
-    ProductionMppiPreparedEsdf diagnostic_esdf = stale_esdf;
-    diagnostic_esdf.distances_m.reset();
-    diagnostic_esdf.mppi_route.reset();
-    enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot{
-        .input = input,
-        .result = result,
-        .esdf = std::move(diagnostic_esdf),
-        .stability = {},
-        .prediction = prediction,
-        .liveness = {},
-        .speed_policy = {},
-        .guide_progress = {},
-        .goal_capture = {},
-        .execution = std::move(execution),
-        .planning_state = planning_state,
-        .rviz = std::move(rviz),
-        .objective = objective,
-        .target_source = "unavailable_world_braking",
-        .tick_sequence = tick_sequence_,
-        .memory_sequence = memory_sequence,
-        .pose_age_ms = pose_age_ms,
-        .esdf_age_ms = esdf_age_ms,
-        .control_feedback_age_ms = control_feedback_age_ms,
-        .snapshot_ms = result.timings.host_total_ms,
-        .stability_ms = 0.0,
-        .liveness_reseed_requested = false,
-        .pose_predicted = pose_predicted,
-        .cooperative = cooperative,
-        .noncooperative = noncooperative,
-        .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
-    });
-    previous_result_ = std::move(result);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_world esdf_age_ms=%.1f "
+        "maximum_execution_age_ms=%.1f",
+        esdf_age_ms, maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_);
     return;
   }
   if (!engine_->ready()) {
@@ -276,6 +190,16 @@ void ProductionMppiNode::planningTick() {
   }
   const bool route_execution_blocked =
       !direct_tracking_interception && objective && !route_usable;
+  if (route_execution_blocked && !no_executable_route_hold_position_.has_value()) {
+    no_executable_route_hold_position_ = Point3{
+        navigation.state.x,
+        navigation.state.y,
+        clampToFlightEnvelope(navigation.state.z, flight_envelope_config_)
+            .value_or(flight_envelope_config_.minimum_target_z_m),
+    };
+  } else if (!route_execution_blocked) {
+    no_executable_route_hold_position_.reset();
+  }
   GlobalGuideProjection route_projection = measured_route_projection;
   if (route_projection.valid) {
     route_projection.station_m = tracked_route_station_m_;
@@ -313,13 +237,8 @@ void ProductionMppiNode::planningTick() {
                 .terminal_route_available = esdf->global_guide_reaches_mission_goal,
             })
           : MissionGoalCaptureResult{};
-  const bool temporary_frontier_continuation_ready =
-      route_usable && route_projection.valid &&
-      !esdf->global_guide_reaches_mission_goal && previous_result_ &&
-      previous_result_->route_directed_candidate_injected &&
-      previous_result_->route_directed_candidate_raw_safe &&
-      previous_result_->route_directed_candidate_generation ==
-          esdf->global_guide_generation;
+  const bool temporary_frontier_is_terminal = route_usable && route_projection.valid &&
+                                              !esdf->global_guide_reaches_mission_goal;
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
       speed_policy_config_,
       MppiSpeedPolicyInput{
@@ -330,10 +249,6 @@ void ProductionMppiNode::planningTick() {
               route_usable && route_projection.valid &&
                       !esdf->global_guide_reaches_mission_goal
                   ? std::optional<double>{route_projection.remaining_m}
-                  : std::nullopt,
-          .route_endpoint_terminal_speed_mps =
-              temporary_frontier_continuation_ready
-                  ? std::optional<double>{speed_policy_config_.cruise_speed_mps}
                   : std::nullopt,
           .route_constraint_speed_limit_mps =
               route_control.active
@@ -368,19 +283,25 @@ void ProductionMppiNode::planningTick() {
                         ? "tracking_direct_full_prediction"
                         : "tracking_direct_shortened_prediction";
   } else if (route_execution_blocked) {
-    target = navigation.state;
+    const Point3 hold_position = no_executable_route_hold_position_.value();
+    target = mppi::State{
+        .x = static_cast<float>(hold_position.x),
+        .y = static_cast<float>(hold_position.y),
+        .z = static_cast<float>(hold_position.z),
+        .yaw = navigation.state.yaw,
+    };
     if (route_cross_track_rejected) {
       target_source = objective->continuous_tracking
-                          ? "tracking_route_cross_track_rejected"
-                          : "route_cross_track_rejected";
+                          ? "tracking_no_executable_route_cross_track_rejected"
+                          : "no_executable_route_cross_track_rejected";
     } else if (route_projection_rejected) {
       target_source = objective->continuous_tracking
-                          ? "tracking_route_projection_rejected"
-                          : "route_projection_rejected";
+                          ? "tracking_no_executable_route_projection_rejected"
+                          : "no_executable_route_projection_rejected";
     } else {
       target_source = objective->continuous_tracking
-                          ? "tracking_route_objective_mismatch"
-                          : "route_objective_mismatch";
+                          ? "tracking_no_executable_route_objective_mismatch"
+                          : "no_executable_route_objective_mismatch";
     }
   } else {
     target =
@@ -417,7 +338,7 @@ void ProductionMppiNode::planningTick() {
   }
   ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
   if (objective && objective->immediate_hold) {
-    planning_state = ProductionMppiPlanningState::kObstacleAwareHold;
+    planning_state = ProductionMppiPlanningState::kMissionCommandPositionHold;
     target = mppi::State{
         .x = static_cast<float>(mission_goal.x),
         .y = static_cast<float>(mission_goal.y),
@@ -426,7 +347,7 @@ void ProductionMppiNode::planningTick() {
     };
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
-    target_source = "mission_command_obstacle_aware_hold";
+    target_source = "mission_command_position_hold";
   } else if (goal_capture.latched) {
     planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
     target = mppi::State{
@@ -438,24 +359,31 @@ void ProductionMppiNode::planningTick() {
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "mission_goal_position_hold";
+  } else if (route_execution_blocked) {
+    planning_state = ProductionMppiPlanningState::kNoExecutableRouteHold;
+    speed_policy.reference_speed_mps = 0.0;
+    speed_policy.target_lookahead_m = 0.0;
   } else if (cooperative.yield.active && cooperative.yield.hold_at_entry &&
              !route_control.hold_xy) {
     planning_state = ProductionMppiPlanningState::kCooperativeChannelYieldHold;
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "cooperative_channel_yield_hold";
-  } else if (target_source == "mission_goal_direct" || route_execution_blocked) {
-    planning_state = ProductionMppiPlanningState::kNoGuideBrakingHold;
-    target = navigation.state;
-    speed_policy.reference_speed_mps = 0.0;
-    speed_policy.target_lookahead_m = 0.0;
-    target_source = target_source == "mission_goal_direct"
-                        ? "no_guide_braking_hold"
-                        : target_source + "_braking_hold";
   }
   const bool control_feedback_fresh =
       applied_control.valid && control_feedback_age_ms >= 0.0 &&
       control_feedback_age_ms <= maximum_control_feedback_age_ms_;
+  std::optional<mppi::Control> previous_applied_control;
+  ProductionMppiPreviousControlSource previous_control_source =
+      ProductionMppiPreviousControlSource::kEngineFallback;
+  if (control_feedback_fresh) {
+    previous_applied_control = applied_control.control;
+    previous_control_source = ProductionMppiPreviousControlSource::kOffboardFeedback;
+  } else if (navigation.measured_acceleration_valid && !pose_predicted) {
+    previous_applied_control = navigation.measured_equivalent_control;
+    previous_control_source =
+        ProductionMppiPreviousControlSource::kMeasuredAcceleration;
+  }
   MppiLivenessResult liveness;
   if (liveness_supervisor_ && !direct_tracking_interception) {
     liveness = liveness_supervisor_->evaluate(MppiLivenessObservation{
@@ -464,8 +392,6 @@ void ProductionMppiNode::planningTick() {
         .controller_active = control_feedback_fresh &&
                              planning_state == ProductionMppiPlanningState::kPlanned &&
                              !route_control.hold_xy && route_projection.valid,
-        .emergency_braking =
-            control_feedback_fresh && applied_control.emergency_braking,
         .predicted_head_progress_m =
             previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
         .predicted_terminal_progress_m =
@@ -490,13 +416,9 @@ void ProductionMppiNode::planningTick() {
         .controller_active = control_feedback_fresh &&
                              planning_state == ProductionMppiPlanningState::kPlanned &&
                              !route_control.hold_xy,
-        .emergency_braking =
-            control_feedback_fresh && applied_control.emergency_braking,
     });
     if (guide_progress.stalled) {
-      requestGuideRelease(guide_progress.persistent_safety_rejection
-                              ? GlobalGuideReleaseReason::kPersistentSafetyRejection
-                              : GlobalGuideReleaseReason::kStalled,
+      requestGuideRelease(GlobalGuideReleaseReason::kStalled,
                           esdf->global_guide_generation);
     }
   }
@@ -510,9 +432,6 @@ void ProductionMppiNode::planningTick() {
         *esdf->mppi_route, static_cast<float>(route_projection.station_m),
         static_cast<float>(route_projection.station_m +
                            std::max(0.0, horizon_distance_m)));
-    maximum_eligible_risk_tier_ = static_cast<mppi::RiskTier>(
-        std::max(static_cast<std::uint8_t>(maximum_eligible_risk_tier_),
-                 static_cast<std::uint8_t>(route_required_risk_tier)));
   }
   std::optional<mppi::MovingTargetReference> moving_target;
   if (objective && objective->continuous_tracking && objective->tracking.has_value()) {
@@ -581,34 +500,9 @@ void ProductionMppiNode::planningTick() {
                                   : esdf->global_guide_generation,
           .local_liveness_generation = liveness.reseed_generation,
           .guide_liveness_generation = guide_progress.local_reseed_generation,
-          .safety_rejection_generation = guide_progress.persistent_safety_rejection
-                                             ? guide_progress.stall_generation
-                                             : 0U,
           .direct_tracking_maneuver_generation =
               direct_tracking_maneuver.reseed_generation,
       });
-  if (risk_escalation_) {
-    const bool stable_progress = previous_result_.has_value() &&
-                                 previous_result_->eligible_risk_contract.available &&
-                                 guide_progress.progress_m > 1.0e-3;
-    maximum_eligible_risk_tier_ =
-        risk_escalation_
-            ->update(MppiRiskEscalationObservation{
-                .reseed_generation =
-                    liveness.reseed_generation + guide_progress.local_reseed_generation,
-                .no_eligible_recovery_generation =
-                    nominal_reseed.no_eligible_recovery_generation,
-                .stable_progress = stable_progress,
-            })
-            .maximum_eligible_tier;
-  }
-  // Evasive cost may redirect the vehicle, but it cannot spend more obstacle risk
-  // than the currently executable route requires.
-  if (noncooperative.enabled && noncooperative.avoidance.fresh_track_count > 0U) {
-    maximum_eligible_risk_tier_ = static_cast<mppi::RiskTier>(
-        std::min(static_cast<std::uint8_t>(maximum_eligible_risk_tier_),
-                 static_cast<std::uint8_t>(route_required_risk_tier)));
-  }
   const EsdfQueryResult current_clearance =
       queryConservativeEsdf3D(esdf->grid, *esdf->distances_m, navigation.state.x,
                               navigation.state.y, navigation.state.z);
@@ -631,7 +525,7 @@ void ProductionMppiNode::planningTick() {
           .tracking_age_ms = tracking_age_ms,
           .required_risk_tier = direct_tracking_interception
                                     ? mppi::RiskTier::kPreferred
-                                    : maximum_eligible_risk_tier_,
+                                    : route_required_risk_tier,
       });
   mppi::DeterministicCandidateKind deterministic_candidate =
       mppi::DeterministicCandidateKind::kDisabled;
@@ -648,14 +542,11 @@ void ProductionMppiNode::planningTick() {
       .pose_revision = navigation.revision,
       .obstacle_revision = raw_revision(esdf->revision),
       .planning_stamp_ns = now_ns,
-      .previous_applied_control =
-          control_feedback_fresh ? std::optional<mppi::Control>{applied_control.control}
-                                 : std::nullopt,
+      .previous_applied_control = previous_applied_control,
       .nominal_reseed_generation = nominal_reseed.generation,
       .reference_speed_mps = speed_policy.enabled
                                  ? static_cast<float>(speed_policy.reference_speed_mps)
                                  : -1.0F,
-      .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
       .moving_target = moving_target,
       .route =
           planning_state == ProductionMppiPlanningState::kPlanned && route_usable &&
@@ -689,19 +580,8 @@ void ProductionMppiNode::planningTick() {
       .no_eligible_recovery_generation = nominal_reseed.no_eligible_recovery_generation,
       .phase = nominal_reseed.no_eligible_phase,
   };
-  if (planning_state == ProductionMppiPlanningState::kNoGuideBrakingHold) {
-    const MppiHorizonSafetyResult fallback =
-        buildMppiBrakingFallback(input.initial_state, safety_config_);
-    result.horizon = fallback.fallback_horizon;
-    result.controls = fallback.fallback_controls;
-    result.selected_tier = mppi::RiskTier::kPreferred;
-    result.raw_collision = false;
-    result.esdf_revision = esdf->revision;
-    result.timings.host_total_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  snapshot_started)
-            .count();
-  } else if (planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold) {
+  if (planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold ||
+      planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold) {
     result.horizon = {target, target};
     result.controls = {mppi::Control{}};
     result.selected_tier = mppi::RiskTier::kPreferred;
@@ -720,7 +600,7 @@ void ProductionMppiNode::planningTick() {
       return;
     }
     no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
-        result.eligible_risk_contract.available, result.nominal_reseeded);
+        result.feasibility_contract.available, result.nominal_reseeded);
     if (no_eligible_recovery.guide_replan_requested && !direct_tracking_interception) {
       requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts,
                           esdf->global_guide_generation);
@@ -769,11 +649,11 @@ void ProductionMppiNode::planningTick() {
                 noncooperative.avoidance.lifecycle_generation);
   }
   ++tick_sequence_;
-  recordTickStatistics(result, planning_state,
-                       liveness.reseed_requested ||
-                           guide_progress.local_reseed_requested);
   ProductionMppiExecutionPublication execution =
       publishExecutionHorizon(input, result, *esdf, planning_state, now_ns);
+  recordTickStatistics(result, planning_state, execution,
+                       liveness.reseed_requested ||
+                           guide_progress.local_reseed_requested);
 
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);
@@ -809,7 +689,7 @@ void ProductionMppiNode::planningTick() {
   }
 
   mppi::MppiTickResult diagnostic_result;
-  diagnostic_result.eligible_risk_contract = result.eligible_risk_contract;
+  diagnostic_result.feasibility_contract = result.feasibility_contract;
   diagnostic_result.post_update_classification = result.post_update_classification;
   diagnostic_result.post_update_repair = result.post_update_repair;
   diagnostic_result.post_update_backtrack_ratio = result.post_update_backtrack_ratio;
@@ -818,6 +698,9 @@ void ProductionMppiNode::planningTick() {
   diagnostic_result.known_solid_collision = result.known_solid_collision;
   diagnostic_result.critical_exposure_m = result.critical_exposure_m;
   diagnostic_result.planning_exposure_m = result.planning_exposure_m;
+  diagnostic_result.critical_clearance_proximity_s =
+      result.critical_clearance_proximity_s;
+  diagnostic_result.obstacle_approach_m2_s = result.obstacle_approach_m2_s;
   diagnostic_result.minimum_esdf_distance_m = result.minimum_esdf_distance_m;
   diagnostic_result.head_progress_m = result.head_progress_m;
   diagnostic_result.terminal_progress_m = result.terminal_progress_m;
@@ -840,16 +723,16 @@ void ProductionMppiNode::planningTick() {
       result.target_directed_candidate_injected;
   diagnostic_result.target_directed_candidate_raw_safe =
       result.target_directed_candidate_raw_safe;
-  diagnostic_result.target_directed_candidate_best_eligible =
-      result.target_directed_candidate_best_eligible;
+  diagnostic_result.target_directed_candidate_best_feasible =
+      result.target_directed_candidate_best_feasible;
   diagnostic_result.target_directed_candidate_weight =
       result.target_directed_candidate_weight;
   diagnostic_result.route_directed_candidate_injected =
       result.route_directed_candidate_injected;
   diagnostic_result.route_directed_candidate_raw_safe =
       result.route_directed_candidate_raw_safe;
-  diagnostic_result.route_directed_candidate_best_eligible =
-      result.route_directed_candidate_best_eligible;
+  diagnostic_result.route_directed_candidate_best_feasible =
+      result.route_directed_candidate_best_feasible;
   diagnostic_result.route_directed_candidate_weight =
       result.route_directed_candidate_weight;
   diagnostic_result.route_directed_candidate_generation =
@@ -927,14 +810,14 @@ void ProductionMppiNode::planningTick() {
       .snapshot_ms = snapshot_ms,
       .stability_ms = stability_ms,
       .route_projection_valid = route_projection.valid,
-      .temporary_frontier_continuation_ready = temporary_frontier_continuation_ready,
+      .temporary_frontier_is_terminal = temporary_frontier_is_terminal,
       .liveness_reseed_requested = liveness.reseed_requested,
       .pose_predicted = pose_predicted,
+      .previous_control_source = previous_control_source,
       .rollout_budget = rollout_budget,
       .cooperative = cooperative,
       .noncooperative = noncooperative,
       .route_required_risk_tier = route_required_risk_tier,
-      .maximum_eligible_risk_tier = maximum_eligible_risk_tier_,
   });
   {
     const std::scoped_lock lock{input_mutex_};

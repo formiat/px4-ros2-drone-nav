@@ -16,7 +16,6 @@ enum class GlobalGuideReleaseReason : std::uint8_t {
   kBlocked,
   kExhausted,
   kStalled,
-  kPersistentSafetyRejection,
   kNoEligibleRollouts,
   kDiverged,
   kObjectiveChanged,
@@ -94,7 +93,6 @@ struct GlobalGuideProgressConfig {
   double observation_window_s{1.0};
   double minimum_progress_m{0.5};
   double minimum_predicted_head_progress_m{0.5};
-  double persistent_safety_rejection_window_s{1.0};
 };
 
 struct GlobalGuideProgressObservation {
@@ -103,7 +101,6 @@ struct GlobalGuideProgressObservation {
   double station_m{0.0};
   double predicted_head_progress_m{0.0};
   bool controller_active{false};
-  bool emergency_braking{false};
 };
 
 enum class GlobalGuideProgressAction : std::uint8_t {
@@ -111,13 +108,11 @@ enum class GlobalGuideProgressAction : std::uint8_t {
   kReseedLocalMppi,
   kReleaseLowPredictedProgress,
   kReleasePredictionMismatch,
-  kReleasePersistentSafetyRejection,
 };
 
 struct GlobalGuideProgressUpdate {
   GlobalGuideProgressAction action{GlobalGuideProgressAction::kNone};
   bool stalled{false};
-  bool persistent_safety_rejection{false};
   bool local_reseed_requested{false};
   std::uint64_t stall_generation{0U};
   std::uint64_t local_reseed_generation{0U};
@@ -179,9 +174,6 @@ private:
   std::int64_t anchor_stamp_ns_{0};
   std::uint64_t anchor_guide_generation_{0U};
   double anchor_station_m_{0.0};
-  bool safety_rejection_anchor_valid_{false};
-  std::int64_t safety_rejection_anchor_stamp_ns_{0};
-  std::uint64_t safety_rejection_guide_generation_{0U};
   std::uint64_t stall_generation_{0U};
   std::uint64_t local_reseed_generation_{0U};
   bool local_reseed_pending_{false};

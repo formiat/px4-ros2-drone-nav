@@ -13,6 +13,8 @@
 #include <ranges>
 #include <vector>
 
+#include "risk_aware_lattice_geometry.hpp"
+
 namespace drone_city_nav {
 namespace {
 
@@ -58,6 +60,30 @@ TEST(RiskAwareLattice, RejectsRawCollisionAndRoutesAroundWall) {
   EXPECT_TRUE(std::ranges::any_of(result.guide, [](const Point2 point) {
     return point.y < 7.0 || point.y > 14.0;
   }));
+}
+
+TEST(RiskAwareLattice, RiskStageUsesPhysicalFootprintClearance) {
+  const mppi::EsdfGrid grid = makeGrid();
+  const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
+                                1.5F);
+  RiskAwareLatticeConfig config;
+  config.physical_footprint_radius_m = 0.75;
+  config.critical_distance_m = 1.0;
+  config.preferred_distance_m = 3.0;
+
+  const detail::SegmentEvaluation planning =
+      detail::evaluateLatticeSegment(grid, esdf, Point2{5.5, 10.5}, Point2{7.5, 10.5},
+                                     config, LatticeRiskStage::kPlanningAllowed);
+  const detail::SegmentEvaluation critical =
+      detail::evaluateLatticeSegment(grid, esdf, Point2{5.5, 10.5}, Point2{7.5, 10.5},
+                                     config, LatticeRiskStage::kCriticalAllowed);
+
+  EXPECT_FALSE(planning.valid);
+  EXPECT_EQ(planning.rejection_reason,
+            detail::SegmentEvaluation::RejectionReason::kRiskStage);
+  ASSERT_TRUE(critical.valid);
+  EXPECT_EQ(critical.worst_tier, mppi::RiskTier::kCritical);
+  EXPECT_GT(critical.critical_exposure_m, 0.0);
 }
 
 TEST(RiskAwareLattice, FailsWhenStartIsOutsideWorldModel) {
@@ -332,7 +358,7 @@ TEST(RawGuideValidation, IgnoresBlockedPrefixBehindCurrentStation) {
 TEST(RiskAwareLattice, EscalatesToPlanningStageForCompleteRoute) {
   const mppi::EsdfGrid grid = makeGrid();
   const std::vector<float> esdf(static_cast<std::size_t>(grid.width * grid.height),
-                                2.70710678F);
+                                4.0F);
 
   const RiskAwareLatticeResult result = planRiskAwareMotionPrimitiveGuide(
       grid, esdf, Point2{2.5, 10.5}, 0.0, Point2{34.5, 10.5}, RiskAwareLatticeConfig{});

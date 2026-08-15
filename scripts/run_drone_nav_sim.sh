@@ -425,7 +425,6 @@ format_override_value() {
 
 expected_static_map="${active_static_map}"
 expected_obstacle_memory="${enable_obstacle_memory}"
-expected_current_lidar="true"
 
 clean_stale_gazebo_processes() {
   if ! bool_is_true "${clean_stale_gazebo_processes_enabled}"; then
@@ -678,8 +677,8 @@ fi
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
-echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always current_lidar=always"
-echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
+echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always"
+echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}")"
 echo "Static world: ${repo_root}/drone_city_nav/worlds/${world_name}.occupancy3d"
 echo "Gazebo resources: ${runtime_dir}"
 echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_cpu_list:-all}' planning='${planning_cpu_list:-all}' diagnostics='${diagnostics_cpu_list:-all}'"

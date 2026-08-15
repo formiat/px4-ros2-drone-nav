@@ -11,6 +11,10 @@ namespace drone_city_nav::mppi {
 [[nodiscard]] State integrateReference(State state, Control control,
                                        const DynamicsConfig& config) noexcept;
 
+[[nodiscard]] Control equivalentControlFromMeasuredAcceleration(
+    const State& state, float measured_ax_mps2, float measured_ay_mps2,
+    float measured_az_mps2, const DynamicsConfig& config) noexcept;
+
 struct ReferenceSimulationTrace {
   std::vector<State> horizon;
 };
@@ -44,6 +48,7 @@ resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
     std::optional<CooperativeManeuverPreference> cooperative_maneuver = std::nullopt,
     const CooperativeConfig& cooperative = {},
     std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy =
-        std::nullopt);
+        std::nullopt,
+    AltitudeEnvelopeConfig altitude_envelope = {});
 
 } // namespace drone_city_nav::mppi
