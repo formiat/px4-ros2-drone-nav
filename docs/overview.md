@@ -86,7 +86,8 @@ repository container workflow.
 - `roadmap.md`: planned interceptor, radar, multi-drone, and 3D passage work.
 - `architecture.md`: node ownership and data flow.
 - `navigation_pipeline.md`: current world-to-control pipeline.
-- `world3d.md`: canonical world generation, Occupancy3D, and constrained spans.
+- `world3d.md`: canonical world generation, raw Occupancy3D,
+  FreeSpaceTopology3D, and constrained spans.
 - `environment_candidates.md`: external world selection, versioned artifact
   distribution, and static-map import evidence.
 - `trajectory_optimization.md`: GPU MPPI optimization.

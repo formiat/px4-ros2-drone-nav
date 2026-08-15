@@ -22,17 +22,18 @@ RViz reverses the visual X direction relative to map X. The map directions above
 therefore produce the screen-space cross-sections requested for a vehicle
 approaching from the lower-right mission start.
 
-The canonical-world toolchain deterministically emits three committed artifacts
+The canonical-world toolchain deterministically emits four committed artifacts
 from that specification:
 
 - `drone_city_nav/worlds/generated_city.sdf` for Gazebo rendering and physics;
-- `drone_city_nav/worlds/generated_city.occupancy3d` for static planning;
+- `drone_city_nav/worlds/generated_city.occupancy3d` for raw static occupancy;
+- `drone_city_nav/worlds/generated_city.topology3d` for derived free-space topology;
 - `drone_city_nav/worlds/generated_city.esdf3d` for precomputed static distances.
 
 The old `.map2d` and `.passages3d` sources no longer exist. There is no
-hand-authored portal database, nearest-opening selector, or separate passage
-lifecycle. Portal topology is a compiled index derived from the same raw voxels
-used for collision checks.
+hand-authored portal database or nearest-opening selector. Free-space topology
+is a separately versioned compiled index derived from the same raw voxels used
+for collision checks.
 
 Building visuals use the same deterministic eight-color muted palette in Gazebo
 and RViz. The palette index is derived from the building grid coordinates, so a
@@ -49,15 +50,16 @@ make build
 python3 scripts/generate_canonical_world.py \
   --spec drone_city_nav/worlds/canonical_city.world3d.json \
   --sdf drone_city_nav/worlds/generated_city.sdf \
-  --occupancy drone_city_nav/worlds/generated_city.occupancy3d
+  --occupancy drone_city_nav/worlds/generated_city.occupancy3d \
+  --topology drone_city_nav/worlds/generated_city.topology3d
 ./build/drone_city_nav/generate_static_esdf_cache \
   --occupancy drone_city_nav/worlds/generated_city.occupancy3d \
   --output drone_city_nav/worlds/generated_city.esdf3d \
   --maximum-distance-m 26 --workers 8
 ```
 
-`make test-scripts` regenerates both artifacts in a temporary directory and
-checks the SDF and Occupancy3D byte-for-byte. It also verifies that the committed
+`make test-scripts` regenerates the world artifacts in a temporary directory and
+checks the SDF, Occupancy3D, and FreeSpaceTopology3D byte-for-byte. It also verifies that the committed
 ESDF cache carries the same grid metadata and canonical-world fingerprint, plus
 all physical passage cross-sections, derived portal topology, opening polygons,
 deduplicated shared bridge masses, and lidar visibility contract. C++ tests
@@ -66,14 +68,22 @@ distance capping, and corruption handling.
 
 ## Occupancy3D
 
-The binary map uses schema version 4 with a sparse chunked bitset. Its header
+The binary map uses schema version 5 with a sparse chunked bitset. Its header
 stores grid bounds, resolution, chunk size, a fingerprint of the canonical JSON,
-and the number of occupied chunks. The chunk payload is followed by a derived
-portal graph containing passage regions, portal planes, opening polygons, and
-pairwise 3D traversal edges. Each edge records its region and endpoint portals,
-sampled centerline, physical opening dimensions, vertical extent, minimum
-clearance, and speed limit. Entry and exit lie on exterior portal planes, so
-approach and departure route segments remain outside the roofed component.
+and the number of occupied chunks. The file ends after the raw chunk payload.
+It contains no regions, portals, traversals, clearance envelopes, or other
+derived planning data.
+
+## FreeSpaceTopology3D
+
+The separately versioned topology artifact stores the Occupancy3D fingerprint
+and exact grid geometry followed by passage regions, portal planes, opening
+polygons, and 3D traversal edges. Each edge records its region and endpoint
+portals, sampled centerline, physical opening dimensions, vertical extent,
+minimum clearance, and speed limit. Entry and exit lie on exterior portal
+planes, so approach and departure route segments remain outside the roofed
+component. A topology file is used only when both its fingerprint and bounds
+match the loaded raw occupancy.
 
 The graph is computed from voxel occupancy after physical geometry has been
 voxelized. Canonical passage records do not provide centerlines, portal IDs, or
@@ -147,9 +157,7 @@ Every currently generated lower, upper, and middle mass is an axis-aligned box
 whose floor and roof are parallel to the ground. The portal path search itself
 operates in XYZ and does not assume a constant-Z centerline, but the current
 physical-geometry generator does not yet emit inclined slabs or curved vertical
-passages.
-
-## Derived Portal Graph
+## Current Topology Extractor
 
 The world compiler builds the complete static passage index in deterministic
 stages:
@@ -274,7 +282,7 @@ alignment time, risk exposure, passage id, and acceptance/rejection reason.
 When changing static geometry or physical passage structures:
 
 1. Edit only `canonical_city.world3d.json`.
-2. Regenerate all three committed artifacts.
+2. Regenerate all four committed artifacts.
 3. Run `make test-scripts` and `make quality` in the container.
 4. Check Occupancy3D points against Gazebo geometry in RViz.
 5. If passages are derived, verify static route Z and constrained-span

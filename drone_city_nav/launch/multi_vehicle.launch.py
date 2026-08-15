@@ -242,8 +242,11 @@ def generate_multi_vehicle_launch_description(mission_kind):
             raise RuntimeError("No-static navigation requires obstacle memory")
         if lidar_debug_enabled and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
-        static_path = LaunchConfiguration("static_occupancy_3d_path").perform(context)
-        if not static_path:
+        static_path_override = LaunchConfiguration(
+            "static_occupancy_3d_path"
+        ).perform(context)
+        static_path = static_path_override
+        if not static_path_override:
             static_path = document["production_mppi_node"]["ros__parameters"][
                 "static_occupancy_3d_path"
             ]
@@ -254,6 +257,14 @@ def generate_multi_vehicle_launch_description(mission_kind):
             static_esdf_cache_path = document["production_mppi_node"][
                 "ros__parameters"
             ]["static_esdf_3d_cache_path"]
+        static_topology_path_override = LaunchConfiguration(
+            "static_free_space_topology_3d_path"
+        ).perform(context)
+        static_topology_path = static_topology_path_override
+        if not static_topology_path_override and not static_path_override:
+            static_topology_path = document["production_mppi_node"][
+                "ros__parameters"
+            ]["static_free_space_topology_3d_path"]
 
         roles = _make_role_configuration(
             scenario,
@@ -435,6 +446,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 {
                     "use_static_map": use_static_map,
                     "static_occupancy_3d_path": static_path,
+                    "static_free_space_topology_3d_path": static_topology_path,
                     "static_esdf_3d_cache_path": static_esdf_cache_path,
                     "px4_local_origin_x_m": config["map_start_x"],
                     "px4_local_origin_y_m": config["map_start_y"],
@@ -767,6 +779,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value=""),
             DeclareLaunchArgument("static_occupancy_3d_path", default_value=""),
+            DeclareLaunchArgument(
+                "static_free_space_topology_3d_path", default_value=""
+            ),
             DeclareLaunchArgument("static_esdf_3d_cache_path", default_value=""),
             DeclareLaunchArgument(
                 "intercept_minimum_prediction_horizon_s", default_value="0.0"

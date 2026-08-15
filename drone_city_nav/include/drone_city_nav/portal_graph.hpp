@@ -38,10 +38,4 @@ struct PassageTraversalEdge {
   double speed_limit_mps{0.0};
 };
 
-struct DerivedPortalGraph {
-  std::vector<PassageRegion> regions;
-  std::vector<PassagePortal> portals;
-  std::vector<PassageTraversalEdge> traversal_edges;
-};
-
 } // namespace drone_city_nav

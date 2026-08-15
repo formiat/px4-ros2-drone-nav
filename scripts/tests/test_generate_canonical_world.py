@@ -15,6 +15,7 @@ GENERATOR_PATH = REPO_ROOT / "scripts/generate_canonical_world.py"
 SPEC_PATH = REPO_ROOT / "drone_city_nav/worlds/canonical_city.world3d.json"
 COMMITTED_SDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.sdf"
 COMMITTED_OCCUPANCY = REPO_ROOT / "drone_city_nav/worlds/generated_city.occupancy3d"
+COMMITTED_TOPOLOGY = REPO_ROOT / "drone_city_nav/worlds/generated_city.topology3d"
 COMMITTED_ESDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.esdf3d"
 PLANNER_CONFIG = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
 
@@ -95,8 +96,11 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             sdf_path = Path(directory) / "city.sdf"
             occupancy_path = Path(directory) / "city.occupancy3d"
+            topology_path = Path(directory) / "city.topology3d"
             generator.generate_sdf(spec, boxes, sdf_path)
-            generator.generate_occupancy(spec, boxes, occupancy_path)
+            generator.generate_occupancy(
+                spec, boxes, occupancy_path, topology_path
+            )
 
             root = ET.parse(sdf_path).getroot()
             model_names = {
@@ -142,7 +146,7 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                     header_format, stream.read(struct.calcsize(header_format))
                 )
             self.assertEqual(b"DCNOCC3D", header[0])
-            self.assertEqual(4, header[1])
+            self.assertEqual(5, header[1])
             self.assertEqual(16, header[2])
             self.assertEqual((690, 1050, 80), header[7:10])
             self.assertGreater(header[11], 0)
@@ -151,6 +155,18 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
             with occupancy_path.open("rb") as stream:
                 stream.seek(struct.calcsize(header_format) +
                             header[11] * chunk_payload_size)
+                self.assertEqual(b"", stream.read())
+
+            topology_header_format = "<8sIQ4f3I"
+            with topology_path.open("rb") as stream:
+                topology_header = struct.unpack(
+                    topology_header_format,
+                    stream.read(struct.calcsize(topology_header_format)),
+                )
+                self.assertEqual(b"DCNFTOP3", topology_header[0])
+                self.assertEqual(1, topology_header[1])
+                self.assertEqual(header[10], topology_header[2])
+                self.assertEqual(header[3:10], topology_header[3:10])
                 regions, edges = read_portal_graph(stream)
                 self.assertEqual(3, len(regions))
                 self.assertEqual([2, 2, 3],
@@ -355,11 +371,17 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             generated_sdf = Path(directory) / "city.sdf"
             generated_occupancy = Path(directory) / "city.occupancy3d"
+            generated_topology = Path(directory) / "city.topology3d"
             generator.generate_sdf(spec, boxes, generated_sdf)
-            generator.generate_occupancy(spec, boxes, generated_occupancy)
+            generator.generate_occupancy(
+                spec, boxes, generated_occupancy, generated_topology
+            )
             self.assertEqual(COMMITTED_SDF.read_bytes(), generated_sdf.read_bytes())
             self.assertEqual(
                 COMMITTED_OCCUPANCY.read_bytes(), generated_occupancy.read_bytes()
+            )
+            self.assertEqual(
+                COMMITTED_TOPOLOGY.read_bytes(), generated_topology.read_bytes()
             )
 
     def test_precomputed_esdf_matches_committed_occupancy(self) -> None:

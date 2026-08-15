@@ -239,12 +239,14 @@ a triangle AABB. Output dimensions and the total dense domain are checked before
 allocation. The map fingerprint covers both the path-independent materialized
 SDF and every unique collision mesh. Rebuilding the same unpacked source in a
 different root therefore produces byte-identical Occupancy3D and ESDF3D. The
-sparse Occupancy3D writer preserves the current schema and portal graph.
+sparse Occupancy3D writer emits raw physical voxels only. Previously published
+candidate bundles use the accepted legacy v4 raw-only encoding; regenerated
+maps use raw-only v5.
 
 ## Current Limits And Next Decision
 
-- The imported Occupancy3D artifacts do not yet contain a derived portal graph.
-  Generic portal and free-volume extraction belongs to roadmap item 7.
+- The imported environments do not yet have separate FreeSpaceTopology3D
+  artifacts. Generic portal and free-volume extraction belongs to roadmap item 7.
 - Candidate visuals are not yet a production Harmonic world. The Finals
   collision-only world loads in a Harmonic server, but the original legacy
   materials and resource URIs still need a visual migration pass.

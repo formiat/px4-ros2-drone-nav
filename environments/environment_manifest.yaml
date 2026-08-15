@@ -244,8 +244,8 @@ environments:
     sha256: 36f4d6136701b4aff4273a4de5b6aed269023821ec456ee799d27eaaab7aa100
     size_bytes: 4495
   - path: environments/fixtures/compact_3d_passage/world.occupancy3d
-    sha256: fc2c1b339567c21179711b687bbc1bd916d6cebe8acd29eaa21c7ea300206396
-    size_bytes: 46176
+    sha256: eacf5a90b2c80175f65b5e47ef4b81b5c5072278f811371df9455ab643cf0c9b
+    size_bytes: 46168
   - path: environments/fixtures/compact_3d_passage/world.esdf3d
     sha256: 805362ca6e732754c555418fd5a6ece263b7be58338494abce09f46ead76a901
     size_bytes: 38090
@@ -267,8 +267,8 @@ environments:
     maximum_distance_m: 8.0
     occupancy:
       path: environments/fixtures/compact_3d_passage/world.occupancy3d
-      sha256: fc2c1b339567c21179711b687bbc1bd916d6cebe8acd29eaa21c7ea300206396
-      size_bytes: 46176
+      sha256: eacf5a90b2c80175f65b5e47ef4b81b5c5072278f811371df9455ab643cf0c9b
+      size_bytes: 46168
     esdf:
       path: environments/fixtures/compact_3d_passage/world.esdf3d
       sha256: 805362ca6e732754c555418fd5a6ece263b7be58338494abce09f46ead76a901

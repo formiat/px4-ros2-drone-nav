@@ -392,14 +392,14 @@ Record a debug rosbag while the simulation is running:
 
 The container targets use `build/`, `install/`, and `log/`.
 
-Static mode loads `generated_city.occupancy3d` and its fingerprint-bound,
-precomputed chunked `generated_city.esdf3d` in `production_mppi_node`. The map,
-distance cache, and `generated_city.sdf` are generated from the same canonical
-world specification. The current city is a `5 x 8` Manhattan
+Static mode loads raw `generated_city.occupancy3d`, its fingerprint-bound
+`generated_city.topology3d`, and precomputed chunked `generated_city.esdf3d` in
+`production_mppi_node`. All three artifacts and `generated_city.sdf` are
+generated from the same canonical world specification. The current city is a `5 x 8` Manhattan
 building grid with two horizontal L-shaped air-passage structures, one
 straight-through structure, and one T junction. Static planning loads the
-derived portal graph embedded in Occupancy3D and objectively compares ordinary
-and portal routes; no passage is mandatory. Selected traversal edges directly
+separate free-space topology index and objectively compares ordinary and portal
+routes; no passage is mandatory. Selected traversal edges directly
 create typed route spans. There is no hand-authored planner centerline, separate
 passage file, or nearest-portal selector.
 No-static mode uses the accumulated raw 2D lidar-memory world; collisionless lidar

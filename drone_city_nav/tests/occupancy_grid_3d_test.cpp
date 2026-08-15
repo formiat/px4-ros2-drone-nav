@@ -1,15 +1,38 @@
 #include "drone_city_nav/occupancy_grid_3d.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cmath>
+#include <cstdint>
 #include <filesystem>
-#include <ranges>
+#include <fstream>
 
 namespace drone_city_nav {
 namespace {
+
+void convertToLegacyRawOnlyArtifact(const std::filesystem::path& path,
+                                    const std::uint32_t embedded_region_count) {
+  std::fstream stream{path, std::ios::binary | std::ios::in | std::ios::out};
+  if (!stream) {
+    throw std::runtime_error{"failed to reopen temporary Occupancy3D fixture"};
+  }
+  constexpr std::uint32_t legacy_version{4U};
+  constexpr std::uint32_t embedded_traversal_count{0U};
+  stream.seekp(8, std::ios::beg);
+  // Binary fixture construction intentionally exposes scalar storage.
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  stream.write(reinterpret_cast<const char*>(&legacy_version),
+               static_cast<std::streamsize>(sizeof(legacy_version)));
+  stream.seekp(0, std::ios::end);
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  stream.write(reinterpret_cast<const char*>(&embedded_region_count),
+               static_cast<std::streamsize>(sizeof(embedded_region_count)));
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  stream.write(reinterpret_cast<const char*>(&embedded_traversal_count),
+               static_cast<std::streamsize>(sizeof(embedded_traversal_count)));
+  if (!stream) {
+    throw std::runtime_error{"failed to create temporary legacy Occupancy3D"};
+  }
+}
 
 TEST(OccupancyGrid3D, StoresSparseVoxelsAcrossChunks) {
   OccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 0.5, 40, 40, 40}, 42U};
@@ -40,14 +63,6 @@ TEST(OccupancyGrid3D, ConvertsWorldCoordinates) {
   EXPECT_FALSE(grid.worldToCell({10.0, 0.0, 0.0}).has_value());
 }
 
-TEST(OccupancyGrid3D, StartsWithEmptyDerivedPortalGraph) {
-  const OccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 0.5, 40, 40, 40}};
-
-  EXPECT_TRUE(grid.portalGraph().regions.empty());
-  EXPECT_TRUE(grid.portalGraph().portals.empty());
-  EXPECT_TRUE(grid.portalGraph().traversal_edges.empty());
-}
-
 TEST(OccupancyGrid3D, WritesAndReloadsSparseArtifact) {
   const std::filesystem::path path =
       std::filesystem::temp_directory_path() /
@@ -66,93 +81,37 @@ TEST(OccupancyGrid3D, WritesAndReloadsSparseArtifact) {
   EXPECT_EQ(loaded.occupiedVoxelCount(), 2U);
   EXPECT_TRUE(loaded.isOccupied({0, 0, 0}));
   EXPECT_TRUE(loaded.isOccupied({17, 34, 51}));
-  EXPECT_TRUE(loaded.portalGraph().regions.empty());
 }
 
-TEST(OccupancyGrid3D, PreservesDerivedPortalGraphWhenRewritten) {
-  const OccupancyGrid3D original = OccupancyGrid3D::load(TEST_OCCUPANCY3D_PATH);
-  const std::filesystem::path path =
-      std::filesystem::temp_directory_path() /
-      "drone_city_nav_occupancy_grid_3d_portal_round_trip.occupancy3d";
+TEST(OccupancyGrid3D, LoadsLegacyArtifactOnlyWhenEmbeddedTopologyIsEmpty) {
+  const std::filesystem::path path = std::filesystem::temp_directory_path() /
+                                     "drone_city_nav_legacy_raw_only.occupancy3d";
   std::filesystem::remove(path);
-
+  OccupancyGrid3D original{GridBounds3D{-2.0, 3.0, -4.0, 0.5, 40, 50, 60}, 123456U};
+  original.setOccupied({17, 34, 51});
   original.write(path);
+  convertToLegacyRawOnlyArtifact(path, 0U);
+
   const OccupancyGrid3D loaded = OccupancyGrid3D::load(path);
   std::filesystem::remove(path);
 
-  const DerivedPortalGraph& original_graph = original.portalGraph();
-  const DerivedPortalGraph& loaded_graph = loaded.portalGraph();
-  ASSERT_EQ(loaded_graph.regions.size(), original_graph.regions.size());
-  ASSERT_EQ(loaded_graph.portals.size(), original_graph.portals.size());
-  ASSERT_EQ(loaded_graph.traversal_edges.size(), original_graph.traversal_edges.size());
-  for (std::size_t index = 0U; index < original_graph.regions.size(); ++index) {
-    EXPECT_EQ(loaded_graph.regions[index].id, original_graph.regions[index].id);
-    EXPECT_EQ(loaded_graph.regions[index].portal_ids,
-              original_graph.regions[index].portal_ids);
-  }
-  for (std::size_t index = 0U; index < original_graph.traversal_edges.size(); ++index) {
-    const PassageTraversalEdge& original_edge = original_graph.traversal_edges[index];
-    const PassageTraversalEdge& loaded_edge = loaded_graph.traversal_edges[index];
-    EXPECT_EQ(loaded_edge.id, original_edge.id);
-    EXPECT_EQ(loaded_edge.region_id, original_edge.region_id);
-    EXPECT_EQ(loaded_edge.entry_portal_id, original_edge.entry_portal_id);
-    EXPECT_EQ(loaded_edge.exit_portal_id, original_edge.exit_portal_id);
-    EXPECT_NEAR(distance3D(loaded_edge.entry, original_edge.entry), 0.0, 1.0e-5);
-    EXPECT_NEAR(distance3D(loaded_edge.exit, original_edge.exit), 0.0, 1.0e-5);
-    EXPECT_DOUBLE_EQ(loaded_edge.min_z_m, original_edge.min_z_m);
-    EXPECT_DOUBLE_EQ(loaded_edge.max_z_m, original_edge.max_z_m);
-    EXPECT_DOUBLE_EQ(loaded_edge.minimum_clearance_m,
-                     original_edge.minimum_clearance_m);
-  }
+  EXPECT_EQ(loaded.bounds(), original.bounds());
+  EXPECT_EQ(loaded.fingerprint(), original.fingerprint());
+  EXPECT_TRUE(loaded.isOccupied({17, 34, 51}));
 }
 
-TEST(OccupancyGrid3D, LoadsDerivedPortalGraphFromGeneratedArtifact) {
-  const OccupancyGrid3D grid = OccupancyGrid3D::load(TEST_OCCUPANCY3D_PATH);
-  const DerivedPortalGraph& graph = grid.portalGraph();
+TEST(OccupancyGrid3D, RejectsLegacyArtifactWithEmbeddedTopology) {
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "drone_city_nav_legacy_embedded_topology.occupancy3d";
+  std::filesystem::remove(path);
+  const OccupancyGrid3D original{GridBounds3D{-2.0, 3.0, -4.0, 0.5, 40, 50, 60},
+                                 123456U};
+  original.write(path);
+  convertToLegacyRawOnlyArtifact(path, 1U);
 
-  ASSERT_EQ(graph.regions.size(), 3U);
-  ASSERT_EQ(graph.portals.size(), 7U);
-  ASSERT_EQ(graph.traversal_edges.size(), 5U);
-  EXPECT_EQ(std::ranges::count_if(graph.regions,
-                                  [](const PassageRegion& region) {
-                                    return region.portal_ids.size() == 3U;
-                                  }),
-            1);
-  for (const PassagePortal& portal : graph.portals) {
-    EXPECT_EQ(portal.opening_polygon.size(), 4U);
-    EXPECT_NEAR(std::sqrt(portal.outward_normal.x * portal.outward_normal.x +
-                          portal.outward_normal.y * portal.outward_normal.y +
-                          portal.outward_normal.z * portal.outward_normal.z),
-                1.0, 1.0e-9);
-  }
-  for (const PassageTraversalEdge& edge : graph.traversal_edges) {
-    EXPECT_EQ(edge.id.value().find("passage_structure_"), std::string::npos);
-    EXPECT_EQ(edge.region_id.value().find("passage_region_"), 0U);
-    EXPECT_GT(edge.centerline.size(), 2U);
-    EXPECT_DOUBLE_EQ(edge.min_z_m, 1.5);
-    EXPECT_DOUBLE_EQ(edge.max_z_m, 8.5);
-    EXPECT_DOUBLE_EQ(edge.width_m, 30.0);
-    EXPECT_DOUBLE_EQ(edge.height_m, 7.0);
-    EXPECT_DOUBLE_EQ(edge.minimum_clearance_m, 3.5);
-    EXPECT_DOUBLE_EQ(edge.speed_limit_mps, 10.0);
-    const SweptFootprintConfig footprint{};
-    for (std::size_t index = 1U; index < edge.centerline.size(); ++index) {
-      EXPECT_TRUE(validateRawSweptFootprint(
-                      grid, edge.centerline[index - 1U].position, FootprintBodyAxis{},
-                      edge.centerline[index].position, FootprintBodyAxis{}, footprint)
-                      .accepted())
-          << edge.id << " segment " << index;
-    }
-  }
-
-  const auto straight =
-      std::ranges::find_if(graph.traversal_edges, [](const PassageTraversalEdge& edge) {
-        return std::abs(edge.entry.x - 54.0) < 1.0e-6 &&
-               std::abs(edge.exit.x - 54.0) < 1.0e-6 &&
-               std::abs(edge.entry.y - 123.0) < 1.0e-6 &&
-               std::abs(edge.exit.y - 201.0) < 1.0e-6;
-      });
-  ASSERT_NE(straight, graph.traversal_edges.end());
+  EXPECT_THROW(static_cast<void>(OccupancyGrid3D::load(path)), std::runtime_error);
+  std::filesystem::remove(path);
 }
 
 TEST(OccupancyGrid3D, LoadsCommittedCompactPassageFixture) {
@@ -169,7 +128,6 @@ TEST(OccupancyGrid3D, LoadsCommittedCompactPassageFixture) {
   EXPECT_EQ(bounds.depth_cells, 60);
   EXPECT_EQ(grid.occupiedVoxelCount(), 32604U);
   EXPECT_EQ(grid.occupiedChunkCount(), 88U);
-  EXPECT_TRUE(grid.portalGraph().regions.empty());
 }
 
 } // namespace

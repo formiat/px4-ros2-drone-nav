@@ -50,6 +50,9 @@ def generate_launch_description():
     )
     use_static_map = LaunchConfiguration("use_static_map")
     static_occupancy_3d_path = LaunchConfiguration("static_occupancy_3d_path")
+    static_free_space_topology_3d_path = LaunchConfiguration(
+        "static_free_space_topology_3d_path"
+    )
     scan_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -139,6 +142,21 @@ def generate_launch_description():
         if static_world_path_override:
             production_mppi_parameters.append(
                 {"static_occupancy_3d_path": static_world_path_override}
+            )
+        static_topology_path_override = (
+            static_free_space_topology_3d_path.perform(context).strip()
+        )
+        if static_topology_path_override:
+            production_mppi_parameters.append(
+                {
+                    "static_free_space_topology_3d_path": (
+                        static_topology_path_override
+                    )
+                }
+            )
+        elif static_world_path_override:
+            production_mppi_parameters.append(
+                {"static_free_space_topology_3d_path": ""}
             )
         nodes = [
             Node(
@@ -341,6 +359,14 @@ def generate_launch_description():
                 default_value="",
                 description=(
                     "Optional canonical static occupancy3d path override. Leave empty to use "
+                    "params_file."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "static_free_space_topology_3d_path",
+                default_value="",
+                description=(
+                    "Optional FreeSpaceTopology3D path override. Leave empty to use "
                     "params_file."
                 ),
             ),

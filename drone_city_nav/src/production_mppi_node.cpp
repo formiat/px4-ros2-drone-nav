@@ -757,16 +757,52 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                   "STATIC_ESDF_CACHE_FALLBACK path=%s reason=load_failed error=%s",
                   cache_path.c_str(), error.what());
     }
-    const DerivedPortalGraph& portal_graph = static_occupancy_3d_->portalGraph();
+    std::filesystem::path topology_path =
+        declare_parameter<std::string>("static_free_space_topology_3d_path", "");
+    if (topology_path.empty()) {
+      topology_path = occupancy_path;
+      topology_path.replace_extension(".topology3d");
+    } else if (topology_path.is_relative()) {
+      topology_path = package_share / topology_path;
+    }
+    try {
+      FreeSpaceTopology3D topology = FreeSpaceTopology3D::load(topology_path);
+      if (topology.compatibleWith(*static_occupancy_3d_)) {
+        static_free_space_topology_3d_ = std::move(topology);
+      } else {
+        RCLCPP_WARN(get_logger(),
+                    "FREE_SPACE_TOPOLOGY_FALLBACK path=%s reason=incompatible_world "
+                    "topology_fingerprint=%" PRIu64 " occupancy_fingerprint=%" PRIu64,
+                    topology_path.c_str(), topology.occupancyFingerprint(),
+                    static_occupancy_3d_->fingerprint());
+      }
+    } catch (const std::exception& error) {
+      RCLCPP_WARN(get_logger(),
+                  "FREE_SPACE_TOPOLOGY_FALLBACK path=%s reason=load_failed error=%s",
+                  topology_path.c_str(), error.what());
+    }
+    const std::span<const PassageTraversalEdge> passage_traversals =
+        static_free_space_topology_3d_
+            ? std::span<const PassageTraversalEdge>{static_free_space_topology_3d_
+                                                        ->traversalEdges()}
+            : std::span<const PassageTraversalEdge>{};
     static_portal_edges_ = std::make_shared<const std::vector<PassageTraversalEdge>>(
-        portal_graph.traversal_edges);
+        passage_traversals.begin(), passage_traversals.end());
     RCLCPP_INFO(get_logger(),
                 "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
                 " occupied_voxels=%zu passage_regions=%zu portals=%zu "
-                "portal_edges=%zu dimensions=%dx%dx%d",
+                "portal_edges=%zu topology_path=%s topology_ready=%s "
+                "dimensions=%dx%dx%d",
                 occupancy_path.c_str(), static_occupancy_3d_->fingerprint(),
-                static_occupancy_3d_->occupiedVoxelCount(), portal_graph.regions.size(),
-                portal_graph.portals.size(), static_portal_edges_->size(),
+                static_occupancy_3d_->occupiedVoxelCount(),
+                static_free_space_topology_3d_
+                    ? static_free_space_topology_3d_->regions().size()
+                    : 0U,
+                static_free_space_topology_3d_
+                    ? static_free_space_topology_3d_->portals().size()
+                    : 0U,
+                static_portal_edges_->size(), topology_path.c_str(),
+                static_free_space_topology_3d_ ? "true" : "false",
                 static_occupancy_3d_->bounds().width_cells,
                 static_occupancy_3d_->bounds().height_cells,
                 static_occupancy_3d_->bounds().depth_cells);

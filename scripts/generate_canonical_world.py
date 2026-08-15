@@ -22,7 +22,9 @@ from world_compiler_portal_graph import DerivedPortalGraph, derive_portal_graph
 
 
 OCCUPANCY_MAGIC = b"DCNOCC3D"
-OCCUPANCY_VERSION = 4
+OCCUPANCY_VERSION = 5
+FREE_SPACE_TOPOLOGY_MAGIC = b"DCNFTOP3"
+FREE_SPACE_TOPOLOGY_VERSION = 1
 NO_STATIC_SOLID_VISIBILITY = 0x08000000
 NO_STATIC_OCCLUDER_VISIBILITY = 0x04000000
 BUILDING_GRID_CENTER_M = 27.0
@@ -63,6 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--sdf", type=Path, required=True)
     parser.add_argument("--occupancy", type=Path, required=True)
+    parser.add_argument("--topology", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -307,7 +310,8 @@ def generate_sdf(spec: dict, boxes: Iterable[Box], output: Path) -> None:
     ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
 
 
-def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
+def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path,
+                       topology_output: Path) -> None:
     occupancy = spec["occupancy"]
     origin = tuple(map(float, occupancy["origin_m"]))
     size = tuple(map(float, occupancy["size_m"]))
@@ -371,7 +375,9 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
             stream.write(struct.pack("<3i", *chunk))
             stream.write(b"".join(struct.pack("<Q", (bits >> (64 * word)) & ((1 << 64) - 1))
                                   for word in range(words_per_chunk)))
-        write_portal_graph(stream, portal_graph)
+    write_free_space_topology(
+        topology_output, fingerprint, origin, resolution, dimensions, portal_graph
+    )
 
 
 def write_string(stream, value: str) -> None:
@@ -389,7 +395,7 @@ def write_points(stream, points: Iterable[tuple[float, float, float]]) -> None:
         stream.write(struct.pack("<3f", *point))
 
 
-def write_portal_graph(stream, graph: DerivedPortalGraph) -> None:
+def write_topology_data(stream, graph: DerivedPortalGraph) -> None:
     stream.write(struct.pack("<I", len(graph.regions)))
     for region in graph.regions:
         write_string(stream, region.id)
@@ -412,12 +418,30 @@ def write_portal_graph(stream, graph: DerivedPortalGraph) -> None:
         ))
 
 
+def write_free_space_topology(output: Path, occupancy_fingerprint: int,
+                              origin: tuple[float, float, float], resolution: float,
+                              dimensions: tuple[int, int, int],
+                              graph: DerivedPortalGraph) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("wb") as stream:
+        stream.write(struct.pack(
+            "<8sIQ4f3I",
+            FREE_SPACE_TOPOLOGY_MAGIC,
+            FREE_SPACE_TOPOLOGY_VERSION,
+            occupancy_fingerprint,
+            resolution,
+            origin[0], origin[1], origin[2],
+            dimensions[0], dimensions[1], dimensions[2],
+        ))
+        write_topology_data(stream, graph)
+
+
 def main() -> None:
     args = parse_args()
     spec = load_spec(args.spec)
     boxes = physical_boxes(spec)
     generate_sdf(spec, boxes, args.sdf)
-    generate_occupancy(spec, boxes, args.occupancy)
+    generate_occupancy(spec, boxes, args.occupancy, args.topology)
 
 
 if __name__ == "__main__":

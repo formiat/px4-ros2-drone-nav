@@ -88,9 +88,12 @@ Global guide:
 Static world:
 
 - `static_occupancy_3d_path` selects the generated Occupancy3D artifact;
+- `static_free_space_topology_3d_path` selects its fingerprint-bound derived
+  FreeSpaceTopology3D index; an empty value derives `.topology3d` from the raw
+  occupancy path;
 - `static_esdf_3d_cache_path` selects its fingerprint-bound precomputed ESDF
   artifact; an empty value derives the `.esdf3d` path from Occupancy3D;
-- Occupancy3D embeds the generated constrained passage graph;
+- Occupancy3D contains only raw physical occupancy and never embeds topology;
 - `global_lattice_3d_nominal_vertical_speed_mps` participates in physical travel
   time estimation;
 - `global_lattice_3d_vertical_alignment_cost_weight` is the additional vertical

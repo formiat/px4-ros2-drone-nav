@@ -10,10 +10,12 @@ World and map assets live under `drone_city_nav/worlds/`:
 
 - `generated_city.sdf`
 - `generated_city.occupancy3d`
+- `generated_city.topology3d`
 - `canonical_city.world3d.json`
 
-The SDF and sparse Occupancy3D are generated from the canonical JSON world spec.
-Static planning loads Occupancy3D directly; no-static planning uses lidar only.
+The SDF, sparse Occupancy3D, and FreeSpaceTopology3D are generated from the
+canonical JSON world spec. Static planning loads raw occupancy and its derived
+topology separately; no-static planning uses lidar only.
 
 ## Drone Model
 
@@ -80,9 +82,10 @@ The planner static obstacle source is configured with:
 ```yaml
 use_static_map: true
 static_occupancy_3d_path: worlds/generated_city.occupancy3d
+static_free_space_topology_3d_path: worlds/generated_city.topology3d
 ```
 
-Regenerate both artifacts with the exact container command documented in
+Regenerate all static world artifacts with the exact container command documented in
 `world3d.md`. Occupied voxels are physical geometry only. Clearance bands remain
 ranking costs.
 
@@ -91,7 +94,7 @@ ranking costs.
 When changing the world:
 
 1. Update `canonical_city.world3d.json`.
-2. Regenerate the SDF and Occupancy3D artifacts.
+2. Regenerate the SDF, Occupancy3D, FreeSpaceTopology3D, and ESDF3D artifacts.
 3. Update grid bounds in `urban_mvp.yaml` if the navigable area changes.
 4. Update start/goal/origin values consistently.
 5. Check RViz overlays against Gazebo geometry.

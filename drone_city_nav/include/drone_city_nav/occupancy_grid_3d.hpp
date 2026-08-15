@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/portal_graph.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <array>
@@ -44,7 +43,6 @@ public:
   [[nodiscard]] std::uint64_t fingerprint() const noexcept;
   [[nodiscard]] std::size_t occupiedChunkCount() const noexcept;
   [[nodiscard]] std::size_t occupiedVoxelCount() const noexcept;
-  [[nodiscard]] const DerivedPortalGraph& portalGraph() const noexcept;
   [[nodiscard]] bool contains(GridIndex3D index) const noexcept;
   [[nodiscard]] std::optional<GridIndex3D>
   worldToCell(const Point3& point) const noexcept;
@@ -61,7 +59,6 @@ private:
   std::uint64_t fingerprint_{0U};
   std::size_t occupied_voxels_{0U};
   std::unordered_map<OccupancyChunkIndex3D, Chunk, OccupancyChunkIndex3DHash> chunks_;
-  DerivedPortalGraph portal_graph_;
 };
 
 } // namespace drone_city_nav

@@ -148,6 +148,7 @@ production_mppi_node:
     static_maximum_target_lookahead_m: 100.0
     use_static_map: true
     static_occupancy_3d_path: worlds/generated_city.occupancy3d
+    static_free_space_topology_3d_path: worlds/generated_city.topology3d
     static_esdf_3d_cache_path: worlds/generated_city.esdf3d
     static_cruise_speed_mps: 20.0
     static_absolute_speed_limit_mps: 20.0

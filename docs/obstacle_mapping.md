@@ -23,7 +23,8 @@ static_occupancy_3d_path: worlds/generated_city.occupancy3d
 The sparse static world is generated from the same canonical specification as
 Gazebo SDF and is used only in static mode. `production_mppi_node`, not
 `obstacle_memory_node`, owns this map. The current static path does not fuse 2D
-lidar memory into Occupancy3D.
+lidar memory into Occupancy3D. Derived regions, portals, and traversal edges are
+stored in the separate fingerprint-bound `generated_city.topology3d` artifact.
 
 ## Lidar Input
 

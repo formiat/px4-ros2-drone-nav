@@ -3,6 +3,7 @@
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
+#include "drone_city_nav/portal_graph.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
