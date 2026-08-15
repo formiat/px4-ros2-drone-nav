@@ -58,6 +58,9 @@ class EnvironmentManifestTest(unittest.TestCase):
             {"core_v1", "urban_v1"},
             {release["id"] for release in manifest["artifact_releases"]},
         )
+        self.assertTrue(
+            all(release["published"] for release in manifest["artifact_releases"])
+        )
         release_environments = [
             environment
             for environment in manifest["environments"]
