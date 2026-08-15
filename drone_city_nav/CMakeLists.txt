@@ -851,6 +851,14 @@ if(BUILD_TESTING)
       TEST_FREE_SPACE_TOPOLOGY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.topology3d")
   enable_project_warnings(free_space_topology_3d_test)
 
+  ament_add_gtest(
+    advanced_passage_fixture_test
+    tests/advanced_passage_fixture.cpp
+    tests/advanced_passage_fixture_test.cpp)
+  target_compile_features(advanced_passage_fixture_test PRIVATE cxx_std_20)
+  target_link_libraries(advanced_passage_fixture_test drone_city_nav_core)
+  enable_project_warnings(advanced_passage_fixture_test)
+
   ament_add_gtest(collision_voxelizer_test tests/collision_voxelizer_test.cpp)
   target_compile_features(collision_voxelizer_test PRIVATE cxx_std_20)
   target_link_libraries(collision_voxelizer_test drone_city_nav_core)

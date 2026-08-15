@@ -184,6 +184,26 @@ modify Occupancy3D and is not trusted as a runtime safety result. Any current
 vehicle footprint is checked again by the planner, route activation, MPPI, and
 offboard safety lifecycle.
 
+## Advanced Passage Fixtures
+
+`drone_city_nav/tests/advanced_passage_fixture.cpp` builds compact deterministic
+raw Occupancy3D volumes for the topology compiler. The fixtures contain no
+portal IDs, centerlines, or planner masks. Their independent acceptance contract
+defines only open-space seeds, physically raw-safe reference paths, and minimum
+topology cardinality:
+
+- a straight sloped tunnel with entrances at different heights;
+- a vertical shaft with horizontal portal surfaces;
+- a non-rectangular arch tunnel;
+- a curved tunnel with changing XYZ tangent;
+- three-arm T and four-arm X junctions;
+- a wide roofed hangar that must not be classified as a constrained passage.
+
+The fixture tests first prove physical swept-footprint feasibility directly
+against raw occupancy and verify that positive cases contain a measurable
+clearance bottleneck. This keeps geometry-extractor tests independent from the
+implementation that they validate.
+
 ## Static Planning Contract
 
 Static global search operates on a hybrid graph:
