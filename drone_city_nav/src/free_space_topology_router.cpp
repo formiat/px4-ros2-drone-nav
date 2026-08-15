@@ -92,9 +92,12 @@ centerlineLength(const std::vector<RouteSample3D>& centerline) noexcept {
 }
 
 void appendCenterline(std::vector<Point3>& points, const PassageSegment& segment,
-                      const bool forward) {
-  const auto append = [&points](const Point3& point) {
+                      const bool forward, double& station_m) {
+  const auto append = [&points, &station_m](const Point3& point) {
     if (points.empty() || distance3D(points.back(), point) > 1.0e-9) {
+      if (!points.empty()) {
+        station_m += distance3D(points.back(), point);
+      }
       points.push_back(point);
     }
   };
@@ -376,13 +379,23 @@ private:
     }
 
     std::vector<Point3> points;
+    std::vector<PassageTraversalSegmentSpan> segment_spans;
     std::vector<PassageSegmentId> segment_ids;
     double minimum_clearance_m = std::numeric_limits<double>::infinity();
     double speed_limit_mps = std::numeric_limits<double>::infinity();
+    double station_m = 0.0;
     for (const Predecessor& step : path) {
       const PassageSegment& segment = topology_.segments()[step.segment_index];
-      appendCenterline(points, segment, step.forward);
+      const double begin_station_m = station_m;
+      appendCenterline(points, segment, step.forward, station_m);
       segment_ids.push_back(segment.id);
+      if (station_m > begin_station_m + 1.0e-9) {
+        segment_spans.push_back(PassageTraversalSegmentSpan{
+            .passage_segment_id = segment.id,
+            .begin_station_m = begin_station_m,
+            .end_station_m = station_m,
+        });
+      }
       minimum_clearance_m = std::min(minimum_clearance_m, segment.minimum_clearance_m);
       speed_limit_mps = std::min(speed_limit_mps, segment.speed_limit_mps);
     }
@@ -410,7 +423,7 @@ private:
             maximum_z.position.z - minimum_z.position.z + 2.0 * minimum_clearance_m,
         .minimum_clearance_m = minimum_clearance_m,
         .speed_limit_mps = speed_limit_mps,
-        .segment_ids = std::move(segment_ids),
+        .segment_spans = std::move(segment_spans),
     };
     {
       const std::scoped_lock lock{cache_mutex_};

@@ -360,7 +360,7 @@ private:
     command.passage_yield_required = passage.yield_before_entry;
     command.passage_yield_to_vehicle_id = passage.yield_to_vehicle_id;
     command.passage_traversal_id = ownship.passage.passage_traversal_id.value();
-    command.passage_conflict_resource_id = ownship.passage.conflict_resource_id.value();
+    command.passage_conflict_resource_id = passage.conflict_resource_id.value();
     command.passage_route_generation = ownship.passage.route_generation;
     command.passage_lateral_offset_m = ownship.passage.lateral_offset_m;
     command.passage_minimum_lateral_offset_m = ownship.passage.minimum_lateral_offset_m;

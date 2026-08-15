@@ -64,6 +64,7 @@ namespace {
                   .reference_speed_mps = 10.0,
               },
           },
+      .segment_spans = {},
   };
 }
 

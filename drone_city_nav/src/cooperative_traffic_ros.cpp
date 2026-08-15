@@ -1,5 +1,6 @@
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 
+#include "drone_city_nav/msg/cooperative_conflict_resource_use.hpp"
 #include "drone_city_nav/msg/cooperative_passage_intent.hpp"
 #include "drone_city_nav/msg/cooperative_trajectory_point.hpp"
 
@@ -47,10 +48,8 @@ void assign(geometry_msgs::msg::Vector3& target, const Vec3& source) noexcept {
 
 [[nodiscard]] CooperativePassageUse
 passageUseImpl(const msg::CooperativePassageIntent& message) {
-  return CooperativePassageUse{
+  CooperativePassageUse result{
       .passage_traversal_id = PassageTraversalId{message.passage_traversal_id},
-      .conflict_resource_id =
-          CooperativeConflictResourceId{message.conflict_resource_id},
       .route_generation = message.route_generation,
       .phase = passagePhase(message.phase),
       .lateral_offset_m = message.lateral_offset_m,
@@ -63,13 +62,26 @@ passageUseImpl(const msg::CooperativePassageIntent& message) {
       .distance_to_exit_m = message.distance_to_exit_m,
       .predicted_entry_ns = cooperativeTimeNanoseconds(message.predicted_entry),
       .predicted_exit_ns = cooperativeTimeNanoseconds(message.predicted_exit),
+      .conflict_resources = {},
   };
+  result.conflict_resources.reserve(message.conflict_resources.size());
+  for (const msg::CooperativeConflictResourceUse& resource :
+       message.conflict_resources) {
+    result.conflict_resources.push_back(CooperativeConflictResourceUse{
+        .conflict_resource_id =
+            CooperativeConflictResourceId{resource.conflict_resource_id},
+        .begin_station_m = resource.begin_station_m,
+        .end_station_m = resource.end_station_m,
+        .predicted_entry_ns = cooperativeTimeNanoseconds(resource.predicted_entry),
+        .predicted_exit_ns = cooperativeTimeNanoseconds(resource.predicted_exit),
+    });
+  }
+  return result;
 }
 
 void assignPassage(msg::CooperativePassageIntent& message,
                    const CooperativePassageUse& passage) {
   message.passage_traversal_id = passage.passage_traversal_id.value();
-  message.conflict_resource_id = passage.conflict_resource_id.value();
   message.route_generation = passage.route_generation;
   message.phase = static_cast<std::uint8_t>(passage.phase);
   message.lateral_offset_m = passage.lateral_offset_m;
@@ -83,6 +95,18 @@ void assignPassage(msg::CooperativePassageIntent& message,
   message.distance_to_exit_m = passage.distance_to_exit_m;
   message.predicted_entry = cooperativeTimeMessage(passage.predicted_entry_ns);
   message.predicted_exit = cooperativeTimeMessage(passage.predicted_exit_ns);
+  message.conflict_resources.reserve(passage.conflict_resources.size());
+  for (const CooperativeConflictResourceUse& resource : passage.conflict_resources) {
+    msg::CooperativeConflictResourceUse resource_message;
+    resource_message.conflict_resource_id = resource.conflict_resource_id.value();
+    resource_message.begin_station_m = resource.begin_station_m;
+    resource_message.end_station_m = resource.end_station_m;
+    resource_message.predicted_entry =
+        cooperativeTimeMessage(resource.predicted_entry_ns);
+    resource_message.predicted_exit =
+        cooperativeTimeMessage(resource.predicted_exit_ns);
+    message.conflict_resources.push_back(std::move(resource_message));
+  }
 }
 
 [[nodiscard]] msg::CooperativeTrajectoryPoint

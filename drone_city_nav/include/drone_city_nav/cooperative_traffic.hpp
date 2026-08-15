@@ -3,9 +3,11 @@
 #include "drone_city_nav/passage_ids.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -35,9 +37,21 @@ struct CooperativeTrajectorySample {
   Vec3 velocity{};
 };
 
+struct CooperativeConflictResourceUse {
+  CooperativeConflictResourceId conflict_resource_id;
+  double begin_station_m{0.0};
+  double end_station_m{0.0};
+  std::int64_t predicted_entry_ns{0};
+  std::int64_t predicted_exit_ns{0};
+
+  [[nodiscard]] bool active() const noexcept {
+    return !conflict_resource_id.empty() && end_station_m >= begin_station_m &&
+           predicted_entry_ns > 0 && predicted_exit_ns >= predicted_entry_ns;
+  }
+};
+
 struct CooperativePassageUse {
   PassageTraversalId passage_traversal_id;
-  CooperativeConflictResourceId conflict_resource_id;
   std::uint64_t route_generation{0U};
   CooperativePassagePhase phase{CooperativePassagePhase::kNone};
   double lateral_offset_m{0.0};
@@ -50,12 +64,22 @@ struct CooperativePassageUse {
   double distance_to_exit_m{0.0};
   std::int64_t predicted_entry_ns{0};
   std::int64_t predicted_exit_ns{0};
+  std::vector<CooperativeConflictResourceUse> conflict_resources;
 
   [[nodiscard]] bool active() const noexcept {
     return phase != CooperativePassagePhase::kNone && !passage_traversal_id.empty() &&
-           !conflict_resource_id.empty() &&
+           std::ranges::any_of(conflict_resources,
+                               &CooperativeConflictResourceUse::active) &&
            maximum_lateral_offset_m >= minimum_lateral_offset_m &&
            desired_center_separation_m > 0.0;
+  }
+
+  [[nodiscard]] bool usesConflictResource(
+      const CooperativeConflictResourceId& resource_id) const noexcept {
+    return !resource_id.empty() &&
+           std::ranges::any_of(conflict_resources, [&](const auto& resource) {
+             return resource.active() && resource.conflict_resource_id == resource_id;
+           });
   }
 };
 

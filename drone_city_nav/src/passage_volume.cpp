@@ -226,6 +226,7 @@ derivePassageVolume(const std::span<const RouteSample3D> route,
       .minimum_physical_secondary_extent_m = std::numeric_limits<double>::infinity(),
       .cross_sections = {},
       .raw_validated = false,
+      .segment_spans = span.segment_spans,
   };
   if (route.size() < 2U || span.passage_traversal_id.empty() ||
       !(span.end_station_m > span.begin_station_m)) {
@@ -349,6 +350,11 @@ resourceKey(const std::span<const RouteSample3D> route,
     stream << '|' << span.passage_traversal_id.value().size() << ':'
            << span.passage_traversal_id.value() << '|' << std::hexfloat
            << span.begin_station_m << '|' << span.end_station_m;
+    for (const PassageTraversalSegmentSpan& segment : span.segment_spans) {
+      stream << '|' << segment.passage_segment_id.value().size() << ':'
+             << segment.passage_segment_id.value() << '|' << segment.begin_station_m
+             << '|' << segment.end_station_m;
+    }
   }
   return stream.str();
 }

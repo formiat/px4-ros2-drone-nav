@@ -22,6 +22,7 @@ struct CooperativePassageDecision {
   bool yield_before_entry{false};
   bool conflict_zone_only{false};
   std::string yield_to_vehicle_id;
+  CooperativeConflictResourceId conflict_resource_id;
 };
 
 [[nodiscard]] double

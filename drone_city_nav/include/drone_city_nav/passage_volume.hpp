@@ -63,6 +63,7 @@ struct PassageVolume {
   double minimum_physical_secondary_extent_m{0.0};
   std::vector<PassageCrossSection> cross_sections;
   bool raw_validated{false};
+  std::vector<PassageTraversalSegmentSpan> segment_spans;
 
   [[nodiscard]] double usableWidthM() const noexcept {
     return maximum_lateral_offset_m - minimum_lateral_offset_m;

@@ -66,6 +66,7 @@ namespace {
       .minimum_physical_secondary_extent_m = 9.5,
       .cross_sections = std::move(sections),
       .raw_validated = true,
+      .segment_spans = constrained.segment_spans,
   };
 }
 
@@ -99,6 +100,7 @@ namespace {
                   .reference_speed_mps = 10.0,
               },
           },
+      .segment_spans = {},
   };
 }
 

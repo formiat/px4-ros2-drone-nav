@@ -234,6 +234,32 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     ConstrainedRouteSpan transformed = span;
     transformed.begin_station_m = new_entry.station_m;
     transformed.end_station_m = new_exit.station_m;
+    transformed.segment_spans.clear();
+    transformed.segment_spans.reserve(span.segment_spans.size());
+    for (const PassageTraversalSegmentSpan& segment : span.segment_spans) {
+      const Point3 old_segment_begin =
+          sampleRoute3DAtStation(route, segment.begin_station_m).position;
+      const Point3 old_segment_end =
+          sampleRoute3DAtStation(route, segment.end_station_m).position;
+      const RouteProjection3D new_segment_begin =
+          projectOntoRoute3D(result.route, old_segment_begin, new_entry.station_m);
+      const RouteProjection3D new_segment_end = projectOntoRoute3D(
+          result.route, old_segment_end,
+          new_segment_begin.valid ? new_segment_begin.station_m : new_entry.station_m);
+      if (!new_segment_begin.valid || !new_segment_end.valid ||
+          new_segment_end.station_m <= new_segment_begin.station_m + 1.0e-9) {
+        continue;
+      }
+      transformed.segment_spans.push_back(PassageTraversalSegmentSpan{
+          .passage_segment_id = segment.passage_segment_id,
+          .begin_station_m =
+              std::clamp(new_segment_begin.station_m, transformed.begin_station_m,
+                         transformed.end_station_m),
+          .end_station_m =
+              std::clamp(new_segment_end.station_m, transformed.begin_station_m,
+                         transformed.end_station_m),
+      });
+    }
     transformed.envelope.clear();
     transformed.envelope.reserve(span.envelope.size());
     for (const RouteEnvelopeSample& envelope : span.envelope) {

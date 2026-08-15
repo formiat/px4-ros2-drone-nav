@@ -479,6 +479,7 @@ TEST(StaticRouteExtensionTest, ProtectsConstrainedSuffixThroughDeparture) {
       .begin_station_m = 5.0,
       .end_station_m = 12.0,
       .envelope = {},
+      .segment_spans = {},
   }};
 
   EXPECT_TRUE(staticRouteHasProtectedConstrainedSuffix(active, spans,

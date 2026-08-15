@@ -50,7 +50,11 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
                                .width_m = 18.0,
                                .height_m = 6.0,
                                .minimum_clearance_m = 3.0,
-                               .speed_limit_mps = 10.0}};
+                               .speed_limit_mps = 10.0,
+                               .segment_spans = {PassageTraversalSegmentSpan{
+                                   .passage_segment_id = "segment:corner",
+                                   .begin_station_m = 10.0,
+                                   .end_station_m = 20.0}}}};
   std::vector<ConstrainedRouteSpan> spans =
       makeConstrainedRouteSpans(route, traversals, 2U, RouteEnvelopeConfig{});
   ASSERT_EQ(spans.size(), 1U);
@@ -68,6 +72,11 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
 
   ASSERT_EQ(result.constrained_spans.size(), 1U);
   EXPECT_EQ(result.constrained_spans.front().passage_traversal_id, "passage");
+  ASSERT_EQ(result.constrained_spans.front().segment_spans.size(), 1U);
+  EXPECT_EQ(result.constrained_spans.front().segment_spans.front().passage_segment_id,
+            "segment:corner");
+  EXPECT_GT(result.constrained_spans.front().segment_spans.front().end_station_m,
+            result.constrained_spans.front().segment_spans.front().begin_station_m);
   EXPECT_EQ(result.constrained_spans.front().direction_sign, 1);
   ASSERT_GT(result.constrained_spans.front().envelope.size(), 1U);
   EXPECT_LT(result.constrained_spans.front().envelope.front().min_z_m,

@@ -479,6 +479,30 @@ reconstruct(const Key& terminal, const Point3& origin,
         appendUnique(result.points, sample.position, station_m);
       }
     }
+    std::vector<PassageTraversalSegmentSpan> segment_spans;
+    segment_spans.reserve(passage.segment_spans.size());
+    const double passage_length_m =
+        passage.centerline.empty() ? 0.0 : passage.centerline.back().station_m;
+    if (transition.reversed) {
+      for (const PassageTraversalSegmentSpan& segment :
+           std::views::reverse(passage.segment_spans)) {
+        segment_spans.push_back(PassageTraversalSegmentSpan{
+            .passage_segment_id = segment.passage_segment_id,
+            .begin_station_m =
+                begin_station_m + passage_length_m - segment.end_station_m,
+            .end_station_m =
+                begin_station_m + passage_length_m - segment.begin_station_m,
+        });
+      }
+    } else {
+      for (const PassageTraversalSegmentSpan& segment : passage.segment_spans) {
+        segment_spans.push_back(PassageTraversalSegmentSpan{
+            .passage_segment_id = segment.passage_segment_id,
+            .begin_station_m = begin_station_m + segment.begin_station_m,
+            .end_station_m = begin_station_m + segment.end_station_m,
+        });
+      }
+    }
     result.traversals.push_back(SelectedPassageTraversal{
         .passage_traversal_id = passage.id,
         .direction_sign = transition.reversed ? -1 : 1,
@@ -490,6 +514,7 @@ reconstruct(const Key& terminal, const Point3& origin,
         .height_m = passage.height_m,
         .minimum_clearance_m = passage.minimum_clearance_m,
         .speed_limit_mps = passage.speed_limit_mps,
+        .segment_spans = std::move(segment_spans),
     });
   }
   return result;

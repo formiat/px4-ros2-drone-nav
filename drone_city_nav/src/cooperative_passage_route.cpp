@@ -351,6 +351,11 @@ CooperativePassageRouteResult applyCooperativePassageCorridors(
     transformed.begin_station_m =
         mapStation(route, result.route, original.begin_station_m);
     transformed.end_station_m = mapStation(route, result.route, original.end_station_m);
+    for (PassageTraversalSegmentSpan& segment : transformed.segment_spans) {
+      segment.begin_station_m =
+          mapStation(route, result.route, segment.begin_station_m);
+      segment.end_station_m = mapStation(route, result.route, segment.end_station_m);
+    }
     const CooperativePassageAssignment& assignment = result.assignments[index];
     const PassageVolume* const volume =
         findPassageVolume(passage_volumes, original, index);

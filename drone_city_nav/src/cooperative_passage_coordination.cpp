@@ -14,8 +14,8 @@ constexpr double kNanosecondsPerSecond{1.0e9};
   return static_cast<std::int64_t>(std::llround(seconds * kNanosecondsPerSecond));
 }
 
-[[nodiscard]] bool timeWindowsOverlap(const CooperativePassageUse& first,
-                                      const CooperativePassageUse& second,
+[[nodiscard]] bool timeWindowsOverlap(const CooperativeConflictResourceUse& first,
+                                      const CooperativeConflictResourceUse& second,
                                       const double margin_s) noexcept {
   if (first.predicted_entry_ns <= 0 || first.predicted_exit_ns <= 0 ||
       second.predicted_entry_ns <= 0 || second.predicted_exit_ns <= 0) {
@@ -29,21 +29,31 @@ constexpr double kNanosecondsPerSecond{1.0e9};
 [[nodiscard]] bool
 ownshipWinsRightOfWay(const CooperativeFlightIntentData& ownship,
                       const CooperativeFlightIntentData& peer,
+                      const CooperativeConflictResourceUse& ownship_resource,
+                      const CooperativeConflictResourceUse& peer_resource,
                       const CooperativePassageCoordinationConfig& config) noexcept {
-  if (ownship.passage.phase == CooperativePassagePhase::kTraversal) {
-    return true;
+  const bool ownship_occupies_resource =
+      ownship.passage.phase == CooperativePassagePhase::kTraversal &&
+      ownship.passage.station_m + 1.0e-6 >= ownship_resource.begin_station_m &&
+      ownship.passage.station_m - 1.0e-6 <= ownship_resource.end_station_m;
+  const bool peer_occupies_resource =
+      peer.passage.phase == CooperativePassagePhase::kTraversal &&
+      peer.passage.station_m + 1.0e-6 >= peer_resource.begin_station_m &&
+      peer.passage.station_m - 1.0e-6 <= peer_resource.end_station_m;
+  if (ownship_occupies_resource != peer_occupies_resource) {
+    return ownship_occupies_resource;
   }
-  if (peer.passage.phase == CooperativePassagePhase::kTraversal) {
-    return false;
+  if (ownship_occupies_resource) {
+    return ownship.vehicle_id < peer.vehicle_id;
   }
   const std::int64_t headway_ns =
       secondsToNanoseconds(config.same_path_entry_headway_s);
-  if (ownship.passage.predicted_entry_ns + headway_ns <
-      peer.passage.predicted_entry_ns) {
+  if (ownship_resource.predicted_entry_ns + headway_ns <
+      peer_resource.predicted_entry_ns) {
     return true;
   }
-  if (peer.passage.predicted_entry_ns + headway_ns <
-      ownship.passage.predicted_entry_ns) {
+  if (peer_resource.predicted_entry_ns + headway_ns <
+      ownship_resource.predicted_entry_ns) {
     return false;
   }
   return ownship.vehicle_id < peer.vehicle_id;
@@ -58,13 +68,14 @@ ownshipWinsRightOfWay(const CooperativeFlightIntentData& ownship,
 }
 
 [[nodiscard]] std::int64_t
-requestedEntryTime(const CooperativePassageUse& peer, const bool same_direction,
+requestedEntryTime(const bool same_direction,
+                   const CooperativeConflictResourceUse& peer_resource,
                    const CooperativePassageCoordinationConfig& config) noexcept {
   if (same_direction) {
-    return peer.predicted_entry_ns +
+    return peer_resource.predicted_entry_ns +
            secondsToNanoseconds(config.same_path_entry_headway_s);
   }
-  return peer.predicted_exit_ns +
+  return peer_resource.predicted_exit_ns +
          secondsToNanoseconds(config.reservation_time_margin_s);
 }
 
@@ -96,10 +107,7 @@ CooperativePassageDecision coordinateCooperativePassage(
 
   for (const CooperativeFlightIntentData& peer : peers) {
     if (peer.vehicle_id.empty() || peer.vehicle_id == ownship.vehicle_id ||
-        !peer.passage.active() ||
-        peer.passage.conflict_resource_id != ownship.passage.conflict_resource_id ||
-        !timeWindowsOverlap(ownship.passage, peer.passage,
-                            config.reservation_time_margin_s)) {
+        !peer.passage.active()) {
       continue;
     }
     const bool different_movement =
@@ -109,35 +117,59 @@ CooperativePassageDecision coordinateCooperativePassage(
     const double required_separation_m =
         std::max(ownship.passage.desired_center_separation_m,
                  peer.passage.desired_center_separation_m);
-    const bool exclusive_resource = sharedUsableWidthM(ownship.passage, peer.passage) +
-                                        config.lateral_separation_tolerance_m <
-                                    required_separation_m;
     const bool offsets_separated =
         !different_movement &&
         passageLateralSeparationM(ownship.passage, peer.passage) +
                 config.lateral_separation_tolerance_m >=
             required_separation_m;
-    if (!exclusive_resource && offsets_separated) {
-      continue;
-    }
-
     const CooperativeConflictPrediction prediction =
         predictCooperativeConflict(ownship, peer, ownship.stamp_ns, config.conflict);
-    const bool conflict_relevant =
-        exclusive_resource ||
-        ((different_movement || same_direction || !offsets_separated) &&
-         prediction.valid && prediction.conflict_predicted);
-    if (!conflict_relevant || ownshipWinsRightOfWay(ownship, peer, config)) {
-      continue;
-    }
-    result.yield_before_entry = true;
-    result.conflict_zone_only = different_movement && !exclusive_resource;
-    result.entry_not_before_ns =
-        std::max(result.entry_not_before_ns,
-                 requestedEntryTime(peer.passage, same_direction, config));
-    if (result.yield_to_vehicle_id.empty() ||
-        peer.vehicle_id < result.yield_to_vehicle_id) {
-      result.yield_to_vehicle_id = peer.vehicle_id;
+    for (const CooperativeConflictResourceUse& ownship_resource :
+         ownship.passage.conflict_resources) {
+      for (const CooperativeConflictResourceUse& peer_resource :
+           peer.passage.conflict_resources) {
+        if (!ownship_resource.active() || !peer_resource.active() ||
+            ownship_resource.conflict_resource_id !=
+                peer_resource.conflict_resource_id ||
+            !timeWindowsOverlap(ownship_resource, peer_resource,
+                                config.reservation_time_margin_s)) {
+          continue;
+        }
+        const bool exclusive_resource =
+            sharedUsableWidthM(ownship.passage, peer.passage) +
+                config.lateral_separation_tolerance_m <
+            required_separation_m;
+        if (!exclusive_resource && offsets_separated) {
+          continue;
+        }
+        const bool conflict_relevant =
+            exclusive_resource ||
+            ((different_movement || same_direction || !offsets_separated) &&
+             prediction.valid && prediction.conflict_predicted);
+        if (!conflict_relevant || ownshipWinsRightOfWay(ownship, peer, ownship_resource,
+                                                        peer_resource, config)) {
+          continue;
+        }
+        const bool conflict_zone_only = different_movement && !exclusive_resource;
+        if (!result.yield_before_entry) {
+          result.conflict_zone_only = conflict_zone_only;
+        } else {
+          result.conflict_zone_only = result.conflict_zone_only && conflict_zone_only;
+        }
+        result.yield_before_entry = true;
+        result.entry_not_before_ns =
+            std::max(result.entry_not_before_ns,
+                     requestedEntryTime(same_direction, peer_resource, config));
+        if (result.yield_to_vehicle_id.empty() ||
+            peer.vehicle_id < result.yield_to_vehicle_id) {
+          result.yield_to_vehicle_id = peer.vehicle_id;
+        }
+        if (result.conflict_resource_id.empty() ||
+            ownship_resource.conflict_resource_id.value() <
+                result.conflict_resource_id.value()) {
+          result.conflict_resource_id = ownship_resource.conflict_resource_id;
+        }
+      }
     }
   }
   return result;

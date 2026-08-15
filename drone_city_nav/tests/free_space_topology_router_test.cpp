@@ -50,7 +50,14 @@ TEST(FreeSpaceTopologyRouter, ResolvesAndCachesRouteSpecificSparseTraversal) {
   EXPECT_EQ(first.stats.traversal_cache_hits, 0U);
   EXPECT_EQ(first.stats.traversal_cache_misses, 1U);
   const PassageTraversalEdge& traversal = first.traversals->front();
-  EXPECT_FALSE(traversal.segment_ids.empty());
+  EXPECT_FALSE(traversal.segment_spans.empty());
+  EXPECT_NEAR(traversal.segment_spans.front().begin_station_m, 0.0, 1.0e-9);
+  EXPECT_NEAR(traversal.segment_spans.back().end_station_m,
+              traversal.centerline.back().station_m, 1.0e-6);
+  for (std::size_t index = 1U; index < traversal.segment_spans.size(); ++index) {
+    EXPECT_NEAR(traversal.segment_spans[index - 1U].end_station_m,
+                traversal.segment_spans[index].begin_station_m, 1.0e-6);
+  }
   EXPECT_GT(traversal.centerline.back().position.z -
                 traversal.centerline.front().position.z,
             8.0);
@@ -70,6 +77,7 @@ TEST(FreeSpaceTopologyRouter, ResolvesAndCachesRouteSpecificSparseTraversal) {
   EXPECT_EQ(second.stats.traversal_cache_hits, second.traversals->size());
   EXPECT_EQ(second.stats.traversal_cache_misses, 0U);
   EXPECT_EQ(second.traversals->front().id, traversal.id);
+  EXPECT_EQ(second.traversals->front().segment_spans, traversal.segment_spans);
 }
 
 TEST(FreeSpaceTopologyRouter, BoundsJunctionCandidatesWithoutPairwiseMaterialization) {
@@ -90,7 +98,7 @@ TEST(FreeSpaceTopologyRouter, BoundsJunctionCandidatesWithoutPairwiseMaterializa
             topology.portals().size() * (topology.portals().size() - 1U) / 2U);
   EXPECT_TRUE(
       std::ranges::all_of(*route.traversals, [](const PassageTraversalEdge& traversal) {
-        return !traversal.segment_ids.empty() && traversal.centerline.size() >= 2U;
+        return !traversal.segment_spans.empty() && traversal.centerline.size() >= 2U;
       }));
 }
 
@@ -119,6 +127,7 @@ TEST(FreeSpaceTopologyRouter, BuildsVaryingFull3DEnvelopeForGeneralizedTraversal
         .height_m = traversal.height_m,
         .minimum_clearance_m = traversal.minimum_clearance_m,
         .speed_limit_mps = traversal.speed_limit_mps,
+        .segment_spans = traversal.segment_spans,
     }};
     std::vector<ConstrainedRouteSpan> spans =
         makeConstrainedRouteSpans(traversal.centerline, selected, 1U,

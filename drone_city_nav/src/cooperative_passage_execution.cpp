@@ -10,10 +10,13 @@ namespace {
 constexpr double kNanosecondsPerSecond{1.0e9};
 
 [[nodiscard]] CooperativeConflictResourceId
-conflictResourceId(const PassageTraversalId& passage_traversal_id) {
-  const std::string& value = passage_traversal_id.value();
-  const std::size_t separator = value.find(':');
-  return CooperativeConflictResourceId{value.substr(0U, separator)};
+segmentResourceId(const PassageSegmentId& passage_segment_id) {
+  return CooperativeConflictResourceId{passage_segment_id.value()};
+}
+
+[[nodiscard]] CooperativeConflictResourceId
+legacyTraversalResourceId(const PassageTraversalId& passage_traversal_id) {
+  return CooperativeConflictResourceId{"traversal:" + passage_traversal_id.value()};
 }
 
 [[nodiscard]] CooperativePassagePhase
@@ -38,13 +41,65 @@ cooperativePhase(const ConstrainedRoutePhase phase) noexcept {
                       std::llround(std::max(0.0, delay_s) * kNanosecondsPerSecond));
 }
 
+[[nodiscard]] CooperativeConflictResourceUse
+resourceUse(const CooperativeConflictResourceId& resource_id,
+            const double begin_station_m, const double end_station_m,
+            const ConstrainedRouteObservation& observation, const std::int64_t now_ns,
+            const double prediction_speed_mps,
+            const double maximum_prediction_horizon_s) {
+  const double entry_delay_s = std::clamp(
+      std::max(0.0, begin_station_m - observation.station_m) / prediction_speed_mps,
+      0.0, maximum_prediction_horizon_s);
+  const double exit_delay_s = std::clamp(
+      std::max(0.0, end_station_m - observation.station_m) / prediction_speed_mps,
+      entry_delay_s, maximum_prediction_horizon_s);
+  return CooperativeConflictResourceUse{
+      .conflict_resource_id = resource_id,
+      .begin_station_m = begin_station_m,
+      .end_station_m = end_station_m,
+      .predicted_entry_ns = futureStamp(now_ns, entry_delay_s),
+      .predicted_exit_ns = futureStamp(now_ns, exit_delay_s),
+  };
+}
+
+[[nodiscard]] std::vector<CooperativeConflictResourceUse>
+conflictResources(const ConstrainedRouteObservation& observation,
+                  const std::int64_t now_ns, const double prediction_speed_mps,
+                  const double maximum_prediction_horizon_s) {
+  std::vector<CooperativeConflictResourceUse> resources;
+  resources.reserve(observation.segment_spans.size());
+  for (std::size_t index = 0U; index < observation.segment_spans.size(); ++index) {
+    const PassageTraversalSegmentSpan& segment = observation.segment_spans[index];
+    const bool relevant = observation.phase == ConstrainedRoutePhase::kApproach ||
+                          (observation.phase == ConstrainedRoutePhase::kTraversal &&
+                           segment.end_station_m + 1.0e-6 >= observation.station_m) ||
+                          (observation.phase == ConstrainedRoutePhase::kDeparture &&
+                           index + 1U == observation.segment_spans.size());
+    if (!relevant || segment.passage_segment_id.empty() ||
+        !(segment.end_station_m > segment.begin_station_m)) {
+      continue;
+    }
+    resources.push_back(resourceUse(segmentResourceId(segment.passage_segment_id),
+                                    segment.begin_station_m, segment.end_station_m,
+                                    observation, now_ns, prediction_speed_mps,
+                                    maximum_prediction_horizon_s));
+  }
+  if (resources.empty()) {
+    resources.push_back(
+        resourceUse(legacyTraversalResourceId(observation.passage_traversal_id),
+                    observation.begin_station_m, observation.end_station_m, observation,
+                    now_ns, prediction_speed_mps, maximum_prediction_horizon_s));
+  }
+  return resources;
+}
+
 } // namespace
 
 CooperativePassageUse
 makeCooperativePassageUse(const ConstrainedRouteObservation& observation,
                           const CooperativePassageAssignment& assignment,
                           const std::int64_t now_ns, const double planned_speed_mps,
-                          const CooperativePassageTimingConfig& config) noexcept {
+                          const CooperativePassageTimingConfig& config) {
   CooperativePassageUse result;
   const CooperativePassagePhase phase = cooperativePhase(observation.phase);
   if (!observation.span_available || phase == CooperativePassagePhase::kNone ||
@@ -68,7 +123,6 @@ makeCooperativePassageUse(const ConstrainedRouteObservation& observation,
                  entry_delay_s, config.maximum_prediction_horizon_s);
   result = CooperativePassageUse{
       .passage_traversal_id = observation.passage_traversal_id,
-      .conflict_resource_id = conflictResourceId(observation.passage_traversal_id),
       .route_generation = observation.route_generation,
       .phase = phase,
       .lateral_offset_m = assignment.applied_lateral_offset_m,
@@ -81,6 +135,8 @@ makeCooperativePassageUse(const ConstrainedRouteObservation& observation,
       .distance_to_exit_m = observation.distance_to_exit_m,
       .predicted_entry_ns = futureStamp(now_ns, entry_delay_s),
       .predicted_exit_ns = futureStamp(now_ns, exit_delay_s),
+      .conflict_resources = conflictResources(observation, now_ns, prediction_speed_mps,
+                                              config.maximum_prediction_horizon_s),
   };
   return result;
 }
@@ -110,7 +166,7 @@ CooperativePassageYieldDecision evaluateCooperativePassageYield(
   }
   if (!passage.active() ||
       command.passage_traversal_id != passage.passage_traversal_id ||
-      command.passage_conflict_resource_id != passage.conflict_resource_id) {
+      !passage.usesConflictResource(command.passage_conflict_resource_id)) {
     result.status = CooperativePassageYieldStatus::kPassageMismatch;
     return result;
   }

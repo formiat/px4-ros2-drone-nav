@@ -24,6 +24,15 @@ constexpr std::int64_t kSecondNs{1'000'000'000LL};
       .distance_to_entry_m = 10.0,
       .distance_to_exit_m = 40.0,
       .actual_horizontal_speed_mps = 5.0,
+      .segment_spans =
+          {
+              PassageTraversalSegmentSpan{.passage_segment_id = "segment:entry",
+                                          .begin_station_m = 25.0,
+                                          .end_station_m = 40.0},
+              PassageTraversalSegmentSpan{.passage_segment_id = "segment:exit",
+                                          .begin_station_m = 40.0,
+                                          .end_station_m = 55.0},
+          },
   };
 }
 
@@ -62,7 +71,7 @@ constexpr std::int64_t kSecondNs{1'000'000'000LL};
       .passage_yield_required = true,
       .passage_yield_to_vehicle_id = "civilian_1",
       .passage_traversal_id = "passage_t:west_east",
-      .passage_conflict_resource_id = "passage_t",
+      .passage_conflict_resource_id = "segment:entry",
       .passage_route_generation = 9U,
       .passage_lateral_offset_m = -3.0,
       .passage_minimum_lateral_offset_m = -6.0,
@@ -77,7 +86,11 @@ TEST(CooperativePassageExecution, PublishesCorridorOffsetAndTimeWindow) {
       approach(), assignment(), 10 * kSecondNs, 10.0, CooperativePassageTimingConfig{});
 
   ASSERT_TRUE(passage.active());
-  EXPECT_EQ(passage.conflict_resource_id, "passage_t");
+  ASSERT_EQ(passage.conflict_resources.size(), 2U);
+  EXPECT_EQ(passage.conflict_resources[0].conflict_resource_id, "segment:entry");
+  EXPECT_EQ(passage.conflict_resources[1].conflict_resource_id, "segment:exit");
+  EXPECT_EQ(passage.conflict_resources[0].predicted_entry_ns, 11 * kSecondNs);
+  EXPECT_EQ(passage.conflict_resources[0].predicted_exit_ns, 12'500'000'000LL);
   EXPECT_DOUBLE_EQ(passage.lateral_offset_m, -3.0);
   EXPECT_DOUBLE_EQ(passage.minimum_lateral_offset_m, -6.0);
   EXPECT_DOUBLE_EQ(passage.maximum_lateral_offset_m, 6.0);
@@ -85,16 +98,54 @@ TEST(CooperativePassageExecution, PublishesCorridorOffsetAndTimeWindow) {
   EXPECT_EQ(passage.predicted_exit_ns, 14 * kSecondNs);
 }
 
-TEST(CooperativePassageExecution, GroupsPortalMovementsIntoOneConflictResource) {
+TEST(CooperativePassageExecution, UsesSharedSparseSegmentAsConflictResource) {
   ConstrainedRouteObservation observation = approach();
   observation.passage_traversal_id = "passage_t:west_north";
   CooperativePassageAssignment movement = assignment();
   movement.passage_traversal_id = observation.passage_traversal_id;
+  observation.segment_spans[0].passage_segment_id = "segment:shared";
 
   const CooperativePassageUse passage = makeCooperativePassageUse(
       observation, movement, 10 * kSecondNs, 10.0, CooperativePassageTimingConfig{});
 
-  EXPECT_EQ(passage.conflict_resource_id, "passage_t");
+  ASSERT_EQ(passage.conflict_resources.size(), 2U);
+  EXPECT_EQ(passage.conflict_resources.front().conflict_resource_id, "segment:shared");
+}
+
+TEST(CooperativePassageExecution, LegacyTraversalGetsSpecificFallbackResource) {
+  ConstrainedRouteObservation observation = approach();
+  observation.segment_spans.clear();
+
+  const CooperativePassageUse passage =
+      makeCooperativePassageUse(observation, assignment(), 10 * kSecondNs, 10.0,
+                                CooperativePassageTimingConfig{});
+
+  ASSERT_EQ(passage.conflict_resources.size(), 1U);
+  EXPECT_EQ(passage.conflict_resources.front().conflict_resource_id,
+            "traversal:passage_t:west_east");
+}
+
+TEST(CooperativePassageExecution, KeepsAdjacentResourcesAtSegmentTransition) {
+  ConstrainedRouteObservation observation = approach();
+  observation.phase = ConstrainedRoutePhase::kTraversal;
+  observation.station_m = 40.0;
+  observation.distance_to_entry_m = -15.0;
+  observation.distance_to_exit_m = 15.0;
+
+  const CooperativePassageUse at_transition =
+      makeCooperativePassageUse(observation, assignment(), 10 * kSecondNs, 10.0,
+                                CooperativePassageTimingConfig{});
+  ASSERT_EQ(at_transition.conflict_resources.size(), 2U);
+  EXPECT_EQ(at_transition.conflict_resources[0].conflict_resource_id, "segment:entry");
+  EXPECT_EQ(at_transition.conflict_resources[1].conflict_resource_id, "segment:exit");
+
+  observation.station_m = 41.0;
+  const CooperativePassageUse after_transition =
+      makeCooperativePassageUse(observation, assignment(), 10 * kSecondNs, 10.0,
+                                CooperativePassageTimingConfig{});
+  ASSERT_EQ(after_transition.conflict_resources.size(), 1U);
+  EXPECT_EQ(after_transition.conflict_resources.front().conflict_resource_id,
+            "segment:exit");
 }
 
 TEST(CooperativePassageExecution, AcceptsOnlyCurrentRouteAndCorridorYield) {

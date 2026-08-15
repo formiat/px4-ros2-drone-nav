@@ -56,7 +56,7 @@ struct PassageTraversalEdge {
   double height_m{0.0};
   double minimum_clearance_m{0.0};
   double speed_limit_mps{0.0};
-  std::vector<PassageSegmentId> segment_ids;
+  std::vector<PassageTraversalSegmentSpan> segment_spans;
 };
 
 } // namespace drone_city_nav

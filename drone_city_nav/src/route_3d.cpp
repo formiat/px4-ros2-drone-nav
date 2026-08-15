@@ -124,6 +124,13 @@ routeFingerprint(const std::span<const RouteSample3D> route,
                          std::llround(traversal.begin_station_m * 1000.0)));
     hashSigned(hash, static_cast<std::int64_t>(
                          std::llround(traversal.end_station_m * 1000.0)));
+    for (const PassageTraversalSegmentSpan& segment : traversal.segment_spans) {
+      hashText(hash, segment.passage_segment_id.value());
+      hashSigned(hash, static_cast<std::int64_t>(
+                           std::llround(segment.begin_station_m * 1000.0)));
+      hashSigned(hash, static_cast<std::int64_t>(
+                           std::llround(segment.end_station_m * 1000.0)));
+    }
   }
   return hash;
 }
@@ -170,6 +177,7 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
       .actual_horizontal_speed_mps = std::hypot(actual_velocity.x, actual_velocity.y),
       .actual_vertical_speed_mps = actual_velocity.z,
       .actual_z_m = actual_position.z,
+      .segment_spans = {},
   };
   if (route.empty() || spans.empty() || !(event_distance_m >= 0.0)) {
     return observation;
@@ -243,6 +251,7 @@ observeConstrainedRoute(const std::span<const RouteSample3D> route,
       observation.lateral_width_m <= config.constrained_lateral_width_m;
   observation.vertical_constrained =
       observation.vertical_height_m <= config.constrained_vertical_height_m;
+  observation.segment_spans = span.segment_spans;
   return observation;
 }
 
@@ -461,7 +470,8 @@ makeConstrainedRouteSpans(const std::span<const RouteSample3D> route,
                               .direction_sign = traversal.direction_sign,
                               .begin_station_m = traversal.begin_station_m,
                               .end_station_m = traversal.end_station_m,
-                              .envelope = {}};
+                              .envelope = {},
+                              .segment_spans = traversal.segment_spans};
     for (const RouteSample3D& sample : route) {
       if (sample.station_m + 1.0e-6 < span.begin_station_m ||
           sample.station_m - 1.0e-6 > span.end_station_m) {

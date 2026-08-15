@@ -64,6 +64,7 @@ TEST(Route3DTest, CoordinatesVerticalAlignmentBeforePassageEntry) {
                                        .max_z_m = 8.5,
                                        .reference_z_m = 5.0,
                                        .reference_speed_mps = 10.0}},
+      .segment_spans = {},
   }};
   ConstrainedRouteCoordinator coordinator;
   const ConstrainedRouteObservation approach = observeConstrainedRoute(
@@ -117,6 +118,7 @@ TEST(Route3DTest, ObservesConstrainedSpanLifecycleAndMotionMetrics) {
                                       .reference_z_m = 5.0,
                                       .reference_speed_mps = 10.0},
               },
+          .segment_spans = {},
       },
   };
   const auto observe = [&route, &spans](const double station_m) {
@@ -432,7 +434,8 @@ TEST(Route3DTest, BuildsTypedSpanFromSelectedPassageTraversal) {
                                .width_m = 24.0,
                                .height_m = 7.0,
                                .minimum_clearance_m = 3.5,
-                               .speed_limit_mps = 10.0}};
+                               .speed_limit_mps = 10.0,
+                               .segment_spans = {}}};
 
   const std::vector<ConstrainedRouteSpan> spans =
       makeConstrainedRouteSpans(route, traversals, 12U, RouteEnvelopeConfig{});
@@ -519,7 +522,7 @@ TEST(Route3DTest, SelectsEmbeddedPassageEdgeWhenItsObjectiveCostIsLower) {
       .height_m = 7.0,
       .minimum_clearance_m = 3.5,
       .speed_limit_mps = 10.0,
-      .segment_ids = {}}};
+      .segment_spans = {}}};
   RiskAwareLattice3DConfig config;
   config.horizontal_step_m = 4.0;
   config.vertical_step_m = 1.0;
@@ -571,7 +574,7 @@ TEST(Route3DTest, SeedsCollisionValidatedPassageBeyondLocalConnectionRadius) {
       .height_m = 7.0,
       .minimum_clearance_m = 3.5,
       .speed_limit_mps = 10.0,
-      .segment_ids = {}}};
+      .segment_spans = {}}};
   RiskAwareLattice3DConfig config;
   config.horizontal_step_m = 4.0;
   config.vertical_step_m = 1.0;
@@ -621,7 +624,7 @@ TEST(Route3DTest, MaterializesRequiredPassageWhenUnconstrainedSlicePrefersFronti
       .height_m = 7.0,
       .minimum_clearance_m = 3.5,
       .speed_limit_mps = 10.0,
-      .segment_ids = {}}};
+      .segment_spans = {}}};
   RiskAwareLattice3DConfig config;
   config.horizontal_step_m = 2.0;
   config.vertical_step_m = 1.0;
@@ -673,7 +676,7 @@ TEST(Route3DTest, ParallelTopologyGroupsPreserveBestCompleteRoute) {
                                 .height_m = 7.0,
                                 .minimum_clearance_m = 3.5,
                                 .speed_limit_mps = 10.0,
-                                .segment_ids = {}};
+                                .segment_spans = {}};
   };
   const std::vector<PassageTraversalEdge> passages{
       passage("direct", {{0.5, 2.5, 5.5}, {18.5, 2.5, 5.5}}),
@@ -747,7 +750,7 @@ TEST(Route3DTest, SpatiallyIndexesPassageEntriesDuringLatticeExpansion) {
         .height_m = 7.0,
         .minimum_clearance_m = 3.5,
         .speed_limit_mps = 10.0,
-        .segment_ids = {},
+        .segment_spans = {},
     });
   }
   RiskAwareLattice3DConfig config;

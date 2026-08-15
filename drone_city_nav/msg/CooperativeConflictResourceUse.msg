@@ -1,0 +1,5 @@
+string conflict_resource_id
+float64 begin_station_m
+float64 end_station_m
+builtin_interfaces/Time predicted_entry
+builtin_interfaces/Time predicted_exit

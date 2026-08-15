@@ -39,6 +39,15 @@ struct RouteEnvelopeSample {
   double reference_speed_mps{0.0};
 };
 
+struct PassageTraversalSegmentSpan {
+  PassageSegmentId passage_segment_id;
+  double begin_station_m{0.0};
+  double end_station_m{0.0};
+
+  [[nodiscard]] bool
+  operator==(const PassageTraversalSegmentSpan&) const noexcept = default;
+};
+
 struct ConstrainedRouteSpan {
   PassageTraversalId passage_traversal_id;
   std::uint64_t route_generation{0U};
@@ -46,6 +55,7 @@ struct ConstrainedRouteSpan {
   double begin_station_m{0.0};
   double end_station_m{0.0};
   std::vector<RouteEnvelopeSample> envelope;
+  std::vector<PassageTraversalSegmentSpan> segment_spans;
 };
 
 struct SelectedPassageTraversal {
@@ -59,6 +69,7 @@ struct SelectedPassageTraversal {
   double height_m{0.0};
   double minimum_clearance_m{0.0};
   double speed_limit_mps{0.0};
+  std::vector<PassageTraversalSegmentSpan> segment_spans;
 };
 
 struct RouteEnvelopeConfig {
@@ -110,6 +121,7 @@ struct ConstrainedRouteObservation {
   double actual_z_m{0.0};
   bool lateral_constrained{false};
   bool vertical_constrained{false};
+  std::vector<PassageTraversalSegmentSpan> segment_spans;
 };
 
 struct ConstrainedRouteControlConfig {

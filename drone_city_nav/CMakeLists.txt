@@ -71,6 +71,7 @@ rosidl_generate_interfaces(
   "msg/SimulationTruthState.msg"
   "msg/VehicleNavigationState.msg"
   "msg/CooperativeTrajectoryPoint.msg"
+  "msg/CooperativeConflictResourceUse.msg"
   "msg/CooperativePassageIntent.msg"
   "msg/CooperativeFlightIntent.msg"
   "msg/CooperativePeerTrajectory.msg"

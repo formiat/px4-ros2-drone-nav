@@ -55,7 +55,6 @@ passageUse(const std::string& passage_traversal_id, const std::string& resource_
            const CooperativePassagePhase phase = CooperativePassagePhase::kApproach) {
   return CooperativePassageUse{
       .passage_traversal_id = passage_traversal_id,
-      .conflict_resource_id = resource_id,
       .route_generation = 1U,
       .phase = phase,
       .lateral_offset_m = lateral_offset_m,
@@ -65,7 +64,30 @@ passageUse(const std::string& passage_traversal_id, const std::string& resource_
       .direction_sign = direction_sign,
       .predicted_entry_ns = kNowNs + 1'000'000'000LL,
       .predicted_exit_ns = kNowNs + 4'000'000'000LL,
+      .conflict_resources = {CooperativeConflictResourceUse{
+          .conflict_resource_id = resource_id,
+          .begin_station_m = 10.0,
+          .end_station_m = 40.0,
+          .predicted_entry_ns = kNowNs + 1'000'000'000LL,
+          .predicted_exit_ns = kNowNs + 4'000'000'000LL,
+      }},
   };
+}
+
+[[nodiscard]] CooperativePassageUse
+withResources(CooperativePassageUse passage,
+              const std::vector<std::string>& resource_ids) {
+  passage.conflict_resources.clear();
+  for (const std::string& resource_id : resource_ids) {
+    passage.conflict_resources.push_back(CooperativeConflictResourceUse{
+        .conflict_resource_id = resource_id,
+        .begin_station_m = 10.0,
+        .end_station_m = 40.0,
+        .predicted_entry_ns = kNowNs + 1'000'000'000LL,
+        .predicted_exit_ns = kNowNs + 4'000'000'000LL,
+    });
+  }
+  return passage;
 }
 
 TEST(CooperativePeerStore, RejectsStaleAndOutOfOrderIntents) {
@@ -247,11 +269,15 @@ TEST(CooperativePassageCoordination, ReservesOnlyAConflictingJunctionMovement) {
   const CooperativeFlightIntentData ownship =
       linearIntent("civilian_1", Point3{-10.0, 0.0, 10.0}, Point3{10.0, 0.0, 10.0},
                    Vec3{10.0, 0.0, 0.0},
-                   passageUse("junction:west_east", "junction", -3.0, -6.0, 6.0, 1));
+                   withResources(passageUse("junction:west_east", "segment:west", -3.0,
+                                            -6.0, 6.0, 1),
+                                 {"segment:west", "segment:center", "segment:east"}));
   const CooperativeFlightIntentData peer =
       linearIntent("civilian_0", Point3{0.0, -10.0, 10.0}, Point3{0.0, 10.0, 10.0},
                    Vec3{0.0, 10.0, 0.0},
-                   passageUse("junction:south_north", "junction", -3.0, -6.0, 6.0, 1));
+                   withResources(passageUse("junction:south_north", "segment:south",
+                                            -3.0, -6.0, 6.0, 1),
+                                 {"segment:south", "segment:center", "segment:north"}));
 
   const CooperativePassageDecision decision =
       coordinateCooperativePassage(ownship, std::vector{peer});
@@ -259,6 +285,28 @@ TEST(CooperativePassageCoordination, ReservesOnlyAConflictingJunctionMovement) {
   EXPECT_TRUE(decision.yield_before_entry);
   EXPECT_TRUE(decision.conflict_zone_only);
   EXPECT_EQ(decision.yield_to_vehicle_id, "civilian_0");
+  EXPECT_EQ(decision.conflict_resource_id, "segment:center");
+}
+
+TEST(CooperativePassageCoordination, DoesNotReserveDisjointJunctionArms) {
+  const CooperativeFlightIntentData ownship =
+      linearIntent("civilian_1", Point3{-10.0, 0.0, 10.0}, Point3{10.0, 0.0, 10.0},
+                   Vec3{10.0, 0.0, 0.0},
+                   withResources(passageUse("junction:west_north", "segment:west", -3.0,
+                                            -6.0, 6.0, 1),
+                                 {"segment:west", "segment:north"}));
+  const CooperativeFlightIntentData peer =
+      linearIntent("civilian_0", Point3{0.0, -10.0, 10.0}, Point3{0.0, 10.0, 10.0},
+                   Vec3{0.0, 10.0, 0.0},
+                   withResources(passageUse("junction:south_east", "segment:south",
+                                            -3.0, -6.0, 6.0, 1),
+                                 {"segment:south", "segment:east"}));
+
+  const CooperativePassageDecision decision =
+      coordinateCooperativePassage(ownship, std::vector{peer});
+
+  EXPECT_TRUE(decision.active);
+  EXPECT_FALSE(decision.yield_before_entry);
 }
 
 TEST(CooperativePassageCoordination, SamePathNeedsNoDelayWhenSpacingIsSafe) {
@@ -269,6 +317,8 @@ TEST(CooperativePassageCoordination, SamePathNeedsNoDelayWhenSpacingIsSafe) {
       "civilian_0", Point3{10.0, 0.0, 10.0}, Point3{20.0, 0.0, 10.0},
       Vec3{5.0, 0.0, 0.0}, passageUse("passage", "passage", -3.0, -6.0, 6.0, 1));
   ownship.passage.predicted_entry_ns = kNowNs + 2'000'000'000LL;
+  ownship.passage.conflict_resources.front().predicted_entry_ns =
+      kNowNs + 2'000'000'000LL;
   peer.passage.predicted_entry_ns = kNowNs + 1'000'000'000LL;
 
   const CooperativePassageDecision decision =

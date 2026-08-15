@@ -4,7 +4,6 @@ uint8 PHASE_TRAVERSAL=2
 uint8 PHASE_DEPARTURE=3
 
 string passage_traversal_id
-string conflict_resource_id
 uint64 route_generation
 uint8 phase
 float64 lateral_offset_m
@@ -17,3 +16,4 @@ float64 distance_to_entry_m
 float64 distance_to_exit_m
 builtin_interfaces/Time predicted_entry
 builtin_interfaces/Time predicted_exit
+CooperativeConflictResourceUse[] conflict_resources

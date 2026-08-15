@@ -18,7 +18,7 @@ struct CooperativePassageTimingConfig {
 makeCooperativePassageUse(const ConstrainedRouteObservation& observation,
                           const CooperativePassageAssignment& assignment,
                           std::int64_t now_ns, double planned_speed_mps,
-                          const CooperativePassageTimingConfig& config) noexcept;
+                          const CooperativePassageTimingConfig& config);
 
 enum class CooperativePassageYieldStatus : std::uint8_t {
   kDisabled,
