@@ -173,6 +173,7 @@ add_library(
   src/flight_envelope.cpp
   src/free_space_topology_3d.cpp
   src/free_space_topology_extractor_3d.cpp
+  src/free_space_topology_extractor_3d_geometry.cpp
   src/free_space_topology_router.cpp
   src/global_guide_candidate.cpp
   src/grid_config.cpp
@@ -207,6 +208,7 @@ add_library(
   src/risk_aware_lattice_3d.cpp
   src/risk_aware_lattice_3d_continuation.cpp
   src/risk_aware_lattice_3d_geometry.cpp
+  src/risk_aware_lattice_3d_passage_index.cpp
   src/risk_aware_lattice_3d_planner.cpp
   src/risk_aware_lattice_3d_result.cpp
   src/route_3d.cpp
@@ -528,6 +530,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
     drone_city_nav_production_mppi_component SHARED
     src/production_mppi_node.cpp
+    src/production_mppi_node_names.cpp
     src/production_mppi_node_cooperative.cpp
     src/production_mppi_cooperative_diagnostics.cpp
     src/production_mppi_node_noncooperative.cpp

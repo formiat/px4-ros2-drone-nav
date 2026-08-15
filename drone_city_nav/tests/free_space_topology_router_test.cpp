@@ -172,17 +172,22 @@ TEST(FreeSpaceTopologyRouter, BuildsVaryingFull3DEnvelopeForGeneralizedTraversal
   }
 }
 
-TEST(FreeSpaceTopologyRouter, PreservesLegacyEagerTraversals) {
+TEST(FreeSpaceTopologyRouter, ResolvesCommittedSparseTopologyLazily) {
   const OccupancyGrid3D occupancy = OccupancyGrid3D::load(TEST_OCCUPANCY3D_PATH);
   const FreeSpaceTopology3D topology =
       FreeSpaceTopology3D::load(TEST_FREE_SPACE_TOPOLOGY3D_PATH);
-  ASSERT_TRUE(topology.segments().empty());
+  ASSERT_FALSE(topology.segments().empty());
+  ASSERT_TRUE(topology.traversalEdges().empty());
   const FreeSpaceTopologyRouter router{topology};
 
   const FreeSpaceTopologyRoute route =
       router.resolve(Point3{54.0, 54.0, 18.0}, Point3{54.0, 378.0, 18.0});
   ASSERT_NE(route.traversals, nullptr);
-  EXPECT_EQ(route.traversals->size(), topology.traversalEdges().size());
+  EXPECT_FALSE(route.traversals->empty());
+  EXPECT_TRUE(
+      std::ranges::all_of(*route.traversals, [](const PassageTraversalEdge& traversal) {
+        return traversal.centerline.size() >= 2U && !traversal.segment_spans.empty();
+      }));
   EXPECT_TRUE(topology.compatibleWith(occupancy));
 }
 

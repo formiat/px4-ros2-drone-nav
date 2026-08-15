@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Gazebo SDF and sparse Occupancy3D from one canonical world spec."""
+"""Generate all canonical static-world artifacts from one world specification."""
 
 from __future__ import annotations
 
@@ -7,7 +7,10 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import shutil
 import struct
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,13 +21,8 @@ SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 
-from world_compiler_portal_graph import DerivedPortalGraph, derive_portal_graph
-
-
 OCCUPANCY_MAGIC = b"DCNOCC3D"
 OCCUPANCY_VERSION = 5
-FREE_SPACE_TOPOLOGY_MAGIC = b"DCNFTOP3"
-FREE_SPACE_TOPOLOGY_VERSION = 1
 NO_STATIC_SOLID_VISIBILITY = 0x08000000
 NO_STATIC_OCCLUDER_VISIBILITY = 0x04000000
 BUILDING_GRID_CENTER_M = 27.0
@@ -65,7 +63,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--sdf", type=Path, required=True)
     parser.add_argument("--occupancy", type=Path, required=True)
+    parser.add_argument("--esdf", type=Path, required=True)
     parser.add_argument("--topology", type=Path, required=True)
+    parser.add_argument("--esdf-generator", type=Path)
+    parser.add_argument("--topology-compiler", type=Path)
+    parser.add_argument("--esdf-workers", type=int, default=8)
     return parser.parse_args()
 
 
@@ -310,8 +312,40 @@ def generate_sdf(spec: dict, boxes: Iterable[Box], output: Path) -> None:
     ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
 
 
-def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path,
-                       topology_output: Path) -> None:
+def occupancy_fingerprint(
+    origin: tuple[float, float, float],
+    resolution: float,
+    chunk_size: int,
+    dimensions: tuple[int, int, int],
+    chunks: dict[tuple[int, int, int], int],
+) -> int:
+    """Bind derived artifacts to the exact serialized raw occupancy geometry."""
+    words_per_chunk = (chunk_size ** 3 + 63) // 64
+    digest = hashlib.sha256()
+    digest.update(struct.pack(
+        "<8sII4f3II",
+        OCCUPANCY_MAGIC,
+        OCCUPANCY_VERSION,
+        chunk_size,
+        resolution,
+        origin[0],
+        origin[1],
+        origin[2],
+        dimensions[0],
+        dimensions[1],
+        dimensions[2],
+        len(chunks),
+    ))
+    for chunk, bits in sorted(chunks.items()):
+        digest.update(struct.pack("<3i", *chunk))
+        for word in range(words_per_chunk):
+            digest.update(struct.pack(
+                "<Q", (bits >> (64 * word)) & ((1 << 64) - 1)
+            ))
+    return int.from_bytes(digest.digest()[:8], "little")
+
+
+def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path) -> None:
     occupancy = spec["occupancy"]
     origin = tuple(map(float, occupancy["origin_m"]))
     size = tuple(map(float, occupancy["size_m"]))
@@ -319,7 +353,6 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path,
     chunk_size = int(occupancy["chunk_size"])
     dimensions = tuple(int(math.ceil(axis / resolution)) for axis in size)
     chunks: dict[tuple[int, int, int], int] = {}
-    column_masks: dict[tuple[int, int], int] = {}
     physical = list(boxes)
     for box in physical:
         minimum = tuple(box.center[axis] - 0.5 * box.size[axis]
@@ -331,10 +364,6 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path,
         ends = tuple(min(dimensions[axis],
                          int(math.ceil((maximum[axis] - origin[axis]) / resolution - 0.5)))
                      for axis in range(3))
-        z_mask = ((1 << (ends[2] - starts[2])) - 1) << starts[2]
-        for y in range(starts[1], ends[1]):
-            for x in range(starts[0], ends[0]):
-                column_masks[(x, y)] = column_masks.get((x, y), 0) | z_mask
         for z in range(starts[2], ends[2]):
             for y in range(starts[1], ends[1]):
                 for x in range(starts[0], ends[0]):
@@ -342,20 +371,9 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path,
                     local = ((z % chunk_size) * chunk_size + y % chunk_size) * chunk_size + x % chunk_size
                     chunks[chunk] = chunks.get(chunk, 0) | (1 << local)
 
-    portal_config = occupancy["portal_graph"]
-    validation_capsule = portal_config["validation_capsule"]
-    portal_graph = derive_portal_graph(
-        column_masks, dimensions, origin, resolution,
-        minimum_opening_area_m2=float(portal_config["minimum_opening_area_m2"]),
-        speed_limit_mps=float(portal_config["speed_limit_mps"]),
-        validation_radius_m=float(validation_capsule["radius_m"]),
-        validation_lower_extent_m=float(validation_capsule["lower_extent_m"]),
-        validation_upper_extent_m=float(validation_capsule["upper_extent_m"]),
-        validation_sweep_step_m=float(validation_capsule["sweep_step_m"]),
+    fingerprint = occupancy_fingerprint(
+        origin, resolution, chunk_size, dimensions, chunks
     )
-
-    canonical_bytes = json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()
-    fingerprint = int.from_bytes(hashlib.sha256(canonical_bytes).digest()[:8], "little")
     words_per_chunk = (chunk_size ** 3 + 63) // 64
     header = struct.pack(
         "<8sII4f3IQI",
@@ -375,65 +393,91 @@ def generate_occupancy(spec: dict, boxes: Iterable[Box], output: Path,
             stream.write(struct.pack("<3i", *chunk))
             stream.write(b"".join(struct.pack("<Q", (bits >> (64 * word)) & ((1 << 64) - 1))
                                   for word in range(words_per_chunk)))
-    write_free_space_topology(
-        topology_output, fingerprint, origin, resolution, dimensions, portal_graph
+
+
+def resolve_compiler(explicit: Path | None, environment_variable: str,
+                     executable: str) -> Path:
+    candidates: list[Path] = []
+    if explicit is not None:
+        candidates.append(explicit)
+    if configured := os.environ.get(environment_variable):
+        candidates.append(Path(configured))
+    repository = SCRIPT_DIRECTORY.parent
+    candidates.extend((
+        repository / "build/drone_city_nav" / executable,
+        repository / "install/drone_city_nav/lib/drone_city_nav" / executable,
+    ))
+    if discovered := shutil.which(executable):
+        candidates.append(Path(discovered))
+    for candidate in candidates:
+        resolved = candidate.expanduser().resolve()
+        if resolved.is_file() and os.access(resolved, os.X_OK):
+            return resolved
+    raise FileNotFoundError(
+        f"unable to find executable {executable}; build the workspace or set "
+        f"{environment_variable}"
     )
 
 
-def write_string(stream, value: str) -> None:
-    encoded = value.encode("utf-8")
-    if not encoded or len(encoded) > 0xFFFF:
-        raise ValueError("world artifact string must contain 1..65535 UTF-8 bytes")
-    stream.write(struct.pack("<H", len(encoded)))
-    stream.write(encoded)
+def static_esdf_command(spec: dict, compiler: Path, occupancy: Path, esdf: Path,
+                        workers: int) -> list[str]:
+    if workers <= 0:
+        raise ValueError("ESDF worker count must be positive")
+    config = spec["static_esdf"]
+    return [
+        str(compiler),
+        "--occupancy", str(occupancy),
+        "--output", str(esdf),
+        "--maximum-distance-m", str(config["maximum_distance_m"]),
+        "--workers", str(workers),
+    ]
 
 
-def write_points(stream, points: Iterable[tuple[float, float, float]]) -> None:
-    materialized = tuple(points)
-    stream.write(struct.pack("<I", len(materialized)))
-    for point in materialized:
-        stream.write(struct.pack("<3f", *point))
+def topology_compiler_command(spec: dict, compiler: Path, occupancy: Path,
+                              esdf: Path, topology: Path) -> list[str]:
+    config = spec["free_space_topology"]
+    footprint = config["validation_capsule"]
+    return [
+        str(compiler),
+        "--occupancy", str(occupancy),
+        "--esdf", str(esdf),
+        "--output", str(topology),
+        "--maximum-clearance-m", str(config["maximum_clearance_m"]),
+        "--open-space-clearance-m", str(config["open_space_clearance_m"]),
+        "--speed-limit-mps", str(config["speed_limit_mps"]),
+        "--medial-clearance-weight", str(config["medial_clearance_weight"]),
+        "--medial-ridge-prominence-m", str(config["medial_ridge_prominence_m"]),
+        "--medial-band-radius-cells", str(config["medial_band_radius_cells"]),
+        "--chunk-size-cells", str(config["chunk_size_cells"]),
+        "--minimum-open-region-voxels", str(config["minimum_open_region_voxels"]),
+        "--minimum-constrained-component-voxels",
+        str(config["minimum_constrained_component_voxels"]),
+        "--minimum-portal-voxels", str(config["minimum_portal_voxels"]),
+        "--minimum-center-z-m", str(config["minimum_center_z_m"]),
+        "--maximum-center-z-m", str(config["maximum_center_z_m"]),
+        "--footprint-radius-m", str(footprint["radius_m"]),
+        "--footprint-lower-extent-m", str(footprint["lower_extent_m"]),
+        "--footprint-upper-extent-m", str(footprint["upper_extent_m"]),
+        "--footprint-sweep-step-m", str(footprint["sweep_step_m"]),
+        "--minimum-segments", str(config["minimum_segments"]),
+    ]
 
 
-def write_topology_data(stream, graph: DerivedPortalGraph) -> None:
-    stream.write(struct.pack("<I", len(graph.regions)))
-    for region in graph.regions:
-        write_string(stream, region.id)
-        stream.write(struct.pack("<I", len(region.portals)))
-        for portal in region.portals:
-            write_string(stream, portal.id)
-            stream.write(struct.pack("<3f", *portal.center))
-            stream.write(struct.pack("<3f", *portal.outward_normal))
-            write_points(stream, portal.opening_polygon)
-    stream.write(struct.pack("<I", len(graph.traversal_edges)))
-    for edge in graph.traversal_edges:
-        write_string(stream, edge.id)
-        write_string(stream, edge.region_id)
-        write_string(stream, edge.entry_portal_id)
-        write_string(stream, edge.exit_portal_id)
-        write_points(stream, edge.centerline)
-        stream.write(struct.pack(
-            "<6f", edge.min_z_m, edge.max_z_m, edge.width_m, edge.height_m,
-            edge.minimum_clearance_m, edge.speed_limit_mps
-        ))
-
-
-def write_free_space_topology(output: Path, occupancy_fingerprint: int,
-                              origin: tuple[float, float, float], resolution: float,
-                              dimensions: tuple[int, int, int],
-                              graph: DerivedPortalGraph) -> None:
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("wb") as stream:
-        stream.write(struct.pack(
-            "<8sIQ4f3I",
-            FREE_SPACE_TOPOLOGY_MAGIC,
-            FREE_SPACE_TOPOLOGY_VERSION,
-            occupancy_fingerprint,
-            resolution,
-            origin[0], origin[1], origin[2],
-            dimensions[0], dimensions[1], dimensions[2],
-        ))
-        write_topology_data(stream, graph)
+def generate_derived_artifacts(spec: dict, occupancy: Path, esdf: Path,
+                               topology: Path, esdf_compiler: Path,
+                               topology_compiler: Path, workers: int) -> None:
+    esdf.parent.mkdir(parents=True, exist_ok=True)
+    topology.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        static_esdf_command(spec, esdf_compiler, occupancy, esdf, workers),
+        check=True,
+    )
+    subprocess.run(
+        topology_compiler_command(
+            spec, topology_compiler, occupancy, esdf, topology
+        ),
+        check=True,
+    )
 
 
 def main() -> None:
@@ -441,7 +485,26 @@ def main() -> None:
     spec = load_spec(args.spec)
     boxes = physical_boxes(spec)
     generate_sdf(spec, boxes, args.sdf)
-    generate_occupancy(spec, boxes, args.occupancy, args.topology)
+    generate_occupancy(spec, boxes, args.occupancy)
+    esdf_compiler = resolve_compiler(
+        args.esdf_generator,
+        "STATIC_ESDF_GENERATOR",
+        "generate_static_esdf_cache",
+    )
+    topology_compiler = resolve_compiler(
+        args.topology_compiler,
+        "FREE_SPACE_TOPOLOGY_COMPILER",
+        "free_space_topology_compiler",
+    )
+    generate_derived_artifacts(
+        spec,
+        args.occupancy,
+        args.esdf,
+        args.topology,
+        esdf_compiler,
+        topology_compiler,
+        args.esdf_workers,
+    )
 
 
 if __name__ == "__main__":

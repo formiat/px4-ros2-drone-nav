@@ -94,7 +94,7 @@ ranking costs.
 When changing the world:
 
 1. Update `canonical_city.world3d.json`.
-2. Regenerate the SDF, Occupancy3D, FreeSpaceTopology3D, and ESDF3D artifacts.
+2. Regenerate the SDF, Occupancy3D, ESDF3D, and FreeSpaceTopology3D artifacts.
 3. Update grid bounds in `urban_mvp.yaml` if the navigable area changes.
 4. Update start/goal/origin values consistently.
 5. Check RViz overlays against Gazebo geometry.

@@ -21,6 +21,7 @@
 
 #include "risk_aware_lattice_3d_continuation.hpp"
 #include "risk_aware_lattice_3d_geometry.hpp"
+#include "risk_aware_lattice_3d_passage_index.hpp"
 #include "risk_aware_lattice_3d_search.hpp"
 
 namespace drone_city_nav {
@@ -79,71 +80,6 @@ struct PassageTransition {
   bool reversed{false};
 };
 
-struct OrientedPassageCandidate {
-  std::size_t passage_index{0U};
-  bool reversed{false};
-
-  [[nodiscard]] bool
-  operator==(const OrientedPassageCandidate&) const noexcept = default;
-};
-
-struct PassageEntryBucket {
-  int x{0};
-  int y{0};
-  int z{0};
-
-  [[nodiscard]] auto operator<=>(const PassageEntryBucket&) const noexcept = default;
-};
-
-class PassageEntrySpatialIndex {
-public:
-  PassageEntrySpatialIndex(const std::span<const PassageTraversalEdge> passages,
-                           const double bucket_size_m)
-      : bucket_size_m_{bucket_size_m} {
-    for (std::size_t index = 0U; index < passages.size(); ++index) {
-      entries_[bucketFor(passages[index].entry)].push_back(
-          OrientedPassageCandidate{.passage_index = index, .reversed = false});
-      entries_[bucketFor(passages[index].exit)].push_back(
-          OrientedPassageCandidate{.passage_index = index, .reversed = true});
-    }
-  }
-
-  [[nodiscard]] std::vector<OrientedPassageCandidate> near(const Point3& point) const {
-    const PassageEntryBucket center = bucketFor(point);
-    std::vector<OrientedPassageCandidate> result;
-    for (int dz = -1; dz <= 1; ++dz) {
-      for (int dy = -1; dy <= 1; ++dy) {
-        for (int dx = -1; dx <= 1; ++dx) {
-          const auto found = entries_.find(PassageEntryBucket{
-              .x = center.x + dx, .y = center.y + dy, .z = center.z + dz});
-          if (found != entries_.end()) {
-            result.insert(result.end(), found->second.begin(), found->second.end());
-          }
-        }
-      }
-    }
-    std::ranges::sort(result, [](const OrientedPassageCandidate& first,
-                                 const OrientedPassageCandidate& second) {
-      return std::tie(first.passage_index, first.reversed) <
-             std::tie(second.passage_index, second.reversed);
-    });
-    result.erase(std::unique(result.begin(), result.end()), result.end());
-    return result;
-  }
-
-private:
-  [[nodiscard]] PassageEntryBucket bucketFor(const Point3& point) const noexcept {
-    return PassageEntryBucket{
-        .x = static_cast<int>(std::floor(point.x / bucket_size_m_)),
-        .y = static_cast<int>(std::floor(point.y / bucket_size_m_)),
-        .z = static_cast<int>(std::floor(point.z / bucket_size_m_)),
-    };
-  }
-
-  double bucket_size_m_{1.0};
-  std::map<PassageEntryBucket, std::vector<OrientedPassageCandidate>> entries_;
-};
-
 struct Record {
   double g{std::numeric_limits<double>::infinity()};
   Key parent{};
@@ -174,6 +110,8 @@ struct Greater {
 
 using detail::Lattice3DEdgeEvaluation;
 using detail::Lattice3DEdgeEvaluationStatus;
+using detail::OrientedPassageCandidate;
+using detail::PassageEntrySpatialIndex;
 
 struct ReconstructedPath {
   std::vector<Point3> points;

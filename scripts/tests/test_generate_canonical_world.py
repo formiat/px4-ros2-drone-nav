@@ -26,81 +26,15 @@ sys.modules[SPEC.name] = generator
 SPEC.loader.exec_module(generator)
 
 
-def read_string(stream) -> str:
-    size = struct.unpack("<H", stream.read(2))[0]
-    return stream.read(size).decode("utf-8")
-
-
-def read_points(stream) -> tuple[tuple[float, float, float], ...]:
-    count = struct.unpack("<I", stream.read(4))[0]
-    return tuple(struct.unpack("<3f", stream.read(12)) for _ in range(count))
-
-
-def read_portal_graph(stream) -> tuple[list[dict], list[dict]]:
-    regions = []
-    region_count = struct.unpack("<I", stream.read(4))[0]
-    for _ in range(region_count):
-        region = {"id": read_string(stream), "portals": []}
-        portal_count = struct.unpack("<I", stream.read(4))[0]
-        for _ in range(portal_count):
-            region["portals"].append({
-                "id": read_string(stream),
-                "center": struct.unpack("<3f", stream.read(12)),
-                "normal": struct.unpack("<3f", stream.read(12)),
-                "polygon": read_points(stream),
-            })
-        regions.append(region)
-    edges = []
-    edge_count = struct.unpack("<I", stream.read(4))[0]
-    for _ in range(edge_count):
-        edges.append({
-            "id": read_string(stream),
-            "region_id": read_string(stream),
-            "entry_portal_id": read_string(stream),
-            "exit_portal_id": read_string(stream),
-            "centerline": read_points(stream),
-            "geometry": struct.unpack("<6f", stream.read(24)),
-        })
-    return regions, edges
-
-
 class CanonicalWorldGeneratorTest(unittest.TestCase):
-    def test_portal_graph_is_derived_from_voxel_geometry(self) -> None:
-        dimensions = (12, 12, 8)
-        columns: dict[tuple[int, int], int] = {}
-        full_column = (1 << dimensions[2]) - 1
-        opening_column = (1 << 0) | (1 << 6) | (1 << 7)
-        for x in range(2, 10):
-            columns[(x, 3)] = full_column
-            columns[(x, 8)] = full_column
-            for y in range(4, 8):
-                columns[(x, y)] = opening_column
-
-        graph = generator.derive_portal_graph(
-            columns, dimensions, (0.0, 0.0, 0.0), 1.0,
-            minimum_opening_area_m2=4.0,
-        )
-
-        self.assertEqual(1, len(graph.regions))
-        self.assertEqual(2, len(graph.regions[0].portals))
-        self.assertEqual(1, len(graph.traversal_edges))
-        edge = graph.traversal_edges[0]
-        self.assertEqual((2.0, 10.0),
-                         tuple(sorted((edge.centerline[0][0],
-                                       edge.centerline[-1][0]))))
-        self.assertEqual((1.0, 6.0), (edge.min_z_m, edge.max_z_m))
-
     def test_generates_matching_sdf_and_sparse_occupancy(self) -> None:
         spec = generator.load_spec(SPEC_PATH)
         boxes = generator.physical_boxes(spec)
         with tempfile.TemporaryDirectory() as directory:
             sdf_path = Path(directory) / "city.sdf"
             occupancy_path = Path(directory) / "city.occupancy3d"
-            topology_path = Path(directory) / "city.topology3d"
             generator.generate_sdf(spec, boxes, sdf_path)
-            generator.generate_occupancy(
-                spec, boxes, occupancy_path, topology_path
-            )
+            generator.generate_occupancy(spec, boxes, occupancy_path)
 
             root = ET.parse(sdf_path).getroot()
             model_names = {
@@ -157,50 +91,40 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                             header[11] * chunk_payload_size)
                 self.assertEqual(b"", stream.read())
 
-            topology_header_format = "<8sIQ4f3I"
-            with topology_path.open("rb") as stream:
-                topology_header = struct.unpack(
-                    topology_header_format,
-                    stream.read(struct.calcsize(topology_header_format)),
-                )
-                self.assertEqual(b"DCNFTOP3", topology_header[0])
-                self.assertEqual(1, topology_header[1])
-                self.assertEqual(header[10], topology_header[2])
-                self.assertEqual(header[3:10], topology_header[3:10])
-                regions, edges = read_portal_graph(stream)
-                self.assertEqual(3, len(regions))
-                self.assertEqual([2, 2, 3],
-                                 sorted(len(region["portals"])
-                                        for region in regions))
-                self.assertEqual(5, len(edges))
-                physical_structure_ids = {
-                    structure["id"] for structure in spec["passage_structures"]
-                }
-                self.assertTrue(
-                    all(
-                        all(
-                            structure_id not in edge["id"]
-                            for structure_id in physical_structure_ids
-                        )
-                        for edge in edges
-                    )
-                )
-                for edge in edges:
-                    min_z, max_z, width, height, clearance, speed_limit = \
-                        edge["geometry"]
-                    self.assertAlmostEqual(1.5, min_z)
-                    self.assertAlmostEqual(8.5, max_z)
-                    self.assertAlmostEqual(30.0, width)
-                    self.assertAlmostEqual(7.0, height)
-                    self.assertAlmostEqual(3.5, clearance)
-                    self.assertAlmostEqual(10.0, speed_limit)
-                straight = next(
-                    edge for edge in edges
-                    if edge["centerline"][0] == (54.0, 123.0, 5.0)
-                    and edge["centerline"][-1] == (54.0, 201.0, 5.0)
-                )
-                self.assertGreaterEqual(len(straight["centerline"]), 4)
-                self.assertEqual(b"", stream.read())
+
+    def test_builds_typed_derived_compiler_commands(self) -> None:
+        spec = generator.load_spec(SPEC_PATH)
+        esdf_command = generator.static_esdf_command(
+            spec,
+            Path("/tools/generate_static_esdf_cache"),
+            Path("city.occupancy3d"),
+            Path("city.esdf3d"),
+            6,
+        )
+        self.assertEqual("/tools/generate_static_esdf_cache", esdf_command[0])
+        self.assertEqual("26.0", esdf_command[esdf_command.index(
+            "--maximum-distance-m") + 1])
+        self.assertEqual("6", esdf_command[esdf_command.index("--workers") + 1])
+
+        topology_command = generator.topology_compiler_command(
+            spec,
+            Path("/tools/free_space_topology_compiler"),
+            Path("city.occupancy3d"),
+            Path("city.esdf3d"),
+            Path("city.topology3d"),
+        )
+        expected_options = {
+            "--occupancy": "city.occupancy3d",
+            "--esdf": "city.esdf3d",
+            "--output": "city.topology3d",
+            "--open-space-clearance-m": "4.0",
+            "--minimum-center-z-m": "1.0",
+            "--maximum-center-z-m": "32.0",
+            "--minimum-segments": "1",
+            "--footprint-radius-m": "0.82",
+        }
+        for option, value in expected_options.items():
+            self.assertEqual(value, topology_command[topology_command.index(option) + 1])
 
     def test_spec_describes_left_straight_and_t_passage_structures(self) -> None:
         with SPEC_PATH.open(encoding="utf-8") as stream:
@@ -264,7 +188,7 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
 
     def test_portal_validation_capsule_matches_runtime_vehicle_geometry(self) -> None:
         spec = generator.load_spec(SPEC_PATH)
-        capsule = spec["occupancy"]["portal_graph"]["validation_capsule"]
+        capsule = spec["free_space_topology"]["validation_capsule"]
         planner_text = PLANNER_CONFIG.read_text(encoding="utf-8")
 
         self.assertIn(
@@ -371,22 +295,17 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             generated_sdf = Path(directory) / "city.sdf"
             generated_occupancy = Path(directory) / "city.occupancy3d"
-            generated_topology = Path(directory) / "city.topology3d"
             generator.generate_sdf(spec, boxes, generated_sdf)
-            generator.generate_occupancy(
-                spec, boxes, generated_occupancy, generated_topology
-            )
+            generator.generate_occupancy(spec, boxes, generated_occupancy)
             self.assertEqual(COMMITTED_SDF.read_bytes(), generated_sdf.read_bytes())
             self.assertEqual(
                 COMMITTED_OCCUPANCY.read_bytes(), generated_occupancy.read_bytes()
             )
-            self.assertEqual(
-                COMMITTED_TOPOLOGY.read_bytes(), generated_topology.read_bytes()
-            )
 
-    def test_precomputed_esdf_matches_committed_occupancy(self) -> None:
+    def test_derived_artifacts_match_committed_occupancy(self) -> None:
         occupancy_header_format = "<8sII4f3IQI"
         esdf_header_format = "<8sII4f3IQfI"
+        topology_header_format = "<8sIQ4f3I"
         with COMMITTED_OCCUPANCY.open("rb") as stream:
             occupancy = struct.unpack(
                 occupancy_header_format,
@@ -397,6 +316,11 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
                 esdf_header_format,
                 stream.read(struct.calcsize(esdf_header_format)),
             )
+        with COMMITTED_TOPOLOGY.open("rb") as stream:
+            topology = struct.unpack(
+                topology_header_format,
+                stream.read(struct.calcsize(topology_header_format)),
+            )
         self.assertEqual(b"DCNESF3D", esdf[0])
         self.assertEqual(1, esdf[1])
         self.assertEqual(16, esdf[2])
@@ -404,6 +328,10 @@ class CanonicalWorldGeneratorTest(unittest.TestCase):
         self.assertEqual(occupancy[10], esdf[10])
         self.assertAlmostEqual(26.0, esdf[11])
         self.assertGreater(esdf[12], 0)
+        self.assertEqual(b"DCNFTOP3", topology[0])
+        self.assertEqual(2, topology[1])
+        self.assertEqual(occupancy[10], topology[2])
+        self.assertEqual(occupancy[3:10], topology[3:10])
 
 
 if __name__ == "__main__":

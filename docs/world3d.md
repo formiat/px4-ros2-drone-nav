@@ -51,25 +51,28 @@ python3 scripts/generate_canonical_world.py \
   --spec drone_city_nav/worlds/canonical_city.world3d.json \
   --sdf drone_city_nav/worlds/generated_city.sdf \
   --occupancy drone_city_nav/worlds/generated_city.occupancy3d \
+  --esdf drone_city_nav/worlds/generated_city.esdf3d \
   --topology drone_city_nav/worlds/generated_city.topology3d
-./build/drone_city_nav/generate_static_esdf_cache \
-  --occupancy drone_city_nav/worlds/generated_city.occupancy3d \
-  --output drone_city_nav/worlds/generated_city.esdf3d \
-  --maximum-distance-m 26 --workers 8
 ```
 
-`make test-scripts` regenerates the world artifacts in a temporary directory and
-checks the SDF, Occupancy3D, and FreeSpaceTopology3D byte-for-byte. It also verifies that the committed
-ESDF cache carries the same grid metadata and canonical-world fingerprint, plus
-all physical passage cross-sections, derived portal topology, opening polygons,
-deduplicated shared bridge masses, and lidar visibility contract. C++ tests
-verify raw-safe traversal edges, exact cache round-tripping, ROI extraction,
-distance capping, and corruption handling.
+The Python stage writes SDF and raw Occupancy3D. It then invokes the repository's
+`generate_static_esdf_cache` and `free_space_topology_compiler` C++ tools. The
+executables can be selected explicitly with `--esdf-generator` and
+`--topology-compiler`; otherwise the script resolves the build tree, install tree,
+or `PATH`.
+
+`make test-scripts` regenerates SDF and Occupancy3D in a temporary directory and
+checks them byte-for-byte. It also verifies command construction and that the
+committed ESDF3D and FreeSpaceTopology3D artifacts have matching raw-map metadata
+and fingerprints. C++ tests verify sparse topology semantics, arbitrary portal
+patches, raw-safe segments, exact cache round-tripping, ROI extraction, distance
+capping, and corruption handling.
 
 ## Occupancy3D
 
 The binary map uses schema version 5 with a sparse chunked bitset. Its header
-stores grid bounds, resolution, chunk size, a fingerprint of the canonical JSON,
+stores grid bounds, resolution, chunk size, a fingerprint of the exact serialized
+raw voxel geometry,
 and the number of occupied chunks. The file ends after the raw chunk payload.
 It contains no regions, portals, traversals, clearance envelopes, or other
 derived planning data.
@@ -77,21 +80,19 @@ derived planning data.
 ## FreeSpaceTopology3D
 
 The separately versioned topology artifact stores the Occupancy3D fingerprint
-and exact grid geometry followed by passage regions, portal planes, opening
-polygons, and 3D traversal edges. Each edge records its region and endpoint
-portals, sampled centerline, physical opening dimensions, vertical extent,
-minimum clearance, and speed limit. Entry and exit lie on exterior portal
-planes, so approach and departure route segments remain outside the roofed
-component. A topology file is used only when both its fingerprint and bounds
-match the loaded raw occupancy.
+and exact grid geometry followed by open-space regions, arbitrary portal voxel
+patches, and sparse medial passage segments. A route-specific traversal is
+resolved lazily from these segments and cached; it is not materialized for every
+portal pair offline. Each segment records a sampled 3D centerline, endpoint
+portals and neighbors, minimum clearance, and speed limit. A topology file is
+used only when both its fingerprint and bounds match the loaded raw occupancy.
 
-The graph is computed from voxel occupancy after physical geometry has been
-voxelized. Canonical passage records do not provide centerlines, portal IDs, or
-planner edges. The current world compiles into three physically connected
-passage regions, seven exterior portals, and five pairwise traversal edges. Two
-adjacent canonical structures that share one continuous roofed free volume are
-correctly represented as one region rather than being split by an artificial
-internal portal. The current world uses:
+The graph is computed from raw occupancy and the matching ESDF after physical
+geometry has been voxelized. Canonical passage records do not provide
+centerlines, portal IDs, planner edges, or conflict resources. The current world
+compiles into one connected passage network with five exterior portal patches
+and six sparse medial segments. Nearby physical structures merge naturally when
+their constrained free volumes are connected. The current world uses:
 
 ```text
 origin:       (-30, -30, 0) m
@@ -149,27 +150,31 @@ set of independent openings selected by a passage coordinator. Shared bridge
 masses between adjacent passage declarations are deduplicated by physical
 geometry before SDF and Occupancy3D generation.
 
-A T junction exposes three physical openings. The portal compiler, not the
+A T junction exposes three physical openings. The topology compiler, not the
 passage declaration, decides which openings belong to one free-space component
-and creates every pairwise traversal through that component.
+and represents its connectivity with sparse medial segments.
 
 Every currently generated lower, upper, and middle mass is an axis-aligned box
 whose floor and roof are parallel to the ground. The portal path search itself
 operates in XYZ and does not assume a constant-Z centerline, but the current
 physical-geometry generator does not yet emit inclined slabs or curved vertical
-## Current Topology Extractor
+surfaces. The generalized fixtures and imported environments cover those cases.
+
+## Topology Extractor V2
 
 The world compiler builds the complete static passage index in deterministic
 stages:
 
-1. Build occupied-voxel masks for every XY column.
-2. Extract connected free-space components bounded by physical occupancy above.
-3. Find component faces adjacent to open, unroofed free space.
-4. Cluster adjacent face cells into portal planes and opening polygons.
-5. Reject openings below the configured physical area threshold.
-6. Erode candidate center cells with the configured upright capsule and build
-   central 3D paths between every physically traversable portal pair.
-7. Assign geometry-hash region, portal, and traversal IDs.
+1. Decode the immutable ESDF chunks covering the configured analysis envelope.
+2. Classify raw-footprint-feasible voxels by clearance without modifying raw
+   occupancy.
+3. Label open-space components and medial constrained-space components.
+4. Extract bottleneck surfaces as arbitrary 3D portal voxel patches and derive
+   display polygons from those patches.
+5. Skeletonize each constrained component into a sparse medial segment graph,
+   preserving slopes, shafts, curves, and junctions.
+6. Reject components that cannot produce raw swept-footprint-safe segments.
+7. Assign deterministic geometry-derived region, portal, and segment IDs.
 
 This pass covers the complete static Occupancy3D artifact, not only the current
 mission route. Portal semantics are therefore reusable by every vehicle and
@@ -178,11 +183,12 @@ the graph is an immutable acceleration and topology index over raw geometry.
 Runtime lattice and route activation still validate all traversal segments with
 the physical swept footprint against raw Occupancy3D and ESDF3D.
 
-The canonical `occupancy.portal_graph.validation_capsule` is the minimum vehicle
-profile used to compile useful traversal candidates. It does not inflate or
-modify Occupancy3D and is not trusted as a runtime safety result. Any current
-vehicle footprint is checked again by the planner, route activation, MPPI, and
-offboard safety lifecycle.
+The canonical `free_space_topology.validation_capsule` is the minimum vehicle
+profile used to compile useful sparse segments. The configured Z range bounds
+only the offline acceleration index. Neither setting inflates or modifies
+Occupancy3D, defines a hard clearance envelope, or replaces runtime validation.
+Every selected traversal is checked again with the current vehicle's swept
+footprint against raw Occupancy3D.
 
 ## Advanced Passage Fixtures
 
@@ -292,8 +298,8 @@ reduces rendering load only; it does not change Occupancy3D, ESDF3D, lattice, or
 collision resolution.
 
 RViz shows the accepted route at its planned Z through the MPPI marker array.
-Derived candidate portal edges are thin translucent blue lines; traversal edges
-selected by the active route are thicker green lines. Tick JSONL and guide logs
+Derived sparse passage segments are thin translucent blue lines; traversals
+selected lazily for the active route are thicker green lines. Tick JSONL and guide logs
 include selected topology, objective cost, route length, travel time, vertical
 alignment time, risk exposure, passage id, and acceptance/rejection reason.
 
