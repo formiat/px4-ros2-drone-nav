@@ -23,3 +23,11 @@ Before committing after file changes:
 3. Commit the completed file changes.
 
 Keep code comments and repository documentation in English.
+
+## For Codex
+
+- After context-window compaction and whenever Startup Context is read again,
+  explicitly reread the active goal, even if it appears familiar.
+- Before marking any goal reached or complete, explicitly reread the goal and
+  audit the current evidence against every original requirement. Never rely on
+  memory of the goal for completion.
