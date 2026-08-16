@@ -1,13 +1,16 @@
 from pathlib import Path
+import sys
 
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from point_to_point_scenario import load_point_to_point_scenario
 
 
 def optional_bool_override(context, launch_config, argument_name):
@@ -26,11 +29,28 @@ def optional_bool_override(context, launch_config, argument_name):
     )
 
 
+def optional_nonnegative_float_override(context, launch_config, argument_name):
+    value = launch_config.perform(context).strip()
+    if not value:
+        return None
+    try:
+        result = float(value)
+    except ValueError as error:
+        raise RuntimeError(
+            f"Launch argument '{argument_name}' must be numeric, got '{value}'"
+        ) from error
+    if result < 0.0:
+        raise RuntimeError(
+            f"Launch argument '{argument_name}' must be non-negative, got '{value}'"
+        )
+    return result
+
+
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     default_params_file = package_share / "config" / "urban_mvp.yaml"
     default_rviz_config = package_share / "rviz" / "city_nav_debug.rviz"
-    lidar_gz_topic = (
+    default_lidar_gz_topic = (
         "/world/generated_city/model/x500_lidar_2d_0/link/link/"
         "sensor/lidar_2d_v2/scan"
     )
@@ -51,9 +71,21 @@ def generate_launch_description():
     )
     use_static_map = LaunchConfiguration("use_static_map")
     static_occupancy_3d_path = LaunchConfiguration("static_occupancy_3d_path")
+    static_esdf_3d_cache_path = LaunchConfiguration("static_esdf_3d_cache_path")
     static_free_space_topology_3d_path = LaunchConfiguration(
         "static_free_space_topology_3d_path"
     )
+    static_global_lattice_deadline_ms = LaunchConfiguration(
+        "static_global_lattice_deadline_ms"
+    )
+    static_route_tracking_margin_m = LaunchConfiguration(
+        "static_route_tracking_margin_m"
+    )
+    static_cruise_speed_mps = LaunchConfiguration("static_cruise_speed_mps")
+    static_absolute_speed_limit_mps = LaunchConfiguration(
+        "static_absolute_speed_limit_mps"
+    )
+    point_to_point_scenario_path = LaunchConfiguration("point_to_point_scenario_path")
     simulation_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -68,25 +100,10 @@ def generate_launch_description():
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
         ],
     )
-    scan_bridge = Node(
-        package="ros_gz_bridge",
-        executable="parameter_bridge",
-        name="scan_bridge",
-        output="screen",
-        condition=IfCondition(enable_2d_lidar),
-        arguments=[
-            f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
-            "--ros-args",
-            "-r",
-            f"{lidar_gz_topic}:=/scan",
-        ],
-    )
-    lidar_scan_bridge = GroupAction(
-        condition=IfCondition(enable_gazebo_bridge), actions=[scan_bridge]
-    )
-
     def source_nodes(context, *args, **kwargs):
         obstacle_memory_overrides = {"use_sim_time": True}
+        navigation_overrides = {}
+        lidar_gz_topic = default_lidar_gz_topic
 
         memory_hit_dump_path_override = (
             lidar_memory_hit_dump_path.perform(context).strip()
@@ -117,6 +134,10 @@ def generate_launch_description():
             context, enable_2d_lidar, "enable_2d_lidar"
         )
         assert lidar_enabled is not None
+        gazebo_bridge_enabled = optional_bool_override(
+            context, enable_gazebo_bridge, "enable_gazebo_bridge"
+        )
+        assert gazebo_bridge_enabled is not None
         obstacle_memory_enabled = (
             True if obstacle_memory_override is None else obstacle_memory_override
         )
@@ -137,6 +158,40 @@ def generate_launch_description():
         if static_map_override is not None:
             obstacle_memory_overrides["use_static_map"] = static_map_override
 
+        scenario_path = point_to_point_scenario_path.perform(context).strip()
+        if scenario_path:
+            scenario = load_point_to_point_scenario(scenario_path)
+            start_x_m, start_y_m, start_z_m = scenario["map_start_m"]
+            goal_x_m, goal_y_m, goal_z_m = scenario["goal_m"]
+            navigation_overrides = {
+                "px4_local_origin_x_m": start_x_m,
+                "px4_local_origin_y_m": start_y_m,
+                "px4_local_origin_z_m": start_z_m,
+                "initial_altitude_m": scenario["initial_altitude_m"],
+                "minimum_target_z_m": scenario["minimum_target_z_m"],
+                "maximum_target_z_m": scenario["maximum_target_z_m"],
+                "start_x_m": start_x_m,
+                "start_y_m": start_y_m,
+                "start_z_m": start_z_m,
+                "goal_x_m": goal_x_m,
+                "goal_y_m": goal_y_m,
+                "goal_z_m": goal_z_m,
+            }
+            obstacle_memory_overrides.update(
+                {
+                    "px4_local_origin_x_m": start_x_m,
+                    "px4_local_origin_y_m": start_y_m,
+                    "px4_local_origin_z_m": start_z_m,
+                    "initial_x_m": start_x_m,
+                    "initial_y_m": start_y_m,
+                }
+            )
+            lidar_gz_topic = (
+                f"/world/{scenario['gazebo_world_name']}"
+                f"/model/{scenario['gazebo_model_name']}"
+                "/link/link/sensor/lidar_2d_v2/scan"
+            )
+
         static_world_path_override = static_occupancy_3d_path.perform(context).strip()
         if static_world_path_override:
             obstacle_memory_overrides["static_occupancy_3d_path"] = (
@@ -153,6 +208,9 @@ def generate_launch_description():
             params_file.perform(context),
             {"use_sim_time": True},
         ]
+        if navigation_overrides:
+            production_mppi_parameters.append(navigation_overrides)
+            mission_monitor_parameters.append(navigation_overrides)
         if static_map_override is not None:
             production_mppi_parameters.append(
                 {"use_static_map": static_map_override}
@@ -160,9 +218,25 @@ def generate_launch_description():
             mission_monitor_parameters.append(
                 {"use_static_map": static_map_override}
             )
+        for argument_name, launch_config in (
+            ("static_global_lattice_deadline_ms", static_global_lattice_deadline_ms),
+            ("static_route_tracking_margin_m", static_route_tracking_margin_m),
+            ("static_cruise_speed_mps", static_cruise_speed_mps),
+            ("static_absolute_speed_limit_mps", static_absolute_speed_limit_mps),
+        ):
+            override = optional_nonnegative_float_override(
+                context, launch_config, argument_name
+            )
+            if override is not None:
+                production_mppi_parameters.append({argument_name: override})
         if static_world_path_override:
             production_mppi_parameters.append(
                 {"static_occupancy_3d_path": static_world_path_override}
+            )
+        static_esdf_path_override = static_esdf_3d_cache_path.perform(context).strip()
+        if static_esdf_path_override:
+            production_mppi_parameters.append(
+                {"static_esdf_3d_cache_path": static_esdf_path_override}
             )
         static_topology_path_override = (
             static_free_space_topology_3d_path.perform(context).strip()
@@ -179,7 +253,26 @@ def generate_launch_description():
             production_mppi_parameters.append(
                 {"static_free_space_topology_3d_path": ""}
             )
-        nodes = [
+        nodes = []
+        if gazebo_bridge_enabled and lidar_enabled:
+            nodes.append(
+                Node(
+                    package="ros_gz_bridge",
+                    executable="parameter_bridge",
+                    name="scan_bridge",
+                    output="screen",
+                    arguments=[
+                        (
+                            f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan"
+                            "[gz.msgs.LaserScan"
+                        ),
+                        "--ros-args",
+                        "-r",
+                        f"{lidar_gz_topic}:=/scan",
+                    ],
+                )
+            )
+        nodes.append(
             Node(
                 package="drone_city_nav",
                 executable="obstacle_memory_node",
@@ -187,7 +280,7 @@ def generate_launch_description():
                 output="screen",
                 parameters=obstacle_memory_parameters,
             )
-        ]
+        )
         nodes.extend(
             [
                 Node(
@@ -214,23 +307,44 @@ def generate_launch_description():
                 ),
             ]
         )
+        if lidar_debug_override is True:
+            nodes.append(
+                Node(
+                    package="drone_city_nav",
+                    executable="lidar_debug_node",
+                    name="lidar_debug_node",
+                    output="screen",
+                    parameters=[
+                        params_file.perform(context),
+                        {
+                            "use_sim_time": True,
+                            "output_dir": lidar_debug_output_dir.perform(context),
+                            **navigation_overrides,
+                        },
+                    ],
+                )
+            )
+        nodes.append(
+            Node(
+                package="drone_city_nav",
+                executable="mppi_offboard_node",
+                name="mppi_offboard_node",
+                output="screen",
+                parameters=[
+                    params_file.perform(context),
+                    {
+                        "use_sim_time": True,
+                        "rviz_drone_follow_tf_enabled": optional_bool_override(
+                            context,
+                            rviz_drone_follow_tf_enabled,
+                            "rviz_drone_follow_tf_enabled",
+                        ),
+                        **navigation_overrides,
+                    },
+                ],
+            )
+        )
         return nodes
-
-    mppi_offboard = Node(
-        package="drone_city_nav",
-        executable="mppi_offboard_node",
-        name="mppi_offboard_node",
-        output="screen",
-        parameters=[
-            params_file,
-            {
-                "use_sim_time": True,
-                "rviz_drone_follow_tf_enabled": ParameterValue(
-                    rviz_drone_follow_tf_enabled, value_type=bool
-                ),
-            },
-        ],
-    )
 
     collision_crash = Node(
         package="drone_city_nav",
@@ -238,21 +352,6 @@ def generate_launch_description():
         name="collision_crash_node",
         output="screen",
         parameters=[params_file, {"use_sim_time": True}],
-    )
-
-    lidar_debug = Node(
-        package="drone_city_nav",
-        executable="lidar_debug_node",
-        name="lidar_debug_node",
-        output="screen",
-        condition=IfCondition(enable_lidar_debug),
-        parameters=[
-            params_file,
-            {
-                "use_sim_time": True,
-                "output_dir": lidar_debug_output_dir,
-            },
-        ],
     )
 
     # This transform is intentional and must not be "fixed" by changing RViz back
@@ -312,6 +411,14 @@ def generate_launch_description():
                 "params_file",
                 default_value=str(default_params_file),
                 description="ROS parameter file for navigation nodes.",
+            ),
+            DeclareLaunchArgument(
+                "point_to_point_scenario_path",
+                default_value="",
+                description=(
+                    "Optional canonical point-to-point scenario. It supplies the "
+                    "Gazebo model, PX4 map origin, navigation start, and goal."
+                ),
             ),
             DeclareLaunchArgument(
                 "lidar_debug_output_dir",
@@ -392,6 +499,14 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument(
+                "static_esdf_3d_cache_path",
+                default_value="",
+                description=(
+                    "Optional ESDF3D cache path override. Leave empty to use "
+                    "params_file."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "static_free_space_topology_3d_path",
                 default_value="",
                 description=(
@@ -399,12 +514,29 @@ def generate_launch_description():
                     "params_file."
                 ),
             ),
+            DeclareLaunchArgument(
+                "static_global_lattice_deadline_ms",
+                default_value="",
+                description="Optional static global-planning deadline override.",
+            ),
+            DeclareLaunchArgument(
+                "static_route_tracking_margin_m",
+                default_value="",
+                description="Optional static route footprint margin override.",
+            ),
+            DeclareLaunchArgument(
+                "static_cruise_speed_mps",
+                default_value="",
+                description="Optional static cruise speed override.",
+            ),
+            DeclareLaunchArgument(
+                "static_absolute_speed_limit_mps",
+                default_value="",
+                description="Optional static absolute speed limit override.",
+            ),
             simulation_bridge,
-            lidar_scan_bridge,
             OpaqueFunction(function=source_nodes),
             collision_crash,
-            mppi_offboard,
-            lidar_debug,
             gazebo_aligned_map_tf,
             rviz,
         ]

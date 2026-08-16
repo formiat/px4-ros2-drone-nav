@@ -83,6 +83,55 @@ load_multi_vehicle_sim_scenario() {
   fi
 }
 
+load_point_to_point_sim_scenario() {
+  local scenario_override="$1"
+  local scenario_tsv=""
+
+  point_to_point_scenario_path=""
+  point_to_point_world_name=""
+  point_to_point_px4_model_target=""
+  point_to_point_gazebo_model_name=""
+  point_to_point_map_start_pose=""
+  point_to_point_gazebo_spawn_pose=""
+  point_to_point_goal_m=""
+  if [[ -z "${scenario_override}" ]]; then
+    return 0
+  fi
+  point_to_point_scenario_path="$(make_abs_path "${scenario_override}")"
+  if ! scenario_tsv="$(
+    python3 "${repo_root}/drone_city_nav/launch/point_to_point_scenario.py" \
+      --scenario "${point_to_point_scenario_path}" --format runtime-tsv
+  )"; then
+    echo "Failed to resolve point-to-point scenario: ${point_to_point_scenario_path}" >&2
+    return 1
+  fi
+  local map_x map_y map_z gazebo_x gazebo_y gazebo_z yaw_rad goal_x goal_y goal_z
+  IFS=$'\t' read -r point_to_point_world_name point_to_point_px4_model_target \
+    point_to_point_gazebo_model_name map_x map_y map_z gazebo_x gazebo_y gazebo_z \
+    yaw_rad goal_x goal_y goal_z <<< "${scenario_tsv}"
+  point_to_point_map_start_pose="${map_x},${map_y},${map_z},0,0,${yaw_rad}"
+  point_to_point_gazebo_spawn_pose="${gazebo_x},${gazebo_y},${gazebo_z},0,0,${yaw_rad}"
+  point_to_point_goal_m="${goal_x},${goal_y},${goal_z}"
+}
+
+resolve_point_to_point_runtime() {
+  local scenario_override="$1"
+
+  load_point_to_point_sim_scenario "${scenario_override}"
+  scenario_world_name="${point_to_point_world_name:-generated_city}"
+}
+
+resolve_point_to_point_gazebo_spawn() {
+  local start_x_m start_y_m start_z_m unused_roll unused_pitch start_yaw_rad
+
+  IFS=',' read -r start_x_m start_y_m start_z_m unused_roll unused_pitch \
+    start_yaw_rad <<< "${point_to_point_gazebo_spawn_pose:--171.0,-81.0,-0.3,0,0,0}"
+  point_gazebo_spawn_x_m="${SIM_START_X_M:-${start_x_m}}"
+  point_gazebo_spawn_y_m="${SIM_START_Y_M:-${start_y_m}}"
+  point_gazebo_spawn_z_m="${SIM_START_Z_M:-${start_z_m}}"
+  point_gazebo_spawn_yaw_rad="${SIM_START_YAW_RAD:-${start_yaw_rad}}"
+}
+
 prepare_multi_vehicle_model_resources() {
   local instance
   local evader_model_name

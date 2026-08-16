@@ -173,14 +173,26 @@ def load_launch_platforms(scenario_path: Path) -> list[dict]:
     if not isinstance(platforms, list):
         raise EnvironmentPreparationError("launch_platforms must be an array")
     vehicles = scenario.get("vehicles")
-    if not isinstance(vehicles, list):
-        raise EnvironmentPreparationError("scenario vehicles must be an array")
-    starts = {
-        vehicle["id"]: _finite_vector(
-            vehicle.get("map_start_m"), 3, f"vehicle {vehicle.get('id')} map_start_m"
-        )
-        for vehicle in vehicles
-    }
+    if isinstance(vehicles, list):
+        starts = {
+            vehicle["id"]: _finite_vector(
+                vehicle.get("map_start_m"),
+                3,
+                f"vehicle {vehicle.get('id')} map_start_m",
+            )
+            for vehicle in vehicles
+        }
+    else:
+        vehicle = scenario.get("vehicle")
+        if not isinstance(vehicle, dict):
+            raise EnvironmentPreparationError(
+                "scenario must define vehicles or one point-to-point vehicle"
+            )
+        starts = {
+            "point_to_point_vehicle": _finite_vector(
+                vehicle.get("map_start_m"), 3, "vehicle map_start_m"
+            )
+        }
     canonical_path = Path(scenario["canonical_world"])
     if not canonical_path.is_absolute():
         canonical_path = scenario_path.parent / canonical_path

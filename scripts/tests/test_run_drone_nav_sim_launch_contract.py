@@ -255,8 +255,24 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_launch_uses_offboard_flight_control_backend(self) -> None:
         self.assertIn('executable="mppi_offboard_node"', self.launch_text)
-        self.assertIn("mppi_offboard,", self.launch_text)
+        self.assertIn("nodes.append(", self.launch_text)
         self.assertIn('executable="production_mppi_node"', self.launch_text)
+
+    def test_point_to_point_scenario_drives_spawn_and_navigation_contract(self) -> None:
+        self.assertIn("POINT_TO_POINT_SCENARIO_PATH", self.text)
+        self.assertIn("load_point_to_point_sim_scenario", self.intercept_runtime_text)
+        self.assertIn("point_to_point_scenario_path:=", self.text)
+        self.assertIn("load_point_to_point_scenario", self.launch_text)
+        self.assertIn('DeclareLaunchArgument(\n                "point_to_point_scenario_path"', self.launch_text)
+        self.assertIn('"px4_local_origin_x_m": start_x_m', self.launch_text)
+        self.assertIn('"px4_local_origin_z_m": start_z_m', self.launch_text)
+        self.assertIn('"initial_altitude_m": scenario["initial_altitude_m"]', self.launch_text)
+        self.assertIn('"goal_z_m": goal_z_m', self.launch_text)
+        self.assertIn("static_esdf_3d_cache_path", self.launch_text)
+        self.assertIn("optional_nonnegative_float_override", self.launch_text)
+        self.assertIn("static_cruise_speed_mps", self.launch_text)
+        self.assertIn("static_absolute_speed_limit_mps", self.launch_text)
+        self.assertIn("default_lidar_gz_topic", self.launch_text)
 
     def test_intercept_evader_route_crosses_city_diagonally(self) -> None:
         evader = next(

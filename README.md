@@ -52,6 +52,8 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/sim_cooperative_traffic_headless.sh
 ./scripts/sim_cooperative_traffic_urban_gui.sh
 ./scripts/sim_cooperative_traffic_urban_headless.sh
+./scripts/sim_urban_point_to_point_gui.sh
+./scripts/sim_urban_point_to_point_headless.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -76,6 +78,8 @@ make sim-cooperative-traffic-gui
 make sim-cooperative-traffic-headless
 make sim-cooperative-traffic-urban-gui
 make sim-cooperative-traffic-urban-headless
+make sim-urban-point-to-point-gui
+make sim-urban-point-to-point-headless
 ```
 
 Build and run the isolated CUDA MPPI benchmark:
@@ -280,6 +284,21 @@ materializes a Gazebo Harmonic collision world, compiles the manifest-bound
 FreeSpaceTopology3D artifact when needed, and launches the four-vehicle static
 scenario from
 `drone_city_nav/config/cooperative_traffic_urban_scenario.json`.
+
+Run the base single-drone static flight in the same environment:
+
+```bash
+./scripts/sim_urban_point_to_point_gui.sh
+./scripts/sim_urban_point_to_point_headless.sh
+```
+
+The scenario is defined once in
+`drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json`.
+Its map-space launch pose is transformed by the canonical world contract for
+Gazebo, while the same pose sets the PX4 origin and the navigation start. The
+static preflight check requires a supported physical spawn, a clear vertical
+takeoff, and a direct route-safe path of at least 40 m before simulation
+starts.
 
 The finite scenario in
 `drone_city_nav/config/cooperative_traffic_scenario.json` launches two pairs of

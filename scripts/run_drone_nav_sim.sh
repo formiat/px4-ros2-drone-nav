@@ -84,8 +84,11 @@ run_log_dir="$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")"
 run_id="${DRONE_GAZEBO_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 mission_type="${MISSION_TYPE:-point_to_point}"
 multi_vehicle_scenario_override="${MULTI_VEHICLE_SCENARIO_PATH:-${INTERCEPT_SCENARIO_PATH:-}}"
+point_to_point_scenario_override="${POINT_TO_POINT_SCENARIO_PATH:-}"
 load_multi_vehicle_sim_scenario "${mission_type}" "${multi_vehicle_scenario_override}"
 scenario_world_name="${multi_vehicle_world_name:-generated_city}"
+bool_is_true "${multi_vehicle_mission}" ||
+  resolve_point_to_point_runtime "${point_to_point_scenario_override}"
 world_name="${SIM_WORLD_NAME:-${scenario_world_name}}"
 if bool_is_true "${multi_vehicle_mission}" &&
   [[ "${world_name}" != "${scenario_world_name}" ]]; then
@@ -139,7 +142,7 @@ if bool_is_true "${enable_subsystem_cpu_affinity}" &&
     fi
   fi
 fi
-px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
+px4_model_target="${PX4_MODEL_TARGET:-${point_to_point_px4_model_target:-gz_x500_lidar_2d}}"
 if bool_is_true "${multi_vehicle_mission}"; then
   px4_model_target="${multi_vehicle_px4_model_targets[0]}"
   for vehicle_px4_model_target in "${multi_vehicle_px4_model_targets[@]}"; do
@@ -264,10 +267,7 @@ clean_stale_gazebo_processes_enabled="$(
 clean_stale_gazebo_processes_dry_run="$(
   normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_DRY_RUN:-false}"
 )"
-point_gazebo_spawn_x_m="${SIM_START_X_M:--171.0}"
-point_gazebo_spawn_y_m="${SIM_START_Y_M:--81.0}"
-point_gazebo_spawn_z_m="${SIM_START_Z_M:-0.3}"
-point_gazebo_spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
+resolve_point_to_point_gazebo_spawn
 runtime_dir="${colcon_build_base}/gazebo_drone_nav"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
@@ -973,6 +973,7 @@ if bool_is_true "${multi_vehicle_mission}"; then
 else
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
+    point_to_point_scenario_path:="${point_to_point_scenario_path}"
     lidar_debug_output_dir:="${lidar_debug_dir}"
     lidar_memory_hit_dump_path:="${lidar_memory_hit_dump_path}"
     enable_gazebo_bridge:=true
