@@ -17,12 +17,44 @@ from sdf_collision_materializer import (  # noqa: E402
     CollisionWorldMaterializer,
     MaterializationError,
     ResourceResolver,
+    validate_visual_resource_uris,
     write_materialized_world,
     write_report,
 )
+from prepare_environment_simulation import add_launch_platforms  # noqa: E402
 
 
 class SdfCollisionMaterializerTest(unittest.TestCase):
+    def test_launch_platform_collision_is_identical_in_headless_and_gui_worlds(
+        self,
+    ) -> None:
+        source = '<sdf version="1.10"><world name="candidate"/></sdf>'
+        collision_tree = ET.ElementTree(ET.fromstring(source))
+        gui_tree = ET.ElementTree(ET.fromstring(source))
+        platform = {
+            "id": "region_a",
+            "vehicle_ids": ("civilian_0", "civilian_1"),
+            "center_sdf_m": (10.0, 20.0, 1.25),
+            "size_sdf_m": (6.0, 6.0, 0.5),
+        }
+
+        add_launch_platforms(collision_tree, [platform], preserve_visuals=False)
+        add_launch_platforms(gui_tree, [platform], preserve_visuals=True)
+
+        collision_model = collision_tree.getroot().find("./world/model")
+        gui_model = gui_tree.getroot().find("./world/model")
+        self.assertIsNotNone(collision_model)
+        self.assertIsNotNone(gui_model)
+        self.assertEqual(
+            collision_model.findtext("pose"), gui_model.findtext("pose")
+        )
+        self.assertEqual(
+            collision_model.findtext("./link/collision/geometry/box/size"),
+            gui_model.findtext("./link/collision/geometry/box/size"),
+        )
+        self.assertIsNone(collision_model.find(".//visual"))
+        self.assertIsNotNone(gui_model.find(".//visual"))
+
     def test_preserves_physics_and_adds_px4_world_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             world = Path(directory) / "world.sdf"
@@ -265,6 +297,80 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
 
             with self.assertRaisesRegex(MaterializationError, "not present"):
                 materializer.materialize(world)
+
+    def test_gui_world_preserves_visuals_and_localizes_texture_uris(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / "cache"
+            shared = (
+                cache
+                / "fuel.gazebosim.org"
+                / "openrobotics"
+                / "models"
+                / "shared textures"
+                / "3"
+            )
+            texture = shared / "materials" / "textures" / "wall.png"
+            texture.parent.mkdir(parents=True)
+            texture.write_bytes(b"texture")
+            models = root / "models"
+            building = models / "building"
+            mesh = building / "meshes" / "building.dae"
+            mesh.parent.mkdir(parents=True)
+            remote_texture = (
+                "https://fuel.ignitionrobotics.org/1.0/OpenRobotics/models/"
+                "Shared Textures/tip/files/materials/textures/wall.png"
+            )
+            mesh.write_text(
+                '<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema">'
+                f"<library_images><image><init_from>{remote_texture}</init_from>"
+                "</image></library_images></COLLADA>",
+                encoding="utf-8",
+            )
+            (building / "model.sdf").write_text(
+                '<sdf version="1.10"><model name="building"><static>true</static>'
+                '<link name="link"><collision name="collision"><geometry><box>'
+                "<size>1 1 1</size></box></geometry></collision>"
+                '<visual name="wall"><geometry><mesh><uri>meshes/building.dae</uri>'
+                "</mesh></geometry><material><pbr><metal>"
+                f"<albedo_map>{remote_texture}</albedo_map>"
+                "</metal></pbr><script><uri>materials/scripts</uri>"
+                "<name>Building/Wall</name></script></material>"
+                '<plugin filename="thermal.so" name="thermal"><heat_signature>'
+                "materials/textures/unused.png</heat_signature></plugin></visual>"
+                "</link></model></sdf>",
+                encoding="utf-8",
+            )
+            world = root / "world.sdf"
+            world.write_text(
+                '<sdf version="1.10"><world name="candidate"><include>'
+                "<uri>model://building</uri></include></world></sdf>",
+                encoding="utf-8",
+            )
+            output = root / "runtime" / "world_gui.sdf"
+            materializer = CollisionWorldMaterializer(
+                ResourceResolver([cache], [models]),
+                preserve_visuals=True,
+                localized_mesh_root=output.parent / "assets" / "meshes",
+            )
+
+            tree, report = materializer.materialize(world)
+            write_materialized_world(tree, output)
+
+            self.assertEqual(1, report.collision_instances)
+            self.assertEqual(1, report.visual_instances)
+            self.assertGreaterEqual(validate_visual_resource_uris(output), 3)
+            output_text = output.read_text(encoding="utf-8")
+            self.assertNotIn("http://", output_text)
+            self.assertNotIn("https://", output_text)
+            self.assertNotIn("<script>", output_text)
+            self.assertNotIn("<plugin", output_text)
+            localized_mesh = next((output.parent / "assets/meshes").glob("*.dae"))
+            self.assertNotIn("ns0:COLLADA", localized_mesh.read_text(encoding="utf-8"))
+            self.assertIn("<COLLADA", localized_mesh.read_text(encoding="utf-8"))
+            self.assertEqual(
+                1, len(ET.parse(output).getroot().findall(".//visual"))
+            )
 
 
 if __name__ == "__main__":

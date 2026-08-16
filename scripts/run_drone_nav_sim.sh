@@ -177,6 +177,10 @@ lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"
 lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_memory_hits/${run_id}.jsonl}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
+static_global_lattice_deadline_ms="${STATIC_GLOBAL_LATTICE_DEADLINE_MS:-}"
+static_cruise_speed_override="${STATIC_CRUISE_SPEED_MPS:-}"
+static_route_tracking_margin_override="${STATIC_ROUTE_TRACKING_MARGIN_M:-}"
+static_speed_limit_override="${STATIC_ABSOLUTE_SPEED_LIMIT_MPS:-}"
 enable_lidar_debug_override=""
 if [[ -n "${ENABLE_LIDAR_DEBUG+x}" ]]; then
   enable_lidar_debug_override="$(normalize_bool "${ENABLE_LIDAR_DEBUG}")"
@@ -410,12 +414,12 @@ if bool_is_true "${enable_lidar_debug}" &&
   echo "Lidar debug requires ENABLE_OBSTACLE_MEMORY=true" >&2
   exit 1
 fi
-px4_static_max_horizontal_speed_mps="$(
+px4_static_max_horizontal_speed_mps="${static_speed_limit_override:-$(
     read_ros_float_parameter production_mppi_node static_absolute_speed_limit_mps
-)"
-px4_static_cruise_speed_mps="$(
+)}"
+px4_static_cruise_speed_mps="${static_cruise_speed_override:-$(
     read_ros_float_parameter production_mppi_node static_cruise_speed_mps
-)"
+)}"
 px4_static_max_horizontal_acceleration_mps2="$(
     read_ros_float_parameter \
       production_mppi_node static_maximum_horizontal_acceleration_mps2
@@ -960,6 +964,24 @@ else
 fi
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")
+fi
+if [[ -n "${static_global_lattice_deadline_ms}" ]]; then
+  ros_launch_args+=(
+    static_global_lattice_deadline_ms:="${static_global_lattice_deadline_ms}"
+  )
+fi
+if [[ -n "${static_route_tracking_margin_override}" ]]; then
+  ros_launch_args+=(
+    static_route_tracking_margin_m:="${static_route_tracking_margin_override}"
+  )
+fi
+if [[ -n "${static_cruise_speed_override}" ]]; then
+  ros_launch_args+=(static_cruise_speed_mps:="${static_cruise_speed_override}")
+fi
+if [[ -n "${static_speed_limit_override}" ]]; then
+  ros_launch_args+=(
+    static_absolute_speed_limit_mps:="${static_speed_limit_override}"
+  )
 fi
 if [[ -n "${static_occupancy_3d_path_override}" ]]; then
   ros_launch_args+=(

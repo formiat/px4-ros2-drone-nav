@@ -170,10 +170,41 @@ void ProductionMppiNode::onLocalPosition(
 }
 
 void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& message) {
-  vehicle_navigation_ready_.store(message.data, std::memory_order_release);
-  if (message.data && use_static_map_ && navigationObjective() &&
-      !world_ready_.load(std::memory_order_acquire)) {
+  const bool was_ready =
+      vehicle_navigation_ready_.exchange(message.data, std::memory_order_acq_rel);
+  if (!message.data || !use_static_map_ || !navigationObjective()) {
+    return;
+  }
+  if (!world_ready_.load(std::memory_order_acquire)) {
     requestStaticEsdfWork();
+    return;
+  }
+  if (was_ready) {
+    return;
+  }
+
+  std::shared_ptr<ProductionMppiPreparedEsdf> request;
+  {
+    const std::scoped_lock lock{esdf_state_mutex_};
+    if (prepared_esdf_ && prepared_esdf_->global_guide_generation == 0U) {
+      request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
+      if (const auto objective = navigationObjective()) {
+        request->search_objective = makeStaticRouteObjective(*objective);
+      }
+    }
+  }
+  bool queued = false;
+  if (request) {
+    const std::scoped_lock lock{guide_queue_mutex_};
+    if (!pending_guide_world_) {
+      pending_guide_world_ = std::move(request);
+      queued = true;
+    }
+  }
+  if (queued) {
+    guide_queue_condition_.notify_all();
+    RCLCPP_INFO(get_logger(), "STATIC_ROUTE_SEARCH_REQUEST status=queued_after_takeoff "
+                              "resident_esdf_ready=true");
   }
 }
 

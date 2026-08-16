@@ -248,6 +248,21 @@ TEST(FiniteExecutionPathTest, AcceptsTerminalRestBeforeFiniteRouteEndpoint) {
       validateCompleteFiniteExecutionPath(testPath(), Control{}, view).accepted());
 }
 
+TEST(FiniteExecutionPathTest, AcceptsCurvedApproachOutsideTerminalSegmentCorridor) {
+  TestWorld world;
+  FiniteExecutionPathWorld view = world.view();
+  view.terminal_boundary = FiniteExecutionPathTerminalBoundary{
+      .endpoint = Point3{0.0, 0.0, 5.0},
+      .forward = Vec3{1.0, 0.0, 0.0},
+      .tolerance_m = 0.0,
+      .activation_distance_m = 10.0,
+      .maximum_cross_track_m = 0.5,
+  };
+
+  EXPECT_TRUE(
+      validateCompleteFiniteExecutionPath(testPath(), Control{}, view).accepted());
+}
+
 TEST(FiniteExecutionPathTest, RejectsOvershootBeforeTerminalRestReturnsInsideRoute) {
   TestWorld world;
   FiniteExecutionPathWorld view = world.view();

@@ -37,6 +37,8 @@ struct FiniteExecutionPathTerminalBoundary {
   Point3 endpoint{};
   Vec3 forward{};
   double tolerance_m{0.5};
+  double activation_distance_m{std::numeric_limits<double>::infinity()};
+  double maximum_cross_track_m{std::numeric_limits<double>::infinity()};
 };
 
 struct FiniteExecutionPathValidation {

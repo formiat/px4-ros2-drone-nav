@@ -307,19 +307,36 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         const std::scoped_lock lock{esdf_state_mutex_};
         prepared_esdf_ = prepared;
       }
-      {
-        const std::scoped_lock lock{guide_queue_mutex_};
-        if (pending_guide_world_) {
-          dropped_guide_worlds_.fetch_add(1U, std::memory_order_relaxed);
-        }
-        pending_guide_world_ =
-            std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
-      }
-      guide_queue_condition_.notify_all();
       const bool readiness_transition = !world_ready_.load(std::memory_order_acquire);
       completeStaticEsdfWork(true);
       if (readiness_transition) {
         publishWorldReadiness(true);
+      }
+      const bool route_search_required =
+          prepared.static_route_extension_request ||
+          prepared.static_route_replan_request ||
+          vehicle_navigation_ready_.load(std::memory_order_acquire);
+      if (route_search_required) {
+        bool queued = false;
+        {
+          const std::scoped_lock lock{guide_queue_mutex_};
+          if (pending_guide_world_ && (prepared.static_route_extension_request ||
+                                       prepared.static_route_replan_request)) {
+            dropped_guide_worlds_.fetch_add(1U, std::memory_order_relaxed);
+            pending_guide_world_.reset();
+          }
+          if (!pending_guide_world_) {
+            pending_guide_world_ =
+                std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
+            queued = true;
+          }
+        }
+        if (queued) {
+          guide_queue_condition_.notify_all();
+        }
+      } else {
+        RCLCPP_INFO(get_logger(), "STATIC_ESDF3D_PREWARMED route_search_deferred=true "
+                                  "reason=navigation_not_ready");
       }
       RCLCPP_INFO(get_logger(),
                   "PRODUCTION_MPPI_ESDF3D revision=%" PRIu64

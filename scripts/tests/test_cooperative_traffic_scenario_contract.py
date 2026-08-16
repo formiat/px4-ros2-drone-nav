@@ -152,7 +152,7 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "only civilian"):
                 SCENARIO_MODULE.load_multi_vehicle_scenario(malformed)
 
-    def test_cooperative_schema_rejects_preassigned_altitude_layers(self) -> None:
+    def test_cooperative_schema_rejects_different_cruise_altitudes(self) -> None:
         document = json.loads(SCENARIO_PATH.read_text(encoding="utf-8"))
         document["canonical_world"] = str(
             (SCENARIO_PATH.parent / document["canonical_world"]).resolve()
@@ -161,7 +161,7 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             malformed = Path(directory) / "scenario.json"
             malformed.write_text(json.dumps(document), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "share start and cruise altitudes"):
+            with self.assertRaisesRegex(ValueError, "share a cruise altitude"):
                 SCENARIO_MODULE.load_multi_vehicle_scenario(malformed)
 
     def test_vehicle_destruction_contract_has_typed_civilian_role(self) -> None:

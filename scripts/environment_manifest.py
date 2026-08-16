@@ -248,6 +248,25 @@ def _validate_source(environment_id: str, raw_source: Any) -> None:
             raise ManifestError(
                 f"{environment_id}.source.license_inventory.size_bytes must be positive"
             )
+    visual_dependencies = source.get("visual_dependencies", [])
+    if not isinstance(visual_dependencies, list):
+        raise ManifestError(
+            f"{environment_id}.source.visual_dependencies must be a sequence"
+        )
+    identities: set[tuple[str, str]] = set()
+    for index, raw_dependency in enumerate(visual_dependencies):
+        field = f"{environment_id}.source.visual_dependencies[{index}]"
+        dependency = _mapping(raw_dependency, field)
+        if _string(dependency.get("provider"), f"{field}.provider") != "gazebo_fuel":
+            raise ManifestError(f"{field}.provider must be gazebo_fuel")
+        owner = _string(dependency.get("owner"), f"{field}.owner")
+        model = _string(dependency.get("model"), f"{field}.model")
+        if not _positive_int(dependency.get("version")):
+            raise ManifestError(f"{field}.version must be a positive integer")
+        identity = (owner.casefold(), model.casefold())
+        if identity in identities:
+            raise ManifestError(f"duplicate visual dependency: {owner}/{model}")
+        identities.add(identity)
 
 
 def _validate_static_maps(environment_id: str, raw_maps: Any) -> None:

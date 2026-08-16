@@ -20,6 +20,7 @@ SCENARIO_PATH = (
 LOADER_PATH = REPOSITORY / "drone_city_nav" / "launch" / "intercept_scenario.py"
 MANIFEST_PATH = REPOSITORY / "environments" / "environment_manifest.yaml"
 PREPARER_PATH = REPOSITORY / "scripts" / "prepare_environment_simulation.py"
+VALIDATOR_PATH = REPOSITORY / "scripts" / "validate_static_cooperative_scenario.py"
 RUNNER_PATH = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
 CONTAINER_RUNNER_PATH = REPOSITORY / "scripts" / "container_run.sh"
 GUI_WRAPPER_PATH = REPOSITORY / "scripts" / "sim_cooperative_traffic_urban_gui.sh"
@@ -42,7 +43,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertEqual(
             scenario["navigation"],
             {
-                "initial_altitude_m": 4.0,
+                "initial_altitude_m": 7.5,
                 "minimum_target_z_m": 1.0,
                 "maximum_target_z_m": 20.0,
             },
@@ -54,23 +55,70 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         for vehicle in scenario["vehicles"]:
             self.assertEqual(vehicle["map_start_m"], vehicle["gazebo_spawn_m"])
 
-    def test_four_routes_force_initial_separation_then_fan_out(self) -> None:
+    def test_four_routes_cross_between_distant_paired_regions(self) -> None:
         scenario = SCENARIO_MODULE.load_multi_vehicle_scenario(SCENARIO_PATH)
         starts = [vehicle["map_start_m"] for vehicle in scenario["vehicles"]]
         goals = {
             goal["id"]: goal["goal_m"] for goal in scenario["vehicle_goals"]
         }
 
-        self.assertEqual(math.dist(starts[0][:2], starts[1][:2]), 2.0)
-        self.assertEqual(math.dist(starts[2][:2], starts[3][:2]), 2.0)
-        self.assertEqual(
-            math.dist(goals["civilian_0"][:2], goals["civilian_1"][:2]), 8.0
+        self.assertAlmostEqual(
+            math.dist(starts[0][:2], starts[1][:2]), 2.0, places=3
         )
-        self.assertEqual(
-            math.dist(goals["civilian_2"][:2], goals["civilian_3"][:2]), 8.0
+        self.assertAlmostEqual(
+            math.dist(starts[2][:2], starts[3][:2]), 2.0, places=3
         )
+        self.assertAlmostEqual(
+            math.dist(goals["civilian_0"][:2], goals["civilian_1"][:2]),
+            10.0,
+            places=3,
+        )
+        self.assertAlmostEqual(
+            math.dist(goals["civilian_2"][:2], goals["civilian_3"][:2]),
+            10.0,
+            places=3,
+        )
+        for vehicle in scenario["vehicles"]:
+            self.assertGreater(
+                math.dist(vehicle["map_start_m"][:2], goals[vehicle["id"]][:2]),
+                200.0,
+            )
+        opposite_pairs = (
+            (goals["civilian_0"], starts[2]),
+            (goals["civilian_1"], starts[2]),
+            (goals["civilian_2"], starts[0]),
+            (goals["civilian_3"], starts[0]),
+        )
+        for goal, opposite_start in opposite_pairs:
+            self.assertLessEqual(math.dist(goal[:2], opposite_start[:2]), 10.001)
+        group_a_center = tuple(
+            sum(start[axis] for start in starts[:2]) / 2.0 for axis in range(2)
+        )
+        group_b_center = tuple(
+            sum(start[axis] for start in starts[2:]) / 2.0 for axis in range(2)
+        )
+        self.assertGreater(math.dist(group_a_center, group_b_center), 200.0)
         self.assertEqual({start[2] for start in starts}, {1.8})
-        self.assertEqual({goal[2] for goal in goals.values()}, {4.0})
+        self.assertEqual({goal[2] for goal in goals.values()}, {7.5})
+
+        source = json.loads(SCENARIO_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(
+            source["launch_platforms"],
+            [
+                {
+                    "id": "region_a",
+                    "vehicle_ids": ["civilian_0", "civilian_1"],
+                    "size_m": [6.0, 6.0, 0.5],
+                    "top_z_m": 1.5,
+                },
+                {
+                    "id": "region_b",
+                    "vehicle_ids": ["civilian_2", "civilian_3"],
+                    "size_m": [6.0, 6.0, 0.5],
+                    "top_z_m": 1.5,
+                },
+            ],
+        )
 
     def test_runtime_uses_manifest_assets_and_generic_world_overrides(self) -> None:
         world = json.loads(
@@ -80,6 +128,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             ).read_text(encoding="utf-8")
         )
         preparer = PREPARER_PATH.read_text(encoding="utf-8")
+        validator = VALIDATOR_PATH.read_text(encoding="utf-8")
         runner = RUNNER_PATH.read_text(encoding="utf-8")
         container = CONTAINER_RUNNER_PATH.read_text(encoding="utf-8")
         gui_wrapper = GUI_WRAPPER_PATH.read_text(encoding="utf-8")
@@ -90,12 +139,49 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             {"manifest_id": "urban_circuit_practice_01", "static_map_id": "r050"},
         )
         self.assertIn("environment_manifest.yaml", preparer)
+        self.assertIn("world_collision.sdf", preparer)
+        self.assertIn("world_gui.sdf", preparer)
+        self.assertIn("validate_visual_resource_uris", preparer)
+        self.assertIn("add_launch_platforms", preparer)
+        self.assertIn("center_is_clear", validator)
+        self.assertIn("spawn_has_support", validator)
+        self.assertIn("shortest_planar_route_m", validator)
+        self.assertIn("planar_segment_is_clear", validator)
         self.assertIn("SIM_WORLD_SDF_PATH", runner)
         self.assertIn("STATIC_OCCUPANCY_3D_PATH", runner)
         self.assertIn("SIM_WORLD_SDF_PATH", container)
         self.assertIn("sim-cooperative-traffic-urban-gui", gui_wrapper)
         self.assertIn("sim-cooperative-traffic-urban-gui:", makefile)
         self.assertIn("sim-cooperative-traffic-urban-headless:", makefile)
+        self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH"', makefile)
+        self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH"', makefile)
+        self.assertGreaterEqual(makefile.count("STATIC_CRUISE_SPEED_MPS=10"), 2)
+        self.assertGreaterEqual(
+            makefile.count("STATIC_ABSOLUTE_SPEED_LIMIT_MPS=10"), 2
+        )
+        self.assertGreaterEqual(
+            makefile.count("STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000"), 2
+        )
+        self.assertGreaterEqual(
+            makefile.count("STATIC_ROUTE_TRACKING_MARGIN_M=0.25"), 2
+        )
+        self.assertGreaterEqual(
+            makefile.count("--static-route-tracking-margin-m 0.25"), 2
+        )
+        self.assertEqual(
+            makefile.count("scripts/validate_static_cooperative_scenario.py"), 2
+        )
+        self.assertEqual(
+            makefile.count("--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json"),
+            4,
+        )
+        self.assertIn("STATIC_CRUISE_SPEED_MPS", container)
+        self.assertIn("STATIC_ABSOLUTE_SPEED_LIMIT_MPS", container)
+        self.assertIn("STATIC_ROUTE_TRACKING_MARGIN_M", container)
+
+        manifest = MANIFEST_PATH.read_text(encoding="utf-8")
+        self.assertIn("model: Urban Platform", manifest)
+        self.assertIn("version: 3", manifest)
 
         launch = (
             REPOSITORY / "drone_city_nav/launch/multi_vehicle.launch.py"
@@ -107,6 +193,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             "px4_to_map_m11",
         ):
             self.assertGreaterEqual(launch.count(f'"{parameter}"'), 4)
+        self.assertIn('"static_route_tracking_margin_m"', launch)
 
 
 if __name__ == "__main__":

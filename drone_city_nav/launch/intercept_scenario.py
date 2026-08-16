@@ -275,10 +275,9 @@ def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
                 "cooperative traffic scenario mission_name must be cooperative_traffic"
             )
         goal_altitudes = {goal["goal_m"][2] for goal in vehicle_goals}
-        start_altitudes = {vehicle["map_start_m"][2] for vehicle in vehicles}
-        if len(goal_altitudes) != 1 or len(start_altitudes) != 1:
+        if len(goal_altitudes) != 1:
             raise ValueError(
-                "cooperative traffic vehicles must share start and cruise altitudes"
+                "cooperative traffic vehicles must share a cruise altitude"
             )
 
     return {

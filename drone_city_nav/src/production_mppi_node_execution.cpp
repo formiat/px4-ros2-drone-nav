@@ -85,6 +85,8 @@ finiteRouteTerminalBoundary(const mppi::MppiTickInput& input,
   return mppi::FiniteExecutionPathTerminalBoundary{
       .endpoint = Point3{endpoint.x_m, endpoint.y_m, endpoint.z_m},
       .forward = forward,
+      .activation_distance_m = 10.0,
+      .maximum_cross_track_m = 2.0,
   };
 }
 

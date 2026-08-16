@@ -96,26 +96,32 @@ class Transform:
 @dataclass
 class MaterializationReport:
     source_world: str
+    mode: str = "collision"
     collision_instances: int = 0
+    visual_instances: int = 0
     dynamic_models_skipped: int = 0
     non_collision_resources_skipped: int = 0
     geometry_types: dict[str, int] = field(default_factory=dict)
     model_files: set[str] = field(default_factory=set)
     mesh_files: set[str] = field(default_factory=set)
+    visual_resource_files: set[str] = field(default_factory=set)
     issues: list[str] = field(default_factory=list)
 
     def as_dict(self, output_sdf: Path, fingerprint: str) -> dict:
         return {
-            "schema": "drone_city_nav_sdf_collision_materialization_v1",
+            "schema": "drone_city_nav_sdf_materialization_v2",
             "source_world": self.source_world,
+            "mode": self.mode,
             "output_sdf": str(output_sdf.resolve()),
             "output_sha256": fingerprint,
             "collision_instances": self.collision_instances,
+            "visual_instances": self.visual_instances,
             "dynamic_models_skipped": self.dynamic_models_skipped,
             "non_collision_resources_skipped": self.non_collision_resources_skipped,
             "geometry_types": dict(sorted(self.geometry_types.items())),
             "model_files": sorted(self.model_files),
             "mesh_files": sorted(self.mesh_files),
+            "visual_resource_files": sorted(self.visual_resource_files),
             "issues": self.issues,
         }
 
@@ -128,7 +134,7 @@ class ResourceResolver:
         self._model_paths = tuple(path.resolve() for path in model_paths)
 
     @staticmethod
-    def _fuel_parts(uri: str) -> tuple[str, str, int | None, tuple[str, ...]] | None:
+    def fuel_parts(uri: str) -> tuple[str, str, int | None, tuple[str, ...]] | None:
         parsed = urlparse(uri.strip())
         if parsed.scheme not in {"http", "https"} or parsed.netloc not in {
             "fuel.gazebosim.org",
@@ -148,6 +154,8 @@ class ResourceResolver:
         remainder = parts[model_index + 2 :]
         if remainder and remainder[0].isdigit():
             version = int(remainder[0])
+            remainder = remainder[1:]
+        elif remainder and remainder[0].casefold() == "tip":
             remainder = remainder[1:]
         if remainder and remainder[0].lower() == "files":
             remainder = remainder[1:]
@@ -186,7 +194,7 @@ class ResourceResolver:
         return max(matches, key=lambda path: int(path.name))
 
     def resolve_model(self, uri: str, referring_file: Path) -> Path:
-        fuel = self._fuel_parts(uri)
+        fuel = self.fuel_parts(uri)
         if fuel is not None:
             owner, name, version, remainder = fuel
             if remainder:
@@ -211,7 +219,7 @@ class ResourceResolver:
         raise MaterializationError(f"cannot resolve model URI: {uri}")
 
     def resolve_mesh(self, uri: str, referring_file: Path) -> Path:
-        fuel = self._fuel_parts(uri)
+        fuel = self.fuel_parts(uri)
         if fuel is not None:
             owner, name, version, remainder = fuel
             if not remainder:
@@ -236,6 +244,9 @@ class ResourceResolver:
                 return candidate.resolve()
         raise MaterializationError(f"cannot resolve mesh URI: {uri}")
 
+    def resolve_file(self, uri: str, referring_file: Path) -> Path:
+        return self.resolve_mesh(uri, referring_file)
+
     def _local_candidates(self, uri: str, referring_file: Path) -> list[Path]:
         relative = Path(uri.removeprefix("file://"))
         if relative.is_absolute():
@@ -249,12 +260,23 @@ class ResourceResolver:
 
 
 class CollisionWorldMaterializer:
-    def __init__(self, resolver: ResourceResolver, preview_visuals: bool = False):
+    def __init__(
+        self,
+        resolver: ResourceResolver,
+        preview_visuals: bool = False,
+        preserve_visuals: bool = False,
+        localized_mesh_root: Path | None = None,
+    ):
         self._resolver = resolver
         self._preview_visuals = preview_visuals
+        self._preserve_visuals = preserve_visuals
+        self._localized_mesh_root = (
+            None if localized_mesh_root is None else localized_mesh_root.resolve()
+        )
         self._output_world: ET.Element | None = None
         self._report: MaterializationReport | None = None
         self._active_model_files: set[Path] = set()
+        self._localized_meshes: dict[Path, Path] = {}
         self._instance_number = 0
 
     def materialize(self, source_world: Path) -> tuple[ET.ElementTree, MaterializationReport]:
@@ -268,7 +290,10 @@ class CollisionWorldMaterializer:
         self._output_world = ET.SubElement(
             output_root, "world", {"name": f"{source.attrib.get('name', 'world')}_collisions"}
         )
-        self._report = MaterializationReport(source_world=str(source_world))
+        self._report = MaterializationReport(
+            source_world=str(source_world),
+            mode="gui" if self._preserve_visuals else "collision",
+        )
         self._copy_world_environment(source)
         for model in source.findall("model"):
             self._visit_model(
@@ -392,6 +417,17 @@ class CollisionWorldMaterializer:
                         collision, collision_transform, source_file,
                         f"{current_prefix}_{link.attrib.get('name', 'link')}"
                     )
+                if self._preserve_visuals:
+                    for visual in link.findall("visual"):
+                        visual_transform = link_transform.compose(
+                            Transform.from_pose(visual.find("pose"))
+                        )
+                        self._emit_visual(
+                            visual,
+                            visual_transform,
+                            source_file,
+                            f"{current_prefix}_{link.attrib.get('name', 'link')}",
+                        )
         elif direct_collisions:
             assert self._report is not None
             self._report.dynamic_models_skipped += 1
@@ -420,7 +456,11 @@ class CollisionWorldMaterializer:
         mesh_uri = geometry_copy.find("./mesh/uri")
         if mesh_uri is not None:
             mesh_path = self._resolver.resolve_mesh(mesh_uri.text or "", source_file)
-            mesh_uri.text = str(mesh_path)
+            mesh_uri.text = str(
+                self._localize_visual_mesh(mesh_path)
+                if self._preserve_visuals
+                else mesh_path
+            )
             assert self._report is not None
             self._report.mesh_files.add(str(mesh_path))
 
@@ -447,19 +487,139 @@ class CollisionWorldMaterializer:
             self._report.geometry_types.get(geometry_type, 0) + 1
         )
 
+    def _emit_visual(
+        self,
+        visual: ET.Element,
+        transform: Transform,
+        source_file: Path,
+        prefix: str,
+    ) -> None:
+        geometry = visual.find("geometry")
+        if geometry is None or len(geometry) != 1:
+            raise MaterializationError(f"visual must contain one geometry: {source_file}")
+        visual_copy = copy.deepcopy(visual)
+        pose = visual_copy.find("pose")
+        if pose is not None:
+            visual_copy.remove(pose)
+        for plugin in visual_copy.findall("plugin"):
+            visual_copy.remove(plugin)
+            assert self._report is not None
+            self._report.non_collision_resources_skipped += 1
+        mesh_uri = visual_copy.find("./geometry/mesh/uri")
+        if mesh_uri is not None:
+            mesh_path = self._resolver.resolve_mesh(mesh_uri.text or "", source_file)
+            mesh_uri.text = str(self._localize_visual_mesh(mesh_path))
+            assert self._report is not None
+            self._report.mesh_files.add(str(mesh_path))
+        self._localize_visual_material(visual_copy, source_file)
+
+        assert self._output_world is not None and self._report is not None
+        self._instance_number += 1
+        instance_name = _safe_name(
+            f"{prefix}_{visual.attrib.get('name', 'visual')}_{self._instance_number}"
+        )
+        output_model = ET.SubElement(self._output_world, "model", {"name": instance_name})
+        ET.SubElement(output_model, "static").text = "true"
+        ET.SubElement(output_model, "pose").text = transform.as_pose_text()
+        output_link = ET.SubElement(output_model, "link", {"name": "link"})
+        output_link.append(visual_copy)
+        self._report.visual_instances += 1
+
+    def _localize_visual_material(
+        self, visual: ET.Element, source_file: Path
+    ) -> None:
+        material = visual.find("material")
+        if material is None:
+            return
+        script = material.find("script")
+        if script is not None:
+            material.remove(script)
+        for element in material.iter():
+            if _local_tag(element.tag) not in _MATERIAL_RESOURCE_TAGS:
+                continue
+            value = (element.text or "").strip()
+            if not value:
+                continue
+            resource = self._resolver.resolve_file(value, source_file)
+            element.text = str(resource)
+            assert self._report is not None
+            self._report.visual_resource_files.add(str(resource))
+
+    def _localize_visual_mesh(self, source: Path) -> Path:
+        if source.suffix.casefold() != ".dae":
+            return source
+        if source in self._localized_meshes:
+            return self._localized_meshes[source]
+        if self._localized_mesh_root is None:
+            raise MaterializationError(
+                "preserved DAE visuals require a localized mesh directory"
+            )
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+        destination = self._localized_mesh_root / f"{digest}_{source.name}"
+        tree = ET.parse(source)
+        root_namespace = _namespace_uri(tree.getroot().tag)
+        if root_namespace:
+            ET.register_namespace("", root_namespace)
+        for element in tree.getroot().iter():
+            if _local_tag(element.tag) != "init_from":
+                continue
+            value = (element.text or "").strip()
+            if not value or value.startswith("#"):
+                continue
+            resource = self._resolver.resolve_file(value, source)
+            element.text = Path(
+                os.path.relpath(resource, start=destination.parent)
+            ).as_posix()
+            assert self._report is not None
+            self._report.visual_resource_files.add(str(resource))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_suffix(destination.suffix + ".part")
+        tree.write(temporary, encoding="utf-8", xml_declaration=True)
+        temporary.replace(destination)
+        self._localized_meshes[source] = destination
+        return destination
+
 
 def write_materialized_world(tree: ET.ElementTree, output: Path) -> str:
     output = output.resolve()
-    for mesh_uri in tree.getroot().iterfind(".//mesh/uri"):
-        mesh_path = Path(mesh_uri.text or "")
-        if mesh_path.is_absolute():
-            mesh_uri.text = Path(
-                os.path.relpath(mesh_path, start=output.parent)
+    for element in tree.getroot().iter():
+        if _local_tag(element.tag) not in _SDF_RESOURCE_TAGS:
+            continue
+        resource_path = Path(element.text or "")
+        if resource_path.is_absolute():
+            element.text = Path(
+                os.path.relpath(resource_path, start=output.parent)
             ).as_posix()
     ET.indent(tree.getroot(), space="  ")
     output.parent.mkdir(parents=True, exist_ok=True)
     tree.write(output, encoding="utf-8", xml_declaration=True)
     return hashlib.sha256(output.read_bytes()).hexdigest()
+
+
+def validate_visual_resource_uris(output_sdf: Path) -> int:
+    output_sdf = output_sdf.resolve()
+    root = ET.parse(output_sdf).getroot()
+    resolved_count = 0
+    dae_files: set[Path] = set()
+    for element in root.iter():
+        if _local_tag(element.tag) not in _SDF_RESOURCE_TAGS:
+            continue
+        value = (element.text or "").strip()
+        if not value:
+            raise MaterializationError("empty visual resource URI")
+        resource = _require_local_resource(value, output_sdf.parent)
+        resolved_count += 1
+        if resource.suffix.casefold() == ".dae":
+            dae_files.add(resource)
+    for dae_file in dae_files:
+        for element in ET.parse(dae_file).getroot().iter():
+            if _local_tag(element.tag) != "init_from":
+                continue
+            value = (element.text or "").strip()
+            if value and not value.startswith("#"):
+                _require_local_resource(value, dae_file.parent)
+                resolved_count += 1
+    return resolved_count
 
 
 def write_report(report: MaterializationReport, output_sdf: Path, fingerprint: str,
@@ -483,3 +643,35 @@ def _parse_bool(value: str) -> bool:
 def _safe_name(value: str) -> str:
     sanitized = re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_")
     return sanitized[:240] or "collision"
+
+
+_MATERIAL_RESOURCE_TAGS = {
+    "albedo_map",
+    "normal_map",
+    "roughness_map",
+    "metalness_map",
+    "emissive_map",
+    "environment_map",
+    "light_map",
+}
+_SDF_RESOURCE_TAGS = _MATERIAL_RESOURCE_TAGS | {"uri"}
+
+
+def _local_tag(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _namespace_uri(tag: str) -> str:
+    if not tag.startswith("{") or "}" not in tag:
+        return ""
+    return tag[1 : tag.index("}")]
+
+
+def _require_local_resource(value: str, base: Path) -> Path:
+    parsed = urlparse(value)
+    if parsed.scheme or value.startswith("model://"):
+        raise MaterializationError(f"non-local visual resource URI: {value}")
+    resource = (base / value).resolve()
+    if not resource.exists():
+        raise MaterializationError(f"unresolved visual resource URI: {value}")
+    return resource

@@ -213,6 +213,15 @@ environments:
       path: environments/licenses/urban_circuit_practice_01.json
       sha256: 29429f875ea38967acf85aaa1904b758c174cb9980f4f522ec61935045057590
       size_bytes: 10812
+    visual_dependencies:
+    - provider: gazebo_fuel
+      owner: OpenRobotics
+      model: Urban Platform
+      version: 3
+    - provider: gazebo_fuel
+      owner: OpenRobotics
+      model: Tunnel Tile 1
+      version: 5
   artifacts:
   - id: source
     kind: source_bundle

@@ -113,6 +113,19 @@ class CooperativeTrafficLaunchContractTest(unittest.TestCase):
         self.assertIn("makeExclusiveGroundTruthBoundary", referee)
         self.assertNotIn("create_publisher<msg::VehicleDestroyed>", referee)
 
+    def test_execution_horizon_uses_its_typed_validity_boundary(self) -> None:
+        agent = (PACKAGE / "src" / "cooperative_traffic_agent_node.cpp").read_text(
+            encoding="utf-8"
+        )
+        referee = (
+            PACKAGE / "src" / "cooperative_traffic_referee_node.cpp"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("inputFresh(execution_horizon_receive_ns_", agent)
+        self.assertIn("valid_until_ns <= now_ns", agent)
+        self.assertIn("rclcpp::QoS{8}.best_effort()", agent)
+        self.assertIn("rclcpp::QoS{8}.best_effort()", referee)
+
 
 if __name__ == "__main__":
     unittest.main()

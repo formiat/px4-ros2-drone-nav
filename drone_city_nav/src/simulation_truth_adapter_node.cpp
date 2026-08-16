@@ -191,12 +191,14 @@ private:
       return;
     }
     std::scoped_lock lock{physical_mutex_};
+    std::vector<bool> observed(physical_samples_.size(), false);
     for (const auto& pose : message.pose()) {
       const auto index_iterator = model_indices_.find(pose.name());
       if (index_iterator == model_indices_.end()) {
         continue;
       }
-      PhysicalPoseSample& sample = physical_samples_[index_iterator->second];
+      const std::size_t index = index_iterator->second;
+      PhysicalPoseSample& sample = physical_samples_[index];
       const Point3 position = mapPosition(pose);
       if (!finite(position)) {
         continue;
@@ -215,6 +217,18 @@ private:
         }
       }
       sample.state = next;
+      observed[index] = true;
+    }
+
+    // Gazebo's dynamic pose topic is a delta stream: sleeping entities may be
+    // omitted even while the stream itself remains current.
+    for (std::size_t index = 0; index < physical_samples_.size(); ++index) {
+      TimedVehicleState& state = physical_samples_[index].state;
+      if (!observed[index] && state.position_valid && stamp_ns > state.stamp_ns) {
+        state.velocity = Vec3{};
+        state.velocity_valid = true;
+        state.stamp_ns = stamp_ns;
+      }
     }
   }
 
@@ -291,6 +305,27 @@ private:
                   status.failure_confirmed ? "true" : "false", status.reason.c_str(),
                   status.vehicle_id.c_str(), status.aligned_vehicle_count,
                   status.expected_vehicle_count, status.maximum_position_error_m);
+    }
+    if (update.newly_failed) {
+      for (std::size_t index = 0; index < alignment_samples.size(); ++index) {
+        const auto& navigation = alignment_samples[index].navigation;
+        const auto& truth = alignment_samples[index].physical_truth;
+        if (!navigation || !truth) {
+          continue;
+        }
+        RCLCPP_ERROR(get_logger(),
+                     "SIMULATION_TRUTH_ALIGNMENT_SAMPLE vehicle_id='%s' "
+                     "navigation_position=(%.3f,%.3f,%.3f) "
+                     "navigation_velocity=(%.3f,%.3f,%.3f) navigation_stamp_ns=%" PRId64
+                     " truth_position=(%.3f,%.3f,%.3f) "
+                     "truth_velocity=(%.3f,%.3f,%.3f) truth_stamp_ns=%" PRId64,
+                     vehicle_ids_[index].c_str(), navigation->position.x,
+                     navigation->position.y, navigation->position.z,
+                     navigation->velocity.x, navigation->velocity.y,
+                     navigation->velocity.z, navigation->stamp_ns, truth->position.x,
+                     truth->position.y, truth->position.z, truth->velocity.x,
+                     truth->velocity.y, truth->velocity.z, truth->stamp_ns);
+      }
     }
   }
 

@@ -51,6 +51,7 @@ constexpr double kTerminalRestTolerance{1.0e-3};
          std::isfinite(boundary.endpoint.z) && std::isfinite(boundary.forward.x) &&
          std::isfinite(boundary.forward.y) && std::isfinite(boundary.forward.z) &&
          std::isfinite(boundary.tolerance_m) && boundary.tolerance_m >= 0.0 &&
+         boundary.activation_distance_m > 0.0 && boundary.maximum_cross_track_m > 0.0 &&
          forward_norm > 1.0e-6;
 }
 
@@ -62,12 +63,27 @@ constexpr double kTerminalRestTolerance{1.0e-3};
   }
   const double forward_norm = std::hypot(
       std::hypot(boundary->forward.x, boundary->forward.y), boundary->forward.z);
+  const Vec3 delta{
+      static_cast<double>(state.x) - boundary->endpoint.x,
+      static_cast<double>(state.y) - boundary->endpoint.y,
+      static_cast<double>(state.z) - boundary->endpoint.z,
+  };
   const double signed_distance_m =
-      ((static_cast<double>(state.x) - boundary->endpoint.x) * boundary->forward.x +
-       (static_cast<double>(state.y) - boundary->endpoint.y) * boundary->forward.y +
-       (static_cast<double>(state.z) - boundary->endpoint.z) * boundary->forward.z) /
+      (delta.x * boundary->forward.x + delta.y * boundary->forward.y +
+       delta.z * boundary->forward.z) /
       forward_norm;
-  return signed_distance_m <= boundary->tolerance_m;
+  if (signed_distance_m <= boundary->tolerance_m) {
+    return true;
+  }
+  const double endpoint_distance_m = std::hypot(std::hypot(delta.x, delta.y), delta.z);
+  const double cross_track_m =
+      std::sqrt(std::max(0.0, endpoint_distance_m * endpoint_distance_m -
+                                  signed_distance_m * signed_distance_m));
+  // The terminal half-plane is meaningful only near its final route segment.
+  // Applying it globally rejects valid curved approaches that happen to lie on
+  // the forward side of the infinite terminal plane.
+  return endpoint_distance_m > boundary->activation_distance_m ||
+         cross_track_m > boundary->maximum_cross_track_m;
 }
 
 [[nodiscard]] FiniteExecutionPathValidation

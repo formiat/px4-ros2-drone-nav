@@ -13,6 +13,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -85,6 +86,7 @@ private:
   void publishMissionStart();
   [[nodiscard]] bool verifyGroundTruthBoundary(std::int64_t now_ns);
   [[nodiscard]] bool missionReady(std::int64_t now_ns) const;
+  void logMissionReadiness(std::int64_t now_ns) const;
   [[nodiscard]] bool runtimeInputsHealthy(std::int64_t now_ns);
   void updateSeparationMetrics();
   void updateGoalHolds();
@@ -98,6 +100,7 @@ private:
   void settleFailure(std::int64_t now_ns);
   void finishSuccess();
   void finishFailure(const std::string& reason);
+  void publishTerminalOutcome(bool success, const std::string& detail);
   void completeResultLifecycle();
   void tick();
 
@@ -137,6 +140,7 @@ private:
   bool boundary_verified_{false};
   rclcpp::Subscription<msg::SimulationTruthAlignment>::SharedPtr truth_alignment_sub_;
   rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr intent_sub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr outcome_marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

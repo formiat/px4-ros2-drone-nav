@@ -324,6 +324,7 @@ void CooperativeTrafficRefereeNode::finishSuccess() {
       separation_config_.desired_minimum_separation_m,
       separation_monitor_->desiredViolationEventCount(),
       active_desired_violation_count_, mission_epoch_);
+  publishTerminalOutcome(true, "ALL GOALS REACHED\nVEHICLES HOLDING");
   completeResultLifecycle();
 }
 
@@ -345,7 +346,47 @@ void CooperativeTrafficRefereeNode::finishFailure(const std::string& reason) {
                separation_config_.desired_minimum_separation_m,
                separation_monitor_->desiredViolationEventCount(),
                active_desired_violation_count_, mission_epoch_);
+  publishTerminalOutcome(false, reason + "\nSURVIVORS HOLDING");
   completeResultLifecycle();
+}
+
+void CooperativeTrafficRefereeNode::publishTerminalOutcome(const bool success,
+                                                           const std::string& detail) {
+  visualization_msgs::msg::Marker marker;
+  marker.header.stamp = now();
+  marker.header.frame_id = "map";
+  marker.ns = "cooperative_traffic_outcome";
+  marker.id = 0;
+  marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  Point3 center{};
+  std::size_t state_count = 0U;
+  for (std::size_t index = 0U; index < vehicles_.size(); ++index) {
+    if (const auto state = physicalState(index); state.has_value()) {
+      center.x += state->position.x;
+      center.y += state->position.y;
+      center.z += state->position.z;
+      ++state_count;
+    }
+  }
+  if (state_count > 0U) {
+    const double scale = 1.0 / static_cast<double>(state_count);
+    center.x *= scale;
+    center.y *= scale;
+    center.z *= scale;
+  }
+  marker.pose.position.x = center.x;
+  marker.pose.position.y = center.y;
+  marker.pose.position.z = center.z + 8.0;
+  marker.pose.orientation.w = 1.0;
+  marker.scale.z = 3.0;
+  marker.color.r = success ? 0.15F : 1.0F;
+  marker.color.g = success ? 1.0F : 0.18F;
+  marker.color.b = 0.15F;
+  marker.color.a = 1.0F;
+  marker.frame_locked = true;
+  marker.text = success ? "MISSION COMPLETE\n" + detail : "MISSION FAILED\n" + detail;
+  outcome_marker_pub_->publish(marker);
 }
 
 void CooperativeTrafficRefereeNode::completeResultLifecycle() {
@@ -394,6 +435,7 @@ void CooperativeTrafficRefereeNode::tick() {
       publishMissionStart();
     } else if (readiness_started_ns_ > 0 &&
                now_ns - readiness_started_ns_ > readiness_timeout_ns_) {
+      logMissionReadiness(now_ns);
       beginFailure("mission_readiness_timeout");
       settleFailure(now_ns);
     }

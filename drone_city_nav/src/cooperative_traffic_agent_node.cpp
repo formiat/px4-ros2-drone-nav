@@ -128,7 +128,7 @@ public:
 
     const auto state_qos = rclcpp::QoS{10}.best_effort();
     const auto horizon_qos = rclcpp::QoS{4}.reliable();
-    const auto intent_qos = rclcpp::QoS{32}.reliable();
+    const auto intent_qos = rclcpp::QoS{8}.best_effort();
     state_sub_ = create_subscription<msg::VehicleNavigationState>(
         declare_parameter<std::string>("navigation_state_topic",
                                        "/vehicles/civilian_0/state"),
@@ -189,11 +189,28 @@ private:
 
   [[nodiscard]] std::optional<CooperativeFlightIntentData>
   makeOwnIntent(const std::int64_t now_ns) {
-    if (!navigation_state_.has_value() || !execution_horizon_.has_value() ||
-        !inputFresh(navigation_state_receive_ns_, now_ns) ||
-        !inputFresh(execution_horizon_receive_ns_, now_ns) ||
+    if (!navigation_state_.has_value() || !execution_horizon_.has_value()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "COOPERATIVE_INTENT_UNAVAILABLE vehicle_id='%s' reason=missing_input "
+          "navigation_available=%s horizon_available=%s",
+          vehicle_id_.c_str(), navigation_state_.has_value() ? "true" : "false",
+          execution_horizon_.has_value() ? "true" : "false");
+      return std::nullopt;
+    }
+    if (!inputFresh(navigation_state_receive_ns_, now_ns) ||
         !navigation_state_->position_valid || !navigation_state_->velocity_valid ||
         !navigation_state_->navigation_ready) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "COOPERATIVE_INTENT_UNAVAILABLE vehicle_id='%s' "
+                           "reason=navigation_unavailable receive_age_ms=%.1f "
+                           "position_valid=%s velocity_valid=%s navigation_ready=%s",
+                           vehicle_id_.c_str(),
+                           static_cast<double>(now_ns - navigation_state_receive_ns_) *
+                               1.0e-6,
+                           navigation_state_->position_valid ? "true" : "false",
+                           navigation_state_->velocity_valid ? "true" : "false",
+                           navigation_state_->navigation_ready ? "true" : "false");
       return std::nullopt;
     }
     const msg::MppiTrajectoryHorizon& horizon = *execution_horizon_;
@@ -203,7 +220,26 @@ private:
     const std::int64_t valid_until_ns =
         std::min(horizon_valid_until_ns,
                  valid_from_ns + secondsToNanoseconds(maximum_intent_horizon_s_));
-    if (valid_from_ns <= 0 || valid_until_ns <= now_ns || horizon.points.empty()) {
+    const bool stationary_hold =
+        horizon.stationary_position_hold &&
+        horizon.execution_mode ==
+            msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD;
+    // An execution horizon is a time-indexed contract and remains current until
+    // its own validity boundary. The planner intentionally does not republish an
+    // unchanged finite path on every control tick.
+    if (valid_from_ns <= 0 || execution_horizon_receive_ns_ <= 0 ||
+        execution_horizon_receive_ns_ > now_ns || valid_until_ns <= now_ns ||
+        (horizon.points.empty() && !stationary_hold)) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "COOPERATIVE_INTENT_UNAVAILABLE vehicle_id='%s' "
+          "reason=horizon_invalid receive_age_ms=%.1f valid_from_ns=%" PRId64
+          " valid_until_ns=%" PRId64 " now_ns=%" PRId64
+          " point_count=%zu stationary_hold=%s",
+          vehicle_id_.c_str(),
+          static_cast<double>(now_ns - execution_horizon_receive_ns_) * 1.0e-6,
+          valid_from_ns, valid_until_ns, now_ns, horizon.points.size(),
+          stationary_hold ? "true" : "false");
       return std::nullopt;
     }
     CooperativeFlightIntentData intent{
@@ -227,6 +263,23 @@ private:
     if (passage_state_.has_value() && inputFresh(passage_state_receive_ns_, now_ns)) {
       intent.passage = *passage_state_;
     }
+    if (horizon.points.empty()) {
+      const Point3 hold_position = point(horizon.stationary_hold_position);
+      const std::int64_t first_sample_ns = std::max(valid_from_ns, now_ns);
+      intent.trajectory.push_back(CooperativeTrajectorySample{
+          .time_ns = first_sample_ns,
+          .position = hold_position,
+          .velocity = Vec3{},
+      });
+      if (valid_until_ns > first_sample_ns) {
+        intent.trajectory.push_back(CooperativeTrajectorySample{
+            .time_ns = valid_until_ns,
+            .position = hold_position,
+            .velocity = Vec3{},
+        });
+      }
+      return intent;
+    }
     intent.trajectory.reserve(horizon.points.size());
     std::int64_t previous_time_ns = 0;
     for (const msg::MppiHorizonPoint& point_message : horizon.points) {
@@ -244,6 +297,12 @@ private:
       previous_time_ns = sample_time_ns;
     }
     if (intent.trajectory.empty()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "COOPERATIVE_INTENT_UNAVAILABLE vehicle_id='%s' "
+          "reason=no_valid_trajectory_samples point_count=%zu valid_from_ns=%" PRId64
+          " valid_until_ns=%" PRId64,
+          vehicle_id_.c_str(), horizon.points.size(), valid_from_ns, valid_until_ns);
       return std::nullopt;
     }
     return intent;

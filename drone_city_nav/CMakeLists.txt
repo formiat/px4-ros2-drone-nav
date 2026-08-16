@@ -380,7 +380,8 @@ add_executable(cooperative_traffic_referee_node
 target_compile_features(cooperative_traffic_referee_node PRIVATE cxx_std_20)
 target_link_libraries(cooperative_traffic_referee_node drone_city_nav_core
                       drone_city_nav_ros_adapters ${cpp_typesupport_target})
-ament_target_dependencies(cooperative_traffic_referee_node rclcpp std_msgs)
+ament_target_dependencies(cooperative_traffic_referee_node rclcpp std_msgs
+                          visualization_msgs)
 enable_project_warnings(cooperative_traffic_referee_node)
 
 add_executable(radar_simulator_node src/radar_simulator_node.cpp)

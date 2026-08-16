@@ -89,24 +89,46 @@ sim-cooperative-traffic-headless: build
 .PHONY: sim-cooperative-traffic-urban-headless
 sim-cooperative-traffic-urban-headless: build
 	python3 scripts/prepare_environment_simulation.py \
-		--environment urban_circuit_practice_01 --static-map r050
+		--environment urban_circuit_practice_01 --static-map r050 \
+		--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
+		python3 scripts/validate_static_cooperative_scenario.py \
+			--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json \
+			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
+			--static-route-tracking-margin-m 0.25; \
+		SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=civilian_0 \
 		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=next_living \
+		STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000 \
+		STATIC_ROUTE_TRACKING_MARGIN_M=0.25 \
+		STATIC_CRUISE_SPEED_MPS=10 \
+		STATIC_ABSOLUTE_SPEED_LIMIT_MPS=10 \
 		ENABLE_STATIC_MAP=true HEADLESS=1 MISSION_CHECK=1 \
-		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
+		COOPERATIVE_MISSION_TIMEOUT_S=480 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-cooperative-traffic-urban-gui
 sim-cooperative-traffic-urban-gui: build
 	python3 scripts/prepare_environment_simulation.py \
-		--environment urban_circuit_practice_01 --static-map r050
+		--environment urban_circuit_practice_01 --static-map r050 \
+		--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
+		python3 scripts/validate_static_cooperative_scenario.py \
+			--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json \
+			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
+			--static-route-tracking-margin-m 0.25; \
+		SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=civilian_0 \
 		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=next_living \
+		STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000 \
+		STATIC_ROUTE_TRACKING_MARGIN_M=0.25 \
+		STATIC_CRUISE_SPEED_MPS=10 \
+		STATIC_ABSOLUTE_SPEED_LIMIT_MPS=10 \
+		COOPERATIVE_MISSION_TIMEOUT_S=480 \
 		ENABLE_STATIC_MAP=true \
 		./scripts/run_drone_nav_sim.sh

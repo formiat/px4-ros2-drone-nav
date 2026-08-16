@@ -122,6 +122,10 @@ CooperativeTrafficRefereeNode::CooperativeTrafficRefereeNode()
       "ground truth boundary startup timeout");
   shutdown_on_terminal_outcome_ =
       declare_parameter<bool>("shutdown_on_terminal_outcome", true);
+  outcome_marker_pub_ = create_publisher<visualization_msgs::msg::Marker>(
+      declare_parameter<std::string>("mission_outcome_marker_topic",
+                                     "/cooperative_traffic/mission_outcome_marker"),
+      rclcpp::QoS{1}.reliable().transient_local());
 
   const std::vector<std::string> vehicle_ids =
       declare_parameter<std::vector<std::string>>(
@@ -147,7 +151,7 @@ CooperativeTrafficRefereeNode::CooperativeTrafficRefereeNode()
   intent_sub_ = create_subscription<msg::CooperativeFlightIntent>(
       declare_parameter<std::string>("flight_intent_topic",
                                      "/cooperative_traffic/flight_intents"),
-      rclcpp::QoS{32}.reliable(),
+      rclcpp::QoS{8}.best_effort(),
       [this](const msg::CooperativeFlightIntent::SharedPtr intent) {
         onFlightIntent(*intent);
       });
@@ -334,6 +338,13 @@ void CooperativeTrafficRefereeNode::onFlightIntent(
     return;
   }
   VehicleRuntime& runtime = vehicles_[vehicle->second];
+  if (!runtime.intent_ready) {
+    RCLCPP_INFO(get_logger(),
+                "COOPERATIVE_INTENT_READY vehicle_id='%s' generation=%" PRIu64
+                " valid_for_ms=%.1f",
+                runtime.id.c_str(), intent.intent_generation,
+                static_cast<double>(intent.valid_until_ns - now_ns) * 1.0e-6);
+  }
   runtime.intent_ready = true;
   runtime.latest_intent_generation = intent.intent_generation;
   runtime.latest_intent_receive_ns = now_ns;
@@ -446,6 +457,32 @@ bool CooperativeTrafficRefereeNode::missionReady(const std::int64_t now_ns) cons
            now_ns - vehicle.latest_intent_receive_ns <= maximum_intent_age_ns_ &&
            now_ns <= vehicle.latest_intent_valid_until_ns;
   });
+}
+
+void CooperativeTrafficRefereeNode::logMissionReadiness(
+    const std::int64_t now_ns) const {
+  RCLCPP_ERROR(get_logger(), "COOPERATIVE_READINESS_STATUS alignment=%s boundary=%s",
+               truth_alignment_update_.startup_ready ? "ready" : "not_ready",
+               boundary_verified_ ? "ready" : "not_ready");
+  for (const VehicleRuntime& vehicle : vehicles_) {
+    const double intent_age_ms =
+        vehicle.latest_intent_receive_ns > 0 &&
+                now_ns >= vehicle.latest_intent_receive_ns
+            ? static_cast<double>(now_ns - vehicle.latest_intent_receive_ns) * 1.0e-6
+            : std::numeric_limits<double>::infinity();
+    RCLCPP_ERROR(
+        get_logger(),
+        "COOPERATIVE_READINESS_STATUS vehicle_id='%s' destroyed=%s navigation=%s "
+        "world=%s horizon=%s intent=%s intent_age_ms=%.1f intent_valid=%s",
+        vehicle.id.c_str(), vehicle.destroyed ? "true" : "false",
+        vehicle.navigation_state && vehicle.navigation_state->navigation_ready
+            ? "ready"
+            : "not_ready",
+        vehicle.world_ready ? "ready" : "not_ready",
+        vehicle.executable_horizon_ready ? "ready" : "not_ready",
+        vehicle.intent_ready ? "ready" : "not_ready", intent_age_ms,
+        now_ns <= vehicle.latest_intent_valid_until_ns ? "true" : "false");
+  }
 }
 
 void CooperativeTrafficRefereeNode::publishMissionStart() {

@@ -115,6 +115,17 @@ Visualization Manager:
         drone: true
       Topic:
         Value: /drone_city_nav/drone_marker
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Mission Outcome
+      Namespaces:
+        cooperative_traffic_outcome: true
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /cooperative_traffic/mission_outcome_marker
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

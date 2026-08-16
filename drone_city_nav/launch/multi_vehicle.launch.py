@@ -199,6 +199,18 @@ def generate_multi_vehicle_launch_description(mission_kind):
         use_static_map = _optional_bool(
             LaunchConfiguration("use_static_map").perform(context), configured_static
         )
+        static_lattice_deadline_override = LaunchConfiguration(
+            "static_global_lattice_deadline_ms"
+        ).perform(context)
+        static_route_tracking_margin_override = LaunchConfiguration(
+            "static_route_tracking_margin_m"
+        ).perform(context)
+        static_cruise_speed_override = LaunchConfiguration(
+            "static_cruise_speed_mps"
+        ).perform(context)
+        static_speed_limit_override = LaunchConfiguration(
+            "static_absolute_speed_limit_mps"
+        ).perform(context)
         interceptor_speed_mps = float(
             document["production_mppi_node"]["ros__parameters"][
                 "static_cruise_speed_mps"
@@ -527,6 +539,22 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     * config["speed_scale"],
                 },
             )
+            if static_lattice_deadline_override:
+                planner_params["static_global_lattice_deadline_ms"] = float(
+                    static_lattice_deadline_override
+                )
+            if static_route_tracking_margin_override:
+                planner_params["static_route_tracking_margin_m"] = float(
+                    static_route_tracking_margin_override
+                )
+            if static_cruise_speed_override:
+                planner_params["static_cruise_speed_mps"] = (
+                    float(static_cruise_speed_override) * config["speed_scale"]
+                )
+            if static_speed_limit_override:
+                planner_params["static_absolute_speed_limit_mps"] = (
+                    float(static_speed_limit_override) * config["speed_scale"]
+                )
             planner_components.append(
                 ComposableNode(
                     package="drone_city_nav",
@@ -808,6 +836,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value=""),
+            DeclareLaunchArgument(
+                "static_global_lattice_deadline_ms", default_value=""
+            ),
             DeclareLaunchArgument("static_occupancy_3d_path", default_value=""),
             DeclareLaunchArgument(
                 "static_free_space_topology_3d_path", default_value=""
@@ -898,6 +929,13 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument(
                 "cooperative_mission_timeout_s", default_value="240.0"
+            ),
+            DeclareLaunchArgument("static_cruise_speed_mps", default_value=""),
+            DeclareLaunchArgument(
+                "static_route_tracking_margin_m", default_value=""
+            ),
+            DeclareLaunchArgument(
+                "static_absolute_speed_limit_mps", default_value=""
             ),
             DeclareLaunchArgument("planner_worker_budget", default_value="8"),
             DeclareLaunchArgument("control_cpu_list", default_value=""),
