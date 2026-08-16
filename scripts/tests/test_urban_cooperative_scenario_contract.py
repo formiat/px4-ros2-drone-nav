@@ -22,6 +22,7 @@ MANIFEST_PATH = REPOSITORY / "environments" / "environment_manifest.yaml"
 PREPARER_PATH = REPOSITORY / "scripts" / "prepare_environment_simulation.py"
 RUNNER_PATH = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
 CONTAINER_RUNNER_PATH = REPOSITORY / "scripts" / "container_run.sh"
+GUI_WRAPPER_PATH = REPOSITORY / "scripts" / "sim_cooperative_traffic_urban_gui.sh"
 MAKEFILE_PATH = REPOSITORY / "Makefile"
 
 SPEC = importlib.util.spec_from_file_location("multi_vehicle_scenario", LOADER_PATH)
@@ -81,6 +82,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         preparer = PREPARER_PATH.read_text(encoding="utf-8")
         runner = RUNNER_PATH.read_text(encoding="utf-8")
         container = CONTAINER_RUNNER_PATH.read_text(encoding="utf-8")
+        gui_wrapper = GUI_WRAPPER_PATH.read_text(encoding="utf-8")
         makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
 
         self.assertEqual(
@@ -91,6 +93,8 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("SIM_WORLD_SDF_PATH", runner)
         self.assertIn("STATIC_OCCUPANCY_3D_PATH", runner)
         self.assertIn("SIM_WORLD_SDF_PATH", container)
+        self.assertIn("sim-cooperative-traffic-urban-gui", gui_wrapper)
+        self.assertIn("sim-cooperative-traffic-urban-gui:", makefile)
         self.assertIn("sim-cooperative-traffic-urban-headless:", makefile)
 
         launch = (

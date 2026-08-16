@@ -50,6 +50,7 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/sim_multi_intercept_headless.sh
 ./scripts/sim_cooperative_traffic_gui.sh
 ./scripts/sim_cooperative_traffic_headless.sh
+./scripts/sim_cooperative_traffic_urban_gui.sh
 ./scripts/sim_cooperative_traffic_urban_headless.sh
 ./scripts/stop_sim.sh
 ```
@@ -73,6 +74,7 @@ make sim-multi-intercept-gui
 make sim-multi-intercept-headless
 make sim-cooperative-traffic-gui
 make sim-cooperative-traffic-headless
+make sim-cooperative-traffic-urban-gui
 make sim-cooperative-traffic-urban-headless
 ```
 
@@ -259,6 +261,7 @@ Run the static cooperative mission in the imported Urban Circuit Practice 01
 environment:
 
 ```bash
+./scripts/sim_cooperative_traffic_urban_gui.sh
 ./scripts/sim_cooperative_traffic_urban_headless.sh
 ```
 
