@@ -180,6 +180,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
     scenario_path = LaunchConfiguration(scenario_argument)
     enable_rviz = LaunchConfiguration("enable_rviz")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
+    enable_2d_lidar = LaunchConfiguration("enable_2d_lidar")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
 
     def launch_nodes(context, *args, **kwargs):
@@ -248,13 +249,18 @@ def generate_multi_vehicle_launch_description(mission_kind):
         lidar_debug_enabled = _optional_bool(
             enable_lidar_debug.perform(context), False
         )
+        lidar_enabled = _optional_bool(enable_2d_lidar.perform(context), True)
         obstacle_memory_enabled = _optional_bool(
             enable_obstacle_memory.perform(context), True
         )
         if not use_static_map and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
+        if not use_static_map and not lidar_enabled:
+            raise RuntimeError("No-static navigation requires 2D lidar")
         if lidar_debug_enabled and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
+        if lidar_debug_enabled and not lidar_enabled:
+            raise RuntimeError("Lidar debug requires 2D lidar")
         static_path_override = LaunchConfiguration(
             "static_occupancy_3d_path"
         ).perform(context)
@@ -355,6 +361,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
         diagnostics_components = []
         bridge_arguments = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
         bridge_remaps = []
+        scan_bridge_arguments = []
+        scan_bridge_remaps = []
         contacts_topic = "/drone_city_nav/drone_contacts"
         bridge_arguments.append(
             f"{contacts_topic}@ros_gz_interfaces/msg/Contacts[gz.msgs.Contacts"
@@ -369,10 +377,11 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 "sensor/lidar_2d_v2/scan"
             )
             scan_topic = f"{prefix}/scan"
-            bridge_arguments.append(
-                f"{gz_scan}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
-            )
-            bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
+            if lidar_enabled:
+                scan_bridge_arguments.append(
+                    f"{gz_scan}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
+                )
+                scan_bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
 
             primary = config["rviz_primary"]
             raw_snapshot = (
@@ -714,7 +723,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 composable_node_descriptions=planner_components,
             )
         )
-        bridge_arguments.extend(["--ros-args", *bridge_remaps])
+        if bridge_remaps:
+            bridge_arguments.extend(["--ros-args", *bridge_remaps])
         nodes.insert(
             0,
             Node(
@@ -726,6 +736,19 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 arguments=bridge_arguments,
             ),
         )
+        if scan_bridge_arguments:
+            scan_bridge_arguments.extend(["--ros-args", *scan_bridge_remaps])
+            nodes.insert(
+                1,
+                Node(
+                    package="ros_gz_bridge",
+                    executable="parameter_bridge",
+                    name=f"{mission_kind}_lidar_scan_bridge",
+                    output="screen",
+                    prefix=control_prefix,
+                    arguments=scan_bridge_arguments,
+                ),
+            )
         world_params = _parameters(
             document,
             "world_visualization_node",
@@ -834,6 +857,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument("enable_rviz", default_value="false"),
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
+            DeclareLaunchArgument("enable_2d_lidar", default_value="true"),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value=""),
             DeclareLaunchArgument(

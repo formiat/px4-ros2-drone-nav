@@ -31,6 +31,16 @@ def read_mask(path: Path) -> int:
     return int(sensor.findtext("ray/visibility_mask", ""))
 
 
+def read_always_on(path: Path) -> bool:
+    root = ET.parse(path).getroot()
+    sensor = next(
+        element
+        for element in root.iter("sensor")
+        if element.attrib.get("name") == "lidar_2d_v2"
+    )
+    return sensor.findtext("always_on") == "true"
+
+
 class ConfigureLidarVisibilityTest(unittest.TestCase):
     def configure_copy(self, mode: str) -> tuple[int, int]:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -66,6 +76,18 @@ class ConfigureLidarVisibilityTest(unittest.TestCase):
     def test_unknown_mode_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "unsupported lidar visibility mode"):
             visibility.visibility_mask("unknown")
+
+    def test_sensor_can_be_disabled_without_changing_visibility_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = Path(temp_dir) / "model.sdf"
+            shutil.copyfile(SOURCE_MODEL, destination)
+
+            returned_mask = visibility.configure_model(
+                destination, "static", enabled=False
+            )
+
+            self.assertEqual(visibility.STATIC_VISIBILITY_MASK, returned_mask)
+            self.assertFalse(read_always_on(destination))
 
 
 if __name__ == "__main__":

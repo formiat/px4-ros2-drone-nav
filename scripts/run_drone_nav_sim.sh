@@ -185,6 +185,14 @@ enable_lidar_debug_override=""
 if [[ -n "${ENABLE_LIDAR_DEBUG+x}" ]]; then
   enable_lidar_debug_override="$(normalize_bool "${ENABLE_LIDAR_DEBUG}")"
 fi
+enable_2d_lidar="$(normalize_bool "${ENABLE_2D_LIDAR:-true}")"
+case "${enable_2d_lidar}" in
+true | false) ;;
+*)
+  echo "ENABLE_2D_LIDAR must be a boolean, got '${enable_2d_lidar}'" >&2
+  exit 1
+  ;;
+esac
 enable_obstacle_memory_override=""
 if [[ -n "${ENABLE_OBSTACLE_MEMORY+x}" ]]; then
   enable_obstacle_memory_override="$(normalize_bool "${ENABLE_OBSTACLE_MEMORY}")"
@@ -391,6 +399,8 @@ if bool_is_true "${active_static_map}"; then
 fi
 if [[ -n "${enable_lidar_debug_override}" ]]; then
   enable_lidar_debug="${enable_lidar_debug_override}"
+elif ! bool_is_true "${enable_2d_lidar}"; then
+  enable_lidar_debug="false"
 elif bool_is_true "${active_static_map}" && [[ -n "${headless}" ]]; then
   enable_lidar_debug="false"
 else
@@ -409,9 +419,19 @@ if ! bool_is_true "${active_static_map}" &&
   echo "No-static navigation requires ENABLE_OBSTACLE_MEMORY=true" >&2
   exit 1
 fi
+if ! bool_is_true "${active_static_map}" &&
+  ! bool_is_true "${enable_2d_lidar}"; then
+  echo "No-static navigation requires ENABLE_2D_LIDAR=true" >&2
+  exit 1
+fi
 if bool_is_true "${enable_lidar_debug}" &&
   ! bool_is_true "${enable_obstacle_memory}"; then
   echo "Lidar debug requires ENABLE_OBSTACLE_MEMORY=true" >&2
+  exit 1
+fi
+if bool_is_true "${enable_lidar_debug}" &&
+  ! bool_is_true "${enable_2d_lidar}"; then
+  echo "Lidar debug requires ENABLE_2D_LIDAR=true" >&2
   exit 1
 fi
 px4_static_max_horizontal_speed_mps="${static_speed_limit_override:-$(
@@ -541,7 +561,7 @@ prepare_runtime_resources() {
   fi
   python3 "${repo_root}/scripts/configure_lidar_visibility.py" \
     "${runtime_models_dir}/lidar_2d_v2/model.sdf" \
-    --mode "${lidar_visibility_mode}"
+    --mode "${lidar_visibility_mode}" --enabled "${enable_2d_lidar}"
 }
 
 prepare_runtime_resources
@@ -724,6 +744,7 @@ echo "Gazebo GUI log: ${gz_gui_log_file}"
 echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_scene_diagnostics_dir}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "Obstacle memory: enabled=${enable_obstacle_memory}"
+echo "2D lidar: enabled=${enable_2d_lidar}"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'" |
@@ -927,6 +948,7 @@ if bool_is_true "${multi_vehicle_mission}"; then
     params_file:="${city_nav_params_file}"
     "${scenario_argument}:=${multi_vehicle_scenario_path}"
     enable_lidar_debug:="${enable_lidar_debug}"
+    enable_2d_lidar:="${enable_2d_lidar}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     evader_speed_scale:="${evader_speed_scale}"
@@ -956,6 +978,7 @@ else
     enable_gazebo_bridge:=true
     enable_mission_monitor:=true
     enable_lidar_debug:="${enable_lidar_debug}"
+    enable_2d_lidar:="${enable_2d_lidar}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     rviz_config:="${rviz_config_file}"

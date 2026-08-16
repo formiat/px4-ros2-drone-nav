@@ -131,6 +131,16 @@ Run the GUI simulation:
 ./scripts/sim_gui.sh
 ```
 
+The 2D lidar is enabled by default. In a static-map run it can be disabled to
+remove the simulated sensor and its ROS scan bridge:
+
+```bash
+ENABLE_2D_LIDAR=false ./scripts/sim_gui.sh
+```
+
+No-static navigation requires the 2D lidar and rejects
+`ENABLE_2D_LIDAR=false` before starting the simulation.
+
 Run the finite three-interceptor mission:
 
 ```bash

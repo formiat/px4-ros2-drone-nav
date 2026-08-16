@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, GroupAction, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -43,6 +43,7 @@ def generate_launch_description():
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
+    enable_2d_lidar = LaunchConfiguration("enable_2d_lidar")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
     enable_rviz = LaunchConfiguration("enable_rviz")
     rviz_drone_follow_tf_enabled = LaunchConfiguration(
@@ -53,23 +54,35 @@ def generate_launch_description():
     static_free_space_topology_3d_path = LaunchConfiguration(
         "static_free_space_topology_3d_path"
     )
-    scan_bridge = Node(
+    simulation_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
-        name="scan_bridge",
+        name="simulation_bridge",
         output="screen",
         condition=IfCondition(enable_gazebo_bridge),
         arguments=[
-            f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
             (
                 f"{contacts_gz_topic}@ros_gz_interfaces/msg/Contacts"
                 "[gz.msgs.Contacts"
             ),
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
+        ],
+    )
+    scan_bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        name="scan_bridge",
+        output="screen",
+        condition=IfCondition(enable_2d_lidar),
+        arguments=[
+            f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
             "--ros-args",
             "-r",
             f"{lidar_gz_topic}:=/scan",
         ],
+    )
+    lidar_scan_bridge = GroupAction(
+        condition=IfCondition(enable_gazebo_bridge), actions=[scan_bridge]
     )
 
     def source_nodes(context, *args, **kwargs):
@@ -100,6 +113,10 @@ def generate_launch_description():
         obstacle_memory_override = optional_bool_override(
             context, enable_obstacle_memory, "enable_obstacle_memory"
         )
+        lidar_enabled = optional_bool_override(
+            context, enable_2d_lidar, "enable_2d_lidar"
+        )
+        assert lidar_enabled is not None
         obstacle_memory_enabled = (
             True if obstacle_memory_override is None else obstacle_memory_override
         )
@@ -111,6 +128,10 @@ def generate_launch_description():
         )
         if not static_map_enabled and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
+        if not static_map_enabled and not lidar_enabled:
+            raise RuntimeError("No-static navigation requires 2D lidar")
+        if lidar_debug_override is True and not lidar_enabled:
+            raise RuntimeError("Lidar debug requires 2D lidar")
         if lidar_debug_override is True and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
         if static_map_override is not None:
@@ -337,6 +358,14 @@ def generate_launch_description():
                 description="Record lidar/grid/path snapshots for debugging.",
             ),
             DeclareLaunchArgument(
+                "enable_2d_lidar",
+                default_value="true",
+                description=(
+                    "Enable the simulated 2D lidar and its ROS scan bridge. "
+                    "Required when use_static_map is false."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "enable_obstacle_memory",
                 default_value="true",
                 description="Run lidar obstacle memory; required without a static map.",
@@ -370,7 +399,8 @@ def generate_launch_description():
                     "params_file."
                 ),
             ),
-            scan_bridge,
+            simulation_bridge,
+            lidar_scan_bridge,
             OpaqueFunction(function=source_nodes),
             collision_crash,
             mppi_offboard,

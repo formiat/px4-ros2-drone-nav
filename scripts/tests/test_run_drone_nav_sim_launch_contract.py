@@ -417,8 +417,15 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('enable_obstacle_memory:="${enable_obstacle_memory}"', self.text)
         self.assertIn('elif bool_is_true "${active_static_map}"', self.text)
         self.assertIn("No-static navigation requires ENABLE_OBSTACLE_MEMORY=true", self.text)
+        self.assertIn("ENABLE_2D_LIDAR", self.text)
+        self.assertIn("No-static navigation requires ENABLE_2D_LIDAR=true", self.text)
+        self.assertIn('enable_2d_lidar:="${enable_2d_lidar}"', self.text)
         self.assertIn(
             'DeclareLaunchArgument("enable_obstacle_memory", default_value="true")',
+            self.intercept_launch_text,
+        )
+        self.assertIn(
+            'DeclareLaunchArgument("enable_2d_lidar", default_value="true")',
             self.intercept_launch_text,
         )
         self.assertIn(
@@ -456,6 +463,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('lidar_visibility_mode="static"', self.text)
         self.assertIn("configure_lidar_visibility.py", self.text)
         self.assertIn('--mode "${lidar_visibility_mode}"', self.text)
+        self.assertIn('--enabled "${enable_2d_lidar}"', self.text)
         self.assertIn(
             'cp -a "${repo_root}/drone_city_nav/models/lidar_2d_v2"',
             self.text,
