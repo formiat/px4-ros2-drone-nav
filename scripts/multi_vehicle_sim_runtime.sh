@@ -6,6 +6,7 @@ load_multi_vehicle_sim_scenario() {
   local requested_mission_type="$1"
   local scenario_override="$2"
   local default_scenario="drone_city_nav/config/intercept_scenario.json"
+  local scenario_metadata_tsv=""
   local scenario_tsv=""
 
   multi_vehicle_mission="false"
@@ -38,9 +39,23 @@ load_multi_vehicle_sim_scenario() {
   multi_vehicle_gazebo_model_names=()
   multi_vehicle_map_start_poses=()
   multi_vehicle_gazebo_spawn_poses=()
+  multi_vehicle_world_name="generated_city"
+  multi_vehicle_initial_altitude_m="18.0"
+  multi_vehicle_minimum_target_z_m="1.0"
+  multi_vehicle_maximum_target_z_m="32.0"
   if ! bool_is_true "${multi_vehicle_mission}"; then
     return 0
   fi
+  if ! scenario_metadata_tsv="$(
+    python3 "${repo_root}/drone_city_nav/launch/intercept_scenario.py" \
+      --scenario "${multi_vehicle_scenario_path}" --format metadata-tsv
+  )"; then
+    echo "Failed to resolve multi-vehicle scenario metadata: ${multi_vehicle_scenario_path}" >&2
+    return 1
+  fi
+  IFS=$'\t' read -r multi_vehicle_world_name \
+    multi_vehicle_initial_altitude_m multi_vehicle_minimum_target_z_m \
+    multi_vehicle_maximum_target_z_m <<< "${scenario_metadata_tsv}"
   if ! scenario_tsv="$(
     python3 "${repo_root}/drone_city_nav/launch/intercept_scenario.py" \
       --scenario "${multi_vehicle_scenario_path}" --format tsv

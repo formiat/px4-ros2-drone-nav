@@ -3,6 +3,7 @@
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
+#include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
 #include "drone_city_nav/vehicle_destruction_disarm_lifecycle.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
@@ -156,8 +157,16 @@ public:
         declare_parameter<std::string>("rviz_drone_follow_parent_frame", "gazebo_map");
     rviz_drone_follow_frame_ =
         declare_parameter<std::string>("rviz_drone_follow_frame", "drone_follow");
-    px4_local_origin_.x = declare_parameter<double>("px4_local_origin_x_m", 54.0);
-    px4_local_origin_.y = declare_parameter<double>("px4_local_origin_y_m", 54.0);
+    px4_map_transform_ = Px4MapFrameTransform{
+        .map_origin = Point3{declare_parameter<double>("px4_local_origin_x_m", 54.0),
+                             declare_parameter<double>("px4_local_origin_y_m", 54.0),
+                             declare_parameter<double>("px4_local_origin_z_m", 0.0)},
+        .m00 = declare_parameter<double>("px4_to_map_m00", 1.0),
+        .m01 = declare_parameter<double>("px4_to_map_m01", 0.0),
+        .m10 = declare_parameter<double>("px4_to_map_m10", 0.0),
+        .m11 = declare_parameter<double>("px4_to_map_m11", 1.0),
+    };
+    px4_map_transform_.validate();
     if (rviz_drone_follow_tf_enabled_) {
       rviz_drone_follow_tf_broadcaster_ =
           std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -305,12 +314,14 @@ private:
     local_x_ = state.x;
     local_y_ = state.y;
     altitude_m_ = -static_cast<double>(state.z);
-    velocity_x_ = state.vx;
-    velocity_y_ = state.vy;
+    const Point2 map_velocity = px4_map_transform_.localVectorToMap(
+        Point2{static_cast<double>(state.vx), static_cast<double>(state.vy)});
+    velocity_x_ = map_velocity.x;
+    velocity_y_ = map_velocity.y;
     velocity_up_mps_ = -static_cast<double>(state.vz);
     const bool finite_heading = std::isfinite(state.heading);
     if (finite_heading) {
-      heading_rad_ = state.heading;
+      heading_rad_ = px4_map_transform_.px4HeadingToMapYaw(state.heading);
     }
     heading_valid_ = state.heading_good_for_control && finite_heading;
     position_valid_ = true;
@@ -325,9 +336,11 @@ private:
     }
     msg::VehicleNavigationState state;
     state.stamp = now();
-    state.position.x = local_x_ + px4_local_origin_.x;
-    state.position.y = local_y_ + px4_local_origin_.y;
-    state.position.z = altitude_m_;
+    const Point2 map_position =
+        px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
+    state.position.x = map_position.x;
+    state.position.y = map_position.y;
+    state.position.z = mapAltitudeM();
     state.velocity.x = velocity_x_;
     state.velocity.y = velocity_y_;
     state.velocity.z = velocity_up_mps_;
@@ -402,8 +415,9 @@ private:
   }
 
   [[nodiscard]] Point3 rvizDronePosition() const noexcept {
-    return gazeboAlignedRvizPositionFromPx4Local(Point2{local_x_, local_y_},
-                                                 px4_local_origin_, altitude_m_);
+    const Point2 map_position =
+        px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
+    return Point3{map_position.y, map_position.x, mapAltitudeM()};
   }
 
   void onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
@@ -550,7 +564,7 @@ private:
     offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
     if (!navigating) {
       publishTakeoffSetpoint();
-      if (position_valid_ && altitude_m_ >= initial_altitude_m_ - 0.5 &&
+      if (position_valid_ && mapAltitudeM() >= initial_altitude_m_ - 0.5 &&
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
       }
@@ -586,7 +600,9 @@ private:
 
   void publishTakeoffSetpoint() {
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-        nowMicros(), Point2{local_x_, local_y_}, initial_altitude_m_, heading_rad_));
+        nowMicros(), Point2{local_x_, local_y_},
+        initial_altitude_m_ - px4_map_transform_.map_origin.z,
+        px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
   }
 
   void publishStationaryPositionHoldSetpoint() {
@@ -594,10 +610,11 @@ private:
       return;
     }
     const geometry_msgs::msg::Point& target = horizon_.value().stationary_hold_position;
-    const Point2 local_target{target.x - px4_local_origin_.x,
-                              target.y - px4_local_origin_.y};
-    setpoint_pub_->publish(buildPositionTrajectorySetpoint(nowMicros(), local_target,
-                                                           target.z, heading_rad_));
+    const Point2 local_target =
+        px4_map_transform_.mapPositionToLocal(Point2{target.x, target.y});
+    setpoint_pub_->publish(buildPositionTrajectorySetpoint(
+        nowMicros(), local_target, target.z - px4_map_transform_.map_origin.z,
+        px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
     publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
   }
 
@@ -606,18 +623,21 @@ private:
       return;
     }
     const msg::MppiHorizonPoint& terminal = horizon_->points.back();
-    const Point2 local_target{terminal.position.x - px4_local_origin_.x,
-                              terminal.position.y - px4_local_origin_.y};
+    const Point2 local_target = px4_map_transform_.mapPositionToLocal(
+        Point2{terminal.position.x, terminal.position.y});
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-        nowMicros(), local_target, terminal.position.z, terminal.yaw_rad));
+        nowMicros(), local_target,
+        terminal.position.z - px4_map_transform_.map_origin.z,
+        px4_map_transform_.mapYawToPx4Heading(terminal.yaw_rad)));
     publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
+    const Point2 map_position =
+        px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
                          "FINITE_EXECUTION_PATH terminal_hold=true sequence=%" PRIu64
                          " target=(%.3f,%.3f,%.3f) current=(%.3f,%.3f,%.3f) speed=%.3f",
                          horizon_sequence_, terminal.position.x, terminal.position.y,
-                         terminal.position.z, local_x_ + px4_local_origin_.x,
-                         local_y_ + px4_local_origin_.y, altitude_m_,
-                         currentSpeedMps());
+                         terminal.position.z, map_position.x, map_position.y,
+                         mapAltitudeM(), currentSpeedMps());
   }
 
   [[nodiscard]] bool publishHorizonSetpoint() {
@@ -648,25 +668,30 @@ private:
             : 0.0;
     const Point2 map_position{interpolate(first.position.x, second.position.x, ratio),
                               interpolate(first.position.y, second.position.y, ratio)};
-    const Point2 local_position{map_position.x - px4_local_origin_.x,
-                                map_position.y - px4_local_origin_.y};
-    const double altitude = interpolate(first.position.z, second.position.z, ratio);
-    const Point2 velocity{interpolate(first.velocity.x, second.velocity.x, ratio),
-                          interpolate(first.velocity.y, second.velocity.y, ratio)};
+    const Point2 local_position = px4_map_transform_.mapPositionToLocal(map_position);
+    const double altitude = interpolate(first.position.z, second.position.z, ratio) -
+                            px4_map_transform_.map_origin.z;
+    const Point2 map_velocity{interpolate(first.velocity.x, second.velocity.x, ratio),
+                              interpolate(first.velocity.y, second.velocity.y, ratio)};
+    const Point2 velocity = px4_map_transform_.mapVectorToLocal(map_velocity);
     const double vertical_velocity =
         interpolate(first.velocity.z, second.velocity.z, ratio);
-    const Point2 acceleration{
+    const Point2 map_acceleration{
         interpolate(first.acceleration.x, second.acceleration.x, ratio),
         interpolate(first.acceleration.y, second.acceleration.y, ratio)};
+    const Point2 acceleration = px4_map_transform_.mapVectorToLocal(map_acceleration);
     const double vertical_acceleration =
         interpolate(first.acceleration.z, second.acceleration.z, ratio);
-    const double yaw = interpolate(first.yaw_rad, second.yaw_rad, ratio);
-    const double yaw_rate =
+    const double yaw = px4_map_transform_.mapYawToPx4Heading(
+        interpolate(first.yaw_rad, second.yaw_rad, ratio));
+    const double map_yaw_rate =
         interpolate(first.yaw_rate_radps, second.yaw_rate_radps, ratio);
+    const double yaw_rate = px4_map_transform_.mapYawRateToPx4(map_yaw_rate);
     setpoint_pub_->publish(buildMppiPathTrajectorySetpoint(
         nowMicros(), local_position, altitude, velocity, vertical_velocity,
         acceleration, vertical_acceleration, yaw, yaw_rate));
-    publishAppliedControlFeedback(acceleration, vertical_acceleration, yaw_rate);
+    publishAppliedControlFeedback(map_acceleration, vertical_acceleration,
+                                  map_yaw_rate);
     return true;
   }
 
@@ -677,17 +702,19 @@ private:
           local_y_,
           altitude_m_,
       };
+      const Point2 map_target = px4_map_transform_.localPositionToMap(
+          Point2{unavailable_path_hold_target_->x, unavailable_path_hold_target_->y});
       RCLCPP_WARN(get_logger(),
                   "FINITE_EXECUTION_PATH unavailable=true action=position_hold "
                   "target=(%.3f,%.3f,%.3f)",
-                  unavailable_path_hold_target_->x + px4_local_origin_.x,
-                  unavailable_path_hold_target_->y + px4_local_origin_.y,
-                  unavailable_path_hold_target_->z);
+                  map_target.x, map_target.y,
+                  unavailable_path_hold_target_->z + px4_map_transform_.map_origin.z);
     }
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
         nowMicros(),
         Point2{unavailable_path_hold_target_->x, unavailable_path_hold_target_->y},
-        unavailable_path_hold_target_->z, heading_rad_));
+        unavailable_path_hold_target_->z,
+        px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
     publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
   }
 
@@ -706,6 +733,10 @@ private:
     feedback.acceleration.z = vertical_acceleration;
     feedback.yaw_rate_radps = static_cast<float>(yaw_rate);
     applied_control_feedback_pub_->publish(feedback);
+  }
+
+  [[nodiscard]] double mapAltitudeM() const noexcept {
+    return altitude_m_ + px4_map_transform_.map_origin.z;
   }
 
   void publishCommand(const std::uint32_t command, const float param1,
@@ -746,7 +777,7 @@ private:
   bool destruction_disarm_confirmed_logged_{false};
   bool require_mission_start_signal_{false};
   bool mission_started_{false};
-  Point2 px4_local_origin_{54.0, 54.0};
+  Px4MapFrameTransform px4_map_transform_{};
   VehicleCommandEndpoint endpoint_{};
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
   px4_msgs::msg::VehicleStatus vehicle_status_;

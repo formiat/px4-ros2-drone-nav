@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -33,6 +34,11 @@ struct Px4LocalPoseConfig {
   double initial_heading_rad{0.0};
   double map_origin_x_m{0.0};
   double map_origin_y_m{0.0};
+  double map_origin_z_m{0.0};
+  double px4_to_map_m00{1.0};
+  double px4_to_map_m01{0.0};
+  double px4_to_map_m10{0.0};
+  double px4_to_map_m11{1.0};
 };
 
 enum class Px4LocalPoseUpdateStatus {

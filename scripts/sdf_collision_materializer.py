@@ -269,6 +269,7 @@ class CollisionWorldMaterializer:
             output_root, "world", {"name": f"{source.attrib.get('name', 'world')}_collisions"}
         )
         self._report = MaterializationReport(source_world=str(source_world))
+        self._copy_world_environment(source)
         for model in source.findall("model"):
             self._visit_model(
                 model,
@@ -281,6 +282,41 @@ class CollisionWorldMaterializer:
         for include in source.findall("include"):
             self._visit_include(include, Transform.identity(), source_world, "include")
         return ET.ElementTree(output_root), self._report
+
+    def _copy_world_environment(self, source: ET.Element) -> None:
+        assert self._output_world is not None
+        copied_tags = {
+            "physics",
+            "gravity",
+            "magnetic_field",
+            "atmosphere",
+            "spherical_coordinates",
+            "scene",
+            "light",
+        }
+        present_tags: set[str] = set()
+        for child in source:
+            if child.tag not in copied_tags:
+                continue
+            self._output_world.append(copy.deepcopy(child))
+            present_tags.add(child.tag)
+
+        defaults = {
+            "gravity": "0 0 -9.8",
+            "magnetic_field": "6e-06 2.3e-05 -4.2e-05",
+        }
+        for tag, value in defaults.items():
+            if tag not in present_tags:
+                ET.SubElement(self._output_world, tag).text = value
+        if "atmosphere" not in present_tags:
+            ET.SubElement(self._output_world, "atmosphere", {"type": "adiabatic"})
+        if "spherical_coordinates" not in present_tags:
+            coordinates = ET.SubElement(self._output_world, "spherical_coordinates")
+            ET.SubElement(coordinates, "surface_model").text = "EARTH_WGS84"
+            ET.SubElement(coordinates, "world_frame_orientation").text = "ENU"
+            ET.SubElement(coordinates, "latitude_deg").text = "47.397971057728974"
+            ET.SubElement(coordinates, "longitude_deg").text = "8.546163739800146"
+            ET.SubElement(coordinates, "elevation").text = "0"
 
     def _visit_include(
         self, include: ET.Element, parent: Transform, source_file: Path, prefix: str

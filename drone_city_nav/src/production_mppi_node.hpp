@@ -37,6 +37,7 @@
 #include "drone_city_nav/noncooperative_collision_avoidance.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/passage_volume.hpp"
+#include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
@@ -576,7 +577,7 @@ private:
   double planning_tick_phase_offset_s_{0.0};
   NoStaticRouteCycleConfig no_static_cycle_config_{};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
-  Point2 px4_local_origin_{54.0, 54.0};
+  Px4MapFrameTransform px4_map_transform_{};
   Point3 mission_start_{54.0, 54.0, 0.0};
   Point3 mission_goal_{216.0, 378.0, 18.0};
   FlightEnvelopeConfig flight_envelope_config_{};

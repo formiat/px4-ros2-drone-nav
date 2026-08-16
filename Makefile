@@ -85,3 +85,16 @@ sim-cooperative-traffic-headless: build
 		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY="$${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-next_living}" \
 		HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
 		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-cooperative-traffic-urban-headless
+sim-cooperative-traffic-urban-headless: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment urban_circuit_practice_01 --static-map r050
+	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
+		MISSION_TYPE=cooperative_traffic \
+		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
+		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=civilian_0 \
+		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=next_living \
+		ENABLE_STATIC_MAP=true HEADLESS=1 MISSION_CHECK=1 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
+		./scripts/run_drone_nav_sim.sh

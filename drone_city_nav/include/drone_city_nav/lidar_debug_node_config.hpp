@@ -38,6 +38,11 @@ struct LidarDebugNodeConfig {
   double range_hit_epsilon_m{0.05};
   double initial_heading_rad{0.0};
   Point2 px4_local_origin{};
+  double px4_local_origin_z_m{0.0};
+  double px4_to_map_m00{1.0};
+  double px4_to_map_m01{0.0};
+  double px4_to_map_m10{0.0};
+  double px4_to_map_m11{1.0};
   double scan_yaw_offset_rad{0.0};
   bool motion_compensate_lidar_pose{true};
   double lidar_pose_latency_s{0.05};

@@ -8,8 +8,8 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
     return;
   }
 
-  current_pose_.position = Point2{static_cast<double>(msg.x) + px4_local_origin_.x,
-                                  static_cast<double>(msg.y) + px4_local_origin_.y};
+  current_pose_.position = px4_map_transform_.localPositionToMap(
+      Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)});
   const bool heading_valid = px4HeadingReadyForMapping(
       msg.heading_good_for_control, static_cast<double>(msg.heading),
       static_cast<double>(msg.heading_var), maximum_heading_variance_rad2_);
@@ -24,11 +24,14 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
   }
   px4_heading_seen_ = mapping_yaw.source == MappingYawSource::kPx4Heading;
   if (mapping_yaw.valid) {
-    current_pose_.yaw_rad = mapping_yaw.yaw_rad;
+    current_pose_.yaw_rad =
+        mapping_yaw.source == MappingYawSource::kPx4Heading
+            ? px4_map_transform_.px4HeadingToMapYaw(mapping_yaw.yaw_rad)
+            : mapping_yaw.yaw_rad;
     last_heading_receive_ns_ = last_pose_receive_ns_;
   }
   if (msg.z_valid && std::isfinite(msg.z)) {
-    current_altitude_m_ = -static_cast<double>(msg.z);
+    current_altitude_m_ = -static_cast<double>(msg.z) + px4_map_transform_.map_origin.z;
     altitude_valid_ = true;
   }
   const LidarPoseSourceStampResult source_stamp = resolveLidarPoseSourceStamp(
@@ -47,8 +50,8 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
                          lidarPoseSourceStampStatusName(source_stamp.status));
   }
   if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
-    current_velocity_ =
-        Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
+    current_velocity_ = px4_map_transform_.localVectorToMap(
+        Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)});
     horizontal_speed_mps_ =
         std::hypot(static_cast<double>(msg.vx), static_cast<double>(msg.vy));
     horizontal_speed_valid_ = true;

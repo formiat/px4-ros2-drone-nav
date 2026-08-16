@@ -62,6 +62,12 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
   config.px4_local_origin =
       Point2{node.declare_parameter<double>("px4_local_origin_x_m", 0.0),
              node.declare_parameter<double>("px4_local_origin_y_m", 0.0)};
+  config.px4_local_origin_z_m =
+      node.declare_parameter<double>("px4_local_origin_z_m", 0.0);
+  config.px4_to_map_m00 = node.declare_parameter<double>("px4_to_map_m00", 1.0);
+  config.px4_to_map_m01 = node.declare_parameter<double>("px4_to_map_m01", 0.0);
+  config.px4_to_map_m10 = node.declare_parameter<double>("px4_to_map_m10", 0.0);
+  config.px4_to_map_m11 = node.declare_parameter<double>("px4_to_map_m11", 1.0);
   config.scan_yaw_offset_rad =
       node.declare_parameter<double>("scan_yaw_offset_rad", config.scan_yaw_offset_rad);
   config.motion_compensate_lidar_pose = node.declare_parameter<bool>(

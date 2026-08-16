@@ -637,6 +637,18 @@ if(BUILD_TESTING)
   target_link_libraries(simulation_truth_alignment_test drone_city_nav_core)
   enable_project_warnings(simulation_truth_alignment_test)
 
+  ament_add_gtest(map_to_sdf_transform_test
+                  tests/map_to_sdf_transform_test.cpp)
+  target_compile_features(map_to_sdf_transform_test PRIVATE cxx_std_20)
+  target_include_directories(map_to_sdf_transform_test PRIVATE include)
+  enable_project_warnings(map_to_sdf_transform_test)
+
+  ament_add_gtest(navigation_pose_origin_test
+                  tests/navigation_pose_origin_test.cpp)
+  target_compile_features(navigation_pose_origin_test PRIVATE cxx_std_20)
+  target_link_libraries(navigation_pose_origin_test drone_city_nav_core)
+  enable_project_warnings(navigation_pose_origin_test)
+
   ament_add_gtest(direct_tracking_maneuver_lifecycle_test
                   tests/direct_tracking_maneuver_lifecycle_test.cpp)
   target_compile_features(direct_tracking_maneuver_lifecycle_test PRIVATE cxx_std_20)

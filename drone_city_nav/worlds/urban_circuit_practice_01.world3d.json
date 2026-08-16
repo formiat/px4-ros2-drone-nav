@@ -1,0 +1,24 @@
+{
+  "schema": "drone_city_nav_canonical_world_v1",
+  "frame_id": "map",
+  "gazebo_world_name": "urban_circuit_practice_01_collisions",
+  "map_to_sdf": {
+    "sdf_x_from": "map_x",
+    "sdf_x_scale": 1.0,
+    "sdf_x_offset_m": 0.0,
+    "sdf_y_from": "map_y",
+    "sdf_y_scale": 1.0,
+    "sdf_y_offset_m": 0.0,
+    "sdf_z_scale": 1.0,
+    "sdf_z_offset_m": 0.0
+  },
+  "navigation": {
+    "initial_altitude_m": 4.0,
+    "minimum_target_z_m": 1.0,
+    "maximum_target_z_m": 20.0
+  },
+  "environment": {
+    "manifest_id": "urban_circuit_practice_01",
+    "static_map_id": "r050"
+  }
+}

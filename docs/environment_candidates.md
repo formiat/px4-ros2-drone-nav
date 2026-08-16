@@ -302,21 +302,22 @@ installations before compilation.
 
 ## Current Limits And Next Decision
 
-- The imported environments have deterministic FreeSpaceTopology3D compilation
-  profiles, but their topology has not yet been connected to production mission
-  starts, goals, transforms, or launch selection.
+- Urban Circuit Practice 01 now has a production static cooperative scenario,
+  explicit mission starts and goals, map/SDF/PX4 frame transforms, manifest-bound
+  Occupancy3D, ESDF3D, and FreeSpaceTopology3D selection, and a dedicated
+  headless launch target.
 - Candidate visuals are not yet a production Harmonic world. The Finals
   collision-only world loads in a Harmonic server, but the original legacy
   materials and resource URIs still need a visual migration pass.
-- Mission starts, goals, map-to-SDF transforms, world launch selection, and
-  flight-envelope bounds have not been defined for any candidate.
-- No navigation, interception, or cooperative mission was run in an imported
-  environment during this selection stage.
+- Finals Prize Round World 07 and Cave Circuit Practice 01 do not yet define
+  production mission starts, goals, launch selection, or flight-envelope bounds.
+- Interception and no-static navigation have not been validated in an imported
+  environment. Urban Circuit Practice 01 is currently integrated only for the
+  static cooperative mission.
 - A valid static topology proves deterministic extraction and raw-safe internal
   segments, not end-to-end reachability from future mission starts to goals.
 
-Proceed with Finals Prize Round World 07 as the primary integration target,
-Cave Circuit Practice 01 as the vertical-shaft stress target, and Urban Circuit
-Practice 01 as the smaller secondary target. Do not replace the current city
-fixture until at least one complete mission is reproducibly validated in the
-new environment.
+Keep Finals Prize Round World 07 as the primary advanced-passage integration
+target and Cave Circuit Practice 01 as the vertical-shaft stress target. Urban
+Circuit Practice 01 remains the smaller end-to-end static cooperative baseline;
+it does not replace the generated city fixture.

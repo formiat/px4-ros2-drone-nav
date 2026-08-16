@@ -12,6 +12,7 @@
 #include "drone_city_nav/lidar_snapshot_writer.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
+#include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -174,7 +175,7 @@ private:
   nav_msgs::msg::OccupancyGrid last_memory_grid_;
   nav_msgs::msg::Path last_path_;
   Pose2 current_pose_{};
-  Point2 px4_local_origin_{};
+  Px4MapFrameTransform px4_map_transform_{};
   Point2 current_velocity_{};
   AttitudeEuler attitude_{};
   LidarPoseHistory lidar_pose_history_{};

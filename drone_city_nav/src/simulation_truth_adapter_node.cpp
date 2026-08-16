@@ -1,4 +1,5 @@
 #include "drone_city_nav/intercept_mission.hpp"
+#include "drone_city_nav/map_to_sdf_transform.hpp"
 #include "drone_city_nav/msg/simulation_truth_alignment.hpp"
 #include "drone_city_nav/msg/simulation_truth_state.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
@@ -93,8 +94,19 @@ public:
       throw std::invalid_argument{"map_start_xyz_m and gazebo_spawn_xyz_m must contain "
                                   "three values per vehicle"};
     }
-    sdf_x_offset_m_ = declare_parameter<double>("map_to_sdf_x_offset_m", -225.0);
-    sdf_y_offset_m_ = declare_parameter<double>("map_to_sdf_y_offset_m", -135.0);
+    sdf_x_from_ = declare_parameter<std::string>("map_to_sdf_x_from", "map_y");
+    sdf_y_from_ = declare_parameter<std::string>("map_to_sdf_y_from", "map_x");
+    map_to_sdf_transform_ = MapToSdfTransform{
+        .sdf_x_from = mapHorizontalAxisFromName(sdf_x_from_),
+        .sdf_y_from = mapHorizontalAxisFromName(sdf_y_from_),
+        .sdf_x_scale = declare_parameter<double>("map_to_sdf_x_scale", 1.0),
+        .sdf_y_scale = declare_parameter<double>("map_to_sdf_y_scale", 1.0),
+        .sdf_z_scale = declare_parameter<double>("map_to_sdf_z_scale", 1.0),
+        .sdf_x_offset_m = declare_parameter<double>("map_to_sdf_x_offset_m", -225.0),
+        .sdf_y_offset_m = declare_parameter<double>("map_to_sdf_y_offset_m", -135.0),
+        .sdf_z_offset_m = declare_parameter<double>("map_to_sdf_z_offset_m", 0.0),
+    };
+    map_to_sdf_transform_.validate();
     maximum_velocity_interval_s_ =
         declare_parameter<double>("maximum_velocity_interval_s", 0.25);
     if (!(maximum_velocity_interval_s_ > 0.0) ||
@@ -134,15 +146,20 @@ public:
       truth_state_pubs_.push_back(create_publisher<msg::SimulationTruthState>(
           truth_state_topics_[index], state_qos));
       const std::size_t offset = index * 3U;
-      RCLCPP_INFO(get_logger(),
-                  "SIMULATION_COORDINATE_CONTRACT vehicle_id='%s' gazebo_model='%s' "
-                  "map_start=(%.3f,%.3f,%.3f) gazebo_spawn=(%.3f,%.3f,%.3f) "
-                  "transform='sdf_x=map_y%+.3f,sdf_y=map_x%+.3f'",
-                  vehicle_ids_[index].c_str(), gazebo_model_names_[index].c_str(),
-                  map_start_xyz_m_[offset], map_start_xyz_m_[offset + 1U],
-                  map_start_xyz_m_[offset + 2U], gazebo_spawn_xyz_m_[offset],
-                  gazebo_spawn_xyz_m_[offset + 1U], gazebo_spawn_xyz_m_[offset + 2U],
-                  sdf_x_offset_m_, sdf_y_offset_m_);
+      RCLCPP_INFO(
+          get_logger(),
+          "SIMULATION_COORDINATE_CONTRACT vehicle_id='%s' gazebo_model='%s' "
+          "map_start=(%.3f,%.3f,%.3f) gazebo_spawn=(%.3f,%.3f,%.3f) "
+          "transform='sdf_x=%.1f*%s%+.3f,sdf_y=%.1f*%s%+.3f,"
+          "sdf_z=%.1f*map_z%+.3f'",
+          vehicle_ids_[index].c_str(), gazebo_model_names_[index].c_str(),
+          map_start_xyz_m_[offset], map_start_xyz_m_[offset + 1U],
+          map_start_xyz_m_[offset + 2U], gazebo_spawn_xyz_m_[offset],
+          gazebo_spawn_xyz_m_[offset + 1U], gazebo_spawn_xyz_m_[offset + 2U],
+          map_to_sdf_transform_.sdf_x_scale, sdf_x_from_.c_str(),
+          map_to_sdf_transform_.sdf_x_offset_m, map_to_sdf_transform_.sdf_y_scale,
+          sdf_y_from_.c_str(), map_to_sdf_transform_.sdf_y_offset_m,
+          map_to_sdf_transform_.sdf_z_scale, map_to_sdf_transform_.sdf_z_offset_m);
     }
 
     alignment_pub_ = create_publisher<msg::SimulationTruthAlignment>(
@@ -164,8 +181,8 @@ public:
 
 private:
   [[nodiscard]] Point3 mapPosition(const gz::msgs::Pose& pose) const noexcept {
-    return Point3{pose.position().y() - sdf_y_offset_m_,
-                  pose.position().x() - sdf_x_offset_m_, pose.position().z()};
+    return map_to_sdf_transform_.sdfToMap(
+        Point3{pose.position().x(), pose.position().y(), pose.position().z()});
   }
 
   void onGazeboPose(const gz::msgs::Pose_V& message) {
@@ -296,8 +313,9 @@ private:
   std::mutex physical_mutex_;
   gz::transport::Node gazebo_node_;
   std::string pose_topic_;
-  double sdf_x_offset_m_{-225.0};
-  double sdf_y_offset_m_{-135.0};
+  std::string sdf_x_from_{"map_y"};
+  std::string sdf_y_from_{"map_x"};
+  MapToSdfTransform map_to_sdf_transform_{};
   double maximum_velocity_interval_s_{0.25};
   rclcpp::TimerBase::SharedPtr timer_;
 };

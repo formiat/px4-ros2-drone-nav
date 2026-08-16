@@ -113,23 +113,32 @@ void ProductionMppiNode::onLocalPosition(
                      std::isfinite(message.z) && std::isfinite(message.vx) &&
                      std::isfinite(message.vy) && std::isfinite(message.vz);
   if (navigation.valid) {
-    navigation.state.x = static_cast<float>(message.x + px4_local_origin_.x);
-    navigation.state.y = static_cast<float>(message.y + px4_local_origin_.y);
-    navigation.state.z = -message.z;
-    navigation.state.vx = message.vx;
-    navigation.state.vy = message.vy;
+    const Point2 map_position = px4_map_transform_.localPositionToMap(
+        Point2{static_cast<double>(message.x), static_cast<double>(message.y)});
+    const Point2 map_velocity = px4_map_transform_.localVectorToMap(
+        Point2{static_cast<double>(message.vx), static_cast<double>(message.vy)});
+    navigation.state.x = static_cast<float>(map_position.x);
+    navigation.state.y = static_cast<float>(map_position.y);
+    navigation.state.z = static_cast<float>(-static_cast<double>(message.z) +
+                                            px4_map_transform_.map_origin.z);
+    navigation.state.vx = static_cast<float>(map_velocity.x);
+    navigation.state.vy = static_cast<float>(map_velocity.y);
     navigation.state.vz = -message.vz;
     if (message.heading_good_for_control && std::isfinite(message.heading)) {
-      navigation.state.yaw = message.heading;
+      navigation.state.yaw =
+          static_cast<float>(px4_map_transform_.px4HeadingToMapYaw(message.heading));
     }
     navigation.measured_acceleration_valid = std::isfinite(message.ax) &&
                                              std::isfinite(message.ay) &&
                                              std::isfinite(message.az);
     if (navigation.measured_acceleration_valid) {
+      const Point2 map_acceleration = px4_map_transform_.localVectorToMap(
+          Point2{static_cast<double>(message.ax), static_cast<double>(message.ay)});
       navigation.measured_equivalent_control =
-          mppi::equivalentControlFromMeasuredAcceleration(navigation.state, message.ax,
-                                                          message.ay, -message.az,
-                                                          mppi_config_.dynamics);
+          mppi::equivalentControlFromMeasuredAcceleration(
+              navigation.state, static_cast<float>(map_acceleration.x),
+              static_cast<float>(map_acceleration.y), -message.az,
+              mppi_config_.dynamics);
     }
   }
   {

@@ -138,20 +138,28 @@ makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
     return std::nullopt;
   }
 
+  const Px4MapFrameTransform transform{
+      .map_origin =
+          Point3{config.map_origin_x_m, config.map_origin_y_m, config.map_origin_z_m},
+      .m00 = config.px4_to_map_m00,
+      .m01 = config.px4_to_map_m01,
+      .m10 = config.px4_to_map_m10,
+      .m11 = config.px4_to_map_m11,
+  };
   NavigationPose2D pose{};
-  pose.pose.position =
-      Point2{sample.x_m + config.map_origin_x_m, sample.y_m + config.map_origin_y_m};
+  pose.pose.position = transform.localPositionToMap(Point2{sample.x_m, sample.y_m});
   pose.stamp_ns = sample.stamp_ns;
   pose.position_valid = true;
 
   if (sample.z_valid && std::isfinite(sample.z_m)) {
-    pose.altitude_m = -sample.z_m;
+    pose.altitude_m = -sample.z_m + transform.map_origin.z;
     pose.altitude_valid = true;
   }
 
   if (config.use_heading_for_yaw) {
     if (sample.heading_good_for_control && std::isfinite(sample.heading_rad)) {
-      pose.pose.yaw_rad = normalizeYaw(sample.heading_rad);
+      pose.pose.yaw_rad =
+          normalizeYaw(transform.px4HeadingToMapYaw(sample.heading_rad));
       pose.yaw_valid = true;
     }
     return pose;

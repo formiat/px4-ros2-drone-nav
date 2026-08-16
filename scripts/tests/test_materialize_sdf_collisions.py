@@ -23,6 +23,33 @@ from sdf_collision_materializer import (  # noqa: E402
 
 
 class SdfCollisionMaterializerTest(unittest.TestCase):
+    def test_preserves_physics_and_adds_px4_world_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            world = Path(directory) / "world.sdf"
+            world.write_text(
+                """<sdf version="1.6"><world name="candidate">
+  <physics name="source" type="ode"><max_step_size>0.004</max_step_size></physics>
+  <scene><ambient>0.1 0.2 0.3 1</ambient></scene>
+  <plugin filename="legacy.so" name="legacy"/>
+</world></sdf>
+""",
+                encoding="utf-8",
+            )
+            materializer = CollisionWorldMaterializer(ResourceResolver([], []))
+
+            tree, _ = materializer.materialize(world)
+
+            output_world = tree.getroot().find("world")
+            self.assertIsNotNone(output_world)
+            self.assertEqual("0.004", output_world.findtext("./physics/max_step_size"))
+            self.assertEqual("0.1 0.2 0.3 1", output_world.findtext("./scene/ambient"))
+            self.assertEqual("0 0 -9.8", output_world.findtext("gravity"))
+            self.assertEqual(
+                "EARTH_WGS84",
+                output_world.findtext("./spherical_coordinates/surface_model"),
+            )
+            self.assertIsNone(output_world.find("plugin"))
+
     def test_resolves_classic_file_uri_against_explicit_model_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

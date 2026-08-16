@@ -82,10 +82,16 @@ colcon_install_base="$(make_abs_path "${COLCON_INSTALL_BASE:-install}")"
 colcon_log_base="$(make_abs_path "${COLCON_LOG_BASE:-log}")"
 run_log_dir="$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")"
 run_id="${DRONE_GAZEBO_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
-world_name="generated_city"
 mission_type="${MISSION_TYPE:-point_to_point}"
 multi_vehicle_scenario_override="${MULTI_VEHICLE_SCENARIO_PATH:-${INTERCEPT_SCENARIO_PATH:-}}"
 load_multi_vehicle_sim_scenario "${mission_type}" "${multi_vehicle_scenario_override}"
+scenario_world_name="${multi_vehicle_world_name:-generated_city}"
+world_name="${SIM_WORLD_NAME:-${scenario_world_name}}"
+if bool_is_true "${multi_vehicle_mission}" &&
+  [[ "${world_name}" != "${scenario_world_name}" ]]; then
+  echo "SIM_WORLD_NAME=${world_name} does not match scenario world ${scenario_world_name}" >&2
+  exit 1
+fi
 multi_vehicle_spectator_initial_vehicle_id=""
 multi_vehicle_spectator_initial_model=""
 multi_vehicle_spectator_reselection_policy="${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-first_living}}"
@@ -253,6 +259,28 @@ point_gazebo_spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
 runtime_dir="${colcon_build_base}/gazebo_drone_nav"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
+custom_world_sdf_path=""
+if [[ -n "${SIM_WORLD_SDF_PATH:-}" ]]; then
+  custom_world_sdf_path="$(make_abs_path "${SIM_WORLD_SDF_PATH}")"
+fi
+custom_world_resource_path=""
+if [[ -n "${SIM_WORLD_RESOURCE_PATH:-}" ]]; then
+  custom_world_resource_path="$(make_abs_path "${SIM_WORLD_RESOURCE_PATH}")"
+fi
+static_occupancy_3d_path_override=""
+if [[ -n "${STATIC_OCCUPANCY_3D_PATH:-}" ]]; then
+  static_occupancy_3d_path_override="$(make_abs_path "${STATIC_OCCUPANCY_3D_PATH}")"
+fi
+static_esdf_3d_cache_path_override=""
+if [[ -n "${STATIC_ESDF_3D_CACHE_PATH:-}" ]]; then
+  static_esdf_3d_cache_path_override="$(make_abs_path "${STATIC_ESDF_3D_CACHE_PATH}")"
+fi
+static_free_space_topology_3d_path_override=""
+if [[ -n "${STATIC_FREE_SPACE_TOPOLOGY_3D_PATH:-}" ]]; then
+  static_free_space_topology_3d_path_override="$(
+    make_abs_path "${STATIC_FREE_SPACE_TOPOLOGY_3D_PATH}"
+  )"
+fi
 px4_models_dir="${px4_dir}/Tools/simulation/gz/models"
 px4_plugins_dir="${px4_build_dir}/src/modules/simulation/gz_plugins"
 px4_server_config="${px4_dir}/src/modules/simulation/gz_bridge/server.config"
@@ -280,6 +308,10 @@ if [[ ! -f "${px4_msgs_setup_file}" ]]; then
 fi
 if [[ ! -f "${city_nav_params_file}" ]]; then
   echo "City navigation params file was not found: ${city_nav_params_file}" >&2
+  exit 1
+fi
+if [[ -n "${custom_world_sdf_path}" && ! -f "${custom_world_sdf_path}" ]]; then
+  echo "Custom Gazebo world was not found: ${custom_world_sdf_path}" >&2
   exit 1
 fi
 
@@ -342,6 +374,17 @@ configured_static_map="$(
     read_ros_bool_parameter production_mppi_node use_static_map
 )"
 active_static_map="${enable_static_map_override:-${configured_static_map}}"
+if bool_is_true "${active_static_map}"; then
+  for static_artifact in \
+    "${static_occupancy_3d_path_override}" \
+    "${static_esdf_3d_cache_path_override}" \
+    "${static_free_space_topology_3d_path_override}"; do
+    if [[ -n "${static_artifact}" && ! -f "${static_artifact}" ]]; then
+      echo "Static world artifact was not found: ${static_artifact}" >&2
+      exit 1
+    fi
+  done
+fi
 if [[ -n "${enable_lidar_debug_override}" ]]; then
   enable_lidar_debug="${enable_lidar_debug_override}"
 elif bool_is_true "${active_static_map}" && [[ -n "${headless}" ]]; then
@@ -462,8 +505,13 @@ set -u
 prepare_runtime_resources() {
   rm -rf "${runtime_dir}"
   mkdir -p "${runtime_models_dir}" "${runtime_worlds_dir}"
-  install -D "${repo_root}/drone_city_nav/worlds/${world_name}.sdf" \
-    "${runtime_worlds_dir}/${world_name}.sdf"
+  if [[ -z "${custom_world_sdf_path}" ]]; then
+    install -D "${repo_root}/drone_city_nav/worlds/${world_name}.sdf" \
+      "${runtime_worlds_dir}/${world_name}.sdf"
+    gazebo_world_sdf_path="${runtime_worlds_dir}/${world_name}.sdf"
+  else
+    gazebo_world_sdf_path="${custom_world_sdf_path}"
+  fi
 
   local px4_model
   local model_name
@@ -650,6 +698,9 @@ capture_gazebo_scene_diagnostics() {
 }
 
 gz_resource_path="${runtime_models_dir}:${runtime_worlds_dir}"
+if [[ -n "${custom_world_resource_path}" ]]; then
+  gz_resource_path="${gz_resource_path}:${custom_world_resource_path}"
+fi
 if [[ -n "${GZ_SIM_RESOURCE_PATH:-}" ]]; then
   gz_resource_path="${gz_resource_path}:${GZ_SIM_RESOURCE_PATH}"
 fi
@@ -682,7 +733,8 @@ echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}")"
-echo "Static world: ${repo_root}/drone_city_nav/worlds/${world_name}.occupancy3d"
+echo "Gazebo world: name=${world_name} sdf=${gazebo_world_sdf_path}"
+echo "Static world: occupancy=${static_occupancy_3d_path_override:-from_params} esdf=${static_esdf_3d_cache_path_override:-from_params} topology=${static_free_space_topology_3d_path_override:-from_params}"
 echo "Gazebo resources: ${runtime_dir}"
 echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_cpu_list:-all}' planning='${planning_cpu_list:-all}' diagnostics='${diagnostics_cpu_list:-all}'"
 (
@@ -727,7 +779,7 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
     gz_args+=(--headless-rendering)
   fi
   run_with_cpu_affinity "${control_cpu_list}" \
-    gz sim "${gz_args[@]}" "${runtime_worlds_dir}/${world_name}.sdf" &
+    gz sim "${gz_args[@]}" "${gazebo_world_sdf_path}" &
   gz_server_pid=$!
 
   if [[ -z "${headless}" ]]; then
@@ -908,6 +960,21 @@ else
 fi
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")
+fi
+if [[ -n "${static_occupancy_3d_path_override}" ]]; then
+  ros_launch_args+=(
+    static_occupancy_3d_path:="${static_occupancy_3d_path_override}"
+  )
+fi
+if [[ -n "${static_esdf_3d_cache_path_override}" ]]; then
+  ros_launch_args+=(
+    static_esdf_3d_cache_path:="${static_esdf_3d_cache_path_override}"
+  )
+fi
+if [[ -n "${static_free_space_topology_3d_path_override}" ]]; then
+  ros_launch_args+=(
+    static_free_space_topology_3d_path:="${static_free_space_topology_3d_path_override}"
+  )
 fi
 echo "ROS launch log: ${ros_log_file}"
 echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"

@@ -206,9 +206,25 @@ public:
                           startup_heading_stable_sample_count_,
                           startup_heading_maximum_sample_delta_rad_};
     px4_local_pose_config_ =
-        Px4LocalPoseConfig{use_px4_heading_for_scan_, initial_heading_rad_,
+        Px4LocalPoseConfig{use_px4_heading_for_scan_,
+                           initial_heading_rad_,
                            declare_parameter<double>("px4_local_origin_x_m", 0.0),
-                           declare_parameter<double>("px4_local_origin_y_m", 0.0)};
+                           declare_parameter<double>("px4_local_origin_y_m", 0.0),
+                           declare_parameter<double>("px4_local_origin_z_m", 0.0),
+                           declare_parameter<double>("px4_to_map_m00", 1.0),
+                           declare_parameter<double>("px4_to_map_m01", 0.0),
+                           declare_parameter<double>("px4_to_map_m10", 0.0),
+                           declare_parameter<double>("px4_to_map_m11", 1.0)};
+    px4_map_transform_ = Px4MapFrameTransform{
+        .map_origin = Point3{px4_local_pose_config_.map_origin_x_m,
+                             px4_local_pose_config_.map_origin_y_m,
+                             px4_local_pose_config_.map_origin_z_m},
+        .m00 = px4_local_pose_config_.px4_to_map_m00,
+        .m01 = px4_local_pose_config_.px4_to_map_m01,
+        .m10 = px4_local_pose_config_.px4_to_map_m10,
+        .m11 = px4_local_pose_config_.px4_to_map_m11,
+    };
+    px4_map_transform_.validate();
     current_pose_.pose.yaw_rad = initial_heading_rad_;
     current_pose_.yaw_valid =
         !use_px4_heading_for_scan_ && std::isfinite(initial_heading_rad_);
@@ -451,8 +467,8 @@ private:
                            1.0e-6 * static_cast<double>(source_stamp.receive_delta_ns));
     }
     if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
-      current_velocity_ =
-          Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
+      current_velocity_ = px4_map_transform_.localVectorToMap(
+          Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)});
       current_velocity_valid_ = true;
     } else {
       current_velocity_ = Point2{};
@@ -919,6 +935,7 @@ private:
   ObstacleMemoryConfig memory_config_{};
   GroundLidarRejectionConfig ground_lidar_rejection_config_{};
   Px4LocalPoseConfig px4_local_pose_config_{};
+  Px4MapFrameTransform px4_map_transform_{};
   MappingYawTracker mapping_yaw_tracker_;
   MappingYawSource last_mapping_yaw_source_{MappingYawSource::kUnavailable};
   NavigationPose2D current_pose_{};

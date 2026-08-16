@@ -50,6 +50,7 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/sim_multi_intercept_headless.sh
 ./scripts/sim_cooperative_traffic_gui.sh
 ./scripts/sim_cooperative_traffic_headless.sh
+./scripts/sim_cooperative_traffic_urban_headless.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -72,6 +73,7 @@ make sim-multi-intercept-gui
 make sim-multi-intercept-headless
 make sim-cooperative-traffic-gui
 make sim-cooperative-traffic-headless
+make sim-cooperative-traffic-urban-headless
 ```
 
 Build and run the isolated CUDA MPPI benchmark:
@@ -252,6 +254,19 @@ Run the cooperative civilian traffic mission:
 ./scripts/sim_cooperative_traffic_gui.sh
 ./scripts/sim_cooperative_traffic_headless.sh
 ```
+
+Run the static cooperative mission in the imported Urban Circuit Practice 01
+environment:
+
+```bash
+./scripts/sim_cooperative_traffic_urban_headless.sh
+```
+
+This target verifies and installs the versioned environment release artifacts,
+materializes a Gazebo Harmonic collision world, compiles the manifest-bound
+FreeSpaceTopology3D artifact when needed, and launches the four-vehicle static
+scenario from
+`drone_city_nav/config/cooperative_traffic_urban_scenario.json`.
 
 The finite scenario in
 `drone_city_nav/config/cooperative_traffic_scenario.json` launches two pairs of

@@ -124,6 +124,7 @@ def _make_role_configuration(
             "model": vehicle["gazebo_model_name"],
             "map_start_x": vehicle["map_start_m"][0],
             "map_start_y": vehicle["map_start_m"][1],
+            "map_start_z": vehicle["map_start_m"][2],
             "target_system": system_index,
             "rviz_primary": rviz_primary,
             "speed_scale": 1.0 if is_interceptor else evader_speed_scale,
@@ -272,6 +273,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
             float(LaunchConfiguration("evader_speed_scale").perform(context)),
             directional_hypotheses_enabled,
         )
+        world_name = scenario["gazebo_world_name"]
+        navigation = scenario["navigation"]
+        px4_to_map_matrix = scenario["px4_to_map_matrix"]
         cooperative_desired_separation_m = 5.0
         cooperative_release_separation_m = 7.0
         cooperative_prediction_horizon_s = 5.0
@@ -349,7 +353,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
             prefix = f"/vehicles/{role}"
             px4 = f"/{config['px4_namespace']}/fmu"
             gz_scan = (
-                f"/world/generated_city/model/{config['model']}/link/link/"
+                f"/world/{world_name}/model/{config['model']}/link/link/"
                 "sensor/lidar_2d_v2/scan"
             )
             scan_topic = f"{prefix}/scan"
@@ -407,6 +411,11 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "px4_vehicle_status_topic": f"{px4}/out/vehicle_status_v1",
                     "px4_local_origin_x_m": config["map_start_x"],
                     "px4_local_origin_y_m": config["map_start_y"],
+                    "px4_local_origin_z_m": config["map_start_z"],
+                    "px4_to_map_m00": px4_to_map_matrix[0],
+                    "px4_to_map_m01": px4_to_map_matrix[1],
+                    "px4_to_map_m10": px4_to_map_matrix[2],
+                    "px4_to_map_m11": px4_to_map_matrix[3],
                     "initial_x_m": config["map_start_x"],
                     "initial_y_m": config["map_start_y"],
                     "obstacle_memory_grid_topic": f"{prefix}/obstacle_memory_grid",
@@ -450,8 +459,16 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "static_esdf_3d_cache_path": static_esdf_cache_path,
                     "px4_local_origin_x_m": config["map_start_x"],
                     "px4_local_origin_y_m": config["map_start_y"],
+                    "px4_local_origin_z_m": config["map_start_z"],
+                    "px4_to_map_m00": px4_to_map_matrix[0],
+                    "px4_to_map_m01": px4_to_map_matrix[1],
+                    "px4_to_map_m10": px4_to_map_matrix[2],
+                    "px4_to_map_m11": px4_to_map_matrix[3],
                     "start_x_m": config["map_start_x"],
                     "start_y_m": config["map_start_y"],
+                    "start_z_m": config["map_start_z"],
+                    "minimum_target_z_m": navigation["minimum_target_z_m"],
+                    "maximum_target_z_m": navigation["maximum_target_z_m"],
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "raw_obstacle_snapshot_topic": raw_snapshot,
@@ -532,6 +549,14 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",
                     "px4_local_origin_x_m": config["map_start_x"],
                     "px4_local_origin_y_m": config["map_start_y"],
+                    "px4_local_origin_z_m": config["map_start_z"],
+                    "px4_to_map_m00": px4_to_map_matrix[0],
+                    "px4_to_map_m01": px4_to_map_matrix[1],
+                    "px4_to_map_m10": px4_to_map_matrix[2],
+                    "px4_to_map_m11": px4_to_map_matrix[3],
+                    "initial_altitude_m": navigation["initial_altitude_m"],
+                    "minimum_target_z_m": navigation["minimum_target_z_m"],
+                    "maximum_target_z_m": navigation["maximum_target_z_m"],
                     "target_system": config["target_system"],
                     "source_system": config["target_system"],
                     "require_mission_start_signal": True,
@@ -609,6 +634,11 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "px4_timesync_status_topic": f"{px4}/out/timesync_status",
                     "px4_local_origin_x_m": config["map_start_x"],
                     "px4_local_origin_y_m": config["map_start_y"],
+                    "px4_local_origin_z_m": config["map_start_z"],
+                    "px4_to_map_m00": px4_to_map_matrix[0],
+                    "px4_to_map_m01": px4_to_map_matrix[1],
+                    "px4_to_map_m10": px4_to_map_matrix[2],
+                    "px4_to_map_m11": px4_to_map_matrix[3],
                     "raw_obstacle_grid_topic": "/drone_city_nav/raw_obstacle_grid",
                     "memory_grid_topic": f"{prefix}/obstacle_memory_grid",
                     "path_topic": path_topic,

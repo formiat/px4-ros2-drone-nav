@@ -11,7 +11,15 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   range_hit_epsilon_m_ = config.range_hit_epsilon_m;
   initial_heading_rad_ = config.initial_heading_rad;
   current_pose_.yaw_rad = initial_heading_rad_;
-  px4_local_origin_ = config.px4_local_origin;
+  px4_map_transform_ = Px4MapFrameTransform{
+      .map_origin = Point3{config.px4_local_origin.x, config.px4_local_origin.y,
+                           config.px4_local_origin_z_m},
+      .m00 = config.px4_to_map_m00,
+      .m01 = config.px4_to_map_m01,
+      .m10 = config.px4_to_map_m10,
+      .m11 = config.px4_to_map_m11,
+  };
+  px4_map_transform_.validate();
   scan_yaw_offset_rad_ = config.scan_yaw_offset_rad;
   motion_compensate_lidar_pose_ = config.motion_compensate_lidar_pose;
   lidar_pose_latency_s_ = config.lidar_pose_latency_s;

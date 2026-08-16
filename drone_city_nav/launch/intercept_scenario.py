@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,8 @@ SUPPORTED_SCHEMAS = {
     "drone_city_nav_intercept_scenario_v2",
     "drone_city_nav_cooperative_traffic_scenario_v1",
 }
+
+_GAZEBO_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
 
 def _finite_vector(value: Any, length: int, label: str) -> tuple[float, ...]:
@@ -55,19 +58,66 @@ def _resolve_world_path(scenario_path: Path, value: Any) -> Path:
 def _map_to_sdf(
     map_position: tuple[float, float, float], transform: dict[str, Any]
 ) -> tuple[float, float, float]:
-    if transform.get("sdf_x_from") != "map_y":
-        raise ValueError("canonical world must derive SDF X from map Y")
-    if transform.get("sdf_y_from") != "map_x":
-        raise ValueError("canonical world must derive SDF Y from map X")
+    source_axes = (transform.get("sdf_x_from"), transform.get("sdf_y_from"))
+    if set(source_axes) != {"map_x", "map_y"}:
+        raise ValueError(
+            "map_to_sdf must map distinct map_x/map_y axes to SDF X/Y"
+        )
     offset_x = float(transform["sdf_x_offset_m"])
     offset_y = float(transform["sdf_y_offset_m"])
-    if not math.isfinite(offset_x) or not math.isfinite(offset_y):
-        raise ValueError("map_to_sdf offsets must be finite")
+    offset_z = float(transform.get("sdf_z_offset_m", 0.0))
+    scale_x = float(transform.get("sdf_x_scale", 1.0))
+    scale_y = float(transform.get("sdf_y_scale", 1.0))
+    scale_z = float(transform.get("sdf_z_scale", 1.0))
+    if not all(
+        math.isfinite(value)
+        for value in (offset_x, offset_y, offset_z, scale_x, scale_y, scale_z)
+    ):
+        raise ValueError("map_to_sdf offsets and scales must be finite")
+    if any(abs(abs(scale) - 1.0) > 1.0e-9 for scale in (scale_x, scale_y, scale_z)):
+        raise ValueError("map_to_sdf scales must be +1 or -1")
+    map_axes = {"map_x": map_position[0], "map_y": map_position[1]}
     return (
-        map_position[1] + offset_x,
-        map_position[0] + offset_y,
-        map_position[2],
+        scale_x * map_axes[source_axes[0]] + offset_x,
+        scale_y * map_axes[source_axes[1]] + offset_y,
+        scale_z * map_position[2] + offset_z,
     )
+
+
+def _world_navigation(world: dict[str, Any]) -> dict[str, float]:
+    source = world.get("navigation", {})
+    if not isinstance(source, dict):
+        raise ValueError("canonical world navigation must be an object")
+    navigation = {
+        "initial_altitude_m": float(source.get("initial_altitude_m", 18.0)),
+        "minimum_target_z_m": float(source.get("minimum_target_z_m", 1.0)),
+        "maximum_target_z_m": float(source.get("maximum_target_z_m", 32.0)),
+    }
+    if not all(math.isfinite(value) for value in navigation.values()):
+        raise ValueError("canonical world navigation values must be finite")
+    if not (
+        navigation["minimum_target_z_m"]
+        <= navigation["initial_altitude_m"]
+        < navigation["maximum_target_z_m"]
+    ):
+        raise ValueError("canonical world initial altitude is outside its envelope")
+    return navigation
+
+
+def _px4_to_map_matrix(transform: dict[str, Any]) -> tuple[float, ...]:
+    source_x = transform["sdf_x_from"]
+    source_y = transform["sdf_y_from"]
+    scale_x = float(transform.get("sdf_x_scale", 1.0))
+    scale_y = float(transform.get("sdf_y_scale", 1.0))
+    sdf_x_row = (
+        scale_x if source_x == "map_x" else 0.0,
+        scale_x if source_x == "map_y" else 0.0,
+    )
+    sdf_y_row = (
+        scale_y if source_y == "map_x" else 0.0,
+        scale_y if source_y == "map_y" else 0.0,
+    )
+    return (sdf_y_row[0], sdf_x_row[0], sdf_y_row[1], sdf_x_row[1])
 
 
 def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
@@ -82,9 +132,16 @@ def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
     world_path = _resolve_world_path(scenario_path, document.get("canonical_world"))
     with world_path.open(encoding="utf-8") as stream:
         world = json.load(stream)
+    gazebo_world_name = world.get("gazebo_world_name", "generated_city")
+    if (
+        not isinstance(gazebo_world_name, str)
+        or _GAZEBO_NAME_PATTERN.fullmatch(gazebo_world_name) is None
+    ):
+        raise ValueError("canonical world gazebo_world_name is invalid")
     transform = world.get("map_to_sdf")
     if not isinstance(transform, dict):
         raise ValueError("canonical world is missing map_to_sdf")
+    navigation = _world_navigation(world)
 
     source_vehicles = document.get("vehicles")
     if not isinstance(source_vehicles, list):
@@ -229,7 +286,10 @@ def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
         "mission_name": mission_name,
         "path": scenario_path,
         "canonical_world_path": world_path,
+        "gazebo_world_name": gazebo_world_name,
         "map_to_sdf": transform,
+        "px4_to_map_matrix": _px4_to_map_matrix(transform),
+        "navigation": navigation,
         "vehicles": vehicles,
         "interceptor_ids": [
             vehicle["id"]
@@ -277,13 +337,32 @@ def _print_tsv(scenario: dict[str, Any]) -> None:
         )
 
 
+def _print_metadata_tsv(scenario: dict[str, Any]) -> None:
+    navigation = scenario["navigation"]
+    print(
+        "\t".join(
+            (
+                scenario["gazebo_world_name"],
+                f"{navigation['initial_altitude_m']:.6f}",
+                f"{navigation['minimum_target_z_m']:.6f}",
+                f"{navigation['maximum_target_z_m']:.6f}",
+            )
+        )
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", required=True, type=Path)
-    parser.add_argument("--format", choices=("tsv",), default="tsv")
+    parser.add_argument(
+        "--format", choices=("tsv", "metadata-tsv"), default="tsv"
+    )
     args = parser.parse_args()
     scenario = load_multi_vehicle_scenario(args.scenario)
-    _print_tsv(scenario)
+    if args.format == "metadata-tsv":
+        _print_metadata_tsv(scenario)
+    else:
+        _print_tsv(scenario)
     return 0
 
 
