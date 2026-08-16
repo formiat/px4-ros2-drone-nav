@@ -625,6 +625,8 @@ private:
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
+  PassageTraversalEvidenceTracker passage_traversal_evidence_tracker_{};
+  PassageGeometryEvidenceTracker passage_geometry_evidence_tracker_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
   StaticRouteSearchRetryConfig static_route_search_retry_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};

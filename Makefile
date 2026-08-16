@@ -95,7 +95,9 @@ sim-cooperative-traffic-urban-headless: build
 		python3 scripts/validate_static_cooperative_scenario.py \
 			--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
-			--static-route-tracking-margin-m 0.25; \
+			--static-route-tracking-margin-m 0.25 \
+			--minimum-route-length-m 20 \
+			--route-contract connected; \
 		SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
@@ -119,7 +121,9 @@ sim-cooperative-traffic-urban-gui: build
 		python3 scripts/validate_static_cooperative_scenario.py \
 			--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
-			--static-route-tracking-margin-m 0.25; \
+			--static-route-tracking-margin-m 0.25 \
+			--minimum-route-length-m 20 \
+			--route-contract connected; \
 		SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \

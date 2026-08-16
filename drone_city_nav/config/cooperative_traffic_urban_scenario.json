@@ -23,9 +23,9 @@
       "px4_namespace": "civilian_0",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_0",
-      "map_start_m": [39.25, -170.75, 1.8],
-      "goal_m": [-114.75, 29.25, 7.5],
-      "yaw_rad": 2.226975045
+      "map_start_m": [-28.0, -159.75, 1.8],
+      "goal_m": [10.0, -148.0, 7.5],
+      "yaw_rad": 0.0
     },
     {
       "id": "civilian_1",
@@ -33,9 +33,9 @@
       "px4_namespace": "civilian_1",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_1",
-      "map_start_m": [40.835, -169.53, 1.8],
-      "goal_m": [-108.649064, 21.326706, 7.5],
-      "yaw_rad": 2.235225625
+      "map_start_m": [-28.0, -157.75, 1.8],
+      "goal_m": [10.0, -150.0, 7.5],
+      "yaw_rad": 0.0
     },
     {
       "id": "civilian_2",
@@ -43,9 +43,9 @@
       "px4_namespace": "civilian_2",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_2",
-      "map_start_m": [-114.75, 29.25, 1.8],
-      "goal_m": [39.25, -170.75, 7.5],
-      "yaw_rad": -0.914617609
+      "map_start_m": [-4.0, -159.75, 1.8],
+      "goal_m": [-28.0, -159.75, 7.5],
+      "yaw_rad": 3.141592654
     },
     {
       "id": "civilian_3",
@@ -53,9 +53,9 @@
       "px4_namespace": "civilian_3",
       "px4_model_target": "gz_x500_lidar_2d",
       "gazebo_model_name": "x500_lidar_2d_3",
-      "map_start_m": [-113.165, 30.47, 1.8],
-      "goal_m": [33.149064, -162.826706, 7.5],
-      "yaw_rad": -0.922868213
+      "map_start_m": [-4.0, -157.75, 1.8],
+      "goal_m": [-28.0, -155.75, 7.5],
+      "yaw_rad": 3.141592654
     }
   ]
 }

@@ -973,6 +973,12 @@ if(BUILD_TESTING)
   target_link_libraries(route_3d_test drone_city_nav_core)
   enable_project_warnings(route_3d_test)
 
+  ament_add_gtest(passage_traversal_evidence_test
+                  tests/passage_traversal_evidence_test.cpp)
+  target_compile_features(passage_traversal_evidence_test PRIVATE cxx_std_20)
+  target_link_libraries(passage_traversal_evidence_test drone_city_nav_core)
+  enable_project_warnings(passage_traversal_evidence_test)
+
   ament_add_gtest(static_route_extension_test tests/static_route_extension_test.cpp)
   target_compile_features(static_route_extension_test PRIVATE cxx_std_20)
   target_link_libraries(static_route_extension_test drone_city_nav_core)

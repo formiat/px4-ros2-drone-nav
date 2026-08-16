@@ -305,7 +305,10 @@ installations before compilation.
 - Urban Circuit Practice 01 now has a production static cooperative scenario,
   explicit mission starts and goals, map/SDF/PX4 frame transforms, manifest-bound
   Occupancy3D, ESDF3D, and FreeSpaceTopology3D selection, and a dedicated
-  headless launch target.
+  headless launch target. Its cooperative A/B routes cross the extracted
+  `traversal:14104023849235356451` passage; three consecutive static headless
+  runs each completed with two verified passage traversals, all four goals
+  reached, and no physical or building collisions.
 - Candidate visuals are not yet a production Harmonic world. The Finals
   collision-only world loads in a Harmonic server, but the original legacy
   materials and resource URIs still need a visual migration pass.
@@ -315,7 +318,8 @@ installations before compilation.
   environment. Urban Circuit Practice 01 is currently integrated only for the
   static cooperative mission.
 - A valid static topology proves deterministic extraction and raw-safe internal
-  segments, not end-to-end reachability from future mission starts to goals.
+  segments. End-to-end reachability still requires a scenario-level run and a
+  completed passage lifecycle or geometry event.
 
 Keep Finals Prize Round World 07 as the primary advanced-passage integration
 target and Cave Circuit Practice 01 as the vertical-shaft stress target. Urban

@@ -347,6 +347,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--planner-config", type=Path, default=DEFAULT_PLANNER_CONFIG)
     parser.add_argument("--static-route-tracking-margin-m", type=float)
     parser.add_argument("--minimum-route-length-m", type=float, default=150.0)
+    parser.add_argument(
+        "--route-contract",
+        choices=("direct", "connected"),
+        default="direct",
+        help="Require a direct segment or only a route-safe connected component.",
+    )
     return parser.parse_args()
 
 
@@ -627,9 +633,10 @@ def validate(args: argparse.Namespace) -> None:
             raise ScenarioValidationError(
                 f"{vehicle_id} route is too short: {route_length_m:.1f} m"
             )
-        if not planar_segment_is_clear(
+        direct_clear = planar_segment_is_clear(
             occupancy, takeoff, goal, route_footprint
-        ):
+        )
+        if args.route_contract == "direct" and not direct_clear:
             raise ScenarioValidationError(
                 f"{vehicle_id} has no direct swept-footprint route"
             )
@@ -638,7 +645,9 @@ def validate(args: argparse.Namespace) -> None:
             "STATIC_SCENARIO_ROUTE"
             f" vehicle={vehicle_id} direct_m={direct_length_m:.1f}"
             f" geodesic_m={route_length_m:.1f}"
-            f" altitude_m={initial_altitude_m:.1f} direct_clear=true status=valid"
+            f" altitude_m={initial_altitude_m:.1f}"
+            f" route_contract={args.route_contract}"
+            f" direct_clear={str(direct_clear).lower()} status=valid"
         )
 
 

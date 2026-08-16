@@ -257,8 +257,8 @@ production_mppi_node:
     static_route_maximum_shortcut_length_m: 30.0
     static_route_corner_smoothing_distance_m: 2.0
     static_route_corner_curve_samples: 4
-    global_lattice_3d_planning_exposure_cost_per_m: 0.0
-    global_lattice_3d_critical_exposure_cost_per_m: 0.0
+    global_lattice_3d_planning_exposure_cost_per_m: 0.05
+    global_lattice_3d_critical_exposure_cost_per_m: 0.50
     global_lattice_3d_passage_connection_distance_m: 3.0
     free_space_topology_maximum_entry_portals_per_component: 4
     free_space_topology_maximum_traversals_per_component: 3

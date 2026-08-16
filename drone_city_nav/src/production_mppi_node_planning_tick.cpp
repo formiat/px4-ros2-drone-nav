@@ -226,6 +226,92 @@ void ProductionMppiNode::planningTick() {
       Point3{navigation.state.x, navigation.state.y, navigation.state.z},
       Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
       route_envelope_config_, lattice_3d_config_.planning_goal_distance_m);
+  const Point3 actual_position{navigation.state.x, navigation.state.y,
+                               navigation.state.z};
+  for (const PassageTraversalEvidenceEvent& event :
+       passage_traversal_evidence_tracker_.update(route_constraint, actual_position,
+                                                  now_ns)) {
+    RCLCPP_INFO(get_logger(),
+                "PASSAGE_TRAVERSAL_EVENT vehicle_id='%s' sequence=%" PRIu64
+                " status=%s reason=%s passage='%s' route_generation=%" PRIu64
+                " span_index=%zu observations=%zu duration_s=%.3f station_m=%.2f "
+                "span_station_m=(%.2f,%.2f) position=(%.2f,%.2f,%.2f) "
+                "maximum_cross_track_m=%.3f maximum_vertical_error_m=%.3f "
+                "vertical_window_preserved=%s",
+                vehicle_id_.c_str(), event.sequence,
+                passageTraversalEvidenceStatusName(event.status).data(),
+                passageTraversalEvidenceReasonName(event.reason).data(),
+                event.passage_traversal_id.c_str(), event.route_generation,
+                event.span_index, event.traversal_observation_count, event.duration_s,
+                event.station_m, event.begin_station_m, event.end_station_m,
+                event.actual_position.x, event.actual_position.y,
+                event.actual_position.z, event.maximum_cross_track_error_m,
+                event.maximum_absolute_vertical_error_m,
+                event.vertical_window_preserved ? "true" : "false");
+  }
+  std::vector<PassageGeometryObservation> passage_geometry_observations;
+  const PassageTraversalEdge* nearest_passage_entry = nullptr;
+  RouteProjection3D nearest_passage_projection;
+  double nearest_passage_entry_distance_m = std::numeric_limits<double>::infinity();
+  if (esdf->passage_traversals) {
+    passage_geometry_observations.reserve(esdf->passage_traversals->size());
+    for (const PassageTraversalEdge& passage : *esdf->passage_traversals) {
+      const RouteProjection3D projection =
+          projectOntoRoute3D(passage.centerline, actual_position);
+      const double entry_distance_m = distance3D(actual_position, passage.entry);
+      if (entry_distance_m < nearest_passage_entry_distance_m) {
+        nearest_passage_entry = &passage;
+        nearest_passage_projection = projection;
+        nearest_passage_entry_distance_m = entry_distance_m;
+      }
+      const double traversal_length_m =
+          passage.centerline.empty() ? 0.0 : passage.centerline.back().station_m;
+      passage_geometry_observations.push_back(PassageGeometryObservation{
+          .passage_traversal_id = passage.id,
+          .within_corridor =
+              projection.valid && projection.distance_m <= passage.minimum_clearance_m,
+          .station_m = projection.station_m,
+          .traversal_length_m = traversal_length_m,
+          .cross_track_error_m = projection.distance_m,
+      });
+    }
+  }
+  if (nearest_passage_entry != nullptr && nearest_passage_entry_distance_m < 8.0) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PASSAGE_GEOMETRY_PROXIMITY vehicle_id='%s' passage='%s' "
+                         "entry_distance_m=%.2f projection_station_m=%.2f "
+                         "projection_cross_track_m=%.2f minimum_clearance_m=%.2f "
+                         "within_corridor=%s",
+                         vehicle_id_.c_str(), nearest_passage_entry->id.c_str(),
+                         nearest_passage_entry_distance_m,
+                         nearest_passage_projection.station_m,
+                         nearest_passage_projection.distance_m,
+                         nearest_passage_entry->minimum_clearance_m,
+                         nearest_passage_projection.valid &&
+                                 nearest_passage_projection.distance_m <=
+                                     nearest_passage_entry->minimum_clearance_m
+                             ? "true"
+                             : "false");
+  }
+  for (const PassageGeometryEvidenceEvent& event :
+       passage_geometry_evidence_tracker_.update(passage_geometry_observations,
+                                                 actual_position, now_ns,
+                                                 PassageGeometryEvidenceConfig{})) {
+    RCLCPP_INFO(get_logger(),
+                "PASSAGE_GEOMETRY_EVENT vehicle_id='%s' sequence=%" PRIu64
+                " status=%s reason=%s passage='%s' observations=%zu "
+                "duration_s=%.3f station_m=%.2f traversal_length_m=%.2f "
+                "maximum_station_m=%.2f position=(%.2f,%.2f,%.2f) "
+                "maximum_cross_track_m=%.3f",
+                vehicle_id_.c_str(), event.sequence,
+                passageTraversalEvidenceStatusName(event.status).data(),
+                passageTraversalEvidenceReasonName(event.reason).data(),
+                event.passage_traversal_id.c_str(), event.observation_count,
+                event.duration_s, event.station_m, event.traversal_length_m,
+                event.maximum_station_m, event.actual_position.x,
+                event.actual_position.y, event.actual_position.z,
+                event.maximum_cross_track_error_m);
+  }
   const ConstrainedRouteControl route_control = constrained_route_coordinator_.update(
       route_constraint, speed_policy_config_.cruise_speed_mps,
       constrained_route_control_config_);

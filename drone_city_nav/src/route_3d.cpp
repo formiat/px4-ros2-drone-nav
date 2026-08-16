@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <string_view>
+#include <tuple>
 
 namespace drone_city_nav {
 namespace {
@@ -158,6 +159,235 @@ std::string_view constrainedRoutePhaseName(const ConstrainedRoutePhase phase) no
       return "departure";
   }
   return "unknown";
+}
+
+std::string_view passageTraversalEvidenceStatusName(
+    const PassageTraversalEvidenceStatus status) noexcept {
+  switch (status) {
+    case PassageTraversalEvidenceStatus::kEntered:
+      return "entered";
+    case PassageTraversalEvidenceStatus::kCompleted:
+      return "completed";
+    case PassageTraversalEvidenceStatus::kAborted:
+      return "aborted";
+  }
+  return "unknown";
+}
+
+std::string_view passageTraversalEvidenceReasonName(
+    const PassageTraversalEvidenceReason reason) noexcept {
+  switch (reason) {
+    case PassageTraversalEvidenceReason::kEntryBoundaryCrossed:
+      return "entry_boundary_crossed";
+    case PassageTraversalEvidenceReason::kExitBoundaryCrossed:
+      return "exit_boundary_crossed";
+    case PassageTraversalEvidenceReason::kRouteChanged:
+      return "route_changed";
+    case PassageTraversalEvidenceReason::kObservationLost:
+      return "observation_lost";
+  }
+  return "unknown";
+}
+
+std::vector<PassageTraversalEvidenceEvent>
+PassageTraversalEvidenceTracker::update(const ConstrainedRouteObservation& observation,
+                                        const Point3& actual_position,
+                                        const std::int64_t now_ns) {
+  std::vector<PassageTraversalEvidenceEvent> events;
+  const bool traversal_observed =
+      observation.span_available &&
+      observation.phase == ConstrainedRoutePhase::kTraversal &&
+      !observation.passage_traversal_id.empty();
+  const bool active_matches =
+      active_.has_value() && observation.span_available &&
+      active_->passage_traversal_id == observation.passage_traversal_id &&
+      active_->route_generation == observation.route_generation &&
+      active_->span_index == observation.span_index;
+  bool entered_now = false;
+
+  if (active_.has_value() && !active_matches) {
+    const PassageTraversalEvidenceReason reason =
+        observation.span_available ? PassageTraversalEvidenceReason::kRouteChanged
+                                   : PassageTraversalEvidenceReason::kObservationLost;
+    events.push_back(makeEvent(*active_, PassageTraversalEvidenceStatus::kAborted,
+                               reason, observation, actual_position, now_ns));
+    active_.reset();
+  }
+
+  if (traversal_observed && !active_.has_value()) {
+    active_ = ActiveTraversal{
+        .passage_traversal_id = observation.passage_traversal_id,
+        .route_generation = observation.route_generation,
+        .span_index = observation.span_index,
+        .observation_count = 1U,
+        .entry_stamp_ns = now_ns,
+        .begin_station_m = observation.begin_station_m,
+        .end_station_m = observation.end_station_m,
+        .maximum_cross_track_error_m = std::abs(observation.cross_track_error_m),
+        .maximum_absolute_vertical_error_m = std::abs(observation.vertical_error_m),
+        .vertical_window_preserved = observation.within_vertical_window,
+    };
+    events.push_back(makeEvent(*active_, PassageTraversalEvidenceStatus::kEntered,
+                               PassageTraversalEvidenceReason::kEntryBoundaryCrossed,
+                               observation, actual_position, now_ns));
+    entered_now = true;
+  }
+
+  if (!active_.has_value()) {
+    return events;
+  }
+
+  if (traversal_observed && !entered_now) {
+    ++active_->observation_count;
+    active_->maximum_cross_track_error_m =
+        std::max(active_->maximum_cross_track_error_m,
+                 std::abs(observation.cross_track_error_m));
+    active_->maximum_absolute_vertical_error_m =
+        std::max(active_->maximum_absolute_vertical_error_m,
+                 std::abs(observation.vertical_error_m));
+    active_->vertical_window_preserved =
+        active_->vertical_window_preserved && observation.within_vertical_window;
+  }
+
+  if (active_matches && observation.phase == ConstrainedRoutePhase::kDeparture) {
+    events.push_back(makeEvent(*active_, PassageTraversalEvidenceStatus::kCompleted,
+                               PassageTraversalEvidenceReason::kExitBoundaryCrossed,
+                               observation, actual_position, now_ns));
+    active_.reset();
+  }
+  return events;
+}
+
+void PassageTraversalEvidenceTracker::reset() noexcept {
+  active_.reset();
+}
+
+PassageTraversalEvidenceEvent PassageTraversalEvidenceTracker::makeEvent(
+    const ActiveTraversal& active, const PassageTraversalEvidenceStatus status,
+    const PassageTraversalEvidenceReason reason,
+    const ConstrainedRouteObservation& observation, const Point3& actual_position,
+    const std::int64_t now_ns) {
+  return PassageTraversalEvidenceEvent{
+      .status = status,
+      .reason = reason,
+      .sequence = ++event_sequence_,
+      .passage_traversal_id = active.passage_traversal_id,
+      .route_generation = active.route_generation,
+      .span_index = active.span_index,
+      .traversal_observation_count = active.observation_count,
+      .event_stamp_ns = now_ns,
+      .duration_s = static_cast<double>(
+                        std::max<std::int64_t>(0, now_ns - active.entry_stamp_ns)) /
+                    1.0e9,
+      .station_m = observation.station_m,
+      .begin_station_m = active.begin_station_m,
+      .end_station_m = active.end_station_m,
+      .maximum_cross_track_error_m = active.maximum_cross_track_error_m,
+      .maximum_absolute_vertical_error_m = active.maximum_absolute_vertical_error_m,
+      .actual_position = actual_position,
+      .vertical_window_preserved = active.vertical_window_preserved,
+  };
+}
+
+std::vector<PassageGeometryEvidenceEvent> PassageGeometryEvidenceTracker::update(
+    const std::span<const PassageGeometryObservation> observations,
+    const Point3& actual_position, const std::int64_t now_ns,
+    const PassageGeometryEvidenceConfig& config) {
+  std::vector<PassageGeometryEvidenceEvent> events;
+  if (!active_.has_value()) {
+    const PassageGeometryObservation* selected = nullptr;
+    for (const PassageGeometryObservation& observation : observations) {
+      if (!observation.within_corridor ||
+          observation.station_m > config.entry_capture_distance_m ||
+          !(observation.traversal_length_m > 0.0)) {
+        continue;
+      }
+      if (selected == nullptr ||
+          std::tie(observation.traversal_length_m, observation.cross_track_error_m,
+                   observation.passage_traversal_id) <
+              std::tie(selected->traversal_length_m, selected->cross_track_error_m,
+                       selected->passage_traversal_id)) {
+        selected = &observation;
+      }
+    }
+    if (selected == nullptr) {
+      return events;
+    }
+    active_ = ActiveTraversal{
+        .passage_traversal_id = selected->passage_traversal_id,
+        .observation_count = 1U,
+        .entry_stamp_ns = now_ns,
+        .last_observation_stamp_ns = now_ns,
+        .traversal_length_m = selected->traversal_length_m,
+        .maximum_station_m = selected->station_m,
+        .maximum_cross_track_error_m = selected->cross_track_error_m,
+    };
+    events.push_back(makeEvent(*active_, PassageTraversalEvidenceStatus::kEntered,
+                               PassageTraversalEvidenceReason::kEntryBoundaryCrossed,
+                               selected->station_m, actual_position, now_ns));
+    return events;
+  }
+
+  const auto matching = std::ranges::find_if(
+      observations, [&](const PassageGeometryObservation& observation) {
+        return observation.passage_traversal_id == active_->passage_traversal_id;
+      });
+  if (matching != observations.end() && matching->within_corridor) {
+    ++active_->observation_count;
+    active_->last_observation_stamp_ns = now_ns;
+    active_->maximum_station_m =
+        std::max(active_->maximum_station_m, matching->station_m);
+    active_->maximum_cross_track_error_m =
+        std::max(active_->maximum_cross_track_error_m, matching->cross_track_error_m);
+    const double required_station_m =
+        config.minimum_progress_fraction * active_->traversal_length_m;
+    const double exit_station_m =
+        std::max(0.0, active_->traversal_length_m - config.exit_capture_distance_m);
+    if (active_->maximum_station_m >= required_station_m &&
+        matching->station_m >= exit_station_m) {
+      events.push_back(makeEvent(*active_, PassageTraversalEvidenceStatus::kCompleted,
+                                 PassageTraversalEvidenceReason::kExitBoundaryCrossed,
+                                 matching->station_m, actual_position, now_ns));
+      active_.reset();
+    }
+    return events;
+  }
+
+  const std::int64_t timeout_ns =
+      static_cast<std::int64_t>(std::max(0.0, config.observation_timeout_s) * 1.0e9);
+  if (now_ns - active_->last_observation_stamp_ns > timeout_ns) {
+    events.push_back(makeEvent(*active_, PassageTraversalEvidenceStatus::kAborted,
+                               PassageTraversalEvidenceReason::kObservationLost,
+                               active_->maximum_station_m, actual_position, now_ns));
+    active_.reset();
+  }
+  return events;
+}
+
+void PassageGeometryEvidenceTracker::reset() noexcept {
+  active_.reset();
+}
+
+PassageGeometryEvidenceEvent PassageGeometryEvidenceTracker::makeEvent(
+    const ActiveTraversal& active, const PassageTraversalEvidenceStatus status,
+    const PassageTraversalEvidenceReason reason, const double station_m,
+    const Point3& actual_position, const std::int64_t now_ns) {
+  return PassageGeometryEvidenceEvent{
+      .status = status,
+      .reason = reason,
+      .sequence = ++event_sequence_,
+      .passage_traversal_id = active.passage_traversal_id,
+      .observation_count = active.observation_count,
+      .event_stamp_ns = now_ns,
+      .duration_s = static_cast<double>(
+                        std::max<std::int64_t>(0, now_ns - active.entry_stamp_ns)) /
+                    1.0e9,
+      .station_m = station_m,
+      .traversal_length_m = active.traversal_length_m,
+      .maximum_station_m = active.maximum_station_m,
+      .maximum_cross_track_error_m = active.maximum_cross_track_error_m,
+      .actual_position = actual_position,
+  };
 }
 
 ConstrainedRouteObservation

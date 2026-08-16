@@ -55,7 +55,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         for vehicle in scenario["vehicles"]:
             self.assertEqual(vehicle["map_start_m"], vehicle["gazebo_spawn_m"])
 
-    def test_four_routes_cross_between_distant_paired_regions(self) -> None:
+    def test_four_routes_cross_between_paired_passage_regions(self) -> None:
         scenario = SCENARIO_MODULE.load_multi_vehicle_scenario(SCENARIO_PATH)
         starts = [vehicle["map_start_m"] for vehicle in scenario["vehicles"]]
         goals = {
@@ -70,18 +70,18 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         )
         self.assertAlmostEqual(
             math.dist(goals["civilian_0"][:2], goals["civilian_1"][:2]),
-            10.0,
+            2.0,
             places=3,
         )
         self.assertAlmostEqual(
             math.dist(goals["civilian_2"][:2], goals["civilian_3"][:2]),
-            10.0,
+            4.0,
             places=3,
         )
         for vehicle in scenario["vehicles"]:
             self.assertGreater(
                 math.dist(vehicle["map_start_m"][:2], goals[vehicle["id"]][:2]),
-                200.0,
+                20.0,
             )
         opposite_pairs = (
             (goals["civilian_0"], starts[2]),
@@ -90,14 +90,15 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             (goals["civilian_3"], starts[0]),
         )
         for goal, opposite_start in opposite_pairs:
-            self.assertLessEqual(math.dist(goal[:2], opposite_start[:2]), 10.001)
+            self.assertLessEqual(math.dist(goal[:2], opposite_start[:2]), 20.0)
         group_a_center = tuple(
             sum(start[axis] for start in starts[:2]) / 2.0 for axis in range(2)
         )
         group_b_center = tuple(
             sum(start[axis] for start in starts[2:]) / 2.0 for axis in range(2)
         )
-        self.assertGreater(math.dist(group_a_center, group_b_center), 200.0)
+        self.assertGreater(math.dist(group_a_center, group_b_center), 20.0)
+        self.assertLess(math.dist(group_a_center, group_b_center), 30.0)
         self.assertEqual({start[2] for start in starts}, {1.8})
         self.assertEqual({goal[2] for goal in goals.values()}, {7.5})
 
@@ -147,6 +148,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("spawn_has_support", validator)
         self.assertIn("shortest_planar_route_m", validator)
         self.assertIn("planar_segment_is_clear", validator)
+        self.assertIn('choices=("direct", "connected")', validator)
         self.assertIn("SIM_WORLD_SDF_PATH", runner)
         self.assertIn("STATIC_OCCUPANCY_3D_PATH", runner)
         self.assertIn("SIM_WORLD_SDF_PATH", container)
@@ -168,6 +170,8 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertGreaterEqual(
             makefile.count("--static-route-tracking-margin-m 0.25"), 2
         )
+        self.assertGreaterEqual(makefile.count("--route-contract connected"), 2)
+        self.assertGreaterEqual(makefile.count("--minimum-route-length-m 20"), 2)
         self.assertEqual(
             makefile.count("scripts/validate_static_cooperative_scenario.py"), 2
         )

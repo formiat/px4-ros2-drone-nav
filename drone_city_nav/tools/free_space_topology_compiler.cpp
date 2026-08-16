@@ -156,9 +156,16 @@ int main(const int argc, const char* const argv[]) {
     }
     if (options.verbose) {
       for (const drone_city_nav::PassagePortal& portal : extracted.portals) {
+        const drone_city_nav::Point3 anchor = portal.traversable_anchors.empty()
+                                                  ? portal.center
+                                                  : portal.traversable_anchors.front();
         std::cout << "FREE_SPACE_TOPOLOGY_PORTAL id=" << portal.id
                   << " region=" << portal.region_id << " center=" << portal.center.x
                   << ',' << portal.center.y << ',' << portal.center.z
+                  << " normal=" << portal.outward_normal.x << ','
+                  << portal.outward_normal.y << ',' << portal.outward_normal.z
+                  << " anchor=" << anchor.x << ',' << anchor.y << ',' << anchor.z
+                  << " anchors=" << portal.traversable_anchors.size()
                   << " surface_voxels=" << portal.surface_voxels.size()
                   << " clearance_min_m=" << portal.minimum_clearance_m
                   << " clearance_mean_m=" << portal.mean_clearance_m
@@ -172,7 +179,16 @@ int main(const int argc, const char* const argv[]) {
                   << " last=" << last.x << ',' << last.y << ',' << last.z
                   << " samples=" << segment.centerline.size()
                   << " portals=" << segment.endpoint_portal_ids.size()
-                  << " minimum_clearance_m=" << segment.minimum_clearance_m << '\n';
+                  << " minimum_clearance_m=" << segment.minimum_clearance_m
+                  << " endpoint_portal_ids=";
+        for (std::size_t index = 0U; index < segment.endpoint_portal_ids.size();
+             ++index) {
+          if (index > 0U) {
+            std::cout << ',';
+          }
+          std::cout << segment.endpoint_portal_ids[index];
+        }
+        std::cout << '\n';
       }
     }
     const drone_city_nav::FreeSpaceTopology3D topology{

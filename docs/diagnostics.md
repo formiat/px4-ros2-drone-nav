@@ -120,6 +120,25 @@ coordinates use traversable anchors on the automatically extracted arbitrary
 portal voxel patches. `approach` is not proof of entry; only `traversal` means
 the measured 3D route station crossed the span boundary.
 
+`PASSAGE_TRAVERSAL_EVENT` is evaluated on every planning tick, independently of
+the throttled `mppi_ticks.jsonl` sample rate. It emits `entered`, `completed`, or
+`aborted` with the stable traversal ID, route generation, span index, measured
+position and station, traversal duration, observation count, maximum cross-track
+and vertical errors, and whether every observed traversal sample remained inside
+the vertical envelope. A completed event for the same identity as its entered
+event is the durable evidence that the vehicle crossed the full passage span.
+
+`PASSAGE_GEOMETRY_EVENT` provides independent physical-path evidence when the
+ordinary 3D lattice finds the same free-space passage without selecting a
+topology transition. It projects the measured vehicle position onto every
+runtime passage candidate on each planning tick and requires a continuous
+entry-to-exit progression inside the candidate's extracted clearance tube.
+`PASSAGE_GEOMETRY_PROXIMITY` reports the nearest entry, projection station,
+cross-track error, and extracted clearance while the vehicle is within 8 m of
+an entry. A `completed` geometry event together with raw-safe horizon validation
+proves physical passage traversal regardless of which search backend produced
+the active route.
+
 ## Offboard Diagnostics
 
 Important events:
