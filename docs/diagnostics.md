@@ -112,12 +112,13 @@ The event and `mppi_ticks.jsonl` expose:
 - actual horizontal/vertical speed and constrained reference speed;
 - execution mode and reason at every lifecycle transition.
 
-Derived traversal edges retain their geometry-stable passage-region id. Selected
-edges create constrained spans directly and are correlated by
-`route_generation + passage_id + span_index`. Entry and exit coordinates lie on
-the automatically extracted exterior portal planes. `approach` is not proof of
-entry; only `traversal` means the measured 3D route station crossed the span
-boundary.
+Selected traversals retain a geometry-stable `PassageTraversalId` plus the
+ordered `PassageSegmentId` resources used by that route. Constrained spans are
+correlated by `route_generation + passage_id + span_index`; the serialized ROS
+field named `passage_id` carries the traversal identity. Entry and exit
+coordinates use traversable anchors on the automatically extracted arbitrary
+portal voxel patches. `approach` is not proof of entry; only `traversal` means
+the measured 3D route station crossed the span boundary.
 
 ## Offboard Diagnostics
 

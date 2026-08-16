@@ -82,6 +82,27 @@ environments:
       path: maps/r050/world.esdf3d
       sha256: 3e0298c043ff422abdf003b9004eb2b47f32878e7b3253368add6e16acc75f49
       size_bytes: 39912212
+    topology_compilation:
+      maximum_clearance_m: 6.0
+      open_space_clearance_m: 4.0
+      speed_limit_mps: 10.0
+      medial_clearance_weight: 2.0
+      medial_ridge_prominence_m: 0.1
+      medial_band_radius_cells: 1
+      chunk_size_cells: 32
+      minimum_open_region_voxels: 16
+      minimum_constrained_component_voxels: 16
+      minimum_portal_voxels: 4
+      maximum_portal_voxels: 100000
+      footprint_radius_m: 0.82
+      footprint_lower_extent_m: 0.23
+      footprint_upper_extent_m: 0.35
+      footprint_sweep_step_m: 0.25
+      minimum_segments: 1
+      expected_counts:
+        regions: 5
+        portals: 676
+        segments: 1321
 - id: cave_circuit_practice_01
   display_name: Cave Circuit Practice 01
   role: vertical_stress
@@ -151,6 +172,27 @@ environments:
       path: maps/r100/world.esdf3d
       sha256: 2a403bbcb6fc4426cfb870937cdfd276261e9787089a33d208e1592f0a0daa79
       size_bytes: 10992532
+    topology_compilation:
+      maximum_clearance_m: 6.0
+      open_space_clearance_m: 4.0
+      speed_limit_mps: 10.0
+      medial_clearance_weight: 2.0
+      medial_ridge_prominence_m: 0.1
+      medial_band_radius_cells: 1
+      chunk_size_cells: 32
+      minimum_open_region_voxels: 16
+      minimum_constrained_component_voxels: 16
+      minimum_portal_voxels: 4
+      maximum_portal_voxels: 100000
+      footprint_radius_m: 0.82
+      footprint_lower_extent_m: 0.23
+      footprint_upper_extent_m: 0.35
+      footprint_sweep_step_m: 0.25
+      minimum_segments: 1
+      expected_counts:
+        regions: 3
+        portals: 20
+        segments: 33
 - id: urban_circuit_practice_01
   display_name: Urban Circuit Practice 01
   role: secondary_urban
@@ -220,6 +262,27 @@ environments:
       path: maps/r050/world.esdf3d
       sha256: 1162abd12e8d6238246154802cc160519a0f35c216b18b858e54d5b83bd117f6
       size_bytes: 10321251
+    topology_compilation:
+      maximum_clearance_m: 6.0
+      open_space_clearance_m: 4.0
+      speed_limit_mps: 10.0
+      medial_clearance_weight: 2.0
+      medial_ridge_prominence_m: 0.1
+      medial_band_radius_cells: 1
+      chunk_size_cells: 32
+      minimum_open_region_voxels: 16
+      minimum_constrained_component_voxels: 16
+      minimum_portal_voxels: 4
+      maximum_portal_voxels: 100000
+      footprint_radius_m: 0.82
+      footprint_lower_extent_m: 0.23
+      footprint_upper_extent_m: 0.35
+      footprint_sweep_step_m: 0.25
+      minimum_segments: 1
+      expected_counts:
+        regions: 3
+        portals: 248
+        segments: 458
 - id: compact_3d_passage_fixture
   display_name: Compact 3D Passage Fixture
   role: integration_fixture
@@ -235,8 +298,8 @@ environments:
       attribution: Alexander Aglerimov and project contributors
   repository_files:
   - path: environments/fixtures/compact_3d_passage/README.md
-    sha256: 59c9f21e35d7cd6f57f927e404ac12afb5b1af7799f3b78ca60bf053af9634d3
-    size_bytes: 545
+    sha256: a3eb01faf7808979b3f41be64b1e852397f4a3c6c6169f5b3be7150d9d740519
+    size_bytes: 1012
   - path: environments/fixtures/compact_3d_passage/world.sdf
     sha256: 744529694eab2f7d56b79223cff582aed4c4cd350c6e82e14a5d0d491d392058
     size_bytes: 5287
@@ -249,6 +312,9 @@ environments:
   - path: environments/fixtures/compact_3d_passage/world.esdf3d
     sha256: 805362ca6e732754c555418fd5a6ece263b7be58338494abce09f46ead76a901
     size_bytes: 38090
+  - path: environments/fixtures/compact_3d_passage/world.topology3d
+    sha256: e16fba4760a528d351716c87b123c8cec37b536827281aeddb86a802c72f2477
+    size_bytes: 6486
   static_maps:
   - id: r025
     resolution_m: 0.25
@@ -273,3 +339,28 @@ environments:
       path: environments/fixtures/compact_3d_passage/world.esdf3d
       sha256: 805362ca6e732754c555418fd5a6ece263b7be58338494abce09f46ead76a901
       size_bytes: 38090
+    topology:
+      path: environments/fixtures/compact_3d_passage/world.topology3d
+      sha256: e16fba4760a528d351716c87b123c8cec37b536827281aeddb86a802c72f2477
+      size_bytes: 6486
+    topology_compilation:
+      maximum_clearance_m: 6.0
+      open_space_clearance_m: 4.0
+      speed_limit_mps: 10.0
+      medial_clearance_weight: 2.0
+      medial_ridge_prominence_m: 0.1
+      medial_band_radius_cells: 1
+      chunk_size_cells: 32
+      minimum_open_region_voxels: 16
+      minimum_constrained_component_voxels: 16
+      minimum_portal_voxels: 4
+      maximum_portal_voxels: 100000
+      footprint_radius_m: 0.82
+      footprint_lower_extent_m: 0.23
+      footprint_upper_extent_m: 0.35
+      footprint_sweep_step_m: 0.25
+      minimum_segments: 1
+      expected_counts:
+        regions: 2
+        portals: 2
+        segments: 1

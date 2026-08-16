@@ -7,9 +7,9 @@ precedes roadmap items 7, 8, and 9. It does not claim that any imported world is
 already integrated into a mission or that full-mission validation is complete.
 
 The current generated city remains the deterministic regression fixture. The
-external candidates are intended to expose the planner to irregular collision
-meshes, non-axis-aligned walls, tunnels, caverns, ramps, and vertical shafts
-before the generic passage work starts.
+external candidates expose the planner and generalized static topology compiler
+to irregular collision meshes, non-axis-aligned walls, tunnels, caverns, ramps,
+and vertical shafts.
 
 Downloaded source assets and generated candidate artifacts are stored under
 `external/environment-candidates/`. The complete local working set is about
@@ -36,9 +36,9 @@ A primary candidate must satisfy all of the following:
 - the environment exercises genuine 3D navigation rather than only a planar
   maze.
 
-The classification below concerns suitability for the next environment-import
-and passage-planning stage. It is not evidence that current missions can already
-fly through these worlds.
+The classification below concerns suitability for environment integration and
+passage-planning validation. Successful topology compilation is not evidence
+that current missions can already fly through these worlds.
 
 ## Classification
 
@@ -88,6 +88,52 @@ The Hospital collision materialization produced 540 collision instances from
 must be removed by an explicit source migration based on model identity, not by
 an arbitrary coordinate clamp.
 
+## Free-Space Topology Evidence
+
+Roadmap item 7 adds one generalized compiler for every static map:
+
+```text
+raw Occupancy3D + matching ESDF3D
+  -> footprint-feasible clearance decomposition
+  -> open-space regions + arbitrary portal voxel patches
+  -> sparse medial passage segments
+  -> versioned FreeSpaceTopology3D
+```
+
+The compiler uses no roof predicate, axis-aligned portal list, semantic lane, or
+all-pairs portal graph. Every retained segment passes raw swept-footprint
+validation. These deterministic baselines use a 4 m open-space clearance
+threshold and the physical 0.82 m vehicle radius:
+
+| Environment | Regions | Portals | Sparse segments | Compile wall time |
+|---|---:|---:|---:|---:|
+| Compact 3D fixture, 0.25 m | 2 | 2 | 1 | 3.7 s |
+| Urban Circuit Practice 01, 0.5 m | 3 | 248 | 458 | 36.7 s |
+| Cave Circuit Practice 01, 1.0 m | 3 | 20 | 33 | 20.0 s |
+| Finals Prize Round World 07, 0.5 m | 5 | 676 | 1,321 | 78.3 s |
+
+The Cave run rejected one connected interface containing 241,541 voxels. That
+surface was a non-local open/constrained boundary, not a representable local
+bottleneck portal. Urban and Finals also discarded respectively one and five
+dangling portals after raw-unsafe segment removal. These are typed extraction
+outcomes; the strict artifact validator was not weakened.
+
+The exact compiler profile and expected counts are pinned with each static map
+in `environment_manifest.yaml`. Compile an installed release map and reject any
+input checksum or topology-count drift with:
+
+```bash
+./scripts/dev_shell.sh python3 scripts/manage_environment_assets.py fetch \
+  --environment urban_circuit_practice_01 --artifact static_r050
+./scripts/dev_shell.sh python3 scripts/compile_environment_topology.py \
+  --environment urban_circuit_practice_01 --static-map r050
+```
+
+The compact fixture commits its `world.topology3d` artifact. External topology
+files are reproducible derived outputs under
+`external/environment-artifacts/derived/`; their published Occupancy3D and
+ESDF3D inputs remain the versioned distribution artifacts.
+
 ## Sources And Licenses
 
 The local source set uses these upstream resources:
@@ -119,7 +165,9 @@ pins, for every distributed environment:
 - artifact filename, byte size, and SHA-256;
 - map resolution, origin, dimensions, collision triangles, occupied voxels,
   and occupied chunks;
-- independent SHA-256 contracts for Occupancy3D and ESDF3D.
+- independent SHA-256 contracts for Occupancy3D and ESDF3D;
+- the complete generalized-topology compiler profile and deterministic expected
+  region, portal, and sparse-segment counts.
 
 The release registry contains six deterministic bundles split between the
 immutable core and Urban releases:
@@ -151,8 +199,9 @@ exact SHA-pinned files when no local mirror is available.
 The repository-owned compact fixture is stored under
 `environments/fixtures/compact_3d_passage/`. Its horizontal corridor, roof
 opening, and vertical shaft use only SDF boxes and have no external resources.
-Its source, collision-only SDF, Occupancy3D, and ESDF3D are small enough to keep
-in Git and are checked by both Python contract tests and C++ loaders.
+Its source, collision-only SDF, Occupancy3D, ESDF3D, and FreeSpaceTopology3D are
+small enough to keep in Git and are checked by both Python contract tests and
+C++ loaders.
 
 List and verify the complete local contract:
 
@@ -233,20 +282,29 @@ Generate the normal project ESDF cache:
   --maximum-distance-m 26 --workers 8
 ```
 
+Compile and verify the sparse topology from any manifest environment after its
+static-map artifact is installed:
+
+```bash
+./scripts/dev_shell.sh python3 scripts/compile_environment_topology.py \
+  --environment finals_prize_round_world_07 --static-map r050
+```
+
 `voxelize_sdf_collisions` supports collision meshes, boxes, and planes. It uses
 exact triangle-versus-voxel intersection tests rather than marking every cell in
 a triangle AABB. Output dimensions and the total dense domain are checked before
 allocation. The map fingerprint covers both the path-independent materialized
 SDF and every unique collision mesh. Rebuilding the same unpacked source in a
 different root therefore produces byte-identical Occupancy3D and ESDF3D. The
-sparse Occupancy3D writer emits raw physical voxels only. Previously published
-candidate bundles use the accepted legacy v4 raw-only encoding; regenerated
-maps use raw-only v5.
+sparse Occupancy3D writer emits raw physical voxels only. Manifest checksums bind
+the topology compiler to the exact installed map encoding and reject stale local
+installations before compilation.
 
 ## Current Limits And Next Decision
 
-- The imported environments do not yet have separate FreeSpaceTopology3D
-  artifacts. Generic portal and free-volume extraction belongs to roadmap item 7.
+- The imported environments have deterministic FreeSpaceTopology3D compilation
+  profiles, but their topology has not yet been connected to production mission
+  starts, goals, transforms, or launch selection.
 - Candidate visuals are not yet a production Harmonic world. The Finals
   collision-only world loads in a Harmonic server, but the original legacy
   materials and resource URIs still need a visual migration pass.
@@ -254,9 +312,8 @@ maps use raw-only v5.
   flight-envelope bounds have not been defined for any candidate.
 - No navigation, interception, or cooperative mission was run in an imported
   environment during this selection stage.
-- A static map proves deterministic collision conversion, not route
-  reachability. Passage width and swept-footprint feasibility must be measured
-  after generic free-volume extraction.
+- A valid static topology proves deterministic extraction and raw-safe internal
+  segments, not end-to-end reachability from future mission starts to goals.
 
 Proceed with Finals Prize Round World 07 as the primary integration target,
 Cave Circuit Practice 01 as the vertical-shaft stress target, and Urban Circuit

@@ -100,7 +100,7 @@ class EnvironmentManifestTest(unittest.TestCase):
 
         verified = verify_repository_files(manifest, MANIFEST_PATH)
 
-        self.assertEqual(8, len(verified))
+        self.assertEqual(9, len(verified))
 
     def test_environments_select_their_immutable_release(self) -> None:
         manifest = load_manifest(MANIFEST_PATH)

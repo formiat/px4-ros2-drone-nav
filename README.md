@@ -18,8 +18,8 @@ of August 2026.
 
 The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
 covers the interceptor mission, radar-derived target tracking, predictive
-guidance, multi-drone scenarios, cooperative air traffic, and future 3D passage
-work.
+guidance, multi-drone scenarios, cooperative air traffic, generalized static 3D
+passages, and future no-static 3D perception.
 
 ## Status And Safety
 
@@ -276,23 +276,23 @@ result is a soft planner preference and peer-separation cost, not a prohibited
 grid, inflated obstacle, or hard exclusion volume; raw physical obstacles remain
 the only hard collision constraint.
 
-Static-map passage geometry is derived after global route selection. The planner
-samples route-orthogonal cross-sections directly from raw `Occupancy3D`, validates
-the full drone footprint in both transverse axes, and builds a continuous local
-free-space volume. Opposing traffic uses deterministic continuous offsets when
-the derived volume provides enough separation. A narrow or otherwise conflicting
-passage instead schedules entry time with deterministic right-of-way and a
-route-safe hold before entry; an active constrained span is never replaced
-mid-traversal. In no-static mode, peer lidar returns are removed only from
-persistent obstacle memory. The unchanged latest scan still reaches immediate
-safety validation, so cooperative filtering cannot hide a real close-range
-obstacle.
+Static-map passage topology is derived offline from matching raw `Occupancy3D`
+and `ESDF3D` artifacts. The generalized compiler classifies footprint-feasible
+clearance topology, extracts arbitrarily oriented portal voxel patches, and
+stores a sparse medial segment graph. It does not use roof presence, axis-aligned
+portal assumptions, or all-pairs portal edges. A route-specific
+`PassageTraversal` is resolved lazily and cached only when global search needs it.
 
-Passage topology is also derived rather than hand-authored. The offline world
-compiler segments every roofed free-space component in raw `Occupancy3D`, extracts
-its exterior portal planes and opening polygons, and builds deterministic 3D
-traversal edges between portal pairs. Canonical passage declarations describe
-physical masses only; they contain no planner centerlines or graph edges.
+After route selection, the planner samples route-orthogonal cross-sections from
+raw `Occupancy3D`, validates the full drone footprint in both transverse axes,
+and builds a varying local free-space envelope. Opposing traffic coordinates by
+shared sparse segment resources and uses deterministic continuous offsets when
+the measured volume provides enough separation. A narrow or otherwise
+conflicting passage schedules entry time with deterministic right-of-way; an
+active constrained span is never replaced mid-traversal. In no-static mode, peer
+lidar returns are removed only from persistent obstacle memory. The unchanged
+latest scan still reaches immediate safety validation, so cooperative filtering
+cannot hide a real close-range obstacle.
 
 The mission referee uses Gazebo ground truth only for readiness and physical
 adjudication. Headless success requires all four drones to reach and physically
@@ -398,10 +398,11 @@ Static mode loads raw `generated_city.occupancy3d`, its fingerprint-bound
 generated from the same canonical world specification. The current city is a `5 x 8` Manhattan
 building grid with two horizontal L-shaped air-passage structures, one
 straight-through structure, and one T junction. Static planning loads the
-separate free-space topology index and objectively compares ordinary and portal
-routes; no passage is mandatory. Selected traversal edges directly
-create typed route spans. There is no hand-authored planner centerline, separate
-passage file, or nearest-portal selector.
+separate free-space topology index and objectively compares ordinary lattice
+routes with lazy sparse-graph traversals; no passage is mandatory. Selected
+traversals directly create typed route spans with varying 3D cross-sections.
+There is no hand-authored planner centerline, semantic lane, or nearest-portal
+selector.
 No-static mode uses the accumulated raw 2D lidar-memory world; collisionless lidar
 occluders make all four passages appear closed in that mode. Source contracts are documented in
 `docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.

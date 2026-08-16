@@ -193,14 +193,35 @@ tracks for every attacker, observable avoidance activity or cost, physical
 mission settlement, and zero building collisions. The `3x1` and `2x2` scenarios
 have passed this contract with and without a static map.
 
-## 7. Advanced 3D Passages
+## 7. Advanced 3D Passages (Completed)
 
-Extend the current 3D passage system with more complex passage geometries and
-varying altitude profiles.
+Static passage planning now uses a separately versioned, map-fingerprint-bound
+`FreeSpaceTopology3D`. A chunked C++ compiler consumes raw `Occupancy3D` and the
+matching `ESDF3D`, classifies footprint-feasible clearance topology, extracts
+arbitrarily oriented portal voxel patches, and skeletonizes constrained free
+space into sparse medial passage segments. Roof presence, axis-aligned portal
+heuristics, rectangular authoritative openings, and pairwise portal edges are no
+longer part of the contract.
 
-Instead of supporting only constant-height passages, allow drones to enter and
-exit passages at different altitudes while maintaining smooth three-dimensional
-trajectories.
+Global planning resolves route-specific `PassageTraversal` objects lazily over
+the sparse graph and caches them. The lattice uses a spatial index rather than
+scanning every passage edge at every state. After route selection, raw occupancy
+queries generate a varying 3D cross-section envelope along the traversal, so
+sloped, vertical, curved, and changing-height routes do not collapse to one
+`min_z/max_z` intersection. MPPI and route activation still perform final raw
+swept-footprint validation; derived topology never creates a hard obstacle.
+
+Region, portal, segment, traversal, and cooperative conflict-resource IDs are
+distinct strong types. Cooperative passage reservations are scoped to shared
+sparse segments instead of locking an entire free-space region. Deterministic
+fixtures cover a sloped tunnel, vertical shaft, arch, curved tunnel, T and X
+junctions, and a wide-hangar negative case.
+
+The compiler has also produced strict artifacts for the compact fixture and the
+Urban, Cave, and Finals release maps. This closes static extraction, planning,
+execution, and cooperative passage use. It does not claim production mission
+integration in those external environments; that remains item 9. Online
+production of the same typed topology from 3D sensing remains item 8.
 
 ## 8. 3D Passage Support Without A Static Map
 

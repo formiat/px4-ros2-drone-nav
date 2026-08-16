@@ -241,7 +241,7 @@ points are sampled as `RouteSample3D` values containing:
 - cumulative route station;
 - a reference-speed field populated for MPPI route execution.
 
-When the selected graph path traverses a passage edge, that transition directly
+When the selected graph path uses a lazy passage traversal, that transition directly
 creates a typed `ConstrainedRouteSpan` with `approach -> traversal -> departure`
 station semantics. The complete route and span are revalidated against the latest
 raw ESDF before atomic activation. A span contains:
@@ -251,9 +251,10 @@ raw ESDF before atomic activation. A span contains:
 - constrained reference speed;
 - begin and end route stations.
 
-The derived passage-region/edge identifier is retained for lifecycle diagnostics
-and RViz. Geometric ESDF queries validate the selected edge; they no longer infer
-passage lifecycle postfactum from arbitrary narrow route samples.
+The derived traversal and ordered segment identifiers are retained for lifecycle
+diagnostics, cooperative conflict resources, and RViz. Geometric ESDF queries
+validate the selected traversal; they no longer infer passage lifecycle
+postfactum from arbitrary narrow route samples.
 
 MPPI follows the complete typed route and applies the span speed/reference data.
 The observable lifecycle is derived from route station:
@@ -263,8 +264,10 @@ approach -> traversal -> departure -> unconstrained
 ```
 
 Use `route_generation + passage_id + span_index` to correlate a diagnostic event
-with a derived graph edge. Portal graph IDs intentionally follow geometry, so a
-physical topology change may produce a new ID.
+with a derived `PassageTraversalId`. Region, portal, segment, traversal, and
+cooperative conflict-resource IDs are distinct strong types in C++; their ROS
+representations are explicitly named strings. Topology IDs intentionally follow
+geometry, so a physical topology change may produce a new ID.
 
 ## No-Static Contract
 

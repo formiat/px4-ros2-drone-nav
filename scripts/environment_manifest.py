@@ -18,6 +18,26 @@ _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _CLASSIFICATIONS = {"confirmed_fit", "test_fixture"}
 _DISTRIBUTIONS = {"release", "repository"}
 _ARTIFACT_KINDS = {"source_bundle", "static_map_bundle"}
+_TOPOLOGY_FLOAT_PARAMETERS = (
+    "maximum_clearance_m",
+    "open_space_clearance_m",
+    "speed_limit_mps",
+    "medial_clearance_weight",
+    "medial_ridge_prominence_m",
+    "footprint_radius_m",
+    "footprint_lower_extent_m",
+    "footprint_upper_extent_m",
+    "footprint_sweep_step_m",
+)
+_TOPOLOGY_INTEGER_PARAMETERS = (
+    "medial_band_radius_cells",
+    "chunk_size_cells",
+    "minimum_open_region_voxels",
+    "minimum_constrained_component_voxels",
+    "minimum_portal_voxels",
+    "maximum_portal_voxels",
+    "minimum_segments",
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -284,6 +304,49 @@ def _validate_static_maps(environment_id: str, raw_maps: Any) -> None:
                 raise ManifestError(
                     f"{environment_id}.{map_id}.{role}.size_bytes must be positive"
                 )
+        _validate_topology_compilation(environment_id, map_id, static_map)
+        if "topology" in static_map:
+            _validate_file_contract(
+                static_map["topology"], f"{environment_id}.{map_id}.topology"
+            )
+
+
+def _validate_topology_compilation(
+    environment_id: str, map_id: str, static_map: dict[str, Any]
+) -> None:
+    field = f"{environment_id}.{map_id}.topology_compilation"
+    profile = _mapping(static_map.get("topology_compilation"), field)
+    for name in _TOPOLOGY_FLOAT_PARAMETERS:
+        value = profile.get(name)
+        if not _number(value) or float(value) < 0.0:
+            raise ManifestError(f"{field}.{name} must be non-negative")
+    for name in _TOPOLOGY_INTEGER_PARAMETERS:
+        if not _positive_int(profile.get(name)):
+            raise ManifestError(f"{field}.{name} must be a positive integer")
+    if profile["open_space_clearance_m"] > profile["maximum_clearance_m"]:
+        raise ManifestError(f"{field} open-space clearance exceeds maximum clearance")
+    if profile["maximum_clearance_m"] > static_map["maximum_distance_m"]:
+        raise ManifestError(f"{field} exceeds the available ESDF distance")
+    if profile["minimum_portal_voxels"] > profile["maximum_portal_voxels"]:
+        raise ManifestError(f"{field} has an empty portal voxel interval")
+    expected = _mapping(profile.get("expected_counts"), f"{field}.expected_counts")
+    if set(expected) != {"regions", "portals", "segments"}:
+        raise ManifestError(
+            f"{field}.expected_counts must define regions, portals, and segments"
+        )
+    for name, value in expected.items():
+        if not _positive_int(value):
+            raise ManifestError(
+                f"{field}.expected_counts.{name} must be a positive integer"
+            )
+
+
+def _validate_file_contract(raw_contract: Any, field: str) -> None:
+    contract = _mapping(raw_contract, field)
+    _relative_path(contract.get("path"), f"{field}.path")
+    _sha256(contract.get("sha256"), f"{field}.sha256")
+    if not _positive_int(contract.get("size_bytes")):
+        raise ManifestError(f"{field}.size_bytes must be positive")
 
 
 def _validate_release_environment(
@@ -388,7 +451,9 @@ def _validate_repository_environment(
                 f"{environment_id}.repository_files[{index}].size_bytes must be positive"
             )
     for static_map in environment["static_maps"]:
-        for role in ("occupancy", "esdf"):
+        for role in ("occupancy", "esdf", "topology"):
+            if role not in static_map:
+                continue
             if static_map[role]["path"] not in paths:
                 raise ManifestError(
                     f"{environment_id}.{static_map['id']}.{role} is not a repository file"
