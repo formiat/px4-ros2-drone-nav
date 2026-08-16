@@ -99,6 +99,7 @@ class MaterializationReport:
     mode: str = "collision"
     collision_instances: int = 0
     visual_instances: int = 0
+    light_instances: int = 0
     dynamic_models_skipped: int = 0
     non_collision_resources_skipped: int = 0
     geometry_types: dict[str, int] = field(default_factory=dict)
@@ -116,6 +117,7 @@ class MaterializationReport:
             "output_sha256": fingerprint,
             "collision_instances": self.collision_instances,
             "visual_instances": self.visual_instances,
+            "light_instances": self.light_instances,
             "dynamic_models_skipped": self.dynamic_models_skipped,
             "non_collision_resources_skipped": self.non_collision_resources_skipped,
             "geometry_types": dict(sorted(self.geometry_types.items())),
@@ -375,9 +377,15 @@ class CollisionWorldMaterializer:
             root = ET.parse(model_file).getroot()
             model = root.find("model")
             if model is None:
-                if root.find("light") is not None:
-                    assert self._report is not None
-                    self._report.non_collision_resources_skipped += 1
+                light = root.find("light")
+                if light is not None:
+                    if self._preserve_visuals:
+                        self._emit_light(
+                            light, parent, prefix, pose_override=pose_override
+                        )
+                    else:
+                        assert self._report is not None
+                        self._report.non_collision_resources_skipped += 1
                     return
                 raise MaterializationError(f"SDF contains no model: {model_file}")
             assert self._report is not None
@@ -405,10 +413,16 @@ class CollisionWorldMaterializer:
         current_prefix = f"{prefix}_{model_name}"
         direct_collisions = model.findall("./link/collision")
         if is_static:
+            if self._preserve_visuals:
+                for light in model.findall("light"):
+                    self._emit_light(light, model_transform, current_prefix)
             for link in model.findall("link"):
                 link_transform = model_transform.compose(
                     Transform.from_pose(link.find("pose"))
                 )
+                if self._preserve_visuals:
+                    for light in link.findall("light"):
+                        self._emit_light(light, link_transform, current_prefix)
                 for collision in link.findall("collision"):
                     collision_transform = link_transform.compose(
                         Transform.from_pose(collision.find("pose"))
@@ -524,6 +538,35 @@ class CollisionWorldMaterializer:
         output_link = ET.SubElement(output_model, "link", {"name": "link"})
         output_link.append(visual_copy)
         self._report.visual_instances += 1
+
+    def _emit_light(
+        self,
+        light: ET.Element,
+        parent: Transform,
+        prefix: str,
+        pose_override: Transform | None = None,
+    ) -> None:
+        light_copy = copy.deepcopy(light)
+        local_pose = (
+            Transform.from_pose(light_copy.find("pose"))
+            if pose_override is None
+            else pose_override
+        )
+        world_pose = parent.compose(local_pose)
+        pose = light_copy.find("pose")
+        if pose is None:
+            pose = ET.Element("pose")
+            light_copy.insert(0, pose)
+        pose.attrib.clear()
+        pose.text = world_pose.as_pose_text()
+
+        assert self._output_world is not None and self._report is not None
+        self._instance_number += 1
+        light_copy.attrib["name"] = _safe_name(
+            f"{prefix}_{light.attrib.get('name', 'light')}_{self._instance_number}"
+        )
+        self._output_world.append(light_copy)
+        self._report.light_instances += 1
 
     def _localize_visual_material(
         self, visual: ET.Element, source_file: Path

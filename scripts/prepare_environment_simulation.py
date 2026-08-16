@@ -296,6 +296,34 @@ def add_launch_platforms(
             ET.SubElement(material, "diffuse").text = "0.32 0.38 0.42 1"
 
 
+def configure_gui_lighting(tree: ET.ElementTree) -> int:
+    """Make presentation worlds readable without changing their physics."""
+    world = tree.getroot().find("world")
+    if world is None:
+        raise EnvironmentPreparationError("materialized SDF has no world")
+    scene = world.find("scene")
+    if scene is None:
+        scene = ET.Element("scene")
+        world.insert(0, scene)
+    ambient = scene.find("ambient")
+    if ambient is None:
+        ambient = ET.SubElement(scene, "ambient")
+    ambient.text = "0.35 0.35 0.35 1"
+
+    for light in world.findall("light"):
+        world.remove(light)
+    light_name = "drone_city_nav_gui_fill"
+    light = ET.SubElement(
+        world, "light", {"name": light_name, "type": "directional"}
+    )
+    ET.SubElement(light, "cast_shadows").text = "false"
+    ET.SubElement(light, "pose").text = "0 0 100 0 0 0"
+    ET.SubElement(light, "diffuse").text = "0.8 0.8 0.8 1"
+    ET.SubElement(light, "specular").text = "0.2 0.2 0.2 1"
+    ET.SubElement(light, "direction").text = "-0.35 0.25 -0.9"
+    return 1
+
+
 def remote_visual_resource_uris(source_root: Path) -> set[str]:
     result: set[str] = set()
     for path in sorted(source_root.rglob("*")):
@@ -506,6 +534,7 @@ def main() -> None:
         localized_mesh_root=runtime_root / "assets" / "meshes",
     ).materialize(source_world)
     add_launch_platforms(gui_tree, launch_platforms, preserve_visuals=True)
+    gui_report.light_instances = configure_gui_lighting(gui_tree)
     gui_report.collision_instances += len(launch_platforms)
     gui_report.visual_instances += len(launch_platforms)
     gui_report.geometry_types["box"] = (
@@ -535,7 +564,8 @@ def main() -> None:
         "ENVIRONMENT_SIMULATION_READY"
         f" environment={environment['id']} static_map={static_map['id']}"
         f" world={world_name} collisions={collision_report.collision_instances}"
-        f" visuals={gui_report.visual_instances} visual_uris={visual_uri_count}"
+        f" visuals={gui_report.visual_instances} lights={gui_report.light_instances}"
+        f" visual_uris={visual_uri_count}"
         f" visual_resources_verified={len(visual_resources)}"
         f" visual_resources_downloaded={downloaded_visuals}"
         f" launch_platforms={len(launch_platforms)}"

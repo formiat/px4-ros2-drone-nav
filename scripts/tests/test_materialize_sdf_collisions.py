@@ -21,10 +21,39 @@ from sdf_collision_materializer import (  # noqa: E402
     write_materialized_world,
     write_report,
 )
-from prepare_environment_simulation import add_launch_platforms  # noqa: E402
+from prepare_environment_simulation import (  # noqa: E402
+    add_launch_platforms,
+    configure_gui_lighting,
+)
 
 
 class SdfCollisionMaterializerTest(unittest.TestCase):
+    def test_gui_lighting_is_added_without_changing_collision_world(self) -> None:
+        source = (
+            '<sdf version="1.10"><world name="candidate">'
+            '<scene><ambient>0.1 0.1 0.1 1</ambient></scene>'
+            '<light name="source_spot" type="spot"/>'
+            '</world></sdf>'
+        )
+        collision_tree = ET.ElementTree(ET.fromstring(source))
+        gui_tree = ET.ElementTree(ET.fromstring(source))
+
+        self.assertEqual(1, configure_gui_lighting(gui_tree))
+        self.assertEqual(1, configure_gui_lighting(gui_tree))
+
+        self.assertEqual(
+            "0.1 0.1 0.1 1",
+            collision_tree.getroot().findtext("./world/scene/ambient"),
+        )
+        self.assertEqual(
+            "0.35 0.35 0.35 1",
+            gui_tree.getroot().findtext("./world/scene/ambient"),
+        )
+        lights = gui_tree.getroot().findall("./world/light")
+        self.assertEqual(1, len(lights))
+        self.assertEqual("drone_city_nav_gui_fill", lights[0].attrib["name"])
+        self.assertEqual("directional", lights[0].attrib["type"])
+
     def test_launch_platform_collision_is_identical_in_headless_and_gui_worlds(
         self,
     ) -> None:
@@ -329,7 +358,11 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             )
             (building / "model.sdf").write_text(
                 '<sdf version="1.10"><model name="building"><static>true</static>'
-                '<link name="link"><collision name="collision"><geometry><box>'
+                '<link name="link">'
+                '<light type="spot" name="room_light"><pose>1 2 3 0 0 0</pose>'
+                '<direction>0 0 -1</direction><spot><inner_angle>0.2</inner_angle>'
+                '<outer_angle>0.5</outer_angle><falloff>0.8</falloff></spot></light>'
+                '<collision name="collision"><geometry><box>'
                 "<size>1 1 1</size></box></geometry></collision>"
                 '<visual name="wall"><geometry><mesh><uri>meshes/building.dae</uri>'
                 "</mesh></geometry><material><pbr><metal>"
@@ -344,7 +377,8 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             world = root / "world.sdf"
             world.write_text(
                 '<sdf version="1.10"><world name="candidate"><include>'
-                "<uri>model://building</uri></include></world></sdf>",
+                "<uri>model://building</uri><pose>10 20 0 0 0 0</pose>"
+                "</include></world></sdf>",
                 encoding="utf-8",
             )
             output = root / "runtime" / "world_gui.sdf"
@@ -359,6 +393,7 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
 
             self.assertEqual(1, report.collision_instances)
             self.assertEqual(1, report.visual_instances)
+            self.assertEqual(1, report.light_instances)
             self.assertGreaterEqual(validate_visual_resource_uris(output), 3)
             output_text = output.read_text(encoding="utf-8")
             self.assertNotIn("http://", output_text)
@@ -371,6 +406,13 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             self.assertEqual(
                 1, len(ET.parse(output).getroot().findall(".//visual"))
             )
+            emitted_light = ET.parse(output).getroot().find("./world/light")
+            self.assertIsNotNone(emitted_light)
+            self.assertEqual(
+                [11.0, 22.0, 3.0, 0.0, 0.0, 0.0],
+                [float(value) for value in emitted_light.findtext("pose").split()],
+            )
+            self.assertEqual("0 0 -1", emitted_light.findtext("direction"))
 
 
 if __name__ == "__main__":
