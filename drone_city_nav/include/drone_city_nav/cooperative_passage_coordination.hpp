@@ -21,6 +21,8 @@ struct CooperativePassageDecision {
   std::int64_t entry_not_before_ns{0};
   bool yield_before_entry{false};
   bool conflict_zone_only{false};
+  bool queue_hold_station_valid{false};
+  double queue_hold_station_m{0.0};
   std::string yield_to_vehicle_id;
   CooperativeConflictResourceId conflict_resource_id;
 };

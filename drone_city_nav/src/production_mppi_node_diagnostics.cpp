@@ -133,7 +133,8 @@ void ProductionMppiNode::processDiagnostics(
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "COOPERATIVE_PASSAGE_YIELD vehicle='%s' passage='%s' offset_m=%.2f "
-        "offset_interval_m=[%.2f,%.2f] status=%s hold=%s hold_station_m=%.2f "
+        "offset_interval_m=[%.2f,%.2f] status=%s hold=%s queue_hold=%s "
+        "hold_station_m=%.2f "
         "maximum_speed_mps=%.2f entry_not_before_ns=%" PRId64,
         vehicle_id_.c_str(), snapshot.cooperative.passage.passage_traversal_id.c_str(),
         snapshot.cooperative.passage.lateral_offset_m,
@@ -141,6 +142,7 @@ void ProductionMppiNode::processDiagnostics(
         snapshot.cooperative.passage.maximum_lateral_offset_m,
         cooperativePassageYieldStatusName(snapshot.cooperative.yield.status),
         snapshot.cooperative.yield.hold_at_entry ? "true" : "false",
+        snapshot.cooperative.yield.queue_hold_station_active ? "true" : "false",
         snapshot.cooperative.yield.hold_station_m,
         snapshot.cooperative.yield.maximum_speed_mps,
         snapshot.cooperative.yield.entry_not_before_ns);

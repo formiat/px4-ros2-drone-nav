@@ -122,6 +122,16 @@ CooperativePassageDecision coordinateCooperativePassage(
         passageLateralSeparationM(ownship.passage, peer.passage) +
                 config.lateral_separation_tolerance_m >=
             required_separation_m;
+    if (same_direction && !offsets_separated &&
+        peer.passage.station_m > ownship.passage.station_m) {
+      const double candidate_hold_station_m = std::max(
+          ownship.passage.station_m, peer.passage.station_m - required_separation_m);
+      if (!result.queue_hold_station_valid ||
+          candidate_hold_station_m < result.queue_hold_station_m) {
+        result.queue_hold_station_valid = true;
+        result.queue_hold_station_m = candidate_hold_station_m;
+      }
+    }
     const CooperativeConflictPrediction prediction =
         predictCooperativeConflict(ownship, peer, ownship.stamp_ns, config.conflict);
     for (const CooperativeConflictResourceUse& ownship_resource :

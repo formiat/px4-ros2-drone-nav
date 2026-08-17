@@ -6,10 +6,14 @@
 #include "drone_city_nav/msg/cooperative_passage_intent.hpp"
 #include "drone_city_nav/msg/cooperative_peer_trajectory.hpp"
 
+#include <rclcpp/qos.hpp>
+
 #include <builtin_interfaces/msg/time.hpp>
 #include <cstdint>
 
 namespace drone_city_nav {
+
+[[nodiscard]] rclcpp::QoS cooperativeFlightIntentQos();
 
 [[nodiscard]] std::int64_t
 cooperativeTimeNanoseconds(const builtin_interfaces::msg::Time& time) noexcept;

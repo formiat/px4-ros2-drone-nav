@@ -58,7 +58,8 @@ bool CooperativeTrafficRefereeNode::runtimeInputsHealthy(const std::int64_t now_
         now_ns >= vehicle.latest_intent_receive_ns &&
         now_ns - vehicle.latest_intent_receive_ns <= maximum_intent_age_ns_ &&
         now_ns <= vehicle.latest_intent_valid_until_ns;
-    if (navigation_fresh && truth_fresh && intent_fresh) {
+    const bool vehicle_state_fresh = navigation_fresh && truth_fresh;
+    if (vehicle_state_fresh && intent_fresh) {
       if (vehicle.degraded_since_ns > 0) {
         RCLCPP_INFO(get_logger(),
                     "COOPERATIVE_ADJUDICATION vehicle_id='%s' state=recovered "
@@ -70,6 +71,20 @@ bool CooperativeTrafficRefereeNode::runtimeInputsHealthy(const std::int64_t now_
       }
       continue;
     }
+    if (vehicle_state_fresh) {
+      if (vehicle.degraded_since_ns > 0) {
+        vehicle.degraded_since_ns = 0;
+        continuity_reset = true;
+      }
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "COOPERATIVE_ADJUDICATION vehicle_id='%s' state=coordination_degraded "
+          "intent_age_ms=%.1f intent_valid=%s",
+          vehicle.id.c_str(),
+          ageSeconds(now_ns, vehicle.latest_intent_receive_ns) * 1000.0,
+          now_ns <= vehicle.latest_intent_valid_until_ns ? "true" : "false");
+      continue;
+    }
     all_healthy = false;
     if (vehicle.degraded_since_ns <= 0 || now_ns < vehicle.degraded_since_ns) {
       vehicle.degraded_since_ns = now_ns;
@@ -79,7 +94,7 @@ bool CooperativeTrafficRefereeNode::runtimeInputsHealthy(const std::int64_t now_
         static_cast<double>(now_ns - vehicle.degraded_since_ns) * 1.0e-9;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "COOPERATIVE_ADJUDICATION vehicle_id='%s' state=degraded "
+        "COOPERATIVE_ADJUDICATION vehicle_id='%s' state=vehicle_state_degraded "
         "navigation_age_ms=%.1f truth_age_ms=%.1f intent_age_ms=%.1f "
         "intent_valid=%s degraded_duration_s=%.3f",
         vehicle.id.c_str(),

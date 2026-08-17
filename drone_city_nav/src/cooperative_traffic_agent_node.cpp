@@ -128,7 +128,7 @@ public:
 
     const auto state_qos = rclcpp::QoS{10}.best_effort();
     const auto horizon_qos = rclcpp::QoS{4}.reliable();
-    const auto intent_qos = rclcpp::QoS{8}.best_effort();
+    const auto intent_qos = cooperativeFlightIntentQos();
     state_sub_ = create_subscription<msg::VehicleNavigationState>(
         declare_parameter<std::string>("navigation_state_topic",
                                        "/vehicles/civilian_0/state"),
@@ -263,21 +263,10 @@ private:
     if (passage_state_.has_value() && inputFresh(passage_state_receive_ns_, now_ns)) {
       intent.passage = *passage_state_;
     }
-    if (horizon.points.empty()) {
-      const Point3 hold_position = point(horizon.stationary_hold_position);
-      const std::int64_t first_sample_ns = std::max(valid_from_ns, now_ns);
-      intent.trajectory.push_back(CooperativeTrajectorySample{
-          .time_ns = first_sample_ns,
-          .position = hold_position,
-          .velocity = Vec3{},
-      });
-      if (valid_until_ns > first_sample_ns) {
-        intent.trajectory.push_back(CooperativeTrajectorySample{
-            .time_ns = valid_until_ns,
-            .position = hold_position,
-            .velocity = Vec3{},
-        });
-      }
+    if (stationary_hold) {
+      intent.trajectory =
+          makeStationaryCooperativeTrajectory(point(horizon.stationary_hold_position),
+                                              valid_from_ns, valid_until_ns, now_ns);
       return intent;
     }
     intent.trajectory.reserve(horizon.points.size());
@@ -426,6 +415,8 @@ private:
     command.passage_maximum_lateral_offset_m = ownship.passage.maximum_lateral_offset_m;
     command.passage_entry_not_before =
         cooperativeTimeMessage(passage.entry_not_before_ns);
+    command.passage_queue_hold_station_valid = passage.queue_hold_station_valid;
+    command.passage_queue_hold_station_m = passage.queue_hold_station_m;
     command.conflicting_peers.reserve(avoidance.peers.size());
     for (const CooperativeConflictPeer& peer : avoidance.peers) {
       command.conflicting_peers.push_back(

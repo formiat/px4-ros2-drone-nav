@@ -195,22 +195,28 @@ CooperativePassageYieldDecision evaluateCooperativePassageYield(
     return result;
   }
 
-  const double available_braking_distance_m =
-      std::max(0.0, observation.distance_to_entry_m - config.stopping_buffer_m);
   const double acceleration = config.maximum_braking_acceleration_mps2;
   const double latency = config.reaction_latency_s;
+  result.status = CooperativePassageYieldStatus::kAccepted;
+  result.active = true;
+  result.entry_not_before_ns = command.passage_entry_not_before_ns;
+  const double entry_hold_station_m =
+      std::max(0.0, observation.begin_station_m - config.stopping_buffer_m);
+  result.queue_hold_station_active =
+      command.passage_queue_hold_station_valid &&
+      command.passage_queue_hold_station_m < entry_hold_station_m;
+  result.hold_station_m =
+      result.queue_hold_station_active
+          ? std::max(observation.station_m, command.passage_queue_hold_station_m)
+          : entry_hold_station_m;
+  const double available_braking_distance_m =
+      std::max(0.0, result.hold_station_m - observation.station_m);
   const double maximum_speed_mps =
       -acceleration * latency +
       std::sqrt(acceleration * acceleration * latency * latency +
                 2.0 * acceleration * available_braking_distance_m);
-  result.status = CooperativePassageYieldStatus::kAccepted;
-  result.active = true;
-  result.entry_not_before_ns = command.passage_entry_not_before_ns;
-  result.hold_station_m =
-      std::max(0.0, observation.begin_station_m - config.stopping_buffer_m);
   result.maximum_speed_mps = std::max(0.0, maximum_speed_mps);
-  result.hold_at_entry = observation.station_m + 0.25 >= result.hold_station_m ||
-                         observation.distance_to_entry_m <= config.stopping_buffer_m;
+  result.hold_at_entry = observation.station_m + 0.25 >= result.hold_station_m;
   return result;
 }
 

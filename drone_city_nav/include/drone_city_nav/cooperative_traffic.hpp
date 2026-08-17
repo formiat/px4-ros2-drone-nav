@@ -37,6 +37,10 @@ struct CooperativeTrajectorySample {
   Vec3 velocity{};
 };
 
+[[nodiscard]] std::vector<CooperativeTrajectorySample>
+makeStationaryCooperativeTrajectory(Point3 hold_position, std::int64_t valid_from_ns,
+                                    std::int64_t valid_until_ns, std::int64_t now_ns);
+
 struct CooperativeConflictResourceUse {
   CooperativeConflictResourceId conflict_resource_id;
   double begin_station_m{0.0};
@@ -137,6 +141,8 @@ struct CooperativeManeuverCommandData {
   double passage_minimum_lateral_offset_m{0.0};
   double passage_maximum_lateral_offset_m{0.0};
   std::int64_t passage_entry_not_before_ns{0};
+  bool passage_queue_hold_station_valid{false};
+  double passage_queue_hold_station_m{0.0};
   std::vector<CooperativePeerTrajectoryData> conflicting_peers;
 };
 

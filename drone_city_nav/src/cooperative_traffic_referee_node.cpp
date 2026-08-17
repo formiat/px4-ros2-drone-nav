@@ -151,7 +151,7 @@ CooperativeTrafficRefereeNode::CooperativeTrafficRefereeNode()
   intent_sub_ = create_subscription<msg::CooperativeFlightIntent>(
       declare_parameter<std::string>("flight_intent_topic",
                                      "/cooperative_traffic/flight_intents"),
-      rclcpp::QoS{8}.best_effort(),
+      cooperativeFlightIntentQos(),
       [this](const msg::CooperativeFlightIntent::SharedPtr intent) {
         onFlightIntent(*intent);
       });

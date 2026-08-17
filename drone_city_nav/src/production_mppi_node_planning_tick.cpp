@@ -456,7 +456,7 @@ void ProductionMppiNode::planningTick() {
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
   } else if (cooperative.yield.active && cooperative.yield.hold_at_entry &&
-             !route_control.hold_xy) {
+             !cooperative.mppi.avoidance_active && !route_control.hold_xy) {
     planning_state = ProductionMppiPlanningState::kCooperativePassageYieldHold;
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;

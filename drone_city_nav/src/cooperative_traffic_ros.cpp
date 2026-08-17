@@ -122,6 +122,10 @@ trajectoryPointMessage(const CooperativeTrajectorySample& sample,
 
 } // namespace
 
+rclcpp::QoS cooperativeFlightIntentQos() {
+  return rclcpp::QoS{32}.best_effort().durability_volatile();
+}
+
 std::int64_t
 cooperativeTimeNanoseconds(const builtin_interfaces::msg::Time& time) noexcept {
   return static_cast<std::int64_t>(time.sec) * kNanosecondsPerSecond +
@@ -286,6 +290,8 @@ cooperativeManeuverCommandData(const msg::CooperativeManeuverCommand& message) {
       .passage_maximum_lateral_offset_m = message.passage_maximum_lateral_offset_m,
       .passage_entry_not_before_ns =
           cooperativeTimeNanoseconds(message.passage_entry_not_before),
+      .passage_queue_hold_station_valid = message.passage_queue_hold_station_valid,
+      .passage_queue_hold_station_m = message.passage_queue_hold_station_m,
       .conflicting_peers = {},
   };
   result.conflicting_peers.reserve(message.conflicting_peers.size());

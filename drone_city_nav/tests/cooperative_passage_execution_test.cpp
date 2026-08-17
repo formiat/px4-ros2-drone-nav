@@ -211,5 +211,25 @@ TEST(CooperativePassageExecution, CommandsHoldAtConfiguredEntryBuffer) {
   EXPECT_DOUBLE_EQ(decision.maximum_speed_mps, 0.0);
 }
 
+TEST(CooperativePassageExecution, QueuesBehindTheLeadingPeerBeforeTheEntry) {
+  const ConstrainedRouteObservation observation = approach();
+  const CooperativePassageUse passage =
+      makeCooperativePassageUse(observation, assignment(), 10 * kSecondNs, 10.0,
+                                CooperativePassageTimingConfig{});
+  CooperativeManeuverCommandData command = yieldCommand();
+  command.passage_queue_hold_station_valid = true;
+  command.passage_queue_hold_station_m = 18.0;
+
+  const CooperativePassageYieldDecision decision = evaluateCooperativePassageYield(
+      command, passage, observation, "civilian_0", 10 * kSecondNs, 5.0,
+      CooperativePassageYieldConfig{});
+
+  ASSERT_TRUE(decision.active);
+  EXPECT_TRUE(decision.queue_hold_station_active);
+  EXPECT_DOUBLE_EQ(decision.hold_station_m, 18.0);
+  EXPECT_FALSE(decision.hold_at_entry);
+  EXPECT_GT(decision.maximum_speed_mps, 0.0);
+}
+
 } // namespace
 } // namespace drone_city_nav

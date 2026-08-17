@@ -43,6 +43,7 @@ struct CooperativePassageYieldDecision {
   CooperativePassageYieldStatus status{CooperativePassageYieldStatus::kDisabled};
   bool active{false};
   bool hold_at_entry{false};
+  bool queue_hold_station_active{false};
   double hold_station_m{0.0};
   double maximum_speed_mps{0.0};
   std::int64_t entry_not_before_ns{0};

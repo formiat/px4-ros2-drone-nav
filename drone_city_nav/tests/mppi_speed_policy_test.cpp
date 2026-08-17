@@ -24,6 +24,10 @@ TEST(MppiSpeedPolicyTest, ObservationRangeLimitsStoppingSpeed) {
 
 TEST(MppiSpeedPolicyTest, StraightGuideUsesCruiseAndHundredMeterLookahead) {
   MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 8.0;
+  config.stopping_capability.reaction_latency_s = 0.1;
   const std::array<Point2, 4> guide{Point2{0.0, 0.0}, Point2{40.0, 0.0},
                                     Point2{80.0, 0.0}, Point2{180.0, 0.0}};
   MppiSpeedPolicyInput input;
@@ -39,6 +43,8 @@ TEST(MppiSpeedPolicyTest, StraightGuideUsesCruiseAndHundredMeterLookahead) {
 
 TEST(MppiSpeedPolicyTest, UpcomingTurnReducesReferenceSpeedBeforeTurn) {
   MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
   const std::array<Point2, 4> guide{Point2{0.0, 0.0}, Point2{8.0, 0.0},
                                     Point2{8.0, 8.0}, Point2{8.0, 40.0}};
   MppiSpeedPolicyInput input;
@@ -54,6 +60,8 @@ TEST(MppiSpeedPolicyTest, UpcomingTurnReducesReferenceSpeedBeforeTurn) {
 
 TEST(MppiSpeedPolicyTest, RouteConstraintAndGoalApplyIndependentCaps) {
   MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
   MppiSpeedPolicyInput passage_input;
   passage_input.mission_goal = Point3{200.0, 0.0, 18.0};
   passage_input.route_constraint_speed_limit_mps = 10.0;
@@ -84,6 +92,8 @@ TEST(MppiSpeedPolicyTest, ContinuousTrackingDoesNotBrakeForMovingGoal) {
 
 TEST(MppiSpeedPolicyTest, FrontierRouteCanStopBeforeUnextendedEndpoint) {
   MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
   config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 8.0;
   config.stopping_capability.reaction_latency_s = 0.1;
   config.goal_margin_m = 2.0;
@@ -115,7 +125,7 @@ TEST(MppiSpeedPolicyTest, TerminalRouteUsesMissionGoalLimitOnly) {
   EXPECT_NE(result.active_limiter, MppiSpeedLimiter::kRouteEndpoint);
 }
 
-TEST(MppiSpeedPolicyTest, NoStaticProfileTracksTenMetersPerSecondAtFixedLookahead) {
+TEST(MppiSpeedPolicyTest, ExplicitProfileTracksTenMetersPerSecondAtFixedLookahead) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 10.0;
   config.absolute_speed_limit_mps = 10.0;

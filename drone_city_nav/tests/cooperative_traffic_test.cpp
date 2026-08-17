@@ -107,6 +107,51 @@ TEST(CooperativePeerStore, RejectsStaleAndOutOfOrderIntents) {
             CooperativePeerUpdateStatus::kStale);
 }
 
+TEST(CooperativeStationaryIntent, CoversTheEntireExecutionValidityWindow) {
+  const Point3 hold_position{1.0, 2.0, 3.0};
+  const std::vector<CooperativeTrajectorySample> trajectory =
+      makeStationaryCooperativeTrajectory(hold_position, kNowNs, kNowNs + 200'000'000LL,
+                                          kNowNs + 100'000'000LL);
+
+  ASSERT_EQ(trajectory.size(), 2U);
+  EXPECT_EQ(trajectory.front().time_ns, kNowNs + 100'000'000LL);
+  EXPECT_EQ(trajectory.back().time_ns, kNowNs + 200'000'000LL);
+  for (const CooperativeTrajectorySample& sample : trajectory) {
+    EXPECT_DOUBLE_EQ(sample.position.x, hold_position.x);
+    EXPECT_DOUBLE_EQ(sample.position.y, hold_position.y);
+    EXPECT_DOUBLE_EQ(sample.position.z, hold_position.z);
+    EXPECT_DOUBLE_EQ(sample.velocity.x, 0.0);
+    EXPECT_DOUBLE_EQ(sample.velocity.y, 0.0);
+    EXPECT_DOUBLE_EQ(sample.velocity.z, 0.0);
+  }
+}
+
+TEST(CooperativeConflictPrediction, CurrentCloseSeparationSurvivesMissingOverlap) {
+  CooperativeFlightIntentData ownship =
+      linearIntent("civilian_0", Point3{0.0, 0.0, 10.0}, Point3{10.0, 0.0, 10.0},
+                   Vec3{5.0, 0.0, 0.0});
+  CooperativeFlightIntentData peer =
+      linearIntent("civilian_1", Point3{3.0, 0.0, 10.0}, Point3{20.0, 0.0, 10.0},
+                   Vec3{5.0, 0.0, 0.0});
+  ownship.valid_until_ns = kNowNs + 500'000'000LL;
+  ownship.trajectory[1].time_ns = kNowNs + 250'000'000LL;
+  ownship.trajectory.back().time_ns = ownship.valid_until_ns;
+  peer.valid_from_ns = kNowNs + 1'000'000'000LL;
+  peer.valid_until_ns = kNowNs + 2'000'000'000LL;
+  peer.trajectory.front().time_ns = peer.valid_from_ns;
+  peer.trajectory[1].time_ns = peer.valid_from_ns + 500'000'000LL;
+  peer.trajectory.back().time_ns = peer.valid_until_ns;
+
+  const CooperativeConflictPrediction prediction =
+      predictCooperativeConflict(ownship, peer, kNowNs, {});
+
+  ASSERT_TRUE(prediction.valid);
+  EXPECT_TRUE(prediction.conflict_predicted);
+  EXPECT_NEAR(prediction.current_separation_m, 3.0, 1.0e-9);
+  EXPECT_NEAR(prediction.minimum_separation_m, 3.0, 1.0e-9);
+  EXPECT_DOUBLE_EQ(prediction.time_to_minimum_s, 0.0);
+}
+
 TEST(CooperativeConflictPrediction, FindsExactCrossingBetweenPublishedSamples) {
   const CooperativeFlightIntentData first =
       linearIntent("civilian_0", Point3{-10.0, 0.0, 10.0}, Point3{10.0, 0.0, 10.0},
@@ -326,6 +371,23 @@ TEST(CooperativePassageCoordination, SamePathNeedsNoDelayWhenSpacingIsSafe) {
 
   EXPECT_FALSE(decision.yield_before_entry);
   EXPECT_EQ(decision.entry_not_before_ns, 0);
+}
+
+TEST(CooperativePassageCoordination, QueuesBehindAStationaryLeadingPeer) {
+  CooperativeFlightIntentData ownship = linearIntent(
+      "civilian_1", Point3{-20.0, 0.0, 10.0}, Point3{-10.0, 0.0, 10.0},
+      Vec3{5.0, 0.0, 0.0}, passageUse("passage", "passage", 0.0, -1.0, 1.0, 1));
+  CooperativeFlightIntentData peer =
+      linearIntent("civilian_0", Point3{-15.0, 0.0, 10.0}, Point3{-15.0, 0.0, 10.0},
+                   Vec3{}, passageUse("passage", "passage", 0.0, -1.0, 1.0, 1));
+  ownship.passage.station_m = 10.0;
+  peer.passage.station_m = 18.0;
+
+  const CooperativePassageDecision decision =
+      coordinateCooperativePassage(ownship, std::vector{peer});
+
+  ASSERT_TRUE(decision.queue_hold_station_valid);
+  EXPECT_NEAR(decision.queue_hold_station_m, 13.0, 1.0e-9);
 }
 
 } // namespace

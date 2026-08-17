@@ -113,6 +113,34 @@ void appendTimesWithin(const CooperativeFlightIntentData& intent,
 
 } // namespace
 
+std::vector<CooperativeTrajectorySample> makeStationaryCooperativeTrajectory(
+    const Point3 hold_position, const std::int64_t valid_from_ns,
+    const std::int64_t valid_until_ns, const std::int64_t now_ns) {
+  if (valid_from_ns <= 0 || valid_until_ns < valid_from_ns) {
+    return {};
+  }
+  const std::int64_t first_sample_ns = std::max(valid_from_ns, now_ns);
+  if (first_sample_ns > valid_until_ns) {
+    return {};
+  }
+
+  std::vector<CooperativeTrajectorySample> result;
+  result.reserve(2U);
+  result.push_back(CooperativeTrajectorySample{
+      .time_ns = first_sample_ns,
+      .position = hold_position,
+      .velocity = Vec3{},
+  });
+  if (valid_until_ns > first_sample_ns) {
+    result.push_back(CooperativeTrajectorySample{
+        .time_ns = valid_until_ns,
+        .position = hold_position,
+        .velocity = Vec3{},
+    });
+  }
+  return result;
+}
+
 CooperativePairManeuverPreference
 preferredCooperativePairManeuver(const CooperativeFlightIntentData& ownship,
                                  const CooperativeFlightIntentData& peer) noexcept {
@@ -276,18 +304,6 @@ CooperativeConflictPrediction predictCooperativeConflict(
       ownship.trajectory.empty() || peer.trajectory.empty()) {
     return result;
   }
-  const std::int64_t horizon_end_ns =
-      now_ns + secondsToNanoseconds(config.prediction_horizon_s);
-  const std::int64_t begin_ns =
-      std::max({now_ns, ownship.valid_from_ns, peer.valid_from_ns,
-                ownship.trajectory.front().time_ns, peer.trajectory.front().time_ns});
-  const std::int64_t end_ns =
-      std::min({horizon_end_ns, ownship.valid_until_ns, peer.valid_until_ns,
-                ownship.trajectory.back().time_ns, peer.trajectory.back().time_ns});
-  if (end_ns < begin_ns) {
-    return result;
-  }
-
   const Vec3 current_relative_position =
       subtract(peer.current_position, ownship.current_position);
   const Vec3 current_relative_velocity =
@@ -301,22 +317,47 @@ CooperativeConflictPrediction predictCooperativeConflict(
     result.separating = distance_rate_mps > 0.0;
   }
 
+  double minimum_squared_m = result.current_separation_m * result.current_separation_m;
+  std::int64_t minimum_time_ns = now_ns;
+  if (!std::isfinite(minimum_squared_m)) {
+    return result;
+  }
+
+  const std::int64_t horizon_end_ns =
+      now_ns + secondsToNanoseconds(config.prediction_horizon_s);
+  const std::int64_t begin_ns =
+      std::max({now_ns, ownship.valid_from_ns, peer.valid_from_ns,
+                ownship.trajectory.front().time_ns, peer.trajectory.front().time_ns});
+  const std::int64_t end_ns =
+      std::min({horizon_end_ns, ownship.valid_until_ns, peer.valid_until_ns,
+                ownship.trajectory.back().time_ns, peer.trajectory.back().time_ns});
+  if (end_ns < begin_ns) {
+    result.valid = true;
+    result.minimum_separation_m = result.current_separation_m;
+    result.time_to_minimum_s = 0.0;
+    result.conflict_predicted =
+        result.current_separation_m < config.desired_minimum_separation_m;
+    return result;
+  }
+
   std::vector<std::int64_t> times{begin_ns, end_ns};
   appendTimesWithin(ownship, begin_ns, end_ns, times);
   appendTimesWithin(peer, begin_ns, end_ns, times);
   std::ranges::sort(times);
   times.erase(std::unique(times.begin(), times.end()), times.end());
 
-  double minimum_squared_m = std::numeric_limits<double>::infinity();
-  std::int64_t minimum_time_ns = begin_ns;
   if (times.size() == 1U) {
     const auto own_sample = sampleCooperativeTrajectory(ownship, times.front());
     const auto peer_sample = sampleCooperativeTrajectory(peer, times.front());
     if (!own_sample.has_value() || !peer_sample.has_value()) {
       return result;
     }
-    minimum_squared_m =
+    const double squared_m =
         squaredNorm(subtract(peer_sample->position, own_sample->position));
+    if (squared_m < minimum_squared_m) {
+      minimum_squared_m = squared_m;
+      minimum_time_ns = times.front();
+    }
   } else {
     for (std::size_t index = 0U; index + 1U < times.size(); ++index) {
       const auto own_begin = sampleCooperativeTrajectory(ownship, times[index]);

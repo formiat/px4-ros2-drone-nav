@@ -298,7 +298,7 @@ public:
       cooperative_intent_sub_ = create_subscription<msg::CooperativeFlightIntent>(
           declare_parameter<std::string>("cooperative_flight_intent_topic",
                                          "/cooperative_traffic/flight_intents"),
-          rclcpp::QoS{32}.reliable(),
+          cooperativeFlightIntentQos(),
           [this](const msg::CooperativeFlightIntent::SharedPtr intent) {
             const std::int64_t now_ns = get_clock()->now().nanoseconds();
             const CooperativePeerUpdateStatus status =

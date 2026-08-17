@@ -120,11 +120,25 @@ class CooperativeTrafficLaunchContractTest(unittest.TestCase):
         referee = (
             PACKAGE / "src" / "cooperative_traffic_referee_node.cpp"
         ).read_text(encoding="utf-8")
+        obstacle_memory = (
+            PACKAGE / "src" / "obstacle_memory_node.cpp"
+        ).read_text(encoding="utf-8")
 
         self.assertNotIn("inputFresh(execution_horizon_receive_ns_", agent)
         self.assertIn("valid_until_ns <= now_ns", agent)
-        self.assertIn("rclcpp::QoS{8}.best_effort()", agent)
-        self.assertIn("rclcpp::QoS{8}.best_effort()", referee)
+        self.assertIn("cooperativeFlightIntentQos()", agent)
+        self.assertIn("cooperativeFlightIntentQos()", referee)
+        self.assertIn("cooperativeFlightIntentQos()", obstacle_memory)
+        self.assertIn("makeStationaryCooperativeTrajectory", agent)
+        qos_contract = (
+            PACKAGE / "src" / "cooperative_traffic_ros.cpp"
+        ).read_text(encoding="utf-8")
+        self.assertIn("rclcpp::QoS{32}.best_effort()", qos_contract)
+        lifecycle = (
+            PACKAGE / "src" / "cooperative_traffic_referee_lifecycle.cpp"
+        ).read_text(encoding="utf-8")
+        self.assertIn("state=coordination_degraded", lifecycle)
+        self.assertIn("if (vehicle_state_fresh)", lifecycle)
 
 
 if __name__ == "__main__":

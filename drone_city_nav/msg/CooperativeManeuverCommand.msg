@@ -25,4 +25,6 @@ float64 passage_lateral_offset_m
 float64 passage_minimum_lateral_offset_m
 float64 passage_maximum_lateral_offset_m
 builtin_interfaces/Time passage_entry_not_before
+bool passage_queue_hold_station_valid
+float64 passage_queue_hold_station_m
 CooperativePeerTrajectory[] conflicting_peers
