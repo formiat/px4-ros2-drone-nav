@@ -54,6 +54,7 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/sim_cooperative_traffic_urban_headless.sh
 ./scripts/sim_urban_point_to_point_gui.sh
 ./scripts/sim_urban_point_to_point_headless.sh
+ENVIRONMENT_DEMO_ID=urban_circuit_practice_01 ./scripts/sim_environment_demo.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -80,6 +81,7 @@ make sim-cooperative-traffic-urban-gui
 make sim-cooperative-traffic-urban-headless
 make sim-urban-point-to-point-gui
 make sim-urban-point-to-point-headless
+ENVIRONMENT_DEMO_ID=urban_circuit_practice_01 make sim-environment-demo
 ```
 
 Build and run the isolated CUDA MPPI benchmark:
@@ -134,6 +136,36 @@ Run the GUI simulation:
 ```bash
 ./scripts/sim_gui.sh
 ```
+
+## Environment Spectator Demos
+
+Launch a downloaded environment without PX4, ROS, RViz, lidar, or a mission:
+
+```bash
+ENVIRONMENT_DEMO_ID=urban_circuit_practice_01 ./scripts/sim_environment_demo.sh
+```
+
+Gazebo's free camera is the spectator: use its normal mouse and keyboard camera
+controls to inspect the world. The demo materializes local visual resources and
+does not require a network connection after the relevant environment assets have
+been fetched.
+
+Available IDs are:
+
+```text
+finals_prize_round_world_07
+cave_circuit_practice_01
+urban_circuit_practice_01
+tunnel_circuit_practice_01
+cave_world
+industrial_warehouse
+aws_robomaker_small_warehouse
+aws_robomaker_hospital
+```
+
+The first three IDs use versioned release artifacts. The remaining IDs are
+local evaluation candidates and report a clear error if their cached source
+assets are absent.
 
 The 2D lidar is enabled by default. In a static-map run it can be disabled to
 remove the simulated sensor and its ROS scan bridge:

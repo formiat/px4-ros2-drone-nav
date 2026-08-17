@@ -338,6 +338,27 @@ def configure_gui_lighting(tree: ET.ElementTree) -> int:
 
 def remote_visual_resource_uris(source_root: Path) -> set[str]:
     result: set[str] = set()
+    resource_tags = {
+        "uri",
+        "albedo_map",
+        "normal_map",
+        "roughness_map",
+        "metalness_map",
+        "emissive_map",
+        "environment_map",
+        "light_map",
+        "init_from",
+    }
+
+    def collect(element: ET.Element, inside_script: bool = False) -> None:
+        tag = element.tag.rsplit("}", 1)[-1]
+        value = (element.text or "").strip()
+        fuel = ResourceResolver.fuel_parts(value)
+        if tag in resource_tags and not inside_script and fuel is not None and fuel[3]:
+            result.add(value)
+        for child in element:
+            collect(child, inside_script or tag == "script")
+
     for path in sorted(source_root.rglob("*")):
         if not path.is_file() or path.suffix.casefold() not in {".dae", ".sdf"}:
             continue
@@ -347,11 +368,7 @@ def remote_visual_resource_uris(source_root: Path) -> set[str]:
             raise EnvironmentPreparationError(
                 f"cannot inspect visual resources in {path}: {exc}"
             ) from exc
-        for element in root.iter():
-            value = (element.text or "").strip()
-            fuel = ResourceResolver.fuel_parts(value)
-            if fuel is not None and fuel[3]:
-                result.add(value)
+        collect(root)
     return result
 
 
@@ -371,9 +388,9 @@ def ensure_versioned_visual_resources(
         del unused_version
         dependency = pins.get((owner.casefold(), model.casefold()))
         if dependency is None:
-            raise EnvironmentPreparationError(
-                f"visual resource has no version pin: {owner}/{model} ({uri})"
-            )
+            # The source bundle owns this versioned Fuel asset. Only resources
+            # external to the bundle need an explicit download pin.
+            continue
         version = int(dependency["version"])
         destination = (
             cache_root

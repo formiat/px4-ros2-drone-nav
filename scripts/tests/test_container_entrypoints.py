@@ -26,6 +26,7 @@ class ContainerEntrypointTest(unittest.TestCase):
             "test.sh": "make test",
             "sim_gui.sh": "make sim-gui",
             "sim_headless.sh": "make sim-headless",
+            "sim_environment_demo.sh": "make sim-environment-demo",
         }
 
         for script_name, make_target in expected_targets.items():
@@ -38,7 +39,11 @@ class ContainerEntrypointTest(unittest.TestCase):
                 self.assertNotIn("docker run", text)
 
     def test_sim_wrappers_run_host_cleanup_before_container(self) -> None:
-        for script_name in ("sim_gui.sh", "sim_headless.sh"):
+        for script_name in (
+            "sim_gui.sh",
+            "sim_headless.sh",
+            "sim_environment_demo.sh",
+        ):
             with self.subTest(script_name=script_name):
                 text = self.read_script(script_name)
                 cleanup_index = text.index(

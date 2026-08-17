@@ -24,6 +24,7 @@ from sdf_collision_materializer import (  # noqa: E402
 from prepare_environment_simulation import (  # noqa: E402
     add_launch_platforms,
     configure_gui_lighting,
+    remote_visual_resource_uris,
 )
 
 
@@ -413,6 +414,112 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
                 [float(value) for value in emitted_light.findtext("pose").split()],
             )
             self.assertEqual("0 0 -1", emitted_light.findtext("direction"))
+
+    def test_gui_world_ignores_collada_sampler_symbols(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            models = root / "models"
+            building = models / "building"
+            mesh = building / "meshes" / "building.dae"
+            texture = building / "materials" / "textures" / "wall.png"
+            mesh.parent.mkdir(parents=True)
+            texture.parent.mkdir(parents=True)
+            texture.write_bytes(b"texture")
+            mesh.write_text(
+                "<COLLADA><library_effects><effect><profile_COMMON>"
+                "<newparam sid='wall-surface'><surface type='2D'>"
+                "<init_from>wall</init_from></surface></newparam>"
+                "</profile_COMMON></effect></library_effects>"
+                "<library_images><image id='wall'><init_from>"
+                "../materials/textures/wall.png"
+                "</init_from></image></library_images></COLLADA>",
+                encoding="utf-8",
+            )
+            (building / "model.sdf").write_text(
+                "<sdf version='1.10'><model name='building'><static>true</static>"
+                "<link name='link'><visual name='visual'><geometry><mesh><uri>"
+                "meshes/building.dae</uri></mesh></geometry></visual></link>"
+                "</model></sdf>",
+                encoding="utf-8",
+            )
+            world = root / "world.sdf"
+            world.write_text(
+                "<sdf version='1.10'><world name='candidate'><include><uri>"
+                "model://building</uri></include></world></sdf>",
+                encoding="utf-8",
+            )
+            output = root / "runtime" / "world_gui.sdf"
+            tree, _ = CollisionWorldMaterializer(
+                ResourceResolver([], [models]),
+                preserve_visuals=True,
+                localized_mesh_root=output.parent / "assets" / "meshes",
+            ).materialize(world)
+            write_materialized_world(tree, output)
+
+            self.assertGreaterEqual(validate_visual_resource_uris(output), 2)
+
+    def test_resolves_legacy_dae_resource_from_explicit_resource_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            models = root / "models"
+            building = models / "building"
+            mesh = building / "meshes" / "building.dae"
+            photo = root / "photos" / "portrait.jpg"
+            mesh.parent.mkdir(parents=True)
+            photo.parent.mkdir(parents=True)
+            photo.write_bytes(b"photo")
+            mesh.write_text(
+                "<COLLADA><library_images><image><init_from>"
+                "../../../../photos/portrait.jpg"
+                "</init_from></image></library_images></COLLADA>",
+                encoding="utf-8",
+            )
+            (building / "model.sdf").write_text(
+                "<sdf version='1.10'><model name='building'><static>true</static>"
+                "<link name='link'><visual name='visual'><geometry><mesh><uri>"
+                "meshes/building.dae</uri></mesh></geometry></visual></link>"
+                "</model></sdf>",
+                encoding="utf-8",
+            )
+            world = root / "world.sdf"
+            world.write_text(
+                "<sdf version='1.10'><world name='candidate'><include><uri>"
+                "model://building</uri></include></world></sdf>",
+                encoding="utf-8",
+            )
+            output = root / "runtime" / "world_gui.sdf"
+            tree, _ = CollisionWorldMaterializer(
+                ResourceResolver([], [models], [root / "photos"]),
+                preserve_visuals=True,
+                localized_mesh_root=output.parent / "assets" / "meshes",
+            ).materialize(world)
+            write_materialized_world(tree, output)
+
+            self.assertGreaterEqual(validate_visual_resource_uris(output), 2)
+
+    def test_remote_visual_resources_exclude_legacy_material_scripts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "world.sdf"
+            texture = (
+                "https://fuel.gazebosim.org/1.0/OpenRobotics/models/Texture/3/"
+                "files/materials/textures/wall.png"
+            )
+            script = (
+                "https://fuel.gazebosim.org/1.0/OpenRobotics/models/Legacy/2/"
+                "files/materials/scripts/"
+            )
+            source.write_text(
+                "<sdf version='1.10'><world name='candidate'><model name='wall'>"
+                "<link name='link'><visual name='visual'><geometry><box><size>1 1 1"
+                "</size></box></geometry><material><script><uri>"
+                f"{script}</uri></script><pbr><metal><albedo_map>{texture}"
+                "</albedo_map></metal></pbr></material></visual></link></model>"
+                "</world></sdf>",
+                encoding="utf-8",
+            )
+
+            self.assertEqual({texture}, remote_visual_resource_uris(root))
 
 
 if __name__ == "__main__":

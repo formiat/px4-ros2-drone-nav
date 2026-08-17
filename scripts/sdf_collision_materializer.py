@@ -131,9 +131,15 @@ class MaterializationReport:
 class ResourceResolver:
     _FUEL_HOSTS = ("fuel.gazebosim.org", "fuel.ignitionrobotics.org")
 
-    def __init__(self, fuel_caches: Iterable[Path], model_paths: Iterable[Path]):
+    def __init__(
+        self,
+        fuel_caches: Iterable[Path],
+        model_paths: Iterable[Path],
+        resource_paths: Iterable[Path] = (),
+    ):
         self._fuel_caches = tuple(path.resolve() for path in fuel_caches)
         self._model_paths = tuple(path.resolve() for path in model_paths)
+        self._resource_paths = tuple(path.resolve() for path in resource_paths)
 
     @staticmethod
     def fuel_parts(uri: str) -> tuple[str, str, int | None, tuple[str, ...]] | None:
@@ -258,6 +264,9 @@ class ResourceResolver:
             candidates.append((root / relative).resolve())
             if relative.parts and relative.parts[0] == root.name:
                 candidates.append((root.parent / relative).resolve())
+        for root in self._resource_paths:
+            candidates.append((root / relative).resolve())
+            candidates.append((root / relative.name).resolve())
         return candidates
 
 
@@ -603,9 +612,7 @@ class CollisionWorldMaterializer:
         root_namespace = _namespace_uri(tree.getroot().tag)
         if root_namespace:
             ET.register_namespace("", root_namespace)
-        for element in tree.getroot().iter():
-            if _local_tag(element.tag) != "init_from":
-                continue
+        for element in _collada_image_init_from_elements(tree.getroot()):
             value = (element.text or "").strip()
             if not value or value.startswith("#"):
                 continue
@@ -655,9 +662,7 @@ def validate_visual_resource_uris(output_sdf: Path) -> int:
         if resource.suffix.casefold() == ".dae":
             dae_files.add(resource)
     for dae_file in dae_files:
-        for element in ET.parse(dae_file).getroot().iter():
-            if _local_tag(element.tag) != "init_from":
-                continue
+        for element in _collada_image_init_from_elements(ET.parse(dae_file).getroot()):
             value = (element.text or "").strip()
             if value and not value.startswith("#"):
                 _require_local_resource(value, dae_file.parent)
@@ -708,6 +713,16 @@ def _namespace_uri(tag: str) -> str:
     if not tag.startswith("{") or "}" not in tag:
         return ""
     return tag[1 : tag.index("}")]
+
+
+def _collada_image_init_from_elements(root: ET.Element) -> Iterable[ET.Element]:
+    """Yield image resource URIs, excluding symbolic COLLADA sampler references."""
+    for image in root.iter():
+        if _local_tag(image.tag) != "image":
+            continue
+        for child in image:
+            if _local_tag(child.tag) == "init_from":
+                yield child
 
 
 def _require_local_resource(value: str, base: Path) -> Path:

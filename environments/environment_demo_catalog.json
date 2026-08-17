@@ -1,0 +1,79 @@
+{
+  "schema": "drone_city_nav_environment_demo_catalog_v1",
+  "environments": [
+    {
+      "id": "finals_prize_round_world_07",
+      "display_name": "Finals Prize Round World 07",
+      "source_kind": "release"
+    },
+    {
+      "id": "cave_circuit_practice_01",
+      "display_name": "Cave Circuit Practice 01",
+      "source_kind": "release"
+    },
+    {
+      "id": "urban_circuit_practice_01",
+      "display_name": "Urban Circuit Practice 01",
+      "source_kind": "release"
+    },
+    {
+      "id": "tunnel_circuit_practice_01",
+      "display_name": "Tunnel Circuit Practice 01",
+      "source_kind": "local",
+      "source_world": "external/environment-candidates/fuel/fuel.gazebosim.org/openrobotics/worlds/tunnel%20circuit%20practice%2001/1/tunnel_circuit_practice_01.sdf",
+      "fuel_caches": [
+        "external/environment-candidates/fuel"
+      ],
+      "model_paths": []
+    },
+    {
+      "id": "cave_world",
+      "display_name": "Cave World",
+      "source_kind": "local",
+      "source_world": "external/environment-candidates/fuel/fuel.gazebosim.org/openrobotics/worlds/cave%20world/1/cave.sdf",
+      "fuel_caches": [
+        "external/environment-candidates/fuel"
+      ],
+      "model_paths": []
+    },
+    {
+      "id": "industrial_warehouse",
+      "display_name": "Industrial Warehouse",
+      "source_kind": "local",
+      "source_world": "external/environment-candidates/fuel/fuel.gazebosim.org/openrobotics/worlds/industrial-warehouse/4/industrial-warehouse.sdf",
+      "fuel_caches": [
+        "external/environment-candidates/fuel"
+      ],
+      "model_paths": []
+    },
+    {
+      "id": "aws_robomaker_small_warehouse",
+      "display_name": "AWS RoboMaker Small Warehouse",
+      "source_kind": "local",
+      "source_world": "external/environment-candidates/sources/aws-robomaker-small-warehouse-world/worlds/small_warehouse/small_warehouse.world",
+      "fuel_caches": [
+        "external/environment-candidates/fuel"
+      ],
+      "model_paths": [
+        "external/environment-candidates/sources/aws-robomaker-small-warehouse-world/models"
+      ]
+    },
+    {
+      "id": "aws_robomaker_hospital",
+      "display_name": "AWS RoboMaker Hospital",
+      "source_kind": "local",
+      "source_world": "external/environment-candidates/sources/aws-robomaker-hospital-world/worlds/hospital_three_floors.world",
+      "fuel_caches": [
+        "external/environment-candidates/fuel"
+      ],
+      "model_paths": [
+        "external/environment-candidates/sources/aws-robomaker-hospital-world/models",
+        "external/environment-candidates/sources/aws-robomaker-hospital-world/fuel_models",
+        "external/environment-candidates/sources/gazebo_models"
+      ],
+      "resource_paths": [
+        "external/environment-candidates/sources/aws-robomaker-hospital-world/photos"
+      ]
+    }
+  ]
+}

@@ -36,6 +36,12 @@ format-check:
 format:
 	./scripts/format_cpp_changed.sh
 
+.PHONY: sim-environment-demo
+sim-environment-demo:
+	@test -n "$${ENVIRONMENT_DEMO_ID:-}" || \
+		(printf '%s\n' 'Set ENVIRONMENT_DEMO_ID, for example urban_circuit_practice_01.' >&2; exit 2)
+	./scripts/run_environment_demo.sh "$${ENVIRONMENT_DEMO_ID}"
+
 .PHONY: sim-gui
 sim-gui: build
 	./scripts/run_drone_nav_sim.sh
