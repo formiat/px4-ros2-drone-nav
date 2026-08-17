@@ -259,3 +259,25 @@ CPU/GPU timing.
 
 This stage is complete only when the mission suite succeeds on the new city
 without scenario-specific route scripts or geometry exceptions.
+
+## 10. Architectural Review And Optimization
+
+Perform a systematic architecture review after the navigation, passage, and
+large-environment mission contracts are established. The review must trace the
+end-to-end data and execution paths across sensing, mapping, topology,
+planning, MPPI, PX4 control, cooperative coordination, simulation, and
+diagnostics.
+
+Use repeatable representative missions to measure CPU, GPU, memory, ROS/DDS
+transport, simulator real-time factor, planning latency, control deadline
+misses, and scaling with vehicle count. Optimize confirmed bottlenecks while
+preserving typed contracts, raw-occupancy safety validation, and observable
+mission outcomes. Prefer removing duplicated work, stale data transport, and
+unnecessary process or synchronization overhead over increasing worker counts
+or weakening safety margins.
+
+This stage also records architectural debt, defines ownership and lifetime
+boundaries for shared resources, and converts validated optimizations into
+regression benchmarks. It is complete when the supported mission suite has
+measured performance budgets, reproducible baselines, and documented scaling
+limits for both static-map and 3D-sensing configurations.
