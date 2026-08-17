@@ -75,9 +75,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   mission_start_.x = declare_parameter<double>("start_x_m", 54.0);
   mission_start_.y = declare_parameter<double>("start_y_m", 54.0);
   mission_start_.z = declare_parameter<double>("start_z_m", 0.0);
-  mission_goal_.x = declare_parameter<double>("goal_x_m", 216.0);
-  mission_goal_.y = declare_parameter<double>("goal_y_m", 378.0);
-  mission_goal_.z = declare_parameter<double>("goal_z_m", 18.0);
   flight_envelope_config_.minimum_target_z_m =
       declare_parameter<double>("minimum_target_z_m", 1.0);
   flight_envelope_config_.maximum_target_z_m =
@@ -90,10 +87,9 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("mission_waypoint_stop_speed_mps", 0.8);
   mission_waypoint_sequence_config_.stop_hold_s =
       declare_parameter<double>("mission_waypoint_hold_s", 2.0);
-  const std::vector<Point3> mission_waypoints = missionWaypointsFromFlatParameters(
-      declare_parameter<std::vector<double>>("mission_goal_sequence_xyz_m",
-                                             std::vector<double>{}),
-      mission_goal_);
+  const std::vector<Point3> mission_waypoints =
+      missionWaypointsFromFlatParameters(declare_parameter<std::vector<double>>(
+          "mission_goal_sequence_xyz_m", std::vector<double>{}));
   for (const Point3& waypoint : mission_waypoints) {
     if (!insideFlightEnvelope(waypoint, flight_envelope_config_)) {
       throw std::invalid_argument{"mission waypoint is outside the flight envelope"};

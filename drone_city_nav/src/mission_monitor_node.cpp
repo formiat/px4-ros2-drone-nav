@@ -41,9 +41,6 @@ public:
       : Node{"mission_monitor_node"} {
     start_ = Point2{declare_parameter<double>("start_x_m", 54.0),
                     declare_parameter<double>("start_y_m", 54.0)};
-    goal_ = Point2{declare_parameter<double>("goal_x_m", 216.0),
-                   declare_parameter<double>("goal_y_m", 378.0)};
-    const double goal_z_m = declare_parameter<double>("goal_z_m", 18.0);
     px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 54.0),
                                declare_parameter<double>("px4_local_origin_y_m", 54.0)};
     spawn_tolerance_m_ = declare_parameter<double>("spawn_tolerance_m", 1.0);
@@ -52,10 +49,9 @@ public:
     stop_speed_mps_ = declare_parameter<double>("stop_speed_mps", 0.6);
     stop_hold_s_ = declare_parameter<double>("stop_hold_s", 2.0);
     shutdown_on_result_ = declare_parameter<bool>("shutdown_on_result", false);
-    const std::vector<Point3> waypoints = missionWaypointsFromFlatParameters(
-        declare_parameter<std::vector<double>>("mission_goal_sequence_xyz_m",
-                                               std::vector<double>{}),
-        Point3{goal_.x, goal_.y, goal_z_m});
+    const std::vector<Point3> waypoints =
+        missionWaypointsFromFlatParameters(declare_parameter<std::vector<double>>(
+            "mission_goal_sequence_xyz_m", std::vector<double>{}));
     waypoint_sequence_ = std::make_unique<MissionWaypointSequence>(
         waypoints, MissionWaypointSequenceConfig{.goal_radius_m = goal_radius_m_,
                                                  .stop_speed_mps = stop_speed_mps_,

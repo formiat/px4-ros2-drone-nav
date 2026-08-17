@@ -48,7 +48,7 @@ def validate(args: argparse.Namespace) -> None:
         args.planner_config.resolve(), args.static_route_tracking_margin_m
     )
     start = scenario["map_start_m"]
-    goal = scenario["goal_m"]
+    mission_goal_sequence = scenario["mission_goal_sequence_m"]
     initial_altitude_m = scenario["initial_altitude_m"]
     takeoff = (start[0], start[1], initial_altitude_m)
     launch_platforms = scenario["launch_platforms"]
@@ -107,34 +107,46 @@ def validate(args: argparse.Namespace) -> None:
         raise ScenarioValidationError(
             "vertical takeoff footprint intersects Occupancy3D"
         )
-    if not math.isclose(goal[2], initial_altitude_m, abs_tol=1.0e-6):
-        raise ScenarioValidationError("goal Z does not match initial altitude")
-
-    route_length_m = shortest_planar_route_m(
-        occupancy, takeoff, goal, route_footprint
-    )
-    if route_length_m is None:
-        raise ScenarioValidationError(
-            "start and goal are not in one route-safe component"
+    route_start = takeoff
+    total_route_length_m = 0.0
+    total_direct_length_m = 0.0
+    all_direct_clear = True
+    for waypoint_index, waypoint in enumerate(mission_goal_sequence):
+        if not math.isclose(waypoint[2], initial_altitude_m, abs_tol=1.0e-6):
+            raise ScenarioValidationError(
+                f"waypoint {waypoint_index} Z does not match initial altitude"
+            )
+        route_length_m = shortest_planar_route_m(
+            occupancy, route_start, waypoint, route_footprint
         )
-    if route_length_m < args.minimum_route_length_m:
-        raise ScenarioValidationError(
-            f"route is too short: {route_length_m:.1f} m"
+        if route_length_m is None:
+            raise ScenarioValidationError(
+                f"waypoint {waypoint_index} is not in the route-safe component"
+            )
+        direct_clear = planar_segment_is_clear(
+            occupancy, route_start, waypoint, route_footprint
         )
-    direct_clear = planar_segment_is_clear(
-        occupancy, takeoff, goal, route_footprint
-    )
-    if args.route_contract == "direct" and not direct_clear:
-        raise ScenarioValidationError("no direct swept-footprint route")
+        if args.route_contract == "direct" and not direct_clear:
+            raise ScenarioValidationError(
+                f"waypoint {waypoint_index} has no direct swept-footprint route"
+            )
+        total_route_length_m += route_length_m
+        total_direct_length_m += math.dist(route_start[:2], waypoint[:2])
+        all_direct_clear = all_direct_clear and direct_clear
+        route_start = waypoint
+    if total_route_length_m < args.minimum_route_length_m:
+        raise ScenarioValidationError(
+            f"route is too short: {total_route_length_m:.1f} m"
+        )
     print(
         "STATIC_POINT_TO_POINT_ROUTE"
         f" start=({start[0]:.3f},{start[1]:.3f},{start[2]:.3f})"
-        f" goal=({goal[0]:.3f},{goal[1]:.3f},{goal[2]:.3f})"
-        f" direct_m={math.dist(takeoff[:2], goal[:2]):.1f}"
-        f" geodesic_m={route_length_m:.1f}"
+        f" waypoint_count={len(mission_goal_sequence)}"
+        f" direct_m={total_direct_length_m:.1f}"
+        f" geodesic_m={total_route_length_m:.1f}"
         f" altitude_m={initial_altitude_m:.1f}"
         f" route_contract={args.route_contract}"
-        f" direct_clear={str(direct_clear).lower()} status=valid"
+        f" direct_clear={str(all_direct_clear).lower()} status=valid"
     )
 
 

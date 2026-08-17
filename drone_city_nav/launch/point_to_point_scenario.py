@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA = "drone_city_nav_point_to_point_scenario_v1"
+SCHEMA = "drone_city_nav_point_to_point_scenario_v2"
 _GAZEBO_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
 
@@ -22,6 +22,15 @@ def _finite_vector(value: Any, label: str) -> tuple[float, float, float]:
     if not all(math.isfinite(component) for component in result):
         raise ValueError(f"{label} must contain finite values")
     return result
+
+
+def _waypoint_sequence(value: Any) -> tuple[tuple[float, float, float], ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("mission_goal_sequence_m must be a non-empty array")
+    return tuple(
+        _finite_vector(waypoint, f"mission_goal_sequence_m[{index}]")
+        for index, waypoint in enumerate(value)
+    )
 
 
 def _required_string(document: dict[str, Any], key: str) -> str:
@@ -118,7 +127,9 @@ def load_point_to_point_scenario(path: str | Path) -> dict[str, Any]:
     if not isinstance(vehicle, dict):
         raise ValueError("vehicle must be an object")
     start = _finite_vector(vehicle.get("map_start_m"), "vehicle.map_start_m")
-    goal = _finite_vector(document.get("goal_m"), "goal_m")
+    mission_goal_sequence = _waypoint_sequence(
+        document.get("mission_goal_sequence_m")
+    )
     yaw_rad = float(vehicle.get("yaw_rad", 0.0))
     if not math.isfinite(yaw_rad):
         raise ValueError("vehicle.yaw_rad must be finite")
@@ -132,8 +143,9 @@ def load_point_to_point_scenario(path: str | Path) -> dict[str, Any]:
         raise ValueError("canonical world navigation values must be finite")
     if not minimum_target_z <= initial_altitude < maximum_target_z:
         raise ValueError("canonical world navigation envelope is invalid")
-    if not minimum_target_z <= goal[2] < maximum_target_z:
-        raise ValueError("goal is outside the canonical flight envelope")
+    for waypoint in mission_goal_sequence:
+        if not minimum_target_z <= waypoint[2] < maximum_target_z:
+            raise ValueError("mission waypoint is outside the canonical flight envelope")
 
     return {
         "path": scenario_path,
@@ -144,7 +156,7 @@ def load_point_to_point_scenario(path: str | Path) -> dict[str, Any]:
         "map_start_m": start,
         "gazebo_spawn_m": _map_to_sdf(start, transform),
         "yaw_rad": yaw_rad,
-        "goal_m": goal,
+        "mission_goal_sequence_m": mission_goal_sequence,
         "initial_altitude_m": initial_altitude,
         "minimum_target_z_m": minimum_target_z,
         "maximum_target_z_m": maximum_target_z,
@@ -164,7 +176,6 @@ def main() -> int:
         return 1
     start = scenario["map_start_m"]
     spawn = scenario["gazebo_spawn_m"]
-    goal = scenario["goal_m"]
     print(
         "\t".join(
             str(value)
@@ -175,7 +186,6 @@ def main() -> int:
                 *start,
                 *spawn,
                 scenario["yaw_rad"],
-                *goal,
             )
         )
     )

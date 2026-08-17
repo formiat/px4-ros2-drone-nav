@@ -207,7 +207,6 @@ def generate_launch_description():
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path)
             start_x_m, start_y_m, start_z_m = scenario["map_start_m"]
-            goal_x_m, goal_y_m, goal_z_m = scenario["goal_m"]
             navigation_overrides = {
                 "px4_local_origin_x_m": start_x_m,
                 "px4_local_origin_y_m": start_y_m,
@@ -218,9 +217,11 @@ def generate_launch_description():
                 "start_x_m": start_x_m,
                 "start_y_m": start_y_m,
                 "start_z_m": start_z_m,
-                "goal_x_m": goal_x_m,
-                "goal_y_m": goal_y_m,
-                "goal_z_m": goal_z_m,
+                "mission_goal_sequence_xyz_m": [
+                    component
+                    for waypoint in scenario["mission_goal_sequence_m"]
+                    for component in waypoint
+                ],
             }
             obstacle_memory_overrides.update(
                 {
@@ -504,7 +505,7 @@ def generate_launch_description():
                 default_value="",
                 description=(
                     "Optional YAML list of sequential point-to-point x,y,z mission "
-                    "waypoints. Leave empty for the configured single goal."
+                    "waypoints. Leave empty to use the parameter-file sequence."
                 ),
             ),
             DeclareLaunchArgument(

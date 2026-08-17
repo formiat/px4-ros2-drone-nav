@@ -35,15 +35,23 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertEqual(
             scenario["canonical_world_path"], WORLD_PATH.resolve()
         )
-        self.assertEqual(scenario["gazebo_world_name"], "urban_circuit_practice_01_collisions")
+        self.assertEqual(
+            scenario["gazebo_world_name"], "urban_circuit_practice_01_collisions"
+        )
         self.assertEqual(scenario["map_start_m"], scenario["gazebo_spawn_m"])
         self.assertEqual(scenario["map_start_m"], (-28.0, -159.75, 1.8))
-        self.assertEqual(scenario["goal_m"], (-139.75, -59.75, 7.5))
+        self.assertEqual(
+            scenario["mission_goal_sequence_m"], ((-139.75, -59.75, 7.5),)
+        )
         self.assertEqual(scenario["initial_altitude_m"], 7.5)
         self.assertEqual(len(scenario["launch_platforms"]), 1)
+        final_waypoint = scenario["mission_goal_sequence_m"][-1]
         self.assertGreaterEqual(
-            ((scenario["goal_m"][0] - scenario["map_start_m"][0]) ** 2
-             + (scenario["goal_m"][1] - scenario["map_start_m"][1]) ** 2) ** 0.5,
+            (
+                (final_waypoint[0] - scenario["map_start_m"][0]) ** 2
+                + (final_waypoint[1] - scenario["map_start_m"][1]) ** 2
+            )
+            ** 0.5,
             120.0,
         )
 

@@ -14,13 +14,10 @@ namespace {
 } // namespace
 
 std::vector<Point3>
-missionWaypointsFromFlatParameters(const std::span<const double> parameters,
-                                   const Point3 fallback_goal) {
-  if (!finitePoint(fallback_goal)) {
-    throw std::invalid_argument{"mission waypoint fallback goal must be finite"};
-  }
+missionWaypointsFromFlatParameters(const std::span<const double> parameters) {
   if (parameters.empty()) {
-    return {fallback_goal};
+    throw std::invalid_argument{
+        "mission_goal_sequence_xyz_m must contain at least one x,y,z waypoint"};
   }
   if (parameters.size() % 3U != 0U) {
     throw std::invalid_argument{

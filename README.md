@@ -89,6 +89,8 @@ route follows the four city corners. Override it with `MISSION_GOALS_XYZ_M`
 using `x,y,z;x,y,z;...` syntax; each waypoint is terminal and the mission
 succeeds only after the vehicle settles at the last one.
 
+A single-destination mission uses the same parameter with one `x,y,z` triple.
+
 ```bash
 MISSION_GOALS_XYZ_M='216,54,18;216,378,18;54,378,18;54,54,18' \
   ./scripts/sim_headless.sh

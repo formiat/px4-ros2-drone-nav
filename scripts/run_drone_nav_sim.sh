@@ -745,7 +745,7 @@ fi
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 if ! bool_is_true "${multi_vehicle_mission}"; then
-  echo "Point-to-point waypoint sequence: ${mission_goal_sequence_xyz_m:-configured_single_goal}"
+  echo "Point-to-point waypoint sequence: ${mission_goal_sequence_xyz_m:-configured_parameter_sequence}"
   echo "Point-to-point shutdown on mission result: ${point_to_point_shutdown_on_mission_result}"
 fi
 echo "City navigation params: ${city_nav_params_file}"

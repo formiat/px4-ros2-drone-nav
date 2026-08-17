@@ -29,8 +29,7 @@ struct MissionWaypointUpdate {
 };
 
 [[nodiscard]] std::vector<Point3>
-missionWaypointsFromFlatParameters(std::span<const double> parameters,
-                                   Point3 fallback_goal);
+missionWaypointsFromFlatParameters(std::span<const double> parameters);
 
 class MissionWaypointSequence final {
 public:

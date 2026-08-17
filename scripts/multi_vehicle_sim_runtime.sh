@@ -93,7 +93,6 @@ load_point_to_point_sim_scenario() {
   point_to_point_gazebo_model_name=""
   point_to_point_map_start_pose=""
   point_to_point_gazebo_spawn_pose=""
-  point_to_point_goal_m=""
   if [[ -z "${scenario_override}" ]]; then
     return 0
   fi
@@ -105,13 +104,12 @@ load_point_to_point_sim_scenario() {
     echo "Failed to resolve point-to-point scenario: ${point_to_point_scenario_path}" >&2
     return 1
   fi
-  local map_x map_y map_z gazebo_x gazebo_y gazebo_z yaw_rad goal_x goal_y goal_z
+  local map_x map_y map_z gazebo_x gazebo_y gazebo_z yaw_rad
   IFS=$'\t' read -r point_to_point_world_name point_to_point_px4_model_target \
     point_to_point_gazebo_model_name map_x map_y map_z gazebo_x gazebo_y gazebo_z \
-    yaw_rad goal_x goal_y goal_z <<< "${scenario_tsv}"
+    yaw_rad <<< "${scenario_tsv}"
   point_to_point_map_start_pose="${map_x},${map_y},${map_z},0,0,${yaw_rad}"
   point_to_point_gazebo_spawn_pose="${gazebo_x},${gazebo_y},${gazebo_z},0,0,${yaw_rad}"
-  point_to_point_goal_m="${goal_x},${goal_y},${goal_z}"
 }
 
 resolve_point_to_point_runtime() {

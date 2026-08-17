@@ -8,19 +8,13 @@
 namespace drone_city_nav {
 namespace {
 
-TEST(MissionWaypointSequenceTest, UsesFallbackForAnEmptyParameter) {
-  const std::vector<Point3> waypoints = missionWaypointsFromFlatParameters(
-      std::array<double, 0U>{}, Point3{1.0, 2.0, 3.0});
-
-  ASSERT_EQ(waypoints.size(), 1U);
-  EXPECT_EQ(waypoints.front().x, 1.0);
-  EXPECT_EQ(waypoints.front().y, 2.0);
-  EXPECT_EQ(waypoints.front().z, 3.0);
+TEST(MissionWaypointSequenceTest, RejectsAnEmptyParameter) {
+  EXPECT_THROW(missionWaypointsFromFlatParameters(std::array<double, 0U>{}),
+               std::invalid_argument);
 }
 
 TEST(MissionWaypointSequenceTest, RejectsIncompleteWaypointTriples) {
-  EXPECT_THROW(missionWaypointsFromFlatParameters(std::array<double, 2U>{1.0, 2.0},
-                                                  Point3{1.0, 2.0, 3.0}),
+  EXPECT_THROW(missionWaypointsFromFlatParameters(std::array<double, 2U>{1.0, 2.0}),
                std::invalid_argument);
 }
 

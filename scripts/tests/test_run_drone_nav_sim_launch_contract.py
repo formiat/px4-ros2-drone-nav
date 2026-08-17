@@ -293,7 +293,13 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('"px4_local_origin_x_m": start_x_m', self.launch_text)
         self.assertIn('"px4_local_origin_z_m": start_z_m', self.launch_text)
         self.assertIn('"initial_altitude_m": scenario["initial_altitude_m"]', self.launch_text)
-        self.assertIn('"goal_z_m": goal_z_m', self.launch_text)
+        self.assertIn('"mission_goal_sequence_xyz_m": [', self.launch_text)
+        self.assertNotIn('"goal_x_m": goal_x_m', self.launch_text)
+        self.assertIn(
+            "mission_goal_sequence_xyz_m: [216.0, 378.0, 18.0]",
+            self.nav_config_text,
+        )
+        self.assertNotIn("goal_x_m:", self.nav_config_text)
         self.assertIn("static_esdf_3d_cache_path", self.launch_text)
         self.assertIn("optional_nonnegative_float_override", self.launch_text)
         self.assertIn("cruise_speed_mps", self.launch_text)

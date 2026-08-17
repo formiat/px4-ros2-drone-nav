@@ -1,5 +1,5 @@
 {
-  "schema": "drone_city_nav_point_to_point_scenario_v1",
+  "schema": "drone_city_nav_point_to_point_scenario_v2",
   "canonical_world": "../worlds/urban_circuit_practice_01.world3d.json",
   "launch_platforms": [
     {
@@ -15,5 +15,5 @@
     "map_start_m": [-28.0, -159.75, 1.8],
     "yaw_rad": 2.4116276060443145
   },
-  "goal_m": [-139.75, -59.75, 7.5]
+  "mission_goal_sequence_m": [[-139.75, -59.75, 7.5]]
 }
