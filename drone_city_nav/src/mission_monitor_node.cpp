@@ -1,3 +1,4 @@
+#include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -11,8 +12,8 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -42,6 +43,7 @@ public:
                     declare_parameter<double>("start_y_m", 54.0)};
     goal_ = Point2{declare_parameter<double>("goal_x_m", 216.0),
                    declare_parameter<double>("goal_y_m", 378.0)};
+    const double goal_z_m = declare_parameter<double>("goal_z_m", 18.0);
     px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 54.0),
                                declare_parameter<double>("px4_local_origin_y_m", 54.0)};
     spawn_tolerance_m_ = declare_parameter<double>("spawn_tolerance_m", 1.0);
@@ -49,6 +51,17 @@ public:
     goal_radius_m_ = declare_parameter<double>("goal_radius_m", 2.0);
     stop_speed_mps_ = declare_parameter<double>("stop_speed_mps", 0.6);
     stop_hold_s_ = declare_parameter<double>("stop_hold_s", 2.0);
+    shutdown_on_result_ = declare_parameter<bool>("shutdown_on_result", false);
+    const std::vector<Point3> waypoints = missionWaypointsFromFlatParameters(
+        declare_parameter<std::vector<double>>("mission_goal_sequence_xyz_m",
+                                               std::vector<double>{}),
+        Point3{goal_.x, goal_.y, goal_z_m});
+    waypoint_sequence_ = std::make_unique<MissionWaypointSequence>(
+        waypoints, MissionWaypointSequenceConfig{.goal_radius_m = goal_radius_m_,
+                                                 .stop_speed_mps = stop_speed_mps_,
+                                                 .stop_hold_s = stop_hold_s_});
+    goal_ =
+        Point2{waypoint_sequence_->activeGoal().x, waypoint_sequence_->activeGoal().y};
 
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
@@ -85,9 +98,10 @@ public:
     summary_timer_ =
         create_wall_timer(std::chrono::seconds{5}, [this] { logSummary(); });
     RCLCPP_INFO(get_logger(),
-                "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
-                "goal_radius=%.2fm",
-                start_.x, start_.y, goal_.x, goal_.y, goal_radius_m_);
+                "Mission monitor ready: start=(%.2f, %.2f) waypoint_count=%zu "
+                "first_goal=(%.2f, %.2f) goal_radius=%.2fm",
+                start_.x, start_.y, waypoint_sequence_->waypointCount(), goal_.x,
+                goal_.y, goal_radius_m_);
   }
 
 private:
@@ -123,18 +137,31 @@ private:
       ++speed_samples_;
     }
     moved_ = moved_ || maximum_distance_from_start_m_ >= minimum_movement_m_;
-    const bool captured = goal_distance_m <= goal_radius_m_ &&
-                          latest_speed_mps_ <= stop_speed_mps_ && armed_seen_;
     const auto now_time = now();
-    if (!captured) {
-      goal_hold_started_.reset();
+    const MissionWaypointUpdate waypoint_update =
+        waypoint_sequence_->update(MissionWaypointObservation{
+            .stamp_ns = now_time.nanoseconds(),
+            .goal_captured = goal_distance_m <= goal_radius_m_ && armed_seen_,
+            .horizontal_speed_mps = latest_speed_mps_});
+    if (!waypoint_update.waypoint_completed) {
       return;
     }
-    if (!goal_hold_started_) {
-      goal_hold_started_ = now_time;
+    if (waypoint_update.advanced) {
+      const Point3& next_goal = waypoint_sequence_->activeGoal();
+      goal_ = Point2{next_goal.x, next_goal.y};
+      minimum_goal_distance_m_ = std::numeric_limits<double>::infinity();
+      RCLCPP_INFO(get_logger(),
+                  "MISSION_WAYPOINT_REACHED completed_index=%zu waypoint_count=%zu "
+                  "next_goal=(%.2f,%.2f,%.2f)",
+                  waypoint_update.completed_index, waypoint_sequence_->waypointCount(),
+                  next_goal.x, next_goal.y, next_goal.z);
       return;
     }
-    if ((now_time - *goal_hold_started_).seconds() >= stop_hold_s_) {
+    if (waypoint_update.mission_completed) {
+      RCLCPP_INFO(get_logger(),
+                  "MISSION_WAYPOINT_REACHED completed_index=%zu waypoint_count=%zu "
+                  "terminal=true",
+                  waypoint_update.completed_index, waypoint_sequence_->waypointCount());
       report(spawn_ok_ && moved_, spawn_ok_ && moved_ ? "none" : "mission_contract");
     }
   }
@@ -148,19 +175,30 @@ private:
     result_reported_ = true;
     const char* format =
         "MISSION_RESULT success=%s reason='%s' spawn_distance=%.2f "
-        "max_distance_from_start=%.2f min_goal_distance=%.2f "
+        "max_distance_from_start=%.2f min_goal_distance=%.2f waypoint_count=%zu "
+        "completed_waypoints=%zu "
         "final_position=(%.2f, %.2f) final_altitude=%.2f final_speed=%.2f "
         "max_observed_speed=%.2f mean_observed_speed=%.2f";
     if (success) {
       RCLCPP_INFO(get_logger(), format, "true", reason.c_str(), spawn_distance_m_,
                   maximum_distance_from_start_m_, minimum_goal_distance_m_,
-                  latest_position_.x, latest_position_.y, latest_altitude_m_,
-                  latest_speed_mps_, maximum_speed_mps_, meanSpeed());
+                  waypoint_sequence_->waypointCount(),
+                  waypoint_sequence_->completedWaypointCount(), latest_position_.x,
+                  latest_position_.y, latest_altitude_m_, latest_speed_mps_,
+                  maximum_speed_mps_, meanSpeed());
     } else {
       RCLCPP_ERROR(get_logger(), format, "false", reason.c_str(), spawn_distance_m_,
                    maximum_distance_from_start_m_, minimum_goal_distance_m_,
-                   latest_position_.x, latest_position_.y, latest_altitude_m_,
-                   latest_speed_mps_, maximum_speed_mps_, meanSpeed());
+                   waypoint_sequence_->waypointCount(),
+                   waypoint_sequence_->completedWaypointCount(), latest_position_.x,
+                   latest_position_.y, latest_altitude_m_, latest_speed_mps_,
+                   maximum_speed_mps_, meanSpeed());
+    }
+    if (shutdown_on_result_) {
+      shutdown_timer_ = create_wall_timer(std::chrono::milliseconds{100}, [this] {
+        shutdown_timer_->cancel();
+        rclcpp::shutdown();
+      });
     }
   }
 
@@ -171,11 +209,13 @@ private:
     RCLCPP_INFO(get_logger(),
                 "Mission summary: spawn_ok=%s moved=%s armed_seen=%s "
                 "position=(%.2f, %.2f) altitude=%.2f speed=%.2f "
-                "distance_to_goal=%.2f min_goal_distance=%.2f",
+                "active_waypoint=%zu/%zu distance_to_goal=%.2f min_goal_distance=%.2f",
                 spawn_ok_ ? "true" : "false", moved_ ? "true" : "false",
                 armed_seen_ ? "true" : "false", latest_position_.x, latest_position_.y,
                 latest_altitude_m_, latest_speed_mps_,
-                distance(latest_position_, goal_), minimum_goal_distance_m_);
+                waypoint_sequence_->activeIndex() + 1U,
+                waypoint_sequence_->waypointCount(), distance(latest_position_, goal_),
+                minimum_goal_distance_m_);
   }
 
   Point2 start_{};
@@ -201,12 +241,14 @@ private:
   bool moved_{false};
   bool armed_seen_{false};
   bool result_reported_{false};
-  std::optional<rclcpp::Time> goal_hold_started_;
+  bool shutdown_on_result_{false};
+  std::unique_ptr<MissionWaypointSequence> waypoint_sequence_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
+  rclcpp::TimerBase::SharedPtr shutdown_timer_;
 };
 
 } // namespace drone_city_nav

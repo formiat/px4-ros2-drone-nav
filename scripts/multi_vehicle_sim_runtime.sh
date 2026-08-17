@@ -125,7 +125,7 @@ resolve_point_to_point_gazebo_spawn() {
   local start_x_m start_y_m start_z_m unused_roll unused_pitch start_yaw_rad
 
   IFS=',' read -r start_x_m start_y_m start_z_m unused_roll unused_pitch \
-    start_yaw_rad <<< "${point_to_point_gazebo_spawn_pose:--171.0,-81.0,-0.3,0,0,0}"
+    start_yaw_rad <<< "${point_to_point_gazebo_spawn_pose:--171.0,-81.0,0.3,0,0,0}"
   point_gazebo_spawn_x_m="${SIM_START_X_M:-${start_x_m}}"
   point_gazebo_spawn_y_m="${SIM_START_Y_M:-${start_y_m}}"
   point_gazebo_spawn_z_m="${SIM_START_Z_M:-${start_z_m}}"

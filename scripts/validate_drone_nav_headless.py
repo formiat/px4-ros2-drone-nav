@@ -640,6 +640,43 @@ def validate_building_collisions(ros_log: str, errors: list[str]) -> None:
         )
 
 
+def validate_point_to_point_waypoints(ros_log: str, errors: list[str]) -> None:
+    result = re.search(
+        r"MISSION_RESULT success=true .*waypoint_count=([0-9]+) "
+        r"completed_waypoints=([0-9]+)",
+        ros_log,
+    )
+    if result is None:
+        errors.append("FAIL: point-to-point mission reports waypoint completion")
+        return
+    waypoint_count = int(result.group(1))
+    completed_waypoints = int(result.group(2))
+    reached_events = len(
+        re.findall(
+            r"MISSION_WAYPOINT_REACHED completed_index=[0-9]+ "
+            r"waypoint_count=[0-9]+",
+            ros_log,
+        )
+    )
+    if waypoint_count < 1:
+        errors.append("FAIL: point-to-point mission has at least one waypoint")
+    elif completed_waypoints != waypoint_count:
+        errors.append(
+            "FAIL: point-to-point mission completes every configured waypoint "
+            f"({completed_waypoints} != {waypoint_count})"
+        )
+    elif reached_events < waypoint_count:
+        errors.append(
+            "FAIL: point-to-point mission logs every waypoint arrival "
+            f"({reached_events} < {waypoint_count})"
+        )
+    else:
+        print(
+            "OK: point-to-point mission completes every waypoint "
+            f"({completed_waypoints}/{waypoint_count})"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate production MPPI headless run logs."
@@ -813,6 +850,8 @@ def main() -> int:
             validate_cooperative_traffic(
                 ros_log, expected_vehicles, expected_memory, errors
             )
+        else:
+            validate_point_to_point_waypoints(ros_log, errors)
     elif mission_failed:
         print("WARN: mission failure was allowed")
 

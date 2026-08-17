@@ -1,11 +1,19 @@
+import math
 from pathlib import Path
 import sys
 
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import (
+    DeclareLaunchArgument,
+    LogInfo,
+    OpaqueFunction,
+    RegisterEventHandler,
+    Shutdown,
+)
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -43,6 +51,40 @@ def optional_nonnegative_float_override(context, launch_config, argument_name):
         raise RuntimeError(
             f"Launch argument '{argument_name}' must be non-negative, got '{value}'"
         )
+    return result
+
+
+def optional_waypoint_sequence_override(context, launch_config, argument_name):
+    value = launch_config.perform(context).strip()
+    if not value:
+        return None
+    try:
+        parsed = yaml.safe_load(value)
+    except yaml.YAMLError as error:
+        raise RuntimeError(
+            f"Launch argument '{argument_name}' must be a YAML numeric list"
+        ) from error
+    if not isinstance(parsed, list) or len(parsed) == 0 or len(parsed) % 3 != 0:
+        raise RuntimeError(
+            f"Launch argument '{argument_name}' must contain one or more x,y,z triples"
+        )
+    result = []
+    for component in parsed:
+        if isinstance(component, bool):
+            raise RuntimeError(
+                f"Launch argument '{argument_name}' must contain numeric components"
+            )
+        try:
+            numeric = float(component)
+        except (TypeError, ValueError) as error:
+            raise RuntimeError(
+                f"Launch argument '{argument_name}' must contain numeric components"
+            ) from error
+        if not math.isfinite(numeric):
+            raise RuntimeError(
+                f"Launch argument '{argument_name}' must contain finite components"
+            )
+        result.append(numeric)
     return result
 
 
@@ -86,6 +128,8 @@ def generate_launch_description():
     maximum_horizontal_acceleration_mps2 = LaunchConfiguration(
         "maximum_horizontal_acceleration_mps2"
     )
+    mission_goal_sequence_xyz_m = LaunchConfiguration("mission_goal_sequence_xyz_m")
+    shutdown_on_mission_result = LaunchConfiguration("shutdown_on_mission_result")
     point_to_point_scenario_path = LaunchConfiguration("point_to_point_scenario_path")
     simulation_bridge = Node(
         package="ros_gz_bridge",
@@ -209,9 +253,23 @@ def generate_launch_description():
             params_file.perform(context),
             {"use_sim_time": True},
         ]
+        monitor_shutdown = optional_bool_override(
+            context, shutdown_on_mission_result, "shutdown_on_mission_result"
+        )
+        assert monitor_shutdown is not None
+        mission_monitor_parameters.append({"shutdown_on_result": monitor_shutdown})
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
+        waypoint_sequence_override = optional_waypoint_sequence_override(
+            context, mission_goal_sequence_xyz_m, "mission_goal_sequence_xyz_m"
+        )
+        if waypoint_sequence_override is not None:
+            waypoint_parameters = {
+                "mission_goal_sequence_xyz_m": waypoint_sequence_override
+            }
+            production_mppi_parameters.append(waypoint_parameters)
+            mission_monitor_parameters.append(waypoint_parameters)
         if static_map_override is not None:
             production_mppi_parameters.append(
                 {"use_static_map": static_map_override}
@@ -286,6 +344,14 @@ def generate_launch_description():
                 parameters=obstacle_memory_parameters,
             )
         )
+        mission_monitor = Node(
+            package="drone_city_nav",
+            executable="mission_monitor_node",
+            name="mission_monitor_node",
+            output="screen",
+            condition=IfCondition(enable_mission_monitor),
+            parameters=mission_monitor_parameters,
+        )
         nodes.extend(
             [
                 Node(
@@ -302,13 +368,21 @@ def generate_launch_description():
                     output="screen",
                     parameters=production_mppi_parameters,
                 ),
-                Node(
-                    package="drone_city_nav",
-                    executable="mission_monitor_node",
-                    name="mission_monitor_node",
-                    output="screen",
-                    condition=IfCondition(enable_mission_monitor),
-                    parameters=mission_monitor_parameters,
+                mission_monitor,
+                RegisterEventHandler(
+                    OnProcessExit(
+                        target_action=mission_monitor,
+                        on_exit=[
+                            LogInfo(
+                                msg=(
+                                    "Mission monitor exited; shutting down the "
+                                    "point-to-point launch."
+                                )
+                            ),
+                            Shutdown(reason="point-to-point mission result"),
+                        ],
+                    ),
+                    condition=IfCondition(shutdown_on_mission_result),
                 ),
             ]
         )
@@ -423,6 +497,22 @@ def generate_launch_description():
                 description=(
                     "Optional canonical point-to-point scenario. It supplies the "
                     "Gazebo model, PX4 map origin, navigation start, and goal."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "mission_goal_sequence_xyz_m",
+                default_value="",
+                description=(
+                    "Optional YAML list of sequential point-to-point x,y,z mission "
+                    "waypoints. Leave empty for the configured single goal."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "shutdown_on_mission_result",
+                default_value="false",
+                description=(
+                    "Shut down the point-to-point launch after the mission monitor "
+                    "reports its terminal result."
                 ),
             ),
             DeclareLaunchArgument(

@@ -49,6 +49,38 @@ bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
 }
 
+format_mission_goal_sequence() {
+  local sequence="$1"
+  python3 - "${sequence}" <<'PY'
+import math
+import sys
+
+raw = sys.argv[1].strip()
+if not raw:
+    raise SystemExit("MISSION_GOALS_XYZ_M must not be empty when provided")
+values = []
+for waypoint_index, waypoint in enumerate(raw.split(";")):
+    components = [component.strip() for component in waypoint.split(",")]
+    if len(components) != 3 or any(not component for component in components):
+        raise SystemExit(
+            "MISSION_GOALS_XYZ_M must use x,y,z;x,y,z syntax; "
+            f"invalid waypoint {waypoint_index}"
+        )
+    try:
+        numeric = [float(component) for component in components]
+    except ValueError as error:
+        raise SystemExit(
+            f"MISSION_GOALS_XYZ_M contains a non-numeric waypoint {waypoint_index}"
+        ) from error
+    if not all(math.isfinite(component) for component in numeric):
+        raise SystemExit(
+            f"MISSION_GOALS_XYZ_M contains a non-finite waypoint {waypoint_index}"
+        )
+    values.extend(numeric)
+print("[" + ", ".join(f"{value:.12g}" for value in values) + "]")
+PY
+}
+
 # shellcheck source=multi_vehicle_sim_runtime.sh
 source "${repo_root}/scripts/multi_vehicle_sim_runtime.sh"
 # shellcheck source=gazebo_gui_camera_runtime.sh
@@ -214,6 +246,10 @@ px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 allow_mission_failure="$(normalize_bool "${ALLOW_MISSION_FAILURE:-false}")"
 headless="${HEADLESS:-}"
+mission_goal_sequence_xyz_m=""
+if [[ -n "${MISSION_GOALS_XYZ_M+x}" ]]; then
+  mission_goal_sequence_xyz_m="$(format_mission_goal_sequence "${MISSION_GOALS_XYZ_M}")"
+fi
 if [[ -n "${MULTI_VEHICLE_SHUTDOWN_ON_TERMINAL_OUTCOME+x}" ]]; then
   multi_vehicle_shutdown_on_terminal_outcome="$(
     normalize_bool "${MULTI_VEHICLE_SHUTDOWN_ON_TERMINAL_OUTCOME}"
@@ -227,6 +263,22 @@ elif [[ -n "${headless}" ]]; then
 else
   multi_vehicle_shutdown_on_terminal_outcome="false"
 fi
+if [[ -n "${POINT_TO_POINT_SHUTDOWN_ON_MISSION_RESULT+x}" ]]; then
+  point_to_point_shutdown_on_mission_result="$(
+    normalize_bool "${POINT_TO_POINT_SHUTDOWN_ON_MISSION_RESULT}"
+  )"
+elif [[ -n "${headless}" ]]; then
+  point_to_point_shutdown_on_mission_result="true"
+else
+  point_to_point_shutdown_on_mission_result="false"
+fi
+case "${point_to_point_shutdown_on_mission_result}" in
+true | false) ;;
+*)
+  echo "POINT_TO_POINT_SHUTDOWN_ON_MISSION_RESULT must be a boolean" >&2
+  exit 1
+  ;;
+esac
 if [[ -n "${ENABLE_RVIZ+x}" ]]; then
   enable_rviz="${ENABLE_RVIZ}"
 elif [[ -n "${headless}" ]]; then
@@ -692,6 +744,10 @@ if bool_is_true "${multi_vehicle_mission}"; then
 fi
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
+if ! bool_is_true "${multi_vehicle_mission}"; then
+  echo "Point-to-point waypoint sequence: ${mission_goal_sequence_xyz_m:-configured_single_goal}"
+  echo "Point-to-point shutdown on mission result: ${point_to_point_shutdown_on_mission_result}"
+fi
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}")"
@@ -916,7 +972,6 @@ if bool_is_true "${multi_vehicle_mission}"; then
 else
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
-    point_to_point_scenario_path:="${point_to_point_scenario_path}"
     lidar_debug_output_dir:="${lidar_debug_dir}"
     lidar_memory_hit_dump_path:="${lidar_memory_hit_dump_path}"
     enable_gazebo_bridge:=true
@@ -927,7 +982,18 @@ else
     enable_rviz:="${enable_rviz}"
     rviz_config:="${rviz_config_file}"
     rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
+    shutdown_on_mission_result:="${point_to_point_shutdown_on_mission_result}"
   )
+  if [[ -n "${point_to_point_scenario_path}" ]]; then
+    ros_launch_args+=(
+      point_to_point_scenario_path:="${point_to_point_scenario_path}"
+    )
+  fi
+  if [[ -n "${mission_goal_sequence_xyz_m}" ]]; then
+    ros_launch_args+=(
+      mission_goal_sequence_xyz_m:="${mission_goal_sequence_xyz_m}"
+    )
+  fi
 fi
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")

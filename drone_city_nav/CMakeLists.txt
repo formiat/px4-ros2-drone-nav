@@ -193,6 +193,7 @@ add_library(
   src/local_esdf_2d.cpp
   src/mapping_lifecycle.cpp
   src/mission_goal_capture.cpp
+  src/mission_waypoint_sequence.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/px4_ros_time_mapper.cpp
@@ -749,6 +750,12 @@ if(BUILD_TESTING)
   target_compile_features(mission_goal_capture_test PRIVATE cxx_std_20)
   target_link_libraries(mission_goal_capture_test drone_city_nav_core)
   enable_project_warnings(mission_goal_capture_test)
+
+  ament_add_gtest(mission_waypoint_sequence_test
+                  tests/mission_waypoint_sequence_test.cpp)
+  target_compile_features(mission_waypoint_sequence_test PRIVATE cxx_std_20)
+  target_link_libraries(mission_waypoint_sequence_test drone_city_nav_core)
+  enable_project_warnings(mission_waypoint_sequence_test)
 
   ament_add_gtest(mapping_lifecycle_test tests/mapping_lifecycle_test.cpp)
   target_compile_features(mapping_lifecycle_test PRIVATE cxx_std_20)

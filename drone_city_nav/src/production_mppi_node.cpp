@@ -82,6 +82,26 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("minimum_target_z_m", 1.0);
   flight_envelope_config_.maximum_target_z_m =
       declare_parameter<double>("maximum_target_z_m", 32.0);
+  mission_goal_capture_config_.capture_radius_m =
+      declare_parameter<double>("mission_goal_capture_radius_m", 2.0);
+  mission_waypoint_sequence_config_.goal_radius_m =
+      mission_goal_capture_config_.capture_radius_m;
+  mission_waypoint_sequence_config_.stop_speed_mps =
+      declare_parameter<double>("mission_waypoint_stop_speed_mps", 0.8);
+  mission_waypoint_sequence_config_.stop_hold_s =
+      declare_parameter<double>("mission_waypoint_hold_s", 2.0);
+  const std::vector<Point3> mission_waypoints = missionWaypointsFromFlatParameters(
+      declare_parameter<std::vector<double>>("mission_goal_sequence_xyz_m",
+                                             std::vector<double>{}),
+      mission_goal_);
+  for (const Point3& waypoint : mission_waypoints) {
+    if (!insideFlightEnvelope(waypoint, flight_envelope_config_)) {
+      throw std::invalid_argument{"mission waypoint is outside the flight envelope"};
+    }
+  }
+  mission_goal_ = mission_waypoints.front();
+  mission_waypoint_sequence_ = std::make_unique<MissionWaypointSequence>(
+      mission_waypoints, mission_waypoint_sequence_config_);
   mppi_config_.altitude_envelope = mppi::AltitudeEnvelopeConfig{
       .minimum_z_m = static_cast<float>(flight_envelope_config_.minimum_target_z_m),
       .maximum_z_m = static_cast<float>(flight_envelope_config_.maximum_target_z_m),
@@ -124,8 +144,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                                   }),
                               std::memory_order_release);
   objective_replan_anchor_ = mission_goal_;
-  mission_goal_capture_config_.capture_radius_m =
-      declare_parameter<double>("mission_goal_capture_radius_m", 2.0);
   mppi_config_.rollouts =
       static_cast<std::size_t>(declare_parameter<int>("rollouts", 8192));
   rollout_budget_config_.full_rollouts = mppi_config_.rollouts;

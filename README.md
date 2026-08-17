@@ -84,6 +84,16 @@ make sim-urban-point-to-point-headless
 ENVIRONMENT_DEMO_ID=urban_circuit_practice_01 make sim-environment-demo
 ```
 
+The base `sim` mission visits sequential point-to-point waypoints. The default
+route follows the four city corners. Override it with `MISSION_GOALS_XYZ_M`
+using `x,y,z;x,y,z;...` syntax; each waypoint is terminal and the mission
+succeeds only after the vehicle settles at the last one.
+
+```bash
+MISSION_GOALS_XYZ_M='216,54,18;216,378,18;54,378,18;54,54,18' \
+  ./scripts/sim_headless.sh
+```
+
 Build and run the isolated CUDA MPPI benchmark:
 
 ```bash

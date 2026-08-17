@@ -44,11 +44,14 @@ sim-environment-demo:
 
 .PHONY: sim-gui
 sim-gui: build
-	./scripts/run_drone_nav_sim.sh
+	MISSION_GOALS_XYZ_M="$${MISSION_GOALS_XYZ_M:-216,54,18;216,378,18;54,378,18;54,54,18}" \
+		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-headless
 sim-headless: build
-	HEADLESS=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-90}" ./scripts/run_drone_nav_sim.sh
+	MISSION_GOALS_XYZ_M="$${MISSION_GOALS_XYZ_M:-216,54,18;216,378,18;54,378,18;54,54,18}" \
+		HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
+		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-intercept-gui
 sim-intercept-gui: build

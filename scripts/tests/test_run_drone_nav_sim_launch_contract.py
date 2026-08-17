@@ -126,6 +126,17 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.gazebo_spectator_follow_text,
         )
 
+    def test_point_to_point_default_spawn_is_above_the_ground_plane(self) -> None:
+        self.assertIn(
+            'point_to_point_gazebo_spawn_pose:--171.0,-81.0,0.3,0,0,0',
+            self.intercept_runtime_text,
+        )
+
+    def test_headless_point_to_point_result_stops_its_launch(self) -> None:
+        self.assertIn("OnProcessExit", self.launch_text)
+        self.assertIn("target_action=mission_monitor", self.launch_text)
+        self.assertIn('Shutdown(reason="point-to-point mission result")', self.launch_text)
+
     def test_intercept_spectator_selection_is_launch_configurable(self) -> None:
         for variable in (
             "INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID",
@@ -296,6 +307,20 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             "maximum_horizontal_acceleration_mps2: 4.0", self.nav_config_text
         )
         self.assertIn("default_lidar_gz_topic", self.launch_text)
+
+    def test_base_sim_uses_environment_configurable_terminal_waypoints(self) -> None:
+        self.assertIn("MISSION_GOALS_XYZ_M", self.makefile_text)
+        self.assertIn(
+            "216,54,18;216,378,18;54,378,18;54,54,18", self.makefile_text
+        )
+        self.assertIn("format_mission_goal_sequence", self.text)
+        self.assertIn("mission_goal_sequence_xyz_m:=", self.text)
+        self.assertIn("POINT_TO_POINT_SHUTDOWN_ON_MISSION_RESULT", self.text)
+        self.assertIn("mission_goal_sequence_xyz_m", self.launch_text)
+        self.assertIn("shutdown_on_mission_result", self.launch_text)
+        self.assertIn(
+            'if [[ -n "${point_to_point_scenario_path}" ]]', self.text
+        )
 
     def test_intercept_evader_route_crosses_city_diagonally(self) -> None:
         evader = next(

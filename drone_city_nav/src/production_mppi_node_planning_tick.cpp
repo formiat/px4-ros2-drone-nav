@@ -323,6 +323,39 @@ void ProductionMppiNode::planningTick() {
                 .terminal_route_available = esdf->global_guide_reaches_mission_goal,
             })
           : MissionGoalCaptureResult{};
+  MissionWaypointUpdate waypoint_update;
+  if (mission_waypoint_sequence_ && objective && !objective->tracking.has_value() &&
+      !objective->immediate_hold) {
+    waypoint_update = mission_waypoint_sequence_->update(MissionWaypointObservation{
+        .stamp_ns = now_ns,
+        .goal_captured = goal_capture.latched,
+        .horizontal_speed_mps = std::hypot(static_cast<double>(navigation.state.vx),
+                                           static_cast<double>(navigation.state.vy)),
+    });
+    if (waypoint_update.advanced) {
+      mission_goal_ = mission_waypoint_sequence_->activeGoal();
+      navigation_objective_.store(
+          std::make_shared<const ProductionNavigationObjective>(
+              ProductionNavigationObjective{
+                  .goal = mission_goal_,
+                  .mission_epoch = objective->mission_epoch + 1U,
+                  .sample_sequence = 0U,
+              }),
+          std::memory_order_release);
+      {
+        const std::scoped_lock lock{objective_replan_mutex_};
+        objective_replan_anchor_ = mission_goal_;
+        objective_replan_stamp_ns_ = now_ns;
+      }
+      requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
+      RCLCPP_INFO(get_logger(),
+                  "MISSION_WAYPOINT_ADVANCED completed_index=%zu waypoint_count=%zu "
+                  "next_goal=(%.2f,%.2f,%.2f)",
+                  waypoint_update.completed_index,
+                  mission_waypoint_sequence_->waypointCount(), mission_goal_.x,
+                  mission_goal_.y, mission_goal_.z);
+    }
+  }
   const bool temporary_frontier_is_terminal = route_usable && route_projection.valid &&
                                               !esdf->global_guide_reaches_mission_goal;
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
@@ -440,7 +473,7 @@ void ProductionMppiNode::planningTick() {
     speed_policy.reference_speed_mps = 0.0;
     speed_policy.target_lookahead_m = 0.0;
     target_source = "mission_command_position_hold";
-  } else if (goal_capture.latched) {
+  } else if (goal_capture.latched && !waypoint_update.advanced) {
     planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
     target = mppi::State{
         .x = static_cast<float>(mission_goal.x),
