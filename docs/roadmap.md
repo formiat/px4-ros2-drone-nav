@@ -281,3 +281,25 @@ boundaries for shared resources, and converts validated optimizations into
 regression benchmarks. It is complete when the supported mission suite has
 measured performance budgets, reproducible baselines, and documented scaling
 limits for both static-map and 3D-sensing configurations.
+
+## 11. Valid 3D Static Maps For New Environments
+
+Create a valid static map for every new complex environment. Here, quality
+means geometrically correct, physically valid, and aligned with the real
+collision environment: every real obstacle relevant to the aircraft footprint
+must be represented. It does not require unnecessarily high visual or voxel
+detail.
+
+Every new-environment static map must be three-dimensional. Two-dimensional
+maps are insufficient for multi-level geometry, tunnels, shafts, windows,
+doors, and other traversable 3D passages.
+
+After item 8 provides production 3D lidar, one supported acquisition path is
+to survey each environment with 3D lidar and persist the resulting validated
+obstacle memory as the environment's static-map artifact. The artifact must be
+versioned with the environment collision geometry, source provenance,
+coordinate transform, resolution, coverage evidence, and validation result.
+
+This stage is complete when every supported new environment has a reproducible
+3D static-map generation or acquisition path and that map passes coverage,
+alignment, and raw-collision validation against its physical world.
