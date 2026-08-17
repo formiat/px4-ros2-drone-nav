@@ -206,18 +206,20 @@ def generate_multi_vehicle_launch_description(mission_kind):
         static_route_tracking_margin_override = LaunchConfiguration(
             "static_route_tracking_margin_m"
         ).perform(context)
-        static_cruise_speed_override = LaunchConfiguration(
-            "static_cruise_speed_mps"
+        cruise_speed_override = LaunchConfiguration("cruise_speed_mps").perform(
+            context
+        )
+        speed_limit_override = LaunchConfiguration(
+            "absolute_speed_limit_mps"
         ).perform(context)
-        static_speed_limit_override = LaunchConfiguration(
-            "static_absolute_speed_limit_mps"
+        horizontal_acceleration_override = LaunchConfiguration(
+            "maximum_horizontal_acceleration_mps2"
         ).perform(context)
+        configured_cruise_speed_mps = float(
+            document["production_mppi_node"]["ros__parameters"]["cruise_speed_mps"]
+        )
         interceptor_speed_mps = float(
-            document["production_mppi_node"]["ros__parameters"][
-                "static_cruise_speed_mps"
-                if use_static_map
-                else "no_static_cruise_speed_mps"
-            ]
+            cruise_speed_override or configured_cruise_speed_mps
         )
         directional_hypotheses_enabled = False
         noncooperative_avoidance_enabled = False
@@ -532,20 +534,15 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "planning_tick_phase_offset_s": (
                         role_index * planner_tick_phase_step_s
                     ),
-                    "static_cruise_speed_mps": document["production_mppi_node"]
-                    ["ros__parameters"]["static_cruise_speed_mps"]
+                    "cruise_speed_mps": document["production_mppi_node"]
+                    ["ros__parameters"]["cruise_speed_mps"]
                     * config["speed_scale"],
-                    "static_absolute_speed_limit_mps": document[
+                    "absolute_speed_limit_mps": document["production_mppi_node"]
+                    ["ros__parameters"]["absolute_speed_limit_mps"]
+                    * config["speed_scale"],
+                    "maximum_horizontal_acceleration_mps2": document[
                         "production_mppi_node"
-                    ]["ros__parameters"]["static_absolute_speed_limit_mps"]
-                    * config["speed_scale"],
-                    "no_static_cruise_speed_mps": document["production_mppi_node"]
-                    ["ros__parameters"]["no_static_cruise_speed_mps"]
-                    * config["speed_scale"],
-                    "no_static_absolute_speed_limit_mps": document[
-                        "production_mppi_node"
-                    ]["ros__parameters"]["no_static_absolute_speed_limit_mps"]
-                    * config["speed_scale"],
+                    ]["ros__parameters"]["maximum_horizontal_acceleration_mps2"],
                 },
             )
             if static_lattice_deadline_override:
@@ -556,13 +553,17 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 planner_params["static_route_tracking_margin_m"] = float(
                     static_route_tracking_margin_override
                 )
-            if static_cruise_speed_override:
-                planner_params["static_cruise_speed_mps"] = (
-                    float(static_cruise_speed_override) * config["speed_scale"]
+            if cruise_speed_override:
+                planner_params["cruise_speed_mps"] = (
+                    float(cruise_speed_override) * config["speed_scale"]
                 )
-            if static_speed_limit_override:
-                planner_params["static_absolute_speed_limit_mps"] = (
-                    float(static_speed_limit_override) * config["speed_scale"]
+            if speed_limit_override:
+                planner_params["absolute_speed_limit_mps"] = (
+                    float(speed_limit_override) * config["speed_scale"]
+                )
+            if horizontal_acceleration_override:
+                planner_params["maximum_horizontal_acceleration_mps2"] = float(
+                    horizontal_acceleration_override
                 )
             planner_components.append(
                 ComposableNode(
@@ -954,12 +955,13 @@ def generate_multi_vehicle_launch_description(mission_kind):
             DeclareLaunchArgument(
                 "cooperative_mission_timeout_s", default_value="240.0"
             ),
-            DeclareLaunchArgument("static_cruise_speed_mps", default_value=""),
+            DeclareLaunchArgument("cruise_speed_mps", default_value=""),
             DeclareLaunchArgument(
                 "static_route_tracking_margin_m", default_value=""
             ),
+            DeclareLaunchArgument("absolute_speed_limit_mps", default_value=""),
             DeclareLaunchArgument(
-                "static_absolute_speed_limit_mps", default_value=""
+                "maximum_horizontal_acceleration_mps2", default_value=""
             ),
             DeclareLaunchArgument("planner_worker_budget", default_value="8"),
             DeclareLaunchArgument("control_cpu_list", default_value=""),

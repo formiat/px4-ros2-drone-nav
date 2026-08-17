@@ -3,7 +3,7 @@
 namespace drone_city_nav {
 
 struct StoppingCapability {
-  double maximum_commanded_horizontal_deceleration_mps2{8.0};
+  double maximum_commanded_horizontal_deceleration_mps2{4.0};
   double guaranteed_horizontal_deceleration_mps2{4.0};
   double guaranteed_vertical_deceleration_mps2{2.0};
   double reaction_latency_s{0.1};

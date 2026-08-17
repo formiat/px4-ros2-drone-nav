@@ -110,9 +110,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
             "guaranteed_horizontal_deceleration_mps2", stopping_capability
         )
         self.assertIn("guaranteed_vertical_deceleration_mps2", stopping_capability)
-        self.assertIn(
-            '"static_guaranteed_stopping_deceleration_mps2"', planner
-        )
+        self.assertIn('"maximum_horizontal_acceleration_mps2"', planner)
         self.assertIn(
             '"guaranteed_vertical_stopping_deceleration_mps2"', planner
         )

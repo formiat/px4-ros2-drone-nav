@@ -81,9 +81,10 @@ def generate_launch_description():
     static_route_tracking_margin_m = LaunchConfiguration(
         "static_route_tracking_margin_m"
     )
-    static_cruise_speed_mps = LaunchConfiguration("static_cruise_speed_mps")
-    static_absolute_speed_limit_mps = LaunchConfiguration(
-        "static_absolute_speed_limit_mps"
+    cruise_speed_mps = LaunchConfiguration("cruise_speed_mps")
+    absolute_speed_limit_mps = LaunchConfiguration("absolute_speed_limit_mps")
+    maximum_horizontal_acceleration_mps2 = LaunchConfiguration(
+        "maximum_horizontal_acceleration_mps2"
     )
     point_to_point_scenario_path = LaunchConfiguration("point_to_point_scenario_path")
     simulation_bridge = Node(
@@ -221,8 +222,12 @@ def generate_launch_description():
         for argument_name, launch_config in (
             ("static_global_lattice_deadline_ms", static_global_lattice_deadline_ms),
             ("static_route_tracking_margin_m", static_route_tracking_margin_m),
-            ("static_cruise_speed_mps", static_cruise_speed_mps),
-            ("static_absolute_speed_limit_mps", static_absolute_speed_limit_mps),
+            ("cruise_speed_mps", cruise_speed_mps),
+            ("absolute_speed_limit_mps", absolute_speed_limit_mps),
+            (
+                "maximum_horizontal_acceleration_mps2",
+                maximum_horizontal_acceleration_mps2,
+            ),
         ):
             override = optional_nonnegative_float_override(
                 context, launch_config, argument_name
@@ -525,14 +530,19 @@ def generate_launch_description():
                 description="Optional static route footprint margin override.",
             ),
             DeclareLaunchArgument(
-                "static_cruise_speed_mps",
+                "cruise_speed_mps",
                 default_value="",
-                description="Optional static cruise speed override.",
+                description="Optional cruise speed override.",
             ),
             DeclareLaunchArgument(
-                "static_absolute_speed_limit_mps",
+                "absolute_speed_limit_mps",
                 default_value="",
-                description="Optional static absolute speed limit override.",
+                description="Optional absolute horizontal speed limit override.",
+            ),
+            DeclareLaunchArgument(
+                "maximum_horizontal_acceleration_mps2",
+                default_value="",
+                description="Optional horizontal acceleration limit override.",
             ),
             simulation_bridge,
             OpaqueFunction(function=source_nodes),

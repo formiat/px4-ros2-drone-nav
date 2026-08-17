@@ -285,8 +285,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('"goal_z_m": goal_z_m', self.launch_text)
         self.assertIn("static_esdf_3d_cache_path", self.launch_text)
         self.assertIn("optional_nonnegative_float_override", self.launch_text)
-        self.assertIn("static_cruise_speed_mps", self.launch_text)
-        self.assertIn("static_absolute_speed_limit_mps", self.launch_text)
+        self.assertIn("cruise_speed_mps", self.launch_text)
+        self.assertIn("absolute_speed_limit_mps", self.launch_text)
+        self.assertIn("maximum_horizontal_acceleration_mps2", self.launch_text)
+        self.assertNotIn("static_cruise_speed_mps", self.launch_text)
+        self.assertNotIn("static_absolute_speed_limit_mps", self.launch_text)
+        self.assertIn("cruise_speed_mps: 5.0", self.nav_config_text)
+        self.assertIn("absolute_speed_limit_mps: 10.0", self.nav_config_text)
+        self.assertIn(
+            "maximum_horizontal_acceleration_mps2: 4.0", self.nav_config_text
+        )
         self.assertIn("default_lidar_gz_topic", self.launch_text)
 
     def test_intercept_evader_route_crosses_city_diagonally(self) -> None:
@@ -529,36 +537,25 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('param show MPC_Z_VEL_MAX_DN', self.text)
         self.assertIn('param show MPC_Z_VEL_MAX_UP', self.text)
 
-    def test_both_modes_align_px4_horizontal_dynamics_with_mppi(self) -> None:
-        self.assertIn("read_ros_bool_parameter()", self.text)
+    def test_speed_profile_aligns_px4_horizontal_dynamics_with_mppi(self) -> None:
         self.assertIn(
-            "production_mppi_node static_absolute_speed_limit_mps",
+            "production_mppi_node absolute_speed_limit_mps",
             self.text,
         )
         self.assertIn(
-            "production_mppi_node static_maximum_horizontal_acceleration_mps2",
+            "production_mppi_node cruise_speed_mps",
             self.text,
         )
         self.assertIn(
-            "production_mppi_node static_maximum_control_jerk_mps3",
+            "production_mppi_node maximum_horizontal_acceleration_mps2",
             self.text,
         )
         self.assertIn(
-            "production_mppi_node no_static_absolute_speed_limit_mps",
+            "production_mppi_node maximum_control_jerk_mps3",
             self.text,
         )
-        self.assertIn(
-            "production_mppi_node no_static_cruise_speed_mps",
-            self.text,
-        )
-        self.assertIn(
-            "production_mppi_node no_static_maximum_horizontal_acceleration_mps2",
-            self.text,
-        )
-        self.assertIn(
-            "production_mppi_node no_static_maximum_control_jerk_mps3",
-            self.text,
-        )
+        self.assertNotIn("static_cruise_speed_mps", self.text)
+        self.assertNotIn("no_static_cruise_speed_mps", self.text)
         self.assertIn(
             'echo "param set MPC_XY_CRUISE ${cruise_speed}"',
             self.text,

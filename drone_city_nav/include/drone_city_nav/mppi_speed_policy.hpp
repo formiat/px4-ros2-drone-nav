@@ -23,14 +23,14 @@ enum class MppiSpeedLimiter : std::uint8_t {
 };
 
 struct MppiSpeedPolicyConfig {
-  double cruise_speed_mps{20.0};
-  double absolute_speed_limit_mps{20.0};
-  double maximum_lateral_acceleration_mps2{5.0};
+  double cruise_speed_mps{5.0};
+  double absolute_speed_limit_mps{10.0};
+  double maximum_lateral_acceleration_mps2{4.0};
   StoppingCapability stopping_capability{};
   double observation_distance_m{30.0};
-  double observation_margin_m{2.0};
+  double observation_margin_m{3.0};
   double goal_margin_m{2.0};
-  double curvature_preview_distance_m{100.0};
+  double curvature_preview_distance_m{60.0};
   double curvature_measurement_window_m{5.0};
   double horizon_duration_s{6.0};
   double minimum_target_lookahead_m{30.0};

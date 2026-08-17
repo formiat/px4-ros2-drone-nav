@@ -157,10 +157,8 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("sim-cooperative-traffic-urban-headless:", makefile)
         self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH"', makefile)
         self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH"', makefile)
-        self.assertGreaterEqual(makefile.count("STATIC_CRUISE_SPEED_MPS=10"), 2)
-        self.assertGreaterEqual(
-            makefile.count("STATIC_ABSOLUTE_SPEED_LIMIT_MPS=10"), 2
-        )
+        self.assertNotIn("STATIC_CRUISE_SPEED_MPS", makefile)
+        self.assertNotIn("STATIC_ABSOLUTE_SPEED_LIMIT_MPS", makefile)
         self.assertGreaterEqual(
             makefile.count("STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000"), 2
         )
@@ -179,8 +177,9 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             makefile.count("--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json"),
             4,
         )
-        self.assertIn("STATIC_CRUISE_SPEED_MPS", container)
-        self.assertIn("STATIC_ABSOLUTE_SPEED_LIMIT_MPS", container)
+        self.assertIn("CRUISE_SPEED_MPS", container)
+        self.assertIn("ABSOLUTE_SPEED_LIMIT_MPS", container)
+        self.assertIn("MAXIMUM_HORIZONTAL_ACCELERATION_MPS2", container)
         self.assertIn("STATIC_ROUTE_TRACKING_MARGIN_M", container)
 
         manifest = MANIFEST_PATH.read_text(encoding="utf-8")

@@ -144,30 +144,22 @@ production_mppi_node:
     no_static_esdf_recenter_margin_m: 70.0
     latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
     latest_lidar_obstacle_maximum_age_ms: 250.0
-    static_minimum_target_lookahead_m: 30.0
-    static_maximum_target_lookahead_m: 100.0
+    minimum_target_lookahead_m: 30.0
+    maximum_target_lookahead_m: 100.0
     use_static_map: true
     static_occupancy_3d_path: worlds/generated_city.occupancy3d
     static_free_space_topology_3d_path: worlds/generated_city.topology3d
     static_esdf_3d_cache_path: worlds/generated_city.esdf3d
-    static_cruise_speed_mps: 20.0
-    static_absolute_speed_limit_mps: 20.0
-    static_maximum_horizontal_acceleration_mps2: 8.0
-    static_maximum_lateral_acceleration_mps2: 5.0
-    static_maximum_braking_acceleration_mps2: 8.0
-    static_guaranteed_stopping_deceleration_mps2: 4.0
+    cruise_speed_mps: 5.0
+    absolute_speed_limit_mps: 10.0
+    maximum_horizontal_acceleration_mps2: 4.0
     guaranteed_vertical_stopping_deceleration_mps2: 2.0
-    static_maximum_control_jerk_mps3: 20.0
-    no_static_cruise_speed_mps: 10.0
-    no_static_absolute_speed_limit_mps: 10.0
-    no_static_maximum_horizontal_acceleration_mps2: 4.0
-    no_static_maximum_control_jerk_mps3: 12.0
-    no_static_curvature_preview_distance_m: 60.0
-    static_speed_reaction_latency_s: 0.10
-    static_observation_distance_m: 30.0
-    static_observation_margin_m: 3.0
-    static_goal_braking_margin_m: 2.0
-    static_curvature_preview_distance_m: 100.0
+    maximum_control_jerk_mps3: 12.0
+    speed_reaction_latency_s: 0.10
+    observation_distance_m: 30.0
+    observation_margin_m: 3.0
+    goal_braking_margin_m: 2.0
+    curvature_preview_distance_m: 60.0
     route_curvature_measurement_window_m: 5.0
     constrained_route_speed_limit_mps: 10.0
     constrained_route_alignment_distance_buffer_m: 5.0

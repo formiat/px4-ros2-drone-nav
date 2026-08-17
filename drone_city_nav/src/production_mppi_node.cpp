@@ -167,78 +167,48 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                                 : no_static_stale_esdf_execution_window_s);
   mppi_config_.steps = static_cast<std::size_t>(
       std::ceil(active_horizon_duration_s / mppi_config_.dynamics.dt_s));
-  MppiSpeedPolicyConfig static_speed_policy_config;
-  static_speed_policy_config.horizon_duration_s = static_horizon_duration_s;
-  static_speed_policy_config.cruise_speed_mps =
-      declare_parameter<double>("static_cruise_speed_mps", 20.0);
-  static_speed_policy_config.absolute_speed_limit_mps =
-      declare_parameter<double>("static_absolute_speed_limit_mps", 20.0);
-  static_speed_policy_config.maximum_lateral_acceleration_mps2 =
-      declare_parameter<double>("static_maximum_lateral_acceleration_mps2", 5.0);
-  static_speed_policy_config.stopping_capability
+  MppiSpeedPolicyConfig speed_policy_config;
+  speed_policy_config.horizon_duration_s = active_horizon_duration_s;
+  speed_policy_config.cruise_speed_mps =
+      declare_parameter<double>("cruise_speed_mps", 5.0);
+  speed_policy_config.absolute_speed_limit_mps =
+      declare_parameter<double>("absolute_speed_limit_mps", 10.0);
+  const double maximum_horizontal_acceleration_mps2 =
+      declare_parameter<double>("maximum_horizontal_acceleration_mps2", 4.0);
+  speed_policy_config.maximum_lateral_acceleration_mps2 =
+      maximum_horizontal_acceleration_mps2;
+  speed_policy_config.stopping_capability
       .maximum_commanded_horizontal_deceleration_mps2 =
-      declare_parameter<double>("static_maximum_braking_acceleration_mps2", 8.0);
-  static_speed_policy_config.stopping_capability
-      .guaranteed_horizontal_deceleration_mps2 =
-      declare_parameter<double>("static_guaranteed_stopping_deceleration_mps2", 4.0);
-  static_speed_policy_config.stopping_capability.guaranteed_vertical_deceleration_mps2 =
+      maximum_horizontal_acceleration_mps2;
+  speed_policy_config.stopping_capability.guaranteed_horizontal_deceleration_mps2 =
+      maximum_horizontal_acceleration_mps2;
+  speed_policy_config.stopping_capability.guaranteed_vertical_deceleration_mps2 =
       declare_parameter<double>("guaranteed_vertical_stopping_deceleration_mps2", 2.0);
-  static_speed_policy_config.stopping_capability.reaction_latency_s =
-      declare_parameter<double>("static_speed_reaction_latency_s", 0.10);
-  static_speed_policy_config.observation_distance_m =
-      declare_parameter<double>("static_observation_distance_m", 30.0);
-  static_speed_policy_config.observation_margin_m =
-      declare_parameter<double>("static_observation_margin_m", 3.0);
-  static_speed_policy_config.goal_margin_m =
-      declare_parameter<double>("static_goal_braking_margin_m", 2.0);
-  static_speed_policy_config.curvature_preview_distance_m =
-      declare_parameter<double>("static_curvature_preview_distance_m", 100.0);
-  static_speed_policy_config.curvature_measurement_window_m =
+  speed_policy_config.stopping_capability.reaction_latency_s =
+      declare_parameter<double>("speed_reaction_latency_s", 0.10);
+  speed_policy_config.observation_distance_m =
+      declare_parameter<double>("observation_distance_m", 30.0);
+  speed_policy_config.observation_margin_m =
+      declare_parameter<double>("observation_margin_m", 3.0);
+  speed_policy_config.goal_margin_m =
+      declare_parameter<double>("goal_braking_margin_m", 2.0);
+  speed_policy_config.curvature_preview_distance_m =
+      declare_parameter<double>("curvature_preview_distance_m", 60.0);
+  speed_policy_config.curvature_measurement_window_m =
       declare_parameter<double>("route_curvature_measurement_window_m", 5.0);
-  static_speed_policy_config.minimum_target_lookahead_m =
-      declare_parameter<double>("static_minimum_target_lookahead_m", 30.0);
-  static_speed_policy_config.maximum_target_lookahead_m =
-      declare_parameter<double>("static_maximum_target_lookahead_m", 100.0);
-  const double static_maximum_horizontal_acceleration_mps2 =
-      declare_parameter<double>("static_maximum_horizontal_acceleration_mps2", 8.0);
-  const double static_maximum_control_jerk_mps3 =
-      declare_parameter<double>("static_maximum_control_jerk_mps3", 20.0);
-  MppiSpeedPolicyConfig no_static_speed_policy_config = static_speed_policy_config;
-  no_static_speed_policy_config.horizon_duration_s = no_static_horizon_duration_s;
-  no_static_speed_policy_config.cruise_speed_mps =
-      declare_parameter<double>("no_static_cruise_speed_mps", 10.0);
-  no_static_speed_policy_config.absolute_speed_limit_mps =
-      declare_parameter<double>("no_static_absolute_speed_limit_mps", 10.0);
-  const double no_static_maximum_horizontal_acceleration_mps2 =
-      declare_parameter<double>("no_static_maximum_horizontal_acceleration_mps2", 4.0);
-  const double no_static_maximum_control_jerk_mps3 =
-      declare_parameter<double>("no_static_maximum_control_jerk_mps3", 12.0);
-  no_static_speed_policy_config.maximum_lateral_acceleration_mps2 =
-      no_static_maximum_horizontal_acceleration_mps2;
-  no_static_speed_policy_config.stopping_capability
-      .maximum_commanded_horizontal_deceleration_mps2 =
-      no_static_maximum_horizontal_acceleration_mps2;
-  no_static_speed_policy_config.stopping_capability
-      .guaranteed_horizontal_deceleration_mps2 =
-      no_static_maximum_horizontal_acceleration_mps2;
-  no_static_speed_policy_config.curvature_preview_distance_m =
-      declare_parameter<double>("no_static_curvature_preview_distance_m", 60.0);
-  no_static_speed_policy_config.minimum_target_lookahead_m =
-      no_static_guide_lookahead_m_;
-  no_static_speed_policy_config.maximum_target_lookahead_m =
-      no_static_guide_lookahead_m_;
-  speed_policy_config_ =
-      use_static_map_ ? static_speed_policy_config : no_static_speed_policy_config;
+  speed_policy_config.minimum_target_lookahead_m =
+      declare_parameter<double>("minimum_target_lookahead_m", 30.0);
+  speed_policy_config.maximum_target_lookahead_m =
+      declare_parameter<double>("maximum_target_lookahead_m", 100.0);
+  speed_policy_config_ = speed_policy_config;
   mppi_config_.dynamics.maximum_horizontal_speed_mps =
       static_cast<float>(speed_policy_config_.absolute_speed_limit_mps);
-  mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 = static_cast<float>(
-      use_static_map_ ? static_maximum_horizontal_acceleration_mps2
-                      : no_static_maximum_horizontal_acceleration_mps2);
+  mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 =
+      static_cast<float>(maximum_horizontal_acceleration_mps2);
   finite_horizon_config_ =
       mppi::makeFiniteHorizonConfig(speed_policy_config_.stopping_capability);
   mppi_config_.dynamics.maximum_control_jerk_mps3 =
-      static_cast<float>(use_static_map_ ? static_maximum_control_jerk_mps3
-                                         : no_static_maximum_control_jerk_mps3);
+      static_cast<float>(declare_parameter<double>("maximum_control_jerk_mps3", 12.0));
   mppi_config_.dynamics.maximum_vertical_acceleration_mps2 = static_cast<float>(
       declare_parameter<double>("maximum_vertical_acceleration_mps2", 4.0));
   mppi_config_.altitude_envelope.guaranteed_vertical_deceleration_mps2 =
