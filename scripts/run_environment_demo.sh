@@ -29,5 +29,20 @@ if [[ -n "${SIM_DEMO_RESOURCE_PATH:-}" ]]; then
   export GZ_SIM_RESOURCE_PATH="${SIM_DEMO_RESOURCE_PATH}${GZ_SIM_RESOURCE_PATH:+:${GZ_SIM_RESOURCE_PATH}}"
 fi
 
+camera_log_interval_s="${GZ_GUI_CAMERA_LOG_INTERVAL_S:-1}"
+camera_log_file="${GZ_GUI_CAMERA_LOG_FILE:-${repo_root}/log/environment_demo/${environment_id}/gz_gui_free_camera.jsonl}"
+mkdir -p "$(dirname "${camera_log_file}")"
+python3 "${repo_root}/scripts/gazebo_gui_camera_logger.py" \
+  --output "${camera_log_file}" \
+  --interval-s "${camera_log_interval_s}" &
+camera_logger_pid=$!
+
+cleanup_camera_logger() {
+  kill "${camera_logger_pid}" 2>/dev/null || true
+  wait "${camera_logger_pid}" 2>/dev/null || true
+}
+trap cleanup_camera_logger EXIT INT TERM
+
 echo "Launching Gazebo spectator demo: environment=${environment_id} world=${SIM_DEMO_WORLD_NAME}"
-exec gz sim -v "${GZ_VERBOSE:-3}" "${SIM_DEMO_WORLD_SDF_PATH}"
+echo "Gazebo free-camera log: ${camera_log_file} (interval=${camera_log_interval_s}s)"
+gz sim -v "${GZ_VERBOSE:-3}" "${SIM_DEMO_WORLD_SDF_PATH}"

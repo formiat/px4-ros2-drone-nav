@@ -51,6 +51,8 @@ bool_is_true() {
 
 # shellcheck source=multi_vehicle_sim_runtime.sh
 source "${repo_root}/scripts/multi_vehicle_sim_runtime.sh"
+# shellcheck source=gazebo_gui_camera_runtime.sh
+source "${repo_root}/scripts/gazebo_gui_camera_runtime.sh"
 
 run_with_cpu_affinity() {
   local cpu_list="$1"
@@ -683,44 +685,6 @@ reset_px4_instance_state() {
     "${rootfs_dir}/dataman"
 }
 
-configure_gazebo_gui_follow_camera() {
-  local target="$1"
-  local offset="$2"
-  local wait_s="$3"
-  python3 "${repo_root}/scripts/gazebo_gui_control.py" \
-    follow-camera \
-    --world "${world_name}" \
-    --target "${target}" \
-    --offset "${offset}" \
-    --wait-s "${wait_s}"
-}
-
-wait_for_gazebo_scene_entity() {
-  local target="$1"
-  local wait_s="$2"
-  python3 "${repo_root}/scripts/gazebo_gui_control.py" \
-    wait-for-entity \
-    --world "${world_name}" \
-    --target "${target}" \
-    --wait-s "${wait_s}"
-}
-
-configure_gazebo_world_running() {
-  local wait_s="$1"
-  python3 "${repo_root}/scripts/gazebo_gui_control.py" \
-    world-running \
-    --world "${world_name}" \
-    --wait-s "${wait_s}"
-}
-
-capture_gazebo_scene_diagnostics() {
-  local output_dir="$1"
-  python3 "${repo_root}/scripts/capture_gazebo_scene_diagnostics.py" \
-    --world "${world_name}" \
-    --target "${gazebo_gui_follow_target}" \
-    --output-dir "${output_dir}"
-}
-
 gz_resource_path="${runtime_models_dir}:${runtime_worlds_dir}"
 if [[ -n "${custom_world_resource_path}" ]]; then
   gz_resource_path="${gz_resource_path}:${custom_world_resource_path}"
@@ -765,6 +729,7 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
 (
   gz_server_pid=""
   gz_gui_pid=""
+  gz_camera_logger_pid=""
   gz_follow_pid=""
   gz_unpause_pid=""
   gazebo_cleanup_started=false
@@ -781,6 +746,7 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
 
     [[ -n "${gz_unpause_pid}" ]] && pids+=("${gz_unpause_pid}")
     [[ -n "${gz_follow_pid}" ]] && pids+=("${gz_follow_pid}")
+    [[ -n "${gz_camera_logger_pid}" ]] && pids+=("${gz_camera_logger_pid}")
     [[ -n "${gz_gui_pid}" ]] && pids+=("${gz_gui_pid}")
     [[ -n "${gz_server_pid}" ]] && pids+=("${gz_server_pid}")
     [[ "${#pids[@]}" -eq 0 ]] && return 0
@@ -808,7 +774,7 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
   gz_server_pid=$!
 
   if [[ -z "${headless}" ]]; then
-    if ! wait_for_gazebo_scene_entity \
+    if ! wait_for_gazebo_scene_entity "${repo_root}" "${world_name}" \
       "${gazebo_gui_follow_target}" \
       "${gazebo_gui_follow_wait_s}"; then
       echo "WARNING: launching Gazebo GUI without the requested drone entity."
@@ -816,11 +782,14 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
     run_with_cpu_affinity "${diagnostics_cpu_list}" \
       gz sim -g >> "${gz_gui_log_file}" 2>&1 &
     gz_gui_pid=$!
-    configure_gazebo_world_running "${gazebo_world_unpause_wait_s}" &
+    start_gazebo_gui_camera_logger "${repo_root}" "${run_log_dir}" "${gz_gui_log_file}"
+    gz_camera_logger_pid="${GAZEBO_GUI_CAMERA_LOGGER_PID}"
+    configure_gazebo_world_running "${repo_root}" "${world_name}" \
+      "${gazebo_world_unpause_wait_s}" &
     gz_unpause_pid=$!
     if bool_is_true "${enable_gazebo_gui_follow_camera}" &&
       ! bool_is_true "${multi_vehicle_mission}"; then
-      configure_gazebo_gui_follow_camera \
+      configure_gazebo_gui_follow_camera "${repo_root}" "${world_name}" \
         "${gazebo_gui_follow_target}" \
         "${gazebo_gui_follow_offset}" \
         "${gazebo_gui_follow_wait_s}" &
@@ -930,7 +899,8 @@ if bool_is_true "${multi_vehicle_mission}"; then
 fi
 
 if bool_is_true "${enable_gz_scene_diagnostics}"; then
-  if ! capture_gazebo_scene_diagnostics "${gz_scene_diagnostics_dir}" |
+  if ! capture_gazebo_scene_diagnostics "${repo_root}" "${world_name}" \
+    "${gazebo_gui_follow_target}" "${gz_scene_diagnostics_dir}" |
     tee -a "${gz_log_file}"; then
     echo "WARNING: Gazebo scene diagnostics capture failed" | tee -a "${gz_log_file}"
   fi

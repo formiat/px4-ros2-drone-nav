@@ -150,6 +150,11 @@ controls to inspect the world. The demo materializes local visual resources and
 does not require a network connection after the relevant environment assets have
 been fetched.
 
+Its position, orientation, and world-space forward direction are logged once
+per second by default in `log/environment_demo/<environment-id>/gz_gui_free_camera.jsonl`.
+Override the cadence or destination with `GZ_GUI_CAMERA_LOG_INTERVAL_S` and
+`GZ_GUI_CAMERA_LOG_FILE`.
+
 Available IDs are:
 
 ```text
@@ -446,10 +451,13 @@ python3 scripts/validate_gazebo_gui_launch_log.py \
 
 GUI runs keep Gazebo server/world orchestration output in
 `log/gz_drone_nav.log` and Gazebo GUI client output in
-`log/gz_gui_drone_nav.log`. The launcher also captures bounded Gazebo scene
-diagnostics under `log/gazebo_scene_debug/` by default. Disable only the
-scene diagnostics with `ENABLE_GZ_SCENE_DIAGNOSTICS=false` when you need a
-minimal run.
+`log/gz_gui_drone_nav.log`. The current free-camera position, orientation, and
+world-space forward direction are sampled once per second in
+`log/gz_gui_camera.jsonl`; set `GZ_GUI_CAMERA_LOG_INTERVAL_S` or
+`GZ_GUI_CAMERA_LOG_FILE` to override that behavior. The launcher also captures
+bounded Gazebo scene diagnostics under `log/gazebo_scene_debug/` by default.
+Disable only the scene diagnostics with `ENABLE_GZ_SCENE_DIAGNOSTICS=false`
+when you need a minimal run.
 
 Run a headless smoke validation:
 

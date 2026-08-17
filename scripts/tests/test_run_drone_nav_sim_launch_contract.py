@@ -12,6 +12,7 @@ RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
 MAKEFILE = RUNNER.parents[1] / "Makefile"
 INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("multi_vehicle_sim_runtime.sh")
 GAZEBO_SPECTATOR_FOLLOW = RUNNER.with_name("gazebo_spectator_follow.py")
+GAZEBO_GUI_CAMERA_RUNTIME = RUNNER.with_name("gazebo_gui_camera_runtime.sh")
 CONTAINER_RUNNER = Path(__file__).resolve().parents[1] / "container_run.sh"
 LAUNCH_FILE = (
     Path(__file__).resolve().parents[2]
@@ -81,6 +82,9 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         cls.gazebo_spectator_follow_text = GAZEBO_SPECTATOR_FOLLOW.read_text(
             encoding="utf-8"
         )
+        cls.gazebo_gui_camera_runtime_text = GAZEBO_GUI_CAMERA_RUNTIME.read_text(
+            encoding="utf-8"
+        )
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
         cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
         cls.intercept_launch_text = "\n".join(
@@ -108,7 +112,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_gazebo_gui_launch_uses_native_follow_camera(self) -> None:
         self.assertIn("configure_gazebo_gui_follow_camera", self.text)
         self.assertIn("wait_for_gazebo_scene_entity", self.text)
-        self.assertIn("gazebo_gui_control.py", self.text)
+        self.assertIn("gazebo_gui_control.py", self.gazebo_gui_camera_runtime_text)
         self.assertNotIn("--gui-config", self.text)
         self.assertNotIn("GZ_GUI_PLUGIN_PATH", self.text)
 
@@ -176,6 +180,14 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('echo "Gazebo GUI log: ${gz_gui_log_file}"', self.text)
         self.assertIn(': > "${gz_gui_log_file}"', self.text)
 
+    def test_gui_camera_pose_is_logged_at_a_configurable_cadence(self) -> None:
+        self.assertIn("gazebo_gui_camera_runtime.sh", self.text)
+        self.assertIn("start_gazebo_gui_camera_logger", self.text)
+        self.assertIn("GZ_GUI_CAMERA_LOG_INTERVAL_S:-1", self.gazebo_gui_camera_runtime_text)
+        self.assertIn("gazebo_gui_camera_logger.py", self.gazebo_gui_camera_runtime_text)
+        self.assertIn("gz_camera_logger_pid", self.text)
+        self.assertIn("GZ_GUI_CAMERA_LOG_INTERVAL_S", self.container_text)
+
     def test_gui_ros_output_is_written_directly_without_terminal_tee(self) -> None:
         self.assertIn('> "${ros_log_file}" 2>&1', self.text)
         self.assertNotIn('2>&1 | tee "${ros_log_file}"', self.text)
@@ -183,7 +195,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_gazebo_scene_diagnostics_are_captured(self) -> None:
         self.assertIn("ENABLE_GZ_SCENE_DIAGNOSTICS", self.text)
         self.assertIn("capture_gazebo_scene_diagnostics", self.text)
-        self.assertIn("scripts/capture_gazebo_scene_diagnostics.py", self.text)
+        self.assertIn(
+            "scripts/capture_gazebo_scene_diagnostics.py",
+            self.gazebo_gui_camera_runtime_text,
+        )
         diagnostics_text = (
             RUNNER.parent / "capture_gazebo_scene_diagnostics.py"
         ).read_text(encoding="utf-8")
@@ -195,7 +210,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("terminate_pids_bounded", self.text)
 
     def test_world_unpause_uses_world_control_pause_false(self) -> None:
-        self.assertIn("world-running", self.text)
+        self.assertIn("world-running", self.gazebo_gui_camera_runtime_text)
         helper_text = (RUNNER.parent / "gazebo_gui_control.py").read_text(
             encoding="utf-8"
         )
