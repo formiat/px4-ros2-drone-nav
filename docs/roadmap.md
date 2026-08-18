@@ -1,5 +1,17 @@
 # Gazebo Roadmap
 
+## Dependency Model
+
+Roadmap numbering identifies project milestones; it is not always a strict
+execution order. The dependency annotations below use three meanings:
+
+- **hard prerequisite**: implementation cannot begin meaningfully before the
+  prerequisite contract exists;
+- **validation prerequisite**: the feature can be developed independently, but
+  its complete mission-level acceptance requires the prerequisite;
+- **independent recurring workstream**: work may run in parallel with any
+  milestone and should be repeated as the architecture evolves.
+
 ## 1. Interceptor Drone (Completed)
 
 Implement an autonomous interceptor drone capable of pursuing an attacking
@@ -225,6 +237,10 @@ production of the same typed topology from 3D sensing remains item 8.
 
 ## 8. 3D Passage Support Without A Static Map
 
+**Type:** ordered implementation stage.
+
+**Hard prerequisite:** item 7.
+
 Integrate the 3D passage system into navigation without a preloaded static map.
 The planned components are:
 
@@ -234,6 +250,11 @@ The planned components are:
 - dynamic trajectory generation through detected passages.
 
 ## 9. Large-Scale Realistic City And Full-Mission Validation
+
+**Type:** integration and validation milestone.
+
+**Hard prerequisites:** items 8 and 12 for no-static autonomous traversal;
+item 11 for full static-map validation.
 
 Find a suitably licensed high-quality city environment or build a new one for
 the project. The location should be substantially larger and more visually and
@@ -258,15 +279,23 @@ planner and controller diagnostics, real-time-factor monitoring, and measured
 CPU/GPU timing.
 
 This stage is complete only when the mission suite succeeds on the new city
-without scenario-specific route scripts or geometry exceptions.
+without scenario-specific route scripts or geometry exceptions. One successful
+3D-lidar exploration flight is integration evidence, not completion: acceptance
+requires repeated representative point-to-point and cooperative runs, plus the
+other supported mission types claimed by this milestone. Static-map acceptance
+is performed after item 11 provides validated maps.
 
 ## 10. Architectural Review And Optimization
 
-Perform a systematic architecture review after the navigation, passage, and
-large-environment mission contracts are established. The review must trace the
-end-to-end data and execution paths across sensing, mapping, topology,
-planning, MPPI, PX4 control, cooperative coordination, simulation, and
-diagnostics.
+**Type:** independent recurring workstream.
+
+**Dependencies:** none; this item is not part of the ordered execution sequence.
+
+Perform systematic architecture reviews throughout development and repeat a
+full review after the navigation, passage, and large-environment mission
+contracts are established. Each review must trace the end-to-end data and
+execution paths across sensing, mapping, topology, planning, MPPI, PX4 control,
+cooperative coordination, simulation, and diagnostics.
 
 Use repeatable representative missions to measure CPU, GPU, memory, ROS/DDS
 transport, simulator real-time factor, planning latency, control deadline
@@ -284,6 +313,11 @@ limits for both static-map and 3D-sensing configurations.
 
 ## 11. Valid 3D Static Maps For New Environments
 
+**Type:** dependent implementation and validation stage.
+
+**Hard prerequisites:** items 8 and 12 for the primary autonomous-survey
+acquisition path.
+
 Create a valid static map for every new complex environment. Here, quality
 means geometrically correct, physically valid, and aligned with the real
 collision environment: every real obstacle relevant to the aircraft footprint
@@ -294,10 +328,12 @@ Every new-environment static map must be three-dimensional. Two-dimensional
 maps are insufficient for multi-level geometry, tunnels, shafts, windows,
 doors, and other traversable 3D passages.
 
-After item 8 provides production 3D lidar, one supported acquisition path is
-to survey each environment with 3D lidar and persist the resulting validated
-obstacle memory as the environment's static-map artifact. The artifact must be
-versioned with the environment collision geometry, source provenance,
+The primary acquisition path uses item 8's production 3D lidar and item 12's
+incremental exploration backend to survey every reachable part of an
+environment, then persists the resulting validated obstacle memory as the
+environment's static-map artifact. Direct generation from collision geometry
+may remain as a secondary generation or cross-validation tool. Every artifact
+must be versioned with the environment collision geometry, source provenance,
 coordinate transform, resolution, coverage evidence, and validation result.
 
 This stage is complete when every supported new environment has a reproducible
@@ -305,6 +341,10 @@ This stage is complete when every supported new environment has a reproducible
 alignment, and raw-collision validation against its physical world.
 
 ## 12. Incremental Topological Exploration
+
+**Type:** dependent implementation stage.
+
+**Hard prerequisite:** item 8.
 
 Extend no-static navigation with an incremental topological exploration backend
 for partially observed 3D environments such as tunnel networks, caves, and
@@ -355,6 +395,13 @@ clearance, and physical collisions. Then evaluate the backend on the Finals and
 Cave environments with repeated cooperative mission runs.
 
 ## 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation
+
+**Type:** dependent localization stage.
+
+**Hard prerequisite:** item 8.
+
+**Validation prerequisite:** item 12 for complete autonomous validation in
+labyrinths, caves, and tunnel networks.
 
 Add an optional navigation profile in which the aircraft does not use GNSS or
 magnetometer fusion. This stage begins after item 8 provides production 3D
