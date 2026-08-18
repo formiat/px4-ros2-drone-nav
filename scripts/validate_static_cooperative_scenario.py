@@ -534,6 +534,27 @@ def planar_segment_is_clear(
     return True
 
 
+def swept_segment_is_clear(
+    occupancy: Occupancy3D,
+    start: tuple[float, float, float],
+    goal: tuple[float, float, float],
+    footprint: Footprint,
+) -> bool:
+    """Check a 3D segment using conservative footprint samples."""
+    length_m = math.dist(start, goal)
+    sample_spacing_m = occupancy.bounds.resolution_m / 2.0
+    sample_count = max(1, math.ceil(length_m / sample_spacing_m))
+    for index in range(sample_count + 1):
+        fraction = index / sample_count
+        point = tuple(
+            start[axis] + fraction * (goal[axis] - start[axis])
+            for axis in range(3)
+        )
+        if not occupancy.center_is_clear(point, footprint):
+            return False
+    return True
+
+
 def validate(args: argparse.Namespace) -> None:
     scenario_path = args.scenario.resolve()
     scenario = json.loads(scenario_path.read_text(encoding="utf-8"))
@@ -559,7 +580,8 @@ def validate(args: argparse.Namespace) -> None:
         vehicle_id = vehicle["id"]
         start = start_positions[vehicle_id]
         goal = tuple(float(value) for value in vehicle["goal_m"])
-        takeoff = (start[0], start[1], initial_altitude_m)
+        takeoff_altitude_m = max(start[2], initial_altitude_m)
+        takeoff = (start[0], start[1], takeoff_altitude_m)
         if not occupancy.center_is_clear(start, physical_footprint):
             raise ScenarioValidationError(
                 f"{vehicle_id} physical spawn footprint intersects Occupancy3D"
@@ -597,55 +619,56 @@ def validate(args: argparse.Namespace) -> None:
                     f" center=({platform.center_x_m:.3f},{platform.center_y_m:.3f})"
                     f" top_z_m={platform.top_z_m:.3f} status=valid"
                 )
-        if not occupancy.vertical_sweep_is_clear(
+        if start[2] < initial_altitude_m and not occupancy.vertical_sweep_is_clear(
             start, initial_altitude_m, physical_footprint
         ):
             raise ScenarioValidationError(
                 f"{vehicle_id} vertical takeoff footprint intersects Occupancy3D"
             )
-        route_clearance = occupancy.planar_clearance_mask(
-            initial_altitude_m, route_footprint
-        )
-        takeoff_cell = occupancy.world_to_cell(takeoff)
-        if not route_clearance[
-            takeoff_cell[1] * occupancy.bounds.width + takeoff_cell[0]
-        ]:
+        if not occupancy.center_is_clear(takeoff, route_footprint):
             raise ScenarioValidationError(
                 f"{vehicle_id} route footprint is blocked at takeoff"
             )
-        if not math.isclose(goal[2], initial_altitude_m, abs_tol=1e-6):
-            raise ScenarioValidationError(
-                f"{vehicle_id} goal Z does not match initial altitude"
-            )
-        goal_cell = occupancy.world_to_cell(goal)
-        if not route_clearance[goal_cell[1] * occupancy.bounds.width + goal_cell[0]]:
+        if not occupancy.center_is_clear(goal, route_footprint):
             raise ScenarioValidationError(
                 f"{vehicle_id} route footprint is blocked at goal"
             )
-        route_length_m = shortest_planar_route_m(
+        equal_altitude = math.isclose(takeoff[2], goal[2], abs_tol=1e-6)
+        direct_clear = swept_segment_is_clear(
             occupancy, takeoff, goal, route_footprint
         )
-        if route_length_m is None:
-            raise ScenarioValidationError(
-                f"{vehicle_id} start and goal are not in one route-safe component"
+        if equal_altitude:
+            route_length_m = shortest_planar_route_m(
+                occupancy, takeoff, goal, route_footprint
             )
+            if route_length_m is None:
+                raise ScenarioValidationError(
+                    f"{vehicle_id} start and goal are not in one route-safe component"
+                )
+        elif not direct_clear:
+            raise ScenarioValidationError(
+                f"{vehicle_id} has no direct 3D swept-footprint route"
+            )
+        else:
+            route_length_m = math.dist(takeoff, goal)
         if route_length_m < args.minimum_route_length_m:
             raise ScenarioValidationError(
                 f"{vehicle_id} route is too short: {route_length_m:.1f} m"
             )
-        direct_clear = planar_segment_is_clear(
-            occupancy, takeoff, goal, route_footprint
-        )
+        if equal_altitude:
+            direct_clear = planar_segment_is_clear(
+                occupancy, takeoff, goal, route_footprint
+            )
         if args.route_contract == "direct" and not direct_clear:
             raise ScenarioValidationError(
                 f"{vehicle_id} has no direct swept-footprint route"
             )
-        direct_length_m = math.dist(takeoff[:2], goal[:2])
+        direct_length_m = math.dist(takeoff, goal)
         print(
             "STATIC_SCENARIO_ROUTE"
             f" vehicle={vehicle_id} direct_m={direct_length_m:.1f}"
             f" geodesic_m={route_length_m:.1f}"
-            f" altitude_m={initial_altitude_m:.1f}"
+            f" start_z_m={takeoff[2]:.1f} goal_z_m={goal[2]:.1f}"
             f" route_contract={args.route_contract}"
             f" direct_clear={str(direct_clear).lower()} status=valid"
         )

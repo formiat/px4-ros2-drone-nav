@@ -152,16 +152,29 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "only civilian"):
                 SCENARIO_MODULE.load_multi_vehicle_scenario(malformed)
 
-    def test_cooperative_schema_rejects_different_cruise_altitudes(self) -> None:
+    def test_cooperative_schema_accepts_distinct_valid_goal_altitudes(self) -> None:
         document = json.loads(SCENARIO_PATH.read_text(encoding="utf-8"))
         document["canonical_world"] = str(
             (SCENARIO_PATH.parent / document["canonical_world"]).resolve()
         )
         document["vehicles"][1]["goal_m"][2] = 24.0
         with tempfile.TemporaryDirectory() as directory:
+            scenario_path = Path(directory) / "scenario.json"
+            scenario_path.write_text(json.dumps(document), encoding="utf-8")
+            scenario = SCENARIO_MODULE.load_multi_vehicle_scenario(scenario_path)
+        goals = {goal["id"]: goal["goal_m"] for goal in scenario["vehicle_goals"]}
+        self.assertEqual(goals["civilian_1"][2], 24.0)
+
+    def test_cooperative_schema_rejects_goal_outside_flight_envelope(self) -> None:
+        document = json.loads(SCENARIO_PATH.read_text(encoding="utf-8"))
+        document["canonical_world"] = str(
+            (SCENARIO_PATH.parent / document["canonical_world"]).resolve()
+        )
+        document["vehicles"][1]["goal_m"][2] = 32.0
+        with tempfile.TemporaryDirectory() as directory:
             malformed = Path(directory) / "scenario.json"
             malformed.write_text(json.dumps(document), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "share a cruise altitude"):
+            with self.assertRaisesRegex(ValueError, "outside the flight envelope"):
                 SCENARIO_MODULE.load_multi_vehicle_scenario(malformed)
 
     def test_vehicle_destruction_contract_has_typed_civilian_role(self) -> None:

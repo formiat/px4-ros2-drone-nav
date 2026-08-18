@@ -98,14 +98,20 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             sum(start[axis] for start in starts[2:]) / 2.0 for axis in range(2)
         )
         self.assertEqual(group_a_center, (0.749319792, 27.246976852))
+        self.assertEqual(group_b_center, (63.009487152, 23.856639862))
+        self.assertEqual(goals["civilian_0"], starts[2])
+        self.assertEqual(goals["civilian_1"], starts[3])
         self.assertEqual(goals["civilian_2"], starts[0])
         self.assertEqual(goals["civilian_3"], starts[1])
         self.assertGreater(math.dist(group_a_center, group_b_center), 20.0)
-        self.assertGreater(math.dist(group_a_center, group_b_center), 150.0)
+        self.assertGreater(math.dist(group_a_center, group_b_center), 50.0)
+        self.assertLess(math.dist(group_a_center, group_b_center), 70.0)
         self.assertEqual(
-            {start[2] for start in starts}, {1.8, 15.051717758}
+            {start[2] for start in starts}, {12.592997551, 15.051717758}
         )
-        self.assertEqual({goal[2] for goal in goals.values()}, {15.051717758})
+        self.assertEqual(
+            {goal[2] for goal in goals.values()}, {12.592997551, 15.051717758}
+        )
 
         source = json.loads(SCENARIO_PATH.read_text(encoding="utf-8"))
         self.assertEqual(
@@ -121,7 +127,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
                     "id": "region_b",
                     "vehicle_ids": ["civilian_2", "civilian_3"],
                     "size_m": [6.0, 6.0, 0.5],
-                    "top_z_m": 1.5,
+                    "top_z_m": 12.292997551,
                 },
             ],
         )

@@ -45,19 +45,17 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         )
         self.assertEqual(
             scenario["mission_goal_sequence_m"],
-            ((-139.75, -59.75, 15.051717758),),
+            ((63.009487152, 23.856639862, 12.592997551),),
         )
         self.assertEqual(scenario["initial_altitude_m"], 15.051717758)
         self.assertEqual(len(scenario["launch_platforms"]), 1)
         final_waypoint = scenario["mission_goal_sequence_m"][-1]
-        self.assertGreaterEqual(
-            (
-                (final_waypoint[0] - scenario["map_start_m"][0]) ** 2
-                + (final_waypoint[1] - scenario["map_start_m"][1]) ** 2
-            )
-            ** 0.5,
-            120.0,
-        )
+        route_distance_m = (
+            (final_waypoint[0] - scenario["map_start_m"][0]) ** 2
+            + (final_waypoint[1] - scenario["map_start_m"][1]) ** 2
+        ) ** 0.5
+        self.assertGreater(route_distance_m, 50.0)
+        self.assertLess(route_distance_m, 70.0)
 
     def test_static_runtime_has_preflight_and_gui_entrypoints(self) -> None:
         validator = VALIDATOR_PATH.read_text(encoding="utf-8")

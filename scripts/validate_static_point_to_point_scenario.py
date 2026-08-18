@@ -22,6 +22,7 @@ from validate_static_cooperative_scenario import (  # noqa: E402
     planar_segment_is_clear,
     platform_supports_spawn,
     shortest_planar_route_m,
+    swept_segment_is_clear,
 )
 
 
@@ -50,7 +51,8 @@ def validate(args: argparse.Namespace) -> None:
     start = scenario["map_start_m"]
     mission_goal_sequence = scenario["mission_goal_sequence_m"]
     initial_altitude_m = scenario["initial_altitude_m"]
-    takeoff = (start[0], start[1], initial_altitude_m)
+    takeoff_altitude_m = max(start[2], initial_altitude_m)
+    takeoff = (start[0], start[1], takeoff_altitude_m)
     launch_platforms = scenario["launch_platforms"]
     platform = None
     if launch_platforms:
@@ -101,7 +103,7 @@ def validate(args: argparse.Namespace) -> None:
             f"{platform.center_y_m:.3f}) top_z_m={platform.top_z_m:.3f}"
             " status=valid"
         )
-    if not occupancy.vertical_sweep_is_clear(
+    if start[2] < initial_altitude_m and not occupancy.vertical_sweep_is_clear(
         start, initial_altitude_m, physical_footprint
     ):
         raise ScenarioValidationError(
@@ -112,26 +114,33 @@ def validate(args: argparse.Namespace) -> None:
     total_direct_length_m = 0.0
     all_direct_clear = True
     for waypoint_index, waypoint in enumerate(mission_goal_sequence):
-        if not math.isclose(waypoint[2], initial_altitude_m, abs_tol=1.0e-6):
-            raise ScenarioValidationError(
-                f"waypoint {waypoint_index} Z does not match initial altitude"
-            )
-        route_length_m = shortest_planar_route_m(
+        equal_altitude = math.isclose(route_start[2], waypoint[2], abs_tol=1.0e-6)
+        direct_clear = swept_segment_is_clear(
             occupancy, route_start, waypoint, route_footprint
         )
-        if route_length_m is None:
-            raise ScenarioValidationError(
-                f"waypoint {waypoint_index} is not in the route-safe component"
+        if equal_altitude:
+            route_length_m = shortest_planar_route_m(
+                occupancy, route_start, waypoint, route_footprint
             )
-        direct_clear = planar_segment_is_clear(
-            occupancy, route_start, waypoint, route_footprint
-        )
+            if route_length_m is None:
+                raise ScenarioValidationError(
+                    f"waypoint {waypoint_index} is not in the route-safe component"
+                )
+            direct_clear = planar_segment_is_clear(
+                occupancy, route_start, waypoint, route_footprint
+            )
+        elif not direct_clear:
+            raise ScenarioValidationError(
+                f"waypoint {waypoint_index} has no direct 3D swept-footprint route"
+            )
+        else:
+            route_length_m = math.dist(route_start, waypoint)
         if args.route_contract == "direct" and not direct_clear:
             raise ScenarioValidationError(
                 f"waypoint {waypoint_index} has no direct swept-footprint route"
             )
         total_route_length_m += route_length_m
-        total_direct_length_m += math.dist(route_start[:2], waypoint[:2])
+        total_direct_length_m += math.dist(route_start, waypoint)
         all_direct_clear = all_direct_clear and direct_clear
         route_start = waypoint
     if total_route_length_m < args.minimum_route_length_m:

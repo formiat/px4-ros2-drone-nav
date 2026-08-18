@@ -274,11 +274,15 @@ def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
             raise ValueError(
                 "cooperative traffic scenario mission_name must be cooperative_traffic"
             )
-        goal_altitudes = {goal["goal_m"][2] for goal in vehicle_goals}
-        if len(goal_altitudes) != 1:
-            raise ValueError(
-                "cooperative traffic vehicles must share a cruise altitude"
-            )
+        for goal in vehicle_goals:
+            goal_z_m = goal["goal_m"][2]
+            if not navigation["minimum_target_z_m"] <= goal_z_m < navigation[
+                "maximum_target_z_m"
+            ]:
+                raise ValueError(
+                    f"cooperative traffic goal for {goal['id']} is outside the "
+                    "flight envelope"
+                )
 
     return {
         "schema": schema,
