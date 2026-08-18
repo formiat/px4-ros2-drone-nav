@@ -303,3 +303,53 @@ coordinate transform, resolution, coverage evidence, and validation result.
 This stage is complete when every supported new environment has a reproducible
 3D static-map generation or acquisition path and that map passes coverage,
 alignment, and raw-collision validation against its physical world.
+
+## 12. Incremental Topological Exploration
+
+Extend no-static navigation with an incremental topological exploration backend
+for partially observed 3D environments such as tunnel networks, caves, and
+labyrinths. This is not a second flight-control stack: 3D lidar, online
+Occupancy3D and ESDF, raw swept-footprint validation, finite executable paths,
+MPPI, and PX4 offboard control remain shared with ordinary navigation.
+
+The new backend incrementally extracts a metric-topological graph of corridors,
+junctions, vertical connectors, frontiers, and confirmed dead ends. It keeps
+two complementary forms of exploration memory:
+
+- a volumetric coverage field used only as a soft preference for selecting the
+  next frontier;
+- directed graph-edge state (`unknown`, `frontier`, `explored`, `dead_end`, or
+  `temporarily_blocked`) with the map revision that justified that state.
+
+Visited space and explored branches must never be converted into occupancy,
+prohibited grids, inflated obstacles, or any other hard exclusion volume. A
+drone must be able to backtrack through a known corridor, and a later map
+revision may invalidate an earlier dead-end conclusion.
+
+When the destination is known but the environment is only partly observed, the
+planner performs goal-biased frontier exploration rather than exhaustive
+coverage: it trades estimated route progress, travel cost, clearance,
+information gain, and repeated traversal cost. Once a connected graph route to
+the destination is known, ordinary graph search takes precedence over further
+exploration. If the mission explicitly has no known destination, the same
+backend may select frontiers for coverage instead.
+
+In a confirmed degree-two corridor with a sufficiently long raw-safe swept
+path, the backend retains the current branch and emits a route-directed cruise
+objective. It should slow or reconsider only at a junction, tight or curved
+geometry, a changed map, a dynamic obstruction, or the end of the executable
+path. It must not continue along an invalid path or create a sticky braking or
+recovery lifecycle.
+
+`GLOBAL_GUIDANCE_BACKEND` selects the guidance implementation through launch
+configuration. The initial supported values are `current_lattice` and
+`incremental_topological`; code must not infer the backend from an environment
+name or an `underground` flag. Both implementations publish the same typed
+route contract to the common local-planning and control layers.
+
+Implementation begins after item 8 establishes 3D lidar and online
+Occupancy3D. Validate first with deterministic 3D fixtures covering a T
+junction, X junction, loop, cul-de-sac, and vertical shaft. Measure goal time,
+coverage, repeated-edge distance, time without an executable route, minimum
+clearance, and physical collisions. Then evaluate the backend on the Finals and
+Cave environments with repeated cooperative mission runs.
