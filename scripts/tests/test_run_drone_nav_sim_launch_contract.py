@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
+RUNTIME_HELPERS = RUNNER.with_name("simulation_runtime_helpers.sh")
 MAKEFILE = RUNNER.parents[1] / "Makefile"
 INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("multi_vehicle_sim_runtime.sh")
 GAZEBO_SPECTATOR_FOLLOW = RUNNER.with_name("gazebo_spectator_follow.py")
@@ -319,7 +320,9 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn(
             "216,54,18;216,378,18;54,378,18;54,54,18", self.makefile_text
         )
-        self.assertIn("format_mission_goal_sequence", self.text)
+        runtime_helpers = RUNTIME_HELPERS.read_text(encoding="utf-8")
+        self.assertIn("simulation_runtime_helpers.sh", self.text)
+        self.assertIn("format_mission_goal_sequence", runtime_helpers)
         self.assertIn("mission_goal_sequence_xyz_m:=", self.text)
         self.assertIn("POINT_TO_POINT_SHUTDOWN_ON_MISSION_RESULT", self.text)
         self.assertIn("mission_goal_sequence_xyz_m", self.launch_text)
