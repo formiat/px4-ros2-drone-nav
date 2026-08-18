@@ -353,3 +353,67 @@ junction, X junction, loop, cul-de-sac, and vertical shaft. Measure goal time,
 coverage, repeated-edge distance, time without an executable route, minimum
 clearance, and physical collisions. Then evaluate the backend on the Finals and
 Cave environments with repeated cooperative mission runs.
+
+## 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation
+
+Add an optional navigation profile in which the aircraft does not use GNSS or
+magnetometer fusion. This stage begins after item 8 provides production 3D
+lidar and its timestamped full-6DoF acquisition-pose contract. The aircraft
+retains its IMU and barometric altitude source and estimates motion from
+lidar-inertial odometry instead of receiving global position and heading from
+simulated navigation satellites and a simulated compass.
+
+Localization must remain a separate subsystem from obstacle memory and route
+planning. A dedicated lidar-inertial estimator deskews 3D scans, propagates the
+high-rate IMU state, registers scans against dedicated localization submaps,
+and publishes a typed pose, velocity, covariance, quality, and frame identity.
+Planner obstacle memory consumes that estimate; it must not become the
+authoritative localization map, because a map assembled from an erroneous pose
+can otherwise reinforce the same localization error.
+
+Feed the estimate to PX4 through its supported external-odometry interface and
+configure PX4 to fuse it while GNSS and magnetometer fusion are disabled. The
+existing PX4 local-position output remains the stable contract for offboard
+control, planning, mapping, and diagnostics. Gazebo ground truth is available
+only to evaluation and referee components and must never cross into the
+estimator or control data path.
+
+Support two explicit localization configurations:
+
+- with a valid static 3D map, lidar-inertial odometry provides continuous local
+  motion while scan-to-map registration corrects accumulated drift and anchors
+  the vehicle in the mission map frame;
+- without a static map, lidar-inertial SLAM builds revisioned localization
+  submaps and uses loop closure to maintain a locally consistent frame.
+
+No-static missions with absolute map-frame goals require a declared initial
+map pose or another explicit global reference. Unknown-pose localization in a
+known static map is a separate global relocalization capability and must not be
+implicitly replaced by a scenario-provided hidden ground-truth transform.
+
+Localization quality and geometric observability must be first-class runtime
+signals. Repetitive city blocks, long feature-poor tunnels, and symmetric caves
+can leave translation or yaw weakly constrained even with 3D lidar. When the
+estimate is stale, divergent, or insufficiently observable, the system must
+stop publishing new executable motion and let the current finite path reach
+its validated terminal state; it must not continue an invalid path or add a
+sticky braking or geometric exclusion lifecycle.
+
+Implement and validate this stage incrementally:
+
+1. replay timestamped 3D lidar and IMU data offline and compare estimated poses
+   with evaluation-only Gazebo truth;
+2. fly one vehicle from a known initial pose using PX4 external odometry with
+   GNSS and magnetometer fusion disabled;
+3. add static-map correction, relocalization, and explicit estimator health;
+4. add no-static submaps and loop closure;
+5. validate multiple cooperative vehicles, each with an independent estimator
+   and no shared localization state.
+
+Measure position and attitude drift, velocity error, map alignment, loop
+closure consistency, estimator latency, relocalization time, time without a
+valid executable path, minimum obstacle clearance, and physical collisions.
+This stage is complete when repeated static-map and no-static 3D-lidar missions
+run without GNSS, magnetometer data, or control-visible simulator ground truth,
+and localization failures produce an explicit safe finite-path outcome instead
+of silent frame corruption.
