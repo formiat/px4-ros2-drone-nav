@@ -188,6 +188,9 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             makefile.count("scripts/validate_static_cooperative_scenario.py"), 2
         )
         self.assertEqual(
+            makefile.count("scripts/run_static_scenario_preflight.sh"), 4
+        )
+        self.assertEqual(
             makefile.count("--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json"),
             4,
         )
@@ -195,6 +198,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("ABSOLUTE_SPEED_LIMIT_MPS", container)
         self.assertIn("MAXIMUM_HORIZONTAL_ACCELERATION_MPS2", container)
         self.assertIn("STATIC_ROUTE_TRACKING_MARGIN_M", container)
+        self.assertIn("ENABLE_STATIC_SCENARIO_PREFLIGHT", container)
 
         manifest = MANIFEST_PATH.read_text(encoding="utf-8")
         self.assertIn("model: Urban Platform", manifest)

@@ -71,6 +71,9 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertIn("sim-urban-point-to-point-gui:", makefile)
         self.assertIn("SIM_COLLISION_WORLD_SDF_PATH", makefile)
         self.assertIn("SIM_GUI_WORLD_SDF_PATH", makefile)
+        self.assertEqual(
+            makefile.count("scripts/run_static_scenario_preflight.sh"), 4
+        )
         self.assertEqual(makefile.count("--route-contract direct && \\\n"), 2)
         self.assertIn("sim-urban-point-to-point-headless", headless_wrapper)
         self.assertIn("sim-urban-point-to-point-gui", gui_wrapper)

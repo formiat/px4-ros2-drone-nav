@@ -101,7 +101,8 @@ sim-cooperative-traffic-urban-headless: build
 		--environment urban_circuit_practice_01 --static-map r050 \
 		--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		python3 scripts/validate_static_cooperative_scenario.py \
+		./scripts/run_static_scenario_preflight.sh \
+			python3 scripts/validate_static_cooperative_scenario.py \
 			--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
 			--static-route-tracking-margin-m 0.25 \
@@ -125,7 +126,8 @@ sim-cooperative-traffic-urban-gui: build
 		--environment urban_circuit_practice_01 --static-map r050 \
 		--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		python3 scripts/validate_static_cooperative_scenario.py \
+		./scripts/run_static_scenario_preflight.sh \
+			python3 scripts/validate_static_cooperative_scenario.py \
 			--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
 			--static-route-tracking-margin-m 0.25 \
@@ -148,7 +150,8 @@ sim-urban-point-to-point-headless: build
 		--environment urban_circuit_practice_01 --static-map r050 \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		python3 scripts/validate_static_point_to_point_scenario.py \
+		./scripts/run_static_scenario_preflight.sh \
+			python3 scripts/validate_static_point_to_point_scenario.py \
 			--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
 			--static-route-tracking-margin-m 0.25 \
@@ -168,7 +171,8 @@ sim-urban-point-to-point-gui: build
 		--environment urban_circuit_practice_01 --static-map r050 \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		python3 scripts/validate_static_point_to_point_scenario.py \
+		./scripts/run_static_scenario_preflight.sh \
+			python3 scripts/validate_static_point_to_point_scenario.py \
 			--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
 			--static-route-tracking-margin-m 0.25 \

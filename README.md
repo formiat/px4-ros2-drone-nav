@@ -347,6 +347,14 @@ environment:
 ./scripts/sim_cooperative_traffic_urban_headless.sh
 ```
 
+Static scenario preflight is disabled by default. To verify physical spawns and
+the configured static-route contract before an Urban run, enable it explicitly:
+
+```bash
+ENABLE_STATIC_SCENARIO_PREFLIGHT=true \
+  ./scripts/sim_cooperative_traffic_urban_headless.sh
+```
+
 This target verifies and installs the versioned environment release artifacts,
 materializes a Gazebo Harmonic collision world, compiles the manifest-bound
 FreeSpaceTopology3D artifact when needed, and launches the four-vehicle static
@@ -364,9 +372,9 @@ The scenario is defined once in
 `drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json`.
 Its map-space launch pose is transformed by the canonical world contract for
 Gazebo, while the same pose sets the PX4 origin and the navigation start. The
-static preflight check requires a supported physical spawn, a clear vertical
-takeoff, and a direct route-safe path of at least 40 m before simulation
-starts.
+when explicitly enabled, the static preflight check requires a supported
+physical spawn, a clear vertical takeoff, and the selected static-route
+contract before simulation starts.
 
 The finite scenario in
 `drone_city_nav/config/cooperative_traffic_scenario.json` launches two pairs of
