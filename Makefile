@@ -106,7 +106,7 @@ sim-cooperative-traffic-urban-headless: build
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
 			--static-route-tracking-margin-m 0.25 \
 			--minimum-route-length-m 20 \
-			--route-contract connected; \
+			--route-contract connected && \
 		SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
@@ -130,7 +130,7 @@ sim-cooperative-traffic-urban-gui: build
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
 			--static-route-tracking-margin-m 0.25 \
 			--minimum-route-length-m 20 \
-			--route-contract connected; \
+			--route-contract connected && \
 		SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
@@ -153,7 +153,7 @@ sim-urban-point-to-point-headless: build
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
 			--static-route-tracking-margin-m 0.25 \
 			--minimum-route-length-m 120 \
-			--route-contract direct; \
+			--route-contract direct && \
 		SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000 \
@@ -173,7 +173,7 @@ sim-urban-point-to-point-gui: build
 			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
 			--static-route-tracking-margin-m 0.25 \
 			--minimum-route-length-m 120 \
-			--route-contract direct; \
+			--route-contract direct && \
 		SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000 \

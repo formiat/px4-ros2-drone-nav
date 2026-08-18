@@ -180,6 +180,9 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             makefile.count("--static-route-tracking-margin-m 0.25"), 2
         )
         self.assertGreaterEqual(makefile.count("--route-contract connected"), 2)
+        self.assertEqual(
+            makefile.count("--route-contract connected && \\\n"), 2
+        )
         self.assertGreaterEqual(makefile.count("--minimum-route-length-m 20"), 2)
         self.assertEqual(
             makefile.count("scripts/validate_static_cooperative_scenario.py"), 2
