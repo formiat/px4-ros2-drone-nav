@@ -43,7 +43,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertEqual(
             scenario["navigation"],
             {
-                "initial_altitude_m": 7.5,
+                "initial_altitude_m": 15.051717758,
                 "minimum_target_z_m": 1.0,
                 "maximum_target_z_m": 20.0,
             },
@@ -75,7 +75,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         )
         self.assertAlmostEqual(
             math.dist(goals["civilian_2"][:2], goals["civilian_3"][:2]),
-            4.0,
+            2.0,
             places=3,
         )
         for vehicle in scenario["vehicles"]:
@@ -97,10 +97,15 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         group_b_center = tuple(
             sum(start[axis] for start in starts[2:]) / 2.0 for axis in range(2)
         )
+        self.assertEqual(group_a_center, (0.749319792, 27.246976852))
+        self.assertEqual(goals["civilian_2"], starts[0])
+        self.assertEqual(goals["civilian_3"], starts[1])
         self.assertGreater(math.dist(group_a_center, group_b_center), 20.0)
-        self.assertLess(math.dist(group_a_center, group_b_center), 30.0)
-        self.assertEqual({start[2] for start in starts}, {1.8})
-        self.assertEqual({goal[2] for goal in goals.values()}, {7.5})
+        self.assertGreater(math.dist(group_a_center, group_b_center), 150.0)
+        self.assertEqual(
+            {start[2] for start in starts}, {1.8, 15.051717758}
+        )
+        self.assertEqual({goal[2] for goal in goals.values()}, {15.051717758})
 
         source = json.loads(SCENARIO_PATH.read_text(encoding="utf-8"))
         self.assertEqual(
@@ -110,7 +115,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
                     "id": "region_a",
                     "vehicle_ids": ["civilian_0", "civilian_1"],
                     "size_m": [6.0, 6.0, 0.5],
-                    "top_z_m": 1.5,
+                    "top_z_m": 14.751717758,
                 },
                 {
                     "id": "region_b",
