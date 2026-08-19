@@ -398,17 +398,23 @@ Cave environments with repeated cooperative mission runs.
 
 **Type:** dependent localization stage.
 
-**Hard prerequisite:** item 8.
+**Hard prerequisites:** items 8 and 12.
 
-**Validation prerequisite:** item 12 for complete autonomous validation in
-labyrinths, caves, and tunnel networks.
+Item 13 is accepted only in the complex environments introduced after the
+original Manhattan world. Manhattan is not a localization acceptance
+environment because its repetitive geometry creates severe position and
+heading ambiguity. Autonomous test flights in the selected labyrinths, caves,
+and tunnel networks require item 12's incremental topological exploration
+backend. This roadmap dependency must not create a code dependency between the
+localization estimator and the exploration planner.
 
 Add an optional navigation profile in which the aircraft does not use GNSS or
 magnetometer fusion. This stage begins after item 8 provides production 3D
-lidar and its timestamped full-6DoF acquisition-pose contract. The aircraft
-retains its IMU and barometric altitude source and estimates motion from
-lidar-inertial odometry instead of receiving global position and heading from
-simulated navigation satellites and a simulated compass.
+lidar and its timestamped full-6DoF acquisition-pose contract and item 12
+provides autonomous routing through partially observed complex environments.
+The aircraft retains its IMU and barometric altitude source and estimates
+motion from lidar-inertial odometry instead of receiving global position and
+heading from simulated navigation satellites and a simulated compass.
 
 Localization must remain a separate subsystem from obstacle memory and route
 planning. A dedicated lidar-inertial estimator deskews 3D scans, propagates the
