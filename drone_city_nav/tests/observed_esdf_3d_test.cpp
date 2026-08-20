@@ -23,6 +23,7 @@ TEST(ObservedEsdf3DTest, PreservesUnknownFreeAndOccupiedSemantics) {
   };
 
   EXPECT_TRUE(field.grid.outside_is_unknown);
+  ASSERT_TRUE(field.local_occupancy);
   EXPECT_EQ(field.grid.depth, bounds.depth_cells);
   EXPECT_EQ(field.distances_m.at(index(0, 0, 0)), mppi::kUnknownEsdfDistanceM);
   EXPECT_GT(field.distances_m.at(index(1, 1, 1)), 0.0F);
@@ -31,6 +32,12 @@ TEST(ObservedEsdf3DTest, PreservesUnknownFreeAndOccupiedSemantics) {
   EXPECT_EQ(field.stats.free_voxels, 1U);
   EXPECT_EQ(field.stats.occupied_voxels, 1U);
   EXPECT_EQ(field.stats.unknown_voxels, 70U);
+  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{0, 0, 0}),
+            ObservedVoxelState::kUnknown);
+  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{1, 1, 1}),
+            ObservedVoxelState::kFree);
+  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{2, 1, 1}),
+            ObservedVoxelState::kOccupied);
 }
 
 TEST(ObservedEsdf3DTest, FingerprintIsDeterministicAndSensitiveToObservedState) {

@@ -529,8 +529,8 @@ private:
   [[nodiscard]] ProductionGuideCandidateValidation validateGuideCandidateOnLatestWorld(
       const std::shared_ptr<const std::vector<Point2>>& candidate,
       bool reaches_mission_goal);
-  void processStaticGuideSearch(const ProductionMppiPreparedEsdf& world,
-                                const ProductionMppiNavigation& navigation);
+  void processGuideSearch3D(const ProductionMppiPreparedEsdf& world,
+                            const ProductionMppiNavigation& navigation);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void configureCooperativeTraffic();
@@ -549,6 +549,10 @@ private:
   prepareNonCooperativeTick(const mppi::State& ownship,
                             const ProductionMppiNonCooperativeTracks& tracks,
                             std::int64_t now_ns);
+  [[nodiscard]] MissionWaypointUpdate updateMissionWaypoint(
+      const std::shared_ptr<const ProductionNavigationObjective>& objective,
+      const ProductionMppiNavigation& navigation,
+      const MissionGoalCaptureResult& goal_capture, std::int64_t now_ns);
   void planningTick();
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);
@@ -595,8 +599,9 @@ private:
   double no_static_esdf_update_rate_hz_{2.5};
   double no_static_esdf_half_extent_m_{100.0};
   double no_static_esdf_recenter_margin_m_{70.0};
-  double no_static_3d_esdf_half_extent_m_{40.0};
-  double no_static_3d_esdf_recenter_margin_m_{25.0};
+  double no_static_3d_esdf_update_rate_hz_{1.0};
+  double no_static_3d_esdf_half_extent_m_{30.0};
+  double no_static_3d_esdf_recenter_margin_m_{18.0};
   std::size_t planner_worker_count_{4U};
   MppiRolloutBudgetConfig rollout_budget_config_{};
   double planning_tick_phase_offset_s_{0.0};
@@ -639,6 +644,7 @@ private:
   MppiLivenessConfig liveness_config_{};
   MppiSpeedPolicyConfig speed_policy_config_{};
   mppi::FiniteHorizonConfig finite_horizon_config_{};
+  double stationary_hold_validity_s_{1.0};
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;

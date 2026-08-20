@@ -77,6 +77,34 @@ TEST(TrackingObjective, ClipsThreeDimensionalPredictionAgainstRawVoxel) {
   EXPECT_LT(result.resolved_position.x, 4.0);
 }
 
+TEST(TrackingObjective, LeavesKnownFreeObservedPredictionUnchanged) {
+  ObservedOccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 1.0, 10, 4, 4}};
+  for (int x = 1; x <= 8; ++x) {
+    grid.setState(GridIndex3D{x, 1, 1}, ObservedVoxelState::kFree);
+  }
+
+  const TrackingObjectiveResolution result =
+      resolveTrackingObjective(grid, Point3{1.5, 1.5, 1.5}, Point3{8.5, 1.5, 1.5});
+
+  EXPECT_EQ(result.status, TrackingObjectiveResolutionStatus::kUnchanged);
+  EXPECT_DOUBLE_EQ(result.resolved_fraction, 1.0);
+}
+
+TEST(TrackingObjective, ClipsObservedPredictionAtUnknownFrontier) {
+  ObservedOccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 1.0, 10, 4, 4}};
+  for (int x = 1; x <= 4; ++x) {
+    grid.setState(GridIndex3D{x, 1, 1}, ObservedVoxelState::kFree);
+  }
+
+  const TrackingObjectiveResolution result =
+      resolveTrackingObjective(grid, Point3{1.5, 1.5, 1.5}, Point3{8.5, 1.5, 1.5});
+
+  EXPECT_EQ(result.status, TrackingObjectiveResolutionStatus::kClippedUnknown);
+  EXPECT_GE(result.resolved_position.x, 4.0);
+  EXPECT_LT(result.resolved_position.x, 5.0);
+  EXPECT_LT(result.resolved_fraction, 1.0);
+}
+
 TEST(TrackingObjective, RejectsInvalidSampleSpacing) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 4, 4}};
 
@@ -117,6 +145,21 @@ TEST(TrackingObjective, SweptThreeDimensionalLineOfSightUsesVehicleVolume) {
   EXPECT_TRUE(trackingLineOfSightRawClear(grid, from, to));
   EXPECT_FALSE(trackingLineOfSightSweptRawClear(
       grid, from, to, SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25}));
+}
+
+TEST(TrackingObjective, SweptObservedLineOfSightRejectsUnknownSpace) {
+  ObservedOccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 1.0, 10, 6, 6}};
+  for (int x = 1; x <= 3; ++x) {
+    for (int y = 0; y <= 2; ++y) {
+      for (int z = 1; z <= 3; ++z) {
+        grid.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree);
+      }
+    }
+  }
+
+  EXPECT_FALSE(trackingLineOfSightSweptRawClear(
+      grid, Point3{1.5, 1.5, 2.5}, Point3{8.5, 1.5, 2.5},
+      SweptFootprintConfig{.radius_m = 0.1, .sweep_step_m = 0.25}));
 }
 
 TEST(TrackingObjective, KeepsCurrentTargetVisibleWhenFullPredictionIsBlocked) {

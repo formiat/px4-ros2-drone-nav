@@ -37,6 +37,11 @@ Memory:
 - debug/snapshot publication periods;
 - provenance transport limits.
 
+`obstacle_memory_3d_node` owns the 3D-profile equivalents: organized beam
+geometry, full-6DoF acquisition-pose alignment, sparse Occupancy3D bounds and
+chunk size, hit/miss integration, snapshot/delta cadence, self-return filtering,
+and selected-spectator current/accumulated point clouds.
+
 ## `production_mppi_node`
 
 Execution cadence:
@@ -55,10 +60,19 @@ No-static direct raw validation:
   participates in complete finite-path validation. Stale or missing data does
   not create an obstacle.
 
+No-static 3D world:
+
+- `raw_obstacle_snapshot_3d_topic` and `raw_obstacle_delta_3d_topic` define the
+  revisioned observed-world transport;
+- local ESDF half extent, recenter margin, and update rate bound the dense GPU
+  resource built from sparse observed occupancy;
+- outside-ROI and unknown voxels remain unavailable for execution rather than
+  becoming occupied.
+
 Mode policy:
 
 - `use_static_map`;
-- static/no-static cruise and absolute speed;
+- map-independent cruise and absolute speed;
 - acceleration, lateral acceleration, braking, and jerk limits;
 - the conservative terminal-path horizontal deceleration limit, independently
   of the larger acceleration available to ordinary manoeuvres;
@@ -70,8 +84,8 @@ Risk:
 - `critical_distance_m`;
 - `preferred_distance_m`.
 
-Raw occupied cells are the only hard 2D collision geometry. The distance
-thresholds classify free cells for risk ranking; they do not inflate raw
+Raw occupied cells or voxels are the only hard collision geometry. The distance
+thresholds classify free space for risk ranking; they do not inflate raw
 occupancy.
 
 Global guide:
@@ -154,8 +168,10 @@ cloud topics.
 ## Environment Overrides
 
 Simulation scripts translate environment variables such as
-`ENABLE_STATIC_MAP`, `ENABLE_RVIZ`, and camera toggles into launch arguments or
-temporary parameter overrides. Intercept spectator selection additionally uses
+`ENABLE_STATIC_MAP`, `LIDAR_PROFILE=none|2d|3d`, `ENABLE_RVIZ`, and camera
+toggles into launch arguments or temporary parameter overrides. No-static mode
+rejects the `none` profile; 2D and 3D are alternatives rather than an implicit
+fusion mode. Intercept spectator selection additionally uses
 `INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID` and
 `INTERCEPT_SPECTATOR_RESELECTION_POLICY=first_living|next_living`. The launch
 file and `scripts/run_drone_nav_sim.sh` are the source of truth for supported

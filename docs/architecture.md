@@ -7,15 +7,18 @@ PX4 orchestration scripts, and container tooling.
 
 ```text
 Gazebo GPU lidar + PX4 pose
-  -> obstacle_memory_node
-  -> 2D obstacle memory + atomic raw obstacle snapshot
+  -> selected 2D or 3D obstacle-memory node
+  -> raw snapshot or revisioned Occupancy3D base + dirty chunks
 
 static:
   canonical Occupancy3D + precomputed chunked ESDF3D
   -> extracted local dense ESDF3D -> 3D lattice route
 
-no-static:
+no-static 2D:
   raw obstacle snapshot -> dense ESDF2D -> sticky 2D lattice guide
+
+no-static 3D:
+  observed Occupancy3D -> local ESDF3D -> generic 3D lattice route
 
 selected route/guide
   -> GPU MPPI local horizon
@@ -53,6 +56,10 @@ Gazebo contact involving the drone
 - publishes timestamp-aligned raw lidar hit endpoints independently of
   persistent-memory integration;
 - does not load or merge the canonical static map.
+
+`obstacle_memory_3d_node` owns the corresponding organized 3D hit/miss beam
+pipeline, full-6DoF acquisition pose, sparse observed Occupancy3D, revisioned
+snapshot/delta transport, and selected-spectator 3D clouds.
 
 ### `production_mppi_node`
 
@@ -141,8 +148,10 @@ Static production planning uses:
 - preferred, planning, critical, and collision risk tiers;
 - typed 3D routes with constrained spans inferred from the route envelope.
 
-No-static production planning uses the raw 2D obstacle snapshot and a
-2D distance field. It does not load passage metadata or the canonical 3D map.
+No-static production planning uses either the raw 2D obstacle snapshot and a 2D
+distance field or revisioned observed Occupancy3D and a recentered local ESDF3D.
+The 3D profile searches one known-free volume and does not load static topology
+or the canonical 3D map.
 
 There are no separately materialized planner/prohibited inflated grids,
 artificial hard collision envelopes around raw cells, inflation relaxation, or
@@ -153,12 +162,12 @@ footprint intersects a raw occupied cell.
 
 ## Global And Local Planning
 
-The risk-aware lattice produces a route from motion primitives. Static mode
-searches `(x, y, z)` against the local ESDF3D and samples the accepted result as
-`RouteSample3D`. No-static mode produces a 2D guide. Its active guide is sticky:
-new snapshots validate the accepted guide instead of replacing it solely
-because another route scores slightly better. Blocked, exhausted, or stalled
-guides can be replaced.
+The risk-aware lattice produces a route from motion primitives. Static and
+no-static 3D modes search `(x, y, z)` against their local ESDF3D and sample the
+accepted result as `RouteSample3D`; no-static 2D produces a planar guide. An
+active guide is sticky: new snapshots validate it instead of replacing it
+solely because another route scores slightly better. Blocked, exhausted, or
+stalled guides can be replaced.
 
 The lattice guide chooses route direction. GPU MPPI owns the executable local
 motion and continuously warm-starts from its previous control sequence.
@@ -246,8 +255,9 @@ not used to choose the global route.
 
 Guidance does not read occupancy. The production planner resolves the predicted
 segment against its immutable raw world, stopping at the first occupied cell and
-retaining the last free sample as the ordinary planning goal. Unknown no-static
-space remains traversable, and no inflation or prohibited region is introduced.
+retaining the last confirmed free sample as the ordinary planning goal. Unknown
+no-static space is neither occupied nor executable known-free space, and no
+inflation or prohibited region is introduced.
 The planner separately validates swept visibility of the coasted current target
 and the path to the full predicted intercept point. Current-target visibility
 keeps direct interception active; blockage of only the full prediction shortens
@@ -366,7 +376,8 @@ scheduling.
 - Static planning is not incremental AD* yet.
 - Static mode currently plans only against canonical Occupancy3D; lidar memory
   is not fused into its 3D collision map.
-- No-static perception remains 2D and intentionally has no passage semantics.
+- No-static supports independent 2D and 3D perception profiles. The 3D profile
+  deliberately has no open-space-versus-passage partition.
 - Collision validation uses a swept oriented 3D footprint against physical raw
   occupancy. No additional artificial footprint inflation is part of the
   planning contract.

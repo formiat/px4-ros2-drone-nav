@@ -1,14 +1,13 @@
 #pragma once
 
 #include "drone_city_nav/free_space_topology_format_limits.hpp"
-#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/portal_graph.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstddef>
 #include <optional>
-#include <span>
+#include <stop_token>
 #include <vector>
 
 namespace drone_city_nav {
@@ -71,16 +70,13 @@ struct ExtractedFreeSpaceTopology3D {
 
 [[nodiscard]] ExtractedFreeSpaceTopology3D
 extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
-                           const FreeSpaceTopologyExtractorConfig& config = {});
+                           const FreeSpaceTopologyExtractorConfig& config = {},
+                           std::stop_token stop_token = {});
 
 [[nodiscard]] ExtractedFreeSpaceTopology3D
 extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
                            const DistanceField3D& clearance_field,
-                           const FreeSpaceTopologyExtractorConfig& config = {});
-
-[[nodiscard]] ExtractedFreeSpaceTopology3D
-extractFreeSpaceTopology3D(const ObservedOccupancyGrid3D& occupancy,
-                           std::span<const float> clearance_distances_m,
-                           const FreeSpaceTopologyExtractorConfig& config = {});
+                           const FreeSpaceTopologyExtractorConfig& config = {},
+                           std::stop_token stop_token = {});
 
 } // namespace drone_city_nav

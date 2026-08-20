@@ -3,7 +3,6 @@
 #include "drone_city_nav/distance_field_3d.hpp"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -17,6 +16,7 @@
 #include <set>
 #include <span>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -28,15 +28,19 @@
 namespace drone_city_nav {
 namespace {
 
+using topology_extractor_detail::antipodalNeighborDirections;
 using topology_extractor_detail::cellFor;
 using topology_extractor_detail::contains;
 using topology_extractor_detail::cross;
 using topology_extractor_detail::dot;
 using topology_extractor_detail::indexedId;
 using topology_extractor_detail::linearIndex;
+using topology_extractor_detail::neighbors26;
+using topology_extractor_detail::neighbors6;
 using topology_extractor_detail::normalized;
 using topology_extractor_detail::offset;
 using topology_extractor_detail::retainNavigableSegmentComponents;
+using topology_extractor_detail::sameBounds;
 using topology_extractor_detail::translated;
 using topology_extractor_detail::voxelCount;
 
@@ -44,6 +48,19 @@ constexpr std::uint8_t kBlocked{0U};
 constexpr std::uint8_t kConstrained{1U};
 constexpr std::uint8_t kOpen{2U};
 constexpr double kEpsilon{1.0e-9};
+
+class ExtractionCancelled final : public std::runtime_error {
+public:
+  ExtractionCancelled()
+      : std::runtime_error{"topology extraction cancelled"} {
+  }
+};
+
+void throwIfCancelled(const std::stop_token stop_token) {
+  if (stop_token.stop_requested()) {
+    throw ExtractionCancelled{};
+  }
+}
 
 struct Component {
   std::uint32_t label{0U};
@@ -95,46 +112,6 @@ private:
   double voxel_half_diagonal_m_{0.0};
 };
 
-[[nodiscard]] const std::vector<GridIndex3D>& neighbors26() {
-  static const std::vector<GridIndex3D> directions = [] {
-    std::vector<GridIndex3D> result;
-    result.reserve(26U);
-    for (int z = -1; z <= 1; ++z) {
-      for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-          if (x == 0 && y == 0 && z == 0) {
-            continue;
-          }
-          result.push_back(GridIndex3D{x, y, z});
-        }
-      }
-    }
-    return result;
-  }();
-  return directions;
-}
-
-[[nodiscard]] constexpr std::array<GridIndex3D, 6U> neighbors6() noexcept {
-  return {GridIndex3D{-1, 0, 0}, GridIndex3D{1, 0, 0},  GridIndex3D{0, -1, 0},
-          GridIndex3D{0, 1, 0},  GridIndex3D{0, 0, -1}, GridIndex3D{0, 0, 1}};
-}
-
-[[nodiscard]] const std::vector<GridIndex3D>& antipodalNeighborDirections() {
-  static const std::vector<GridIndex3D> directions = [] {
-    std::vector<GridIndex3D> result;
-    result.reserve(13U);
-    for (const GridIndex3D direction : neighbors26()) {
-      if (direction.z > 0 ||
-          (direction.z == 0 &&
-           (direction.y > 0 || (direction.y == 0 && direction.x > 0)))) {
-        result.push_back(direction);
-      }
-    }
-    return result;
-  }();
-  return directions;
-}
-
 [[nodiscard]] bool
 footprintInsideBounds(const Point3& center, const GridBounds3D& bounds,
                       const SweptFootprintConfig& footprint) noexcept {
@@ -152,18 +129,6 @@ footprintInsideBounds(const Point3& center, const GridBounds3D& bounds,
          center.z + footprint.upper_extent_m <= maximum_z;
 }
 
-[[nodiscard]] bool sameBounds(const GridBounds3D& first,
-                              const GridBounds3D& second) noexcept {
-  constexpr double tolerance = 1.0e-6;
-  return std::abs(first.origin_x - second.origin_x) <= tolerance &&
-         std::abs(first.origin_y - second.origin_y) <= tolerance &&
-         std::abs(first.origin_z - second.origin_z) <= tolerance &&
-         std::abs(first.resolution_m - second.resolution_m) <= tolerance &&
-         first.width_cells == second.width_cells &&
-         first.height_cells == second.height_cells &&
-         first.depth_cells == second.depth_cells;
-}
-
 [[nodiscard]] bool centerInsideExtractionEnvelope(
     const Point3& center, const FreeSpaceTopologyExtractorConfig& config) noexcept {
   return (!config.minimum_center_z_m.has_value() ||
@@ -177,17 +142,13 @@ footprintInsideBounds(const Point3& center, const GridBounds3D& bounds,
   return !occupancy.isOccupied(cell);
 }
 
-[[nodiscard]] bool knownFree(const ObservedOccupancyGrid3D& occupancy,
-                             const GridIndex3D cell) noexcept {
-  return occupancy.isKnownFree(cell);
-}
-
 template<typename Occupancy>
 void classifyVoxels(const Occupancy& occupancy,
                     const FreeSpaceTopologyExtractorConfig& config,
                     const ClearanceView& clearance,
                     std::vector<std::uint8_t>& classification,
-                    FreeSpaceTopologyExtractionStats& stats) {
+                    FreeSpaceTopologyExtractionStats& stats,
+                    const std::stop_token stop_token) {
   const GridBounds3D& bounds = occupancy.bounds();
   const double bounding_radius_m =
       std::hypot(config.footprint.radius_m, std::max(config.footprint.lower_extent_m,
@@ -196,6 +157,7 @@ void classifyVoxels(const Occupancy& occupancy,
   for (int core_z = 0; core_z < bounds.depth_cells; core_z += chunk_size) {
     for (int core_y = 0; core_y < bounds.height_cells; core_y += chunk_size) {
       for (int core_x = 0; core_x < bounds.width_cells; core_x += chunk_size) {
+        throwIfCancelled(stop_token);
         ++stats.processed_chunks;
         const int end_x = std::min(bounds.width_cells, core_x + chunk_size);
         const int end_y = std::min(bounds.height_cells, core_y + chunk_size);
@@ -248,13 +210,17 @@ void retainMedialBand(const GridBounds3D& bounds,
                       const FreeSpaceTopologyExtractorConfig& config,
                       const ClearanceView& clearance,
                       std::vector<std::uint8_t>& classification,
-                      FreeSpaceTopologyExtractionStats& stats) {
+                      FreeSpaceTopologyExtractionStats& stats,
+                      const std::stop_token stop_token) {
   std::vector<std::uint8_t> medial(classification.size(), kBlocked);
   std::vector<std::uint16_t> distance_cells(classification.size(),
                                             std::numeric_limits<std::uint16_t>::max());
   std::queue<std::size_t> pending;
   const double tolerance_m = 0.05 * bounds.resolution_m;
   for (std::size_t linear = 0U; linear < classification.size(); ++linear) {
+    if (linear % 4096U == 0U) {
+      throwIfCancelled(stop_token);
+    }
     if (classification[linear] == kOpen) {
       medial[linear] = kOpen;
       continue;
@@ -299,7 +265,11 @@ void retainMedialBand(const GridBounds3D& bounds,
     ++stats.medial_ridge_voxels;
   }
 
+  std::size_t visited_medial_cells = 0U;
   while (!pending.empty()) {
+    if (visited_medial_cells++ % 4096U == 0U) {
+      throwIfCancelled(stop_token);
+    }
     const std::size_t current = pending.front();
     pending.pop();
     const std::uint16_t current_distance = distance_cells[current];
@@ -332,11 +302,16 @@ void retainMedialBand(const GridBounds3D& bounds,
 [[nodiscard]] std::vector<Component>
 labelComponents(const GridBounds3D& bounds, std::vector<std::uint8_t>& classification,
                 const std::uint8_t target, const std::size_t minimum_voxels,
-                const ClearanceView& clearance, std::vector<std::uint32_t>& labels) {
+                const ClearanceView& clearance, std::vector<std::uint32_t>& labels,
+                const std::stop_token stop_token) {
   std::vector<Component> components;
   std::vector<bool> visited(classification.size(), false);
   std::queue<std::size_t> pending;
+  std::size_t visited_component_cells = 0U;
   for (std::size_t seed = 0U; seed < classification.size(); ++seed) {
+    if (seed % 4096U == 0U) {
+      throwIfCancelled(stop_token);
+    }
     if (classification[seed] != target || visited[seed]) {
       continue;
     }
@@ -344,6 +319,9 @@ labelComponents(const GridBounds3D& bounds, std::vector<std::uint8_t>& classific
     visited[seed] = true;
     pending.push(seed);
     while (!pending.empty()) {
+      if (visited_component_cells++ % 4096U == 0U) {
+        throwIfCancelled(stop_token);
+      }
       const std::size_t current = pending.front();
       pending.pop();
       cells.push_back(current);
@@ -387,15 +365,18 @@ labelComponents(const GridBounds3D& bounds, std::vector<std::uint8_t>& classific
   return components;
 }
 
-[[nodiscard]] std::vector<PortalPatch>
-derivePortalPatches(const GridBounds3D& bounds, const Component& component,
-                    const std::vector<std::uint32_t>& open_labels,
-                    const std::vector<std::uint32_t>& constrained_labels,
-                    const std::size_t minimum_portal_voxels,
-                    const std::size_t maximum_portal_voxels,
-                    std::size_t& rejected_oversized_patches) {
+[[nodiscard]] std::vector<PortalPatch> derivePortalPatches(
+    const GridBounds3D& bounds, const Component& component,
+    const std::vector<std::uint32_t>& open_labels,
+    const std::vector<std::uint32_t>& constrained_labels,
+    const std::size_t minimum_portal_voxels, const std::size_t maximum_portal_voxels,
+    std::size_t& rejected_oversized_patches, const std::stop_token stop_token) {
   std::map<std::uint32_t, std::set<std::size_t>> boundary_by_region;
+  std::size_t visited_component_cells = 0U;
   for (const std::size_t linear : component.cells) {
+    if (visited_component_cells++ % 4096U == 0U) {
+      throwIfCancelled(stop_token);
+    }
     const GridIndex3D cell = cellFor(bounds, linear);
     for (const GridIndex3D direction : neighbors6()) {
       const GridIndex3D neighbor = offset(cell, direction);
@@ -418,7 +399,11 @@ derivePortalPatches(const GridBounds3D& bounds, const Component& component,
       const std::size_t seed = *remaining.begin();
       remaining.erase(seed);
       pending.push(seed);
+      std::size_t visited_patch_cells = 0U;
       while (!pending.empty()) {
+        if (visited_patch_cells++ % 4096U == 0U) {
+          throwIfCancelled(stop_token);
+        }
         const std::size_t current = pending.front();
         pending.pop();
         cells.push_back(current);
@@ -616,7 +601,8 @@ makePortal(const Occupancy& occupancy, const Component& constrained_component,
 buildMedialTree(const GridBounds3D& bounds, const Component& component,
                 const std::vector<std::size_t>& anchors, const ClearanceView& clearance,
                 const std::vector<std::uint32_t>& constrained_labels,
-                const FreeSpaceTopologyExtractorConfig& config) {
+                const FreeSpaceTopologyExtractorConfig& config,
+                const std::stop_token stop_token) {
   std::map<std::size_t, std::set<std::size_t>> tree;
   if (anchors.size() < 2U) {
     return tree;
@@ -630,7 +616,11 @@ buildMedialTree(const GridBounds3D& bounds, const Component& component,
   distances[anchors.front()] = 0.0;
   pending.emplace(0.0, anchors.front());
   std::set<std::size_t> remaining(anchors.begin() + 1, anchors.end());
+  std::size_t visited_queue_entries = 0U;
   while (!pending.empty() && !remaining.empty()) {
+    if (visited_queue_entries++ % 4096U == 0U) {
+      throwIfCancelled(stop_token);
+    }
     const auto [distance, current] = pending.top();
     pending.pop();
     if (distance > distances[current] + 1.0e-9) {
@@ -780,7 +770,8 @@ template<typename Occupancy>
 template<typename Occupancy>
 ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3DImpl(
     const Occupancy& occupancy, const std::span<const float> clearance_distances_m,
-    const double clearance_build_ms, const FreeSpaceTopologyExtractorConfig& config) {
+    const double clearance_build_ms, const FreeSpaceTopologyExtractorConfig& config,
+    const std::stop_token stop_token) {
   const auto started = std::chrono::steady_clock::now();
   if (!freeSpaceTopologyExtractorConfigIsValid(config)) {
     throw std::invalid_argument{"invalid FreeSpaceTopologyExtractor3D config"};
@@ -793,8 +784,9 @@ ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3DImpl(
                                     occupancy.bounds().resolution_m};
   std::vector<std::uint8_t> classification(clearance.size(), kBlocked);
   const auto classification_started = std::chrono::steady_clock::now();
-  classifyVoxels(occupancy, config, clearance, classification, result.stats);
-  retainMedialBand(bounds, config, clearance, classification, result.stats);
+  classifyVoxels(occupancy, config, clearance, classification, result.stats,
+                 stop_token);
+  retainMedialBand(bounds, config, clearance, classification, result.stats, stop_token);
   result.stats.classification_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 classification_started)
@@ -804,7 +796,7 @@ ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3DImpl(
   std::vector<std::uint32_t> open_labels(clearance.size(), 0U);
   std::vector<Component> open_components =
       labelComponents(bounds, classification, kOpen, config.minimum_open_region_voxels,
-                      clearance, open_labels);
+                      clearance, open_labels, stop_token);
   std::ranges::sort(open_components, {}, &Component::minimum_cell);
   std::fill(open_labels.begin(), open_labels.end(), 0U);
   for (std::size_t index = 0U; index < open_components.size(); ++index) {
@@ -818,7 +810,7 @@ ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3DImpl(
   std::vector<std::uint32_t> constrained_labels(clearance.size(), 0U);
   std::vector<Component> constrained_components = labelComponents(
       bounds, classification, kConstrained, config.minimum_constrained_component_voxels,
-      clearance, constrained_labels);
+      clearance, constrained_labels, stop_token);
   std::ranges::sort(constrained_components, {}, &Component::minimum_cell);
   std::fill(constrained_labels.begin(), constrained_labels.end(), 0U);
   for (std::size_t index = 0U; index < constrained_components.size(); ++index) {
@@ -838,10 +830,11 @@ ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3DImpl(
   std::size_t portal_number = 0U;
   std::size_t segment_number = 0U;
   for (const Component& component : constrained_components) {
+    throwIfCancelled(stop_token);
     std::vector<PortalPatch> patches =
         derivePortalPatches(bounds, component, open_labels, constrained_labels,
                             config.minimum_portal_voxels, config.maximum_portal_voxels,
-                            result.stats.rejected_oversized_portal_patches);
+                            result.stats.rejected_oversized_portal_patches, stop_token);
     result.stats.portal_patches += patches.size();
     if (patches.size() < 2U) {
       ++result.stats.rejected_constrained_components;
@@ -873,7 +866,7 @@ ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3DImpl(
     }
 
     const std::map<std::size_t, std::set<std::size_t>> medial_tree = buildMedialTree(
-        bounds, component, anchors, clearance, constrained_labels, config);
+        bounds, component, anchors, clearance, constrained_labels, config, stop_token);
     const std::set<std::size_t> portal_anchors(anchors.begin(), anchors.end());
     const std::vector<SegmentDraft> drafts =
         compressMedialTree(medial_tree, portal_anchors);
@@ -995,10 +988,9 @@ ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3DImpl(
   return result;
 }
 
-ExtractedFreeSpaceTopology3D
-extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
-                           const DistanceField3D& clearance_field,
-                           const FreeSpaceTopologyExtractorConfig& config) {
+ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3D(
+    const OccupancyGrid3D& occupancy, const DistanceField3D& clearance_field,
+    const FreeSpaceTopologyExtractorConfig& config, const std::stop_token stop_token) {
   if (!sameBounds(occupancy.bounds(), clearance_field.bounds()) ||
       clearance_field.maximumDistanceM() + 1.0e-6 < config.maximum_clearance_m ||
       clearance_field.distancesM().size() != voxelCount(occupancy.bounds())) {
@@ -1006,18 +998,8 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
         "clearance field does not match FreeSpaceTopologyExtractor3D input"};
   }
   return extractFreeSpaceTopology3DImpl(occupancy, clearance_field.distancesM(),
-                                        clearance_field.stats().duration_ms, config);
-}
-
-ExtractedFreeSpaceTopology3D
-extractFreeSpaceTopology3D(const ObservedOccupancyGrid3D& occupancy,
-                           const std::span<const float> clearance_distances_m,
-                           const FreeSpaceTopologyExtractorConfig& config) {
-  if (clearance_distances_m.size() != voxelCount(occupancy.bounds())) {
-    throw std::invalid_argument{
-        "clearance field does not match observed FreeSpaceTopologyExtractor3D input"};
-  }
-  return extractFreeSpaceTopology3DImpl(occupancy, clearance_distances_m, 0.0, config);
+                                        clearance_field.stats().duration_ms, config,
+                                        stop_token);
 }
 
 } // namespace drone_city_nav

@@ -17,6 +17,110 @@ VALIDATOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VALIDATOR)
 
 
+class MappingPipelineValidationTest(unittest.TestCase):
+    def test_3d_pipeline_accepts_hit_miss_memory_and_selected_debug_clouds(
+        self,
+    ) -> None:
+        log = (
+            "LIDAR3D_SCAN accepted=true source=4080 hits=1500 misses=2500 "
+            "revision=8 current_cloud=true\n"
+            "ONLINE_OCCUPANCY3D_UPDATE revision=8 known=12000 "
+            "snapshot=true delta=false debug_cloud=true\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_mapping_pipeline(log, "3d", True, True, errors)
+
+        self.assertEqual(errors, [])
+
+    def test_3d_pipeline_rejects_a_hit_only_log(self) -> None:
+        errors: list[str] = []
+
+        VALIDATOR.validate_mapping_pipeline(
+            "LIDAR3D_SCAN accepted=true hits=4300 revision=8\n",
+            "3d",
+            True,
+            False,
+            errors,
+        )
+
+        self.assertIn(
+            "FAIL: 3D obstacle memory receives timestamped hit/miss scans",
+            errors,
+        )
+
+    def test_3d_pipeline_rejects_zero_miss_scans(self) -> None:
+        errors: list[str] = []
+
+        VALIDATOR.validate_mapping_pipeline(
+            "LIDAR3D_SCAN accepted=true hits=4300 misses=0 revision=8\n",
+            "3d",
+            True,
+            False,
+            errors,
+        )
+
+        self.assertIn(
+            "FAIL: 3D obstacle memory receives timestamped hit/miss scans",
+            errors,
+        )
+
+    def test_2d_pipeline_preserves_legacy_contract(self) -> None:
+        log = "First lidar scan\nRaw obstacle snapshot revision=3\n"
+        errors: list[str] = []
+
+        VALIDATOR.validate_mapping_pipeline(log, "2d", True, False, errors)
+
+        self.assertEqual(errors, [])
+
+    def test_observed_route_volume_requires_generic_route_and_physical_crossing(
+        self,
+    ) -> None:
+        log = (
+            "PRODUCTION_MPPI_GUIDE3D activated=true route_generation=15 "
+            "route_space=observed_known_free_3d topology_acceleration=none\n"
+            "PRODUCTION_MPPI_TICK tick=1 state_position=(54.0,120.0,5.8)\n"
+            "PRODUCTION_MPPI_TICK tick=2 state_position=(54.0,124.0,5.8)\n"
+            "PRODUCTION_MPPI_TICK tick=3 state_position=(54.0,160.0,5.7)\n"
+            "PRODUCTION_MPPI_TICK tick=4 state_position=(54.0,200.0,5.7)\n"
+            "PRODUCTION_MPPI_TICK tick=5 state_position=(54.0,204.0,5.7)\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_observed_3d_route_volume(
+            log,
+            (42.0, 123.0, 1.5, 66.0, 201.0, 8.5),
+            errors,
+        )
+
+        self.assertEqual(errors, [])
+
+    def test_observed_route_volume_rejects_a_roof_level_flyover(self) -> None:
+        log = (
+            "PRODUCTION_MPPI_GUIDE3D activated=true route_generation=8 "
+            "route_space=observed_known_free_3d topology_acceleration=none\n"
+            "PRODUCTION_MPPI_TICK tick=1 state_position=(54.0,120.0,26.4)\n"
+            "PRODUCTION_MPPI_TICK tick=2 state_position=(54.0,160.0,26.7)\n"
+            "PRODUCTION_MPPI_TICK tick=3 state_position=(54.0,204.0,27.0)\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_observed_3d_route_volume(
+            log,
+            (42.0, 123.0, 1.5, 66.0, 201.0, 8.5),
+            errors,
+        )
+
+        self.assertIn(
+            "FAIL: vehicle physically crosses the observed 3D route volume",
+            errors,
+        )
+
+    def test_route_volume_parser_rejects_inverted_bounds(self) -> None:
+        with self.assertRaises(VALIDATOR.argparse.ArgumentTypeError):
+            VALIDATOR.parse_route_volume_bounds("42,123,8.5,66,201,1.5")
+
+
 class SafetyRelevantRosLogTest(unittest.TestCase):
     def test_intercept_requires_complete_radar_data_path(self) -> None:
         log = (
@@ -175,6 +279,23 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
             errors,
         )
         self.assertIn(
+            "FAIL: cooperative peer memory filtering is active",
+            errors,
+        )
+
+    def test_no_static_3d_accepts_active_peer_filter_without_incidental_hit(
+        self,
+    ) -> None:
+        errors: list[str] = []
+        VALIDATOR.validate_cooperative_traffic(
+            "COOPERATIVE_PEER_LIDAR_FILTER3D filtered_beams=0 known_peers=3 "
+            "forgotten_voxels=0",
+            4,
+            True,
+            errors,
+            "3d",
+        )
+        self.assertNotIn(
             "FAIL: cooperative peer memory filtering is active",
             errors,
         )

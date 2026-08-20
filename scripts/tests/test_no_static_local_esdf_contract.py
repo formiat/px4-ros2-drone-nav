@@ -25,6 +25,19 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             parameters["no_static_esdf_recenter_margin_m"],
             parameters["no_static_esdf_half_extent_m"],
         )
+        self.assertGreater(parameters["no_static_3d_esdf_update_rate_hz"], 0.0)
+        self.assertLessEqual(
+            parameters["no_static_3d_esdf_update_rate_hz"],
+            parameters["no_static_esdf_update_rate_hz"],
+        )
+        self.assertGreater(parameters["no_static_3d_esdf_half_extent_m"], 0.0)
+        self.assertGreaterEqual(
+            parameters["no_static_3d_esdf_recenter_margin_m"], 0.0
+        )
+        self.assertLess(
+            parameters["no_static_3d_esdf_recenter_margin_m"],
+            parameters["no_static_3d_esdf_half_extent_m"],
+        )
 
     def test_no_static_build_crops_before_distance_transform(self) -> None:
         source = (PACKAGE / "src/production_mppi_node_esdf.cpp").read_text()

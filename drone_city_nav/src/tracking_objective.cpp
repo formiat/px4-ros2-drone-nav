@@ -20,7 +20,13 @@ namespace {
                 first.z + fraction * (second.z - first.z)};
 }
 
-using RawOccupiedQuery = std::function<bool(const Point3&)>;
+enum class RawPointState : std::uint8_t {
+  kFree,
+  kOccupied,
+  kUnknown,
+};
+
+using RawPointQuery = std::function<RawPointState(const Point3&)>;
 using SweptClearQuery = std::function<bool(const Point3&, const Point3&)>;
 
 constexpr std::size_t kDirectTargetRefinementIterations{8U};
@@ -28,7 +34,7 @@ constexpr std::size_t kDirectTargetRefinementIterations{8U};
 [[nodiscard]] TrackingObjectiveResolution
 resolve(const Point3& observed_position, const Point3& predicted_position,
         const double segment_length_m, const double grid_resolution_m,
-        const double maximum_sample_spacing_m, const RawOccupiedQuery& raw_occupied) {
+        const double maximum_sample_spacing_m, const RawPointQuery& raw_point) {
   if (!finite(observed_position) || !finite(predicted_position) ||
       !(grid_resolution_m > 0.0) || !(maximum_sample_spacing_m > 0.0)) {
     return {};
@@ -51,12 +57,20 @@ resolve(const Point3& observed_position, const Point3& predicted_position,
     const double fraction =
         static_cast<double>(sample) / static_cast<double>(sample_count);
     const Point3 point = interpolate(observed_position, predicted_position, fraction);
-    if (raw_occupied(point)) {
+    const RawPointState point_state = raw_point(point);
+    if (point_state == RawPointState::kOccupied) {
       return TrackingObjectiveResolution{
           .resolved_position = last_free,
           .status = last_free_fraction > 0.0
                         ? TrackingObjectiveResolutionStatus::kClippedRawOccupied
                         : TrackingObjectiveResolutionStatus::kFallbackObserved,
+          .resolved_fraction = last_free_fraction,
+      };
+    }
+    if (point_state == RawPointState::kUnknown) {
+      return TrackingObjectiveResolution{
+          .resolved_position = last_free,
+          .status = TrackingObjectiveResolutionStatus::kClippedUnknown,
           .resolved_fraction = last_free_fraction,
       };
     }
@@ -191,7 +205,9 @@ TrackingObjectiveResolution resolveTrackingObjective(
                  [&raw_occupancy](const Point3& point) {
                    const auto cell =
                        raw_occupancy.worldToCell(Point2{point.x, point.y});
-                   return cell.has_value() && raw_occupancy.isOccupied(*cell);
+                   return cell.has_value() && raw_occupancy.isOccupied(*cell)
+                              ? RawPointState::kOccupied
+                              : RawPointState::kFree;
                  });
 }
 
@@ -209,6 +225,13 @@ bool trackingLineOfSightRawClear(const OccupancyGrid3D& raw_occupancy,
              .status == TrackingObjectiveResolutionStatus::kUnchanged;
 }
 
+bool trackingLineOfSightRawClear(const ObservedOccupancyGrid3D& raw_occupancy,
+                                 const Point3& from, const Point3& to,
+                                 const double maximum_sample_spacing_m) {
+  return resolveTrackingObjective(raw_occupancy, from, to, maximum_sample_spacing_m)
+             .status == TrackingObjectiveResolutionStatus::kUnchanged;
+}
+
 bool trackingLineOfSightSweptRawClear(const OccupancyGrid2D& raw_occupancy,
                                       const Point3& from, const Point3& to,
                                       const SweptFootprintConfig& footprint) {
@@ -216,6 +239,14 @@ bool trackingLineOfSightSweptRawClear(const OccupancyGrid2D& raw_occupancy,
 }
 
 bool trackingLineOfSightSweptRawClear(const OccupancyGrid3D& raw_occupancy,
+                                      const Point3& from, const Point3& to,
+                                      const SweptFootprintConfig& footprint) {
+  return validateRawSweptFootprint(raw_occupancy, from, FootprintBodyAxis{}, to,
+                                   FootprintBodyAxis{}, footprint)
+      .accepted();
+}
+
+bool trackingLineOfSightSweptRawClear(const ObservedOccupancyGrid3D& raw_occupancy,
                                       const Point3& from, const Point3& to,
                                       const SweptFootprintConfig& footprint) {
   return validateRawSweptFootprint(raw_occupancy, from, FootprintBodyAxis{}, to,
@@ -253,6 +284,21 @@ DirectTrackingTargetResolution resolveDirectTrackingTarget(
       });
 }
 
+DirectTrackingTargetResolution resolveDirectTrackingTarget(
+    const ObservedOccupancyGrid3D& raw_occupancy, const Point3& interceptor_position,
+    const Point3& current_target_position, const Point3& predicted_target_position,
+    const SweptFootprintConfig& footprint) {
+  const TrackingObjectiveResolution prediction_resolution =
+      resolveTrackingObjective(raw_occupancy, current_target_position,
+                               predicted_target_position, footprint.sweep_step_m);
+  return resolveDirectTarget(
+      interceptor_position, current_target_position, predicted_target_position,
+      prediction_resolution,
+      [&raw_occupancy, &footprint](const Point3& from, const Point3& to) {
+        return trackingLineOfSightSweptRawClear(raw_occupancy, from, to, footprint);
+      });
+}
+
 TrackingObjectiveResolution resolveTrackingObjective(
     const OccupancyGrid3D& raw_occupancy, const Point3& observed_position,
     const Point3& predicted_position, const double maximum_sample_spacing_m) {
@@ -261,7 +307,25 @@ TrackingObjectiveResolution resolveTrackingObjective(
                  raw_occupancy.bounds().resolution_m, maximum_sample_spacing_m,
                  [&raw_occupancy](const Point3& point) {
                    const auto cell = raw_occupancy.worldToCell(point);
-                   return cell.has_value() && raw_occupancy.isOccupied(*cell);
+                   return cell.has_value() && raw_occupancy.isOccupied(*cell)
+                              ? RawPointState::kOccupied
+                              : RawPointState::kFree;
+                 });
+}
+
+TrackingObjectiveResolution resolveTrackingObjective(
+    const ObservedOccupancyGrid3D& raw_occupancy, const Point3& observed_position,
+    const Point3& predicted_position, const double maximum_sample_spacing_m) {
+  return resolve(observed_position, predicted_position,
+                 distance3D(observed_position, predicted_position),
+                 raw_occupancy.bounds().resolution_m, maximum_sample_spacing_m,
+                 [&raw_occupancy](const Point3& point) {
+                   const auto cell = raw_occupancy.worldToCell(point);
+                   if (!cell.has_value() || !raw_occupancy.isKnown(*cell)) {
+                     return RawPointState::kUnknown;
+                   }
+                   return raw_occupancy.isOccupied(*cell) ? RawPointState::kOccupied
+                                                          : RawPointState::kFree;
                  });
 }
 
@@ -272,6 +336,8 @@ const char* trackingObjectiveResolutionStatusName(
       return "unchanged";
     case TrackingObjectiveResolutionStatus::kClippedRawOccupied:
       return "clipped_raw_occupied";
+    case TrackingObjectiveResolutionStatus::kClippedUnknown:
+      return "clipped_unknown";
     case TrackingObjectiveResolutionStatus::kFallbackObserved:
       return "fallback_observed";
     case TrackingObjectiveResolutionStatus::kWorldUnavailable:

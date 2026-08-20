@@ -231,23 +231,62 @@ junctions, and a wide-hangar negative case.
 
 The compiler has also produced strict artifacts for the compact fixture and the
 Urban, Cave, and Finals release maps. This closes static extraction, planning,
-execution, and cooperative passage use. It does not claim production mission
-integration in those external environments; that remains item 9. Online
-production of the same typed topology from 3D sensing remains item 8.
+execution, and cooperative use of the optional sparse topology accelerator. It
+does not claim production mission integration in those external environments;
+that remains item 9. Item 8 does not reproduce this open-versus-passage
+classification online: observed navigation uses one continuous free-space
+domain.
 
-## 8. 3D Passage Support Without A Static Map
+## 8. 3D Free-Space Navigation Without A Static Map
 
 **Type:** ordered implementation stage.
 
 **Hard prerequisite:** item 7.
 
-Integrate the 3D passage system into navigation without a preloaded static map.
-The planned components are:
+Add production 3D perception and local navigation without a preloaded static
+map. The planner must treat every physically occupiable observed volume as one
+free-space domain. A street, room, tunnel, cave, shaft, and continuously bounded
+underground network differ only in geometry and observation coverage; they do
+not trigger separate open-space and passage lifecycles.
 
-- 3D lidar;
-- passage detection;
-- autonomous passage traversal;
-- dynamic trajectory generation through detected passages.
+The production pipeline is:
+
+1. organized Gazebo 3D lidar hit and miss beams;
+2. timestamp alignment and full-6DoF acquisition-pose resolution;
+3. ray integration into revisioned `unknown/free/occupied` `Occupancy3D`;
+4. base snapshots plus dirty-chunk transport;
+5. a recentered local 3D ESDF;
+6. the generic risk-aware 3D lattice over observed known-free space;
+7. route risk and speed profiling, MPPI, and finite raw-safe execution.
+
+Unknown space is not occupied and must never become a prohibited or inflated
+grid. It is also not executable known-free space. When current observations do
+not reach the destination, the generated finite route stops at its observed
+frontier with zero terminal speed and is extended or replaced only after new
+sensor evidence arrives. Exploration of unknown branches, remembered dead ends,
+and labyrinth coverage remains item 12.
+
+`LIDAR_PROFILE=none|2d|3d` selects one typed sensor profile. The 2D pipeline
+remains an alternative Manhattan profile; item 8 does not fuse 2D and 3D scans.
+No-static mode requires `2d` or `3d`. RViz displays the selected spectator's
+latest 3D returns with queue depth one and its rate-limited accumulated occupied
+voxels; it does not render the full diagnostic clouds of every vehicle.
+
+Acceptance uses Manhattan only, no static occupancy, ESDF, or topology, the 3D
+lidar profile, and the 2D lidar explicitly disabled. Three sequential
+point-to-point runs must physically cross the configured low-altitude 3D route
+volume and reach the goal without collision. Three sequential cooperative runs
+must preserve mission completion and physical safety. Logs must prove fresh hit
+and miss scans, Occupancy3D revisions, local 3D ESDF builds, activation of a
+generic `observed_known_free_3d` route with no topology accelerator, finite
+collision-free execution, and physical mission settlement. One GUI/RViz run
+must verify the latest-scan and accumulated-memory displays.
+
+After completion, Manhattan supports static runs with any lidar profile and
+no-static runs with 2D or 3D lidar. Complex environments introduced after
+Manhattan use no-static 3D lidar until item 11 provides validated static 3D maps;
+after that they support static runs with no lidar or 3D lidar and no-static runs
+with 3D lidar only.
 
 ## 9. Large-Scale Realistic City And Full-Mission Validation
 
@@ -261,8 +300,8 @@ the project. The location should be substantially larger and more visually and
 geometrically varied than the current regular test city, with realistic street
 layouts, building shapes, heights, materials, and urban topology.
 
-Where practical, include complex physically traversable 3D passages and
-passages such as multi-turn routes, junctions, and entry and exit points at
+Where practical, include complex physically traversable 3D free-space
+structures such as multi-turn tunnels, junctions, shafts, and entrances at
 different altitudes. Imported visual assets must have explicit provenance and a
 license compatible with the repository. Rendering meshes, collision geometry,
 lidar-visible surfaces, static occupancy, and generated planning artifacts must
@@ -271,8 +310,8 @@ world.
 
 Use the new location as a full-system validation environment rather than only a
 visual showcase. Re-run every supported point-to-point, static-map, no-static,
-3D-passage, single-target interception, multi-target interception, and
-cooperative-traffic mission that exists when this stage begins. Validation
+constrained-3D-traversal, single-target interception, multi-target interception,
+and cooperative-traffic mission that exists when this stage begins. Validation
 should cover multiple start and goal placements and repeated headless runs, and
 must preserve physical outcome checks, zero tolerance for building collisions,
 planner and controller diagnostics, real-time-factor monitoring, and measured

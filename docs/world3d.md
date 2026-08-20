@@ -271,12 +271,12 @@ geometry, so a physical topology change may produce a new ID.
 
 ## No-Static Contract
 
-No-static mode intentionally remains 2D:
-
-- it does not load Occupancy3D for planning;
-- it does not create `RouteSample3D` passage routes or constrained spans;
-- it does not identify, infer, or traverse semantic passages;
-- it has no 3D lidar or 3D passage perception.
+No-static mode selects one lidar profile. The 2D compatibility profile builds a
+planar memory and cannot prove vertically traversable free volume. The 3D
+profile builds online observed `Occupancy3D`, a local ESDF3D, and ordinary
+`RouteSample3D` routes over every confirmed known-free voxel. It does not divide
+the world into open space and semantic passages and does not load the static
+topology artifact.
 
 The generated SDF gives passage lower/upper/middle masses one dedicated
 visibility flag and adds transparent, collisionless lidar occluders across each
@@ -285,13 +285,14 @@ intersection and open bridge. Before each run,
 
 - static mode hides both passage masses and no-static occluders from the 2D
   lidar because Occupancy3D is authoritative;
-- no-static mode exposes both sets, making every connector appear as an ordinary
-  obstacle to lidar memory.
+- no-static 2D mode exposes both sets, making every connector appear as an
+  ordinary obstacle to planar lidar memory;
+- no-static 3D mode hides the compatibility occluders but exposes physical
+  geometry, allowing hit and miss rays to establish the real free volume.
 
 Occluders have no Gazebo collision element and are not written to Occupancy3D.
-They are a simulation-only sensor contract used to disable passage traversal in
-no-static mode. Physical passage masses remain real Gazebo collisions in both
-modes.
+They are a simulation-only compatibility contract used to prevent unsupported
+2D traversal. Physical geometry remains real Gazebo collision in every mode.
 
 ## Visualization
 
@@ -316,5 +317,6 @@ When changing static geometry or physical passage structures:
 4. Check Occupancy3D points against Gazebo geometry in RViz.
 5. If passages are derived, verify static route Z and constrained-span
    diagnostics through each changed passage.
-6. If passages are derived, verify no-static lidar sees each opening as blocked
-   and routes around it.
+6. If static traversals are derived, verify the no-static 2D profile sees each
+   compatibility occluder as blocked, while the no-static 3D profile observes
+   and traverses the real free volume.

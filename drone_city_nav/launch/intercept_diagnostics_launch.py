@@ -90,6 +90,10 @@ def make_selected_diagnostics_components(
                     f"{prefix}/lidar_debug_points"
                     for prefix in vehicle_prefixes
                 ],
+                "current_lidar_3d_pointcloud_topics": [
+                    f"{prefix}/current_lidar_points_3d"
+                    for prefix in vehicle_prefixes
+                ],
                 "raw_lidar_3d_pointcloud_topics": [
                     f"{prefix}/raw_lidar_hit_points_3d"
                     for prefix in vehicle_prefixes

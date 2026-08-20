@@ -100,7 +100,7 @@ obstacle_memory_3d_node:
     px4_timesync_status_topic: /fmu/out/timesync_status
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
-    current_lidar_3d_pointcloud_topic: /drone_city_nav/current_lidar_points_3d
+    current_lidar_3d_pointcloud_topic: /drone_city_nav/current_lidar_returns_3d
     raw_memory_3d_pointcloud_topic: /drone_city_nav/raw_memory_obstacle_points_3d
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
@@ -121,7 +121,7 @@ obstacle_memory_3d_node:
     px4_local_origin_z_m: 0.0
     use_initial_pose_until_px4: true
     max_pose_staleness_s: 1.0
-    min_mapping_altitude_m: 5.0
+    min_mapping_altitude_m: 1.0
     use_px4_heading_for_scan: true
     maximum_heading_variance_rad2: 0.05
     startup_heading_stable_sample_count: 5
@@ -140,12 +140,12 @@ obstacle_memory_3d_node:
     use_full_lidar_extrinsic: true
     lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
     lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
-    lidar_3d_horizontal_samples: 360
-    lidar_3d_vertical_samples: 32
+    lidar_3d_horizontal_samples: 240
+    lidar_3d_vertical_samples: 17
     lidar_3d_horizontal_min_angle_rad: -3.141592653589793
     lidar_3d_horizontal_max_angle_rad: 3.141592653589793
-    lidar_3d_vertical_min_angle_rad: -0.7853981633974483
-    lidar_3d_vertical_max_angle_rad: 0.7853981633974483
+    lidar_3d_vertical_min_angle_rad: -1.3962634015954636
+    lidar_3d_vertical_max_angle_rad: 1.3962634015954636
     lidar_3d_minimum_range_m: 0.2
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
@@ -190,6 +190,7 @@ production_mppi_node:
     dt_s: 0.05
     static_horizon_duration_s: 6.0
     no_static_horizon_duration_s: 4.0
+    stationary_hold_validity_s: 1.0
     maximum_vertical_speed_mps: 5.0
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
@@ -214,8 +215,9 @@ production_mppi_node:
     no_static_esdf_update_rate_hz: 2.5
     no_static_esdf_half_extent_m: 100.0
     no_static_esdf_recenter_margin_m: 70.0
-    no_static_3d_esdf_half_extent_m: 40.0
-    no_static_3d_esdf_recenter_margin_m: 25.0
+    no_static_3d_esdf_update_rate_hz: 1.0
+    no_static_3d_esdf_half_extent_m: 30.0
+    no_static_3d_esdf_recenter_margin_m: 18.0
     no_static_world_model: occupancy_2d
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d

@@ -81,14 +81,15 @@ the soft proximity term. Hard raw collision is reported only when the swept
 oriented physical footprint intersects a raw occupied cell; there is no
 additional prohibited inflation layer.
 
-## Static And No-Static Profiles
+## Static And No-Static Geometry Profiles
 
-Static mode uses a longer horizon, larger target lookahead, larger lattice
-window, and higher cruise/cap because the city geometry is known.
+Map mode may select different horizon, target-lookahead, lattice-window, and
+observation-range geometry. Cruise speed, absolute speed, and horizontal
+acceleration are map-independent explicit parameters.
 
-No-static mode uses a shorter horizon and lower acceleration, jerk, cruise, and
-absolute speed limits. Unknown space remains traversable, while sensor range
-and physical stopping capability bound speed.
+In no-static 3D mode, unknown space remains distinct from raw occupied space but
+is not executable known-free space. Sensor range, physical stopping capability,
+and the finite zero-speed route endpoint bound motion at the observed frontier.
 
 Exact defaults live in `config/urban_mvp.yaml`.
 

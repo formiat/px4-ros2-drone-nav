@@ -29,10 +29,11 @@ Do not infer a planner coordinate error until the displayed fixed frame and the
 | Interceptor Directions | `/drone_city_nav/interceptor_directions` |
 | Drone | `/drone_city_nav/drone_marker` |
 | Lidar Hit Points | `/drone_city_nav/lidar_debug_points` |
+| Current 3D Lidar Returns | `/drone_city_nav/current_lidar_returns_3d` |
 | Raw Lidar Returns 3D | `/drone_city_nav/raw_lidar_hit_points_3d` |
 | Remembered Lidar Hits | `/drone_city_nav/remembered_lidar_points` |
 | Raw Memory Cells | `/drone_city_nav/raw_memory_obstacle_points` |
-| Raw Memory Hit Origins 3D | `/drone_city_nav/raw_memory_obstacle_points_3d` |
+| Accumulated 3D Obstacle Memory | `/drone_city_nav/raw_memory_obstacle_points_3d` |
 | Raw Occupied Cells | `/drone_city_nav/raw_occupied_cells` |
 
 In the `3x1` intercept mission, the lightweight planner paths are also shown from
@@ -67,6 +68,10 @@ RViz markers.
 ## Reading Lidar Layers
 
 - Raw lidar returns are sensor-frame observations projected into map space.
+- Current 3D lidar returns contain only the latest selected-spectator scan,
+  using queue depth one and zero decay.
+- Accumulated 3D obstacle memory contains rate-limited occupied voxel centers
+  for the selected spectator in the 3D profile.
 - Remembered hits persist after the obstacle leaves the current scan.
 - Raw occupied cells are the merged planner evidence.
 - Static points are a downsampled visualization generated from canonical

@@ -322,6 +322,21 @@ bool staticRouteHasProtectedConstrainedSuffix(
   });
 }
 
+bool staticRouteReplacementProtected(
+    const std::span<const RouteSample3D> route,
+    const std::span<const ConstrainedRouteSpan> constrained_spans,
+    const Point3& current_position, const StaticRouteObjective& route_objective,
+    const StaticRouteObjective& search_objective,
+    const double protected_departure_m) noexcept {
+  const bool same_assignment =
+      route_objective.available && search_objective.available &&
+      route_objective.mission_epoch == search_objective.mission_epoch &&
+      staticRouteAssignmentMatches(route_objective, search_objective);
+  return same_assignment &&
+         staticRouteHasProtectedConstrainedSuffix(
+             route, constrained_spans, current_position, protected_departure_m);
+}
+
 StaticRouteCandidateValidation validateStaticRouteCandidate(
     const std::span<const RouteSample3D> active_route,
     const std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,

@@ -95,7 +95,10 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       world.reset();
       continue;
     }
-    if (use_static_map_ && world->grid.depth > 1) {
+    const bool observed_3d_world =
+        !use_static_map_ &&
+        no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+    if ((use_static_map_ || observed_3d_world) && world->grid.depth > 1) {
       ProductionMppiNavigation navigation;
       {
         const std::scoped_lock lock{input_mutex_};
@@ -111,7 +114,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         world.reset();
         continue;
       }
-      processStaticGuideSearch(*world, navigation);
+      processGuideSearch3D(*world, navigation);
       world.reset();
       search_navigation.reset();
       search_heading.reset();
@@ -840,7 +843,8 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiPreparedEsdf& e
 
 void ProductionMppiNode::requestGuideRelease(const GlobalGuideReleaseReason reason,
                                              const std::uint64_t guide_generation) {
-  if (use_static_map_) {
+  if (use_static_map_ ||
+      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D) {
     requestStaticRouteReplan(reason, guide_generation);
     return;
   }

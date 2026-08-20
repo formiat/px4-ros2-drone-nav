@@ -1,6 +1,7 @@
 {
   "schema": "drone_city_nav_canonical_world_v1",
   "frame_id": "map",
+  "gazebo_world_name": "generated_city",
   "map_to_sdf": {
     "sdf_x_from": "map_y",
     "sdf_x_offset_m": -225.0,

@@ -28,6 +28,28 @@ EOF
 
 guard_against_root_owned_workspace_writes
 
+normalize_route_volume_bounds() {
+  python3 - "$1" <<'PY'
+import math
+import sys
+
+parts = [part.strip() for part in sys.argv[1].split(",")]
+if len(parts) != 6:
+    raise SystemExit(
+        "expected min_x,min_y,min_z,max_x,max_y,max_z"
+    )
+try:
+    values = [float(part) for part in parts]
+except ValueError as error:
+    raise SystemExit("all route-volume bounds must be numeric") from error
+if not all(math.isfinite(value) for value in values):
+    raise SystemExit("all route-volume bounds must be finite")
+if any(values[axis] >= values[axis + 3] for axis in range(3)):
+    raise SystemExit("route-volume minima must be below maxima")
+print(",".join(format(value, ".17g") for value in values))
+PY
+}
+
 # shellcheck source=multi_vehicle_sim_runtime.sh
 source "${repo_root}/scripts/multi_vehicle_sim_runtime.sh"
 # shellcheck source=simulation_resource_runtime.sh
@@ -119,6 +141,18 @@ if bool_is_true "${multi_vehicle_mission}"; then
 fi
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
 smoke_duration_s="${SMOKE_DURATION_S:-0}"
+require_observed_3d_route_volume_crossing="$(
+  normalize_bool "${REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING:-false}"
+)"
+observed_3d_route_volume_bounds_m=""
+if [[ -n "${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-}" ]]; then
+  if ! observed_3d_route_volume_bounds_m="$(
+    normalize_route_volume_bounds "${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M}"
+  )"; then
+    echo "Invalid OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M" >&2
+    exit 1
+  fi
+fi
 px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_drone_nav.log}"
 multi_vehicle_px4_logs=()
 if bool_is_true "${multi_vehicle_mission}"; then
@@ -405,6 +439,16 @@ if ! bool_is_true "${active_static_map}" && [[ "${lidar_profile}" == "none" ]]; 
   echo "No-static navigation requires LIDAR_PROFILE=2d or LIDAR_PROFILE=3d" >&2
   exit 1
 fi
+if bool_is_true "${require_observed_3d_route_volume_crossing}" &&
+  { bool_is_true "${active_static_map}" || [[ "${lidar_profile}" != "3d" ]]; }; then
+  echo "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING requires no-static LIDAR_PROFILE=3d" >&2
+  exit 1
+fi
+if bool_is_true "${require_observed_3d_route_volume_crossing}" &&
+  [[ -z "${observed_3d_route_volume_bounds_m}" ]]; then
+  echo "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING requires OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M" >&2
+  exit 1
+fi
 if bool_is_true "${enable_lidar_debug}" &&
   ! bool_is_true "${enable_obstacle_memory}"; then
   echo "Lidar debug requires ENABLE_OBSTACLE_MEMORY=true" >&2
@@ -628,6 +672,7 @@ echo "Obstacle memory: enabled=${enable_obstacle_memory}"
 echo "Lidar profile: ${lidar_profile}"
 echo "2D lidar: enabled=${enable_2d_lidar}"
 echo "3D lidar: enabled=${enable_3d_lidar}"
+echo "Observed 3D route-volume validation: required=${require_observed_3d_route_volume_crossing} bounds_m=${observed_3d_route_volume_bounds_m:-unset}"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'" |

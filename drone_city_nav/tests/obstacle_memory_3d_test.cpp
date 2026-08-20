@@ -99,5 +99,35 @@ TEST(ObstacleMemory3D, ExposesRevisionedDirtyChunks) {
   EXPECT_TRUE(memory.takeChanges().dirty_chunks.empty());
 }
 
+TEST(ObstacleMemory3D, ForgetsOnlyVoxelsOverlappedByDynamicVolumes) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const std::array dynamic_hit{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+  const std::array static_hit{LidarBeam3D{
+      .direction_map = {0.0, 1.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = dynamic_hit}));
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = static_hit}));
+  static_cast<void>(memory.takeChanges());
+  ASSERT_TRUE(memory.grid().isOccupied({9, 1, 2}));
+  ASSERT_TRUE(memory.grid().isOccupied({1, 9, 2}));
+  const std::uint64_t revision_before = memory.revision();
+
+  const std::array volumes{DynamicAgentLidarVolume{
+      .position = {9.5, 1.5, 2.5},
+      .radius_m = 0.6,
+      .lower_extent_m = 0.6,
+      .upper_extent_m = 0.6,
+  }};
+  EXPECT_GT(memory.forgetDynamicVolumes(volumes), 0U);
+
+  EXPECT_EQ(memory.grid().state({9, 1, 2}), ObservedVoxelState::kUnknown);
+  EXPECT_TRUE(memory.grid().isOccupied({1, 9, 2}));
+  EXPECT_GT(memory.revision(), revision_before);
+  EXPECT_FALSE(memory.takeChanges().dirty_chunks.empty());
+}
+
 } // namespace
 } // namespace drone_city_nav

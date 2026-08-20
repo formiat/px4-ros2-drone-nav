@@ -1,9 +1,9 @@
 # Obstacle Mapping
 
-Obstacle mapping owns the 2D lidar-memory input used by no-static planning.
-Static Occupancy3D is a separate source loaded directly by the production
-planner. The main rule is that raw sources stay raw: distance-based risk tiers
-do not inflate hard occupancy.
+Obstacle mapping owns the selected 2D or 3D lidar-memory input used by no-static
+planning. Static Occupancy3D is a separate source loaded directly by the
+production planner. The main rule is that raw sources stay raw: distance-based
+risk tiers do not inflate hard occupancy.
 
 ## Static World
 
@@ -26,7 +26,7 @@ Gazebo SDF and is used only in static mode. `production_mppi_node`, not
 lidar memory into Occupancy3D. Derived regions, portals, and traversal edges are
 stored in the separate fingerprint-bound `generated_city.topology3d` artifact.
 
-## Lidar Input
+## 2D Lidar Input
 
 `obstacle_memory_node` first resolves one strict full-6DoF acquisition pose for
 every `/scan` beam. Only then does it integrate accepted beams into scored
@@ -43,16 +43,30 @@ Important parameters:
 
 The vehicle can accelerate in any horizontal body direction, so the shipped
 2D lidar covers the full 360-degree horizontal sector. It retains 720 samples;
-the wider sector therefore does not increase scan size or DDS traffic. This is
-still a single horizontal 2D lidar, not a 3D perception system. Complete
-azimuth coverage is required so a backwards or sideways stopping path cannot
-fall into a sensor blind sector.
+the wider sector therefore does not increase scan size or DDS traffic. This
+profile remains a single horizontal 2D lidar. Complete azimuth coverage is
+required so a backwards or sideways stopping path cannot fall into a sensor
+blind sector.
 
-Lidar evidence is never filtered against hand-authored passage geometry. Static
-planning reads Occupancy3D. No-static uses the 2D lidar-memory result, and its
-runtime sensor mask exposes passage masses plus collisionless connector
-occluders as ordinary obstacles. Every current passage has an occluder across
-its intersection and each open bridge. See `world3d.md` for that mode contract.
+Lidar evidence is never filtered against hand-authored route geometry. Static
+planning reads Occupancy3D. The no-static 2D profile exposes collisionless
+connector occluders as ordinary obstacles because planar sensing cannot prove
+vertical free space. See `world3d.md` for that compatibility contract.
+
+## 3D Lidar Input
+
+`obstacle_memory_3d_node` receives an organized `PointCloud2` from the Gazebo
+GPU lidar. The known beam geometry reconstructs both finite hits and maximum
+range misses. One timestamp-aligned full-6DoF acquisition pose transforms every
+accepted beam into map coordinates; an unresolved pose bracket rejects the
+complete scan instead of mixing times or frames.
+
+The node removes returns from the physical sensor body and typed dynamic-agent
+volumes, publishes the fresh hit set for immediate finite-path validation, and
+integrates hit/miss rays into sparse `unknown/free/occupied` `Occupancy3D`.
+Transport publishes a revisioned base snapshot and dirty chunks rather than a
+complete dense map on every scan. Unknown voxels remain distinct from occupied
+and confirmed free voxels.
 
 ## Obstacle Memory
 
@@ -91,15 +105,17 @@ published on `/drone_city_nav/obstacle_memory_provenance` and in the atomic
 planner does not deserialize this provenance; it receives a lightweight status
 heartbeat and the raw runtime obstacle snapshot.
 
-For RViz, `obstacle_memory_node` also derives
+For the 2D profile, `obstacle_memory_node` also derives
 `/drone_city_nav/raw_memory_obstacle_points_3d` directly from the same active
 provenance at the standalone debug cadence. The cloud contains exactly the
 finite XYZ from each cell's `occupancy_trigger`, not the cell center or
 `last_hit`, and applies only the established visualization Z compensation. It
 contains no inflation and no removed-cell history. The existing
 `/drone_city_nav/raw_memory_obstacle_points` remains a separate ground-plane
-view of active 2D cell centers. Neither visualization cloud is a planner input,
-and the 3D cloud is not a 3D obstacle-memory implementation.
+view of active 2D cell centers. Neither visualization cloud is a planner input.
+In the 3D profile, `obstacle_memory_3d_node` publishes the same
+selected-spectator topic from occupied voxel centers and separately publishes
+the current scan on `/drone_city_nav/current_lidar_returns_3d`.
 
 The planner replaces its current memory state only when stamp, frame, complete
 map metadata, raw row-major grid hash, occupied count, and every provenance
@@ -284,10 +300,11 @@ which larger artifacts were emitted for that update. The planner consumes this
 message for memory revision diagnostics without receiving the grid or sparse
 provenance payload.
 
-No-static runtime planning receives `RawObstacleSnapshot`, which contains the raw
-2D grid and risk-policy identity but no sparse diagnostic provenance. It is
-published after every accepted memory update and moved into the planner as an
-immutable revision. Static planning does not consume it; canonical Occupancy3D
+No-static 2D planning receives `RawObstacleSnapshot`, which contains the raw 2D
+grid and risk-policy identity but no sparse diagnostic provenance. No-static 3D
+planning receives a `RawObstacleSnapshot3D` base and matching
+`RawObstacleDelta3D` dirty chunks. Both become immutable planner revisions.
+Static planning consumes neither sensor-world transport; canonical Occupancy3D
 is its authoritative world.
 
 `ObstacleMemorySnapshot` remains an atomic raw-grid/provenance artifact for
@@ -305,8 +322,11 @@ Useful visualization topics:
 - `/drone_city_nav/obstacle_memory_snapshot`
 - `/drone_city_nav/obstacle_memory_status`
 - `/drone_city_nav/raw_obstacle_snapshot`
+- `/drone_city_nav/raw_obstacle_snapshot_3d`
+- `/drone_city_nav/raw_obstacle_delta_3d`
 - `/drone_city_nav/raw_obstacle_grid`
 - `/drone_city_nav/latest_lidar_obstacle_scan`
+- `/drone_city_nav/current_lidar_returns_3d`
 - `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/raw_lidar_hit_points_3d`
 - `/drone_city_nav/remembered_lidar_points`
@@ -346,16 +366,17 @@ keeps observed obstacles available after they leave the instantaneous scan.
 These are alternative production planning sources, selected by mode:
 
 - static: canonical Occupancy3D + precomputed chunked ESDF3D -> local ESDF3D;
-- no-static: accumulated 2D lidar memory -> ESDF2D.
+- no-static 2D: accumulated planar lidar memory -> ESDF2D;
+- no-static 3D: revisioned observed Occupancy3D -> local ESDF3D.
 
 They are not merged in the current implementation. Each occupied distance
 field turns its selected raw source into risk tiers.
 
-The ground provider follows the same shared decision path but does not add a 3D
-planning layer. Obstacle memory remains a 2D scored grid. Accepted occupied cells
-carry sparse diagnostic 3D provenance from the observation that created and
-last confirmed the cell; rejected ground observations are kept only in bounded
-counters/log samples and never become obstacle-memory provenance.
+The 2D ground provider follows the same shared decision path but does not add a
+3D planning layer. Its obstacle memory remains a scored planar grid. Accepted
+occupied cells carry sparse diagnostic 3D provenance from the observation that
+created and last confirmed the cell; rejected ground observations are kept only
+in bounded counters/log samples and never become obstacle-memory provenance.
 
 ## Risk And Distance Fields
 

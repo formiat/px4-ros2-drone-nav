@@ -1,7 +1,6 @@
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/free_space_topology_extractor_3d.hpp"
-#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/static_esdf_cache.hpp"
 
 #include <gtest/gtest.h>
@@ -11,6 +10,8 @@
 #include <filesystem>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
+#include <stop_token>
 #include <utility>
 
 #include "advanced_passage_fixture.hpp"
@@ -36,25 +37,6 @@ namespace {
 [[nodiscard]] ExtractedFreeSpaceTopology3D
 extract(const AdvancedPassageFixture& fixture) {
   return extractFreeSpaceTopology3D(fixture.occupancy, extractorConfig());
-}
-
-[[nodiscard]] ObservedOccupancyGrid3D makeObserved(const OccupancyGrid3D& occupancy,
-                                                   const bool observe_free_space) {
-  ObservedOccupancyGrid3D observed{occupancy.bounds()};
-  const GridBounds3D& bounds = occupancy.bounds();
-  for (int z = 0; z < bounds.depth_cells; ++z) {
-    for (int y = 0; y < bounds.height_cells; ++y) {
-      for (int x = 0; x < bounds.width_cells; ++x) {
-        const GridIndex3D cell{x, y, z};
-        if (occupancy.isOccupied(cell)) {
-          static_cast<void>(observed.setState(cell, ObservedVoxelState::kOccupied));
-        } else if (observe_free_space) {
-          static_cast<void>(observed.setState(cell, ObservedVoxelState::kFree));
-        }
-      }
-    }
-  }
-  return observed;
 }
 
 TEST(FreeSpaceTopologyExtractor3D, ExtractsEveryGeneralizedPositiveFixture) {
@@ -158,40 +140,15 @@ TEST(FreeSpaceTopologyExtractor3D, RejectsWideRoofedHangar) {
   EXPECT_GT(topology.stats.rejected_constrained_components, 0U);
 }
 
-TEST(FreeSpaceTopologyExtractor3D, ExtractsFromObservedKnownFreeSpace) {
+TEST(FreeSpaceTopologyExtractor3D, CancelsExtractionCooperatively) {
   const AdvancedPassageFixture fixture =
       buildAdvancedPassageFixture(AdvancedPassageFixtureKind::kArchTunnel);
-  const DistanceField3D field = DistanceField3D::build(fixture.occupancy, 6.0);
-  const ExtractedFreeSpaceTopology3D expected = extract(fixture);
-  const ObservedOccupancyGrid3D observed = makeObserved(fixture.occupancy, true);
+  std::stop_source cancellation;
+  cancellation.request_stop();
 
-  const ExtractedFreeSpaceTopology3D actual =
-      extractFreeSpaceTopology3D(observed, field.distancesM(), extractorConfig());
-
-  EXPECT_EQ(actual.regions.size(), expected.regions.size());
-  EXPECT_EQ(actual.portals.size(), expected.portals.size());
-  EXPECT_EQ(actual.segments.size(), expected.segments.size());
-  EXPECT_EQ(actual.stats.free_voxels, expected.stats.free_voxels);
-}
-
-TEST(FreeSpaceTopologyExtractor3D, DoesNotClassifyUnknownSpaceAsFreeOrOccupied) {
-  const AdvancedPassageFixture fixture =
-      buildAdvancedPassageFixture(AdvancedPassageFixtureKind::kArchTunnel);
-  const DistanceField3D field = DistanceField3D::build(fixture.occupancy, 6.0);
-  const ObservedOccupancyGrid3D observed = makeObserved(fixture.occupancy, false);
-
-  const ExtractedFreeSpaceTopology3D topology =
-      extractFreeSpaceTopology3D(observed, field.distancesM(), extractorConfig());
-
-  EXPECT_EQ(topology.stats.free_voxels, 0U);
-  EXPECT_TRUE(topology.regions.empty());
-  EXPECT_TRUE(topology.portals.empty());
-  EXPECT_TRUE(topology.segments.empty());
-  EXPECT_GT(observed.knownVoxelCount(), 0U);
-  EXPECT_LT(observed.knownVoxelCount(),
-            static_cast<std::size_t>(fixture.occupancy.bounds().width_cells) *
-                static_cast<std::size_t>(fixture.occupancy.bounds().height_cells) *
-                static_cast<std::size_t>(fixture.occupancy.bounds().depth_cells));
+  EXPECT_THROW(extractFreeSpaceTopology3D(fixture.occupancy, extractorConfig(),
+                                          cancellation.get_token()),
+               std::runtime_error);
 }
 
 TEST(FreeSpaceTopologyExtractor3D, RejectsPortalPatchesOutsideArtifactLimits) {

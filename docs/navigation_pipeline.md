@@ -5,27 +5,31 @@ into a timestamped local trajectory horizon.
 
 ## 1. Raw World Snapshot
 
-`obstacle_memory_node` integrates accepted lidar returns into a scored 2D
-memory grid. `/drone_city_nav/obstacle_memory_status` carries the producer and
-sequence heartbeat without copying the grid. `/drone_city_nav/raw_obstacle_snapshot`
-carries the validated raw runtime grid and risk-policy fingerprint. The larger
-atomic grid/provenance snapshot and the matching RViz occupancy grid are
-debug-only and are never used as planner inputs.
+The selected obstacle-memory node integrates accepted lidar returns into either
+a scored 2D memory grid or sparse observed `Occupancy3D`.
+`/drone_city_nav/obstacle_memory_status` carries the producer and sequence
+heartbeat without copying the grid. The 2D profile publishes
+`/drone_city_nav/raw_obstacle_snapshot`; the 3D profile publishes a revisioned
+`/drone_city_nav/raw_obstacle_snapshot_3d` base plus
+`/drone_city_nav/raw_obstacle_delta_3d` dirty chunks. RViz and provenance
+representations are debug-only and are never planner inputs.
 
 In no-static mode the raw snapshot is the planning world and is published after
 every accepted update. In static mode the status heartbeat keeps memory
 diagnostics observable, while the raw and full snapshots run at the lower debug
 cadence; the planner loads canonical Occupancy3D directly and does not merge the
-2D grid into the static 3D map.
+sensor grid into the static 3D map.
 
 ## 2. ESDF Preparation
 
 The production MPPI node prepares a mode-specific occupied-distance field
 asynchronously. Static mode extracts a local dense ESDF3D from the precomputed
 chunked cache associated with canonical Occupancy3D. Fingerprint or format
-mismatch falls back to the exact runtime EDT. No-static mode builds a local
-ESDF2D from the latest raw lidar-memory snapshot. MPPI continues using the last
-complete immutable field until a newer revision is ready.
+mismatch falls back to the exact runtime EDT. No-static 2D mode builds a local
+ESDF2D. No-static 3D mode reconstructs the revisioned observed occupancy and
+builds a recentered local ESDF3D that retains explicit unknown-space state.
+MPPI continues using the last complete immutable field until a newer revision
+is ready.
 
 Distance classifications are:
 
@@ -40,7 +44,10 @@ not duplicate YAML as a second parameter source of truth.
 ## 3. Global Lattice Guide
 
 Static mode uses a 3D lattice over physical free voxels and produces
-`RouteSample3D` samples. No-static retains the 2D lidar-driven lattice.
+`RouteSample3D` samples. No-static 2D retains the planar lidar-driven lattice.
+No-static 3D uses the same generic 3D lattice over observed known-free voxels;
+it does not classify a separate online passage domain or consume static
+topology.
 
 Lattice output is classified as reached-goal, viable frontier, search
 incomplete, or exhausted. Only reached-goal and viable-frontier results are
@@ -65,9 +72,9 @@ Initial search heading uses a cascade:
 
 ## 4. Target And Speed Policy
 
-The planner selects a lookahead point on the active guide. Static mode uses a
-longer dynamic lookahead and higher speed profile; no-static mode uses a
-shorter guide, horizon, and speed cap.
+The planner selects a lookahead point on the active guide. Sensor and map mode
+select guide geometry and observation limits, while cruise speed, absolute
+speed, and acceleration are explicit map-independent parameters.
 
 Reference speed is bounded by:
 

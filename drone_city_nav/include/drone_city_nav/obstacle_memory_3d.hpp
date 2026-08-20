@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
+#include "drone_city_nav/tracked_agent_lidar_filter.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -57,6 +58,8 @@ public:
   ObstacleMemory3D(const GridBounds3D& bounds, ObstacleMemory3DConfig config = {});
 
   [[nodiscard]] ObstacleMemory3DStats integrateScan(const LidarScan3DView& scan);
+  [[nodiscard]] std::size_t
+  forgetDynamicVolumes(std::span<const DynamicAgentLidarVolume> volumes);
   void reset();
 
   [[nodiscard]] const ObservedOccupancyGrid3D& grid() const noexcept;

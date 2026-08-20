@@ -143,6 +143,24 @@ Visualization Manager:
     - Alpha: 0.95
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2
+      Color: 50; 225; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Current 3D Lidar Returns
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.08
+      Style: Points
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /drone_city_nav/current_lidar_returns_3d
+    - Alpha: 0.95
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
       Color: 60; 220; 220
       Color Transformer: FlatColor
       Decay Time: 0
@@ -189,11 +207,11 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
-      Name: Raw Memory Hit Origins 3D
+      Name: Accumulated 3D Obstacle Memory
       Position Transformer: XYZ
-      Size (Pixels): 4
-      Size (m): 0.25
-      Style: Spheres
+      Size (Pixels): 3
+      Size (m): 0.20
+      Style: Points
       Topic:
         Value: /drone_city_nav/raw_memory_obstacle_points_3d
     - Alpha: 0.75
@@ -282,7 +300,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 70
+      Distance: 45
       Focal Point:
         X: 0
         Y: 0

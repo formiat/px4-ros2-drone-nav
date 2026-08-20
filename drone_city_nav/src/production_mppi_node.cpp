@@ -83,10 +83,12 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("no_static_esdf_half_extent_m", 100.0);
   no_static_esdf_recenter_margin_m_ =
       declare_parameter<double>("no_static_esdf_recenter_margin_m", 70.0);
+  no_static_3d_esdf_update_rate_hz_ =
+      declare_parameter<double>("no_static_3d_esdf_update_rate_hz", 1.0);
   no_static_3d_esdf_half_extent_m_ =
-      declare_parameter<double>("no_static_3d_esdf_half_extent_m", 40.0);
+      declare_parameter<double>("no_static_3d_esdf_half_extent_m", 30.0);
   no_static_3d_esdf_recenter_margin_m_ =
-      declare_parameter<double>("no_static_3d_esdf_recenter_margin_m", 25.0);
+      declare_parameter<double>("no_static_3d_esdf_recenter_margin_m", 18.0);
   constrained_route_speed_limit_mps_ = static_cast<float>(
       declare_parameter<double>("constrained_route_speed_limit_mps", 10.0));
   route_constraint_diagnostics_distance_m_ =
@@ -203,6 +205,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("static_horizon_duration_s", 6.0);
   const double no_static_horizon_duration_s =
       declare_parameter<double>("no_static_horizon_duration_s", 4.0);
+  stationary_hold_validity_s_ =
+      declare_parameter<double>("stationary_hold_validity_s", 1.0);
   const double active_horizon_duration_s =
       use_static_map_ ? static_horizon_duration_s : no_static_horizon_duration_s;
   const double static_stale_esdf_execution_window_s = declare_parameter<double>(
@@ -439,7 +443,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_3d_config_.sample_step_m =
       declare_parameter<double>("global_lattice_3d_sample_step_m", 0.5);
   lattice_3d_config_.flight_envelope = flight_envelope_config_;
-  lattice_3d_config_.planning_goal_distance_m = static_lattice_distance;
+  lattice_3d_config_.planning_goal_distance_m =
+      use_static_map_ ? static_lattice_distance : no_static_lattice_distance;
   lattice_3d_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_3d_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
   lattice_3d_config_.nominal_horizontal_speed_mps =
@@ -483,9 +488,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_3d_config_.frontier_validation_maximum_states =
       static_cast<std::size_t>(declare_parameter<std::int64_t>(
           "global_lattice_3d_frontier_validation_maximum_states", 2048));
-  lattice_3d_config_.maximum_expansions =
-      static_cast<std::size_t>(static_lattice_expansions);
-  lattice_3d_config_.maximum_search_time_ms = static_lattice_deadline_ms;
+  lattice_3d_config_.maximum_expansions = static_cast<std::size_t>(
+      use_static_map_ ? static_lattice_expansions : no_static_lattice_expansions);
+  lattice_3d_config_.maximum_search_time_ms =
+      use_static_map_ ? static_lattice_deadline_ms : no_static_lattice_deadline_ms;
   active_guide_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   active_guide_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
   active_guide_config_.validation_sample_step_m =
@@ -585,6 +591,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(diagnostics_file_rate_hz_ > 0.0) || !(diagnostics_flush_period_s_ > 0.0) ||
       !(maximum_control_feedback_age_ms_ > 0.0) ||
       !(latest_lidar_obstacle_maximum_age_ms_ > 0.0) ||
+      !std::isfinite(stationary_hold_validity_s_) ||
+      stationary_hold_validity_s_ < 0.2 ||
       !std::isfinite(constrained_route_speed_limit_mps_) ||
       constrained_route_speed_limit_mps_ < 0.0F ||
       !(route_constraint_diagnostics_distance_m_ >= 0.0) ||
@@ -637,6 +645,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(no_static_esdf_half_extent_m_ > 0.0) ||
       !(no_static_esdf_recenter_margin_m_ >= 0.0) ||
       no_static_esdf_recenter_margin_m_ >= no_static_esdf_half_extent_m_ ||
+      !(no_static_3d_esdf_update_rate_hz_ > 0.0) ||
       !(no_static_3d_esdf_half_extent_m_ > 0.0) ||
       !(no_static_3d_esdf_recenter_margin_m_ >= 0.0) ||
       no_static_3d_esdf_recenter_margin_m_ >= no_static_3d_esdf_half_extent_m_ ||
@@ -906,47 +915,48 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   } else {
     startPlanningTimer();
   }
-  RCLCPP_INFO(
-      get_logger(),
-      "Production MPPI ready: rollouts=%zu open_static_rollouts=%zu "
-      "direct_tracking_rollouts=%zu adaptive_clearance_m=%.1f "
-      "steps=%zu rate=%.1fHz "
-      "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
-      "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
-      "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
-      "constrained_route_speed_limit=%.1fmps head_progress=%.2fs "
-      "far_cost_sampling=(%.2fs,%u) liveness=%s "
-      "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
-      "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
-      "planner_tick_phase_ms=%.1f no_static_world=%s "
-      "no_static_esdf=(%.1fHz,2d=%.1f/%.1fm,3d=%.1f/%.1fm)",
-      mppi_config_.rollouts, rollout_budget_config_.open_static_rollouts,
-      rollout_budget_config_.direct_tracking_rollouts,
-      rollout_budget_config_.minimum_reduced_clearance_m, mppi_config_.steps,
-      tick_rate_hz_, deadline_ms_, 0UL, use_static_map_ ? "true" : "false",
-      use_static_map_ || no_static_world_model_ ==
-                             ProductionNoStaticWorldModel::kObservedOccupancy3D
-          ? "true"
-          : "false",
-      static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
-      lattice_config_.receding_goal_distance_m, speed_policy_config_.cruise_speed_mps,
-      mppi_config_.dynamics.maximum_horizontal_speed_mps,
-      mppi_config_.dynamics.maximum_horizontal_acceleration_mps2,
-      mppi_config_.dynamics.maximum_control_jerk_mps3,
-      mppi_config_.costs.speed_tracking_weight,
-      use_static_map_ ? constrained_route_speed_limit_mps_ : 0.0F,
-      mppi_config_.costs.head_progress_horizon_s,
-      mppi_config_.horizon_sampling.full_rate_duration_s,
-      mppi_config_.horizon_sampling.far_cost_stride,
-      liveness_config_.enabled ? "true" : "false",
-      frontier_blacklist_enabled_ ? "true" : "false",
-      active_guide_config_.minimum_remaining_m,
-      active_guide_config_.velocity_heading_low_speed_mps,
-      active_guide_config_.velocity_heading_high_speed_mps, planner_worker_count_,
-      planning_tick_phase_offset_s_ * 1000.0,
-      noStaticWorldModelName(no_static_world_model_), no_static_esdf_update_rate_hz_,
-      no_static_esdf_half_extent_m_, no_static_esdf_recenter_margin_m_,
-      no_static_3d_esdf_half_extent_m_, no_static_3d_esdf_recenter_margin_m_);
+  RCLCPP_INFO(get_logger(),
+              "Production MPPI ready: rollouts=%zu open_static_rollouts=%zu "
+              "direct_tracking_rollouts=%zu adaptive_clearance_m=%.1f "
+              "steps=%zu rate=%.1fHz "
+              "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
+              "horizon=%.1fs guide_window=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
+              "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
+              "constrained_route_speed_limit=%.1fmps head_progress=%.2fs "
+              "far_cost_sampling=(%.2fs,%u) liveness=%s "
+              "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
+              "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
+              "planner_tick_phase_ms=%.1f no_static_world=%s "
+              "no_static_esdf=(2d=%.1fHz/%.1f/%.1fm,3d=%.1fHz/%.1f/%.1fm)",
+              mppi_config_.rollouts, rollout_budget_config_.open_static_rollouts,
+              rollout_budget_config_.direct_tracking_rollouts,
+              rollout_budget_config_.minimum_reduced_clearance_m, mppi_config_.steps,
+              tick_rate_hz_, deadline_ms_, 0UL, use_static_map_ ? "true" : "false",
+              use_static_map_ || no_static_world_model_ ==
+                                     ProductionNoStaticWorldModel::kObservedOccupancy3D
+                  ? "true"
+                  : "false",
+              static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
+              lattice_config_.receding_goal_distance_m,
+              speed_policy_config_.cruise_speed_mps,
+              mppi_config_.dynamics.maximum_horizontal_speed_mps,
+              mppi_config_.dynamics.maximum_horizontal_acceleration_mps2,
+              mppi_config_.dynamics.maximum_control_jerk_mps3,
+              mppi_config_.costs.speed_tracking_weight,
+              use_static_map_ ? constrained_route_speed_limit_mps_ : 0.0F,
+              mppi_config_.costs.head_progress_horizon_s,
+              mppi_config_.horizon_sampling.full_rate_duration_s,
+              mppi_config_.horizon_sampling.far_cost_stride,
+              liveness_config_.enabled ? "true" : "false",
+              frontier_blacklist_enabled_ ? "true" : "false",
+              active_guide_config_.minimum_remaining_m,
+              active_guide_config_.velocity_heading_low_speed_mps,
+              active_guide_config_.velocity_heading_high_speed_mps,
+              planner_worker_count_, planning_tick_phase_offset_s_ * 1000.0,
+              noStaticWorldModelName(no_static_world_model_),
+              no_static_esdf_update_rate_hz_, no_static_esdf_half_extent_m_,
+              no_static_esdf_recenter_margin_m_, no_static_3d_esdf_update_rate_hz_,
+              no_static_3d_esdf_half_extent_m_, no_static_3d_esdf_recenter_margin_m_);
 }
 
 void ProductionMppiNode::startPlanningTimer() {

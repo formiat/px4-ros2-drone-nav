@@ -378,7 +378,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       return publication;
     }
     const auto hold_duration_ns = static_cast<std::int64_t>(
-        std::max(0.2, 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) * 1.0e9);
+        std::max(stationary_hold_validity_s_,
+                 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) *
+        1.0e9);
     msg::MppiTrajectoryHorizon horizon = make_horizon(
         now_ns + hold_duration_ns, ProductionMppiExecutionMode::kPositionHold, reason);
     horizon.stationary_position_hold = true;

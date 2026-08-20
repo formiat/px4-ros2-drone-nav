@@ -490,6 +490,37 @@ TEST(StaticRouteExtensionTest, ProtectsConstrainedSuffixThroughDeparture) {
                                                         Point3{16.0, 0.0, 5.0}, 3.0));
 }
 
+TEST(StaticRouteExtensionTest, ProtectedPassageAllowsAssignmentChange) {
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 10.0);
+  const std::vector<ConstrainedRouteSpan> spans{ConstrainedRouteSpan{
+      .passage_traversal_id = "passage",
+      .route_generation = 3U,
+      .direction_sign = 1,
+      .begin_station_m = 5.0,
+      .end_station_m = 12.0,
+      .envelope = {},
+      .segment_spans = {},
+  }};
+  const StaticRouteObjective route_objective{
+      .goal = Point3{20.0, 0.0, 5.0},
+      .mission_epoch = 7U,
+      .assignment_generation = 2U,
+      .target_detection_id = 10U,
+      .target_track_id = 20U,
+      .continuous_tracking = true,
+      .available = true,
+  };
+  StaticRouteObjective search_objective = route_objective;
+
+  EXPECT_TRUE(staticRouteReplacementProtected(active, spans, Point3{8.0, 0.0, 5.0},
+                                              route_objective, search_objective, 3.0));
+  search_objective.assignment_generation = 3U;
+  search_objective.target_track_id = 21U;
+  EXPECT_FALSE(staticRouteReplacementProtected(active, spans, Point3{8.0, 0.0, 5.0},
+                                               route_objective, search_objective, 3.0));
+}
+
 TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kCandidateValidationRejected),

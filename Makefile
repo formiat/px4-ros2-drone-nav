@@ -44,13 +44,19 @@ sim-environment-demo:
 
 .PHONY: sim-gui
 sim-gui: build
-	MISSION_GOALS_XYZ_M="$${MISSION_GOALS_XYZ_M:-216,54,18;216,378,18;54,378,18;54,54,18}" \
-		./scripts/run_drone_nav_sim.sh
+	@if [[ -z "$${MISSION_GOALS_XYZ_M+x}" && \
+		-z "$${POINT_TO_POINT_SCENARIO_PATH:-}" ]]; then \
+		export MISSION_GOALS_XYZ_M='216,54,18;216,378,18;54,378,18;54,54,18'; \
+	fi; \
+	./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-headless
 sim-headless: build
-	MISSION_GOALS_XYZ_M="$${MISSION_GOALS_XYZ_M:-216,54,18;216,378,18;54,378,18;54,54,18}" \
-		HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
+	@if [[ -z "$${MISSION_GOALS_XYZ_M+x}" && \
+		-z "$${POINT_TO_POINT_SCENARIO_PATH:-}" ]]; then \
+		export MISSION_GOALS_XYZ_M='216,54,18;216,378,18;54,378,18;54,54,18'; \
+	fi; \
+	HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-intercept-gui

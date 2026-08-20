@@ -50,7 +50,8 @@ bool freeSpaceTopologyExtractorConfigIsValid(
 
 ExtractedFreeSpaceTopology3D
 extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
-                           const FreeSpaceTopologyExtractorConfig& config) {
+                           const FreeSpaceTopologyExtractorConfig& config,
+                           const std::stop_token stop_token) {
   if (!freeSpaceTopologyExtractorConfigIsValid(config)) {
     throw std::invalid_argument{"invalid FreeSpaceTopologyExtractor3D config"};
   }
@@ -58,7 +59,7 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
   const DistanceField3D clearance_field =
       DistanceField3D::build(occupancy, config.maximum_clearance_m);
   ExtractedFreeSpaceTopology3D result =
-      extractFreeSpaceTopology3D(occupancy, clearance_field, config);
+      extractFreeSpaceTopology3D(occupancy, clearance_field, config, stop_token);
   result.stats.clearance_ms = clearance_field.stats().duration_ms;
   result.stats.duration_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - started)

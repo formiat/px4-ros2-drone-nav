@@ -36,6 +36,7 @@ namespace {
 enum class CloudLayer : std::uint8_t {
   kMemory3d = 0U,
   kCurrentLidar,
+  kCurrentLidar3d,
   kRawLidar3d,
   kRememberedLidar,
   kOccupiedCells,
@@ -122,6 +123,7 @@ public:
     const auto reliable_qos = rclcpp::QoS{1}.reliable();
     const auto best_effort_qos = rclcpp::QoS{10}.best_effort();
     const auto transient_qos = rclcpp::QoS{1}.reliable().transient_local();
+    const auto current_lidar_3d_qos = rclcpp::QoS{1}.best_effort();
 
     path_pub_ = create_publisher<nav_msgs::msg::Path>(
         declare_parameter<std::string>("selected_path_topic",
@@ -149,6 +151,9 @@ public:
                          transient_qos);
     createCloudPublisher(CloudLayer::kCurrentLidar, "selected_lidar_pointcloud_topic",
                          "/drone_city_nav/lidar_debug_points", reliable_qos);
+    createCloudPublisher(
+        CloudLayer::kCurrentLidar3d, "selected_current_lidar_3d_pointcloud_topic",
+        "/drone_city_nav/current_lidar_returns_3d", current_lidar_3d_qos);
     createCloudPublisher(CloudLayer::kRawLidar3d,
                          "selected_raw_lidar_3d_pointcloud_topic",
                          "/drone_city_nav/raw_lidar_hit_points_3d", reliable_qos);
@@ -169,6 +174,10 @@ public:
     createCloudSubscriptions(
         CloudLayer::kCurrentLidar,
         topicParameter("lidar_pointcloud_topics", "/lidar_debug_points"), reliable_qos);
+    createCloudSubscriptions(CloudLayer::kCurrentLidar3d,
+                             topicParameter("current_lidar_3d_pointcloud_topics",
+                                            "/current_lidar_points_3d"),
+                             current_lidar_3d_qos);
     createCloudSubscriptions(
         CloudLayer::kRawLidar3d,
         topicParameter("raw_lidar_3d_pointcloud_topics", "/raw_lidar_hit_points_3d"),

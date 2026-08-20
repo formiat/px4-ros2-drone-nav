@@ -15,6 +15,54 @@
 
 namespace drone_city_nav {
 
+MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
+    const std::shared_ptr<const ProductionNavigationObjective>& objective,
+    const ProductionMppiNavigation& navigation,
+    const MissionGoalCaptureResult& goal_capture, const std::int64_t now_ns) {
+  if (!mission_waypoint_sequence_ || !objective || objective->tracking.has_value() ||
+      objective->immediate_hold) {
+    return {};
+  }
+  const MissionWaypointUpdate update =
+      mission_waypoint_sequence_->update(MissionWaypointObservation{
+          .stamp_ns = now_ns,
+          .goal_captured = goal_capture.latched,
+          .horizontal_speed_mps = std::hypot(static_cast<double>(navigation.state.vx),
+                                             static_cast<double>(navigation.state.vy)),
+      });
+  if (!update.advanced) {
+    return update;
+  }
+
+  mission_goal_ = mission_waypoint_sequence_->activeGoal();
+  navigation_objective_.store(std::make_shared<const ProductionNavigationObjective>(
+                                  ProductionNavigationObjective{
+                                      .goal = mission_goal_,
+                                      .tracking = std::nullopt,
+                                      .mission_epoch = objective->mission_epoch + 1U,
+                                      .sample_sequence = 0U,
+                                      .assignment_generation = 0U,
+                                      .target_detection_id = 0U,
+                                      .target_track_id = 0U,
+                                      .stamp_ns = now_ns,
+                                      .continuous_tracking = false,
+                                      .immediate_hold = false,
+                                  }),
+                              std::memory_order_release);
+  {
+    const std::scoped_lock lock{objective_replan_mutex_};
+    objective_replan_anchor_ = mission_goal_;
+    objective_replan_stamp_ns_ = now_ns;
+  }
+  requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
+  RCLCPP_INFO(get_logger(),
+              "MISSION_WAYPOINT_ADVANCED completed_index=%zu waypoint_count=%zu "
+              "next_goal=(%.2f,%.2f,%.2f)",
+              update.completed_index, mission_waypoint_sequence_->waypointCount(),
+              mission_goal_.x, mission_goal_.y, mission_goal_.z);
+  return update;
+}
+
 void ProductionMppiNode::planningTick() {
   if (!engine_) {
     return;
@@ -66,9 +114,16 @@ void ProductionMppiNode::planningTick() {
   }
   const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
       latest_raw_world_.load(std::memory_order_acquire);
+  const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
+      latest_raw_world_3d_.load(std::memory_order_acquire);
   const auto raw_revision = [&](const std::uint64_t esdf_revision) {
-    return !use_static_map_ && latest_raw_world ? latest_raw_world->revision
-                                                : esdf_revision;
+    if (use_static_map_) {
+      return esdf_revision;
+    }
+    if (no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D) {
+      return latest_raw_world_3d ? latest_raw_world_3d->revision : esdf_revision;
+    }
+    return latest_raw_world ? latest_raw_world->revision : esdf_revision;
   };
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const double pose_age_ms =
@@ -109,7 +164,10 @@ void ProductionMppiNode::planningTick() {
   if (!engine_->ready()) {
     return;
   }
-  if (use_static_map_ && esdf->global_guide_generation == 0U) {
+  const bool uses_3d_route =
+      use_static_map_ ||
+      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+  if (uses_3d_route && esdf->global_guide_generation == 0U) {
     requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide, 0U);
   }
   const bool route_objective_matches = staticRouteObjectiveMatches(
@@ -323,39 +381,8 @@ void ProductionMppiNode::planningTick() {
                 .terminal_route_available = esdf->global_guide_reaches_mission_goal,
             })
           : MissionGoalCaptureResult{};
-  MissionWaypointUpdate waypoint_update;
-  if (mission_waypoint_sequence_ && objective && !objective->tracking.has_value() &&
-      !objective->immediate_hold) {
-    waypoint_update = mission_waypoint_sequence_->update(MissionWaypointObservation{
-        .stamp_ns = now_ns,
-        .goal_captured = goal_capture.latched,
-        .horizontal_speed_mps = std::hypot(static_cast<double>(navigation.state.vx),
-                                           static_cast<double>(navigation.state.vy)),
-    });
-    if (waypoint_update.advanced) {
-      mission_goal_ = mission_waypoint_sequence_->activeGoal();
-      navigation_objective_.store(
-          std::make_shared<const ProductionNavigationObjective>(
-              ProductionNavigationObjective{
-                  .goal = mission_goal_,
-                  .mission_epoch = objective->mission_epoch + 1U,
-                  .sample_sequence = 0U,
-              }),
-          std::memory_order_release);
-      {
-        const std::scoped_lock lock{objective_replan_mutex_};
-        objective_replan_anchor_ = mission_goal_;
-        objective_replan_stamp_ns_ = now_ns;
-      }
-      requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
-      RCLCPP_INFO(get_logger(),
-                  "MISSION_WAYPOINT_ADVANCED completed_index=%zu waypoint_count=%zu "
-                  "next_goal=(%.2f,%.2f,%.2f)",
-                  waypoint_update.completed_index,
-                  mission_waypoint_sequence_->waypointCount(), mission_goal_.x,
-                  mission_goal_.y, mission_goal_.z);
-    }
-  }
+  const MissionWaypointUpdate waypoint_update =
+      updateMissionWaypoint(objective, navigation, goal_capture, now_ns);
   const bool temporary_frontier_is_terminal = route_usable && route_projection.valid &&
                                               !esdf->global_guide_reaches_mission_goal;
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(

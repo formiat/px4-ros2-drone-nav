@@ -52,6 +52,51 @@ GridIndex3D offset(const GridIndex3D cell, const GridIndex3D delta) noexcept {
   return GridIndex3D{cell.x + delta.x, cell.y + delta.y, cell.z + delta.z};
 }
 
+const std::vector<GridIndex3D>& neighbors26() {
+  static const std::vector<GridIndex3D> directions = [] {
+    std::vector<GridIndex3D> result;
+    result.reserve(26U);
+    for (int z = -1; z <= 1; ++z) {
+      for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+          if (x != 0 || y != 0 || z != 0) {
+            result.push_back(GridIndex3D{x, y, z});
+          }
+        }
+      }
+    }
+    return result;
+  }();
+  return directions;
+}
+
+const std::vector<GridIndex3D>& antipodalNeighborDirections() {
+  static const std::vector<GridIndex3D> directions = [] {
+    std::vector<GridIndex3D> result;
+    result.reserve(13U);
+    for (const GridIndex3D direction : neighbors26()) {
+      if (direction.z > 0 ||
+          (direction.z == 0 &&
+           (direction.y > 0 || (direction.y == 0 && direction.x > 0)))) {
+        result.push_back(direction);
+      }
+    }
+    return result;
+  }();
+  return directions;
+}
+
+bool sameBounds(const GridBounds3D& first, const GridBounds3D& second) noexcept {
+  constexpr double tolerance = 1.0e-6;
+  return std::abs(first.origin_x - second.origin_x) <= tolerance &&
+         std::abs(first.origin_y - second.origin_y) <= tolerance &&
+         std::abs(first.origin_z - second.origin_z) <= tolerance &&
+         std::abs(first.resolution_m - second.resolution_m) <= tolerance &&
+         first.width_cells == second.width_cells &&
+         first.height_cells == second.height_cells &&
+         first.depth_cells == second.depth_cells;
+}
+
 Vec3 normalized(const Vec3& value) noexcept {
   const double length = std::hypot(std::hypot(value.x, value.y), value.z);
   return length > kEpsilon ? Vec3{value.x / length, value.y / length, value.z / length}

@@ -7,6 +7,7 @@ user_gid="$(id -g)"
 container_home="/tmp/drone-gazebo-home-${user_uid}"
 container_runtime="/tmp/drone-gazebo-runtime-${user_uid}"
 image_name="${DRONE_GAZEBO_DEV_IMAGE:-drone-gazebo-dev:latest}"
+container_gpu_mode="${DRONE_GAZEBO_CONTAINER_GPU:-auto}"
 
 group_args=()
 if getent group render >/dev/null; then
@@ -17,10 +18,23 @@ if getent group video >/dev/null; then
 fi
 
 gpu_args=()
-if command -v nvidia-smi >/dev/null 2>&1 &&
-    docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
-  gpu_args+=(--gpus all)
-fi
+case "${container_gpu_mode}" in
+  off)
+    ;;
+  auto|required)
+    if command -v nvidia-smi >/dev/null 2>&1 &&
+        docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
+      gpu_args+=(--gpus all)
+    elif [[ "${container_gpu_mode}" == "required" ]]; then
+      echo "NVIDIA container runtime is required but unavailable." >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "DRONE_GAZEBO_CONTAINER_GPU must be auto, off, or required." >&2
+    exit 2
+    ;;
+esac
 
 tty_args=(-i)
 if [[ -t 0 && -t 1 ]]; then

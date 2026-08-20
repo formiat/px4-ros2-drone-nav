@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import sys
 from pathlib import Path
@@ -13,6 +14,8 @@ CRITICAL_PX4_PATTERN = re.compile(
     r"(?:ERROR \[|Critical failure|Segmentation fault)",
     re.IGNORECASE,
 )
+FLOAT_PATTERN = r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?"
+RouteVolumeBounds = tuple[float, float, float, float, float, float]
 
 
 def parse_bool(value: str) -> bool | None:
@@ -47,6 +50,166 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def parse_route_volume_bounds(value: str) -> RouteVolumeBounds:
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != 6:
+        raise argparse.ArgumentTypeError(
+            "route volume must contain min_x,min_y,min_z,max_x,max_y,max_z"
+        )
+    try:
+        values = tuple(float(part) for part in parts)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "route volume bounds must be numeric"
+        ) from error
+    if not all(math.isfinite(value) for value in values):
+        raise argparse.ArgumentTypeError("route volume bounds must be finite")
+    if any(values[axis] >= values[axis + 3] for axis in range(3)):
+        raise argparse.ArgumentTypeError(
+            "route volume minimum bounds must be below maximum bounds"
+        )
+    return (
+        values[0],
+        values[1],
+        values[2],
+        values[3],
+        values[4],
+        values[5],
+    )
+
+
+def validate_mapping_pipeline(
+    ros_log: str,
+    lidar_profile: str,
+    expected_memory: bool | None,
+    enable_lidar_debug: bool,
+    errors: list[str],
+) -> None:
+    if lidar_profile == "3d":
+        scan_pattern = (
+            r"LIDAR3D_SCAN accepted=true .*hits=[1-9][0-9]* "
+            r"misses=[1-9][0-9]*"
+        )
+        update_pattern = (
+            r"ONLINE_OCCUPANCY3D_UPDATE .*revision=[1-9][0-9]* .*"
+            r"(?:snapshot=true|delta=true)"
+        )
+        memory_activity_pattern = r"LIDAR3D_SCAN accepted=true|ONLINE_OCCUPANCY3D_UPDATE"
+        scan_label = "3D obstacle memory receives timestamped hit/miss scans"
+        update_label = "revisioned Occupancy3D snapshots or deltas are published"
+    else:
+        scan_pattern = r"First lidar scan|Obstacle memory update:"
+        update_pattern = r"Raw obstacle snapshot|raw obstacle snapshot|raw_revision="
+        memory_activity_pattern = scan_pattern
+        scan_label = "obstacle memory receives lidar"
+        update_label = "raw obstacle snapshots are published"
+
+    if expected_memory is not False:
+        require(scan_label, ros_log, scan_pattern, errors)
+        require(update_label, ros_log, update_pattern, errors)
+    elif re.search(memory_activity_pattern, ros_log):
+        errors.append("FAIL: obstacle memory is disabled")
+    else:
+        print("OK: obstacle memory is disabled")
+
+    if not enable_lidar_debug:
+        return
+    if lidar_profile == "3d":
+        require(
+            "current 3D lidar cloud is published",
+            ros_log,
+            r"LIDAR3D_SCAN accepted=true .*current_cloud=true",
+            errors,
+        )
+        require(
+            "selected-spectator accumulated 3D memory cloud is published",
+            ros_log,
+            r"ONLINE_OCCUPANCY3D_UPDATE .*debug_cloud=true",
+            errors,
+        )
+    else:
+        require(
+            "lidar debug snapshots are written",
+            ros_log,
+            r"LIDAR_DEBUG snapshot=",
+            errors,
+        )
+
+
+def validate_observed_3d_route_volume(
+    ros_log: str,
+    bounds: RouteVolumeBounds,
+    errors: list[str],
+) -> None:
+    require(
+        "an observed-known-free generic 3D route is activated",
+        ros_log,
+        r"PRODUCTION_MPPI_GUIDE3D .*activated=true .*"
+        r"route_space=observed_known_free_3d .*topology_acceleration=none",
+        errors,
+    )
+    if re.search(r"ONLINE_FREE_SPACE_TOPOLOGY3D", ros_log):
+        errors.append("FAIL: no online free-space partition is used")
+    else:
+        print("OK: no online free-space partition is used")
+
+    position_pattern = re.compile(
+        rf"PRODUCTION_MPPI_TICK .*?state_position=\("
+        rf"({FLOAT_PATTERN}),({FLOAT_PATTERN}),({FLOAT_PATTERN})\)"
+    )
+    positions = [
+        (float(x), float(y), float(z))
+        for x, y, z in position_pattern.findall(ros_log)
+    ]
+    if len(positions) < 3:
+        errors.append("FAIL: enough vehicle state samples exist for route validation")
+        return
+
+    minimum = bounds[:3]
+    maximum = bounds[3:]
+    extents = tuple(maximum[axis] - minimum[axis] for axis in range(3))
+    dominant_axis = max(range(3), key=extents.__getitem__)
+
+    def inside(position: tuple[float, float, float]) -> bool:
+        return all(
+            minimum[axis] <= position[axis] <= maximum[axis]
+            for axis in range(3)
+        )
+
+    inside_flags = [inside(position) for position in positions]
+    block_start = 0
+    while block_start < len(inside_flags):
+        if not inside_flags[block_start]:
+            block_start += 1
+            continue
+        block_end = block_start
+        while block_end + 1 < len(inside_flags) and inside_flags[block_end + 1]:
+            block_end += 1
+        sample_count = block_end - block_start + 1
+        if block_start > 0 and block_end + 1 < len(positions) and sample_count >= 2:
+            before = positions[block_start - 1][dominant_axis]
+            after = positions[block_end + 1][dominant_axis]
+            low_to_high = (
+                before < minimum[dominant_axis]
+                and after > maximum[dominant_axis]
+            )
+            high_to_low = (
+                before > maximum[dominant_axis]
+                and after < minimum[dominant_axis]
+            )
+            if low_to_high or high_to_low:
+                direction = "low_to_high" if low_to_high else "high_to_low"
+                print(
+                    "OK: vehicle physically crosses the observed 3D route volume "
+                    f"(axis={'xyz'[dominant_axis]}, direction={direction}, "
+                    f"inside_samples={sample_count})"
+                )
+                return
+        block_start = block_end + 1
+
+    errors.append("FAIL: vehicle physically crosses the observed 3D route volume")
+
+
 def safety_relevant_ros_log(ros_log: str, mission_type: str) -> str:
     if mission_type not in {"intercept", "multi_intercept"}:
         return ros_log
@@ -62,6 +225,7 @@ def validate_cooperative_traffic(
     expected_vehicles: int,
     expected_memory: bool | None,
     errors: list[str],
+    lidar_profile: str = "2d",
 ) -> None:
     require(
         "cooperative ground truth is restricted to the referee",
@@ -125,11 +289,17 @@ def validate_cooperative_traffic(
     else:
         print("OK: cooperative traffic has no vehicle destruction")
     if expected_memory is True:
+        peer_filter_pattern = (
+            r"COOPERATIVE_PEER_LIDAR_FILTER3D filtered_beams=[0-9]+ "
+            r"known_peers=[1-9][0-9]* forgotten_voxels=[0-9]+"
+            if lidar_profile == "3d"
+            else r"COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=[0-9]+ "
+            r"matched_peers=[0-9]+ known_peers=[1-9][0-9]*"
+        )
         require(
             "cooperative peer memory filtering is active",
             ros_log,
-            r"COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=[0-9]+ "
-            r"matched_peers=[0-9]+ known_peers=[1-9][0-9]*",
+            peer_filter_pattern,
             errors,
         )
 
@@ -696,6 +866,16 @@ def main() -> int:
     parser.add_argument("--expected-vehicles", type=int, default=0)
     parser.add_argument("--expected-static", default="")
     parser.add_argument("--expected-memory", default="")
+    parser.add_argument(
+        "--lidar-profile", choices=("none", "2d", "3d"), default="2d"
+    )
+    parser.add_argument(
+        "--require-observed-3d-route-volume-crossing", action="store_true"
+    )
+    parser.add_argument(
+        "--observed-3d-route-volume-bounds-m",
+        type=parse_route_volume_bounds,
+    )
     parser.add_argument("--enable-lidar-debug", default="true")
     parser.add_argument(
         "--expect-noncooperative-avoidance",
@@ -705,6 +885,14 @@ def main() -> int:
     parser.add_argument("--mission-check", action="store_true")
     parser.add_argument("--allow-mission-failure", action="store_true")
     args = parser.parse_args()
+    if (
+        args.require_observed_3d_route_volume_crossing
+        and args.observed_3d_route_volume_bounds_m is None
+    ):
+        parser.error(
+            "--require-observed-3d-route-volume-crossing requires "
+            "--observed-3d-route-volume-bounds-m"
+        )
 
     ros_log = read_text(args.ros_log)
     px4_logs = [read_text(path) for path in args.px4_log]
@@ -730,23 +918,13 @@ def main() -> int:
         expected_vehicles,
         errors,
     )
-    if expected_memory is not False:
-        require(
-            "obstacle memory receives lidar",
-            ros_log,
-            r"First lidar scan|Obstacle memory update:",
-            errors,
-        )
-        require(
-            "raw obstacle snapshots are published",
-            ros_log,
-            r"Raw obstacle snapshot|raw obstacle snapshot|raw_revision=",
-            errors,
-        )
-    elif re.search(r"First lidar scan|Obstacle memory update:", ros_log):
-        errors.append("FAIL: obstacle memory is disabled")
-    else:
-        print("OK: obstacle memory is disabled")
+    validate_mapping_pipeline(
+        ros_log,
+        args.lidar_profile,
+        expected_memory,
+        enable_lidar_debug,
+        errors,
+    )
     require(
         "production MPPI is ready",
         ros_log,
@@ -756,7 +934,7 @@ def main() -> int:
     require(
         "ESDF is available",
         ros_log,
-        r"PRODUCTION_MPPI_ESDF(?:3D)? .*revision=",
+        r"PRODUCTION_MPPI_ESDF(?:3D(?:_ONLINE)?)? .*revision=",
         errors,
     )
     require(
@@ -806,13 +984,26 @@ def main() -> int:
     else:
         print("OK: static map source contract")
 
-    if enable_lidar_debug:
-        require(
-            "lidar debug snapshots are written",
+    if expected_static is False:
+        if re.search(
+            r"STATIC_WORLD_3D|STATIC_ESDF3D_READY|STATIC_ESDF_CACHE_READY",
             ros_log,
-            r"LIDAR_DEBUG snapshot=",
-            errors,
-        )
+        ):
+            errors.append("FAIL: no static occupancy, ESDF, or topology is loaded")
+        else:
+            print("OK: no static occupancy, ESDF, or topology is loaded")
+
+    if args.require_observed_3d_route_volume_crossing:
+        if args.lidar_profile != "3d" or expected_static is not False:
+            errors.append(
+                "FAIL: observed 3D route validation requires no-static 3D lidar"
+            )
+        else:
+            validate_observed_3d_route_volume(
+                ros_log,
+                args.observed_3d_route_volume_bounds_m,
+                errors,
+            )
 
     if args.mission_type in {"intercept", "multi_intercept"}:
         validate_intercept_physical_losses(safety_ros_log, errors)
@@ -848,7 +1039,11 @@ def main() -> int:
             validate_multi_intercept_settlement(ros_log, errors)
         elif args.mission_type == "cooperative_traffic":
             validate_cooperative_traffic(
-                ros_log, expected_vehicles, expected_memory, errors
+                ros_log,
+                expected_vehicles,
+                expected_memory,
+                errors,
+                args.lidar_profile,
             )
         else:
             validate_point_to_point_waypoints(ros_log, errors)

@@ -1,5 +1,6 @@
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
@@ -14,7 +15,7 @@
 
 namespace drone_city_nav {
 
-void ProductionMppiNode::processStaticGuideSearch(
+void ProductionMppiNode::processGuideSearch3D(
     const ProductionMppiPreparedEsdf& world,
     const ProductionMppiNavigation& navigation) {
   const Point3 mission_goal =
@@ -95,6 +96,8 @@ void ProductionMppiNode::processStaticGuideSearch(
   prepared.topology_critical_exposure_m = lattice.critical_exposure_m;
   prepared.continuation_validation_ms = lattice.continuation_validation_ms;
   prepared.route_fingerprint = lattice.route_fingerprint;
+  std::vector<SelectedPassageTraversal> route_traversals =
+      lattice.selected_passage_traversals;
   const StaticRouteReplacementPolicy replacement_policy =
       world.static_route_replan_request
           ? StaticRouteReplacementPolicy::kAllowSafetyReplan
@@ -106,9 +109,8 @@ void ProductionMppiNode::processStaticGuideSearch(
     const auto validation_started = std::chrono::steady_clock::now();
     auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(lattice.route);
     const std::uint64_t candidate_generation = static_route_generation_ + 1U;
-    std::vector<ConstrainedRouteSpan> initial_spans =
-        makeConstrainedRouteSpans(*mutable_route, lattice.selected_passage_traversals,
-                                  candidate_generation, route_envelope_config_);
+    std::vector<ConstrainedRouteSpan> initial_spans = makeConstrainedRouteSpans(
+        *mutable_route, route_traversals, candidate_generation, route_envelope_config_);
     const auto smoothing_started = std::chrono::steady_clock::now();
     StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
         *mutable_route, initial_spans, world.grid, *world.distances_m,
@@ -216,19 +218,18 @@ void ProductionMppiNode::processStaticGuideSearch(
           .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
     }
     const bool protected_suffix =
-        (world.static_route_extension_request || world.static_route_replan_request) &&
         world.route_3d && world.constrained_spans &&
-        staticRouteHasProtectedConstrainedSuffix(
+        staticRouteReplacementProtected(
             *world.route_3d, *world.constrained_spans, search_start,
+            world.route_objective, world.search_objective,
             static_route_extension_config_.protected_departure_m);
     if (validation.accepted && protected_suffix) {
       validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kProtectedConstrainedSuffix};
     }
     std::vector<PassageTraversalId> selected_passage_traversal_ids;
-    selected_passage_traversal_ids.reserve(lattice.selected_passage_traversals.size());
-    for (const SelectedPassageTraversal& traversal :
-         lattice.selected_passage_traversals) {
+    selected_passage_traversal_ids.reserve(route_traversals.size());
+    for (const SelectedPassageTraversal& traversal : route_traversals) {
       selected_passage_traversal_ids.push_back(traversal.passage_traversal_id);
     }
     prepared.route_3d = route;
@@ -246,8 +247,7 @@ void ProductionMppiNode::processStaticGuideSearch(
                         constrained_route_speed_limit_mps_);
     prepared.global_guide_projection = projectOntoGlobalGuide(
         *prepared.route_2d_projection, Point2{navigation.state.x, navigation.state.y});
-    prepared.route_fingerprint =
-        routeFingerprint(*route, lattice.selected_passage_traversals);
+    prepared.route_fingerprint = routeFingerprint(*route, route_traversals);
     prepared.candidate_validation_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   validation_started)
@@ -374,11 +374,16 @@ void ProductionMppiNode::processStaticGuideSearch(
           prepared.passage_volume_resource_reused ? "true" : "false");
     }
   }
+  const char* const route_space =
+      world.observed_occupancy ? "observed_known_free_3d" : "static_occupancy_3d";
+  const char* const topology_acceleration =
+      static_free_space_topology_router_ ? "static_free_space_index" : "none";
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
       " activated=%s activation_status=%.*s revision_matches=%s "
-      "generation_matches=%s objective_matches=%s extension=%s replan=%s "
+      "generation_matches=%s objective_matches=%s route_generation=%" PRIu64
+      " route_space=%s topology_acceleration=%s extension=%s replan=%s "
       "base_generation=%" PRIu64 " replan_reason=%s"
       " replacement_policy=%.*s validation=%.*s endpoint_improvement_m=%.2f "
       "handoff=%s handoff_cross_track_m=%.2f handoff_minimum_clearance_m=%.2f "
@@ -423,7 +428,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
       staticRouteActivationStatusName(activation_status).data(),
       revision_matches ? "true" : "false", generation_matches ? "true" : "false",
-      objective_matches ? "true" : "false",
+      objective_matches ? "true" : "false", prepared.global_guide_generation,
+      route_space, topology_acceleration,
       world.static_route_extension_request ? "true" : "false",
       world.static_route_replan_request ? "true" : "false",
       world.static_route_replan_request ? world.static_route_replan_base_generation
@@ -481,8 +487,8 @@ void ProductionMppiNode::processStaticGuideSearch(
       lattice.successor_profiling.continuation.worker_ms, lattice.objective_cost,
       lattice.route_length_m, lattice.estimated_travel_time_s,
       lattice.vertical_alignment_time_s, lattice.planning_exposure_m,
-      lattice.critical_exposure_m, lattice.selected_passage_traversals.size(),
-      search_ms, lattice.topology_searches, lattice.parallel_topology_searches,
+      lattice.critical_exposure_m, route_traversals.size(), search_ms,
+      lattice.topology_searches, lattice.parallel_topology_searches,
       lattice.topology_search_worker_ms, prepared.continuation_validation_ms,
       prepared.candidate_validation_ms, prepared.route_smoothing_ms,
       prepared.route_shortcut_validation_ms, prepared.route_corner_validation_ms,

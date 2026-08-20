@@ -581,6 +581,22 @@ void ProductionMppiNode::onNavigationObjective(
         direct_resolution = resolveDirectTrackingTarget(
             *static_occupancy_3d_, current_position, *current_target, goal, footprint);
       }
+    } else if (!use_static_map_ &&
+               no_static_world_model_ ==
+                   ProductionNoStaticWorldModel::kObservedOccupancy3D) {
+      const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
+          latest_raw_world_3d_.load(std::memory_order_acquire);
+      if (raw_world && raw_world->occupancy) {
+        world_available = true;
+        resolution =
+            resolveTrackingObjective(*raw_world->occupancy, *current_target, goal,
+                                     tracking_objective_ray_sample_spacing_m_);
+        if (navigation.valid) {
+          direct_resolution =
+              resolveDirectTrackingTarget(*raw_world->occupancy, current_position,
+                                          *current_target, goal, footprint);
+        }
+      }
     } else if (!use_static_map_) {
       const std::shared_ptr<const ProductionMppiRawWorld2D> raw_world =
           latest_raw_world_.load(std::memory_order_acquire);

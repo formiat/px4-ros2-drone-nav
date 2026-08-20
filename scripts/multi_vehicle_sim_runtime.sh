@@ -173,6 +173,7 @@ check_headless_run() {
     --mission-type "${mission_type}"
     --expected-static "${expected_static_map}"
     --expected-memory "${expected_obstacle_memory}"
+    --lidar-profile "${lidar_profile}"
     --enable-lidar-debug "${enable_lidar_debug}"
     --expect-noncooperative-avoidance "${intercept_noncooperative_avoidance_enabled}"
   )
@@ -188,6 +189,13 @@ check_headless_run() {
   fi
   if bool_is_true "${allow_mission_failure}"; then
     validation_args+=(--allow-mission-failure)
+  fi
+  if bool_is_true "${require_observed_3d_route_volume_crossing}"; then
+    validation_args+=(
+      --require-observed-3d-route-volume-crossing
+      --observed-3d-route-volume-bounds-m
+      "${observed_3d_route_volume_bounds_m}"
+    )
   fi
 
   if ! python3 "${repo_root}/scripts/validate_drone_nav_headless.py" \

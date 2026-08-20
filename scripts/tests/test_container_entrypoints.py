@@ -80,6 +80,16 @@ class ContainerEntrypointTest(unittest.TestCase):
         self.assertIn("--volume \"${repo_root}:/workspace:rw\"", text)
         self.assertIn('bash -c "${container_command}" bash "$@"', text)
 
+    def test_container_gpu_access_is_typed_and_build_defaults_off(self) -> None:
+        runner = self.read_script("container_run.sh")
+        build = self.read_script("build.sh")
+
+        self.assertIn("DRONE_GAZEBO_CONTAINER_GPU:-auto", runner)
+        self.assertIn("off)", runner)
+        self.assertIn("auto|required)", runner)
+        self.assertIn('gpu_args+=(--gpus all)', runner)
+        self.assertIn("DRONE_GAZEBO_CONTAINER_GPU:-off", build)
+
     def test_container_runner_sources_ros_and_px4_msgs_setups(self) -> None:
         text = self.read_script("container_run.sh")
 

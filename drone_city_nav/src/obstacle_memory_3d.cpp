@@ -16,6 +16,36 @@ namespace {
   return std::sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
 }
 
+[[nodiscard]] bool validVolume(const DynamicAgentLidarVolume& volume) noexcept {
+  return finitePoint(volume.position) && std::isfinite(volume.radius_m) &&
+         volume.radius_m > 0.0 && std::isfinite(volume.lower_extent_m) &&
+         volume.lower_extent_m >= 0.0 && std::isfinite(volume.upper_extent_m) &&
+         volume.upper_extent_m >= 0.0;
+}
+
+[[nodiscard]] bool
+cellIntersectsVolume(const GridBounds3D& bounds, const GridIndex3D cell,
+                     const DynamicAgentLidarVolume& volume) noexcept {
+  const Point3 cell_minimum{
+      bounds.origin_x + static_cast<double>(cell.x) * bounds.resolution_m,
+      bounds.origin_y + static_cast<double>(cell.y) * bounds.resolution_m,
+      bounds.origin_z + static_cast<double>(cell.z) * bounds.resolution_m,
+  };
+  const Point3 cell_maximum{cell_minimum.x + bounds.resolution_m,
+                            cell_minimum.y + bounds.resolution_m,
+                            cell_minimum.z + bounds.resolution_m};
+  const double volume_minimum_z = volume.position.z - volume.lower_extent_m;
+  const double volume_maximum_z = volume.position.z + volume.upper_extent_m;
+  if (cell_maximum.z < volume_minimum_z || cell_minimum.z > volume_maximum_z) {
+    return false;
+  }
+  const double delta_x = std::max(
+      {cell_minimum.x - volume.position.x, 0.0, volume.position.x - cell_maximum.x});
+  const double delta_y = std::max(
+      {cell_minimum.y - volume.position.y, 0.0, volume.position.y - cell_maximum.y});
+  return delta_x * delta_x + delta_y * delta_y <= volume.radius_m * volume.radius_m;
+}
+
 [[nodiscard]] bool validConfig(const ObstacleMemory3DConfig& config) noexcept {
   return std::isfinite(config.maximum_range_m) && config.maximum_range_m > 0.0 &&
          std::isfinite(config.minimum_range_m) && config.minimum_range_m >= 0.0 &&
@@ -62,6 +92,65 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     ++revision_;
   }
   return stats;
+}
+
+std::size_t ObstacleMemory3D::forgetDynamicVolumes(
+    const std::span<const DynamicAgentLidarVolume> volumes) {
+  const GridBounds3D& bounds = grid_.bounds();
+  std::size_t forgotten_voxels{0U};
+  for (const DynamicAgentLidarVolume& volume : volumes) {
+    if (!validVolume(volume)) {
+      continue;
+    }
+    const auto cell_index = [&](const double coordinate, const double origin) noexcept {
+      return static_cast<int>(std::floor((coordinate - origin) / bounds.resolution_m));
+    };
+    const int minimum_x =
+        std::max(0, cell_index(volume.position.x - volume.radius_m, bounds.origin_x));
+    const int maximum_x =
+        std::min(bounds.width_cells - 1,
+                 cell_index(volume.position.x + volume.radius_m, bounds.origin_x));
+    const int minimum_y =
+        std::max(0, cell_index(volume.position.y - volume.radius_m, bounds.origin_y));
+    const int maximum_y =
+        std::min(bounds.height_cells - 1,
+                 cell_index(volume.position.y + volume.radius_m, bounds.origin_y));
+    const int minimum_z = std::max(
+        0, cell_index(volume.position.z - volume.lower_extent_m, bounds.origin_z));
+    const int maximum_z = std::min(
+        bounds.depth_cells - 1,
+        cell_index(volume.position.z + volume.upper_extent_m, bounds.origin_z));
+    if (minimum_x > maximum_x || minimum_y > maximum_y || minimum_z > maximum_z) {
+      continue;
+    }
+    for (int z = minimum_z; z <= maximum_z; ++z) {
+      for (int y = minimum_y; y <= maximum_y; ++y) {
+        for (int x = minimum_x; x <= maximum_x; ++x) {
+          const GridIndex3D cell{x, y, z};
+          if (!cellIntersectsVolume(bounds, cell, volume)) {
+            continue;
+          }
+          const OccupancyChunkIndex3D chunk_index =
+              ObservedOccupancyGrid3D::chunkIndex(cell);
+          const auto evidence = evidence_.find(chunk_index);
+          if (evidence != evidence_.end()) {
+            evidence->second.scores.at(ObservedOccupancyGrid3D::localBitIndex(cell)) =
+                0;
+          }
+          if (grid_.state(cell) == ObservedVoxelState::kUnknown) {
+            continue;
+          }
+          static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
+          dirty_chunks_[chunk_index] = true;
+          ++forgotten_voxels;
+        }
+      }
+    }
+  }
+  if (forgotten_voxels > 0U) {
+    ++revision_;
+  }
+  return forgotten_voxels;
 }
 
 void ObstacleMemory3D::reset() {

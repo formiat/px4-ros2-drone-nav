@@ -77,6 +77,11 @@ Inspect:
 Diagnostic lattice classification is observational unless a separate lifecycle
 condition explicitly consumes it.
 
+For no-static 3D runs, `PRODUCTION_MPPI_GUIDE3D` also reports
+`route_space=observed_known_free_3d` and `topology_acceleration=none`. Roadmap 8
+acceptance uses these fields together with measured `state_position` samples;
+it does not depend on a planner-defined passage event.
+
 ## Liveness Diagnostics
 
 Compare:
@@ -91,7 +96,7 @@ Compare:
 High terminal progress with no actual displacement indicates an ineffective
 horizon, not successful navigation.
 
-## Constrained Route Diagnostics
+## Static Constrained Route Diagnostics
 
 `ROUTE_CONSTRAINT_EVENT` is emitted on observable lifecycle transitions:
 
@@ -128,11 +133,12 @@ and vertical errors, and whether every observed traversal sample remained inside
 the vertical envelope. A completed event for the same identity as its entered
 event is the durable evidence that the vehicle crossed the full passage span.
 
-`PASSAGE_GEOMETRY_EVENT` provides independent physical-path evidence when the
-ordinary 3D lattice finds the same free-space passage without selecting a
-topology transition. It projects the measured vehicle position onto every
-runtime passage candidate on each planning tick and requires a continuous
-entry-to-exit progression inside the candidate's extracted clearance tube.
+`PASSAGE_GEOMETRY_EVENT` provides independent physical-path evidence when a
+static route passes through geometry represented by the optional static
+topology index without selecting a topology transition. It projects the
+measured vehicle position onto every runtime static traversal candidate on each
+planning tick and requires continuous entry-to-exit progression inside the
+extracted clearance tube.
 `PASSAGE_GEOMETRY_PROXIMITY` reports the nearest entry, projection station,
 cross-track error, and extracted clearance while the vehicle is within 8 m of
 an entry. A `completed` geometry event together with raw-safe horizon validation
@@ -156,14 +162,18 @@ deadline.
 
 ## Lidar Diagnostics
 
-Use lidar snapshots to verify:
+For the 3D profile, use `LIDAR3D_SCAN`, `ONLINE_OCCUPANCY3D_UPDATE`, and
+`PRODUCTION_MPPI_ESDF3D_ONLINE` to verify nonzero hit and miss beams, monotonic
+occupancy revisions, base/delta publication, known/free/occupied/unknown counts,
+local ROI dimensions, and ESDF build/upload cadence. Use lidar snapshots to
+verify:
 
 - heading was accepted before projection;
 - scan and pose timestamps align;
 - raw returns and map-frame points agree;
 - memory contains plausible retained evidence;
 - static/no-static source selection is correct;
-- no-static lidar returns are independent of static passage metadata.
+- no-static 3D route activation is independent of static topology metadata.
 
 ## Run Analysis Order
 
@@ -173,6 +183,6 @@ Use lidar snapshots to verify:
 3. Inspect active global guide and target source.
 4. Inspect selected MPPI tier and collision flags.
 5. Inspect head progress, actual motion, and liveness.
-6. Inspect the constrained span if the route enters an air passage.
+6. Inspect a constrained span only when a static topology route uses one.
 7. Inspect the finite-path deadline, in-path arrival profile, and final hold.
 8. Only then tune costs or dynamics.

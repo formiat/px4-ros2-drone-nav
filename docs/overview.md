@@ -17,7 +17,7 @@ real-aircraft operation.
 - ESDF-based collision queries and categorical risk bands.
 - A sticky global lattice guide for route direction.
 - CUDA MPPI local planning at a receding horizon.
-- Static and no-static speed policies.
+- Map-independent parameterized speed policy.
 - Timestamped execution horizons consumed by the MPPI offboard node.
 - Typed position hold when no physically executable route is available.
 - Terminal-point or current-position hold when no fresh finite path is available.
@@ -47,13 +47,13 @@ real-aircraft operation.
 ./scripts/sim_gui.sh
 ```
 
-`ENABLE_STATIC_MAP=true` uses the known city map and the long, high-speed static
-profile. `ENABLE_STATIC_MAP=false` uses lidar memory as the world source and the
-shorter, conservative no-static profile.
+`ENABLE_STATIC_MAP=true` uses the known city map. `ENABLE_STATIC_MAP=false` uses
+the selected lidar memory as the world source. Speed is configured explicitly
+and does not depend on map mode.
 
-Only static mode can execute the canonical air passages. No-static has no
-passage semantics or 3D perception; collisionless lidar occluders make every
-open bridge and intersection appear occupied.
+No-static 2D is limited to planar observed free space. No-static 3D integrates
+hit and miss rays into observed Occupancy3D and executes ordinary 3D routes
+through any confirmed known-free volume, without a separate passage mode.
 
 All build, test, quality, and simulation commands must run through the
 repository container workflow.
@@ -77,7 +77,9 @@ repository container workflow.
 
 - The lattice search is recomputed; it is not AD*, LPA*, or D* Lite.
 - No persistent no-static topological memory exists yet.
-- No-static does not infer 3D passages because the vehicle has a 2D lidar.
+- No-static 3D navigation does not infer special passages; it plans over one
+  continuous observed known-free volume. Persistent exploration topology is
+  intentionally deferred to Roadmap 12.
 - Current-position hold is not a substitute for finding a physically executable
   route.
 

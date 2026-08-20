@@ -238,6 +238,14 @@ staticRouteObjectiveMatches(const StaticRouteObjective& route_objective,
     std::span<const ConstrainedRouteSpan> constrained_spans,
     const Point3& current_position, double protected_departure_m) noexcept;
 
+[[nodiscard]] bool
+staticRouteReplacementProtected(std::span<const RouteSample3D> route,
+                                std::span<const ConstrainedRouteSpan> constrained_spans,
+                                const Point3& current_position,
+                                const StaticRouteObjective& route_objective,
+                                const StaticRouteObjective& search_objective,
+                                double protected_departure_m) noexcept;
+
 [[nodiscard]] StaticRouteCandidateValidation validateStaticRouteCandidate(
     std::span<const RouteSample3D> active_route,
     std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,

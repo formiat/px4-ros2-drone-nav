@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace drone_city_nav {
@@ -22,6 +23,7 @@ struct ObservedEsdf3DBuildStats {
 struct ObservedEsdf3D {
   mppi::EsdfGrid grid{};
   std::vector<float> distances_m;
+  std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
   std::uint64_t occupancy_fingerprint{0U};
   ObservedEsdf3DBuildStats stats{};
 };

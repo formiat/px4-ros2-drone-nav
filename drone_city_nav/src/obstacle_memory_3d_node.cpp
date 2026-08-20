@@ -170,17 +170,17 @@ public:
     static_cast<void>(declare_parameter<bool>("use_static_map", false));
 
     scan_config_.horizontal_samples = static_cast<std::size_t>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("lidar_3d_horizontal_samples", 360), 1, 4096));
+        declare_parameter<std::int64_t>("lidar_3d_horizontal_samples", 240), 1, 4096));
     scan_config_.vertical_samples = static_cast<std::size_t>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("lidar_3d_vertical_samples", 32), 1, 1024));
+        declare_parameter<std::int64_t>("lidar_3d_vertical_samples", 17), 1, 1024));
     scan_config_.horizontal_min_angle_rad = declare_parameter<double>(
         "lidar_3d_horizontal_min_angle_rad", -std::numbers::pi);
     scan_config_.horizontal_max_angle_rad = declare_parameter<double>(
         "lidar_3d_horizontal_max_angle_rad", std::numbers::pi);
     scan_config_.vertical_min_angle_rad =
-        declare_parameter<double>("lidar_3d_vertical_min_angle_rad", -0.7853981634);
+        declare_parameter<double>("lidar_3d_vertical_min_angle_rad", -1.3962634016);
     scan_config_.vertical_max_angle_rad =
-        declare_parameter<double>("lidar_3d_vertical_max_angle_rad", 0.7853981634);
+        declare_parameter<double>("lidar_3d_vertical_max_angle_rad", 1.3962634016);
     scan_config_.minimum_range_m =
         declare_parameter<double>("lidar_3d_minimum_range_m", 0.2);
     scan_config_.maximum_range_m = declare_parameter<double>("max_lidar_range_m", 35.0);
@@ -573,7 +573,8 @@ private:
     hit_points_body.reserve(decoded.hit_beams);
     Point3 ray_origin{};
     bool origin_valid{false};
-    std::size_t dynamic_filtered{0U};
+    std::size_t tracked_agent_filtered{0U};
+    std::size_t cooperative_filtered{0U};
     std::size_t self_filtered{0U};
     std::size_t projection_invalid{0U};
     for (const LidarBeamSample3D& sample : decoded.beams) {
@@ -601,12 +602,14 @@ private:
           map_beams.push_back(beam);
           continue;
         }
-        const bool dynamic =
-            anyVolumeContains(filter_plan.tracked_agent_exclusions, endpoint) ||
+        const bool tracked_agent =
+            anyVolumeContains(filter_plan.tracked_agent_exclusions, endpoint);
+        const bool cooperative_peer =
             anyVolumeContains(filter_plan.cooperative_memory_exclusions, endpoint);
-        if (dynamic) {
+        if (tracked_agent || cooperative_peer) {
           beam.valid = false;
-          ++dynamic_filtered;
+          tracked_agent_filtered += tracked_agent ? 1U : 0U;
+          cooperative_filtered += !tracked_agent && cooperative_peer ? 1U : 0U;
         } else {
           hit_points_map.push_back(endpoint);
           hit_points_body.push_back(endpoint_body);
@@ -623,33 +626,52 @@ private:
     latest.acquisition_body_frame = body_frame;
     latest.hit_points_body_frd = hit_points_body;
     latest.source_beam_count = decoded.beams.size();
+    const std::size_t dynamic_filtered = tracked_agent_filtered + cooperative_filtered;
     latest.invalid_beam_count =
         decoded.invalid_beams + projection_invalid + dynamic_filtered + self_filtered;
     latest.valid = true;
     latest_scan_pub_->publish(makeLatestLidarObstacleScanMessage(
         latest, source_header, frame_id_, acquisition_stamp_ns, ++latest_scan_sequence_,
         lidar_pose_history_.generation()));
-    current_returns_pub_->publish(buildLidarDebugPointCloud(
-        hit_points_map, rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME}, frame_id_));
+    const bool publish_current_cloud = persistent_memory_selection_.selected();
+    if (publish_current_cloud) {
+      current_returns_pub_->publish(buildLidarDebugPointCloud(
+          hit_points_map, rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME}, frame_id_));
+    }
 
     if (memory_ && mapping_lifecycle_ && transport_ &&
         mapping_lifecycle_->updateAltitude(pose.altitude_m, pose.altitude_valid)) {
+      const std::size_t forgotten_tracked_voxels =
+          memory_->forgetDynamicVolumes(filter_plan.tracked_agent_exclusions);
+      const std::size_t forgotten_cooperative_voxels =
+          memory_->forgetDynamicVolumes(filter_plan.cooperative_memory_exclusions);
+      if (!filter_plan.cooperative_memory_exclusions.empty()) {
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "COOPERATIVE_PEER_LIDAR_FILTER3D filtered_beams=%zu known_peers=%zu "
+            "forgotten_voxels=%zu",
+            cooperative_filtered, filter_plan.cooperative_memory_exclusions.size(),
+            forgotten_cooperative_voxels);
+      }
       const ObstacleMemory3DStats stats = memory_->integrateScan(
           LidarScan3DView{.origin_map = ray_origin, .beams = map_beams});
       const ObstacleMemory3DChanges changes = memory_->takeChanges();
       transport_->publish(memory_->grid(), changes,
                           rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME},
                           persistent_memory_selection_.selected());
-      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                           "LIDAR3D_SCAN accepted=true stamp_ns=%" PRId64
-                           " source=%zu processed=%zu hits=%zu misses=%zu invalid=%zu "
-                           "self_filtered=%zu dynamic_filtered=%zu transitions=%zu "
-                           "revision=%" PRIu64,
-                           acquisition_stamp_ns, decoded.beams.size(),
-                           stats.processed_beams, stats.hit_beams, stats.miss_beams,
-                           stats.invalid_beams + projection_invalid, self_filtered,
-                           dynamic_filtered, stats.state_transitions,
-                           memory_->revision());
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "LIDAR3D_SCAN accepted=true stamp_ns=%" PRId64
+          " source=%zu processed=%zu hits=%zu misses=%zu invalid=%zu "
+          "self_filtered=%zu dynamic_filtered=%zu dynamic_forgotten=%zu "
+          "transitions=%zu "
+          "revision=%" PRIu64 " current_cloud=%s",
+          acquisition_stamp_ns, decoded.beams.size(), stats.processed_beams,
+          stats.hit_beams, stats.miss_beams, stats.invalid_beams + projection_invalid,
+          self_filtered, dynamic_filtered,
+          forgotten_tracked_voxels + forgotten_cooperative_voxels,
+          stats.state_transitions, memory_->revision(),
+          publish_current_cloud ? "true" : "false");
     }
     return PendingPointCloudDisposition::kConsumed;
   }

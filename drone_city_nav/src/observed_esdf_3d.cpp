@@ -213,6 +213,7 @@ ObservedEsdf3D buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
   const OccupancyGrid3D occupied = occupancy.occupiedSnapshot();
   const DistanceField3D field = DistanceField3D::buildLocal(
       occupied, local_bounds, maximum_distance_m, worker_pool);
+  auto local_occupancy = std::make_shared<ObservedOccupancyGrid3D>(local_bounds);
   ObservedEsdf3D result{
       .grid =
           mppi::EsdfGrid{
@@ -226,6 +227,7 @@ ObservedEsdf3D buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
               .outside_is_unknown = true,
           },
       .distances_m = {field.distancesM().begin(), field.distancesM().end()},
+      .local_occupancy = local_occupancy,
       .occupancy_fingerprint = observedOccupancyFingerprint(occupancy, local_bounds),
   };
   result.stats.distance_field = field.stats();
@@ -247,16 +249,19 @@ ObservedEsdf3D buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
         const ObservedVoxelState state = source.has_value()
                                              ? occupancy.state(*source)
                                              : ObservedVoxelState::kUnknown;
+        const GridIndex3D local_cell{x, y, z};
         switch (state) {
           case ObservedVoxelState::kUnknown:
             result.distances_m.at(linear_index) = mppi::kUnknownEsdfDistanceM;
             ++result.stats.unknown_voxels;
             break;
           case ObservedVoxelState::kFree:
+            static_cast<void>(local_occupancy->setState(local_cell, state));
             ++result.stats.known_voxels;
             ++result.stats.free_voxels;
             break;
           case ObservedVoxelState::kOccupied:
+            static_cast<void>(local_occupancy->setState(local_cell, state));
             ++result.stats.known_voxels;
             ++result.stats.occupied_voxels;
             break;

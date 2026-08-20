@@ -63,6 +63,12 @@ formatted files remain owned by the invoking user. `./scripts/dev_shell.sh`
 remains available when you need an interactive container shell. Inside that
 shell, use these targets:
 
+`./scripts/build.sh` does not attach the NVIDIA runtime because compilation only
+needs the CUDA toolkit. `scripts/container_run.sh` accepts
+`DRONE_GAZEBO_CONTAINER_GPU=auto|off|required` for explicit control. Simulation
+and CUDA runtime tests should use `required`; formatting and compilation should
+use `off` on hosts where GPU runtime power cycling is undesirable.
+
 ```bash
 make build
 make test
@@ -184,15 +190,32 @@ The first three IDs use versioned release artifacts. The remaining IDs are
 local evaluation candidates and report a clear error if their cached source
 assets are absent.
 
-The 2D lidar is enabled by default. In a static-map run it can be disabled to
-remove the simulated sensor and its ROS scan bridge:
+`LIDAR_PROFILE=none|2d|3d` selects exactly one perception profile. The 2D lidar
+remains the default for backward-compatible Manhattan runs. A static-map run
+may disable lidar entirely:
 
 ```bash
-ENABLE_2D_LIDAR=false ./scripts/sim_gui.sh
+LIDAR_PROFILE=none ./scripts/sim_gui.sh
 ```
 
-No-static navigation requires the 2D lidar and rejects
-`ENABLE_2D_LIDAR=false` before starting the simulation.
+No-static navigation requires `LIDAR_PROFILE=2d` or `LIDAR_PROFILE=3d` and
+rejects `none` before starting the simulation. `ENABLE_2D_LIDAR` remains only a
+compatibility assertion; do not combine the 2D and 3D profiles in one run.
+
+Roadmap 8 acceptance uses Manhattan, no static map, and only the 3D profile:
+
+```bash
+POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/manhattan_low_altitude_point_to_point_scenario.json \
+ENABLE_STATIC_MAP=false \
+LIDAR_PROFILE=3d \
+ENABLE_2D_LIDAR=false \
+REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
+OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M='42,147,1.5,66,177,8.5' \
+./scripts/sim_headless.sh
+```
+
+When `POINT_TO_POINT_SCENARIO_PATH` is set, the scenario owns its waypoint
+sequence unless `MISSION_GOALS_XYZ_M` is also supplied explicitly.
 
 ## Flight Speed Profile
 
@@ -529,25 +552,41 @@ routes with lazy sparse-graph traversals; no passage is mandatory. Selected
 traversals directly create typed route spans with varying 3D cross-sections.
 There is no hand-authored planner centerline, semantic lane, or nearest-portal
 selector.
-No-static mode uses the accumulated raw 2D lidar-memory world; collisionless lidar
-occluders make all four passages appear closed in that mode. Source contracts are documented in
+No-static mode supports two independent perception pipelines. The legacy 2D
+profile uses accumulated planar lidar memory. The 3D profile decodes every
+organized scan into hit and miss beams, resolves the full 6DoF acquisition pose,
+and integrates the rays into revisioned `unknown/free/occupied` `Occupancy3D`.
+Dirty chunks update a local 3D ESDF. The ordinary risk-aware 3D lattice then
+plans through all observed known-free volume without classifying the world into
+open space and special passages. Unknown space is neither an obstacle nor
+executable free space: a finite route ends at the observed frontier with zero
+speed and can be replaced when new observations extend it.
+
+The static free-space topology index remains an optional compatibility
+acceleration for static Manhattan planning. It is not generated or consumed by
+the no-static 3D pipeline. Source contracts are documented in
 `docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
 
 Obstacle topics follow a strict raw/runtime/debug contract.
-`/drone_city_nav/obstacle_memory_status` is the lightweight per-update heartbeat,
-while `/drone_city_nav/raw_obstacle_snapshot` carries the current raw grid used by
-no-static planning. The larger atomic memory/provenance snapshot is published at
-the debug cadence and is not deserialized by the planner. Raw grids contain only
-direct obstacle evidence. Each timestamp-aligned scan also publishes
+`/drone_city_nav/obstacle_memory_status` is the lightweight per-update heartbeat.
+For the 2D profile, `/drone_city_nav/raw_obstacle_snapshot` carries the current
+raw grid. For the 3D profile, `/drone_city_nav/raw_obstacle_snapshot_3d` and
+`/drone_city_nav/raw_obstacle_delta_3d` carry revisioned base snapshots and dirty
+chunks. The larger debug representation is published at a bounded cadence and
+is not deserialized by the planner. Raw grids contain only direct sensor
+evidence. Each timestamp-aligned scan also publishes
 `/drone_city_nav/latest_lidar_obstacle_scan`; while fresh, those physical hit
 points validate the complete finite path without waiting for persistent-memory
-integration. In no-static mode the planner builds a
-distance-derived risk field from that raw 2D world without materializing
-inflated grids. Static mode instead loads canonical Occupancy3D directly. The
-atomic `/drone_city_nav/raw_obstacle_snapshot` remains the runtime sensor-world
-contract and freshness trigger. The `/drone_city_nav/raw_obstacle_grid` topic is
-visualization-only and must not be wired back into planner or offboard
-validation.
+integration. The planner builds a distance-derived risk field without
+materializing inflated grids. Static mode instead loads canonical Occupancy3D
+directly. `/drone_city_nav/raw_obstacle_grid` is visualization-only and must not
+be wired back into planner or offboard validation.
+
+RViz publishes the selected spectator's latest 3D returns on
+`/drone_city_nav/current_lidar_returns_3d` and its downsampled accumulated
+occupied voxels on `/drone_city_nav/raw_memory_obstacle_points_3d`. The current
+cloud has queue depth one and no decay; accumulated memory is rate-limited.
+Other vehicles retain only their lightweight pose and path displays.
 
 All published targets and execution horizons use the configured flight envelope
 `1.0 <= z < 32.0 m`. Raw collision checks use the drone's swept oriented 3D

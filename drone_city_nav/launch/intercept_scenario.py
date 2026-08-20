@@ -89,14 +89,31 @@ def _map_to_sdf(
     )
 
 
-def _world_navigation(world: dict[str, Any]) -> dict[str, float]:
-    source = world.get("navigation", {})
-    if not isinstance(source, dict):
+def _navigation_profile(
+    world: dict[str, Any], scenario: dict[str, Any]
+) -> dict[str, float]:
+    world_source = world.get("navigation", {})
+    scenario_source = scenario.get("navigation", {})
+    if not isinstance(world_source, dict):
         raise ValueError("canonical world navigation must be an object")
+    if not isinstance(scenario_source, dict):
+        raise ValueError("scenario navigation must be an object")
+    supported = {
+        "initial_altitude_m",
+        "minimum_target_z_m",
+        "maximum_target_z_m",
+    }
+    unknown = set(scenario_source) - supported
+    if unknown:
+        raise ValueError(f"unsupported scenario navigation fields: {sorted(unknown)}")
+    defaults = {
+        "initial_altitude_m": 18.0,
+        "minimum_target_z_m": 1.0,
+        "maximum_target_z_m": 32.0,
+    }
     navigation = {
-        "initial_altitude_m": float(source.get("initial_altitude_m", 18.0)),
-        "minimum_target_z_m": float(source.get("minimum_target_z_m", 1.0)),
-        "maximum_target_z_m": float(source.get("maximum_target_z_m", 32.0)),
+        key: float(scenario_source.get(key, world_source.get(key, default)))
+        for key, default in defaults.items()
     }
     if not all(math.isfinite(value) for value in navigation.values()):
         raise ValueError("canonical world navigation values must be finite")
@@ -148,7 +165,7 @@ def load_multi_vehicle_scenario(
     transform = world.get("map_to_sdf")
     if not isinstance(transform, dict):
         raise ValueError("canonical world is missing map_to_sdf")
-    navigation = _world_navigation(world)
+    navigation = _navigation_profile(world, document)
 
     source_vehicles = document.get("vehicles")
     if not isinstance(source_vehicles, list):

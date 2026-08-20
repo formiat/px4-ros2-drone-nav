@@ -94,9 +94,11 @@ void ObstacleMemoryTransport3D::publish(const ObservedOccupancyGrid3D& grid,
     delta_published = true;
   }
 
-  if (publish_debug && (last_debug_stamp_ns_ <= 0 ||
+  const bool debug_cloud_due =
+      publish_debug && (last_debug_stamp_ns_ <= 0 ||
                         stamp_ns - last_debug_stamp_ns_ >=
-                            static_cast<std::int64_t>(snapshot_period_s_ * 1.0e9))) {
+                            static_cast<std::int64_t>(snapshot_period_s_ * 1.0e9));
+  if (debug_cloud_due) {
     memory_cloud_pub_->publish(buildObservedOccupancyPointCloud3D(
         grid, header.stamp, frame_id_, debug_stride_));
     last_debug_stamp_ns_ = stamp_ns;
@@ -115,11 +117,11 @@ void ObstacleMemoryTransport3D::publish(const ObservedOccupancyGrid3D& grid,
       node_.get_logger(), *node_.get_clock(), 1000,
       "ONLINE_OCCUPANCY3D_UPDATE producer=%" PRIu64 " sequence=%" PRIu64
       " revision=%" PRIu64 " known=%zu free=%zu occupied=%zu chunks=%zu "
-      "dirty=%zu snapshot=%s delta=%s",
+      "dirty=%zu snapshot=%s delta=%s debug_cloud=%s",
       producer_instance_id_, sequence_, changes.revision, grid.knownVoxelCount(),
       grid.freeVoxelCount(), grid.occupiedVoxelCount(), grid.chunks().size(),
       changes.dirty_chunks.size(), snapshot_published ? "true" : "false",
-      delta_published ? "true" : "false");
+      delta_published ? "true" : "false", debug_cloud_due ? "true" : "false");
 }
 
 } // namespace drone_city_nav

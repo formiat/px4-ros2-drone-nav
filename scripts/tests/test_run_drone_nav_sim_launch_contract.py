@@ -41,6 +41,9 @@ MULTI_VEHICLE_MISSION_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
 MULTI_VEHICLE_LIDAR_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
     "multi_vehicle_lidar_launch.py"
 )
+INTERCEPT_DIAGNOSTICS_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+    "intercept_diagnostics_launch.py"
+)
 INTERCEPT_SCENARIO = (
     Path(__file__).resolve().parents[2]
     / "drone_city_nav"
@@ -103,6 +106,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 MULTI_VEHICLE_LIDAR_LAUNCH_FILE,
                 MULTI_VEHICLE_LAUNCH_FILE,
                 MULTI_VEHICLE_MISSION_LAUNCH_FILE,
+                INTERCEPT_DIAGNOSTICS_LAUNCH_FILE,
             )
         )
         cls.intercept_tracking_launch_text = (
@@ -289,6 +293,45 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 self.assertIn("History Policy: Keep Last", display)
                 self.assertIn("Depth: 1", display)
 
+    def test_rviz_3d_lidar_uses_bounded_selected_clouds(self) -> None:
+        self.assertIn(
+            '--lidar-profile "${lidar_profile}"', self.intercept_runtime_text
+        )
+        self.assertIn(
+            "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING",
+            self.intercept_runtime_text,
+        )
+        self.assertIn(
+            "OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M",
+            self.intercept_runtime_text,
+        )
+        self.assertNotIn("REQUIRE_ONLINE_3D_PASSAGE", self.intercept_runtime_text)
+        self.assertIn(
+            '"current_lidar_3d_pointcloud_topics": [', self.intercept_launch_text
+        )
+        for config_path in RVIZ_CONFIGS:
+            with self.subTest(config=config_path.name):
+                config = config_path.read_text(encoding="utf-8")
+                current = config.split(
+                    "Name: Current 3D Lidar Returns", 1
+                )[1].split("Name: Remembered Lidar Hits", 1)[0]
+                accumulated = config.split(
+                    "Name: Accumulated 3D Obstacle Memory", 1
+                )[1].split("Name: Interceptor 0 Memory", 1)[0]
+                self.assertIn("Decay Time: 0", current)
+                self.assertIn("Style: Points", current)
+                self.assertIn("Depth: 1", current)
+                self.assertIn("Reliability Policy: Best Effort", current)
+                self.assertIn(
+                    "Value: /drone_city_nav/current_lidar_returns_3d", current
+                )
+                self.assertIn("Decay Time: 0", accumulated)
+                self.assertIn("Style: Points", accumulated)
+                self.assertIn(
+                    "Value: /drone_city_nav/raw_memory_obstacle_points_3d",
+                    accumulated,
+                )
+
     def test_launch_uses_offboard_flight_control_backend(self) -> None:
         self.assertIn('executable="mppi_offboard_node"', self.launch_text)
         self.assertIn("nodes.append(", self.launch_text)
@@ -329,6 +372,13 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("MISSION_GOALS_XYZ_M", self.makefile_text)
         self.assertIn(
             "216,54,18;216,378,18;54,378,18;54,54,18", self.makefile_text
+        )
+        self.assertIn(
+            '-z "$${POINT_TO_POINT_SCENARIO_PATH:-}"', self.makefile_text
+        )
+        self.assertNotIn(
+            'MISSION_GOALS_XYZ_M="$${MISSION_GOALS_XYZ_M:-216,54,18',
+            self.makefile_text,
         )
         runtime_helpers = RUNTIME_HELPERS.read_text(encoding="utf-8")
         self.assertIn("simulation_runtime_helpers.sh", self.text)

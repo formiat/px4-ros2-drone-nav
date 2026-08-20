@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -13,6 +14,7 @@ namespace drone_city_nav {
 enum class TrackingObjectiveResolutionStatus : std::uint8_t {
   kUnchanged,
   kClippedRawOccupied,
+  kClippedUnknown,
   kFallbackObserved,
   kWorldUnavailable,
   kInvalidInput,
@@ -75,6 +77,10 @@ private:
     const OccupancyGrid3D& raw_occupancy, const Point3& observed_position,
     const Point3& predicted_position, double maximum_sample_spacing_m = 0.25);
 
+[[nodiscard]] TrackingObjectiveResolution resolveTrackingObjective(
+    const ObservedOccupancyGrid3D& raw_occupancy, const Point3& observed_position,
+    const Point3& predicted_position, double maximum_sample_spacing_m = 0.25);
+
 [[nodiscard]] bool trackingLineOfSightRawClear(const OccupancyGrid2D& raw_occupancy,
                                                const Point3& from, const Point3& to,
                                                double maximum_sample_spacing_m = 0.25);
@@ -82,6 +88,11 @@ private:
 [[nodiscard]] bool trackingLineOfSightRawClear(const OccupancyGrid3D& raw_occupancy,
                                                const Point3& from, const Point3& to,
                                                double maximum_sample_spacing_m = 0.25);
+
+[[nodiscard]] bool
+trackingLineOfSightRawClear(const ObservedOccupancyGrid3D& raw_occupancy,
+                            const Point3& from, const Point3& to,
+                            double maximum_sample_spacing_m = 0.25);
 
 [[nodiscard]] bool
 trackingLineOfSightSweptRawClear(const OccupancyGrid2D& raw_occupancy,
@@ -93,6 +104,11 @@ trackingLineOfSightSweptRawClear(const OccupancyGrid3D& raw_occupancy,
                                  const Point3& from, const Point3& to,
                                  const SweptFootprintConfig& footprint);
 
+[[nodiscard]] bool
+trackingLineOfSightSweptRawClear(const ObservedOccupancyGrid3D& raw_occupancy,
+                                 const Point3& from, const Point3& to,
+                                 const SweptFootprintConfig& footprint);
+
 [[nodiscard]] DirectTrackingTargetResolution resolveDirectTrackingTarget(
     const OccupancyGrid2D& raw_occupancy, const Point3& interceptor_position,
     const Point3& current_target_position, const Point3& predicted_target_position,
@@ -100,6 +116,11 @@ trackingLineOfSightSweptRawClear(const OccupancyGrid3D& raw_occupancy,
 
 [[nodiscard]] DirectTrackingTargetResolution resolveDirectTrackingTarget(
     const OccupancyGrid3D& raw_occupancy, const Point3& interceptor_position,
+    const Point3& current_target_position, const Point3& predicted_target_position,
+    const SweptFootprintConfig& footprint);
+
+[[nodiscard]] DirectTrackingTargetResolution resolveDirectTrackingTarget(
+    const ObservedOccupancyGrid3D& raw_occupancy, const Point3& interceptor_position,
     const Point3& current_target_position, const Point3& predicted_target_position,
     const SweptFootprintConfig& footprint);
 

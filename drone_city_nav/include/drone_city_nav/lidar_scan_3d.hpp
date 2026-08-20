@@ -16,12 +16,12 @@ struct LidarBeamSample3D {
 };
 
 struct OrganizedLidarScan3DConfig {
-  std::size_t horizontal_samples{360U};
-  std::size_t vertical_samples{32U};
+  std::size_t horizontal_samples{240U};
+  std::size_t vertical_samples{17U};
   double horizontal_min_angle_rad{-3.14159265358979323846};
   double horizontal_max_angle_rad{3.14159265358979323846};
-  double vertical_min_angle_rad{-0.78539816339744830962};
-  double vertical_max_angle_rad{0.78539816339744830962};
+  double vertical_min_angle_rad{-1.3962634015954636615};
+  double vertical_max_angle_rad{1.3962634015954636615};
   double minimum_range_m{0.2};
   double maximum_range_m{35.0};
   double hit_epsilon_m{0.05};

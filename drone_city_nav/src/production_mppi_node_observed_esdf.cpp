@@ -2,12 +2,12 @@
 
 #include <chrono>
 #include <cinttypes>
+#include <memory>
 #include <utility>
 
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
-
 void ProductionMppiNode::processObservedEsdf3D(
     const ProductionMppiRawWorld3D& raw_world) {
   const std::shared_ptr<const ObservedOccupancyGrid3D> occupancy = raw_world.occupancy;
@@ -67,7 +67,7 @@ void ProductionMppiNode::processObservedEsdf3D(
   const bool build_rate_due =
       first_build ||
       std::chrono::duration<double>(build_started_at - no_static_esdf_last_build_time_)
-              .count() >= 1.0 / no_static_esdf_update_rate_hz_;
+              .count() >= 1.0 / no_static_3d_esdf_update_rate_hz_;
   if (local_occupancy_unchanged || (active_prepared && !recenter && !build_rate_due)) {
     if (!local_occupancy_unchanged) {
       no_static_esdf_throttled_updates_.fetch_add(1U, std::memory_order_relaxed);
@@ -76,7 +76,6 @@ void ProductionMppiNode::processObservedEsdf3D(
       if (prepared_esdf_ && prepared_esdf_->revision == active_prepared->revision) {
         prepared_esdf_->source_stamp_ns = raw_world.ready_stamp_ns;
         prepared_esdf_->ready_stamp_ns = raw_world.ready_stamp_ns;
-        prepared_esdf_->observed_occupancy = occupancy;
       }
     }
     RCLCPP_INFO_THROTTLE(
@@ -102,6 +101,8 @@ void ProductionMppiNode::processObservedEsdf3D(
   if (!upload.accepted) {
     return;
   }
+  auto host_distances =
+      std::make_shared<const std::vector<float>>(std::move(field.distances_m));
   no_static_esdf_last_build_time_ = build_started_at;
   no_static_esdf_builds_.fetch_add(1U, std::memory_order_relaxed);
 
@@ -126,10 +127,9 @@ void ProductionMppiNode::processObservedEsdf3D(
   prepared.conversion_ms = raw_world.reconstruction_ms + field.stats.classification_ms;
   prepared.upload_ms = upload.upload_ms;
   prepared.grid = field.grid;
-  prepared.distances_m =
-      std::make_shared<const std::vector<float>>(std::move(field.distances_m));
+  prepared.distances_m = host_distances;
   prepared.raw_occupancy.reset();
-  prepared.observed_occupancy = occupancy;
+  prepared.observed_occupancy = field.local_occupancy;
   if (const std::shared_ptr<const ProductionNavigationObjective> objective =
           navigationObjective()) {
     prepared.search_objective = makeStaticRouteObjective(*objective);
