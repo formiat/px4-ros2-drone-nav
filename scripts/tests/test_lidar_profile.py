@@ -12,11 +12,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SUPPORT = runpy.run_path(
     str(REPO_ROOT / "drone_city_nav/launch/lidar_profile.py")
 )
+DEFAULT_LIDAR_PROFILE = SUPPORT["DEFAULT_LIDAR_PROFILE"]
 resolve_model_identity = SUPPORT["resolve_model_identity"]
 validate_lidar_profile = SUPPORT["validate_lidar_profile"]
 
 
 class LidarProfileTest(unittest.TestCase):
+    def test_default_profile_is_3d(self) -> None:
+        self.assertEqual("3d", DEFAULT_LIDAR_PROFILE)
+
     def test_supported_profiles_are_normalized(self) -> None:
         self.assertEqual("3d", validate_lidar_profile(" 3D "))
 

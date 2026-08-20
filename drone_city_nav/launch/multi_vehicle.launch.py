@@ -47,6 +47,7 @@ _make_cooperative_mission_nodes = _MISSION_SUPPORT[
     "make_cooperative_mission_nodes"
 ]
 _validate_lidar_profile = _LIDAR_PROFILE_SUPPORT["validate_lidar_profile"]
+_DEFAULT_LIDAR_PROFILE = _LIDAR_PROFILE_SUPPORT["DEFAULT_LIDAR_PROFILE"]
 _make_lidar_topics = _MULTI_VEHICLE_LIDAR_SUPPORT["make_lidar_topics"]
 _make_memory_parameters = _MULTI_VEHICLE_LIDAR_SUPPORT["make_memory_parameters"]
 
@@ -190,7 +191,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
     enable_rviz = LaunchConfiguration("enable_rviz")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     lidar_profile = LaunchConfiguration("lidar_profile")
-    enable_2d_lidar = LaunchConfiguration("enable_2d_lidar")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
 
     def launch_nodes(context, *args, **kwargs):
@@ -266,13 +266,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
         lidar_debug_enabled = _optional_bool(
             enable_lidar_debug.perform(context), False
         )
-        lidar_2d_override = _optional_bool(
-            enable_2d_lidar.perform(context), profile == "2d"
-        )
-        if lidar_2d_override != (profile == "2d"):
-            raise RuntimeError(
-                "enable_2d_lidar conflicts with the selected lidar_profile"
-            )
         lidar_enabled = profile != "none"
         obstacle_memory_enabled = _optional_bool(
             enable_obstacle_memory.perform(context), True
@@ -850,8 +843,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument("enable_rviz", default_value="false"),
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
-            DeclareLaunchArgument("lidar_profile", default_value="2d"),
-            DeclareLaunchArgument("enable_2d_lidar", default_value=""),
+            DeclareLaunchArgument(
+                "lidar_profile", default_value=_DEFAULT_LIDAR_PROFILE
+            ),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value=""),
             DeclareLaunchArgument(

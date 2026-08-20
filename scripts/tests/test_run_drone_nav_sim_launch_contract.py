@@ -11,6 +11,9 @@ from pathlib import Path
 RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
 RUNTIME_HELPERS = RUNNER.with_name("simulation_runtime_helpers.sh")
 LIDAR_PROFILE_RUNTIME = RUNNER.with_name("lidar_profile_runtime.sh")
+LIDAR_PROFILE_SUPPORT_FILE = (
+    RUNNER.parents[1] / "drone_city_nav" / "launch" / "lidar_profile.py"
+)
 RESOURCE_RUNTIME = RUNNER.with_name("simulation_resource_runtime.sh")
 MAKEFILE = RUNNER.parents[1] / "Makefile"
 INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("multi_vehicle_sim_runtime.sh")
@@ -88,6 +91,9 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             for path in (RUNNER, LIDAR_PROFILE_RUNTIME, RESOURCE_RUNTIME)
         )
         cls.makefile_text = MAKEFILE.read_text(encoding="utf-8")
+        cls.lidar_profile_support_text = LIDAR_PROFILE_SUPPORT_FILE.read_text(
+            encoding="utf-8"
+        )
         cls.intercept_runtime_text = cls.text + INTERCEPT_RUNTIME_HELPER.read_text(
             encoding="utf-8"
         )
@@ -332,6 +338,20 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                     accumulated,
                 )
 
+    def test_every_simulation_entrypoint_defaults_to_3d_lidar(self) -> None:
+        self.assertIn('lidar_profile="${LIDAR_PROFILE:-3d}"', self.text)
+        self.assertIn(
+            'DEFAULT_LIDAR_PROFILE = "3d"', self.lidar_profile_support_text
+        )
+        self.assertIn(
+            '"lidar_profile",\n                default_value=DEFAULT_LIDAR_PROFILE',
+            self.launch_text,
+        )
+        self.assertIn(
+            '"lidar_profile", default_value=_DEFAULT_LIDAR_PROFILE',
+            self.intercept_launch_text,
+        )
+
     def test_launch_uses_offboard_flight_control_backend(self) -> None:
         self.assertIn('executable="mppi_offboard_node"', self.launch_text)
         self.assertIn("nodes.append(", self.launch_text)
@@ -550,18 +570,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('enable_obstacle_memory:="${enable_obstacle_memory}"', self.text)
         self.assertIn('elif bool_is_true "${active_static_map}"', self.text)
         self.assertIn("No-static navigation requires ENABLE_OBSTACLE_MEMORY=true", self.text)
-        self.assertIn("ENABLE_2D_LIDAR", self.text)
         self.assertIn("No-static navigation requires LIDAR_PROFILE=2d", self.text)
         self.assertIn("LIDAR_PROFILE", self.container_text)
-        self.assertIn('enable_2d_lidar:="${enable_2d_lidar}"', self.text)
         self.assertIn(
             'DeclareLaunchArgument("enable_obstacle_memory", default_value="true")',
             self.intercept_launch_text,
         )
-        self.assertIn(
-            'DeclareLaunchArgument("enable_2d_lidar", default_value="")',
-            self.intercept_launch_text,
-        )
+        self.assertNotIn("ENABLE_2D_LIDAR", self.text)
+        self.assertNotIn("ENABLE_2D_LIDAR", self.container_text)
+        self.assertNotIn("enable_2d_lidar", self.launch_text)
+        self.assertNotIn("enable_2d_lidar", self.intercept_launch_text)
         self.assertIn(
             '"persistent_memory_enabled": obstacle_memory_enabled',
             self.intercept_launch_text,

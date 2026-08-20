@@ -44,6 +44,8 @@ class InterceptScenarioContractTest(unittest.TestCase):
         self.assertEqual(tuple(expected), tuple(v["id"] for v in scenario["vehicles"]))
         for vehicle in scenario["vehicles"]:
             with self.subTest(vehicle=vehicle["id"]):
+                self.assertIn("x500_lidar_3d", vehicle["px4_model_target"])
+                self.assertIn("x500_lidar_3d", vehicle["gazebo_model_name"])
                 map_start, gazebo_spawn = expected[vehicle["id"]]
                 self.assertEqual(vehicle["map_start_m"], map_start)
                 self.assertEqual(vehicle["gazebo_spawn_m"], gazebo_spawn)

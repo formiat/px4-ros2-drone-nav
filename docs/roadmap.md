@@ -266,9 +266,10 @@ frontier with zero terminal speed and is extended or replaced only after new
 sensor evidence arrives. Exploration of unknown branches, remembered dead ends,
 and labyrinth coverage remains item 12.
 
-`LIDAR_PROFILE=none|2d|3d` selects one typed sensor profile. The 2D pipeline
-remains an alternative Manhattan profile; item 8 does not fuse 2D and 3D scans.
-No-static mode requires `2d` or `3d`. RViz displays the selected spectator's
+`LIDAR_PROFILE=none|2d|3d` selects one typed sensor profile and defaults to
+`3d` for every simulation entry point. The 2D pipeline remains an explicit
+alternative Manhattan profile; item 8 does not fuse 2D and 3D scans. No-static
+mode requires `2d` or `3d`. RViz displays the selected spectator's
 latest 3D returns with queue depth one and its rate-limited accumulated occupied
 voxels; it does not render the full diagnostic clouds of every vehicle.
 

@@ -242,14 +242,18 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
         )
         errors: list[str] = []
 
-        VALIDATOR.validate_cooperative_traffic(log, 4, False, errors)
+        VALIDATOR.validate_cooperative_traffic(log, 4, False, errors, "2d")
 
         self.assertEqual(errors, [])
 
     def test_any_vehicle_destruction_is_rejected(self) -> None:
         errors: list[str] = []
         VALIDATOR.validate_cooperative_traffic(
-            "COOPERATIVE_VEHICLE_DESTROYED referee_observed=true", 4, False, errors
+            "COOPERATIVE_VEHICLE_DESTROYED referee_observed=true",
+            4,
+            False,
+            errors,
+            "2d",
         )
         self.assertIn("FAIL: cooperative traffic contains a physical loss", errors)
 
@@ -263,6 +267,7 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
             4,
             True,
             errors,
+            "2d",
         )
         self.assertNotIn(
             "FAIL: cooperative peer memory filtering is active",
@@ -277,6 +282,7 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
             4,
             True,
             errors,
+            "2d",
         )
         self.assertIn(
             "FAIL: cooperative peer memory filtering is active",

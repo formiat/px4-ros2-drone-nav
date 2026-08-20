@@ -190,17 +190,18 @@ The first three IDs use versioned release artifacts. The remaining IDs are
 local evaluation candidates and report a clear error if their cached source
 assets are absent.
 
-`LIDAR_PROFILE=none|2d|3d` selects exactly one perception profile. The 2D lidar
-remains the default for backward-compatible Manhattan runs. A static-map run
-may disable lidar entirely:
+`LIDAR_PROFILE=none|2d|3d` selects exactly one perception profile. Every
+simulation entry point defaults to the 3D lidar; the 2D lidar is disabled unless
+`LIDAR_PROFILE=2d` is selected explicitly. A static-map run may disable lidar
+entirely:
 
 ```bash
 LIDAR_PROFILE=none ./scripts/sim_gui.sh
 ```
 
 No-static navigation requires `LIDAR_PROFILE=2d` or `LIDAR_PROFILE=3d` and
-rejects `none` before starting the simulation. `ENABLE_2D_LIDAR` remains only a
-compatibility assertion; do not combine the 2D and 3D profiles in one run.
+rejects `none` before starting the simulation. The profiles are mutually
+exclusive; there are no separate boolean lidar flags.
 
 Roadmap 8 acceptance uses Manhattan, no static map, and only the 3D profile:
 
@@ -208,7 +209,6 @@ Roadmap 8 acceptance uses Manhattan, no static map, and only the 3D profile:
 POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/manhattan_low_altitude_point_to_point_scenario.json \
 ENABLE_STATIC_MAP=false \
 LIDAR_PROFILE=3d \
-ENABLE_2D_LIDAR=false \
 REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
 OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M='42,147,1.5,66,177,8.5' \
 ./scripts/sim_headless.sh

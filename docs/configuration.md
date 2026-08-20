@@ -171,7 +171,9 @@ Simulation scripts translate environment variables such as
 `ENABLE_STATIC_MAP`, `LIDAR_PROFILE=none|2d|3d`, `ENABLE_RVIZ`, and camera
 toggles into launch arguments or temporary parameter overrides. No-static mode
 rejects the `none` profile; 2D and 3D are alternatives rather than an implicit
-fusion mode. Intercept spectator selection additionally uses
+fusion mode. All simulation entry points default to 3D; 2D requires an explicit
+`LIDAR_PROFILE=2d` selection. No separate boolean lidar flags are supported.
+Intercept spectator selection additionally uses
 `INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID` and
 `INTERCEPT_SPECTATOR_RESELECTION_POLICY=first_living|next_living`. The launch
 file and `scripts/run_drone_nav_sim.sh` are the source of truth for supported

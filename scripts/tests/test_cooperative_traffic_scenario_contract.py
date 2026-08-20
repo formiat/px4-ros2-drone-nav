@@ -40,6 +40,12 @@ class CooperativeTrafficScenarioContractTest(unittest.TestCase):
         )
         self.assertEqual(scenario["interceptor_ids"], [])
         self.assertEqual(scenario["evaders"], [])
+        self.assertTrue(
+            all(
+                vehicle["px4_model_target"].startswith("gz_x500_lidar_3d")
+                for vehicle in scenario["vehicles"]
+            )
+        )
         self.assertEqual(
             [vehicle["map_start_m"] for vehicle in scenario["vehicles"]],
             [

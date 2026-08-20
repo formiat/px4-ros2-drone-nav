@@ -38,6 +38,8 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertEqual(
             scenario["gazebo_world_name"], "urban_circuit_practice_01_collisions"
         )
+        self.assertEqual(scenario["px4_model_target"], "gz_x500_lidar_3d")
+        self.assertEqual(scenario["gazebo_model_name"], "x500_lidar_3d_0")
         self.assertEqual(scenario["map_start_m"], scenario["gazebo_spawn_m"])
         self.assertEqual(
             scenario["map_start_m"],

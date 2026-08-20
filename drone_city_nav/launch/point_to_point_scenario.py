@@ -17,6 +17,7 @@ _GAZEBO_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _LIDAR_PROFILE_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("lidar_profile.py"))
 )
+_DEFAULT_LIDAR_PROFILE = _LIDAR_PROFILE_SUPPORT["DEFAULT_LIDAR_PROFILE"]
 _resolve_lidar_model_identity = _LIDAR_PROFILE_SUPPORT["resolve_model_identity"]
 
 
@@ -145,7 +146,7 @@ def _launch_platforms(document: dict[str, Any]) -> tuple[dict[str, Any], ...]:
         raise ValueError("point-to-point scenario supports at most one launch platform")
     return tuple(result)
 def load_point_to_point_scenario(
-    path: str | Path, lidar_profile: str = "2d"
+    path: str | Path, lidar_profile: str = _DEFAULT_LIDAR_PROFILE
 ) -> dict[str, Any]:
     """Return a validated point-to-point scenario with its Gazebo spawn pose."""
     scenario_path = Path(path).resolve()
@@ -209,7 +210,9 @@ def main() -> int:
     parser.add_argument("--scenario", type=Path, required=True)
     parser.add_argument("--format", choices=("runtime-tsv",), required=True)
     parser.add_argument(
-        "--lidar-profile", choices=("none", "2d", "3d"), default="2d"
+        "--lidar-profile",
+        choices=("none", "2d", "3d"),
+        default=_DEFAULT_LIDAR_PROFILE,
     )
     args = parser.parse_args()
     try:

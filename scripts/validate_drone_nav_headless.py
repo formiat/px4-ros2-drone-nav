@@ -225,7 +225,7 @@ def validate_cooperative_traffic(
     expected_vehicles: int,
     expected_memory: bool | None,
     errors: list[str],
-    lidar_profile: str = "2d",
+    lidar_profile: str,
 ) -> None:
     require(
         "cooperative ground truth is restricted to the referee",
@@ -867,7 +867,7 @@ def main() -> int:
     parser.add_argument("--expected-static", default="")
     parser.add_argument("--expected-memory", default="")
     parser.add_argument(
-        "--lidar-profile", choices=("none", "2d", "3d"), default="2d"
+        "--lidar-profile", choices=("none", "2d", "3d"), default="3d"
     )
     parser.add_argument(
         "--require-observed-3d-route-volume-crossing", action="store_true"

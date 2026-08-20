@@ -19,7 +19,7 @@ from launch_ros.actions import Node
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from point_to_point_scenario import load_point_to_point_scenario
-from lidar_profile import validate_lidar_profile
+from lidar_profile import DEFAULT_LIDAR_PROFILE, validate_lidar_profile
 
 
 def optional_bool_override(context, launch_config, argument_name):
@@ -103,7 +103,6 @@ def generate_launch_description():
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     lidar_profile = LaunchConfiguration("lidar_profile")
-    enable_2d_lidar = LaunchConfiguration("enable_2d_lidar")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
     enable_rviz = LaunchConfiguration("enable_rviz")
     rviz_drone_follow_tf_enabled = LaunchConfiguration(
@@ -183,14 +182,6 @@ def generate_launch_description():
         obstacle_memory_override = optional_bool_override(
             context, enable_obstacle_memory, "enable_obstacle_memory"
         )
-        lidar_2d_override = optional_bool_override(
-            context, enable_2d_lidar, "enable_2d_lidar"
-        )
-        lidar_2d_enabled = profile == "2d"
-        if lidar_2d_override is not None and lidar_2d_override != lidar_2d_enabled:
-            raise RuntimeError(
-                "enable_2d_lidar conflicts with the selected lidar_profile"
-            )
         lidar_enabled = profile != "none"
         gazebo_bridge_enabled = optional_bool_override(
             context, enable_gazebo_bridge, "enable_gazebo_bridge"
@@ -582,7 +573,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "enable_gazebo_bridge",
                 default_value="true",
-                description="Start the Gazebo LaserScan bridge for simulation.",
+                description="Start the Gazebo bridge for the selected lidar profile.",
             ),
             DeclareLaunchArgument(
                 "enable_mission_monitor",
@@ -596,16 +587,8 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "lidar_profile",
-                default_value="2d",
+                default_value=DEFAULT_LIDAR_PROFILE,
                 description="Mutually exclusive navigation sensor profile: none, 2d, or 3d.",
-            ),
-            DeclareLaunchArgument(
-                "enable_2d_lidar",
-                default_value="",
-                description=(
-                    "Deprecated compatibility assertion for lidar_profile=2d. "
-                    "Leave empty to derive it from lidar_profile."
-                ),
             ),
             DeclareLaunchArgument(
                 "enable_obstacle_memory",

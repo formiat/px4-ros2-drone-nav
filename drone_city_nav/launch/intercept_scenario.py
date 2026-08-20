@@ -29,6 +29,7 @@ _GAZEBO_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _LIDAR_PROFILE_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("lidar_profile.py"))
 )
+_DEFAULT_LIDAR_PROFILE = _LIDAR_PROFILE_SUPPORT["DEFAULT_LIDAR_PROFILE"]
 _apply_lidar_profile = _LIDAR_PROFILE_SUPPORT["apply_profile_to_vehicle"]
 
 
@@ -143,7 +144,7 @@ def _px4_to_map_matrix(transform: dict[str, Any]) -> tuple[float, ...]:
 
 
 def load_multi_vehicle_scenario(
-    path: str | Path, lidar_profile: str = "2d"
+    path: str | Path, lidar_profile: str = _DEFAULT_LIDAR_PROFILE
 ) -> dict[str, Any]:
     """Return a validated scenario with derived Gazebo spawn poses."""
     scenario_path = Path(path).resolve()
@@ -336,7 +337,7 @@ def load_multi_vehicle_scenario(
 
 
 def load_intercept_scenario(
-    path: str | Path, lidar_profile: str = "2d"
+    path: str | Path, lidar_profile: str = _DEFAULT_LIDAR_PROFILE
 ) -> dict[str, Any]:
     """Return an intercept scenario while preserving the legacy public loader."""
     scenario = load_multi_vehicle_scenario(path, lidar_profile)
@@ -390,7 +391,9 @@ def main() -> int:
         "--format", choices=("tsv", "metadata-tsv"), default="tsv"
     )
     parser.add_argument(
-        "--lidar-profile", choices=("none", "2d", "3d"), default="2d"
+        "--lidar-profile",
+        choices=("none", "2d", "3d"),
+        default=_DEFAULT_LIDAR_PROFILE,
     )
     args = parser.parse_args()
     scenario = load_multi_vehicle_scenario(args.scenario, args.lidar_profile)
