@@ -95,10 +95,6 @@ private:
   double voxel_half_diagonal_m_{0.0};
 };
 
-[[nodiscard]] bool finitePositive(const double value) noexcept {
-  return std::isfinite(value) && value > 0.0;
-}
-
 [[nodiscard]] const std::vector<GridIndex3D>& neighbors26() {
   static const std::vector<GridIndex3D> directions = [] {
     std::vector<GridIndex3D> result;
@@ -176,7 +172,18 @@ footprintInsideBounds(const Point3& center, const GridBounds3D& bounds,
           center.z < *config.maximum_center_z_m - kEpsilon);
 }
 
-void classifyVoxels(const OccupancyGrid3D& occupancy,
+[[nodiscard]] bool knownFree(const OccupancyGrid3D& occupancy,
+                             const GridIndex3D cell) noexcept {
+  return !occupancy.isOccupied(cell);
+}
+
+[[nodiscard]] bool knownFree(const ObservedOccupancyGrid3D& occupancy,
+                             const GridIndex3D cell) noexcept {
+  return occupancy.isKnownFree(cell);
+}
+
+template<typename Occupancy>
+void classifyVoxels(const Occupancy& occupancy,
                     const FreeSpaceTopologyExtractorConfig& config,
                     const ClearanceView& clearance,
                     std::vector<std::uint8_t>& classification,
@@ -204,7 +211,7 @@ void classifyVoxels(const OccupancyGrid3D& occupancy,
               if (!std::isfinite(cell_clearance_m)) {
                 continue;
               }
-              if (occupancy.isOccupied(cell)) {
+              if (!knownFree(occupancy, cell)) {
                 continue;
               }
               ++stats.free_voxels;
@@ -469,10 +476,10 @@ derivePortalPatches(const GridBounds3D& bounds, const Component& component,
          (first.v - origin.v) * (second.u - origin.u);
 }
 
-[[nodiscard]] std::vector<Point3> portalPolygon(const Point3& center,
-                                                const Vec3& u_axis, const Vec3& v_axis,
-                                                const std::vector<GridIndex3D>& patch,
-                                                const OccupancyGrid3D& occupancy) {
+template<typename Occupancy>
+[[nodiscard]] std::vector<Point3>
+portalPolygon(const Point3& center, const Vec3& u_axis, const Vec3& v_axis,
+              const std::vector<GridIndex3D>& patch, const Occupancy& occupancy) {
   std::vector<ProjectedPoint> points;
   points.reserve(patch.size());
   for (const GridIndex3D cell : patch) {
@@ -527,8 +534,9 @@ derivePortalPatches(const GridBounds3D& bounds, const Component& component,
   return polygon;
 }
 
+template<typename Occupancy>
 [[nodiscard]] PassagePortal
-makePortal(const OccupancyGrid3D& occupancy, const Component& constrained_component,
+makePortal(const Occupancy& occupancy, const Component& constrained_component,
            const PortalPatch& patch, const FreeSpaceRegionId& region_id,
            const PassagePortalId& portal_id, const ClearanceView& clearance,
            const std::vector<std::uint32_t>& open_labels) {
@@ -722,8 +730,9 @@ compressMedialTree(const std::map<std::size_t, std::set<std::size_t>>& tree,
   return drafts;
 }
 
+template<typename Occupancy>
 [[nodiscard]] std::vector<RouteSample3D>
-makeCenterline(const OccupancyGrid3D& occupancy, const std::vector<std::size_t>& cells,
+makeCenterline(const Occupancy& occupancy, const std::vector<std::size_t>& cells,
                const double speed_limit_mps) {
   std::vector<RouteSample3D> centerline;
   centerline.reserve(cells.size());
@@ -748,7 +757,8 @@ makeCenterline(const OccupancyGrid3D& occupancy, const std::vector<std::size_t>&
   return centerline;
 }
 
-[[nodiscard]] bool rawSafeCenterline(const OccupancyGrid3D& occupancy,
+template<typename Occupancy>
+[[nodiscard]] bool rawSafeCenterline(const Occupancy& occupancy,
                                      const std::vector<RouteSample3D>& centerline,
                                      const SweptFootprintConfig& footprint) noexcept {
   if (centerline.size() < 2U) {
@@ -767,56 +777,18 @@ makeCenterline(const OccupancyGrid3D& occupancy, const std::vector<std::size_t>&
 
 } // namespace
 
-bool freeSpaceTopologyExtractorConfigIsValid(
-    const FreeSpaceTopologyExtractorConfig& config) noexcept {
-  const bool valid_minimum_z = !config.minimum_center_z_m.has_value() ||
-                               std::isfinite(*config.minimum_center_z_m);
-  const bool valid_maximum_z = !config.maximum_center_z_m.has_value() ||
-                               std::isfinite(*config.maximum_center_z_m);
-  const bool valid_z_interval = !config.minimum_center_z_m.has_value() ||
-                                !config.maximum_center_z_m.has_value() ||
-                                *config.minimum_center_z_m < *config.maximum_center_z_m;
-  return finitePositive(config.maximum_clearance_m) &&
-         finitePositive(config.open_space_clearance_m) &&
-         config.maximum_clearance_m > config.open_space_clearance_m &&
-         finitePositive(config.speed_limit_mps) &&
-         std::isfinite(config.medial_clearance_weight) &&
-         config.medial_clearance_weight >= 0.0 &&
-         finitePositive(config.medial_ridge_prominence_m) &&
-         config.medial_band_radius_cells <=
-             static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()) &&
-         config.chunk_size_cells > 0U && config.minimum_open_region_voxels > 0U &&
-         config.minimum_constrained_component_voxels > 0U &&
-         config.minimum_portal_voxels > 0U &&
-         config.maximum_portal_voxels >= config.minimum_portal_voxels &&
-         config.maximum_portal_voxels <=
-             FreeSpaceTopologyFormatLimits::maximum_geometry_point_count &&
-         std::isfinite(config.footprint.radius_m) && config.footprint.radius_m >= 0.0 &&
-         std::isfinite(config.footprint.lower_extent_m) &&
-         config.footprint.lower_extent_m >= 0.0 &&
-         std::isfinite(config.footprint.upper_extent_m) &&
-         config.footprint.upper_extent_m >= 0.0 && valid_minimum_z && valid_maximum_z &&
-         valid_z_interval;
-}
-
-ExtractedFreeSpaceTopology3D
-extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
-                           const DistanceField3D& clearance_field,
-                           const FreeSpaceTopologyExtractorConfig& config) {
+template<typename Occupancy>
+ExtractedFreeSpaceTopology3D extractFreeSpaceTopology3DImpl(
+    const Occupancy& occupancy, const std::span<const float> clearance_distances_m,
+    const double clearance_build_ms, const FreeSpaceTopologyExtractorConfig& config) {
   const auto started = std::chrono::steady_clock::now();
   if (!freeSpaceTopologyExtractorConfigIsValid(config)) {
     throw std::invalid_argument{"invalid FreeSpaceTopologyExtractor3D config"};
   }
-  if (!sameBounds(occupancy.bounds(), clearance_field.bounds()) ||
-      clearance_field.maximumDistanceM() + 1.0e-6 < config.maximum_clearance_m ||
-      clearance_field.distancesM().size() != voxelCount(occupancy.bounds())) {
-    throw std::invalid_argument{
-        "clearance field does not match FreeSpaceTopologyExtractor3D input"};
-  }
   ExtractedFreeSpaceTopology3D result;
   const GridBounds3D& bounds = occupancy.bounds();
-  result.stats.clearance_ms = clearance_field.stats().duration_ms;
-  const ClearanceView clearance{clearance_field.distancesM(),
+  result.stats.clearance_ms = clearance_build_ms;
+  const ClearanceView clearance{clearance_distances_m,
                                 0.5 * std::numbers::sqrt3_v<double> *
                                     occupancy.bounds().resolution_m};
   std::vector<std::uint8_t> classification(clearance.size(), kBlocked);
@@ -1025,20 +997,27 @@ extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
 
 ExtractedFreeSpaceTopology3D
 extractFreeSpaceTopology3D(const OccupancyGrid3D& occupancy,
+                           const DistanceField3D& clearance_field,
                            const FreeSpaceTopologyExtractorConfig& config) {
-  if (!freeSpaceTopologyExtractorConfigIsValid(config)) {
-    throw std::invalid_argument{"invalid FreeSpaceTopologyExtractor3D config"};
+  if (!sameBounds(occupancy.bounds(), clearance_field.bounds()) ||
+      clearance_field.maximumDistanceM() + 1.0e-6 < config.maximum_clearance_m ||
+      clearance_field.distancesM().size() != voxelCount(occupancy.bounds())) {
+    throw std::invalid_argument{
+        "clearance field does not match FreeSpaceTopologyExtractor3D input"};
   }
-  const auto started = std::chrono::steady_clock::now();
-  const DistanceField3D clearance_field =
-      DistanceField3D::build(occupancy, config.maximum_clearance_m);
-  ExtractedFreeSpaceTopology3D result =
-      extractFreeSpaceTopology3D(occupancy, clearance_field, config);
-  result.stats.clearance_ms = clearance_field.stats().duration_ms;
-  result.stats.duration_ms = std::chrono::duration<double, std::milli>(
-                                 std::chrono::steady_clock::now() - started)
-                                 .count();
-  return result;
+  return extractFreeSpaceTopology3DImpl(occupancy, clearance_field.distancesM(),
+                                        clearance_field.stats().duration_ms, config);
+}
+
+ExtractedFreeSpaceTopology3D
+extractFreeSpaceTopology3D(const ObservedOccupancyGrid3D& occupancy,
+                           const std::span<const float> clearance_distances_m,
+                           const FreeSpaceTopologyExtractorConfig& config) {
+  if (clearance_distances_m.size() != voxelCount(occupancy.bounds())) {
+    throw std::invalid_argument{
+        "clearance field does not match observed FreeSpaceTopologyExtractor3D input"};
+  }
+  return extractFreeSpaceTopology3DImpl(occupancy, clearance_distances_m, 0.0, config);
 }
 
 } // namespace drone_city_nav
