@@ -11,6 +11,10 @@ namespace {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
+[[nodiscard]] bool finite3D(const Point3& point) noexcept {
+  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
+}
+
 [[nodiscard]] bool rangeIsPositiveInfinity(const float value) noexcept {
   return std::isinf(value) && value > 0.0F;
 }
@@ -419,6 +423,47 @@ Point3 lidarMapPointToBody(const LidarProjectionBodyFrame& frame,
                     delta.z * frame.y_axis_map.z,
                 delta.x * frame.z_axis_map.x + delta.y * frame.z_axis_map.y +
                     delta.z * frame.z_axis_map.z};
+}
+
+LidarRayProjection3D projectLidarRay3D(const LidarProjectionPose& pose,
+                                       const LidarProjectionConfig& config,
+                                       const Vec3& direction_lidar_flu) noexcept {
+  LidarRayProjection3D result;
+  const Point3 lidar_direction{direction_lidar_flu.x, direction_lidar_flu.y,
+                               direction_lidar_flu.z};
+  if (!finite3D(lidar_direction) ||
+      !(std::hypot(std::hypot(lidar_direction.x, lidar_direction.y),
+                   lidar_direction.z) > 1.0e-9)) {
+    return result;
+  }
+  const LidarProjectionBodyFrame body_frame = lidarProjectionBodyFrame(pose, config);
+  if (!body_frame.valid) {
+    return result;
+  }
+  const Point3 body_direction = normalizeOrZero(
+      config.use_full_lidar_extrinsic
+          ? rotateByQuaternion(lidar_direction, config.lidar_flu_to_body_frd_quaternion)
+          : lidarFluToBodyFrd(mountedLidarDirection(lidar_direction, config)));
+  const Point3 body_endpoint = lidarBodyPointToMap(body_frame, body_direction);
+  result.origin_map_m =
+      config.use_full_lidar_extrinsic
+          ? lidarBodyPointToMap(body_frame, config.lidar_translation_body_frd_m)
+          : Point3{body_frame.origin_map_m.x, body_frame.origin_map_m.y,
+                   body_frame.origin_map_m.z + config.lidar_z_offset_m};
+  Point3 direction{body_endpoint.x - body_frame.origin_map_m.x,
+                   body_endpoint.y - body_frame.origin_map_m.y,
+                   body_endpoint.z - body_frame.origin_map_m.z};
+  if (config.scan_yaw_offset_rad != 0.0) {
+    const double cosine = std::cos(config.scan_yaw_offset_rad);
+    const double sine = std::sin(config.scan_yaw_offset_rad);
+    direction = Point3{cosine * direction.x - sine * direction.y,
+                       sine * direction.x + cosine * direction.y, direction.z};
+  }
+  direction = normalizeOrZero(direction);
+  result.direction_map = Vec3{direction.x, direction.y, direction.z};
+  result.valid = finite3D(result.origin_map_m) && finite3D(direction) &&
+                 std::hypot(std::hypot(direction.x, direction.y), direction.z) > 1.0e-9;
+  return result;
 }
 
 } // namespace drone_city_nav

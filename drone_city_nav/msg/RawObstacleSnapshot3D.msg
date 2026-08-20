@@ -1,0 +1,12 @@
+std_msgs/Header header
+uint64 producer_instance_id
+uint64 obstacle_snapshot_revision
+float64 origin_x_m
+float64 origin_y_m
+float64 origin_z_m
+float64 resolution_m
+uint32 width_cells
+uint32 height_cells
+uint32 depth_cells
+uint32 chunk_size_cells
+drone_city_nav/ObservedObstacleChunk3D[] chunks

@@ -51,6 +51,12 @@ struct LidarProjectionBodyFrame {
   bool valid{false};
 };
 
+struct LidarRayProjection3D {
+  Point3 origin_map_m{};
+  Vec3 direction_map{};
+  bool valid{false};
+};
+
 enum class LidarBeamProjectionStatus {
   kAccepted,
   kInvalidScan,
@@ -103,5 +109,9 @@ lidarProjectionBodyFrame(const LidarProjectionPose& pose,
 
 [[nodiscard]] Point3 lidarMapPointToBody(const LidarProjectionBodyFrame& frame,
                                          const Point3& map_point) noexcept;
+
+[[nodiscard]] LidarRayProjection3D
+projectLidarRay3D(const LidarProjectionPose& pose, const LidarProjectionConfig& config,
+                  const Vec3& direction_lidar_flu) noexcept;
 
 } // namespace drone_city_nav

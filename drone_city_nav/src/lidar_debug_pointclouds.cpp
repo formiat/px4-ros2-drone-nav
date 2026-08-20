@@ -5,6 +5,7 @@
 #include <sensor_msgs/msg/point_field.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <utility>
@@ -129,6 +130,46 @@ buildLidarDebugPointCloud(const std::span<const Point3> points,
     writeXyzPoint(cloud, i, points[i]);
   }
   return cloud;
+}
+
+sensor_msgs::msg::PointCloud2 buildObservedOccupancyPointCloud3D(
+    const ObservedOccupancyGrid3D& grid, const builtin_interfaces::msg::Time& stamp,
+    const std::string_view frame_id, const std::size_t stride) {
+  const std::size_t effective_stride = std::max<std::size_t>(1U, stride);
+  std::vector<Point3> points;
+  points.reserve(grid.occupiedVoxelCount() / effective_stride + 1U);
+  std::size_t occupied_index{0U};
+  for (const auto& [chunk_index, chunk] : grid.chunks()) {
+    for (std::size_t word_index = 0U; word_index < chunk.occupied.size();
+         ++word_index) {
+      std::uint64_t word = chunk.occupied.at(word_index);
+      while (word != 0U) {
+        const std::size_t bit_offset = static_cast<std::size_t>(std::countr_zero(word));
+        const std::size_t local_index = word_index * 64U + bit_offset;
+        if (occupied_index % effective_stride == 0U) {
+          const int local_x =
+              static_cast<int>(local_index % ObservedOccupancyGrid3D::kChunkSize);
+          const int local_y =
+              static_cast<int>((local_index / ObservedOccupancyGrid3D::kChunkSize) %
+                               ObservedOccupancyGrid3D::kChunkSize);
+          const int local_z =
+              static_cast<int>(local_index / static_cast<std::size_t>(
+                                                 ObservedOccupancyGrid3D::kChunkSize *
+                                                 ObservedOccupancyGrid3D::kChunkSize));
+          const GridIndex3D index{
+              chunk_index.x * ObservedOccupancyGrid3D::kChunkSize + local_x,
+              chunk_index.y * ObservedOccupancyGrid3D::kChunkSize + local_y,
+              chunk_index.z * ObservedOccupancyGrid3D::kChunkSize + local_z};
+          if (grid.contains(index)) {
+            points.push_back(grid.cellCenter(index));
+          }
+        }
+        ++occupied_index;
+        word &= word - 1U;
+      }
+    }
+  }
+  return buildLidarDebugPointCloud(points, stamp, frame_id);
 }
 
 [[nodiscard]] sensor_msgs::msg::PointCloud2 buildObstacleMemoryTriggerPointCloud(

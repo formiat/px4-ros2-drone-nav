@@ -53,6 +53,9 @@ rosidl_generate_interfaces(
   "msg/LatestLidarObstacleScan.msg"
   "msg/RawObstacleDelta.msg"
   "msg/RawObstacleSnapshot.msg"
+  "msg/ObservedObstacleChunk3D.msg"
+  "msg/RawObstacleDelta3D.msg"
+  "msg/RawObstacleSnapshot3D.msg"
   "msg/VehicleDestroyed.msg"
   "msg/MppiHorizonPoint.msg"
   "msg/MppiTrajectoryHorizon.msg"
@@ -196,6 +199,7 @@ add_library(
   src/mission_waypoint_sequence.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
+  src/lidar_scan_3d.cpp
   src/px4_ros_time_mapper.cpp
   src/radar_cadence.cpp
   src/radar_model.cpp
@@ -294,6 +298,7 @@ add_library(
   src/mppi_debug_markers.cpp
   src/ros_conversions.cpp
   src/raw_obstacle_delta.cpp
+  src/raw_obstacle_3d_ros.cpp
   src/spectator_diagnostics_selection_ros.cpp
   src/static_map_debug.cpp
   src/visualization_marker_helpers.cpp)
@@ -314,6 +319,7 @@ enable_project_warnings(drone_city_nav_ros_adapters)
 add_executable(obstacle_memory_node src/obstacle_memory_node.cpp
                                     src/obstacle_memory_node_helpers.cpp
                                     src/obstacle_memory_transport.cpp
+                                    src/obstacle_memory_transport_3d.cpp
                                     src/raw_world_snapshot.cpp)
 target_compile_features(obstacle_memory_node PRIVATE cxx_std_20)
 target_link_libraries(obstacle_memory_node drone_city_nav_core
@@ -326,6 +332,21 @@ ament_target_dependencies(
   rclcpp
   sensor_msgs)
 enable_project_warnings(obstacle_memory_node)
+
+add_executable(obstacle_memory_3d_node src/obstacle_memory_3d_node.cpp
+                                       src/obstacle_memory_node_helpers.cpp
+                                       src/obstacle_memory_transport_3d.cpp)
+target_compile_features(obstacle_memory_3d_node PRIVATE cxx_std_20)
+target_link_libraries(obstacle_memory_3d_node drone_city_nav_core
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
+ament_target_dependencies(
+  obstacle_memory_3d_node
+  ament_index_cpp
+  nav_msgs
+  px4_msgs
+  rclcpp
+  sensor_msgs)
+enable_project_warnings(obstacle_memory_3d_node)
 
 add_executable(mppi_offboard_node src/mppi_offboard_node.cpp)
 target_compile_features(mppi_offboard_node PRIVATE cxx_std_20)
@@ -597,6 +618,7 @@ install(
     collision_crash_node
     lidar_debug_node
     obstacle_memory_node
+    obstacle_memory_3d_node
     mppi_offboard_node
     world_visualization_node
     mission_monitor_node
@@ -880,6 +902,16 @@ if(BUILD_TESTING)
   target_compile_features(obstacle_memory_3d_test PRIVATE cxx_std_20)
   target_link_libraries(obstacle_memory_3d_test drone_city_nav_core)
   enable_project_warnings(obstacle_memory_3d_test)
+
+  ament_add_gtest(lidar_scan_3d_test tests/lidar_scan_3d_test.cpp)
+  target_compile_features(lidar_scan_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_scan_3d_test drone_city_nav_core)
+  enable_project_warnings(lidar_scan_3d_test)
+
+  ament_add_gtest(raw_obstacle_3d_ros_test tests/raw_obstacle_3d_ros_test.cpp)
+  target_compile_features(raw_obstacle_3d_ros_test PRIVATE cxx_std_20)
+  target_link_libraries(raw_obstacle_3d_ros_test drone_city_nav_ros_adapters)
+  enable_project_warnings(raw_obstacle_3d_ros_test)
 
   ament_add_gtest(free_space_topology_3d_test
                   tests/free_space_topology_3d_test.cpp)

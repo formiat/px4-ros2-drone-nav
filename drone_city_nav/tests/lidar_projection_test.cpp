@@ -8,6 +8,30 @@
 namespace drone_city_nav {
 namespace {
 
+TEST(LidarProjection3D, AppliesFullPoseAndSensorExtrinsic) {
+  LidarProjectionPose pose;
+  pose.position = {10.0, 20.0};
+  pose.altitude_m = 5.0;
+  pose.yaw_rad = 0.5 * std::numbers::pi;
+  pose.altitude_valid = true;
+  pose.attitude_valid = true;
+  pose.body_to_ned_quaternion_valid = false;
+  LidarProjectionConfig config;
+  config.use_full_lidar_extrinsic = true;
+  config.lidar_translation_body_frd_m = {0.2, 0.0, -0.3};
+  config.lidar_flu_to_body_frd_quaternion = {0.0, 1.0, 0.0, 0.0};
+
+  const LidarRayProjection3D ray = projectLidarRay3D(pose, config, Vec3{1.0, 0.0, 0.0});
+
+  ASSERT_TRUE(ray.valid);
+  EXPECT_NEAR(ray.origin_map_m.x, 10.0, 1.0e-9);
+  EXPECT_NEAR(ray.origin_map_m.y, 20.2, 1.0e-9);
+  EXPECT_NEAR(ray.origin_map_m.z, 5.3, 1.0e-9);
+  EXPECT_NEAR(ray.direction_map.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(ray.direction_map.y, 1.0, 1.0e-9);
+  EXPECT_NEAR(ray.direction_map.z, 0.0, 1.0e-9);
+}
+
 [[nodiscard]] LidarBeamProjection project(const LidarProjectionPose& pose,
                                           const LidarProjectionConfig& config,
                                           const float range_m,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -31,6 +32,11 @@ buildLidarDebugPointCloud(std::span<const Point2> points, double z_m,
 buildLidarDebugPointCloud(std::span<const Point3> points,
                           const builtin_interfaces::msg::Time& stamp,
                           std::string_view frame_id);
+
+[[nodiscard]] sensor_msgs::msg::PointCloud2
+buildObservedOccupancyPointCloud3D(const ObservedOccupancyGrid3D& grid,
+                                   const builtin_interfaces::msg::Time& stamp,
+                                   std::string_view frame_id, std::size_t stride = 1U);
 
 [[nodiscard]] sensor_msgs::msg::PointCloud2 buildObstacleMemoryTriggerPointCloud(
     const std::unordered_map<std::size_t, MemoryCellProvenance>& active_provenance,
