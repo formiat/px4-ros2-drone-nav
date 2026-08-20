@@ -238,6 +238,8 @@ add_library(
   src/passage_volume.cpp
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
+  src/obstacle_memory_3d.cpp
+  src/observed_occupancy_grid_3d.cpp
   src/occupancy_grid.cpp
   src/occupancy_grid_3d.cpp
   )
@@ -873,6 +875,11 @@ if(BUILD_TESTING)
     PRIVATE
       TEST_COMPACT_PASSAGE_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../environments/fixtures/compact_3d_passage/world.occupancy3d")
   enable_project_warnings(occupancy_grid_3d_test)
+
+  ament_add_gtest(obstacle_memory_3d_test tests/obstacle_memory_3d_test.cpp)
+  target_compile_features(obstacle_memory_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(obstacle_memory_3d_test drone_city_nav_core)
+  enable_project_warnings(obstacle_memory_3d_test)
 
   ament_add_gtest(free_space_topology_3d_test
                   tests/free_space_topology_3d_test.cpp)
