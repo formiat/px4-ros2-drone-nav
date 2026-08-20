@@ -204,9 +204,13 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("model: Urban Platform", manifest)
         self.assertIn("version: 3", manifest)
 
-        launch = (
-            REPOSITORY / "drone_city_nav/launch/multi_vehicle.launch.py"
-        ).read_text(encoding="utf-8")
+        launch = "".join(
+            path.read_text(encoding="utf-8")
+            for path in (
+                REPOSITORY / "drone_city_nav/launch/multi_vehicle.launch.py",
+                REPOSITORY / "drone_city_nav/launch/multi_vehicle_lidar_launch.py",
+            )
+        )
         for parameter in (
             "px4_to_map_m00",
             "px4_to_map_m01",

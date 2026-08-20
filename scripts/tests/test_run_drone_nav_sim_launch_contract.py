@@ -10,6 +10,8 @@ from pathlib import Path
 
 RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
 RUNTIME_HELPERS = RUNNER.with_name("simulation_runtime_helpers.sh")
+LIDAR_PROFILE_RUNTIME = RUNNER.with_name("lidar_profile_runtime.sh")
+RESOURCE_RUNTIME = RUNNER.with_name("simulation_resource_runtime.sh")
 MAKEFILE = RUNNER.parents[1] / "Makefile"
 INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("multi_vehicle_sim_runtime.sh")
 GAZEBO_SPECTATOR_FOLLOW = RUNNER.with_name("gazebo_spectator_follow.py")
@@ -35,6 +37,9 @@ MULTI_VEHICLE_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
 )
 MULTI_VEHICLE_MISSION_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
     "multi_vehicle_mission_launch.py"
+)
+MULTI_VEHICLE_LIDAR_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+    "multi_vehicle_lidar_launch.py"
 )
 INTERCEPT_SCENARIO = (
     Path(__file__).resolve().parents[2]
@@ -75,7 +80,10 @@ RVIZ_CONFIGS = (
 class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.text = RUNNER.read_text(encoding="utf-8")
+        cls.text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (RUNNER, LIDAR_PROFILE_RUNTIME, RESOURCE_RUNTIME)
+        )
         cls.makefile_text = MAKEFILE.read_text(encoding="utf-8")
         cls.intercept_runtime_text = cls.text + INTERCEPT_RUNTIME_HELPER.read_text(
             encoding="utf-8"
@@ -92,6 +100,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             path.read_text(encoding="utf-8")
             for path in (
                 INTERCEPT_LAUNCH_FILE,
+                MULTI_VEHICLE_LIDAR_LAUNCH_FILE,
                 MULTI_VEHICLE_LAUNCH_FILE,
                 MULTI_VEHICLE_MISSION_LAUNCH_FILE,
             )
@@ -313,7 +322,8 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn(
             "maximum_horizontal_acceleration_mps2: 4.0", self.nav_config_text
         )
-        self.assertIn("default_lidar_gz_topic", self.launch_text)
+        self.assertIn('lidar_profile = LaunchConfiguration("lidar_profile")', self.launch_text)
+        self.assertIn("gz.msgs.PointCloudPacked", self.launch_text)
 
     def test_base_sim_uses_environment_configurable_terminal_waypoints(self) -> None:
         self.assertIn("MISSION_GOALS_XYZ_M", self.makefile_text)
@@ -491,18 +501,19 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('elif bool_is_true "${active_static_map}"', self.text)
         self.assertIn("No-static navigation requires ENABLE_OBSTACLE_MEMORY=true", self.text)
         self.assertIn("ENABLE_2D_LIDAR", self.text)
-        self.assertIn("No-static navigation requires ENABLE_2D_LIDAR=true", self.text)
+        self.assertIn("No-static navigation requires LIDAR_PROFILE=2d", self.text)
+        self.assertIn("LIDAR_PROFILE", self.container_text)
         self.assertIn('enable_2d_lidar:="${enable_2d_lidar}"', self.text)
         self.assertIn(
             'DeclareLaunchArgument("enable_obstacle_memory", default_value="true")',
             self.intercept_launch_text,
         )
         self.assertIn(
-            'DeclareLaunchArgument("enable_2d_lidar", default_value="true")',
+            'DeclareLaunchArgument("enable_2d_lidar", default_value="")',
             self.intercept_launch_text,
         )
         self.assertIn(
-            '"persistent_memory_enabled": role_persistent_memory_enabled',
+            '"persistent_memory_enabled": obstacle_memory_enabled',
             self.intercept_launch_text,
         )
         self.assertIn(
@@ -532,14 +543,21 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("OccupancyGrid3D::load", self.production_mppi_source_text)
 
     def test_runtime_lidar_visibility_follows_resolved_static_map_mode(self) -> None:
-        self.assertIn('lidar_visibility_mode="no-static"', self.text)
+        self.assertIn('lidar_visibility_mode="no-static-2d"', self.text)
+        self.assertIn('lidar_visibility_mode="no-static-3d"', self.text)
         self.assertIn('lidar_visibility_mode="static"', self.text)
         self.assertIn("configure_lidar_visibility.py", self.text)
         self.assertIn('--mode "${lidar_visibility_mode}"', self.text)
-        self.assertIn('--enabled "${enable_2d_lidar}"', self.text)
+        self.assertIn('[[ "${lidar_profile}" == "none" ]]', self.text)
         self.assertIn(
-            'cp -a "${repo_root}/drone_city_nav/models/lidar_2d_v2"',
+            'models/${runtime_sensor_model_name}',
             self.text,
+        )
+        self.assertIn('if [[ "${lidar_profile}" == "3d" ]]', self.text)
+        self.assertIn('"${px4_build_dir}/bin/px4" -i 0', self.text)
+        self.assertIn('PX4_SIM_MODEL="${px4_model_target}"', self.text)
+        self.assertIn(
+            'default_point_to_point_model_name="x500_lidar_3d_0"', self.text
         )
 
     def test_frontier_blacklist_is_explicit_and_disabled_by_default(self) -> None:

@@ -7,6 +7,7 @@ import argparse
 import json
 import math
 import re
+import runpy
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,10 @@ SUPPORTED_SCHEMAS = {
 }
 
 _GAZEBO_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+_LIDAR_PROFILE_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("lidar_profile.py"))
+)
+_apply_lidar_profile = _LIDAR_PROFILE_SUPPORT["apply_profile_to_vehicle"]
 
 
 def _finite_vector(value: Any, length: int, label: str) -> tuple[float, ...]:
@@ -120,7 +125,9 @@ def _px4_to_map_matrix(transform: dict[str, Any]) -> tuple[float, ...]:
     return (sdf_y_row[0], sdf_x_row[0], sdf_y_row[1], sdf_x_row[1])
 
 
-def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
+def load_multi_vehicle_scenario(
+    path: str | Path, lidar_profile: str = "2d"
+) -> dict[str, Any]:
     """Return a validated scenario with derived Gazebo spawn poses."""
     scenario_path = Path(path).resolve()
     with scenario_path.open(encoding="utf-8") as stream:
@@ -161,7 +168,8 @@ def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
         if not math.isfinite(yaw_rad):
             raise ValueError(f"invalid yaw for {vehicle_id}")
         vehicles.append(
-            {
+            _apply_lidar_profile(
+                {
                 "id": vehicle_id,
                 "role": role,
                 "px4_namespace": _required_string(
@@ -176,7 +184,9 @@ def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
                 "map_start_m": map_start,
                 "gazebo_spawn_m": _map_to_sdf(map_start, transform),
                 "yaw_rad": yaw_rad,
-            }
+                },
+                lidar_profile,
+            )
         )
 
     actual_ids = tuple(vehicle["id"] for vehicle in vehicles)
@@ -308,9 +318,11 @@ def load_multi_vehicle_scenario(path: str | Path) -> dict[str, Any]:
     }
 
 
-def load_intercept_scenario(path: str | Path) -> dict[str, Any]:
+def load_intercept_scenario(
+    path: str | Path, lidar_profile: str = "2d"
+) -> dict[str, Any]:
     """Return an intercept scenario while preserving the legacy public loader."""
-    scenario = load_multi_vehicle_scenario(path)
+    scenario = load_multi_vehicle_scenario(path, lidar_profile)
     if not scenario["evaders"] or scenario["civilian_ids"]:
         raise ValueError("scenario is not an intercept mission")
     return scenario
@@ -360,8 +372,11 @@ def main() -> int:
     parser.add_argument(
         "--format", choices=("tsv", "metadata-tsv"), default="tsv"
     )
+    parser.add_argument(
+        "--lidar-profile", choices=("none", "2d", "3d"), default="2d"
+    )
     args = parser.parse_args()
-    scenario = load_multi_vehicle_scenario(args.scenario)
+    scenario = load_multi_vehicle_scenario(args.scenario, args.lidar_profile)
     if args.format == "metadata-tsv":
         _print_metadata_tsv(scenario)
     else:

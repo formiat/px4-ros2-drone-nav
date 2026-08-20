@@ -48,7 +48,8 @@ load_multi_vehicle_sim_scenario() {
   fi
   if ! scenario_metadata_tsv="$(
     python3 "${repo_root}/drone_city_nav/launch/intercept_scenario.py" \
-      --scenario "${multi_vehicle_scenario_path}" --format metadata-tsv
+      --scenario "${multi_vehicle_scenario_path}" --format metadata-tsv \
+      --lidar-profile "${lidar_profile}"
   )"; then
     echo "Failed to resolve multi-vehicle scenario metadata: ${multi_vehicle_scenario_path}" >&2
     return 1
@@ -58,7 +59,8 @@ load_multi_vehicle_sim_scenario() {
     multi_vehicle_maximum_target_z_m <<< "${scenario_metadata_tsv}"
   if ! scenario_tsv="$(
     python3 "${repo_root}/drone_city_nav/launch/intercept_scenario.py" \
-      --scenario "${multi_vehicle_scenario_path}" --format tsv
+      --scenario "${multi_vehicle_scenario_path}" --format tsv \
+      --lidar-profile "${lidar_profile}"
   )"; then
     echo "Failed to resolve multi-vehicle scenario: ${multi_vehicle_scenario_path}" >&2
     return 1
@@ -99,7 +101,8 @@ load_point_to_point_sim_scenario() {
   point_to_point_scenario_path="$(make_abs_path "${scenario_override}")"
   if ! scenario_tsv="$(
     python3 "${repo_root}/drone_city_nav/launch/point_to_point_scenario.py" \
-      --scenario "${point_to_point_scenario_path}" --format runtime-tsv
+      --scenario "${point_to_point_scenario_path}" --format runtime-tsv \
+      --lidar-profile "${lidar_profile}"
   )"; then
     echo "Failed to resolve point-to-point scenario: ${point_to_point_scenario_path}" >&2
     return 1
@@ -131,6 +134,7 @@ resolve_point_to_point_gazebo_spawn() {
 }
 
 prepare_multi_vehicle_model_resources() {
+  local base_model_name
   local instance
   local evader_model_name
 
@@ -143,7 +147,9 @@ prepare_multi_vehicle_model_resources() {
     if [[ -e "${runtime_models_dir}/${evader_model_name}" ]]; then
       continue
     fi
-    cp -a "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
+    base_model_name="x500_lidar_2d"
+    [[ "${lidar_profile}" == "3d" ]] && base_model_name="x500_lidar_3d"
+    cp -a "${runtime_models_dir}/${base_model_name}" \
       "${runtime_models_dir}/${evader_model_name}"
     python3 "${repo_root}/scripts/configure_drone_marker_color.py" \
       "${runtime_models_dir}/${evader_model_name}" \

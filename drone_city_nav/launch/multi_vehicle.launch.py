@@ -25,6 +25,12 @@ _TRUTH_SUPPORT = runpy.run_path(
 _MISSION_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("multi_vehicle_mission_launch.py"))
 )
+_LIDAR_PROFILE_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("lidar_profile.py"))
+)
+_MULTI_VEHICLE_LIDAR_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("multi_vehicle_lidar_launch.py"))
+)
 _load_intercept_scenario = _SCENARIO_SUPPORT["load_intercept_scenario"]
 _load_multi_vehicle_scenario = _SCENARIO_SUPPORT["load_multi_vehicle_scenario"]
 _make_simulation_truth_adapter = _TRUTH_SUPPORT["make_simulation_truth_adapter"]
@@ -40,6 +46,9 @@ _make_intercept_mission_nodes = _MISSION_SUPPORT["make_intercept_mission_nodes"]
 _make_cooperative_mission_nodes = _MISSION_SUPPORT[
     "make_cooperative_mission_nodes"
 ]
+_validate_lidar_profile = _LIDAR_PROFILE_SUPPORT["validate_lidar_profile"]
+_make_lidar_topics = _MULTI_VEHICLE_LIDAR_SUPPORT["make_lidar_topics"]
+_make_memory_parameters = _MULTI_VEHICLE_LIDAR_SUPPORT["make_memory_parameters"]
 
 
 def _parameters(document, node_name, overrides):
@@ -180,6 +189,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
     scenario_path = LaunchConfiguration(scenario_argument)
     enable_rviz = LaunchConfiguration("enable_rviz")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
+    lidar_profile = LaunchConfiguration("lidar_profile")
     enable_2d_lidar = LaunchConfiguration("enable_2d_lidar")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
 
@@ -188,12 +198,17 @@ def generate_multi_vehicle_launch_description(mission_kind):
         params_path = params_file.perform(context)
         with open(params_path, encoding="utf-8") as stream:
             document = yaml.safe_load(stream)
+        profile = _validate_lidar_profile(lidar_profile.perform(context))
         if cooperative_traffic:
-            scenario = _load_multi_vehicle_scenario(scenario_path.perform(context))
+            scenario = _load_multi_vehicle_scenario(
+                scenario_path.perform(context), profile
+            )
             if not scenario["civilian_ids"] or scenario["evaders"]:
                 raise RuntimeError("Scenario is not a cooperative traffic mission")
         else:
-            scenario = _load_intercept_scenario(scenario_path.perform(context))
+            scenario = _load_intercept_scenario(
+                scenario_path.perform(context), profile
+            )
         configured_static = bool(
             document["production_mppi_node"]["ros__parameters"]["use_static_map"]
         )
@@ -251,18 +266,25 @@ def generate_multi_vehicle_launch_description(mission_kind):
         lidar_debug_enabled = _optional_bool(
             enable_lidar_debug.perform(context), False
         )
-        lidar_enabled = _optional_bool(enable_2d_lidar.perform(context), True)
+        lidar_2d_override = _optional_bool(
+            enable_2d_lidar.perform(context), profile == "2d"
+        )
+        if lidar_2d_override != (profile == "2d"):
+            raise RuntimeError(
+                "enable_2d_lidar conflicts with the selected lidar_profile"
+            )
+        lidar_enabled = profile != "none"
         obstacle_memory_enabled = _optional_bool(
             enable_obstacle_memory.perform(context), True
         )
         if not use_static_map and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
         if not use_static_map and not lidar_enabled:
-            raise RuntimeError("No-static navigation requires 2D lidar")
+            raise RuntimeError("No-static navigation requires a 2D or 3D lidar profile")
         if lidar_debug_enabled and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
         if lidar_debug_enabled and not lidar_enabled:
-            raise RuntimeError("Lidar debug requires 2D lidar")
+            raise RuntimeError("Lidar debug requires a 2D or 3D lidar profile")
         static_path_override = LaunchConfiguration(
             "static_occupancy_3d_path"
         ).perform(context)
@@ -374,15 +396,11 @@ def generate_multi_vehicle_launch_description(mission_kind):
             role_index = role_names.index(role)
             prefix = f"/vehicles/{role}"
             px4 = f"/{config['px4_namespace']}/fmu"
-            gz_scan = (
-                f"/world/{world_name}/model/{config['model']}/link/link/"
-                "sensor/lidar_2d_v2/scan"
+            gz_scan, scan_topic, scan_bridge_contract = _make_lidar_topics(
+                profile, world_name, config["model"], prefix
             )
-            scan_topic = f"{prefix}/scan"
             if lidar_enabled:
-                scan_bridge_arguments.append(
-                    f"{gz_scan}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
-                )
+                scan_bridge_arguments.append(scan_bridge_contract)
                 scan_bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
 
             primary = config["rviz_primary"]
@@ -409,68 +427,30 @@ def generate_multi_vehicle_launch_description(mission_kind):
             latest_lidar_obstacle_scan = f"{prefix}/latest_lidar_obstacle_scan"
             path_topic = f"{prefix}/mppi/path"
             marker_topic = f"{prefix}/mppi/markers"
-            role_persistent_memory_enabled = obstacle_memory_enabled
-            persistent_memory_spectator_vehicle_id = (
-                role
-                if use_static_map and role_persistent_memory_enabled
-                else ""
-            )
-            memory_params = _parameters(
+            memory_node_name, memory_params = _make_memory_parameters(
                 document,
-                "obstacle_memory_node",
-                {
-                    "persistent_memory_enabled": role_persistent_memory_enabled,
-                    "persistent_memory_spectator_vehicle_id": (
-                        persistent_memory_spectator_vehicle_id
-                    ),
-                    "persistent_memory_spectator_target_topic": (
-                        "/drone_city_nav/spectator_target"
-                    ),
-                    "use_static_map": use_static_map,
-                    "lidar_topic": scan_topic,
-                    "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
-                    "px4_vehicle_attitude_topic": f"{px4}/out/vehicle_attitude",
-                    "px4_timesync_status_topic": f"{px4}/out/timesync_status",
-                    "px4_vehicle_status_topic": f"{px4}/out/vehicle_status_v1",
-                    "px4_local_origin_x_m": config["map_start_x"],
-                    "px4_local_origin_y_m": config["map_start_y"],
-                    "px4_local_origin_z_m": config["map_start_z"],
-                    "px4_to_map_m00": px4_to_map_matrix[0],
-                    "px4_to_map_m01": px4_to_map_matrix[1],
-                    "px4_to_map_m10": px4_to_map_matrix[2],
-                    "px4_to_map_m11": px4_to_map_matrix[3],
-                    "initial_x_m": config["map_start_x"],
-                    "initial_y_m": config["map_start_y"],
-                    "obstacle_memory_grid_topic": f"{prefix}/obstacle_memory_grid",
-                    "raw_memory_3d_pointcloud_topic": f"{prefix}/raw_memory_points_3d",
-                    "obstacle_memory_provenance_topic": f"{prefix}/memory_provenance",
-                    "obstacle_memory_snapshot_topic": memory_snapshot,
-                    "obstacle_memory_status_topic": memory_status,
-                    "raw_obstacle_snapshot_topic": raw_snapshot,
-                    "raw_obstacle_delta_topic": raw_delta,
-                    "latest_lidar_obstacle_scan_topic": (
-                        latest_lidar_obstacle_scan
-                    ),
-                    "tracked_agent_track_topic": (
-                        f"{prefix}/target_track" if config["is_interceptor"] else ""
-                    ),
-                    "tracked_agent_maximum_age_s": (
-                        float(
-                            LaunchConfiguration(
-                                "radar_maximum_scan_interval_s"
-                            ).perform(context)
-                        )
-                        + 0.5
-                    ),
-                    "cooperative_traffic_enabled": cooperative_traffic,
-                    "vehicle_id": role,
-                    "cooperative_flight_intent_topic": (
-                        "/cooperative_traffic/flight_intents"
-                    ),
-                    "lidar_memory_hit_dump_path": (
-                        f"log/{mission_kind}/{role}/lidar_hits.jsonl"
-                    ),
-                },
+                profile,
+                mission_kind,
+                role,
+                prefix,
+                px4,
+                config,
+                px4_to_map_matrix,
+                use_static_map,
+                obstacle_memory_enabled,
+                cooperative_traffic,
+                float(
+                    LaunchConfiguration("radar_maximum_scan_interval_s").perform(
+                        context
+                    )
+                )
+                + 0.5,
+                scan_topic,
+                raw_snapshot,
+                raw_delta,
+                memory_snapshot,
+                memory_status,
+                latest_lidar_obstacle_scan,
             )
             planner_params = _parameters(
                 document,
@@ -632,9 +612,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
             nodes.append(
                 Node(
                     package="drone_city_nav",
-                    executable="obstacle_memory_node",
+                    executable=memory_node_name,
                     namespace=f"vehicles/{role}",
-                    name="obstacle_memory_node",
+                    name=memory_node_name,
                     output="screen",
                     prefix=planning_prefix,
                     parameters=[memory_params, {"use_sim_time": True}],
@@ -706,9 +686,10 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 },
             )
             if lidar_debug_enabled:
-                diagnostics_components.append(
-                    _make_lidar_debug_component(role, debug_params)
-                )
+                if profile == "2d":
+                    diagnostics_components.append(
+                        _make_lidar_debug_component(role, debug_params)
+                    )
 
         nodes.append(
             ComposableNodeContainer(
@@ -858,7 +839,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument("enable_rviz", default_value="false"),
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
-            DeclareLaunchArgument("enable_2d_lidar", default_value="true"),
+            DeclareLaunchArgument("lidar_profile", default_value="2d"),
+            DeclareLaunchArgument("enable_2d_lidar", default_value=""),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value=""),
             DeclareLaunchArgument(

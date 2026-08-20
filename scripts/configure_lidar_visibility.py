@@ -14,13 +14,18 @@ NO_STATIC_OCCLUDER_VISIBILITY_FLAG = 0x04000000
 STATIC_VISIBILITY_MASK = GZ_VISIBILITY_ALL & ~(
     STATIC_PASSAGE_MASS_VISIBILITY_FLAG | NO_STATIC_OCCLUDER_VISIBILITY_FLAG
 )
+NO_STATIC_3D_VISIBILITY_MASK = (
+    GZ_VISIBILITY_ALL & ~NO_STATIC_OCCLUDER_VISIBILITY_FLAG
+)
 
 
 def visibility_mask(mode: str) -> int:
     if mode == "static":
         return STATIC_VISIBILITY_MASK
-    if mode == "no-static":
+    if mode in ("no-static", "no-static-2d"):
         return GZ_VISIBILITY_ALL
+    if mode == "no-static-3d":
+        return NO_STATIC_3D_VISIBILITY_MASK
     raise ValueError(f"unsupported lidar visibility mode: {mode}")
 
 
@@ -30,12 +35,11 @@ def configure_model(model_sdf: Path, mode: str, enabled: bool = True) -> int:
     sensors = [
         sensor
         for sensor in root.iter("sensor")
-        if sensor.attrib.get("name") == "lidar_2d_v2"
-        and sensor.attrib.get("type") == "gpu_lidar"
+        if sensor.attrib.get("type") == "gpu_lidar"
     ]
     if len(sensors) != 1:
         raise RuntimeError(
-            f"expected one lidar_2d_v2 gpu_lidar in {model_sdf}, found {len(sensors)}"
+            f"expected one gpu_lidar in {model_sdf}, found {len(sensors)}"
         )
     mask_element = sensors[0].find("ray/visibility_mask")
     if mask_element is None:
@@ -54,7 +58,11 @@ def configure_model(model_sdf: Path, mode: str, enabled: bool = True) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model_sdf", type=Path)
-    parser.add_argument("--mode", choices=("static", "no-static"), required=True)
+    parser.add_argument(
+        "--mode",
+        choices=("static", "no-static", "no-static-2d", "no-static-3d"),
+        required=True,
+    )
     parser.add_argument(
         "--enabled",
         choices=("true", "false"),

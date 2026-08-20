@@ -19,26 +19,24 @@ import configure_lidar_visibility as visibility  # noqa: E402
 
 
 SOURCE_MODEL = REPO_ROOT / "drone_city_nav/models/lidar_2d_v2/model.sdf"
+SOURCE_MODEL_3D = REPO_ROOT / "drone_city_nav/models/lidar_3d_v1/model.sdf"
+
+
+def read_sensor(path: Path) -> ET.Element:
+    root = ET.parse(path).getroot()
+    return next(
+        element
+        for element in root.iter("sensor")
+        if element.attrib.get("type") == "gpu_lidar"
+    )
 
 
 def read_mask(path: Path) -> int:
-    root = ET.parse(path).getroot()
-    sensor = next(
-        element
-        for element in root.iter("sensor")
-        if element.attrib.get("name") == "lidar_2d_v2"
-    )
-    return int(sensor.findtext("ray/visibility_mask", ""))
+    return int(read_sensor(path).findtext("ray/visibility_mask", ""))
 
 
 def read_always_on(path: Path) -> bool:
-    root = ET.parse(path).getroot()
-    sensor = next(
-        element
-        for element in root.iter("sensor")
-        if element.attrib.get("name") == "lidar_2d_v2"
-    )
-    return sensor.findtext("always_on") == "true"
+    return read_sensor(path).findtext("always_on") == "true"
 
 
 class ConfigureLidarVisibilityTest(unittest.TestCase):
@@ -62,7 +60,7 @@ class ConfigureLidarVisibilityTest(unittest.TestCase):
         )
 
     def test_no_static_mode_sees_passage_masses_and_virtual_occluders(self) -> None:
-        returned_mask, written_mask = self.configure_copy("no-static")
+        returned_mask, written_mask = self.configure_copy("no-static-2d")
 
         self.assertEqual(visibility.GZ_VISIBILITY_ALL, returned_mask)
         self.assertEqual(returned_mask, written_mask)
@@ -72,6 +70,22 @@ class ConfigureLidarVisibilityTest(unittest.TestCase):
         self.assertNotEqual(
             0, returned_mask & visibility.NO_STATIC_OCCLUDER_VISIBILITY_FLAG
         )
+
+    def test_no_static_3d_sees_physical_passage_but_not_virtual_occluder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = Path(temp_dir) / "model.sdf"
+            shutil.copyfile(SOURCE_MODEL_3D, destination)
+
+            returned_mask = visibility.configure_model(destination, "no-static-3d")
+
+            self.assertEqual(visibility.NO_STATIC_3D_VISIBILITY_MASK, returned_mask)
+            self.assertEqual(returned_mask, read_mask(destination))
+            self.assertNotEqual(
+                0, returned_mask & visibility.STATIC_PASSAGE_MASS_VISIBILITY_FLAG
+            )
+            self.assertEqual(
+                0, returned_mask & visibility.NO_STATIC_OCCLUDER_VISIBILITY_FLAG
+            )
 
     def test_unknown_mode_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "unsupported lidar visibility mode"):

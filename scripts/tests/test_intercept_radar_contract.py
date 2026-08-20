@@ -11,6 +11,7 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 SOURCE = PACKAGE / "src"
 LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
+LIDAR_LAUNCH = PACKAGE / "launch" / "multi_vehicle_lidar_launch.py"
 MISSION_LAUNCH = PACKAGE / "launch" / "multi_vehicle_mission_launch.py"
 TRACKING_LAUNCH = PACKAGE / "launch" / "intercept_tracking_launch.py"
 RADAR_DETECTION = PACKAGE / "msg" / "RadarDetection.msg"
@@ -111,8 +112,10 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("ground_truth_boundary_violation", text)
 
     def test_visualization_observers_do_not_receive_physical_truth(self) -> None:
-        launch = LAUNCH.read_text(encoding="utf-8") + MISSION_LAUNCH.read_text(
-            encoding="utf-8"
+        launch = (
+            LAUNCH.read_text(encoding="utf-8")
+            + LIDAR_LAUNCH.read_text(encoding="utf-8")
+            + MISSION_LAUNCH.read_text(encoding="utf-8")
         )
         boundary = GROUND_TRUTH_BOUNDARY.read_text(encoding="utf-8")
         self.assertIn('"target_navigation_observer_fqns"', launch)
@@ -162,8 +165,9 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("EXECUTION_MODE_POSITION_HOLD", referee)
 
     def test_launch_wires_generic_radar_pipeline_without_truth_filter(self) -> None:
-        launch = LAUNCH.read_text(encoding="utf-8") + MISSION_LAUNCH.read_text(
-            encoding="utf-8"
+        launch = "".join(
+            path.read_text(encoding="utf-8")
+            for path in (LAUNCH, LIDAR_LAUNCH, MISSION_LAUNCH)
         )
         tracking = TRACKING_LAUNCH.read_text(encoding="utf-8")
         text = launch + tracking

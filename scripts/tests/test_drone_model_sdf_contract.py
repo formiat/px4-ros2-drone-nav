@@ -13,6 +13,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WRAPPER_SDF = REPO_ROOT / "drone_city_nav/models/x500_lidar_2d/model.sdf"
 LIDAR_SDF = REPO_ROOT / "drone_city_nav/models/lidar_2d_v2/model.sdf"
+LIDAR_3D_SDF = REPO_ROOT / "drone_city_nav/models/lidar_3d_v1/model.sdf"
 NAV_CONFIG = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
 WORLD_SDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.sdf"
 WORLD_SPEC = REPO_ROOT / "drone_city_nav/worlds/canonical_city.world3d.json"
@@ -105,6 +106,28 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertAlmostEqual(2.0 * math.pi, max_angle - min_angle, places=5)
         self.assertLessEqual((max_angle - min_angle) / (samples - 1), 0.01)
 
+    def test_3d_lidar_is_organized_and_covers_vertical_passage_geometry(self) -> None:
+        root = parse_sdf(LIDAR_3D_SDF)
+        sensor = next(
+            element
+            for element in root.iter("sensor")
+            if element.attrib.get("name") == "lidar_3d_v1"
+        )
+        horizontal = sensor.find("ray/scan/horizontal")
+        vertical = sensor.find("ray/scan/vertical")
+        self.assertIsNotNone(horizontal)
+        self.assertIsNotNone(vertical)
+        self.assertEqual(360, int(horizontal.findtext("samples", "0")))
+        self.assertEqual(32, int(vertical.findtext("samples", "0")))
+        self.assertAlmostEqual(
+            math.pi / 2.0,
+            float(vertical.findtext("max_angle", "nan"))
+            - float(vertical.findtext("min_angle", "nan")),
+            places=6,
+        )
+        self.assertEqual("10", sensor.findtext("update_rate"))
+        self.assertEqual("false", sensor.findtext("visualize"))
+
     def test_static_lidar_default_excludes_passage_masses_and_occluders(self) -> None:
         lidar_root = parse_sdf(LIDAR_SDF)
         world_root = parse_sdf(WORLD_SDF)
@@ -187,13 +210,13 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertEqual([0.0, 0.0, 0.055], sensor_pose[:3])
         config_text = NAV_CONFIG.read_text(encoding="utf-8")
         self.assertEqual(
-            2,
+            3,
             config_text.count(
                 "lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]"
             ),
         )
         self.assertEqual(
-            2,
+            3,
             config_text.count(
                 "lidar_extrinsic_quaternion_lidar_flu_to_body_frd: "
                 "[0.0, 1.0, 0.0, 0.0]"

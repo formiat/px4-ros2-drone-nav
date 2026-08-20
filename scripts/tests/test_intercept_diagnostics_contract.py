@@ -10,9 +10,11 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
+LIDAR_LAUNCH = PACKAGE / "launch" / "multi_vehicle_lidar_launch.py"
 DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
 MUX = PACKAGE / "src" / "intercept_diagnostics_mux_node.cpp"
 OBSTACLE_MEMORY = PACKAGE / "src" / "obstacle_memory_node.cpp"
+OBSTACLE_MEMORY_3D = PACKAGE / "src" / "obstacle_memory_3d_node.cpp"
 LIDAR_HEADER = PACKAGE / "src" / "lidar_debug_node.hpp"
 LIDAR_CALLBACKS = PACKAGE / "src" / "lidar_debug_node_callbacks.cpp"
 LIDAR_LIFECYCLE = PACKAGE / "src" / "lidar_debug_node_lifecycle.cpp"
@@ -59,17 +61,19 @@ class InterceptDiagnosticsContractTest(unittest.TestCase):
         self.assertIn("LIDAR_DEBUG_SPECTATOR", lifecycle)
 
     def test_static_persistent_memory_is_selector_gated(self) -> None:
-        launch = LAUNCH.read_text(encoding="utf-8")
+        launch = LIDAR_LAUNCH.read_text(encoding="utf-8")
         obstacle_memory = OBSTACLE_MEMORY.read_text(encoding="utf-8")
-        self.assertIn("role_persistent_memory_enabled", launch)
+        obstacle_memory_3d = OBSTACLE_MEMORY_3D.read_text(encoding="utf-8")
         self.assertIn(
-            "role_persistent_memory_enabled = obstacle_memory_enabled", launch
+            "obstacle_memory_enabled and (use_static_map or profile == \"3d\")",
+            launch,
         )
-        self.assertIn('persistent_memory_spectator_vehicle_id = (', launch)
-        self.assertIn('"persistent_memory_spectator_vehicle_id": (', launch)
+        self.assertIn("selected_memory_vehicle = (", launch)
+        self.assertIn('"persistent_memory_spectator_vehicle_id": selected_memory_vehicle', launch)
         self.assertIn("SpectatorDiagnosticsSelection", obstacle_memory)
         self.assertIn("OBSTACLE_MEMORY_SPECTATOR", obstacle_memory)
         self.assertIn("!persistent_memory_selection_.selected()", obstacle_memory)
+        self.assertIn("SpectatorDiagnosticsSelection", obstacle_memory_3d)
 
     def test_static_lidar_artifacts_are_bounded_per_interceptor(self) -> None:
         launch = LAUNCH.read_text(encoding="utf-8")

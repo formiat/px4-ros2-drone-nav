@@ -5,6 +5,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # shellcheck source=simulation_runtime_helpers.sh
 source "${repo_root}/scripts/simulation_runtime_helpers.sh"
+# shellcheck source=lidar_profile_runtime.sh
+source "${repo_root}/scripts/lidar_profile_runtime.sh"
+resolve_lidar_profile
 
 guard_against_root_owned_workspace_writes() {
   local repo_owner_uid
@@ -27,6 +30,8 @@ guard_against_root_owned_workspace_writes
 
 # shellcheck source=multi_vehicle_sim_runtime.sh
 source "${repo_root}/scripts/multi_vehicle_sim_runtime.sh"
+# shellcheck source=simulation_resource_runtime.sh
+source "${repo_root}/scripts/simulation_resource_runtime.sh"
 # shellcheck source=gazebo_gui_camera_runtime.sh
 source "${repo_root}/scripts/gazebo_gui_camera_runtime.sh"
 
@@ -100,7 +105,9 @@ if bool_is_true "${enable_subsystem_cpu_affinity}" &&
     fi
   fi
 fi
-px4_model_target="${PX4_MODEL_TARGET:-${point_to_point_px4_model_target:-gz_x500_lidar_2d}}"
+default_px4_model_target="gz_x500_lidar_2d"
+[[ "${lidar_profile}" == "3d" ]] && default_px4_model_target="gz_x500_lidar_3d"
+px4_model_target="${PX4_MODEL_TARGET:-${point_to_point_px4_model_target:-${default_px4_model_target}}}"
 if bool_is_true "${multi_vehicle_mission}"; then
   px4_model_target="${multi_vehicle_px4_model_targets[0]}"
   for vehicle_px4_model_target in "${multi_vehicle_px4_model_targets[@]}"; do
@@ -147,14 +154,6 @@ enable_lidar_debug_override=""
 if [[ -n "${ENABLE_LIDAR_DEBUG+x}" ]]; then
   enable_lidar_debug_override="$(normalize_bool "${ENABLE_LIDAR_DEBUG}")"
 fi
-enable_2d_lidar="$(normalize_bool "${ENABLE_2D_LIDAR:-true}")"
-case "${enable_2d_lidar}" in
-true | false) ;;
-*)
-  echo "ENABLE_2D_LIDAR must be a boolean, got '${enable_2d_lidar}'" >&2
-  exit 1
-  ;;
-esac
 enable_obstacle_memory_override=""
 if [[ -n "${ENABLE_OBSTACLE_MEMORY+x}" ]]; then
   enable_obstacle_memory_override="$(normalize_bool "${ENABLE_OBSTACLE_MEMORY}")"
@@ -236,7 +235,11 @@ rviz_drone_follow_tf_enabled="${enable_rviz_follow_camera}"
 if ! bool_is_true "${enable_rviz}"; then
   rviz_drone_follow_tf_enabled="false"
 fi
-gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-${multi_vehicle_spectator_initial_model:-x500_lidar_2d_0}}"
+default_point_to_point_model_name="x500_lidar_2d_0"
+[[ "${lidar_profile}" == "3d" ]] && \
+  default_point_to_point_model_name="x500_lidar_3d_0"
+default_gazebo_follow_target="${point_to_point_gazebo_model_name:-${default_point_to_point_model_name}}"
+gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-${multi_vehicle_spectator_initial_model:-${default_gazebo_follow_target}}}"
 gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
 gazebo_world_unpause_wait_s="${GZ_WORLD_UNPAUSE_WAIT_S:-60}"
@@ -378,7 +381,7 @@ if bool_is_true "${active_static_map}"; then
 fi
 if [[ -n "${enable_lidar_debug_override}" ]]; then
   enable_lidar_debug="${enable_lidar_debug_override}"
-elif ! bool_is_true "${enable_2d_lidar}"; then
+elif [[ "${lidar_profile}" == "none" ]]; then
   enable_lidar_debug="false"
 elif bool_is_true "${active_static_map}" && [[ -n "${headless}" ]]; then
   enable_lidar_debug="false"
@@ -398,9 +401,8 @@ if ! bool_is_true "${active_static_map}" &&
   echo "No-static navigation requires ENABLE_OBSTACLE_MEMORY=true" >&2
   exit 1
 fi
-if ! bool_is_true "${active_static_map}" &&
-  ! bool_is_true "${enable_2d_lidar}"; then
-  echo "No-static navigation requires ENABLE_2D_LIDAR=true" >&2
+if ! bool_is_true "${active_static_map}" && [[ "${lidar_profile}" == "none" ]]; then
+  echo "No-static navigation requires LIDAR_PROFILE=2d or LIDAR_PROFILE=3d" >&2
   exit 1
 fi
 if bool_is_true "${enable_lidar_debug}" &&
@@ -408,9 +410,8 @@ if bool_is_true "${enable_lidar_debug}" &&
   echo "Lidar debug requires ENABLE_OBSTACLE_MEMORY=true" >&2
   exit 1
 fi
-if bool_is_true "${enable_lidar_debug}" &&
-  ! bool_is_true "${enable_2d_lidar}"; then
-  echo "Lidar debug requires ENABLE_2D_LIDAR=true" >&2
+if bool_is_true "${enable_lidar_debug}" && [[ "${lidar_profile}" == "none" ]]; then
+  echo "Lidar debug requires LIDAR_PROFILE=2d or LIDAR_PROFILE=3d" >&2
   exit 1
 fi
 px4_active_max_horizontal_speed_mps="${speed_limit_override:-$(
@@ -476,44 +477,6 @@ set +u
 source "${ros_setup_file}"
 source "${px4_msgs_setup_file}"
 set -u
-
-prepare_runtime_resources() {
-  rm -rf "${runtime_dir}"
-  mkdir -p "${runtime_models_dir}" "${runtime_worlds_dir}"
-  if [[ -z "${custom_world_sdf_path}" ]]; then
-    install -D "${repo_root}/drone_city_nav/worlds/${world_name}.sdf" \
-      "${runtime_worlds_dir}/${world_name}.sdf"
-    gazebo_world_sdf_path="${runtime_worlds_dir}/${world_name}.sdf"
-  else
-    gazebo_world_sdf_path="${custom_world_sdf_path}"
-  fi
-
-  local px4_model
-  local model_name
-  for px4_model in "${px4_models_dir}"/*; do
-    [[ -d "${px4_model}" ]] || continue
-    model_name="$(basename "${px4_model}")"
-    if [[ "${model_name}" == "x500_lidar_2d" ||
-      "${model_name}" == "lidar_2d_v2" ]]; then
-      continue
-    fi
-    ln -s "${px4_model}" "${runtime_models_dir}/${model_name}"
-  done
-
-  ln -s "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
-    "${runtime_models_dir}/x500_lidar_2d"
-  prepare_multi_vehicle_model_resources
-  cp -a "${repo_root}/drone_city_nav/models/lidar_2d_v2" \
-    "${runtime_models_dir}/lidar_2d_v2"
-
-  local lidar_visibility_mode="no-static"
-  if bool_is_true "${active_static_map}"; then
-    lidar_visibility_mode="static"
-  fi
-  python3 "${repo_root}/scripts/configure_lidar_visibility.py" \
-    "${runtime_models_dir}/lidar_2d_v2/model.sdf" \
-    --mode "${lidar_visibility_mode}" --enabled "${enable_2d_lidar}"
-}
 
 prepare_runtime_resources
 mkdir -p "$(dirname "${px4_log_file}")"
@@ -612,6 +575,11 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 run_px4_sitl() {
+  if [[ "${lidar_profile}" == "3d" ]]; then
+    cd "${px4_dir}"
+    exec_with_cpu_affinity "${control_cpu_list}" \
+      "${px4_build_dir}/bin/px4" -i 0
+  fi
   run_with_cpu_affinity "${control_cpu_list}" \
     make -C "${px4_dir}" px4_sitl "${px4_model_target}"
 }
@@ -657,7 +625,9 @@ echo "Gazebo GUI log: ${gz_gui_log_file}"
 echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_scene_diagnostics_dir}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "Obstacle memory: enabled=${enable_obstacle_memory}"
+echo "Lidar profile: ${lidar_profile}"
 echo "2D lidar: enabled=${enable_2d_lidar}"
+echo "3D lidar: enabled=${enable_3d_lidar}"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'" |
@@ -826,8 +796,10 @@ else
     px4_parameter_stream "${px4_active_cruise_speed_mps}" \
       "${px4_active_max_horizontal_speed_mps}" |
       PX4_GZ_WORLD="${world_name}" \
-        PX4_GZ_STANDALONE=1 \
-        PX4_GZ_MODEL_POSE="${point_gazebo_spawn_x_m},${point_gazebo_spawn_y_m},${point_gazebo_spawn_z_m},0,0,${point_gazebo_spawn_yaw_rad}" \
+      PX4_GZ_STANDALONE=1 \
+      PX4_GZ_MODEL_POSE="${point_gazebo_spawn_x_m},${point_gazebo_spawn_y_m},${point_gazebo_spawn_z_m},0,0,${point_gazebo_spawn_yaw_rad}" \
+        PX4_SIM_MODEL="${px4_model_target}" \
+        PX4_SYS_AUTOSTART=4013 \
         HEADLESS="${headless}" \
         run_px4_sitl
   ) > "${px4_log_file}" 2>&1 &
@@ -871,6 +843,7 @@ if bool_is_true "${multi_vehicle_mission}"; then
     params_file:="${city_nav_params_file}"
     "${scenario_argument}:=${multi_vehicle_scenario_path}"
     enable_lidar_debug:="${enable_lidar_debug}"
+    lidar_profile:="${lidar_profile}"
     enable_2d_lidar:="${enable_2d_lidar}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
@@ -901,6 +874,7 @@ else
     enable_gazebo_bridge:=true
     enable_mission_monitor:=true
     enable_lidar_debug:="${enable_lidar_debug}"
+    lidar_profile:="${lidar_profile}"
     enable_2d_lidar:="${enable_2d_lidar}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"

@@ -19,6 +19,7 @@ from launch_ros.actions import Node
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from point_to_point_scenario import load_point_to_point_scenario
+from lidar_profile import validate_lidar_profile
 
 
 def optional_bool_override(context, launch_config, argument_name):
@@ -92,10 +93,6 @@ def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     default_params_file = package_share / "config" / "urban_mvp.yaml"
     default_rviz_config = package_share / "rviz" / "city_nav_debug.rviz"
-    default_lidar_gz_topic = (
-        "/world/generated_city/model/x500_lidar_2d_0/link/link/"
-        "sensor/lidar_2d_v2/scan"
-    )
     contacts_gz_topic = "/drone_city_nav/drone_contacts"
 
     params_file = LaunchConfiguration("params_file")
@@ -105,6 +102,7 @@ def generate_launch_description():
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
+    lidar_profile = LaunchConfiguration("lidar_profile")
     enable_2d_lidar = LaunchConfiguration("enable_2d_lidar")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
     enable_rviz = LaunchConfiguration("enable_rviz")
@@ -146,14 +144,24 @@ def generate_launch_description():
         ],
     )
     def source_nodes(context, *args, **kwargs):
+        profile = validate_lidar_profile(lidar_profile.perform(context))
         obstacle_memory_overrides = {"use_sim_time": True}
         navigation_overrides = {}
-        lidar_gz_topic = default_lidar_gz_topic
+        default_model_name = (
+            "x500_lidar_3d_0" if profile == "3d" else "x500_lidar_2d_0"
+        )
+        sensor_name = "lidar_3d_v1" if profile == "3d" else "lidar_2d_v2"
+        lidar_gz_topic = (
+            f"/world/generated_city/model/{default_model_name}/link/link/"
+            f"sensor/{sensor_name}/scan"
+        )
+        if profile == "3d":
+            lidar_gz_topic += "/points"
 
         memory_hit_dump_path_override = (
             lidar_memory_hit_dump_path.perform(context).strip()
         )
-        if memory_hit_dump_path_override:
+        if memory_hit_dump_path_override and profile == "2d":
             obstacle_memory_overrides["lidar_memory_hit_dump_path"] = (
                 memory_hit_dump_path_override
             )
@@ -175,10 +183,15 @@ def generate_launch_description():
         obstacle_memory_override = optional_bool_override(
             context, enable_obstacle_memory, "enable_obstacle_memory"
         )
-        lidar_enabled = optional_bool_override(
+        lidar_2d_override = optional_bool_override(
             context, enable_2d_lidar, "enable_2d_lidar"
         )
-        assert lidar_enabled is not None
+        lidar_2d_enabled = profile == "2d"
+        if lidar_2d_override is not None and lidar_2d_override != lidar_2d_enabled:
+            raise RuntimeError(
+                "enable_2d_lidar conflicts with the selected lidar_profile"
+            )
+        lidar_enabled = profile != "none"
         gazebo_bridge_enabled = optional_bool_override(
             context, enable_gazebo_bridge, "enable_gazebo_bridge"
         )
@@ -195,9 +208,9 @@ def generate_launch_description():
         if not static_map_enabled and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
         if not static_map_enabled and not lidar_enabled:
-            raise RuntimeError("No-static navigation requires 2D lidar")
+            raise RuntimeError("No-static navigation requires a 2D or 3D lidar profile")
         if lidar_debug_override is True and not lidar_enabled:
-            raise RuntimeError("Lidar debug requires 2D lidar")
+            raise RuntimeError("Lidar debug requires a 2D or 3D lidar profile")
         if lidar_debug_override is True and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
         if static_map_override is not None:
@@ -205,7 +218,7 @@ def generate_launch_description():
 
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:
-            scenario = load_point_to_point_scenario(scenario_path)
+            scenario = load_point_to_point_scenario(scenario_path, profile)
             start_x_m, start_y_m, start_z_m = scenario["map_start_m"]
             navigation_overrides = {
                 "px4_local_origin_x_m": start_x_m,
@@ -235,11 +248,13 @@ def generate_launch_description():
             lidar_gz_topic = (
                 f"/world/{scenario['gazebo_world_name']}"
                 f"/model/{scenario['gazebo_model_name']}"
-                "/link/link/sensor/lidar_2d_v2/scan"
+                f"/link/link/sensor/{sensor_name}/scan"
             )
+            if profile == "3d":
+                lidar_gz_topic += "/points"
 
         static_world_path_override = static_occupancy_3d_path.perform(context).strip()
-        if static_world_path_override:
+        if static_world_path_override and profile != "3d":
             obstacle_memory_overrides["static_occupancy_3d_path"] = (
                 static_world_path_override
             )
@@ -319,6 +334,13 @@ def generate_launch_description():
             )
         nodes = []
         if gazebo_bridge_enabled and lidar_enabled:
+            bridge_contract = (
+                f"{lidar_gz_topic}@sensor_msgs/msg/PointCloud2"
+                "[gz.msgs.PointCloudPacked"
+                if profile == "3d"
+                else f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
+            )
+            ros_lidar_topic = "/lidar_3d/points" if profile == "3d" else "/scan"
             nodes.append(
                 Node(
                     package="ros_gz_bridge",
@@ -326,21 +348,26 @@ def generate_launch_description():
                     name="scan_bridge",
                     output="screen",
                     arguments=[
-                        (
-                            f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan"
-                            "[gz.msgs.LaserScan"
-                        ),
+                        bridge_contract,
                         "--ros-args",
                         "-r",
-                        f"{lidar_gz_topic}:=/scan",
+                        f"{lidar_gz_topic}:={ros_lidar_topic}",
                     ],
                 )
             )
         nodes.append(
             Node(
                 package="drone_city_nav",
-                executable="obstacle_memory_node",
-                name="obstacle_memory_node",
+                executable=(
+                    "obstacle_memory_3d_node"
+                    if profile == "3d"
+                    else "obstacle_memory_node"
+                ),
+                name=(
+                    "obstacle_memory_3d_node"
+                    if profile == "3d"
+                    else "obstacle_memory_node"
+                ),
                 output="screen",
                 parameters=obstacle_memory_parameters,
             )
@@ -387,7 +414,7 @@ def generate_launch_description():
                 ),
             ]
         )
-        if lidar_debug_override is True:
+        if lidar_debug_override is True and profile == "2d":
             nodes.append(
                 Node(
                     package="drone_city_nav",
@@ -561,11 +588,16 @@ def generate_launch_description():
                 description="Record lidar/grid/path snapshots for debugging.",
             ),
             DeclareLaunchArgument(
+                "lidar_profile",
+                default_value="2d",
+                description="Mutually exclusive navigation sensor profile: none, 2d, or 3d.",
+            ),
+            DeclareLaunchArgument(
                 "enable_2d_lidar",
-                default_value="true",
+                default_value="",
                 description=(
-                    "Enable the simulated 2D lidar and its ROS scan bridge. "
-                    "Required when use_static_map is false."
+                    "Deprecated compatibility assertion for lidar_profile=2d. "
+                    "Leave empty to derive it from lidar_profile."
                 ),
             ),
             DeclareLaunchArgument(

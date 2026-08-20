@@ -7,12 +7,17 @@ import argparse
 import json
 import math
 import re
+import runpy
 from pathlib import Path
 from typing import Any
 
 
 SCHEMA = "drone_city_nav_point_to_point_scenario_v2"
 _GAZEBO_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+_LIDAR_PROFILE_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("lidar_profile.py"))
+)
+_resolve_lidar_model_identity = _LIDAR_PROFILE_SUPPORT["resolve_model_identity"]
 
 
 def _finite_vector(value: Any, label: str) -> tuple[float, float, float]:
@@ -102,7 +107,9 @@ def _launch_platforms(document: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     if len(result) > 1:
         raise ValueError("point-to-point scenario supports at most one launch platform")
     return tuple(result)
-def load_point_to_point_scenario(path: str | Path) -> dict[str, Any]:
+def load_point_to_point_scenario(
+    path: str | Path, lidar_profile: str = "2d"
+) -> dict[str, Any]:
     """Return a validated point-to-point scenario with its Gazebo spawn pose."""
     scenario_path = Path(path).resolve()
     document = json.loads(scenario_path.read_text(encoding="utf-8"))
@@ -147,12 +154,17 @@ def load_point_to_point_scenario(path: str | Path) -> dict[str, Any]:
         if not minimum_target_z <= waypoint[2] < maximum_target_z:
             raise ValueError("mission waypoint is outside the canonical flight envelope")
 
+    px4_model_target, gazebo_model_name = _resolve_lidar_model_identity(
+        _required_string(vehicle, "px4_model_target"),
+        _required_string(vehicle, "gazebo_model_name"),
+        lidar_profile,
+    )
     return {
         "path": scenario_path,
         "canonical_world_path": world_path,
         "gazebo_world_name": world_name,
-        "px4_model_target": _required_string(vehicle, "px4_model_target"),
-        "gazebo_model_name": _required_string(vehicle, "gazebo_model_name"),
+        "px4_model_target": px4_model_target,
+        "gazebo_model_name": gazebo_model_name,
         "map_start_m": start,
         "gazebo_spawn_m": _map_to_sdf(start, transform),
         "yaw_rad": yaw_rad,
@@ -168,9 +180,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", type=Path, required=True)
     parser.add_argument("--format", choices=("runtime-tsv",), required=True)
+    parser.add_argument(
+        "--lidar-profile", choices=("none", "2d", "3d"), default="2d"
+    )
     args = parser.parse_args()
     try:
-        scenario = load_point_to_point_scenario(args.scenario)
+        scenario = load_point_to_point_scenario(args.scenario, args.lidar_profile)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"POINT_TO_POINT_SCENARIO status=failed reason={error}")
         return 1
