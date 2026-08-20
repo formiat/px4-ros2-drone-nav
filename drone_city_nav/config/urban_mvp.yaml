@@ -57,6 +57,9 @@ obstacle_memory_node:
     use_full_lidar_extrinsic: true
     lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
     lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
+    lidar_self_filter_radius_m: 0.9
+    lidar_self_filter_upward_extent_m: 0.5
+    lidar_self_filter_downward_extent_m: 0.5
     min_projected_lidar_altitude_m: 1.0
     max_projected_lidar_altitude_m: 40.0
     max_lidar_range_m: 35.0

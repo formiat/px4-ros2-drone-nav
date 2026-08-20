@@ -62,13 +62,16 @@ class ConfigureLidarVisibilityTest(unittest.TestCase):
     def test_no_static_mode_sees_passage_masses_and_virtual_occluders(self) -> None:
         returned_mask, written_mask = self.configure_copy("no-static-2d")
 
-        self.assertEqual(visibility.GZ_VISIBILITY_ALL, returned_mask)
+        self.assertEqual(visibility.SENSOR_VISIBLE_WORLD_MASK, returned_mask)
         self.assertEqual(returned_mask, written_mask)
         self.assertNotEqual(
             0, returned_mask & visibility.STATIC_PASSAGE_MASS_VISIBILITY_FLAG
         )
         self.assertNotEqual(
             0, returned_mask & visibility.NO_STATIC_OCCLUDER_VISIBILITY_FLAG
+        )
+        self.assertEqual(
+            0, returned_mask & visibility.DRONE_MARKER_VISIBILITY_FLAG
         )
 
     def test_no_static_3d_sees_physical_passage_but_not_virtual_occluder(self) -> None:
@@ -85,6 +88,9 @@ class ConfigureLidarVisibilityTest(unittest.TestCase):
             )
             self.assertEqual(
                 0, returned_mask & visibility.NO_STATIC_OCCLUDER_VISIBILITY_FLAG
+            )
+            self.assertEqual(
+                0, returned_mask & visibility.DRONE_MARKER_VISIBILITY_FLAG
             )
 
     def test_unknown_mode_is_rejected(self) -> None:

@@ -201,6 +201,7 @@ add_library(
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/lidar_scan_3d.cpp
+  src/lidar_self_filter.cpp
   src/px4_ros_time_mapper.cpp
   src/radar_cadence.cpp
   src/radar_model.cpp
@@ -911,6 +912,11 @@ if(BUILD_TESTING)
   target_compile_features(lidar_scan_3d_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_scan_3d_test drone_city_nav_core)
   enable_project_warnings(lidar_scan_3d_test)
+
+  ament_add_gtest(lidar_self_filter_test tests/lidar_self_filter_test.cpp)
+  target_compile_features(lidar_self_filter_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_self_filter_test drone_city_nav_core)
+  enable_project_warnings(lidar_self_filter_test)
 
   ament_add_gtest(raw_obstacle_3d_ros_test tests/raw_obstacle_3d_ros_test.cpp)
   target_compile_features(raw_obstacle_3d_ros_test PRIVATE cxx_std_20)

@@ -21,8 +21,11 @@ WORLD_SPEC = REPO_ROOT / "drone_city_nav/worlds/canonical_city.world3d.json"
 GZ_VISIBILITY_ALL = 0x0FFFFFFF
 STATIC_PASSAGE_MASS_VISIBILITY_FLAG = 0x08000000
 NO_STATIC_OCCLUDER_VISIBILITY_FLAG = 0x04000000
+DRONE_MARKER_VISIBILITY_FLAG = 0x02000000
 LIDAR_VISIBILITY_MASK = GZ_VISIBILITY_ALL & ~(
-    STATIC_PASSAGE_MASS_VISIBILITY_FLAG | NO_STATIC_OCCLUDER_VISIBILITY_FLAG
+    STATIC_PASSAGE_MASS_VISIBILITY_FLAG
+    | NO_STATIC_OCCLUDER_VISIBILITY_FLAG
+    | DRONE_MARKER_VISIBILITY_FLAG
 )
 
 
@@ -60,6 +63,19 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertIn("yellow_arm_y", visuals)
         self.assertIn("yellow_ground_projection_beam", visuals)
         self.assertIn("yellow_ground_projection_disc", visuals)
+
+    def test_wrapper_visibility_visuals_are_hidden_from_lidar(self) -> None:
+        root = parse_sdf(WRAPPER_SDF)
+        marker_link = root.find("./model/link[@name='visibility_marker_link']")
+        self.assertIsNotNone(marker_link)
+
+        marker_visuals = marker_link.findall("visual")
+        self.assertGreater(len(marker_visuals), 0)
+        for visual in marker_visuals:
+            self.assertEqual(
+                DRONE_MARKER_VISIBILITY_FLAG,
+                int(visual.findtext("visibility_flags", "")),
+            )
 
     def test_wrapper_loads_physical_contact_system(self) -> None:
         root = parse_sdf(WRAPPER_SDF)

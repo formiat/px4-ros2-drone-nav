@@ -103,7 +103,7 @@
             <stddev>0.001</stddev>
           </noise>
           <!-- Runtime setup selects static, 2D no-static, or 3D no-static visibility. -->
-          <visibility_mask>67108863</visibility_mask>
+          <visibility_mask>33554431</visibility_mask>
         </ray>
         <always_on>true</always_on>
         <update_rate>10</update_rate>

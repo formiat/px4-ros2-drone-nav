@@ -8,6 +8,7 @@
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_scan_3d.hpp"
+#include "drone_city_nav/lidar_self_filter.hpp"
 #include "drone_city_nav/mapping_lifecycle.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/latest_lidar_obstacle_scan.hpp"
@@ -279,6 +280,15 @@ public:
         translation.at(0), translation.at(1), translation.at(2)};
     projection_config_.lidar_flu_to_body_frd_quaternion = {
         rotation.at(0), rotation.at(1), rotation.at(2), rotation.at(3)};
+    self_filter_config_.horizontal_radius_m =
+        declare_parameter<double>("lidar_self_filter_radius_m", 0.9);
+    self_filter_config_.upward_extent_m =
+        declare_parameter<double>("lidar_self_filter_upward_extent_m", 0.5);
+    self_filter_config_.downward_extent_m =
+        declare_parameter<double>("lidar_self_filter_downward_extent_m", 0.5);
+    if (!lidarSelfFilterConfigIsValid(self_filter_config_)) {
+      throw std::invalid_argument{"invalid 3D lidar self-filter configuration"};
+    }
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
@@ -564,6 +574,7 @@ private:
     Point3 ray_origin{};
     bool origin_valid{false};
     std::size_t dynamic_filtered{0U};
+    std::size_t self_filtered{0U};
     std::size_t projection_invalid{0U};
     for (const LidarBeamSample3D& sample : decoded.beams) {
       const LidarRayProjection3D ray =
@@ -583,6 +594,13 @@ private:
         const Point3 endpoint{ray.origin_map_m.x + beam.range_m * beam.direction_map.x,
                               ray.origin_map_m.y + beam.range_m * beam.direction_map.y,
                               ray.origin_map_m.z + beam.range_m * beam.direction_map.z};
+        const Point3 endpoint_body = lidarMapPointToBody(body_frame, endpoint);
+        if (isLidarSelfReturn(endpoint_body, self_filter_config_)) {
+          beam.valid = false;
+          ++self_filtered;
+          map_beams.push_back(beam);
+          continue;
+        }
         const bool dynamic =
             anyVolumeContains(filter_plan.tracked_agent_exclusions, endpoint) ||
             anyVolumeContains(filter_plan.cooperative_memory_exclusions, endpoint);
@@ -591,7 +609,7 @@ private:
           ++dynamic_filtered;
         } else {
           hit_points_map.push_back(endpoint);
-          hit_points_body.push_back(lidarMapPointToBody(body_frame, endpoint));
+          hit_points_body.push_back(endpoint_body);
         }
       }
       map_beams.push_back(beam);
@@ -606,7 +624,7 @@ private:
     latest.hit_points_body_frd = hit_points_body;
     latest.source_beam_count = decoded.beams.size();
     latest.invalid_beam_count =
-        decoded.invalid_beams + projection_invalid + dynamic_filtered;
+        decoded.invalid_beams + projection_invalid + dynamic_filtered + self_filtered;
     latest.valid = true;
     latest_scan_pub_->publish(makeLatestLidarObstacleScanMessage(
         latest, source_header, frame_id_, acquisition_stamp_ns, ++latest_scan_sequence_,
@@ -625,11 +643,13 @@ private:
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                            "LIDAR3D_SCAN accepted=true stamp_ns=%" PRId64
                            " source=%zu processed=%zu hits=%zu misses=%zu invalid=%zu "
-                           "dynamic_filtered=%zu transitions=%zu revision=%" PRIu64,
+                           "self_filtered=%zu dynamic_filtered=%zu transitions=%zu "
+                           "revision=%" PRIu64,
                            acquisition_stamp_ns, decoded.beams.size(),
                            stats.processed_beams, stats.hit_beams, stats.miss_beams,
-                           stats.invalid_beams + projection_invalid, dynamic_filtered,
-                           stats.state_transitions, memory_->revision());
+                           stats.invalid_beams + projection_invalid, self_filtered,
+                           dynamic_filtered, stats.state_transitions,
+                           memory_->revision());
     }
     return PendingPointCloudDisposition::kConsumed;
   }
@@ -637,6 +657,7 @@ private:
   GridBounds3D bounds_{};
   OrganizedLidarScan3DConfig scan_config_{};
   LidarProjectionConfig projection_config_{};
+  LidarSelfFilterConfig self_filter_config_{};
   std::unique_ptr<ObstacleMemory3D> memory_;
   std::unique_ptr<ObstacleMemoryTransport3D> transport_;
   std::unique_ptr<MappingLifecycle> mapping_lifecycle_;

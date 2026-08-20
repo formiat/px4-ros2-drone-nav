@@ -29,6 +29,7 @@
       <visual name="yellow_body_plate">
         <pose>0 0 0.09 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <box>
             <size>0.55 0.55 0.10</size>
@@ -43,6 +44,7 @@
       <visual name="yellow_arm_x">
         <pose>0 0 0.08 0 1.57079632679 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <cylinder>
             <radius>0.045</radius>
@@ -58,6 +60,7 @@
       <visual name="yellow_arm_y">
         <pose>0 0 0.08 1.57079632679 0 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <cylinder>
             <radius>0.045</radius>
@@ -73,6 +76,7 @@
       <visual name="yellow_rotor_front_left">
         <pose>0.48 0.48 0.10 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <cylinder>
             <radius>0.14</radius>
@@ -88,6 +92,7 @@
       <visual name="yellow_rotor_front_right">
         <pose>0.48 -0.48 0.10 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <cylinder>
             <radius>0.14</radius>
@@ -103,6 +108,7 @@
       <visual name="yellow_rotor_back_left">
         <pose>-0.48 0.48 0.10 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <cylinder>
             <radius>0.14</radius>
@@ -118,6 +124,7 @@
       <visual name="yellow_rotor_back_right">
         <pose>-0.48 -0.48 0.10 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <cylinder>
             <radius>0.14</radius>
@@ -133,6 +140,7 @@
       <visual name="yellow_ground_projection_beam">
         <pose>0 0 -8.9 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <cylinder>
             <radius>0.08</radius>
@@ -149,6 +157,7 @@
       <visual name="yellow_ground_projection_disc">
         <pose>0 0 -17.8 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
+        <visibility_flags>33554432</visibility_flags>
         <geometry>
           <cylinder>
             <radius>1.8</radius>
