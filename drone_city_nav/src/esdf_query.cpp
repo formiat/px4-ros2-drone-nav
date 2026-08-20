@@ -18,8 +18,10 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
   const int cell_x = static_cast<int>(std::floor(cell_x_float));
   const int cell_y = static_cast<int>(std::floor(cell_y_float));
   if (cell_x < 0 || cell_y < 0 || cell_x >= grid.width || cell_y >= grid.height) {
-    return {.clearance_m = std::numeric_limits<float>::infinity(),
-            .status = EsdfQueryStatus::kOutsideGrid,
+    return {.clearance_m =
+                grid.outside_is_unknown ? 0.0F : std::numeric_limits<float>::infinity(),
+            .status = grid.outside_is_unknown ? EsdfQueryStatus::kUnknownSpace
+                                              : EsdfQueryStatus::kOutsideGrid,
             .raw_occupied = false};
   }
   const std::size_t index =
@@ -29,6 +31,11 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
     return {};
   }
   const float center_distance_m = esdf_m[index];
+  if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
+    return {.clearance_m = 0.0F,
+            .status = EsdfQueryStatus::kUnknownSpace,
+            .raw_occupied = false};
+  }
   if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {
     return {.clearance_m = std::numeric_limits<float>::infinity(),
             .status = EsdfQueryStatus::kValid,
@@ -75,8 +82,10 @@ EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
       static_cast<int>(std::floor((z_m - grid.origin_z_m) / grid.resolution_m));
   if (cell_x < 0 || cell_y < 0 || cell_z < 0 || cell_x >= grid.width ||
       cell_y >= grid.height || cell_z >= grid.depth) {
-    return {.clearance_m = std::numeric_limits<float>::infinity(),
-            .status = EsdfQueryStatus::kOutsideGrid,
+    return {.clearance_m =
+                grid.outside_is_unknown ? 0.0F : std::numeric_limits<float>::infinity(),
+            .status = grid.outside_is_unknown ? EsdfQueryStatus::kUnknownSpace
+                                              : EsdfQueryStatus::kOutsideGrid,
             .raw_occupied = false};
   }
   const std::size_t index =
@@ -88,6 +97,11 @@ EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
     return {};
   }
   const float center_distance_m = esdf_m[index];
+  if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
+    return {.clearance_m = 0.0F,
+            .status = EsdfQueryStatus::kUnknownSpace,
+            .raw_occupied = false};
+  }
   if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {
     return {.clearance_m = std::numeric_limits<float>::infinity(),
             .status = EsdfQueryStatus::kValid,

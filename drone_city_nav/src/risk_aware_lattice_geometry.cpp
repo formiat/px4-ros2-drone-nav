@@ -75,6 +75,7 @@ SegmentEvaluation evaluateLatticeSegment(const mppi::EsdfGrid& grid,
     result.valid = false;
     switch (footprint.status) {
       case SweptFootprintStatus::kOutsideGrid:
+      case SweptFootprintStatus::kUnknownSpace:
         result.rejection_reason = SegmentEvaluation::RejectionReason::kOutsideGrid;
         break;
       case SweptFootprintStatus::kInvalidEsdf:

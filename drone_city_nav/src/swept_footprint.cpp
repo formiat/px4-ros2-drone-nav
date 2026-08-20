@@ -18,6 +18,10 @@ namespace {
   if (query.status == EsdfQueryStatus::kOutsideGrid) {
     return {.status = SweptFootprintStatus::kOutsideGrid, .failure_point = query_point};
   }
+  if (query.status == EsdfQueryStatus::kUnknownSpace) {
+    return {.status = SweptFootprintStatus::kUnknownSpace,
+            .failure_point = query_point};
+  }
   if (query.status != EsdfQueryStatus::kValid) {
     return {.status = SweptFootprintStatus::kInvalidEsdf, .failure_point = query_point};
   }
@@ -125,7 +129,9 @@ validatePlanarCircleRawCells(const mppi::EsdfGrid& grid,
       static_cast<double>(grid.height) * static_cast<double>(grid.resolution_m);
   if (minimum_x < static_cast<double>(grid.origin_x_m) || maximum_x > world_maximum_x ||
       minimum_y < static_cast<double>(grid.origin_y_m) || maximum_y > world_maximum_y) {
-    return {.status = SweptFootprintStatus::kOutsideGrid, .failure_point = position};
+    return {.status = grid.outside_is_unknown ? SweptFootprintStatus::kUnknownSpace
+                                              : SweptFootprintStatus::kOutsideGrid,
+            .failure_point = position};
   }
 
   const auto minimumCell = [&](const double coordinate, const double origin) noexcept {
@@ -153,6 +159,10 @@ validatePlanarCircleRawCells(const mppi::EsdfGrid& grid,
                 .failure_point = position};
       }
       const float center_distance_m = esdf_m[index];
+      if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
+        return {.status = SweptFootprintStatus::kUnknownSpace,
+                .failure_point = position};
+      }
       if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {
         continue;
       }
@@ -309,6 +319,132 @@ validateRawFootprintAt2D(const Occupancy& occupancy, const Point3& position,
   return validRawFootprint();
 }
 
+template<bool RequireKnownFree, typename Occupancy>
+[[nodiscard]] SweptFootprintResult
+validateRawFootprintAt3D(const Occupancy& occupancy, const Point3& position,
+                         const FootprintBodyAxis& requested_body_axis,
+                         const SweptFootprintConfig& config) noexcept {
+  const double radius_m = std::max(0.0, config.radius_m);
+  if (!(radius_m > 0.0)) {
+    const std::optional<GridIndex3D> cell = occupancy.worldToCell(position);
+    if (!cell.has_value()) {
+      if constexpr (RequireKnownFree) {
+        return {.status = SweptFootprintStatus::kUnknownSpace,
+                .failure_point = position};
+      }
+      return validRawFootprint();
+    }
+    if constexpr (RequireKnownFree) {
+      if (!occupancy.isKnown(*cell)) {
+        return {.status = SweptFootprintStatus::kUnknownSpace,
+                .failure_point = position};
+      }
+    }
+    return occupancy.isOccupied(*cell)
+               ? SweptFootprintResult{.status = SweptFootprintStatus::kRawCollision,
+                                      .failure_point = position}
+               : validRawFootprint();
+  }
+
+  const FootprintBodyAxis axis = normalized(requested_body_axis);
+  const Point3 lower{position.x - std::max(0.0, config.lower_extent_m) * axis.x,
+                     position.y - std::max(0.0, config.lower_extent_m) * axis.y,
+                     position.z - std::max(0.0, config.lower_extent_m) * axis.z};
+  const Point3 upper{position.x + std::max(0.0, config.upper_extent_m) * axis.x,
+                     position.y + std::max(0.0, config.upper_extent_m) * axis.y,
+                     position.z + std::max(0.0, config.upper_extent_m) * axis.z};
+  const GridBounds3D& bounds = occupancy.bounds();
+  const int requested_minimum_x = minimumCell(std::min(lower.x, upper.x) - radius_m,
+                                              bounds.origin_x, bounds.resolution_m);
+  const int requested_maximum_x = maximumCell(std::max(lower.x, upper.x) + radius_m,
+                                              bounds.origin_x, bounds.resolution_m);
+  const int requested_minimum_y = minimumCell(std::min(lower.y, upper.y) - radius_m,
+                                              bounds.origin_y, bounds.resolution_m);
+  const int requested_maximum_y = maximumCell(std::max(lower.y, upper.y) + radius_m,
+                                              bounds.origin_y, bounds.resolution_m);
+  const int requested_minimum_z = minimumCell(std::min(lower.z, upper.z) - radius_m,
+                                              bounds.origin_z, bounds.resolution_m);
+  const int requested_maximum_z = maximumCell(std::max(lower.z, upper.z) + radius_m,
+                                              bounds.origin_z, bounds.resolution_m);
+  if constexpr (RequireKnownFree) {
+    if (requested_minimum_x < 0 || requested_minimum_y < 0 || requested_minimum_z < 0 ||
+        requested_maximum_x >= bounds.width_cells ||
+        requested_maximum_y >= bounds.height_cells ||
+        requested_maximum_z >= bounds.depth_cells) {
+      return {.status = SweptFootprintStatus::kUnknownSpace, .failure_point = position};
+    }
+  }
+  const int minimum_x = std::max(0, requested_minimum_x);
+  const int maximum_x = std::min(bounds.width_cells - 1, requested_maximum_x);
+  const int minimum_y = std::max(0, requested_minimum_y);
+  const int maximum_y = std::min(bounds.height_cells - 1, requested_maximum_y);
+  const int minimum_z = std::max(0, requested_minimum_z);
+  const int maximum_z = std::min(bounds.depth_cells - 1, requested_maximum_z);
+  const double radius_squared = radius_m * radius_m;
+  for (int z = minimum_z; z <= maximum_z; ++z) {
+    for (int y = minimum_y; y <= maximum_y; ++y) {
+      for (int x = minimum_x; x <= maximum_x; ++x) {
+        const GridIndex3D cell{x, y, z};
+        if constexpr (!RequireKnownFree) {
+          if (!occupancy.isOccupied(cell)) {
+            continue;
+          }
+        }
+        const Point3 cell_minimum{bounds.origin_x + x * bounds.resolution_m,
+                                  bounds.origin_y + y * bounds.resolution_m,
+                                  bounds.origin_z + z * bounds.resolution_m};
+        const Point3 cell_maximum{cell_minimum.x + bounds.resolution_m,
+                                  cell_minimum.y + bounds.resolution_m,
+                                  cell_minimum.z + bounds.resolution_m};
+        if (squaredDistanceSegmentToBox(lower, upper, cell_minimum, cell_maximum) >
+            radius_squared) {
+          continue;
+        }
+        if constexpr (RequireKnownFree) {
+          if (!occupancy.isKnown(cell)) {
+            return {.status = SweptFootprintStatus::kUnknownSpace,
+                    .failure_point = occupancy.cellCenter(cell)};
+          }
+        }
+        if (occupancy.isOccupied(cell)) {
+          return {.status = SweptFootprintStatus::kRawCollision,
+                  .failure_point = occupancy.cellCenter(cell)};
+        }
+      }
+    }
+  }
+  return validRawFootprint();
+}
+
+template<bool RequireKnownFree, typename Occupancy>
+[[nodiscard]] SweptFootprintResult
+validateRawSweptFootprint3D(const Occupancy& occupancy, const Point3& first,
+                            const FootprintBodyAxis& first_body_axis,
+                            const Point3& second,
+                            const FootprintBodyAxis& second_body_axis,
+                            const SweptFootprintConfig& config) noexcept {
+  const double length_m = distance3D(first, second);
+  const double step_m = std::max(1.0e-3, config.sweep_step_m);
+  const std::size_t samples =
+      std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
+  for (std::size_t sample = 0U; sample <= samples; ++sample) {
+    const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
+    const SweptFootprintResult result = validateRawFootprintAt3D<RequireKnownFree>(
+        occupancy,
+        Point3{std::lerp(first.x, second.x, ratio), std::lerp(first.y, second.y, ratio),
+               std::lerp(first.z, second.z, ratio)},
+        normalized(
+            FootprintBodyAxis{std::lerp(first_body_axis.x, second_body_axis.x, ratio),
+                              std::lerp(first_body_axis.y, second_body_axis.y, ratio),
+                              std::lerp(first_body_axis.z, second_body_axis.z, ratio)}),
+        config);
+    if (!result.accepted()) {
+      return result;
+    }
+  }
+  return validRawFootprint();
+}
+
 } // namespace
 
 SweptFootprintResult validateFootprintAt(const mppi::EsdfGrid& grid,
@@ -450,60 +586,8 @@ SweptFootprintResult
 validateRawFootprintAt(const OccupancyGrid3D& occupancy, const Point3& position,
                        const FootprintBodyAxis& requested_body_axis,
                        const SweptFootprintConfig& config) noexcept {
-  const double radius_m = std::max(0.0, config.radius_m);
-  if (!(radius_m > 0.0)) {
-    const std::optional<GridIndex3D> cell = occupancy.worldToCell(position);
-    return cell.has_value() && occupancy.isOccupied(*cell)
-               ? SweptFootprintResult{.status = SweptFootprintStatus::kRawCollision,
-                                      .failure_point = position}
-               : validRawFootprint();
-  }
-  const FootprintBodyAxis axis = normalized(requested_body_axis);
-  const Point3 lower{position.x - std::max(0.0, config.lower_extent_m) * axis.x,
-                     position.y - std::max(0.0, config.lower_extent_m) * axis.y,
-                     position.z - std::max(0.0, config.lower_extent_m) * axis.z};
-  const Point3 upper{position.x + std::max(0.0, config.upper_extent_m) * axis.x,
-                     position.y + std::max(0.0, config.upper_extent_m) * axis.y,
-                     position.z + std::max(0.0, config.upper_extent_m) * axis.z};
-  const GridBounds3D& bounds = occupancy.bounds();
-  const int minimum_x = std::max(0, minimumCell(std::min(lower.x, upper.x) - radius_m,
-                                                bounds.origin_x, bounds.resolution_m));
-  const int maximum_x = std::min(bounds.width_cells - 1,
-                                 maximumCell(std::max(lower.x, upper.x) + radius_m,
-                                             bounds.origin_x, bounds.resolution_m));
-  const int minimum_y = std::max(0, minimumCell(std::min(lower.y, upper.y) - radius_m,
-                                                bounds.origin_y, bounds.resolution_m));
-  const int maximum_y = std::min(bounds.height_cells - 1,
-                                 maximumCell(std::max(lower.y, upper.y) + radius_m,
-                                             bounds.origin_y, bounds.resolution_m));
-  const int minimum_z = std::max(0, minimumCell(std::min(lower.z, upper.z) - radius_m,
-                                                bounds.origin_z, bounds.resolution_m));
-  const int maximum_z = std::min(bounds.depth_cells - 1,
-                                 maximumCell(std::max(lower.z, upper.z) + radius_m,
-                                             bounds.origin_z, bounds.resolution_m));
-  const double radius_squared = radius_m * radius_m;
-  for (int z = minimum_z; z <= maximum_z; ++z) {
-    for (int y = minimum_y; y <= maximum_y; ++y) {
-      for (int x = minimum_x; x <= maximum_x; ++x) {
-        const GridIndex3D cell{x, y, z};
-        if (!occupancy.isOccupied(cell)) {
-          continue;
-        }
-        const Point3 cell_minimum{bounds.origin_x + x * bounds.resolution_m,
-                                  bounds.origin_y + y * bounds.resolution_m,
-                                  bounds.origin_z + z * bounds.resolution_m};
-        const Point3 cell_maximum{cell_minimum.x + bounds.resolution_m,
-                                  cell_minimum.y + bounds.resolution_m,
-                                  cell_minimum.z + bounds.resolution_m};
-        if (squaredDistanceSegmentToBox(lower, upper, cell_minimum, cell_maximum) <=
-            radius_squared) {
-          return {.status = SweptFootprintStatus::kRawCollision,
-                  .failure_point = occupancy.cellCenter(cell)};
-        }
-      }
-    }
-  }
-  return validRawFootprint();
+  return validateRawFootprintAt3D<false>(occupancy, position, requested_body_axis,
+                                         config);
 }
 
 SweptFootprintResult
@@ -512,26 +596,26 @@ validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
                           const Point3& second,
                           const FootprintBodyAxis& second_body_axis,
                           const SweptFootprintConfig& config) noexcept {
-  const double length_m = distance3D(first, second);
-  const double step_m = std::max(1.0e-3, config.sweep_step_m);
-  const std::size_t samples =
-      std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
-  for (std::size_t sample = 0U; sample <= samples; ++sample) {
-    const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
-    const SweptFootprintResult result = validateRawFootprintAt(
-        occupancy,
-        Point3{std::lerp(first.x, second.x, ratio), std::lerp(first.y, second.y, ratio),
-               std::lerp(first.z, second.z, ratio)},
-        normalized(
-            FootprintBodyAxis{std::lerp(first_body_axis.x, second_body_axis.x, ratio),
-                              std::lerp(first_body_axis.y, second_body_axis.y, ratio),
-                              std::lerp(first_body_axis.z, second_body_axis.z, ratio)}),
-        config);
-    if (!result.accepted()) {
-      return result;
-    }
-  }
-  return validRawFootprint();
+  return validateRawSweptFootprint3D<false>(occupancy, first, first_body_axis, second,
+                                            second_body_axis, config);
+}
+
+SweptFootprintResult
+validateRawFootprintAt(const ObservedOccupancyGrid3D& occupancy, const Point3& position,
+                       const FootprintBodyAxis& requested_body_axis,
+                       const SweptFootprintConfig& config) noexcept {
+  return validateRawFootprintAt3D<true>(occupancy, position, requested_body_axis,
+                                        config);
+}
+
+SweptFootprintResult
+validateRawSweptFootprint(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
+                          const FootprintBodyAxis& first_body_axis,
+                          const Point3& second,
+                          const FootprintBodyAxis& second_body_axis,
+                          const SweptFootprintConfig& config) noexcept {
+  return validateRawSweptFootprint3D<true>(occupancy, first, first_body_axis, second,
+                                           second_body_axis, config);
 }
 
 SweptFootprintResult validateRawPointCloudFootprintAt(

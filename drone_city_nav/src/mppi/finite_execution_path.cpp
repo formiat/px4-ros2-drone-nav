@@ -109,6 +109,10 @@ validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis
     raw_validation =
         validateRawSweptFootprint(*world.static_occupancy, first, first_axis, second,
                                   second_axis, *world.footprint);
+  } else if (world.observed_occupancy != nullptr) {
+    raw_validation =
+        validateRawSweptFootprint(*world.observed_occupancy, first, first_axis, second,
+                                  second_axis, *world.footprint);
   } else if (world.raw_occupancy != nullptr) {
     raw_validation = validateRawSweptFootprint(*world.raw_occupancy, first, second,
                                                *world.footprint);
@@ -118,6 +122,9 @@ validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis
   }
   if (!raw_validation.accepted()) {
     failure_point = raw_validation.failure_point;
+    if (raw_validation.status == SweptFootprintStatus::kUnknownSpace) {
+      return FiniteExecutionPathStatus::kUnknownSpace;
+    }
     return FiniteExecutionPathStatus::kRawCollision;
   }
   if (world.latest_lidar_obstacle_points.empty()) {
@@ -541,6 +548,8 @@ finiteExecutionPathStatusName(const FiniteExecutionPathStatus status) noexcept {
       return "raw_world_unavailable";
     case FiniteExecutionPathStatus::kRawCollision:
       return "raw_collision";
+    case FiniteExecutionPathStatus::kUnknownSpace:
+      return "unknown_space";
     case FiniteExecutionPathStatus::kLatestLidarRawCollision:
       return "latest_lidar_raw_collision";
   }

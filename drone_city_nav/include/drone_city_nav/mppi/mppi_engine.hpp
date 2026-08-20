@@ -137,6 +137,7 @@ struct MppiTickResult {
   RiskTier selected_tier{RiskTier::kCollision};
   bool altitude_envelope_violation{false};
   bool raw_collision{true};
+  bool unknown_space_violation{false};
   bool known_solid_collision{false};
   float critical_exposure_m{0.0F};
   float planning_exposure_m{0.0F};

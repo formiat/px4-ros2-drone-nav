@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_config.hpp"
+#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/types.hpp"
@@ -30,6 +31,7 @@ struct FootprintBodyAxis {
 enum class SweptFootprintStatus {
   kValid,
   kOutsideGrid,
+  kUnknownSpace,
   kInvalidEsdf,
   kRawCollision,
 };
@@ -90,6 +92,18 @@ validateRawFootprintAt(const OccupancyGrid3D& occupancy, const Point3& position,
 
 [[nodiscard]] SweptFootprintResult
 validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
+                          const FootprintBodyAxis& first_body_axis,
+                          const Point3& second,
+                          const FootprintBodyAxis& second_body_axis,
+                          const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
+validateRawFootprintAt(const ObservedOccupancyGrid3D& occupancy, const Point3& position,
+                       const FootprintBodyAxis& body_axis,
+                       const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
+validateRawSweptFootprint(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
                           const FootprintBodyAxis& first_body_axis,
                           const Point3& second,
                           const FootprintBodyAxis& second_body_axis,

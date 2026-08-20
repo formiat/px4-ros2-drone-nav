@@ -7,6 +7,8 @@
 
 namespace drone_city_nav::mppi {
 
+inline constexpr float kUnknownEsdfDistanceM{-1.0F};
+
 enum class RiskTier : std::uint8_t {
   kPreferred = 0,
   kPlanning = 1,
@@ -229,6 +231,7 @@ struct RolloutMetrics {
   float predicted_capture_time_s{-1.0F};
   RiskTier worst_tier{RiskTier::kPreferred};
   bool collision{false};
+  bool unknown_space_violation{false};
   bool altitude_envelope_violation{false};
 };
 
@@ -240,6 +243,7 @@ struct EsdfGrid {
   float origin_y_m{0.0F};
   int depth{1};
   float origin_z_m{0.0F};
+  bool outside_is_unknown{false};
 };
 
 } // namespace drone_city_nav::mppi

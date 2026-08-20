@@ -41,6 +41,8 @@ struct TestWorld {
                                  .upper_extent_m = 0.35,
                                  .sweep_step_m = 0.1};
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.5, 20, 20, 20}};
+  ObservedOccupancyGrid3D observed_occupancy{
+      GridBounds3D{0.0, 0.0, 0.0, 0.5, 20, 20, 20}};
 
   [[nodiscard]] FiniteExecutionPathWorld
   view(const std::span<const Point3> latest_lidar = {}) const noexcept {
@@ -51,6 +53,18 @@ struct TestWorld {
         .footprint = &footprint,
         .static_occupancy = &occupancy,
         .latest_lidar_obstacle_points = latest_lidar,
+        .terminal_boundary = std::nullopt,
+    };
+  }
+
+  [[nodiscard]] FiniteExecutionPathWorld observedView() const noexcept {
+    return FiniteExecutionPathWorld{
+        .flight_envelope = &envelope,
+        .dynamics = &dynamics,
+        .altitude_envelope = &altitude_envelope,
+        .footprint = &footprint,
+        .observed_occupancy = &observed_occupancy,
+        .latest_lidar_obstacle_points = {},
         .terminal_boundary = std::nullopt,
     };
   }
@@ -153,6 +167,27 @@ TEST(FiniteExecutionPathTest, CompleteValidationChecksEveryRawPathSegment) {
 
   EXPECT_EQ(result.status, FiniteExecutionPathStatus::kRawCollision);
   EXPECT_EQ(result.failure_segment_index, 1U);
+}
+
+TEST(FiniteExecutionPathTest, StopsAtUnknownObservedFrontierWithoutCallingItCollision) {
+  TestWorld world;
+  const GridBounds3D& bounds = world.observed_occupancy.bounds();
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        static_cast<void>(world.observed_occupancy.setState(GridIndex3D{x, y, z},
+                                                            ObservedVoxelState::kFree));
+      }
+    }
+  }
+  static_cast<void>(world.observed_occupancy.setState(GridIndex3D{7, 2, 10},
+                                                      ObservedVoxelState::kUnknown));
+
+  const FiniteExecutionPathValidation result =
+      validateCompleteFiniteExecutionPath(testPath(), Control{}, world.observedView());
+
+  EXPECT_EQ(result.status, FiniteExecutionPathStatus::kUnknownSpace);
+  EXPECT_STREQ(finiteExecutionPathStatusName(result.status), "unknown_space");
 }
 
 TEST(FiniteExecutionPathTest,

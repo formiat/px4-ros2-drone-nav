@@ -342,7 +342,8 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
     const SweptFootprintResult footprint =
         validateSweptFootprint(grid, esdf_m, candidate_route[index - 1U].position,
                                candidate_route[index].position, footprint_config);
-    if (footprint.status == SweptFootprintStatus::kOutsideGrid) {
+    if (footprint.status == SweptFootprintStatus::kOutsideGrid ||
+        footprint.status == SweptFootprintStatus::kUnknownSpace) {
       return {.status = StaticRouteCandidateStatus::kOutsideEsdf};
     }
     if (footprint.status == SweptFootprintStatus::kInvalidEsdf) {

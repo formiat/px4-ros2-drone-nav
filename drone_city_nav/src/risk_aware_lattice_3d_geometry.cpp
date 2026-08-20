@@ -51,6 +51,7 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
   if (!footprint.accepted()) {
     switch (footprint.status) {
       case SweptFootprintStatus::kOutsideGrid:
+      case SweptFootprintStatus::kUnknownSpace:
         return Lattice3DEdgeEvaluation{.status =
                                            Lattice3DEdgeEvaluationStatus::kOutsideGrid};
       case SweptFootprintStatus::kInvalidEsdf:

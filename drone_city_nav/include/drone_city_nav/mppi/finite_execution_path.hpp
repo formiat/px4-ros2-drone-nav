@@ -4,6 +4,7 @@
 #include "drone_city_nav/mppi/mppi_config.hpp"
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -30,6 +31,7 @@ enum class FiniteExecutionPathStatus {
   kDynamicFlightEnvelopeViolation,
   kRawWorldUnavailable,
   kRawCollision,
+  kUnknownSpace,
   kLatestLidarRawCollision,
 };
 
@@ -59,6 +61,7 @@ struct FiniteExecutionPathWorld {
   const AltitudeEnvelopeConfig* altitude_envelope{nullptr};
   const SweptFootprintConfig* footprint{nullptr};
   const OccupancyGrid3D* static_occupancy{nullptr};
+  const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
   const OccupancyGrid2D* raw_occupancy{nullptr};
   std::span<const Point3> latest_lidar_obstacle_points;
   std::optional<FiniteExecutionPathTerminalBoundary> terminal_boundary;

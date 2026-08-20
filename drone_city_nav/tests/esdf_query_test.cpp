@@ -89,5 +89,20 @@ TEST(EsdfQueryTest, QueriesThreeDimensionalGridUsingZMajorStorage) {
   EXPECT_TRUE(std::isinf(outside.clearance_m));
 }
 
+TEST(EsdfQueryTest, ReportsObservedUnknownVoxelWithoutCallingItOccupied) {
+  mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  grid.outside_is_unknown = true;
+  const std::vector<float> esdf{2.0F, mppi::kUnknownEsdfDistanceM};
+
+  const EsdfQueryResult unknown = queryConservativeEsdf(grid, esdf, 1.5F, 0.5F);
+  const EsdfQueryResult outside = queryConservativeEsdf(grid, esdf, 2.5F, 0.5F);
+
+  EXPECT_EQ(unknown.status, EsdfQueryStatus::kUnknownSpace);
+  EXPECT_FALSE(unknown.raw_occupied);
+  EXPECT_FLOAT_EQ(unknown.clearance_m, 0.0F);
+  EXPECT_EQ(outside.status, EsdfQueryStatus::kUnknownSpace);
+  EXPECT_FALSE(outside.raw_occupied);
+}
+
 } // namespace
 } // namespace drone_city_nav

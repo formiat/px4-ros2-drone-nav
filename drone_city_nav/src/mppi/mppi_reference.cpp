@@ -310,6 +310,8 @@ RolloutMetrics simulateReference(
     const bool raw_collision =
         footprint_result.status == SweptFootprintStatus::kRawCollision ||
         footprint_result.status == SweptFootprintStatus::kInvalidEsdf;
+    const bool unknown_space =
+        footprint_result.status == SweptFootprintStatus::kUnknownSpace;
     const float clearance = static_cast<float>(footprint_result.minimum_clearance_m);
     metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
     const float segment_speed_mps =
@@ -317,6 +319,9 @@ RolloutMetrics simulateReference(
     const float segment_m = dynamics.dt_s * segment_speed_mps;
     if (raw_collision) {
       metrics.collision = true;
+      metrics.worst_tier = RiskTier::kCollision;
+    } else if (unknown_space) {
+      metrics.unknown_space_violation = true;
       metrics.worst_tier = RiskTier::kCollision;
     } else if (clearance < risk.critical_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kCritical);
@@ -399,7 +404,8 @@ RolloutMetrics simulateReference(
                                                       moving_target->capture_radius_m)
                                  : target_distance;
     previous = control;
-    if ((metrics.collision || metrics.altitude_envelope_violation) &&
+    if ((metrics.collision || metrics.unknown_space_violation ||
+         metrics.altitude_envelope_violation) &&
         early_exit_on_collision) {
       break;
     }

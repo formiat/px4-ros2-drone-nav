@@ -176,6 +176,54 @@ TEST(SweptFootprintTest, RawWorldBoundaryIsNotAnArtificialObstacle) {
                   .accepted());
 }
 
+TEST(SweptFootprintTest, ObservedWorldRequiresEntireSweptBodyToBeKnownFree) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 10, 4, 6};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        static_cast<void>(
+            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree));
+      }
+    }
+  }
+  const SweptFootprintConfig footprint{.radius_m = 0.25,
+                                       .lower_extent_m = 0.2,
+                                       .upper_extent_m = 1.2,
+                                       .sweep_step_m = 0.25};
+
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, Point3{1.5, 1.5, 2.5},
+                                        FootprintBodyAxis{}, Point3{8.5, 1.5, 2.5},
+                                        FootprintBodyAxis{}, footprint)
+                  .accepted());
+
+  static_cast<void>(
+      occupancy.setState(GridIndex3D{4, 1, 3}, ObservedVoxelState::kUnknown));
+  const SweptFootprintResult unknown =
+      validateRawSweptFootprint(occupancy, Point3{1.5, 1.5, 2.5}, FootprintBodyAxis{},
+                                Point3{8.5, 1.5, 2.5}, FootprintBodyAxis{}, footprint);
+  EXPECT_EQ(unknown.status, SweptFootprintStatus::kUnknownSpace);
+
+  static_cast<void>(
+      occupancy.setState(GridIndex3D{4, 1, 3}, ObservedVoxelState::kOccupied));
+  EXPECT_EQ(validateRawSweptFootprint(occupancy, Point3{1.5, 1.5, 2.5},
+                                      FootprintBodyAxis{}, Point3{8.5, 1.5, 2.5},
+                                      FootprintBodyAxis{}, footprint)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+}
+
+TEST(SweptFootprintTest, ObservedWorldBoundaryIsUnknownRatherThanOccupied) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4}};
+
+  const SweptFootprintResult result = validateRawSweptFootprint(
+      occupancy, Point3{1.5, 1.5, 1.5}, FootprintBodyAxis{}, Point3{8.0, 1.5, 1.5},
+      FootprintBodyAxis{},
+      SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25});
+
+  EXPECT_EQ(result.status, SweptFootprintStatus::kUnknownSpace);
+}
+
 TEST(SweptFootprintTest, RawPointCloudSweepRejectsPhysicalSideContact) {
   const std::vector<Point3> obstacle_points{{5.0, 0.75, 5.0}};
   const SweptFootprintConfig footprint{.radius_m = 0.82,

@@ -168,6 +168,7 @@ __device__ bool intersectsSolid(const State& state, const DeviceBodyAxis body_ax
 struct DeviceEsdfQuery {
   float clearance_m;
   bool raw_collision;
+  bool unknown_space;
 };
 
 __device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const float z,
@@ -183,16 +184,19 @@ __device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const fl
                 : 0;
   if (cell_x < 0 || cell_y < 0 || cell_z < 0 || cell_x >= grid.width ||
       cell_y >= grid.height || cell_z >= depth) {
-    return {kInfinity, false};
+    return {grid.outside_is_unknown ? 0.0F : kInfinity, false, grid.outside_is_unknown};
   }
   const float center_distance_m = tex3D<float>(
       esdf_texture, static_cast<float>(cell_x) + 0.5F,
       static_cast<float>(cell_y) + 0.5F, static_cast<float>(cell_z) + 0.5F);
+  if (center_distance_m == kUnknownEsdfDistanceM) {
+    return {0.0F, false, true};
+  }
   if (isinf(center_distance_m) && center_distance_m > 0.0F) {
-    return {center_distance_m, false};
+    return {center_distance_m, false, false};
   }
   if (!isfinite(center_distance_m) || center_distance_m < 0.0F) {
-    return {0.0F, true};
+    return {0.0F, true, false};
   }
   const float center_x_m =
       grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
@@ -207,7 +211,8 @@ __device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const fl
       depth > 1 ? 0.86602540378443864676F : 0.70710678118654752440F;
   const float correction_m =
       sqrtf(dx * dx + dy * dy + dz * dz) + half_diagonal_scale * grid.resolution_m;
-  return {fmaxf(0.0F, center_distance_m - correction_m), center_distance_m == 0.0F};
+  return {fmaxf(0.0F, center_distance_m - correction_m), center_distance_m == 0.0F,
+          false};
 }
 
 __device__ DeviceBodyAxis crossAxis(const DeviceBodyAxis first,
@@ -225,7 +230,7 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
                                           const cudaTextureObject_t esdf_texture) {
   DeviceEsdfQuery result =
       queryEsdfPoint(state.x, state.y, state.z, grid, esdf_texture);
-  if (result.raw_collision || !(footprint.radius_m > 0.0F) ||
+  if (result.raw_collision || result.unknown_space || !(footprint.radius_m > 0.0F) ||
       footprint.perimeter_samples == 0U) {
     return result;
   }
@@ -250,6 +255,10 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
         const float center_distance_m =
             tex3D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
                          static_cast<float>(cell_y) + 0.5F, 0.5F);
+        if (center_distance_m == kUnknownEsdfDistanceM) {
+          result.unknown_space = true;
+          return result;
+        }
         if ((!isfinite(center_distance_m) &&
              !(isinf(center_distance_m) && center_distance_m > 0.0F)) ||
             center_distance_m < 0.0F) {
@@ -323,7 +332,8 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
             state.z + axial_offset * axis.z + radial_z_offset, grid, esdf_texture);
         result.clearance_m = fminf(result.clearance_m, query.clearance_m);
         result.raw_collision = result.raw_collision || query.raw_collision;
-        if (result.raw_collision) {
+        result.unknown_space = result.unknown_space || query.unknown_space;
+        if (result.raw_collision || result.unknown_space) {
           return result;
         }
       }
@@ -432,7 +442,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           footprint.clearance_broad_phase_enabled ? risk.preferred_distance_m : 0.0F,
           grid, esdf_texture);
       clearance = fminf(clearance, esdf_query.clearance_m);
-      segment_raw_hit = segment_raw_hit || esdf_query.raw_collision;
+      segment_raw_hit =
+          segment_raw_hit || esdf_query.raw_collision || esdf_query.unknown_space;
       for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;
            ++solid_index) {
         solid_hit =

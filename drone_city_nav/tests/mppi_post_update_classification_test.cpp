@@ -80,5 +80,19 @@ TEST(MppiPostUpdateClassification, ReportsKnownSolidCollision) {
   EXPECT_EQ(result.classification, MppiPostUpdateClassification::kKnownSolidCollision);
 }
 
+TEST(MppiPostUpdateClassification, ReportsUnknownSpaceSeparatelyFromCollision) {
+  MppiPostUpdateObservation observation = safeObservation();
+  observation.unknown_space_violation = true;
+
+  const MppiPostUpdateClassificationResult result =
+      classifyMppiPostUpdate(feasibleContract(), observation);
+
+  EXPECT_EQ(result.classification,
+            MppiPostUpdateClassification::kUnknownSpaceViolation);
+  EXPECT_FALSE(result.executable);
+  EXPECT_STREQ(mppiPostUpdateClassificationName(result.classification),
+               "unknown_space_violation");
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

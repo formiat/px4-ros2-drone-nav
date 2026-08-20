@@ -9,6 +9,7 @@ namespace drone_city_nav {
 enum class EsdfQueryStatus {
   kValid,
   kOutsideGrid,
+  kUnknownSpace,
   kInvalidDistance,
 };
 

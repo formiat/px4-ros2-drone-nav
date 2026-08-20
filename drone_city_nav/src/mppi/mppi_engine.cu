@@ -591,6 +591,7 @@ public:
               .altitude_envelope_violation =
                   evaluation.metrics.altitude_envelope_violation,
               .raw_collision = evaluation.metrics.collision,
+              .unknown_space_violation = evaluation.metrics.unknown_space_violation,
               .known_solid_collision = evaluation.known_solid_collision,
           });
       return evaluation;
@@ -757,6 +758,7 @@ public:
     const RolloutMetrics& metrics = selected_evaluation.metrics;
     result.altitude_envelope_violation = metrics.altitude_envelope_violation;
     result.raw_collision = metrics.collision;
+    result.unknown_space_violation = metrics.unknown_space_violation;
     result.known_solid_collision = selected_evaluation.known_solid_collision;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;
@@ -777,7 +779,9 @@ public:
         result.dynamic_aircraft_survival_cost / std::max(1.0e-3F, non_survival_cost);
     result.predicted_capture_time_s = metrics.predicted_capture_time_s;
     result.selected_tier =
-        result.known_solid_collision ? RiskTier::kCollision : metrics.worst_tier;
+        result.known_solid_collision || result.unknown_space_violation
+            ? RiskTier::kCollision
+            : metrics.worst_tier;
     result.post_update_classification = selected_evaluation.classification;
     Control previous_control = previous_applied_control;
     if (!updated_.empty()) {

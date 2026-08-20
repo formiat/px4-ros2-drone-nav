@@ -31,6 +31,10 @@ classifyMppiPostUpdate(const MppiFeasibilityContract& feasibility,
     result.classification = MppiPostUpdateClassification::kRawCollision;
     return result;
   }
+  if (observation.unknown_space_violation) {
+    result.classification = MppiPostUpdateClassification::kUnknownSpaceViolation;
+    return result;
+  }
   if (observation.known_solid_collision) {
     result.classification = MppiPostUpdateClassification::kKnownSolidCollision;
     return result;
@@ -53,6 +57,8 @@ const char* mppiPostUpdateClassificationName(
       return "altitude_envelope_violation";
     case MppiPostUpdateClassification::kRawCollision:
       return "raw_collision";
+    case MppiPostUpdateClassification::kUnknownSpaceViolation:
+      return "unknown_space_violation";
     case MppiPostUpdateClassification::kKnownSolidCollision:
       return "known_solid_collision";
   }
