@@ -11,6 +11,33 @@
 #include <stdexcept>
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] ProductionNoStaticWorldModel
+parseNoStaticWorldModel(const std::string& value) {
+  if (value == "occupancy_2d") {
+    return ProductionNoStaticWorldModel::kOccupancy2D;
+  }
+  if (value == "observed_occupancy_3d") {
+    return ProductionNoStaticWorldModel::kObservedOccupancy3D;
+  }
+  throw std::invalid_argument{
+      "no_static_world_model must be occupancy_2d or observed_occupancy_3d"};
+}
+
+[[nodiscard]] const char*
+noStaticWorldModelName(const ProductionNoStaticWorldModel model) noexcept {
+  switch (model) {
+    case ProductionNoStaticWorldModel::kOccupancy2D:
+      return "occupancy_2d";
+    case ProductionNoStaticWorldModel::kObservedOccupancy3D:
+      return "observed_occupancy_3d";
+  }
+  return "unknown";
+}
+
+} // namespace
+
 ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     : Node{"production_mppi_node", options} {
   tick_rate_hz_ = declare_parameter<double>("tick_rate_hz", 50.0);
@@ -46,6 +73,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   planning_tick_phase_offset_s_ =
       declare_parameter<double>("planning_tick_phase_offset_s", 0.0);
   use_static_map_ = declare_parameter<bool>("use_static_map", true);
+  no_static_world_model_ = parseNoStaticWorldModel(
+      declare_parameter<std::string>("no_static_world_model", "occupancy_2d"));
   no_static_guide_lookahead_m_ =
       declare_parameter<double>("no_static_guide_lookahead_m", 30.0);
   no_static_esdf_update_rate_hz_ =
@@ -54,6 +83,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("no_static_esdf_half_extent_m", 100.0);
   no_static_esdf_recenter_margin_m_ =
       declare_parameter<double>("no_static_esdf_recenter_margin_m", 70.0);
+  no_static_3d_esdf_half_extent_m_ =
+      declare_parameter<double>("no_static_3d_esdf_half_extent_m", 40.0);
+  no_static_3d_esdf_recenter_margin_m_ =
+      declare_parameter<double>("no_static_3d_esdf_recenter_margin_m", 25.0);
   constrained_route_speed_limit_mps_ = static_cast<float>(
       declare_parameter<double>("constrained_route_speed_limit_mps", 10.0));
   route_constraint_diagnostics_distance_m_ =
@@ -604,6 +637,9 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(no_static_esdf_half_extent_m_ > 0.0) ||
       !(no_static_esdf_recenter_margin_m_ >= 0.0) ||
       no_static_esdf_recenter_margin_m_ >= no_static_esdf_half_extent_m_ ||
+      !(no_static_3d_esdf_half_extent_m_ > 0.0) ||
+      !(no_static_3d_esdf_recenter_margin_m_ >= 0.0) ||
+      no_static_3d_esdf_recenter_margin_m_ >= no_static_3d_esdf_half_extent_m_ ||
       no_static_cycle_config_.minimum_generation_changes < 2U) {
     throw std::invalid_argument{"invalid production MPPI configuration"};
   }
@@ -761,22 +797,42 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
         onNavigationReadiness(*message);
       },
       input_subscription_options);
-  raw_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot>(
-      declare_parameter<std::string>("raw_obstacle_snapshot_topic",
-                                     "/drone_city_nav/raw_obstacle_snapshot"),
-      rclcpp::QoS{1}.reliable().transient_local(),
-      [this](msg::RawObstacleSnapshot::ConstSharedPtr message) {
-        onRawObstacleSnapshot(std::move(message));
-      },
-      input_subscription_options);
-  raw_delta_sub_ = create_subscription<msg::RawObstacleDelta>(
-      declare_parameter<std::string>("raw_obstacle_delta_topic",
-                                     "/drone_city_nav/raw_obstacle_delta"),
-      rclcpp::QoS{1}.reliable().transient_local(),
-      [this](msg::RawObstacleDelta::ConstSharedPtr message) {
-        onRawObstacleDelta(std::move(message));
-      },
-      input_subscription_options);
+  const std::string raw_snapshot_topic = declare_parameter<std::string>(
+      "raw_obstacle_snapshot_topic", "/drone_city_nav/raw_obstacle_snapshot");
+  const std::string raw_delta_topic = declare_parameter<std::string>(
+      "raw_obstacle_delta_topic", "/drone_city_nav/raw_obstacle_delta");
+  const std::string raw_snapshot_3d_topic = declare_parameter<std::string>(
+      "raw_obstacle_snapshot_3d_topic", "/drone_city_nav/raw_obstacle_snapshot_3d");
+  const std::string raw_delta_3d_topic = declare_parameter<std::string>(
+      "raw_obstacle_delta_3d_topic", "/drone_city_nav/raw_obstacle_delta_3d");
+  if (!use_static_map_ &&
+      no_static_world_model_ == ProductionNoStaticWorldModel::kOccupancy2D) {
+    raw_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot>(
+        raw_snapshot_topic, rclcpp::QoS{1}.reliable().transient_local(),
+        [this](msg::RawObstacleSnapshot::ConstSharedPtr message) {
+          onRawObstacleSnapshot(std::move(message));
+        },
+        input_subscription_options);
+    raw_delta_sub_ = create_subscription<msg::RawObstacleDelta>(
+        raw_delta_topic, rclcpp::QoS{1}.reliable().transient_local(),
+        [this](msg::RawObstacleDelta::ConstSharedPtr message) {
+          onRawObstacleDelta(std::move(message));
+        },
+        input_subscription_options);
+  } else if (!use_static_map_) {
+    raw_snapshot_3d_sub_ = create_subscription<msg::RawObstacleSnapshot3D>(
+        raw_snapshot_3d_topic, rclcpp::QoS{1}.reliable().transient_local(),
+        [this](msg::RawObstacleSnapshot3D::ConstSharedPtr message) {
+          onRawObstacleSnapshot3D(std::move(message));
+        },
+        input_subscription_options);
+    raw_delta_3d_sub_ = create_subscription<msg::RawObstacleDelta3D>(
+        raw_delta_3d_topic, rclcpp::QoS{1}.reliable().transient_local(),
+        [this](msg::RawObstacleDelta3D::ConstSharedPtr message) {
+          onRawObstacleDelta3D(std::move(message));
+        },
+        input_subscription_options);
+  }
   latest_lidar_obstacle_scan_sub_ = create_subscription<msg::LatestLidarObstacleScan>(
       declare_parameter<std::string>("latest_lidar_obstacle_scan_topic",
                                      "/drone_city_nav/latest_lidar_obstacle_scan"),
@@ -862,11 +918,16 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "far_cost_sampling=(%.2fs,%u) liveness=%s "
       "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
       "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
-      "planner_tick_phase_ms=%.1f no_static_esdf=(%.1fHz,%.1fm,%.1fm)",
+      "planner_tick_phase_ms=%.1f no_static_world=%s "
+      "no_static_esdf=(%.1fHz,2d=%.1f/%.1fm,3d=%.1f/%.1fm)",
       mppi_config_.rollouts, rollout_budget_config_.open_static_rollouts,
       rollout_budget_config_.direct_tracking_rollouts,
       rollout_budget_config_.minimum_reduced_clearance_m, mppi_config_.steps,
-      tick_rate_hz_, deadline_ms_, 0UL, use_static_map_ ? "true" : "false", "false",
+      tick_rate_hz_, deadline_ms_, 0UL, use_static_map_ ? "true" : "false",
+      use_static_map_ || no_static_world_model_ ==
+                             ProductionNoStaticWorldModel::kObservedOccupancy3D
+          ? "true"
+          : "false",
       static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
       lattice_config_.receding_goal_distance_m, speed_policy_config_.cruise_speed_mps,
       mppi_config_.dynamics.maximum_horizontal_speed_mps,
@@ -882,8 +943,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       active_guide_config_.minimum_remaining_m,
       active_guide_config_.velocity_heading_low_speed_mps,
       active_guide_config_.velocity_heading_high_speed_mps, planner_worker_count_,
-      planning_tick_phase_offset_s_ * 1000.0, no_static_esdf_update_rate_hz_,
-      no_static_esdf_half_extent_m_, no_static_esdf_recenter_margin_m_);
+      planning_tick_phase_offset_s_ * 1000.0,
+      noStaticWorldModelName(no_static_world_model_), no_static_esdf_update_rate_hz_,
+      no_static_esdf_half_extent_m_, no_static_esdf_recenter_margin_m_,
+      no_static_3d_esdf_half_extent_m_, no_static_3d_esdf_recenter_margin_m_);
 }
 
 void ProductionMppiNode::startPlanningTimer() {

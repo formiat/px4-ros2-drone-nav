@@ -31,7 +31,9 @@
 #include "drone_city_nav/msg/obstacle_memory_status.hpp"
 #include "drone_city_nav/msg/radar_track_mode_command.hpp"
 #include "drone_city_nav/msg/raw_obstacle_delta.hpp"
+#include "drone_city_nav/msg/raw_obstacle_delta3_d.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
+#include "drone_city_nav/msg/raw_obstacle_snapshot3_d.hpp"
 #include "drone_city_nav/msg/target_track_array.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
@@ -40,6 +42,7 @@
 #include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
+#include "drone_city_nav/raw_obstacle_3d_ros.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
@@ -140,6 +143,11 @@ enum class ProductionPlanningSearchKind : std::uint8_t {
   kLattice3D,
 };
 
+enum class ProductionNoStaticWorldModel : std::uint8_t {
+  kOccupancy2D,
+  kObservedOccupancy3D,
+};
+
 enum class ProductionGuideCandidateValidationStatus : std::uint8_t {
   kNotAttempted,
   kAccepted,
@@ -159,6 +167,15 @@ struct ProductionMppiRawWorld2D {
   std::int64_t ready_stamp_ns{0};
   double reconstruction_ms{0.0};
   std::shared_ptr<const OccupancyGrid2D> occupancy;
+};
+
+struct ProductionMppiRawWorld3D {
+  std::uint64_t producer_instance_id{0U};
+  std::uint64_t base_snapshot_revision{0U};
+  std::uint64_t revision{0U};
+  std::int64_t ready_stamp_ns{0};
+  double reconstruction_ms{0.0};
+  std::shared_ptr<const ObservedOccupancyGrid3D> occupancy;
 };
 
 struct ProductionGuideCandidateValidation {
@@ -202,6 +219,7 @@ struct ProductionMppiPreparedEsdf {
   mppi::EsdfGrid grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
+  std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
@@ -473,8 +491,11 @@ private:
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onRawObstacleDelta(msg::RawObstacleDelta::ConstSharedPtr message);
+  void onRawObstacleSnapshot3D(msg::RawObstacleSnapshot3D::ConstSharedPtr message);
+  void onRawObstacleDelta3D(msg::RawObstacleDelta3D::ConstSharedPtr message);
   void onLatestLidarObstacleScan(const msg::LatestLidarObstacleScan& message);
   void queueRawWorld(const RawObstacleGridState& state, double reconstruction_ms);
+  void queueRawWorld3D(const RawObstacleGridState3D& state, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void onNavigationObjective(const msg::NavigationObjective& message);
@@ -503,6 +524,7 @@ private:
                                   bool extension_activated = false);
   void finishStaticRouteReplan(std::uint64_t base_generation) noexcept;
   void esdfWorker(std::stop_token stop_token);
+  void processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);
   void guideWorker(std::stop_token stop_token);
   [[nodiscard]] ProductionGuideCandidateValidation validateGuideCandidateOnLatestWorld(
       const std::shared_ptr<const std::vector<Point2>>& candidate,
@@ -573,6 +595,8 @@ private:
   double no_static_esdf_update_rate_hz_{2.5};
   double no_static_esdf_half_extent_m_{100.0};
   double no_static_esdf_recenter_margin_m_{70.0};
+  double no_static_3d_esdf_half_extent_m_{40.0};
+  double no_static_3d_esdf_recenter_margin_m_{25.0};
   std::size_t planner_worker_count_{4U};
   MppiRolloutBudgetConfig rollout_budget_config_{};
   double planning_tick_phase_offset_s_{0.0};
@@ -592,6 +616,8 @@ private:
   DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_{};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
+  ProductionNoStaticWorldModel no_static_world_model_{
+      ProductionNoStaticWorldModel::kOccupancy2D};
   bool cooperative_traffic_enabled_{false};
   bool noncooperative_avoidance_enabled_{false};
   std::string noncooperative_tracks_topic_;
@@ -682,11 +708,15 @@ private:
   std::condition_variable_any raw_queue_condition_;
   std::shared_ptr<const ProductionMppiRawWorld2D> pending_raw_world_;
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
+  std::shared_ptr<const ProductionMppiRawWorld3D> pending_raw_world_3d_;
+  std::atomic<std::shared_ptr<const ProductionMppiRawWorld3D>> latest_raw_world_3d_;
   std::atomic<std::shared_ptr<const LatestLidarObstacleSnapshot>>
       latest_lidar_obstacle_scan_;
   std::mutex raw_reconstruction_mutex_;
   RawObstacleDeltaAccumulator raw_delta_accumulator_;
   msg::RawObstacleDelta::ConstSharedPtr pending_raw_delta_;
+  RawObstacleDeltaAccumulator3D raw_delta_accumulator_3d_;
+  msg::RawObstacleDelta3D::ConstSharedPtr pending_raw_delta_3d_;
   std::chrono::steady_clock::time_point no_static_esdf_last_build_time_{};
   std::atomic<std::uint64_t> no_static_raw_updates_{0U};
   std::atomic<std::uint64_t> no_static_esdf_builds_{0U};
@@ -759,6 +789,8 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
   rclcpp::Subscription<msg::RawObstacleDelta>::SharedPtr raw_delta_sub_;
+  rclcpp::Subscription<msg::RawObstacleSnapshot3D>::SharedPtr raw_snapshot_3d_sub_;
+  rclcpp::Subscription<msg::RawObstacleDelta3D>::SharedPtr raw_delta_3d_sub_;
   rclcpp::Subscription<msg::LatestLidarObstacleScan>::SharedPtr
       latest_lidar_obstacle_scan_sub_;
   rclcpp::Subscription<msg::ObstacleMemoryStatus>::SharedPtr memory_status_sub_;

@@ -264,6 +264,13 @@ def generate_launch_description():
         production_mppi_parameters = [
             params_file.perform(context),
             {"use_sim_time": True},
+            {
+                "no_static_world_model": (
+                    "observed_occupancy_3d"
+                    if profile == "3d"
+                    else "occupancy_2d"
+                )
+            },
         ]
         mission_monitor_parameters = [
             params_file.perform(context),

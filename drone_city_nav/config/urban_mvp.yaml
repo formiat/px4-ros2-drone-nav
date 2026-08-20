@@ -211,6 +211,11 @@ production_mppi_node:
     no_static_esdf_update_rate_hz: 2.5
     no_static_esdf_half_extent_m: 100.0
     no_static_esdf_recenter_margin_m: 70.0
+    no_static_3d_esdf_half_extent_m: 40.0
+    no_static_3d_esdf_recenter_margin_m: 25.0
+    no_static_world_model: occupancy_2d
+    raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
+    raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
     latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
     latest_lidar_obstacle_maximum_age_ms: 250.0
     minimum_target_lookahead_m: 30.0

@@ -77,11 +77,13 @@ namespace {
 void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
     std::shared_ptr<const ProductionMppiRawWorld2D> raw_world;
+    std::shared_ptr<const ProductionMppiRawWorld3D> raw_world_3d;
     bool static_work{false};
     {
       std::unique_lock lock{raw_queue_mutex_};
       raw_queue_condition_.wait(lock, stop_token, [this]() {
-        return pending_raw_world_ != nullptr || pending_static_esdf_work_;
+        return pending_raw_world_ != nullptr || pending_raw_world_3d_ != nullptr ||
+               pending_static_esdf_work_;
       });
       if (stop_token.stop_requested()) {
         return;
@@ -89,11 +91,24 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       if (use_static_map_) {
         static_work = std::exchange(pending_static_esdf_work_, false);
         static_esdf_work_in_progress_ = static_work;
+      } else if (no_static_world_model_ ==
+                 ProductionNoStaticWorldModel::kObservedOccupancy3D) {
+        raw_world_3d = std::exchange(pending_raw_world_3d_, nullptr);
       } else {
         raw_world = std::exchange(pending_raw_world_, nullptr);
       }
     }
-    if ((!use_static_map_ && !raw_world) || (use_static_map_ && !static_work)) {
+    if (use_static_map_ && !static_work) {
+      continue;
+    }
+    if (!use_static_map_ &&
+        no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D) {
+      if (raw_world_3d) {
+        processObservedEsdf3D(*raw_world_3d);
+      }
+      continue;
+    }
+    if (!use_static_map_ && !raw_world) {
       continue;
     }
     const std::int64_t source_stamp_ns =

@@ -117,6 +117,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
       latest_raw_world_.load(std::memory_order_acquire);
+  const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
+      latest_raw_world_3d_.load(std::memory_order_acquire);
   const std::shared_ptr<const LatestLidarObstacleSnapshot> latest_lidar_obstacle_scan =
       use_static_map_ ? nullptr
                       : latest_lidar_obstacle_scan_.load(std::memory_order_acquire);
@@ -145,6 +147,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           : nullptr;
   const OccupancyGrid3D* static_occupancy =
       use_static_map_ && static_occupancy_3d_ ? &*static_occupancy_3d_ : nullptr;
+  const ObservedOccupancyGrid3D* observed_occupancy =
+      latest_raw_world_3d && latest_raw_world_3d->occupancy
+          ? latest_raw_world_3d->occupancy.get()
+          : nullptr;
   const std::optional<mppi::FiniteExecutionPathTerminalBoundary>
       route_terminal_boundary = finiteRouteTerminalBoundary(input, esdf);
   const mppi::FiniteExecutionPathWorld execution_path_world{
@@ -153,6 +159,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .altitude_envelope = &mppi_config_.altitude_envelope,
       .footprint = &physical_footprint_config_,
       .static_occupancy = static_occupancy,
+      .observed_occupancy = observed_occupancy,
       .raw_occupancy = latest_raw_occupancy,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = route_terminal_boundary,
@@ -163,6 +170,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               std::ceil(kArrivalSearchIntervalS / mppi_config_.dynamics.dt_s)));
   const std::int64_t finite_path_control_interval_ns =
       mppi::finitePathControlIntervalNanoseconds(mppi_config_.dynamics.dt_s);
+  std::uint64_t latest_obstacle_revision = input.obstacle_revision;
+  if (latest_raw_world) {
+    latest_obstacle_revision = latest_raw_world->revision;
+  }
+  if (latest_raw_world_3d) {
+    latest_obstacle_revision = latest_raw_world_3d->revision;
+  }
 
   const auto make_horizon = [&](const std::int64_t valid_until_ns,
                                 const ProductionMppiExecutionMode mode,
@@ -174,8 +188,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     horizon.valid_from = timeFromNanoseconds(now_ns);
     horizon.valid_until = timeFromNanoseconds(valid_until_ns);
     horizon.pose_revision = input.pose_revision;
-    horizon.obstacle_revision =
-        latest_raw_world ? latest_raw_world->revision : input.obstacle_revision;
+    horizon.obstacle_revision = latest_obstacle_revision;
     horizon.risk_tier = static_cast<std::uint8_t>(result.selected_tier);
     horizon.execution_mode = static_cast<std::uint8_t>(mode);
     horizon.execution_reason = static_cast<std::uint8_t>(reason);

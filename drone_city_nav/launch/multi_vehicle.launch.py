@@ -476,6 +476,17 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "raw_obstacle_delta_topic": raw_delta,
+                    "raw_obstacle_snapshot_3d_topic": (
+                        f"{prefix}/raw_obstacle_snapshot_3d"
+                    ),
+                    "raw_obstacle_delta_3d_topic": (
+                        f"{prefix}/raw_obstacle_delta_3d"
+                    ),
+                    "no_static_world_model": (
+                        "observed_occupancy_3d"
+                        if profile == "3d"
+                        else "occupancy_2d"
+                    ),
                     "latest_lidar_obstacle_scan_topic": (
                         latest_lidar_obstacle_scan
                     ),
