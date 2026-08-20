@@ -386,53 +386,48 @@ alignment, and raw-collision validation against its physical world.
 
 **Hard prerequisite:** item 8.
 
-Extend no-static navigation with an incremental topological exploration backend
-for partially observed 3D environments such as tunnel networks, caves, and
-labyrinths. This is not a second flight-control stack: 3D lidar, online
-Occupancy3D and ESDF, raw swept-footprint validation, finite executable paths,
-MPPI, and PX4 offboard control remain shared with ordinary navigation.
+Replace global guidance with one unified 3D navigation architecture for static
+and no-static maps, open cities, rooms, tunnels, caves, shafts, and labyrinths.
+There is no environment-specific mode or runtime selector between old and new
+backends. Static maps provide a complete initial graph; no-static maps grow the
+same graph incrementally from revisioned 3D lidar evidence.
 
-The new backend incrementally extracts a metric-topological graph of corridors,
-junctions, vertical connectors, frontiers, and confirmed dead ends. It keeps
-two complementary forms of exploration memory:
+Incrementally maintain a sparse metric-topological graph with stable node and
+edge identities. Represent junctions, turns, vertical connectors, frontiers,
+and terminal regions explicitly, and contract long degree-two corridors into
+route edges. Update only geometry affected by dirty Occupancy3D chunks.
 
-- a volumetric coverage field used only as a soft preference for selecting the
-  next frontier;
-- directed graph-edge state (`unknown`, `frontier`, `explored`, `dead_end`, or
-  `temporarily_blocked`) with the map revision that justified that state.
+Keep exploration evidence separate from physical occupancy:
 
-Visited space and explored branches must never be converted into occupancy,
-prohibited grids, inflated obstacles, or any other hard exclusion volume. A
-drone must be able to backtrack through a known corridor, and a later map
-revision may invalidate an earlier dead-end conclusion.
+- a sparse volumetric coverage field provides only a soft revisit preference;
+- directed edges retain traversal count, frontier/dead-end evidence, and the
+  map revision that supports that evidence;
+- visited space is never converted into occupancy, inflation, a prohibited
+  region, or another hard exclusion.
 
-When the destination is known but the environment is only partly observed, the
-planner performs goal-biased frontier exploration rather than exhaustive
-coverage: it trades estimated route progress, travel cost, clearance,
-information gain, and repeated traversal cost. Once a connected graph route to
-the destination is known, ordinary graph search takes precedence over further
-exploration. If the mission explicitly has no known destination, the same
-backend may select frontiers for coverage instead.
+If a graph route to the destination is known, ordinary graph search takes
+priority. Otherwise select a reachable frontier using goal direction, path
+cost, clearance, information gain, branch history, and fairness between
+unexplored branches. Goal progress is a soft preference: moving away from the
+destination and backtracking through a known edge are ordinary valid routes.
+Confirmed dead ends are revisioned conclusions and reopen when new evidence
+changes the graph.
 
-In a confirmed degree-two corridor with a sufficiently long raw-safe swept
-path, the backend retains the current branch and emits a route-directed cruise
-objective. It should slow or reconsider only at a junction, tight or curved
-geometry, a changed map, a dynamic obstruction, or the end of the executable
-path. It must not continue along an invalid path or create a sticky braking or
-recovery lifecycle.
+The shared risk-aware 3D lattice realizes the selected graph route as geometry;
+MPPI and PX4 continue to execute finite raw-safe paths whose unresolved endpoint
+has zero speed. In open space the same planner may use a direct raw-safe graph
+edge. In a degree-two corridor it retains the current branch while the route is
+valid and reconsiders it at graph events rather than every lidar scan. Each
+vehicle owns its graph and exploration memory; this item adds no map sharing.
 
-`GLOBAL_GUIDANCE_BACKEND` selects the guidance implementation through launch
-configuration. The initial supported values are `current_lattice` and
-`incremental_topological`; code must not infer the backend from an environment
-name or an `underground` flag. Both implementations publish the same typed
-route contract to the common local-planning and control layers.
-
-Implementation begins after item 8 establishes 3D lidar and online
-Occupancy3D. Validate first with deterministic 3D fixtures covering a T
-junction, X junction, loop, cul-de-sac, and vertical shaft. Measure goal time,
-coverage, repeated-edge distance, time without an executable route, minimum
-clearance, and physical collisions. Then evaluate the backend on the Finals and
-Cave environments with repeated cooperative mission runs.
+Validate first with deterministic 3D fixtures for a T junction, X junction,
+loop, cul-de-sac, mandatory initial movement away from the goal, and vertical
+shaft. Then run sequentially, always no-static with the 3D lidar: `sim` on
+Manhattan, `coop` on Manhattan, `sim` on the selected new environment, and
+`coop` on that environment. Logs must prove frontier choice, directed-edge
+history, backtracking, dead-end revision handling, graph stability, executable
+route continuity, minimum clearance, mission completion, and zero physical
+collisions.
 
 ## 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation
 
