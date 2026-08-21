@@ -7,6 +7,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -66,10 +67,24 @@ struct ObservationFrontierEvaluation {
   }
 };
 
+struct ObservationFrontierDiscovery {
+  std::vector<ObservationFrontier> frontiers;
+  std::size_t sampled_free_voxels{0U};
+  std::size_t boundary_candidates{0U};
+  std::size_t evaluated_candidates{0U};
+  bool evaluation_budget_exhausted{false};
+};
+
 [[nodiscard]] ObservationFrontierEvaluation
 evaluateObservationFrontier(const ObservedOccupancyGrid3D& occupancy,
                             const Point3& observation_pose, std::uint64_t map_revision,
                             const SensorObservabilityConfig& config = {});
+
+[[nodiscard]] ObservationFrontierDiscovery
+discoverObservationFrontiers(const ObservedOccupancyGrid3D& occupancy,
+                             std::uint64_t map_revision,
+                             const SensorObservabilityConfig& config,
+                             std::size_t cell_stride, std::size_t maximum_evaluations);
 
 [[nodiscard]] const char*
 observationFrontierStatusName(ObservationFrontierStatus status) noexcept;

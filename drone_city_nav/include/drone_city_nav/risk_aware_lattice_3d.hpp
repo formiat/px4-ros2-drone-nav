@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/observation_frontier.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/portal_graph.hpp"
 #include "drone_city_nav/route_3d.hpp"
@@ -9,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -37,6 +39,12 @@ enum class Lattice3DSearchTermination : std::uint8_t {
   kOpenSetExhausted,
   kExpansionBudgetExhausted,
   kDeadlineReached,
+};
+
+enum class Lattice3DRoutePurpose : std::uint8_t {
+  kMissionTransit,
+  kObservationFrontier,
+  kTopologicalBacktrack,
 };
 
 struct Lattice3DSuccessorDiagnostics {
@@ -104,7 +112,18 @@ struct RiskAwareLattice3DConfig {
   double critical_exposure_cost_per_m{0.50};
   double passage_connection_distance_m{3.0};
   double frontier_minimum_reachable_depth_m{8.0};
+  double frontier_minimum_endpoint_displacement_m{2.0};
   std::size_t frontier_validation_maximum_states{2048U};
+  std::size_t observation_frontier_maximum_evaluations{1024U};
+  std::size_t observation_frontier_evaluation_stride{2U};
+  std::size_t observation_frontier_maximum_searches{4U};
+  double observation_frontier_search_time_ms{250.0};
+  double observation_frontier_information_gain_weight{3.0};
+  double observation_frontier_goal_progress_weight{0.15};
+  double observation_frontier_path_cost_weight{0.25};
+  double observation_frontier_clearance_weight{0.10};
+  double observation_frontier_replacement_minimum_score_improvement{0.5};
+  SensorObservabilityConfig sensor_observability{};
   std::size_t maximum_topology_search_groups{3U};
   std::size_t maximum_expansions{200000U};
   double maximum_search_time_ms{250.0};
@@ -165,18 +184,34 @@ struct RiskAwareLattice3DResult {
   std::size_t parallel_topology_searches{0U};
   double topology_search_worker_ms{0.0};
   double continuation_validation_ms{0.0};
+  double frontier_endpoint_displacement_m{0.0};
+  double frontier_selection_score{0.0};
+  std::size_t frontier_candidates_considered{0U};
+  std::size_t frontier_sampled_free_voxels{0U};
+  std::size_t frontier_boundary_candidates{0U};
+  std::size_t frontier_evaluated_candidates{0U};
+  std::size_t frontier_searches{0U};
+  bool frontier_evaluation_budget_exhausted{false};
   std::uint64_t route_fingerprint{0U};
+  Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};
+  std::optional<ObservationFrontier> observation_frontier;
   Lattice3DSuccessorDiagnostics successor_diagnostics{};
   Lattice3DSuccessorProfiling successor_profiling{};
   std::vector<SelectedPassageTraversal> selected_passage_traversals;
   std::vector<Lattice3DTopologyCandidate> topology_candidates;
 };
 
+struct Lattice3DExplorationContext {
+  const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
+  std::uint64_t map_revision{0U};
+};
+
 [[nodiscard]] RiskAwareLattice3DResult planRiskAwareLattice3D(
     const mppi::EsdfGrid& grid, std::span<const float> esdf_m, const Point3& start,
     const Vec3& preferred_direction, const Point3& mission_goal,
     std::span<const PassageTraversalEdge> passage_traversals,
-    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* worker_pool = nullptr);
+    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* worker_pool = nullptr,
+    const Lattice3DExplorationContext* exploration_context = nullptr);
 
 [[nodiscard]] const char* lattice3DStatusName(Lattice3DStatus status) noexcept;
 
@@ -184,5 +219,8 @@ struct RiskAwareLattice3DResult {
 
 [[nodiscard]] const char*
 lattice3DSearchTerminationName(Lattice3DSearchTermination termination) noexcept;
+
+[[nodiscard]] const char*
+lattice3DRoutePurposeName(Lattice3DRoutePurpose purpose) noexcept;
 
 } // namespace drone_city_nav

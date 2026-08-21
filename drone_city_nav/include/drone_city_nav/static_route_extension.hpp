@@ -3,6 +3,7 @@
 #include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/observation_frontier.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
@@ -175,11 +176,41 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
   kInvalidPassageSpan,
   kProtectedConstrainedSuffix,
   kNoEndpointImprovement,
+  kNoExplorationProgress,
 };
 
 enum class StaticRouteReplacementPolicy : std::uint8_t {
   kRequireEndpointImprovement,
   kAllowSafetyReplan,
+  kAllowExploration,
+};
+
+enum class ObservationRouteReplacementStatus : std::uint8_t {
+  kInvalidCandidate,
+  kNoActiveFrontier,
+  kActiveFrontierRetired,
+  kFrontierAdvanced,
+  kScoreImproved,
+  kSameFrontierRetained,
+  kStaleCandidate,
+  kInsufficientProgress,
+};
+
+struct ObservationRouteReplacementObservation {
+  std::optional<ObservationFrontier> active_frontier;
+  std::optional<ObservationFrontier> candidate_frontier;
+  double active_score{0.0};
+  double candidate_score{0.0};
+  double minimum_score_improvement{0.0};
+  bool active_frontier_still_valid{false};
+  bool extension_requested{false};
+};
+
+struct ObservationRouteReplacementDecision {
+  ObservationRouteReplacementStatus status{
+      ObservationRouteReplacementStatus::kInvalidCandidate};
+  double score_improvement{0.0};
+  bool accepted{false};
 };
 
 enum class StaticRouteActivationStatus : std::uint8_t {
@@ -198,6 +229,12 @@ struct StaticRouteCandidateValidation {
   double endpoint_improvement_m{0.0};
   bool accepted{false};
 };
+
+[[nodiscard]] ObservationRouteReplacementDecision evaluateObservationRouteReplacement(
+    const ObservationRouteReplacementObservation& observation) noexcept;
+
+[[nodiscard]] std::string_view observationRouteReplacementStatusName(
+    ObservationRouteReplacementStatus status) noexcept;
 
 struct StaticRouteCandidate {
   std::uint64_t search_revision{0U};

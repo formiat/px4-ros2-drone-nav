@@ -40,9 +40,17 @@ void ProductionMppiNode::processGuideSearch3D(
   const std::span<const PassageTraversalEdge> passage_traversals =
       passage_resource ? std::span<const PassageTraversalEdge>{*passage_resource}
                        : std::span<const PassageTraversalEdge>{};
+  const std::optional<Lattice3DExplorationContext> exploration_context =
+      world.observed_occupancy
+          ? std::optional<Lattice3DExplorationContext>{Lattice3DExplorationContext{
+                .observed_occupancy = world.observed_occupancy.get(),
+                .map_revision = world.revision,
+            }}
+          : std::nullopt;
   const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
       world.grid, *world.distances_m, search_start, preferred_direction, mission_goal,
-      passage_traversals, lattice_3d_config_, planning_worker_pool_.get());
+      passage_traversals, lattice_3d_config_, planning_worker_pool_.get(),
+      exploration_context ? &*exploration_context : nullptr);
   const double search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
@@ -65,6 +73,8 @@ void ProductionMppiNode::processGuideSearch3D(
   prepared.lattice_3d_status = lattice.status;
   prepared.lattice_3d_risk_stage = lattice.risk_stage;
   prepared.lattice_3d_termination = lattice.termination;
+  prepared.lattice_3d_route_purpose = lattice.route_purpose;
+  prepared.lattice_3d_observation_frontier = lattice.observation_frontier;
   prepared.lattice_3d_minimum_clearance_m = lattice.minimum_clearance_m;
   prepared.lattice_3d_successor_diagnostics = lattice.successor_diagnostics;
   prepared.lattice_3d_successor_profiling = lattice.successor_profiling;
@@ -85,6 +95,18 @@ void ProductionMppiNode::processGuideSearch3D(
   prepared.lattice_continuation_reachable_states =
       lattice.continuation_reachable_states;
   prepared.lattice_reachable_depth_m = lattice.continuation_reachable_depth_m;
+  prepared.lattice_frontier_endpoint_displacement_m =
+      lattice.frontier_endpoint_displacement_m;
+  prepared.lattice_frontier_selection_score = lattice.frontier_selection_score;
+  prepared.lattice_frontier_candidates_considered =
+      lattice.frontier_candidates_considered;
+  prepared.lattice_frontier_sampled_free_voxels = lattice.frontier_sampled_free_voxels;
+  prepared.lattice_frontier_boundary_candidates = lattice.frontier_boundary_candidates;
+  prepared.lattice_frontier_evaluated_candidates =
+      lattice.frontier_evaluated_candidates;
+  prepared.lattice_frontier_searches = lattice.frontier_searches;
+  prepared.lattice_frontier_evaluation_budget_exhausted =
+      lattice.frontier_evaluation_budget_exhausted;
   prepared.global_guide_cost = lattice.objective_cost;
   prepared.global_guide_reaches_mission_goal = lattice.reached_mission_goal;
   prepared.topology_candidates = lattice.topology_candidates;
@@ -98,10 +120,39 @@ void ProductionMppiNode::processGuideSearch3D(
   prepared.route_fingerprint = lattice.route_fingerprint;
   std::vector<SelectedPassageTraversal> route_traversals =
       lattice.selected_passage_traversals;
-  const StaticRouteReplacementPolicy replacement_policy =
-      world.static_route_replan_request
-          ? StaticRouteReplacementPolicy::kAllowSafetyReplan
-          : StaticRouteReplacementPolicy::kRequireEndpointImprovement;
+  StaticRouteReplacementPolicy replacement_policy =
+      StaticRouteReplacementPolicy::kRequireEndpointImprovement;
+  if (world.static_route_replan_request) {
+    replacement_policy = StaticRouteReplacementPolicy::kAllowSafetyReplan;
+  } else if (lattice.route_purpose != Lattice3DRoutePurpose::kMissionTransit) {
+    replacement_policy = StaticRouteReplacementPolicy::kAllowExploration;
+  }
+  bool active_observation_frontier_still_valid = false;
+  if (world.observed_occupancy && world.lattice_3d_observation_frontier) {
+    const ObservationFrontierEvaluation active_evaluation = evaluateObservationFrontier(
+        *world.observed_occupancy,
+        world.lattice_3d_observation_frontier->observation_pose, world.revision,
+        lattice_3d_config_.sensor_observability);
+    active_observation_frontier_still_valid =
+        active_evaluation.accepted() &&
+        active_evaluation.frontier.id == world.lattice_3d_observation_frontier->id;
+  }
+  ObservationRouteReplacementDecision observation_replacement;
+  if (lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier) {
+    observation_replacement =
+        evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+            .active_frontier = world.lattice_3d_observation_frontier,
+            .candidate_frontier = lattice.observation_frontier,
+            .active_score = world.lattice_frontier_selection_score,
+            .candidate_score = lattice.frontier_selection_score,
+            .minimum_score_improvement =
+                lattice_3d_config_
+                    .observation_frontier_replacement_minimum_score_improvement,
+            .active_frontier_still_valid = active_observation_frontier_still_valid,
+            .extension_requested = world.static_route_extension_request,
+        });
+  }
+  prepared.observation_route_replacement_status = observation_replacement.status;
 
   StaticRouteCandidateValidation validation{.status =
                                                 StaticRouteCandidateStatus::kEmpty};
@@ -211,6 +262,14 @@ void ProductionMppiNode::processGuideSearch3D(
     if (validation.accepted && spans->size() != initial_spans.size()) {
       validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
+    }
+    if (validation.accepted &&
+        lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier &&
+        !observation_replacement.accepted) {
+      validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kNoExplorationProgress,
+          .endpoint_improvement_m = validation.endpoint_improvement_m,
+      };
     }
     if (validation.accepted && !validateConstrainedRouteSpans(
                                    *route, *spans, world.grid, *world.distances_m)) {
@@ -378,12 +437,21 @@ void ProductionMppiNode::processGuideSearch3D(
       world.observed_occupancy ? "observed_known_free_3d" : "static_occupancy_3d";
   const char* const topology_acceleration =
       static_free_space_topology_router_ ? "static_free_space_index" : "none";
+  const ObservationFrontier* const observation_frontier =
+      lattice.observation_frontier ? &*lattice.observation_frontier : nullptr;
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
       " activated=%s activation_status=%.*s revision_matches=%s "
       "generation_matches=%s objective_matches=%s route_generation=%" PRIu64
-      " route_space=%s topology_acceleration=%s extension=%s replan=%s "
+      " route_space=%s route_purpose=%s topology_acceleration=%s "
+      "observation_frontier_id=%" PRIu64 " observation_frontier_revision=%" PRIu64
+      " observation_frontier_rays=%zu observation_frontier_gain=%zu "
+      "observation_frontier_score=%.3f frontier_candidates=%zu "
+      "frontier_sampled_free=%zu frontier_boundary=%zu frontier_evaluated=%zu "
+      "frontier_searches=%zu frontier_evaluation_budget_exhausted=%s "
+      "observation_replacement=%.*s observation_score_improvement=%.3f "
+      "extension=%s replan=%s "
       "base_generation=%" PRIu64 " replan_reason=%s"
       " replacement_policy=%.*s validation=%.*s endpoint_improvement_m=%.2f "
       "handoff=%s handoff_cross_track_m=%.2f handoff_minimum_clearance_m=%.2f "
@@ -433,7 +501,19 @@ void ProductionMppiNode::processGuideSearch3D(
       staticRouteActivationStatusName(activation_status).data(),
       revision_matches ? "true" : "false", generation_matches ? "true" : "false",
       objective_matches ? "true" : "false", prepared.global_guide_generation,
-      route_space, topology_acceleration,
+      route_space, lattice3DRoutePurposeName(lattice.route_purpose),
+      topology_acceleration, observation_frontier ? observation_frontier->id.value : 0U,
+      observation_frontier ? observation_frontier->supporting_map_revision : 0U,
+      observation_frontier ? observation_frontier->supporting_rays : 0U,
+      observation_frontier ? observation_frontier->information_gain_voxels : 0U,
+      lattice.frontier_selection_score, lattice.frontier_candidates_considered,
+      lattice.frontier_sampled_free_voxels, lattice.frontier_boundary_candidates,
+      lattice.frontier_evaluated_candidates, lattice.frontier_searches,
+      lattice.frontier_evaluation_budget_exhausted ? "true" : "false",
+      static_cast<int>(
+          observationRouteReplacementStatusName(observation_replacement.status).size()),
+      observationRouteReplacementStatusName(observation_replacement.status).data(),
+      observation_replacement.score_improvement,
       world.static_route_extension_request ? "true" : "false",
       world.static_route_replan_request ? "true" : "false",
       world.static_route_replan_request ? world.static_route_replan_base_generation

@@ -277,12 +277,22 @@ struct ProductionMppiPreparedEsdf {
   double lattice_frontier_endpoint_displacement_m{0.0};
   double lattice_frontier_selection_score{0.0};
   std::size_t lattice_frontier_candidates_considered{0U};
+  std::size_t lattice_frontier_sampled_free_voxels{0U};
+  std::size_t lattice_frontier_boundary_candidates{0U};
+  std::size_t lattice_frontier_evaluated_candidates{0U};
+  std::size_t lattice_frontier_searches{0U};
+  bool lattice_frontier_evaluation_budget_exhausted{false};
   LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
   LatticeSuccessorProfiling lattice_successor_profiling{};
   Lattice3DStatus lattice_3d_status{Lattice3DStatus::kInvalidInput};
   Lattice3DRiskStage lattice_3d_risk_stage{Lattice3DRiskStage::kPreferredOnly};
   Lattice3DSearchTermination lattice_3d_termination{
       Lattice3DSearchTermination::kInvalidInput};
+  Lattice3DRoutePurpose lattice_3d_route_purpose{
+      Lattice3DRoutePurpose::kMissionTransit};
+  std::optional<ObservationFrontier> lattice_3d_observation_frontier;
+  ObservationRouteReplacementStatus observation_route_replacement_status{
+      ObservationRouteReplacementStatus::kInvalidCandidate};
   double lattice_3d_minimum_clearance_m{0.0};
   Lattice3DSuccessorDiagnostics lattice_3d_successor_diagnostics{};
   Lattice3DSuccessorProfiling lattice_3d_successor_profiling{};

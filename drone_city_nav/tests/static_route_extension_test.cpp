@@ -190,6 +190,84 @@ TEST(StaticRouteExtensionTest, OrdinaryExtensionCannotReplaceRouteWithoutProgres
   EXPECT_EQ(result.status, StaticRouteCandidateStatus::kNoEndpointImprovement);
 }
 
+TEST(StaticRouteExtensionTest, ExplorationRouteMayMoveAwayFromGoal) {
+  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
+                                std::numeric_limits<float>::infinity());
+
+  const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
+      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
+      FlightEnvelopeConfig{}, StaticRouteReplacementPolicy::kAllowExploration);
+
+  EXPECT_TRUE(result.accepted);
+  EXPECT_LT(result.endpoint_improvement_m, 0.0);
+}
+
+[[nodiscard]] ObservationFrontier testFrontier(const std::uint64_t id,
+                                               const std::uint64_t revision) {
+  return ObservationFrontier{
+      .id = ObservationFrontierId{id},
+      .supporting_map_revision = revision,
+  };
+}
+
+TEST(StaticRouteExtensionTest, ObservationReplacementRetainsSameFrontier) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(7U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 20.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+      });
+
+  EXPECT_FALSE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kSameFrontierRetained);
+}
+
+TEST(StaticRouteExtensionTest, ObservationReplacementAdvancesAfterExtension) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(8U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 10.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+          .extension_requested = true,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kFrontierAdvanced);
+}
+
+TEST(StaticRouteExtensionTest, ObservationReplacementRequiresScoreImprovement) {
+  const ObservationRouteReplacementDecision rejected =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(8U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 12.25,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+      });
+  const ObservationRouteReplacementDecision accepted =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(8U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 12.5,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+      });
+
+  EXPECT_FALSE(rejected.accepted);
+  EXPECT_EQ(rejected.status, ObservationRouteReplacementStatus::kInsufficientProgress);
+  EXPECT_TRUE(accepted.accepted);
+  EXPECT_EQ(accepted.status, ObservationRouteReplacementStatus::kScoreImproved);
+}
+
 TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteReplacementPolicyName(
                 StaticRouteReplacementPolicy::kRequireEndpointImprovement),
@@ -197,6 +275,9 @@ TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteReplacementPolicyName(
                 StaticRouteReplacementPolicy::kAllowSafetyReplan),
             "allow_safety_replan");
+  EXPECT_EQ(
+      staticRouteReplacementPolicyName(StaticRouteReplacementPolicy::kAllowExploration),
+      "allow_exploration");
 }
 
 TEST(StaticRouteExtensionTest, RejectsRouteOutsideFlightEnvelope) {

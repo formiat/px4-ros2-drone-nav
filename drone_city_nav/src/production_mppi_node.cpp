@@ -485,9 +485,67 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<std::size_t>(maximum_traversals_per_component);
   lattice_3d_config_.frontier_minimum_reachable_depth_m =
       declare_parameter<double>("global_lattice_3d_frontier_reachable_depth_m", 8.0);
+  lattice_3d_config_.frontier_minimum_endpoint_displacement_m =
+      declare_parameter<double>(
+          "global_lattice_3d_frontier_minimum_endpoint_displacement_m", 2.0);
   lattice_3d_config_.frontier_validation_maximum_states =
       static_cast<std::size_t>(declare_parameter<std::int64_t>(
           "global_lattice_3d_frontier_validation_maximum_states", 2048));
+  const std::int64_t observation_frontier_maximum_evaluations =
+      declare_parameter<std::int64_t>(
+          "global_lattice_3d_observation_frontier_maximum_evaluations", 1024);
+  const std::int64_t observation_frontier_evaluation_stride =
+      declare_parameter<std::int64_t>(
+          "global_lattice_3d_observation_frontier_evaluation_stride", 2);
+  const std::int64_t observation_frontier_maximum_searches =
+      declare_parameter<std::int64_t>(
+          "global_lattice_3d_observation_frontier_maximum_searches", 4);
+  lattice_3d_config_.observation_frontier_search_time_ms = declare_parameter<double>(
+      "global_lattice_3d_observation_frontier_search_time_ms", 250.0);
+  lattice_3d_config_.observation_frontier_information_gain_weight =
+      declare_parameter<double>(
+          "global_lattice_3d_observation_frontier_information_gain_weight", 3.0);
+  lattice_3d_config_.observation_frontier_goal_progress_weight =
+      declare_parameter<double>(
+          "global_lattice_3d_observation_frontier_goal_progress_weight", 0.15);
+  lattice_3d_config_.observation_frontier_path_cost_weight = declare_parameter<double>(
+      "global_lattice_3d_observation_frontier_path_cost_weight", 0.25);
+  lattice_3d_config_.observation_frontier_clearance_weight = declare_parameter<double>(
+      "global_lattice_3d_observation_frontier_clearance_weight", 0.10);
+  lattice_3d_config_
+      .observation_frontier_replacement_minimum_score_improvement = declare_parameter<
+      double>(
+      "global_lattice_3d_observation_frontier_replacement_minimum_score_improvement",
+      0.5);
+  lattice_3d_config_.sensor_observability.maximum_observation_range_m =
+      declare_parameter<double>(
+          "global_lattice_3d_observation_frontier_maximum_range_m", 8.0);
+  lattice_3d_config_.sensor_observability.minimum_known_free_ray_m =
+      declare_parameter<double>(
+          "global_lattice_3d_observation_frontier_minimum_known_free_ray_m", 1.0);
+  const std::int64_t observation_frontier_minimum_supporting_rays =
+      declare_parameter<std::int64_t>(
+          "global_lattice_3d_observation_frontier_minimum_supporting_rays", 2);
+  const std::int64_t observation_frontier_minimum_information_gain_voxels =
+      declare_parameter<std::int64_t>(
+          "global_lattice_3d_observation_frontier_minimum_information_gain_voxels", 4);
+  if (observation_frontier_maximum_evaluations <= 0 ||
+      observation_frontier_evaluation_stride <= 0 ||
+      observation_frontier_maximum_searches <= 0 ||
+      observation_frontier_minimum_supporting_rays <= 0 ||
+      observation_frontier_minimum_information_gain_voxels <= 0) {
+    throw std::invalid_argument{"invalid observation frontier count configuration"};
+  }
+  lattice_3d_config_.observation_frontier_maximum_evaluations =
+      static_cast<std::size_t>(observation_frontier_maximum_evaluations);
+  lattice_3d_config_.observation_frontier_evaluation_stride =
+      static_cast<std::size_t>(observation_frontier_evaluation_stride);
+  lattice_3d_config_.observation_frontier_maximum_searches =
+      static_cast<std::size_t>(observation_frontier_maximum_searches);
+  lattice_3d_config_.sensor_observability.minimum_supporting_rays =
+      static_cast<std::size_t>(observation_frontier_minimum_supporting_rays);
+  lattice_3d_config_.sensor_observability.minimum_information_gain_voxels =
+      static_cast<std::size_t>(observation_frontier_minimum_information_gain_voxels);
   lattice_3d_config_.maximum_expansions = static_cast<std::size_t>(
       use_static_map_ ? static_lattice_expansions : no_static_lattice_expansions);
   lattice_3d_config_.maximum_search_time_ms =
@@ -571,6 +629,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       physical_footprint_config_.axial_samples;
   lattice_3d_config_.physical_footprint_sweep_step_m =
       physical_footprint_config_.sweep_step_m;
+  lattice_3d_config_.sensor_observability.footprint = physical_footprint_config_;
   configureCooperativeTraffic();
   configureNonCooperativeAvoidance();
   liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", true);
@@ -610,7 +669,17 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       free_space_topology_router_config_.maximum_entry_portals_per_component == 0U ||
       free_space_topology_router_config_.maximum_traversals_per_component == 0U ||
       !(lattice_3d_config_.frontier_minimum_reachable_depth_m > 0.0) ||
+      !(lattice_3d_config_.frontier_minimum_endpoint_displacement_m > 0.0) ||
       lattice_3d_config_.frontier_validation_maximum_states == 0U ||
+      !(lattice_3d_config_.observation_frontier_information_gain_weight >= 0.0) ||
+      !(lattice_3d_config_.observation_frontier_goal_progress_weight >= 0.0) ||
+      !(lattice_3d_config_.observation_frontier_path_cost_weight >= 0.0) ||
+      !(lattice_3d_config_.observation_frontier_clearance_weight >= 0.0) ||
+      !(lattice_3d_config_.observation_frontier_replacement_minimum_score_improvement >=
+        0.0) ||
+      !(lattice_3d_config_.observation_frontier_search_time_ms > 0.0) ||
+      !(lattice_3d_config_.sensor_observability.maximum_observation_range_m > 0.0) ||
+      !(lattice_3d_config_.sensor_observability.minimum_known_free_ray_m >= 0.0) ||
       !(physical_footprint_config_.sweep_step_m > 0.0) ||
       !(physical_footprint_config_.radius_m >= 0.0) ||
       !(physical_footprint_config_.lower_extent_m >= 0.0) ||

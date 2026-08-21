@@ -39,6 +39,21 @@ topologyName(const std::span<const SelectedPassageTraversal> traversals) {
 
 [[nodiscard]] bool betterFrontier(const RiskAwareLattice3DResult& candidate,
                                   const RiskAwareLattice3DResult& current) noexcept {
+  const bool candidate_observation =
+      candidate.route_purpose == Lattice3DRoutePurpose::kObservationFrontier;
+  const bool current_observation =
+      current.route_purpose == Lattice3DRoutePurpose::kObservationFrontier;
+  if (candidate_observation != current_observation) {
+    return candidate_observation;
+  }
+  if (candidate_observation &&
+      candidate.frontier_selection_score > current.frontier_selection_score + 1.0e-9) {
+    return true;
+  }
+  if (candidate_observation && std::abs(candidate.frontier_selection_score -
+                                        current.frontier_selection_score) > 1.0e-9) {
+    return false;
+  }
   if (candidate.achieved_progress_m > current.achieved_progress_m + 1.0e-6) {
     return true;
   }
@@ -181,6 +196,18 @@ lattice3DSearchTerminationName(const Lattice3DSearchTermination termination) noe
       return "expansion_budget_exhausted";
     case Lattice3DSearchTermination::kDeadlineReached:
       return "deadline_reached";
+  }
+  return "unknown";
+}
+
+const char* lattice3DRoutePurposeName(const Lattice3DRoutePurpose purpose) noexcept {
+  switch (purpose) {
+    case Lattice3DRoutePurpose::kMissionTransit:
+      return "mission_transit";
+    case Lattice3DRoutePurpose::kObservationFrontier:
+      return "observation_frontier";
+    case Lattice3DRoutePurpose::kTopologicalBacktrack:
+      return "topological_backtrack";
   }
   return "unknown";
 }

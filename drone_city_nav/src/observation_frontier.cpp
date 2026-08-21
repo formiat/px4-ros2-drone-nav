@@ -5,7 +5,11 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <optional>
+#include <ranges>
+#include <tuple>
 #include <unordered_set>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -64,8 +68,7 @@ void hashInteger(std::uint64_t& hash, const int value) noexcept {
 }
 
 [[nodiscard]] ObservationFrontierId
-makeFrontierId(const ObservedOccupancyGrid3D& occupancy, const Point3& pose,
-               const Vec3& direction) noexcept {
+makeFrontierId(const ObservedOccupancyGrid3D& occupancy, const Point3& pose) noexcept {
   const std::optional<GridIndex3D> cell = occupancy.worldToCell(pose);
   if (!cell.has_value()) {
     return {};
@@ -74,9 +77,6 @@ makeFrontierId(const ObservedOccupancyGrid3D& occupancy, const Point3& pose,
   hashInteger(hash, cell->x);
   hashInteger(hash, cell->y);
   hashInteger(hash, cell->z);
-  hashInteger(hash, static_cast<int>(std::llround(direction.x * 1000.0)));
-  hashInteger(hash, static_cast<int>(std::llround(direction.y * 1000.0)));
-  hashInteger(hash, static_cast<int>(std::llround(direction.z * 1000.0)));
   return ObservationFrontierId{hash};
 }
 
@@ -94,6 +94,57 @@ footprintStatus(const SweptFootprintStatus status) noexcept {
       return ObservationFrontierStatus::kRawCollision;
   }
   return ObservationFrontierStatus::kFootprintNotObserved;
+}
+
+[[nodiscard]] bool bit(const OccupancyGrid3D::Chunk& words,
+                       const std::size_t index) noexcept {
+  return (words.at(index / 64U) & (std::uint64_t{1U} << (index % 64U))) != 0U;
+}
+
+[[nodiscard]] bool isSampledFreeCell(const ObservedOccupancyChunk3D& chunk,
+                                     const std::size_t bit_index) noexcept {
+  return bit(chunk.observed, bit_index) && !bit(chunk.occupied, bit_index);
+}
+
+[[nodiscard]] bool
+hasSupportedUnknownBoundary(const ObservedOccupancyGrid3D& occupancy,
+                            const GridIndex3D origin,
+                            const SensorObservabilityConfig& config) noexcept {
+  const double resolution_m = occupancy.bounds().resolution_m;
+  if (!(resolution_m > 0.0)) {
+    return false;
+  }
+  const int known_free_steps = std::max(
+      1, static_cast<int>(std::ceil(config.minimum_known_free_ray_m / resolution_m)));
+  for (int dz = -1; dz <= 1; ++dz) {
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        if (dx == 0 && dy == 0 && dz == 0) {
+          continue;
+        }
+        bool supported = true;
+        for (int step = 1; step <= known_free_steps; ++step) {
+          const GridIndex3D sample{origin.x + dx * step, origin.y + dy * step,
+                                   origin.z + dz * step};
+          if (!occupancy.isKnownFree(sample)) {
+            supported = false;
+            break;
+          }
+        }
+        if (!supported) {
+          continue;
+        }
+        const GridIndex3D boundary{origin.x + dx * (known_free_steps + 1),
+                                   origin.y + dy * (known_free_steps + 1),
+                                   origin.z + dz * (known_free_steps + 1)};
+        if (occupancy.contains(boundary) &&
+            occupancy.state(boundary) == ObservedVoxelState::kUnknown) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -127,7 +178,7 @@ ObservationFrontierEvaluation evaluateObservationFrontier(
     ++result.evidence.tested_rays;
     bool found_unknown = false;
     double known_free_ray_m = 0.0;
-    std::size_t ray_information_gain = 0U;
+    std::size_t ray_unknown_samples = 0U;
     for (std::size_t sample_index = 1U; sample_index <= ray_sample_count;
          ++sample_index) {
       const double distance_m = static_cast<double>(sample_index) * step_m;
@@ -151,19 +202,18 @@ ObservationFrontierEvaluation evaluateObservationFrontier(
           break;
         }
         found_unknown = true;
-        if (information_gain_cells.insert(*cell).second) {
-          ++ray_information_gain;
-        }
+        ++ray_unknown_samples;
+        static_cast<void>(information_gain_cells.insert(*cell));
       }
     }
-    if (!found_unknown || ray_information_gain == 0U) {
+    if (!found_unknown || ray_unknown_samples == 0U) {
       continue;
     }
     ++result.evidence.supporting_rays;
     minimum_support_m = std::min(minimum_support_m, known_free_ray_m);
-    weighted_direction.x += direction.x * static_cast<double>(ray_information_gain);
-    weighted_direction.y += direction.y * static_cast<double>(ray_information_gain);
-    weighted_direction.z += direction.z * static_cast<double>(ray_information_gain);
+    weighted_direction.x += direction.x * static_cast<double>(ray_unknown_samples);
+    weighted_direction.y += direction.y * static_cast<double>(ray_unknown_samples);
+    weighted_direction.z += direction.z * static_cast<double>(ray_unknown_samples);
   }
 
   result.evidence.information_gain_voxels = information_gain_cells.size();
@@ -182,8 +232,7 @@ ObservationFrontierEvaluation evaluateObservationFrontier(
   }
   result.evidence.status = ObservationFrontierStatus::kAccepted;
   result.frontier = ObservationFrontier{
-      .id = makeFrontierId(occupancy, observation_pose,
-                           result.evidence.observation_direction),
+      .id = makeFrontierId(occupancy, observation_pose),
       .observation_pose = observation_pose,
       .observation_direction = result.evidence.observation_direction,
       .supporting_map_revision = map_revision,
@@ -191,6 +240,88 @@ ObservationFrontierEvaluation evaluateObservationFrontier(
       .information_gain_voxels = result.evidence.information_gain_voxels,
       .minimum_known_free_ray_m = result.evidence.minimum_known_free_ray_m,
   };
+  return result;
+}
+
+ObservationFrontierDiscovery discoverObservationFrontiers(
+    const ObservedOccupancyGrid3D& occupancy, const std::uint64_t map_revision,
+    const SensorObservabilityConfig& config, const std::size_t cell_stride,
+    const std::size_t maximum_evaluations) {
+  ObservationFrontierDiscovery result;
+  if (cell_stride == 0U || maximum_evaluations == 0U) {
+    return result;
+  }
+
+  using ChunkEntry = std::pair<OccupancyChunkIndex3D, const ObservedOccupancyChunk3D*>;
+  std::vector<ChunkEntry> chunks;
+  chunks.reserve(occupancy.chunks().size());
+  for (const auto& [index, chunk] : occupancy.chunks()) {
+    chunks.emplace_back(index, &chunk);
+  }
+  std::ranges::sort(chunks, {}, [](const ChunkEntry& entry) {
+    return std::tuple{entry.first.z, entry.first.y, entry.first.x};
+  });
+
+  struct BoundaryCandidate {
+    GridIndex3D cell{};
+    ObservationFrontierId stable_id{};
+  };
+
+  std::vector<BoundaryCandidate> boundary_candidates;
+
+  for (const auto& [chunk_index, chunk] : chunks) {
+    for (std::size_t bit_index = 0U; bit_index < OccupancyGrid3D::kVoxelsPerChunk;
+         ++bit_index) {
+      if (!isSampledFreeCell(*chunk, bit_index)) {
+        continue;
+      }
+      const int local_x =
+          static_cast<int>(bit_index % ObservedOccupancyGrid3D::kChunkSize);
+      const int local_y =
+          static_cast<int>((bit_index / ObservedOccupancyGrid3D::kChunkSize) %
+                           ObservedOccupancyGrid3D::kChunkSize);
+      const int local_z = static_cast<int>(
+          bit_index / static_cast<std::size_t>(ObservedOccupancyGrid3D::kChunkSize *
+                                               ObservedOccupancyGrid3D::kChunkSize));
+      const GridIndex3D cell{
+          chunk_index.x * ObservedOccupancyGrid3D::kChunkSize + local_x,
+          chunk_index.y * ObservedOccupancyGrid3D::kChunkSize + local_y,
+          chunk_index.z * ObservedOccupancyGrid3D::kChunkSize + local_z};
+      if (!occupancy.contains(cell) ||
+          static_cast<std::size_t>(cell.x) % cell_stride != 0U ||
+          static_cast<std::size_t>(cell.y) % cell_stride != 0U ||
+          static_cast<std::size_t>(cell.z) % cell_stride != 0U) {
+        continue;
+      }
+      ++result.sampled_free_voxels;
+      if (!hasSupportedUnknownBoundary(occupancy, cell, config)) {
+        continue;
+      }
+      boundary_candidates.push_back(BoundaryCandidate{
+          .cell = cell,
+          .stable_id = makeFrontierId(occupancy, occupancy.cellCenter(cell)),
+      });
+    }
+  }
+
+  result.boundary_candidates = boundary_candidates.size();
+  result.evaluation_budget_exhausted = boundary_candidates.size() > maximum_evaluations;
+  std::ranges::sort(boundary_candidates, [](const BoundaryCandidate& lhs,
+                                            const BoundaryCandidate& rhs) {
+    return std::tuple{lhs.stable_id.value, lhs.cell.z, lhs.cell.y, lhs.cell.x} <
+           std::tuple{rhs.stable_id.value, rhs.cell.z, rhs.cell.y, rhs.cell.x};
+  });
+  const std::size_t evaluation_count =
+      std::min(boundary_candidates.size(), maximum_evaluations);
+  for (std::size_t index = 0U; index < evaluation_count; ++index) {
+    ++result.evaluated_candidates;
+    const BoundaryCandidate& candidate = boundary_candidates[index];
+    ObservationFrontierEvaluation evaluation = evaluateObservationFrontier(
+        occupancy, occupancy.cellCenter(candidate.cell), map_revision, config);
+    if (evaluation.accepted()) {
+      result.frontiers.push_back(evaluation.frontier);
+    }
+  }
   return result;
 }
 

@@ -813,6 +813,8 @@ reconstruct(const Key& terminal, const Point3& origin,
   result.selected_passage_traversals = std::move(reconstructed.traversals);
   result.achieved_progress_m =
       best_satisfies_topology ? distance3D(start, planning_goal) - best_remaining : 0.0;
+  result.frontier_endpoint_displacement_m =
+      result.points.empty() ? 0.0 : distance3D(start, result.points.back());
   result.minimum_clearance_m = records.at(best).minimum_clearance_m;
   CostMetrics metrics = records.at(best).metrics;
   if (reached && goal_connector_metrics.has_value()) {
@@ -827,7 +829,8 @@ reconstruct(const Key& terminal, const Point3& origin,
     result.reached_mission_goal = distance3D(planning_goal, mission_goal) <= 1.0e-6;
     result.status = Lattice3DStatus::kReachedPlanningGoal;
   } else if (best_satisfies_topology && result.points.size() >= 3U &&
-             result.achieved_progress_m >= 4.0) {
+             result.frontier_endpoint_displacement_m + 1.0e-9 >=
+                 config.frontier_minimum_endpoint_displacement_m) {
     result.status = Lattice3DStatus::kViableFrontier;
   } else {
     result.status =

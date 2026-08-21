@@ -245,6 +245,74 @@ bool deferStaticRouteReleaseDuringExtension(
          reason != GlobalGuideReleaseReason::kBlocked;
 }
 
+ObservationRouteReplacementDecision evaluateObservationRouteReplacement(
+    const ObservationRouteReplacementObservation& observation) noexcept {
+  ObservationRouteReplacementDecision decision;
+  decision.score_improvement = observation.candidate_score - observation.active_score;
+  if (!observation.candidate_frontier.has_value() ||
+      observation.candidate_frontier->id.value == 0U) {
+    return decision;
+  }
+  if (!observation.active_frontier.has_value() ||
+      observation.active_frontier->id.value == 0U) {
+    decision.status = ObservationRouteReplacementStatus::kNoActiveFrontier;
+    decision.accepted = true;
+    return decision;
+  }
+  if (observation.candidate_frontier->supporting_map_revision <
+      observation.active_frontier->supporting_map_revision) {
+    decision.status = ObservationRouteReplacementStatus::kStaleCandidate;
+    return decision;
+  }
+  if (!observation.active_frontier_still_valid) {
+    decision.status = ObservationRouteReplacementStatus::kActiveFrontierRetired;
+    decision.accepted = true;
+    return decision;
+  }
+  if (observation.candidate_frontier->id == observation.active_frontier->id) {
+    decision.status = ObservationRouteReplacementStatus::kSameFrontierRetained;
+    return decision;
+  }
+  if (observation.extension_requested &&
+      observation.candidate_frontier->supporting_map_revision >=
+          observation.active_frontier->supporting_map_revision) {
+    decision.status = ObservationRouteReplacementStatus::kFrontierAdvanced;
+    decision.accepted = true;
+    return decision;
+  }
+  if (decision.score_improvement + 1.0e-9 >=
+      std::max(0.0, observation.minimum_score_improvement)) {
+    decision.status = ObservationRouteReplacementStatus::kScoreImproved;
+    decision.accepted = true;
+    return decision;
+  }
+  decision.status = ObservationRouteReplacementStatus::kInsufficientProgress;
+  return decision;
+}
+
+std::string_view observationRouteReplacementStatusName(
+    const ObservationRouteReplacementStatus status) noexcept {
+  switch (status) {
+    case ObservationRouteReplacementStatus::kInvalidCandidate:
+      return "invalid_candidate";
+    case ObservationRouteReplacementStatus::kNoActiveFrontier:
+      return "no_active_frontier";
+    case ObservationRouteReplacementStatus::kActiveFrontierRetired:
+      return "active_frontier_retired";
+    case ObservationRouteReplacementStatus::kFrontierAdvanced:
+      return "frontier_advanced";
+    case ObservationRouteReplacementStatus::kScoreImproved:
+      return "score_improved";
+    case ObservationRouteReplacementStatus::kSameFrontierRetained:
+      return "same_frontier_retained";
+    case ObservationRouteReplacementStatus::kStaleCandidate:
+      return "stale_candidate";
+    case ObservationRouteReplacementStatus::kInsufficientProgress:
+      return "insufficient_progress";
+  }
+  return "unknown";
+}
+
 Point3 staticRoutePlanningGoal(const Point3& start, const Point3& mission_goal,
                                const double planning_distance_m) noexcept {
   const double full_distance = distance3D(start, mission_goal);
@@ -392,6 +460,8 @@ staticRouteReplacementPolicyName(const StaticRouteReplacementPolicy policy) noex
       return "require_endpoint_improvement";
     case StaticRouteReplacementPolicy::kAllowSafetyReplan:
       return "allow_safety_replan";
+    case StaticRouteReplacementPolicy::kAllowExploration:
+      return "allow_exploration";
   }
   return "unknown";
 }
@@ -417,6 +487,8 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
       return "protected_constrained_suffix";
     case StaticRouteCandidateStatus::kNoEndpointImprovement:
       return "no_endpoint_improvement";
+    case StaticRouteCandidateStatus::kNoExplorationProgress:
+      return "no_exploration_progress";
   }
   return "unknown";
 }

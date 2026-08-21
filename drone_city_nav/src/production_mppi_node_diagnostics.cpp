@@ -41,6 +41,13 @@ planningRiskStageName(const ProductionMppiPreparedEsdf& esdf) noexcept {
              : latticeRiskStageName(esdf.lattice_risk_stage);
 }
 
+[[nodiscard]] const char*
+planningRoutePurposeName(const ProductionMppiPreparedEsdf& esdf) noexcept {
+  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
+             ? lattice3DRoutePurposeName(esdf.lattice_3d_route_purpose)
+             : "mission_transit";
+}
+
 } // namespace
 
 void ProductionMppiNode::processDiagnostics(
@@ -309,6 +316,26 @@ void ProductionMppiNode::processDiagnostics(
       << productionGuideCandidateValidationStatusName(
              esdf.guide_candidate_validation_status)
       << " lattice_risk_stage=" << planningRiskStageName(esdf)
+      << " lattice_route_purpose=" << planningRoutePurposeName(esdf)
+      << " observation_frontier_id="
+      << (esdf.lattice_3d_observation_frontier
+              ? esdf.lattice_3d_observation_frontier->id.value
+              : 0U)
+      << " observation_frontier_revision="
+      << (esdf.lattice_3d_observation_frontier
+              ? esdf.lattice_3d_observation_frontier->supporting_map_revision
+              : 0U)
+      << " observation_frontier_supporting_rays="
+      << (esdf.lattice_3d_observation_frontier
+              ? esdf.lattice_3d_observation_frontier->supporting_rays
+              : 0U)
+      << " observation_frontier_information_gain_voxels="
+      << (esdf.lattice_3d_observation_frontier
+              ? esdf.lattice_3d_observation_frontier->information_gain_voxels
+              : 0U)
+      << " observation_route_replacement="
+      << observationRouteReplacementStatusName(
+             esdf.observation_route_replacement_status)
       << " lattice_3d_minimum_clearance_m=" << esdf.lattice_3d_minimum_clearance_m
       << " static_route_candidate="
       << staticRouteCandidateStatusName(esdf.static_route_candidate_status)
@@ -337,6 +364,17 @@ void ProductionMppiNode::processDiagnostics(
       << " lattice_frontier_endpoint_displacement_m="
       << esdf.lattice_frontier_endpoint_displacement_m
       << " lattice_frontier_selection_score=" << esdf.lattice_frontier_selection_score
+      << " lattice_frontier_candidates_considered="
+      << esdf.lattice_frontier_candidates_considered
+      << " lattice_frontier_sampled_free_voxels="
+      << esdf.lattice_frontier_sampled_free_voxels
+      << " lattice_frontier_boundary_candidates="
+      << esdf.lattice_frontier_boundary_candidates
+      << " lattice_frontier_evaluated_candidates="
+      << esdf.lattice_frontier_evaluated_candidates
+      << " lattice_frontier_searches=" << esdf.lattice_frontier_searches
+      << " lattice_frontier_evaluation_budget_exhausted="
+      << (esdf.lattice_frontier_evaluation_budget_exhausted ? "true" : "false")
       << " lattice_3d_successor_generated="
       << esdf.lattice_3d_successor_diagnostics.lattice_generated
       << " lattice_3d_successor_accepted="
@@ -757,6 +795,27 @@ void ProductionMppiNode::processDiagnostics(
         << productionGuideCandidateValidationStatusName(
                esdf.guide_candidate_validation_status)
         << '"' << ",\"lattice_risk_stage\":\"" << planningRiskStageName(esdf) << '"'
+        << ",\"lattice_route_purpose\":\"" << planningRoutePurposeName(esdf) << '"'
+        << ",\"observation_frontier_id\":"
+        << (esdf.lattice_3d_observation_frontier
+                ? esdf.lattice_3d_observation_frontier->id.value
+                : 0U)
+        << ",\"observation_frontier_revision\":"
+        << (esdf.lattice_3d_observation_frontier
+                ? esdf.lattice_3d_observation_frontier->supporting_map_revision
+                : 0U)
+        << ",\"observation_frontier_supporting_rays\":"
+        << (esdf.lattice_3d_observation_frontier
+                ? esdf.lattice_3d_observation_frontier->supporting_rays
+                : 0U)
+        << ",\"observation_frontier_information_gain_voxels\":"
+        << (esdf.lattice_3d_observation_frontier
+                ? esdf.lattice_3d_observation_frontier->information_gain_voxels
+                : 0U)
+        << ",\"observation_route_replacement\":\""
+        << observationRouteReplacementStatusName(
+               esdf.observation_route_replacement_status)
+        << '"'
         << ",\"lattice_3d_minimum_clearance_m\":" << esdf.lattice_3d_minimum_clearance_m
         << ",\"static_route_candidate\":\""
         << staticRouteCandidateStatusName(esdf.static_route_candidate_status) << '"'
@@ -789,6 +848,15 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.lattice_frontier_selection_score
         << ",\"lattice_frontier_candidates_considered\":"
         << esdf.lattice_frontier_candidates_considered
+        << ",\"lattice_frontier_sampled_free_voxels\":"
+        << esdf.lattice_frontier_sampled_free_voxels
+        << ",\"lattice_frontier_boundary_candidates\":"
+        << esdf.lattice_frontier_boundary_candidates
+        << ",\"lattice_frontier_evaluated_candidates\":"
+        << esdf.lattice_frontier_evaluated_candidates
+        << ",\"lattice_frontier_searches\":" << esdf.lattice_frontier_searches
+        << ",\"lattice_frontier_evaluation_budget_exhausted\":"
+        << (esdf.lattice_frontier_evaluation_budget_exhausted ? "true" : "false")
         << ",\"lattice_successors_generated\":"
         << esdf.lattice_successor_diagnostics.generated
         << ",\"lattice_successors_accepted\":"

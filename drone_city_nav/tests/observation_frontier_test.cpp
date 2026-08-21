@@ -94,5 +94,23 @@ TEST(ObservationFrontierTest, RejectsFullyObservedVolumeWithoutFrontier) {
   EXPECT_EQ(evaluation.evidence.status, ObservationFrontierStatus::kNoUnknownBoundary);
 }
 
+TEST(ObservationFrontierTest, BudgetedDiscoveryIsDeterministicAndReportsCoverage) {
+  const ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
+
+  const ObservationFrontierDiscovery first =
+      discoverObservationFrontiers(occupancy, 17U, makeConfig(), 1U, 2U);
+  const ObservationFrontierDiscovery second =
+      discoverObservationFrontiers(occupancy, 17U, makeConfig(), 1U, 2U);
+
+  EXPECT_GT(first.sampled_free_voxels, 0U);
+  EXPECT_GT(first.boundary_candidates, first.evaluated_candidates);
+  EXPECT_EQ(first.evaluated_candidates, 2U);
+  EXPECT_TRUE(first.evaluation_budget_exhausted);
+  ASSERT_EQ(first.frontiers.size(), second.frontiers.size());
+  for (std::size_t index = 0U; index < first.frontiers.size(); ++index) {
+    EXPECT_EQ(first.frontiers[index].id, second.frontiers[index].id);
+  }
+}
+
 } // namespace
 } // namespace drone_city_nav

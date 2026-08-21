@@ -1025,6 +1025,12 @@ if(BUILD_TESTING)
   target_link_libraries(observation_frontier_test drone_city_nav_core)
   enable_project_warnings(observation_frontier_test)
 
+  ament_add_gtest(observation_frontier_lattice_test
+                  tests/observation_frontier_lattice_test.cpp)
+  target_compile_features(observation_frontier_lattice_test PRIVATE cxx_std_20)
+  target_link_libraries(observation_frontier_lattice_test drone_city_nav_core)
+  enable_project_warnings(observation_frontier_lattice_test)
+
   ament_add_gtest(static_esdf_cache_test tests/static_esdf_cache_test.cpp)
   target_compile_features(static_esdf_cache_test PRIVATE cxx_std_20)
   target_link_libraries(static_esdf_cache_test drone_city_nav_core)
