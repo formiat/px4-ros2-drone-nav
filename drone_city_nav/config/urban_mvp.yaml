@@ -106,7 +106,7 @@ obstacle_memory_3d_node:
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
     use_static_map: true
-    grid_resolution_m: 0.5
+    grid_resolution_m: 0.25
     grid_width_m: 345.0
     grid_height_m: 525.0
     grid_depth_m: 40.0
@@ -218,6 +218,8 @@ production_mppi_node:
     no_static_3d_esdf_update_rate_hz: 1.0
     no_static_3d_esdf_half_extent_m: 30.0
     no_static_3d_esdf_recenter_margin_m: 18.0
+    topological_graph_3d_coarse_sample_stride_cells: 2
+    topological_graph_3d_refined_sample_stride_cells: 1
     no_static_world_model: occupancy_2d
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d

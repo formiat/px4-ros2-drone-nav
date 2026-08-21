@@ -58,6 +58,49 @@ TEST(ObstacleMemory3D, IntegratesHitAndMissEvidenceAlongFullRay) {
   EXPECT_GT(memory.revision(), 0U);
 }
 
+TEST(ObstacleMemory3D, TraversesEveryVoxelAlongAnObliqueRay) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const std::array beams{LidarBeam3D{
+      .direction_map = {1.0, 0.5, 0.25}, .range_m = 10.0, .hit = false, .valid = true}};
+
+  const ObstacleMemory3DStats stats =
+      memory.integrateScan({.origin_map = {1.5, 1.5, 1.5}, .beams = beams});
+
+  EXPECT_GT(stats.free_voxel_updates, 8U);
+  EXPECT_TRUE(memory.grid().isKnownFree({1, 1, 1}));
+  EXPECT_TRUE(memory.grid().isKnownFree({5, 3, 2}));
+  EXPECT_TRUE(memory.grid().isKnownFree({9, 5, 3}));
+}
+
+TEST(ObstacleMemory3D, ClipsRaysThatEnterTheGridFromOutside) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const std::array beams{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 11.5, .hit = false, .valid = true}};
+
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {-2.0, 3.5, 2.5}, .beams = beams}));
+
+  EXPECT_TRUE(memory.grid().isKnownFree({0, 3, 2}));
+  EXPECT_TRUE(memory.grid().isKnownFree({9, 3, 2}));
+  EXPECT_EQ(memory.grid().state({10, 3, 2}), ObservedVoxelState::kUnknown);
+}
+
+TEST(ObstacleMemory3D, DoesNotCreateAnOccupiedVoxelAtTruncatedMaximumRange) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 5.0, .minimum_range_m = 0.1}};
+  const std::array beams{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = beams}));
+
+  EXPECT_TRUE(memory.grid().isKnownFree({6, 1, 2}));
+  EXPECT_FALSE(memory.grid().isOccupied({6, 1, 2}));
+  EXPECT_EQ(memory.grid().occupiedVoxelCount(), 0U);
+}
+
 TEST(ObstacleMemory3D, ConflictingEvidenceCanClearStaleOccupiedVoxel) {
   ObstacleMemory3D memory{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
                                                           .minimum_range_m = 0.1,

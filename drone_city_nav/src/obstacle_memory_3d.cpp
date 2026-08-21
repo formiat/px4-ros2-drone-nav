@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -14,6 +16,151 @@ namespace {
 
 [[nodiscard]] double vectorNorm(const Vec3& vector) noexcept {
   return std::sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
+}
+
+struct ClippedGridSegment3D {
+  Point3 first{};
+  Point3 second{};
+};
+
+[[nodiscard]] std::optional<ClippedGridSegment3D>
+clipSegmentToGrid(const GridBounds3D& bounds, const Point3& first,
+                  const Point3& second) noexcept {
+  const Vec3 delta{second.x - first.x, second.y - first.y, second.z - first.z};
+  double entry = 0.0;
+  double exit = 1.0;
+  const auto clip_axis = [&entry, &exit](const double origin, const double direction,
+                                         const double minimum,
+                                         const double maximum) noexcept {
+    constexpr double kDirectionEpsilon{1.0e-12};
+    if (std::abs(direction) <= kDirectionEpsilon) {
+      return origin >= minimum && origin < maximum;
+    }
+    double near = (minimum - origin) / direction;
+    double far = (maximum - origin) / direction;
+    if (near > far) {
+      std::swap(near, far);
+    }
+    entry = std::max(entry, near);
+    exit = std::min(exit, far);
+    return entry <= exit;
+  };
+  const double maximum_x = bounds.origin_x + bounds.resolution_m * bounds.width_cells;
+  const double maximum_y = bounds.origin_y + bounds.resolution_m * bounds.height_cells;
+  const double maximum_z = bounds.origin_z + bounds.resolution_m * bounds.depth_cells;
+  if (!clip_axis(first.x, delta.x, bounds.origin_x, maximum_x) ||
+      !clip_axis(first.y, delta.y, bounds.origin_y, maximum_y) ||
+      !clip_axis(first.z, delta.z, bounds.origin_z, maximum_z)) {
+    return std::nullopt;
+  }
+
+  const auto clamp_inside = [](const double value, const double minimum,
+                               const double maximum) noexcept {
+    return std::clamp(value, minimum, std::nextafter(maximum, minimum));
+  };
+  const auto point_at = [&first, &delta](const double ratio) noexcept {
+    return Point3{first.x + ratio * delta.x, first.y + ratio * delta.y,
+                  first.z + ratio * delta.z};
+  };
+  Point3 clipped_first = point_at(entry);
+  Point3 clipped_second = point_at(exit);
+  clipped_first.x = clamp_inside(clipped_first.x, bounds.origin_x, maximum_x);
+  clipped_first.y = clamp_inside(clipped_first.y, bounds.origin_y, maximum_y);
+  clipped_first.z = clamp_inside(clipped_first.z, bounds.origin_z, maximum_z);
+  clipped_second.x = clamp_inside(clipped_second.x, bounds.origin_x, maximum_x);
+  clipped_second.y = clamp_inside(clipped_second.y, bounds.origin_y, maximum_y);
+  clipped_second.z = clamp_inside(clipped_second.z, bounds.origin_z, maximum_z);
+  return ClippedGridSegment3D{.first = clipped_first, .second = clipped_second};
+}
+
+template<typename Visitor>
+void visitIntersectedGridCells(const ObservedOccupancyGrid3D& grid, const Point3& first,
+                               const Point3& second, Visitor visitor) {
+  const std::optional<ClippedGridSegment3D> clipped =
+      clipSegmentToGrid(grid.bounds(), first, second);
+  if (!clipped.has_value()) {
+    return;
+  }
+  const std::optional<GridIndex3D> first_cell = grid.worldToCell(clipped->first);
+  const std::optional<GridIndex3D> last_cell = grid.worldToCell(clipped->second);
+  if (!first_cell.has_value() || !last_cell.has_value()) {
+    return;
+  }
+
+  GridIndex3D current = *first_cell;
+  visitor(current);
+  if (current == *last_cell) {
+    return;
+  }
+
+  const GridBounds3D& bounds = grid.bounds();
+  const Vec3 delta{clipped->second.x - clipped->first.x,
+                   clipped->second.y - clipped->first.y,
+                   clipped->second.z - clipped->first.z};
+  const auto step_for = [](const double value) noexcept {
+    if (value > 0.0) {
+      return 1;
+    }
+    if (value < 0.0) {
+      return -1;
+    }
+    return 0;
+  };
+  const int step_x = step_for(delta.x);
+  const int step_y = step_for(delta.y);
+  const int step_z = step_for(delta.z);
+  const double infinity = std::numeric_limits<double>::infinity();
+  const auto parameter_delta = [resolution = bounds.resolution_m,
+                                infinity](const double value) noexcept {
+    return value == 0.0 ? infinity : resolution / std::abs(value);
+  };
+  const auto next_boundary_parameter = [resolution = bounds.resolution_m, infinity](
+                                           const double coordinate, const double origin,
+                                           const int cell, const int step,
+                                           const double direction) noexcept {
+    if (step == 0) {
+      return infinity;
+    }
+    const double boundary =
+        origin + static_cast<double>(cell + (step > 0 ? 1 : 0)) * resolution;
+    return std::max(0.0, (boundary - coordinate) / direction);
+  };
+  double next_x = next_boundary_parameter(clipped->first.x, bounds.origin_x, current.x,
+                                          step_x, delta.x);
+  double next_y = next_boundary_parameter(clipped->first.y, bounds.origin_y, current.y,
+                                          step_y, delta.y);
+  double next_z = next_boundary_parameter(clipped->first.z, bounds.origin_z, current.z,
+                                          step_z, delta.z);
+  const double delta_x = parameter_delta(delta.x);
+  const double delta_y = parameter_delta(delta.y);
+  const double delta_z = parameter_delta(delta.z);
+  const std::size_t maximum_cells = static_cast<std::size_t>(bounds.width_cells) +
+                                    static_cast<std::size_t>(bounds.height_cells) +
+                                    static_cast<std::size_t>(bounds.depth_cells) + 3U;
+  constexpr double kTieTolerance{1.0e-12};
+  for (std::size_t visited = 1U; visited < maximum_cells && current != *last_cell;
+       ++visited) {
+    const double next = std::min({next_x, next_y, next_z});
+    if (!std::isfinite(next)) {
+      return;
+    }
+    if (next_x <= next + kTieTolerance) {
+      current.x += step_x;
+      next_x += delta_x;
+    }
+    if (next_y <= next + kTieTolerance) {
+      current.y += step_y;
+      next_y += delta_y;
+    }
+    if (next_z <= next + kTieTolerance) {
+      current.z += step_z;
+      next_z += delta_z;
+    }
+    if (!grid.contains(current)) {
+      return;
+    }
+    visitor(current);
+  }
 }
 
 [[nodiscard]] bool validVolume(const DynamicAgentLidarVolume& volume) noexcept {
@@ -229,34 +376,18 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   const Point3 endpoint{origin.x + used_range * direction.x,
                         origin.y + used_range * direction.y,
                         origin.z + used_range * direction.z};
+  const bool hit_within_range = beam.hit && beam.range_m <= config_.maximum_range_m;
   const std::optional<GridIndex3D> hit_cell =
-      beam.hit ? grid_.worldToCell(endpoint) : std::nullopt;
-  if (beam.hit && !hit_cell.has_value()) {
+      hit_within_range ? grid_.worldToCell(endpoint) : std::nullopt;
+  if (hit_within_range && !hit_cell.has_value()) {
     ++stats.outside_endpoints;
   }
-
-  const double sample_step_m = 0.5 * grid_.bounds().resolution_m;
-  const std::size_t sample_count =
-      static_cast<std::size_t>(std::max(1.0, std::ceil(used_range / sample_step_m)));
-  std::optional<GridIndex3D> previous;
-  for (std::size_t sample = 0U; sample <= sample_count; ++sample) {
-    const double distance_m =
-        std::min(used_range, static_cast<double>(sample) * used_range /
-                                 static_cast<double>(sample_count));
-    const Point3 point{origin.x + distance_m * direction.x,
-                       origin.y + distance_m * direction.y,
-                       origin.z + distance_m * direction.z};
-    const std::optional<GridIndex3D> cell = grid_.worldToCell(point);
-    if (!cell.has_value() || (previous.has_value() && *previous == *cell)) {
-      continue;
+  visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
+    if (!hit_cell.has_value() || cell != *hit_cell) {
+      static_cast<void>(applyEvidence(cell, -config_.miss_weight, stats));
+      ++stats.free_voxel_updates;
     }
-    previous = cell;
-    if (hit_cell.has_value() && *cell == *hit_cell) {
-      continue;
-    }
-    static_cast<void>(applyEvidence(*cell, -config_.miss_weight, stats));
-    ++stats.free_voxel_updates;
-  }
+  });
   if (hit_cell.has_value()) {
     static_cast<void>(applyEvidence(*hit_cell, config_.hit_weight, stats));
     ++stats.occupied_voxel_updates;

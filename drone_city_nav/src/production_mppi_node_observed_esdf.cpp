@@ -38,12 +38,17 @@ void ProductionMppiNode::processObservedEsdf3D(
       get_logger(),
       "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64
       " full_reset=%s dirty_chunks=%zu rebuilt_tiles=%zu refined_tiles=%zu "
-      "sampled_cells=%zu retained_nodes=%zu created_nodes=%zu retired_nodes=%zu "
-      "nodes=%zu edges=%zu update_ms=%.2f",
+      "base_resolution_m=%.3f coarse_resolution_m=%.3f "
+      "refined_resolution_m=%.3f sampled_cells=%zu retained_nodes=%zu "
+      "created_nodes=%zu retired_nodes=%zu nodes=%zu edges=%zu update_ms=%.2f",
       topology_update.graph.revision,
       topology_update.graph.full_reset ? "true" : "false",
       topology_update.graph.requested_dirty_chunks, topology_update.graph.rebuilt_tiles,
-      topology_update.graph.adaptively_refined_tiles,
+      topology_update.graph.adaptively_refined_tiles, occupancy->bounds().resolution_m,
+      occupancy->bounds().resolution_m *
+          topological_graph_3d_config_.coarse_sample_stride_cells,
+      occupancy->bounds().resolution_m *
+          topological_graph_3d_config_.refined_sample_stride_cells,
       topology_update.graph.sampled_navigable_cells,
       topology_update.graph.retained_node_ids, topology_update.graph.created_nodes,
       topology_update.graph.retired_nodes, topology_update.graph.node_count,

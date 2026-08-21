@@ -79,6 +79,23 @@ class ManhattanLowAltitudeScenarioContractTest(unittest.TestCase):
         self.assertLess(activation_altitude_m, 5.0)
         self.assertGreaterEqual(activation_altitude_m, 1.0)
 
+    def test_3d_mapping_refines_topology_near_geometry_boundaries(self) -> None:
+        params = yaml.safe_load(PARAMS_PATH.read_text(encoding="utf-8"))
+        mapping = params["obstacle_memory_3d_node"]["ros__parameters"]
+        planning = params["production_mppi_node"]["ros__parameters"]
+        base_resolution_m = float(mapping["grid_resolution_m"])
+        coarse_stride = int(
+            planning["topological_graph_3d_coarse_sample_stride_cells"]
+        )
+        refined_stride = int(
+            planning["topological_graph_3d_refined_sample_stride_cells"]
+        )
+
+        self.assertEqual(base_resolution_m, 0.25)
+        self.assertGreater(coarse_stride, refined_stride)
+        self.assertEqual(base_resolution_m * coarse_stride, 0.5)
+        self.assertEqual(base_resolution_m * refined_stride, 0.25)
+
     def test_cooperative_profile_stays_at_opening_altitude(self) -> None:
         scenario = MULTI_VEHICLE_LOADER.load_multi_vehicle_scenario(
             COOPERATIVE_PATH, lidar_profile="3d"

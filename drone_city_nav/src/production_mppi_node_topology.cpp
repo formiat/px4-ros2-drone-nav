@@ -131,9 +131,15 @@ void ProductionMppiNode::initializeStaticTopology3D() {
   RCLCPP_INFO(get_logger(),
               "INCREMENTAL_TOPOLOGY3D_STATIC revision=%" PRIu64
               " nodes=%zu edges=%zu rebuilt_tiles=%zu refined_tiles=%zu "
-              "sampled_cells=%zu build_ms=%.2f",
+              "base_resolution_m=%.3f coarse_resolution_m=%.3f "
+              "refined_resolution_m=%.3f sampled_cells=%zu build_ms=%.2f",
               update.graph.revision, update.graph.node_count, update.graph.edge_count,
               update.graph.rebuilt_tiles, update.graph.adaptively_refined_tiles,
+              static_occupancy_3d_->bounds().resolution_m,
+              static_occupancy_3d_->bounds().resolution_m *
+                  topological_graph_3d_config_.coarse_sample_stride_cells,
+              static_occupancy_3d_->bounds().resolution_m *
+                  topological_graph_3d_config_.refined_sample_stride_cells,
               update.graph.sampled_navigable_cells, build_ms);
 }
 

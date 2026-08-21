@@ -65,7 +65,7 @@ enum class PendingPointCloudDisposition : std::uint8_t {
 };
 
 [[nodiscard]] GridBounds3D declareGridBounds3D(rclcpp::Node& node) {
-  const double resolution = node.declare_parameter<double>("grid_resolution_m", 0.5);
+  const double resolution = node.declare_parameter<double>("grid_resolution_m", 0.25);
   const double width_m = node.declare_parameter<double>("grid_width_m", 120.0);
   const double height_m = node.declare_parameter<double>("grid_height_m", 80.0);
   const double depth_m = node.declare_parameter<double>("grid_depth_m", 40.0);

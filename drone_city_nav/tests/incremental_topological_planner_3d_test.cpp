@@ -1,8 +1,10 @@
 #include "drone_city_nav/incremental_topological_planner_3d.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <utility>
 
@@ -54,6 +56,38 @@ void fillOccupied(ObservedOccupancyGrid3D& occupancy) {
   const GridBounds3D& bounds = occupancy.bounds();
   fillStateBox(occupancy, 0, bounds.width_cells - 1, 0, bounds.height_cells - 1, 0,
                bounds.depth_cells - 1, ObservedVoxelState::kOccupied);
+}
+
+void carveRotatedVariableWidthTunnel(ObservedOccupancyGrid3D& occupancy,
+                                     const Point3& first, const Point3& second,
+                                     const double minimum_half_width_m,
+                                     const double maximum_half_width_m,
+                                     const double vertical_half_extent_m) {
+  const Vec3 axis{second.x - first.x, second.y - first.y, 0.0};
+  const double squared_length = axis.x * axis.x + axis.y * axis.y;
+  ASSERT_GT(squared_length, 0.0);
+  const GridBounds3D& bounds = occupancy.bounds();
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        const GridIndex3D cell{x, y, z};
+        const Point3 center = occupancy.cellCenter(cell);
+        const double projection =
+            std::clamp(((center.x - first.x) * axis.x + (center.y - first.y) * axis.y) /
+                           squared_length,
+                       0.0, 1.0);
+        const Point3 closest{first.x + projection * axis.x,
+                             first.y + projection * axis.y, first.z};
+        const double end_distance = std::abs(2.0 * projection - 1.0);
+        const double half_width =
+            std::lerp(minimum_half_width_m, maximum_half_width_m, end_distance);
+        if (std::hypot(center.x - closest.x, center.y - closest.y) <= half_width &&
+            std::abs(center.z - closest.z) <= vertical_half_extent_m) {
+          ASSERT_TRUE(occupancy.setState(cell, ObservedVoxelState::kFree));
+        }
+      }
+    }
+  }
 }
 
 [[nodiscard]] IncrementalTopologyGraph3DSnapshot
@@ -207,6 +241,45 @@ TEST(IncrementalTopologicalPlanner3DTest, RoutesThroughVerticalConnector) {
     const IncrementalTopologyNode3D* node = graph.findNode(node_id);
     return node != nullptr && node->traits.vertical_connector;
   }));
+}
+
+TEST(IncrementalTopologicalPlanner3DTest,
+     RoutesRawSafelyThroughRotatedVariableWidthTunnel) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.25, 88, 88, 28}};
+  fillOccupied(occupancy);
+  const Point3 tunnel_first{2.5, 3.5, 3.5};
+  const Point3 tunnel_second{19.5, 18.5, 3.5};
+  carveRotatedVariableWidthTunnel(occupancy, tunnel_first, tunnel_second, 1.35, 1.8,
+                                  1.5);
+  IncrementalTopologyGraph3DConfig config = graphConfig();
+  config.tile_size_cells = 8;
+  config.coarse_sample_stride_cells = 2;
+  config.refined_sample_stride_cells = 1;
+  config.footprint = SweptFootprintConfig{};
+  config.observability.footprint = config.footprint;
+  IncrementalTopologyGraph3D topology{config};
+  const IncrementalTopologyGraph3DUpdate update =
+      topology.update(occupancy, 1U, {}, true);
+  const IncrementalTopologyGraph3DSnapshot graph = topology.snapshot();
+  IncrementalTopologicalPlanner3D planner;
+  TopologicalExplorationMemory3D memory;
+  const Point3 start{4.2, 5.0, 3.5};
+  const Point3 goal{17.8, 17.0, 3.5};
+
+  const IncrementalTopologicalPlan3D plan = planner.plan(graph, start, goal, memory);
+
+  ASSERT_EQ(plan.status, IncrementalTopologicalPlanStatus3D::kMissionRoute);
+  ASSERT_TRUE(plan.reaches_mission_goal);
+  ASSERT_GE(plan.guidance_points.size(), 2U);
+  EXPECT_GT(update.adaptively_refined_tiles, 0U);
+  for (std::size_t index = 1U; index < plan.guidance_points.size(); ++index) {
+    const SweptFootprintResult validation = validateRawSweptFootprint(
+        occupancy, plan.guidance_points[index - 1U], FootprintBodyAxis{},
+        plan.guidance_points[index], FootprintBodyAxis{}, config.footprint);
+    EXPECT_TRUE(validation.accepted())
+        << "segment=" << index - 1U
+        << " status=" << static_cast<int>(validation.status);
+  }
 }
 
 } // namespace
