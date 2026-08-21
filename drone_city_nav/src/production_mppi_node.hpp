@@ -176,6 +176,8 @@ struct ProductionMppiRawWorld3D {
   std::int64_t ready_stamp_ns{0};
   double reconstruction_ms{0.0};
   std::shared_ptr<const ObservedOccupancyGrid3D> occupancy;
+  std::vector<OccupancyChunkIndex3D> dirty_chunks;
+  bool full_reset{false};
 };
 
 struct ProductionGuideCandidateValidation {
@@ -505,7 +507,7 @@ private:
   void onRawObstacleDelta3D(msg::RawObstacleDelta3D::ConstSharedPtr message);
   void onLatestLidarObstacleScan(const msg::LatestLidarObstacleScan& message);
   void queueRawWorld(const RawObstacleGridState& state, double reconstruction_ms);
-  void queueRawWorld3D(const RawObstacleGridState3D& state, double reconstruction_ms);
+  void queueRawWorld3D(const RawObstacleGridUpdate3D& update, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void onNavigationObjective(const msg::NavigationObjective& message);

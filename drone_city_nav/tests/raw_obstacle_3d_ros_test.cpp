@@ -21,6 +21,8 @@ TEST(RawObstacle3DRos, SnapshotAndCumulativeDeltaRoundTripTriStateChunks) {
   RawObstacleDeltaAccumulator3D accumulator;
   const RawObstacleGridUpdate3D initial = accumulator.apply(snapshot);
   ASSERT_TRUE(initial.accepted());
+  EXPECT_TRUE(initial.full_reset);
+  EXPECT_TRUE(initial.dirty_chunks.empty());
   ASSERT_NE(initial.state.occupancy, nullptr);
   EXPECT_TRUE(initial.state.occupancy->isKnownFree({2, 3, 4}));
   EXPECT_TRUE(initial.state.occupancy->isOccupied({20, 3, 4}));
@@ -35,6 +37,10 @@ TEST(RawObstacle3DRos, SnapshotAndCumulativeDeltaRoundTripTriStateChunks) {
   const RawObstacleGridUpdate3D updated = accumulator.apply(delta);
 
   ASSERT_TRUE(updated.accepted());
+  EXPECT_FALSE(updated.full_reset);
+  ASSERT_EQ(updated.dirty_chunks.size(), 2U);
+  EXPECT_EQ(updated.dirty_chunks[0], ObservedOccupancyGrid3D::chunkIndex({20, 3, 4}));
+  EXPECT_EQ(updated.dirty_chunks[1], ObservedOccupancyGrid3D::chunkIndex({35, 3, 4}));
   ASSERT_NE(updated.state.occupancy, nullptr);
   EXPECT_TRUE(updated.state.occupancy->isKnownFree({20, 3, 4}));
   EXPECT_TRUE(updated.state.occupancy->isOccupied({35, 3, 4}));

@@ -112,6 +112,20 @@ applyChunks(ObservedOccupancyGrid3D& grid,
          first.depth_cells == second.depth_cells;
 }
 
+[[nodiscard]] std::vector<OccupancyChunkIndex3D>
+changedChunkIndices(const std::span<const msg::ObservedObstacleChunk3D> chunks) {
+  std::vector<OccupancyChunkIndex3D> indices;
+  indices.reserve(chunks.size());
+  for (const msg::ObservedObstacleChunk3D& chunk : chunks) {
+    indices.push_back(OccupancyChunkIndex3D{chunk.x, chunk.y, chunk.z});
+  }
+  std::ranges::sort(indices, [](const OccupancyChunkIndex3D first,
+                                const OccupancyChunkIndex3D second) {
+    return std::tie(first.z, first.y, first.x) < std::tie(second.z, second.y, second.x);
+  });
+  return indices;
+}
+
 } // namespace
 
 msg::RawObstacleSnapshot3D makeRawObstacleSnapshot3D(
@@ -157,16 +171,22 @@ RawObstacleDeltaAccumulator3D::apply(const msg::RawObstacleSnapshot3D& snapshot)
   const std::optional<GridBounds3D> bounds = boundsFromMessage(snapshot);
   if (!bounds.has_value() || snapshot.producer_instance_id == 0U ||
       snapshot.obstacle_snapshot_revision == 0U) {
-    return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
+    return {.state = state_,
+            .dirty_chunks = {},
+            .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
   }
   if (state_.occupancy &&
       snapshot.producer_instance_id == state_.producer_instance_id &&
       snapshot.obstacle_snapshot_revision <= state_.obstacle_snapshot_revision) {
-    return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kStale};
+    return {.state = state_,
+            .dirty_chunks = {},
+            .status = RawObstacleGridUpdateStatus3D::kStale};
   }
   ObservedOccupancyGrid3D grid{*bounds};
   if (!applyChunks(grid, snapshot.chunks)) {
-    return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
+    return {.state = state_,
+            .dirty_chunks = {},
+            .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
   }
   state_ = RawObstacleGridState3D{
       .producer_instance_id = snapshot.producer_instance_id,
@@ -174,7 +194,12 @@ RawObstacleDeltaAccumulator3D::apply(const msg::RawObstacleSnapshot3D& snapshot)
       .obstacle_snapshot_revision = snapshot.obstacle_snapshot_revision,
       .occupancy = std::make_shared<const ObservedOccupancyGrid3D>(std::move(grid)),
   };
-  return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kAccepted};
+  return {
+      .state = state_,
+      .dirty_chunks = {},
+      .status = RawObstacleGridUpdateStatus3D::kAccepted,
+      .full_reset = true,
+  };
 }
 
 RawObstacleGridUpdate3D
@@ -183,22 +208,34 @@ RawObstacleDeltaAccumulator3D::apply(const msg::RawObstacleDelta3D& delta) {
   if (!state_.occupancy || !bounds.has_value() ||
       delta.producer_instance_id != state_.producer_instance_id ||
       delta.base_snapshot_revision != state_.base_snapshot_revision) {
-    return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kBaseUnavailable};
+    return {.state = state_,
+            .dirty_chunks = {},
+            .status = RawObstacleGridUpdateStatus3D::kBaseUnavailable};
   }
   if (delta.obstacle_snapshot_revision <= state_.obstacle_snapshot_revision) {
-    return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kStale};
+    return {.state = state_,
+            .dirty_chunks = {},
+            .status = RawObstacleGridUpdateStatus3D::kStale};
   }
   if (delta.chunks.empty() || !sameBounds(*bounds, state_.occupancy->bounds())) {
-    return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
+    return {.state = state_,
+            .dirty_chunks = {},
+            .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
   }
   ObservedOccupancyGrid3D updated = *state_.occupancy;
   if (!applyChunks(updated, delta.chunks)) {
-    return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
+    return {.state = state_,
+            .dirty_chunks = {},
+            .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
   }
   state_.obstacle_snapshot_revision = delta.obstacle_snapshot_revision;
   state_.occupancy =
       std::make_shared<const ObservedOccupancyGrid3D>(std::move(updated));
-  return {.state = state_, .status = RawObstacleGridUpdateStatus3D::kAccepted};
+  return {
+      .state = state_,
+      .dirty_chunks = changedChunkIndices(delta.chunks),
+      .status = RawObstacleGridUpdateStatus3D::kAccepted,
+  };
 }
 
 const RawObstacleGridState3D& RawObstacleDeltaAccumulator3D::state() const noexcept {

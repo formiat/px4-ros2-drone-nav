@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -29,7 +30,9 @@ enum class RawObstacleGridUpdateStatus3D : std::uint8_t {
 
 struct RawObstacleGridUpdate3D {
   RawObstacleGridState3D state{};
+  std::vector<OccupancyChunkIndex3D> dirty_chunks;
   RawObstacleGridUpdateStatus3D status{RawObstacleGridUpdateStatus3D::kInvalidMessage};
+  bool full_reset{false};
 
   [[nodiscard]] bool accepted() const noexcept {
     return status == RawObstacleGridUpdateStatus3D::kAccepted;
