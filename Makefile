@@ -42,6 +42,10 @@ sim-environment-demo:
 		(printf '%s\n' 'Set ENVIRONMENT_DEMO_ID, for example urban_circuit_practice_01.' >&2; exit 2)
 	./scripts/run_environment_demo.sh "$${ENVIRONMENT_DEMO_ID}"
 
+.PHONY: validate-incremental-topology-headless
+validate-incremental-topology-headless:
+	./scripts/run_incremental_topology_validation.sh
+
 .PHONY: sim-gui
 sim-gui: build
 	@if [[ -z "$${MISSION_GOALS_XYZ_M+x}" && \
@@ -114,6 +118,8 @@ sim-cooperative-traffic-urban-headless: build
 		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=next_living \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE=true \
+		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
+		OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="$${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-4,20,9,16,32,18}" \
 		MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS="$${MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS:-10000}" \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
@@ -151,6 +157,8 @@ sim-urban-point-to-point-headless: build
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE=true \
+		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
+		OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="$${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-4,20,9,16,32,18}" \
 		MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS="$${MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS:-10000}" \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \

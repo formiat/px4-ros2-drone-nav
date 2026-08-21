@@ -217,6 +217,20 @@ OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M='42,147,1.5,66,177,8.5' \
 ./scripts/sim_headless.sh
 ```
 
+Run the complete sequential incremental-topology acceptance matrix with one
+container and no parallel simulations:
+
+```bash
+./scripts/validate_incremental_topology_headless.sh
+```
+
+The matrix runs the Manhattan low-altitude smoke, the full four-waypoint
+Manhattan mission, Manhattan cooperative traffic, Urban point-to-point, and
+Urban cooperative traffic. Every stage uses no static map and the 3D lidar;
+the imported-world stages additionally prove that one physical vehicle crosses
+the evaluation-only natural-tunnel volume. Those bounds are consumed only by
+the headless evaluator and are never supplied to mapping or planning.
+
 When `POINT_TO_POINT_SCENARIO_PATH` is set, the scenario owns its waypoint
 sequence unless `MISSION_GOALS_XYZ_M` is also supplied explicitly.
 

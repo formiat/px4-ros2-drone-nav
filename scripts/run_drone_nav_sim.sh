@@ -278,6 +278,7 @@ gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-${multi_vehicle_spectator_init
 gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
 gazebo_world_unpause_wait_s="${GZ_WORLD_UNPAUSE_WAIT_S:-60}"
+gazebo_world_ready_wait_s="${GZ_WORLD_READY_WAIT_S:-180}"
 clean_stale_gazebo_processes_enabled="$(
   normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_PROCESSES:-true}"
 )"
@@ -747,6 +748,12 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
     wait "${gz_server_pid}"
   fi
 ) >> "${gz_log_file}" 2>&1 &
+
+if ! wait_for_gazebo_world "${repo_root}" "${world_name}" \
+  "${gazebo_world_ready_wait_s}"; then
+  print_log_tail "Gazebo" "${gz_log_file}"
+  exit 1
+fi
 
 echo "MicroXRCEAgent log: ${uxrce_log_file}"
 run_with_cpu_affinity "${control_cpu_list}" \

@@ -35,6 +35,50 @@ class FakeRunner:
 
 
 class GazeboGuiControlTest(unittest.TestCase):
+    def test_wait_for_world_requires_a_scene_service_provider(self) -> None:
+        runner = FakeRunner(
+            [
+                gui.CommandResult(
+                    0,
+                    "No service providers on service "
+                    "[/world/generated_city/scene/info]\n",
+                    "",
+                ),
+                gui.CommandResult(
+                    0,
+                    "Service providers [Address, Request Type, Response Type]:\n"
+                    "  tcp://127.0.0.1:1, gz.msgs.Empty, gz.msgs.Scene\n",
+                    "",
+                ),
+            ]
+        )
+
+        with mock.patch.object(gui.time, "sleep"):
+            exit_code = gui.wait_for_world(
+                world="generated_city",
+                wait_s=2,
+                runner=runner,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(runner.calls), 2)
+        self.assertEqual(runner.calls[0][:2], ["service", "-i"])
+        self.assertIn("/world/generated_city/scene/info", runner.calls[0])
+
+    def test_wait_for_world_fails_when_the_deadline_expires(self) -> None:
+        runner = FakeRunner(
+            [gui.CommandResult(1, "", "not ready") for _ in range(2)]
+        )
+
+        with mock.patch.object(gui.time, "sleep"):
+            exit_code = gui.wait_for_world(
+                world="generated_city",
+                wait_s=2,
+                runner=runner,
+            )
+
+        self.assertEqual(exit_code, 1)
+
     def test_world_running_requires_three_confirmations(self) -> None:
         runner = FakeRunner()
 

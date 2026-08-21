@@ -154,6 +154,29 @@ def _lookup_scene_entity(
     return EntityLookup(int(match.group(1)), True, output)
 
 
+def _world_scene_service_available(
+    runner: CommandRunner,
+    *,
+    world: str,
+) -> tuple[bool, str]:
+    result = runner(
+        [
+            "service",
+            "-i",
+            "--service",
+            f"/world/{world}/scene/info",
+        ],
+        5.0,
+    )
+    output = result.combined_output
+    available = (
+        result.returncode == 0
+        and "Service providers" in output
+        and "No service providers" not in output
+    )
+    return available, output
+
+
 def _publish_track(
     runner: CommandRunner,
     *,
@@ -360,6 +383,33 @@ def wait_for_scene_entity(
     return 1
 
 
+def wait_for_world(
+    *,
+    world: str,
+    wait_s: int,
+    runner: CommandRunner = default_runner,
+) -> int:
+    last_output = ""
+    for attempt in range(1, wait_s + 1):
+        available, last_output = _world_scene_service_available(
+            runner,
+            world=world,
+        )
+        if available:
+            print(f"Gazebo world service ready: world={world} attempt={attempt}")
+            return 0
+        if attempt == 1 or attempt % 10 == 0:
+            print(f"Waiting for Gazebo world '{world}' ({attempt}/{wait_s}).")
+        time.sleep(1)
+
+    print(
+        f"ERROR: Gazebo world '{world}' was not ready after {wait_s}s. "
+        f"Last response: {_compact_log_excerpt(last_output)}",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def configure_world_running(
     *,
     world: str,
@@ -415,6 +465,10 @@ def build_parser() -> argparse.ArgumentParser:
     wait_entity.add_argument("--target", required=True)
     wait_entity.add_argument("--wait-s", default="60")
 
+    wait_world = subparsers.add_parser("wait-for-world")
+    wait_world.add_argument("--world", required=True)
+    wait_world.add_argument("--wait-s", default="180")
+
     world = subparsers.add_parser("world-running")
     world.add_argument("--world", required=True)
     world.add_argument("--wait-s", default="60")
@@ -435,6 +489,11 @@ def main(argv: list[str] | None = None) -> int:
             world=args.world,
             target=args.target,
             wait_s=parse_wait_s(args.wait_s, default=60, label="Gazebo entity"),
+        )
+    if args.command == "wait-for-world":
+        return wait_for_world(
+            world=args.world,
+            wait_s=parse_wait_s(args.wait_s, default=180, label="Gazebo world"),
         )
     if args.command == "world-running":
         return configure_world_running(

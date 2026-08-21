@@ -74,15 +74,22 @@ def validate_observed_3d_route_volume(
     else:
         print("OK: no online free-space partition is used")
 
+    logger_pattern = re.compile(r"\[([^\]]*production_mppi_node)\]:")
     position_pattern = re.compile(
         rf"PRODUCTION_MPPI_TICK .*?state_position=\("
         rf"({FLOAT_PATTERN}),({FLOAT_PATTERN}),({FLOAT_PATTERN})\)"
     )
-    positions = [
-        (float(x), float(y), float(z))
-        for x, y, z in position_pattern.findall(ros_log)
-    ]
-    if len(positions) < 3:
+    positions_by_logger: dict[str, list[tuple[float, float, float]]] = {}
+    for line in ros_log.splitlines():
+        position_match = position_pattern.search(line)
+        if position_match is None:
+            continue
+        logger_match = logger_pattern.search(line)
+        logger = logger_match.group(1) if logger_match is not None else "unscoped"
+        positions_by_logger.setdefault(logger, []).append(
+            tuple(float(value) for value in position_match.groups())
+        )
+    if not any(len(positions) >= 3 for positions in positions_by_logger.values()):
         errors.append("FAIL: enough vehicle state samples exist for route validation")
         return
 
@@ -97,36 +104,43 @@ def validate_observed_3d_route_volume(
             for axis in range(3)
         )
 
-    inside_flags = [inside(position) for position in positions]
-    block_start = 0
-    while block_start < len(inside_flags):
-        if not inside_flags[block_start]:
-            block_start += 1
-            continue
-        block_end = block_start
-        while block_end + 1 < len(inside_flags) and inside_flags[block_end + 1]:
-            block_end += 1
-        sample_count = block_end - block_start + 1
-        if block_start > 0 and block_end + 1 < len(positions) and sample_count >= 2:
-            before = positions[block_start - 1][dominant_axis]
-            after = positions[block_end + 1][dominant_axis]
-            low_to_high = (
-                before < minimum[dominant_axis]
-                and after > maximum[dominant_axis]
-            )
-            high_to_low = (
-                before > maximum[dominant_axis]
-                and after < minimum[dominant_axis]
-            )
-            if low_to_high or high_to_low:
-                direction = "low_to_high" if low_to_high else "high_to_low"
-                print(
-                    "OK: vehicle physically crosses the observed 3D route volume "
-                    f"(axis={'xyz'[dominant_axis]}, direction={direction}, "
-                    f"inside_samples={sample_count})"
+    for logger, positions in positions_by_logger.items():
+        inside_flags = [inside(position) for position in positions]
+        block_start = 0
+        while block_start < len(inside_flags):
+            if not inside_flags[block_start]:
+                block_start += 1
+                continue
+            block_end = block_start
+            while (
+                block_end + 1 < len(inside_flags) and inside_flags[block_end + 1]
+            ):
+                block_end += 1
+            sample_count = block_end - block_start + 1
+            if (
+                block_start > 0
+                and block_end + 1 < len(positions)
+                and sample_count >= 2
+            ):
+                before = positions[block_start - 1][dominant_axis]
+                after = positions[block_end + 1][dominant_axis]
+                low_to_high = (
+                    before < minimum[dominant_axis]
+                    and after > maximum[dominant_axis]
                 )
-                return
-        block_start = block_end + 1
+                high_to_low = (
+                    before > maximum[dominant_axis]
+                    and after < minimum[dominant_axis]
+                )
+                if low_to_high or high_to_low:
+                    direction = "low_to_high" if low_to_high else "high_to_low"
+                    print(
+                        "OK: vehicle physically crosses the observed 3D route volume "
+                        f"(logger={logger}, axis={'xyz'[dominant_axis]}, "
+                        f"direction={direction}, inside_samples={sample_count})"
+                    )
+                    return
+            block_start = block_end + 1
 
     errors.append("FAIL: vehicle physically crosses the observed 3D route volume")
 

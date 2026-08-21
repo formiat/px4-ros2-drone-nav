@@ -35,6 +35,14 @@ wait_for_gazebo_scene_entity() {
     wait-for-entity --world "${world_name}" --target "${target}" --wait-s "${wait_s}"
 }
 
+wait_for_gazebo_world() {
+  local repo_root="$1"
+  local world_name="$2"
+  local wait_s="$3"
+  python3 "${repo_root}/scripts/gazebo_gui_control.py" \
+    wait-for-world --world "${world_name}" --wait-s "${wait_s}"
+}
+
 configure_gazebo_world_running() {
   local repo_root="$1"
   local world_name="$2"

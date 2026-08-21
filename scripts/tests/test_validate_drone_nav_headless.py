@@ -122,6 +122,34 @@ class MappingPipelineValidationTest(unittest.TestCase):
             errors,
         )
 
+    def test_observed_route_volume_does_not_join_different_vehicles(self) -> None:
+        log = (
+            "[vehicles.civilian_0.production_mppi_node]: PRODUCTION_MPPI_TICK "
+            "state_position=(40,160,5)\n"
+            "[vehicles.civilian_0.production_mppi_node]: PRODUCTION_MPPI_TICK "
+            "state_position=(43,160,5)\n"
+            "[vehicles.civilian_0.production_mppi_node]: PRODUCTION_MPPI_TICK "
+            "state_position=(50,160,5)\n"
+            "[vehicles.civilian_1.production_mppi_node]: PRODUCTION_MPPI_TICK "
+            "state_position=(55,160,5)\n"
+            "[vehicles.civilian_1.production_mppi_node]: PRODUCTION_MPPI_TICK "
+            "state_position=(65,160,5)\n"
+            "[vehicles.civilian_1.production_mppi_node]: PRODUCTION_MPPI_TICK "
+            "state_position=(70,160,5)\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_observed_3d_route_volume(
+            log,
+            (42.0, 147.0, 1.5, 66.0, 177.0, 8.5),
+            errors,
+        )
+
+        self.assertIn(
+            "FAIL: vehicle physically crosses the observed 3D route volume",
+            errors,
+        )
+
     def test_route_volume_parser_rejects_inverted_bounds(self) -> None:
         with self.assertRaises(VALIDATOR.argparse.ArgumentTypeError):
             VALIDATOR.parse_route_volume_bounds("42,123,8.5,66,201,1.5")

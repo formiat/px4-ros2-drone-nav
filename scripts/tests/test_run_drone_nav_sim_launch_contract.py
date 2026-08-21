@@ -132,6 +132,8 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_gazebo_gui_launch_uses_native_follow_camera(self) -> None:
         self.assertIn("configure_gazebo_gui_follow_camera", self.text)
         self.assertIn("wait_for_gazebo_scene_entity", self.text)
+        self.assertIn("wait_for_gazebo_world", self.text)
+        self.assertIn('GZ_WORLD_READY_WAIT_S:-180', self.text)
         self.assertIn("gazebo_gui_control.py", self.gazebo_gui_camera_runtime_text)
         self.assertNotIn("--gui-config", self.text)
         self.assertNotIn("GZ_GUI_PLUGIN_PATH", self.text)
