@@ -165,6 +165,7 @@ add_library(
   src/cooperative_space_time.cpp
   src/cooperative_traffic.cpp
   src/cooperative_traffic_mission.cpp
+  src/contracted_topology_graph_3d.cpp
   src/collision_voxelizer.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
   src/debug_image.cpp
@@ -1038,6 +1039,12 @@ if(BUILD_TESTING)
   target_compile_features(incremental_topology_graph_3d_test PRIVATE cxx_std_20)
   target_link_libraries(incremental_topology_graph_3d_test drone_city_nav_core)
   enable_project_warnings(incremental_topology_graph_3d_test)
+
+  ament_add_gtest(contracted_topology_graph_3d_test
+                  tests/contracted_topology_graph_3d_test.cpp)
+  target_compile_features(contracted_topology_graph_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(contracted_topology_graph_3d_test drone_city_nav_core)
+  enable_project_warnings(contracted_topology_graph_3d_test)
 
   ament_add_gtest(topological_exploration_memory_3d_test
                   tests/topological_exploration_memory_3d_test.cpp)
