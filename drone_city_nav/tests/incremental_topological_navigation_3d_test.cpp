@@ -89,6 +89,49 @@ TEST(IncrementalTopologicalNavigation3DTest,
 }
 
 TEST(IncrementalTopologicalNavigation3DTest,
+     RepeatedPlanCommitDoesNotDuplicateSelectionOrDeadEndEvidence) {
+  IncrementalTopologicalNavigation3D navigation;
+  IncrementalTopologicalPlan3D frontier_plan;
+  frontier_plan.status = IncrementalTopologicalPlanStatus3D::kFrontierRoute;
+  frontier_plan.purpose = IncrementalTopologicalRoutePurpose3D::kObservationFrontier;
+  frontier_plan.graph_revision = 7U;
+  frontier_plan.selected_frontier =
+      ObservationFrontier{.id = ObservationFrontierId{23U}};
+
+  const IncrementalTopologicalPlanCommit3D first_frontier_commit =
+      navigation.commitAcceptedPlan(frontier_plan);
+  const IncrementalTopologicalPlanCommit3D repeated_frontier_commit =
+      navigation.commitAcceptedPlan(frontier_plan);
+  EXPECT_TRUE(first_frontier_commit.accepted);
+  EXPECT_TRUE(first_frontier_commit.frontier_selection_recorded);
+  EXPECT_TRUE(repeated_frontier_commit.accepted);
+  EXPECT_FALSE(repeated_frontier_commit.frontier_selection_recorded);
+
+  IncrementalTopologicalPlan3D backtrack_plan;
+  backtrack_plan.status = IncrementalTopologicalPlanStatus3D::kBacktrackRoute;
+  backtrack_plan.purpose = IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack;
+  backtrack_plan.graph_revision = 7U;
+  backtrack_plan.dead_end_conclusion = TopologicalDeadEndConclusion3D{
+      .attempted_direction =
+          DirectedTopologyEdge3D{
+              .edge_id = IncrementalTopologyEdgeId{41U},
+              .from = IncrementalTopologyNodeId{5U},
+              .to = IncrementalTopologyNodeId{6U},
+          },
+      .supporting_revision = 7U,
+  };
+
+  const IncrementalTopologicalPlanCommit3D first_dead_end_commit =
+      navigation.commitAcceptedPlan(backtrack_plan);
+  const IncrementalTopologicalPlanCommit3D repeated_dead_end_commit =
+      navigation.commitAcceptedPlan(backtrack_plan);
+  EXPECT_TRUE(first_dead_end_commit.accepted);
+  EXPECT_TRUE(first_dead_end_commit.dead_end_recorded);
+  EXPECT_TRUE(repeated_dead_end_commit.accepted);
+  EXPECT_FALSE(repeated_dead_end_commit.dead_end_recorded);
+}
+
+TEST(IncrementalTopologicalNavigation3DTest,
      StaticResetUsesTheSameGraphAndPlanningContract) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 16, 12}};
   IncrementalTopologyGraph3DConfig graph_config;

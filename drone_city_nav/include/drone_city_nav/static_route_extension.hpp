@@ -183,6 +183,7 @@ enum class StaticRouteReplacementPolicy : std::uint8_t {
   kRequireEndpointImprovement,
   kAllowSafetyReplan,
   kAllowExploration,
+  kAllowTopologicalProgress,
 };
 
 enum class ObservationRouteReplacementStatus : std::uint8_t {

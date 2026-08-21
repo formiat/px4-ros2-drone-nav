@@ -269,15 +269,15 @@ ObservationRouteReplacementDecision evaluateObservationRouteReplacement(
     decision.accepted = true;
     return decision;
   }
-  if (observation.candidate_frontier->id == observation.active_frontier->id) {
-    decision.status = ObservationRouteReplacementStatus::kSameFrontierRetained;
-    return decision;
-  }
   if (observation.extension_requested &&
       observation.candidate_frontier->supporting_map_revision >=
           observation.active_frontier->supporting_map_revision) {
     decision.status = ObservationRouteReplacementStatus::kFrontierAdvanced;
     decision.accepted = true;
+    return decision;
+  }
+  if (observation.candidate_frontier->id == observation.active_frontier->id) {
+    decision.status = ObservationRouteReplacementStatus::kSameFrontierRetained;
     return decision;
   }
   if (decision.score_improvement + 1.0e-9 >=
@@ -462,6 +462,8 @@ staticRouteReplacementPolicyName(const StaticRouteReplacementPolicy policy) noex
       return "allow_safety_replan";
     case StaticRouteReplacementPolicy::kAllowExploration:
       return "allow_exploration";
+    case StaticRouteReplacementPolicy::kAllowTopologicalProgress:
+      return "allow_topological_progress";
   }
   return "unknown";
 }

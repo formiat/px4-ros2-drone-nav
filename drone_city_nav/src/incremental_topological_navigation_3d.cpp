@@ -175,11 +175,22 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
     return result;
   }
   const std::scoped_lock lock{mutex_};
-  if (plan.selected_frontier.has_value()) {
+  const bool selected_frontier_already_active =
+      active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
+      plan.selected_frontier.has_value() &&
+      active_plan_->selected_frontier->id == plan.selected_frontier->id;
+  if (plan.selected_frontier.has_value() && !selected_frontier_already_active) {
     memory_.recordFrontierSelection(plan.selected_frontier->id);
     result.frontier_selection_recorded = true;
   }
-  if (plan.dead_end_conclusion.has_value()) {
+  const bool dead_end_already_active =
+      active_plan_.has_value() && active_plan_->dead_end_conclusion.has_value() &&
+      plan.dead_end_conclusion.has_value() &&
+      active_plan_->dead_end_conclusion->attempted_direction ==
+          plan.dead_end_conclusion->attempted_direction &&
+      active_plan_->dead_end_conclusion->supporting_revision ==
+          plan.dead_end_conclusion->supporting_revision;
+  if (plan.dead_end_conclusion.has_value() && !dead_end_already_active) {
     memory_.recordDeadEnd(plan.dead_end_conclusion->attempted_direction,
                           plan.dead_end_conclusion->supporting_revision);
     result.dead_end_recorded = true;

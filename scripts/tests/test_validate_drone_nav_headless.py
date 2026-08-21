@@ -78,7 +78,10 @@ class MappingPipelineValidationTest(unittest.TestCase):
     ) -> None:
         log = (
             "PRODUCTION_MPPI_GUIDE3D activated=true route_generation=15 "
-            "route_space=observed_known_free_3d topology_acceleration=none\n"
+            "route_space=observed_known_free_3d "
+            "topology_acceleration=incremental_topological_graph\n"
+            "INCREMENTAL_TOPOLOGICAL_PLAN3D directive_available=true "
+            "activated=true commit_accepted=true\n"
             "PRODUCTION_MPPI_TICK tick=1 state_position=(54.0,120.0,5.8)\n"
             "PRODUCTION_MPPI_TICK tick=2 state_position=(54.0,124.0,5.8)\n"
             "PRODUCTION_MPPI_TICK tick=3 state_position=(54.0,160.0,5.7)\n"
@@ -98,7 +101,10 @@ class MappingPipelineValidationTest(unittest.TestCase):
     def test_observed_route_volume_rejects_a_roof_level_flyover(self) -> None:
         log = (
             "PRODUCTION_MPPI_GUIDE3D activated=true route_generation=8 "
-            "route_space=observed_known_free_3d topology_acceleration=none\n"
+            "route_space=observed_known_free_3d "
+            "topology_acceleration=incremental_topological_graph\n"
+            "INCREMENTAL_TOPOLOGICAL_PLAN3D directive_available=true "
+            "activated=true commit_accepted=true\n"
             "PRODUCTION_MPPI_TICK tick=1 state_position=(54.0,120.0,26.4)\n"
             "PRODUCTION_MPPI_TICK tick=2 state_position=(54.0,160.0,26.7)\n"
             "PRODUCTION_MPPI_TICK tick=3 state_position=(54.0,204.0,27.0)\n"

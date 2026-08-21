@@ -566,6 +566,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
     drone_city_nav_production_mppi_component SHARED
     src/production_mppi_node.cpp
+    src/production_mppi_node_interfaces.cpp
     src/production_mppi_node_names.cpp
     src/production_mppi_node_cooperative.cpp
     src/production_mppi_cooperative_diagnostics.cpp
@@ -583,6 +584,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_static_extension.cpp
     src/production_mppi_node_static_guide.cpp
     src/production_mppi_node_diagnostics.cpp
+    src/production_mppi_node_diagnostics_events.cpp
     src/production_mppi_node_diagnostics_runtime.cpp
     src/production_mppi_execution_diagnostics.cpp
     src/production_mppi_node_summary.cpp

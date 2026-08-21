@@ -15,6 +15,14 @@ LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
 DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
 TRACKING_LAUNCH = PACKAGE / "launch" / "intercept_tracking_launch.py"
 RUN_SCRIPT = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
+PLANNER_SOURCES = (
+    PACKAGE / "src" / "production_mppi_node.cpp",
+    PACKAGE / "src" / "production_mppi_node_interfaces.cpp",
+)
+
+
+def _read_planner_sources() -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in PLANNER_SOURCES)
 
 
 def _load_budget_allocator():
@@ -134,9 +142,7 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn("prefix=diagnostics_prefix", launch_source)
 
     def test_planner_validates_and_applies_tick_phase(self) -> None:
-        source = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
-            encoding="utf-8"
-        )
+        source = _read_planner_sources()
 
         self.assertIn('"planning_tick_phase_offset_s"', source)
         self.assertIn("planning tick phase offset must be in", source)
@@ -147,9 +153,7 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         header = (PACKAGE / "src" / "production_mppi_node.hpp").read_text(
             encoding="utf-8"
         )
-        source = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
-            encoding="utf-8"
-        )
+        source = _read_planner_sources()
 
         self.assertIn("input_callback_group_", header)
         self.assertIn("planning_callback_group_", header)

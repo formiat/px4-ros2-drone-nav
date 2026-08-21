@@ -13,6 +13,7 @@ SOURCE = PACKAGE / "src"
 INPUTS = SOURCE / "production_mppi_node_inputs.cpp"
 ESDF = SOURCE / "production_mppi_node_esdf.cpp"
 PLANNER = SOURCE / "production_mppi_node.cpp"
+PLANNER_INTERFACES = SOURCE / "production_mppi_node_interfaces.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
@@ -167,7 +168,10 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertNotIn("clearance_increasing", execution)
 
     def test_planners_publish_latched_world_readiness(self) -> None:
-        planner = PLANNER.read_text(encoding="utf-8")
+        planner = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (PLANNER, PLANNER_INTERFACES)
+        )
         launch = LAUNCH.read_text(encoding="utf-8")
 
         self.assertIn('"world_readiness_topic"', planner)

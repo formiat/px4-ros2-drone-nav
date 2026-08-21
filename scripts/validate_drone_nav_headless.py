@@ -145,7 +145,15 @@ def validate_observed_3d_route_volume(
         "an observed-known-free generic 3D route is activated",
         ros_log,
         r"PRODUCTION_MPPI_GUIDE3D .*activated=true .*"
-        r"route_space=observed_known_free_3d .*topology_acceleration=none",
+        r"route_space=observed_known_free_3d .*"
+        r"topology_acceleration=incremental_topological_graph",
+        errors,
+    )
+    require(
+        "an incremental topological route is committed after raw-safe activation",
+        ros_log,
+        r"INCREMENTAL_TOPOLOGICAL_PLAN3D .*directive_available=true .*"
+        r"activated=true .*commit_accepted=true",
         errors,
     )
     if re.search(r"ONLINE_FREE_SPACE_TOPOLOGY3D", ros_log):

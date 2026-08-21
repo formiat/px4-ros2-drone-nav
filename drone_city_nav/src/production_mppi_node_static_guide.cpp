@@ -29,34 +29,33 @@ void ProductionMppiNode::processGuideSearch3D(
         Vec3{mission_goal.x - navigation.state.x, mission_goal.y - navigation.state.y,
              mission_goal.z - navigation.state.z};
   }
-  const auto search_started = std::chrono::steady_clock::now();
-  std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_resource =
-      world.passage_traversals;
-  if (static_free_space_topology_router_) {
-    passage_resource =
-        static_free_space_topology_router_->resolve(search_start, mission_goal)
-            .traversals;
+  ProductionIncrementalTopologySearch3D topology =
+      selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
+  if (topology.directive.has_value()) {
+    preferred_direction = topology.directive->lattice.preferred_direction;
   }
-  const std::span<const PassageTraversalEdge> passage_traversals =
-      passage_resource ? std::span<const PassageTraversalEdge>{*passage_resource}
-                       : std::span<const PassageTraversalEdge>{};
-  const std::optional<Lattice3DExplorationContext> exploration_context =
-      world.observed_occupancy
-          ? std::optional<Lattice3DExplorationContext>{Lattice3DExplorationContext{
-                .observed_occupancy = world.observed_occupancy.get(),
-                .map_revision = world.revision,
-                .strategic_directive = std::nullopt,
-            }}
-          : std::nullopt;
-  const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(
-      world.grid, *world.distances_m, search_start, preferred_direction, mission_goal,
-      passage_traversals, lattice_3d_config_, planning_worker_pool_.get(),
-      exploration_context ? &*exploration_context : nullptr);
+  const auto search_started = std::chrono::steady_clock::now();
+  const std::span<const PassageTraversalEdge> passage_traversals{};
+  const Lattice3DExplorationContext exploration_context{
+      .observed_occupancy = world.observed_occupancy.get(),
+      .map_revision = topology.plan.graph_revision,
+      .strategic_directive =
+          topology.directive.has_value()
+              ? std::optional<Lattice3DStrategicDirective>{topology.directive->lattice}
+              : std::nullopt,
+  };
+  RiskAwareLattice3DResult lattice;
+  if (topology.directive.has_value()) {
+    lattice = planRiskAwareLattice3D(world.grid, *world.distances_m, search_start,
+                                     preferred_direction, mission_goal,
+                                     passage_traversals, lattice_3d_config_,
+                                     planning_worker_pool_.get(), &exploration_context);
+  }
   const double search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
   ProductionMppiPreparedEsdf prepared = world;
-  prepared.passage_traversals = std::move(passage_resource);
+  prepared.passage_traversals.reset();
   prepared.global_guide_search_ms = search_ms;
   prepared.planning_search_kind = ProductionPlanningSearchKind::kLattice3D;
   prepared.planning_search_start = search_start;
@@ -66,7 +65,7 @@ void ProductionMppiNode::processGuideSearch3D(
   prepared.planning_search_direction = preferred_direction;
   prepared.planning_candidate_points = lattice.points.size();
   prepared.planning_candidate_samples = lattice.route.size();
-  prepared.lattice_search_performed = true;
+  prepared.lattice_search_performed = topology.directive.has_value();
   prepared.lattice_executable =
       lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
       lattice.status == Lattice3DStatus::kViableFrontier;
@@ -125,8 +124,11 @@ void ProductionMppiNode::processGuideSearch3D(
       StaticRouteReplacementPolicy::kRequireEndpointImprovement;
   if (world.static_route_replan_request) {
     replacement_policy = StaticRouteReplacementPolicy::kAllowSafetyReplan;
-  } else if (lattice.route_purpose != Lattice3DRoutePurpose::kMissionTransit) {
-    replacement_policy = StaticRouteReplacementPolicy::kAllowExploration;
+  } else if (topology.directive.has_value() &&
+             (world.static_route_extension_request ||
+              lattice.route_purpose != world.lattice_3d_route_purpose ||
+              lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier)) {
+    replacement_policy = StaticRouteReplacementPolicy::kAllowTopologicalProgress;
   }
   bool active_observation_frontier_still_valid = false;
   if (world.observed_occupancy && world.lattice_3d_observation_frontier) {
@@ -413,6 +415,9 @@ void ProductionMppiNode::processGuideSearch3D(
       activation_status = StaticRouteActivationStatus::kDynamicHandoffRejected;
     }
   }
+  if (activated) {
+    commitIncrementalTopologyRoute3D(topology);
+  }
   if (activated && prepared.cooperative_passage_assignments) {
     for (const CooperativePassageAssignment& assignment :
          *prepared.cooperative_passage_assignments) {
@@ -437,7 +442,9 @@ void ProductionMppiNode::processGuideSearch3D(
   const char* const route_space =
       world.observed_occupancy ? "observed_known_free_3d" : "static_occupancy_3d";
   const char* const topology_acceleration =
-      static_free_space_topology_router_ ? "static_free_space_index" : "none";
+      world.topological_graph ? "incremental_topological_graph" : "unavailable";
+  logIncrementalTopologyRoute3D(topology, lattice, validation, activation_status,
+                                activated);
   const ObservationFrontier* const observation_frontier =
       lattice.observation_frontier ? &*lattice.observation_frontier : nullptr;
   RCLCPP_INFO(

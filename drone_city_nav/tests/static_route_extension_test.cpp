@@ -242,6 +242,22 @@ TEST(StaticRouteExtensionTest, ObservationReplacementAdvancesAfterExtension) {
   EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kFrontierAdvanced);
 }
 
+TEST(StaticRouteExtensionTest, ObservationReplacementExtendsSameFrontier) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(7U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 12.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+          .extension_requested = true,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kFrontierAdvanced);
+}
+
 TEST(StaticRouteExtensionTest, ObservationReplacementRequiresScoreImprovement) {
   const ObservationRouteReplacementDecision rejected =
       evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
@@ -278,6 +294,9 @@ TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {
   EXPECT_EQ(
       staticRouteReplacementPolicyName(StaticRouteReplacementPolicy::kAllowExploration),
       "allow_exploration");
+  EXPECT_EQ(staticRouteReplacementPolicyName(
+                StaticRouteReplacementPolicy::kAllowTopologicalProgress),
+            "allow_topological_progress");
 }
 
 TEST(StaticRouteExtensionTest, RejectsRouteOutsideFlightEnvelope) {

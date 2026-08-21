@@ -11,6 +11,7 @@
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/free_space_topology_router.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
+#include "drone_city_nav/incremental_topological_lattice_adapter_3d.hpp"
 #include "drone_city_nav/incremental_topological_navigation_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
@@ -375,6 +376,16 @@ struct ProductionMppiNonCooperativeUpdate {
   bool enabled{false};
 };
 
+struct ProductionIncrementalTopologySearch3D {
+  IncrementalTopologicalNavigationObservation3D observation{};
+  IncrementalTopologicalPlan3D plan{};
+  std::optional<IncrementalTopologicalLatticeDirective3D> directive;
+  IncrementalTopologicalPlanCommit3D commit{};
+  std::size_t graph_node_count{0U};
+  std::size_t graph_edge_count{0U};
+  double no_executable_route_age_ms{0.0};
+};
+
 struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> candidate_horizon;
   std::vector<mppi::State> previous_horizon;
@@ -548,8 +559,22 @@ private:
                             const ProductionMppiNavigation& navigation);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
+  void initializeRuntimeInterfaces();
   void configureIncrementalTopology3D();
   void initializeStaticTopology3D();
+  [[nodiscard]] ProductionIncrementalTopologySearch3D
+  selectIncrementalTopologyRoute3D(const ProductionMppiPreparedEsdf& world,
+                                   const Point3& position, const Point3& mission_goal);
+  void commitIncrementalTopologyRoute3D(ProductionIncrementalTopologySearch3D& search);
+  void
+  logIncrementalTopologyRoute3D(const ProductionIncrementalTopologySearch3D& search,
+                                const RiskAwareLattice3DResult& lattice,
+                                const StaticRouteCandidateValidation& validation,
+                                StaticRouteActivationStatus activation_status,
+                                bool activated);
+  void maybeObserveIncrementalTopology3D(
+      const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
+      const ProductionMppiNavigation& navigation, std::int64_t now_ns);
   void configureCooperativeTraffic();
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);
@@ -572,6 +597,8 @@ private:
       const MissionGoalCaptureResult& goal_capture, std::int64_t now_ns);
   void planningTick();
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
+  void logDiagnosticsEvents(const ProductionMppiDiagnosticsSnapshot& snapshot,
+                            const ConstrainedRouteObservation& route_constraint);
   void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot snapshot);
   void recordTickStatistics(const mppi::MppiTickResult& result,
@@ -676,6 +703,7 @@ private:
   IncrementalTopologyGraph3DConfig topological_graph_3d_config_{};
   IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};
+  IncrementalTopologicalLatticeAdapter3DConfig topological_lattice_adapter_3d_config_{};
   FreeSpaceTopologyRouterConfig free_space_topology_router_config_{};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
@@ -694,6 +722,9 @@ private:
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::unique_ptr<IncrementalTopologicalNavigation3D> topological_navigation_3d_;
+  std::atomic<std::int64_t> last_topological_observation_stamp_ns_{0};
+  std::int64_t topological_observation_period_ns_{200000000};
+  std::chrono::steady_clock::time_point topological_no_executable_route_since_{};
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<FreeSpaceTopology3D> static_free_space_topology_3d_;
   std::unique_ptr<FreeSpaceTopologyRouter> static_free_space_topology_router_;

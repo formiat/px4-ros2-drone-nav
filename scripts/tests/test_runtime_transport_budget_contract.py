@@ -9,6 +9,14 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
+PLANNER_SOURCES = (
+    PACKAGE / "src" / "production_mppi_node.cpp",
+    PACKAGE / "src" / "production_mppi_node_interfaces.cpp",
+)
+
+
+def _read_planner_sources() -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in PLANNER_SOURCES)
 
 
 class RuntimeTransportBudgetContractTest(unittest.TestCase):
@@ -16,9 +24,7 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         message = (PACKAGE / "msg" / "ObstacleMemoryStatus.msg").read_text(
             encoding="utf-8"
         )
-        planner = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
-            encoding="utf-8"
-        )
+        planner = _read_planner_sources()
         header = (PACKAGE / "src" / "production_mppi_node.hpp").read_text(
             encoding="utf-8"
         )
@@ -44,9 +50,7 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         self.assertIn("makeRawObstacleDelta", source)
         self.assertIn("status_pub_->publish(status)", source)
 
-        planner = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
-            encoding="utf-8"
-        )
+        planner = _read_planner_sources()
         self.assertIn("create_subscription<msg::RawObstacleDelta>", planner)
 
     def test_intercept_launch_wires_per_vehicle_status_topics(self) -> None:
@@ -66,9 +70,7 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         )
 
     def test_json_diagnostics_are_rate_limited_and_error_buffered(self) -> None:
-        planner = (PACKAGE / "src" / "production_mppi_node.cpp").read_text(
-            encoding="utf-8"
-        )
+        planner = _read_planner_sources()
         diagnostics = (
             PACKAGE / "src" / "production_mppi_node_diagnostics.cpp"
         ).read_text(encoding="utf-8")
