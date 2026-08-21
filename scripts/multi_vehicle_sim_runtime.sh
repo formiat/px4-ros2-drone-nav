@@ -197,6 +197,13 @@ check_headless_run() {
       "${observed_3d_route_volume_bounds_m}"
     )
   fi
+  if bool_is_true "${require_incremental_topology_evidence}"; then
+    validation_args+=(
+      --require-incremental-topology-evidence
+      --maximum-no-executable-route-age-ms
+      "${maximum_no_executable_route_age_ms}"
+    )
+  fi
 
   if ! python3 "${repo_root}/scripts/validate_drone_nav_headless.py" \
     "${validation_args[@]}"; then

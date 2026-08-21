@@ -10,14 +10,21 @@ import sys
 from pathlib import Path
 
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from headless_topology_validation import (
+    parse_route_volume_bounds,
+    validate_incremental_topology_evidence,
+    validate_observed_3d_route_volume,
+)
+
+
 CRITICAL_PX4_PATTERN = re.compile(
     r"(?:ERROR \[|Critical failure|Segmentation fault)",
     re.IGNORECASE,
 )
-FLOAT_PATTERN = r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?"
-RouteVolumeBounds = tuple[float, float, float, float, float, float]
-
-
 def parse_bool(value: str) -> bool | None:
     normalized = value.strip().lower()
     if not normalized:
@@ -48,34 +55,6 @@ def require_count(
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
-
-
-def parse_route_volume_bounds(value: str) -> RouteVolumeBounds:
-    parts = [part.strip() for part in value.split(",")]
-    if len(parts) != 6:
-        raise argparse.ArgumentTypeError(
-            "route volume must contain min_x,min_y,min_z,max_x,max_y,max_z"
-        )
-    try:
-        values = tuple(float(part) for part in parts)
-    except ValueError as error:
-        raise argparse.ArgumentTypeError(
-            "route volume bounds must be numeric"
-        ) from error
-    if not all(math.isfinite(value) for value in values):
-        raise argparse.ArgumentTypeError("route volume bounds must be finite")
-    if any(values[axis] >= values[axis + 3] for axis in range(3)):
-        raise argparse.ArgumentTypeError(
-            "route volume minimum bounds must be below maximum bounds"
-        )
-    return (
-        values[0],
-        values[1],
-        values[2],
-        values[3],
-        values[4],
-        values[5],
-    )
 
 
 def validate_mapping_pipeline(
@@ -134,88 +113,6 @@ def validate_mapping_pipeline(
             r"LIDAR_DEBUG snapshot=",
             errors,
         )
-
-
-def validate_observed_3d_route_volume(
-    ros_log: str,
-    bounds: RouteVolumeBounds,
-    errors: list[str],
-) -> None:
-    require(
-        "an observed-known-free generic 3D route is activated",
-        ros_log,
-        r"PRODUCTION_MPPI_GUIDE3D .*activated=true .*"
-        r"route_space=observed_known_free_3d .*"
-        r"topology_acceleration=incremental_topological_graph",
-        errors,
-    )
-    require(
-        "an incremental topological route is committed after raw-safe activation",
-        ros_log,
-        r"INCREMENTAL_TOPOLOGICAL_PLAN3D .*directive_available=true .*"
-        r"activated=true .*commit_accepted=true",
-        errors,
-    )
-    if re.search(r"ONLINE_FREE_SPACE_TOPOLOGY3D", ros_log):
-        errors.append("FAIL: no online free-space partition is used")
-    else:
-        print("OK: no online free-space partition is used")
-
-    position_pattern = re.compile(
-        rf"PRODUCTION_MPPI_TICK .*?state_position=\("
-        rf"({FLOAT_PATTERN}),({FLOAT_PATTERN}),({FLOAT_PATTERN})\)"
-    )
-    positions = [
-        (float(x), float(y), float(z))
-        for x, y, z in position_pattern.findall(ros_log)
-    ]
-    if len(positions) < 3:
-        errors.append("FAIL: enough vehicle state samples exist for route validation")
-        return
-
-    minimum = bounds[:3]
-    maximum = bounds[3:]
-    extents = tuple(maximum[axis] - minimum[axis] for axis in range(3))
-    dominant_axis = max(range(3), key=extents.__getitem__)
-
-    def inside(position: tuple[float, float, float]) -> bool:
-        return all(
-            minimum[axis] <= position[axis] <= maximum[axis]
-            for axis in range(3)
-        )
-
-    inside_flags = [inside(position) for position in positions]
-    block_start = 0
-    while block_start < len(inside_flags):
-        if not inside_flags[block_start]:
-            block_start += 1
-            continue
-        block_end = block_start
-        while block_end + 1 < len(inside_flags) and inside_flags[block_end + 1]:
-            block_end += 1
-        sample_count = block_end - block_start + 1
-        if block_start > 0 and block_end + 1 < len(positions) and sample_count >= 2:
-            before = positions[block_start - 1][dominant_axis]
-            after = positions[block_end + 1][dominant_axis]
-            low_to_high = (
-                before < minimum[dominant_axis]
-                and after > maximum[dominant_axis]
-            )
-            high_to_low = (
-                before > maximum[dominant_axis]
-                and after < minimum[dominant_axis]
-            )
-            if low_to_high or high_to_low:
-                direction = "low_to_high" if low_to_high else "high_to_low"
-                print(
-                    "OK: vehicle physically crosses the observed 3D route volume "
-                    f"(axis={'xyz'[dominant_axis]}, direction={direction}, "
-                    f"inside_samples={sample_count})"
-                )
-                return
-        block_start = block_end + 1
-
-    errors.append("FAIL: vehicle physically crosses the observed 3D route volume")
 
 
 def safety_relevant_ros_log(ros_log: str, mission_type: str) -> str:
@@ -881,6 +778,12 @@ def main() -> int:
         "--require-observed-3d-route-volume-crossing", action="store_true"
     )
     parser.add_argument(
+        "--require-incremental-topology-evidence", action="store_true"
+    )
+    parser.add_argument(
+        "--maximum-no-executable-route-age-ms", type=float, default=10000.0
+    )
+    parser.add_argument(
         "--observed-3d-route-volume-bounds-m",
         type=parse_route_volume_bounds,
     )
@@ -901,6 +804,11 @@ def main() -> int:
             "--require-observed-3d-route-volume-crossing requires "
             "--observed-3d-route-volume-bounds-m"
         )
+    if (
+        not math.isfinite(args.maximum_no_executable_route_age_ms)
+        or args.maximum_no_executable_route_age_ms < 0.0
+    ):
+        parser.error("--maximum-no-executable-route-age-ms must be non-negative")
 
     ros_log = read_text(args.ros_log)
     px4_logs = [read_text(path) for path in args.px4_log]
@@ -1010,6 +918,17 @@ def main() -> int:
             validate_observed_3d_route_volume(
                 ros_log,
                 args.observed_3d_route_volume_bounds_m,
+                errors,
+            )
+    if args.require_incremental_topology_evidence:
+        if args.lidar_profile != "3d" or expected_static is not False:
+            errors.append(
+                "FAIL: incremental topology evidence requires no-static 3D lidar"
+            )
+        else:
+            validate_incremental_topology_evidence(
+                ros_log,
+                args.maximum_no_executable_route_age_ms,
                 errors,
             )
 

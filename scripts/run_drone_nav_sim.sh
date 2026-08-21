@@ -144,6 +144,10 @@ smoke_duration_s="${SMOKE_DURATION_S:-0}"
 require_observed_3d_route_volume_crossing="$(
   normalize_bool "${REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING:-false}"
 )"
+require_incremental_topology_evidence="$(
+  normalize_bool "${REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE:-false}"
+)"
+maximum_no_executable_route_age_ms="${MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS:-10000}"
 observed_3d_route_volume_bounds_m=""
 if [[ -n "${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-}" ]]; then
   if ! observed_3d_route_volume_bounds_m="$(
@@ -415,6 +419,15 @@ fi
 if bool_is_true "${require_observed_3d_route_volume_crossing}" &&
   [[ -z "${observed_3d_route_volume_bounds_m}" ]]; then
   echo "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING requires OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M" >&2
+  exit 1
+fi
+if bool_is_true "${require_incremental_topology_evidence}" &&
+  { bool_is_true "${active_static_map}" || [[ "${lidar_profile}" != "3d" ]]; }; then
+  echo "REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE requires no-static LIDAR_PROFILE=3d" >&2
+  exit 1
+fi
+if ! [[ "${maximum_no_executable_route_age_ms}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS must be a non-negative number" >&2
   exit 1
 fi
 if bool_is_true "${enable_lidar_debug}" &&

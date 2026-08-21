@@ -126,6 +126,66 @@ class MappingPipelineValidationTest(unittest.TestCase):
         with self.assertRaises(VALIDATOR.argparse.ArgumentTypeError):
             VALIDATOR.parse_route_volume_bounds("42,123,8.5,66,201,1.5")
 
+    def test_incremental_topology_evidence_accepts_adaptive_stable_traversal(
+        self,
+    ) -> None:
+        log = (
+            "INCREMENTAL_TOPOLOGY3D_UPDATE revision=1 full_reset=true "
+            "dirty_chunks=0 rebuilt_tiles=6 refined_tiles=4 "
+            "base_resolution_m=0.250 coarse_resolution_m=0.500 "
+            "refined_resolution_m=0.250 sampled_cells=24 retained_nodes=0 "
+            "created_nodes=6 retired_nodes=0 nodes=6 edges=5 update_ms=1.2\n"
+            "INCREMENTAL_TOPOLOGY3D_UPDATE revision=2 full_reset=false "
+            "dirty_chunks=1 rebuilt_tiles=2 refined_tiles=2 "
+            "base_resolution_m=0.250 coarse_resolution_m=0.500 "
+            "refined_resolution_m=0.250 sampled_cells=12 retained_nodes=5 "
+            "created_nodes=1 retired_nodes=0 nodes=7 edges=6 update_ms=0.8\n"
+            "INCREMENTAL_TOPOLOGICAL_PLAN3D graph_revision=2 graph_nodes=7 "
+            "graph_edges=6 status=frontier_route purpose=observation_frontier "
+            "selected_frontier_id=17 no_executable_route_age_ms=25.0 "
+            "directive_available=true activated=true commit_accepted=true\n"
+            "INCREMENTAL_TOPOLOGICAL_SOURCE_EDGE3D graph_revision=2 step=0 "
+            "source_index=0 edge_id=31 from=11 to=12\n"
+            "INCREMENTAL_TOPOLOGY3D_OBSERVATION graph_revision=2 "
+            "previous_node=11 current_node=12 traversed_edges=1 "
+            "coverage_cells=8 trail_reset=false\n"
+            "PRODUCTION_MPPI_TICK lattice_3d_minimum_clearance_m=1.25\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_incremental_topology_evidence(log, 10000.0, errors)
+
+        self.assertEqual(errors, [])
+
+    def test_incremental_topology_evidence_rejects_identity_loss_and_long_gap(
+        self,
+    ) -> None:
+        log = (
+            "INCREMENTAL_TOPOLOGY3D_UPDATE revision=2 full_reset=false "
+            "dirty_chunks=1 rebuilt_tiles=2 refined_tiles=2 "
+            "base_resolution_m=0.250 coarse_resolution_m=0.500 "
+            "refined_resolution_m=0.250 sampled_cells=12 retained_nodes=0 "
+            "created_nodes=7 retired_nodes=6 nodes=7 edges=6 update_ms=0.8\n"
+            "INCREMENTAL_TOPOLOGICAL_PLAN3D selected_frontier_id=17 "
+            "no_executable_route_age_ms=12000.0 directive_available=true "
+            "activated=true commit_accepted=true\n"
+            "INCREMENTAL_TOPOLOGICAL_SOURCE_EDGE3D edge_id=31 from=11 to=12\n"
+            "INCREMENTAL_TOPOLOGY3D_OBSERVATION traversed_edges=1 "
+            "coverage_cells=8\n"
+            "PRODUCTION_MPPI_TICK lattice_3d_minimum_clearance_m=1.25\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_incremental_topology_evidence(log, 10000.0, errors)
+
+        self.assertIn(
+            "FAIL: dirty topology updates retain stable node identities", errors
+        )
+        self.assertTrue(
+            any(error.startswith("FAIL: incremental topology route continuity")
+                for error in errors)
+        )
+
 
 class SafetyRelevantRosLogTest(unittest.TestCase):
     def test_intercept_requires_complete_radar_data_path(self) -> None:
