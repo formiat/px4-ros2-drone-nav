@@ -5,8 +5,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace drone_city_nav {
 namespace {
@@ -14,7 +16,8 @@ namespace {
 [[nodiscard]] IncrementalTopologyGraph3DConfig makeConfig() {
   IncrementalTopologyGraph3DConfig config;
   config.tile_size_cells = 4;
-  config.sample_stride_cells = 1;
+  config.coarse_sample_stride_cells = 1;
+  config.refined_sample_stride_cells = 1;
   config.maximum_frontier_evaluations_per_component = 128U;
   config.footprint.radius_m = 0.2;
   config.footprint.lower_extent_m = 0.2;
@@ -57,6 +60,34 @@ hasNodeWithMinimumDegree(const IncrementalTopologyGraph3DSnapshot& snapshot,
   return std::ranges::any_of(snapshot.nodes(), [minimum_degree](const auto& node) {
     return node.degree >= minimum_degree;
   });
+}
+
+[[nodiscard]] bool nodesConnected(const IncrementalTopologyGraph3DSnapshot& snapshot,
+                                  const IncrementalTopologyNodeId start,
+                                  const IncrementalTopologyNodeId goal) {
+  std::unordered_map<IncrementalTopologyNodeId, std::vector<IncrementalTopologyNodeId>,
+                     IncrementalTopologyNodeIdHash>
+      adjacency;
+  for (const IncrementalTopologyEdge3D& edge : snapshot.edges()) {
+    adjacency[edge.first].push_back(edge.second);
+    adjacency[edge.second].push_back(edge.first);
+  }
+  std::deque<IncrementalTopologyNodeId> pending{start};
+  std::unordered_set<IncrementalTopologyNodeId, IncrementalTopologyNodeIdHash> visited{
+      start};
+  while (!pending.empty()) {
+    const IncrementalTopologyNodeId current = pending.front();
+    pending.pop_front();
+    if (current == goal) {
+      return true;
+    }
+    for (const IncrementalTopologyNodeId neighbor : adjacency[current]) {
+      if (visited.insert(neighbor).second) {
+        pending.push_back(neighbor);
+      }
+    }
+  }
+  return false;
 }
 
 TEST(IncrementalTopologyGraph3DTest, ExtractsTJunctionAndFrontierNodes) {
@@ -178,6 +209,92 @@ TEST(IncrementalTopologyGraph3DTest, StaticMapSeedsCompleteGraphWithoutFrontiers
   EXPECT_TRUE(std::ranges::none_of(snapshot.nodes(), [](const auto& node) {
     return node.traits.frontier || node.observation_frontier.has_value();
   }));
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     AdaptivelyRefinesAFeasibleCorridorMissedByCoarseSampling) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 8, 8}};
+  fillFreeBox(occupancy, 1, 18, 1, 1, 1, 1);
+  IncrementalTopologyGraph3DConfig adaptive_config = makeConfig();
+  adaptive_config.coarse_sample_stride_cells = 2;
+  adaptive_config.refined_sample_stride_cells = 1;
+  IncrementalTopologyGraph3D adaptive_graph{adaptive_config};
+
+  const IncrementalTopologyGraph3DUpdate adaptive_update =
+      adaptive_graph.update(occupancy, 1U, {}, true);
+  const IncrementalTopologyGraph3DSnapshot adaptive = adaptive_graph.snapshot();
+
+  EXPECT_GT(adaptive_update.adaptively_refined_tiles, 0U);
+  EXPECT_GT(adaptive_update.sampled_navigable_cells, 0U);
+  EXPECT_TRUE(adaptive.nearestNode({1.5, 1.5, 1.5}, 2.0).has_value());
+  EXPECT_TRUE(adaptive.nearestNode({18.5, 1.5, 1.5}, 2.0).has_value());
+  EXPECT_GT(adaptive.edges().size(), 0U);
+
+  IncrementalTopologyGraph3DConfig coarse_only_config = adaptive_config;
+  coarse_only_config.refined_sample_stride_cells = 2;
+  IncrementalTopologyGraph3D coarse_only_graph{coarse_only_config};
+  const IncrementalTopologyGraph3DUpdate coarse_only_update =
+      coarse_only_graph.update(occupancy, 1U, {}, true);
+
+  EXPECT_EQ(coarse_only_update.adaptively_refined_tiles, 0U);
+  EXPECT_EQ(coarse_only_graph.snapshot().nodes().size(), 0U);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     ConnectsRefinedObstacleBoundaryToCoarseOpenVolume) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 16, 16}};
+  occupancy.setOccupied({6, 6, 6});
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.coarse_sample_stride_cells = 2;
+  config.refined_sample_stride_cells = 1;
+  IncrementalTopologyGraph3D graph{config};
+
+  const IncrementalTopologyGraph3DUpdate update = graph.reset(occupancy, 1U);
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+  const std::optional<IncrementalTopologyNodeId> refined =
+      snapshot.nearestNode({7.5, 7.5, 7.5}, 5.0);
+  const std::optional<IncrementalTopologyNodeId> coarse =
+      snapshot.nearestNode({26.5, 8.5, 8.5}, 5.0);
+
+  ASSERT_TRUE(refined.has_value());
+  ASSERT_TRUE(coarse.has_value());
+  const IncrementalTopologyNodeId refined_id =
+      refined.value_or(IncrementalTopologyNodeId{});
+  const IncrementalTopologyNodeId coarse_id =
+      coarse.value_or(IncrementalTopologyNodeId{});
+  EXPECT_GT(update.adaptively_refined_tiles, 0U);
+  EXPECT_LT(update.adaptively_refined_tiles, update.rebuilt_tiles);
+  EXPECT_TRUE(nodesConnected(snapshot, refined_id, coarse_id));
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     RetainsNodeIdentityWhenDirtyTileChangesSamplingResolution) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 16, 8}};
+  fillFreeBox(occupancy, 0, 15, 0, 15, 0, 7);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.coarse_sample_stride_cells = 2;
+  config.refined_sample_stride_cells = 1;
+  IncrementalTopologyGraph3D graph{config};
+  const IncrementalTopologyGraph3DUpdate initial =
+      graph.update(occupancy, 1U, {}, true);
+  const std::optional<IncrementalTopologyNodeId> before =
+      graph.snapshot().nearestNode({6.5, 6.5, 4.5}, 5.0);
+  ASSERT_TRUE(before.has_value());
+  EXPECT_EQ(initial.adaptively_refined_tiles, 0U);
+
+  static_cast<void>(occupancy.setState({6, 6, 4}, ObservedVoxelState::kOccupied));
+  const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex({6, 6, 4});
+  const IncrementalTopologyGraph3DUpdate refined_update =
+      graph.update(occupancy, 2U, std::span{&dirty, 1U}, false);
+  const IncrementalTopologyGraph3DSnapshot after = graph.snapshot();
+  const IncrementalTopologyNodeId before_id =
+      before.value_or(IncrementalTopologyNodeId{});
+  const IncrementalTopologyNode3D* retained = after.findNode(before_id);
+
+  ASSERT_NE(retained, nullptr);
+  EXPECT_GT(refined_update.adaptively_refined_tiles, 0U);
+  EXPECT_GT(refined_update.retained_node_ids, 0U);
+  EXPECT_EQ(retained->geometry_revision, 2U);
 }
 
 } // namespace

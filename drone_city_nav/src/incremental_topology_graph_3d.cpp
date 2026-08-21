@@ -157,8 +157,11 @@ std::size_t IncrementalTopologyTileIndex3DHash::operator()(
 
 bool incrementalTopologyGraph3DConfigIsValid(
     const IncrementalTopologyGraph3DConfig& config) noexcept {
-  return config.tile_size_cells > 0 && config.sample_stride_cells > 0 &&
-         config.sample_stride_cells <= config.tile_size_cells &&
+  return config.tile_size_cells > 0 && config.coarse_sample_stride_cells > 0 &&
+         config.refined_sample_stride_cells > 0 &&
+         config.refined_sample_stride_cells <= config.coarse_sample_stride_cells &&
+         config.coarse_sample_stride_cells <= config.tile_size_cells &&
+         config.coarse_sample_stride_cells % config.refined_sample_stride_cells == 0 &&
          config.maximum_frontier_evaluations_per_component > 0U &&
          std::isfinite(config.footprint.radius_m) &&
          std::isfinite(config.footprint.lower_extent_m) &&
@@ -185,6 +188,13 @@ struct IncrementalTopologyGraph3D::Impl {
 
   struct TileData {
     std::vector<TileComponent> components;
+    int sample_stride_cells{1};
+  };
+
+  struct BuiltTile {
+    std::vector<TileComponent> components;
+    int sample_stride_cells{1};
+    bool adaptively_refined{false};
   };
 
   explicit Impl(const IncrementalTopologyGraph3DConfig& requested_config)
@@ -196,9 +206,24 @@ struct IncrementalTopologyGraph3D::Impl {
   }
 
   template<typename Occupancy>
-  [[nodiscard]] std::vector<TileComponent>
-  buildTile(const Occupancy& occupancy, const IncrementalTopologyTileIndex3D tile,
-            const std::uint64_t update_revision) const {
+  [[nodiscard]] bool rawFreeAt(const Occupancy& occupancy,
+                               const GridIndex3D cell) const noexcept {
+    if (!occupancy.contains(cell)) {
+      return false;
+    }
+    if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
+      return occupancy.isKnownFree(cell);
+    }
+    return !occupancy.isOccupied(cell);
+  }
+
+  template<typename Occupancy>
+  [[nodiscard]] bool
+  tileRequiresAdaptiveRefinement(const Occupancy& occupancy,
+                                 const IncrementalTopologyTileIndex3D tile) const {
+    if (config.refined_sample_stride_cells == config.coarse_sample_stride_cells) {
+      return false;
+    }
     const int minimum_x = tile.x * config.tile_size_cells;
     const int minimum_y = tile.y * config.tile_size_cells;
     const int minimum_z = tile.z * config.tile_size_cells;
@@ -208,14 +233,69 @@ struct IncrementalTopologyGraph3D::Impl {
         std::min(bounds.height_cells, minimum_y + config.tile_size_cells);
     const int maximum_z =
         std::min(bounds.depth_cells, minimum_z + config.tile_size_cells);
+    bool contains_free_evidence = false;
+    for (int z = minimum_z; z < maximum_z && !contains_free_evidence; ++z) {
+      for (int y = minimum_y; y < maximum_y && !contains_free_evidence; ++y) {
+        for (int x = minimum_x; x < maximum_x; ++x) {
+          if (rawFreeAt(occupancy, {x, y, z})) {
+            contains_free_evidence = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!contains_free_evidence) {
+      return false;
+    }
+
+    const double maximum_extent_m =
+        std::max({config.footprint.radius_m, config.footprint.lower_extent_m,
+                  config.footprint.upper_extent_m});
+    const int footprint_halo_cells =
+        static_cast<int>(std::ceil(maximum_extent_m / bounds.resolution_m));
+    const int refinement_halo_cells =
+        footprint_halo_cells + config.coarse_sample_stride_cells;
+    for (int z = minimum_z - refinement_halo_cells;
+         z < maximum_z + refinement_halo_cells; ++z) {
+      for (int y = minimum_y - refinement_halo_cells;
+           y < maximum_y + refinement_halo_cells; ++y) {
+        for (int x = minimum_x - refinement_halo_cells;
+             x < maximum_x + refinement_halo_cells; ++x) {
+          const GridIndex3D cell{x, y, z};
+          if (occupancy.contains(cell) && !rawFreeAt(occupancy, cell)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  template<typename Occupancy>
+  [[nodiscard]] BuiltTile buildTile(const Occupancy& occupancy,
+                                    const IncrementalTopologyTileIndex3D tile,
+                                    const std::uint64_t update_revision) const {
+    const int minimum_x = tile.x * config.tile_size_cells;
+    const int minimum_y = tile.y * config.tile_size_cells;
+    const int minimum_z = tile.z * config.tile_size_cells;
+    const int maximum_x =
+        std::min(bounds.width_cells, minimum_x + config.tile_size_cells);
+    const int maximum_y =
+        std::min(bounds.height_cells, minimum_y + config.tile_size_cells);
+    const int maximum_z =
+        std::min(bounds.depth_cells, minimum_z + config.tile_size_cells);
+    const bool adaptively_refined = tileRequiresAdaptiveRefinement(occupancy, tile);
+    const int sample_stride_cells = adaptively_refined
+                                        ? config.refined_sample_stride_cells
+                                        : config.coarse_sample_stride_cells;
     std::vector<GridIndex3D> navigable_cells;
     std::unordered_map<std::uint64_t, std::size_t> cell_indices;
-    for (int z = firstAlignedCell(minimum_z, config.sample_stride_cells); z < maximum_z;
-         z += config.sample_stride_cells) {
-      for (int y = firstAlignedCell(minimum_y, config.sample_stride_cells);
-           y < maximum_y; y += config.sample_stride_cells) {
-        for (int x = firstAlignedCell(minimum_x, config.sample_stride_cells);
-             x < maximum_x; x += config.sample_stride_cells) {
+    for (int z = firstAlignedCell(minimum_z, sample_stride_cells); z < maximum_z;
+         z += sample_stride_cells) {
+      for (int y = firstAlignedCell(minimum_y, sample_stride_cells); y < maximum_y;
+           y += sample_stride_cells) {
+        for (int x = firstAlignedCell(minimum_x, sample_stride_cells); x < maximum_x;
+             x += sample_stride_cells) {
           const GridIndex3D cell{x, y, z};
           const Point3 center = occupancy.cellCenter(cell);
           if (!navigableAt(occupancy, center, config.footprint)) {
@@ -243,7 +323,7 @@ struct IncrementalTopologyGraph3D::Impl {
         const GridIndex3D cell = navigable_cells[index];
         component.cells.push_back(cell);
         for (const GridIndex3D neighbor :
-             cardinalNeighbors(cell, config.sample_stride_cells)) {
+             cardinalNeighbors(cell, sample_stride_cells)) {
           const auto found = cell_indices.find(sampleCellKey(bounds, neighbor));
           if (found == cell_indices.end() || visited[found->second]) {
             continue;
@@ -268,7 +348,9 @@ struct IncrementalTopologyGraph3D::Impl {
                       [](const TileComponent& first, const TileComponent& second) {
                         return cellLess(first.cells.front(), second.cells.front());
                       });
-    return components;
+    return BuiltTile{.components = std::move(components),
+                     .sample_stride_cells = sample_stride_cells,
+                     .adaptively_refined = adaptively_refined};
   }
 
   template<typename Occupancy>
@@ -359,10 +441,10 @@ struct IncrementalTopologyGraph3D::Impl {
     });
   }
 
-  void replaceTile(const IncrementalTopologyTileIndex3D tile,
-                   std::vector<TileComponent> components,
+  void replaceTile(const IncrementalTopologyTileIndex3D tile, BuiltTile replacement,
                    const std::uint64_t update_revision,
                    IncrementalTopologyGraph3DUpdate& stats) {
+    std::vector<TileComponent>& components = replacement.components;
     std::vector<TileComponent> previous;
     if (const auto found = tiles.find(tile); found != tiles.end()) {
       previous = std::move(found->second.components);
@@ -421,7 +503,9 @@ struct IncrementalTopologyGraph3D::Impl {
     }
     stats.retired_nodes += previous.size() - retained_ids.size();
     if (!components.empty()) {
-      tiles.emplace(tile, TileData{.components = std::move(components)});
+      tiles.emplace(tile,
+                    TileData{.components = std::move(components),
+                             .sample_stride_cells = replacement.sample_stride_cells});
     }
   }
 
@@ -437,49 +521,99 @@ struct IncrementalTopologyGraph3D::Impl {
       }
       for (const TileComponent& component : tile_found->second.components) {
         for (const GridIndex3D cell : component.cells) {
-          for (const GridIndex3D neighbor :
-               cardinalNeighbors(cell, config.sample_stride_cells)) {
-            if (tileForCell(neighbor, config.tile_size_cells) == tile) {
-              continue;
+          const int maximum_offset = config.coarse_sample_stride_cells;
+          for (int dz = -maximum_offset; dz <= maximum_offset; ++dz) {
+            for (int dy = -maximum_offset; dy <= maximum_offset; ++dy) {
+              for (int dx = -maximum_offset; dx <= maximum_offset; ++dx) {
+                if (dx == 0 && dy == 0 && dz == 0) {
+                  continue;
+                }
+                const GridIndex3D neighbor{cell.x + dx, cell.y + dy, cell.z + dz};
+                if (!occupancy.contains(neighbor)) {
+                  continue;
+                }
+                const IncrementalTopologyTileIndex3D neighbor_tile =
+                    tileForCell(neighbor, config.tile_size_cells);
+                if (neighbor_tile == tile) {
+                  continue;
+                }
+                const auto neighbor_tile_found = tiles.find(neighbor_tile);
+                if (neighbor_tile_found == tiles.end()) {
+                  continue;
+                }
+                const int tile_delta_x = neighbor_tile.x - tile.x;
+                const int tile_delta_y = neighbor_tile.y - tile.y;
+                const int tile_delta_z = neighbor_tile.z - tile.z;
+                if (std::abs(tile_delta_x) + std::abs(tile_delta_y) +
+                        std::abs(tile_delta_z) !=
+                    1) {
+                  continue;
+                }
+                const int local_stride = tile_found->second.sample_stride_cells;
+                const int neighbor_stride =
+                    neighbor_tile_found->second.sample_stride_cells;
+                const int connection_stride = std::max(local_stride, neighbor_stride);
+                if (std::abs(dx) > connection_stride ||
+                    std::abs(dy) > connection_stride ||
+                    std::abs(dz) > connection_stride) {
+                  continue;
+                }
+                const int transverse_tolerance =
+                    connection_stride - std::min(local_stride, neighbor_stride);
+                const bool crosses_shared_face =
+                    (tile_delta_x != 0 && dx * tile_delta_x > 0 &&
+                     std::abs(dy) <= transverse_tolerance &&
+                     std::abs(dz) <= transverse_tolerance) ||
+                    (tile_delta_y != 0 && dy * tile_delta_y > 0 &&
+                     std::abs(dx) <= transverse_tolerance &&
+                     std::abs(dz) <= transverse_tolerance) ||
+                    (tile_delta_z != 0 && dz * tile_delta_z > 0 &&
+                     std::abs(dx) <= transverse_tolerance &&
+                     std::abs(dy) <= transverse_tolerance);
+                if (!crosses_shared_face) {
+                  continue;
+                }
+                const auto neighbor_found =
+                    sample_cell_nodes.find(sampleCellKey(bounds, neighbor));
+                if (neighbor_found == sample_cell_nodes.end() ||
+                    neighbor_found->second == component.id ||
+                    !navigableBetween(occupancy, occupancy.cellCenter(cell),
+                                      occupancy.cellCenter(neighbor),
+                                      config.footprint)) {
+                  continue;
+                }
+                IncrementalTopologyNodeId first = component.id;
+                IncrementalTopologyNodeId second = neighbor_found->second;
+                Point3 first_contact = occupancy.cellCenter(cell);
+                Point3 second_contact = occupancy.cellCenter(neighbor);
+                if (second < first) {
+                  std::swap(first, second);
+                  std::swap(first_contact, second_contact);
+                }
+                const IncrementalTopologyNode3D& first_node = nodes.at(first);
+                const IncrementalTopologyNode3D& second_node = nodes.at(second);
+                const double length_m =
+                    distance3D(first_node.representative, first_contact) +
+                    distance3D(first_contact, second_contact) +
+                    distance3D(second_contact, second_node.representative);
+                const IncrementalTopologyEdgeId edge_id = makeEdgeId(first, second);
+                const auto existing = edges.find(edge_id);
+                if (existing != edges.end() &&
+                    existing->second.length_m <= length_m + 1.0e-9) {
+                  existing->second.supporting_revision = update_revision;
+                  continue;
+                }
+                edges[edge_id] = IncrementalTopologyEdge3D{
+                    .id = edge_id,
+                    .first = first,
+                    .second = second,
+                    .first_contact = first_contact,
+                    .second_contact = second_contact,
+                    .length_m = length_m,
+                    .supporting_revision = update_revision,
+                };
+              }
             }
-            const auto neighbor_found =
-                sample_cell_nodes.find(sampleCellKey(bounds, neighbor));
-            if (neighbor_found == sample_cell_nodes.end() ||
-                neighbor_found->second == component.id ||
-                !navigableBetween(occupancy, occupancy.cellCenter(cell),
-                                  occupancy.cellCenter(neighbor), config.footprint)) {
-              continue;
-            }
-            IncrementalTopologyNodeId first = component.id;
-            IncrementalTopologyNodeId second = neighbor_found->second;
-            Point3 first_contact = occupancy.cellCenter(cell);
-            Point3 second_contact = occupancy.cellCenter(neighbor);
-            if (second < first) {
-              std::swap(first, second);
-              std::swap(first_contact, second_contact);
-            }
-            const IncrementalTopologyNode3D& first_node = nodes.at(first);
-            const IncrementalTopologyNode3D& second_node = nodes.at(second);
-            const double length_m =
-                distance3D(first_node.representative, first_contact) +
-                distance3D(first_contact, second_contact) +
-                distance3D(second_contact, second_node.representative);
-            const IncrementalTopologyEdgeId edge_id = makeEdgeId(first, second);
-            const auto existing = edges.find(edge_id);
-            if (existing != edges.end() &&
-                existing->second.length_m <= length_m + 1.0e-9) {
-              existing->second.supporting_revision = update_revision;
-              continue;
-            }
-            edges[edge_id] = IncrementalTopologyEdge3D{
-                .id = edge_id,
-                .first = first,
-                .second = second,
-                .first_contact = first_contact,
-                .second_contact = second_contact,
-                .length_m = length_m,
-                .supporting_revision = update_revision,
-            };
           }
         }
       }
@@ -570,7 +704,7 @@ struct IncrementalTopologyGraph3D::Impl {
                   config.footprint.upper_extent_m});
     const int halo_cells =
         static_cast<int>(std::ceil(maximum_extent_m / bounds.resolution_m)) +
-        config.sample_stride_cells;
+        config.coarse_sample_stride_cells;
     for (const OccupancyChunkIndex3D chunk : dirty_chunks) {
       const GridIndex3D minimum{
           std::max(0, chunk.x * ObservedOccupancyGrid3D::kChunkSize - halo_cells),
@@ -650,10 +784,15 @@ struct IncrementalTopologyGraph3D::Impl {
       edges.clear();
       sample_cell_nodes.clear();
     }
-    std::vector<std::vector<TileComponent>> replacements;
+    std::vector<BuiltTile> replacements;
     replacements.reserve(rebuilt_tiles.size());
     for (const IncrementalTopologyTileIndex3D tile : rebuilt_tiles) {
       replacements.push_back(buildTile(occupancy, tile, update_revision));
+      stats.adaptively_refined_tiles +=
+          replacements.back().adaptively_refined ? 1U : 0U;
+      for (const TileComponent& component : replacements.back().components) {
+        stats.sampled_navigable_cells += component.cells.size();
+      }
     }
     for (std::size_t index = 0U; index < rebuilt_tiles.size(); ++index) {
       replaceTile(rebuilt_tiles[index], std::move(replacements[index]), update_revision,

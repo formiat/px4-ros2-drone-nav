@@ -42,7 +42,8 @@ TEST(IncrementalTopologicalNavigation3DTest,
   }
   IncrementalTopologyGraph3DConfig graph_config;
   graph_config.tile_size_cells = 4;
-  graph_config.sample_stride_cells = 1;
+  graph_config.coarse_sample_stride_cells = 1;
+  graph_config.refined_sample_stride_cells = 1;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
                                                 .lower_extent_m = 0.1,
                                                 .upper_extent_m = 0.1,
@@ -136,7 +137,8 @@ TEST(IncrementalTopologicalNavigation3DTest,
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 16, 12}};
   IncrementalTopologyGraph3DConfig graph_config;
   graph_config.tile_size_cells = 4;
-  graph_config.sample_stride_cells = 1;
+  graph_config.coarse_sample_stride_cells = 1;
+  graph_config.refined_sample_stride_cells = 1;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
                                                 .lower_extent_m = 0.1,
                                                 .upper_extent_m = 0.1,

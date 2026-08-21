@@ -39,9 +39,15 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
   topological_graph_3d_config_.tile_size_cells = checkedPositiveIntParameter(
       declare_parameter<std::int64_t>("topological_graph_3d_tile_size_cells", 8),
       "topological_graph_3d_tile_size_cells");
-  topological_graph_3d_config_.sample_stride_cells = checkedPositiveIntParameter(
-      declare_parameter<std::int64_t>("topological_graph_3d_sample_stride_cells", 2),
-      "topological_graph_3d_sample_stride_cells");
+  topological_graph_3d_config_.coarse_sample_stride_cells = checkedPositiveIntParameter(
+      declare_parameter<std::int64_t>("topological_graph_3d_coarse_sample_stride_cells",
+                                      2),
+      "topological_graph_3d_coarse_sample_stride_cells");
+  topological_graph_3d_config_.refined_sample_stride_cells =
+      checkedPositiveIntParameter(
+          declare_parameter<std::int64_t>(
+              "topological_graph_3d_refined_sample_stride_cells", 1),
+          "topological_graph_3d_refined_sample_stride_cells");
   topological_graph_3d_config_.maximum_frontier_evaluations_per_component =
       checkedPositiveSizeParameter(
           declare_parameter<std::int64_t>(
@@ -124,9 +130,11 @@ void ProductionMppiNode::initializeStaticTopology3D() {
                               .count();
   RCLCPP_INFO(get_logger(),
               "INCREMENTAL_TOPOLOGY3D_STATIC revision=%" PRIu64
-              " nodes=%zu edges=%zu rebuilt_tiles=%zu build_ms=%.2f",
+              " nodes=%zu edges=%zu rebuilt_tiles=%zu refined_tiles=%zu "
+              "sampled_cells=%zu build_ms=%.2f",
               update.graph.revision, update.graph.node_count, update.graph.edge_count,
-              update.graph.rebuilt_tiles, build_ms);
+              update.graph.rebuilt_tiles, update.graph.adaptively_refined_tiles,
+              update.graph.sampled_navigable_cells, build_ms);
 }
 
 ProductionIncrementalTopologySearch3D

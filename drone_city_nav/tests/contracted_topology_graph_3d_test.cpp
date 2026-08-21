@@ -11,7 +11,8 @@ namespace {
 [[nodiscard]] IncrementalTopologyGraph3DConfig makeConfig() {
   IncrementalTopologyGraph3DConfig config;
   config.tile_size_cells = 4;
-  config.sample_stride_cells = 1;
+  config.coarse_sample_stride_cells = 1;
+  config.refined_sample_stride_cells = 1;
   config.footprint.radius_m = 0.2;
   config.footprint.lower_extent_m = 0.2;
   config.footprint.upper_extent_m = 0.2;

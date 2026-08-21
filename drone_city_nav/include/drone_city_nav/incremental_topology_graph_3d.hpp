@@ -85,7 +85,8 @@ struct IncrementalTopologyEdge3D {
 
 struct IncrementalTopologyGraph3DConfig {
   int tile_size_cells{8};
-  int sample_stride_cells{2};
+  int coarse_sample_stride_cells{2};
+  int refined_sample_stride_cells{1};
   std::size_t maximum_frontier_evaluations_per_component{128U};
   SweptFootprintConfig footprint{};
   SensorObservabilityConfig observability{};
@@ -95,6 +96,8 @@ struct IncrementalTopologyGraph3DUpdate {
   std::uint64_t revision{0U};
   std::size_t requested_dirty_chunks{0U};
   std::size_t rebuilt_tiles{0U};
+  std::size_t adaptively_refined_tiles{0U};
+  std::size_t sampled_navigable_cells{0U};
   std::size_t retained_node_ids{0U};
   std::size_t created_nodes{0U};
   std::size_t retired_nodes{0U};
