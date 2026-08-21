@@ -96,7 +96,7 @@ TEST(TopologicalExplorationMemory3DTest, CountsFrontierSelectionsByStableIdentit
 }
 
 TEST(TopologicalExplorationMemory3DTest,
-     NewMissionLegClearsSoftRevisitHistoryButRetainsDeadEnds) {
+     NewMissionLegClearsAllGoalRelativeExplorationHistory) {
   TopologicalExplorationMemory3D memory;
   const Point3 visited{4.0, 5.0, 6.0};
   memory.recordTraversal(kForward, 8U, 12.0);
@@ -114,7 +114,7 @@ TEST(TopologicalExplorationMemory3DTest,
   const DirectedTopologyEdgeEvidence3D reverse = memory.evidence(kReverse, 8U);
   EXPECT_EQ(forward.result, TopologicalExplorationResult3D::kUnknown);
   EXPECT_EQ(forward.traversal_count, 0U);
-  EXPECT_EQ(reverse.result, TopologicalExplorationResult3D::kDeadEnd);
+  EXPECT_EQ(reverse.result, TopologicalExplorationResult3D::kUnknown);
   EXPECT_EQ(reverse.traversal_count, 0U);
   EXPECT_DOUBLE_EQ(reverse.traversed_distance_m, 0.0);
   EXPECT_DOUBLE_EQ(memory.softCoveragePenalty(visited, 8U), 0.0);

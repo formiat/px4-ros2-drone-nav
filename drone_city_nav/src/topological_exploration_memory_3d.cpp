@@ -246,16 +246,7 @@ TopologicalExplorationMemory3D::trail() const noexcept {
 }
 
 void TopologicalExplorationMemory3D::beginMissionLeg() {
-  for (auto evidence = edge_evidence_.begin(); evidence != edge_evidence_.end();) {
-    if (evidence->second.result != TopologicalExplorationResult3D::kDeadEnd) {
-      evidence = edge_evidence_.erase(evidence);
-      continue;
-    }
-    evidence->second.traversal_count = 0U;
-    evidence->second.traversed_distance_m = 0.0;
-    evidence->second.last_traversal_revision = 0U;
-    ++evidence;
-  }
+  edge_evidence_.clear();
   coverage_.clear();
   frontier_selection_counts_.clear();
   trail_.clear();
