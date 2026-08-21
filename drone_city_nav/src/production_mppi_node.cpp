@@ -630,6 +630,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_3d_config_.physical_footprint_sweep_step_m =
       physical_footprint_config_.sweep_step_m;
   lattice_3d_config_.sensor_observability.footprint = physical_footprint_config_;
+  configureIncrementalTopology3D();
   configureCooperativeTraffic();
   configureNonCooperativeAvoidance();
   liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", true);
@@ -749,6 +750,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       occupancy_path = package_share / occupancy_path;
     }
     static_occupancy_3d_ = OccupancyGrid3D::load(occupancy_path);
+    initializeStaticTopology3D();
     std::filesystem::path cache_path = declare_parameter<std::string>(
         "static_esdf_3d_cache_path", "worlds/generated_city.esdf3d");
     if (cache_path.empty()) {

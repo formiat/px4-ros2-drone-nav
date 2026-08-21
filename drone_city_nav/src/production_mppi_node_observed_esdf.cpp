@@ -19,6 +19,33 @@ void ProductionMppiNode::processObservedEsdf3D(
     return;
   }
 
+  const auto topology_started = std::chrono::steady_clock::now();
+  const IncrementalTopologicalWorldUpdate3D topology_update =
+      topological_navigation_3d_->updateObserved(
+          *occupancy, raw_world.revision, raw_world.dirty_chunks, raw_world.full_reset);
+  const double topology_update_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                topology_started)
+          .count();
+  {
+    const std::scoped_lock lock{esdf_state_mutex_};
+    if (prepared_esdf_) {
+      prepared_esdf_->topological_graph = topology_update.snapshot;
+      prepared_esdf_->topological_graph_update = topology_update.graph;
+    }
+  }
+  RCLCPP_INFO(
+      get_logger(),
+      "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64
+      " full_reset=%s dirty_chunks=%zu rebuilt_tiles=%zu retained_nodes=%zu "
+      "created_nodes=%zu retired_nodes=%zu nodes=%zu edges=%zu update_ms=%.2f",
+      topology_update.graph.revision,
+      topology_update.graph.full_reset ? "true" : "false",
+      topology_update.graph.requested_dirty_chunks, topology_update.graph.rebuilt_tiles,
+      topology_update.graph.retained_node_ids, topology_update.graph.created_nodes,
+      topology_update.graph.retired_nodes, topology_update.graph.node_count,
+      topology_update.graph.edge_count, topology_update_ms);
+
   ProductionMppiNavigation navigation;
   {
     const std::scoped_lock lock{input_mutex_};
@@ -130,6 +157,8 @@ void ProductionMppiNode::processObservedEsdf3D(
   prepared.distances_m = host_distances;
   prepared.raw_occupancy.reset();
   prepared.observed_occupancy = field.local_occupancy;
+  prepared.topological_graph = topology_update.snapshot;
+  prepared.topological_graph_update = topology_update.graph;
   if (const std::shared_ptr<const ProductionNavigationObjective> objective =
           navigationObjective()) {
     prepared.search_objective = makeStaticRouteObjective(*objective);

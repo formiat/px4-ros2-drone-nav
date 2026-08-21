@@ -300,6 +300,15 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.grid = static_esdf_grid_;
       prepared.distances_m = static_esdf_3d_;
       prepared.passage_traversals = static_portal_edges_;
+      prepared.topological_graph = topological_navigation_3d_->snapshot();
+      if (prepared.topological_graph) {
+        prepared.topological_graph_update.revision =
+            prepared.topological_graph->revision();
+        prepared.topological_graph_update.node_count =
+            prepared.topological_graph->nodes().size();
+        prepared.topological_graph_update.edge_count =
+            prepared.topological_graph->edges().size();
+      }
       if (objective) {
         prepared.search_objective = makeStaticRouteObjective(*objective);
       }

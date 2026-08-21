@@ -11,6 +11,7 @@
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/free_space_topology_router.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
+#include "drone_city_nav/incremental_topological_navigation_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
@@ -222,6 +223,8 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
+  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> topological_graph;
+  IncrementalTopologyGraph3DUpdate topological_graph_update{};
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
@@ -545,6 +548,8 @@ private:
                             const ProductionMppiNavigation& navigation);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
+  void configureIncrementalTopology3D();
+  void initializeStaticTopology3D();
   void configureCooperativeTraffic();
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);
@@ -668,6 +673,9 @@ private:
   std::unique_ptr<NoStaticRouteCycleDetector> no_static_cycle_detector_;
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
+  IncrementalTopologyGraph3DConfig topological_graph_3d_config_{};
+  IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
+  TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};
   FreeSpaceTopologyRouterConfig free_space_topology_router_config_{};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
@@ -685,6 +693,7 @@ private:
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
+  std::unique_ptr<IncrementalTopologicalNavigation3D> topological_navigation_3d_;
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<FreeSpaceTopology3D> static_free_space_topology_3d_;
   std::unique_ptr<FreeSpaceTopologyRouter> static_free_space_topology_router_;
