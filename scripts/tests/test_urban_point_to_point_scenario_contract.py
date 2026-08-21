@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contracts for the Urban Circuit static point-to-point scenario."""
+"""Contracts for the Urban Circuit no-static point-to-point scenario."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ SCENARIO_PATH = (
 )
 WORLD_PATH = REPOSITORY / "drone_city_nav/worlds/urban_circuit_practice_01.world3d.json"
 LOADER_PATH = REPOSITORY / "drone_city_nav/launch/point_to_point_scenario.py"
-VALIDATOR_PATH = REPOSITORY / "scripts/validate_static_point_to_point_scenario.py"
 MAKEFILE_PATH = REPOSITORY / "Makefile"
 HEADLESS_WRAPPER_PATH = REPOSITORY / "scripts/sim_urban_point_to_point_headless.sh"
 GUI_WRAPPER_PATH = REPOSITORY / "scripts/sim_urban_point_to_point_gui.sh"
@@ -59,24 +58,22 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertGreater(route_distance_m, 50.0)
         self.assertLess(route_distance_m, 70.0)
 
-    def test_static_runtime_has_preflight_and_gui_entrypoints(self) -> None:
-        validator = VALIDATOR_PATH.read_text(encoding="utf-8")
+    def test_no_static_runtime_has_3d_lidar_and_gui_entrypoints(self) -> None:
         makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
         headless_wrapper = HEADLESS_WRAPPER_PATH.read_text(encoding="utf-8")
         gui_wrapper = GUI_WRAPPER_PATH.read_text(encoding="utf-8")
 
-        self.assertIn("vertical_sweep_is_clear", validator)
-        self.assertIn("shortest_planar_route_m", validator)
-        self.assertIn("--minimum-route-length-m", validator)
         self.assertIn("POINT_TO_POINT_SCENARIO_PATH", makefile)
         self.assertIn("sim-urban-point-to-point-headless:", makefile)
         self.assertIn("sim-urban-point-to-point-gui:", makefile)
         self.assertIn("SIM_COLLISION_WORLD_SDF_PATH", makefile)
         self.assertIn("SIM_GUI_WORLD_SDF_PATH", makefile)
+        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 4)
+        self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 4)
         self.assertEqual(
-            makefile.count("scripts/run_static_scenario_preflight.sh"), 4
+            makefile.count("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE=true"), 2
         )
-        self.assertEqual(makefile.count("--route-contract direct && \\\n"), 2)
+        self.assertNotIn("scripts/run_static_scenario_preflight.sh", makefile)
         self.assertIn("sim-urban-point-to-point-headless", headless_wrapper)
         self.assertIn("sim-urban-point-to-point-gui", gui_wrapper)
 

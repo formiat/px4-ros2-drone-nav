@@ -365,29 +365,20 @@ Run the cooperative civilian traffic mission:
 ./scripts/sim_cooperative_traffic_headless.sh
 ```
 
-Run the static cooperative mission in the imported Urban Circuit Practice 01
-environment:
+Run the no-static cooperative mission in the imported Urban Circuit Practice 01
+environment. Both entrypoints use only 3D lidar and online obstacle memory:
 
 ```bash
 ./scripts/sim_cooperative_traffic_urban_gui.sh
 ./scripts/sim_cooperative_traffic_urban_headless.sh
 ```
 
-Static scenario preflight is disabled by default. To verify physical spawns and
-the configured static-route contract before an Urban run, enable it explicitly:
-
-```bash
-ENABLE_STATIC_SCENARIO_PREFLIGHT=true \
-  ./scripts/sim_cooperative_traffic_urban_headless.sh
-```
-
 This target verifies and installs the versioned environment release artifacts,
-materializes a Gazebo Harmonic collision world, compiles the manifest-bound
-FreeSpaceTopology3D artifact when needed, and launches the four-vehicle static
-scenario from
+materializes a Gazebo Harmonic collision world, leaves all static navigation
+artifact paths empty, and launches the four-vehicle online-mapping scenario from
 `drone_city_nav/config/cooperative_traffic_urban_scenario.json`.
 
-Run the base single-drone static flight in the same environment:
+Run the base single-drone no-static flight in the same environment:
 
 ```bash
 ./scripts/sim_urban_point_to_point_gui.sh
@@ -398,9 +389,9 @@ The scenario is defined once in
 `drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json`.
 Its map-space launch pose is transformed by the canonical world contract for
 Gazebo, while the same pose sets the PX4 origin and the navigation start. The
-when explicitly enabled, the static preflight check requires a supported
-physical spawn, a clear vertical takeoff, and the selected static-route
-contract before simulation starts.
+headless target additionally validates adaptive online topology updates, stable
+graph identities, physical graph traversal, route continuity, and measured 3D
+clearance.
 
 The finite scenario in
 `drone_city_nav/config/cooperative_traffic_scenario.json` launches two pairs of

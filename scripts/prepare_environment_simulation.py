@@ -51,6 +51,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--environment", required=True)
     parser.add_argument("--static-map")
     parser.add_argument(
+        "--runtime-map-mode",
+        choices=("no-static", "static"),
+        default="no-static",
+        help=(
+            "Prepare only the physical world for online 3D mapping, or also "
+            "install static navigation artifacts."
+        ),
+    )
+    parser.add_argument(
         "--scenario",
         type=Path,
         help="Optional scenario whose physical launch platforms are materialized.",
@@ -58,6 +67,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--asset-install-root", type=Path, default=DEFAULT_INSTALL_ROOT)
     parser.add_argument("--rebuild-topology", action="store_true")
     return parser.parse_args()
+
+
+def validate_runtime_map_arguments(args: argparse.Namespace) -> None:
+    if args.runtime_map_mode == "no-static" and args.static_map is not None:
+        raise EnvironmentPreparationError(
+            "--static-map requires --runtime-map-mode static"
+        )
+    if args.runtime_map_mode == "no-static" and args.rebuild_topology:
+        raise EnvironmentPreparationError(
+            "--rebuild-topology requires --runtime-map-mode static"
+        )
 
 
 def ensure_release_artifact(
@@ -114,11 +134,16 @@ def write_runtime_environment(
     collision_world_sdf: Path,
     gui_world_sdf: Path,
     source_root: Path,
-    occupancy: Path,
-    esdf: Path,
-    topology: Path,
+    runtime_map_mode: str,
+    occupancy: Path | None,
+    esdf: Path | None,
+    topology: Path | None,
 ) -> None:
+    def optional_repository_path(value: Path | None) -> str:
+        return repository_path(repository, value) if value is not None else ""
+
     values = {
+        "ENVIRONMENT_RUNTIME_MAP_MODE": runtime_map_mode,
         "SIM_WORLD_NAME": world_name,
         "SIM_WORLD_SDF_PATH": repository_path(repository, collision_world_sdf),
         "SIM_COLLISION_WORLD_SDF_PATH": repository_path(
@@ -126,9 +151,9 @@ def write_runtime_environment(
         ),
         "SIM_GUI_WORLD_SDF_PATH": repository_path(repository, gui_world_sdf),
         "SIM_WORLD_RESOURCE_PATH": repository_path(repository, source_root / "fuel"),
-        "STATIC_OCCUPANCY_3D_PATH": repository_path(repository, occupancy),
-        "STATIC_ESDF_3D_CACHE_PATH": repository_path(repository, esdf),
-        "STATIC_FREE_SPACE_TOPOLOGY_3D_PATH": repository_path(repository, topology),
+        "STATIC_OCCUPANCY_3D_PATH": optional_repository_path(occupancy),
+        "STATIC_ESDF_3D_CACHE_PATH": optional_repository_path(esdf),
+        "STATIC_FREE_SPACE_TOPOLOGY_3D_PATH": optional_repository_path(topology),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -441,6 +466,7 @@ def ensure_versioned_visual_resources(
 
 def main() -> None:
     args = parse_args()
+    validate_runtime_map_arguments(args)
     manifest_path = args.manifest.resolve()
     manifest = load_manifest(manifest_path)
     repository = repository_root(manifest_path)
@@ -464,42 +490,49 @@ def main() -> None:
     source_root = ensure_release_artifact(
         repository, manifest_path, environment, source_artifact_id, install_root
     )
-    static_map = select_static_map(environment, args.static_map)
-    ensure_release_artifact(
-        repository,
-        manifest_path,
-        environment,
-        static_map["artifact_id"],
-        install_root,
-    )
-    inputs = resolve_static_map_inputs(
-        repository, environment, static_map, install_root
-    )
-
-    topology = default_output_path(repository, environment, static_map)
-    if args.rebuild_topology or not topology.is_file():
-        completed = subprocess.run(
-            [
-                sys.executable,
-                str(repository / "scripts/compile_environment_topology.py"),
-                "--manifest",
-                str(manifest_path),
-                "--environment",
-                environment["id"],
-                "--static-map",
-                static_map["id"],
-                "--asset-install-root",
-                str(install_root),
-                "--output",
-                str(topology),
-            ],
-            cwd=repository,
-            check=False,
+    static_map: dict | None = None
+    occupancy: Path | None = None
+    esdf: Path | None = None
+    topology: Path | None = None
+    if args.runtime_map_mode == "static":
+        static_map = select_static_map(environment, args.static_map)
+        ensure_release_artifact(
+            repository,
+            manifest_path,
+            environment,
+            static_map["artifact_id"],
+            install_root,
         )
-        if completed.returncode != 0:
-            raise EnvironmentPreparationError("topology compilation failed")
-    if topology.stat().st_size == 0:
-        raise EnvironmentPreparationError("compiled topology is empty")
+        inputs = resolve_static_map_inputs(
+            repository, environment, static_map, install_root
+        )
+        occupancy = inputs.occupancy
+        esdf = inputs.esdf
+
+        topology = default_output_path(repository, environment, static_map)
+        if args.rebuild_topology or not topology.is_file():
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(repository / "scripts/compile_environment_topology.py"),
+                    "--manifest",
+                    str(manifest_path),
+                    "--environment",
+                    environment["id"],
+                    "--static-map",
+                    static_map["id"],
+                    "--asset-install-root",
+                    str(install_root),
+                    "--output",
+                    str(topology),
+                ],
+                cwd=repository,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise EnvironmentPreparationError("topology compilation failed")
+        if topology.stat().st_size == 0:
+            raise EnvironmentPreparationError("compiled topology is empty")
 
     source_world = source_root / environment["source"]["entrypoint"]
     if not source_world.is_file():
@@ -585,20 +618,24 @@ def main() -> None:
         collision_world_sdf,
         gui_world_sdf,
         source_root,
-        inputs.occupancy,
-        inputs.esdf,
+        args.runtime_map_mode,
+        occupancy,
+        esdf,
         topology,
     )
+    static_map_id = static_map["id"] if static_map is not None else "none"
     print(
         "ENVIRONMENT_SIMULATION_READY"
-        f" environment={environment['id']} static_map={static_map['id']}"
+        f" environment={environment['id']} runtime_map_mode={args.runtime_map_mode}"
+        f" static_map={static_map_id}"
         f" world={world_name} collisions={collision_report.collision_instances}"
         f" visuals={gui_report.visual_instances} lights={gui_report.light_instances}"
         f" visual_uris={visual_uri_count}"
         f" visual_resources_verified={len(visual_resources)}"
         f" visual_resources_downloaded={downloaded_visuals}"
         f" launch_platforms={len(launch_platforms)}"
-        f" occupancy={inputs.occupancy} esdf={inputs.esdf} topology={topology}"
+        f" occupancy={occupancy or 'none'} esdf={esdf or 'none'}"
+        f" topology={topology or 'none'}"
         f" env_file={environment_file}"
     )
 

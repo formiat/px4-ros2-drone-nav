@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contracts for the Urban Circuit static cooperative scenario."""
+"""Contracts for the Urban Circuit no-static cooperative scenario."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ SCENARIO_PATH = (
 LOADER_PATH = REPOSITORY / "drone_city_nav" / "launch" / "intercept_scenario.py"
 MANIFEST_PATH = REPOSITORY / "environments" / "environment_manifest.yaml"
 PREPARER_PATH = REPOSITORY / "scripts" / "prepare_environment_simulation.py"
-VALIDATOR_PATH = REPOSITORY / "scripts" / "validate_static_cooperative_scenario.py"
 RUNNER_PATH = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
 CONTAINER_RUNNER_PATH = REPOSITORY / "scripts" / "container_run.sh"
 GUI_WRAPPER_PATH = REPOSITORY / "scripts" / "sim_cooperative_traffic_urban_gui.sh"
@@ -140,7 +139,6 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             ).read_text(encoding="utf-8")
         )
         preparer = PREPARER_PATH.read_text(encoding="utf-8")
-        validator = VALIDATOR_PATH.read_text(encoding="utf-8")
         runner = RUNNER_PATH.read_text(encoding="utf-8")
         container = CONTAINER_RUNNER_PATH.read_text(encoding="utf-8")
         gui_wrapper = GUI_WRAPPER_PATH.read_text(encoding="utf-8")
@@ -155,11 +153,8 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("world_gui.sdf", preparer)
         self.assertIn("validate_visual_resource_uris", preparer)
         self.assertIn("add_launch_platforms", preparer)
-        self.assertIn("center_is_clear", validator)
-        self.assertIn("spawn_has_support", validator)
-        self.assertIn("shortest_planar_route_m", validator)
-        self.assertIn("planar_segment_is_clear", validator)
-        self.assertIn('choices=("direct", "connected")', validator)
+        self.assertIn('choices=("no-static", "static")', preparer)
+        self.assertIn("ENVIRONMENT_RUNTIME_MAP_MODE", preparer)
         self.assertIn("SIM_WORLD_SDF_PATH", runner)
         self.assertIn("STATIC_OCCUPANCY_3D_PATH", runner)
         self.assertIn("SIM_WORLD_SDF_PATH", container)
@@ -168,37 +163,20 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("sim-cooperative-traffic-urban-headless:", makefile)
         self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH"', makefile)
         self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH"', makefile)
-        self.assertNotIn("STATIC_CRUISE_SPEED_MPS", makefile)
-        self.assertNotIn("STATIC_ABSOLUTE_SPEED_LIMIT_MPS", makefile)
-        self.assertGreaterEqual(
-            makefile.count("STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000"), 2
-        )
-        self.assertGreaterEqual(
-            makefile.count("STATIC_ROUTE_TRACKING_MARGIN_M=0.25"), 2
-        )
-        self.assertGreaterEqual(
-            makefile.count("--static-route-tracking-margin-m 0.25"), 2
-        )
-        self.assertGreaterEqual(makefile.count("--route-contract connected"), 2)
+        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 4)
+        self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 4)
         self.assertEqual(
-            makefile.count("--route-contract connected && \\\n"), 2
+            makefile.count("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE=true"), 2
         )
-        self.assertGreaterEqual(makefile.count("--minimum-route-length-m 20"), 2)
-        self.assertEqual(
-            makefile.count("scripts/validate_static_cooperative_scenario.py"), 2
-        )
-        self.assertEqual(
-            makefile.count("scripts/run_static_scenario_preflight.sh"), 4
-        )
+        self.assertNotIn("scripts/run_static_scenario_preflight.sh", makefile)
         self.assertEqual(
             makefile.count("--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json"),
-            4,
+            2,
         )
         self.assertIn("CRUISE_SPEED_MPS", container)
         self.assertIn("ABSOLUTE_SPEED_LIMIT_MPS", container)
         self.assertIn("MAXIMUM_HORIZONTAL_ACCELERATION_MPS2", container)
-        self.assertIn("STATIC_ROUTE_TRACKING_MARGIN_M", container)
-        self.assertIn("ENABLE_STATIC_SCENARIO_PREFLIGHT", container)
+        self.assertIn("LIDAR_PROFILE", container)
 
         manifest = MANIFEST_PATH.read_text(encoding="utf-8")
         self.assertIn("model: Urban Platform", manifest)

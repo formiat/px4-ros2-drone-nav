@@ -302,21 +302,20 @@ installations before compilation.
 
 ## Current Limits And Next Decision
 
-- Urban Circuit Practice 01 now has a production static cooperative scenario,
-  explicit mission starts and goals, map/SDF/PX4 frame transforms, manifest-bound
-  Occupancy3D, ESDF3D, and FreeSpaceTopology3D selection, and a dedicated
-  headless launch target. Its cooperative A/B routes cross the extracted
-  `traversal:14104023849235356451` passage; three consecutive static headless
-  runs each completed with two verified passage traversals, all four goals
-  reached, and no physical or building collisions.
-- Candidate visuals are not yet a production Harmonic world. The Finals
-  collision-only world loads in a Harmonic server, but the original legacy
-  materials and resource URIs still need a visual migration pass.
+- Urban Circuit Practice 01 retains the previously validated static artifacts
+  and historical three-run result. Its current point-to-point and cooperative
+  entrypoints intentionally use no static map, 3D lidar, online obstacle memory,
+  and incremental topology evidence. The environment preparer materializes the
+  physical and visual worlds without installing or exporting static navigation
+  artifacts in this mode.
+- Urban visual resources are materialized into a local Harmonic world. Finals
+  and Cave visual behavior has not yet received equivalent mission-level GUI
+  validation.
 - Finals Prize Round World 07 and Cave Circuit Practice 01 do not yet define
   production mission starts, goals, launch selection, or flight-envelope bounds.
-- Interception and no-static navigation have not been validated in an imported
-  environment. Urban Circuit Practice 01 is currently integrated only for the
-  static cooperative mission.
+- Interception has not been validated in an imported environment. The current
+  Urban no-static point-to-point and cooperative entrypoints are the external
+  environment acceptance targets for incremental topological exploration.
 - A valid static topology proves deterministic extraction and raw-safe internal
   segments. End-to-end reachability still requires a scenario-level run and a
   completed passage lifecycle or geometry event.

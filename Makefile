@@ -104,24 +104,21 @@ sim-cooperative-traffic-headless: build
 .PHONY: sim-cooperative-traffic-urban-headless
 sim-cooperative-traffic-urban-headless: build
 	python3 scripts/prepare_environment_simulation.py \
-		--environment urban_circuit_practice_01 --static-map r050 \
+		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		./scripts/run_static_scenario_preflight.sh \
-			python3 scripts/validate_static_cooperative_scenario.py \
-			--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json \
-			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
-			--static-route-tracking-margin-m 0.25 \
-			--minimum-route-length-m 20 \
-			--route-contract connected && \
 		SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=civilian_0 \
 		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=next_living \
-		STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000 \
-		STATIC_ROUTE_TRACKING_MARGIN_M=0.25 \
-		ENABLE_STATIC_MAP=true HEADLESS=1 MISSION_CHECK=1 \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE=true \
+		MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS="$${MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS:-10000}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
 		COOPERATIVE_MISSION_TIMEOUT_S=480 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
 		./scripts/run_drone_nav_sim.sh
@@ -129,64 +126,49 @@ sim-cooperative-traffic-urban-headless: build
 .PHONY: sim-cooperative-traffic-urban-gui
 sim-cooperative-traffic-urban-gui: build
 	python3 scripts/prepare_environment_simulation.py \
-		--environment urban_circuit_practice_01 --static-map r050 \
+		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		./scripts/run_static_scenario_preflight.sh \
-			python3 scripts/validate_static_cooperative_scenario.py \
-			--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json \
-			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
-			--static-route-tracking-margin-m 0.25 \
-			--minimum-route-length-m 20 \
-			--route-contract connected && \
 		SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=civilian_0 \
 		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=next_living \
-		STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000 \
-		STATIC_ROUTE_TRACKING_MARGIN_M=0.25 \
 		COOPERATIVE_MISSION_TIMEOUT_S=480 \
-		ENABLE_STATIC_MAP=true \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-urban-point-to-point-headless
 sim-urban-point-to-point-headless: build
 	python3 scripts/prepare_environment_simulation.py \
-		--environment urban_circuit_practice_01 --static-map r050 \
+		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		./scripts/run_static_scenario_preflight.sh \
-			python3 scripts/validate_static_point_to_point_scenario.py \
-			--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
-			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
-			--static-route-tracking-margin-m 0.25 \
-			--minimum-route-length-m 120 \
-			--route-contract direct && \
 		SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
-		STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000 \
-		STATIC_ROUTE_TRACKING_MARGIN_M=0.25 \
-		ENABLE_STATIC_MAP=true HEADLESS=1 MISSION_CHECK=1 \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE=true \
+		MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS="$${MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS:-10000}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-urban-point-to-point-gui
 sim-urban-point-to-point-gui: build
 	python3 scripts/prepare_environment_simulation.py \
-		--environment urban_circuit_practice_01 --static-map r050 \
+		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		./scripts/run_static_scenario_preflight.sh \
-			python3 scripts/validate_static_point_to_point_scenario.py \
-			--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
-			--occupancy "$$STATIC_OCCUPANCY_3D_PATH" \
-			--static-route-tracking-margin-m 0.25 \
-			--minimum-route-length-m 120 \
-			--route-contract direct && \
 		SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
-		STATIC_GLOBAL_LATTICE_DEADLINE_MS=2000 \
-		STATIC_ROUTE_TRACKING_MARGIN_M=0.25 \
-		ENABLE_STATIC_MAP=true \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
