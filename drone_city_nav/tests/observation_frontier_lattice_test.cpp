@@ -164,5 +164,71 @@ TEST(ObservationFrontierLatticeTest,
   EXPECT_LT(result.achieved_progress_m, 0.0);
 }
 
+TEST(ObservationFrontierLatticeTest,
+     StrategicBacktrackSuppressesCompetingFrontierSelection) {
+  const OpeningFixture fixture = makeForwardOpeningFixture(12.5, 8, 12, 10, 15);
+  const ObservedEsdf3D field =
+      buildObservedEsdf3D(fixture.occupancy, fixture.occupancy.bounds(), 40.0);
+  const Point3 backtrack_goal{3.5, 18.5, 12.5};
+  const Lattice3DExplorationContext exploration{
+      .observed_occupancy = field.local_occupancy.get(),
+      .map_revision = 42U,
+      .strategic_directive =
+          Lattice3DStrategicDirective{
+              .planning_goal = backtrack_goal,
+              .preferred_direction = Vec3{0.0, 8.0, 0.0},
+              .route_purpose = Lattice3DRoutePurpose::kTopologicalBacktrack,
+              .observation_frontier = std::nullopt,
+              .selection_score = 7.0,
+              .reaches_mission_goal = false,
+          },
+  };
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      field.grid, field.distances_m, fixture.start, {1.0, 0.0, 0.0}, fixture.goal, {},
+      makeConfig(), nullptr, &exploration);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_EQ(result.route_purpose, Lattice3DRoutePurpose::kTopologicalBacktrack);
+  EXPECT_DOUBLE_EQ(result.planning_goal.x, backtrack_goal.x);
+  EXPECT_DOUBLE_EQ(result.planning_goal.y, backtrack_goal.y);
+  EXPECT_DOUBLE_EQ(result.planning_goal.z, backtrack_goal.z);
+  EXPECT_FALSE(result.reached_mission_goal);
+  EXPECT_FALSE(result.observation_frontier.has_value());
+  EXPECT_EQ(result.frontier_searches, 0U);
+  ASSERT_FALSE(result.points.empty());
+  EXPECT_NEAR(result.points.back().y, backtrack_goal.y, 1.0e-6);
+}
+
+TEST(ObservationFrontierLatticeTest,
+     StrategicLocalMissionTargetDoesNotClaimFinalMissionArrival) {
+  const OpeningFixture fixture = makeForwardOpeningFixture(12.5, 8, 12, 10, 15);
+  const ObservedEsdf3D field =
+      buildObservedEsdf3D(fixture.occupancy, fixture.occupancy.bounds(), 40.0);
+  const Point3 local_goal{9.5, 10.5, 12.5};
+  const Lattice3DExplorationContext exploration{
+      .observed_occupancy = field.local_occupancy.get(),
+      .map_revision = 43U,
+      .strategic_directive =
+          Lattice3DStrategicDirective{
+              .planning_goal = local_goal,
+              .preferred_direction = Vec3{6.0, 0.0, 0.0},
+              .route_purpose = Lattice3DRoutePurpose::kMissionTransit,
+              .observation_frontier = std::nullopt,
+              .selection_score = 1.0,
+              .reaches_mission_goal = false,
+          },
+  };
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      field.grid, field.distances_m, fixture.start, {1.0, 0.0, 0.0}, fixture.goal, {},
+      makeConfig(), nullptr, &exploration);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_EQ(result.route_purpose, Lattice3DRoutePurpose::kMissionTransit);
+  EXPECT_FALSE(result.reached_mission_goal);
+  EXPECT_NEAR(result.points.back().x, local_goal.x, 1.0e-6);
+}
+
 } // namespace
 } // namespace drone_city_nav

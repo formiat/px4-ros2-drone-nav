@@ -5,7 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
-#include <optional>
+#include <memory>
 #include <ranges>
 #include <span>
 #include <tuple>
@@ -53,6 +53,21 @@ struct TopologySearchBatch {
          evaluateFlightEnvelopeAltitude(start.z, config.flight_envelope) ==
              FlightEnvelopeStatus::kValid &&
          evaluateFlightEnvelopeAltitude(mission_goal.z, config.flight_envelope) ==
+             FlightEnvelopeStatus::kValid;
+}
+
+[[nodiscard]] bool
+validStrategicDirective(const Lattice3DStrategicDirective& directive,
+                        const RiskAwareLattice3DConfig& config) noexcept {
+  return std::isfinite(directive.planning_goal.x) &&
+         std::isfinite(directive.planning_goal.y) &&
+         std::isfinite(directive.planning_goal.z) &&
+         std::isfinite(directive.preferred_direction.x) &&
+         std::isfinite(directive.preferred_direction.y) &&
+         std::isfinite(directive.preferred_direction.z) &&
+         std::isfinite(directive.selection_score) &&
+         evaluateFlightEnvelopeAltitude(directive.planning_goal.z,
+                                        config.flight_envelope) ==
              FlightEnvelopeStatus::kValid;
 }
 
@@ -167,8 +182,23 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
   if (!validSearchInput(grid, esdf_m, start, mission_goal, config)) {
     return {};
   }
+  const Lattice3DStrategicDirective* strategic_directive{nullptr};
+  if (exploration_context != nullptr &&
+      exploration_context->strategic_directive.has_value()) {
+    strategic_directive =
+        std::addressof(exploration_context->strategic_directive.value());
+  }
+  if (strategic_directive != nullptr &&
+      !validStrategicDirective(*strategic_directive, config)) {
+    return {};
+  }
   const Point3 planning_goal =
-      planningGoal(start, mission_goal, config.planning_goal_distance_m);
+      strategic_directive != nullptr
+          ? strategic_directive->planning_goal
+          : planningGoal(start, mission_goal, config.planning_goal_distance_m);
+  const Vec3 search_direction = strategic_directive != nullptr
+                                    ? strategic_directive->preferred_direction
+                                    : preferred_direction;
   std::vector<TopologySearchBatch> topology_searches =
       makeTopologySearches(passage_traversals, config.maximum_topology_search_groups);
 
@@ -180,7 +210,7 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
          {Lattice3DRiskStage::kPreferredOnly, Lattice3DRiskStage::kPlanningAllowed,
           Lattice3DRiskStage::kCriticalAllowed}) {
       topology.stage_results.push_back(detail::searchRiskAwareLattice3DStage(
-          grid, esdf_m, start, preferred_direction, planning_goal, mission_goal,
+          grid, esdf_m, start, search_direction, planning_goal, mission_goal,
           topology.passages, stage, topology.requirement, config, worker_pool));
     }
     topology.worker_ms = std::chrono::duration<double, std::milli>(
@@ -218,7 +248,7 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
   RiskAwareLattice3DResult result = std::move(stage_results[selection.selected_index]);
 
   if (result.status != Lattice3DStatus::kReachedPlanningGoal &&
-      exploration_context != nullptr &&
+      strategic_directive == nullptr && exploration_context != nullptr &&
       exploration_context->observed_occupancy != nullptr) {
     ObservationFrontierDiscovery discovery = discoverObservationFrontiers(
         *exploration_context->observed_occupancy, exploration_context->map_revision,
@@ -249,7 +279,8 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
     const std::size_t search_count =
         std::min(frontiers.size(), config.observation_frontier_maximum_searches);
     const auto exploration_started = std::chrono::steady_clock::now();
-    std::optional<RiskAwareLattice3DResult> best_observation_route;
+    RiskAwareLattice3DResult best_observation_route{};
+    bool has_observation_route{false};
     std::size_t performed_searches = 0U;
     for (std::size_t index = 0U; index < search_count; ++index) {
       const double elapsed_ms =
@@ -326,13 +357,17 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
           frontier, start, planning_goal, frontier_result.objective_cost,
           frontier_result.minimum_clearance_m, config);
       frontier_result.topology_candidates = std::move(frontier_selection.diagnostics);
-      if (!best_observation_route.has_value() ||
-          betterObservationRoute(frontier_result, *best_observation_route)) {
+      if (!has_observation_route) {
+        best_observation_route = std::move(frontier_result);
+        has_observation_route = true;
+        continue;
+      }
+      if (betterObservationRoute(frontier_result, best_observation_route)) {
         best_observation_route = std::move(frontier_result);
       }
     }
-    if (best_observation_route.has_value()) {
-      result = std::move(*best_observation_route);
+    if (has_observation_route) {
+      result = std::move(best_observation_route);
     }
     result.frontier_candidates_considered = frontiers.size();
     result.frontier_sampled_free_voxels = discovery.sampled_free_voxels;
@@ -346,7 +381,17 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
   result.parallel_topology_searches = topology_parallel ? topology_searches.size() : 0U;
   result.topology_search_worker_ms = topology_search_worker_ms;
   result.continuation_validation_ms = aggregate_continuation_validation_ms;
-  if (result.route_purpose == Lattice3DRoutePurpose::kMissionTransit) {
+  if (strategic_directive != nullptr) {
+    result.planning_goal = planning_goal;
+    result.route_purpose = strategic_directive->route_purpose;
+    result.observation_frontier = strategic_directive->observation_frontier;
+    result.frontier_selection_score = strategic_directive->selection_score;
+    result.reached_mission_goal =
+        result.status == Lattice3DStatus::kReachedPlanningGoal &&
+        strategic_directive->reaches_mission_goal &&
+        distance3D(planning_goal, mission_goal) <= 1.0e-6;
+    result.topology_candidates = std::move(selection.diagnostics);
+  } else if (result.route_purpose == Lattice3DRoutePurpose::kMissionTransit) {
     result.planning_goal = planning_goal;
     result.topology_candidates = std::move(selection.diagnostics);
   }
