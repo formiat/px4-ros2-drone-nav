@@ -47,7 +47,9 @@ TEST(TopologicalExplorationMemory3DTest, ReopensDeadEndAfterSupportingRevisionCh
 }
 
 TEST(TopologicalExplorationMemory3DTest, CoverageIsFiniteSoftAndRevisionDecayed) {
-  TopologicalExplorationMemory3D memory;
+  TopologicalExplorationMemory3DConfig config;
+  config.revision_decay = 0.02;
+  TopologicalExplorationMemory3D memory{config};
   const Point3 point{2.2, -1.2, 7.1};
   memory.recordVisited(point, 10U);
   memory.recordVisited(point, 10U);
@@ -60,6 +62,22 @@ TEST(TopologicalExplorationMemory3DTest, CoverageIsFiniteSoftAndRevisionDecayed)
   EXPECT_GT(fresh, old);
   EXPECT_GT(old, 0.0);
   EXPECT_DOUBLE_EQ(memory.softCoveragePenalty({100.0, 100.0, 100.0}, 10U), 0.0);
+}
+
+TEST(TopologicalExplorationMemory3DTest,
+     DefaultCoveragePersistsUntilMissionLegChanges) {
+  TopologicalExplorationMemory3D memory;
+  const Point3 point{2.2, -1.2, 7.1};
+  memory.recordVisited(point, 10U);
+  memory.recordObserved(point, 10U);
+
+  const double initial = memory.softCoveragePenalty(point, 10U);
+  EXPECT_GT(initial, 0.0);
+  EXPECT_DOUBLE_EQ(memory.softCoveragePenalty(point, 10000U), initial);
+
+  memory.beginMissionLeg();
+
+  EXPECT_DOUBLE_EQ(memory.softCoveragePenalty(point, 10000U), 0.0);
 }
 
 TEST(TopologicalExplorationMemory3DTest, SamplesVisitedPathWithoutHardExclusion) {

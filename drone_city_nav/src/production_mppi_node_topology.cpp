@@ -89,7 +89,7 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
   topological_memory_3d_config_.observation_penalty_weight = declare_parameter<double>(
       "topological_memory_3d_observation_penalty_weight", 0.25);
   topological_memory_3d_config_.revision_decay =
-      declare_parameter<double>("topological_memory_3d_revision_decay", 0.02);
+      declare_parameter<double>("topological_memory_3d_revision_decay", 0.0);
   topological_memory_3d_config_.maximum_trail_nodes = checkedPositiveSizeParameter(
       declare_parameter<std::int64_t>("topological_memory_3d_maximum_trail_nodes",
                                       4096),

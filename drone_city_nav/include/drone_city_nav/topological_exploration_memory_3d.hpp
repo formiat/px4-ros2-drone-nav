@@ -52,7 +52,7 @@ struct TopologicalExplorationMemory3DConfig {
   double coverage_resolution_m{2.0};
   double visit_penalty_weight{2.0};
   double observation_penalty_weight{0.25};
-  double revision_decay{0.02};
+  double revision_decay{0.0};
   std::size_t maximum_trail_nodes{4096U};
 };
 
