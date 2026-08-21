@@ -307,6 +307,35 @@ TEST(Route3DTest, ReportsRawCollisionSuccessorRejectionsWhenGraphIsExhausted) {
   EXPECT_EQ(lattice3DRiskStageName(result.risk_stage), std::string_view{"critical"});
 }
 
+TEST(Route3DTest, DistinguishesUnknownSpaceFromLocalRoiBoundary) {
+  const mppi::EsdfGrid grid{6, 6, 1.0F, 0.0F, 0.0F, 4, 0.0F, true};
+  std::vector<float> esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth), 20.0F);
+  const std::size_t unknown_index =
+      (std::size_t{1U} * static_cast<std::size_t>(grid.height) + std::size_t{2U}) *
+          static_cast<std::size_t>(grid.width) +
+      std::size_t{2U};
+  esdf.at(unknown_index) = mppi::kUnknownEsdfDistanceM;
+  RiskAwareLattice3DConfig config;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_lower_extent_m = 0.0;
+  config.physical_footprint_upper_extent_m = 0.0;
+  config.physical_footprint_samples = 0U;
+
+  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{1.5, 2.5, 1.5},
+                                          Point3{2.5, 2.5, 1.5},
+                                          Lattice3DRiskStage::kCriticalAllowed, config)
+                .status,
+            detail::Lattice3DEdgeEvaluationStatus::kUnknownSpace);
+  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{4.5, 2.5, 1.5},
+                                          Point3{6.5, 2.5, 1.5},
+                                          Lattice3DRiskStage::kCriticalAllowed, config)
+                .status,
+            detail::Lattice3DEdgeEvaluationStatus::kOutsideGrid);
+}
+
 TEST(Route3DTest, LatticeTraversesLShapedPassage) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 20, 4}};
   for (int y = 0; y < 12; ++y) {

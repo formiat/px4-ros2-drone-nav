@@ -398,13 +398,17 @@ void ProductionMppiNode::processGuideSearch3D(
       "continuation_states=%zu continuation_depth_m=%.2f "
       "lattice_successor_generated=%zu lattice_successor_accepted=%zu "
       "lattice_successor_reject_edge=%zu lattice_successor_reject_zero=%zu "
-      "lattice_successor_reject_grid=%zu lattice_successor_reject_envelope=%zu "
+      "lattice_successor_reject_outside_roi=%zu "
+      "lattice_successor_reject_unknown_space=%zu "
+      "lattice_successor_reject_envelope=%zu "
       "lattice_successor_reject_invalid=%zu "
       "lattice_successor_reject_collision=%zu lattice_successor_reject_risk=%zu "
       "lattice_successor_reject_cost=%zu "
       "passage_successor_generated=%zu passage_successor_accepted=%zu "
       "passage_successor_rejected=%zu passage_successor_reject_connection=%zu "
-      "passage_successor_reject_grid=%zu passage_successor_reject_envelope=%zu "
+      "passage_successor_reject_outside_roi=%zu "
+      "passage_successor_reject_unknown_space=%zu "
+      "passage_successor_reject_envelope=%zu "
       "passage_successor_reject_invalid=%zu "
       "passage_successor_reject_collision=%zu passage_successor_reject_risk=%zu "
       "passage_successor_reject_cost=%zu "
@@ -462,6 +466,7 @@ void ProductionMppiNode::processGuideSearch3D(
       lattice.successor_diagnostics.lattice_rejected_edge,
       lattice.successor_diagnostics.lattice_rejected_zero_length,
       lattice.successor_diagnostics.lattice_rejected_outside_grid,
+      lattice.successor_diagnostics.lattice_rejected_unknown_space,
       lattice.successor_diagnostics.lattice_rejected_flight_envelope,
       lattice.successor_diagnostics.lattice_rejected_invalid_esdf,
       lattice.successor_diagnostics.lattice_rejected_raw_collision,
@@ -472,6 +477,7 @@ void ProductionMppiNode::processGuideSearch3D(
       lattice.successor_diagnostics.passage_rejected,
       lattice.successor_diagnostics.passage_rejected_connection_distance,
       lattice.successor_diagnostics.passage_rejected_outside_grid,
+      lattice.successor_diagnostics.passage_rejected_unknown_space,
       lattice.successor_diagnostics.passage_rejected_flight_envelope,
       lattice.successor_diagnostics.passage_rejected_invalid_esdf,
       lattice.successor_diagnostics.passage_rejected_raw_collision,

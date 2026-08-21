@@ -22,6 +22,37 @@ namespace {
   return false;
 }
 
+[[nodiscard]] bool
+footprintSegmentInsideGrid(const mppi::EsdfGrid& grid, const Point3& first,
+                           const Point3& second,
+                           const RiskAwareLattice3DConfig& config) noexcept {
+  if (grid.width <= 0 || grid.height <= 0 || grid.depth <= 0 ||
+      !(grid.resolution_m > 0.0F)) {
+    return false;
+  }
+  const double minimum_x = static_cast<double>(grid.origin_x_m);
+  const double minimum_y = static_cast<double>(grid.origin_y_m);
+  const double minimum_z = static_cast<double>(grid.origin_z_m);
+  const double maximum_x =
+      minimum_x + static_cast<double>(grid.width) * grid.resolution_m;
+  const double maximum_y =
+      minimum_y + static_cast<double>(grid.height) * grid.resolution_m;
+  const double maximum_z =
+      minimum_z + static_cast<double>(grid.depth) * grid.resolution_m;
+  return std::min(first.x, second.x) - config.physical_footprint_radius_m >=
+             minimum_x &&
+         std::max(first.x, second.x) + config.physical_footprint_radius_m <=
+             maximum_x &&
+         std::min(first.y, second.y) - config.physical_footprint_radius_m >=
+             minimum_y &&
+         std::max(first.y, second.y) + config.physical_footprint_radius_m <=
+             maximum_y &&
+         std::min(first.z, second.z) - config.physical_footprint_lower_extent_m >=
+             minimum_z &&
+         std::max(first.z, second.z) + config.physical_footprint_upper_extent_m <=
+             maximum_z;
+}
+
 } // namespace
 
 Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
@@ -33,6 +64,10 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
   if (!segmentInsideFlightEnvelope(first, second, config.flight_envelope)) {
     return Lattice3DEdgeEvaluation{
         .status = Lattice3DEdgeEvaluationStatus::kOutsideFlightEnvelope};
+  }
+  if (!footprintSegmentInsideGrid(grid, first, second, config)) {
+    return Lattice3DEdgeEvaluation{.status =
+                                       Lattice3DEdgeEvaluationStatus::kOutsideGrid};
   }
   if (!(length > 1.0e-9)) {
     return Lattice3DEdgeEvaluation{.status = Lattice3DEdgeEvaluationStatus::kValid};
@@ -51,9 +86,11 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
   if (!footprint.accepted()) {
     switch (footprint.status) {
       case SweptFootprintStatus::kOutsideGrid:
-      case SweptFootprintStatus::kUnknownSpace:
         return Lattice3DEdgeEvaluation{.status =
                                            Lattice3DEdgeEvaluationStatus::kOutsideGrid};
+      case SweptFootprintStatus::kUnknownSpace:
+        return Lattice3DEdgeEvaluation{
+            .status = Lattice3DEdgeEvaluationStatus::kUnknownSpace};
       case SweptFootprintStatus::kInvalidEsdf:
         return Lattice3DEdgeEvaluation{.status =
                                            Lattice3DEdgeEvaluationStatus::kInvalidEsdf};
@@ -94,6 +131,7 @@ void accumulateLattice3DSuccessorDiagnostics(
   target.lattice_rejected_edge += addition.lattice_rejected_edge;
   target.lattice_rejected_zero_length += addition.lattice_rejected_zero_length;
   target.lattice_rejected_outside_grid += addition.lattice_rejected_outside_grid;
+  target.lattice_rejected_unknown_space += addition.lattice_rejected_unknown_space;
   target.lattice_rejected_flight_envelope += addition.lattice_rejected_flight_envelope;
   target.lattice_rejected_invalid_esdf += addition.lattice_rejected_invalid_esdf;
   target.lattice_rejected_raw_collision += addition.lattice_rejected_raw_collision;
@@ -106,6 +144,7 @@ void accumulateLattice3DSuccessorDiagnostics(
   target.passage_rejected_connection_distance +=
       addition.passage_rejected_connection_distance;
   target.passage_rejected_outside_grid += addition.passage_rejected_outside_grid;
+  target.passage_rejected_unknown_space += addition.passage_rejected_unknown_space;
   target.passage_rejected_flight_envelope += addition.passage_rejected_flight_envelope;
   target.passage_rejected_invalid_esdf += addition.passage_rejected_invalid_esdf;
   target.passage_rejected_raw_collision += addition.passage_rejected_raw_collision;
@@ -128,6 +167,10 @@ void recordLattice3DRejectedEdge(Lattice3DSuccessorDiagnostics& diagnostics,
     case Lattice3DEdgeEvaluationStatus::kOutsideGrid:
       counter = passage ? &diagnostics.passage_rejected_outside_grid
                         : &diagnostics.lattice_rejected_outside_grid;
+      break;
+    case Lattice3DEdgeEvaluationStatus::kUnknownSpace:
+      counter = passage ? &diagnostics.passage_rejected_unknown_space
+                        : &diagnostics.lattice_rejected_unknown_space;
       break;
     case Lattice3DEdgeEvaluationStatus::kInvalidEsdf:
       counter = passage ? &diagnostics.passage_rejected_invalid_esdf

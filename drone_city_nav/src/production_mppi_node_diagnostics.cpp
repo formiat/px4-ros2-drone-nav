@@ -345,8 +345,10 @@ void ProductionMppiNode::processDiagnostics(
       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
       << " lattice_3d_successor_reject_zero="
       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
-      << " lattice_3d_successor_reject_grid="
+      << " lattice_3d_successor_reject_outside_roi="
       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
+      << " lattice_3d_successor_reject_unknown_space="
+      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_unknown_space
       << " lattice_3d_successor_reject_envelope="
       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
       << " lattice_3d_successor_reject_invalid="
@@ -365,8 +367,10 @@ void ProductionMppiNode::processDiagnostics(
       << esdf.lattice_3d_successor_diagnostics.passage_rejected
       << " passage_successor_reject_connection="
       << esdf.lattice_3d_successor_diagnostics.passage_rejected_connection_distance
-      << " passage_successor_reject_grid="
+      << " passage_successor_reject_outside_roi="
       << esdf.lattice_3d_successor_diagnostics.passage_rejected_outside_grid
+      << " passage_successor_reject_unknown_space="
+      << esdf.lattice_3d_successor_diagnostics.passage_rejected_unknown_space
       << " passage_successor_reject_envelope="
       << esdf.lattice_3d_successor_diagnostics.passage_rejected_flight_envelope
       << " passage_successor_reject_invalid="
@@ -813,8 +817,10 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
         << ",\"lattice_3d_successors_rejected_zero_length\":"
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
-        << ",\"lattice_3d_successors_rejected_outside_grid\":"
+        << ",\"lattice_3d_successors_rejected_outside_roi\":"
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
+        << ",\"lattice_3d_successors_rejected_unknown_space\":"
+        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_unknown_space
         << ",\"lattice_3d_successors_rejected_flight_envelope\":"
         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
         << ",\"lattice_3d_successors_rejected_invalid_esdf\":"
@@ -833,8 +839,10 @@ void ProductionMppiNode::processDiagnostics(
         << esdf.lattice_3d_successor_diagnostics.passage_rejected
         << ",\"passage_successors_rejected_connection_distance\":"
         << esdf.lattice_3d_successor_diagnostics.passage_rejected_connection_distance
-        << ",\"passage_successors_rejected_outside_grid\":"
+        << ",\"passage_successors_rejected_outside_roi\":"
         << esdf.lattice_3d_successor_diagnostics.passage_rejected_outside_grid
+        << ",\"passage_successors_rejected_unknown_space\":"
+        << esdf.lattice_3d_successor_diagnostics.passage_rejected_unknown_space
         << ",\"passage_successors_rejected_flight_envelope\":"
         << esdf.lattice_3d_successor_diagnostics.passage_rejected_flight_envelope
         << ",\"passage_successors_rejected_invalid_esdf\":"

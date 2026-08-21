@@ -12,6 +12,7 @@ enum class Lattice3DEdgeEvaluationStatus : std::uint8_t {
   kValid,
   kOutsideFlightEnvelope,
   kOutsideGrid,
+  kUnknownSpace,
   kInvalidEsdf,
   kRawCollision,
   kRiskStageRejected,

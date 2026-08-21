@@ -45,6 +45,7 @@ struct Lattice3DSuccessorDiagnostics {
   std::size_t lattice_rejected_edge{0U};
   std::size_t lattice_rejected_zero_length{0U};
   std::size_t lattice_rejected_outside_grid{0U};
+  std::size_t lattice_rejected_unknown_space{0U};
   std::size_t lattice_rejected_flight_envelope{0U};
   std::size_t lattice_rejected_invalid_esdf{0U};
   std::size_t lattice_rejected_raw_collision{0U};
@@ -55,6 +56,7 @@ struct Lattice3DSuccessorDiagnostics {
   std::size_t passage_rejected{0U};
   std::size_t passage_rejected_connection_distance{0U};
   std::size_t passage_rejected_outside_grid{0U};
+  std::size_t passage_rejected_unknown_space{0U};
   std::size_t passage_rejected_flight_envelope{0U};
   std::size_t passage_rejected_invalid_esdf{0U};
   std::size_t passage_rejected_raw_collision{0U};
