@@ -201,9 +201,19 @@ struct RiskAwareLattice3DResult {
   std::vector<Lattice3DTopologyCandidate> topology_candidates;
 };
 
+struct Lattice3DStrategicDirective {
+  Point3 planning_goal{};
+  Vec3 preferred_direction{};
+  Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};
+  std::optional<ObservationFrontier> observation_frontier;
+  double selection_score{0.0};
+  bool reaches_mission_goal{false};
+};
+
 struct Lattice3DExplorationContext {
   const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
   std::uint64_t map_revision{0U};
+  std::optional<Lattice3DStrategicDirective> strategic_directive;
 };
 
 [[nodiscard]] RiskAwareLattice3DResult planRiskAwareLattice3D(

@@ -45,6 +45,7 @@ void ProductionMppiNode::processGuideSearch3D(
           ? std::optional<Lattice3DExplorationContext>{Lattice3DExplorationContext{
                 .observed_occupancy = world.observed_occupancy.get(),
                 .map_revision = world.revision,
+                .strategic_directive = std::nullopt,
             }}
           : std::nullopt;
   const RiskAwareLattice3DResult lattice = planRiskAwareLattice3D(

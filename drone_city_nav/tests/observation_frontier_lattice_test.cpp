@@ -100,6 +100,7 @@ void fillBox(ObservedOccupancyGrid3D& occupancy, const int minimum_x,
   const Lattice3DExplorationContext exploration{
       .observed_occupancy = field.local_occupancy.get(),
       .map_revision = 41U,
+      .strategic_directive = std::nullopt,
   };
   return planRiskAwareLattice3D(field.grid, field.distances_m, fixture.start,
                                 Vec3{fixture.goal.x - fixture.start.x,
