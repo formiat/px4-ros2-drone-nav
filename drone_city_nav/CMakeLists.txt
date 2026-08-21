@@ -185,6 +185,7 @@ add_library(
   src/grid_overlay.cpp
   src/intercept_guidance.cpp
   src/intercept_mission.cpp
+  src/incremental_topology_graph_3d.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
@@ -1030,6 +1031,12 @@ if(BUILD_TESTING)
   target_compile_features(observation_frontier_lattice_test PRIVATE cxx_std_20)
   target_link_libraries(observation_frontier_lattice_test drone_city_nav_core)
   enable_project_warnings(observation_frontier_lattice_test)
+
+  ament_add_gtest(incremental_topology_graph_3d_test
+                  tests/incremental_topology_graph_3d_test.cpp)
+  target_compile_features(incremental_topology_graph_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(incremental_topology_graph_3d_test drone_city_nav_core)
+  enable_project_warnings(incremental_topology_graph_3d_test)
 
   ament_add_gtest(static_esdf_cache_test tests/static_esdf_cache_test.cpp)
   target_compile_features(static_esdf_cache_test PRIVATE cxx_std_20)
