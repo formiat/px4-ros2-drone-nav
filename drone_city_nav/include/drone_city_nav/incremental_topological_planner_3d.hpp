@@ -73,6 +73,8 @@ struct IncrementalTopologicalPlan3D {
   double repeated_edge_distance_m{0.0};
   std::size_t directed_traversal_count{0U};
   std::size_t reachable_frontier_count{0U};
+  std::size_t revalidated_frontier_count{0U};
+  std::size_t retired_frontier_count{0U};
   bool reaches_mission_goal{false};
 
   [[nodiscard]] bool executableTargetSelected() const noexcept;
@@ -82,9 +84,9 @@ struct IncrementalTopologicalPlanner3DConfig {
   double maximum_start_anchor_distance_m{8.0};
   double maximum_goal_anchor_distance_m{8.0};
   double path_cost_weight{1.0};
-  double information_gain_reward{3.0};
+  double information_gain_reward{1.0};
   double clearance_reward{0.5};
-  double goal_progress_reward{0.25};
+  double goal_progress_reward{1.0};
   double directed_traversal_penalty{6.0};
   double repeated_distance_penalty{0.25};
   double frontier_selection_penalty{8.0};
@@ -100,9 +102,23 @@ public:
   plan(const IncrementalTopologyGraph3DSnapshot& graph, const Point3& start,
        const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const;
 
+  [[nodiscard]] IncrementalTopologicalPlan3D
+  planObserved(const IncrementalTopologyGraph3DSnapshot& graph,
+               const ObservedOccupancyGrid3D& occupancy,
+               const SensorObservabilityConfig& observability, const Point3& start,
+               const Point3& mission_goal,
+               const TopologicalExplorationMemory3D& memory) const;
+
   [[nodiscard]] const IncrementalTopologicalPlanner3DConfig& config() const noexcept;
 
 private:
+  [[nodiscard]] IncrementalTopologicalPlan3D
+  planImpl(const IncrementalTopologyGraph3DSnapshot& graph,
+           const ObservedOccupancyGrid3D* occupancy,
+           const SensorObservabilityConfig* observability, const Point3& start,
+           const Point3& mission_goal,
+           const TopologicalExplorationMemory3D& memory) const;
+
   IncrementalTopologicalPlanner3DConfig config_{};
 };
 

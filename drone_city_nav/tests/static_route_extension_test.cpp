@@ -264,7 +264,7 @@ TEST(StaticRouteExtensionTest, ObservationReplacementRequiresScoreImprovement) {
           .active_frontier = testFrontier(7U, 10U),
           .candidate_frontier = testFrontier(8U, 11U),
           .active_score = 12.0,
-          .candidate_score = 12.25,
+          .candidate_score = 11.75,
           .minimum_score_improvement = 0.5,
           .active_frontier_still_valid = true,
       });
@@ -273,15 +273,51 @@ TEST(StaticRouteExtensionTest, ObservationReplacementRequiresScoreImprovement) {
           .active_frontier = testFrontier(7U, 10U),
           .candidate_frontier = testFrontier(8U, 11U),
           .active_score = 12.0,
-          .candidate_score = 12.5,
+          .candidate_score = 11.5,
           .minimum_score_improvement = 0.5,
           .active_frontier_still_valid = true,
       });
 
   EXPECT_FALSE(rejected.accepted);
   EXPECT_EQ(rejected.status, ObservationRouteReplacementStatus::kInsufficientProgress);
+  EXPECT_DOUBLE_EQ(rejected.score_improvement, 0.25);
   EXPECT_TRUE(accepted.accepted);
   EXPECT_EQ(accepted.status, ObservationRouteReplacementStatus::kScoreImproved);
+  EXPECT_DOUBLE_EQ(accepted.score_improvement, 0.5);
+}
+
+TEST(StaticRouteExtensionTest, ObservationReplacementAcceptsEndpointAdvance) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(8U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 20.0,
+          .minimum_score_improvement = 0.5,
+          .endpoint_improvement_m = 5.0,
+          .minimum_endpoint_improvement_m = 5.0,
+          .active_frontier_still_valid = true,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kEndpointAdvanced);
+}
+
+TEST(StaticRouteExtensionTest, ObservationReplacementKeepsSoftGoalProgress) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(8U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 11.5,
+          .minimum_score_improvement = 0.5,
+          .endpoint_improvement_m = -4.0,
+          .minimum_endpoint_improvement_m = 5.0,
+          .active_frontier_still_valid = true,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kScoreImproved);
 }
 
 TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {

@@ -50,6 +50,7 @@ struct TopologySearchBatch {
          config.observation_frontier_path_cost_weight >= 0.0 &&
          config.observation_frontier_clearance_weight >= 0.0 &&
          config.observation_frontier_replacement_minimum_score_improvement >= 0.0 &&
+         config.observation_frontier_replacement_minimum_endpoint_improvement_m > 0.0 &&
          evaluateFlightEnvelopeAltitude(start.z, config.flight_envelope) ==
              FlightEnvelopeStatus::kValid &&
          evaluateFlightEnvelopeAltitude(mission_goal.z, config.flight_envelope) ==

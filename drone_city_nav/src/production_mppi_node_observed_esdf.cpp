@@ -22,11 +22,29 @@ void ProductionMppiNode::processObservedEsdf3D(
     return;
   }
 
+  ProductionMppiNavigation navigation;
+  ProductionMppiAppliedControl applied_control;
+  {
+    const std::scoped_lock lock{input_mutex_};
+    navigation = navigation_;
+    applied_control = applied_control_;
+  }
+  const std::shared_ptr<const ProductionNavigationObjective> build_objective =
+      navigationObjective();
+  const std::optional<IncrementalTopologyBuildPriority3D> topology_priority =
+      navigation.valid && build_objective
+          ? std::optional<
+                IncrementalTopologyBuildPriority3D>{{.position = {navigation.state.x,
+                                                                  navigation.state.y,
+                                                                  navigation.state.z},
+                                                     .target = build_objective->goal}}
+          : std::nullopt;
+
   const auto topology_started = std::chrono::steady_clock::now();
   const IncrementalTopologicalWorldUpdate3D topology_update =
       topological_navigation_3d_->updateObserved(
           *occupancy, raw_world.producer_instance_id, raw_world.revision,
-          raw_world.dirty_chunks, raw_world.full_reset);
+          raw_world.dirty_chunks, raw_world.full_reset, topology_priority);
   const double topology_update_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 topology_started)
@@ -45,7 +63,8 @@ void ProductionMppiNode::processObservedEsdf3D(
       "rebuilt_tiles=%zu pending_tiles=%zu refined_tiles=%zu "
       "base_resolution_m=%.3f coarse_resolution_m=%.3f "
       "refined_resolution_m=%.3f sampled_cells=%zu retained_nodes=%zu "
-      "created_nodes=%zu retired_nodes=%zu nodes=%zu edges=%zu update_ms=%.2f",
+      "created_nodes=%zu retired_nodes=%zu nodes=%zu edges=%zu "
+      "dirty_discovery_ms=%.2f rebuild_ms=%.2f update_ms=%.2f",
       topology_update.graph.revision,
       topology_update.graph.full_reset ? "true" : "false",
       topology_update.graph.requested_dirty_chunks,
@@ -59,15 +78,8 @@ void ProductionMppiNode::processObservedEsdf3D(
       topology_update.graph.sampled_navigable_cells,
       topology_update.graph.retained_node_ids, topology_update.graph.created_nodes,
       topology_update.graph.retired_nodes, topology_update.graph.node_count,
-      topology_update.graph.edge_count, topology_update_ms);
-
-  ProductionMppiNavigation navigation;
-  ProductionMppiAppliedControl applied_control;
-  {
-    const std::scoped_lock lock{input_mutex_};
-    navigation = navigation_;
-    applied_control = applied_control_;
-  }
+      topology_update.graph.edge_count, topology_update.graph.dirty_tile_discovery_ms,
+      topology_update.graph.graph_rebuild_ms, topology_update_ms);
   if (!navigation.valid) {
     return;
   }

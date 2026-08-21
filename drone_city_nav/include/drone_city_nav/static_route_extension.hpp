@@ -191,6 +191,7 @@ enum class ObservationRouteReplacementStatus : std::uint8_t {
   kNoActiveFrontier,
   kActiveFrontierRetired,
   kFrontierAdvanced,
+  kEndpointAdvanced,
   kScoreImproved,
   kSameFrontierRetained,
   kStaleCandidate,
@@ -203,6 +204,8 @@ struct ObservationRouteReplacementObservation {
   double active_score{0.0};
   double candidate_score{0.0};
   double minimum_score_improvement{0.0};
+  double endpoint_improvement_m{0.0};
+  double minimum_endpoint_improvement_m{0.0};
   bool active_frontier_still_valid{false};
   bool extension_requested{false};
 };

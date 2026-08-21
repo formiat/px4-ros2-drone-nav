@@ -42,17 +42,21 @@ public:
       const IncrementalTopologicalPlanner3DConfig& planner_config = {},
       const TopologicalExplorationMemory3DConfig& memory_config = {});
 
-  [[nodiscard]] IncrementalTopologicalWorldUpdate3D
-  updateObserved(const ObservedOccupancyGrid3D& occupancy,
-                 std::uint64_t producer_instance_id, std::uint64_t revision,
-                 std::span<const OccupancyChunkIndex3D> dirty_chunks,
-                 bool complete_snapshot);
+  [[nodiscard]] IncrementalTopologicalWorldUpdate3D updateObserved(
+      const ObservedOccupancyGrid3D& occupancy, std::uint64_t producer_instance_id,
+      std::uint64_t revision, std::span<const OccupancyChunkIndex3D> dirty_chunks,
+      bool complete_snapshot,
+      std::optional<IncrementalTopologyBuildPriority3D> priority = std::nullopt);
   [[nodiscard]] IncrementalTopologicalWorldUpdate3D
   resetStatic(const OccupancyGrid3D& occupancy, std::uint64_t revision);
 
   [[nodiscard]] IncrementalTopologicalPlan3D
   plan(const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
        const Point3& start, const Point3& mission_goal) const;
+  [[nodiscard]] IncrementalTopologicalPlan3D
+  planObserved(const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
+               const ObservedOccupancyGrid3D& occupancy, const Point3& start,
+               const Point3& mission_goal) const;
   [[nodiscard]] IncrementalTopologicalNavigationObservation3D observePosition(
       const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
       const Point3& position);

@@ -220,7 +220,7 @@ production_mppi_node:
     no_static_3d_esdf_recenter_margin_m: 18.0
     topological_graph_3d_coarse_sample_stride_cells: 2
     topological_graph_3d_refined_sample_stride_cells: 1
-    topological_graph_3d_maximum_observed_tiles_per_update: 64
+    topological_graph_3d_maximum_observed_tiles_per_update: 16
     no_static_world_model: occupancy_2d
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
@@ -349,10 +349,13 @@ production_mppi_node:
     global_lattice_3d_observation_frontier_path_cost_weight: 0.25
     global_lattice_3d_observation_frontier_clearance_weight: 0.10
     global_lattice_3d_observation_frontier_replacement_minimum_score_improvement: 0.5
+    global_lattice_3d_observation_frontier_replacement_minimum_endpoint_improvement_m: 2.0
     global_lattice_3d_observation_frontier_maximum_range_m: 8.0
     global_lattice_3d_observation_frontier_minimum_known_free_ray_m: 1.0
     global_lattice_3d_observation_frontier_minimum_supporting_rays: 2
     global_lattice_3d_observation_frontier_minimum_information_gain_voxels: 4
+    topological_planner_3d_goal_progress_reward: 1.0
+    topological_planner_3d_information_gain_reward: 1.0
     no_static_global_lattice_deadline_ms: 100.0
     static_global_lattice_roi_halo_m: 90.0
     no_static_global_lattice_roi_halo_m: 45.0

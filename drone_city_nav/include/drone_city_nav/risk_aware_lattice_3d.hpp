@@ -124,6 +124,7 @@ struct RiskAwareLattice3DConfig {
   double observation_frontier_path_cost_weight{0.25};
   double observation_frontier_clearance_weight{0.10};
   double observation_frontier_replacement_minimum_score_improvement{0.5};
+  double observation_frontier_replacement_minimum_endpoint_improvement_m{2.0};
   SensorObservabilityConfig sensor_observability{};
   std::size_t maximum_topology_search_groups{3U};
   std::size_t maximum_expansions{200000U};

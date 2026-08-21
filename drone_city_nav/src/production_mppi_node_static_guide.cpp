@@ -180,6 +180,13 @@ void ProductionMppiNode::processGuideSearch3D(
   }
   ObservationRouteReplacementDecision observation_replacement;
   if (lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier) {
+    double observation_endpoint_improvement_m = 0.0;
+    if (world.lattice_3d_observation_frontier && lattice.observation_frontier) {
+      observation_endpoint_improvement_m =
+          distance3D(world.lattice_3d_observation_frontier->observation_pose,
+                     mission_goal) -
+          distance3D(lattice.observation_frontier->observation_pose, mission_goal);
+    }
     observation_replacement =
         evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
             .active_frontier = world.lattice_3d_observation_frontier,
@@ -189,6 +196,10 @@ void ProductionMppiNode::processGuideSearch3D(
             .minimum_score_improvement =
                 lattice_3d_config_
                     .observation_frontier_replacement_minimum_score_improvement,
+            .endpoint_improvement_m = observation_endpoint_improvement_m,
+            .minimum_endpoint_improvement_m =
+                lattice_3d_config_
+                    .observation_frontier_replacement_minimum_endpoint_improvement_m,
             .active_frontier_still_valid = active_observation_frontier_still_valid,
             .extension_requested = world.static_route_extension_request,
         });

@@ -248,7 +248,7 @@ bool deferStaticRouteReleaseDuringExtension(
 ObservationRouteReplacementDecision evaluateObservationRouteReplacement(
     const ObservationRouteReplacementObservation& observation) noexcept {
   ObservationRouteReplacementDecision decision;
-  decision.score_improvement = observation.candidate_score - observation.active_score;
+  decision.score_improvement = observation.active_score - observation.candidate_score;
   if (!observation.candidate_frontier.has_value() ||
       observation.candidate_frontier->id.value == 0U) {
     return decision;
@@ -280,6 +280,13 @@ ObservationRouteReplacementDecision evaluateObservationRouteReplacement(
     decision.status = ObservationRouteReplacementStatus::kSameFrontierRetained;
     return decision;
   }
+  if (observation.minimum_endpoint_improvement_m > 0.0 &&
+      observation.endpoint_improvement_m + 1.0e-9 >=
+          observation.minimum_endpoint_improvement_m) {
+    decision.status = ObservationRouteReplacementStatus::kEndpointAdvanced;
+    decision.accepted = true;
+    return decision;
+  }
   if (decision.score_improvement + 1.0e-9 >=
       std::max(0.0, observation.minimum_score_improvement)) {
     decision.status = ObservationRouteReplacementStatus::kScoreImproved;
@@ -301,6 +308,8 @@ std::string_view observationRouteReplacementStatusName(
       return "active_frontier_retired";
     case ObservationRouteReplacementStatus::kFrontierAdvanced:
       return "frontier_advanced";
+    case ObservationRouteReplacementStatus::kEndpointAdvanced:
+      return "endpoint_advanced";
     case ObservationRouteReplacementStatus::kScoreImproved:
       return "score_improved";
     case ObservationRouteReplacementStatus::kSameFrontierRetained:

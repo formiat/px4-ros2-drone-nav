@@ -385,5 +385,54 @@ TEST(IncrementalTopologyGraph3DTest,
   EXPECT_TRUE(graph.snapshot().nearestNode({68.5, 15.5, 7.5}, 8.0).has_value());
 }
 
+TEST(IncrementalTopologyGraph3DTest,
+     PrioritizesDeferredObservedTilesNearTheCurrentVehicle) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
+  fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.maximum_observed_tiles_per_update = 1U;
+  IncrementalTopologyGraph3D graph{config};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+
+  fillFreeBox(occupancy, 18, 22, 14, 16, 6, 8);
+  fillFreeBox(occupancy, 66, 70, 14, 16, 6, 8);
+  const std::array dirty_chunks{
+      ObservedOccupancyGrid3D::chunkIndex({18, 15, 7}),
+      ObservedOccupancyGrid3D::chunkIndex({66, 15, 7}),
+  };
+  const IncrementalTopologyGraph3DUpdate update =
+      graph.update(occupancy, 2U, dirty_chunks, false,
+                   IncrementalTopologyBuildPriority3D{.position = {68.5, 15.5, 7.5},
+                                                      .target = {68.5, 15.5, 7.5}});
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+
+  EXPECT_EQ(update.rebuilt_tiles, 1U);
+  EXPECT_GT(update.pending_tiles, 0U);
+  EXPECT_TRUE(snapshot.nearestNode({68.5, 15.5, 7.5}, 8.0).has_value());
+  EXPECT_FALSE(snapshot.nearestNode({20.5, 15.5, 7.5}, 8.0).has_value());
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     InitialObservedResetIsBudgetedAndPrioritizedNearTheVehicle) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
+  fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
+  fillFreeBox(occupancy, 66, 74, 14, 16, 6, 8);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.maximum_observed_tiles_per_update = 1U;
+  IncrementalTopologyGraph3D graph{config};
+
+  const IncrementalTopologyGraph3DUpdate update =
+      graph.update(occupancy, 1U, {}, true,
+                   IncrementalTopologyBuildPriority3D{.position = {70.5, 15.5, 7.5},
+                                                      .target = {70.5, 15.5, 7.5}});
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+
+  EXPECT_TRUE(update.full_reset);
+  EXPECT_EQ(update.rebuilt_tiles, 1U);
+  EXPECT_GT(update.pending_tiles, 0U);
+  EXPECT_TRUE(snapshot.nearestNode({70.5, 15.5, 7.5}, 8.0).has_value());
+  EXPECT_FALSE(snapshot.nearestNode({6.5, 15.5, 7.5}, 8.0).has_value());
+}
+
 } // namespace
 } // namespace drone_city_nav

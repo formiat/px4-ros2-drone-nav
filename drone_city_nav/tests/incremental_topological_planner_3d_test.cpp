@@ -140,6 +140,31 @@ TEST(IncrementalTopologicalPlanner3DTest,
   EXPECT_TRUE(plan.executableTargetSelected());
 }
 
+TEST(IncrementalTopologicalPlanner3DTest,
+     ObservedPlanRetiresFrontierInvalidatedByFreshOccupancy) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 32, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 4, 30, 13, 15, 5, 7);
+  fillStateBox(occupancy, 0, 3, 13, 15, 5, 7, ObservedVoxelState::kUnknown);
+  const IncrementalTopologyGraph3DConfig config = graphConfig();
+  const IncrementalTopologyGraph3DSnapshot graph = buildGraph(occupancy);
+  IncrementalTopologicalPlanner3D planner;
+  TopologicalExplorationMemory3D memory;
+
+  const IncrementalTopologicalPlan3D stale =
+      planner.plan(graph, {28.5, 14.5, 6.5}, {44.5, 14.5, 6.5}, memory);
+  ASSERT_TRUE(stale.selected_frontier.has_value());
+
+  fillStateBox(occupancy, 0, 3, 13, 15, 5, 7, ObservedVoxelState::kOccupied);
+  const IncrementalTopologicalPlan3D current =
+      planner.planObserved(graph, occupancy, config.observability, {28.5, 14.5, 6.5},
+                           {44.5, 14.5, 6.5}, memory);
+
+  EXPECT_FALSE(current.selected_frontier.has_value());
+  EXPECT_GT(current.revalidated_frontier_count, 0U);
+  EXPECT_EQ(current.retired_frontier_count, current.revalidated_frontier_count);
+}
+
 TEST(IncrementalTopologicalPlanner3DTest, FairnessMovesSelectionToOtherTBranch) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 48, 16}};
   fillOccupied(occupancy);

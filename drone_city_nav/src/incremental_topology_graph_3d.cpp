@@ -1,8 +1,11 @@
 #include "drone_city_nav/incremental_topology_graph_3d.hpp"
 
+#include "drone_city_nav/incremental_topology_tile_scheduler_3d.hpp"
+
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <deque>
@@ -611,7 +614,7 @@ struct IncrementalTopologyGraph3D::Impl {
       for (std::size_t word_index = 0U; word_index < data.observed.size();
            ++word_index) {
         std::uint64_t free_bits =
-            data.observed[word_index] & ~data.occupied[word_index];
+            data.observed.at(word_index) & ~data.occupied.at(word_index);
         while (free_bits != 0U) {
           const int bit_offset = std::countr_zero(free_bits);
           const std::size_t local_index =
@@ -651,54 +654,55 @@ struct IncrementalTopologyGraph3D::Impl {
     const int halo_cells =
         static_cast<int>(std::ceil(maximum_extent_m / bounds.resolution_m)) +
         config.coarse_sample_stride_cells;
+    constexpr int chunk_size = ObservedOccupancyGrid3D::kChunkSize;
+    constexpr std::size_t chunk_size_unsigned = static_cast<std::size_t>(chunk_size);
+    constexpr std::size_t chunk_plane_cells = chunk_size_unsigned * chunk_size_unsigned;
     for (const OccupancyChunkIndex3D chunk_index : dirty_chunks) {
       const auto previous = observed_chunks.find(chunk_index);
       const auto current = occupancy.chunks().find(chunk_index);
-      for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
-           ++word_index) {
+      GridIndex3D changed_minimum{bounds.width_cells, bounds.height_cells,
+                                  bounds.depth_cells};
+      GridIndex3D changed_maximum{-1, -1, -1};
+      for (std::size_t word = 0U; word < OccupancyGrid3D::kWordsPerChunk; ++word) {
         const std::uint64_t previous_observed =
-            previous == observed_chunks.end() ? 0U
-                                              : previous->second.observed[word_index];
+            previous == observed_chunks.end() ? 0U : previous->second.observed.at(word);
         const std::uint64_t previous_occupied =
-            previous == observed_chunks.end() ? 0U
-                                              : previous->second.occupied[word_index];
-        const std::uint64_t current_observed =
-            current == occupancy.chunks().end() ? 0U
-                                                : current->second.observed[word_index];
-        const std::uint64_t current_occupied =
-            current == occupancy.chunks().end() ? 0U
-                                                : current->second.occupied[word_index];
-        std::uint64_t changed_bits = (previous_observed ^ current_observed) |
-                                     (previous_occupied ^ current_occupied);
-        while (changed_bits != 0U) {
-          const int bit_offset = std::countr_zero(changed_bits);
-          const std::size_t local_index =
-              word_index * 64U + static_cast<std::size_t>(bit_offset);
-          const int local_x =
-              static_cast<int>(local_index % ObservedOccupancyGrid3D::kChunkSize);
-          const int local_y =
-              static_cast<int>((local_index / ObservedOccupancyGrid3D::kChunkSize) %
-                               ObservedOccupancyGrid3D::kChunkSize);
-          const int local_z =
-              static_cast<int>(local_index / static_cast<std::size_t>(
-                                                 ObservedOccupancyGrid3D::kChunkSize *
-                                                 ObservedOccupancyGrid3D::kChunkSize));
+            previous == observed_chunks.end() ? 0U : previous->second.occupied.at(word);
+        const std::uint64_t current_observed = current == occupancy.chunks().end()
+                                                   ? 0U
+                                                   : current->second.observed.at(word);
+        const std::uint64_t current_occupied = current == occupancy.chunks().end()
+                                                   ? 0U
+                                                   : current->second.occupied.at(word);
+        std::uint64_t changed = (previous_observed ^ current_observed) |
+                                (previous_occupied ^ current_occupied);
+        while (changed != 0U) {
+          const std::size_t local =
+              word * 64U + static_cast<std::size_t>(std::countr_zero(changed));
           const GridIndex3D cell{
-              chunk_index.x * ObservedOccupancyGrid3D::kChunkSize + local_x,
-              chunk_index.y * ObservedOccupancyGrid3D::kChunkSize + local_y,
-              chunk_index.z * ObservedOccupancyGrid3D::kChunkSize + local_z};
-          if (occupancy.contains(cell)) {
-            const GridIndex3D minimum{std::max(0, cell.x - halo_cells),
-                                      std::max(0, cell.y - halo_cells),
-                                      std::max(0, cell.z - halo_cells)};
-            const GridIndex3D maximum{
-                std::min(bounds.width_cells - 1, cell.x + halo_cells),
-                std::min(bounds.height_cells - 1, cell.y + halo_cells),
-                std::min(bounds.depth_cells - 1, cell.z + halo_cells)};
-            addTileRange(unique, minimum, maximum);
-          }
-          changed_bits &= changed_bits - 1U;
+              chunk_index.x * chunk_size +
+                  static_cast<int>(local % chunk_size_unsigned),
+              chunk_index.y * chunk_size +
+                  static_cast<int>((local / chunk_size_unsigned) % chunk_size_unsigned),
+              chunk_index.z * chunk_size + static_cast<int>(local / chunk_plane_cells)};
+          changed_minimum = {std::min(changed_minimum.x, cell.x),
+                             std::min(changed_minimum.y, cell.y),
+                             std::min(changed_minimum.z, cell.z)};
+          changed_maximum = {std::max(changed_maximum.x, cell.x),
+                             std::max(changed_maximum.y, cell.y),
+                             std::max(changed_maximum.z, cell.z)};
+          changed &= changed - 1U;
         }
+      }
+      if (changed_maximum.x >= 0) {
+        const GridIndex3D minimum{std::max(0, changed_minimum.x - halo_cells),
+                                  std::max(0, changed_minimum.y - halo_cells),
+                                  std::max(0, changed_minimum.z - halo_cells)};
+        const GridIndex3D maximum{
+            std::min(bounds.width_cells - 1, changed_maximum.x + halo_cells),
+            std::min(bounds.height_cells - 1, changed_maximum.y + halo_cells),
+            std::min(bounds.depth_cells - 1, changed_maximum.z + halo_cells)};
+        addTileRange(unique, minimum, maximum);
       }
       if (current == occupancy.chunks().end()) {
         observed_chunks.erase(chunk_index);
@@ -774,24 +778,22 @@ struct IncrementalTopologyGraph3D::Impl {
   void enqueueObservedTiles(
       const std::span<const IncrementalTopologyTileIndex3D> dirty_tiles) {
     for (const IncrementalTopologyTileIndex3D tile : dirty_tiles) {
-      if (pending_observed_tile_set.insert(tile).second) {
-        pending_observed_tiles.push_back(tile);
-      }
+      pending_observed_tile_set.insert(tile);
     }
   }
 
-  [[nodiscard]] std::vector<IncrementalTopologyTileIndex3D> takePendingObservedTiles() {
-    const std::size_t count = std::min(config.maximum_observed_tiles_per_update,
-                                       pending_observed_tiles.size());
-    std::vector<IncrementalTopologyTileIndex3D> result;
-    result.reserve(count);
-    for (std::size_t index = 0U; index < count; ++index) {
-      const IncrementalTopologyTileIndex3D tile = pending_observed_tiles.front();
-      pending_observed_tiles.pop_front();
+  [[nodiscard]] std::vector<IncrementalTopologyTileIndex3D> takePendingObservedTiles(
+      const std::optional<IncrementalTopologyBuildPriority3D>& priority) {
+    const std::vector<IncrementalTopologyTileIndex3D> pending{
+        pending_observed_tile_set.begin(), pending_observed_tile_set.end()};
+    std::vector<IncrementalTopologyTileIndex3D> ordered =
+        selectIncrementalTopologyTiles3D(pending,
+                                         config.maximum_observed_tiles_per_update,
+                                         bounds, config.tile_size_cells, priority);
+    for (const IncrementalTopologyTileIndex3D tile : ordered) {
       pending_observed_tile_set.erase(tile);
-      result.push_back(tile);
     }
-    return result;
+    return ordered;
   }
 
   template<typename Occupancy>
@@ -811,8 +813,6 @@ struct IncrementalTopologyGraph3D::Impl {
       nodes.clear();
       edges.clear();
       sample_cell_nodes.clear();
-      pending_observed_tiles.clear();
-      pending_observed_tile_set.clear();
     }
     std::vector<BuiltTile> replacements;
     replacements.reserve(rebuilt_tiles.size());
@@ -850,7 +850,6 @@ struct IncrementalTopologyGraph3D::Impl {
       edges;
   std::unordered_map<std::uint64_t, IncrementalTopologyNodeId> sample_cell_nodes;
   ObservedOccupancyGrid3D::ChunkMap observed_chunks;
-  std::deque<IncrementalTopologyTileIndex3D> pending_observed_tiles;
   std::unordered_set<IncrementalTopologyTileIndex3D, IncrementalTopologyTileIndex3DHash>
       pending_observed_tile_set;
 };
@@ -868,7 +867,8 @@ IncrementalTopologyGraph3D::operator=(IncrementalTopologyGraph3D&&) noexcept = d
 
 IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
     const ObservedOccupancyGrid3D& occupancy, const std::uint64_t revision,
-    const std::span<const OccupancyChunkIndex3D> dirty_chunks, const bool full_reset) {
+    const std::span<const OccupancyChunkIndex3D> dirty_chunks, const bool full_reset,
+    const std::optional<IncrementalTopologyBuildPriority3D> priority) {
   if (revision == 0U) {
     throw std::invalid_argument{"incremental topology revision must be non-zero"};
   }
@@ -890,22 +890,34 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
       !complete_snapshot_chunks.empty()
           ? std::span<const OccupancyChunkIndex3D>{complete_snapshot_chunks}
           : dirty_chunks;
+  const auto discovery_started = std::chrono::steady_clock::now();
   std::vector<IncrementalTopologyTileIndex3D> dirty_tiles =
       reset_required ? impl_->allObservedTiles(occupancy)
                      : impl_->dirtyObservedTiles(occupancy, effective_dirty_chunks);
+  const double dirty_tile_discovery_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                discovery_started)
+          .count();
   const std::size_t discovered_dirty_tiles = dirty_tiles.size();
   std::vector<IncrementalTopologyTileIndex3D> rebuilt_tiles;
   if (reset_required) {
-    rebuilt_tiles = std::move(dirty_tiles);
+    impl_->pending_observed_tile_set.clear();
+    impl_->enqueueObservedTiles(dirty_tiles);
+    rebuilt_tiles = impl_->takePendingObservedTiles(priority);
   } else {
     impl_->enqueueObservedTiles(dirty_tiles);
-    rebuilt_tiles = impl_->takePendingObservedTiles();
+    rebuilt_tiles = impl_->takePendingObservedTiles(priority);
   }
+  const auto rebuild_started = std::chrono::steady_clock::now();
   IncrementalTopologyGraph3DUpdate result =
       impl_->rebuild(occupancy, revision, std::move(rebuilt_tiles),
                      effective_dirty_chunks.size(), reset_required);
+  result.dirty_tile_discovery_ms = dirty_tile_discovery_ms;
+  result.graph_rebuild_ms = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - rebuild_started)
+                                .count();
   result.discovered_dirty_tiles = discovered_dirty_tiles;
-  result.pending_tiles = impl_->pending_observed_tiles.size();
+  result.pending_tiles = impl_->pending_observed_tile_set.size();
   if (reset_required) {
     impl_->observed_chunks = occupancy.chunks();
   }
@@ -919,6 +931,7 @@ IncrementalTopologyGraph3D::reset(const OccupancyGrid3D& occupancy,
     throw std::invalid_argument{"incremental topology revision must be non-zero"};
   }
   impl_->bounds = occupancy.bounds();
+  impl_->pending_observed_tile_set.clear();
   return impl_->rebuild(occupancy, revision, impl_->allStaticTiles(), 0U, true);
 }
 

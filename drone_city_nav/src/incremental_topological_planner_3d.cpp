@@ -77,6 +77,7 @@ struct PathMetrics {
 
 struct FrontierCandidate {
   const IncrementalTopologyNode3D* node{nullptr};
+  ObservationFrontier frontier{};
   std::vector<PathStep> path;
   double score{std::numeric_limits<double>::infinity()};
   double path_length_m{0.0};
@@ -389,12 +390,10 @@ void materializePath(IncrementalTopologicalPlan3D& result,
     return true;
   }
   if (std::abs(candidate.score - current.score) > 1.0e-9 || candidate.node == nullptr ||
-      current.node == nullptr || !candidate.node->observation_frontier ||
-      !current.node->observation_frontier) {
+      current.node == nullptr) {
     return false;
   }
-  return candidate.node->observation_frontier->id <
-         current.node->observation_frontier->id;
+  return candidate.frontier.id < current.frontier.id;
 }
 
 [[nodiscard]] std::optional<FrontierCandidate> selectFrontier(
@@ -403,7 +402,10 @@ void materializePath(IncrementalTopologicalPlan3D& result,
     const IncrementalTopologyNodeId start_node, const Point3& start,
     const Point3& mission_goal, const SourceEdges& source_edges,
     const TopologicalExplorationMemory3D& memory,
-    const IncrementalTopologicalPlanner3DConfig& config, std::size_t& reachable_count) {
+    const IncrementalTopologicalPlanner3DConfig& config,
+    const ObservedOccupancyGrid3D* const occupancy,
+    const SensorObservabilityConfig* const observability, std::size_t& reachable_count,
+    std::size_t& revalidated_count, std::size_t& retired_count) {
   std::optional<FrontierCandidate> best;
   for (const IncrementalTopologyNode3D& node : source_graph.nodes()) {
     if (!node.observation_frontier || contracted.findNode(node.id) == nullptr) {
@@ -415,7 +417,18 @@ void materializePath(IncrementalTopologicalPlan3D& result,
       continue;
     }
     ++reachable_count;
-    const ObservationFrontier& frontier = *node.observation_frontier;
+    ObservationFrontier frontier = *node.observation_frontier;
+    if (occupancy != nullptr && observability != nullptr) {
+      ++revalidated_count;
+      const ObservationFrontierEvaluation current =
+          evaluateObservationFrontier(*occupancy, frontier.observation_pose,
+                                      source_graph.revision(), *observability);
+      if (!current.accepted()) {
+        ++retired_count;
+        continue;
+      }
+      frontier = current.frontier;
+    }
     const double physical_path_m = pathLength(*path);
     const PathMetrics history = pathHistory(*path, source_graph, source_edges, memory);
     const double goal_progress_m = distance3D(start, mission_goal) -
@@ -435,6 +448,7 @@ void materializePath(IncrementalTopologicalPlan3D& result,
         config.clearance_reward * frontier.minimum_known_free_ray_m -
         config.goal_progress_reward * goal_progress_m;
     FrontierCandidate candidate{.node = &node,
+                                .frontier = frontier,
                                 .path = *path,
                                 .score = score,
                                 .path_length_m = physical_path_m,
@@ -578,6 +592,22 @@ IncrementalTopologicalPlanner3D::IncrementalTopologicalPlanner3D(
 IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::plan(
     const IncrementalTopologyGraph3DSnapshot& graph, const Point3& start,
     const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const {
+  return planImpl(graph, nullptr, nullptr, start, mission_goal, memory);
+}
+
+IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planObserved(
+    const IncrementalTopologyGraph3DSnapshot& graph,
+    const ObservedOccupancyGrid3D& occupancy,
+    const SensorObservabilityConfig& observability, const Point3& start,
+    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const {
+  return planImpl(graph, &occupancy, &observability, start, mission_goal, memory);
+}
+
+IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
+    const IncrementalTopologyGraph3DSnapshot& graph,
+    const ObservedOccupancyGrid3D* const occupancy,
+    const SensorObservabilityConfig* const observability, const Point3& start,
+    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const {
   IncrementalTopologicalPlan3D result;
   result.graph_revision = graph.revision();
   if (graph.revision() == 0U || !finitePoint(start) || !finitePoint(mission_goal)) {
@@ -622,22 +652,25 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::plan(
       runDijkstra(contracted, adjacency, *start_node, SearchMode::kExploration, graph,
                   source_edges, memory, config_);
   std::size_t reachable_frontiers = 0U;
-  const std::optional<FrontierCandidate> frontier =
-      selectFrontier(graph, contracted, exploration_records, *start_node, start,
-                     mission_goal, source_edges, memory, config_, reachable_frontiers);
+  std::size_t revalidated_frontiers = 0U;
+  std::size_t retired_frontiers = 0U;
+  const std::optional<FrontierCandidate> frontier = selectFrontier(
+      graph, contracted, exploration_records, *start_node, start, mission_goal,
+      source_edges, memory, config_, occupancy, observability, reachable_frontiers,
+      revalidated_frontiers, retired_frontiers);
   result.reachable_frontier_count = reachable_frontiers;
-  if (frontier.has_value() && frontier->node != nullptr &&
-      frontier->node->observation_frontier.has_value()) {
+  result.revalidated_frontier_count = revalidated_frontiers;
+  result.retired_frontier_count = retired_frontiers;
+  if (frontier.has_value() && frontier->node != nullptr) {
     result.status = IncrementalTopologicalPlanStatus3D::kFrontierRoute;
     result.purpose = IncrementalTopologicalRoutePurpose3D::kObservationFrontier;
     result.target_node = frontier->node->id;
-    result.selected_frontier = frontier->node->observation_frontier;
+    result.selected_frontier = frontier->frontier;
     result.selection_score = frontier->score;
     result.goal_progress_m = frontier->goal_progress_m;
     result.coverage_penalty = frontier->coverage_penalty;
-    materializePath(result, frontier->path, start,
-                    frontier->node->observation_frontier->observation_pose, graph,
-                    source_edges, memory);
+    materializePath(result, frontier->path, start, frontier->frontier.observation_pose,
+                    graph, source_edges, memory);
     return result;
   }
 

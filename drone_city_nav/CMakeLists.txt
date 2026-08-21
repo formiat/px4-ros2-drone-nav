@@ -191,6 +191,7 @@ add_library(
   src/incremental_topological_planner_3d.cpp
   src/incremental_topology_graph_3d.cpp
   src/incremental_topology_graph_3d_snapshot.cpp
+  src/incremental_topology_tile_scheduler_3d.cpp
   src/incremental_topology_graph_3d_types.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/latest_lidar_obstacle_scan.cpp
@@ -1048,6 +1049,14 @@ if(BUILD_TESTING)
   target_compile_features(incremental_topology_graph_3d_test PRIVATE cxx_std_20)
   target_link_libraries(incremental_topology_graph_3d_test drone_city_nav_core)
   enable_project_warnings(incremental_topology_graph_3d_test)
+
+  ament_add_gtest(incremental_topology_tile_scheduler_3d_test
+                  tests/incremental_topology_tile_scheduler_3d_test.cpp)
+  target_compile_features(incremental_topology_tile_scheduler_3d_test
+                          PRIVATE cxx_std_20)
+  target_link_libraries(incremental_topology_tile_scheduler_3d_test
+                        drone_city_nav_core)
+  enable_project_warnings(incremental_topology_tile_scheduler_3d_test)
 
   ament_add_gtest(contracted_topology_graph_3d_test
                   tests/contracted_topology_graph_3d_test.cpp)

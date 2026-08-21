@@ -51,7 +51,7 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
   topological_graph_3d_config_.maximum_observed_tiles_per_update =
       checkedPositiveSizeParameter(
           declare_parameter<std::int64_t>(
-              "topological_graph_3d_maximum_observed_tiles_per_update", 64),
+              "topological_graph_3d_maximum_observed_tiles_per_update", 16),
           "topological_graph_3d_maximum_observed_tiles_per_update");
   topological_graph_3d_config_.maximum_frontier_evaluations_per_component =
       checkedPositiveSizeParameter(
@@ -68,11 +68,11 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
   topological_planner_3d_config_.path_cost_weight =
       declare_parameter<double>("topological_planner_3d_path_cost_weight", 1.0);
   topological_planner_3d_config_.information_gain_reward =
-      declare_parameter<double>("topological_planner_3d_information_gain_reward", 3.0);
+      declare_parameter<double>("topological_planner_3d_information_gain_reward", 1.0);
   topological_planner_3d_config_.clearance_reward =
       declare_parameter<double>("topological_planner_3d_clearance_reward", 0.5);
   topological_planner_3d_config_.goal_progress_reward =
-      declare_parameter<double>("topological_planner_3d_goal_progress_reward", 0.25);
+      declare_parameter<double>("topological_planner_3d_goal_progress_reward", 1.0);
   topological_planner_3d_config_.directed_traversal_penalty =
       declare_parameter<double>("topological_planner_3d_traversal_penalty", 6.0);
   topological_planner_3d_config_.repeated_distance_penalty = declare_parameter<double>(
@@ -161,8 +161,12 @@ ProductionMppiNode::selectIncrementalTopologyRoute3D(
   result.graph_edge_count = world.topological_graph->edges().size();
   result.observation =
       topological_navigation_3d_->observePosition(world.topological_graph, position);
-  result.plan =
-      topological_navigation_3d_->plan(world.topological_graph, position, mission_goal);
+  result.plan = world.observed_occupancy
+                    ? topological_navigation_3d_->planObserved(
+                          world.topological_graph, *world.observed_occupancy, position,
+                          mission_goal)
+                    : topological_navigation_3d_->plan(world.topological_graph,
+                                                       position, mission_goal);
   result.directive = makeIncrementalTopologicalLatticeDirective3D(
       result.plan, position, topological_lattice_adapter_3d_config_);
 
@@ -220,6 +224,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "start_node=%" PRIu64 " target_node=%" PRIu64 " goal_node=%" PRIu64
       " route_nodes=%zu route_edges=%zu selected_frontier_id=%" PRIu64
       " reachable_frontiers=%zu selection_score=%.3f goal_progress_m=%.2f "
+      "revalidated_frontiers=%zu retired_frontiers=%zu "
       "coverage_penalty=%.3f directed_traversals=%zu repeated_edge_distance_m=%.2f "
       "backtrack_reason=%s dead_end_edge_id=%" PRIu64 " dead_end_from=%" PRIu64
       " dead_end_to=%" PRIu64 " dead_end_revision=%" PRIu64
@@ -242,7 +247,8 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       search.plan.route_steps.size(),
       selected_frontier != nullptr ? selected_frontier->id.value : 0U,
       search.plan.reachable_frontier_count, search.plan.selection_score,
-      search.plan.goal_progress_m, search.plan.coverage_penalty,
+      search.plan.goal_progress_m, search.plan.revalidated_frontier_count,
+      search.plan.retired_frontier_count, search.plan.coverage_penalty,
       search.plan.directed_traversal_count, search.plan.repeated_edge_distance_m,
       topologicalBacktrackReason3DName(search.plan.backtrack_reason),
       dead_end != nullptr ? dead_end->attempted_direction.edge_id.value : 0U,

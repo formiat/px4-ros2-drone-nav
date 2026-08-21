@@ -518,6 +518,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       double>(
       "global_lattice_3d_observation_frontier_replacement_minimum_score_improvement",
       0.5);
+  lattice_3d_config_.observation_frontier_replacement_minimum_endpoint_improvement_m =
+      declare_parameter<double>(
+          "global_lattice_3d_observation_frontier_replacement_minimum_endpoint_"
+          "improvement_m",
+          2.0);
   lattice_3d_config_.sensor_observability.maximum_observation_range_m =
       declare_parameter<double>(
           "global_lattice_3d_observation_frontier_maximum_range_m", 8.0);
@@ -679,6 +684,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_.observation_frontier_clearance_weight >= 0.0) ||
       !(lattice_3d_config_.observation_frontier_replacement_minimum_score_improvement >=
         0.0) ||
+      !(lattice_3d_config_
+            .observation_frontier_replacement_minimum_endpoint_improvement_m > 0.0) ||
       !(lattice_3d_config_.observation_frontier_search_time_ms > 0.0) ||
       !(lattice_3d_config_.sensor_observability.maximum_observation_range_m > 0.0) ||
       !(lattice_3d_config_.sensor_observability.minimum_known_free_ray_m >= 0.0) ||

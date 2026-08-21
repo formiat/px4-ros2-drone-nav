@@ -67,7 +67,8 @@ IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateOb
     const ObservedOccupancyGrid3D& occupancy, const std::uint64_t producer_instance_id,
     const std::uint64_t revision,
     const std::span<const OccupancyChunkIndex3D> dirty_chunks,
-    const bool complete_snapshot) {
+    const bool complete_snapshot,
+    const std::optional<IncrementalTopologyBuildPriority3D> priority) {
   const std::scoped_lock lock{mutex_};
   if (!observed_producer_instance_id_.has_value() ||
       *observed_producer_instance_id_ != producer_instance_id) {
@@ -78,7 +79,8 @@ IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateOb
     observed_producer_instance_id_ = producer_instance_id;
   }
   IncrementalTopologicalWorldUpdate3D result;
-  result.graph = graph_.update(occupancy, revision, dirty_chunks, complete_snapshot);
+  result.graph =
+      graph_.update(occupancy, revision, dirty_chunks, complete_snapshot, priority);
   result.snapshot =
       std::make_shared<const IncrementalTopologyGraph3DSnapshot>(graph_.snapshot());
   snapshot_ = result.snapshot;
@@ -109,6 +111,18 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
   }
   const std::scoped_lock lock{mutex_};
   return planner_.plan(*graph, start, mission_goal, memory_);
+}
+
+IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
+    const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
+    const ObservedOccupancyGrid3D& occupancy, const Point3& start,
+    const Point3& mission_goal) const {
+  if (!graph) {
+    return {};
+  }
+  const std::scoped_lock lock{mutex_};
+  return planner_.planObserved(*graph, occupancy, graph_.config().observability, start,
+                               mission_goal, memory_);
 }
 
 std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(

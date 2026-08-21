@@ -106,7 +106,14 @@ struct IncrementalTopologyGraph3DUpdate {
   std::size_t retired_nodes{0U};
   std::size_t node_count{0U};
   std::size_t edge_count{0U};
+  double dirty_tile_discovery_ms{0.0};
+  double graph_rebuild_ms{0.0};
   bool full_reset{false};
+};
+
+struct IncrementalTopologyBuildPriority3D {
+  Point3 position{};
+  Point3 target{};
 };
 
 class IncrementalTopologyGraph3DSnapshot {
@@ -147,7 +154,8 @@ public:
 
   [[nodiscard]] IncrementalTopologyGraph3DUpdate
   update(const ObservedOccupancyGrid3D& occupancy, std::uint64_t revision,
-         std::span<const OccupancyChunkIndex3D> dirty_chunks, bool full_reset);
+         std::span<const OccupancyChunkIndex3D> dirty_chunks, bool full_reset,
+         std::optional<IncrementalTopologyBuildPriority3D> priority = std::nullopt);
 
   [[nodiscard]] IncrementalTopologyGraph3DUpdate reset(const OccupancyGrid3D& occupancy,
                                                        std::uint64_t revision);
