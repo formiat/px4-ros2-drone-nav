@@ -172,7 +172,9 @@ Simulation scripts translate environment variables such as
 toggles into launch arguments or temporary parameter overrides. No-static mode
 rejects the `none` profile; 2D and 3D are alternatives rather than an implicit
 fusion mode. All simulation entry points default to 3D; 2D requires an explicit
-`LIDAR_PROFILE=2d` selection. No separate boolean lidar flags are supported.
+`LIDAR_PROFILE=2d` selection. Static maps are opt-in: `ENABLE_STATIC_MAP`
+defaults to `false`, and a static run requires `ENABLE_STATIC_MAP=true`. No
+separate boolean lidar flags are supported.
 Intercept spectator selection additionally uses
 `INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID` and
 `INTERCEPT_SPECTATOR_RESELECTION_POLICY=first_living|next_living`. The launch

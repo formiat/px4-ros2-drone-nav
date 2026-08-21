@@ -209,11 +209,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
             scenario = _load_intercept_scenario(
                 scenario_path.perform(context), profile
             )
-        configured_static = bool(
-            document["production_mppi_node"]["ros__parameters"]["use_static_map"]
-        )
         use_static_map = _optional_bool(
-            LaunchConfiguration("use_static_map").perform(context), configured_static
+            LaunchConfiguration("use_static_map").perform(context), False
         )
         static_lattice_deadline_override = LaunchConfiguration(
             "static_global_lattice_deadline_ms"
@@ -847,7 +844,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 "lidar_profile", default_value=_DEFAULT_LIDAR_PROFILE
             ),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
-            DeclareLaunchArgument("use_static_map", default_value=""),
+            DeclareLaunchArgument("use_static_map", default_value="false"),
             DeclareLaunchArgument(
                 "static_global_lattice_deadline_ms", default_value=""
             ),

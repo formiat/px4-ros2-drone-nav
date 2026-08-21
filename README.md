@@ -155,6 +155,9 @@ Run the GUI simulation:
 ./scripts/sim_gui.sh
 ```
 
+Simulation runs use no static map by default. Set `ENABLE_STATIC_MAP=true`
+explicitly when a static-map run is required.
+
 ## Environment Spectator Demos
 
 Launch a downloaded environment without PX4, ROS, RViz, lidar, or a mission:
@@ -196,7 +199,7 @@ simulation entry point defaults to the 3D lidar; the 2D lidar is disabled unless
 entirely:
 
 ```bash
-LIDAR_PROFILE=none ./scripts/sim_gui.sh
+ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_gui.sh
 ```
 
 No-static navigation requires `LIDAR_PROFILE=2d` or `LIDAR_PROFILE=3d` and

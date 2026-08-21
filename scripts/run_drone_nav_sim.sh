@@ -195,10 +195,7 @@ fi
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
-enable_static_map_override=""
-if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
-  enable_static_map_override="$(normalize_bool "${ENABLE_STATIC_MAP}")"
-fi
+active_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-false}")"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 allow_mission_failure="$(normalize_bool "${ALLOW_MISSION_FAILURE:-false}")"
@@ -369,39 +366,10 @@ print(value)
 PY
 }
 
-read_ros_bool_parameter() {
-  local node_name="$1"
-  local parameter_name="$2"
-  python3 - "${city_nav_params_file}" "${node_name}" "${parameter_name}" <<'PY'
-import sys
-
-import yaml
-
-params_path, node_name, parameter_name = sys.argv[1:]
-with open(params_path, encoding="utf-8") as stream:
-    document = yaml.safe_load(stream)
-try:
-    value = document[node_name]["ros__parameters"][parameter_name]
-except (KeyError, TypeError) as exc:
-    raise SystemExit(
-        f"Missing boolean ROS parameter {node_name}.{parameter_name} in {params_path}"
-    ) from exc
-if not isinstance(value, bool):
-    raise SystemExit(
-        f"Invalid ROS parameter {node_name}.{parameter_name}={value} in {params_path}"
-    )
-print("true" if value else "false")
-PY
-}
-
 px4_max_climb_speed_mps="$(
     read_ros_float_parameter production_mppi_node maximum_vertical_speed_mps
 )"
 px4_max_descent_speed_mps="${px4_max_climb_speed_mps}"
-configured_static_map="$(
-    read_ros_bool_parameter production_mppi_node use_static_map
-)"
-active_static_map="${enable_static_map_override:-${configured_static_map}}"
 if bool_is_true "${active_static_map}"; then
   for static_artifact in \
     "${static_occupancy_3d_path_override}" \
@@ -686,7 +654,7 @@ if ! bool_is_true "${multi_vehicle_mission}"; then
   echo "Point-to-point shutdown on mission result: ${point_to_point_shutdown_on_mission_result}"
 fi
 echo "City navigation params: ${city_nav_params_file}"
-echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always"
+echo "Obstacle source selection: static=${active_static_map} memory=always"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}")"
 echo "Gazebo world: name=${world_name} sdf=${gazebo_world_sdf_path}"
 echo "Static world: occupancy=${static_occupancy_3d_path_override:-from_params} esdf=${static_esdf_3d_cache_path_override:-from_params} topology=${static_free_space_topology_3d_path_override:-from_params}"
@@ -934,9 +902,7 @@ else
     )
   fi
 fi
-if [[ -n "${enable_static_map_override}" ]]; then
-  ros_launch_args+=(use_static_map:="${enable_static_map_override}")
-fi
+ros_launch_args+=(use_static_map:="${active_static_map}")
 if [[ -n "${static_global_lattice_deadline_ms}" ]]; then
   ros_launch_args+=(
     static_global_lattice_deadline_ms:="${static_global_lattice_deadline_ms}"

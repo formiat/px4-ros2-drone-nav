@@ -47,9 +47,9 @@ real-aircraft operation.
 ./scripts/sim_gui.sh
 ```
 
-`ENABLE_STATIC_MAP=true` uses the known city map. `ENABLE_STATIC_MAP=false` uses
-the selected lidar memory as the world source. Speed is configured explicitly
-and does not depend on map mode.
+Runs default to `ENABLE_STATIC_MAP=false` and use the selected lidar memory as
+the world source. Set `ENABLE_STATIC_MAP=true` explicitly to use the known city
+map. Speed is configured explicitly and does not depend on map mode.
 
 No-static 2D is limited to planar observed free space. No-static 3D integrates
 hit and miss rays into observed Occupancy3D and executes ordinary 3D routes

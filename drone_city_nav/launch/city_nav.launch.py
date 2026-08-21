@@ -168,16 +168,8 @@ def generate_launch_description():
         static_map_override = optional_bool_override(
             context, use_static_map, "use_static_map"
         )
-        with open(params_file.perform(context), encoding="utf-8") as stream:
-            configured_static_map = bool(
-                yaml.safe_load(stream)["production_mppi_node"]["ros__parameters"][
-                    "use_static_map"
-                ]
-            )
         static_map_enabled = (
-            configured_static_map
-            if static_map_override is None
-            else static_map_override
+            False if static_map_override is None else static_map_override
         )
         obstacle_memory_override = optional_bool_override(
             context, enable_obstacle_memory, "enable_obstacle_memory"
@@ -602,10 +594,9 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "use_static_map",
-                default_value="",
+                default_value="false",
                 description=(
-                    "Optional override for the static city obstacle map source. "
-                    "Leave empty to use params_file."
+                    "Use the static city obstacle map source. Disabled by default."
                 ),
             ),
             DeclareLaunchArgument(

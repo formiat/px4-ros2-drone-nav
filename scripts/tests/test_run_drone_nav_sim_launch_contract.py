@@ -598,6 +598,25 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.launch_text,
         )
 
+    def test_static_map_is_opt_in_for_all_simulation_entry_points(self) -> None:
+        self.assertIn(
+            'active_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-false}")"',
+            self.text,
+        )
+        self.assertIn(
+            'ros_launch_args+=(use_static_map:="${active_static_map}")', self.text
+        )
+        self.assertNotIn("read_ros_bool_parameter", self.text)
+        self.assertRegex(
+            self.launch_text,
+            r'DeclareLaunchArgument\(\s*"use_static_map",\s*'
+            r'default_value="false"',
+        )
+        self.assertRegex(
+            self.intercept_launch_text,
+            r'DeclareLaunchArgument\("use_static_map", default_value="false"\)',
+        )
+
     def test_static_map_override_reaches_mission_monitor(self) -> None:
         self.assertIn("mission_monitor_parameters", self.launch_text)
         self.assertIn(
