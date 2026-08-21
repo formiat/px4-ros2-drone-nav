@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sdf_collision_materializer import (
     CollisionWorldMaterializer,
+    MaterializationMode,
     ResourceResolver,
     write_materialized_world,
     write_report,
@@ -21,7 +22,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--fuel-cache", action="append", type=Path, default=[])
     parser.add_argument("--model-path", action="append", type=Path, default=[])
-    parser.add_argument("--preview-visuals", action="store_true")
+    parser.add_argument(
+        "--mode",
+        choices=(MaterializationMode.COLLISION.value, MaterializationMode.SENSOR.value),
+        default=MaterializationMode.COLLISION.value,
+    )
     return parser.parse_args()
 
 
@@ -29,7 +34,7 @@ def main() -> None:
     args = parse_args()
     resolver = ResourceResolver(args.fuel_cache, args.model_path)
     materializer = CollisionWorldMaterializer(
-        resolver, preview_visuals=args.preview_visuals
+        resolver, mode=MaterializationMode(args.mode)
     )
     tree, report = materializer.materialize(args.world)
     fingerprint = write_materialized_world(tree, args.output_sdf)

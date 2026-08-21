@@ -43,8 +43,10 @@ public:
       const TopologicalExplorationMemory3DConfig& memory_config = {});
 
   [[nodiscard]] IncrementalTopologicalWorldUpdate3D
-  updateObserved(const ObservedOccupancyGrid3D& occupancy, std::uint64_t revision,
-                 std::span<const OccupancyChunkIndex3D> dirty_chunks, bool full_reset);
+  updateObserved(const ObservedOccupancyGrid3D& occupancy,
+                 std::uint64_t producer_instance_id, std::uint64_t revision,
+                 std::span<const OccupancyChunkIndex3D> dirty_chunks,
+                 bool complete_snapshot);
   [[nodiscard]] IncrementalTopologicalWorldUpdate3D
   resetStatic(const OccupancyGrid3D& occupancy, std::uint64_t revision);
 
@@ -70,6 +72,7 @@ private:
   IncrementalTopologicalPlanner3D planner_;
   TopologicalExplorationMemory3D memory_;
   std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> snapshot_;
+  std::optional<std::uint64_t> observed_producer_instance_id_;
   std::optional<IncrementalTopologyNodeId> current_node_;
   std::optional<IncrementalTopologicalPlan3D> active_plan_;
 };

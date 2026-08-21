@@ -220,6 +220,7 @@ production_mppi_node:
     no_static_3d_esdf_recenter_margin_m: 18.0
     topological_graph_3d_coarse_sample_stride_cells: 2
     topological_graph_3d_refined_sample_stride_cells: 1
+    topological_graph_3d_maximum_observed_tiles_per_update: 64
     no_static_world_model: occupancy_2d
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
@@ -299,6 +300,7 @@ production_mppi_node:
     noncooperative_time_to_collision_gain_s: 1.0
     noncooperative_maximum_ttc_multiplier: 4.0
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_land_detected_topic: /fmu/out/vehicle_land_detected
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
     raw_obstacle_delta_topic: /drone_city_nav/raw_obstacle_delta

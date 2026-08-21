@@ -9,14 +9,36 @@ import math
 import os
 import re
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
+from gazebo_visibility import SENSOR_COLLISION_PROXY_VISIBILITY_FLAG
+
 
 class MaterializationError(RuntimeError):
     """Raised when physical geometry cannot be resolved without guessing."""
+
+
+class MaterializationMode(str, Enum):
+    """Runtime geometry representation emitted by the materializer."""
+
+    COLLISION = "collision"
+    SENSOR = "sensor"
+    GUI = "gui"
+
+
+def configure_sensor_collision_visual(visual: ET.Element) -> None:
+    """Make collision-derived render geometry visible only on its sensor layer."""
+    ET.SubElement(visual, "cast_shadows").text = "false"
+    ET.SubElement(visual, "visibility_flags").text = str(
+        SENSOR_COLLISION_PROXY_VISIBILITY_FLAG
+    )
+    material = ET.SubElement(visual, "material")
+    ET.SubElement(material, "ambient").text = "0.25 0.25 0.25 1"
+    ET.SubElement(material, "diffuse").text = "0.5 0.5 0.5 1"
 
 
 @dataclass(frozen=True)
@@ -274,13 +296,13 @@ class CollisionWorldMaterializer:
     def __init__(
         self,
         resolver: ResourceResolver,
-        preview_visuals: bool = False,
-        preserve_visuals: bool = False,
+        mode: MaterializationMode = MaterializationMode.COLLISION,
         localized_mesh_root: Path | None = None,
     ):
         self._resolver = resolver
-        self._preview_visuals = preview_visuals
-        self._preserve_visuals = preserve_visuals
+        self._mode = mode
+        self._preserve_visuals = mode is MaterializationMode.GUI
+        self._render_collision_proxies = mode is MaterializationMode.SENSOR
         self._localized_mesh_root = (
             None if localized_mesh_root is None else localized_mesh_root.resolve()
         )
@@ -288,6 +310,7 @@ class CollisionWorldMaterializer:
         self._report: MaterializationReport | None = None
         self._active_model_files: set[Path] = set()
         self._localized_meshes: dict[Path, Path] = {}
+        self._localized_sensor_meshes: dict[Path, Path] = {}
         self._instance_number = 0
 
     def materialize(self, source_world: Path) -> tuple[ET.ElementTree, MaterializationReport]:
@@ -303,7 +326,7 @@ class CollisionWorldMaterializer:
         )
         self._report = MaterializationReport(
             source_world=str(source_world),
-            mode="gui" if self._preserve_visuals else "collision",
+            mode=self._mode.value,
         )
         self._copy_world_environment(source)
         for model in source.findall("model"):
@@ -479,11 +502,12 @@ class CollisionWorldMaterializer:
         mesh_uri = geometry_copy.find("./mesh/uri")
         if mesh_uri is not None:
             mesh_path = self._resolver.resolve_mesh(mesh_uri.text or "", source_file)
-            mesh_uri.text = str(
-                self._localize_visual_mesh(mesh_path)
-                if self._preserve_visuals
-                else mesh_path
-            )
+            localized_mesh = mesh_path
+            if self._preserve_visuals:
+                localized_mesh = self._localize_visual_mesh(mesh_path)
+            elif self._render_collision_proxies:
+                localized_mesh = self._localize_sensor_mesh(mesh_path)
+            mesh_uri.text = str(localized_mesh)
             assert self._report is not None
             self._report.mesh_files.add(str(mesh_path))
 
@@ -500,11 +524,13 @@ class CollisionWorldMaterializer:
             output_link, "collision", {"name": "collision"}
         )
         output_collision.append(geometry_copy)
-        if self._preview_visuals:
-            visual = ET.SubElement(output_link, "visual", {"name": "collision_visual"})
+        if self._render_collision_proxies:
+            visual = ET.SubElement(
+                output_link, "visual", {"name": "sensor_collision_proxy"}
+            )
             visual.append(copy.deepcopy(geometry_copy))
-            material = ET.SubElement(visual, "material")
-            ET.SubElement(material, "diffuse").text = "0.55 0.58 0.62 1"
+            configure_sensor_collision_visual(visual)
+            self._report.visual_instances += 1
         self._report.collision_instances += 1
         self._report.geometry_types[geometry_type] = (
             self._report.geometry_types.get(geometry_type, 0) + 1
@@ -627,6 +653,52 @@ class CollisionWorldMaterializer:
         tree.write(temporary, encoding="utf-8", xml_declaration=True)
         temporary.replace(destination)
         self._localized_meshes[source] = destination
+        return destination
+
+    def _localize_sensor_mesh(self, source: Path) -> Path:
+        """Copy COLLADA geometry without render-only materials or textures."""
+        if source.suffix.casefold() != ".dae":
+            return source
+        if source in self._localized_sensor_meshes:
+            return self._localized_sensor_meshes[source]
+        if self._localized_mesh_root is None:
+            raise MaterializationError(
+                "sensor DAE proxies require a localized mesh directory"
+            )
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+        destination = self._localized_mesh_root / f"{digest}_{source.name}"
+        tree = ET.parse(source)
+        root = tree.getroot()
+        root_namespace = _namespace_uri(root.tag)
+        if root_namespace:
+            ET.register_namespace("", root_namespace)
+
+        render_libraries = {
+            "library_images",
+            "library_effects",
+            "library_materials",
+        }
+        material_primitives = {
+            "lines",
+            "linestrips",
+            "polygons",
+            "polylist",
+            "triangles",
+            "trifans",
+            "tristrips",
+        }
+        for parent in root.iter():
+            for child in list(parent):
+                if _local_tag(child.tag) in render_libraries | {"bind_material"}:
+                    parent.remove(child)
+            if _local_tag(parent.tag) in material_primitives:
+                parent.attrib.pop("material", None)
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_suffix(destination.suffix + ".part")
+        tree.write(temporary, encoding="utf-8", xml_declaration=True)
+        temporary.replace(destination)
+        self._localized_sensor_meshes[source] = destination
         return destination
 
 

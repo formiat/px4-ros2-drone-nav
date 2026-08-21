@@ -90,7 +90,7 @@ TEST(MppiSpeedPolicyTest, ContinuousTrackingDoesNotBrakeForMovingGoal) {
   EXPECT_NE(result.active_limiter, MppiSpeedLimiter::kGoal);
 }
 
-TEST(MppiSpeedPolicyTest, FrontierRouteCanStopBeforeUnextendedEndpoint) {
+TEST(MppiSpeedPolicyTest, FrontierRouteStopsAtItsFiniteEndpoint) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 20.0;
   config.absolute_speed_limit_mps = 20.0;
@@ -103,15 +103,21 @@ TEST(MppiSpeedPolicyTest, FrontierRouteCanStopBeforeUnextendedEndpoint) {
 
   const MppiSpeedPolicyResult approaching = evaluateMppiSpeedPolicy(config, input);
 
-  EXPECT_NEAR(approaching.route_endpoint_limit_mps, 7.23, 0.01);
+  EXPECT_NEAR(approaching.route_endpoint_limit_mps, 9.03, 0.01);
   EXPECT_DOUBLE_EQ(approaching.reference_speed_mps,
                    approaching.route_endpoint_limit_mps);
   EXPECT_EQ(approaching.active_limiter, MppiSpeedLimiter::kRouteEndpoint);
 
-  input.route_endpoint_remaining_m = 2.0;
-  const MppiSpeedPolicyResult at_margin = evaluateMppiSpeedPolicy(config, input);
-  EXPECT_DOUBLE_EQ(at_margin.route_endpoint_limit_mps, 0.0);
-  EXPECT_DOUBLE_EQ(at_margin.reference_speed_mps, 0.0);
+  input.route_endpoint_remaining_m = 1.0;
+  const MppiSpeedPolicyResult near_endpoint = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_GT(near_endpoint.route_endpoint_limit_mps, 0.0);
+  EXPECT_DOUBLE_EQ(near_endpoint.reference_speed_mps,
+                   near_endpoint.route_endpoint_limit_mps);
+
+  input.route_endpoint_remaining_m = 0.0;
+  const MppiSpeedPolicyResult at_endpoint = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(at_endpoint.route_endpoint_limit_mps, 0.0);
+  EXPECT_DOUBLE_EQ(at_endpoint.reference_speed_mps, 0.0);
 }
 
 TEST(MppiSpeedPolicyTest, TerminalRouteUsesMissionGoalLimitOnly) {

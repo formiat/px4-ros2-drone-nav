@@ -14,13 +14,12 @@ TEST(LidarDebugHeadingGate, RequiresConfiguredPx4HeadingBeforeProjection) {
   EXPECT_TRUE(lidarDebugProjectionHeadingReady(false, false));
 }
 
-TEST(LidarDebugHeadingGate, RequiresBoundedEstimatorVariance) {
-  EXPECT_FALSE(px4HeadingReadyForMapping(true, 1.82, 0.04, 0.01));
-  EXPECT_TRUE(px4HeadingReadyForMapping(true, 1.64, 0.0007, 0.01));
-  EXPECT_FALSE(px4HeadingReadyForMapping(false, 1.64, 0.0007, 0.01));
-  EXPECT_FALSE(px4HeadingReadyForMapping(
-      true, 1.64, std::numeric_limits<double>::quiet_NaN(), 0.01));
-  EXPECT_FALSE(px4HeadingReadyForMapping(true, std::numeric_limits<double>::quiet_NaN(),
+TEST(LidarDebugHeadingGate, UsesBoundedEstimatorVarianceForMappingReadiness) {
+  EXPECT_FALSE(px4HeadingReadyForMapping(1.82, 0.04, 0.01));
+  EXPECT_TRUE(px4HeadingReadyForMapping(1.64, 0.0007, 0.01));
+  EXPECT_FALSE(
+      px4HeadingReadyForMapping(1.64, std::numeric_limits<double>::quiet_NaN(), 0.01));
+  EXPECT_FALSE(px4HeadingReadyForMapping(std::numeric_limits<double>::quiet_NaN(),
                                          0.0007, 0.01));
 }
 

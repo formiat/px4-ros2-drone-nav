@@ -92,13 +92,11 @@ const char* mappingYawSourceName(const MappingYawSource source) noexcept {
   return "unknown";
 }
 
-bool px4HeadingReadyForMapping(const bool heading_good_for_control,
-                               const double heading_rad,
+bool px4HeadingReadyForMapping(const double heading_rad,
                                const double heading_variance_rad2,
                                const double maximum_heading_variance_rad2) noexcept {
-  return heading_good_for_control && std::isfinite(heading_rad) &&
-         std::isfinite(heading_variance_rad2) && heading_variance_rad2 >= 0.0 &&
-         std::isfinite(maximum_heading_variance_rad2) &&
+  return std::isfinite(heading_rad) && std::isfinite(heading_variance_rad2) &&
+         heading_variance_rad2 >= 0.0 && std::isfinite(maximum_heading_variance_rad2) &&
          maximum_heading_variance_rad2 >= 0.0 &&
          heading_variance_rad2 <= maximum_heading_variance_rad2;
 }
@@ -157,7 +155,7 @@ makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
   }
 
   if (config.use_heading_for_yaw) {
-    if (sample.heading_good_for_control && std::isfinite(sample.heading_rad)) {
+    if (sample.heading_valid && std::isfinite(sample.heading_rad)) {
       pose.pose.yaw_rad =
           normalizeYaw(transform.px4HeadingToMapYaw(sample.heading_rad));
       pose.yaw_valid = true;

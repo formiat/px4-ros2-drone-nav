@@ -284,4 +284,26 @@ void OccupancyGrid3D::setOccupied(const GridIndex3D index) {
   }
 }
 
+void OccupancyGrid3D::clearOccupied(const GridIndex3D index) {
+  if (!contains(index)) {
+    throw std::out_of_range{"Occupancy3D index outside grid"};
+  }
+  const auto chunk = chunks_.find(chunkIndex(index));
+  if (chunk == chunks_.end()) {
+    return;
+  }
+  const std::size_t bit = localBitIndex(index);
+  const std::uint64_t mask = std::uint64_t{1U} << (bit % 64U);
+  std::uint64_t& word = chunk->second.at(bit / 64U);
+  if ((word & mask) == 0U) {
+    return;
+  }
+  word &= ~mask;
+  --occupied_voxels_;
+  if (std::ranges::all_of(chunk->second,
+                          [](const std::uint64_t value) { return value == 0U; })) {
+    chunks_.erase(chunk);
+  }
+}
+
 } // namespace drone_city_nav

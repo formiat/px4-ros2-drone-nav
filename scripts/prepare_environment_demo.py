@@ -26,6 +26,7 @@ from prepare_environment_simulation import (
 from sdf_collision_materializer import (
     CollisionWorldMaterializer,
     MaterializationError,
+    MaterializationMode,
     ResourceResolver,
     validate_visual_resource_uris,
     write_materialized_world,
@@ -287,7 +288,7 @@ def prepare_demo(
     report_path = runtime_root / "materialization_gui.json"
     tree, report = CollisionWorldMaterializer(
         ResourceResolver(source.fuel_caches, source.model_paths, source.resource_paths),
-        preserve_visuals=True,
+        mode=MaterializationMode.GUI,
         localized_mesh_root=runtime_root / "assets" / "meshes",
     ).materialize(source.world)
     report.light_instances = configure_gui_lighting(tree)

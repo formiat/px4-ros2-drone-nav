@@ -50,6 +50,7 @@ public:
   [[nodiscard]] bool isOccupied(GridIndex3D index) const noexcept;
 
   void setOccupied(GridIndex3D index);
+  void clearOccupied(GridIndex3D index);
 
 private:
   [[nodiscard]] static OccupancyChunkIndex3D chunkIndex(GridIndex3D index) noexcept;

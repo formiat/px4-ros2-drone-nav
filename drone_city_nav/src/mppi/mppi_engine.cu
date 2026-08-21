@@ -252,7 +252,7 @@ public:
           input.initial_state, input.target, active_route,
           route_active ? input.route->initial_station_m : 0.0F,
           input.reference_speed_mps, config_.dynamics, config_.steps,
-          previous_applied_control);
+          previous_applied_control, config_.stopping_capability);
       nominal_reseed_generation_ = input.nominal_reseed_generation;
     } else if (has_updated_) {
       nominal_ = shiftControlSequence(updated_, config_.dynamics.dt_s, elapsed_s);
@@ -310,14 +310,15 @@ public:
     if (deterministic_candidate_enabled) {
       reacquisition_candidate_ =
           route_directed_candidate
-              ? buildRouteDirectedCruiseSeed(
+              ? buildFiniteRouteDirectedSeed(
                     input.initial_state, input.target, active_route,
                     input.route->initial_station_m, input.reference_speed_mps,
-                    config_.dynamics, config_.steps, previous_applied_control)
-              : buildGuideDirectedNominalSeed(input.initial_state, input.target, {},
-                                              0.0F, input.reference_speed_mps,
-                                              config_.dynamics, config_.steps,
-                                              previous_applied_control);
+                    config_.dynamics, config_.steps, previous_applied_control,
+                    config_.stopping_capability)
+              : buildGuideDirectedNominalSeed(
+                    input.initial_state, input.target, {}, 0.0F,
+                    input.reference_speed_mps, config_.dynamics, config_.steps,
+                    previous_applied_control, config_.stopping_capability);
       for (std::size_t step = 0U; step < config_.steps; ++step) {
         reacquisition_noise_ax_[step] =
             reacquisition_candidate_[step].ax - nominal_[step].ax;

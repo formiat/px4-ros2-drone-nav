@@ -30,7 +30,9 @@ from environment_manifest import (
 from sdf_collision_materializer import (
     CollisionWorldMaterializer,
     MaterializationError,
+    MaterializationMode,
     ResourceResolver,
+    configure_sensor_collision_visual,
     validate_visual_resource_uris,
     write_materialized_world,
     write_report,
@@ -132,6 +134,7 @@ def write_runtime_environment(
     repository: Path,
     world_name: str,
     collision_world_sdf: Path,
+    sensor_world_sdf: Path,
     gui_world_sdf: Path,
     source_root: Path,
     runtime_map_mode: str,
@@ -149,6 +152,7 @@ def write_runtime_environment(
         "SIM_COLLISION_WORLD_SDF_PATH": repository_path(
             repository, collision_world_sdf
         ),
+        "SIM_SENSOR_WORLD_SDF_PATH": repository_path(repository, sensor_world_sdf),
         "SIM_GUI_WORLD_SDF_PATH": repository_path(repository, gui_world_sdf),
         "SIM_WORLD_RESOURCE_PATH": repository_path(repository, source_root / "fuel"),
         "STATIC_OCCUPANCY_3D_PATH": optional_repository_path(occupancy),
@@ -301,7 +305,7 @@ def load_launch_platforms(scenario_path: Path) -> list[dict]:
 
 
 def add_launch_platforms(
-    tree: ET.ElementTree, platforms: list[dict], preserve_visuals: bool
+    tree: ET.ElementTree, platforms: list[dict], mode: MaterializationMode
 ) -> None:
     world = tree.getroot().find("world")
     if world is None:
@@ -321,16 +325,19 @@ def add_launch_platforms(
         ET.SubElement(box, "size").text = " ".join(
             f"{value:.9g}" for value in platform["size_sdf_m"]
         )
-        if preserve_visuals:
+        if mode is not MaterializationMode.COLLISION:
             visual = ET.SubElement(link, "visual", {"name": "visual"})
             visual_geometry = ET.SubElement(visual, "geometry")
             visual_box = ET.SubElement(visual_geometry, "box")
             ET.SubElement(visual_box, "size").text = ET.tostring(
                 box.find("size"), encoding="unicode", method="text"
             ).strip()
-            material = ET.SubElement(visual, "material")
-            ET.SubElement(material, "ambient").text = "0.18 0.22 0.24 1"
-            ET.SubElement(material, "diffuse").text = "0.32 0.38 0.42 1"
+            if mode is MaterializationMode.SENSOR:
+                configure_sensor_collision_visual(visual)
+            else:
+                material = ET.SubElement(visual, "material")
+                ET.SubElement(material, "ambient").text = "0.18 0.22 0.24 1"
+                ET.SubElement(material, "diffuse").text = "0.32 0.38 0.42 1"
 
 
 def configure_gui_lighting(tree: ET.ElementTree) -> int:
@@ -555,7 +562,7 @@ def main() -> None:
     )
     for legacy_output in (runtime_root / "world.sdf", runtime_root / "materialization.json"):
         legacy_output.unlink(missing_ok=True)
-    shutil.rmtree(runtime_root / "assets" / "meshes", ignore_errors=True)
+    shutil.rmtree(runtime_root / "assets", ignore_errors=True)
     runtime_root.mkdir(parents=True, exist_ok=True)
     (runtime_root / "visual_resources.json").write_text(
         json.dumps(
@@ -570,10 +577,12 @@ def main() -> None:
     )
     collision_world_sdf = runtime_root / "world_collision.sdf"
     collision_report_path = runtime_root / "materialization_collision.json"
-    collision_tree, collision_report = CollisionWorldMaterializer(resolver).materialize(
-        source_world
+    collision_tree, collision_report = CollisionWorldMaterializer(
+        resolver, mode=MaterializationMode.COLLISION
+    ).materialize(source_world)
+    add_launch_platforms(
+        collision_tree, launch_platforms, mode=MaterializationMode.COLLISION
     )
-    add_launch_platforms(collision_tree, launch_platforms, preserve_visuals=False)
     collision_report.collision_instances += len(launch_platforms)
     collision_report.geometry_types["box"] = (
         collision_report.geometry_types.get("box", 0) + len(launch_platforms)
@@ -588,14 +597,36 @@ def main() -> None:
         collision_report_path,
     )
 
+    sensor_world_sdf = runtime_root / "world_sensor.sdf"
+    sensor_report_path = runtime_root / "materialization_sensor.json"
+    sensor_tree, sensor_report = CollisionWorldMaterializer(
+        resolver,
+        mode=MaterializationMode.SENSOR,
+        localized_mesh_root=runtime_root / "assets" / "sensor_meshes",
+    ).materialize(source_world)
+    add_launch_platforms(sensor_tree, launch_platforms, mode=MaterializationMode.SENSOR)
+    sensor_report.collision_instances += len(launch_platforms)
+    sensor_report.visual_instances += len(launch_platforms)
+    sensor_report.geometry_types["box"] = (
+        sensor_report.geometry_types.get("box", 0) + len(launch_platforms)
+    )
+    sensor_fingerprint = write_materialized_world(sensor_tree, sensor_world_sdf)
+    sensor_visual_uri_count = validate_visual_resource_uris(sensor_world_sdf)
+    write_report(
+        sensor_report,
+        sensor_world_sdf,
+        sensor_fingerprint,
+        sensor_report_path,
+    )
+
     gui_world_sdf = runtime_root / "world_gui.sdf"
     gui_report_path = runtime_root / "materialization_gui.json"
     gui_tree, gui_report = CollisionWorldMaterializer(
         resolver,
-        preserve_visuals=True,
+        mode=MaterializationMode.GUI,
         localized_mesh_root=runtime_root / "assets" / "meshes",
     ).materialize(source_world)
-    add_launch_platforms(gui_tree, launch_platforms, preserve_visuals=True)
+    add_launch_platforms(gui_tree, launch_platforms, mode=MaterializationMode.GUI)
     gui_report.light_instances = configure_gui_lighting(gui_tree)
     gui_report.collision_instances += len(launch_platforms)
     gui_report.visual_instances += len(launch_platforms)
@@ -616,6 +647,7 @@ def main() -> None:
         repository,
         world_name,
         collision_world_sdf,
+        sensor_world_sdf,
         gui_world_sdf,
         source_root,
         args.runtime_map_mode,
@@ -629,6 +661,8 @@ def main() -> None:
         f" environment={environment['id']} runtime_map_mode={args.runtime_map_mode}"
         f" static_map={static_map_id}"
         f" world={world_name} collisions={collision_report.collision_instances}"
+        f" sensor_visuals={sensor_report.visual_instances}"
+        f" sensor_visual_uris={sensor_visual_uri_count}"
         f" visuals={gui_report.visual_instances} lights={gui_report.light_instances}"
         f" visual_uris={visual_uri_count}"
         f" visual_resources_verified={len(visual_resources)}"

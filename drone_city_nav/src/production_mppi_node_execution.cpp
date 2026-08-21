@@ -153,6 +153,16 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           : nullptr;
   const std::optional<mppi::FiniteExecutionPathTerminalBoundary>
       route_terminal_boundary = finiteRouteTerminalBoundary(input, esdf);
+  const mppi::Control current_applied_control =
+      input.previous_applied_control.value_or(mppi::Control{});
+  const ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed{
+      .position =
+          Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
+      .body_axis = bodyAxisFromWorldAcceleration(Vec3{current_applied_control.ax,
+                                                      current_applied_control.ay,
+                                                      current_applied_control.az}),
+      .footprint = physical_footprint_config_,
+  };
   const mppi::FiniteExecutionPathWorld execution_path_world{
       .flight_envelope = &flight_envelope_config_,
       .dynamics = &mppi_config_.dynamics,
@@ -160,6 +170,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .footprint = &physical_footprint_config_,
       .static_occupancy = static_occupancy,
       .observed_occupancy = observed_occupancy,
+      .proprioceptive_free_space_seed =
+          observed_occupancy != nullptr ? &proprioceptive_free_space_seed : nullptr,
+      .launch_support_contact =
+          esdf.launch_support_contact ? &*esdf.launch_support_contact : nullptr,
       .raw_occupancy = latest_raw_occupancy,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = route_terminal_boundary,

@@ -58,6 +58,171 @@ TEST(ObservedEsdf3DTest, FingerprintIsDeterministicAndSensitiveToObservedState) 
   EXPECT_NE(observedOccupancyFingerprint(occupancy, local), free);
 }
 
+TEST(ObservedEsdf3DTest,
+     ProprioceptiveSeedChangesOnlyPlanningClassificationAndNeverOccupiedCells) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  static_cast<void>(
+      occupancy.setState(GridIndex3D{8, 8, 8}, ObservedVoxelState::kOccupied));
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{2.0, 2.0, 2.0},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = SweptFootprintConfig{.radius_m = 0.5,
+                                        .lower_extent_m = 0.25,
+                                        .upper_extent_m = 0.25},
+  };
+  const ObservedEsdf3D field =
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed);
+
+  ASSERT_TRUE(field.local_occupancy);
+  EXPECT_GT(field.stats.proprioceptive_free_voxels, 0U);
+  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{8, 8, 8}),
+            ObservedVoxelState::kOccupied);
+  EXPECT_EQ(occupancy.state(GridIndex3D{7, 8, 8}), ObservedVoxelState::kUnknown);
+  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{7, 8, 8}),
+            ObservedVoxelState::kFree);
+}
+
+TEST(ObservedEsdf3DTest,
+     ProprioceptiveSupportContactIsFreeOnlyInThePreparedPlanningWorld) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  const GridIndex3D support_cell{8, 8, 7};
+  static_cast<void>(occupancy.setState(support_cell, ObservedVoxelState::kOccupied));
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{2.0, 2.0, 2.0},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = SweptFootprintConfig{.radius_m = 0.5,
+                                        .lower_extent_m = 0.25,
+                                        .upper_extent_m = 0.25},
+  };
+  const std::optional<LaunchSupportContact3D> support =
+      detectLaunchSupportContact3D(occupancy, seed);
+  ASSERT_TRUE(support.has_value());
+
+  const ObservedEsdf3D field =
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed, &*support);
+
+  ASSERT_TRUE(field.local_occupancy);
+  EXPECT_GT(field.stats.launch_support_voxels, 1U);
+  EXPECT_EQ(field.local_occupancy->state(support_cell), ObservedVoxelState::kFree);
+  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{7, 8, 7}),
+            ObservedVoxelState::kFree);
+  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{0, 0, 0}),
+            ObservedVoxelState::kUnknown);
+  EXPECT_EQ(occupancy.state(support_cell), ObservedVoxelState::kOccupied);
+}
+
+TEST(ObservedEsdf3DTest, VehicleLandDetectorCreatesBoundedSupportWithoutLidarEvidence) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{2.0, 2.0, 2.0},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = SweptFootprintConfig{.radius_m = 0.5,
+                                        .lower_extent_m = 0.25,
+                                        .upper_extent_m = 0.25},
+  };
+
+  const LaunchSupportContact3D support =
+      makeVehicleLandedSupportContact3D(bounds, seed);
+
+  EXPECT_FALSE(support.contact_cells.empty());
+  EXPECT_EQ(support.occupied_evidence_cells, 0U);
+  EXPECT_EQ(support.evidence_source, LaunchSupportEvidenceSource::kVehicleLandDetector);
+  EXPECT_DOUBLE_EQ(support.maximum_lateral_departure_m, bounds.resolution_m);
+  EXPECT_DOUBLE_EQ(support.maximum_axial_settling_m, bounds.resolution_m);
+}
+
+TEST(ObservedEsdf3DTest, LaunchSupportDepartureLeavesObservedFloorAlongTheBodyAxis) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        static_cast<void>(
+            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree));
+      }
+    }
+  }
+  for (int y = 0; y < bounds.height_cells; ++y) {
+    for (int x = 0; x < bounds.width_cells; ++x) {
+      static_cast<void>(
+          occupancy.setState(GridIndex3D{x, y, 7}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{2.0, 2.0, 2.0},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = SweptFootprintConfig{.radius_m = 0.5,
+                                        .lower_extent_m = 0.25,
+                                        .upper_extent_m = 0.25},
+  };
+  const LaunchSupportContact3D support =
+      makeVehicleLandedSupportContact3D(bounds, seed);
+
+  const LaunchSupportDeparture3D departure =
+      planLaunchSupportDeparture3D(occupancy, seed.position, support, 1.0);
+
+  ASSERT_TRUE(departure.executable);
+  EXPECT_GT(departure.target.z, seed.position.z);
+  EXPECT_GE(departure.axial_departure_m, 1.0);
+  EXPECT_TRUE(validateRawFootprintAt(occupancy, departure.target, seed.body_axis,
+                                     seed.footprint)
+                  .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, seed.body_axis,
+                                        departure.target, seed.body_axis,
+                                        seed.footprint, &seed, &support)
+                  .accepted());
+}
+
+TEST(ObservedEsdf3DTest, DetectsQuantizedSupportAtTheEdgeOfTheLaunchFootprint) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  const GridIndex3D edge_support_cell{10, 8, 7};
+  static_cast<void>(
+      occupancy.setState(edge_support_cell, ObservedVoxelState::kOccupied));
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{2.0, 2.0, 2.0},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = SweptFootprintConfig{.radius_m = 0.5,
+                                        .lower_extent_m = 0.25,
+                                        .upper_extent_m = 0.25},
+  };
+
+  const std::optional<LaunchSupportContact3D> support =
+      detectLaunchSupportContact3D(occupancy, seed);
+
+  ASSERT_TRUE(support.has_value());
+  EXPECT_EQ(support->occupied_evidence_cells, 1U);
+}
+
+TEST(ObservedEsdf3DTest, LaunchSupportCoversTheBoundedDepartureEnvelope) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  const GridIndex3D swept_support_cell{11, 8, 7};
+  static_cast<void>(
+      occupancy.setState(swept_support_cell, ObservedVoxelState::kOccupied));
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{2.0, 2.0, 2.0},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = SweptFootprintConfig{.radius_m = 0.5,
+                                        .lower_extent_m = 0.25,
+                                        .upper_extent_m = 0.25},
+  };
+
+  const std::optional<LaunchSupportContact3D> support =
+      detectLaunchSupportContact3D(occupancy, seed);
+
+  ASSERT_TRUE(support.has_value());
+  EXPECT_EQ(support->occupied_evidence_cells, 1U);
+  const ObservedEsdf3D field =
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed, &*support);
+  ASSERT_TRUE(field.local_occupancy);
+  EXPECT_EQ(field.local_occupancy->state(swept_support_cell),
+            ObservedVoxelState::kFree);
+  EXPECT_EQ(occupancy.state(swept_support_cell), ObservedVoxelState::kOccupied);
+}
+
 TEST(ObservedEsdf3DTest, RecenterHonorsWorldEdges) {
   const GridBounds3D world{0.0, 0.0, 0.0, 1.0, 100, 80, 20};
   const GridBounds3D left =

@@ -75,6 +75,15 @@ class InterceptDiagnosticsContractTest(unittest.TestCase):
         self.assertIn("!persistent_memory_selection_.selected()", obstacle_memory)
         self.assertIn("SpectatorDiagnosticsSelection", obstacle_memory_3d)
 
+    def test_3d_lidar_alignment_reports_the_full_timing_contract(self) -> None:
+        obstacle_memory_3d = OBSTACLE_MEMORY_3D.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "formatLidarAcquisitionPoseDiagnostic(", obstacle_memory_3d
+        )
+        self.assertIn("LIDAR3D_ALIGNMENT dropped=true", obstacle_memory_3d)
+        self.assertIn("alignment_diagnostic.c_str()", obstacle_memory_3d)
+
     def test_static_lidar_artifacts_are_bounded_per_interceptor(self) -> None:
         launch = LAUNCH.read_text(encoding="utf-8")
         self.assertIn('"max_snapshots": (', launch)

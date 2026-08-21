@@ -61,7 +61,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   IncrementalTopologicalNavigation3D navigation{graph_config, planner_config};
 
   const IncrementalTopologicalWorldUpdate3D initial =
-      navigation.updateObserved(occupancy, 1U, {}, true);
+      navigation.updateObserved(occupancy, 17U, 1U, {}, true);
   const Point3 start{4.5, 10.5, 6.5};
   const Point3 middle{18.5, 10.5, 6.5};
   const Point3 goal{39.0, 10.5, 6.5};
@@ -80,7 +80,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
 
   ASSERT_TRUE(occupancy.setState({2, 2, 2}, ObservedVoxelState::kFree));
   const IncrementalTopologicalWorldUpdate3D updated = navigation.updateObserved(
-      occupancy, 2U, std::array{OccupancyChunkIndex3D{0, 0, 0}}, false);
+      occupancy, 17U, 2U, std::array{OccupancyChunkIndex3D{0, 0, 0}}, false);
   const IncrementalTopologicalPlan3D second =
       navigation.plan(updated.snapshot, start, goal);
 

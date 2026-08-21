@@ -169,6 +169,18 @@ void ProductionMppiNode::onLocalPosition(
   }
 }
 
+void ProductionMppiNode::onVehicleLandDetected(
+    const px4_msgs::msg::VehicleLandDetected& message) {
+  const bool contact = message.landed || message.maybe_landed || message.ground_contact;
+  vehicle_land_contact_.store(contact, std::memory_order_release);
+  if (contact && !launch_support_confirmed_by_land_detector_.exchange(
+                     true, std::memory_order_acq_rel)) {
+    RCLCPP_INFO(get_logger(),
+                "LAUNCH_SUPPORT_EVIDENCE source=vehicle_land_detector state=latched");
+  }
+  vehicle_land_contact_received_.store(true, std::memory_order_release);
+}
+
 void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& message) {
   const bool was_ready =
       vehicle_navigation_ready_.exchange(message.data, std::memory_order_acq_rel);

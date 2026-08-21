@@ -48,6 +48,11 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
           declare_parameter<std::int64_t>(
               "topological_graph_3d_refined_sample_stride_cells", 1),
           "topological_graph_3d_refined_sample_stride_cells");
+  topological_graph_3d_config_.maximum_observed_tiles_per_update =
+      checkedPositiveSizeParameter(
+          declare_parameter<std::int64_t>(
+              "topological_graph_3d_maximum_observed_tiles_per_update", 64),
+          "topological_graph_3d_maximum_observed_tiles_per_update");
   topological_graph_3d_config_.maximum_frontier_evaluations_per_component =
       checkedPositiveSizeParameter(
           declare_parameter<std::int64_t>(

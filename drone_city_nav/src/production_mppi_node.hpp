@@ -57,6 +57,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/path.hpp>
+#include <px4_msgs/msg/vehicle_land_detected.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -224,6 +225,9 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
+  std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
+  std::optional<LaunchSupportContact3D> launch_support_contact;
+  bool launch_support_resolution_pending{false};
   std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> topological_graph;
   IncrementalTopologyGraph3DUpdate topological_graph_update{};
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
@@ -514,6 +518,7 @@ public:
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message);
+  void onVehicleLandDetected(const px4_msgs::msg::VehicleLandDetected& message);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
   void onRawObstacleDelta(msg::RawObstacleDelta::ConstSharedPtr message);
@@ -776,6 +781,12 @@ private:
   RawObstacleDeltaAccumulator3D raw_delta_accumulator_3d_;
   msg::RawObstacleDelta3D::ConstSharedPtr pending_raw_delta_3d_;
   std::chrono::steady_clock::time_point no_static_esdf_last_build_time_{};
+  bool launch_support_evaluated_{false};
+  std::optional<ProprioceptiveFreeSpaceSeed3D> launch_support_seed_;
+  std::optional<LaunchSupportContact3D> launch_support_contact_;
+  std::atomic_bool vehicle_land_contact_received_{false};
+  std::atomic_bool vehicle_land_contact_{false};
+  std::atomic_bool launch_support_confirmed_by_land_detector_{false};
   std::atomic<std::uint64_t> no_static_raw_updates_{0U};
   std::atomic<std::uint64_t> no_static_esdf_builds_{0U};
   std::atomic<std::uint64_t> no_static_esdf_throttled_updates_{0U};
@@ -844,6 +855,8 @@ private:
   rclcpp::CallbackGroup::SharedPtr planning_callback_group_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleLandDetected>::SharedPtr
+      vehicle_land_detected_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
   rclcpp::Subscription<msg::RawObstacleDelta>::SharedPtr raw_delta_sub_;

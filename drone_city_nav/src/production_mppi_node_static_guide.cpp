@@ -1,4 +1,5 @@
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
+#include "drone_city_nav/observed_esdf_3d.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -29,26 +30,63 @@ void ProductionMppiNode::processGuideSearch3D(
         Vec3{mission_goal.x - navigation.state.x, mission_goal.y - navigation.state.y,
              mission_goal.z - navigation.state.z};
   }
-  ProductionIncrementalTopologySearch3D topology =
-      selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
-  if (topology.directive.has_value()) {
-    preferred_direction = topology.directive->lattice.preferred_direction;
+  ProductionIncrementalTopologySearch3D topology;
+  std::optional<Lattice3DStrategicDirective> strategic_directive;
+  bool topology_route_used{false};
+  LaunchSupportDeparture3D launch_departure;
+  if (world.launch_support_resolution_pending) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "LAUNCH_SUPPORT_CONTACT state=route_pending");
+  } else if (world.launch_support_contact && world.observed_occupancy) {
+    launch_departure = planLaunchSupportDeparture3D(
+        *world.observed_occupancy, search_start, *world.launch_support_contact,
+        lattice_3d_config_.vertical_step_m);
+    RCLCPP_INFO(get_logger(),
+                "LAUNCH_SUPPORT_DEPARTURE executable=%s validation=%s"
+                " axial_departure_m=%.3f start=(%.3f,%.3f,%.3f)"
+                " target=(%.3f,%.3f,%.3f)",
+                launch_departure.executable ? "true" : "false",
+                sweptFootprintStatusName(launch_departure.validation.status),
+                launch_departure.axial_departure_m, search_start.x, search_start.y,
+                search_start.z, launch_departure.target.x, launch_departure.target.y,
+                launch_departure.target.z);
+    if (launch_departure.executable) {
+      const FootprintBodyAxis& axis = world.launch_support_contact->seed.body_axis;
+      preferred_direction = Vec3{axis.x, axis.y, axis.z};
+      strategic_directive = Lattice3DStrategicDirective{
+          .planning_goal = launch_departure.target,
+          .preferred_direction = preferred_direction,
+          .route_purpose = Lattice3DRoutePurpose::kLaunchDeparture,
+          .observation_frontier = std::nullopt,
+          .selection_score = 0.0,
+          .reaches_mission_goal = false,
+      };
+    }
+  } else {
+    topology = selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
+    if (topology.directive.has_value()) {
+      preferred_direction = topology.directive->lattice.preferred_direction;
+      strategic_directive = topology.directive->lattice;
+      topology_route_used = true;
+    }
   }
   const auto search_started = std::chrono::steady_clock::now();
   const std::span<const PassageTraversalEdge> passage_traversals{};
   const Lattice3DExplorationContext exploration_context{
       .observed_occupancy = world.observed_occupancy.get(),
       .map_revision = topology.plan.graph_revision,
-      .strategic_directive =
-          topology.directive.has_value()
-              ? std::optional<Lattice3DStrategicDirective>{topology.directive->lattice}
-              : std::nullopt,
+      .strategic_directive = strategic_directive,
   };
   RiskAwareLattice3DResult lattice;
-  if (topology.directive.has_value()) {
+  if (strategic_directive.has_value()) {
+    RiskAwareLattice3DConfig search_config = lattice_3d_config_;
+    if (strategic_directive->route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
+      search_config.goal_tolerance_m =
+          std::min(search_config.goal_tolerance_m, 0.5 * search_config.vertical_step_m);
+    }
     lattice = planRiskAwareLattice3D(world.grid, *world.distances_m, search_start,
                                      preferred_direction, mission_goal,
-                                     passage_traversals, lattice_3d_config_,
+                                     passage_traversals, search_config,
                                      planning_worker_pool_.get(), &exploration_context);
   }
   const double search_ms = std::chrono::duration<double, std::milli>(
@@ -65,7 +103,7 @@ void ProductionMppiNode::processGuideSearch3D(
   prepared.planning_search_direction = preferred_direction;
   prepared.planning_candidate_points = lattice.points.size();
   prepared.planning_candidate_samples = lattice.route.size();
-  prepared.lattice_search_performed = topology.directive.has_value();
+  prepared.lattice_search_performed = strategic_directive.has_value();
   prepared.lattice_executable =
       lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
       lattice.status == Lattice3DStatus::kViableFrontier;
@@ -124,7 +162,7 @@ void ProductionMppiNode::processGuideSearch3D(
       StaticRouteReplacementPolicy::kRequireEndpointImprovement;
   if (world.static_route_replan_request) {
     replacement_policy = StaticRouteReplacementPolicy::kAllowSafetyReplan;
-  } else if (topology.directive.has_value() &&
+  } else if (strategic_directive.has_value() &&
              (world.static_route_extension_request ||
               lattice.route_purpose != world.lattice_3d_route_purpose ||
               lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier)) {
@@ -415,7 +453,7 @@ void ProductionMppiNode::processGuideSearch3D(
       activation_status = StaticRouteActivationStatus::kDynamicHandoffRejected;
     }
   }
-  if (activated) {
+  if (activated && topology_route_used) {
     commitIncrementalTopologyRoute3D(topology);
   }
   if (activated && prepared.cooperative_passage_assignments) {

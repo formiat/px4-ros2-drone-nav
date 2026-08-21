@@ -16,7 +16,7 @@ TEST(NavigationPoseOriginTest, AppliesThreeDimensionalMapOrigin) {
       .stamp_ns = 10,
       .xy_valid = true,
       .z_valid = true,
-      .heading_good_for_control = true,
+      .heading_valid = true,
   };
   const Px4LocalPoseConfig config{
       .use_heading_for_yaw = true,
@@ -44,7 +44,7 @@ TEST(NavigationPoseOriginTest, ConvertsPx4NorthEastIntoUrbanEnuMap) {
       .stamp_ns = 10,
       .xy_valid = true,
       .z_valid = true,
-      .heading_good_for_control = true,
+      .heading_valid = true,
   };
   const Px4LocalPoseConfig config{
       .use_heading_for_yaw = true,

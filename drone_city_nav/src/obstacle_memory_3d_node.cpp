@@ -417,8 +417,8 @@ private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message) {
     const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
     const bool heading_ready = px4HeadingReadyForMapping(
-        message.heading_good_for_control, static_cast<double>(message.heading),
-        static_cast<double>(message.heading_var), maximum_heading_variance_rad2_);
+        static_cast<double>(message.heading), static_cast<double>(message.heading_var),
+        maximum_heading_variance_rad2_);
     const MappingYawSelection mapping_yaw = mapping_yaw_tracker_.update(
         heading_ready, static_cast<double>(message.heading));
     if (use_px4_heading_for_scan_ &&
@@ -426,6 +426,20 @@ private:
         last_mapping_yaw_source_ != MappingYawSource::kPx4Heading) {
       lidar_pose_history_.startNewGeneration();
       pending_clouds_.clear();
+    }
+    if (mapping_yaw.source != last_mapping_yaw_source_) {
+      RCLCPP_INFO(
+          get_logger(),
+          "LIDAR3D_MAPPING_YAW source=%s yaw=%.3f px4_heading=%.3f "
+          "heading_good_for_control=%s mapping_ready=%s stable_samples=%zu "
+          "required_samples=%zu maximum_sample_delta_rad=%.3f "
+          "pose_history_generation=%" PRIu64,
+          mappingYawSourceName(mapping_yaw.source), mapping_yaw.yaw_rad,
+          static_cast<double>(message.heading),
+          message.heading_good_for_control ? "true" : "false",
+          heading_ready ? "true" : "false", mapping_yaw_tracker_.stableSampleCount(),
+          startup_heading_stable_sample_count_,
+          startup_heading_maximum_sample_delta_rad_, lidar_pose_history_.generation());
     }
     last_mapping_yaw_source_ = mapping_yaw.source;
     const Px4LocalPositionSample sample{
@@ -441,6 +455,18 @@ private:
         sample, px4_local_pose_config_, current_pose_);
     if (status != Px4LocalPoseUpdateStatus::kAccepted) {
       last_pose_update_ns_ = 0;
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "LIDAR3D_POSE_HISTORY position_rejected=true status=%s xy_valid=%s "
+          "z_valid=%s heading_good_for_control=%s heading=%.3f "
+          "heading_variance=%.6f maximum_heading_variance=%.6f mapping_ready=%s",
+          status == Px4LocalPoseUpdateStatus::kInvalidPosition ? "invalid_position"
+                                                               : "invalid_yaw",
+          message.xy_valid ? "true" : "false", message.z_valid ? "true" : "false",
+          message.heading_good_for_control ? "true" : "false",
+          static_cast<double>(message.heading),
+          static_cast<double>(message.heading_var), maximum_heading_variance_rad2_,
+          heading_ready ? "true" : "false");
       return;
     }
     last_pose_update_ns_ = receive_stamp_ns;
@@ -525,17 +551,26 @@ private:
     const bool wait_expired =
         pending.receive_stamp_ns <= 0 ||
         now_ns - pending.receive_stamp_ns >= alignment_maximum_wait_ns_;
+    const std::string alignment_diagnostic = formatLidarAcquisitionPoseDiagnostic(
+        acquisition.resolved() ? "3D lidar acquisition pose"
+                               : "3D lidar acquisition pose rejected",
+        acquisition, timing, now_ns);
     if (!acquisition.resolved()) {
       if (!permanent_failure && !wait_expired) {
         return PendingPointCloudDisposition::kWaitForPoseBracket;
       }
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "LIDAR3D_ALIGNMENT dropped=true status=%s queue_wait_ms=%.3f",
-          lidarAcquisitionPoseStatusName(acquisition.status),
-          1.0e-6 * static_cast<double>(now_ns - pending.receive_stamp_ns));
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "LIDAR3D_ALIGNMENT dropped=true queue_wait_ms=%.3f %s",
+                           1.0e-6 *
+                               static_cast<double>(now_ns - pending.receive_stamp_ns),
+                           alignment_diagnostic.c_str());
       return PendingPointCloudDisposition::kConsumed;
     }
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "LIDAR3D_ALIGNMENT dropped=false queue_wait_ms=%.3f %s",
+                         1.0e-6 *
+                             static_cast<double>(now_ns - pending.receive_stamp_ns),
+                         alignment_diagnostic.c_str());
     const std::optional<std::vector<Point3>> raw_returns =
         decodePointCloudReturns(pending.cloud);
     if (!raw_returns.has_value()) {

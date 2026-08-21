@@ -16,11 +16,13 @@ if str(SCRIPTS) not in sys.path:
 from sdf_collision_materializer import (  # noqa: E402
     CollisionWorldMaterializer,
     MaterializationError,
+    MaterializationMode,
     ResourceResolver,
     validate_visual_resource_uris,
     write_materialized_world,
     write_report,
 )
+from gazebo_visibility import SENSOR_COLLISION_PROXY_VISIBILITY_FLAG  # noqa: E402
 from prepare_environment_simulation import (  # noqa: E402
     add_launch_platforms,
     configure_gui_lighting,
@@ -60,6 +62,7 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
     ) -> None:
         source = '<sdf version="1.10"><world name="candidate"/></sdf>'
         collision_tree = ET.ElementTree(ET.fromstring(source))
+        sensor_tree = ET.ElementTree(ET.fromstring(source))
         gui_tree = ET.ElementTree(ET.fromstring(source))
         platform = {
             "id": "region_a",
@@ -68,12 +71,17 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             "size_sdf_m": (6.0, 6.0, 0.5),
         }
 
-        add_launch_platforms(collision_tree, [platform], preserve_visuals=False)
-        add_launch_platforms(gui_tree, [platform], preserve_visuals=True)
+        add_launch_platforms(
+            collision_tree, [platform], mode=MaterializationMode.COLLISION
+        )
+        add_launch_platforms(sensor_tree, [platform], mode=MaterializationMode.SENSOR)
+        add_launch_platforms(gui_tree, [platform], mode=MaterializationMode.GUI)
 
         collision_model = collision_tree.getroot().find("./world/model")
+        sensor_model = sensor_tree.getroot().find("./world/model")
         gui_model = gui_tree.getroot().find("./world/model")
         self.assertIsNotNone(collision_model)
+        self.assertIsNotNone(sensor_model)
         self.assertIsNotNone(gui_model)
         self.assertEqual(
             collision_model.findtext("pose"), gui_model.findtext("pose")
@@ -83,7 +91,105 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             gui_model.findtext("./link/collision/geometry/box/size"),
         )
         self.assertIsNone(collision_model.find(".//visual"))
+        sensor_visual = sensor_model.find(".//visual")
+        self.assertIsNotNone(sensor_visual)
+        self.assertEqual(
+            SENSOR_COLLISION_PROXY_VISIBILITY_FLAG,
+            int(sensor_visual.findtext("visibility_flags", "")),
+        )
+        self.assertEqual("false", sensor_visual.findtext("cast_shadows"))
         self.assertIsNotNone(gui_model.find(".//visual"))
+
+    def test_sensor_world_renders_exact_physical_collision_geometry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            world = Path(directory) / "world.sdf"
+            world.write_text(
+                '<sdf version="1.10"><world name="candidate">'
+                '<model name="wall"><static>true</static><link name="link">'
+                '<collision name="physical"><pose>1 2 3 0 0 0</pose>'
+                '<geometry><box><size>4 5 6</size></box></geometry></collision>'
+                '<visual name="source_visual"><geometry><sphere><radius>99</radius>'
+                '</sphere></geometry></visual></link></model></world></sdf>',
+                encoding="utf-8",
+            )
+
+            tree, report = CollisionWorldMaterializer(
+                ResourceResolver([], []), mode=MaterializationMode.SENSOR
+            ).materialize(world)
+
+            output_model = tree.getroot().find("./world/model")
+            self.assertIsNotNone(output_model)
+            collision_geometry = output_model.find("./link/collision/geometry")
+            proxy = output_model.find("./link/visual")
+            self.assertIsNotNone(collision_geometry)
+            self.assertIsNotNone(proxy)
+            self.assertEqual(
+                ET.tostring(collision_geometry),
+                ET.tostring(proxy.find("geometry")),
+            )
+            self.assertEqual("sensor_collision_proxy", proxy.attrib["name"])
+            self.assertEqual(
+                SENSOR_COLLISION_PROXY_VISIBILITY_FLAG,
+                int(proxy.findtext("visibility_flags", "")),
+            )
+            self.assertEqual("sensor", report.mode)
+            self.assertEqual(1, report.collision_instances)
+            self.assertEqual(1, report.visual_instances)
+
+    def test_sensor_mesh_strips_collada_render_resources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model_root = root / "models" / "wall"
+            mesh = model_root / "meshes" / "wall.dae"
+            mesh.parent.mkdir(parents=True)
+            mesh.write_text(
+                '<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema">'
+                '<library_images><image><init_from>wall.png</init_from></image>'
+                '</library_images><library_effects/><library_materials/>'
+                '<library_geometries><geometry id="wall"><mesh>'
+                '<triangles material="paint" count="0"/></mesh></geometry>'
+                '</library_geometries><library_visual_scenes><visual_scene id="scene">'
+                '<node><instance_geometry url="#wall"><bind_material/>'
+                '</instance_geometry></node></visual_scene></library_visual_scenes>'
+                '</COLLADA>',
+                encoding="utf-8",
+            )
+            (model_root / "model.sdf").write_text(
+                '<sdf version="1.10"><model name="wall"><static>true</static>'
+                '<link name="link"><collision name="collision"><geometry><mesh>'
+                '<uri>meshes/wall.dae</uri></mesh></geometry></collision></link>'
+                '</model></sdf>',
+                encoding="utf-8",
+            )
+            world = root / "world.sdf"
+            world.write_text(
+                '<sdf version="1.10"><world name="candidate"><include>'
+                '<uri>model://wall</uri></include></world></sdf>',
+                encoding="utf-8",
+            )
+
+            tree, _ = CollisionWorldMaterializer(
+                ResourceResolver([], [root / "models"]),
+                mode=MaterializationMode.SENSOR,
+                localized_mesh_root=root / "runtime" / "sensor_meshes",
+            ).materialize(world)
+
+            localized = Path(
+                tree.getroot().findtext("./world/model/link/collision/geometry/mesh/uri")
+            )
+            localized_root = ET.parse(localized).getroot()
+            tags = {element.tag.rsplit("}", 1)[-1] for element in localized_root.iter()}
+            triangle = next(
+                element
+                for element in localized_root.iter()
+                if element.tag.rsplit("}", 1)[-1] == "triangles"
+            )
+            self.assertTrue(localized.is_file())
+            self.assertFalse(
+                {"library_images", "library_effects", "library_materials", "bind_material"}
+                & tags
+            )
+            self.assertNotIn("material", triangle.attrib)
 
     def test_preserves_physics_and_adds_px4_world_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -385,7 +491,7 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             output = root / "runtime" / "world_gui.sdf"
             materializer = CollisionWorldMaterializer(
                 ResourceResolver([cache], [models]),
-                preserve_visuals=True,
+                mode=MaterializationMode.GUI,
                 localized_mesh_root=output.parent / "assets" / "meshes",
             )
 
@@ -451,7 +557,7 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             output = root / "runtime" / "world_gui.sdf"
             tree, _ = CollisionWorldMaterializer(
                 ResourceResolver([], [models]),
-                preserve_visuals=True,
+                mode=MaterializationMode.GUI,
                 localized_mesh_root=output.parent / "assets" / "meshes",
             ).materialize(world)
             write_materialized_world(tree, output)
@@ -490,7 +596,7 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
             output = root / "runtime" / "world_gui.sdf"
             tree, _ = CollisionWorldMaterializer(
                 ResourceResolver([], [models], [root / "photos"]),
-                preserve_visuals=True,
+                mode=MaterializationMode.GUI,
                 localized_mesh_root=output.parent / "assets" / "meshes",
             ).materialize(world)
             write_materialized_world(tree, output)

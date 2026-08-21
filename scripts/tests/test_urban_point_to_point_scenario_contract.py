@@ -66,8 +66,11 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertIn("POINT_TO_POINT_SCENARIO_PATH", makefile)
         self.assertIn("sim-urban-point-to-point-headless:", makefile)
         self.assertIn("sim-urban-point-to-point-gui:", makefile)
-        self.assertIn("SIM_COLLISION_WORLD_SDF_PATH", makefile)
+        self.assertIn("SIM_SENSOR_WORLD_SDF_PATH", makefile)
         self.assertIn("SIM_GUI_WORLD_SDF_PATH", makefile)
+        self.assertNotIn(
+            'SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH"', makefile
+        )
         self.assertEqual(makefile.count("--runtime-map-mode no-static"), 4)
         self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 4)
         self.assertEqual(

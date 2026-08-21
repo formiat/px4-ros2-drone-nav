@@ -30,6 +30,14 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
         onLocalPosition(*message);
       },
       input_subscription_options);
+  vehicle_land_detected_sub_ = create_subscription<px4_msgs::msg::VehicleLandDetected>(
+      declare_parameter<std::string>("px4_vehicle_land_detected_topic",
+                                     "/fmu/out/vehicle_land_detected"),
+      sensor_qos,
+      [this](const px4_msgs::msg::VehicleLandDetected::SharedPtr message) {
+        onVehicleLandDetected(*message);
+      },
+      input_subscription_options);
   navigation_readiness_sub_ = create_subscription<std_msgs::msg::Bool>(
       declare_parameter<std::string>("navigation_readiness_topic",
                                      "/drone_city_nav/navigation_ready"),

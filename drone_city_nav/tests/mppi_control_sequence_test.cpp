@@ -201,7 +201,7 @@ TEST(MppiControlSequenceTest, BuildsAllDeterministicCooperativeCandidates) {
   EXPECT_LT(first(CooperativeManeuver::kSlow).ax, 0.0F);
 }
 
-TEST(MppiControlSequenceTest, RouteCruiseExtrapolatesTemporaryFrontier) {
+TEST(MppiControlSequenceTest, FiniteRouteSeedStopsAtTemporaryFrontier) {
   DynamicsConfig dynamics;
   dynamics.dt_s = 0.1F;
   dynamics.maximum_control_jerk_mps3 = 100.0F;
@@ -212,14 +212,15 @@ TEST(MppiControlSequenceTest, RouteCruiseExtrapolatesTemporaryFrontier) {
       RouteSample3D{.x_m = 5.0F, .tangent_x = 1.0F, .station_m = 5.0F},
   };
 
-  const std::vector<Control> controls = buildRouteDirectedCruiseSeed(
+  const std::vector<Control> controls = buildFiniteRouteDirectedSeed(
       initial, target, route, 0.0F, 5.0F, dynamics, 30U, Control{});
   State terminal = initial;
   for (const Control& control : controls) {
     terminal = integrateReference(terminal, control, dynamics);
   }
 
-  EXPECT_GT(terminal.x, route.back().x_m);
+  EXPECT_LE(terminal.x, route.back().x_m + 0.25F);
+  EXPECT_LT(std::abs(terminal.vx), 0.5F);
 }
 
 TEST(MppiControlSequenceTest, AcquisitionCombinesRouteAccelerationAndClimb) {
@@ -245,7 +246,7 @@ TEST(MppiControlSequenceTest, AcquisitionCombinesRouteAccelerationAndClimb) {
   const std::vector<Control> candidates =
       buildCooperativeSeparationAcquisitionCandidates(
           initial, target, route, 0.0F, 10.0F, acquisition, dynamics,
-          CooperativeConfig{}, 20U, Control{}, dynamics.dt_s);
+          CooperativeConfig{}, 20U, Control{}, dynamics.dt_s, StoppingCapability{});
 
   ASSERT_EQ(candidates.size(), kCooperativeAcquisitionCandidateCount * 20U);
   EXPECT_GT(candidates.front().ax, 0.0F);

@@ -18,6 +18,7 @@ namespace {
   config.tile_size_cells = 4;
   config.coarse_sample_stride_cells = 1;
   config.refined_sample_stride_cells = 1;
+  config.maximum_observed_tiles_per_update = 64U;
   config.maximum_frontier_evaluations_per_component = 128U;
   config.footprint.radius_m = 0.2;
   config.footprint.lower_extent_m = 0.2;
@@ -295,6 +296,93 @@ TEST(IncrementalTopologyGraph3DTest,
   EXPECT_GT(refined_update.adaptively_refined_tiles, 0U);
   EXPECT_GT(refined_update.retained_node_ids, 0U);
   EXPECT_EQ(retained->geometry_revision, 2U);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     SparseObservedResetBuildsOnlyTilesContainingKnownFreeVoxels) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 96, 48}};
+  ASSERT_TRUE(occupancy.setState({1, 1, 1}, ObservedVoxelState::kFree));
+  ASSERT_TRUE(occupancy.setState({47, 47, 23}, ObservedVoxelState::kFree));
+  ASSERT_TRUE(occupancy.setState({95, 95, 47}, ObservedVoxelState::kOccupied));
+  IncrementalTopologyGraph3D graph{makeConfig()};
+
+  const IncrementalTopologyGraph3DUpdate update = graph.update(occupancy, 1U, {}, true);
+
+  EXPECT_TRUE(update.full_reset);
+  EXPECT_EQ(update.rebuilt_tiles, 2U);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     DirtyObservedUpdateRebuildsOnlyTilesAffectedByChangedVoxels) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 96, 48}};
+  ASSERT_TRUE(occupancy.setState({17, 17, 17}, ObservedVoxelState::kFree));
+  IncrementalTopologyGraph3D graph{makeConfig()};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+
+  ASSERT_TRUE(occupancy.setState({18, 17, 17}, ObservedVoxelState::kFree));
+  const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex({18, 17, 17});
+  const IncrementalTopologyGraph3DUpdate update =
+      graph.update(occupancy, 2U, std::span{&dirty, 1U}, false);
+
+  EXPECT_FALSE(update.full_reset);
+  EXPECT_EQ(update.requested_dirty_chunks, 1U);
+  EXPECT_GT(update.rebuilt_tiles, 0U);
+  EXPECT_LE(update.rebuilt_tiles, 8U);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     CompleteSnapshotAfterInitializationPreservesIncrementalIdentity) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 64, 32, 16}};
+  fillFreeBox(occupancy, 2, 61, 14, 16, 6, 8);
+  IncrementalTopologyGraph3D graph{makeConfig()};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+  const std::optional<IncrementalTopologyNodeId> before =
+      graph.snapshot().nearestNode({56.5, 15.5, 7.5}, 8.0);
+  ASSERT_TRUE(before.has_value());
+
+  fillFreeBox(occupancy, 8, 10, 4, 16, 6, 8);
+  const IncrementalTopologyGraph3DUpdate update = graph.update(occupancy, 2U, {}, true);
+  const std::optional<IncrementalTopologyNodeId> after =
+      graph.snapshot().nearestNode({56.5, 15.5, 7.5}, 8.0);
+
+  EXPECT_FALSE(update.full_reset);
+  EXPECT_GT(update.requested_dirty_chunks, 0U);
+  EXPECT_GT(update.retained_node_ids, 0U);
+  EXPECT_EQ(after, before);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     DefersObservedTileWorkWithoutDroppingDirtyGeometry) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
+  fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.maximum_observed_tiles_per_update = 1U;
+  IncrementalTopologyGraph3D graph{config};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+
+  fillFreeBox(occupancy, 18, 22, 14, 16, 6, 8);
+  fillFreeBox(occupancy, 66, 70, 14, 16, 6, 8);
+  const std::array dirty_chunks{
+      ObservedOccupancyGrid3D::chunkIndex({18, 15, 7}),
+      ObservedOccupancyGrid3D::chunkIndex({66, 15, 7}),
+  };
+  const IncrementalTopologyGraph3DUpdate first =
+      graph.update(occupancy, 2U, dirty_chunks, false);
+
+  EXPECT_GT(first.discovered_dirty_tiles, 1U);
+  EXPECT_EQ(first.rebuilt_tiles, 1U);
+  EXPECT_GT(first.pending_tiles, 0U);
+
+  std::size_t previous_pending = first.pending_tiles;
+  std::uint64_t revision = 3U;
+  while (previous_pending > 0U) {
+    const IncrementalTopologyGraph3DUpdate next =
+        graph.update(occupancy, revision++, {}, false);
+    EXPECT_EQ(next.rebuilt_tiles, 1U);
+    EXPECT_LT(next.pending_tiles, previous_pending);
+    previous_pending = next.pending_tiles;
+  }
+  EXPECT_TRUE(graph.snapshot().nearestNode({68.5, 15.5, 7.5}, 8.0).has_value());
 }
 
 } // namespace

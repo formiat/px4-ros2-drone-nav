@@ -463,6 +463,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "minimum_target_z_m": navigation["minimum_target_z_m"],
                     "maximum_target_z_m": navigation["maximum_target_z_m"],
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
+                    "px4_vehicle_land_detected_topic": (
+                        f"{px4}/out/vehicle_land_detected"
+                    ),
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
                     "raw_obstacle_snapshot_topic": raw_snapshot,
                     "raw_obstacle_delta_topic": raw_delta,

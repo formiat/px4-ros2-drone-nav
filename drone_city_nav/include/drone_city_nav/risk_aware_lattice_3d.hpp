@@ -43,6 +43,7 @@ enum class Lattice3DSearchTermination : std::uint8_t {
 
 enum class Lattice3DRoutePurpose : std::uint8_t {
   kMissionTransit,
+  kLaunchDeparture,
   kObservationFrontier,
   kTopologicalBacktrack,
 };

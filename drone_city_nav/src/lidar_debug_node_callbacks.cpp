@@ -11,8 +11,8 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
   current_pose_.position = px4_map_transform_.localPositionToMap(
       Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)});
   const bool heading_valid = px4HeadingReadyForMapping(
-      msg.heading_good_for_control, static_cast<double>(msg.heading),
-      static_cast<double>(msg.heading_var), maximum_heading_variance_rad2_);
+      static_cast<double>(msg.heading), static_cast<double>(msg.heading_var),
+      maximum_heading_variance_rad2_);
   const MappingYawSelection mapping_yaw =
       mapping_yaw_tracker_.update(heading_valid, static_cast<double>(msg.heading));
   const bool starts_new_px4_generation =

@@ -376,8 +376,8 @@ private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
     const bool heading_ready = px4HeadingReadyForMapping(
-        msg.heading_good_for_control, static_cast<double>(msg.heading),
-        static_cast<double>(msg.heading_var), maximum_heading_variance_rad2_);
+        static_cast<double>(msg.heading), static_cast<double>(msg.heading_var),
+        maximum_heading_variance_rad2_);
     const MappingYawSelection mapping_yaw =
         mapping_yaw_tracker_.update(heading_ready, static_cast<double>(msg.heading));
     const bool starts_new_px4_generation =
@@ -437,11 +437,11 @@ private:
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Obstacle memory invalidated cached pose after PX4 local position without "
-          "stable heading: heading_good_for_control=%s heading=%.3f "
-          "heading_variance=%.6f maximum_heading_variance=%.6f",
+          "stable mapping heading: heading_good_for_control=%s heading=%.3f "
+          "heading_variance=%.6f maximum_heading_variance=%.6f mapping_ready=%s",
           msg.heading_good_for_control ? "true" : "false",
           static_cast<double>(msg.heading), static_cast<double>(msg.heading_var),
-          maximum_heading_variance_rad2_);
+          maximum_heading_variance_rad2_, heading_ready ? "true" : "false");
       return;
     }
 

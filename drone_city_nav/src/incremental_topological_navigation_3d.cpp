@@ -64,11 +64,21 @@ IncrementalTopologicalNavigation3D::IncrementalTopologicalNavigation3D(
 }
 
 IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateObserved(
-    const ObservedOccupancyGrid3D& occupancy, const std::uint64_t revision,
-    const std::span<const OccupancyChunkIndex3D> dirty_chunks, const bool full_reset) {
+    const ObservedOccupancyGrid3D& occupancy, const std::uint64_t producer_instance_id,
+    const std::uint64_t revision,
+    const std::span<const OccupancyChunkIndex3D> dirty_chunks,
+    const bool complete_snapshot) {
   const std::scoped_lock lock{mutex_};
+  if (!observed_producer_instance_id_.has_value() ||
+      *observed_producer_instance_id_ != producer_instance_id) {
+    graph_ = IncrementalTopologyGraph3D{graph_.config()};
+    current_node_.reset();
+    active_plan_.reset();
+    memory_.clear();
+    observed_producer_instance_id_ = producer_instance_id;
+  }
   IncrementalTopologicalWorldUpdate3D result;
-  result.graph = graph_.update(occupancy, revision, dirty_chunks, full_reset);
+  result.graph = graph_.update(occupancy, revision, dirty_chunks, complete_snapshot);
   result.snapshot =
       std::make_shared<const IncrementalTopologyGraph3DSnapshot>(graph_.snapshot());
   snapshot_ = result.snapshot;
@@ -87,6 +97,7 @@ IncrementalTopologicalNavigation3D::resetStatic(const OccupancyGrid3D& occupancy
   current_node_.reset();
   active_plan_.reset();
   memory_.clear();
+  observed_producer_instance_id_.reset();
   return result;
 }
 

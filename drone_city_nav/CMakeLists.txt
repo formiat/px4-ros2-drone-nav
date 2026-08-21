@@ -190,6 +190,8 @@ add_library(
   src/incremental_topological_lattice_adapter_3d.cpp
   src/incremental_topological_planner_3d.cpp
   src/incremental_topology_graph_3d.cpp
+  src/incremental_topology_graph_3d_snapshot.cpp
+  src/incremental_topology_graph_3d_types.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
@@ -232,6 +234,7 @@ add_library(
   src/static_esdf_cache.cpp
   src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
+  src/swept_footprint_esdf.cpp
   src/topological_exploration_memory_3d.cpp
   src/tracked_agent_lidar_filter.cpp
   src/tracking_objective.cpp

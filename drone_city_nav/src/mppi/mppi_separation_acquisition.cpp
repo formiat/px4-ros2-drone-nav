@@ -148,7 +148,7 @@ CooperativeSeparationAcquisitionResult evaluateCooperativeSeparationAcquisition(
           input.initial_state, input.target, input.route, input.initial_route_station_m,
           input.reference_speed_mps, input.acquisition, input.config.dynamics,
           input.config.cooperative, input.config.steps, input.previous_applied_control,
-          input.first_control_interval_s);
+          input.first_control_interval_s, input.config.stopping_capability);
   const std::vector<Control> zero_noise(input.config.steps);
   const std::pair<float, float> direction = routeDirection(input);
   std::optional<CandidateEvaluation> positive;

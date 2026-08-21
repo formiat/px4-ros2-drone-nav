@@ -204,6 +204,8 @@ const char* lattice3DRoutePurposeName(const Lattice3DRoutePurpose purpose) noexc
   switch (purpose) {
     case Lattice3DRoutePurpose::kMissionTransit:
       return "mission_transit";
+    case Lattice3DRoutePurpose::kLaunchDeparture:
+      return "launch_departure";
     case Lattice3DRoutePurpose::kObservationFrontier:
       return "observation_frontier";
     case Lattice3DRoutePurpose::kTopologicalBacktrack:

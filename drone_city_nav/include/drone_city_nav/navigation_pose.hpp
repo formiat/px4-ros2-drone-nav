@@ -26,7 +26,7 @@ struct Px4LocalPositionSample {
   std::int64_t stamp_ns{0};
   bool xy_valid{false};
   bool z_valid{false};
-  bool heading_good_for_control{false};
+  bool heading_valid{false};
 };
 
 struct Px4LocalPoseConfig {
@@ -86,9 +86,10 @@ private:
 
 [[nodiscard]] const char* mappingYawSourceName(MappingYawSource source) noexcept;
 
+// Mapping confidence is based on estimator uncertainty and temporal stability;
+// PX4's control-readiness flag remains a separate flight-control contract.
 [[nodiscard]] bool
-px4HeadingReadyForMapping(bool heading_good_for_control, double heading_rad,
-                          double heading_variance_rad2,
+px4HeadingReadyForMapping(double heading_rad, double heading_variance_rad2,
                           double maximum_heading_variance_rad2) noexcept;
 
 [[nodiscard]] bool

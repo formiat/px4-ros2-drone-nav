@@ -111,7 +111,7 @@ sim-cooperative-traffic-urban-headless: build
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH" \
+		SIM_WORLD_SDF_PATH="$$SIM_SENSOR_WORLD_SDF_PATH" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=civilian_0 \
@@ -153,7 +153,7 @@ sim-urban-point-to-point-headless: build
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH" \
+		SIM_WORLD_SDF_PATH="$$SIM_SENSOR_WORLD_SDF_PATH" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE=true \

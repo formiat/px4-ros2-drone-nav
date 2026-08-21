@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <deque>
@@ -15,39 +16,15 @@
 #include <unordered_set>
 #include <utility>
 
+#include "incremental_topology_graph_3d_internal.hpp"
+
 namespace drone_city_nav {
 namespace {
 
-constexpr std::uint64_t kFnvOffset{1469598103934665603ULL};
-constexpr std::uint64_t kFnvPrime{1099511628211ULL};
-
-void hashInteger(std::uint64_t& hash, const int value) noexcept {
-  const auto encoded = static_cast<std::uint32_t>(value);
-  for (std::size_t shift = 0U; shift < sizeof(encoded); ++shift) {
-    hash ^= static_cast<std::uint8_t>(encoded >> (shift * 8U));
-    hash *= kFnvPrime;
-  }
-}
-
-void hashUnsigned(std::uint64_t& hash, const std::uint64_t value) noexcept {
-  for (std::size_t shift = 0U; shift < sizeof(value); ++shift) {
-    hash ^= static_cast<std::uint8_t>(value >> (shift * 8U));
-    hash *= kFnvPrime;
-  }
-}
-
-[[nodiscard]] std::uint64_t sampleCellKey(const GridBounds3D& bounds,
-                                          const GridIndex3D cell) noexcept {
-  if (cell.x < 0 || cell.y < 0 || cell.z < 0 || cell.x >= bounds.width_cells ||
-      cell.y >= bounds.height_cells || cell.z >= bounds.depth_cells) {
-    return std::numeric_limits<std::uint64_t>::max();
-  }
-  return (static_cast<std::uint64_t>(cell.z) *
-              static_cast<std::uint64_t>(bounds.height_cells) +
-          static_cast<std::uint64_t>(cell.y)) *
-             static_cast<std::uint64_t>(bounds.width_cells) +
-         static_cast<std::uint64_t>(cell.x);
-}
+using incremental_topology_detail::hashInteger;
+using incremental_topology_detail::hashUnsigned;
+using incremental_topology_detail::kFnvOffset;
+using incremental_topology_detail::sampleCellKey;
 
 [[nodiscard]] bool cellLess(const GridIndex3D first,
                             const GridIndex3D second) noexcept {
@@ -117,17 +94,15 @@ makeEdgeId(IncrementalTopologyNodeId first, IncrementalTopologyNodeId second) no
 template<typename Occupancy>
 [[nodiscard]] bool navigableAt(const Occupancy& occupancy, const Point3& position,
                                const SweptFootprintConfig& footprint) noexcept {
-  return validateRawFootprintAt(occupancy, position, FootprintBodyAxis{}, footprint)
-      .accepted();
+  return rawFootprintIsNavigableAt(occupancy, position, FootprintBodyAxis{}, footprint);
 }
 
 template<typename Occupancy>
 [[nodiscard]] bool navigableBetween(const Occupancy& occupancy, const Point3& first,
                                     const Point3& second,
                                     const SweptFootprintConfig& footprint) noexcept {
-  return validateRawSweptFootprint(occupancy, first, FootprintBodyAxis{}, second,
-                                   FootprintBodyAxis{}, footprint)
-      .accepted();
+  return rawSweptFootprintIsNavigable(occupancy, first, FootprintBodyAxis{}, second,
+                                      FootprintBodyAxis{}, footprint);
 }
 
 [[nodiscard]] double squaredNorm(const Vec3& vector) noexcept {
@@ -135,48 +110,6 @@ template<typename Occupancy>
 }
 
 } // namespace
-
-std::size_t IncrementalTopologyNodeIdHash::operator()(
-    const IncrementalTopologyNodeId id) const noexcept {
-  return std::hash<std::uint64_t>{}(id.value);
-}
-
-std::size_t IncrementalTopologyEdgeIdHash::operator()(
-    const IncrementalTopologyEdgeId id) const noexcept {
-  return std::hash<std::uint64_t>{}(id.value);
-}
-
-std::size_t IncrementalTopologyTileIndex3DHash::operator()(
-    const IncrementalTopologyTileIndex3D index) const noexcept {
-  std::uint64_t hash{kFnvOffset};
-  hashInteger(hash, index.x);
-  hashInteger(hash, index.y);
-  hashInteger(hash, index.z);
-  return static_cast<std::size_t>(hash);
-}
-
-bool incrementalTopologyGraph3DConfigIsValid(
-    const IncrementalTopologyGraph3DConfig& config) noexcept {
-  return config.tile_size_cells > 0 && config.coarse_sample_stride_cells > 0 &&
-         config.refined_sample_stride_cells > 0 &&
-         config.refined_sample_stride_cells <= config.coarse_sample_stride_cells &&
-         config.coarse_sample_stride_cells <= config.tile_size_cells &&
-         config.coarse_sample_stride_cells % config.refined_sample_stride_cells == 0 &&
-         config.maximum_frontier_evaluations_per_component > 0U &&
-         std::isfinite(config.footprint.radius_m) &&
-         std::isfinite(config.footprint.lower_extent_m) &&
-         std::isfinite(config.footprint.upper_extent_m) &&
-         std::isfinite(config.footprint.sweep_step_m) &&
-         config.footprint.radius_m >= 0.0 && config.footprint.lower_extent_m >= 0.0 &&
-         config.footprint.upper_extent_m >= 0.0 &&
-         config.footprint.perimeter_samples > 0U &&
-         config.footprint.radial_rings > 0U && config.footprint.axial_samples > 0U &&
-         config.footprint.sweep_step_m > 0.0 &&
-         config.observability.maximum_observation_range_m > 0.0 &&
-         config.observability.minimum_known_free_ray_m >= 0.0 &&
-         config.observability.minimum_supporting_rays > 0U &&
-         config.observability.minimum_information_gain_voxels > 0U;
-}
 
 struct IncrementalTopologyGraph3D::Impl {
   struct TileComponent {
@@ -675,27 +608,40 @@ struct IncrementalTopologyGraph3D::Impl {
                        IncrementalTopologyTileIndex3DHash>
         unique;
     for (const auto& [chunk, data] : occupancy.chunks()) {
-      static_cast<void>(data);
-      const int minimum_x = chunk.x * ObservedOccupancyGrid3D::kChunkSize;
-      const int minimum_y = chunk.y * ObservedOccupancyGrid3D::kChunkSize;
-      const int minimum_z = chunk.z * ObservedOccupancyGrid3D::kChunkSize;
-      const int maximum_x = std::min(bounds.width_cells,
-                                     minimum_x + ObservedOccupancyGrid3D::kChunkSize) -
-                            1;
-      const int maximum_y = std::min(bounds.height_cells,
-                                     minimum_y + ObservedOccupancyGrid3D::kChunkSize) -
-                            1;
-      const int maximum_z = std::min(bounds.depth_cells,
-                                     minimum_z + ObservedOccupancyGrid3D::kChunkSize) -
-                            1;
-      addTileRange(unique, {minimum_x, minimum_y, minimum_z},
-                   {maximum_x, maximum_y, maximum_z});
+      for (std::size_t word_index = 0U; word_index < data.observed.size();
+           ++word_index) {
+        std::uint64_t free_bits =
+            data.observed[word_index] & ~data.occupied[word_index];
+        while (free_bits != 0U) {
+          const int bit_offset = std::countr_zero(free_bits);
+          const std::size_t local_index =
+              word_index * 64U + static_cast<std::size_t>(bit_offset);
+          const int local_x =
+              static_cast<int>(local_index % ObservedOccupancyGrid3D::kChunkSize);
+          const int local_y =
+              static_cast<int>((local_index / ObservedOccupancyGrid3D::kChunkSize) %
+                               ObservedOccupancyGrid3D::kChunkSize);
+          const int local_z =
+              static_cast<int>(local_index / static_cast<std::size_t>(
+                                                 ObservedOccupancyGrid3D::kChunkSize *
+                                                 ObservedOccupancyGrid3D::kChunkSize));
+          const GridIndex3D cell{
+              chunk.x * ObservedOccupancyGrid3D::kChunkSize + local_x,
+              chunk.y * ObservedOccupancyGrid3D::kChunkSize + local_y,
+              chunk.z * ObservedOccupancyGrid3D::kChunkSize + local_z};
+          if (occupancy.contains(cell)) {
+            unique.insert(tileForCell(cell, config.tile_size_cells));
+          }
+          free_bits &= free_bits - 1U;
+        }
+      }
     }
     return sortedTiles(unique);
   }
 
   [[nodiscard]] std::vector<IncrementalTopologyTileIndex3D>
-  dirtyObservedTiles(const std::span<const OccupancyChunkIndex3D> dirty_chunks) const {
+  dirtyObservedTiles(const ObservedOccupancyGrid3D& occupancy,
+                     const std::span<const OccupancyChunkIndex3D> dirty_chunks) {
     std::unordered_set<IncrementalTopologyTileIndex3D,
                        IncrementalTopologyTileIndex3DHash>
         unique;
@@ -705,24 +651,83 @@ struct IncrementalTopologyGraph3D::Impl {
     const int halo_cells =
         static_cast<int>(std::ceil(maximum_extent_m / bounds.resolution_m)) +
         config.coarse_sample_stride_cells;
-    for (const OccupancyChunkIndex3D chunk : dirty_chunks) {
-      const GridIndex3D minimum{
-          std::max(0, chunk.x * ObservedOccupancyGrid3D::kChunkSize - halo_cells),
-          std::max(0, chunk.y * ObservedOccupancyGrid3D::kChunkSize - halo_cells),
-          std::max(0, chunk.z * ObservedOccupancyGrid3D::kChunkSize - halo_cells)};
-      const GridIndex3D maximum{
-          std::min(bounds.width_cells - 1,
-                   (chunk.x + 1) * ObservedOccupancyGrid3D::kChunkSize - 1 +
-                       halo_cells),
-          std::min(bounds.height_cells - 1,
-                   (chunk.y + 1) * ObservedOccupancyGrid3D::kChunkSize - 1 +
-                       halo_cells),
-          std::min(bounds.depth_cells - 1,
-                   (chunk.z + 1) * ObservedOccupancyGrid3D::kChunkSize - 1 +
-                       halo_cells)};
-      addTileRange(unique, minimum, maximum);
+    for (const OccupancyChunkIndex3D chunk_index : dirty_chunks) {
+      const auto previous = observed_chunks.find(chunk_index);
+      const auto current = occupancy.chunks().find(chunk_index);
+      for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
+           ++word_index) {
+        const std::uint64_t previous_observed =
+            previous == observed_chunks.end() ? 0U
+                                              : previous->second.observed[word_index];
+        const std::uint64_t previous_occupied =
+            previous == observed_chunks.end() ? 0U
+                                              : previous->second.occupied[word_index];
+        const std::uint64_t current_observed =
+            current == occupancy.chunks().end() ? 0U
+                                                : current->second.observed[word_index];
+        const std::uint64_t current_occupied =
+            current == occupancy.chunks().end() ? 0U
+                                                : current->second.occupied[word_index];
+        std::uint64_t changed_bits = (previous_observed ^ current_observed) |
+                                     (previous_occupied ^ current_occupied);
+        while (changed_bits != 0U) {
+          const int bit_offset = std::countr_zero(changed_bits);
+          const std::size_t local_index =
+              word_index * 64U + static_cast<std::size_t>(bit_offset);
+          const int local_x =
+              static_cast<int>(local_index % ObservedOccupancyGrid3D::kChunkSize);
+          const int local_y =
+              static_cast<int>((local_index / ObservedOccupancyGrid3D::kChunkSize) %
+                               ObservedOccupancyGrid3D::kChunkSize);
+          const int local_z =
+              static_cast<int>(local_index / static_cast<std::size_t>(
+                                                 ObservedOccupancyGrid3D::kChunkSize *
+                                                 ObservedOccupancyGrid3D::kChunkSize));
+          const GridIndex3D cell{
+              chunk_index.x * ObservedOccupancyGrid3D::kChunkSize + local_x,
+              chunk_index.y * ObservedOccupancyGrid3D::kChunkSize + local_y,
+              chunk_index.z * ObservedOccupancyGrid3D::kChunkSize + local_z};
+          if (occupancy.contains(cell)) {
+            const GridIndex3D minimum{std::max(0, cell.x - halo_cells),
+                                      std::max(0, cell.y - halo_cells),
+                                      std::max(0, cell.z - halo_cells)};
+            const GridIndex3D maximum{
+                std::min(bounds.width_cells - 1, cell.x + halo_cells),
+                std::min(bounds.height_cells - 1, cell.y + halo_cells),
+                std::min(bounds.depth_cells - 1, cell.z + halo_cells)};
+            addTileRange(unique, minimum, maximum);
+          }
+          changed_bits &= changed_bits - 1U;
+        }
+      }
+      if (current == occupancy.chunks().end()) {
+        observed_chunks.erase(chunk_index);
+      } else {
+        observed_chunks[chunk_index] = current->second;
+      }
     }
     return sortedTiles(unique);
+  }
+
+  [[nodiscard]] std::vector<OccupancyChunkIndex3D>
+  completeObservedSnapshotChunks(const ObservedOccupancyGrid3D& occupancy) const {
+    std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash> unique;
+    unique.reserve(observed_chunks.size() + occupancy.chunks().size());
+    for (const auto& [index, unused] : observed_chunks) {
+      static_cast<void>(unused);
+      unique.insert(index);
+    }
+    for (const auto& [index, unused] : occupancy.chunks()) {
+      static_cast<void>(unused);
+      unique.insert(index);
+    }
+    std::vector<OccupancyChunkIndex3D> result{unique.begin(), unique.end()};
+    std::ranges::sort(result, [](const OccupancyChunkIndex3D first,
+                                 const OccupancyChunkIndex3D second) {
+      return std::tie(first.z, first.y, first.x) <
+             std::tie(second.z, second.y, second.x);
+    });
+    return result;
   }
 
   [[nodiscard]] std::vector<IncrementalTopologyTileIndex3D> allStaticTiles() const {
@@ -766,6 +771,29 @@ struct IncrementalTopologyGraph3D::Impl {
     return result;
   }
 
+  void enqueueObservedTiles(
+      const std::span<const IncrementalTopologyTileIndex3D> dirty_tiles) {
+    for (const IncrementalTopologyTileIndex3D tile : dirty_tiles) {
+      if (pending_observed_tile_set.insert(tile).second) {
+        pending_observed_tiles.push_back(tile);
+      }
+    }
+  }
+
+  [[nodiscard]] std::vector<IncrementalTopologyTileIndex3D> takePendingObservedTiles() {
+    const std::size_t count = std::min(config.maximum_observed_tiles_per_update,
+                                       pending_observed_tiles.size());
+    std::vector<IncrementalTopologyTileIndex3D> result;
+    result.reserve(count);
+    for (std::size_t index = 0U; index < count; ++index) {
+      const IncrementalTopologyTileIndex3D tile = pending_observed_tiles.front();
+      pending_observed_tiles.pop_front();
+      pending_observed_tile_set.erase(tile);
+      result.push_back(tile);
+    }
+    return result;
+  }
+
   template<typename Occupancy>
   [[nodiscard]] IncrementalTopologyGraph3DUpdate
   rebuild(const Occupancy& occupancy, const std::uint64_t update_revision,
@@ -783,6 +811,8 @@ struct IncrementalTopologyGraph3D::Impl {
       nodes.clear();
       edges.clear();
       sample_cell_nodes.clear();
+      pending_observed_tiles.clear();
+      pending_observed_tile_set.clear();
     }
     std::vector<BuiltTile> replacements;
     replacements.reserve(rebuilt_tiles.size());
@@ -819,6 +849,10 @@ struct IncrementalTopologyGraph3D::Impl {
                      IncrementalTopologyEdgeIdHash>
       edges;
   std::unordered_map<std::uint64_t, IncrementalTopologyNodeId> sample_cell_nodes;
+  ObservedOccupancyGrid3D::ChunkMap observed_chunks;
+  std::deque<IncrementalTopologyTileIndex3D> pending_observed_tiles;
+  std::unordered_set<IncrementalTopologyTileIndex3D, IncrementalTopologyTileIndex3DHash>
+      pending_observed_tile_set;
 };
 
 IncrementalTopologyGraph3D::IncrementalTopologyGraph3D(
@@ -840,8 +874,7 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
   }
   const bool geometry_changed =
       impl_->graph_revision != 0U && !sameBounds(impl_->bounds, occupancy.bounds());
-  const bool reset_required =
-      full_reset || impl_->graph_revision == 0U || geometry_changed;
+  const bool reset_required = impl_->graph_revision == 0U || geometry_changed;
   if (!reset_required && revision <= impl_->graph_revision) {
     return IncrementalTopologyGraph3DUpdate{
         .revision = impl_->graph_revision,
@@ -850,11 +883,33 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
     };
   }
   impl_->bounds = occupancy.bounds();
-  std::vector<IncrementalTopologyTileIndex3D> rebuilt_tiles =
+  const std::vector<OccupancyChunkIndex3D> complete_snapshot_chunks =
+      !reset_required && full_reset ? impl_->completeObservedSnapshotChunks(occupancy)
+                                    : std::vector<OccupancyChunkIndex3D>{};
+  const std::span<const OccupancyChunkIndex3D> effective_dirty_chunks =
+      !complete_snapshot_chunks.empty()
+          ? std::span<const OccupancyChunkIndex3D>{complete_snapshot_chunks}
+          : dirty_chunks;
+  std::vector<IncrementalTopologyTileIndex3D> dirty_tiles =
       reset_required ? impl_->allObservedTiles(occupancy)
-                     : impl_->dirtyObservedTiles(dirty_chunks);
-  return impl_->rebuild(occupancy, revision, std::move(rebuilt_tiles),
-                        dirty_chunks.size(), reset_required);
+                     : impl_->dirtyObservedTiles(occupancy, effective_dirty_chunks);
+  const std::size_t discovered_dirty_tiles = dirty_tiles.size();
+  std::vector<IncrementalTopologyTileIndex3D> rebuilt_tiles;
+  if (reset_required) {
+    rebuilt_tiles = std::move(dirty_tiles);
+  } else {
+    impl_->enqueueObservedTiles(dirty_tiles);
+    rebuilt_tiles = impl_->takePendingObservedTiles();
+  }
+  IncrementalTopologyGraph3DUpdate result =
+      impl_->rebuild(occupancy, revision, std::move(rebuilt_tiles),
+                     effective_dirty_chunks.size(), reset_required);
+  result.discovered_dirty_tiles = discovered_dirty_tiles;
+  result.pending_tiles = impl_->pending_observed_tiles.size();
+  if (reset_required) {
+    impl_->observed_chunks = occupancy.chunks();
+  }
+  return result;
 }
 
 IncrementalTopologyGraph3DUpdate
@@ -893,59 +948,6 @@ IncrementalTopologyGraph3DSnapshot IncrementalTopologyGraph3D::snapshot() const 
 const IncrementalTopologyGraph3DConfig&
 IncrementalTopologyGraph3D::config() const noexcept {
   return impl_->config;
-}
-
-std::uint64_t IncrementalTopologyGraph3DSnapshot::revision() const noexcept {
-  return revision_;
-}
-
-const GridBounds3D& IncrementalTopologyGraph3DSnapshot::bounds() const noexcept {
-  return bounds_;
-}
-
-std::span<const IncrementalTopologyNode3D>
-IncrementalTopologyGraph3DSnapshot::nodes() const noexcept {
-  return nodes_;
-}
-
-std::span<const IncrementalTopologyEdge3D>
-IncrementalTopologyGraph3DSnapshot::edges() const noexcept {
-  return edges_;
-}
-
-const IncrementalTopologyNode3D* IncrementalTopologyGraph3DSnapshot::findNode(
-    const IncrementalTopologyNodeId id) const noexcept {
-  const auto found = node_indices_.find(id);
-  return found == node_indices_.end() ? nullptr : &nodes_[found->second];
-}
-
-std::optional<IncrementalTopologyNodeId>
-IncrementalTopologyGraph3DSnapshot::nodeForSampleCell(
-    const GridIndex3D cell) const noexcept {
-  const auto found = sample_cell_nodes_.find(sampleCellKey(bounds_, cell));
-  return found == sample_cell_nodes_.end()
-             ? std::nullopt
-             : std::optional<IncrementalTopologyNodeId>{found->second};
-}
-
-std::optional<IncrementalTopologyNodeId>
-IncrementalTopologyGraph3DSnapshot::nearestNode(
-    const Point3& position, const double maximum_distance_m) const noexcept {
-  if (!(maximum_distance_m >= 0.0) || !std::isfinite(maximum_distance_m)) {
-    return std::nullopt;
-  }
-  std::optional<IncrementalTopologyNodeId> best;
-  double best_distance = maximum_distance_m;
-  for (const IncrementalTopologyNode3D& node : nodes_) {
-    const double candidate_distance = distance3D(position, node.representative);
-    if (candidate_distance + 1.0e-9 < best_distance ||
-        (std::abs(candidate_distance - best_distance) <= 1.0e-9 &&
-         (!best.has_value() || node.id < *best))) {
-      best = node.id;
-      best_distance = candidate_distance;
-    }
-  }
-  return best;
 }
 
 } // namespace drone_city_nav

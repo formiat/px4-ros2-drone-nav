@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/mppi/mppi_horizon_sampling.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/stopping_capability.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -95,6 +96,7 @@ struct BenchmarkConfig {
   RiskConfig risk{};
   FootprintConfig footprint{};
   AltitudeEnvelopeConfig altitude_envelope{};
+  StoppingCapability stopping_capability{};
   CostConfig costs{};
   CooperativeConfig cooperative{};
   HorizonSamplingConfig horizon_sampling{};

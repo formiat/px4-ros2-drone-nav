@@ -252,6 +252,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   speed_policy_config.maximum_target_lookahead_m =
       declare_parameter<double>("maximum_target_lookahead_m", 100.0);
   speed_policy_config_ = speed_policy_config;
+  mppi_config_.stopping_capability = speed_policy_config_.stopping_capability;
   mppi_config_.dynamics.maximum_horizontal_speed_mps =
       static_cast<float>(speed_policy_config_.absolute_speed_limit_mps);
   mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 =

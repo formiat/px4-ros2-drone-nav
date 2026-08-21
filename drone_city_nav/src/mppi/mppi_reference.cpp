@@ -130,6 +130,11 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.altitude_envelope.guaranteed_vertical_deceleration_mps2 > 0.0F &&
          config.altitude_envelope.guaranteed_vertical_deceleration_mps2 <=
              config.dynamics.maximum_vertical_acceleration_mps2 &&
+         stoppingCapabilityIsValid(config.stopping_capability) &&
+         config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 <=
+             config.dynamics.maximum_horizontal_acceleration_mps2 &&
+         config.stopping_capability.guaranteed_vertical_deceleration_mps2 <=
+             config.dynamics.maximum_vertical_acceleration_mps2 &&
          std::isfinite(config.altitude_envelope.reaction_latency_s) &&
          config.altitude_envelope.reaction_latency_s >= 0.0F &&
          std::isfinite(config.cooperative.desired_minimum_separation_m) &&

@@ -24,33 +24,32 @@ void limitControlSequence(std::span<Control> controls, const DynamicsConfig& dyn
                           Control previous_applied_control,
                           float first_control_interval_s) noexcept;
 
-[[nodiscard]] std::vector<Control>
-buildGuideDirectedNominalSeed(const State& initial, const State& target,
-                              std::span<const RouteSample3D> route,
-                              float initial_route_station_m, float reference_speed_mps,
-                              const DynamicsConfig& dynamics, std::size_t steps,
-                              Control previous_applied_control);
+[[nodiscard]] std::vector<Control> buildGuideDirectedNominalSeed(
+    const State& initial, const State& target, std::span<const RouteSample3D> route,
+    float initial_route_station_m, float reference_speed_mps,
+    const DynamicsConfig& dynamics, std::size_t steps, Control previous_applied_control,
+    const StoppingCapability& stopping_capability = {});
 
-[[nodiscard]] std::vector<Control>
-buildRouteDirectedCruiseSeed(const State& initial, const State& target,
-                             std::span<const RouteSample3D> route,
-                             float initial_route_station_m, float reference_speed_mps,
-                             const DynamicsConfig& dynamics, std::size_t steps,
-                             Control previous_applied_control);
+[[nodiscard]] std::vector<Control> buildFiniteRouteDirectedSeed(
+    const State& initial, const State& target, std::span<const RouteSample3D> route,
+    float initial_route_station_m, float reference_speed_mps,
+    const DynamicsConfig& dynamics, std::size_t steps, Control previous_applied_control,
+    const StoppingCapability& stopping_capability = {});
 
 [[nodiscard]] std::vector<Control> buildCooperativeSeparationAcquisitionCandidates(
     const State& initial, const State& target, std::span<const RouteSample3D> route,
     float initial_route_station_m, float reference_speed_mps,
     const CooperativeSeparationAcquisition& acquisition, const DynamicsConfig& dynamics,
     const CooperativeConfig& cooperative, std::size_t steps,
-    Control previous_applied_control, float first_control_interval_s);
+    Control previous_applied_control, float first_control_interval_s,
+    const StoppingCapability& stopping_capability);
 
 [[nodiscard]] std::vector<Control> buildNonCooperativeSeparationAcquisitionCandidates(
     const State& initial, const State& target, std::span<const RouteSample3D> route,
     float initial_route_station_m, float reference_speed_mps,
     const NonCooperativeSeparationAcquisition& acquisition,
     const DynamicsConfig& dynamics, std::size_t steps, Control previous_applied_control,
-    float first_control_interval_s);
+    float first_control_interval_s, const StoppingCapability& stopping_capability);
 
 [[nodiscard]] std::vector<Control> buildCooperativeManeuverCandidates(
     const State& initial, const State& target, std::span<const Control> nominal,

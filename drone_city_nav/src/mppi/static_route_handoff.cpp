@@ -59,9 +59,10 @@ StaticRouteHandoffResult validateStaticRouteHandoff(
       std::min(reference_speed_mps, current_horizontal_speed_mps);
   const RouteSample3D& endpoint = candidate_route.back();
   const State target{.x = endpoint.x_m, .y = endpoint.y_m, .z = endpoint.z_m};
-  const std::vector<Control> controls = buildRouteDirectedCruiseSeed(
+  const std::vector<Control> controls = buildFiniteRouteDirectedSeed(
       current_state, target, candidate_route, projection.station_m, handoff_speed_mps,
-      config.dynamics, config.steps, previous_applied_control);
+      config.dynamics, config.steps, previous_applied_control,
+      config.stopping_capability);
   const std::vector<Control> zero_noise(config.steps);
   const RolloutMetrics metrics = simulateReference(
       current_state, controls, zero_noise, config.dynamics, config.risk, config.costs,
