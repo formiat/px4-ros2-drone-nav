@@ -228,6 +228,7 @@ add_library(
   src/static_esdf_cache.cpp
   src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
+  src/topological_exploration_memory_3d.cpp
   src/tracked_agent_lidar_filter.cpp
   src/tracking_objective.cpp
   src/lidar_snapshot_writer.cpp
@@ -1037,6 +1038,12 @@ if(BUILD_TESTING)
   target_compile_features(incremental_topology_graph_3d_test PRIVATE cxx_std_20)
   target_link_libraries(incremental_topology_graph_3d_test drone_city_nav_core)
   enable_project_warnings(incremental_topology_graph_3d_test)
+
+  ament_add_gtest(topological_exploration_memory_3d_test
+                  tests/topological_exploration_memory_3d_test.cpp)
+  target_compile_features(topological_exploration_memory_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(topological_exploration_memory_3d_test drone_city_nav_core)
+  enable_project_warnings(topological_exploration_memory_3d_test)
 
   ament_add_gtest(static_esdf_cache_test tests/static_esdf_cache_test.cpp)
   target_compile_features(static_esdf_cache_test PRIVATE cxx_std_20)
