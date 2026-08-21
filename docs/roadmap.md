@@ -237,7 +237,7 @@ that remains item 9. Item 8 does not reproduce this open-versus-passage
 classification online: observed navigation uses one continuous free-space
 domain.
 
-## 8. 3D Free-Space Navigation Without A Static Map
+## 8. 3D Free-Space Navigation Without A Static Map (Completed)
 
 **Type:** ordered implementation stage.
 
