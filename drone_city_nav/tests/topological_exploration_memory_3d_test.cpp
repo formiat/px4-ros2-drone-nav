@@ -95,5 +95,32 @@ TEST(TopologicalExplorationMemory3DTest, CountsFrontierSelectionsByStableIdentit
   EXPECT_EQ(memory.frontierSelectionCount({19U}), 0U);
 }
 
+TEST(TopologicalExplorationMemory3DTest,
+     NewMissionLegClearsSoftRevisitHistoryButRetainsDeadEnds) {
+  TopologicalExplorationMemory3D memory;
+  const Point3 visited{4.0, 5.0, 6.0};
+  memory.recordTraversal(kForward, 8U, 12.0);
+  memory.recordTraversal(kReverse, 8U, 3.0);
+  memory.recordDeadEnd(kReverse, 8U);
+  memory.recordVisited(visited, 8U);
+  memory.recordObserved(visited, 8U);
+  memory.recordFrontierSelection({17U});
+  memory.resetTrail({1U});
+  memory.recordTrailTransition({1U}, {2U});
+
+  memory.beginMissionLeg();
+
+  const DirectedTopologyEdgeEvidence3D forward = memory.evidence(kForward, 8U);
+  const DirectedTopologyEdgeEvidence3D reverse = memory.evidence(kReverse, 8U);
+  EXPECT_EQ(forward.result, TopologicalExplorationResult3D::kUnknown);
+  EXPECT_EQ(forward.traversal_count, 0U);
+  EXPECT_EQ(reverse.result, TopologicalExplorationResult3D::kDeadEnd);
+  EXPECT_EQ(reverse.traversal_count, 0U);
+  EXPECT_DOUBLE_EQ(reverse.traversed_distance_m, 0.0);
+  EXPECT_DOUBLE_EQ(memory.softCoveragePenalty(visited, 8U), 0.0);
+  EXPECT_EQ(memory.frontierSelectionCount({17U}), 0U);
+  EXPECT_TRUE(memory.trail().empty());
+}
+
 } // namespace
 } // namespace drone_city_nav

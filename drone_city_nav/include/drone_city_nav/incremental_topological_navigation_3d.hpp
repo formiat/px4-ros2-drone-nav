@@ -62,6 +62,7 @@ public:
       const Point3& position);
   [[nodiscard]] IncrementalTopologicalPlanCommit3D
   commitAcceptedPlan(const IncrementalTopologicalPlan3D& plan);
+  void beginMissionLeg();
 
   [[nodiscard]] std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
   snapshot() const;

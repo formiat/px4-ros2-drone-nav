@@ -87,6 +87,7 @@ public:
                              IncrementalTopologyNodeId to);
   [[nodiscard]] std::span<const IncrementalTopologyNodeId> trail() const noexcept;
 
+  void beginMissionLeg();
   void clear();
   [[nodiscard]] const TopologicalExplorationMemory3DConfig& config() const noexcept;
 

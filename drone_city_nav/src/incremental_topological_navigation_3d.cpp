@@ -226,6 +226,15 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
   return result;
 }
 
+void IncrementalTopologicalNavigation3D::beginMissionLeg() {
+  const std::scoped_lock lock{mutex_};
+  memory_.beginMissionLeg();
+  if (current_node_.has_value()) {
+    memory_.resetTrail(*current_node_);
+  }
+  active_plan_.reset();
+}
+
 std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
 IncrementalTopologicalNavigation3D::snapshot() const {
   const std::scoped_lock lock{mutex_};

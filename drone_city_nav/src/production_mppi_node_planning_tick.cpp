@@ -54,6 +54,9 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     objective_replan_anchor_ = mission_goal_;
     objective_replan_stamp_ns_ = now_ns;
   }
+  if (topological_navigation_3d_) {
+    topological_navigation_3d_->beginMissionLeg();
+  }
   requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
   RCLCPP_INFO(get_logger(),
               "MISSION_WAYPOINT_ADVANCED completed_index=%zu waypoint_count=%zu "

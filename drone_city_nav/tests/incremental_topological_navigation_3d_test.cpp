@@ -133,6 +133,40 @@ TEST(IncrementalTopologicalNavigation3DTest,
 }
 
 TEST(IncrementalTopologicalNavigation3DTest,
+     NewMissionLegDropsActivePlanWithoutResettingGraph) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 16, 12}};
+  IncrementalTopologyGraph3DConfig graph_config;
+  graph_config.tile_size_cells = 4;
+  graph_config.coarse_sample_stride_cells = 1;
+  graph_config.refined_sample_stride_cells = 1;
+  graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
+                                                .lower_extent_m = 0.1,
+                                                .upper_extent_m = 0.1,
+                                                .perimeter_samples = 4,
+                                                .radial_rings = 1,
+                                                .axial_samples = 2,
+                                                .sweep_step_m = 0.25};
+  graph_config.observability.footprint = graph_config.footprint;
+  IncrementalTopologicalNavigation3D navigation{graph_config};
+  const IncrementalTopologicalWorldUpdate3D world =
+      navigation.resetStatic(occupancy, 9U);
+  const IncrementalTopologicalPlan3D first =
+      navigation.plan(world.snapshot, {3.5, 7.5, 5.5}, {28.5, 7.5, 5.5});
+  ASSERT_TRUE(navigation.commitAcceptedPlan(first).accepted);
+
+  navigation.beginMissionLeg();
+
+  const auto retained_graph = navigation.snapshot();
+  ASSERT_NE(retained_graph, nullptr);
+  EXPECT_EQ(retained_graph->revision(), 9U);
+  EXPECT_EQ(retained_graph->nodes().size(), world.snapshot->nodes().size());
+  const IncrementalTopologicalPlan3D return_plan =
+      navigation.plan(retained_graph, {28.5, 7.5, 5.5}, {3.5, 7.5, 5.5});
+  EXPECT_EQ(return_plan.status, IncrementalTopologicalPlanStatus3D::kMissionRoute);
+  EXPECT_TRUE(return_plan.reaches_mission_goal);
+}
+
+TEST(IncrementalTopologicalNavigation3DTest,
      StaticResetUsesTheSameGraphAndPlanningContract) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 16, 12}};
   IncrementalTopologyGraph3DConfig graph_config;
