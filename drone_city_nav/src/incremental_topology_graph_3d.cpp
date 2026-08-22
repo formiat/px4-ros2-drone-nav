@@ -103,14 +103,32 @@ makeEdgeId(IncrementalTopologyNodeId first, IncrementalTopologyNodeId second) no
 
 template<typename Occupancy>
 [[nodiscard]] bool navigableAt(const Occupancy& occupancy, const Point3& position,
-                               const SweptFootprintConfig& footprint) noexcept {
+                               const SweptFootprintConfig& footprint,
+                               const bool require_known_free_space) noexcept {
+  if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
+    const SweptFootprintResult evidence =
+        validateRawFootprintAt(occupancy, position, FootprintBodyAxis{}, footprint);
+    return !evidence.evidence.raw_collision &&
+           !evidence.evidence.outside_grid_exposure &&
+           (!require_known_free_space || !evidence.evidence.unknown_exposure);
+  }
+  static_cast<void>(require_known_free_space);
   return rawFootprintIsNavigableAt(occupancy, position, FootprintBodyAxis{}, footprint);
 }
 
 template<typename Occupancy>
 [[nodiscard]] bool navigableBetween(const Occupancy& occupancy, const Point3& first,
                                     const Point3& second,
-                                    const SweptFootprintConfig& footprint) noexcept {
+                                    const SweptFootprintConfig& footprint,
+                                    const bool require_known_free_space) noexcept {
+  if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
+    const SweptFootprintResult evidence = validateRawSweptFootprint(
+        occupancy, first, FootprintBodyAxis{}, second, FootprintBodyAxis{}, footprint);
+    return !evidence.evidence.raw_collision &&
+           !evidence.evidence.outside_grid_exposure &&
+           (!require_known_free_space || !evidence.evidence.unknown_exposure);
+  }
+  static_cast<void>(require_known_free_space);
   return rawSweptFootprintIsNavigable(occupancy, first, FootprintBodyAxis{}, second,
                                       FootprintBodyAxis{}, footprint);
 }
@@ -263,7 +281,8 @@ struct IncrementalTopologyGraph3D::Impl {
           for (int x = firstAlignedCell(minimum_x, stride_cells); x < maximum_x;
                x += stride_cells) {
             const GridIndex3D cell{x, y, z};
-            if (navigableAt(occupancy, occupancy.cellCenter(cell), config.footprint)) {
+            if (navigableAt(occupancy, occupancy.cellCenter(cell), config.footprint,
+                            config.require_known_free_space)) {
               result.push_back(cell);
             }
           }
@@ -310,7 +329,8 @@ struct IncrementalTopologyGraph3D::Impl {
             continue;
           }
           if (!navigableBetween(occupancy, occupancy.cellCenter(cell),
-                                occupancy.cellCenter(neighbor), config.footprint)) {
+                                occupancy.cellCenter(neighbor), config.footprint,
+                                config.require_known_free_space)) {
             continue;
           }
           visited[found->second] = true;
@@ -343,6 +363,9 @@ struct IncrementalTopologyGraph3D::Impl {
                           const std::span<const GridIndex3D> cells,
                           const int stride_cells) noexcept {
     for (const GridIndex3D cell : cells) {
+      if (!occupancy.isKnownFree(cell)) {
+        continue;
+      }
       for (const GridIndex3D neighbor : cardinalNeighbors(cell, stride_cells)) {
         if (occupancy.contains(neighbor) &&
             occupancy.state(neighbor) == ObservedVoxelState::kUnknown) {
@@ -351,6 +374,60 @@ struct IncrementalTopologyGraph3D::Impl {
       }
     }
     return false;
+  }
+
+  [[nodiscard]] std::size_t refreshObservationEvidence(
+      const ObservedOccupancyGrid3D& occupancy,
+      const std::span<const IncrementalTopologyBlockIndex3D> evidence_blocks,
+      const std::span<const IncrementalTopologyBlockIndex3D> rebuilt_blocks,
+      const std::uint64_t update_revision) {
+    std::unordered_set<IncrementalTopologyBlockIndex3D,
+                       IncrementalTopologyBlockIndex3DHash>
+        rebuilt{rebuilt_blocks.begin(), rebuilt_blocks.end()};
+    std::unordered_set<IncrementalTopologyNodeId, IncrementalTopologyNodeIdHash>
+        refreshed_nodes;
+    std::size_t refreshed_blocks = 0U;
+    for (const IncrementalTopologyBlockIndex3D block : evidence_blocks) {
+      if (rebuilt.contains(block)) {
+        continue;
+      }
+      const auto block_found = blocks.find(block);
+      if (block_found == blocks.end()) {
+        continue;
+      }
+      ++refreshed_blocks;
+      block_validated_through[block] =
+          std::max(block_validated_through[block], update_revision);
+      for (BlockComponent& component : block_found->second.components) {
+        component.unknown_boundary_exposure = componentTouchesUnknown(
+            occupancy, component.cells, block_found->second.sample_stride_cells);
+        auto node = nodes.find(component.id);
+        if (node == nodes.end()) {
+          continue;
+        }
+        node->second.unknown_boundary_exposure = component.unknown_boundary_exposure;
+        node->second.validated_through_revision =
+            std::max(node->second.validated_through_revision, update_revision);
+        node->second.classification_revision = update_revision;
+        refreshed_nodes.insert(component.id);
+      }
+    }
+    if (refreshed_nodes.empty()) {
+      return refreshed_blocks;
+    }
+    for (auto& [edge_id, edge] : edges) {
+      static_cast<void>(edge_id);
+      if (!refreshed_nodes.contains(edge.first) &&
+          !refreshed_nodes.contains(edge.second)) {
+        continue;
+      }
+      const std::uint64_t support =
+          std::min(block_validated_through.at(nodes.at(edge.first).block),
+                   block_validated_through.at(nodes.at(edge.second).block));
+      edge.validated_through_revision =
+          std::max(edge.validated_through_revision, support);
+    }
+    return refreshed_blocks;
   }
 
   template<typename Occupancy>
@@ -403,7 +480,8 @@ struct IncrementalTopologyGraph3D::Impl {
         const std::uint64_t key = sampleCellKey(bounds, neighbor);
         if (!component_cells.contains(key) || parents.contains(key) ||
             !navigableBetween(occupancy, occupancy.cellCenter(cell),
-                              occupancy.cellCenter(neighbor), config.footprint)) {
+                              occupancy.cellCenter(neighbor), config.footprint,
+                              config.require_known_free_space)) {
           continue;
         }
         parents.emplace(key, cell);
@@ -455,23 +533,6 @@ struct IncrementalTopologyGraph3D::Impl {
     const auto component =
         std::ranges::find(block->second.components, id, &BlockComponent::id);
     return component == block->second.components.end() ? nullptr : &*component;
-  }
-
-  template<typename Occupancy>
-  [[nodiscard]] bool
-  polylineIsNavigable(const Occupancy& occupancy,
-                      const std::span<const Point3> polyline) const noexcept {
-    if (polyline.empty()) {
-      return false;
-    }
-    for (std::size_t index = 0U; index < polyline.size(); ++index) {
-      if (!navigableAt(occupancy, polyline[index], config.footprint) ||
-          (index > 0U && !navigableBetween(occupancy, polyline[index - 1U],
-                                           polyline[index], config.footprint))) {
-        return false;
-      }
-    }
-    return true;
   }
 
   [[nodiscard]] IncrementalTopologyNodeId
@@ -671,131 +732,230 @@ struct IncrementalTopologyGraph3D::Impl {
       const Occupancy& occupancy,
       const std::span<const IncrementalTopologyBlockIndex3D> rebuilt_blocks,
       const std::uint64_t update_revision) {
+    struct ContactCandidate {
+      IncrementalTopologyNodeId first{};
+      IncrementalTopologyNodeId second{};
+      GridIndex3D first_cell{};
+      GridIndex3D second_cell{};
+      double estimated_length_m{std::numeric_limits<double>::infinity()};
+    };
+
+    std::unordered_map<IncrementalTopologyEdgeId, ContactCandidate,
+                       IncrementalTopologyEdgeIdHash>
+        contacts;
+    std::unordered_set<IncrementalTopologyBlockIndex3D,
+                       IncrementalTopologyBlockIndex3DHash>
+        rebuilt{rebuilt_blocks.begin(), rebuilt_blocks.end()};
+    constexpr std::array<IncrementalTopologyBlockIndex3D, 6U> directions{
+        IncrementalTopologyBlockIndex3D{-1, 0, 0},
+        IncrementalTopologyBlockIndex3D{1, 0, 0},
+        IncrementalTopologyBlockIndex3D{0, -1, 0},
+        IncrementalTopologyBlockIndex3D{0, 1, 0},
+        IncrementalTopologyBlockIndex3D{0, 0, -1},
+        IncrementalTopologyBlockIndex3D{0, 0, 1},
+    };
+    const auto near_shared_face = [&](const GridIndex3D cell,
+                                      const IncrementalTopologyBlockIndex3D block,
+                                      const IncrementalTopologyBlockIndex3D direction,
+                                      const int stride) noexcept {
+      const GridIndex3D minimum{block.x * config.block_size_cells,
+                                block.y * config.block_size_cells,
+                                block.z * config.block_size_cells};
+      const GridIndex3D maximum{minimum.x + config.block_size_cells,
+                                minimum.y + config.block_size_cells,
+                                minimum.z + config.block_size_cells};
+      if (direction.x < 0) {
+        return cell.x - minimum.x < stride;
+      }
+      if (direction.x > 0) {
+        return maximum.x - cell.x <= stride;
+      }
+      if (direction.y < 0) {
+        return cell.y - minimum.y < stride;
+      }
+      if (direction.y > 0) {
+        return maximum.y - cell.y <= stride;
+      }
+      if (direction.z < 0) {
+        return cell.z - minimum.z < stride;
+      }
+      return maximum.z - cell.z <= stride;
+    };
+    const auto offset_cell = [](const GridIndex3D cell,
+                                const IncrementalTopologyBlockIndex3D direction,
+                                const int normal, const int first_transverse,
+                                const int second_transverse) noexcept {
+      GridIndex3D result{cell.x + direction.x * normal, cell.y + direction.y * normal,
+                         cell.z + direction.z * normal};
+      if (direction.x != 0) {
+        result.y += first_transverse;
+        result.z += second_transverse;
+      } else if (direction.y != 0) {
+        result.x += first_transverse;
+        result.z += second_transverse;
+      } else {
+        result.x += first_transverse;
+        result.y += second_transverse;
+      }
+      return result;
+    };
+
     for (const IncrementalTopologyBlockIndex3D block : rebuilt_blocks) {
       const auto block_found = blocks.find(block);
       if (block_found == blocks.end()) {
         continue;
       }
-      for (const BlockComponent& component : block_found->second.components) {
-        for (const GridIndex3D cell : component.cells) {
-          const int maximum_offset = config.coarse_sample_stride_cells;
-          for (int dz = -maximum_offset; dz <= maximum_offset; ++dz) {
-            for (int dy = -maximum_offset; dy <= maximum_offset; ++dy) {
-              for (int dx = -maximum_offset; dx <= maximum_offset; ++dx) {
-                if (dx == 0 && dy == 0 && dz == 0) {
-                  continue;
+      for (const IncrementalTopologyBlockIndex3D direction : directions) {
+        const IncrementalTopologyBlockIndex3D neighbor_block{
+            block.x + direction.x, block.y + direction.y, block.z + direction.z};
+        if (rebuilt.contains(neighbor_block) && neighbor_block < block) {
+          continue;
+        }
+        const auto neighbor_block_found = blocks.find(neighbor_block);
+        if (neighbor_block_found == blocks.end()) {
+          continue;
+        }
+        const int local_stride = block_found->second.sample_stride_cells;
+        const int neighbor_stride = neighbor_block_found->second.sample_stride_cells;
+        const int connection_stride = std::max(local_stride, neighbor_stride);
+        const int transverse_tolerance =
+            connection_stride - std::min(local_stride, neighbor_stride);
+        for (const BlockComponent& component : block_found->second.components) {
+          for (const GridIndex3D cell : component.cells) {
+            if (!near_shared_face(cell, block, direction, connection_stride)) {
+              continue;
+            }
+            for (int normal = 1; normal <= connection_stride; ++normal) {
+              for (int first_transverse = -transverse_tolerance;
+                   first_transverse <= transverse_tolerance; ++first_transverse) {
+                for (int second_transverse = -transverse_tolerance;
+                     second_transverse <= transverse_tolerance; ++second_transverse) {
+                  const GridIndex3D neighbor = offset_cell(
+                      cell, direction, normal, first_transverse, second_transverse);
+                  if (!occupancy.contains(neighbor) ||
+                      blockForCell(neighbor, config.block_size_cells) !=
+                          neighbor_block) {
+                    continue;
+                  }
+                  const auto neighbor_found =
+                      sample_cell_nodes.find(sampleCellKey(bounds, neighbor));
+                  if (neighbor_found == sample_cell_nodes.end() ||
+                      neighbor_found->second == component.id) {
+                    continue;
+                  }
+                  const BlockComponent* const neighbor_component =
+                      componentForNode(neighbor_found->second);
+                  if (neighbor_component == nullptr ||
+                      !navigableBetween(occupancy, occupancy.cellCenter(cell),
+                                        occupancy.cellCenter(neighbor),
+                                        config.footprint,
+                                        config.require_known_free_space)) {
+                    continue;
+                  }
+                  IncrementalTopologyNodeId first = component.id;
+                  IncrementalTopologyNodeId second = neighbor_component->id;
+                  GridIndex3D first_cell = cell;
+                  GridIndex3D second_cell = neighbor;
+                  const Point3 local_contact = occupancy.cellCenter(cell);
+                  const Point3 remote_contact = occupancy.cellCenter(neighbor);
+                  const double estimated_length_m =
+                      distance3D(component.representative, local_contact) +
+                      distance3D(local_contact, remote_contact) +
+                      distance3D(remote_contact, neighbor_component->representative);
+                  if (second < first) {
+                    std::swap(first, second);
+                    std::swap(first_cell, second_cell);
+                  }
+                  const IncrementalTopologyEdgeId edge_id = makeEdgeId(first, second);
+                  const auto existing = contacts.find(edge_id);
+                  const auto candidate_key = std::tuple{
+                      estimated_length_m, first_cell.z,  first_cell.y, first_cell.x,
+                      second_cell.z,      second_cell.y, second_cell.x};
+                  const auto existing_key =
+                      existing == contacts.end()
+                          ? std::tuple{std::numeric_limits<double>::infinity(),
+                                       0,
+                                       0,
+                                       0,
+                                       0,
+                                       0,
+                                       0}
+                          : std::tuple{existing->second.estimated_length_m,
+                                       existing->second.first_cell.z,
+                                       existing->second.first_cell.y,
+                                       existing->second.first_cell.x,
+                                       existing->second.second_cell.z,
+                                       existing->second.second_cell.y,
+                                       existing->second.second_cell.x};
+                  if (existing == contacts.end() || candidate_key < existing_key) {
+                    contacts.insert_or_assign(
+                        edge_id,
+                        ContactCandidate{.first = first,
+                                         .second = second,
+                                         .first_cell = first_cell,
+                                         .second_cell = second_cell,
+                                         .estimated_length_m = estimated_length_m});
+                  }
                 }
-                const GridIndex3D neighbor{cell.x + dx, cell.y + dy, cell.z + dz};
-                if (!occupancy.contains(neighbor)) {
-                  continue;
-                }
-                const IncrementalTopologyBlockIndex3D neighbor_block =
-                    blockForCell(neighbor, config.block_size_cells);
-                if (neighbor_block == block) {
-                  continue;
-                }
-                const auto neighbor_block_found = blocks.find(neighbor_block);
-                if (neighbor_block_found == blocks.end()) {
-                  continue;
-                }
-                const int block_delta_x = neighbor_block.x - block.x;
-                const int block_delta_y = neighbor_block.y - block.y;
-                const int block_delta_z = neighbor_block.z - block.z;
-                if (std::abs(block_delta_x) + std::abs(block_delta_y) +
-                        std::abs(block_delta_z) !=
-                    1) {
-                  continue;
-                }
-                const int local_stride = block_found->second.sample_stride_cells;
-                const int neighbor_stride =
-                    neighbor_block_found->second.sample_stride_cells;
-                const int connection_stride = std::max(local_stride, neighbor_stride);
-                if (std::abs(dx) > connection_stride ||
-                    std::abs(dy) > connection_stride ||
-                    std::abs(dz) > connection_stride) {
-                  continue;
-                }
-                const int transverse_tolerance =
-                    connection_stride - std::min(local_stride, neighbor_stride);
-                const bool crosses_shared_face =
-                    (block_delta_x != 0 && dx * block_delta_x > 0 &&
-                     std::abs(dy) <= transverse_tolerance &&
-                     std::abs(dz) <= transverse_tolerance) ||
-                    (block_delta_y != 0 && dy * block_delta_y > 0 &&
-                     std::abs(dx) <= transverse_tolerance &&
-                     std::abs(dz) <= transverse_tolerance) ||
-                    (block_delta_z != 0 && dz * block_delta_z > 0 &&
-                     std::abs(dx) <= transverse_tolerance &&
-                     std::abs(dy) <= transverse_tolerance);
-                if (!crosses_shared_face) {
-                  continue;
-                }
-                const auto neighbor_found =
-                    sample_cell_nodes.find(sampleCellKey(bounds, neighbor));
-                if (neighbor_found == sample_cell_nodes.end() ||
-                    neighbor_found->second == component.id ||
-                    !navigableBetween(occupancy, occupancy.cellCenter(cell),
-                                      occupancy.cellCenter(neighbor),
-                                      config.footprint)) {
-                  continue;
-                }
-                const BlockComponent* neighbor_component =
-                    componentForNode(neighbor_found->second);
-                if (neighbor_component == nullptr) {
-                  continue;
-                }
-                std::vector<Point3> polyline = pathFromRepresentative(component, cell);
-                std::vector<Point3> neighbor_path =
-                    pathFromRepresentative(*neighbor_component, neighbor);
-                if (polyline.empty() || neighbor_path.empty()) {
-                  continue;
-                }
-                const Point3 local_contact = occupancy.cellCenter(cell);
-                const Point3 remote_contact = occupancy.cellCenter(neighbor);
-                appendUniquePoint(polyline, remote_contact);
-                std::ranges::reverse(neighbor_path);
-                for (const Point3& point : neighbor_path) {
-                  appendUniquePoint(polyline, point);
-                }
-                if (!polylineIsNavigable(occupancy, polyline)) {
-                  continue;
-                }
-                IncrementalTopologyNodeId first = component.id;
-                IncrementalTopologyNodeId second = neighbor_component->id;
-                Point3 first_contact = local_contact;
-                Point3 second_contact = remote_contact;
-                if (second < first) {
-                  std::swap(first, second);
-                  std::swap(first_contact, second_contact);
-                  std::ranges::reverse(polyline);
-                }
-                const double length_m = polylineLength(polyline);
-                const IncrementalTopologyEdgeId edge_id = makeEdgeId(first, second);
-                const auto existing = edges.find(edge_id);
-                if (existing != edges.end() &&
-                    existing->second.length_m <= length_m + 1.0e-9) {
-                  existing->second.validated_through_revision = update_revision;
-                  continue;
-                }
-                const std::uint64_t created_on_revision =
-                    existing == edges.end() ? update_revision
-                                            : existing->second.created_on_revision;
-                edges[edge_id] = IncrementalTopologyEdge3D{
-                    .id = edge_id,
-                    .first = first,
-                    .second = second,
-                    .first_contact = first_contact,
-                    .second_contact = second_contact,
-                    .polyline = std::move(polyline),
-                    .length_m = length_m,
-                    .created_on_revision = created_on_revision,
-                    .validated_through_revision = update_revision,
-                };
               }
             }
           }
         }
       }
+    }
+
+    std::vector<IncrementalTopologyEdgeId> ordered_edges;
+    ordered_edges.reserve(contacts.size());
+    for (const auto& [edge_id, unused] : contacts) {
+      static_cast<void>(unused);
+      ordered_edges.push_back(edge_id);
+    }
+    std::ranges::sort(ordered_edges);
+    for (const IncrementalTopologyEdgeId edge_id : ordered_edges) {
+      const ContactCandidate& contact = contacts.at(edge_id);
+      const BlockComponent* const first_component = componentForNode(contact.first);
+      const BlockComponent* const second_component = componentForNode(contact.second);
+      if (first_component == nullptr || second_component == nullptr) {
+        continue;
+      }
+      std::vector<Point3> polyline =
+          pathFromRepresentative(*first_component, contact.first_cell);
+      std::vector<Point3> second_path =
+          pathFromRepresentative(*second_component, contact.second_cell);
+      if (polyline.empty() || second_path.empty()) {
+        continue;
+      }
+      const Point3 first_contact = occupancy.cellCenter(contact.first_cell);
+      const Point3 second_contact = occupancy.cellCenter(contact.second_cell);
+      if (!navigableBetween(occupancy, first_contact, second_contact, config.footprint,
+                            config.require_known_free_space)) {
+        continue;
+      }
+      appendUniquePoint(polyline, second_contact);
+      std::ranges::reverse(second_path);
+      for (const Point3& point : second_path) {
+        appendUniquePoint(polyline, point);
+      }
+      const double length_m = polylineLength(polyline);
+      const IncrementalTopologyBlockIndex3D first_block = nodes.at(contact.first).block;
+      const IncrementalTopologyBlockIndex3D second_block =
+          nodes.at(contact.second).block;
+      const std::uint64_t validated_through_revision =
+          std::min(block_validated_through.at(first_block),
+                   block_validated_through.at(second_block));
+      const std::uint64_t created_on_revision =
+          edge_created_on_revision.try_emplace(edge_id, update_revision).first->second;
+      edges[edge_id] = IncrementalTopologyEdge3D{
+          .id = edge_id,
+          .first = contact.first,
+          .second = contact.second,
+          .first_contact = first_contact,
+          .second_contact = second_contact,
+          .polyline = std::move(polyline),
+          .length_m = length_m,
+          .created_on_revision = created_on_revision,
+          .validated_through_revision = validated_through_revision,
+      };
     }
   }
 
@@ -847,6 +1007,7 @@ struct IncrementalTopologyGraph3D::Impl {
       sample_cell_parents.clear();
       block_validated_through.clear();
       issued_node_ids.clear();
+      edge_created_on_revision.clear();
     }
     std::vector<BuiltBlock> replacements;
     replacements.reserve(rebuilt_blocks.size());
@@ -889,6 +1050,9 @@ struct IncrementalTopologyGraph3D::Impl {
       block_validated_through;
   std::unordered_set<IncrementalTopologyNodeId, IncrementalTopologyNodeIdHash>
       issued_node_ids;
+  std::unordered_map<IncrementalTopologyEdgeId, std::uint64_t,
+                     IncrementalTopologyEdgeIdHash>
+      edge_created_on_revision;
   incremental_topology_detail::ObservedBlockLifecycle3D observed_blocks;
 };
 
@@ -930,10 +1094,24 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
           ? std::span<const OccupancyChunkIndex3D>{complete_snapshot_chunks}
           : dirty_chunks;
   const auto discovery_started = std::chrono::steady_clock::now();
-  std::vector<IncrementalTopologyBlockIndex3D> dirty_blocks =
-      reset_required ? impl_->observed_blocks.allObservedBlocks(occupancy)
-                     : impl_->observed_blocks.dirtyObservedBlocks(
-                           occupancy, effective_dirty_chunks);
+  std::vector<IncrementalTopologyBlockIndex3D> dirty_blocks;
+  std::vector<IncrementalTopologyBlockIndex3D> observation_evidence_blocks;
+  if (reset_required) {
+    dirty_blocks = impl_->observed_blocks.allObservedBlocks(occupancy);
+  } else {
+    incremental_topology_detail::ObservedBlockChanges3D changes =
+        impl_->observed_blocks.dirtyObservedBlocks(occupancy, effective_dirty_chunks);
+    dirty_blocks = std::move(changes.geometry);
+    observation_evidence_blocks = std::move(changes.observation_evidence);
+    for (const IncrementalTopologyBlockIndex3D block : observation_evidence_blocks) {
+      if (!impl_->block_validated_through.contains(block)) {
+        dirty_blocks.push_back(block);
+      }
+    }
+    std::ranges::sort(dirty_blocks);
+    const auto unique_end = std::unique(dirty_blocks.begin(), dirty_blocks.end());
+    dirty_blocks.erase(unique_end, dirty_blocks.end());
+  }
   const double dirty_block_discovery_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 discovery_started)
@@ -949,9 +1127,18 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
     rebuilt_blocks = impl_->observed_blocks.takePending(impl_->bounds, priority, true);
   }
   const auto rebuild_started = std::chrono::steady_clock::now();
+  const std::vector<IncrementalTopologyBlockIndex3D> rebuilt_block_copy =
+      rebuilt_blocks;
   IncrementalTopologyGraph3DUpdate result =
       impl_->rebuild(occupancy, revision, std::move(rebuilt_blocks),
                      effective_dirty_chunks.size(), reset_required);
+  if (!reset_required && !impl_->config.require_known_free_space) {
+    result.refreshed_observation_blocks = impl_->refreshObservationEvidence(
+        occupancy, observation_evidence_blocks, rebuilt_block_copy, revision);
+    if (result.refreshed_observation_blocks > 0U) {
+      impl_->classifyNodes(revision);
+    }
+  }
   result.dirty_block_discovery_ms = dirty_block_discovery_ms;
   result.graph_rebuild_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - rebuild_started)

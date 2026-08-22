@@ -30,6 +30,12 @@ namespace {
   return config;
 }
 
+[[nodiscard]] IncrementalTopologyGraph3DConfig makeKnownSpaceConfig() {
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.require_known_free_space = true;
+  return config;
+}
+
 void fillStateBox(ObservedOccupancyGrid3D& occupancy, const int minimum_x,
                   const int maximum_x, const int minimum_y, const int maximum_y,
                   const int minimum_z, const int maximum_z,
@@ -49,6 +55,12 @@ void fillFreeBox(ObservedOccupancyGrid3D& occupancy, const int minimum_x,
                  const int minimum_z, const int maximum_z) {
   fillStateBox(occupancy, minimum_x, maximum_x, minimum_y, maximum_y, minimum_z,
                maximum_z, ObservedVoxelState::kFree);
+}
+
+void fillOccupied(ObservedOccupancyGrid3D& occupancy) {
+  const GridBounds3D& bounds = occupancy.bounds();
+  fillStateBox(occupancy, 0, bounds.width_cells - 1, 0, bounds.height_cells - 1, 0,
+               bounds.depth_cells - 1, ObservedVoxelState::kOccupied);
 }
 
 [[nodiscard]] bool
@@ -90,9 +102,10 @@ hasNodeWithMinimumDegree(const IncrementalTopologyGraph3DSnapshot& snapshot,
 TEST(IncrementalTopologyGraph3DTest,
      BuildsRegionPortalConnectivityWithoutPersistentFrontiers) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 32, 24}};
+  fillOccupied(occupancy);
   fillFreeBox(occupancy, 2, 44, 14, 16, 10, 12);
   fillFreeBox(occupancy, 22, 24, 2, 16, 10, 12);
-  IncrementalTopologyGraph3D graph{makeConfig()};
+  IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
 
   const IncrementalTopologyGraph3DUpdate update = graph.update(occupancy, 1U, {}, true);
   const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
@@ -107,13 +120,14 @@ TEST(IncrementalTopologyGraph3DTest,
 
 TEST(IncrementalTopologyGraph3DTest, ExtractsXJunctionAndLoop) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 48, 16}};
+  fillOccupied(occupancy);
   fillFreeBox(occupancy, 2, 44, 22, 24, 6, 8);
   fillFreeBox(occupancy, 22, 24, 2, 44, 6, 8);
   fillFreeBox(occupancy, 6, 40, 6, 8, 6, 8);
   fillFreeBox(occupancy, 6, 8, 6, 40, 6, 8);
   fillFreeBox(occupancy, 40, 42, 6, 40, 6, 8);
   fillFreeBox(occupancy, 6, 42, 40, 42, 6, 8);
-  IncrementalTopologyGraph3D graph{makeConfig()};
+  IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
 
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
   const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
@@ -124,10 +138,11 @@ TEST(IncrementalTopologyGraph3DTest, ExtractsXJunctionAndLoop) {
 
 TEST(IncrementalTopologyGraph3DTest, ClassifiesVerticalConnector) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 24, 32}};
+  fillOccupied(occupancy);
   fillFreeBox(occupancy, 2, 22, 10, 12, 3, 5);
   fillFreeBox(occupancy, 20, 22, 10, 12, 3, 24);
   fillFreeBox(occupancy, 20, 44, 10, 12, 22, 24);
-  IncrementalTopologyGraph3D graph{makeConfig()};
+  IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
 
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
   const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
@@ -149,7 +164,7 @@ TEST(IncrementalTopologyGraph3DTest, ClassifiesOnlyProvenClosedCulDeSacTerminals
   fillStateBox(occupancy, 0, 39, 0, 39, 0, 15, ObservedVoxelState::kOccupied);
   fillFreeBox(occupancy, 3, 20, 8, 10, 5, 7);
   fillFreeBox(occupancy, 18, 20, 8, 32, 5, 7);
-  IncrementalTopologyGraph3D graph{makeConfig()};
+  IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
 
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
   const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
@@ -163,8 +178,9 @@ TEST(IncrementalTopologyGraph3DTest, ClassifiesOnlyProvenClosedCulDeSacTerminals
 
 TEST(IncrementalTopologyGraph3DTest, DirtyUpdateRetainsUnaffectedNodeIdentity) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 64, 32, 16}};
+  fillOccupied(occupancy);
   fillFreeBox(occupancy, 2, 61, 14, 16, 6, 8);
-  IncrementalTopologyGraph3D graph{makeConfig()};
+  IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
   const IncrementalTopologyGraph3DSnapshot before = graph.snapshot();
   const std::optional<IncrementalTopologyNodeId> distant_before =
@@ -194,7 +210,7 @@ TEST(IncrementalTopologyGraph3DTest,
      SparseDirtyVoxelsDoNotInvalidateTheBoundingVolumeBetweenThem) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 32, 32}};
   fillStateBox(occupancy, 0, 31, 0, 31, 0, 31, ObservedVoxelState::kOccupied);
-  IncrementalTopologyGraph3DConfig config = makeConfig();
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
   config.maximum_observed_blocks_per_update = 1024U;
   IncrementalTopologyGraph3D graph{config};
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
@@ -228,8 +244,9 @@ TEST(IncrementalTopologyGraph3DTest, StaticMapSeedsCompleteGraphWithoutFrontiers
 TEST(IncrementalTopologyGraph3DTest,
      AdaptivelyRefinesAFeasibleCorridorMissedByCoarseSampling) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 8, 8}};
+  fillOccupied(occupancy);
   fillFreeBox(occupancy, 1, 18, 1, 1, 1, 1);
-  IncrementalTopologyGraph3DConfig adaptive_config = makeConfig();
+  IncrementalTopologyGraph3DConfig adaptive_config = makeKnownSpaceConfig();
   adaptive_config.coarse_sample_stride_cells = 2;
   adaptive_config.refined_sample_stride_cells = 1;
   IncrementalTopologyGraph3D adaptive_graph{adaptive_config};
@@ -312,7 +329,7 @@ TEST(IncrementalTopologyGraph3DTest,
 }
 
 TEST(IncrementalTopologyGraph3DTest,
-     SparseObservedResetBuildsOnlyBlocksContainingKnownFreeVoxels) {
+     PermissiveResetMaterializesBlocksContainingAnyObservedEvidence) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 96, 48}};
   ASSERT_TRUE(occupancy.setState({1, 1, 1}, ObservedVoxelState::kFree));
   ASSERT_TRUE(occupancy.setState({47, 47, 23}, ObservedVoxelState::kFree));
@@ -324,14 +341,18 @@ TEST(IncrementalTopologyGraph3DTest,
   EXPECT_TRUE(update.full_reset);
   EXPECT_GT(update.rebuilt_blocks, 0U);
   EXPECT_LE(update.rebuilt_blocks, 16U);
+  EXPECT_EQ(graph.snapshot().blockCoverage().size(), 3U);
 }
 
 TEST(IncrementalTopologyGraph3DTest,
-     DirtyObservedUpdateRebuildsOnlyBlocksAffectedByChangedVoxels) {
+     PermissiveFreeEvidenceRefreshesWithoutGeometryRebuild) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 96, 48}};
   ASSERT_TRUE(occupancy.setState({17, 17, 17}, ObservedVoxelState::kFree));
   IncrementalTopologyGraph3D graph{makeConfig()};
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
+  const std::optional<IncrementalTopologyNodeId> before =
+      graph.snapshot().nearestNode({17.5, 17.5, 17.5}, 8.0);
+  ASSERT_TRUE(before.has_value());
 
   ASSERT_TRUE(occupancy.setState({18, 17, 17}, ObservedVoxelState::kFree));
   const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex({18, 17, 17});
@@ -340,15 +361,56 @@ TEST(IncrementalTopologyGraph3DTest,
 
   EXPECT_FALSE(update.full_reset);
   EXPECT_EQ(update.requested_dirty_chunks, 1U);
+  EXPECT_EQ(update.rebuilt_blocks, 0U);
+  EXPECT_GT(update.refreshed_observation_blocks, 0U);
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+  EXPECT_EQ(snapshot.nearestNode({17.5, 17.5, 17.5}, 8.0), before);
+  const IncrementalTopologyNode3D* retained =
+      snapshot.findNode(before.value_or(IncrementalTopologyNodeId{}));
+  ASSERT_NE(retained, nullptr);
+  EXPECT_EQ(retained->validated_through_revision, 2U);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     PermissiveOccupiedTransitionRebuildsAffectedGeometry) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 32, 24}};
+  ASSERT_TRUE(occupancy.setState({17, 17, 17}, ObservedVoxelState::kFree));
+  IncrementalTopologyGraph3D graph{makeConfig()};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+
+  ASSERT_TRUE(occupancy.setState({18, 17, 17}, ObservedVoxelState::kOccupied));
+  const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex({18, 17, 17});
+  const IncrementalTopologyGraph3DUpdate update =
+      graph.update(occupancy, 2U, std::span{&dirty, 1U}, false);
+
+  EXPECT_EQ(update.requested_dirty_chunks, 1U);
   EXPECT_GT(update.rebuilt_blocks, 0U);
   EXPECT_LE(update.rebuilt_blocks, 64U);
 }
 
 TEST(IncrementalTopologyGraph3DTest,
+     StrictFreeEvidenceTransitionRebuildsAffectedGeometry) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 32, 24}};
+  ASSERT_TRUE(occupancy.setState({17, 17, 17}, ObservedVoxelState::kFree));
+  IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+
+  ASSERT_TRUE(occupancy.setState({18, 17, 17}, ObservedVoxelState::kFree));
+  const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex({18, 17, 17});
+  const IncrementalTopologyGraph3DUpdate update =
+      graph.update(occupancy, 2U, std::span{&dirty, 1U}, false);
+
+  EXPECT_EQ(update.requested_dirty_chunks, 1U);
+  EXPECT_GT(update.rebuilt_blocks, 0U);
+  EXPECT_EQ(update.refreshed_observation_blocks, 0U);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
      CompleteSnapshotAfterInitializationPreservesIncrementalIdentity) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 64, 32, 16}};
+  fillOccupied(occupancy);
   fillFreeBox(occupancy, 2, 61, 14, 16, 6, 8);
-  IncrementalTopologyGraph3D graph{makeConfig()};
+  IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
   const std::optional<IncrementalTopologyNodeId> before =
       graph.snapshot().nearestNode({56.5, 15.5, 7.5}, 8.0);
@@ -369,7 +431,7 @@ TEST(IncrementalTopologyGraph3DTest,
      DefersObservedBlockWorkWithoutDroppingDirtyGeometry) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
   fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
-  IncrementalTopologyGraph3DConfig config = makeConfig();
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
   config.maximum_observed_blocks_per_update = 1U;
   config.minimum_oldest_blocks_per_update = 0U;
   IncrementalTopologyGraph3D graph{config};
@@ -404,7 +466,7 @@ TEST(IncrementalTopologyGraph3DTest,
      PrioritizesDeferredObservedBlocksNearTheCurrentVehicle) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
   fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
-  IncrementalTopologyGraph3DConfig config = makeConfig();
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
   config.maximum_observed_blocks_per_update = 1U;
   config.minimum_oldest_blocks_per_update = 0U;
   IncrementalTopologyGraph3D graph{config};
@@ -432,7 +494,7 @@ TEST(IncrementalTopologyGraph3DTest,
      RecurrentPriorityWorkCannotStarveOlderDirtyBlocks) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
   fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
-  IncrementalTopologyGraph3DConfig config = makeConfig();
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
   config.maximum_observed_blocks_per_update = 2U;
   config.minimum_oldest_blocks_per_update = 1U;
   IncrementalTopologyGraph3D graph{config};
@@ -480,7 +542,7 @@ TEST(IncrementalTopologyGraph3DTest,
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
   fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
   fillFreeBox(occupancy, 66, 74, 14, 16, 6, 8);
-  IncrementalTopologyGraph3DConfig config = makeConfig();
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
   config.maximum_observed_blocks_per_update = 1U;
   config.minimum_oldest_blocks_per_update = 0U;
   IncrementalTopologyGraph3D graph{config};
@@ -505,7 +567,7 @@ TEST(IncrementalTopologyGraph3DTest,
   fillFreeBox(occupancy, 1, 6, 1, 3, 1, 3);
   fillFreeBox(occupancy, 1, 3, 1, 8, 1, 3);
   fillFreeBox(occupancy, 1, 14, 6, 8, 1, 3);
-  IncrementalTopologyGraph3DConfig config = makeConfig();
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
   config.block_size_cells = 8;
   IncrementalTopologyGraph3D graph{config};
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
@@ -614,7 +676,7 @@ TEST(IncrementalTopologyGraph3DTest,
      ExposesMixedValidatedRevisionsAndPendingCoverageWithoutGlobalEquality) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 12, 8}};
   fillFreeBox(occupancy, 1, 38, 4, 6, 2, 4);
-  IncrementalTopologyGraph3DConfig config = makeConfig();
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
   config.maximum_observed_blocks_per_update = 1U;
   config.minimum_oldest_blocks_per_update = 0U;
   IncrementalTopologyGraph3D graph{config};

@@ -67,11 +67,25 @@ rejectedStatus(const SweptFootprintResult& result,
   return std::isfinite(value) ? value : std::numeric_limits<double>::infinity();
 }
 
+[[nodiscard]] int purposeRank(const RouteIntentPurpose3D purpose) noexcept {
+  switch (purpose) {
+    case RouteIntentPurpose3D::kLaunchDeparture:
+    case RouteIntentPurpose3D::kMissionTransit:
+      return 0;
+    case RouteIntentPurpose3D::kObservationFrontier:
+      return 1;
+    case RouteIntentPurpose3D::kTopologicalBacktrack:
+      return 2;
+  }
+  return 3;
+}
+
 [[nodiscard]] auto proposalRank(const RouteProposal3D& proposal) noexcept {
   const SegmentEvidence3D& evidence = proposal.evidence;
   return std::tuple{
       evidence.reaches_mission_target ? 0 : 1,
       evidence.reaches_intent_target ? 0 : 1,
+      purposeRank(proposal.intent.purpose),
       proposal.intent.strategic_continuation_available ? 0 : 1,
       evidence.reaches_segment_target ? 0 : 1,
       finiteCost(evidence.objective_cost),

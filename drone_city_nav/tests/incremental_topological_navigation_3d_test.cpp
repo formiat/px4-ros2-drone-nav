@@ -54,6 +54,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
+  graph_config.maximum_observed_blocks_per_update = 4096U;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
                                                 .lower_extent_m = 0.1,
                                                 .upper_extent_m = 0.1,
@@ -105,6 +106,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
+  graph_config.maximum_observed_blocks_per_update = 4096U;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
                                                 .lower_extent_m = 0.1,
                                                 .upper_extent_m = 0.1,
@@ -196,6 +198,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
+  graph_config.maximum_observed_blocks_per_update = 4096U;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
                                                 .lower_extent_m = 0.1,
                                                 .upper_extent_m = 0.1,
@@ -232,6 +235,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
+  graph_config.maximum_observed_blocks_per_update = 4096U;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
                                                 .lower_extent_m = 0.1,
                                                 .upper_extent_m = 0.1,
@@ -265,6 +269,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   graph_config.block_size_cells = 2;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
+  graph_config.maximum_observed_blocks_per_update = 4096U;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
                                                 .lower_extent_m = 0.1,
                                                 .upper_extent_m = 0.1,

@@ -24,6 +24,7 @@ namespace {
   config.footprint.radial_rings = 1U;
   config.footprint.axial_samples = 2U;
   config.footprint.sweep_step_m = 0.25;
+  config.require_known_free_space = true;
   return config;
 }
 
@@ -198,14 +199,16 @@ TEST(IncrementalTopologicalPlanner3DTest,
       << " fresh_evaluated=" << plan.fresh_frontier_evaluated_count
       << " fresh_discovered=" << plan.fresh_frontier_discovered_count
       << " fresh_budget_exhausted=" << plan.fresh_frontier_budget_exhausted;
-  ASSERT_TRUE(plan.selected_frontier.has_value());
-  EXPECT_GT(plan.selected_frontier.value().observation_pose.x, 20.5);
+  if (!plan.selected_frontier.has_value()) {
+    FAIL() << "frontier route must identify its observation frontier";
+  }
+  const ObservationFrontier& selected_frontier = *plan.selected_frontier;
+  EXPECT_GT(selected_frontier.observation_pose.x, 20.5);
   EXPECT_GT(plan.fresh_frontier_candidate_count, 0U);
   EXPECT_GT(plan.fresh_frontier_evaluated_count, 0U);
   EXPECT_GT(plan.fresh_frontier_discovered_count, 0U);
-  EXPECT_GE(
-      plan.route_length_m,
-      distance3D({18.5, 14.5, 6.5}, plan.selected_frontier.value().observation_pose));
+  EXPECT_GE(plan.route_length_m,
+            distance3D({18.5, 14.5, 6.5}, selected_frontier.observation_pose));
   EXPECT_TRUE(plan.executableTargetSelected());
 }
 
@@ -319,14 +322,19 @@ TEST(IncrementalTopologicalPlanner3DTest,
   const IncrementalTopologicalPlan3D first = planner.planObserved(
       graph, occupancy, observabilityConfig(graphConfig().footprint), start, goal,
       memory);
-  ASSERT_TRUE(first.selected_frontier.has_value());
-  memory.recordFrontierCompletion(first.selected_frontier.value().id);
+  if (!first.selected_frontier.has_value()) {
+    FAIL() << "first plan must select a frontier";
+  }
+  const ObservationFrontier& first_frontier = *first.selected_frontier;
+  memory.recordFrontierCompletion(first_frontier.id);
   const IncrementalTopologicalPlan3D second = planner.planObserved(
       graph, occupancy, observabilityConfig(graphConfig().footprint), start, goal,
       memory);
 
-  ASSERT_TRUE(second.selected_frontier.has_value());
-  EXPECT_NE(second.selected_frontier.value().id, first.selected_frontier.value().id);
+  if (!second.selected_frontier.has_value()) {
+    FAIL() << "completion penalty must leave a frontier candidate";
+  }
+  EXPECT_NE(second.selected_frontier->id, first_frontier.id);
   EXPECT_EQ(second.selected_frontier_completion_count, 0U);
 }
 
@@ -352,20 +360,27 @@ TEST(IncrementalTopologicalPlanner3DTest,
   const IncrementalTopologicalPlan3D first = planner.planObserved(
       graph, occupancy, observabilityConfig(graph_config.footprint), start, goal,
       memory);
-  ASSERT_TRUE(first.selected_frontier.has_value());
-  memory.recordFrontierSelection(first.selected_frontier.value().id);
+  if (!first.selected_frontier.has_value()) {
+    FAIL() << "first plan must select a frontier";
+  }
+  const ObservationFrontier& first_frontier = *first.selected_frontier;
+  memory.recordFrontierSelection(first_frontier.id);
   const IncrementalTopologicalPlan3D ordinary = planner.planObserved(
       graph, occupancy, observabilityConfig(graph_config.footprint), start, goal,
       memory);
-  ASSERT_TRUE(ordinary.selected_frontier.has_value());
-  ASSERT_NE(ordinary.selected_frontier.value().id, first.selected_frontier.value().id);
+  if (!ordinary.selected_frontier.has_value()) {
+    FAIL() << "ordinary replanning must retain a frontier candidate";
+  }
+  ASSERT_NE(ordinary.selected_frontier->id, first_frontier.id);
 
   const IncrementalTopologicalPlan3D continued = planner.planObserved(
       graph, occupancy, observabilityConfig(graph_config.footprint), start, goal,
       memory, first.selected_frontier);
 
-  ASSERT_TRUE(continued.selected_frontier.has_value());
-  EXPECT_EQ(continued.selected_frontier.value().id, first.selected_frontier.value().id);
+  if (!continued.selected_frontier.has_value()) {
+    FAIL() << "committed frontier must remain continuable";
+  }
+  EXPECT_EQ(continued.selected_frontier->id, first_frontier.id);
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
@@ -390,17 +405,21 @@ TEST(IncrementalTopologicalPlanner3DTest,
   const IncrementalTopologicalPlan3D first = planner.planObserved(
       graph, occupancy, observabilityConfig(graph_config.footprint), start, goal,
       memory);
-  ASSERT_TRUE(first.selected_frontier.has_value());
-  memory.recordFrontierSelection(first.selected_frontier.value().id);
-  memory.recordFrontierSelection(first.selected_frontier.value().id);
+  if (!first.selected_frontier.has_value()) {
+    FAIL() << "first plan must select a frontier";
+  }
+  const ObservationFrontier& first_frontier = *first.selected_frontier;
+  memory.recordFrontierSelection(first_frontier.id);
+  memory.recordFrontierSelection(first_frontier.id);
 
   const IncrementalTopologicalPlan3D replacement = planner.planObserved(
       graph, occupancy, observabilityConfig(graph_config.footprint), start, goal,
       memory, first.selected_frontier);
 
-  ASSERT_TRUE(replacement.selected_frontier.has_value());
-  EXPECT_NE(replacement.selected_frontier.value().id,
-            first.selected_frontier.value().id);
+  if (!replacement.selected_frontier.has_value()) {
+    FAIL() << "soft preference must leave a replacement frontier";
+  }
+  EXPECT_NE(replacement.selected_frontier->id, first_frontier.id);
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
@@ -427,10 +446,11 @@ TEST(IncrementalTopologicalPlanner3DTest,
       graph, occupancy, observabilityConfig(graphConfig().footprint), {23.5, 14.5, 6.5},
       {52.5, 14.5, 6.5}, memory, retired);
 
-  ASSERT_TRUE(plan.selected_frontier.has_value())
-      << "reachable=" << plan.reachable_frontier_count
-      << " fresh_discovered=" << plan.fresh_frontier_discovered_count;
-  EXPECT_LT(plan.selected_frontier.value().observation_pose.x, 23.5);
+  if (!plan.selected_frontier.has_value()) {
+    FAIL() << "reachable=" << plan.reachable_frontier_count
+           << " fresh_discovered=" << plan.fresh_frontier_discovered_count;
+  }
+  EXPECT_LT(plan.selected_frontier->observation_pose.x, 23.5);
 }
 
 TEST(IncrementalTopologicalPlanner3DTest, RouteCoverageSoftlyPrefersAnUnvisitedBranch) {
@@ -463,15 +483,20 @@ TEST(IncrementalTopologicalPlanner3DTest, RouteCoverageSoftlyPrefersAnUnvisitedB
   const IncrementalTopologicalPlan3D first = planner.planObserved(
       graph, occupancy, observabilityConfig(graphConfig().footprint), start, goal,
       memory);
-  ASSERT_TRUE(first.selected_frontier.has_value());
+  if (!first.selected_frontier.has_value()) {
+    FAIL() << "first plan must select a frontier";
+  }
+  const ObservationFrontier& first_frontier = *first.selected_frontier;
   ASSERT_FALSE(first.guidance_points.empty());
   memory.recordVisitedPath(first.guidance_points, graph.revision(), 0.5);
   const IncrementalTopologicalPlan3D second = planner.planObserved(
       graph, occupancy, observabilityConfig(graphConfig().footprint), start, goal,
       memory);
 
-  ASSERT_TRUE(second.selected_frontier.has_value());
-  EXPECT_NE(second.selected_frontier.value().id, first.selected_frontier.value().id);
+  if (!second.selected_frontier.has_value()) {
+    FAIL() << "coverage preference must leave another frontier";
+  }
+  EXPECT_NE(second.selected_frontier->id, first_frontier.id);
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
@@ -489,7 +514,14 @@ TEST(IncrementalTopologicalPlanner3DTest,
   const IncrementalTopologicalPlan3D initial = planner.planObserved(
       graph, occupancy, observabilityConfig(graphConfig().footprint), start, goal,
       memory);
-  ASSERT_EQ(initial.status, IncrementalTopologicalPlanStatus3D::kFrontierRoute);
+  ASSERT_EQ(initial.status, IncrementalTopologicalPlanStatus3D::kFrontierRoute)
+      << "nodes=" << graph.nodes().size() << " edges=" << graph.edges().size()
+      << " reachable=" << initial.reachable_frontier_count
+      << " fresh_candidates=" << initial.fresh_frontier_candidate_count
+      << " fresh_evaluated=" << initial.fresh_frontier_evaluated_count
+      << " fresh_discovered=" << initial.fresh_frontier_discovered_count
+      << " no_unknown_boundary=" << initial.fresh_frontier_status_counts.at(1U)
+      << " no_executable_pose=" << initial.fresh_frontier_status_counts.at(4U);
   ASSERT_FALSE(initial.route_steps.empty());
   for (const TopologicalRouteStep3D& step : initial.route_steps) {
     for (const DirectedTopologyEdge3D& edge : step.directed_source_edges) {

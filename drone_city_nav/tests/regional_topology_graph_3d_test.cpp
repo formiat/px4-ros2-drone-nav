@@ -3,7 +3,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
+#include <optional>
+#include <ranges>
 #include <span>
+#include <unordered_set>
 
 namespace drone_city_nav {
 namespace {
@@ -13,6 +17,8 @@ namespace {
   config.block_size_cells = 4;
   config.coarse_sample_stride_cells = 1;
   config.refined_sample_stride_cells = 1;
+  config.maximum_observed_blocks_per_update = 1024U;
+  config.minimum_oldest_blocks_per_update = 0U;
   config.footprint.radius_m = 0.2;
   config.footprint.lower_extent_m = 0.2;
   config.footprint.upper_extent_m = 0.2;
@@ -20,6 +26,7 @@ namespace {
   config.footprint.radial_rings = 1U;
   config.footprint.axial_samples = 2U;
   config.footprint.sweep_step_m = 0.25;
+  config.require_known_free_space = true;
   return config;
 }
 
@@ -50,7 +57,8 @@ void fillOccupied(ObservedOccupancyGrid3D& occupancy) {
                bounds.depth_cells - 1, ObservedVoxelState::kOccupied);
 }
 
-TEST(RegionalTopologyGraph3DTest, PreservesRegionNodesAndValidatedPortalGeometry) {
+TEST(RegionalTopologyGraph3DTest,
+     ContractsStraightCorridorIntoOneCertifiedRegionalEdge) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 24, 16}};
   fillOccupied(occupancy);
   fillFreeBox(occupancy, 2, 45, 9, 11, 5, 7);
@@ -62,31 +70,108 @@ TEST(RegionalTopologyGraph3DTest, PreservesRegionNodesAndValidatedPortalGeometry
       buildRegionalTopologyGraph3D(source_snapshot);
 
   ASSERT_GT(source_snapshot.nodes().size(), 2U);
-  ASSERT_EQ(regional.nodes().size(), source_snapshot.nodes().size());
-  ASSERT_EQ(regional.edges().size(), source_snapshot.edges().size());
-  for (const RegionalTopologyEdge3D& edge : regional.edges()) {
-    EXPECT_EQ(edge.source_nodes.size(), 2U);
-    EXPECT_EQ(edge.source_edges.size(), 1U);
-    EXPECT_GT(edge.length_m, 0.0);
-    EXPECT_GE(edge.polyline.size(), 2U);
-    EXPECT_GT(edge.validated_through_revision, 0U);
-  }
+  ASSERT_EQ(regional.nodes().size(), 2U);
+  ASSERT_EQ(regional.edges().size(), 1U);
+  const RegionalTopologyEdge3D& edge = regional.edges().front();
+  EXPECT_EQ(edge.source_nodes.size(), source_snapshot.nodes().size());
+  EXPECT_EQ(edge.source_edges.size(), source_snapshot.edges().size());
+  EXPECT_EQ(edge.source_edges.size() + 1U, edge.source_nodes.size());
+  EXPECT_GT(edge.length_m, 0.0);
+  EXPECT_GE(edge.polyline.size(), 2U);
+  EXPECT_EQ(edge.created_on_revision, 1U);
+  EXPECT_EQ(edge.validated_through_revision, 1U);
+  EXPECT_TRUE(std::ranges::all_of(
+      std::views::iota(std::size_t{1U}, edge.polyline.size()),
+      [&](const std::size_t index) {
+        return rawSweptFootprintIsNavigable(
+            occupancy, edge.polyline[index - 1U], FootprintBodyAxis{},
+            edge.polyline[index], FootprintBodyAxis{}, makeConfig().footprint);
+      }));
 }
 
-TEST(RegionalTopologyGraph3DTest, OpenVolumeDoesNotCreateSemanticJunctions) {
+TEST(RegionalTopologyGraph3DTest, ExplicitAnchorSplitsContractedCorridor) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 24, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 2, 45, 9, 11, 5, 7);
+  IncrementalTopologyGraph3D source{makeConfig()};
+  static_cast<void>(source.update(occupancy, 1U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot source_snapshot = source.snapshot();
+  const std::optional<IncrementalTopologyNodeId> anchor =
+      source_snapshot.nearestNode({24.5, 10.5, 6.5}, 4.0);
+  ASSERT_TRUE(anchor.has_value());
+  const IncrementalTopologyNodeId anchor_id =
+      anchor.value_or(IncrementalTopologyNodeId{});
+  const IncrementalTopologyNode3D* source_anchor = source_snapshot.findNode(anchor_id);
+  ASSERT_NE(source_anchor, nullptr);
+  ASSERT_EQ(source_anchor->degree, 2U);
+
+  const std::array anchors{anchor_id};
+  const RegionalTopologyGraph3D regional =
+      buildRegionalTopologyGraph3D(source_snapshot, anchors);
+
+  ASSERT_EQ(regional.nodes().size(), 3U);
+  ASSERT_EQ(regional.edges().size(), 2U);
+  const RegionalTopologyNode3D* regional_anchor = regional.findNode(anchor_id);
+  ASSERT_NE(regional_anchor, nullptr);
+  EXPECT_EQ(regional_anchor->degree, 2U);
+  EXPECT_EQ(std::ranges::count_if(regional.edges(),
+                                  [&](const auto& edge) {
+                                    return edge.first == anchor_id ||
+                                           edge.second == anchor_id;
+                                  }),
+            2);
+  std::size_t represented_source_edges = 0U;
+  for (const RegionalTopologyEdge3D& edge : regional.edges()) {
+    represented_source_edges += edge.source_edges.size();
+  }
+  EXPECT_EQ(represented_source_edges, source_snapshot.edges().size());
+}
+
+TEST(RegionalTopologyGraph3DTest, ContractsXJunctionAroundSemanticBranch) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 48, 16}};
   fillOccupied(occupancy);
   fillFreeBox(occupancy, 2, 45, 21, 23, 5, 7);
   fillFreeBox(occupancy, 21, 23, 2, 45, 5, 7);
   IncrementalTopologyGraph3D source{makeConfig()};
   static_cast<void>(source.update(occupancy, 1U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot source_snapshot = source.snapshot();
 
   const RegionalTopologyGraph3D regional =
-      buildRegionalTopologyGraph3D(source.snapshot());
+      buildRegionalTopologyGraph3D(source_snapshot);
 
-  EXPECT_TRUE(std::ranges::none_of(
+  EXPECT_TRUE(std::ranges::any_of(
       regional.nodes(), [](const auto& node) { return node.traits.junction; }));
+  EXPECT_LT(regional.nodes().size(), source_snapshot.nodes().size());
   EXPECT_GE(regional.edges().size(), 4U);
+}
+
+TEST(RegionalTopologyGraph3DTest, PreservesClosedLoopWithoutDuplicateSourceEdges) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 48, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 8, 39, 8, 10, 5, 7);
+  fillFreeBox(occupancy, 8, 39, 37, 39, 5, 7);
+  fillFreeBox(occupancy, 8, 10, 8, 39, 5, 7);
+  fillFreeBox(occupancy, 37, 39, 8, 39, 5, 7);
+  IncrementalTopologyGraph3D source{makeConfig()};
+  static_cast<void>(source.update(occupancy, 1U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot source_snapshot = source.snapshot();
+
+  const RegionalTopologyGraph3D regional =
+      buildRegionalTopologyGraph3D(source_snapshot);
+
+  ASSERT_GE(regional.nodes().size(), 2U);
+  ASSERT_EQ(regional.edges().size(), regional.nodes().size());
+  EXPECT_TRUE(std::ranges::all_of(regional.nodes(), [](const auto& node) {
+    return node.degree == 2U && !node.traits.terminal;
+  }));
+  std::unordered_set<IncrementalTopologyEdgeId, IncrementalTopologyEdgeIdHash>
+      represented;
+  for (const RegionalTopologyEdge3D& edge : regional.edges()) {
+    for (const IncrementalTopologyEdgeId source_edge : edge.source_edges) {
+      EXPECT_TRUE(represented.insert(source_edge).second);
+    }
+  }
+  EXPECT_EQ(represented.size(), source_snapshot.edges().size());
 }
 
 TEST(RegionalTopologyGraph3DTest, PreservesVerticalConnectorAsGraphEvent) {

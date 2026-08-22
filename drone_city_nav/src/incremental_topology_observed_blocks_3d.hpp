@@ -11,13 +11,18 @@
 
 namespace drone_city_nav::incremental_topology_detail {
 
+struct ObservedBlockChanges3D {
+  std::vector<IncrementalTopologyBlockIndex3D> geometry;
+  std::vector<IncrementalTopologyBlockIndex3D> observation_evidence;
+};
+
 class ObservedBlockLifecycle3D {
 public:
   explicit ObservedBlockLifecycle3D(const IncrementalTopologyGraph3DConfig& config);
 
   [[nodiscard]] std::vector<IncrementalTopologyBlockIndex3D>
   allObservedBlocks(const ObservedOccupancyGrid3D& occupancy) const;
-  [[nodiscard]] std::vector<IncrementalTopologyBlockIndex3D>
+  [[nodiscard]] ObservedBlockChanges3D
   dirtyObservedBlocks(const ObservedOccupancyGrid3D& occupancy,
                       std::span<const OccupancyChunkIndex3D> dirty_chunks);
   [[nodiscard]] std::vector<OccupancyChunkIndex3D>

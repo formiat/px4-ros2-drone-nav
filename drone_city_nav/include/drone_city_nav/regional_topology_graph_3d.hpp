@@ -23,6 +23,13 @@ struct RegionalTopologyNode3D {
   Point3 position{};
   IncrementalTopologyNodeTraits3D traits{};
   std::size_t degree{0U};
+  std::uint64_t created_on_revision{0U};
+  std::uint64_t validated_through_revision{0U};
+  std::uint64_t generation{0U};
+  IncrementalTopologyLineageEvent3D lineage_event{
+      IncrementalTopologyLineageEvent3D::kCreated};
+  std::vector<IncrementalTopologyNodeId> predecessors;
+  bool unknown_boundary_exposure{false};
 };
 
 struct RegionalTopologyEdge3D {
@@ -33,6 +40,7 @@ struct RegionalTopologyEdge3D {
   std::vector<IncrementalTopologyEdgeId> source_edges;
   std::vector<Point3> polyline;
   double length_m{0.0};
+  std::uint64_t created_on_revision{0U};
   std::uint64_t validated_through_revision{0U};
 };
 

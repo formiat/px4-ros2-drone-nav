@@ -109,6 +109,7 @@ struct IncrementalTopologyGraph3DConfig {
   std::size_t maximum_observed_blocks_per_update{16U};
   std::size_t minimum_oldest_blocks_per_update{4U};
   SweptFootprintConfig footprint{};
+  bool require_known_free_space{false};
 };
 
 struct IncrementalTopologyGraph3DUpdate {
@@ -116,6 +117,7 @@ struct IncrementalTopologyGraph3DUpdate {
   std::size_t requested_dirty_chunks{0U};
   std::size_t discovered_dirty_blocks{0U};
   std::size_t rebuilt_blocks{0U};
+  std::size_t refreshed_observation_blocks{0U};
   std::size_t pending_blocks{0U};
   std::size_t adaptively_refined_blocks{0U};
   std::size_t sampled_navigable_cells{0U};

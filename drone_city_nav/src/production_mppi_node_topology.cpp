@@ -115,15 +115,16 @@ void ProductionMppiNode::processObservedTopology3D(
       get_logger(),
       "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64
       " full_reset=%s dirty_chunks=%zu discovered_dirty_blocks=%zu "
-      "rebuilt_blocks=%zu pending_blocks=%zu refined_blocks=%zu "
+      "rebuilt_blocks=%zu refreshed_observation_blocks=%zu pending_blocks=%zu "
+      "refined_blocks=%zu "
       "base_resolution_m=%.3f coarse_resolution_m=%.3f "
       "refined_resolution_m=%.3f retained_nodes=%zu created_nodes=%zu "
       "retired_nodes=%zu nodes=%zu edges=%zu dirty_discovery_ms=%.2f "
       "rebuild_ms=%.2f update_ms=%.2f",
       update.graph.revision, update.graph.full_reset ? "true" : "false",
       update.graph.requested_dirty_chunks, update.graph.discovered_dirty_blocks,
-      update.graph.rebuilt_blocks, update.graph.pending_blocks,
-      update.graph.adaptively_refined_blocks,
+      update.graph.rebuilt_blocks, update.graph.refreshed_observation_blocks,
+      update.graph.pending_blocks, update.graph.adaptively_refined_blocks,
       raw_world.occupancy->bounds().resolution_m,
       raw_world.occupancy->bounds().resolution_m *
           static_cast<double>(topological_graph_3d_config_.coarse_sample_stride_cells),
@@ -158,6 +159,8 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
               "topological_graph_3d_minimum_oldest_blocks_per_update", 4),
           "topological_graph_3d_minimum_oldest_blocks_per_update");
   topological_graph_3d_config_.footprint = physical_footprint_config_;
+  topological_graph_3d_config_.require_known_free_space =
+      require_known_free_space_for_goal_;
 
   topological_planner_3d_config_.maximum_start_anchor_distance_m =
       declare_parameter<double>("topological_planner_3d_start_anchor_distance_m", 20.0);

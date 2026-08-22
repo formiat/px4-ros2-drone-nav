@@ -52,8 +52,11 @@ ObservedBlockLifecycle3D::allObservedBlocks(
       unique;
   for (const auto& [chunk, data] : occupancy.chunks()) {
     for (std::size_t word = 0U; word < data.observed.size(); ++word) {
-      const std::uint64_t known_free = data.observed.at(word) & ~data.occupied.at(word);
-      forEachSetBit(known_free, word, [&](const std::size_t bit_index) {
+      const std::uint64_t relevant =
+          config_.require_known_free_space
+              ? data.observed.at(word) & ~data.occupied.at(word)
+              : data.observed.at(word);
+      forEachSetBit(relevant, word, [&](const std::size_t bit_index) {
         const GridIndex3D cell = chunkCell(chunk, bit_index);
         if (occupancy.contains(cell)) {
           unique.insert(blockForCell(cell, config_.block_size_cells));
@@ -64,13 +67,15 @@ ObservedBlockLifecycle3D::allObservedBlocks(
   return sortedBlocks(unique);
 }
 
-std::vector<IncrementalTopologyBlockIndex3D>
-ObservedBlockLifecycle3D::dirtyObservedBlocks(
+ObservedBlockChanges3D ObservedBlockLifecycle3D::dirtyObservedBlocks(
     const ObservedOccupancyGrid3D& occupancy,
     const std::span<const OccupancyChunkIndex3D> dirty_chunks) {
   std::unordered_set<IncrementalTopologyBlockIndex3D,
                      IncrementalTopologyBlockIndex3DHash>
-      unique;
+      geometry;
+  std::unordered_set<IncrementalTopologyBlockIndex3D,
+                     IncrementalTopologyBlockIndex3DHash>
+      observation_evidence;
   const GridBounds3D& bounds = occupancy.bounds();
   const double maximum_extent_m =
       std::max({config_.footprint.radius_m, config_.footprint.lower_extent_m,
@@ -90,14 +95,17 @@ ObservedBlockLifecycle3D::dirtyObservedBlocks(
           current == occupancy.chunks().end() ? 0U : current->second.observed.at(word);
       const std::uint64_t current_occupied =
           current == occupancy.chunks().end() ? 0U : current->second.occupied.at(word);
-      const std::uint64_t changed = (previous_observed ^ current_observed) |
-                                    (previous_occupied ^ current_occupied);
-      forEachSetBit(changed, word, [&](const std::size_t bit_index) {
+      const std::uint64_t observation_changed = previous_observed ^ current_observed;
+      const std::uint64_t occupancy_changed = previous_occupied ^ current_occupied;
+      const std::uint64_t geometry_changed =
+          config_.require_known_free_space ? observation_changed | occupancy_changed
+                                           : occupancy_changed;
+      forEachSetBit(geometry_changed, word, [&](const std::size_t bit_index) {
         const GridIndex3D cell = chunkCell(chunk_index, bit_index);
         if (!occupancy.contains(cell)) {
           return;
         }
-        addBlockRange(unique,
+        addBlockRange(geometry,
                       {std::max(0, cell.x - halo_cells),
                        std::max(0, cell.y - halo_cells),
                        std::max(0, cell.z - halo_cells)},
@@ -105,6 +113,23 @@ ObservedBlockLifecycle3D::dirtyObservedBlocks(
                        std::min(bounds.height_cells - 1, cell.y + halo_cells),
                        std::min(bounds.depth_cells - 1, cell.z + halo_cells)});
       });
+      if (!config_.require_known_free_space) {
+        forEachSetBit(observation_changed, word, [&](const std::size_t bit_index) {
+          const GridIndex3D cell = chunkCell(chunk_index, bit_index);
+          if (occupancy.contains(cell)) {
+            addBlockRange(observation_evidence,
+                          {std::max(0, cell.x - config_.coarse_sample_stride_cells),
+                           std::max(0, cell.y - config_.coarse_sample_stride_cells),
+                           std::max(0, cell.z - config_.coarse_sample_stride_cells)},
+                          {std::min(bounds.width_cells - 1,
+                                    cell.x + config_.coarse_sample_stride_cells),
+                           std::min(bounds.height_cells - 1,
+                                    cell.y + config_.coarse_sample_stride_cells),
+                           std::min(bounds.depth_cells - 1,
+                                    cell.z + config_.coarse_sample_stride_cells)});
+          }
+        });
+      }
     }
     if (current == occupancy.chunks().end()) {
       observed_chunks_.erase(chunk_index);
@@ -112,7 +137,10 @@ ObservedBlockLifecycle3D::dirtyObservedBlocks(
       observed_chunks_[chunk_index] = current->second;
     }
   }
-  return sortedBlocks(unique);
+  return ObservedBlockChanges3D{
+      .geometry = sortedBlocks(geometry),
+      .observation_evidence = sortedBlocks(observation_evidence),
+  };
 }
 
 std::vector<OccupancyChunkIndex3D> ObservedBlockLifecycle3D::completeSnapshotChunks(

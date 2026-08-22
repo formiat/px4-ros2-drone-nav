@@ -25,6 +25,7 @@ namespace {
   config.footprint.radial_rings = 1U;
   config.footprint.axial_samples = 2U;
   config.footprint.sweep_step_m = 0.25;
+  config.require_known_free_space = true;
   return config;
 }
 
@@ -65,6 +66,7 @@ TEST(ReachableObservationDomain3DTest,
                                         ReachableObservationDomain3DConfig{
                                             .maximum_fresh_extension_m = 30.0,
                                             .footprint = graph_config.footprint,
+                                            .require_known_free_space = true,
                                         });
 
   const Point3 target{13.5, 7.5, 2.5};
