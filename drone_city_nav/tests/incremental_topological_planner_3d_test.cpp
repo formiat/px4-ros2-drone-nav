@@ -148,6 +148,23 @@ TEST(IncrementalTopologicalPlanner3DTest,
   EXPECT_LT(selected_frontier.observation_pose.x, start.x);
   EXPECT_LT(plan.goal_progress_m, 0.0);
   EXPECT_TRUE(plan.executableTargetSelected());
+  EXPECT_FALSE(isExplicitTopologicalBacktrack3D(plan));
+}
+
+TEST(IncrementalTopologicalPlanner3DTest,
+     OnlyTypedBacktrackPlansRequireTheBacktrackingRolloutGate) {
+  IncrementalTopologicalPlan3D frontier_plan;
+  frontier_plan.status = IncrementalTopologicalPlanStatus3D::kFrontierRoute;
+  frontier_plan.purpose = IncrementalTopologicalRoutePurpose3D::kObservationFrontier;
+  frontier_plan.goal_progress_m = -20.0;
+
+  IncrementalTopologicalPlan3D backtrack_plan;
+  backtrack_plan.status = IncrementalTopologicalPlanStatus3D::kBacktrackRoute;
+  backtrack_plan.purpose = IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack;
+  backtrack_plan.goal_progress_m = 5.0;
+
+  EXPECT_FALSE(isExplicitTopologicalBacktrack3D(frontier_plan));
+  EXPECT_TRUE(isExplicitTopologicalBacktrack3D(backtrack_plan));
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,

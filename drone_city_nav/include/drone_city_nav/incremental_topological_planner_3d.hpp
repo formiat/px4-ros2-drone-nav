@@ -149,6 +149,9 @@ private:
 [[nodiscard]] bool incrementalTopologicalPlanner3DConfigIsValid(
     const IncrementalTopologicalPlanner3DConfig& config) noexcept;
 
+[[nodiscard]] bool
+isExplicitTopologicalBacktrack3D(const IncrementalTopologicalPlan3D& plan) noexcept;
+
 [[nodiscard]] const char* incrementalTopologicalPlanStatus3DName(
     IncrementalTopologicalPlanStatus3D status) noexcept;
 [[nodiscard]] const char* incrementalTopologicalRoutePurpose3DName(

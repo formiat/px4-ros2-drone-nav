@@ -70,6 +70,7 @@ void fillBox(ObservedOccupancyGrid3D& occupancy, const int minimum_x,
   config.maximum_topology_search_groups = 0U;
   config.maximum_expansions = 100000U;
   config.maximum_search_time_ms = 2000.0;
+  config.observation_frontier_search_time_ms = 2000.0;
   config.frontier_minimum_endpoint_displacement_m = 1.0;
   config.observation_frontier_maximum_evaluations = 100000U;
   config.observation_frontier_evaluation_stride = 1U;

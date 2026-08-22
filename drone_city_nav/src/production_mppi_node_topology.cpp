@@ -299,11 +299,8 @@ ProductionMppiNode::selectIncrementalTopologyRoute3D(
                                                        position, mission_goal);
   result.directive = makeIncrementalTopologicalLatticeDirective3D(
       result.plan, position, topological_lattice_adapter_3d_config_);
-  const bool topological_backtracking_route =
-      result.plan.purpose ==
-          IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack ||
-      result.plan.goal_progress_m < -1.0e-6;
-  if (!topological_backtracking_enabled_ && topological_backtracking_route) {
+  if (!topological_backtracking_enabled_ &&
+      isExplicitTopologicalBacktrack3D(result.plan)) {
     result.directive.reset();
     RCLCPP_INFO(get_logger(),
                 "INCREMENTAL_TOPOLOGY3D_BACKTRACK status=disabled purpose=%s "

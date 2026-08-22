@@ -930,6 +930,12 @@ IncrementalTopologicalPlanner3D::config() const noexcept {
   return config_;
 }
 
+bool isExplicitTopologicalBacktrack3D(
+    const IncrementalTopologicalPlan3D& plan) noexcept {
+  return plan.status == IncrementalTopologicalPlanStatus3D::kBacktrackRoute ||
+         plan.purpose == IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack;
+}
+
 const char* incrementalTopologicalPlanStatus3DName(
     const IncrementalTopologicalPlanStatus3D status) noexcept {
   switch (status) {
