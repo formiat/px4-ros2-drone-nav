@@ -15,7 +15,7 @@ proposal(const RouteIntentSource3D source, const bool strategic,
          const bool reaches_segment, const bool reaches_intent,
          const bool reaches_mission, const double objective_cost,
          const double endpoint_displacement_m, const double route_length_m,
-         const std::uint64_t fingerprint,
+         const std::uint64_t fingerprint, const double mission_progress_m = 0.0,
          const RouteIntentPurpose3D purpose = RouteIntentPurpose3D::kMissionTransit) {
   return RouteProposal3D{
       .intent = {.id = fingerprint + 100U,
@@ -28,6 +28,7 @@ proposal(const RouteIntentSource3D source, const bool strategic,
                                  : SegmentEvidenceStatus3D::kRawCollision,
                    .route_length_m = route_length_m,
                    .endpoint_displacement_m = endpoint_displacement_m,
+                   .mission_progress_m = mission_progress_m,
                    .objective_cost = objective_cost,
                    .physical_executable = physical_executable,
                    .reaches_segment_target = reaches_segment,
@@ -38,6 +39,8 @@ proposal(const RouteIntentSource3D source, const bool strategic,
       .activation_eligible = activation_eligible,
   };
 }
+
+constexpr RouteProposalSelection3DConfig kSelectionConfig{};
 
 [[nodiscard]] SegmentEvidenceWorld3D world(const mppi::EsdfGrid& grid,
                                            const std::vector<float>& esdf) {
@@ -58,7 +61,8 @@ TEST(RoutePlanning3DTest, RawRejectedDirectCandidateLosesToTopologyInSameDecisio
                10.0, 8.0, 30.0, 2U),
   };
 
-  const RouteProposalSelection3D selection = selectRouteProposal3D(proposals);
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
 
   ASSERT_TRUE(selection.selected_index.has_value());
   EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
@@ -73,7 +77,8 @@ TEST(RoutePlanning3DTest, StrategicBypassBeatsShorterGoalDirectedPrefix) {
                40.0, 8.0, 35.0, 4U),
   };
 
-  const RouteProposalSelection3D selection = selectRouteProposal3D(proposals);
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
 
   ASSERT_TRUE(selection.selected_index.has_value());
   EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
@@ -86,10 +91,11 @@ TEST(RoutePlanning3DTest,
       proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
                10.0, 20.0, 24.0, 5U),
       proposal(RouteIntentSource3D::kTopology, true, true, true, true, false, false,
-               1.0, 10.0, 12.0, 6U, RouteIntentPurpose3D::kObservationFrontier),
+               1.0, 10.0, 12.0, 6U, 0.0, RouteIntentPurpose3D::kObservationFrontier),
   };
 
-  const RouteProposalSelection3D selection = selectRouteProposal3D(proposals);
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
 
   ASSERT_TRUE(selection.selected_index.has_value());
   EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
@@ -102,14 +108,47 @@ TEST(RoutePlanning3DTest,
       proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
                10.0, 20.0, 24.0, 7U),
       proposal(RouteIntentSource3D::kTopology, false, true, true, true, false, false,
-               1.0, 10.0, 12.0, 8U, RouteIntentPurpose3D::kObservationFrontier),
+               1.0, 10.0, 12.0, 8U, 0.0, RouteIntentPurpose3D::kObservationFrontier),
   };
 
-  const RouteProposalSelection3D selection = selectRouteProposal3D(proposals);
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
 
   ASSERT_TRUE(selection.selected_index.has_value());
   EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 0U);
   EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kRouteQuality);
+}
+
+TEST(RoutePlanning3DTest, ProductiveDirectTransitBeatsAValidatedStrategicFrontier) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
+               6.0, 20.0, 24.0, 9U, 8.0),
+      proposal(RouteIntentSource3D::kTopology, true, true, true, true, false, false,
+               1.0, 1.0, 1.0, 10U, -0.5, RouteIntentPurpose3D::kObservationFrontier),
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
+
+  ASSERT_TRUE(selection.selected_index.has_value());
+  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 0U);
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kProductiveDirectTransit);
+}
+
+TEST(RoutePlanning3DTest, InefficientDirectPrefixYieldsToAValidatedStrategicFrontier) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
+               6.0, 7.0, 22.0, 11U, 0.75),
+      proposal(RouteIntentSource3D::kTopology, true, true, true, true, false, false,
+               1.0, 1.0, 1.0, 12U, -0.5, RouteIntentPurpose3D::kObservationFrontier),
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
+
+  ASSERT_TRUE(selection.selected_index.has_value());
+  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kStrategicContinuation);
 }
 
 TEST(RoutePlanning3DTest, ReachingLocalBendDoesNotCompleteGlobalIntent) {

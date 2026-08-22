@@ -279,36 +279,42 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
   for (const ProductionRouteSearchCandidate3D& candidate : candidates) {
     proposals.push_back(proposal(candidate));
   }
-  RouteProposalSelection3D selection = selectRouteProposal3D(proposals);
+  RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, route_proposal_selection_3d_config_);
   for (std::size_t index = 0U; index < candidates.size(); ++index) {
     const ProductionRouteSearchCandidate3D& candidate = candidates[index];
-    RCLCPP_INFO(
-        get_logger(),
-        "ROUTE_PROPOSAL3D revision=%" PRIu64 " index=%zu selected=%s "
-        "intent_id=%" PRIu64 " source=%s purpose=%s planned_on=%" PRIu64
-        " validated_through=%" PRIu64 " status=%s physical=%s "
-        "segment_target=%s intent_target=%s mission_target=%s strategic=%s "
-        "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
-        "route_length_m=%.2f endpoint_displacement_m=%.2f "
-        "mission_progress_m=%.2f objective=%.3f",
-        world.revision, index,
-        selection.selected_index.value_or(candidates.size()) == index ? "true"
-                                                                      : "false",
-        candidate.intent.id, routeIntentSource3DName(candidate.intent.source),
-        routeIntentPurpose3DName(candidate.intent.purpose),
-        candidate.evidence.planned_on_revision,
-        candidate.evidence.validated_through_revision,
-        segmentEvidenceStatus3DName(candidate.evidence.status),
-        candidate.evidence.physical_executable ? "true" : "false",
-        candidate.evidence.reaches_segment_target ? "true" : "false",
-        candidate.evidence.reaches_intent_target ? "true" : "false",
-        candidate.evidence.reaches_mission_target ? "true" : "false",
-        candidate.intent.strategic_continuation_available ? "true" : "false",
-        candidate.evidence.unknown_exposure ? "true" : "false",
-        candidate.evidence.known_clearance_observed ? "true" : "false",
-        candidate.evidence.minimum_known_clearance_m, candidate.evidence.route_length_m,
-        candidate.evidence.endpoint_displacement_m,
-        candidate.evidence.mission_progress_m, candidate.evidence.objective_cost);
+    RCLCPP_INFO(get_logger(),
+                "ROUTE_PROPOSAL3D revision=%" PRIu64 " index=%zu selected=%s "
+                "intent_id=%" PRIu64 " source=%s purpose=%s planned_on=%" PRIu64
+                " validated_through=%" PRIu64 " status=%s physical=%s "
+                "segment_target=%s intent_target=%s mission_target=%s strategic=%s "
+                "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
+                "route_length_m=%.2f endpoint_displacement_m=%.2f "
+                "mission_progress_m=%.2f productive_direct=%s objective=%.3f",
+                world.revision, index,
+                selection.selected_index.value_or(candidates.size()) == index ? "true"
+                                                                              : "false",
+                candidate.intent.id, routeIntentSource3DName(candidate.intent.source),
+                routeIntentPurpose3DName(candidate.intent.purpose),
+                candidate.evidence.planned_on_revision,
+                candidate.evidence.validated_through_revision,
+                segmentEvidenceStatus3DName(candidate.evidence.status),
+                candidate.evidence.physical_executable ? "true" : "false",
+                candidate.evidence.reaches_segment_target ? "true" : "false",
+                candidate.evidence.reaches_intent_target ? "true" : "false",
+                candidate.evidence.reaches_mission_target ? "true" : "false",
+                candidate.intent.strategic_continuation_available ? "true" : "false",
+                candidate.evidence.unknown_exposure ? "true" : "false",
+                candidate.evidence.known_clearance_observed ? "true" : "false",
+                candidate.evidence.minimum_known_clearance_m,
+                candidate.evidence.route_length_m,
+                candidate.evidence.endpoint_displacement_m,
+                candidate.evidence.mission_progress_m,
+                isProductiveDirectTransit3D(proposals[index],
+                                            route_proposal_selection_3d_config_)
+                    ? "true"
+                    : "false",
+                candidate.evidence.objective_cost);
   }
 
   ProductionRouteCandidateSelection3D result{

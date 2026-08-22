@@ -80,13 +80,16 @@ rejectedStatus(const SweptFootprintResult& result,
   return 3;
 }
 
-[[nodiscard]] auto proposalRank(const RouteProposal3D& proposal) noexcept {
+[[nodiscard]] auto proposalRank(const RouteProposal3D& proposal,
+                                const RouteProposalSelection3DConfig& config) noexcept {
   const SegmentEvidence3D& evidence = proposal.evidence;
-  // A physically valid strategic route must be able to replace an unfinished
-  // direct prefix; purpose only resolves candidates with equivalent evidence.
+  // Direct transit remains preferable while it efficiently advances the mission.
+  // Once it only produces a looping or blocked prefix, validated topology may
+  // select a temporarily lateral or backward route.
   return std::tuple{
       evidence.reaches_mission_target ? 0 : 1,
       evidence.reaches_intent_target ? 0 : 1,
+      isProductiveDirectTransit3D(proposal, config) ? 0 : 1,
       proposal.intent.strategic_continuation_available ? 0 : 1,
       purposeRank(proposal.intent.purpose),
       evidence.reaches_segment_target ? 0 : 1,
@@ -195,16 +198,45 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
   return result;
 }
 
+bool routeProposalSelection3DConfigIsValid(
+    const RouteProposalSelection3DConfig& config) noexcept {
+  return std::isfinite(config.productive_direct_minimum_mission_progress_m) &&
+         config.productive_direct_minimum_mission_progress_m >= 0.0 &&
+         std::isfinite(config.productive_direct_minimum_progress_ratio) &&
+         config.productive_direct_minimum_progress_ratio >= 0.0 &&
+         config.productive_direct_minimum_progress_ratio <= 1.0;
+}
+
+bool isProductiveDirectTransit3D(
+    const RouteProposal3D& proposal,
+    const RouteProposalSelection3DConfig& config) noexcept {
+  if (!routeProposalSelection3DConfigIsValid(config) || !eligible(proposal) ||
+      proposal.intent.source != RouteIntentSource3D::kDirect ||
+      proposal.intent.purpose != RouteIntentPurpose3D::kMissionTransit ||
+      !(proposal.evidence.route_length_m > 0.0) ||
+      !std::isfinite(proposal.evidence.route_length_m) ||
+      !std::isfinite(proposal.evidence.mission_progress_m)) {
+    return false;
+  }
+  const double progress_ratio =
+      proposal.evidence.mission_progress_m / proposal.evidence.route_length_m;
+  return proposal.evidence.mission_progress_m >=
+             config.productive_direct_minimum_mission_progress_m &&
+         progress_ratio >= config.productive_direct_minimum_progress_ratio;
+}
+
 bool betterRouteProposal3D(const RouteProposal3D& candidate,
-                           const RouteProposal3D& current) noexcept {
+                           const RouteProposal3D& current,
+                           const RouteProposalSelection3DConfig& config) noexcept {
   if (eligible(candidate) != eligible(current)) {
     return eligible(candidate);
   }
-  return proposalRank(candidate) < proposalRank(current);
+  return proposalRank(candidate, config) < proposalRank(current, config);
 }
 
 RouteProposalSelection3D
-selectRouteProposal3D(const std::span<const RouteProposal3D> proposals) noexcept {
+selectRouteProposal3D(const std::span<const RouteProposal3D> proposals,
+                      const RouteProposalSelection3DConfig& config) noexcept {
   RouteProposalSelection3D result{
       .selected_index = std::nullopt,
       .reason = RouteProposalSelectionReason3D::kNoEligibleCandidate,
@@ -217,7 +249,8 @@ selectRouteProposal3D(const std::span<const RouteProposal3D> proposals) noexcept
     }
     ++result.eligible_candidates;
     if (!result.selected_index.has_value() ||
-        betterRouteProposal3D(proposals[index], proposals[*result.selected_index])) {
+        betterRouteProposal3D(proposals[index], proposals[*result.selected_index],
+                              config)) {
       result.selected_index = index;
     }
   }
@@ -233,6 +266,8 @@ selectRouteProposal3D(const std::span<const RouteProposal3D> proposals) noexcept
     result.reason = RouteProposalSelectionReason3D::kMissionTarget;
   } else if (selected.evidence.reaches_intent_target) {
     result.reason = RouteProposalSelectionReason3D::kIntentTarget;
+  } else if (isProductiveDirectTransit3D(selected, config)) {
+    result.reason = RouteProposalSelectionReason3D::kProductiveDirectTransit;
   } else if (selected.intent.strategic_continuation_available) {
     result.reason = RouteProposalSelectionReason3D::kStrategicContinuation;
   } else {
@@ -302,6 +337,8 @@ const char* routeProposalSelectionReason3DName(
       return "mission_target";
     case RouteProposalSelectionReason3D::kIntentTarget:
       return "intent_target";
+    case RouteProposalSelectionReason3D::kProductiveDirectTransit:
+      return "productive_direct_transit";
     case RouteProposalSelectionReason3D::kStrategicContinuation:
       return "strategic_continuation";
     case RouteProposalSelectionReason3D::kRouteQuality:

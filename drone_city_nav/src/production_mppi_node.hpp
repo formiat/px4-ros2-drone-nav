@@ -789,6 +789,7 @@ private:
   std::unique_ptr<NoStaticRouteCycleDetector> no_static_cycle_detector_;
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
+  RouteProposalSelection3DConfig route_proposal_selection_3d_config_{};
   IncrementalTopologyGraph3DConfig topological_graph_3d_config_{};
   IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};

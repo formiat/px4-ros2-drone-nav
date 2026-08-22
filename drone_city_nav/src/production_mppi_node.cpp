@@ -457,6 +457,12 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<bool>("require_known_free_space", false);
   lattice_3d_config_.require_known_free_space = require_known_free_space_for_goal_;
   mppi_config_.risk.require_known_free_space = require_known_free_space_for_goal_;
+  route_proposal_selection_3d_config_.productive_direct_minimum_mission_progress_m =
+      declare_parameter<double>(
+          "route_proposal_productive_direct_minimum_mission_progress_m", 2.0);
+  route_proposal_selection_3d_config_.productive_direct_minimum_progress_ratio =
+      declare_parameter<double>(
+          "route_proposal_productive_direct_minimum_progress_ratio", 0.15);
   lattice_3d_config_.nominal_horizontal_speed_mps =
       speed_policy_config_.cruise_speed_mps;
   lattice_3d_config_.nominal_vertical_speed_mps =
@@ -708,6 +714,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       constrained_route_speed_limit_mps_ < 0.0F ||
       !(route_constraint_diagnostics_distance_m_ >= 0.0) ||
       !(lattice_3d_config_.nominal_horizontal_speed_mps > 0.0) ||
+      !routeProposalSelection3DConfigIsValid(route_proposal_selection_3d_config_) ||
       !(lattice_3d_config_.nominal_vertical_speed_mps > 0.0) ||
       !(lattice_3d_config_.vertical_alignment_cost_weight >= 0.0) ||
       !(lattice_3d_config_.route_shape_turn_cost_per_rad >= 0.0) ||

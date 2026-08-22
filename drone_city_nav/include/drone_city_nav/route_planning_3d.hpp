@@ -99,11 +99,17 @@ struct RouteProposal3D {
   bool activation_eligible{false};
 };
 
+struct RouteProposalSelection3DConfig {
+  double productive_direct_minimum_mission_progress_m{2.0};
+  double productive_direct_minimum_progress_ratio{0.15};
+};
+
 enum class RouteProposalSelectionReason3D : std::uint8_t {
   kNoEligibleCandidate,
   kOnlyEligibleCandidate,
   kMissionTarget,
   kIntentTarget,
+  kProductiveDirectTransit,
   kStrategicContinuation,
   kRouteQuality,
 };
@@ -127,11 +133,20 @@ makeRouteIntentId3D(RouteIntentSource3D source, RouteIntentPurpose3D purpose,
     bool reaches_mission_target, double objective_cost,
     const SegmentEvidenceWorld3D& world) noexcept;
 
-[[nodiscard]] bool betterRouteProposal3D(const RouteProposal3D& candidate,
-                                         const RouteProposal3D& current) noexcept;
+[[nodiscard]] bool routeProposalSelection3DConfigIsValid(
+    const RouteProposalSelection3DConfig& config) noexcept;
+
+[[nodiscard]] bool
+isProductiveDirectTransit3D(const RouteProposal3D& proposal,
+                            const RouteProposalSelection3DConfig& config) noexcept;
+
+[[nodiscard]] bool
+betterRouteProposal3D(const RouteProposal3D& candidate, const RouteProposal3D& current,
+                      const RouteProposalSelection3DConfig& config) noexcept;
 
 [[nodiscard]] RouteProposalSelection3D
-selectRouteProposal3D(std::span<const RouteProposal3D> proposals) noexcept;
+selectRouteProposal3D(std::span<const RouteProposal3D> proposals,
+                      const RouteProposalSelection3DConfig& config) noexcept;
 
 [[nodiscard]] const char* routeIntentSource3DName(RouteIntentSource3D source) noexcept;
 [[nodiscard]] const char*
