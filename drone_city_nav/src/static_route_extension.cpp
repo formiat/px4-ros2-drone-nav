@@ -86,11 +86,12 @@ StaticRouteSearchRequestIdentity identifyStaticRouteSearchRequest(
             .base_route_generation = extension_base_generation};
   }
   if (replan_request) {
-    if (replan_base_generation == 0U ||
-        replan_base_generation != world_route_generation) {
+    if (replan_base_generation != world_route_generation) {
       return {};
     }
-    return {.kind = StaticRouteSearchRequestKind::kReplan,
+    return {.kind = replan_base_generation == 0U
+                        ? StaticRouteSearchRequestKind::kInitialRetry
+                        : StaticRouteSearchRequestKind::kReplan,
             .base_route_generation = replan_base_generation};
   }
   return {.kind = world_route_generation == 0U
@@ -126,6 +127,8 @@ staticRouteSearchRequestKindName(const StaticRouteSearchRequestKind kind) noexce
       return "invalid";
     case StaticRouteSearchRequestKind::kInitial:
       return "initial";
+    case StaticRouteSearchRequestKind::kInitialRetry:
+      return "initial_retry";
     case StaticRouteSearchRequestKind::kResidentRefresh:
       return "resident_refresh";
     case StaticRouteSearchRequestKind::kExtension:

@@ -128,6 +128,7 @@ private:
 enum class StaticRouteSearchRequestKind : std::uint8_t {
   kInvalid,
   kInitial,
+  kInitialRetry,
   kResidentRefresh,
   kExtension,
   kReplan,

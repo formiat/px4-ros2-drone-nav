@@ -143,6 +143,17 @@ TEST(StaticRouteExtensionTest, ManagedSearchMustMatchItsResidentGeneration) {
   EXPECT_FALSE(identifyStaticRouteSearchRequest(7U, false, 0U, true, 6U).valid());
 }
 
+TEST(StaticRouteExtensionTest, FailedInitialSearchMayRetryGenerationZero) {
+  const StaticRouteSearchRequestIdentity retry =
+      identifyStaticRouteSearchRequest(0U, false, 0U, true, 0U);
+
+  ASSERT_TRUE(retry.valid());
+  EXPECT_EQ(retry.kind, StaticRouteSearchRequestKind::kInitialRetry);
+  EXPECT_TRUE(assessStaticRouteSearchCurrency(retry, 0U).current());
+  EXPECT_EQ(assessStaticRouteSearchCurrency(retry, 1U).status,
+            StaticRouteSearchCurrencyStatus::kSupersededByResidentRoute);
+}
+
 TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterRejectedExtension) {
   StaticRouteDeferredReplanLatch latch;
   latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kStalled,
