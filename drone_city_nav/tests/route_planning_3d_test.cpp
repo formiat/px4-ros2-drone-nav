@@ -80,12 +80,29 @@ TEST(RoutePlanning3DTest, StrategicBypassBeatsShorterGoalDirectedPrefix) {
   EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kStrategicContinuation);
 }
 
-TEST(RoutePlanning3DTest, ExplorationCannotReplaceExecutableMissionTransit) {
+TEST(RoutePlanning3DTest,
+     StrategicObservationFrontierBeatsAnUnfinishedDirectMissionPrefix) {
   const std::vector<RouteProposal3D> proposals{
       proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
                10.0, 20.0, 24.0, 5U),
       proposal(RouteIntentSource3D::kTopology, true, true, true, true, false, false,
                1.0, 10.0, 12.0, 6U, RouteIntentPurpose3D::kObservationFrontier),
+  };
+
+  const RouteProposalSelection3D selection = selectRouteProposal3D(proposals);
+
+  ASSERT_TRUE(selection.selected_index.has_value());
+  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kStrategicContinuation);
+}
+
+TEST(RoutePlanning3DTest,
+     NonStrategicExplorationCannotReplaceExecutableMissionTransit) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
+               10.0, 20.0, 24.0, 7U),
+      proposal(RouteIntentSource3D::kTopology, false, true, true, true, false, false,
+               1.0, 10.0, 12.0, 8U, RouteIntentPurpose3D::kObservationFrontier),
   };
 
   const RouteProposalSelection3D selection = selectRouteProposal3D(proposals);

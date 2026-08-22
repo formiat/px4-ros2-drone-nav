@@ -82,11 +82,13 @@ rejectedStatus(const SweptFootprintResult& result,
 
 [[nodiscard]] auto proposalRank(const RouteProposal3D& proposal) noexcept {
   const SegmentEvidence3D& evidence = proposal.evidence;
+  // A physically valid strategic route must be able to replace an unfinished
+  // direct prefix; purpose only resolves candidates with equivalent evidence.
   return std::tuple{
       evidence.reaches_mission_target ? 0 : 1,
       evidence.reaches_intent_target ? 0 : 1,
-      purposeRank(proposal.intent.purpose),
       proposal.intent.strategic_continuation_available ? 0 : 1,
+      purposeRank(proposal.intent.purpose),
       evidence.reaches_segment_target ? 0 : 1,
       finiteCost(evidence.objective_cost),
       -evidence.endpoint_displacement_m,

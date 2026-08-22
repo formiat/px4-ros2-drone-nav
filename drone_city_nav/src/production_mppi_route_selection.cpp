@@ -289,7 +289,8 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
         " validated_through=%" PRIu64 " status=%s physical=%s "
         "segment_target=%s intent_target=%s mission_target=%s strategic=%s "
         "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
-        "route_length_m=%.2f endpoint_displacement_m=%.2f objective=%.3f",
+        "route_length_m=%.2f endpoint_displacement_m=%.2f "
+        "mission_progress_m=%.2f objective=%.3f",
         world.revision, index,
         selection.selected_index.value_or(candidates.size()) == index ? "true"
                                                                       : "false",
@@ -306,7 +307,8 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
         candidate.evidence.unknown_exposure ? "true" : "false",
         candidate.evidence.known_clearance_observed ? "true" : "false",
         candidate.evidence.minimum_known_clearance_m, candidate.evidence.route_length_m,
-        candidate.evidence.endpoint_displacement_m, candidate.evidence.objective_cost);
+        candidate.evidence.endpoint_displacement_m,
+        candidate.evidence.mission_progress_m, candidate.evidence.objective_cost);
   }
 
   ProductionRouteCandidateSelection3D result{
