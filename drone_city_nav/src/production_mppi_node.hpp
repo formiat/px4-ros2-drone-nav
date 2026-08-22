@@ -50,6 +50,7 @@
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
 #include "drone_city_nav/static_esdf_cache.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
@@ -76,6 +77,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <stop_token>
 #include <string>
 #include <thread>
@@ -195,6 +197,29 @@ struct ProductionGuideCandidateValidation {
   bool accepted{false};
 };
 
+struct ProductionRouteGeometry3D {
+  std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
+  std::shared_ptr<const std::vector<RouteSample3D>> route;
+  std::shared_ptr<const std::vector<Point2>> route_2d_projection;
+  std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
+  std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
+  std::shared_ptr<const std::vector<CooperativePassageAssignment>>
+      cooperative_passage_assignments;
+  std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
+  Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};
+  std::optional<ObservationFrontier> observation_frontier;
+};
+
+struct ProductionMaterializedRouteProposal3D {
+  MaterializedRouteProposal3D identity{};
+  ProductionRouteGeometry3D geometry{};
+};
+
+struct ProductionActivatedRoute3D {
+  ActivatedRouteIdentity3D identity{};
+  ProductionRouteGeometry3D geometry{};
+};
+
 struct ProductionMppiPreparedEsdf {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t revision{0U};
@@ -237,6 +262,7 @@ struct ProductionMppiPreparedEsdf {
   IncrementalTopologyGraph3DUpdate topological_graph_update{};
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
+  std::shared_ptr<const ProductionActivatedRoute3D> activated_route_3d;
   RouteIntent3D route_intent{};
   SegmentEvidence3D route_segment_evidence{};
   RouteProposalSelectionReason3D route_proposal_selection_reason{
@@ -411,6 +437,15 @@ struct ProductionRouteCandidateSelection3D {
   Vec3 preferred_direction{};
   double search_ms{0.0};
   bool topology_route_used{false};
+};
+
+struct ProductionRouteExecutionSelection3D {
+  std::shared_ptr<const ProductionActivatedRoute3D> route;
+  GlobalGuideProjection projection{};
+  RouteExecutionStatus3D status{RouteExecutionStatus3D::kNoActiveRoute};
+  Point3 hold_position{};
+  double station_m{0.0};
+  bool route_usable{false};
 };
 
 struct ProductionMppiRvizSnapshot {
@@ -613,14 +648,21 @@ private:
   void maybeObserveIncrementalTopology3D(const ProductionMppiPreparedEsdf& world,
                                          const ProductionMppiNavigation& navigation,
                                          std::int64_t now_ns);
+  [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
+      const ProductionMppiPreparedEsdf& world,
+      const ProductionNavigationObjective* objective,
+      const ProductionMppiNavigation& navigation,
+      const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
+      std::uint64_t minimum_tracking_sample_sequence, bool direct_tracking,
+      bool observed_3d_world);
   void configureCooperativeTraffic();
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);
-  [[nodiscard]] ProductionMppiCooperativeUpdate
-  prepareCooperativeTick(const ProductionMppiPreparedEsdf& esdf,
-                         const ConstrainedRouteObservation& route_observation,
-                         const std::optional<ProductionMppiCooperativeCommand>& command,
-                         std::int64_t now_ns, double planned_speed_mps);
+  [[nodiscard]] ProductionMppiCooperativeUpdate prepareCooperativeTick(
+      std::span<const CooperativePassageAssignment> passage_assignments,
+      const ConstrainedRouteObservation& route_observation,
+      const std::optional<ProductionMppiCooperativeCommand>& command,
+      std::int64_t now_ns, double planned_speed_mps);
   void configureNonCooperativeAvoidance();
   void createNonCooperativeAvoidanceInterface(
       const rclcpp::SubscriptionOptions& subscription_options);
@@ -649,10 +691,11 @@ private:
       const ProductionMppiPreparedEsdf& esdf,
       ProductionMppiPlanningState planning_state, std::int64_t now_ns);
 
-  [[nodiscard]] mppi::State selectTarget(const ProductionMppiPreparedEsdf& esdf,
-                                         double current_station_m, double lookahead_m,
-                                         std::string& target_source,
-                                         double& target_station_m) const;
+  [[nodiscard]] mppi::State
+  selectTarget(std::span<const RouteSample3D> route,
+               std::span<const mppi::RouteSample3D> mppi_route,
+               double current_station_m, double lookahead_m, std::string& target_source,
+               double& target_station_m) const;
   [[nodiscard]] ProductionMppiStability
   compareWithPrevious(const mppi::MppiTickResult& result) const;
 
@@ -780,6 +823,7 @@ private:
   std::uint64_t static_route_generation_{0U};
   std::uint64_t tracked_route_generation_{0U};
   double tracked_route_station_m_{0.0};
+  RouteExecutionState3D route_execution_state_3d_{};
   std::mutex static_route_extension_mutex_;
   bool static_route_extension_request_in_flight_{false};
   std::uint64_t static_route_extension_in_flight_generation_{0U};
@@ -862,7 +906,6 @@ private:
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
 
   std::optional<mppi::MppiTickResult> previous_result_;
-  std::optional<Point3> no_executable_route_hold_position_;
   std::optional<Point3> no_executable_path_hold_position_;
   std::optional<ProductionMppiActiveFiniteExecutionPath> active_finite_execution_path_;
   std::optional<mppi::State> previous_predicted_next_state_;

@@ -4,6 +4,17 @@
 
 namespace drone_city_nav {
 
+NavigationWorldCertificate3D
+navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept {
+  return NavigationWorldCertificate3D{
+      .producer_instance_id = world.producer_instance_id,
+      .esdf_fingerprint = world.revision,
+      .esdf_source_raw_revision = world.source_raw_revision,
+      .esdf_source_occupied_fingerprint = world.source_occupied_fingerprint,
+      .raw_validated_through_revision = world.source_raw_revision,
+  };
+}
+
 void adoptWorldResources(ProductionMppiPreparedEsdf& target,
                          const ProductionMppiPreparedEsdf& source) {
   target.producer_instance_id = source.producer_instance_id;

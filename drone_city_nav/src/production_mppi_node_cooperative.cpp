@@ -134,7 +134,7 @@ void ProductionMppiNode::onCooperativeManeuverCommand(
 }
 
 ProductionMppiCooperativeUpdate ProductionMppiNode::prepareCooperativeTick(
-    const ProductionMppiPreparedEsdf& esdf,
+    const std::span<const CooperativePassageAssignment> passage_assignments,
     const ConstrainedRouteObservation& route_observation,
     const std::optional<ProductionMppiCooperativeCommand>& command,
     const std::int64_t now_ns, const double planned_speed_mps) {
@@ -144,10 +144,10 @@ ProductionMppiCooperativeUpdate ProductionMppiNode::prepareCooperativeTick(
   }
 
   const CooperativePassageAssignment* assignment = nullptr;
-  if (route_observation.span_available && esdf.cooperative_passage_assignments &&
-      route_observation.span_index < esdf.cooperative_passage_assignments->size()) {
+  if (route_observation.span_available &&
+      route_observation.span_index < passage_assignments.size()) {
     const CooperativePassageAssignment& candidate =
-        (*esdf.cooperative_passage_assignments)[route_observation.span_index];
+        passage_assignments[route_observation.span_index];
     if (candidate.span_index == route_observation.span_index &&
         candidate.route_generation == route_observation.route_generation &&
         candidate.passage_traversal_id == route_observation.passage_traversal_id) {

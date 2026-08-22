@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
+#include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
@@ -10,6 +11,9 @@
 namespace drone_city_nav {
 
 struct ProductionMppiPreparedEsdf;
+
+[[nodiscard]] NavigationWorldCertificate3D
+navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept;
 
 void adoptWorldResources(ProductionMppiPreparedEsdf& target,
                          const ProductionMppiPreparedEsdf& source);

@@ -802,11 +802,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
   }
 }
 
-mppi::State ProductionMppiNode::selectTarget(const ProductionMppiPreparedEsdf& esdf,
-                                             const double current_station_m,
-                                             const double lookahead_m,
-                                             std::string& target_source,
-                                             double& target_station_m) const {
+mppi::State
+ProductionMppiNode::selectTarget(const std::span<const RouteSample3D> route,
+                                 const std::span<const mppi::RouteSample3D> mppi_route,
+                                 const double current_station_m,
+                                 const double lookahead_m, std::string& target_source,
+                                 double& target_station_m) const {
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       navigationObjective();
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
@@ -816,9 +817,8 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiPreparedEsdf& e
   target_source = "mission_goal_direct";
   target_station_m = 0.0;
   const double desired_station_m = current_station_m + std::max(0.0, lookahead_m);
-  if (esdf.route_3d && !esdf.route_3d->empty()) {
-    const RouteSample3D sample =
-        sampleRoute3DAtStation(*esdf.route_3d, desired_station_m);
+  if (!route.empty()) {
+    const RouteSample3D sample = sampleRoute3DAtStation(route, desired_station_m);
     target.x = static_cast<float>(sample.position.x);
     target.y = static_cast<float>(sample.position.y);
     target.z = static_cast<float>(sample.position.z);
@@ -826,12 +826,12 @@ mppi::State ProductionMppiNode::selectTarget(const ProductionMppiPreparedEsdf& e
     target_source = "global_route_3d";
     return target;
   }
-  if (esdf.mppi_route && !esdf.mppi_route->empty()) {
+  if (!mppi_route.empty()) {
     const float desired_station = static_cast<float>(desired_station_m);
-    const auto selected = std::ranges::lower_bound(*esdf.mppi_route, desired_station,
-                                                   {}, &mppi::RouteSample3D::station_m);
+    const auto selected = std::ranges::lower_bound(mppi_route, desired_station, {},
+                                                   &mppi::RouteSample3D::station_m);
     const mppi::RouteSample3D& sample =
-        selected == esdf.mppi_route->end() ? esdf.mppi_route->back() : *selected;
+        selected == mppi_route.end() ? mppi_route.back() : *selected;
     target.x = sample.x_m;
     target.y = sample.y_m;
     target.z = sample.z_m;

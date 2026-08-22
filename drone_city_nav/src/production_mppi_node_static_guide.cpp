@@ -25,12 +25,10 @@ void ProductionMppiNode::processGuideSearch3D(
     const ProductionMppiNavigation& navigation) {
   const Point3 mission_goal =
       world.search_objective.available ? world.search_objective.goal : mission_goal_;
+  const NavigationWorldCertificate3D planned_world_certificate =
+      navigationWorldCertificate3D(world);
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       latest_raw_world_3d_.load(std::memory_order_acquire);
-  const ObservedOccupancyGrid3D* const latest_observed_occupancy =
-      latest_raw_world_3d && latest_raw_world_3d->occupancy
-          ? latest_raw_world_3d->occupancy.get()
-          : nullptr;
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   const double completed_observation_tolerance_m =
       std::min(lattice_3d_config_.goal_tolerance_m,
@@ -347,20 +345,6 @@ void ProductionMppiNode::processGuideSearch3D(
           .failure_segment_index = risk_assignment.failure_sample_index,
           .failure_point = risk_assignment.failure_point};
     }
-    if (validation.accepted && latest_observed_occupancy != nullptr) {
-      if (const std::optional<StaticRouteCandidateValidation> latest_raw_validation =
-              validateRouteAgainstLatestObservedRawOccupancy(
-                  *mutable_route, *latest_observed_occupancy, footprint_config,
-                  world.proprioceptive_free_space_seed
-                      ? std::addressof(*world.proprioceptive_free_space_seed)
-                      : nullptr,
-                  world.launch_support_contact
-                      ? std::addressof(*world.launch_support_contact)
-                      : nullptr);
-          latest_raw_validation.has_value()) {
-        validation = *latest_raw_validation;
-      }
-    }
     const std::shared_ptr<const std::vector<RouteSample3D>> route = mutable_route;
     const std::shared_ptr<const std::vector<ConstrainedRouteSpan>> spans =
         mutable_spans;
@@ -490,6 +474,45 @@ void ProductionMppiNode::processGuideSearch3D(
       observed_world_rebased = true;
     }
   }
+  NavigationWorldCertificate3D validated_world_certificate =
+      navigationWorldCertificate3D(prepared);
+  if (validation.accepted && world.observed_occupancy && prepared.route_3d) {
+    const std::shared_ptr<const ProductionMppiRawWorld3D> activation_raw_world =
+        latest_raw_world_3d_.load(std::memory_order_acquire);
+    const bool raw_world_available =
+        activation_raw_world && activation_raw_world->occupancy &&
+        activation_raw_world->producer_instance_id == prepared.producer_instance_id &&
+        activation_raw_world->revision >= prepared.source_raw_revision;
+    if (!raw_world_available) {
+      validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidEsdf};
+    } else if (const std::optional<StaticRouteCandidateValidation> raw_validation =
+                   validateRouteAgainstLatestObservedRawOccupancy(
+                       *prepared.route_3d, *activation_raw_world->occupancy,
+                       SweptFootprintConfig{
+                           .radius_m = lattice_3d_config_.physical_footprint_radius_m,
+                           .lower_extent_m =
+                               lattice_3d_config_.physical_footprint_lower_extent_m,
+                           .upper_extent_m =
+                               lattice_3d_config_.physical_footprint_upper_extent_m,
+                           .perimeter_samples =
+                               physical_footprint_config_.perimeter_samples,
+                           .radial_rings = physical_footprint_config_.radial_rings,
+                           .axial_samples = physical_footprint_config_.axial_samples,
+                           .sweep_step_m = physical_footprint_config_.sweep_step_m},
+                       prepared.proprioceptive_free_space_seed
+                           ? std::addressof(*prepared.proprioceptive_free_space_seed)
+                           : nullptr,
+                       prepared.launch_support_contact
+                           ? std::addressof(*prepared.launch_support_contact)
+                           : nullptr);
+               raw_validation.has_value()) {
+      validation = *raw_validation;
+    } else {
+      validated_world_certificate.raw_validated_through_revision =
+          activation_raw_world->revision;
+    }
+  }
   prepared.static_route_candidate_status = validation.status;
   StaticRouteActivationStatus activation_status =
       prepared.lattice_executable
@@ -523,6 +546,42 @@ void ProductionMppiNode::processGuideSearch3D(
       .validation = validation,
       .route = prepared.route_3d,
       .constrained_spans = prepared.constrained_spans,
+  };
+  SegmentEvidence3D activated_evidence = prepared.route_segment_evidence;
+  activated_evidence.validated_through_revision =
+      validated_world_certificate.raw_validated_through_revision;
+  activated_evidence.physical_executable =
+      route_candidate.executable && route_candidate.validation.accepted;
+  activated_evidence.status = activated_evidence.physical_executable
+                                  ? SegmentEvidenceStatus3D::kValid
+                                  : activated_evidence.status;
+  const ProductionMaterializedRouteProposal3D materialized_proposal{
+      .identity =
+          MaterializedRouteProposal3D{
+              .planned_world = planned_world_certificate,
+              .validated_world = validated_world_certificate,
+              .objective = world.search_objective,
+              .intent = prepared.route_intent,
+              .evidence = activated_evidence,
+              .route_fingerprint = prepared.route_fingerprint,
+              .route_sample_count = prepared.route_3d ? prepared.route_3d->size() : 0U,
+              .reaches_mission_goal = prepared.global_guide_reaches_mission_goal,
+              .activation_eligible =
+                  route_candidate.executable && route_candidate.validation.accepted,
+          },
+      .geometry =
+          ProductionRouteGeometry3D{
+              .mppi_route = prepared.mppi_route,
+              .route = prepared.route_3d,
+              .route_2d_projection = prepared.route_2d_projection,
+              .constrained_spans = prepared.constrained_spans,
+              .passage_volumes = prepared.passage_volumes,
+              .cooperative_passage_assignments =
+                  prepared.cooperative_passage_assignments,
+              .selected_passage_traversal_ids = prepared.selected_passage_traversal_ids,
+              .route_purpose = prepared.lattice_3d_route_purpose,
+              .observation_frontier = prepared.lattice_3d_observation_frontier,
+          },
   };
   ProductionMppiNavigation handoff_navigation;
   ProductionMppiAppliedControl handoff_applied_control;
@@ -561,16 +620,25 @@ void ProductionMppiNode::processGuideSearch3D(
         (prepared_esdf_ &&
          prepared_esdf_->global_guide_generation == required_base_generation);
     revision_matches = prepared_esdf_ && prepared_esdf_->revision == prepared.revision;
+    const std::uint64_t candidate_generation = static_route_generation_ + 1U;
+    const std::optional<ActivatedRouteIdentity3D> activated_identity =
+        activateRouteProposal3D(materialized_proposal.identity, candidate_generation);
     if (route_candidate.executable && route_candidate.validation.accepted &&
         handoff.accepted && route_candidate.route &&
         route_candidate.constrained_spans && revision_matches && generation_matches &&
-        objective_matches) {
+        objective_matches && activated_identity.has_value()) {
       activation_status = StaticRouteActivationStatus::kActivated;
       prepared.static_route_activation_status = activation_status;
       prepared.static_route_revision_matches = true;
       prepared.static_route_generation_matches = true;
-      prepared.global_guide_generation = ++static_route_generation_;
+      static_route_generation_ = candidate_generation;
+      prepared.global_guide_generation = candidate_generation;
       prepared.route_objective = world.search_objective;
+      prepared.activated_route_3d =
+          std::make_shared<const ProductionActivatedRoute3D>(ProductionActivatedRoute3D{
+              .identity = *activated_identity,
+              .geometry = materialized_proposal.geometry,
+          });
       prepared.global_guide_release_reason = GlobalGuideReleaseReason::kNone;
       prepared.static_route_extension_request = false;
       prepared.static_route_extension_base_generation = 0U;
