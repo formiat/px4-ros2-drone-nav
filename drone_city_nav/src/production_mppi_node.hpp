@@ -50,6 +50,7 @@
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/route_planning_3d.hpp"
 #include "drone_city_nav/static_esdf_cache.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
@@ -236,6 +237,12 @@ struct ProductionMppiPreparedEsdf {
   IncrementalTopologyGraph3DUpdate topological_graph_update{};
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
+  RouteIntent3D route_intent{};
+  SegmentEvidence3D route_segment_evidence{};
+  RouteProposalSelectionReason3D route_proposal_selection_reason{
+      RouteProposalSelectionReason3D::kNoEligibleCandidate};
+  std::size_t route_proposal_candidate_count{0U};
+  std::size_t route_proposal_eligible_count{0U};
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_traversals;
@@ -392,6 +399,18 @@ struct ProductionIncrementalTopologySearch3D {
   std::size_t graph_node_count{0U};
   std::size_t graph_edge_count{0U};
   double no_executable_route_age_ms{0.0};
+};
+
+struct ProductionRouteCandidateSelection3D {
+  RouteIntent3D intent{};
+  SegmentEvidence3D evidence{};
+  RiskAwareLattice3DResult lattice{};
+  ProductionIncrementalTopologySearch3D topology{};
+  std::optional<Lattice3DStrategicDirective> directive;
+  RouteProposalSelection3D proposal_selection{};
+  Vec3 preferred_direction{};
+  double search_ms{0.0};
+  bool topology_route_used{false};
 };
 
 struct ProductionMppiRvizSnapshot {
@@ -572,6 +591,10 @@ private:
       bool reaches_mission_goal);
   void processGuideSearch3D(const ProductionMppiPreparedEsdf& world,
                             const ProductionMppiNavigation& navigation);
+  [[nodiscard]] ProductionRouteCandidateSelection3D selectRouteCandidate3D(
+      const ProductionMppiPreparedEsdf& world,
+      const ProductionMppiNavigation& navigation, const Point3& mission_goal,
+      const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void initializeRuntimeInterfaces();

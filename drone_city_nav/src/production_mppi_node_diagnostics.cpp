@@ -121,6 +121,24 @@ void ProductionMppiNode::processDiagnostics(
       << " guide_reused=" << (esdf.global_guide_reused ? "true" : "false")
       << " guide_reaches_mission_goal="
       << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
+      << " route_intent_id=" << esdf.route_intent.id
+      << " route_intent_source=" << routeIntentSource3DName(esdf.route_intent.source)
+      << " route_intent_purpose=" << routeIntentPurpose3DName(esdf.route_intent.purpose)
+      << " route_intent_planned_on=" << esdf.route_intent.planned_on_revision
+      << " route_validated_through="
+      << esdf.route_segment_evidence.validated_through_revision
+      << " route_segment_evidence="
+      << segmentEvidenceStatus3DName(esdf.route_segment_evidence.status)
+      << " route_unknown_exposure="
+      << (esdf.route_segment_evidence.unknown_exposure ? "true" : "false")
+      << " route_known_clearance="
+      << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
+      << " route_intent_target_reached="
+      << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
+      << " route_proposal_candidates=" << esdf.route_proposal_candidate_count
+      << " route_proposal_eligible=" << esdf.route_proposal_eligible_count
+      << " route_proposal_selection="
+      << routeProposalSelectionReason3DName(esdf.route_proposal_selection_reason)
       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
       << " goal_distance_m=" << snapshot.goal_capture.horizontal_distance_m
       << " guide_release="
@@ -562,7 +580,27 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
         << ",\"guide_reaches_mission_goal\":"
         << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
-        << ",\"goal_capture_latched\":"
+        << ",\"route_intent_id\":" << esdf.route_intent.id
+        << ",\"route_intent_source\":\""
+        << routeIntentSource3DName(esdf.route_intent.source) << '"'
+        << ",\"route_intent_purpose\":\""
+        << routeIntentPurpose3DName(esdf.route_intent.purpose) << '"'
+        << ",\"route_intent_planned_on\":" << esdf.route_intent.planned_on_revision
+        << ",\"route_validated_through\":"
+        << esdf.route_segment_evidence.validated_through_revision
+        << ",\"route_segment_evidence\":\""
+        << segmentEvidenceStatus3DName(esdf.route_segment_evidence.status) << '"'
+        << ",\"route_unknown_exposure\":"
+        << (esdf.route_segment_evidence.unknown_exposure ? "true" : "false")
+        << ",\"route_known_clearance\":"
+        << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
+        << ",\"route_intent_target_reached\":"
+        << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
+        << ",\"route_proposal_candidates\":" << esdf.route_proposal_candidate_count
+        << ",\"route_proposal_eligible\":" << esdf.route_proposal_eligible_count
+        << ",\"route_proposal_selection\":\""
+        << routeProposalSelectionReason3DName(esdf.route_proposal_selection_reason)
+        << '"' << ",\"goal_capture_latched\":"
         << (snapshot.goal_capture.latched ? "true" : "false")
         << ",\"goal_distance_m\":" << snapshot.goal_capture.horizontal_distance_m
         << ",\"guide_release\":\""

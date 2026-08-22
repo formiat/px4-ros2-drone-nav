@@ -1,0 +1,342 @@
+#include <algorithm>
+#include <chrono>
+#include <cinttypes>
+#include <cmath>
+#include <memory>
+#include <optional>
+#include <span>
+#include <utility>
+#include <vector>
+
+#include "production_mppi_node.hpp"
+
+namespace drone_city_nav {
+namespace {
+
+struct ProductionRouteSearchCandidate3D {
+  RouteIntent3D intent{};
+  SegmentEvidence3D evidence{};
+  RiskAwareLattice3DResult lattice{};
+  std::optional<ProductionIncrementalTopologySearch3D> topology;
+  Lattice3DStrategicDirective directive{};
+};
+
+[[nodiscard]] bool latticeExecutable(const RiskAwareLattice3DResult& lattice) noexcept {
+  return lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
+         lattice.status == Lattice3DStatus::kViableFrontier;
+}
+
+[[nodiscard]] RouteIntentPurpose3D
+intentPurpose(const Lattice3DRoutePurpose purpose) noexcept {
+  switch (purpose) {
+    case Lattice3DRoutePurpose::kMissionTransit:
+      return RouteIntentPurpose3D::kMissionTransit;
+    case Lattice3DRoutePurpose::kLaunchDeparture:
+      return RouteIntentPurpose3D::kLaunchDeparture;
+    case Lattice3DRoutePurpose::kObservationFrontier:
+      return RouteIntentPurpose3D::kObservationFrontier;
+    case Lattice3DRoutePurpose::kTopologicalBacktrack:
+      return RouteIntentPurpose3D::kTopologicalBacktrack;
+  }
+  return RouteIntentPurpose3D::kMissionTransit;
+}
+
+[[nodiscard]] Point3
+intentTarget(const ProductionIncrementalTopologySearch3D& topology,
+             const Lattice3DStrategicDirective& directive) noexcept {
+  if (!topology.plan.guidance_points.empty()) {
+    return topology.plan.guidance_points.back();
+  }
+  return directive.planning_goal;
+}
+
+[[nodiscard]] std::uint64_t
+intentTargetIdentity(const ProductionIncrementalTopologySearch3D& topology) noexcept {
+  return topology.plan.selected_frontier ? topology.plan.selected_frontier->id.value
+                                         : topology.plan.target_node.value;
+}
+
+[[nodiscard]] SegmentEvidenceWorld3D
+evidenceWorld(const ProductionMppiPreparedEsdf& world,
+              const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
+              const RiskAwareLattice3DConfig& lattice_config,
+              const SweptFootprintConfig& footprint) noexcept {
+  return SegmentEvidenceWorld3D{
+      .grid = &world.grid,
+      .esdf_m = world.distances_m ? std::span<const float>{*world.distances_m}
+                                  : std::span<const float>{},
+      .latest_observed_occupancy = latest_raw_world && latest_raw_world->occupancy
+                                       ? latest_raw_world->occupancy.get()
+                                       : nullptr,
+      .proprioceptive_free_space_seed =
+          world.proprioceptive_free_space_seed
+              ? std::addressof(*world.proprioceptive_free_space_seed)
+              : nullptr,
+      .launch_support_contact = world.launch_support_contact
+                                    ? std::addressof(*world.launch_support_contact)
+                                    : nullptr,
+      .footprint = footprint,
+      .flight_envelope = lattice_config.flight_envelope,
+      .validated_through_revision =
+          latest_raw_world ? latest_raw_world->revision : world.source_raw_revision,
+      .require_known_free_space = lattice_config.require_known_free_space,
+  };
+}
+
+[[nodiscard]] RouteProposal3D
+proposal(const ProductionRouteSearchCandidate3D& candidate) noexcept {
+  return RouteProposal3D{
+      .intent = candidate.intent,
+      .evidence = candidate.evidence,
+      .route_fingerprint = candidate.lattice.route_fingerprint,
+      .activation_eligible = candidate.evidence.physical_executable,
+  };
+}
+
+} // namespace
+
+ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
+    const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
+    const Point3& mission_goal,
+    const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world) {
+  const auto search_started = std::chrono::steady_clock::now();
+  const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
+  Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
+                           static_cast<double>(navigation.state.vy),
+                           static_cast<double>(navigation.state.vz)};
+  if (std::hypot(preferred_direction.x, preferred_direction.y) < 0.5) {
+    preferred_direction =
+        Vec3{mission_goal.x - navigation.state.x, mission_goal.y - navigation.state.y,
+             mission_goal.z - navigation.state.z};
+  }
+  const SweptFootprintConfig footprint{
+      .radius_m = lattice_3d_config_.physical_footprint_radius_m,
+      .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
+      .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
+      .perimeter_samples = physical_footprint_config_.perimeter_samples,
+      .radial_rings = physical_footprint_config_.radial_rings,
+      .axial_samples = physical_footprint_config_.axial_samples,
+      .sweep_step_m = physical_footprint_config_.sweep_step_m,
+  };
+  const SegmentEvidenceWorld3D evidence_world =
+      evidenceWorld(world, latest_raw_world, lattice_3d_config_, footprint);
+  std::vector<ProductionRouteSearchCandidate3D> candidates;
+  candidates.reserve(2U);
+
+  const auto plan_lattice = [&](const Lattice3DStrategicDirective& directive) {
+    RiskAwareLattice3DConfig search_config = lattice_3d_config_;
+    if (directive.route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
+      search_config.goal_tolerance_m =
+          std::min(search_config.goal_tolerance_m, 0.5 * search_config.vertical_step_m);
+    }
+    const Lattice3DExplorationContext exploration_context{
+        .observed_occupancy = world.observed_occupancy.get(),
+        .map_revision = world.revision,
+        .strategic_directive = directive,
+    };
+    RCLCPP_INFO(get_logger(),
+                "ROUTE_PROPOSAL_SEARCH3D stage=begin revision=%" PRIu64
+                " purpose=%s target=(%.2f,%.2f,%.2f)",
+                world.revision, lattice3DRoutePurposeName(directive.route_purpose),
+                directive.planning_goal.x, directive.planning_goal.y,
+                directive.planning_goal.z);
+    RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+        world.grid, *world.distances_m, search_start, directive.preferred_direction,
+        mission_goal, std::span<const PassageTraversalEdge>{}, search_config,
+        planning_worker_pool_.get(), &exploration_context);
+    RCLCPP_INFO(get_logger(),
+                "ROUTE_PROPOSAL_SEARCH3D stage=complete revision=%" PRIu64
+                " purpose=%s status=%s points=%zu",
+                world.revision, lattice3DRoutePurposeName(directive.route_purpose),
+                lattice3DStatusName(result.status), result.points.size());
+    return result;
+  };
+  const auto add_candidate =
+      [&](RouteIntent3D intent, const Lattice3DStrategicDirective& directive,
+          RiskAwareLattice3DResult lattice,
+          std::optional<ProductionIncrementalTopologySearch3D> topology =
+              std::nullopt) {
+        const bool reaches_segment =
+            lattice.status == Lattice3DStatus::kReachedPlanningGoal;
+        SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
+            intent, lattice.route, search_start, latticeExecutable(lattice),
+            reaches_segment, lattice.reached_mission_goal, lattice.objective_cost,
+            evidence_world);
+        candidates.push_back(ProductionRouteSearchCandidate3D{
+            .intent = intent,
+            .evidence = evidence,
+            .lattice = std::move(lattice),
+            .topology = std::move(topology),
+            .directive = directive,
+        });
+      };
+
+  bool direct_mission_candidate{false};
+  if (world.launch_support_resolution_pending) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "LAUNCH_SUPPORT_CONTACT state=route_pending");
+  } else if (world.launch_support_contact && world.observed_occupancy) {
+    const LaunchSupportDeparture3D departure = planLaunchSupportDeparture3D(
+        *world.observed_occupancy, search_start, *world.launch_support_contact,
+        lattice_3d_config_.vertical_step_m);
+    RCLCPP_INFO(get_logger(),
+                "LAUNCH_SUPPORT_DEPARTURE executable=%s validation=%s "
+                "axial_departure_m=%.3f start=(%.3f,%.3f,%.3f) "
+                "target=(%.3f,%.3f,%.3f)",
+                departure.executable ? "true" : "false",
+                sweptFootprintStatusName(departure.validation.status),
+                departure.axial_departure_m, search_start.x, search_start.y,
+                search_start.z, departure.target.x, departure.target.y,
+                departure.target.z);
+    if (departure.executable) {
+      const FootprintBodyAxis& axis = world.launch_support_contact->seed.body_axis;
+      const Lattice3DStrategicDirective directive{
+          .planning_goal = departure.target,
+          .preferred_direction = {axis.x, axis.y, axis.z},
+          .route_purpose = Lattice3DRoutePurpose::kLaunchDeparture,
+          .observation_frontier = std::nullopt,
+          .selection_score = 0.0,
+          .reaches_mission_goal = false,
+      };
+      RouteIntent3D intent{
+          .planned_on_revision = world.revision,
+          .mission_target = mission_goal,
+          .intent_target = departure.target,
+          .segment_target = departure.target,
+          .source = RouteIntentSource3D::kLaunchDeparture,
+          .purpose = RouteIntentPurpose3D::kLaunchDeparture,
+          .segment_reaches_intent_target = true,
+          .valid = true,
+      };
+      intent.id = makeRouteIntentId3D(intent.source, intent.purpose,
+                                      intent.mission_target, intent.intent_target);
+      add_candidate(intent, directive, plan_lattice(directive));
+    }
+  } else {
+    direct_mission_candidate = true;
+    const Point3 planning_goal = staticRoutePlanningGoal(
+        search_start, mission_goal, lattice_3d_config_.planning_goal_distance_m);
+    const Lattice3DStrategicDirective directive{
+        .planning_goal = planning_goal,
+        .preferred_direction = preferred_direction,
+        .route_purpose = Lattice3DRoutePurpose::kMissionTransit,
+        .observation_frontier = std::nullopt,
+        .selection_score = 0.0,
+        .reaches_mission_goal = distance3D(planning_goal, mission_goal) <= 1.0e-6,
+    };
+    RouteIntent3D intent{
+        .planned_on_revision = world.revision,
+        .mission_target = mission_goal,
+        .intent_target = planning_goal,
+        .segment_target = planning_goal,
+        .source = RouteIntentSource3D::kDirect,
+        .purpose = RouteIntentPurpose3D::kMissionTransit,
+        .segment_reaches_intent_target = true,
+        .intent_reaches_mission_target = directive.reaches_mission_goal,
+        .valid = true,
+    };
+    intent.id = makeRouteIntentId3D(intent.source, intent.purpose,
+                                    intent.mission_target, intent.intent_target);
+    add_candidate(intent, directive, plan_lattice(directive));
+  }
+
+  const bool direct_completed = !candidates.empty() &&
+                                candidates.front().evidence.physical_executable &&
+                                candidates.front().evidence.reaches_segment_target;
+  if (direct_mission_candidate && !direct_completed) {
+    ProductionIncrementalTopologySearch3D topology =
+        selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
+    if (topology.directive) {
+      const Lattice3DStrategicDirective directive = topology.directive->lattice;
+      const Point3 target = intentTarget(topology, directive);
+      RouteIntent3D intent{
+          .planned_on_revision = world.revision,
+          .source_graph_revision = topology.plan.graph_revision,
+          .target_identity = intentTargetIdentity(topology),
+          .mission_target = mission_goal,
+          .intent_target = target,
+          .segment_target = directive.planning_goal,
+          .source = RouteIntentSource3D::kTopology,
+          .purpose = intentPurpose(directive.route_purpose),
+          .graph_step_count = topology.plan.route_steps.size(),
+          .strategic_continuation_available =
+              !topology.plan.route_steps.empty() ||
+              topology.plan.selected_frontier.has_value(),
+          .segment_reaches_intent_target =
+              topology.directive->reaches_topological_target,
+          .intent_reaches_mission_target = topology.plan.reaches_mission_goal,
+          .valid = true,
+      };
+      intent.id =
+          makeRouteIntentId3D(intent.source, intent.purpose, intent.mission_target,
+                              intent.intent_target, intent.target_identity);
+      add_candidate(intent, directive, plan_lattice(directive), std::move(topology));
+    }
+  }
+
+  std::vector<RouteProposal3D> proposals;
+  proposals.reserve(candidates.size());
+  for (const ProductionRouteSearchCandidate3D& candidate : candidates) {
+    proposals.push_back(proposal(candidate));
+  }
+  RouteProposalSelection3D selection = selectRouteProposal3D(proposals);
+  for (std::size_t index = 0U; index < candidates.size(); ++index) {
+    const ProductionRouteSearchCandidate3D& candidate = candidates[index];
+    RCLCPP_INFO(
+        get_logger(),
+        "ROUTE_PROPOSAL3D revision=%" PRIu64 " index=%zu selected=%s "
+        "intent_id=%" PRIu64 " source=%s purpose=%s planned_on=%" PRIu64
+        " validated_through=%" PRIu64 " status=%s physical=%s "
+        "segment_target=%s intent_target=%s mission_target=%s strategic=%s "
+        "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
+        "route_length_m=%.2f endpoint_displacement_m=%.2f objective=%.3f",
+        world.revision, index,
+        selection.selected_index.value_or(candidates.size()) == index ? "true"
+                                                                      : "false",
+        candidate.intent.id, routeIntentSource3DName(candidate.intent.source),
+        routeIntentPurpose3DName(candidate.intent.purpose),
+        candidate.evidence.planned_on_revision,
+        candidate.evidence.validated_through_revision,
+        segmentEvidenceStatus3DName(candidate.evidence.status),
+        candidate.evidence.physical_executable ? "true" : "false",
+        candidate.evidence.reaches_segment_target ? "true" : "false",
+        candidate.evidence.reaches_intent_target ? "true" : "false",
+        candidate.evidence.reaches_mission_target ? "true" : "false",
+        candidate.intent.strategic_continuation_available ? "true" : "false",
+        candidate.evidence.unknown_exposure ? "true" : "false",
+        candidate.evidence.known_clearance_observed ? "true" : "false",
+        candidate.evidence.minimum_known_clearance_m, candidate.evidence.route_length_m,
+        candidate.evidence.endpoint_displacement_m, candidate.evidence.objective_cost);
+  }
+
+  ProductionRouteCandidateSelection3D result{
+      .intent = {},
+      .evidence = {},
+      .lattice = {},
+      .topology = {},
+      .directive = std::nullopt,
+      .proposal_selection = selection,
+      .preferred_direction = {},
+      .search_ms = std::chrono::duration<double, std::milli>(
+                       std::chrono::steady_clock::now() - search_started)
+                       .count(),
+      .topology_route_used = false,
+  };
+  if (candidates.empty()) {
+    return result;
+  }
+  const std::size_t selected_index = selection.selected_index.value_or(0U);
+  ProductionRouteSearchCandidate3D selected = std::move(candidates[selected_index]);
+  result.intent = selected.intent;
+  result.evidence = selected.evidence;
+  result.lattice = std::move(selected.lattice);
+  result.directive = selected.directive;
+  result.preferred_direction = selected.directive.preferred_direction;
+  if (selected.topology) {
+    result.topology = std::move(*selected.topology);
+    result.topology_route_used = true;
+  }
+  return result;
+}
+
+} // namespace drone_city_nav

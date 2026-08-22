@@ -7,6 +7,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -31,160 +32,53 @@ void ProductionMppiNode::processGuideSearch3D(
           ? latest_raw_world_3d->occupancy.get()
           : nullptr;
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
-  Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
-                           static_cast<double>(navigation.state.vy),
-                           static_cast<double>(navigation.state.vz)};
-  if (std::hypot(preferred_direction.x, preferred_direction.y) < 0.5) {
-    preferred_direction =
-        Vec3{mission_goal.x - navigation.state.x, mission_goal.y - navigation.state.y,
-             mission_goal.z - navigation.state.z};
-  }
-  ProductionIncrementalTopologySearch3D topology;
-  std::optional<Lattice3DStrategicDirective> strategic_directive;
-  bool topology_route_used{false};
-  LaunchSupportDeparture3D launch_departure;
-  if (world.launch_support_resolution_pending) {
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "LAUNCH_SUPPORT_CONTACT state=route_pending");
-  } else if (world.launch_support_contact && world.observed_occupancy) {
-    launch_departure = planLaunchSupportDeparture3D(
-        *world.observed_occupancy, search_start, *world.launch_support_contact,
-        lattice_3d_config_.vertical_step_m);
-    RCLCPP_INFO(get_logger(),
-                "LAUNCH_SUPPORT_DEPARTURE executable=%s validation=%s"
-                " axial_departure_m=%.3f start=(%.3f,%.3f,%.3f)"
-                " target=(%.3f,%.3f,%.3f)",
-                launch_departure.executable ? "true" : "false",
-                sweptFootprintStatusName(launch_departure.validation.status),
-                launch_departure.axial_departure_m, search_start.x, search_start.y,
-                search_start.z, launch_departure.target.x, launch_departure.target.y,
-                launch_departure.target.z);
-    if (launch_departure.executable) {
-      const FootprintBodyAxis& axis = world.launch_support_contact->seed.body_axis;
-      preferred_direction = Vec3{axis.x, axis.y, axis.z};
-      strategic_directive = Lattice3DStrategicDirective{
-          .planning_goal = launch_departure.target,
-          .preferred_direction = preferred_direction,
-          .route_purpose = Lattice3DRoutePurpose::kLaunchDeparture,
-          .observation_frontier = std::nullopt,
-          .selection_score = 0.0,
-          .reaches_mission_goal = false,
-      };
-    }
-  } else {
-    const double completed_observation_tolerance_m =
-        std::min(lattice_3d_config_.goal_tolerance_m,
-                 0.5 * std::min(lattice_3d_config_.horizontal_step_m,
-                                lattice_3d_config_.vertical_step_m));
-    if (topological_navigation_3d_ &&
-        world.lattice_3d_route_purpose == Lattice3DRoutePurpose::kObservationFrontier &&
-        world.lattice_3d_observation_frontier && world.route_3d &&
-        !world.route_3d->empty() &&
-        distance3D(search_start, world.route_3d->back().position) <=
-            completed_observation_tolerance_m) {
+  const double completed_observation_tolerance_m =
+      std::min(lattice_3d_config_.goal_tolerance_m,
+               0.5 * std::min(lattice_3d_config_.horizontal_step_m,
+                              lattice_3d_config_.vertical_step_m));
+  if (topological_navigation_3d_ &&
+      world.lattice_3d_route_purpose == Lattice3DRoutePurpose::kObservationFrontier &&
+      world.lattice_3d_observation_frontier && world.route_3d &&
+      !world.route_3d->empty() &&
+      distance3D(search_start, world.route_3d->back().position) <=
+          completed_observation_tolerance_m) {
+    if (world.route_intent.valid && world.route_intent.segment_reaches_intent_target) {
       topological_navigation_3d_->completeObservationFrontier(
           *world.lattice_3d_observation_frontier, world.revision);
       RCLCPP_INFO(get_logger(),
                   "INCREMENTAL_TOPOLOGY3D_FRONTIER_COMPLETED frontier_id=%" PRIu64
-                  " route_endpoint_reached=true",
-                  world.lattice_3d_observation_frontier->id.value);
-      // A finite frontier route is intentionally terminal. Its completion is
-      // therefore the explicit handoff point to the next observation or
-      // topological branch, rather than waiting for a generic guide watchdog
-      // to notice that the old route has run out.
-      requestGuideRelease(GlobalGuideReleaseReason::kExhausted,
-                          world.global_guide_generation);
+                  " route_endpoint_reached=true intent_id=%" PRIu64,
+                  world.lattice_3d_observation_frontier->id.value,
+                  world.route_intent.id);
+    } else {
+      RCLCPP_INFO(get_logger(),
+                  "INCREMENTAL_TOPOLOGY3D_SEGMENT_COMPLETED frontier_id=%" PRIu64
+                  " intent_id=%" PRIu64 " intent_target_reached=false",
+                  world.lattice_3d_observation_frontier->id.value,
+                  world.route_intent.id);
     }
-    const Point3 direct_planning_goal = staticRoutePlanningGoal(
-        search_start, mission_goal, lattice_3d_config_.planning_goal_distance_m);
-    strategic_directive = Lattice3DStrategicDirective{
-        .planning_goal = direct_planning_goal,
-        .preferred_direction = preferred_direction,
-        .route_purpose = Lattice3DRoutePurpose::kMissionTransit,
-        .observation_frontier = std::nullopt,
-        .selection_score = 0.0,
-        .reaches_mission_goal =
-            distance3D(direct_planning_goal, mission_goal) <= 1.0e-6,
-    };
+    requestGuideRelease(GlobalGuideReleaseReason::kExhausted,
+                        world.global_guide_generation);
   }
-  const auto search_started = std::chrono::steady_clock::now();
-  const std::span<const PassageTraversalEdge> passage_traversals{};
-  RiskAwareLattice3DResult lattice;
-  const auto plan_lattice = [&](const Lattice3DStrategicDirective& directive) {
-    RiskAwareLattice3DConfig search_config = lattice_3d_config_;
-    if (directive.route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
-      search_config.goal_tolerance_m =
-          std::min(search_config.goal_tolerance_m, 0.5 * search_config.vertical_step_m);
-    }
-    const Lattice3DExplorationContext exploration_context{
-        .observed_occupancy = world.observed_occupancy.get(),
-        .map_revision = world.revision,
-        .strategic_directive = directive,
-    };
-    RCLCPP_INFO(get_logger(),
-                "INCREMENTAL_TOPOLOGY3D_SEARCH_STAGE stage=lattice_begin "
-                "world_revision=%" PRIu64 " base_generation=%" PRIu64
-                " purpose=%s planning_goal=(%.2f,%.2f,%.2f)",
-                world.revision, world.global_guide_generation,
-                lattice3DRoutePurposeName(directive.route_purpose),
-                directive.planning_goal.x, directive.planning_goal.y,
-                directive.planning_goal.z);
-    RiskAwareLattice3DResult result = planRiskAwareLattice3D(
-        world.grid, *world.distances_m, search_start, directive.preferred_direction,
-        mission_goal, passage_traversals, search_config, planning_worker_pool_.get(),
-        &exploration_context);
-    RCLCPP_INFO(get_logger(),
-                "INCREMENTAL_TOPOLOGY3D_SEARCH_STAGE stage=lattice_complete "
-                "world_revision=%" PRIu64 " base_generation=%" PRIu64
-                " status=%s points=%zu",
-                world.revision, world.global_guide_generation,
-                lattice3DStatusName(result.status), result.points.size());
-    return result;
-  };
-  if (strategic_directive.has_value()) {
-    lattice = plan_lattice(*strategic_directive);
-  }
-  const auto select_topology_fallback = [&](const char* const trigger) {
-    const auto topology_started = std::chrono::steady_clock::now();
-    RCLCPP_INFO(
-        get_logger(),
-        "INCREMENTAL_TOPOLOGY3D_SEARCH_STAGE stage=topology_fallback_begin "
-        "world_revision=%" PRIu64 " base_generation=%" PRIu64
-        " trigger=%s direct_status=%s start=(%.2f,%.2f,%.2f) goal=(%.2f,%.2f,%.2f)",
-        world.revision, world.global_guide_generation, trigger,
-        lattice3DStatusName(lattice.status), search_start.x, search_start.y,
-        search_start.z, mission_goal.x, mission_goal.y, mission_goal.z);
-    topology = selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
-    const double topology_ms = std::chrono::duration<double, std::milli>(
-                                   std::chrono::steady_clock::now() - topology_started)
-                                   .count();
-    RCLCPP_INFO(get_logger(),
-                "INCREMENTAL_TOPOLOGY3D_SEARCH_STAGE stage=topology_fallback_complete "
-                "world_revision=%" PRIu64 " base_generation=%" PRIu64
-                " duration_ms=%.2f status=%s directive_available=%s",
-                world.revision, world.global_guide_generation, topology_ms,
-                incrementalTopologicalPlanStatus3DName(topology.plan.status),
-                topology.directive.has_value() ? "true" : "false");
-    if (topology.directive.has_value()) {
-      preferred_direction = topology.directive->lattice.preferred_direction;
-      strategic_directive = topology.directive->lattice;
-      topology_route_used = true;
-      lattice = plan_lattice(*strategic_directive);
-    }
-  };
-  const bool mission_transit =
-      strategic_directive.has_value() &&
-      strategic_directive->route_purpose == Lattice3DRoutePurpose::kMissionTransit;
-  if (!launch_departure.executable && mission_transit &&
-      lattice.status != Lattice3DStatus::kReachedPlanningGoal &&
-      lattice.status != Lattice3DStatus::kViableFrontier) {
-    select_topology_fallback("direct_unreachable");
-  }
-  const double search_ms = std::chrono::duration<double, std::milli>(
-                               std::chrono::steady_clock::now() - search_started)
-                               .count();
+
+  ProductionRouteCandidateSelection3D route_selection =
+      selectRouteCandidate3D(world, navigation, mission_goal, latest_raw_world_3d);
+  RiskAwareLattice3DResult& lattice = route_selection.lattice;
+  ProductionIncrementalTopologySearch3D& topology = route_selection.topology;
+  const std::optional<Lattice3DStrategicDirective>& strategic_directive =
+      route_selection.directive;
+  const Vec3 preferred_direction = route_selection.preferred_direction;
+  const bool topology_route_used = route_selection.topology_route_used;
+  const double search_ms = route_selection.search_ms;
   ProductionMppiPreparedEsdf prepared = world;
   prepared.passage_traversals.reset();
+  prepared.route_intent = route_selection.intent;
+  prepared.route_segment_evidence = route_selection.evidence;
+  prepared.route_proposal_selection_reason = route_selection.proposal_selection.reason;
+  prepared.route_proposal_candidate_count =
+      route_selection.proposal_selection.considered_candidates;
+  prepared.route_proposal_eligible_count =
+      route_selection.proposal_selection.eligible_candidates;
   prepared.global_guide_search_ms = search_ms;
   prepared.planning_search_kind = ProductionPlanningSearchKind::kLattice3D;
   prepared.planning_search_start = search_start;
@@ -456,7 +350,13 @@ void ProductionMppiNode::processGuideSearch3D(
     if (validation.accepted && latest_observed_occupancy != nullptr) {
       if (const std::optional<StaticRouteCandidateValidation> latest_raw_validation =
               validateRouteAgainstLatestObservedRawOccupancy(
-                  *mutable_route, *latest_observed_occupancy, footprint_config);
+                  *mutable_route, *latest_observed_occupancy, footprint_config,
+                  world.proprioceptive_free_space_seed
+                      ? std::addressof(*world.proprioceptive_free_space_seed)
+                      : nullptr,
+                  world.launch_support_contact
+                      ? std::addressof(*world.launch_support_contact)
+                      : nullptr);
           latest_raw_validation.has_value()) {
         validation = *latest_raw_validation;
       }

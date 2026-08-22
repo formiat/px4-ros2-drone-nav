@@ -229,6 +229,7 @@ add_library(
   src/risk_aware_lattice_3d_planner.cpp
   src/risk_aware_lattice_3d_result.cpp
   src/route_3d.cpp
+  src/route_planning_3d.cpp
   src/simulation_truth_alignment.cpp
   src/spectator_selection.cpp
   src/static_route_extension.cpp
@@ -586,6 +587,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_planning_tick.cpp
     src/production_mppi_node_raw_world.cpp
     src/production_mppi_node_runtime.cpp
+    src/production_mppi_route_selection.cpp
     src/production_mppi_route_world.cpp
     src/production_mppi_route_helpers.cpp
     src/production_mppi_node_static_extension.cpp
@@ -1109,6 +1111,11 @@ if(BUILD_TESTING)
   target_include_directories(route_3d_test PRIVATE src)
   target_link_libraries(route_3d_test drone_city_nav_core)
   enable_project_warnings(route_3d_test)
+
+  ament_add_gtest(route_planning_3d_test tests/route_planning_3d_test.cpp)
+  target_compile_features(route_planning_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(route_planning_3d_test drone_city_nav_core)
+  enable_project_warnings(route_planning_3d_test)
 
   ament_add_gtest(passage_traversal_evidence_test
                   tests/passage_traversal_evidence_test.cpp)
