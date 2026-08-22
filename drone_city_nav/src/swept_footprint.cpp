@@ -736,6 +736,25 @@ bool rawSweptFootprintIsNavigable(
       .accepted();
 }
 
+bool rawOccupiedFootprintIsClearAt(const ObservedOccupancyGrid3D& occupancy,
+                                   const Point3& position,
+                                   const FootprintBodyAxis& body_axis,
+                                   const SweptFootprintConfig& config) noexcept {
+  return validateRawFootprintAt3D<false, false>(occupancy, position, body_axis, config)
+      .accepted();
+}
+
+bool rawOccupiedSweptFootprintIsClear(const ObservedOccupancyGrid3D& occupancy,
+                                      const Point3& first,
+                                      const FootprintBodyAxis& first_body_axis,
+                                      const Point3& second,
+                                      const FootprintBodyAxis& second_body_axis,
+                                      const SweptFootprintConfig& config) noexcept {
+  return validateRawSweptFootprint3D<false, false>(occupancy, first, first_body_axis,
+                                                   second, second_body_axis, config)
+      .accepted();
+}
+
 bool footprintIntersectsAxisAlignedBox(const Point3& position,
                                        const FootprintBodyAxis& requested_body_axis,
                                        const SweptFootprintConfig& config,

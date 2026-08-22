@@ -106,11 +106,15 @@ template<typename Occupancy>
                                const SweptFootprintConfig& footprint,
                                const bool require_known_free_space) noexcept {
   if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
+    if (!require_known_free_space) {
+      return rawOccupiedFootprintIsClearAt(occupancy, position, FootprintBodyAxis{},
+                                           footprint);
+    }
     const SweptFootprintResult evidence =
         validateRawFootprintAt(occupancy, position, FootprintBodyAxis{}, footprint);
     return !evidence.evidence.raw_collision &&
            !evidence.evidence.outside_grid_exposure &&
-           (!require_known_free_space || !evidence.evidence.unknown_exposure);
+           !evidence.evidence.unknown_exposure;
   }
   static_cast<void>(require_known_free_space);
   return rawFootprintIsNavigableAt(occupancy, position, FootprintBodyAxis{}, footprint);
@@ -122,11 +126,15 @@ template<typename Occupancy>
                                     const SweptFootprintConfig& footprint,
                                     const bool require_known_free_space) noexcept {
   if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
+    if (!require_known_free_space) {
+      return rawOccupiedSweptFootprintIsClear(occupancy, first, FootprintBodyAxis{},
+                                              second, FootprintBodyAxis{}, footprint);
+    }
     const SweptFootprintResult evidence = validateRawSweptFootprint(
         occupancy, first, FootprintBodyAxis{}, second, FootprintBodyAxis{}, footprint);
     return !evidence.evidence.raw_collision &&
            !evidence.evidence.outside_grid_exposure &&
-           (!require_known_free_space || !evidence.evidence.unknown_exposure);
+           !evidence.evidence.unknown_exposure;
   }
   static_cast<void>(require_known_free_space);
   return rawSweptFootprintIsNavigable(occupancy, first, FootprintBodyAxis{}, second,
@@ -317,6 +325,8 @@ struct IncrementalTopologyGraph3D::Impl {
       std::deque<std::size_t> pending;
       pending.push_back(seed);
       visited[seed] = true;
+      component.parent_by_cell.emplace(sampleCellKey(bounds, navigable_cells[seed]),
+                                       navigable_cells[seed]);
       while (!pending.empty()) {
         const std::size_t index = pending.front();
         pending.pop_front();
@@ -334,15 +344,14 @@ struct IncrementalTopologyGraph3D::Impl {
             continue;
           }
           visited[found->second] = true;
+          component.parent_by_cell.emplace(sampleCellKey(bounds, neighbor), cell);
           pending.push_back(found->second);
         }
       }
       std::ranges::sort(component.cells, cellLess);
       component.representative_cell = representativeCellFor(occupancy, component.cells);
       component.representative = occupancy.cellCenter(component.representative_cell);
-      component.parent_by_cell =
-          buildParentTree(occupancy, component.cells, component.representative_cell,
-                          sample_stride_cells);
+      rerootParentTree(component);
       if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
         component.unknown_boundary_exposure =
             componentTouchesUnknown(occupancy, component.cells, sample_stride_cells);
@@ -460,35 +469,23 @@ struct IncrementalTopologyGraph3D::Impl {
     return best;
   }
 
-  template<typename Occupancy>
-  [[nodiscard]] std::unordered_map<std::uint64_t, GridIndex3D>
-  buildParentTree(const Occupancy& occupancy, const std::span<const GridIndex3D> cells,
-                  const GridIndex3D root, const int stride_cells) const {
-    std::unordered_set<std::uint64_t> component_cells;
-    component_cells.reserve(cells.size());
-    for (const GridIndex3D cell : cells) {
-      component_cells.insert(sampleCellKey(bounds, cell));
-    }
-    std::unordered_map<std::uint64_t, GridIndex3D> parents;
-    parents.reserve(cells.size());
-    std::deque<GridIndex3D> pending{root};
-    parents.emplace(sampleCellKey(bounds, root), root);
-    while (!pending.empty()) {
-      const GridIndex3D cell = pending.front();
-      pending.pop_front();
-      for (const GridIndex3D neighbor : cardinalNeighbors(cell, stride_cells)) {
-        const std::uint64_t key = sampleCellKey(bounds, neighbor);
-        if (!component_cells.contains(key) || parents.contains(key) ||
-            !navigableBetween(occupancy, occupancy.cellCenter(cell),
-                              occupancy.cellCenter(neighbor), config.footprint,
-                              config.require_known_free_space)) {
-          continue;
-        }
-        parents.emplace(key, cell);
-        pending.push_back(neighbor);
+  void rerootParentTree(BlockComponent& component) const {
+    GridIndex3D current = component.representative_cell;
+    GridIndex3D replacement_parent = current;
+    for (std::size_t guard = 0U; guard <= component.cells.size(); ++guard) {
+      const auto parent = component.parent_by_cell.find(sampleCellKey(bounds, current));
+      if (parent == component.parent_by_cell.end()) {
+        throw std::logic_error{"topology discovery tree is missing its representative"};
       }
+      const GridIndex3D previous_parent = parent->second;
+      parent->second = replacement_parent;
+      if (previous_parent == current) {
+        return;
+      }
+      replacement_parent = current;
+      current = previous_parent;
     }
-    return parents;
+    throw std::logic_error{"topology discovery tree contains a cycle"};
   }
 
   [[nodiscard]] std::vector<Point3>
@@ -1011,6 +1008,7 @@ struct IncrementalTopologyGraph3D::Impl {
     }
     std::vector<BuiltBlock> replacements;
     replacements.reserve(rebuilt_blocks.size());
+    auto stage_started = std::chrono::steady_clock::now();
     for (const IncrementalTopologyBlockIndex3D block : rebuilt_blocks) {
       replacements.push_back(buildBlock(occupancy, block));
       stats.adaptively_refined_blocks +=
@@ -1019,12 +1017,27 @@ struct IncrementalTopologyGraph3D::Impl {
         stats.sampled_navigable_cells += component.cells.size();
       }
     }
+    stats.block_build_ms = std::chrono::duration<double, std::milli>(
+                               std::chrono::steady_clock::now() - stage_started)
+                               .count();
+    stage_started = std::chrono::steady_clock::now();
     for (std::size_t index = 0U; index < rebuilt_blocks.size(); ++index) {
       replaceBlock(rebuilt_blocks[index], std::move(replacements[index]),
                    update_revision, stats);
     }
+    stats.block_replace_ms = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - stage_started)
+                                 .count();
+    stage_started = std::chrono::steady_clock::now();
     connectRebuiltBlocks(occupancy, rebuilt_blocks, update_revision);
+    stats.block_connect_ms = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - stage_started)
+                                 .count();
+    stage_started = std::chrono::steady_clock::now();
     classifyNodes(update_revision);
+    stats.node_classification_ms = std::chrono::duration<double, std::milli>(
+                                       std::chrono::steady_clock::now() - stage_started)
+                                       .count();
     graph_revision = update_revision;
     stats.node_count = nodes.size();
     stats.edge_count = edges.size();

@@ -184,6 +184,16 @@ rawSweptFootprintIsNavigable(const OccupancyGrid3D& occupancy, const Point3& fir
     const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
     const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
 
+[[nodiscard]] bool rawOccupiedFootprintIsClearAt(
+    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
+    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] bool rawOccupiedSweptFootprintIsClear(
+    const ObservedOccupancyGrid3D& occupancy, const Point3& first,
+    const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const FootprintBodyAxis& second_body_axis,
+    const SweptFootprintConfig& config) noexcept;
+
 [[nodiscard]] bool footprintIntersectsAxisAlignedBox(
     const Point3& position, const FootprintBodyAxis& body_axis,
     const SweptFootprintConfig& config, const Point3& box_minimum,

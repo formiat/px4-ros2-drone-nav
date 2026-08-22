@@ -120,7 +120,8 @@ void ProductionMppiNode::processObservedTopology3D(
       "base_resolution_m=%.3f coarse_resolution_m=%.3f "
       "refined_resolution_m=%.3f retained_nodes=%zu created_nodes=%zu "
       "retired_nodes=%zu nodes=%zu edges=%zu dirty_discovery_ms=%.2f "
-      "rebuild_ms=%.2f update_ms=%.2f",
+      "block_build_ms=%.2f block_replace_ms=%.2f block_connect_ms=%.2f "
+      "node_classification_ms=%.2f rebuild_ms=%.2f update_ms=%.2f",
       update.graph.revision, update.graph.full_reset ? "true" : "false",
       update.graph.requested_dirty_chunks, update.graph.discovered_dirty_blocks,
       update.graph.rebuilt_blocks, update.graph.refreshed_observation_blocks,
@@ -132,7 +133,9 @@ void ProductionMppiNode::processObservedTopology3D(
           static_cast<double>(topological_graph_3d_config_.refined_sample_stride_cells),
       update.graph.retained_node_ids, update.graph.created_nodes,
       update.graph.retired_nodes, update.graph.node_count, update.graph.edge_count,
-      update.graph.dirty_block_discovery_ms, update.graph.graph_rebuild_ms, update_ms);
+      update.graph.dirty_block_discovery_ms, update.graph.block_build_ms,
+      update.graph.block_replace_ms, update.graph.block_connect_ms,
+      update.graph.node_classification_ms, update.graph.graph_rebuild_ms, update_ms);
 }
 
 void ProductionMppiNode::configureIncrementalTopology3D() {

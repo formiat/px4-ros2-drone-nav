@@ -127,6 +127,10 @@ struct IncrementalTopologyGraph3DUpdate {
   std::size_t node_count{0U};
   std::size_t edge_count{0U};
   double dirty_block_discovery_ms{0.0};
+  double block_build_ms{0.0};
+  double block_replace_ms{0.0};
+  double block_connect_ms{0.0};
+  double node_classification_ms{0.0};
   double graph_rebuild_ms{0.0};
   bool full_reset{false};
 };

@@ -286,6 +286,27 @@ TEST(SweptFootprintTest, ObservedWorldRequiresEntireSweptBodyToBeKnownFree) {
             SweptFootprintStatus::kRawCollision);
 }
 
+TEST(SweptFootprintTest, RawOccupiedQueriesAllowUnknownButStillRejectCollision) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.25, 40, 16, 16}};
+  const SweptFootprintConfig footprint{.radius_m = 0.2,
+                                       .lower_extent_m = 0.2,
+                                       .upper_extent_m = 0.2,
+                                       .sweep_step_m = 0.125};
+
+  EXPECT_TRUE(rawOccupiedFootprintIsClearAt(occupancy, Point3{2.0, 2.125, 2.125},
+                                            FootprintBodyAxis{}, footprint));
+  EXPECT_TRUE(rawOccupiedSweptFootprintIsClear(
+      occupancy, Point3{1.0, 2.125, 2.125}, FootprintBodyAxis{},
+      Point3{8.0, 2.125, 2.125}, FootprintBodyAxis{}, footprint));
+
+  static_cast<void>(
+      occupancy.setState(GridIndex3D{20, 8, 8}, ObservedVoxelState::kOccupied));
+
+  EXPECT_FALSE(rawOccupiedSweptFootprintIsClear(
+      occupancy, Point3{1.0, 2.125, 2.125}, FootprintBodyAxis{},
+      Point3{8.0, 2.125, 2.125}, FootprintBodyAxis{}, footprint));
+}
+
 TEST(SweptFootprintTest, ObservedWorldIgnoresUnknownCellsBeyondAxialCaps) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
   ObservedOccupancyGrid3D occupancy{bounds};
