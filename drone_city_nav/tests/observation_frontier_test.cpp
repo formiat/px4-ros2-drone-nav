@@ -11,6 +11,9 @@
 namespace drone_city_nav {
 namespace {
 
+constexpr auto kStrictValidation = ObservedSpaceValidationPolicy::kRequireKnownFree;
+constexpr auto kPermissiveValidation = ObservedSpaceValidationPolicy::kAllowUnknown;
+
 [[nodiscard]] ObservedOccupancyGrid3D makeHalfObservedWorld() {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 24, 16}};
   for (int z = 0; z < 16; ++z) {
@@ -55,11 +58,11 @@ namespace {
 TEST(ObservationFrontierTest, AcceptsObservedFootprintFacingUnknownVolume) {
   const ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
   const Point3 pose{8.5, 12.5, 8.5};
-  const ObservationFrontierEvaluation evaluation =
-      evaluateObservationFrontier(occupancy, pose, 17U, makeConfig());
+  const ObservationFrontierEvaluation evaluation = evaluateObservationFrontier(
+      occupancy, pose, 17U, makeConfig(), kStrictValidation);
 
   ASSERT_TRUE(evaluation.accepted());
-  EXPECT_TRUE(evaluation.evidence.footprint_observed_free);
+  EXPECT_TRUE(evaluation.evidence.footprint_validation_accepted);
   EXPECT_GE(evaluation.evidence.supporting_rays, 2U);
   EXPECT_GE(evaluation.evidence.information_gain_voxels, 4U);
   EXPECT_GE(evaluation.evidence.information_gain_voxels,
@@ -105,8 +108,8 @@ TEST(ObservationFrontierTest,
   config.minimum_supporting_rays = 1U;
   config.maximum_observation_range_m = 4.0;
 
-  const ObservationFrontierEvaluation evaluation =
-      evaluateObservationFrontier(occupancy, Point3{5.625, 6.125, 3.625}, 17U, config);
+  const ObservationFrontierEvaluation evaluation = evaluateObservationFrontier(
+      occupancy, Point3{5.625, 6.125, 3.625}, 17U, config, kStrictValidation);
 
   EXPECT_FALSE(evaluation.accepted());
   EXPECT_EQ(evaluation.evidence.status,
@@ -118,10 +121,10 @@ TEST(ObservationFrontierTest,
 TEST(ObservationFrontierTest, StableIdentityDoesNotDependOnMapRevision) {
   const ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
   const Point3 pose{8.5, 12.5, 8.5};
-  const ObservationFrontierEvaluation first =
-      evaluateObservationFrontier(occupancy, pose, 17U, makeConfig());
-  const ObservationFrontierEvaluation second =
-      evaluateObservationFrontier(occupancy, pose, 23U, makeConfig());
+  const ObservationFrontierEvaluation first = evaluateObservationFrontier(
+      occupancy, pose, 17U, makeConfig(), kStrictValidation);
+  const ObservationFrontierEvaluation second = evaluateObservationFrontier(
+      occupancy, pose, 23U, makeConfig(), kStrictValidation);
 
   ASSERT_TRUE(first.accepted());
   ASSERT_TRUE(second.accepted());
@@ -133,12 +136,12 @@ TEST(ObservationFrontierTest, StableIdentityDoesNotDependOnMapRevision) {
 TEST(ObservationFrontierTest, NearbyPosesShareRegionalIdentity) {
   const ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
   const SensorObservabilityConfig config = makeConfig();
-  const ObservationFrontierEvaluation first =
-      evaluateObservationFrontier(occupancy, Point3{8.5, 12.5, 8.5}, 17U, config);
-  const ObservationFrontierEvaluation nearby =
-      evaluateObservationFrontier(occupancy, Point3{8.5, 14.5, 8.5}, 17U, config);
-  const ObservationFrontierEvaluation separate =
-      evaluateObservationFrontier(occupancy, Point3{8.5, 18.5, 8.5}, 17U, config);
+  const ObservationFrontierEvaluation first = evaluateObservationFrontier(
+      occupancy, Point3{8.5, 12.5, 8.5}, 17U, config, kStrictValidation);
+  const ObservationFrontierEvaluation nearby = evaluateObservationFrontier(
+      occupancy, Point3{8.5, 14.5, 8.5}, 17U, config, kStrictValidation);
+  const ObservationFrontierEvaluation separate = evaluateObservationFrontier(
+      occupancy, Point3{8.5, 18.5, 8.5}, 17U, config, kStrictValidation);
 
   ASSERT_TRUE(first.accepted());
   ASSERT_TRUE(nearby.accepted());
@@ -152,9 +155,10 @@ TEST(ObservationFrontierTest, RegionalIdentityDoesNotDependOnApproachDirection) 
   SensorObservabilityConfig config = makeConfig();
   config.frontier_identity_resolution_m = 100.0;
   const ObservationFrontierEvaluation from_left = evaluateObservationFrontier(
-      makeHalfObservedWorld(), Point3{8.5, 12.5, 8.5}, 17U, config);
+      makeHalfObservedWorld(), Point3{8.5, 12.5, 8.5}, 17U, config, kStrictValidation);
   const ObservationFrontierEvaluation from_right = evaluateObservationFrontier(
-      makeOppositeHalfObservedWorld(), Point3{12.5, 12.5, 8.5}, 17U, config);
+      makeOppositeHalfObservedWorld(), Point3{12.5, 12.5, 8.5}, 17U, config,
+      kStrictValidation);
 
   ASSERT_TRUE(from_left.accepted());
   ASSERT_TRUE(from_right.accepted());
@@ -175,7 +179,7 @@ TEST(ObservationFrontierTest, EvidenceRepresentsOneCoherentAngularSector) {
   }
 
   const ObservationFrontierEvaluation evaluation = evaluateObservationFrontier(
-      occupancy, Point3{12.5, 12.5, 8.5}, 17U, makeConfig());
+      occupancy, Point3{12.5, 12.5, 8.5}, 17U, makeConfig(), kStrictValidation);
 
   ASSERT_TRUE(evaluation.accepted());
   const Vec3 direction = evaluation.frontier.observation_direction;
@@ -196,8 +200,8 @@ TEST(ObservationFrontierTest, ReturnsIndependentFrontiersForDistinctUnknownSecto
   SensorObservabilityConfig config = makeConfig();
   config.frontier_identity_resolution_m = 2.0;
 
-  const ObservationFrontierSetEvaluation evaluation =
-      evaluateObservationFrontiers(occupancy, Point3{12.5, 12.5, 8.5}, 17U, config);
+  const ObservationFrontierSetEvaluation evaluation = evaluateObservationFrontiers(
+      occupancy, Point3{12.5, 12.5, 8.5}, 17U, config, kStrictValidation);
 
   ASSERT_GT(evaluation.frontiers.size(), 1U);
   std::ostringstream directions;
@@ -221,8 +225,8 @@ TEST(ObservationFrontierTest, ReturnsIndependentFrontiersForDistinctUnknownSecto
 
 TEST(ObservationFrontierTest, DiscoveryDeduplicatesObservationPosesForOneBoundary) {
   ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
-  const ObservationFrontierDiscovery discovery =
-      discoverObservationFrontiers(occupancy, 17U, makeConfig(), 1U, 1024U);
+  const ObservationFrontierDiscovery discovery = discoverObservationFrontiers(
+      occupancy, 17U, makeConfig(), kStrictValidation, 1U, 1024U);
 
   ASSERT_FALSE(discovery.frontiers.empty());
   std::unordered_set<std::uint64_t> ids;
@@ -236,12 +240,32 @@ TEST(ObservationFrontierTest, RejectsPoseWhoseFootprintTouchesUnknownSpace) {
   SensorObservabilityConfig config = makeConfig();
   config.footprint.radius_m = 1.0;
 
-  const ObservationFrontierEvaluation evaluation =
-      evaluateObservationFrontier(occupancy, Point3{10.5, 12.5, 8.5}, 17U, config);
+  const ObservationFrontierEvaluation evaluation = evaluateObservationFrontier(
+      occupancy, Point3{10.5, 12.5, 8.5}, 17U, config, kStrictValidation);
 
   EXPECT_FALSE(evaluation.accepted());
   EXPECT_EQ(evaluation.evidence.status,
             ObservationFrontierStatus::kFootprintNotObserved);
+}
+
+TEST(ObservationFrontierTest,
+     PermissiveValidationAllowsUnknownFootprintButNeverRawOccupied) {
+  ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
+  SensorObservabilityConfig config = makeConfig();
+  config.footprint.radius_m = 1.0;
+  const Point3 pose{10.5, 12.5, 8.5};
+
+  const ObservationFrontierEvaluation permissive =
+      evaluateObservationFrontier(occupancy, pose, 17U, config, kPermissiveValidation);
+  ASSERT_TRUE(permissive.accepted());
+  EXPECT_TRUE(permissive.evidence.footprint_validation_accepted);
+
+  ASSERT_TRUE(occupancy.setState({10, 12, 8}, ObservedVoxelState::kOccupied));
+  const ObservationFrontierEvaluation occupied =
+      evaluateObservationFrontier(occupancy, pose, 18U, config, kPermissiveValidation);
+  EXPECT_FALSE(occupied.accepted());
+  EXPECT_FALSE(occupied.evidence.footprint_validation_accepted);
+  EXPECT_EQ(occupied.evidence.status, ObservationFrontierStatus::kRawCollision);
 }
 
 TEST(ObservationFrontierTest, RejectsFullyObservedVolumeWithoutFrontier) {
@@ -256,7 +280,7 @@ TEST(ObservationFrontierTest, RejectsFullyObservedVolumeWithoutFrontier) {
   }
 
   const ObservationFrontierEvaluation evaluation = evaluateObservationFrontier(
-      occupancy, Point3{12.5, 12.5, 8.5}, 17U, makeConfig());
+      occupancy, Point3{12.5, 12.5, 8.5}, 17U, makeConfig(), kStrictValidation);
 
   EXPECT_FALSE(evaluation.accepted());
   EXPECT_EQ(evaluation.evidence.status, ObservationFrontierStatus::kNoUnknownBoundary);
@@ -265,10 +289,10 @@ TEST(ObservationFrontierTest, RejectsFullyObservedVolumeWithoutFrontier) {
 TEST(ObservationFrontierTest, BudgetedDiscoveryIsDeterministicAndReportsCoverage) {
   const ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
 
-  const ObservationFrontierDiscovery first =
-      discoverObservationFrontiers(occupancy, 17U, makeConfig(), 1U, 2U);
-  const ObservationFrontierDiscovery second =
-      discoverObservationFrontiers(occupancy, 17U, makeConfig(), 1U, 2U);
+  const ObservationFrontierDiscovery first = discoverObservationFrontiers(
+      occupancy, 17U, makeConfig(), kStrictValidation, 1U, 2U);
+  const ObservationFrontierDiscovery second = discoverObservationFrontiers(
+      occupancy, 17U, makeConfig(), kStrictValidation, 1U, 2U);
 
   EXPECT_GT(first.sampled_free_voxels, 0U);
   EXPECT_GT(first.boundary_candidates, first.evaluated_candidates);
@@ -285,10 +309,10 @@ TEST(ObservationFrontierTest, BudgetedDiscoveryIsDeterministicAndReportsCoverage
 TEST(ObservationFrontierTest, BudgetedDiscoveryRotatesItsSampleAcrossRevisions) {
   const ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
 
-  const ObservationFrontierDiscovery first =
-      discoverObservationFrontiers(occupancy, 17U, makeConfig(), 1U, 2U);
-  const ObservationFrontierDiscovery next =
-      discoverObservationFrontiers(occupancy, 18U, makeConfig(), 1U, 2U);
+  const ObservationFrontierDiscovery first = discoverObservationFrontiers(
+      occupancy, 17U, makeConfig(), kStrictValidation, 1U, 2U);
+  const ObservationFrontierDiscovery next = discoverObservationFrontiers(
+      occupancy, 18U, makeConfig(), kStrictValidation, 1U, 2U);
 
   ASSERT_EQ(first.evaluated_candidates, 2U);
   ASSERT_EQ(next.evaluated_candidates, 2U);

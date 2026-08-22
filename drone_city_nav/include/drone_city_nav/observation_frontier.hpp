@@ -56,7 +56,7 @@ struct SensorObservabilityEvidence {
   std::size_t information_gain_voxels{0U};
   std::size_t required_information_gain_voxels{0U};
   double minimum_known_free_ray_m{0.0};
-  bool footprint_observed_free{false};
+  bool footprint_validation_accepted{false};
 
   [[nodiscard]] bool accepted() const noexcept {
     return status == ObservationFrontierStatus::kAccepted;
@@ -115,26 +115,31 @@ struct ObservationFrontierDiscoveryRegion {
 [[nodiscard]] ObservationFrontierEvaluation
 evaluateObservationFrontier(const ObservedOccupancyGrid3D& occupancy,
                             const Point3& observation_pose, std::uint64_t map_revision,
-                            const SensorObservabilityConfig& config = {});
+                            const SensorObservabilityConfig& config,
+                            ObservedSpaceValidationPolicy validation_policy);
 
 [[nodiscard]] ObservationFrontierSetEvaluation
 evaluateObservationFrontiers(const ObservedOccupancyGrid3D& occupancy,
                              const Point3& observation_pose, std::uint64_t map_revision,
-                             const SensorObservabilityConfig& config = {});
+                             const SensorObservabilityConfig& config,
+                             ObservedSpaceValidationPolicy validation_policy);
 
 [[nodiscard]] bool observationPoseHasSupportedUnknownBoundary(
     const ObservedOccupancyGrid3D& occupancy, GridIndex3D observation_cell,
-    const SensorObservabilityConfig& config) noexcept;
+    const SensorObservabilityConfig& config,
+    ObservedSpaceValidationPolicy validation_policy) noexcept;
 
 [[nodiscard]] ObservationFrontierDiscovery discoverObservationFrontiers(
     const ObservedOccupancyGrid3D& occupancy, std::uint64_t map_revision,
-    const SensorObservabilityConfig& config, std::size_t cell_stride,
+    const SensorObservabilityConfig& config,
+    ObservedSpaceValidationPolicy validation_policy, std::size_t cell_stride,
     std::size_t maximum_evaluations,
     std::optional<ObservationFrontierDiscoveryRegion> region = std::nullopt);
 
 [[nodiscard]] ObservationFrontierDiscovery discoverObservationFrontiersAtCells(
     const ObservedOccupancyGrid3D& occupancy, std::uint64_t map_revision,
     const SensorObservabilityConfig& config,
+    ObservedSpaceValidationPolicy validation_policy,
     std::span<const GridIndex3D> candidate_cells, std::size_t maximum_evaluations,
     std::optional<Point3> mission_goal = std::nullopt);
 

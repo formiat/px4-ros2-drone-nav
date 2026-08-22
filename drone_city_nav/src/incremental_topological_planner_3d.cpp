@@ -1,7 +1,5 @@
 #include "drone_city_nav/incremental_topological_planner_3d.hpp"
 
-#include "drone_city_nav/reachable_observation_domain_3d.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -150,14 +148,15 @@ indexSourceEdges(const IncrementalTopologyGraph3DSnapshot& graph) {
 void appendObservationAnchors(std::vector<IncrementalTopologyNodeId>& anchors,
                               const IncrementalTopologyGraph3DSnapshot& graph,
                               const ObservedOccupancyGrid3D& occupancy,
-                              const SensorObservabilityConfig& observability) {
+                              const SensorObservabilityConfig& observability,
+                              const ObservedSpaceValidationPolicy validation_policy) {
   if (!sensorObservabilityConfigIsValid(observability)) {
     return;
   }
   for (const IncrementalTopologySample3D& sample : graph.samples()) {
     if (occupancy.isKnownFree(sample.cell) &&
         observationPoseHasSupportedUnknownBoundary(occupancy, sample.cell,
-                                                   observability)) {
+                                                   observability, validation_policy)) {
       anchors.push_back(sample.node);
     }
   }
@@ -508,7 +507,9 @@ void materializePath(IncrementalTopologicalPlan3D& result,
       config.coverage_penalty_weight * coverage_penalty -
       config.information_gain_reward *
           std::log1p(static_cast<double>(frontier.information_gain_voxels)) -
-      config.clearance_reward * frontier.minimum_known_free_ray_m -
+      (config.require_known_free_space
+           ? config.clearance_reward * frontier.minimum_known_free_ray_m
+           : 0.0) -
       config.goal_progress_reward * goal_progress_m;
   return FrontierCandidate{.node = &node,
                            .frontier = frontier,
@@ -562,28 +563,19 @@ connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
     ObservationFrontierDiscovery& discovery, std::size_t& reachable_count,
     const std::optional<ObservationFrontier>& active_frontier,
     FrontierSelectionDiagnostics& diagnostics) {
-  std::vector<IncrementalTopologyNodeId> reachable_nodes;
-  reachable_nodes.reserve(records.size());
-  for (const auto& [node, record] : records) {
-    static_cast<void>(record);
-    reachable_nodes.push_back(node);
+  std::vector<GridIndex3D> candidate_cells;
+  candidate_cells.reserve(source_graph.samples().size());
+  for (const IncrementalTopologySample3D& sample : source_graph.samples()) {
+    if (records.contains(sample.node)) {
+      candidate_cells.push_back(sample.cell);
+    }
   }
-  const ReachableObservationDomain3D observation_domain =
-      buildReachableObservationDomain3D(
-          source_graph, occupancy, reachable_nodes,
-          ReachableObservationDomain3DConfig{
-              .maximum_fresh_extension_m =
-                  config.maximum_fresh_frontier_anchor_distance_m,
-              .footprint = observability.footprint,
-              .validation_policy =
-                  config.require_known_free_space
-                      ? ObservedSpaceValidationPolicy::kRequireKnownFree
-                      : ObservedSpaceValidationPolicy::kAllowUnknown,
-          });
+  const ObservedSpaceValidationPolicy validation_policy =
+      config.require_known_free_space ? ObservedSpaceValidationPolicy::kRequireKnownFree
+                                      : ObservedSpaceValidationPolicy::kAllowUnknown;
   discovery = discoverObservationFrontiersAtCells(
-      occupancy, source_graph.revision(), observability,
-      observation_domain.candidateCells(), config.maximum_fresh_frontier_evaluations,
-      mission_goal);
+      occupancy, source_graph.revision(), observability, validation_policy,
+      candidate_cells, config.maximum_fresh_frontier_evaluations, mission_goal);
   std::optional<FrontierCandidate> best;
   for (const ObservationFrontier& frontier : discovery.frontiers) {
     if (distance3D(start, frontier.observation_pose) <
@@ -591,8 +583,9 @@ connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
       continue;
     }
     std::optional<IncrementalTopologyConnector3D> connector =
-        observation_domain.connect(frontier.observation_pose,
-                                   config.maximum_fresh_frontier_anchor_distance_m);
+        source_graph.connectObserved(occupancy, frontier.observation_pose,
+                                     config.maximum_fresh_frontier_anchor_distance_m,
+                                     observability.footprint, validation_policy);
     if (!connector.has_value() || !records.contains(connector->node)) {
       continue;
     }
@@ -799,7 +792,10 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     anchors.push_back(*result.goal_node);
   }
   if (occupancy != nullptr && observability != nullptr) {
-    appendObservationAnchors(anchors, graph, *occupancy, *observability);
+    appendObservationAnchors(anchors, graph, *occupancy, *observability,
+                             config_.require_known_free_space
+                                 ? ObservedSpaceValidationPolicy::kRequireKnownFree
+                                 : ObservedSpaceValidationPolicy::kAllowUnknown);
   }
   const RegionalTopologyGraph3D regional = buildRegionalTopologyGraph3D(graph, anchors);
   const RegionalAdjacency adjacency = buildRegionalAdjacency(regional);

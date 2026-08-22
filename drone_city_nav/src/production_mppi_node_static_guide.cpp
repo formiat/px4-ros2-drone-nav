@@ -157,7 +157,10 @@ void ProductionMppiNode::processGuideSearch3D(
         evaluateObservationFrontiers(
             *world.observed_occupancy,
             world.lattice_3d_observation_frontier->observation_pose, world.revision,
-            lattice_3d_config_.sensor_observability);
+            lattice_3d_config_.sensor_observability,
+            lattice_3d_config_.require_known_free_space
+                ? ObservedSpaceValidationPolicy::kRequireKnownFree
+                : ObservedSpaceValidationPolicy::kAllowUnknown);
     // A boundary voxel can change identity while the observation pose remains
     // known-free and still reveals unknown space. Keep executing that useful
     // finite route until it is reached or ceases to expose any frontier.

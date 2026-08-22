@@ -253,7 +253,11 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
       exploration_context->observed_occupancy != nullptr) {
     ObservationFrontierDiscovery discovery = discoverObservationFrontiers(
         *exploration_context->observed_occupancy, exploration_context->map_revision,
-        config.sensor_observability, config.observation_frontier_evaluation_stride,
+        config.sensor_observability,
+        config.require_known_free_space
+            ? ObservedSpaceValidationPolicy::kRequireKnownFree
+            : ObservedSpaceValidationPolicy::kAllowUnknown,
+        config.observation_frontier_evaluation_stride,
         config.observation_frontier_maximum_evaluations);
     std::vector<RankedObservationFrontier> frontiers;
     frontiers.reserve(discovery.frontiers.size());

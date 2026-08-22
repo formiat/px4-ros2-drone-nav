@@ -37,6 +37,7 @@ struct SupportedObservationRay {
   Point3 boundary_point{};
   std::vector<GridIndex3D> unknown_cells;
   double known_free_ray_m{0.0};
+  double traversable_ray_m{0.0};
 };
 
 struct DirectionalObservationCluster {
@@ -54,9 +55,13 @@ struct ResolvedObservationPose {
   double direction_alignment{-1.0};
 };
 
-[[nodiscard]] auto clusterRank(const DirectionalObservationCluster& cluster) {
+[[nodiscard]] auto clusterRank(const DirectionalObservationCluster& cluster,
+                               const ObservedSpaceValidationPolicy validation_policy) {
   return std::tuple{cluster.information_gain_cells.size(), cluster.supporting_rays,
-                    cluster.minimum_known_free_ray_m};
+                    validation_policy ==
+                            ObservedSpaceValidationPolicy::kRequireKnownFree
+                        ? cluster.minimum_known_free_ray_m
+                        : 0.0};
 }
 
 [[nodiscard]] Vec3 normalized(const Vec3& direction) noexcept {
@@ -139,7 +144,8 @@ sensorAlignedObservationDirections(const SensorObservabilityConfig& config) {
 
 [[nodiscard]] std::vector<DirectionalObservationCluster>
 makeDirectionalClusters(const std::span<const SupportedObservationRay> rays,
-                        const double half_angle_rad) {
+                        const double half_angle_rad,
+                        const ObservedSpaceValidationPolicy validation_policy) {
   std::vector<DirectionalObservationCluster> result;
   result.reserve(rays.size());
   const double minimum_dot = std::cos(half_angle_rad);
@@ -190,7 +196,8 @@ makeDirectionalClusters(const std::span<const SupportedObservationRay> rays,
       candidate.direction = normalized(weighted_direction);
       candidate.minimum_known_free_ray_m =
           std::isfinite(minimum_support_m) ? minimum_support_m : 0.0;
-      if (clusterRank(candidate) > clusterRank(best)) {
+      if (clusterRank(candidate, validation_policy) >
+          clusterRank(best, validation_policy)) {
         best = std::move(candidate);
       }
     }
@@ -209,7 +216,8 @@ makeDirectionalClusters(const std::span<const SupportedObservationRay> rays,
 resolveObservationPose(const ObservedOccupancyGrid3D& occupancy, const Point3& origin,
                        const std::span<const SupportedObservationRay> rays,
                        const DirectionalObservationCluster& cluster,
-                       const SensorObservabilityConfig& config) noexcept {
+                       const SensorObservabilityConfig& config,
+                       const ObservedSpaceValidationPolicy validation_policy) noexcept {
   const double resolution_m = occupancy.bounds().resolution_m;
   if (!(resolution_m > 0.0)) {
     return std::nullopt;
@@ -222,15 +230,22 @@ resolveObservationPose(const ObservedOccupancyGrid3D& occupancy, const Point3& o
       continue;
     }
     const SupportedObservationRay& ray = rays[ray_index];
-    double advance_m = std::floor(ray.known_free_ray_m / pose_step_m) * pose_step_m;
+    // A permissive frontier crosses the observed boundary without turning the
+    // entire sensor ray into one long-lived exploration objective.
+    const double maximum_advance_m =
+        validation_policy == ObservedSpaceValidationPolicy::kAllowUnknown
+            ? std::min(ray.traversable_ray_m,
+                       ray.known_free_ray_m + config.minimum_observation_pose_advance_m)
+            : ray.known_free_ray_m;
+    double advance_m = std::floor(maximum_advance_m / pose_step_m) * pose_step_m;
     for (; advance_m + 1.0e-9 >= config.minimum_observation_pose_advance_m;
          advance_m -= pose_step_m) {
       const Point3 candidate{origin.x + ray.direction.x * advance_m,
                              origin.y + ray.direction.y * advance_m,
                              origin.z + ray.direction.z * advance_m};
-      const SweptFootprintResult validation =
-          validateRawSweptFootprint(occupancy, origin, FootprintBodyAxis{}, candidate,
-                                    FootprintBodyAxis{}, config.footprint);
+      const SweptFootprintResult validation = validateObservedSweptFootprint(
+          occupancy, origin, FootprintBodyAxis{}, candidate, FootprintBodyAxis{},
+          config.footprint, validation_policy);
       if (!validation.accepted()) {
         continue;
       }
@@ -309,11 +324,16 @@ makeFrontierId(const Point3& pose, const double identity_resolution_m) noexcept 
   return ObservationFrontierId{hash};
 }
 
-[[nodiscard]] bool betterFrontierRepresentative(const ObservationFrontier& candidate,
-                                                const ObservationFrontier& current) {
-  const auto rank = [](const ObservationFrontier& frontier) {
+[[nodiscard]] bool
+betterFrontierRepresentative(const ObservationFrontier& candidate,
+                             const ObservationFrontier& current,
+                             const ObservedSpaceValidationPolicy validation_policy) {
+  const auto rank = [validation_policy](const ObservationFrontier& frontier) {
     return std::tuple{frontier.information_gain_voxels, frontier.supporting_rays,
-                      frontier.minimum_known_free_ray_m};
+                      validation_policy ==
+                              ObservedSpaceValidationPolicy::kRequireKnownFree
+                          ? frontier.minimum_known_free_ray_m
+                          : 0.0};
   };
   if (rank(candidate) != rank(current)) {
     return rank(candidate) > rank(current);
@@ -375,16 +395,19 @@ footprintStatus(const SweptFootprintStatus status) noexcept {
   return bit(chunk.observed, bit_index) && !bit(chunk.occupied, bit_index);
 }
 
-[[nodiscard]] bool
-hasSupportedUnknownBoundaryImpl(const ObservedOccupancyGrid3D& occupancy,
-                                const GridIndex3D origin,
-                                const SensorObservabilityConfig& config) noexcept {
+[[nodiscard]] bool hasSupportedUnknownBoundaryImpl(
+    const ObservedOccupancyGrid3D& occupancy, const GridIndex3D origin,
+    const SensorObservabilityConfig& config,
+    const ObservedSpaceValidationPolicy validation_policy) noexcept {
   const double resolution_m = occupancy.bounds().resolution_m;
   if (!(resolution_m > 0.0)) {
     return false;
   }
-  const int known_free_steps = std::max(
-      1, static_cast<int>(std::ceil(config.minimum_known_free_ray_m / resolution_m)));
+  const int known_free_steps =
+      validation_policy == ObservedSpaceValidationPolicy::kRequireKnownFree
+          ? std::max(1, static_cast<int>(
+                            std::ceil(config.minimum_known_free_ray_m / resolution_m)))
+          : 0;
   for (int dz = -1; dz <= 1; ++dz) {
     for (int dy = -1; dy <= 1; ++dy) {
       for (int dx = -1; dx <= 1; ++dx) {
@@ -428,18 +451,19 @@ struct BoundaryCandidate {
 }
 
 [[nodiscard]] std::optional<BoundaryCandidate>
-makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3D cell,
-                      const std::uint64_t map_revision,
-                      const SensorObservabilityConfig& config,
-                      const std::optional<Point3> mission_goal) {
-  if (!occupancy.contains(cell) || !occupancy.isKnownFree(cell) ||
-      !observationPoseHasSupportedUnknownBoundary(occupancy, cell, config)) {
+makeViewpointCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3D cell,
+                       const std::uint64_t map_revision,
+                       const SensorObservabilityConfig& config,
+                       const ObservedSpaceValidationPolicy validation_policy,
+                       const std::optional<Point3> mission_goal) {
+  if (!occupancy.contains(cell) || !occupancy.isKnownFree(cell)) {
     return std::nullopt;
   }
   const Point3 center = occupancy.cellCenter(cell);
-  // A raw boundary cell is only a possible sensor viewpoint. Validate the
-  // complete physical footprint before spending the bounded ray budget on it.
-  if (!validateRawFootprintAt(occupancy, center, FootprintBodyAxis{}, config.footprint)
+  // A sampled cell is only a possible sensor viewpoint. Validate the complete
+  // physical footprint before spending the bounded ray budget on it.
+  if (!validateObservedFootprintAt(occupancy, center, FootprintBodyAxis{},
+                                   config.footprint, validation_policy)
            .accepted()) {
     return std::nullopt;
   }
@@ -453,9 +477,24 @@ makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3
   };
 }
 
+[[nodiscard]] std::optional<BoundaryCandidate>
+makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3D cell,
+                      const std::uint64_t map_revision,
+                      const SensorObservabilityConfig& config,
+                      const ObservedSpaceValidationPolicy validation_policy,
+                      const std::optional<Point3> mission_goal) {
+  if (!observationPoseHasSupportedUnknownBoundary(occupancy, cell, config,
+                                                  validation_policy)) {
+    return std::nullopt;
+  }
+  return makeViewpointCandidate(occupancy, cell, map_revision, config,
+                                validation_policy, mission_goal);
+}
+
 [[nodiscard]] ObservationFrontierDiscovery evaluateBoundaryCandidates(
     const ObservedOccupancyGrid3D& occupancy, const std::uint64_t map_revision,
     const SensorObservabilityConfig& config,
+    const ObservedSpaceValidationPolicy validation_policy,
     std::vector<BoundaryCandidate> boundary_candidates,
     const std::size_t sampled_free_voxels, const std::size_t maximum_evaluations) {
   ObservationFrontierDiscovery result;
@@ -481,8 +520,9 @@ makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3
         candidate.stable_id.value + 0x9e3779b97f4a7c15ULL +
         (result.evaluation_sample_fingerprint << 6U) +
         (result.evaluation_sample_fingerprint >> 2U);
-    ObservationFrontierSetEvaluation evaluation = evaluateObservationFrontiers(
-        occupancy, occupancy.cellCenter(candidate.cell), map_revision, config);
+    ObservationFrontierSetEvaluation evaluation =
+        evaluateObservationFrontiers(occupancy, occupancy.cellCenter(candidate.cell),
+                                     map_revision, config, validation_policy);
     const std::size_t status_index =
         static_cast<std::size_t>(evaluation.evidence.status);
     if (status_index < result.evaluation_status_counts.size()) {
@@ -490,7 +530,8 @@ makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3
     }
     for (const ObservationFrontier& frontier : evaluation.frontiers) {
       auto [found, inserted] = frontier_by_id.try_emplace(frontier.id.value, frontier);
-      if (!inserted && betterFrontierRepresentative(frontier, found->second)) {
+      if (!inserted &&
+          betterFrontierRepresentative(frontier, found->second, validation_policy)) {
         found->second = frontier;
       }
     }
@@ -510,8 +551,10 @@ makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3
 
 bool observationPoseHasSupportedUnknownBoundary(
     const ObservedOccupancyGrid3D& occupancy, const GridIndex3D observation_cell,
-    const SensorObservabilityConfig& config) noexcept {
-  return hasSupportedUnknownBoundaryImpl(occupancy, observation_cell, config);
+    const SensorObservabilityConfig& config,
+    const ObservedSpaceValidationPolicy validation_policy) noexcept {
+  return hasSupportedUnknownBoundaryImpl(occupancy, observation_cell, config,
+                                         validation_policy);
 }
 
 bool sensorObservabilityConfigIsValid(
@@ -544,9 +587,10 @@ bool sensorObservabilityConfigIsValid(
 
 ObservationFrontierEvaluation evaluateObservationFrontier(
     const ObservedOccupancyGrid3D& occupancy, const Point3& observation_pose,
-    const std::uint64_t map_revision, const SensorObservabilityConfig& config) {
-  ObservationFrontierSetEvaluation set =
-      evaluateObservationFrontiers(occupancy, observation_pose, map_revision, config);
+    const std::uint64_t map_revision, const SensorObservabilityConfig& config,
+    const ObservedSpaceValidationPolicy validation_policy) {
+  ObservationFrontierSetEvaluation set = evaluateObservationFrontiers(
+      occupancy, observation_pose, map_revision, config, validation_policy);
   ObservationFrontierEvaluation result{.evidence = set.evidence};
   if (set.accepted()) {
     result.frontier = set.frontiers.front();
@@ -556,12 +600,14 @@ ObservationFrontierEvaluation evaluateObservationFrontier(
 
 ObservationFrontierSetEvaluation evaluateObservationFrontiers(
     const ObservedOccupancyGrid3D& occupancy, const Point3& observation_pose,
-    const std::uint64_t map_revision, const SensorObservabilityConfig& config) {
+    const std::uint64_t map_revision, const SensorObservabilityConfig& config,
+    const ObservedSpaceValidationPolicy validation_policy) {
   ObservationFrontierSetEvaluation result;
-  const SweptFootprintResult footprint = validateRawFootprintAt(
-      occupancy, observation_pose, FootprintBodyAxis{}, config.footprint);
+  const SweptFootprintResult footprint =
+      validateObservedFootprintAt(occupancy, observation_pose, FootprintBodyAxis{},
+                                  config.footprint, validation_policy);
   result.evidence.status = footprintStatus(footprint.status);
-  result.evidence.footprint_observed_free = footprint.accepted();
+  result.evidence.footprint_validation_accepted = footprint.accepted();
   if (!footprint.accepted() || !sensorObservabilityConfigIsValid(config)) {
     return result;
   }
@@ -582,6 +628,7 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
     bool found_unknown = false;
     std::optional<Point3> boundary_point;
     double known_free_ray_m = 0.0;
+    double traversable_ray_m = 0.0;
     std::vector<GridIndex3D> ray_unknown_cells;
     for (std::size_t sample_index = 1U; sample_index <= ray_sample_count;
          ++sample_index) {
@@ -597,12 +644,14 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
       if (state == ObservedVoxelState::kOccupied) {
         break;
       }
+      traversable_ray_m = distance_m;
       if (state == ObservedVoxelState::kFree && !found_unknown) {
         known_free_ray_m = distance_m;
         continue;
       }
       if (state == ObservedVoxelState::kUnknown) {
-        if (known_free_ray_m + 1.0e-9 < config.minimum_known_free_ray_m) {
+        if (validation_policy == ObservedSpaceValidationPolicy::kRequireKnownFree &&
+            known_free_ray_m + 1.0e-9 < config.minimum_known_free_ray_m) {
           break;
         }
         if (!found_unknown) {
@@ -620,12 +669,16 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
         .boundary_point = *boundary_point,
         .unknown_cells = std::move(ray_unknown_cells),
         .known_free_ray_m = known_free_ray_m,
+        .traversable_ray_m = traversable_ray_m,
     });
   }
 
   std::vector<DirectionalObservationCluster> clusters = makeDirectionalClusters(
-      supported_rays, config.directional_cluster_half_angle_rad);
-  const auto best_cluster = std::ranges::max_element(clusters, {}, clusterRank);
+      supported_rays, config.directional_cluster_half_angle_rad, validation_policy);
+  const auto best_cluster = std::ranges::max_element(
+      clusters, {}, [validation_policy](const DirectionalObservationCluster& cluster) {
+        return clusterRank(cluster, validation_policy);
+      });
   if (best_cluster != clusters.end()) {
     result.evidence.information_gain_voxels =
         best_cluster->information_gain_cells.size();
@@ -645,8 +698,9 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
             result.evidence.required_information_gain_voxels) {
       continue;
     }
-    const std::optional<ResolvedObservationPose> resolved_pose = resolveObservationPose(
-        occupancy, observation_pose, supported_rays, cluster, config);
+    const std::optional<ResolvedObservationPose> resolved_pose =
+        resolveObservationPose(occupancy, observation_pose, supported_rays, cluster,
+                               config, validation_policy);
     if (!resolved_pose.has_value()) {
       continue;
     }
@@ -664,7 +718,8 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
         .minimum_known_free_ray_m = cluster.minimum_known_free_ray_m,
     };
     auto [found, inserted] = frontier_by_id.try_emplace(frontier.id.value, frontier);
-    if (!inserted && betterFrontierRepresentative(frontier, found->second)) {
+    if (!inserted &&
+        betterFrontierRepresentative(frontier, found->second, validation_policy)) {
       found->second = frontier;
     }
   }
@@ -674,11 +729,12 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
     result.frontiers.push_back(frontier);
   }
   std::ranges::sort(result.frontiers,
-                    [](const ObservationFrontier& lhs, const ObservationFrontier& rhs) {
-                      if (betterFrontierRepresentative(lhs, rhs)) {
+                    [validation_policy](const ObservationFrontier& lhs,
+                                        const ObservationFrontier& rhs) {
+                      if (betterFrontierRepresentative(lhs, rhs, validation_policy)) {
                         return true;
                       }
-                      if (betterFrontierRepresentative(rhs, lhs)) {
+                      if (betterFrontierRepresentative(rhs, lhs, validation_policy)) {
                         return false;
                       }
                       return lhs.id < rhs.id;
@@ -695,8 +751,9 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
 
 ObservationFrontierDiscovery discoverObservationFrontiers(
     const ObservedOccupancyGrid3D& occupancy, const std::uint64_t map_revision,
-    const SensorObservabilityConfig& config, const std::size_t cell_stride,
-    const std::size_t maximum_evaluations,
+    const SensorObservabilityConfig& config,
+    const ObservedSpaceValidationPolicy validation_policy,
+    const std::size_t cell_stride, const std::size_t maximum_evaluations,
     const std::optional<ObservationFrontierDiscoveryRegion> region) {
   if (cell_stride == 0U || maximum_evaluations == 0U ||
       !sensorObservabilityConfigIsValid(config) ||
@@ -751,13 +808,13 @@ ObservationFrontierDiscovery discoverObservationFrontiers(
       }
       ++sampled_free_voxels;
       if (std::optional<BoundaryCandidate> candidate = makeBoundaryCandidate(
-              occupancy, cell, map_revision, config,
+              occupancy, cell, map_revision, config, validation_policy,
               region.has_value() ? region->mission_goal : std::nullopt)) {
         boundary_candidates.push_back(*candidate);
       }
     }
   }
-  return evaluateBoundaryCandidates(occupancy, map_revision, config,
+  return evaluateBoundaryCandidates(occupancy, map_revision, config, validation_policy,
                                     std::move(boundary_candidates), sampled_free_voxels,
                                     maximum_evaluations);
 }
@@ -765,6 +822,7 @@ ObservationFrontierDiscovery discoverObservationFrontiers(
 ObservationFrontierDiscovery discoverObservationFrontiersAtCells(
     const ObservedOccupancyGrid3D& occupancy, const std::uint64_t map_revision,
     const SensorObservabilityConfig& config,
+    const ObservedSpaceValidationPolicy validation_policy,
     const std::span<const GridIndex3D> candidate_cells,
     const std::size_t maximum_evaluations, const std::optional<Point3> mission_goal) {
   if (maximum_evaluations == 0U || !sensorObservabilityConfigIsValid(config) ||
@@ -782,12 +840,12 @@ ObservationFrontierDiscovery discoverObservationFrontiersAtCells(
       continue;
     }
     ++sampled_free_voxels;
-    if (std::optional<BoundaryCandidate> candidate = makeBoundaryCandidate(
-            occupancy, cell, map_revision, config, mission_goal)) {
+    if (std::optional<BoundaryCandidate> candidate = makeViewpointCandidate(
+            occupancy, cell, map_revision, config, validation_policy, mission_goal)) {
       boundary_candidates.push_back(*candidate);
     }
   }
-  return evaluateBoundaryCandidates(occupancy, map_revision, config,
+  return evaluateBoundaryCandidates(occupancy, map_revision, config, validation_policy,
                                     std::move(boundary_candidates), sampled_free_voxels,
                                     maximum_evaluations);
 }

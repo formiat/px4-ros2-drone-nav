@@ -194,7 +194,6 @@ add_library(
   src/incremental_topology_block_scheduler_3d.cpp
   src/incremental_topology_observed_blocks_3d.cpp
   src/incremental_topology_graph_3d_types.cpp
-  src/reachable_observation_domain_3d.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
@@ -1057,12 +1056,6 @@ if(BUILD_TESTING)
   target_compile_features(incremental_topology_graph_3d_test PRIVATE cxx_std_20)
   target_link_libraries(incremental_topology_graph_3d_test drone_city_nav_core)
   enable_project_warnings(incremental_topology_graph_3d_test)
-
-  ament_add_gtest(reachable_observation_domain_3d_test
-                  tests/reachable_observation_domain_3d_test.cpp)
-  target_compile_features(reachable_observation_domain_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(reachable_observation_domain_3d_test drone_city_nav_core)
-  enable_project_warnings(reachable_observation_domain_3d_test)
 
   ament_add_gtest(incremental_topology_block_scheduler_3d_test
                   tests/incremental_topology_block_scheduler_3d_test.cpp)
