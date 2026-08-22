@@ -593,26 +593,39 @@ connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
   std::optional<FrontierCandidate> best;
   for (const ObservationFrontier& frontier : discovery.frontiers) {
     if (distance3D(start, frontier.observation_pose) <
-        config.minimum_observation_target_displacement_m) {
+            config.minimum_observation_target_displacement_m ||
+        distance3D(frontier.supporting_viewpoint, frontier.observation_pose) >
+            config.maximum_fresh_frontier_anchor_distance_m) {
       continue;
     }
-    std::optional<IncrementalTopologyConnector3D> connector =
-        source_graph.connectObserved(occupancy, frontier.observation_pose,
-                                     config.maximum_fresh_frontier_anchor_distance_m,
-                                     observability.footprint, validation_policy);
-    if (!connector.has_value() || !records.contains(connector->node)) {
+    const std::optional<GridIndex3D> supporting_cell =
+        cellForPoint(source_graph.bounds(), frontier.supporting_viewpoint);
+    const std::optional<IncrementalTopologyNodeId> supporting_node =
+        supporting_cell.has_value() ? source_graph.nodeForSampleCell(*supporting_cell)
+                                    : std::nullopt;
+    if (!supporting_node.has_value() || !records.contains(*supporting_node)) {
       continue;
     }
     const IncrementalTopologyNode3D* source_node =
-        source_graph.findNode(connector->node);
+        source_graph.findNode(*supporting_node);
     const std::optional<std::vector<PathStep>> path =
-        reconstructPath(start_node, connector->node, records);
+        reconstructPath(start_node, *supporting_node, records);
     if (source_node == nullptr || !path.has_value()) {
       continue;
     }
+    IncrementalTopologyConnector3D connector{
+        .node = *supporting_node,
+        .polyline = {frontier.observation_pose, frontier.supporting_viewpoint,
+                     source_node->representative},
+        .length_m =
+            distance3D(frontier.observation_pose, frontier.supporting_viewpoint) +
+            distance3D(frontier.supporting_viewpoint, source_node->representative),
+        .validated_through_revision =
+            std::min(source_graph.revision(), frontier.supporting_map_revision),
+    };
     ++reachable_count;
     FrontierCandidate candidate = makeFrontierCandidate(
-        *source_node, frontier, std::move(*connector), *path, start, mission_goal,
+        *source_node, frontier, std::move(connector), *path, start, mission_goal,
         source_graph, source_edges, memory, config, active_frontier);
     recordFrontierSelectionDiagnostics(candidate, diagnostics);
     if (!best || betterFrontier(candidate, *best)) {

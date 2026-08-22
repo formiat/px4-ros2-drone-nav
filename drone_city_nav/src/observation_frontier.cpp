@@ -338,10 +338,13 @@ betterFrontierRepresentative(const ObservationFrontier& candidate,
   if (rank(candidate) != rank(current)) {
     return rank(candidate) > rank(current);
   }
-  return std::tuple{candidate.observation_pose.x, candidate.observation_pose.y,
-                    candidate.observation_pose.z} <
-         std::tuple{current.observation_pose.x, current.observation_pose.y,
-                    current.observation_pose.z};
+  return std::tuple{
+             candidate.observation_pose.x,     candidate.observation_pose.y,
+             candidate.observation_pose.z,     candidate.supporting_viewpoint.x,
+             candidate.supporting_viewpoint.y, candidate.supporting_viewpoint.z} <
+         std::tuple{current.observation_pose.x,     current.observation_pose.y,
+                    current.observation_pose.z,     current.supporting_viewpoint.x,
+                    current.supporting_viewpoint.y, current.supporting_viewpoint.z};
 }
 
 [[nodiscard]] std::size_t
@@ -707,6 +710,7 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
     ObservationFrontier frontier{
         .id = makeFrontierId(cluster.boundary_centroid,
                              config.frontier_identity_resolution_m),
+        .supporting_viewpoint = observation_pose,
         .observation_pose = resolved_pose->pose,
         .boundary_centroid = cluster.boundary_centroid,
         .observation_direction = cluster.direction,

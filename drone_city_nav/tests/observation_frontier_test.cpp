@@ -67,6 +67,9 @@ TEST(ObservationFrontierTest, AcceptsObservedFootprintFacingUnknownVolume) {
   EXPECT_GE(evaluation.evidence.information_gain_voxels, 4U);
   EXPECT_GE(evaluation.evidence.information_gain_voxels,
             evaluation.evidence.required_information_gain_voxels);
+  EXPECT_DOUBLE_EQ(evaluation.frontier.supporting_viewpoint.x, pose.x);
+  EXPECT_DOUBLE_EQ(evaluation.frontier.supporting_viewpoint.y, pose.y);
+  EXPECT_DOUBLE_EQ(evaluation.frontier.supporting_viewpoint.z, pose.z);
   EXPECT_GT(evaluation.frontier.observation_direction.x, 0.5);
   EXPECT_GT(evaluation.frontier.observation_pose.x, pose.x);
   EXPECT_LT(evaluation.frontier.observation_pose.x,

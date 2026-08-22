@@ -65,6 +65,7 @@ struct SensorObservabilityEvidence {
 
 struct ObservationFrontier {
   ObservationFrontierId id{};
+  Point3 supporting_viewpoint{};
   Point3 observation_pose{};
   Point3 boundary_centroid{};
   Vec3 observation_direction{};

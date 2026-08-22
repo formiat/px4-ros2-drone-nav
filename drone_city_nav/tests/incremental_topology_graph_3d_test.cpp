@@ -634,6 +634,44 @@ TEST(IncrementalTopologyGraph3DTest, ObservedConnectorKeepsUnknownPolicyExplicit
                    .has_value());
 }
 
+TEST(IncrementalTopologyGraph3DTest,
+     ObservedConnectorSelectsTheLocalComponentAmongManyDistantSamples) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 192, 24, 8}};
+  fillStateBox(occupancy, 0, 191, 0, 23, 0, 7, ObservedVoxelState::kOccupied);
+  for (int minimum_x = 2; minimum_x < 188; minimum_x += 12) {
+    fillFreeBox(occupancy, minimum_x, minimum_x + 5, 9, 13, 2, 5);
+  }
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
+  config.maximum_observed_blocks_per_update = 4096U;
+  IncrementalTopologyGraph3D graph{config};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+
+  const std::optional<IncrementalTopologyConnector3D> connector =
+      snapshot.connectObserved(occupancy, {183.25, 11.5, 3.5}, 5.0, config.footprint,
+                               ObservedSpaceValidationPolicy::kRequireKnownFree);
+
+  if (!connector.has_value()) {
+    FAIL() << "local observed connector must exist";
+  }
+  const IncrementalTopologyConnector3D& local = *connector;
+  const IncrementalTopologyNode3D* node = snapshot.findNode(local.node);
+  if (node == nullptr) {
+    FAIL() << "connector node must belong to the snapshot";
+  }
+  EXPECT_GT(node->representative.x, 178.0);
+  EXPECT_LT(local.length_m, 5.0);
+  EXPECT_TRUE(std::ranges::all_of(
+      std::views::iota(std::size_t{1U}, local.polyline.size()),
+      [&](const std::size_t index) {
+        return validateObservedSweptFootprint(
+                   occupancy, local.polyline[index - 1U], FootprintBodyAxis{},
+                   local.polyline[index], FootprintBodyAxis{}, config.footprint,
+                   ObservedSpaceValidationPolicy::kRequireKnownFree)
+            .accepted();
+      }));
+}
+
 TEST(IncrementalTopologyGraph3DTest, RecordsExplicitMergeAndSplitLineage) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 12, 8}};
   fillStateBox(occupancy, 0, 15, 0, 11, 0, 7, ObservedVoxelState::kOccupied);

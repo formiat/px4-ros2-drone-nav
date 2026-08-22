@@ -176,6 +176,11 @@ public:
 private:
   friend class IncrementalTopologyGraph3D;
 
+  struct SampleSpatialBucket {
+    IncrementalTopologyBlockIndex3D index{};
+    std::vector<std::size_t> sample_indices;
+  };
+
   std::uint64_t revision_{0U};
   GridBounds3D bounds_{};
   std::vector<IncrementalTopologyNode3D> nodes_;
@@ -188,6 +193,8 @@ private:
       node_indices_;
   std::unordered_map<std::uint64_t, IncrementalTopologyNodeId> sample_cell_nodes_;
   std::unordered_map<std::uint64_t, std::uint64_t> sample_cell_parents_;
+  int sample_spatial_bucket_size_cells_{1};
+  std::vector<SampleSpatialBucket> sample_spatial_buckets_;
 };
 
 class IncrementalTopologyGraph3D {

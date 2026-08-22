@@ -1232,6 +1232,26 @@ IncrementalTopologyGraph3DSnapshot IncrementalTopologyGraph3D::snapshot() const 
     return std::tie(first.cell.z, first.cell.y, first.cell.x, first.node.value) <
            std::tie(second.cell.z, second.cell.y, second.cell.x, second.node.value);
   });
+  result.sample_spatial_bucket_size_cells_ = impl_->config.block_size_cells;
+  std::unordered_map<IncrementalTopologyBlockIndex3D, std::vector<std::size_t>,
+                     IncrementalTopologyBlockIndex3DHash>
+      sample_indices_by_bucket;
+  sample_indices_by_bucket.reserve(impl_->blocks.size());
+  for (std::size_t index = 0U; index < result.samples_.size(); ++index) {
+    sample_indices_by_bucket[blockForCell(result.samples_[index].cell,
+                                          result.sample_spatial_bucket_size_cells_)]
+        .push_back(index);
+  }
+  result.sample_spatial_buckets_.reserve(sample_indices_by_bucket.size());
+  for (auto& [bucket, sample_indices] : sample_indices_by_bucket) {
+    result.sample_spatial_buckets_.push_back(
+        IncrementalTopologyGraph3DSnapshot::SampleSpatialBucket{
+            .index = bucket,
+            .sample_indices = std::move(sample_indices),
+        });
+  }
+  std::ranges::sort(result.sample_spatial_buckets_, {},
+                    &IncrementalTopologyGraph3DSnapshot::SampleSpatialBucket::index);
   return result;
 }
 
