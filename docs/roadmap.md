@@ -384,50 +384,106 @@ alignment, and raw-collision validation against its physical world.
 
 **Type:** dependent implementation stage.
 
-**Hard prerequisite:** item 8.
+**Hard prerequisite:** item 8, which is complete.
 
-Replace global guidance with one unified 3D navigation architecture for static
-and no-static maps, open cities, rooms, tunnels, caves, shafts, and labyrinths.
-There is no environment-specific mode or runtime selector between old and new
-backends. Static maps provide a complete initial graph; no-static maps grow the
-same graph incrementally from revisioned 3D lidar evidence.
+Finish one unified 3D navigation architecture for static and no-static maps,
+open cities, rooms, tunnels, caves, shafts, and labyrinths. There is no
+environment-specific planner mode and no location-specific knowledge of world
+names, starts, goals, opening coordinates, or opening altitudes. Static maps may
+initialize the world model completely; no-static maps grow it incrementally from
+revisioned 3D-lidar evidence. Both feed the same metric planner, topological
+memory, MPPI, and PX4 execution contracts.
 
-Incrementally maintain a sparse metric-topological graph with stable node and
-edge identities. Represent junctions, turns, vertical connectors, frontiers,
-and terminal regions explicitly, and contract long degree-two corridors into
-route edges. Update only geometry affected by dirty Occupancy3D chunks.
+### Decision Hierarchy
 
-Keep exploration evidence separate from physical occupancy:
+Ordinary goal-directed navigation always has first priority. The planner first
+tries to construct a physically executable 3D route toward the current mission
+goal. The existence of a topology graph, a frontier, unvisited space, or prior
+coverage must not replace a usable goal-directed route with an exploration
+maneuver.
 
-- a sparse volumetric coverage field provides only a soft revisit preference;
-- directed edges retain traversal count, frontier/dead-end evidence, and the
-  map revision that supports that evidence;
-- visited space is never converted into occupancy, inflation, a prohibited
-  region, or another hard exclusion.
+Known-free and unknown space are strategically neutral in the default mode. A
+lidar miss is known-free up to the sensor range; unknown space beyond current
+observations remains traversable while the moving aircraft reveals it. The
+optional strict policy `REQUIRE_KNOWN_FREE_SPACE=true` may require known-free
+evidence, but it is disabled by default and is not used for normal acceptance.
+Raw occupied geometry is the only hard spatial prohibition. Clearance bands,
+ESDF distance, and proximity to walls affect route cost only; they must not
+become inflation, prohibited grids, monotonic-clearance gates, or equivalent
+hard exclusions.
 
-If a graph route to the destination is known, ordinary graph search takes
-priority. Otherwise select a reachable frontier using goal direction, path
-cost, clearance, information gain, branch history, and fairness between
-unexplored branches. Goal progress is a soft preference: moving away from the
-destination and backtracking through a known edge are ordinary valid routes.
-Confirmed dead ends are revisioned conclusions and reopen when new evidence
-changes the graph.
+When a fresh raw observation proves that the direct route intersects geometry,
+the risk-aware 3D lattice must generate and compare genuine alternatives around
+the obstacle, including left, right, above, below, and, when necessary, longer
+routes that initially make less Euclidean progress. Candidate selection is
+lexicographic in intent: physical executability first, then destination
+reachability or useful continuation, followed by travel cost, route continuity,
+turning, and soft clearance cost. A longer valid bypass must beat a shorter
+route that ends at the blocking wall.
 
-The shared risk-aware 3D lattice realizes the selected graph route as geometry;
-MPPI and PX4 continue to execute finite raw-safe paths whose unresolved endpoint
-has zero speed. In open space the same planner may use a direct raw-safe graph
-edge. In a degree-two corridor it retains the current branch while the route is
-valid and reconsiders it at graph events rather than every lidar scan. Each
-vehicle owns its graph and exploration memory; this item adds no map sharing.
+Incremental topology is a fallback for confirmed geometric blockage, branch
+choice, and explicitly requested exploration; it is not the default source of
+motion in open space. Maintain a sparse metric-topological graph with stable
+node and edge identities for junctions, turns, vertical connectors, frontiers,
+and terminal regions, and contract long degree-two corridors into route edges.
+Update only geometry affected by dirty `Occupancy3D` chunks.
 
-Validate first with deterministic 3D fixtures for a T junction, X junction,
-loop, cul-de-sac, mandatory initial movement away from the goal, and vertical
-shaft. Then run sequentially, always no-static with the 3D lidar: `sim` on
-Manhattan, `coop` on Manhattan, `sim` on the selected new environment, and
-`coop` on that environment. Logs must prove frontier choice, directed-edge
-history, backtracking, dead-end revision handling, graph stability, executable
-route continuity, minimum clearance, mission completion, and zero physical
-collisions.
+Exploration evidence remains separate from physical occupancy. Directed edges
+may retain traversal count, frontier and dead-end evidence, and the map revision
+supporting each conclusion. This evidence may rank alternatives only after
+ordinary goal-directed motion is genuinely blocked; it must not add a generic
+preference for known, covered, unvisited, or information-rich space during
+normal transit. Reaching a mission waypoint resets per-leg revisit and branch
+preferences while preserving physical obstacle memory and the reusable topology
+graph. Visited space is never converted into occupancy or a hard exclusion.
+
+Backtracking is an optional fallback, disabled by default. It may be enabled for
+labyrinth exploration and selected only after current geometry supports a real
+dead-end or exhausted branch. It must not cause an unprompted return toward the
+start in an open world or while a valid forward or lateral goal-directed route
+exists. Confirmed dead ends are revisioned conclusions and reopen when new
+geometry changes the graph.
+
+### Route And Execution Lifecycle
+
+The planner, raw validator, and executor must agree on map revision. If a newer
+raw observation invalidates an active route, the old finite path and any derived
+finite horizon become non-executable immediately. The vehicle publishes a
+position hold while an ESDF from the blocking observation or a newer revision is
+prepared, then searches that world for an alternative route. Do not activate a
+truncated prefix validated only against an older ESDF.
+
+Every published route is finite, fully swept-footprint validated, and contains
+its own terminal arrival at zero speed. There is no separate braking tail. A
+route may pass arbitrarily close to a wall when the physical footprint fits; the
+clearance cost should discourage poor-quality flight without forbidding it. A
+missing valid path permits hold, but wall proximity alone must never create a
+persistent braking latch, escape controller, or clearance-increasing-only
+movement rule.
+
+Each vehicle owns its graph and exploration memory; this item adds no map
+sharing. The cooperative mission may share typed flight intentions as already
+defined by item 6, but navigation geometry and branch history remain local.
+
+### Validation
+
+Deterministic 3D regressions must cover an unobstructed route with no topology
+intervention, a wall requiring lateral alternatives, a wall requiring a vertical
+alternative, openings at arbitrary heights and orientations, a T junction, an X
+junction, a loop, a vertical shaft, and active-route invalidation by a newer raw
+revision. A dedicated cul-de-sac fixture enables backtracking explicitly and
+proves revisioned dead-end handling; ordinary Manhattan validation keeps
+backtracking disabled. Tests must also prove that unknown is not penalized in
+default mode and that no stale or truncated colliding route reaches execution.
+
+Mission validation is sequential and uses no-static mode with the 3D lidar and
+`REQUIRE_KNOWN_FREE_SPACE=false`. First obtain three consecutive collision-free
+successful `sim` flights on Manhattan before proceeding to `coop` on Manhattan,
+then `sim` and `coop` on the selected complex environment. Until the development
+workflow explicitly changes, simulation validation is performed with GUI. Logs
+must prove alternative generation and selection, causal raw-to-ESDF revision
+handoff, graph stability, finite route continuity, physical clearance, mission
+completion, and zero vehicle collisions.
 
 ## 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation
 
