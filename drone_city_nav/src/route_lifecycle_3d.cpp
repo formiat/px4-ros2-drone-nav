@@ -77,6 +77,10 @@ bool RouteExecutionAssessment3D::usable() const noexcept {
   return status == RouteExecutionStatus3D::kUsable;
 }
 
+bool RoutePublicationAssessment3D::compatible() const noexcept {
+  return status == RoutePublicationStatus3D::kCompatible;
+}
+
 std::optional<ActivatedRouteIdentity3D>
 activateRouteProposal3D(const MaterializedRouteProposal3D& proposal,
                         const std::uint64_t generation) noexcept {
@@ -88,6 +92,25 @@ activateRouteProposal3D(const MaterializedRouteProposal3D& proposal,
     return std::nullopt;
   }
   return ActivatedRouteIdentity3D{.generation = generation, .proposal = proposal};
+}
+
+RoutePublicationAssessment3D
+assessRoutePublication3D(const MaterializedRouteProposal3D& proposal,
+                         const NavigationWorldCertificate3D& resident_world) noexcept {
+  if (!validatesPlannedWorld(proposal.planned_world, proposal.validated_world)) {
+    return {.status = RoutePublicationStatus3D::kInvalidProposalWorld};
+  }
+  if (!resident_world.valid()) {
+    return {.status = RoutePublicationStatus3D::kInvalidResidentWorld};
+  }
+  if (!sameProducerLineage(proposal.validated_world, resident_world)) {
+    return {.status = RoutePublicationStatus3D::kWorldLineageMismatch};
+  }
+  if (resident_world.esdf_source_raw_revision <
+      proposal.planned_world.esdf_source_raw_revision) {
+    return {.status = RoutePublicationStatus3D::kResidentWorldPredatesPlan};
+  }
+  return {.status = RoutePublicationStatus3D::kCompatible};
 }
 
 RawRouteSuffixValidation3D validateRawRouteSuffix3D(
@@ -194,6 +217,25 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
   }
   result.status = RouteExecutionStatus3D::kUsable;
   return result;
+}
+
+std::string_view
+routePublicationStatus3DName(const RoutePublicationStatus3D status) noexcept {
+  switch (status) {
+    case RoutePublicationStatus3D::kNotAssessed:
+      return "not_assessed";
+    case RoutePublicationStatus3D::kCompatible:
+      return "compatible";
+    case RoutePublicationStatus3D::kInvalidProposalWorld:
+      return "invalid_proposal_world";
+    case RoutePublicationStatus3D::kInvalidResidentWorld:
+      return "invalid_resident_world";
+    case RoutePublicationStatus3D::kWorldLineageMismatch:
+      return "world_lineage_mismatch";
+    case RoutePublicationStatus3D::kResidentWorldPredatesPlan:
+      return "resident_world_predates_plan";
+  }
+  return "invalid_status";
 }
 
 std::string_view

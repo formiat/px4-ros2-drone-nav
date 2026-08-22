@@ -518,7 +518,9 @@ void ProductionMppiNode::processGuideSearch3D(
       prepared.lattice_executable
           ? StaticRouteActivationStatus::kCandidateValidationRejected
           : StaticRouteActivationStatus::kCandidateNotExecutable;
-  bool revision_matches = false;
+  RoutePublicationStatus3D publication_status{RoutePublicationStatus3D::kNotAssessed};
+  bool world_compatible = false;
+  bool publication_world_advanced = false;
   bool generation_matches = false;
   const std::shared_ptr<const ProductionNavigationObjective> activation_objective =
       navigationObjective();
@@ -555,6 +557,7 @@ void ProductionMppiNode::processGuideSearch3D(
   activated_evidence.status = activated_evidence.physical_executable
                                   ? SegmentEvidenceStatus3D::kValid
                                   : activated_evidence.status;
+  prepared.route_segment_evidence = activated_evidence;
   const ProductionMaterializedRouteProposal3D materialized_proposal{
       .identity =
           MaterializedRouteProposal3D{
@@ -619,17 +622,28 @@ void ProductionMppiNode::processGuideSearch3D(
         (!world.static_route_extension_request && !world.static_route_replan_request) ||
         (prepared_esdf_ &&
          prepared_esdf_->global_guide_generation == required_base_generation);
-    revision_matches = prepared_esdf_ && prepared_esdf_->revision == prepared.revision;
+    const RoutePublicationAssessment3D publication_assessment =
+        prepared_esdf_
+            ? assessRoutePublication3D(materialized_proposal.identity,
+                                       navigationWorldCertificate3D(*prepared_esdf_))
+            : RoutePublicationAssessment3D{};
+    publication_status = publication_assessment.status;
+    world_compatible = publication_assessment.compatible();
+    prepared.static_route_publication_status = publication_status;
+    prepared.static_route_world_compatible = world_compatible;
+    if (world_compatible && prepared_esdf_->revision != prepared.revision) {
+      adoptWorldResources(prepared, *prepared_esdf_);
+      publication_world_advanced = true;
+    }
     const std::uint64_t candidate_generation = static_route_generation_ + 1U;
     const std::optional<ActivatedRouteIdentity3D> activated_identity =
         activateRouteProposal3D(materialized_proposal.identity, candidate_generation);
     if (route_candidate.executable && route_candidate.validation.accepted &&
         handoff.accepted && route_candidate.route &&
-        route_candidate.constrained_spans && revision_matches && generation_matches &&
+        route_candidate.constrained_spans && world_compatible && generation_matches &&
         objective_matches && activated_identity.has_value()) {
       activation_status = StaticRouteActivationStatus::kActivated;
       prepared.static_route_activation_status = activation_status;
-      prepared.static_route_revision_matches = true;
       prepared.static_route_generation_matches = true;
       static_route_generation_ = candidate_generation;
       prepared.global_guide_generation = candidate_generation;
@@ -647,8 +661,8 @@ void ProductionMppiNode::processGuideSearch3D(
       prepared.static_route_replan_reason = GlobalGuideReleaseReason::kNone;
       prepared_esdf_ = prepared;
       activated = true;
-    } else if (route_candidate.validation.accepted && !revision_matches) {
-      activation_status = StaticRouteActivationStatus::kStaleWorldRevision;
+    } else if (route_candidate.validation.accepted && !world_compatible) {
+      activation_status = StaticRouteActivationStatus::kWorldPublicationRejected;
     } else if (route_candidate.validation.accepted && !generation_matches) {
       activation_status = StaticRouteActivationStatus::kStaleRouteGeneration;
     } else if (route_candidate.validation.accepted && !objective_matches) {
@@ -710,9 +724,11 @@ void ProductionMppiNode::processGuideSearch3D(
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
-      " activated=%s activation_status=%.*s revision_matches=%s "
+      " activated=%s activation_status=%.*s publication_status=%.*s "
+      "world_compatible=%s "
       "generation_matches=%s objective_matches=%s route_generation=%" PRIu64
-      " route_space=%s observed_world_rebased=%s route_purpose=%s "
+      " route_space=%s observed_world_rebased=%s publication_world_advanced=%s "
+      "route_purpose=%s "
       "topology_acceleration=%s "
       "observation_frontier_id=%" PRIu64 " observation_frontier_revision=%" PRIu64
       " observation_frontier_rays=%zu observation_frontier_gain=%zu "
@@ -769,9 +785,12 @@ void ProductionMppiNode::processGuideSearch3D(
       prepared.revision, activated ? "true" : "false",
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
       staticRouteActivationStatusName(activation_status).data(),
-      revision_matches ? "true" : "false", generation_matches ? "true" : "false",
+      static_cast<int>(routePublicationStatus3DName(publication_status).size()),
+      routePublicationStatus3DName(publication_status).data(),
+      world_compatible ? "true" : "false", generation_matches ? "true" : "false",
       objective_matches ? "true" : "false", prepared.global_guide_generation,
       route_space, observed_world_rebased ? "true" : "false",
+      publication_world_advanced ? "true" : "false",
       lattice3DRoutePurposeName(lattice.route_purpose), topology_acceleration,
       observation_frontier ? observation_frontier->id.value : 0U,
       observation_frontier ? observation_frontier->supporting_map_revision : 0U,
@@ -892,7 +911,7 @@ void ProductionMppiNode::processGuideSearch3D(
     if (activated) {
       static_route_failed_search_latch_.clear();
     } else if (initial_route_search ||
-               (revision_matches && generation_matches && objective_matches &&
+               (world_compatible && generation_matches && objective_matches &&
                 !(lattice.route_purpose ==
                       Lattice3DRoutePurpose::kObservationFrontier &&
                   observation_replacement.status ==

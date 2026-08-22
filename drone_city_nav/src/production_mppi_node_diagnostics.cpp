@@ -232,8 +232,10 @@ void ProductionMppiNode::processDiagnostics(
       << staticRouteCandidateStatusName(esdf.static_route_candidate_status)
       << " static_route_activation="
       << staticRouteActivationStatusName(esdf.static_route_activation_status)
-      << " static_route_revision_matches="
-      << (esdf.static_route_revision_matches ? "true" : "false")
+      << " static_route_publication_status="
+      << routePublicationStatus3DName(esdf.static_route_publication_status)
+      << " static_route_world_compatible="
+      << (esdf.static_route_world_compatible ? "true" : "false")
       << " static_route_generation_matches="
       << (esdf.static_route_generation_matches ? "true" : "false")
       << " topology_objective=" << esdf.topology_objective_cost
@@ -732,8 +734,10 @@ void ProductionMppiNode::processDiagnostics(
         << staticRouteCandidateStatusName(esdf.static_route_candidate_status) << '"'
         << ",\"static_route_activation\":\""
         << staticRouteActivationStatusName(esdf.static_route_activation_status) << '"'
-        << ",\"static_route_revision_matches\":"
-        << (esdf.static_route_revision_matches ? "true" : "false")
+        << ",\"static_route_publication_status\":\""
+        << routePublicationStatus3DName(esdf.static_route_publication_status) << '"'
+        << ",\"static_route_world_compatible\":"
+        << (esdf.static_route_world_compatible ? "true" : "false")
         << ",\"static_route_generation_matches\":"
         << (esdf.static_route_generation_matches ? "true" : "false")
         << ",\"topology_objective\":" << esdf.topology_objective_cost

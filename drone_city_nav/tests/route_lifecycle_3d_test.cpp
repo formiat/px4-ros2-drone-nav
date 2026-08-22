@@ -114,6 +114,76 @@ TEST(RouteLifecycle3DTest, ActivationRejectsAnOlderValidatedWorld) {
   EXPECT_FALSE(activateRouteProposal3D(proposal, 5U).has_value());
 }
 
+TEST(RouteLifecycle3DTest, ProposalCanPublishOnANewerResidentWorld) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const NavigationWorldCertificate3D resident{
+      .producer_instance_id = 7U,
+      .esdf_fingerprint = 200U,
+      .esdf_source_raw_revision = 20U,
+      .esdf_source_occupied_fingerprint = 2000U,
+      .raw_validated_through_revision = 20U,
+  };
+
+  const RoutePublicationAssessment3D assessment =
+      assessRoutePublication3D(proposal, resident);
+
+  EXPECT_TRUE(assessment.compatible());
+  EXPECT_EQ(assessment.status, RoutePublicationStatus3D::kCompatible);
+}
+
+TEST(RouteLifecycle3DTest, ProposalCannotPublishAcrossProducerLineages) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const NavigationWorldCertificate3D resident{
+      .producer_instance_id = 8U,
+      .esdf_fingerprint = 200U,
+      .esdf_source_raw_revision = 20U,
+      .esdf_source_occupied_fingerprint = 2000U,
+      .raw_validated_through_revision = 20U,
+  };
+
+  const RoutePublicationAssessment3D assessment =
+      assessRoutePublication3D(proposal, resident);
+
+  EXPECT_FALSE(assessment.compatible());
+  EXPECT_EQ(assessment.status, RoutePublicationStatus3D::kWorldLineageMismatch);
+}
+
+TEST(RouteLifecycle3DTest, ProposalCannotPublishOnAWorldOlderThanItsPlan) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const NavigationWorldCertificate3D resident{
+      .producer_instance_id = 7U,
+      .esdf_fingerprint = 90U,
+      .esdf_source_raw_revision = 9U,
+      .esdf_source_occupied_fingerprint = 900U,
+      .raw_validated_through_revision = 9U,
+  };
+
+  const RoutePublicationAssessment3D assessment =
+      assessRoutePublication3D(proposal, resident);
+
+  EXPECT_FALSE(assessment.compatible());
+  EXPECT_EQ(assessment.status, RoutePublicationStatus3D::kResidentWorldPredatesPlan);
+}
+
+TEST(RouteLifecycle3DTest, PublicationStatusesHaveStableDiagnosticNames) {
+  EXPECT_EQ(routePublicationStatus3DName(RoutePublicationStatus3D::kNotAssessed),
+            "not_assessed");
+  EXPECT_EQ(routePublicationStatus3DName(RoutePublicationStatus3D::kCompatible),
+            "compatible");
+  EXPECT_EQ(
+      routePublicationStatus3DName(RoutePublicationStatus3D::kInvalidProposalWorld),
+      "invalid_proposal_world");
+  EXPECT_EQ(
+      routePublicationStatus3DName(RoutePublicationStatus3D::kInvalidResidentWorld),
+      "invalid_resident_world");
+  EXPECT_EQ(
+      routePublicationStatus3DName(RoutePublicationStatus3D::kWorldLineageMismatch),
+      "world_lineage_mismatch");
+  EXPECT_EQ(routePublicationStatus3DName(
+                RoutePublicationStatus3D::kResidentWorldPredatesPlan),
+            "resident_world_predates_plan");
+}
+
 TEST(RouteLifecycle3DTest, PassedPrefixCollisionDoesNotInvalidateRemainingSuffix) {
   const std::vector<RouteSample3D> route = straightRoute();
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 4, 4}};

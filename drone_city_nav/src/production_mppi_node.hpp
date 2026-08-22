@@ -365,7 +365,9 @@ struct ProductionMppiPreparedEsdf {
       StaticRouteCandidateStatus::kEmpty};
   StaticRouteActivationStatus static_route_activation_status{
       StaticRouteActivationStatus::kNotAttempted};
-  bool static_route_revision_matches{false};
+  RoutePublicationStatus3D static_route_publication_status{
+      RoutePublicationStatus3D::kNotAssessed};
+  bool static_route_world_compatible{false};
   bool static_route_generation_matches{false};
 };
 

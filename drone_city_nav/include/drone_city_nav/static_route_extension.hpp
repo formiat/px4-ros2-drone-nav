@@ -231,7 +231,7 @@ enum class StaticRouteActivationStatus : std::uint8_t {
   kActivated,
   kCandidateNotExecutable,
   kCandidateValidationRejected,
-  kStaleWorldRevision,
+  kWorldPublicationRejected,
   kStaleRouteGeneration,
   kStaleObjective,
   kDynamicHandoffRejected,

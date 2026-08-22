@@ -36,6 +36,21 @@ struct MaterializedRouteProposal3D {
   bool activation_eligible{false};
 };
 
+enum class RoutePublicationStatus3D : std::uint8_t {
+  kNotAssessed,
+  kCompatible,
+  kInvalidProposalWorld,
+  kInvalidResidentWorld,
+  kWorldLineageMismatch,
+  kResidentWorldPredatesPlan,
+};
+
+struct RoutePublicationAssessment3D {
+  RoutePublicationStatus3D status{RoutePublicationStatus3D::kNotAssessed};
+
+  [[nodiscard]] bool compatible() const noexcept;
+};
+
 struct ActivatedRouteIdentity3D {
   std::uint64_t generation{0U};
   MaterializedRouteProposal3D proposal{};
@@ -103,6 +118,10 @@ struct RouteExecutionState3D {
 activateRouteProposal3D(const MaterializedRouteProposal3D& proposal,
                         std::uint64_t generation) noexcept;
 
+[[nodiscard]] RoutePublicationAssessment3D
+assessRoutePublication3D(const MaterializedRouteProposal3D& proposal,
+                         const NavigationWorldCertificate3D& resident_world) noexcept;
+
 [[nodiscard]] RawRouteSuffixValidation3D validateRawRouteSuffix3D(
     std::span<const RouteSample3D> route, const Point3& position,
     const RouteProjection3D& projection, const ObservedOccupancyGrid3D& occupancy,
@@ -115,6 +134,8 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* active_route,
                        std::span<const RouteSample3D> route,
                        const RouteExecutionObservation3D& observation) noexcept;
 
+[[nodiscard]] std::string_view
+routePublicationStatus3DName(RoutePublicationStatus3D status) noexcept;
 [[nodiscard]] std::string_view
 rawRouteSuffixStatus3DName(RawRouteSuffixStatus3D status) noexcept;
 [[nodiscard]] std::string_view

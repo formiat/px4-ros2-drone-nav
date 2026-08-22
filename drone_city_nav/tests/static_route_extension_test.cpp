@@ -770,9 +770,9 @@ TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kCandidateValidationRejected),
             "candidate_validation_rejected");
-  EXPECT_EQ(
-      staticRouteActivationStatusName(StaticRouteActivationStatus::kStaleWorldRevision),
-      "stale_world_revision");
+  EXPECT_EQ(staticRouteActivationStatusName(
+                StaticRouteActivationStatus::kWorldPublicationRejected),
+            "world_publication_rejected");
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kStaleRouteGeneration),
             "stale_route_generation");
