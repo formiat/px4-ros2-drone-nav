@@ -212,6 +212,17 @@ TEST(FiniteExecutionPathTest, DefaultModeAllowsUnknownObservedFrontier) {
   EXPECT_TRUE(result.accepted());
 }
 
+TEST(FiniteExecutionPathTest, DefaultModeStillRejectsObservedRawCollision) {
+  TestWorld world;
+  static_cast<void>(world.observed_occupancy.setState(GridIndex3D{7, 2, 10},
+                                                      ObservedVoxelState::kOccupied));
+
+  const FiniteExecutionPathValidation result =
+      validateCompleteFiniteExecutionPath(testPath(), Control{}, world.observedView());
+
+  EXPECT_EQ(result.status, FiniteExecutionPathStatus::kRawCollision);
+}
+
 TEST(FiniteExecutionPathTest,
      MovesArrivalProfileEarlierUntilCompletePathAvoidsNewObstacle) {
   TestWorld world;

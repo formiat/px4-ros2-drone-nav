@@ -62,6 +62,95 @@ std::uint64_t StaticRouteReplanGate::generation() const noexcept {
   return generation_.value_or(0U);
 }
 
+bool StaticRouteSearchRequestIdentity::valid() const noexcept {
+  return kind != StaticRouteSearchRequestKind::kInvalid;
+}
+
+bool StaticRouteSearchCurrencyAssessment::current() const noexcept {
+  return status == StaticRouteSearchCurrencyStatus::kCurrent;
+}
+
+StaticRouteSearchRequestIdentity identifyStaticRouteSearchRequest(
+    const std::uint64_t world_route_generation, const bool extension_request,
+    const std::uint64_t extension_base_generation, const bool replan_request,
+    const std::uint64_t replan_base_generation) noexcept {
+  if (extension_request && replan_request) {
+    return {};
+  }
+  if (extension_request) {
+    if (extension_base_generation == 0U ||
+        extension_base_generation != world_route_generation) {
+      return {};
+    }
+    return {.kind = StaticRouteSearchRequestKind::kExtension,
+            .base_route_generation = extension_base_generation};
+  }
+  if (replan_request) {
+    if (replan_base_generation == 0U ||
+        replan_base_generation != world_route_generation) {
+      return {};
+    }
+    return {.kind = StaticRouteSearchRequestKind::kReplan,
+            .base_route_generation = replan_base_generation};
+  }
+  return {.kind = world_route_generation == 0U
+                      ? StaticRouteSearchRequestKind::kInitial
+                      : StaticRouteSearchRequestKind::kResidentRefresh,
+          .base_route_generation = world_route_generation};
+}
+
+StaticRouteSearchCurrencyAssessment assessStaticRouteSearchCurrency(
+    const StaticRouteSearchRequestIdentity& request,
+    const std::uint64_t resident_route_generation) noexcept {
+  StaticRouteSearchCurrencyAssessment result{
+      .request = request,
+      .resident_route_generation = resident_route_generation,
+  };
+  if (!request.valid()) {
+    return result;
+  }
+  if (resident_route_generation == request.base_route_generation) {
+    result.status = StaticRouteSearchCurrencyStatus::kCurrent;
+  } else if (resident_route_generation > request.base_route_generation) {
+    result.status = StaticRouteSearchCurrencyStatus::kSupersededByResidentRoute;
+  } else {
+    result.status = StaticRouteSearchCurrencyStatus::kResidentRoutePredatesRequest;
+  }
+  return result;
+}
+
+std::string_view
+staticRouteSearchRequestKindName(const StaticRouteSearchRequestKind kind) noexcept {
+  switch (kind) {
+    case StaticRouteSearchRequestKind::kInvalid:
+      return "invalid";
+    case StaticRouteSearchRequestKind::kInitial:
+      return "initial";
+    case StaticRouteSearchRequestKind::kResidentRefresh:
+      return "resident_refresh";
+    case StaticRouteSearchRequestKind::kExtension:
+      return "extension";
+    case StaticRouteSearchRequestKind::kReplan:
+      return "replan";
+  }
+  return "unknown";
+}
+
+std::string_view staticRouteSearchCurrencyStatusName(
+    const StaticRouteSearchCurrencyStatus status) noexcept {
+  switch (status) {
+    case StaticRouteSearchCurrencyStatus::kCurrent:
+      return "current";
+    case StaticRouteSearchCurrencyStatus::kInvalidRequest:
+      return "invalid_request";
+    case StaticRouteSearchCurrencyStatus::kSupersededByResidentRoute:
+      return "superseded_by_resident_route";
+    case StaticRouteSearchCurrencyStatus::kResidentRoutePredatesRequest:
+      return "resident_route_predates_request";
+  }
+  return "unknown";
+}
+
 void StaticRouteDeferredReplanLatch::defer(
     const StaticRouteDeferredReplan request) noexcept {
   if (request.reason == GlobalGuideReleaseReason::kNone ||

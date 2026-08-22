@@ -125,6 +125,52 @@ private:
   std::optional<std::uint64_t> generation_;
 };
 
+enum class StaticRouteSearchRequestKind : std::uint8_t {
+  kInvalid,
+  kInitial,
+  kResidentRefresh,
+  kExtension,
+  kReplan,
+};
+
+struct StaticRouteSearchRequestIdentity {
+  StaticRouteSearchRequestKind kind{StaticRouteSearchRequestKind::kInvalid};
+  std::uint64_t base_route_generation{0U};
+
+  [[nodiscard]] bool valid() const noexcept;
+};
+
+enum class StaticRouteSearchCurrencyStatus : std::uint8_t {
+  kCurrent,
+  kInvalidRequest,
+  kSupersededByResidentRoute,
+  kResidentRoutePredatesRequest,
+};
+
+struct StaticRouteSearchCurrencyAssessment {
+  StaticRouteSearchCurrencyStatus status{
+      StaticRouteSearchCurrencyStatus::kInvalidRequest};
+  StaticRouteSearchRequestIdentity request{};
+  std::uint64_t resident_route_generation{0U};
+
+  [[nodiscard]] bool current() const noexcept;
+};
+
+[[nodiscard]] StaticRouteSearchRequestIdentity identifyStaticRouteSearchRequest(
+    std::uint64_t world_route_generation, bool extension_request,
+    std::uint64_t extension_base_generation, bool replan_request,
+    std::uint64_t replan_base_generation) noexcept;
+
+[[nodiscard]] StaticRouteSearchCurrencyAssessment
+assessStaticRouteSearchCurrency(const StaticRouteSearchRequestIdentity& request,
+                                std::uint64_t resident_route_generation) noexcept;
+
+[[nodiscard]] std::string_view
+staticRouteSearchRequestKindName(StaticRouteSearchRequestKind kind) noexcept;
+
+[[nodiscard]] std::string_view
+staticRouteSearchCurrencyStatusName(StaticRouteSearchCurrencyStatus status) noexcept;
+
 struct StaticRouteDeferredReplan {
   GlobalGuideReleaseReason reason{GlobalGuideReleaseReason::kNone};
   std::uint64_t route_generation{0U};

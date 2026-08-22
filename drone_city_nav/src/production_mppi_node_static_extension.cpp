@@ -346,4 +346,15 @@ void ProductionMppiNode::finishStaticRouteReplan(const std::uint64_t base_genera
   requestStaticRouteReplan(deferred_replan->reason, 0U);
 }
 
+void ProductionMppiNode::finishStaticRouteSearch(
+    const ProductionMppiPreparedEsdf& world, const bool route_activated) {
+  if (world.static_route_extension_request) {
+    finishStaticRouteExtension(world.static_route_extension_base_generation,
+                               route_activated);
+  }
+  if (world.static_route_replan_request) {
+    finishStaticRouteReplan(world.static_route_replan_base_generation);
+  }
+}
+
 } // namespace drone_city_nav

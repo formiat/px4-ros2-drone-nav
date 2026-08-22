@@ -52,9 +52,10 @@ rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
              const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_free_space_seed,
              const LaunchSupportContact3D* const launch_support_contact,
              Point3& failure_point) {
-  const SweptFootprintResult validation = validateRawSweptFootprint(
+  const SweptFootprintResult validation = validateObservedSweptFootprint(
       occupancy, first, FootprintBodyAxis{}, second, FootprintBodyAxis{}, footprint,
-      proprioceptive_free_space_seed, launch_support_contact);
+      ObservedSpaceValidationPolicy::kAllowUnknown, proprioceptive_free_space_seed,
+      launch_support_contact);
   if (validation.status != SweptFootprintStatus::kRawCollision) {
     return false;
   }

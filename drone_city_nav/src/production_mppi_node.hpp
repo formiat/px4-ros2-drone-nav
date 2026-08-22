@@ -618,6 +618,8 @@ private:
   void finishStaticRouteExtension(std::uint64_t base_generation,
                                   bool extension_activated = false);
   void finishStaticRouteReplan(std::uint64_t base_generation);
+  void finishStaticRouteSearch(const ProductionMppiPreparedEsdf& world,
+                               bool route_activated = false);
   void esdfWorker(std::stop_token stop_token);
   void topologyWorker(std::stop_token stop_token);
   void processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);

@@ -110,9 +110,13 @@ validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis
         validateRawSweptFootprint(*world.static_occupancy, first, first_axis, second,
                                   second_axis, *world.footprint);
   } else if (world.observed_occupancy != nullptr) {
-    raw_validation = validateRawSweptFootprint(
+    const ObservedSpaceValidationPolicy observed_policy =
+        world.require_known_free_space
+            ? ObservedSpaceValidationPolicy::kRequireKnownFree
+            : ObservedSpaceValidationPolicy::kAllowUnknown;
+    raw_validation = validateObservedSweptFootprint(
         *world.observed_occupancy, first, first_axis, second, second_axis,
-        *world.footprint, world.proprioceptive_free_space_seed,
+        *world.footprint, observed_policy, world.proprioceptive_free_space_seed,
         world.launch_support_contact);
   } else if (world.raw_occupancy != nullptr) {
     raw_validation = validateRawSweptFootprint(*world.raw_occupancy, first, second,

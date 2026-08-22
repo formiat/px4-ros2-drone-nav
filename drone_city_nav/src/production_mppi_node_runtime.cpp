@@ -92,6 +92,9 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       }
     }
     if (!world || !world->distances_m) {
+      if (world) {
+        finishStaticRouteSearch(*world);
+      }
       world.reset();
       continue;
     }
@@ -99,18 +102,42 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         !use_static_map_ &&
         no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
     if ((use_static_map_ || observed_3d_world) && world->grid.depth > 1) {
+      const StaticRouteSearchRequestIdentity request = identifyStaticRouteSearchRequest(
+          world->global_guide_generation, world->static_route_extension_request,
+          world->static_route_extension_base_generation,
+          world->static_route_replan_request,
+          world->static_route_replan_base_generation);
+      std::uint64_t resident_route_generation = 0U;
+      {
+        const std::scoped_lock lock{esdf_state_mutex_};
+        if (prepared_esdf_) {
+          resident_route_generation = prepared_esdf_->global_guide_generation;
+        }
+      }
+      const StaticRouteSearchCurrencyAssessment currency =
+          assessStaticRouteSearchCurrency(request, resident_route_generation);
+      if (!currency.current()) {
+        RCLCPP_INFO(
+            get_logger(),
+            "STATIC_ROUTE_SEARCH_REQUEST status=%.*s kind=%.*s "
+            "request_generation=%" PRIu64 " resident_generation=%" PRIu64,
+            static_cast<int>(
+                staticRouteSearchCurrencyStatusName(currency.status).size()),
+            staticRouteSearchCurrencyStatusName(currency.status).data(),
+            static_cast<int>(staticRouteSearchRequestKindName(request.kind).size()),
+            staticRouteSearchRequestKindName(request.kind).data(),
+            request.base_route_generation, resident_route_generation);
+        finishStaticRouteSearch(*world);
+        world.reset();
+        continue;
+      }
       ProductionMppiNavigation navigation;
       {
         const std::scoped_lock lock{input_mutex_};
         navigation = navigation_;
       }
       if (!navigation.valid) {
-        if (world->static_route_extension_request) {
-          finishStaticRouteExtension(world->static_route_extension_base_generation);
-        }
-        if (world->static_route_replan_request) {
-          finishStaticRouteReplan(world->static_route_replan_base_generation);
-        }
+        finishStaticRouteSearch(*world);
         world.reset();
         continue;
       }

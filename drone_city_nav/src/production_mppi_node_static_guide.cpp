@@ -900,9 +900,6 @@ void ProductionMppiNode::processGuideSearch3D(
                 candidate.candidate_rank, candidate.selected ? "true" : "false",
                 candidate.decision_reason.c_str());
   }
-  if (world.static_route_extension_request) {
-    finishStaticRouteExtension(world.static_route_extension_base_generation, activated);
-  }
   const bool initial_route_search = !world.static_route_extension_request &&
                                     !world.static_route_replan_request &&
                                     world.global_guide_generation == 0U;
@@ -938,13 +935,11 @@ void ProductionMppiNode::processGuideSearch3D(
           staticRouteCandidateStatusName(validation.status).data(), search_start.x,
           search_start.y, search_start.z);
     }
-    if (world.static_route_replan_request) {
-      static_route_replan_gate_.finish(world.static_route_replan_base_generation);
-    }
   } else if (activated) {
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
     static_route_failed_search_latch_.clear();
   }
+  finishStaticRouteSearch(world, activated);
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();
   if (current_objective && current_objective->continuous_tracking) {

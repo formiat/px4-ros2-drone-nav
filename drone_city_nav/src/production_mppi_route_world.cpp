@@ -49,10 +49,11 @@ validateRouteAgainstLatestObservedRawOccupancy(
     const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) {
   for (std::size_t index = 1U; index < route.size(); ++index) {
-    const SweptFootprintResult validation = validateRawSweptFootprint(
+    const SweptFootprintResult validation = validateObservedSweptFootprint(
         occupancy, route[index - 1U].position, FootprintBodyAxis{},
         route[index].position, FootprintBodyAxis{}, footprint_config,
-        proprioceptive_free_space_seed, launch_support_contact);
+        ObservedSpaceValidationPolicy::kAllowUnknown, proprioceptive_free_space_seed,
+        launch_support_contact);
     if (validation.status == SweptFootprintStatus::kRawCollision) {
       return StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kRawCollision,

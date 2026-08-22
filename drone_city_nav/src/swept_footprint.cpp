@@ -681,6 +681,22 @@ SweptFootprintResult validateRawFootprintAt(
     const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
     const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
+  return validateObservedFootprintAt(occupancy, position, requested_body_axis, config,
+                                     ObservedSpaceValidationPolicy::kRequireKnownFree,
+                                     free_space_seed, launch_support_contact);
+}
+
+SweptFootprintResult validateObservedFootprintAt(
+    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
+    const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
+    const ObservedSpaceValidationPolicy policy,
+    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
+    const LaunchSupportContact3D* const launch_support_contact) noexcept {
+  if (policy == ObservedSpaceValidationPolicy::kAllowUnknown) {
+    return validateRawFootprintAt3D<false, true>(
+        occupancy, position, requested_body_axis, config, free_space_seed,
+        launch_support_contact);
+  }
   return validateRawFootprintAt3D<true, true>(occupancy, position, requested_body_axis,
                                               config, free_space_seed,
                                               launch_support_contact);
@@ -692,6 +708,24 @@ SweptFootprintResult validateRawSweptFootprint(
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
+  return validateObservedSweptFootprint(
+      occupancy, first, first_body_axis, second, second_body_axis, config,
+      ObservedSpaceValidationPolicy::kRequireKnownFree, free_space_seed,
+      launch_support_contact);
+}
+
+SweptFootprintResult validateObservedSweptFootprint(
+    const ObservedOccupancyGrid3D& occupancy, const Point3& first,
+    const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
+    const ObservedSpaceValidationPolicy policy,
+    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
+    const LaunchSupportContact3D* const launch_support_contact) noexcept {
+  if (policy == ObservedSpaceValidationPolicy::kAllowUnknown) {
+    return validateRawSweptFootprint3D<false, true>(
+        occupancy, first, first_body_axis, second, second_body_axis, config,
+        free_space_seed, launch_support_contact);
+  }
   return validateRawSweptFootprint3D<true, true>(
       occupancy, first, first_body_axis, second, second_body_axis, config,
       free_space_seed, launch_support_contact);
@@ -740,7 +774,8 @@ bool rawOccupiedFootprintIsClearAt(const ObservedOccupancyGrid3D& occupancy,
                                    const Point3& position,
                                    const FootprintBodyAxis& body_axis,
                                    const SweptFootprintConfig& config) noexcept {
-  return validateRawFootprintAt3D<false, false>(occupancy, position, body_axis, config)
+  return validateObservedFootprintAt(occupancy, position, body_axis, config,
+                                     ObservedSpaceValidationPolicy::kAllowUnknown)
       .accepted();
 }
 
@@ -750,8 +785,9 @@ bool rawOccupiedSweptFootprintIsClear(const ObservedOccupancyGrid3D& occupancy,
                                       const Point3& second,
                                       const FootprintBodyAxis& second_body_axis,
                                       const SweptFootprintConfig& config) noexcept {
-  return validateRawSweptFootprint3D<false, false>(occupancy, first, first_body_axis,
-                                                   second, second_body_axis, config)
+  return validateObservedSweptFootprint(occupancy, first, first_body_axis, second,
+                                        second_body_axis, config,
+                                        ObservedSpaceValidationPolicy::kAllowUnknown)
       .accepted();
 }
 

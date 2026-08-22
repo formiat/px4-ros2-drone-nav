@@ -184,5 +184,37 @@ TEST(RoutePlanning3DTest, CollisionWinsWhenAnotherSampleIsUnknown) {
   EXPECT_EQ(evidence.status, SegmentEvidenceStatus3D::kRawCollision);
 }
 
+TEST(RoutePlanning3DTest, LatestRawCollisionRejectsAStaleUnknownEsdfRoute) {
+  mppi::EsdfGrid grid{.width = 4,
+                      .height = 2,
+                      .resolution_m = 1.0F,
+                      .origin_x_m = 0.0F,
+                      .origin_y_m = 0.0F,
+                      .depth = 2,
+                      .origin_z_m = 0.0F,
+                      .outside_is_unknown = true};
+  const std::vector<float> esdf(16U, mppi::kUnknownEsdfDistanceM);
+  ObservedOccupancyGrid3D latest_raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 2, 2}};
+  ASSERT_TRUE(latest_raw.setState(GridIndex3D{1, 0, 0}, ObservedVoxelState::kOccupied));
+  const RouteIntent3D intent{.id = 4U,
+                             .planned_on_revision = 11U,
+                             .mission_target = {3.0, 0.5, 0.5},
+                             .intent_target = {3.0, 0.5, 0.5},
+                             .segment_target = {3.0, 0.5, 0.5},
+                             .valid = true};
+  const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
+                                         {.position = {2.5, 0.5, 0.5}}};
+  SegmentEvidenceWorld3D evidence_world = world(grid, esdf);
+  evidence_world.latest_observed_occupancy = &latest_raw;
+
+  const SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
+      intent, route, route.front().position, true, true, false, 1.0, evidence_world);
+
+  EXPECT_FALSE(evidence.physical_executable);
+  EXPECT_TRUE(evidence.raw_collision);
+  EXPECT_TRUE(evidence.unknown_exposure);
+  EXPECT_EQ(evidence.status, SegmentEvidenceStatus3D::kRawCollision);
+}
+
 } // namespace
 } // namespace drone_city_nav

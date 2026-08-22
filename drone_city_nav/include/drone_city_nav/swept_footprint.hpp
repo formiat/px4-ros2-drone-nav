@@ -152,10 +152,30 @@ validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
     const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
     const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
 
+enum class ObservedSpaceValidationPolicy : std::uint8_t {
+  kRequireKnownFree,
+  kAllowUnknown,
+};
+
+[[nodiscard]] SweptFootprintResult validateObservedFootprintAt(
+    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
+    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
+    ObservedSpaceValidationPolicy policy,
+    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
+    const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
+
 [[nodiscard]] SweptFootprintResult validateRawSweptFootprint(
     const ObservedOccupancyGrid3D& occupancy, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
+    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
+    const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
+
+[[nodiscard]] SweptFootprintResult validateObservedSweptFootprint(
+    const ObservedOccupancyGrid3D& occupancy, const Point3& first,
+    const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
+    ObservedSpaceValidationPolicy policy,
     const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
     const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
 

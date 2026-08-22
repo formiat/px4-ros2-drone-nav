@@ -171,10 +171,14 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
     if (world.latest_observed_occupancy == nullptr) {
       continue;
     }
-    const SweptFootprintResult raw_validation = validateRawSweptFootprint(
+    const ObservedSpaceValidationPolicy observed_policy =
+        world.require_known_free_space
+            ? ObservedSpaceValidationPolicy::kRequireKnownFree
+            : ObservedSpaceValidationPolicy::kAllowUnknown;
+    const SweptFootprintResult raw_validation = validateObservedSweptFootprint(
         *world.latest_observed_occupancy, first, FootprintBodyAxis{}, second,
-        FootprintBodyAxis{}, world.footprint, world.proprioceptive_free_space_seed,
-        world.launch_support_contact);
+        FootprintBodyAxis{}, world.footprint, observed_policy,
+        world.proprioceptive_free_space_seed, world.launch_support_contact);
     mergeFootprintEvidence(result, raw_validation);
     status = rejectedStatus(raw_validation, world.require_known_free_space);
     if (status != SegmentEvidenceStatus3D::kValid) {

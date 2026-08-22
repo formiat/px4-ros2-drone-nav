@@ -114,6 +114,35 @@ TEST(StaticRouteExtensionTest, DefersLifecycleReleaseButNeverRawBlockedRelease) 
       false, GlobalGuideReleaseReason::kStalled));
 }
 
+TEST(StaticRouteExtensionTest, InitialSearchIsSupersededByActivatedResidentRoute) {
+  const StaticRouteSearchRequestIdentity request =
+      identifyStaticRouteSearchRequest(0U, false, 0U, false, 0U);
+
+  ASSERT_TRUE(request.valid());
+  EXPECT_EQ(request.kind, StaticRouteSearchRequestKind::kInitial);
+  EXPECT_EQ(assessStaticRouteSearchCurrency(request, 0U).status,
+            StaticRouteSearchCurrencyStatus::kCurrent);
+  EXPECT_EQ(assessStaticRouteSearchCurrency(request, 1U).status,
+            StaticRouteSearchCurrencyStatus::kSupersededByResidentRoute);
+}
+
+TEST(StaticRouteExtensionTest, ManagedSearchMustMatchItsResidentGeneration) {
+  const StaticRouteSearchRequestIdentity replan =
+      identifyStaticRouteSearchRequest(7U, false, 0U, true, 7U);
+  const StaticRouteSearchRequestIdentity extension =
+      identifyStaticRouteSearchRequest(8U, true, 8U, false, 0U);
+
+  ASSERT_TRUE(replan.valid());
+  ASSERT_TRUE(extension.valid());
+  EXPECT_EQ(replan.kind, StaticRouteSearchRequestKind::kReplan);
+  EXPECT_EQ(extension.kind, StaticRouteSearchRequestKind::kExtension);
+  EXPECT_TRUE(assessStaticRouteSearchCurrency(replan, 7U).current());
+  EXPECT_EQ(assessStaticRouteSearchCurrency(extension, 7U).status,
+            StaticRouteSearchCurrencyStatus::kResidentRoutePredatesRequest);
+  EXPECT_FALSE(identifyStaticRouteSearchRequest(7U, true, 7U, true, 7U).valid());
+  EXPECT_FALSE(identifyStaticRouteSearchRequest(7U, false, 0U, true, 6U).valid());
+}
+
 TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterRejectedExtension) {
   StaticRouteDeferredReplanLatch latch;
   latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kStalled,
