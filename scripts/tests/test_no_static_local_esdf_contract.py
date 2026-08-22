@@ -30,13 +30,21 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             parameters["no_static_3d_esdf_update_rate_hz"],
             parameters["no_static_esdf_update_rate_hz"],
         )
-        self.assertGreater(parameters["no_static_3d_esdf_half_extent_m"], 0.0)
+        self.assertGreater(parameters["no_static_3d_esdf_horizontal_half_extent_m"], 0.0)
+        self.assertGreater(parameters["no_static_3d_esdf_vertical_half_extent_m"], 0.0)
         self.assertGreaterEqual(
-            parameters["no_static_3d_esdf_recenter_margin_m"], 0.0
+            parameters["no_static_3d_esdf_horizontal_recenter_margin_m"], 0.0
+        )
+        self.assertGreaterEqual(
+            parameters["no_static_3d_esdf_vertical_recenter_margin_m"], 0.0
         )
         self.assertLess(
-            parameters["no_static_3d_esdf_recenter_margin_m"],
-            parameters["no_static_3d_esdf_half_extent_m"],
+            parameters["no_static_3d_esdf_horizontal_recenter_margin_m"],
+            parameters["no_static_3d_esdf_horizontal_half_extent_m"],
+        )
+        self.assertLess(
+            parameters["no_static_3d_esdf_vertical_recenter_margin_m"],
+            parameters["no_static_3d_esdf_vertical_half_extent_m"],
         )
 
     def test_no_static_build_crops_before_distance_transform(self) -> None:

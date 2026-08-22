@@ -543,8 +543,9 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       active_route_objective = {};
     } else if (guide.get() != route_source.get() || !route_altitude_m.has_value() ||
                std::abs(*route_altitude_m - mission_goal.z) > 1.0e-3) {
-      mppi_route = makeMppiRoute2D(*guide, mission_goal.z,
-                                   speed_policy_config_.cruise_speed_mps);
+      mppi_route =
+          makeMppiRoute2D(*guide, mission_goal.z, speed_policy_config_.cruise_speed_mps,
+                          speed_policy_config_);
       route_source = guide;
       route_altitude_m = mission_goal.z;
     }

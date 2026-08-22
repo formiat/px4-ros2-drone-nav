@@ -40,6 +40,7 @@ def make_memory_parameters(
     memory_snapshot_topic,
     memory_status_topic,
     latest_lidar_obstacle_scan_topic,
+    enable_lidar_debug,
 ):
     selected_memory_vehicle = (
         role
@@ -48,6 +49,7 @@ def make_memory_parameters(
     )
     overrides = {
         "persistent_memory_enabled": obstacle_memory_enabled,
+        "persistent_memory_diagnostics_enabled": enable_lidar_debug,
         "persistent_memory_spectator_vehicle_id": selected_memory_vehicle,
         "persistent_memory_spectator_target_topic": (
             "/drone_city_nav/spectator_target"

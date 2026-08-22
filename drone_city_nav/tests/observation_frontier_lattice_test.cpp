@@ -94,7 +94,9 @@ void fillBox(ObservedOccupancyGrid3D& occupancy, const int minimum_x,
   return config;
 }
 
-[[nodiscard]] RiskAwareLattice3DResult planFixture(const OpeningFixture& fixture) {
+[[nodiscard]] RiskAwareLattice3DResult
+planFixture(const OpeningFixture& fixture,
+            const RiskAwareLattice3DConfig& config = makeConfig()) {
   const ObservedEsdf3D field =
       buildObservedEsdf3D(fixture.occupancy, fixture.occupancy.bounds(), 40.0);
   const Lattice3DExplorationContext exploration{
@@ -106,11 +108,21 @@ void fillBox(ObservedOccupancyGrid3D& occupancy, const int minimum_x,
                                 Vec3{fixture.goal.x - fixture.start.x,
                                      fixture.goal.y - fixture.start.y,
                                      fixture.goal.z - fixture.start.z},
-                                fixture.goal, {}, makeConfig(), nullptr, &exploration);
+                                fixture.goal, {}, config, nullptr, &exploration);
 }
 
-void expectObservationRoute(const RiskAwareLattice3DResult& result) {
-  ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier);
+void expectObservationRoute(const RiskAwareLattice3DResult& result,
+                            const Point3& start) {
+  ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier)
+      << "frontiers=" << result.frontier_candidates_considered
+      << " searches=" << result.frontier_searches
+      << " sampled_free=" << result.frontier_sampled_free_voxels
+      << " boundary_candidates=" << result.frontier_boundary_candidates
+      << " evaluated=" << result.frontier_evaluated_candidates
+      << " rejected(raw=" << result.successor_diagnostics.lattice_rejected_raw_collision
+      << ", unknown=" << result.successor_diagnostics.lattice_rejected_unknown_space
+      << ", outside=" << result.successor_diagnostics.lattice_rejected_outside_grid
+      << ", risk=" << result.successor_diagnostics.lattice_rejected_risk_stage << ")";
   ASSERT_EQ(result.route_purpose, Lattice3DRoutePurpose::kObservationFrontier);
   ASSERT_TRUE(result.observation_frontier.has_value());
   ASSERT_GE(result.points.size(), 2U);
@@ -118,6 +130,9 @@ void expectObservationRoute(const RiskAwareLattice3DResult& result) {
       result.observation_frontier.value_or(ObservationFrontier{});
   EXPECT_EQ(frontier.supporting_map_revision, 41U);
   EXPECT_GT(frontier.information_gain_voxels, 0U);
+  EXPECT_NEAR(result.frontier_endpoint_displacement_m,
+              distance3D(start, result.points.back()), 1.0e-9);
+  EXPECT_GE(result.frontier_endpoint_displacement_m, 1.0);
 }
 
 TEST(ObservationFrontierLatticeTest, DescendsFromHighStartTowardLowerObservedOpening) {
@@ -125,7 +140,7 @@ TEST(ObservationFrontierLatticeTest, DescendsFromHighStartTowardLowerObservedOpe
 
   const RiskAwareLattice3DResult result = planFixture(fixture);
 
-  expectObservationRoute(result);
+  expectObservationRoute(result, fixture.start);
   EXPECT_LT(result.points.back().z, 10.0);
   EXPECT_GT(result.points.back().x, 11.0);
 }
@@ -135,20 +150,36 @@ TEST(ObservationFrontierLatticeTest, ClimbsFromLowStartTowardHigherObservedOpeni
 
   const RiskAwareLattice3DResult result = planFixture(fixture);
 
-  expectObservationRoute(result);
+  expectObservationRoute(result, fixture.start);
   EXPECT_GT(result.points.back().z, 14.0);
   EXPECT_GT(result.points.back().x, 11.0);
 }
 
 TEST(ObservationFrontierLatticeTest,
-     MovesSidewaysTowardObservedOpeningOutsideDirectGoalLine) {
+     NormalPolicyReachesGoalThroughObservedOpeningOutsideDirectGoalLine) {
   OpeningFixture fixture = makeForwardOpeningFixture(10.5, 15, 19, 8, 13);
   fixture.start.y = 6.5;
   fixture.goal.y = 6.5;
 
   const RiskAwareLattice3DResult result = planFixture(fixture);
 
-  expectObservationRoute(result);
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_TRUE(std::ranges::any_of(result.points, [](const Point3& point) {
+    return point.x > 11.0 && point.x < 15.0 && point.y > 13.0;
+  }));
+}
+
+TEST(ObservationFrontierLatticeTest,
+     StrictPolicyMovesSidewaysTowardObservedOpeningOutsideDirectGoalLine) {
+  OpeningFixture fixture = makeForwardOpeningFixture(10.5, 15, 19, 8, 13);
+  fixture.start.y = 6.5;
+  fixture.goal.y = 6.5;
+  RiskAwareLattice3DConfig config = makeConfig();
+  config.require_known_free_space = true;
+
+  const RiskAwareLattice3DResult result = planFixture(fixture, config);
+
+  expectObservationRoute(result, fixture.start);
   EXPECT_GT(result.points.back().y, 13.0);
   EXPECT_GT(result.points.back().x, 11.0);
 }
@@ -159,7 +190,7 @@ TEST(ObservationFrontierLatticeTest,
 
   const RiskAwareLattice3DResult result = planFixture(fixture);
 
-  expectObservationRoute(result);
+  expectObservationRoute(result, fixture.start);
   EXPECT_LT(result.points.back().x, fixture.start.x);
   EXPECT_LT(result.achieved_progress_m, 0.0);
 }

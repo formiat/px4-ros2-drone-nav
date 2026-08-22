@@ -212,6 +212,24 @@ def generate_multi_vehicle_launch_description(mission_kind):
         use_static_map = _optional_bool(
             LaunchConfiguration("use_static_map").perform(context), False
         )
+        require_known_free_space = _optional_bool(
+            LaunchConfiguration("require_known_free_space").perform(context), False
+        )
+        liveness_enabled = _optional_bool(
+            LaunchConfiguration("liveness_enabled").perform(context), False
+        )
+        global_guide_stall_recovery_enabled = _optional_bool(
+            LaunchConfiguration("global_guide_stall_recovery_enabled").perform(context),
+            False,
+        )
+        no_static_cycle_recovery_enabled = _optional_bool(
+            LaunchConfiguration("no_static_cycle_recovery_enabled").perform(context),
+            False,
+        )
+        topological_backtracking_enabled = _optional_bool(
+            LaunchConfiguration("topological_backtracking_enabled").perform(context),
+            False,
+        )
         static_lattice_deadline_override = LaunchConfiguration(
             "static_global_lattice_deadline_ms"
         ).perform(context)
@@ -441,12 +459,24 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 memory_snapshot,
                 memory_status,
                 latest_lidar_obstacle_scan,
+                lidar_debug_enabled,
             )
             planner_params = _parameters(
                 document,
                 "production_mppi_node",
                 {
                     "use_static_map": use_static_map,
+                    "require_known_free_space": require_known_free_space,
+                    "liveness_enabled": liveness_enabled,
+                    "global_guide_stall_recovery_enabled": (
+                        global_guide_stall_recovery_enabled
+                    ),
+                    "no_static_cycle_recovery_enabled": (
+                        no_static_cycle_recovery_enabled
+                    ),
+                    "topological_backtracking_enabled": (
+                        topological_backtracking_enabled
+                    ),
                     "static_occupancy_3d_path": static_path,
                     "static_free_space_topology_3d_path": static_topology_path,
                     "static_esdf_3d_cache_path": static_esdf_cache_path,
@@ -848,6 +878,17 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value="false"),
+            DeclareLaunchArgument("require_known_free_space", default_value="false"),
+            DeclareLaunchArgument("liveness_enabled", default_value="false"),
+            DeclareLaunchArgument(
+                "global_guide_stall_recovery_enabled", default_value="false"
+            ),
+            DeclareLaunchArgument(
+                "no_static_cycle_recovery_enabled", default_value="false"
+            ),
+            DeclareLaunchArgument(
+                "topological_backtracking_enabled", default_value="false"
+            ),
             DeclareLaunchArgument(
                 "static_global_lattice_deadline_ms", default_value=""
             ),

@@ -36,12 +36,15 @@ buildPriorityScore(const IncrementalTopologyTileIndex3D tile,
   }
   const double offset_squared =
       offset.x * offset.x + offset.y * offset.y + offset.z * offset.z;
+  const double distance_m = std::sqrt(offset_squared);
+  if (distance_m <= 1.0e-6) {
+    return 0.0;
+  }
   const double forward_m =
       (offset.x * direction.x + offset.y * direction.y + offset.z * direction.z) /
       direction_m;
-  const double lateral_m =
-      std::sqrt(std::max(0.0, offset_squared - forward_m * forward_m));
-  return 2.0 * lateral_m + 0.05 * std::max(0.0, forward_m) + std::max(0.0, -forward_m);
+  const double alignment = std::clamp(forward_m / distance_m, -1.0, 1.0);
+  return distance_m + 0.25 * (1.0 - alignment);
 }
 
 } // namespace

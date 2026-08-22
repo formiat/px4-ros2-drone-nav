@@ -164,6 +164,12 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("sim-cooperative-traffic-urban-headless:", makefile)
         self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_SENSOR_WORLD_SDF_PATH"', makefile)
         self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH"', makefile)
+        self.assertEqual(
+            makefile.count(
+                'COOPERATIVE_MISSION_TIMEOUT_S="$${COOPERATIVE_MISSION_TIMEOUT_S:-480}"'
+            ),
+            2,
+        )
         self.assertEqual(makefile.count("--runtime-map-mode no-static"), 4)
         self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 4)
         self.assertEqual(

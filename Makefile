@@ -50,7 +50,7 @@ validate-incremental-topology-headless:
 sim-gui: build
 	@if [[ -z "$${MISSION_GOALS_XYZ_M+x}" && \
 		-z "$${POINT_TO_POINT_SCENARIO_PATH:-}" ]]; then \
-		export MISSION_GOALS_XYZ_M='216,54,18;216,378,18;54,378,18;54,54,18'; \
+		export MISSION_GOALS_XYZ_M='216,378,18;216,54,18;54,378,18;54,54,18'; \
 	fi; \
 	./scripts/run_drone_nav_sim.sh
 
@@ -58,7 +58,7 @@ sim-gui: build
 sim-headless: build
 	@if [[ -z "$${MISSION_GOALS_XYZ_M+x}" && \
 		-z "$${POINT_TO_POINT_SCENARIO_PATH:-}" ]]; then \
-		export MISSION_GOALS_XYZ_M='216,54,18;216,378,18;54,378,18;54,54,18'; \
+		export MISSION_GOALS_XYZ_M='216,378,18;216,54,18;54,378,18;54,54,18'; \
 	fi; \
 	HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
 		./scripts/run_drone_nav_sim.sh
@@ -125,7 +125,7 @@ sim-cooperative-traffic-urban-headless: build
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
-		COOPERATIVE_MISSION_TIMEOUT_S=480 \
+		COOPERATIVE_MISSION_TIMEOUT_S="$${COOPERATIVE_MISSION_TIMEOUT_S:-480}" \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
 		./scripts/run_drone_nav_sim.sh
 
@@ -140,7 +140,7 @@ sim-cooperative-traffic-urban-gui: build
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=civilian_0 \
 		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=next_living \
-		COOPERATIVE_MISSION_TIMEOUT_S=480 \
+		COOPERATIVE_MISSION_TIMEOUT_S="$${COOPERATIVE_MISSION_TIMEOUT_S:-480}" \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \

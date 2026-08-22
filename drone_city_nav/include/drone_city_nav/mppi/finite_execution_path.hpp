@@ -62,6 +62,7 @@ struct FiniteExecutionPathWorld {
   const SweptFootprintConfig* footprint{nullptr};
   const OccupancyGrid3D* static_occupancy{nullptr};
   const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
+  bool require_known_free_space{false};
   const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
   const OccupancyGrid2D* raw_occupancy{nullptr};
@@ -88,6 +89,8 @@ struct ValidatedFiniteExecutionPath {
   FiniteExecutionPathValidation validation{};
   std::size_t arrival_shaping_attempts{0U};
   bool path_validation_backoff{false};
+  FiniteExecutionPathStatus first_failed_validation_status{
+      FiniteExecutionPathStatus::kValid};
   bool latest_lidar_path_validation_backoff{false};
 
   [[nodiscard]] bool accepted() const noexcept {

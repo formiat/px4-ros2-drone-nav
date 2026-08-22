@@ -912,6 +912,23 @@ reconstruct(const Key& terminal, const Point3& origin,
       }
     }
   }
+  if (!reached) {
+    // A continuation can alter the terminal point after the initial frontier
+    // check. Only publish a viable exploration route when its final endpoint
+    // still represents an actual observation move rather than a loop back to
+    // the search start.
+    result.frontier_endpoint_displacement_m =
+        result.points.empty() ? 0.0 : distance3D(start, result.points.back());
+    if (result.status == Lattice3DStatus::kViableFrontier &&
+        result.frontier_endpoint_displacement_m + 1.0e-9 <
+            config.frontier_minimum_endpoint_displacement_m) {
+      result.status =
+          termination == Lattice3DSearchTermination::kDeadlineReached ||
+                  termination == Lattice3DSearchTermination::kExpansionBudgetExhausted
+              ? Lattice3DStatus::kSearchIncomplete
+              : Lattice3DStatus::kMotionGraphExhausted;
+    }
+  }
   result.objective_cost = metrics.objective_cost;
   result.route_length_m = metrics.route_length_m;
   result.estimated_travel_time_s = metrics.travel_time_s;

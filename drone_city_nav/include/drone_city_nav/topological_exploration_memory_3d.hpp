@@ -50,9 +50,11 @@ struct SparseCoverageCell3D {
 
 struct TopologicalExplorationMemory3DConfig {
   double coverage_resolution_m{2.0};
+  double coverage_influence_radius_m{4.0};
   double visit_penalty_weight{2.0};
   double observation_penalty_weight{0.25};
   double revision_decay{0.0};
+  double maximum_observed_transition_m{4.0};
   std::size_t maximum_trail_nodes{4096U};
 };
 
@@ -77,10 +79,14 @@ public:
   softCoveragePenalty(const Point3& position,
                       std::uint64_t current_revision) const noexcept;
   [[nodiscard]] std::size_t coverageCellCount() const noexcept;
+  [[nodiscard]] const TopologicalExplorationMemory3DConfig& config() const noexcept;
 
   void recordFrontierSelection(ObservationFrontierId frontier_id);
   [[nodiscard]] std::size_t
   frontierSelectionCount(ObservationFrontierId frontier_id) const noexcept;
+  void recordFrontierCompletion(ObservationFrontierId frontier_id);
+  [[nodiscard]] std::size_t
+  frontierCompletionCount(ObservationFrontierId frontier_id) const noexcept;
 
   void resetTrail(IncrementalTopologyNodeId node);
   void recordTrailTransition(IncrementalTopologyNodeId from,
@@ -89,7 +95,6 @@ public:
 
   void beginMissionLeg();
   void clear();
-  [[nodiscard]] const TopologicalExplorationMemory3DConfig& config() const noexcept;
 
 private:
   struct SparseCoverageIndex3D {
@@ -117,6 +122,7 @@ private:
                      SparseCoverageIndex3DHash>
       coverage_;
   std::unordered_map<std::uint64_t, std::size_t> frontier_selection_counts_;
+  std::unordered_map<std::uint64_t, std::size_t> frontier_completion_counts_;
   std::vector<IncrementalTopologyNodeId> trail_;
 };
 

@@ -81,4 +81,16 @@ TEST(Px4RosTimeMapperTest, RejectedHighRttSampleDoesNotReplaceAcceptedOffset) {
   EXPECT_EQ(mapper.diagnostics().latest_estimated_offset_ns, -1'700'000'000'000LL);
 }
 
+TEST(Px4RosTimeMapperTest, RecoversAdjustedSampleAcrossAlternatingTimesyncDomains) {
+  Px4RosTimeMapper mapper{
+      Px4RosTimeMapperConfig{2U, 8U, 0.999, 1.001, 50'000'000, 500'000'000}};
+  constexpr std::int64_t kDdsOffsetUs{-1'700'000'000};
+  mapper.observeTimesync(1'701'000'000U, kDdsOffsetUs, 100U, 1'010'000'000);
+  mapper.observeTimesync(1'100'000U, 0, 100U, 1'110'000'000);
+  ASSERT_TRUE(mapper.ready());
+
+  EXPECT_EQ(mapper.recoverPx4LocalTimeNsClosestToRosTime(1'701'150'000U, 1'160'000'000),
+            std::optional<std::int64_t>{1'150'000'000});
+}
+
 } // namespace drone_city_nav

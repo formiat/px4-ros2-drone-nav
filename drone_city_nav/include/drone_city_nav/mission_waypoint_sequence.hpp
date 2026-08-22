@@ -45,6 +45,9 @@ public:
   [[nodiscard]] MissionWaypointUpdate
   update(const MissionWaypointObservation& observation);
 
+  // Records a capture already confirmed by the navigation controller.
+  [[nodiscard]] MissionWaypointUpdate acknowledgeGoalCapture() noexcept;
+
 private:
   std::vector<Point3> waypoints_;
   MissionWaypointSequenceConfig config_;

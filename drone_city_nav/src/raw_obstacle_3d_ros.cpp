@@ -126,6 +126,52 @@ changedChunkIndices(const std::span<const msg::ObservedObstacleChunk3D> chunks) 
   return indices;
 }
 
+[[nodiscard]] bool
+chunksEqual(const ObservedOccupancyGrid3D::Chunk* const first,
+            const ObservedOccupancyGrid3D::Chunk* const second) noexcept {
+  constexpr ObservedOccupancyGrid3D::Chunk kEmptyChunk{};
+  const ObservedOccupancyGrid3D::Chunk& first_value =
+      first == nullptr ? kEmptyChunk : *first;
+  const ObservedOccupancyGrid3D::Chunk& second_value =
+      second == nullptr ? kEmptyChunk : *second;
+  return first_value.observed == second_value.observed &&
+         first_value.occupied == second_value.occupied;
+}
+
+[[nodiscard]] std::vector<OccupancyChunkIndex3D>
+changedChunkIndices(const ObservedOccupancyGrid3D& previous,
+                    const ObservedOccupancyGrid3D& current) {
+  std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash> unique;
+  unique.reserve(previous.chunks().size() + current.chunks().size());
+  for (const auto& [index, unused] : previous.chunks()) {
+    static_cast<void>(unused);
+    unique.insert(index);
+  }
+  for (const auto& [index, unused] : current.chunks()) {
+    static_cast<void>(unused);
+    unique.insert(index);
+  }
+
+  std::vector<OccupancyChunkIndex3D> changed;
+  changed.reserve(unique.size());
+  for (const OccupancyChunkIndex3D index : unique) {
+    const auto previous_chunk = previous.chunks().find(index);
+    const auto current_chunk = current.chunks().find(index);
+    if (!chunksEqual(
+            previous_chunk == previous.chunks().end() ? nullptr
+                                                      : &previous_chunk->second,
+            current_chunk == current.chunks().end() ? nullptr
+                                                    : &current_chunk->second)) {
+      changed.push_back(index);
+    }
+  }
+  std::ranges::sort(changed, [](const OccupancyChunkIndex3D first,
+                                const OccupancyChunkIndex3D second) {
+    return std::tie(first.z, first.y, first.x) < std::tie(second.z, second.y, second.x);
+  });
+  return changed;
+}
+
 } // namespace
 
 msg::RawObstacleSnapshot3D makeRawObstacleSnapshot3D(
@@ -188,6 +234,14 @@ RawObstacleDeltaAccumulator3D::apply(const msg::RawObstacleSnapshot3D& snapshot)
             .dirty_chunks = {},
             .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
   }
+  const bool full_reset =
+      !state_.occupancy ||
+      snapshot.producer_instance_id != state_.producer_instance_id ||
+      !sameBounds(*bounds, state_.occupancy->bounds());
+  std::vector<OccupancyChunkIndex3D> dirty_chunks;
+  if (!full_reset) {
+    dirty_chunks = changedChunkIndices(*state_.occupancy, grid);
+  }
   state_ = RawObstacleGridState3D{
       .producer_instance_id = snapshot.producer_instance_id,
       .base_snapshot_revision = snapshot.obstacle_snapshot_revision,
@@ -196,9 +250,9 @@ RawObstacleDeltaAccumulator3D::apply(const msg::RawObstacleSnapshot3D& snapshot)
   };
   return {
       .state = state_,
-      .dirty_chunks = {},
+      .dirty_chunks = std::move(dirty_chunks),
       .status = RawObstacleGridUpdateStatus3D::kAccepted,
-      .full_reset = true,
+      .full_reset = full_reset,
   };
 }
 

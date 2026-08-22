@@ -8,7 +8,7 @@ namespace drone_city_nav {
 namespace {
 
 TEST(IncrementalTopologyTileScheduler3DTest,
-     PrioritizesCurrentAndGoalDirectedTilesBeforeSideBranches) {
+     PrioritizesLocalCoverageBeforeTheDistantGoalCorridor) {
   const std::array pending{
       IncrementalTopologyTileIndex3D{2, 3, 2},
       IncrementalTopologyTileIndex3D{0, 2, 2},
@@ -26,7 +26,7 @@ TEST(IncrementalTopologyTileScheduler3DTest,
 
   ASSERT_EQ(selected.size(), 2U);
   EXPECT_EQ(selected[0], (IncrementalTopologyTileIndex3D{2, 2, 2}));
-  EXPECT_EQ(selected[1], (IncrementalTopologyTileIndex3D{10, 2, 2}));
+  EXPECT_EQ(selected[1], (IncrementalTopologyTileIndex3D{2, 3, 2}));
 }
 
 TEST(IncrementalTopologyTileScheduler3DTest,

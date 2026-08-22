@@ -592,7 +592,8 @@ public:
               .altitude_envelope_violation =
                   evaluation.metrics.altitude_envelope_violation,
               .raw_collision = evaluation.metrics.collision,
-              .unknown_space_violation = evaluation.metrics.unknown_space_violation,
+              .unknown_space_violation = evaluation.metrics.unknown_space_violation &&
+                                         config_.risk.require_known_free_space,
               .known_solid_collision = evaluation.known_solid_collision,
           });
       return evaluation;

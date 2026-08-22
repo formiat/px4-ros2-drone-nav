@@ -1,9 +1,11 @@
 #include "drone_city_nav/observed_esdf_3d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -31,55 +33,16 @@ void ProductionMppiNode::processObservedEsdf3D(
   }
   const std::shared_ptr<const ProductionNavigationObjective> build_objective =
       navigationObjective();
-  const std::optional<IncrementalTopologyBuildPriority3D> topology_priority =
-      navigation.valid && build_objective
-          ? std::optional<
-                IncrementalTopologyBuildPriority3D>{{.position = {navigation.state.x,
-                                                                  navigation.state.y,
-                                                                  navigation.state.z},
-                                                     .target = build_objective->goal}}
-          : std::nullopt;
-
-  const auto topology_started = std::chrono::steady_clock::now();
-  const IncrementalTopologicalWorldUpdate3D topology_update =
-      topological_navigation_3d_->updateObserved(
-          *occupancy, raw_world.producer_instance_id, raw_world.revision,
-          raw_world.dirty_chunks, raw_world.full_reset, topology_priority);
-  const double topology_update_ms =
-      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                topology_started)
-          .count();
+  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> topology_graph;
+  IncrementalTopologyGraph3DUpdate topology_graph_update;
   {
-    const std::scoped_lock lock{esdf_state_mutex_};
-    if (prepared_esdf_) {
-      prepared_esdf_->topological_graph = topology_update.snapshot;
-      prepared_esdf_->topological_graph_update = topology_update.graph;
+    const std::scoped_lock lock{topology_state_mutex_};
+    if (latest_observed_topological_producer_instance_id_ ==
+        raw_world.producer_instance_id) {
+      topology_graph = latest_observed_topological_graph_;
+      topology_graph_update = latest_observed_topological_graph_update_;
     }
   }
-  RCLCPP_INFO(
-      get_logger(),
-      "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64
-      " full_reset=%s dirty_chunks=%zu discovered_dirty_tiles=%zu "
-      "rebuilt_tiles=%zu pending_tiles=%zu refined_tiles=%zu "
-      "base_resolution_m=%.3f coarse_resolution_m=%.3f "
-      "refined_resolution_m=%.3f sampled_cells=%zu retained_nodes=%zu "
-      "created_nodes=%zu retired_nodes=%zu nodes=%zu edges=%zu "
-      "dirty_discovery_ms=%.2f rebuild_ms=%.2f update_ms=%.2f",
-      topology_update.graph.revision,
-      topology_update.graph.full_reset ? "true" : "false",
-      topology_update.graph.requested_dirty_chunks,
-      topology_update.graph.discovered_dirty_tiles, topology_update.graph.rebuilt_tiles,
-      topology_update.graph.pending_tiles,
-      topology_update.graph.adaptively_refined_tiles, occupancy->bounds().resolution_m,
-      occupancy->bounds().resolution_m *
-          topological_graph_3d_config_.coarse_sample_stride_cells,
-      occupancy->bounds().resolution_m *
-          topological_graph_3d_config_.refined_sample_stride_cells,
-      topology_update.graph.sampled_navigable_cells,
-      topology_update.graph.retained_node_ids, topology_update.graph.created_nodes,
-      topology_update.graph.retired_nodes, topology_update.graph.node_count,
-      topology_update.graph.edge_count, topology_update.graph.dirty_tile_discovery_ms,
-      topology_update.graph.graph_rebuild_ms, topology_update_ms);
   if (!navigation.valid) {
     return;
   }
@@ -264,11 +227,11 @@ void ProductionMppiNode::processObservedEsdf3D(
         .depth_cells = active_prepared->grid.depth,
     };
     recenter = localObservedEsdfNeedsRecenter(local_bounds, world_bounds, position,
-                                              no_static_3d_esdf_recenter_margin_m_);
+                                              no_static_3d_esdf_window_);
   }
   if (recenter) {
     local_bounds = selectLocalObservedEsdfBounds(world_bounds, position,
-                                                 no_static_3d_esdf_half_extent_m_);
+                                                 no_static_3d_esdf_window_);
   }
 
   const std::uint64_t local_fingerprint =
@@ -280,6 +243,23 @@ void ProductionMppiNode::processObservedEsdf3D(
           (launch_support_contact != nullptr) &&
       active_prepared->launch_support_resolution_pending ==
           launch_support_resolution_pending;
+  if (active_prepared && !launch_support_unchanged) {
+    {
+      const std::scoped_lock lock{esdf_state_mutex_};
+      prepared_esdf_.reset();
+    }
+    {
+      const std::scoped_lock lock{guide_queue_mutex_};
+      pending_guide_world_.reset();
+    }
+    active_prepared.reset();
+    RCLCPP_INFO(get_logger(),
+                "LAUNCH_SUPPORT_WORLD_INVALIDATED raw_revision=%" PRIu64
+                " support_active=%s resolution_pending=%s",
+                raw_world.revision,
+                launch_support_contact != nullptr ? "true" : "false",
+                launch_support_resolution_pending ? "true" : "false");
+  }
   const bool local_occupancy_unchanged =
       active_prepared && active_prepared->distances_m && !recenter &&
       active_prepared->source_occupied_fingerprint == local_fingerprint &&
@@ -336,9 +316,13 @@ void ProductionMppiNode::processObservedEsdf3D(
       prepared = *prepared_esdf_;
     }
   }
+  const bool retained_topology_is_compatible =
+      !prepared.topological_graph ||
+      prepared.producer_instance_id == raw_world.producer_instance_id;
   prepared.producer_instance_id = raw_world.producer_instance_id;
   prepared.revision = field.occupancy_fingerprint;
-  prepared.source_occupied_fingerprint = field.occupancy_fingerprint;
+  prepared.source_raw_revision = raw_world.revision;
+  prepared.source_occupied_fingerprint = local_fingerprint;
   prepared.source_stamp_ns = raw_world.ready_stamp_ns;
   prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
   prepared.build_ms =
@@ -352,12 +336,21 @@ void ProductionMppiNode::processObservedEsdf3D(
   prepared.grid = field.grid;
   prepared.distances_m = host_distances;
   prepared.raw_occupancy.reset();
-  prepared.observed_occupancy = field.local_occupancy;
+  prepared.observed_occupancy = occupancy;
   prepared.proprioceptive_free_space_seed = free_space_seed;
   prepared.launch_support_contact = launch_support_contact_;
   prepared.launch_support_resolution_pending = launch_support_resolution_pending;
-  prepared.topological_graph = topology_update.snapshot;
-  prepared.topological_graph_update = topology_update.graph;
+  // Topology rebuilds asynchronously from the same revisioned observation stream.
+  // Keep the latest compatible graph while the worker catches up with this ESDF
+  // snapshot; replacing it with nullptr would make the fallback unavailable on
+  // every intervening local ESDF refresh.
+  if (topology_graph) {
+    prepared.topological_graph = std::move(topology_graph);
+    prepared.topological_graph_update = topology_graph_update;
+  } else if (!retained_topology_is_compatible) {
+    prepared.topological_graph.reset();
+    prepared.topological_graph_update = {};
+  }
   if (const std::shared_ptr<const ProductionNavigationObjective> objective =
           navigationObjective()) {
     prepared.search_objective = makeStaticRouteObjective(*objective);
@@ -369,15 +362,41 @@ void ProductionMppiNode::processObservedEsdf3D(
     const std::scoped_lock lock{esdf_state_mutex_};
     prepared_esdf_ = prepared;
   }
-  auto guide_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
-  {
-    const std::scoped_lock lock{guide_queue_mutex_};
-    if (pending_guide_world_) {
-      dropped_guide_worlds_.fetch_add(1U, std::memory_order_relaxed);
-    }
-    pending_guide_world_ = std::move(guide_world);
+  const std::uint64_t blocked_raw_revision =
+      observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
+  const std::uint64_t dispatched_raw_revision =
+      observed_route_replan_dispatched_raw_revision_.load(std::memory_order_acquire);
+  if (blocked_raw_revision != 0U && blocked_raw_revision <= raw_world.revision &&
+      dispatched_raw_revision < blocked_raw_revision &&
+      prepared.global_guide_generation != 0U) {
+    observed_route_replan_dispatched_raw_revision_.store(blocked_raw_revision,
+                                                         std::memory_order_release);
+    RCLCPP_INFO(get_logger(),
+                "OBSERVED_ROUTE_REPLAN status=esdf_caught_up raw_revision=%" PRIu64
+                " esdf_revision=%" PRIu64 " generation=%" PRIu64,
+                raw_world.revision, prepared.revision,
+                prepared.global_guide_generation);
+    requestStaticRouteReplan(GlobalGuideReleaseReason::kBlocked,
+                             prepared.global_guide_generation);
   }
-  guide_queue_condition_.notify_all();
+  const bool initial_route_search_required = prepared.global_guide_generation == 0U;
+  bool initial_route_search_queued = false;
+  bool initial_route_search_already_pending = false;
+  if (initial_route_search_required) {
+    auto guide_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
+    {
+      const std::scoped_lock lock{guide_queue_mutex_};
+      if (pending_guide_world_) {
+        initial_route_search_already_pending = true;
+      } else {
+        pending_guide_world_ = std::move(guide_world);
+        initial_route_search_queued = true;
+      }
+    }
+    if (initial_route_search_queued) {
+      guide_queue_condition_.notify_all();
+    }
+  }
   if (!world_ready_.exchange(true, std::memory_order_acq_rel)) {
     publishWorldReadiness(true);
   }
@@ -387,7 +406,7 @@ void ProductionMppiNode::processObservedEsdf3D(
               " build_ms=%.2f classify_ms=%.2f upload_ms=%.2f dimensions=%dx%dx%d "
               "known=%zu free=%zu occupied=%zu unknown=%zu proprioceptive_free=%zu "
               "launch_support=%zu "
-              "recenter=%s builds=%" PRIu64 " throttled=%" PRIu64
+              "recenter=%s route_search=%s builds=%" PRIu64 " throttled=%" PRIu64
               " dropped_raw=%" PRIu64,
               prepared.revision, raw_world.revision, prepared.build_ms,
               field.stats.classification_ms, prepared.upload_ms, prepared.grid.width,
@@ -395,6 +414,12 @@ void ProductionMppiNode::processObservedEsdf3D(
               field.stats.free_voxels, field.stats.occupied_voxels,
               field.stats.unknown_voxels, field.stats.proprioceptive_free_voxels,
               field.stats.launch_support_voxels, recenter ? "true" : "false",
+              !initial_route_search_required
+                  ? "active_route_preserved"
+                  : (initial_route_search_queued ? "initial_queued"
+                                                 : (initial_route_search_already_pending
+                                                        ? "initial_already_pending"
+                                                        : "initial_not_queued")),
               no_static_esdf_builds_.load(std::memory_order_relaxed),
               no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
               dropped_raw_snapshots_.load(std::memory_order_relaxed));

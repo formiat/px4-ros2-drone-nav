@@ -30,6 +30,23 @@ TEST(StaticRouteExtensionTest, RequestsResidentExtensionUsingSearchLatency) {
   EXPECT_DOUBLE_EQ(decision.extension_trigger_remaining_m, 57.0);
 }
 
+TEST(StaticRouteExtensionTest, DoesNotImmediatelyReplaceShortFiniteRoute) {
+  const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
+      StaticRouteExtensionConfig{.minimum_remaining_m = 15.0,
+                                 .maximum_trigger_fraction_of_route = 0.65,
+                                 .latency_margin_s = 0.5},
+      StaticRouteExtensionObservation{.route_generation = 4U,
+                                      .route_station_m = 0.0,
+                                      .route_remaining_m = 10.0,
+                                      .horizontal_speed_mps = 3.0,
+                                      .guide_search_latency_ms = 100.0,
+                                      .esdf_build_latency_ms = 1200.0});
+
+  EXPECT_FALSE(decision.request_extension);
+  EXPECT_FALSE(decision.request_roi_refresh);
+  EXPECT_DOUBLE_EQ(decision.extension_trigger_remaining_m, 6.5);
+}
+
 TEST(StaticRouteExtensionTest, RequestsEarlyRoiRefreshOnlyWhenGoalLeavesEsdf) {
   StaticRouteExtensionObservation observation{
       .route_generation = 4U,
@@ -120,6 +137,19 @@ TEST(StaticRouteExtensionTest, DropsDeferredReplanAfterActivatedExtension) {
                                 .route_generation = 12U});
 
   EXPECT_FALSE(latch.finishExtension(12U, true).has_value());
+  EXPECT_FALSE(latch.pending());
+}
+
+TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterCompletedReplan) {
+  StaticRouteDeferredReplanLatch latch;
+  latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kExhausted,
+                                        .route_generation = 12U});
+
+  const std::optional<StaticRouteDeferredReplan> replay = latch.finishReplan(12U);
+
+  ASSERT_NE(replay, std::nullopt);
+  EXPECT_EQ(replay->reason, GlobalGuideReleaseReason::kExhausted);
+  EXPECT_EQ(replay->route_generation, 12U);
   EXPECT_FALSE(latch.pending());
 }
 
@@ -226,23 +256,22 @@ TEST(StaticRouteExtensionTest, ObservationReplacementRetainsSameFrontier) {
   EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kSameFrontierRetained);
 }
 
-TEST(StaticRouteExtensionTest, ObservationReplacementAdvancesAfterExtension) {
+TEST(StaticRouteExtensionTest, ObservationReplacementRequiresMeasuredProgress) {
   const ObservationRouteReplacementDecision decision =
       evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
           .active_frontier = testFrontier(7U, 10U),
           .candidate_frontier = testFrontier(8U, 11U),
           .active_score = 12.0,
-          .candidate_score = 10.0,
+          .candidate_score = 12.0,
           .minimum_score_improvement = 0.5,
           .active_frontier_still_valid = true,
-          .extension_requested = true,
       });
 
-  EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kFrontierAdvanced);
+  EXPECT_FALSE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kInsufficientProgress);
 }
 
-TEST(StaticRouteExtensionTest, ObservationReplacementExtendsSameFrontier) {
+TEST(StaticRouteExtensionTest, ObservationReplacementDoesNotChurnSameFrontier) {
   const ObservationRouteReplacementDecision decision =
       evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
           .active_frontier = testFrontier(7U, 10U),
@@ -251,11 +280,90 @@ TEST(StaticRouteExtensionTest, ObservationReplacementExtendsSameFrontier) {
           .candidate_score = 12.0,
           .minimum_score_improvement = 0.5,
           .active_frontier_still_valid = true,
-          .extension_requested = true,
+      });
+
+  EXPECT_FALSE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kSameFrontierRetained);
+}
+
+TEST(StaticRouteExtensionTest,
+     RetiredFrontierRefreshesEvenWhenTheRegionalIdentityIsUnchanged) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(7U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 12.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = false,
       });
 
   EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kFrontierAdvanced);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kActiveFrontierRetired);
+}
+
+TEST(StaticRouteExtensionTest, ObservationReplacementAdvancesFromReachedFrontier) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(8U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 20.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+          .active_frontier_reached = true,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kActiveFrontierReached);
+}
+
+TEST(StaticRouteExtensionTest, ExhaustedFiniteObservationRouteAcceptsNextFrontier) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(8U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 40.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+          .active_route_exhausted = true,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kActiveRouteExhausted);
+}
+
+TEST(StaticRouteExtensionTest, ExhaustedFiniteRouteMayContinueSameFrontier) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(7U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 40.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+          .active_route_exhausted = true,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kActiveRouteExhausted);
+}
+
+TEST(StaticRouteExtensionTest, ReachedFrontierIsNotReactivated) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = testFrontier(7U, 10U),
+          .candidate_frontier = testFrontier(7U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 10.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+          .active_frontier_reached = true,
+      });
+
+  EXPECT_FALSE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kSameFrontierRetained);
 }
 
 TEST(StaticRouteExtensionTest, ObservationReplacementRequiresScoreImprovement) {
@@ -286,7 +394,8 @@ TEST(StaticRouteExtensionTest, ObservationReplacementRequiresScoreImprovement) {
   EXPECT_DOUBLE_EQ(accepted.score_improvement, 0.5);
 }
 
-TEST(StaticRouteExtensionTest, ObservationReplacementAcceptsEndpointAdvance) {
+TEST(StaticRouteExtensionTest,
+     ObservationReplacementDoesNotReplaceAUsefulRouteForEndpointAdvanceAlone) {
   const ObservationRouteReplacementDecision decision =
       evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
           .active_frontier = testFrontier(7U, 10U),
@@ -299,8 +408,8 @@ TEST(StaticRouteExtensionTest, ObservationReplacementAcceptsEndpointAdvance) {
           .active_frontier_still_valid = true,
       });
 
-  EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kEndpointAdvanced);
+  EXPECT_FALSE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kInsufficientProgress);
 }
 
 TEST(StaticRouteExtensionTest, ObservationReplacementKeepsSoftGoalProgress) {

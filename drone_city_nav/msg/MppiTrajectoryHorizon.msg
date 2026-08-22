@@ -7,6 +7,10 @@ uint8 EXECUTION_REASON_COOPERATIVE_PASSAGE_YIELD=2
 uint8 EXECUTION_REASON_GOAL_CAPTURE=3
 uint8 EXECUTION_REASON_NO_EXECUTABLE_ROUTE=4
 uint8 EXECUTION_REASON_UNAVAILABLE_WORLD=5
+uint8 ROUTE_PURPOSE_MISSION_TRANSIT=0
+uint8 ROUTE_PURPOSE_LAUNCH_DEPARTURE=1
+uint8 ROUTE_PURPOSE_OBSERVATION_FRONTIER=2
+uint8 ROUTE_PURPOSE_TOPOLOGICAL_BACKTRACK=3
 uint64 sequence
 builtin_interfaces/Time valid_from
 builtin_interfaces/Time valid_until
@@ -15,6 +19,8 @@ uint64 obstacle_revision
 uint8 risk_tier
 uint8 execution_mode
 uint8 execution_reason
+uint8 route_purpose
+geometry_msgs/Point route_target
 bool route_constrained
 bool stationary_position_hold
 geometry_msgs/Point stationary_hold_position

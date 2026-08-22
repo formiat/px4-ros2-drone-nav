@@ -113,6 +113,13 @@ void Px4RosTimeMapper::observeTimesync(const std::uint64_t adjusted_timestamp_us
   latest_estimated_offset_us_ = estimated_offset_us;
   latest_estimated_offset_ns_ = *estimated_offset_ns;
   offset_available_ = true;
+  if (std::find(recovery_offsets_us_.begin(), recovery_offsets_us_.end(),
+                estimated_offset_us) == recovery_offsets_us_.end()) {
+    recovery_offsets_us_.push_back(estimated_offset_us);
+  }
+  while (recovery_offsets_us_.size() > config_.max_samples) {
+    recovery_offsets_us_.pop_front();
+  }
   samples_.push_back(Sample{*px4_local_stamp_ns, ros_receive_stamp_ns});
   while (samples_.size() > config_.max_samples) {
     samples_.pop_front();
@@ -126,6 +133,37 @@ std::optional<std::int64_t> Px4RosTimeMapper::recoverPx4LocalTimeNs(
     return std::nullopt;
   }
   return checkedAdjustedTimestampNs(adjusted_timestamp_us, latest_estimated_offset_us_);
+}
+
+std::optional<std::int64_t> Px4RosTimeMapper::recoverPx4LocalTimeNsClosestToRosTime(
+    const std::uint64_t adjusted_timestamp_us,
+    const std::int64_t expected_ros_stamp_ns) const noexcept {
+  if (!ready_ || adjusted_timestamp_us == 0U || expected_ros_stamp_ns <= 0) {
+    return std::nullopt;
+  }
+
+  std::optional<std::int64_t> closest_local_stamp_ns;
+  std::int64_t closest_distance_ns{std::numeric_limits<std::int64_t>::max()};
+  for (const std::int64_t offset_us : recovery_offsets_us_) {
+    const std::optional<std::int64_t> local_stamp_ns =
+        checkedAdjustedTimestampNs(adjusted_timestamp_us, offset_us);
+    if (!local_stamp_ns.has_value()) {
+      continue;
+    }
+    const std::optional<std::int64_t> mapped_ros_stamp_ns =
+        px4LocalToRosTimeNs(*local_stamp_ns);
+    if (!mapped_ros_stamp_ns.has_value()) {
+      continue;
+    }
+    const std::int64_t distance_ns = *mapped_ros_stamp_ns >= expected_ros_stamp_ns
+                                         ? *mapped_ros_stamp_ns - expected_ros_stamp_ns
+                                         : expected_ros_stamp_ns - *mapped_ros_stamp_ns;
+    if (distance_ns < closest_distance_ns) {
+      closest_distance_ns = distance_ns;
+      closest_local_stamp_ns = local_stamp_ns;
+    }
+  }
+  return closest_local_stamp_ns;
 }
 
 std::optional<std::int64_t> Px4RosTimeMapper::px4LocalToRosTimeNs(
@@ -165,6 +203,7 @@ Px4RosTimeMappingDiagnostics Px4RosTimeMapper::diagnostics() const noexcept {
 
 void Px4RosTimeMapper::clear() noexcept {
   samples_.clear();
+  recovery_offsets_us_.clear();
   scale_ = 1.0;
   offset_ns_ = 0.0;
   min_observed_latency_ns_ = 0.0;

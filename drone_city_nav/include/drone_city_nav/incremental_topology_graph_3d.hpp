@@ -70,7 +70,7 @@ struct IncrementalTopologyNode3D {
   std::uint64_t geometry_revision{0U};
   std::uint64_t classification_revision{0U};
   IncrementalTopologyNodeTraits3D traits{};
-  std::optional<ObservationFrontier> observation_frontier;
+  std::vector<ObservationFrontier> observation_frontiers;
 };
 
 struct IncrementalTopologyEdge3D {
@@ -88,7 +88,9 @@ struct IncrementalTopologyGraph3DConfig {
   int coarse_sample_stride_cells{2};
   int refined_sample_stride_cells{1};
   std::size_t maximum_observed_tiles_per_update{64U};
+  std::size_t minimum_oldest_tiles_per_update{4U};
   std::size_t maximum_frontier_evaluations_per_component{128U};
+  std::size_t maximum_frontiers_per_component{16U};
   SweptFootprintConfig footprint{};
   SensorObservabilityConfig observability{};
 };

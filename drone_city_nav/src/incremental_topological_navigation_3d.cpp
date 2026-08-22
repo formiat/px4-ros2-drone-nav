@@ -1,24 +1,16 @@
 #include "drone_city_nav/incremental_topological_navigation_3d.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <optional>
+#include <queue>
 #include <ranges>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] std::optional<IncrementalTopologyEdge3D>
-edgeBetween(const IncrementalTopologyGraph3DSnapshot& graph,
-            const IncrementalTopologyNodeId first,
-            const IncrementalTopologyNodeId second) noexcept {
-  for (const IncrementalTopologyEdge3D& edge : graph.edges()) {
-    if ((edge.first == first && edge.second == second) ||
-        (edge.first == second && edge.second == first)) {
-      return edge;
-    }
-  }
-  return std::nullopt;
-}
 
 [[nodiscard]] std::optional<std::vector<IncrementalTopologyNodeId>>
 activeRouteSegment(const IncrementalTopologicalPlan3D& plan,
@@ -52,6 +44,101 @@ activeRouteSegment(const IncrementalTopologicalPlan3D& plan,
   return segment;
 }
 
+[[nodiscard]] std::optional<std::vector<IncrementalTopologyNodeId>>
+localObservedTransition(const IncrementalTopologyGraph3DSnapshot& graph,
+                        const IncrementalTopologyNodeId from,
+                        const IncrementalTopologyNodeId to,
+                        const double maximum_length_m) {
+  const IncrementalTopologyNode3D* const from_node = graph.findNode(from);
+  const IncrementalTopologyNode3D* const to_node = graph.findNode(to);
+  if (from_node == nullptr || to_node == nullptr ||
+      distance3D(from_node->representative, to_node->representative) >
+          maximum_length_m) {
+    return std::nullopt;
+  }
+
+  struct QueueEntry {
+    double distance_m{0.0};
+    IncrementalTopologyNodeId node{};
+
+    [[nodiscard]] bool operator>(const QueueEntry& other) const noexcept {
+      return distance_m > other.distance_m;
+    }
+  };
+
+  std::unordered_map<IncrementalTopologyNodeId,
+                     std::vector<const IncrementalTopologyEdge3D*>,
+                     IncrementalTopologyNodeIdHash>
+      adjacency;
+  for (const IncrementalTopologyEdge3D& edge : graph.edges()) {
+    if (!std::isfinite(edge.length_m) || edge.length_m <= 0.0 ||
+        edge.length_m > maximum_length_m) {
+      continue;
+    }
+    adjacency[edge.first].push_back(&edge);
+    adjacency[edge.second].push_back(&edge);
+  }
+
+  std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<>> queue;
+  std::unordered_map<IncrementalTopologyNodeId, double, IncrementalTopologyNodeIdHash>
+      distances;
+  std::unordered_map<IncrementalTopologyNodeId, IncrementalTopologyNodeId,
+                     IncrementalTopologyNodeIdHash>
+      predecessors;
+  distances.emplace(from, 0.0);
+  queue.push({.distance_m = 0.0, .node = from});
+  while (!queue.empty()) {
+    const QueueEntry current = queue.top();
+    queue.pop();
+    const auto distance = distances.find(current.node);
+    if (distance == distances.end() || current.distance_m > distance->second + 1.0e-9) {
+      continue;
+    }
+    if (current.node == to) {
+      break;
+    }
+    for (const IncrementalTopologyEdge3D* const edge : adjacency[current.node]) {
+      const IncrementalTopologyNodeId next =
+          edge->first == current.node ? edge->second : edge->first;
+      const double candidate_distance_m = current.distance_m + edge->length_m;
+      if (candidate_distance_m > maximum_length_m) {
+        continue;
+      }
+      const auto found = distances.find(next);
+      if (found != distances.end() && found->second <= candidate_distance_m + 1.0e-9) {
+        continue;
+      }
+      distances.insert_or_assign(next, candidate_distance_m);
+      predecessors.insert_or_assign(next, current.node);
+      queue.push({.distance_m = candidate_distance_m, .node = next});
+    }
+  }
+  if (!distances.contains(to)) {
+    return std::nullopt;
+  }
+  std::vector<IncrementalTopologyNodeId> reverse_path{to};
+  while (reverse_path.back() != from) {
+    const auto predecessor = predecessors.find(reverse_path.back());
+    if (predecessor == predecessors.end()) {
+      return std::nullopt;
+    }
+    reverse_path.push_back(predecessor->second);
+  }
+  std::ranges::reverse(reverse_path);
+  return reverse_path;
+}
+
+[[nodiscard]] bool sameBounds(const GridBounds3D& first,
+                              const GridBounds3D& second) noexcept {
+  return std::abs(first.origin_x - second.origin_x) <= 1.0e-9 &&
+         std::abs(first.origin_y - second.origin_y) <= 1.0e-9 &&
+         std::abs(first.origin_z - second.origin_z) <= 1.0e-9 &&
+         std::abs(first.resolution_m - second.resolution_m) <= 1.0e-9 &&
+         first.width_cells == second.width_cells &&
+         first.height_cells == second.height_cells &&
+         first.depth_cells == second.depth_cells;
+}
+
 } // namespace
 
 IncrementalTopologicalNavigation3D::IncrementalTopologicalNavigation3D(
@@ -60,7 +147,8 @@ IncrementalTopologicalNavigation3D::IncrementalTopologicalNavigation3D(
     const TopologicalExplorationMemory3DConfig& memory_config)
     : graph_{graph_config},
       planner_{planner_config},
-      memory_{memory_config} {
+      memory_{memory_config},
+      observability_{graph_config.observability} {
 }
 
 IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateObserved(
@@ -69,37 +157,49 @@ IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateOb
     const std::span<const OccupancyChunkIndex3D> dirty_chunks,
     const bool complete_snapshot,
     const std::optional<IncrementalTopologyBuildPriority3D> priority) {
-  const std::scoped_lock lock{mutex_};
-  if (!observed_producer_instance_id_.has_value() ||
-      *observed_producer_instance_id_ != producer_instance_id) {
-    graph_ = IncrementalTopologyGraph3D{graph_.config()};
+  bool producer_changed = false;
+  IncrementalTopologicalWorldUpdate3D result;
+  {
+    const std::scoped_lock lock{graph_mutex_};
+    if (!observed_producer_instance_id_.has_value() ||
+        *observed_producer_instance_id_ != producer_instance_id) {
+      graph_ = IncrementalTopologyGraph3D{graph_.config()};
+      observed_producer_instance_id_ = producer_instance_id;
+      producer_changed = true;
+    }
+    result.graph =
+        graph_.update(occupancy, revision, dirty_chunks, complete_snapshot, priority);
+    result.snapshot =
+        std::make_shared<const IncrementalTopologyGraph3DSnapshot>(graph_.snapshot());
+    snapshot_ = result.snapshot;
+  }
+  if (producer_changed) {
+    const std::scoped_lock lock{memory_mutex_};
     current_node_.reset();
     active_plan_.reset();
     memory_.clear();
-    observed_producer_instance_id_ = producer_instance_id;
   }
-  IncrementalTopologicalWorldUpdate3D result;
-  result.graph =
-      graph_.update(occupancy, revision, dirty_chunks, complete_snapshot, priority);
-  result.snapshot =
-      std::make_shared<const IncrementalTopologyGraph3DSnapshot>(graph_.snapshot());
-  snapshot_ = result.snapshot;
   return result;
 }
 
 IncrementalTopologicalWorldUpdate3D
 IncrementalTopologicalNavigation3D::resetStatic(const OccupancyGrid3D& occupancy,
                                                 const std::uint64_t revision) {
-  const std::scoped_lock lock{mutex_};
   IncrementalTopologicalWorldUpdate3D result;
-  result.graph = graph_.reset(occupancy, revision);
-  result.snapshot =
-      std::make_shared<const IncrementalTopologyGraph3DSnapshot>(graph_.snapshot());
-  snapshot_ = result.snapshot;
-  current_node_.reset();
-  active_plan_.reset();
-  memory_.clear();
-  observed_producer_instance_id_.reset();
+  {
+    const std::scoped_lock lock{graph_mutex_};
+    result.graph = graph_.reset(occupancy, revision);
+    result.snapshot =
+        std::make_shared<const IncrementalTopologyGraph3DSnapshot>(graph_.snapshot());
+    snapshot_ = result.snapshot;
+    observed_producer_instance_id_.reset();
+  }
+  {
+    const std::scoped_lock lock{memory_mutex_};
+    current_node_.reset();
+    active_plan_.reset();
+    memory_.clear();
+  }
   return result;
 }
 
@@ -109,8 +209,12 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
   if (!graph) {
     return {};
   }
-  const std::scoped_lock lock{mutex_};
-  return planner_.plan(*graph, start, mission_goal, memory_);
+  TopologicalExplorationMemory3D memory_snapshot;
+  {
+    const std::scoped_lock lock{memory_mutex_};
+    memory_snapshot = memory_;
+  }
+  return planner_.plan(*graph, start, mission_goal, memory_snapshot);
 }
 
 IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
@@ -120,9 +224,28 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
   if (!graph) {
     return {};
   }
-  const std::scoped_lock lock{mutex_};
-  return planner_.planObserved(*graph, occupancy, graph_.config().observability, start,
-                               mission_goal, memory_);
+  if (!sameBounds(graph->bounds(), occupancy.bounds())) {
+    return {};
+  }
+  TopologicalExplorationMemory3D memory_snapshot;
+  std::optional<ObservationFrontier> active_frontier;
+  {
+    const std::scoped_lock lock{memory_mutex_};
+    memory_snapshot = memory_;
+    if (active_plan_.has_value() && active_plan_->selected_frontier.has_value()) {
+      const ObservationFrontier& candidate = *active_plan_->selected_frontier;
+      // Retain an active frontier only while it is still being approached.
+      // Once its observation pose has been reached, keeping the active
+      // discount would select the same frontier indefinitely even though the
+      // next plan must reveal a different volume or return through the graph.
+      if (distance3D(start, candidate.observation_pose) >
+          observability_.minimum_observation_pose_advance_m) {
+        active_frontier = candidate;
+      }
+    }
+  }
+  return planner_.planObserved(*graph, occupancy, observability_, start, mission_goal,
+                               memory_snapshot, active_frontier);
 }
 
 std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(
@@ -134,8 +257,11 @@ std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(
       transition_nodes = *active_segment;
     }
   }
-  if (transition_nodes.empty() && edgeBetween(graph, from, to).has_value()) {
-    transition_nodes = {from, to};
+  if (transition_nodes.size() < 2U) {
+    if (const auto local_transition = localObservedTransition(
+            graph, from, to, memory_.config().maximum_observed_transition_m)) {
+      transition_nodes = *local_transition;
+    }
   }
   if (transition_nodes.size() < 2U) {
     memory_.resetTrail(to);
@@ -146,9 +272,13 @@ std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(
   for (std::size_t index = 1U; index < transition_nodes.size(); ++index) {
     const IncrementalTopologyNodeId edge_from = transition_nodes[index - 1U];
     const IncrementalTopologyNodeId edge_to = transition_nodes[index];
-    const std::optional<IncrementalTopologyEdge3D> edge =
-        edgeBetween(graph, edge_from, edge_to);
-    if (!edge.has_value()) {
+    const auto edge = std::ranges::find_if(
+        graph.edges(),
+        [edge_from, edge_to](const IncrementalTopologyEdge3D& candidate) {
+          return (candidate.first == edge_from && candidate.second == edge_to) ||
+                 (candidate.first == edge_to && candidate.second == edge_from);
+        });
+    if (edge == graph.edges().end()) {
       memory_.resetTrail(to);
       return traversed_edges;
     }
@@ -168,7 +298,7 @@ IncrementalTopologicalNavigation3D::observePosition(
   if (!graph) {
     return result;
   }
-  const std::scoped_lock lock{mutex_};
+  const std::scoped_lock lock{memory_mutex_};
   result.graph_revision = graph->revision();
   result.previous_node = current_node_;
   memory_.recordVisited(position, graph->revision());
@@ -199,11 +329,38 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
   if (!plan.executableTargetSelected()) {
     return result;
   }
-  const std::scoped_lock lock{mutex_};
-  const bool selected_frontier_already_active =
-      active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
-      plan.selected_frontier.has_value() &&
-      active_plan_->selected_frontier->id == plan.selected_frontier->id;
+  const std::scoped_lock lock{memory_mutex_};
+  const auto previous_frontier_replaced = [&]() {
+    if (!active_plan_.has_value() || !active_plan_->selected_frontier.has_value() ||
+        !plan.selected_frontier.has_value()) {
+      return false;
+    }
+    if (active_plan_->selected_frontier->id != plan.selected_frontier->id) {
+      return true;
+    }
+    return distance3D(active_plan_->selected_frontier->observation_pose,
+                      plan.selected_frontier->observation_pose) >
+           memory_.config().coverage_resolution_m;
+  };
+  if (previous_frontier_replaced()) {
+    // The route lifecycle replaces an observation target only after it was
+    // reached, exhausted, retired by fresh sensing, or superseded by a
+    // meaningfully better target. Preserve that completed observation pose as
+    // soft coverage so an equivalent frontier is not immediately rediscovered.
+    memory_.recordObserved(active_plan_->selected_frontier->observation_pose,
+                           plan.graph_revision);
+    result.replaced_frontier_coverage_recorded = true;
+  }
+  const bool selected_frontier_already_active = [&]() {
+    if (!active_plan_.has_value() || !active_plan_->selected_frontier.has_value() ||
+        !plan.selected_frontier.has_value() ||
+        active_plan_->selected_frontier->id != plan.selected_frontier->id) {
+      return false;
+    }
+    return distance3D(active_plan_->selected_frontier->observation_pose,
+                      plan.selected_frontier->observation_pose) <=
+           memory_.config().coverage_resolution_m;
+  }();
   if (plan.selected_frontier.has_value() && !selected_frontier_already_active) {
     memory_.recordFrontierSelection(plan.selected_frontier->id);
     result.frontier_selection_recorded = true;
@@ -226,8 +383,43 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
   return result;
 }
 
+void IncrementalTopologicalNavigation3D::rejectObservationFrontier(
+    const ObservationFrontierId frontier_id) {
+  if (frontier_id.value == 0U) {
+    return;
+  }
+  const std::scoped_lock lock{memory_mutex_};
+  // A raw-collision rejection is evidence that the currently materialized
+  // route cannot reach this observation target from the present pose. Keep it
+  // as a soft preference penalty, not a prohibited region: a later map update
+  // may expose a valid approach through a different branch.
+  memory_.recordFrontierSelection(frontier_id);
+  if (active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
+      active_plan_->selected_frontier->id == frontier_id) {
+    active_plan_.reset();
+  }
+}
+
+void IncrementalTopologicalNavigation3D::completeObservationFrontier(
+    const ObservationFrontier& frontier, const std::uint64_t revision) {
+  if (frontier.id.value == 0U) {
+    return;
+  }
+  const std::scoped_lock lock{memory_mutex_};
+  // A completed finite observation route is positive evidence. Preserve soft
+  // coverage and selection history, then force a fresh frontier decision.
+  // This remains a preference, not a prohibited spatial region.
+  memory_.recordObserved(frontier.observation_pose, revision);
+  memory_.recordFrontierSelection(frontier.id);
+  memory_.recordFrontierCompletion(frontier.id);
+  if (active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
+      active_plan_->selected_frontier->id == frontier.id) {
+    active_plan_.reset();
+  }
+}
+
 void IncrementalTopologicalNavigation3D::beginMissionLeg() {
-  const std::scoped_lock lock{mutex_};
+  const std::scoped_lock lock{memory_mutex_};
   memory_.beginMissionLeg();
   if (current_node_.has_value()) {
     memory_.resetTrail(*current_node_);
@@ -237,7 +429,7 @@ void IncrementalTopologicalNavigation3D::beginMissionLeg() {
 
 std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
 IncrementalTopologicalNavigation3D::snapshot() const {
-  const std::scoped_lock lock{mutex_};
+  const std::scoped_lock lock{graph_mutex_};
   return snapshot_;
 }
 

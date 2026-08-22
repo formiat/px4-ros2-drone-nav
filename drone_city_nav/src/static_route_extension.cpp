@@ -86,6 +86,16 @@ StaticRouteDeferredReplanLatch::finishExtension(
   return extension_activated ? std::nullopt : completed;
 }
 
+std::optional<StaticRouteDeferredReplan> StaticRouteDeferredReplanLatch::finishReplan(
+    const std::uint64_t route_generation) noexcept {
+  if (!request_.has_value() || request_->route_generation != route_generation) {
+    return std::nullopt;
+  }
+  std::optional<StaticRouteDeferredReplan> completed = request_;
+  request_.reset();
+  return completed;
+}
+
 bool StaticRouteDeferredReplanLatch::pending() const noexcept {
   return request_.has_value();
 }
@@ -213,6 +223,14 @@ StaticRouteExtensionDecision evaluateStaticRouteExtension(
       observation.route_remaining_m < 0.0) {
     return decision;
   }
+  const double route_length_m =
+      observation.route_station_m + observation.route_remaining_m;
+  const double maximum_trigger_m =
+      std::max(0.0, config.maximum_trigger_fraction_of_route) * route_length_m;
+  if (std::isfinite(route_length_m) && route_length_m > 0.0) {
+    decision.extension_trigger_remaining_m =
+        std::min(decision.extension_trigger_remaining_m, maximum_trigger_m);
+  }
   if (observation.last_request_generation == observation.route_generation) {
     const bool enough_progress = observation.route_station_m >=
                                  observation.last_request_station_m +
@@ -264,29 +282,30 @@ ObservationRouteReplacementDecision evaluateObservationRouteReplacement(
     decision.status = ObservationRouteReplacementStatus::kStaleCandidate;
     return decision;
   }
+  if (observation.active_route_exhausted) {
+    decision.status = ObservationRouteReplacementStatus::kActiveRouteExhausted;
+    decision.accepted = true;
+    return decision;
+  }
   if (!observation.active_frontier_still_valid) {
     decision.status = ObservationRouteReplacementStatus::kActiveFrontierRetired;
     decision.accepted = true;
     return decision;
   }
-  if (observation.extension_requested &&
-      observation.candidate_frontier->supporting_map_revision >=
-          observation.active_frontier->supporting_map_revision) {
-    decision.status = ObservationRouteReplacementStatus::kFrontierAdvanced;
-    decision.accepted = true;
-    return decision;
-  }
   if (observation.candidate_frontier->id == observation.active_frontier->id) {
     decision.status = ObservationRouteReplacementStatus::kSameFrontierRetained;
+    decision.accepted = observation.route_extension_requested;
     return decision;
   }
-  if (observation.minimum_endpoint_improvement_m > 0.0 &&
-      observation.endpoint_improvement_m + 1.0e-9 >=
-          observation.minimum_endpoint_improvement_m) {
-    decision.status = ObservationRouteReplacementStatus::kEndpointAdvanced;
+  if (observation.active_frontier_reached) {
+    decision.status = ObservationRouteReplacementStatus::kActiveFrontierReached;
     decision.accepted = true;
     return decision;
   }
+  // Mission-goal proximity is only a soft term in the frontier score. A
+  // separate endpoint gate reintroduces goal-monotonic replacement and can
+  // discard a still-useful observation route before it has exposed its
+  // boundary. Completed, retired, and exhausted routes are handled above.
   if (decision.score_improvement + 1.0e-9 >=
       std::max(0.0, observation.minimum_score_improvement)) {
     decision.status = ObservationRouteReplacementStatus::kScoreImproved;
@@ -306,8 +325,10 @@ std::string_view observationRouteReplacementStatusName(
       return "no_active_frontier";
     case ObservationRouteReplacementStatus::kActiveFrontierRetired:
       return "active_frontier_retired";
-    case ObservationRouteReplacementStatus::kFrontierAdvanced:
-      return "frontier_advanced";
+    case ObservationRouteReplacementStatus::kActiveFrontierReached:
+      return "active_frontier_reached";
+    case ObservationRouteReplacementStatus::kActiveRouteExhausted:
+      return "active_route_exhausted";
     case ObservationRouteReplacementStatus::kEndpointAdvanced:
       return "endpoint_advanced";
     case ObservationRouteReplacementStatus::kScoreImproved:
@@ -421,7 +442,8 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
     const double minimum_endpoint_improvement_m, const bool reaches_mission_goal,
     const FlightEnvelopeConfig& flight_envelope,
     const StaticRouteReplacementPolicy replacement_policy,
-    const SweptFootprintConfig& footprint_config) noexcept {
+    const SweptFootprintConfig& footprint_config,
+    const bool require_known_free_space) noexcept {
   if (candidate_route.size() < 2U) {
     return {.status = StaticRouteCandidateStatus::kEmpty};
   }
@@ -435,14 +457,21 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
         validateSweptFootprint(grid, esdf_m, candidate_route[index - 1U].position,
                                candidate_route[index].position, footprint_config);
     if (footprint.status == SweptFootprintStatus::kOutsideGrid ||
-        footprint.status == SweptFootprintStatus::kUnknownSpace) {
-      return {.status = StaticRouteCandidateStatus::kOutsideEsdf};
+        (footprint.status == SweptFootprintStatus::kUnknownSpace &&
+         require_known_free_space)) {
+      return {.status = StaticRouteCandidateStatus::kOutsideEsdf,
+              .failure_segment_index = index - 1U,
+              .failure_point = footprint.failure_point};
     }
     if (footprint.status == SweptFootprintStatus::kInvalidEsdf) {
-      return {.status = StaticRouteCandidateStatus::kInvalidEsdf};
+      return {.status = StaticRouteCandidateStatus::kInvalidEsdf,
+              .failure_segment_index = index - 1U,
+              .failure_point = footprint.failure_point};
     }
     if (footprint.status == SweptFootprintStatus::kRawCollision) {
-      return {.status = StaticRouteCandidateStatus::kRawCollision};
+      return {.status = StaticRouteCandidateStatus::kRawCollision,
+              .failure_segment_index = index - 1U,
+              .failure_point = footprint.failure_point};
     }
   }
   double improvement_m = 0.0;

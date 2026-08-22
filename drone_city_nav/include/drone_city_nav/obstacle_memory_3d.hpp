@@ -67,6 +67,8 @@ public:
   [[nodiscard]] ObstacleMemory3DChanges takeChanges();
 
 private:
+  using ScanEvidence = std::unordered_map<std::uint64_t, bool>;
+
   struct EvidenceChunk {
     std::array<std::int16_t, OccupancyGrid3D::kVoxelsPerChunk> scores{};
   };
@@ -74,7 +76,9 @@ private:
   [[nodiscard]] bool applyEvidence(GridIndex3D index, int delta,
                                    ObstacleMemory3DStats& stats);
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
-                    ObstacleMemory3DStats& stats);
+                    ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;
+  [[nodiscard]] std::uint64_t cellKey(GridIndex3D index) const noexcept;
+  [[nodiscard]] GridIndex3D cellFromKey(std::uint64_t key) const noexcept;
 
   ObstacleMemory3DConfig config_{};
   ObservedOccupancyGrid3D grid_;

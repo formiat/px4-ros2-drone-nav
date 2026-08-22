@@ -49,12 +49,17 @@ bool topologicalExplorationMemory3DConfigIsValid(
     const TopologicalExplorationMemory3DConfig& config) noexcept {
   return std::isfinite(config.coverage_resolution_m) &&
          config.coverage_resolution_m > 0.0 &&
+         std::isfinite(config.coverage_influence_radius_m) &&
+         config.coverage_influence_radius_m >= 0.0 &&
+         config.coverage_influence_radius_m / config.coverage_resolution_m <=
+             static_cast<double>(std::numeric_limits<int>::max() - 1) &&
          std::isfinite(config.visit_penalty_weight) &&
          config.visit_penalty_weight >= 0.0 &&
          std::isfinite(config.observation_penalty_weight) &&
          config.observation_penalty_weight >= 0.0 &&
          std::isfinite(config.revision_decay) && config.revision_decay >= 0.0 &&
-         config.maximum_trail_nodes > 0U;
+         std::isfinite(config.maximum_observed_transition_m) &&
+         config.maximum_observed_transition_m > 0.0 && config.maximum_trail_nodes > 0U;
 }
 
 TopologicalExplorationMemory3D::TopologicalExplorationMemory3D(
@@ -171,26 +176,61 @@ double TopologicalExplorationMemory3D::softCoveragePenalty(
   if (!finitePoint(position) || current_revision == 0U) {
     return 0.0;
   }
-  const auto found = coverage_.find(coverageIndex(position));
-  if (found == coverage_.end()) {
-    return 0.0;
+  const auto cell_penalty = [&](const SparseCoverageCell3D& cell) noexcept {
+    const double visit_penalty =
+        config_.visit_penalty_weight *
+        std::log1p(static_cast<double>(cell.visit_count)) *
+        revisionFreshness(current_revision, cell.last_visit_revision,
+                          config_.revision_decay);
+    const double observation_penalty =
+        config_.observation_penalty_weight *
+        std::log1p(static_cast<double>(cell.observation_count)) *
+        revisionFreshness(current_revision, cell.last_observation_revision,
+                          config_.revision_decay);
+    const double total = visit_penalty + observation_penalty;
+    return std::isfinite(total) ? total : std::numeric_limits<double>::max();
+  };
+
+  const SparseCoverageIndex3D query = coverageIndex(position);
+  if (!(config_.coverage_influence_radius_m > 0.0)) {
+    const auto found = coverage_.find(query);
+    return found == coverage_.end() ? 0.0 : cell_penalty(found->second);
   }
-  const SparseCoverageCell3D& cell = found->second;
-  const double visit_penalty =
-      config_.visit_penalty_weight * std::log1p(static_cast<double>(cell.visit_count)) *
-      revisionFreshness(current_revision, cell.last_visit_revision,
-                        config_.revision_decay);
-  const double observation_penalty =
-      config_.observation_penalty_weight *
-      std::log1p(static_cast<double>(cell.observation_count)) *
-      revisionFreshness(current_revision, cell.last_observation_revision,
-                        config_.revision_decay);
-  const double total = visit_penalty + observation_penalty;
-  return std::isfinite(total) ? total : std::numeric_limits<double>::max();
+
+  const int radius_cells = static_cast<int>(
+      std::ceil(config_.coverage_influence_radius_m / config_.coverage_resolution_m));
+  double maximum_penalty{0.0};
+  for (int dz = -radius_cells; dz <= radius_cells; ++dz) {
+    for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
+      for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
+        const SparseCoverageIndex3D candidate{query.x + dx, query.y + dy, query.z + dz};
+        const auto found = coverage_.find(candidate);
+        if (found == coverage_.end()) {
+          continue;
+        }
+        const double distance_m =
+            config_.coverage_resolution_m *
+            std::hypot(std::hypot(static_cast<double>(dx), static_cast<double>(dy)),
+                       static_cast<double>(dz));
+        if (distance_m > config_.coverage_influence_radius_m) {
+          continue;
+        }
+        const double influence = 1.0 - distance_m / config_.coverage_influence_radius_m;
+        maximum_penalty =
+            std::max(maximum_penalty, influence * cell_penalty(found->second));
+      }
+    }
+  }
+  return maximum_penalty;
 }
 
 std::size_t TopologicalExplorationMemory3D::coverageCellCount() const noexcept {
   return coverage_.size();
+}
+
+const TopologicalExplorationMemory3DConfig&
+TopologicalExplorationMemory3D::config() const noexcept {
+  return config_;
 }
 
 void TopologicalExplorationMemory3D::recordFrontierSelection(
@@ -204,6 +244,19 @@ std::size_t TopologicalExplorationMemory3D::frontierSelectionCount(
     const ObservationFrontierId frontier_id) const noexcept {
   const auto found = frontier_selection_counts_.find(frontier_id.value);
   return found == frontier_selection_counts_.end() ? 0U : found->second;
+}
+
+void TopologicalExplorationMemory3D::recordFrontierCompletion(
+    const ObservationFrontierId frontier_id) {
+  if (frontier_id.value != 0U) {
+    ++frontier_completion_counts_[frontier_id.value];
+  }
+}
+
+std::size_t TopologicalExplorationMemory3D::frontierCompletionCount(
+    const ObservationFrontierId frontier_id) const noexcept {
+  const auto found = frontier_completion_counts_.find(frontier_id.value);
+  return found == frontier_completion_counts_.end() ? 0U : found->second;
 }
 
 void TopologicalExplorationMemory3D::resetTrail(const IncrementalTopologyNodeId node) {
@@ -249,6 +302,7 @@ void TopologicalExplorationMemory3D::beginMissionLeg() {
   edge_evidence_.clear();
   coverage_.clear();
   frontier_selection_counts_.clear();
+  frontier_completion_counts_.clear();
   trail_.clear();
 }
 
@@ -256,12 +310,8 @@ void TopologicalExplorationMemory3D::clear() {
   edge_evidence_.clear();
   coverage_.clear();
   frontier_selection_counts_.clear();
+  frontier_completion_counts_.clear();
   trail_.clear();
-}
-
-const TopologicalExplorationMemory3DConfig&
-TopologicalExplorationMemory3D::config() const noexcept {
-  return config_;
 }
 
 const char* topologicalExplorationResult3DName(

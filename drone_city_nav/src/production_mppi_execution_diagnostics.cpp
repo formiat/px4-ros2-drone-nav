@@ -24,6 +24,11 @@ std::string executionInfoFields(const ProductionMppiExecutionPublication& execut
          << execution.first_control.ax << ',' << execution.first_control.ay << ','
          << execution.first_control.az << ')' << " finite_path_validation_backoff="
          << (execution.finite_path_validation_backoff ? "true" : "false")
+         << " finite_path_validation_status="
+         << mppi::finiteExecutionPathStatusName(execution.finite_path_validation_status)
+         << " finite_path_first_failed_validation_status="
+         << mppi::finiteExecutionPathStatusName(
+                execution.finite_path_first_failed_validation_status)
          << " latest_lidar_obstacle_fresh="
          << (execution.latest_lidar_obstacle_fresh ? "true" : "false")
          << " latest_lidar_obstacle_sequence="
@@ -57,7 +62,12 @@ std::string executionJsonFields(const ProductionMppiExecutionPublication& execut
          << ",\"first_control_az_mps2\":" << execution.first_control.az
          << ",\"finite_path_validation_backoff\":"
          << (execution.finite_path_validation_backoff ? "true" : "false")
-         << ",\"latest_lidar_obstacle_fresh\":"
+         << ",\"finite_path_validation_status\":\""
+         << mppi::finiteExecutionPathStatusName(execution.finite_path_validation_status)
+         << '\"' << ",\"finite_path_first_failed_validation_status\":\""
+         << mppi::finiteExecutionPathStatusName(
+                execution.finite_path_first_failed_validation_status)
+         << '\"' << ",\"latest_lidar_obstacle_fresh\":"
          << (execution.latest_lidar_obstacle_fresh ? "true" : "false")
          << ",\"latest_lidar_obstacle_sequence\":"
          << execution.latest_lidar_obstacle_sequence

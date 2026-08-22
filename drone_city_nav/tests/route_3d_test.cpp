@@ -173,10 +173,42 @@ TEST(Route3DTest, AssignsRequiredRiskTierFromRawEsdfClearance) {
       RouteSample3D{.position = Point3{2.5, 0.5, 0.5}},
   };
 
-  ASSERT_TRUE(assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0));
+  ASSERT_TRUE(assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0).accepted());
   EXPECT_EQ(route[0].required_risk_tier, mppi::RiskTier::kPreferred);
   EXPECT_EQ(route[1].required_risk_tier, mppi::RiskTier::kPlanning);
   EXPECT_EQ(route[2].required_risk_tier, mppi::RiskTier::kCritical);
+}
+
+TEST(Route3DTest, RiskTierAssignmentAllowsUnknownSpaceOutsideStrictMode) {
+  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
+  const std::vector<float> esdf{mppi::kUnknownEsdfDistanceM,
+                                std::numeric_limits<float>::infinity()};
+  std::vector<RouteSample3D> route{
+      RouteSample3D{.position = Point3{0.5, 0.5, 0.5}},
+      RouteSample3D{.position = Point3{1.5, 0.5, 0.5}},
+  };
+
+  EXPECT_TRUE(assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0, false).accepted());
+  const RouteRiskTierAssignmentResult strict =
+      assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0, true);
+  EXPECT_EQ(strict.status, RouteRiskTierAssignmentStatus::kUnknownSpace);
+  EXPECT_EQ(strict.failure_sample_index, 0U);
+  EXPECT_DOUBLE_EQ(strict.failure_point.x, 0.5);
+}
+
+TEST(Route3DTest, RiskTierAssignmentReportsRawCollision) {
+  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
+  const std::vector<float> esdf{std::numeric_limits<float>::infinity(), 0.0F};
+  std::vector<RouteSample3D> route{
+      RouteSample3D{.position = Point3{0.5, 0.5, 0.5}},
+      RouteSample3D{.position = Point3{1.5, 0.5, 0.5}},
+  };
+
+  const RouteRiskTierAssignmentResult result =
+      assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0, false);
+  EXPECT_EQ(result.status, RouteRiskTierAssignmentStatus::kRawCollision);
+  EXPECT_EQ(result.failure_sample_index, 1U);
+  EXPECT_DOUBLE_EQ(result.failure_point.x, 1.5);
 }
 
 TEST(Route3DTest, LatticeUsesVerticalFreeOpeningWithoutYawConstraint) {
@@ -323,12 +355,18 @@ TEST(Route3DTest, DistinguishesUnknownSpaceFromLocalRoiBoundary) {
   config.physical_footprint_lower_extent_m = 0.0;
   config.physical_footprint_upper_extent_m = 0.0;
   config.physical_footprint_samples = 0U;
-
+  config.require_known_free_space = true;
   EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{1.5, 2.5, 1.5},
                                           Point3{2.5, 2.5, 1.5},
                                           Lattice3DRiskStage::kCriticalAllowed, config)
                 .status,
             detail::Lattice3DEdgeEvaluationStatus::kUnknownSpace);
+  config.require_known_free_space = false;
+  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{1.5, 2.5, 1.5},
+                                          Point3{2.5, 2.5, 1.5},
+                                          Lattice3DRiskStage::kCriticalAllowed, config)
+                .status,
+            detail::Lattice3DEdgeEvaluationStatus::kValid);
   EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{4.5, 2.5, 1.5},
                                           Point3{6.5, 2.5, 1.5},
                                           Lattice3DRiskStage::kCriticalAllowed, config)

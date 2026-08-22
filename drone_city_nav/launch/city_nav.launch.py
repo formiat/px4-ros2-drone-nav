@@ -109,6 +109,17 @@ def generate_launch_description():
         "rviz_drone_follow_tf_enabled"
     )
     use_static_map = LaunchConfiguration("use_static_map")
+    require_known_free_space = LaunchConfiguration("require_known_free_space")
+    liveness_enabled = LaunchConfiguration("liveness_enabled")
+    global_guide_stall_recovery_enabled = LaunchConfiguration(
+        "global_guide_stall_recovery_enabled"
+    )
+    no_static_cycle_recovery_enabled = LaunchConfiguration(
+        "no_static_cycle_recovery_enabled"
+    )
+    topological_backtracking_enabled = LaunchConfiguration(
+        "topological_backtracking_enabled"
+    )
     static_occupancy_3d_path = LaunchConfiguration("static_occupancy_3d_path")
     static_esdf_3d_cache_path = LaunchConfiguration("static_esdf_3d_cache_path")
     static_free_space_topology_3d_path = LaunchConfiguration(
@@ -188,6 +199,9 @@ def generate_launch_description():
         lidar_debug_override = optional_bool_override(
             context, enable_lidar_debug, "enable_lidar_debug"
         )
+        obstacle_memory_overrides["persistent_memory_diagnostics_enabled"] = (
+            lidar_debug_override is True
+        )
         if not static_map_enabled and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
         if not static_map_enabled and not lidar_enabled:
@@ -198,6 +212,27 @@ def generate_launch_description():
             raise RuntimeError("Lidar debug requires obstacle memory")
         if static_map_override is not None:
             obstacle_memory_overrides["use_static_map"] = static_map_override
+        known_free_space_override = optional_bool_override(
+            context, require_known_free_space, "require_known_free_space"
+        )
+        liveness_override = optional_bool_override(
+            context, liveness_enabled, "liveness_enabled"
+        )
+        guide_stall_recovery_override = optional_bool_override(
+            context,
+            global_guide_stall_recovery_enabled,
+            "global_guide_stall_recovery_enabled",
+        )
+        cycle_recovery_override = optional_bool_override(
+            context,
+            no_static_cycle_recovery_enabled,
+            "no_static_cycle_recovery_enabled",
+        )
+        topological_backtracking_override = optional_bool_override(
+            context,
+            topological_backtracking_enabled,
+            "topological_backtracking_enabled",
+        )
 
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:
@@ -283,6 +318,21 @@ def generate_launch_description():
             mission_monitor_parameters.append(
                 {"use_static_map": static_map_override}
             )
+        if known_free_space_override is not None:
+            production_mppi_parameters.append(
+                {"require_known_free_space": known_free_space_override}
+            )
+        for parameter_name, override in (
+            ("liveness_enabled", liveness_override),
+            (
+                "global_guide_stall_recovery_enabled",
+                guide_stall_recovery_override,
+            ),
+            ("no_static_cycle_recovery_enabled", cycle_recovery_override),
+            ("topological_backtracking_enabled", topological_backtracking_override),
+        ):
+            if override is not None:
+                production_mppi_parameters.append({parameter_name: override})
         for argument_name, launch_config in (
             ("static_global_lattice_deadline_ms", static_global_lattice_deadline_ms),
             ("static_route_tracking_margin_m", static_route_tracking_margin_m),
@@ -598,6 +648,34 @@ def generate_launch_description():
                 description=(
                     "Use the static city obstacle map source. Disabled by default."
                 ),
+            ),
+            DeclareLaunchArgument(
+                "require_known_free_space",
+                default_value="false",
+                description=(
+                    "Require all executed no-static path volume to be confirmed free. "
+                    "Disabled by default."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "liveness_enabled",
+                default_value="",
+                description="Enable progress-based nominal reseeding.",
+            ),
+            DeclareLaunchArgument(
+                "global_guide_stall_recovery_enabled",
+                default_value="",
+                description="Enable release of a guide after a perceived stall.",
+            ),
+            DeclareLaunchArgument(
+                "no_static_cycle_recovery_enabled",
+                default_value="",
+                description="Enable no-static cycle detection and soft tabu recovery.",
+            ),
+            DeclareLaunchArgument(
+                "topological_backtracking_enabled",
+                default_value="",
+                description="Enable routes that temporarily move away from the mission goal.",
             ),
             DeclareLaunchArgument(
                 "static_occupancy_3d_path",

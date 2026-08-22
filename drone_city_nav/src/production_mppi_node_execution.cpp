@@ -15,6 +15,16 @@
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
+
+static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kMissionTransit) ==
+              msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_MISSION_TRANSIT);
+static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kLaunchDeparture) ==
+              msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_LAUNCH_DEPARTURE);
+static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kObservationFrontier) ==
+              msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_OBSERVATION_FRONTIER);
+static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kTopologicalBacktrack) ==
+              msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_TOPOLOGICAL_BACKTRACK);
+
 namespace {
 
 [[nodiscard]] builtin_interfaces::msg::Time
@@ -170,6 +180,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .footprint = &physical_footprint_config_,
       .static_occupancy = static_occupancy,
       .observed_occupancy = observed_occupancy,
+      .require_known_free_space = lattice_3d_config_.require_known_free_space,
       .proprioceptive_free_space_seed =
           observed_occupancy != nullptr ? &proprioceptive_free_space_seed : nullptr,
       .launch_support_contact =
@@ -206,6 +217,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     horizon.risk_tier = static_cast<std::uint8_t>(result.selected_tier);
     horizon.execution_mode = static_cast<std::uint8_t>(mode);
     horizon.execution_reason = static_cast<std::uint8_t>(reason);
+    horizon.route_purpose = static_cast<std::uint8_t>(esdf.lattice_3d_route_purpose);
+    horizon.route_target.x = input.target.x;
+    horizon.route_target.y = input.target.y;
+    horizon.route_target.z = input.target.z;
     horizon.route_constrained =
         esdf.constrained_spans != nullptr && !esdf.constrained_spans->empty();
     return horizon;
@@ -466,6 +481,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                                  ProductionMppiExecutionReason::kGoalCapture);
   }
   if (planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold) {
+    // Planning has rejected the current route against a newer raw observation.
+    // A previously published finite path may have been derived from that route,
+    // so it cannot be retained while the replacement search is in progress.
+    active_finite_execution_path_.reset();
     return publish_no_executable_path_hold(
         ProductionMppiExecutionReason::kNoExecutableRoute);
   }
@@ -634,6 +653,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   publication.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
   publication.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
   publication.finite_path_validation_backoff = validated_path.path_validation_backoff;
+  publication.finite_path_validation_status = validated_path.validation.status;
+  publication.finite_path_first_failed_validation_status =
+      validated_path.first_failed_validation_status;
   publication.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
   publication.latest_lidar_path_validation_backoff =
       validated_path.latest_lidar_path_validation_backoff;

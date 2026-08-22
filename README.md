@@ -98,7 +98,7 @@ succeeds only after the vehicle settles at the last one.
 A single-destination mission uses the same parameter with one `x,y,z` triple.
 
 ```bash
-MISSION_GOALS_XYZ_M='216,54,18;216,378,18;54,378,18;54,54,18' \
+MISSION_GOALS_XYZ_M='216,378,18;216,54,18;54,378,18;54,54,18' \
   ./scripts/sim_headless.sh
 ```
 
@@ -205,6 +205,10 @@ ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_gui.sh
 No-static navigation requires `LIDAR_PROFILE=2d` or `LIDAR_PROFILE=3d` and
 rejects `none` before starting the simulation. The profiles are mutually
 exclusive; there are no separate boolean lidar flags.
+
+`REQUIRE_KNOWN_FREE_SPACE=false` is the default: unknown volume is traversable
+until a lidar observation establishes a real obstacle. Set it to `true` only
+to run the conservative observation-frontier exploration policy.
 
 Roadmap 8 acceptance uses Manhattan, no static map, and only the 3D profile:
 

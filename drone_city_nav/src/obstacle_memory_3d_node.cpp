@@ -25,6 +25,7 @@
 #include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_status.hpp>
+#include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
@@ -39,6 +40,7 @@
 #include <deque>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -160,8 +162,18 @@ public:
   ObstacleMemory3DNode()
       : Node{"obstacle_memory_3d_node"},
         bounds_{declareGridBounds3D(*this)} {
+    cloud_callback_group_ =
+        create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    pose_callback_group_ =
+        create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions cloud_subscription_options;
+    cloud_subscription_options.callback_group = cloud_callback_group_;
+    rclcpp::SubscriptionOptions pose_subscription_options;
+    pose_subscription_options.callback_group = pose_callback_group_;
     persistent_memory_enabled_ =
         declare_parameter<bool>("persistent_memory_enabled", true);
+    persistent_memory_diagnostics_enabled_ = declare_parameter<bool>(
+        "persistent_memory_diagnostics_enabled", persistent_memory_enabled_);
     persistent_memory_selection_ = SpectatorDiagnosticsSelection{
         declare_parameter<std::string>("persistent_memory_spectator_vehicle_id", "")};
     const std::string spectator_target_topic = declare_parameter<std::string>(
@@ -325,25 +337,29 @@ public:
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status_v1");
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-        cloud_topic, sensor_qos,
+        cloud_topic, rclcpp::SensorDataQoS{}.keep_last(1),
         [this](sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
           onPointCloud(std::move(cloud));
-        });
+        },
+        cloud_subscription_options);
     local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
         local_position_topic, sensor_qos,
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr message) {
           onLocalPosition(*message);
-        });
+        },
+        pose_subscription_options);
     attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
         attitude_topic, sensor_qos,
         [this](const px4_msgs::msg::VehicleAttitude::SharedPtr message) {
           onAttitude(*message);
-        });
+        },
+        pose_subscription_options);
     timesync_sub_ = create_subscription<px4_msgs::msg::TimesyncStatus>(
         timesync_topic, sensor_qos,
         [this](const px4_msgs::msg::TimesyncStatus::SharedPtr message) {
           onTimesync(*message);
-        });
+        },
+        pose_subscription_options);
     vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
         vehicle_status_topic, sensor_qos,
         [this](const px4_msgs::msg::VehicleStatus::SharedPtr message) {
@@ -352,7 +368,8 @@ public:
                 message->arming_state ==
                 px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED);
           }
-        });
+        },
+        cloud_subscription_options);
 
     const DynamicAgentLidarStateConfig dynamic_config =
         declareDynamicAgentLidarStateConfig(*this);
@@ -368,7 +385,8 @@ public:
                 Vec3{track->velocity.x, track->velocity.y, track->velocity.z},
                 track->position_valid, track->velocity_valid,
                 rclcpp::Time{track->header.stamp}.nanoseconds());
-          });
+          },
+          cloud_subscription_options);
     }
     if (dynamic_config.cooperative_enabled) {
       cooperative_intent_sub_ = create_subscription<msg::CooperativeFlightIntent>(
@@ -379,7 +397,8 @@ public:
             static_cast<void>(dynamic_agent_state_->updateCooperativeIntent(
                 cooperativeFlightIntentData(*intent),
                 get_clock()->now().nanoseconds()));
-          });
+          },
+          cloud_subscription_options);
     }
 
     latest_scan_pub_ = create_publisher<msg::LatestLidarObstacleScan>(
@@ -415,109 +434,148 @@ public:
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message) {
-    const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-    const bool heading_ready = px4HeadingReadyForMapping(
-        static_cast<double>(message.heading), static_cast<double>(message.heading_var),
-        maximum_heading_variance_rad2_);
-    const MappingYawSelection mapping_yaw = mapping_yaw_tracker_.update(
-        heading_ready, static_cast<double>(message.heading));
-    if (use_px4_heading_for_scan_ &&
-        mapping_yaw.source == MappingYawSource::kPx4Heading &&
-        last_mapping_yaw_source_ != MappingYawSource::kPx4Heading) {
-      lidar_pose_history_.startNewGeneration();
-      pending_clouds_.clear();
-    }
-    if (mapping_yaw.source != last_mapping_yaw_source_) {
-      RCLCPP_INFO(
-          get_logger(),
-          "LIDAR3D_MAPPING_YAW source=%s yaw=%.3f px4_heading=%.3f "
-          "heading_good_for_control=%s mapping_ready=%s stable_samples=%zu "
-          "required_samples=%zu maximum_sample_delta_rad=%.3f "
-          "pose_history_generation=%" PRIu64,
-          mappingYawSourceName(mapping_yaw.source), mapping_yaw.yaw_rad,
+    {
+      const std::scoped_lock pose_lock{pose_history_mutex_};
+      const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+      const bool heading_ready = px4HeadingReadyForMapping(
           static_cast<double>(message.heading),
-          message.heading_good_for_control ? "true" : "false",
-          heading_ready ? "true" : "false", mapping_yaw_tracker_.stableSampleCount(),
-          startup_heading_stable_sample_count_,
-          startup_heading_maximum_sample_delta_rad_, lidar_pose_history_.generation());
-    }
-    last_mapping_yaw_source_ = mapping_yaw.source;
-    const Px4LocalPositionSample sample{
-        static_cast<double>(message.x),
-        static_cast<double>(message.y),
-        static_cast<double>(message.z),
-        mapping_yaw.yaw_rad,
-        static_cast<std::int64_t>(message.timestamp_sample) * 1000LL,
-        message.xy_valid,
-        message.z_valid,
-        mapping_yaw.valid};
-    const Px4LocalPoseUpdateStatus status = updateNavigationPoseFromPx4LocalPosition(
-        sample, px4_local_pose_config_, current_pose_);
-    if (status != Px4LocalPoseUpdateStatus::kAccepted) {
-      last_pose_update_ns_ = 0;
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "LIDAR3D_POSE_HISTORY position_rejected=true status=%s xy_valid=%s "
-          "z_valid=%s heading_good_for_control=%s heading=%.3f "
-          "heading_variance=%.6f maximum_heading_variance=%.6f mapping_ready=%s",
-          status == Px4LocalPoseUpdateStatus::kInvalidPosition ? "invalid_position"
-                                                               : "invalid_yaw",
-          message.xy_valid ? "true" : "false", message.z_valid ? "true" : "false",
-          message.heading_good_for_control ? "true" : "false",
-          static_cast<double>(message.heading),
-          static_cast<double>(message.heading_var), maximum_heading_variance_rad2_,
-          heading_ready ? "true" : "false");
-      return;
-    }
-    last_pose_update_ns_ = receive_stamp_ns;
-    const LidarPoseSourceStampResult source_stamp =
-        resolveLidarPoseSourceStamp(time_mapper_, message.timestamp_sample,
-                                    receive_stamp_ns, pose_source_stamp_config_);
-    if (source_stamp.resolved()) {
-      lidar_pose_history_.addPosition(
-          receive_stamp_ns,
-          Point3{current_pose_.pose.position.x, current_pose_.pose.position.y,
-                 current_pose_.altitude_m},
-          current_pose_.pose.yaw_rad,
-          current_pose_.yaw_valid && current_pose_.altitude_valid,
-          source_stamp.acquisition_stamp_ns,
-          lidarPoseSourceTimestampNanoseconds(message.timestamp_sample));
+          static_cast<double>(message.heading_var), maximum_heading_variance_rad2_);
+      const MappingYawSelection mapping_yaw = mapping_yaw_tracker_.update(
+          heading_ready, static_cast<double>(message.heading));
+      if (use_px4_heading_for_scan_ &&
+          mapping_yaw.source == MappingYawSource::kPx4Heading &&
+          last_mapping_yaw_source_ != MappingYawSource::kPx4Heading) {
+        lidar_pose_history_.startNewGeneration();
+      }
+      if (mapping_yaw.source != last_mapping_yaw_source_) {
+        RCLCPP_INFO(get_logger(),
+                    "LIDAR3D_MAPPING_YAW source=%s yaw=%.3f px4_heading=%.3f "
+                    "heading_good_for_control=%s mapping_ready=%s stable_samples=%zu "
+                    "required_samples=%zu maximum_sample_delta_rad=%.3f "
+                    "pose_history_generation=%" PRIu64,
+                    mappingYawSourceName(mapping_yaw.source), mapping_yaw.yaw_rad,
+                    static_cast<double>(message.heading),
+                    message.heading_good_for_control ? "true" : "false",
+                    heading_ready ? "true" : "false",
+                    mapping_yaw_tracker_.stableSampleCount(),
+                    startup_heading_stable_sample_count_,
+                    startup_heading_maximum_sample_delta_rad_,
+                    lidar_pose_history_.generation());
+      }
+      last_mapping_yaw_source_ = mapping_yaw.source;
+      const Px4LocalPositionSample sample{
+          static_cast<double>(message.x),
+          static_cast<double>(message.y),
+          static_cast<double>(message.z),
+          mapping_yaw.yaw_rad,
+          static_cast<std::int64_t>(message.timestamp_sample) * 1000LL,
+          message.xy_valid,
+          message.z_valid,
+          mapping_yaw.valid};
+      const Px4LocalPoseUpdateStatus status = updateNavigationPoseFromPx4LocalPosition(
+          sample, px4_local_pose_config_, current_pose_);
+      if (status != Px4LocalPoseUpdateStatus::kAccepted) {
+        last_pose_update_ns_ = 0;
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "LIDAR3D_POSE_HISTORY position_rejected=true status=%s xy_valid=%s "
+            "z_valid=%s heading_good_for_control=%s heading=%.3f "
+            "heading_variance=%.6f maximum_heading_variance=%.6f mapping_ready=%s",
+            status == Px4LocalPoseUpdateStatus::kInvalidPosition ? "invalid_position"
+                                                                 : "invalid_yaw",
+            message.xy_valid ? "true" : "false", message.z_valid ? "true" : "false",
+            message.heading_good_for_control ? "true" : "false",
+            static_cast<double>(message.heading),
+            static_cast<double>(message.heading_var), maximum_heading_variance_rad2_,
+            heading_ready ? "true" : "false");
+        return;
+      }
+      last_pose_update_ns_ = receive_stamp_ns;
+      const LidarPoseSourceStampResult source_stamp =
+          resolveLidarPoseSourceStamp(time_mapper_, message.timestamp_sample,
+                                      receive_stamp_ns, pose_source_stamp_config_);
+      if (source_stamp.resolved()) {
+        lidar_pose_history_.addPosition(
+            receive_stamp_ns,
+            Point3{current_pose_.pose.position.x, current_pose_.pose.position.y,
+                   current_pose_.altitude_m},
+            current_pose_.pose.yaw_rad,
+            current_pose_.yaw_valid && current_pose_.altitude_valid,
+            source_stamp.acquisition_stamp_ns,
+            lidarPoseSourceTimestampNanoseconds(message.timestamp_sample));
+      } else {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "LIDAR3D_POSE_HISTORY position_source_rejected=true status=%s "
+            "timestamp_sample_us=%" PRIu64 " acquisition_stamp_ns=%" PRId64
+            " mapped_ros_stamp_ns=%" PRId64 " receive_delta_ms=%.3f",
+            lidarPoseSourceStampStatusName(source_stamp.status),
+            message.timestamp_sample, source_stamp.acquisition_stamp_ns,
+            source_stamp.mapped_ros_stamp_ns,
+            1.0e-6 * static_cast<double>(source_stamp.receive_delta_ns));
+      }
     }
     processPendingClouds();
   }
 
   void onAttitude(const px4_msgs::msg::VehicleAttitude& message) {
-    const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-    const LidarPoseSourceStampResult source_stamp =
-        resolveLidarPoseSourceStamp(time_mapper_, message.timestamp_sample,
-                                    receive_stamp_ns, pose_source_stamp_config_);
-    if (source_stamp.resolved()) {
-      lidar_pose_history_.addAttitude(
-          receive_stamp_ns, message.q, source_stamp.acquisition_stamp_ns,
-          lidarPoseSourceTimestampNanoseconds(message.timestamp_sample));
+    {
+      const std::scoped_lock pose_lock{pose_history_mutex_};
+      const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+      const LidarPoseSourceStampResult source_stamp =
+          resolveLidarPoseSourceStamp(time_mapper_, message.timestamp_sample,
+                                      receive_stamp_ns, pose_source_stamp_config_);
+      if (source_stamp.resolved()) {
+        lidar_pose_history_.addAttitude(
+            receive_stamp_ns, message.q, source_stamp.acquisition_stamp_ns,
+            lidarPoseSourceTimestampNanoseconds(message.timestamp_sample));
+      } else {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "LIDAR3D_POSE_HISTORY attitude_source_rejected=true status=%s "
+            "timestamp_sample_us=%" PRIu64 " acquisition_stamp_ns=%" PRId64
+            " mapped_ros_stamp_ns=%" PRId64 " receive_delta_ms=%.3f",
+            lidarPoseSourceStampStatusName(source_stamp.status),
+            message.timestamp_sample, source_stamp.acquisition_stamp_ns,
+            source_stamp.mapped_ros_stamp_ns,
+            1.0e-6 * static_cast<double>(source_stamp.receive_delta_ns));
+      }
     }
     processPendingClouds();
   }
 
   void onTimesync(const px4_msgs::msg::TimesyncStatus& message) {
-    time_mapper_.observeTimesync(message.timestamp, message.estimated_offset,
-                                 message.round_trip_time,
-                                 get_clock()->now().nanoseconds());
+    {
+      const std::scoped_lock pose_lock{pose_history_mutex_};
+      time_mapper_.observeTimesync(message.timestamp, message.estimated_offset,
+                                   message.round_trip_time,
+                                   get_clock()->now().nanoseconds());
+    }
     processPendingClouds();
   }
 
   void onPointCloud(sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
-    if (pending_clouds_.size() >= queue_capacity_) {
-      pending_clouds_.pop_front();
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "LIDAR3D_ALIGNMENT dropped=true reason=queue_capacity");
+    bool pending_pose_alignment{false};
+    {
+      const std::scoped_lock queue_lock{pending_clouds_mutex_};
+      if (!pending_clouds_.empty()) {
+        pending_pose_alignment = true;
+        RCLCPP_DEBUG_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "LIDAR3D_ALIGNMENT coalesced=true reason=awaiting_pose_bracket");
+      } else {
+        pending_clouds_.push_back(
+            PendingPointCloud3D{std::move(*cloud), get_clock()->now().nanoseconds()});
+      }
     }
-    pending_clouds_.push_back(
-        PendingPointCloud3D{std::move(*cloud), get_clock()->now().nanoseconds()});
+    if (pending_pose_alignment) {
+      return;
+    }
     processPendingClouds();
   }
 
   void processPendingClouds() {
+    const std::scoped_lock queue_lock{pending_clouds_mutex_};
     while (!pending_clouds_.empty()) {
       const PendingPointCloudDisposition disposition =
           processPendingCloud(pending_clouds_.front());
@@ -540,11 +598,17 @@ private:
         .receive_stamp_ns = pending.receive_stamp_ns,
         .receive_stamp_valid = pending.receive_stamp_ns > 0,
     };
-    const LidarAcquisitionPoseResult acquisition = resolveLidarAcquisitionBeamPoses(
-        lidar_pose_history_, timing, 1U, acquisition_pose_config_,
-        use_px4_heading_for_scan_ ? std::nullopt
-                                  : std::optional<double>{initial_heading_rad_},
-        &time_mapper_);
+    LidarAcquisitionPoseResult acquisition;
+    std::uint64_t pose_generation{0U};
+    {
+      const std::scoped_lock pose_lock{pose_history_mutex_};
+      acquisition = resolveLidarAcquisitionBeamPoses(
+          lidar_pose_history_, timing, 1U, acquisition_pose_config_,
+          use_px4_heading_for_scan_ ? std::nullopt
+                                    : std::optional<double>{initial_heading_rad_},
+          &time_mapper_);
+      pose_generation = lidar_pose_history_.generation();
+    }
     const bool permanent_failure =
         acquisition.status == LidarAcquisitionPoseStatus::kInvalidSensorTimeOffset ||
         acquisition.status == LidarAcquisitionPoseStatus::kInvalidScanTimestamp;
@@ -557,6 +621,11 @@ private:
         acquisition, timing, now_ns);
     if (!acquisition.resolved()) {
       if (!permanent_failure && !wait_expired) {
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                             "LIDAR3D_ALIGNMENT waiting=true queue_wait_ms=%.3f %s",
+                             1.0e-6 *
+                                 static_cast<double>(now_ns - pending.receive_stamp_ns),
+                             alignment_diagnostic.c_str());
         return PendingPointCloudDisposition::kWaitForPoseBracket;
       }
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
@@ -667,8 +736,9 @@ private:
     latest.valid = true;
     latest_scan_pub_->publish(makeLatestLidarObstacleScanMessage(
         latest, source_header, frame_id_, acquisition_stamp_ns, ++latest_scan_sequence_,
-        lidar_pose_history_.generation()));
-    const bool publish_current_cloud = persistent_memory_selection_.selected();
+        pose_generation));
+    const bool publish_current_cloud = persistent_memory_diagnostics_enabled_ &&
+                                       persistent_memory_selection_.selected();
     if (publish_current_cloud) {
       current_returns_pub_->publish(buildLidarDebugPointCloud(
           hit_points_map, rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME}, frame_id_));
@@ -693,7 +763,7 @@ private:
       const ObstacleMemory3DChanges changes = memory_->takeChanges();
       transport_->publish(memory_->grid(), changes,
                           rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME},
-                          persistent_memory_selection_.selected());
+                          publish_current_cloud);
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "LIDAR3D_SCAN accepted=true stamp_ns=%" PRId64
@@ -729,6 +799,8 @@ private:
   LidarPoseSourceStampConfig pose_source_stamp_config_{};
   SpectatorDiagnosticsSelection persistent_memory_selection_;
   std::deque<PendingPointCloud3D> pending_clouds_;
+  std::mutex pose_history_mutex_;
+  std::mutex pending_clouds_mutex_;
   std::string frame_id_{"map"};
   double initial_heading_rad_{0.0};
   double maximum_heading_variance_rad2_{0.05};
@@ -740,7 +812,11 @@ private:
   std::int64_t last_pose_update_ns_{0};
   std::uint64_t latest_scan_sequence_{0U};
   bool persistent_memory_enabled_{true};
+  bool persistent_memory_diagnostics_enabled_{true};
   bool use_px4_heading_for_scan_{true};
+
+  rclcpp::CallbackGroup::SharedPtr cloud_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr pose_callback_group_;
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
@@ -759,7 +835,10 @@ private:
 
 int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<drone_city_nav::ObstacleMemory3DNode>());
+  auto node = std::make_shared<drone_city_nav::ObstacleMemory3DNode>();
+  rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 2U};
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }

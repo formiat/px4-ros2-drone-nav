@@ -520,6 +520,12 @@ private:
            now().nanoseconds() >= timeNanoseconds(horizon_->valid_until);
   }
 
+  [[nodiscard]] bool plannedLaunchDepartureFresh() const {
+    return plannedFinitePathFresh() && !horizon_->points.empty() &&
+           horizon_->route_purpose ==
+               msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_LAUNCH_DEPARTURE;
+  }
+
   void controlTick() {
     const bool armed = vehicle_status_.arming_state ==
                        px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
@@ -556,6 +562,7 @@ private:
         takeoff_ready && (!require_mission_start_signal_ || mission_started_);
     const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
     const bool planned_path_fresh = navigating && plannedFinitePathFresh();
+    const bool launch_departure_fresh = navigating && plannedLaunchDepartureFresh();
     const bool planned_path_completed = navigating && plannedFinitePathCompleted();
     OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
     if (planned_path_fresh) {
@@ -568,6 +575,8 @@ private:
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
       }
+    } else if (launch_departure_fresh) {
+      publishLaunchDepartureSetpoint();
     } else if (stationary_position_hold) {
       publishStationaryPositionHoldSetpoint();
     } else if (planned_path_completed) {
@@ -616,6 +625,22 @@ private:
         nowMicros(), local_target, target.z - px4_map_transform_.map_origin.z,
         px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
     publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
+  }
+
+  void publishLaunchDepartureSetpoint() {
+    const geometry_msgs::msg::Point& target = horizon_->route_target;
+    const msg::MppiHorizonPoint& terminal = horizon_->points.back();
+    const Point2 local_target =
+        px4_map_transform_.mapPositionToLocal(Point2{target.x, target.y});
+    setpoint_pub_->publish(buildPositionTrajectorySetpoint(
+        nowMicros(), local_target, target.z - px4_map_transform_.map_origin.z,
+        px4_map_transform_.mapYawToPx4Heading(terminal.yaw_rad)));
+    publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "LAUNCH_DEPARTURE_EXECUTION mode=terminal_position sequence=%" PRIu64
+        " target=(%.3f,%.3f,%.3f) current_altitude=%.3f",
+        horizon_sequence_, target.x, target.y, target.z, mapAltitudeM());
   }
 
   void publishCompletedFinitePathHoldSetpoint() {

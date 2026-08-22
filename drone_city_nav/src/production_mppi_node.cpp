@@ -7,6 +7,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <filesystem>
+#include <numbers>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 
@@ -85,10 +86,14 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("no_static_esdf_recenter_margin_m", 70.0);
   no_static_3d_esdf_update_rate_hz_ =
       declare_parameter<double>("no_static_3d_esdf_update_rate_hz", 1.0);
-  no_static_3d_esdf_half_extent_m_ =
-      declare_parameter<double>("no_static_3d_esdf_half_extent_m", 30.0);
-  no_static_3d_esdf_recenter_margin_m_ =
-      declare_parameter<double>("no_static_3d_esdf_recenter_margin_m", 18.0);
+  no_static_3d_esdf_window_.horizontal_half_extent_m =
+      declare_parameter<double>("no_static_3d_esdf_horizontal_half_extent_m", 20.0);
+  no_static_3d_esdf_window_.vertical_half_extent_m =
+      declare_parameter<double>("no_static_3d_esdf_vertical_half_extent_m", 15.0);
+  no_static_3d_esdf_window_.horizontal_recenter_margin_m =
+      declare_parameter<double>("no_static_3d_esdf_horizontal_recenter_margin_m", 12.0);
+  no_static_3d_esdf_window_.vertical_recenter_margin_m =
+      declare_parameter<double>("no_static_3d_esdf_vertical_recenter_margin_m", 9.0);
   constrained_route_speed_limit_mps_ = static_cast<float>(
       declare_parameter<double>("constrained_route_speed_limit_mps", 10.0));
   route_constraint_diagnostics_distance_m_ =
@@ -448,6 +453,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       use_static_map_ ? static_lattice_distance : no_static_lattice_distance;
   lattice_3d_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_3d_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
+  require_known_free_space_for_goal_ =
+      declare_parameter<bool>("require_known_free_space", false);
+  lattice_3d_config_.require_known_free_space = require_known_free_space_for_goal_;
+  mppi_config_.risk.require_known_free_space = require_known_free_space_for_goal_;
   lattice_3d_config_.nominal_horizontal_speed_mps =
       speed_policy_config_.cruise_speed_mps;
   lattice_3d_config_.nominal_vertical_speed_mps =
@@ -529,6 +538,26 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_3d_config_.sensor_observability.minimum_known_free_ray_m =
       declare_parameter<double>(
           "global_lattice_3d_observation_frontier_minimum_known_free_ray_m", 1.0);
+  lattice_3d_config_.sensor_observability.frontier_identity_resolution_m =
+      declare_parameter<double>(
+          "global_lattice_3d_observation_frontier_identity_resolution_m",
+          lattice_3d_config_.sensor_observability.maximum_observation_range_m);
+  lattice_3d_config_.sensor_observability.horizontal_min_angle_rad =
+      declare_parameter<double>("lidar_3d_horizontal_min_angle_rad", -std::numbers::pi);
+  lattice_3d_config_.sensor_observability.horizontal_max_angle_rad =
+      declare_parameter<double>("lidar_3d_horizontal_max_angle_rad", std::numbers::pi);
+  lattice_3d_config_.sensor_observability.vertical_min_angle_rad =
+      declare_parameter<double>("lidar_3d_vertical_min_angle_rad", -1.3962634015954636);
+  lattice_3d_config_.sensor_observability.vertical_max_angle_rad =
+      declare_parameter<double>("lidar_3d_vertical_max_angle_rad", 1.3962634015954636);
+  lattice_3d_config_.sensor_observability.directional_cluster_half_angle_rad =
+      declare_parameter<double>(
+          "global_lattice_3d_observation_frontier_directional_cluster_half_angle_rad",
+          std::numbers::pi / 4.0);
+  const std::int64_t lidar_3d_horizontal_samples =
+      declare_parameter<std::int64_t>("lidar_3d_horizontal_samples", 240);
+  const std::int64_t lidar_3d_vertical_samples =
+      declare_parameter<std::int64_t>("lidar_3d_vertical_samples", 17);
   const std::int64_t observation_frontier_minimum_supporting_rays =
       declare_parameter<std::int64_t>(
           "global_lattice_3d_observation_frontier_minimum_supporting_rays", 2);
@@ -539,7 +568,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       observation_frontier_evaluation_stride <= 0 ||
       observation_frontier_maximum_searches <= 0 ||
       observation_frontier_minimum_supporting_rays <= 0 ||
-      observation_frontier_minimum_information_gain_voxels <= 0) {
+      observation_frontier_minimum_information_gain_voxels <= 0 ||
+      lidar_3d_horizontal_samples <= 1 || lidar_3d_vertical_samples <= 1) {
     throw std::invalid_argument{"invalid observation frontier count configuration"};
   }
   lattice_3d_config_.observation_frontier_maximum_evaluations =
@@ -552,6 +582,13 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<std::size_t>(observation_frontier_minimum_supporting_rays);
   lattice_3d_config_.sensor_observability.minimum_information_gain_voxels =
       static_cast<std::size_t>(observation_frontier_minimum_information_gain_voxels);
+  lattice_3d_config_.sensor_observability.minimum_observation_pose_advance_m =
+      declare_parameter<double>(
+          "global_lattice_3d_observation_frontier_minimum_pose_advance_m", 2.0);
+  lattice_3d_config_.sensor_observability.horizontal_samples =
+      static_cast<std::size_t>(lidar_3d_horizontal_samples);
+  lattice_3d_config_.sensor_observability.vertical_samples =
+      static_cast<std::size_t>(lidar_3d_vertical_samples);
   lattice_3d_config_.maximum_expansions = static_cast<std::size_t>(
       use_static_map_ ? static_lattice_expansions : no_static_lattice_expansions);
   lattice_3d_config_.maximum_search_time_ms =
@@ -567,7 +604,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   active_guide_config_.minimum_remaining_m = use_static_map_
                                                  ? static_guide_replan_remaining_m
                                                  : no_static_guide_replan_remaining_m;
-  static_route_extension_config_.minimum_remaining_m = static_guide_replan_remaining_m;
+  static_route_extension_config_.minimum_remaining_m =
+      active_guide_config_.minimum_remaining_m;
+  static_route_extension_config_.maximum_trigger_fraction_of_route =
+      declare_parameter<double>("global_guide_extension_maximum_trigger_fraction",
+                                0.65);
   static_route_extension_config_.latency_margin_s =
       declare_parameter<double>("static_global_guide_extension_latency_margin_s", 0.5);
   static_route_extension_config_.maximum_latency_s =
@@ -604,6 +645,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("global_guide_stall_minimum_progress_m", 0.5);
   guide_progress_config_.minimum_predicted_head_progress_m = declare_parameter<double>(
       "global_guide_stall_minimum_predicted_head_progress_m", 0.5);
+  global_guide_stall_recovery_enabled_ =
+      declare_parameter<bool>("global_guide_stall_recovery_enabled", false);
+  no_static_cycle_recovery_enabled_ =
+      declare_parameter<bool>("no_static_cycle_recovery_enabled", false);
   mppi_config_.early_exit_on_collision = true;
   physical_footprint_config_.sweep_step_m =
       declare_parameter<double>("physical_footprint_sweep_step_m", 0.25);
@@ -639,7 +684,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   configureIncrementalTopology3D();
   configureCooperativeTraffic();
   configureNonCooperativeAvoidance();
-  liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", true);
+  liveness_config_.enabled = declare_parameter<bool>("liveness_enabled", false);
   liveness_config_.observation_window_s =
       declare_parameter<double>("liveness_observation_window_s", 1.0);
   liveness_config_.minimum_actual_displacement_m =
@@ -687,8 +732,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_
             .observation_frontier_replacement_minimum_endpoint_improvement_m > 0.0) ||
       !(lattice_3d_config_.observation_frontier_search_time_ms > 0.0) ||
-      !(lattice_3d_config_.sensor_observability.maximum_observation_range_m > 0.0) ||
-      !(lattice_3d_config_.sensor_observability.minimum_known_free_ray_m >= 0.0) ||
+      !sensorObservabilityConfigIsValid(lattice_3d_config_.sensor_observability) ||
       !(physical_footprint_config_.sweep_step_m > 0.0) ||
       !(physical_footprint_config_.radius_m >= 0.0) ||
       !(physical_footprint_config_.lower_extent_m >= 0.0) ||
@@ -724,9 +768,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(no_static_esdf_recenter_margin_m_ >= 0.0) ||
       no_static_esdf_recenter_margin_m_ >= no_static_esdf_half_extent_m_ ||
       !(no_static_3d_esdf_update_rate_hz_ > 0.0) ||
-      !(no_static_3d_esdf_half_extent_m_ > 0.0) ||
-      !(no_static_3d_esdf_recenter_margin_m_ >= 0.0) ||
-      no_static_3d_esdf_recenter_margin_m_ >= no_static_3d_esdf_half_extent_m_ ||
+      !localObservedEsdfWindow3DIsValid(no_static_3d_esdf_window_) ||
       no_static_cycle_config_.minimum_generation_changes < 2U) {
     throw std::invalid_argument{"invalid production MPPI configuration"};
   }
@@ -741,12 +783,16 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   liveness_supervisor_ = std::make_unique<MppiLivenessSupervisor>(liveness_config_);
   active_guide_lifecycle_ =
       std::make_unique<ActiveGlobalGuideLifecycle>(active_guide_config_);
-  guide_progress_tracker_ =
-      std::make_unique<GlobalGuideProgressTracker>(guide_progress_config_);
+  if (global_guide_stall_recovery_enabled_) {
+    guide_progress_tracker_ =
+        std::make_unique<GlobalGuideProgressTracker>(guide_progress_config_);
+  }
   mission_goal_capture_latch_ =
       std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
-  no_static_cycle_detector_ =
-      std::make_unique<NoStaticRouteCycleDetector>(no_static_cycle_config_);
+  if (no_static_cycle_recovery_enabled_) {
+    no_static_cycle_detector_ =
+        std::make_unique<NoStaticRouteCycleDetector>(no_static_cycle_config_);
+  }
   planning_worker_pool_ = std::make_unique<BoundedWorkerPool>(planner_worker_count_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
   if (use_static_map_) {
@@ -869,7 +915,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
               "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
               "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
               "planner_tick_phase_ms=%.1f no_static_world=%s "
-              "no_static_esdf=(2d=%.1fHz/%.1f/%.1fm,3d=%.1fHz/%.1f/%.1fm)",
+              "no_static_esdf=(2d=%.1fHz/%.1f/%.1fm,"
+              "3d=%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm)",
               mppi_config_.rollouts, rollout_budget_config_.open_static_rollouts,
               rollout_budget_config_.direct_tracking_rollouts,
               rollout_budget_config_.minimum_reduced_clearance_m, mppi_config_.steps,
@@ -898,7 +945,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
               noStaticWorldModelName(no_static_world_model_),
               no_static_esdf_update_rate_hz_, no_static_esdf_half_extent_m_,
               no_static_esdf_recenter_margin_m_, no_static_3d_esdf_update_rate_hz_,
-              no_static_3d_esdf_half_extent_m_, no_static_3d_esdf_recenter_margin_m_);
+              no_static_3d_esdf_window_.horizontal_half_extent_m,
+              no_static_3d_esdf_window_.vertical_half_extent_m,
+              no_static_3d_esdf_window_.horizontal_recenter_margin_m,
+              no_static_3d_esdf_window_.vertical_recenter_margin_m);
 }
 
 void ProductionMppiNode::startPlanningTimer() {
@@ -908,6 +958,11 @@ void ProductionMppiNode::startPlanningTimer() {
 }
 
 ProductionMppiNode::~ProductionMppiNode() {
+  if (topology_worker_.joinable()) {
+    topology_worker_.request_stop();
+    topology_queue_condition_.notify_all();
+    topology_worker_.join();
+  }
   if (diagnostics_worker_.joinable()) {
     diagnostics_worker_.request_stop();
     diagnostics_mailbox_.notifyAll();

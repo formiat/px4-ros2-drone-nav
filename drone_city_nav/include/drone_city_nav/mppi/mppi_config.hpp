@@ -32,6 +32,7 @@ struct NoiseConfig {
 struct RiskConfig {
   float critical_distance_m{1.0F};
   float preferred_distance_m{6.0F};
+  bool require_known_free_space{false};
   float obstacle_approach_response_time_s{0.25F};
   float obstacle_approach_deceleration_mps2{4.0F};
   float critical_exposure_tolerance_m{0.5F};

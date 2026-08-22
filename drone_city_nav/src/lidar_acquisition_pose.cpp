@@ -32,7 +32,8 @@ resolveLidarPoseSourceStamp(const Px4RosTimeMapper& time_mapper,
     return result;
   }
   const std::optional<std::int64_t> acquisition_stamp_ns =
-      time_mapper.recoverPx4LocalTimeNs(source_timestamp_us);
+      time_mapper.recoverPx4LocalTimeNsClosestToRosTime(source_timestamp_us,
+                                                        receive_stamp_ns);
   if (!acquisition_stamp_ns.has_value()) {
     result.status = LidarPoseSourceStampStatus::kSourceTimestampInvalid;
     return result;

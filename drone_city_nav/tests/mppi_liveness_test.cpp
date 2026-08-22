@@ -16,8 +16,21 @@ MppiLivenessObservation observation(const std::int64_t stamp_ns,
   };
 }
 
-TEST(MppiLivenessTest, RequestsReseedAfterStationaryPredictionWindow) {
+MppiLivenessSupervisor optInSupervisor() {
+  return MppiLivenessSupervisor{MppiLivenessConfig{.enabled = true}};
+}
+
+TEST(MppiLivenessTest, IsInactiveByDefault) {
   MppiLivenessSupervisor supervisor;
+
+  const MppiLivenessResult result = supervisor.evaluate(observation(1'000'000'000LL));
+
+  EXPECT_FALSE(result.reseed_requested);
+  EXPECT_EQ(result.state, MppiLivenessState::kInactive);
+}
+
+TEST(MppiLivenessTest, RequestsReseedAfterStationaryPredictionWindow) {
+  MppiLivenessSupervisor supervisor = optInSupervisor();
 
   EXPECT_EQ(supervisor.evaluate(observation(1'000'000'000LL)).state,
             MppiLivenessState::kMonitoring);
@@ -30,7 +43,7 @@ TEST(MppiLivenessTest, RequestsReseedAfterStationaryPredictionWindow) {
 }
 
 TEST(MppiLivenessTest, LowPredictedProgressDoesNotResetStationaryTimer) {
-  MppiLivenessSupervisor supervisor;
+  MppiLivenessSupervisor supervisor = optInSupervisor();
   MppiLivenessObservation low_prediction = observation(1'000'000'000LL);
   low_prediction.predicted_terminal_progress_m = 0.0;
   EXPECT_EQ(supervisor.evaluate(low_prediction).state, MppiLivenessState::kMonitoring);
@@ -43,7 +56,7 @@ TEST(MppiLivenessTest, LowPredictedProgressDoesNotResetStationaryTimer) {
 }
 
 TEST(MppiLivenessTest, DisplacementInAnyDirectionCountsAsMovement) {
-  MppiLivenessSupervisor supervisor;
+  MppiLivenessSupervisor supervisor = optInSupervisor();
   (void)supervisor.evaluate(observation(1'000'000'000LL));
   mppi::State moved;
   moved.x = -0.6F;
@@ -56,7 +69,7 @@ TEST(MppiLivenessTest, DisplacementInAnyDirectionCountsAsMovement) {
 }
 
 TEST(MppiLivenessTest, VerticalAlignmentCountsAsMovement) {
-  MppiLivenessSupervisor supervisor;
+  MppiLivenessSupervisor supervisor = optInSupervisor();
   (void)supervisor.evaluate(observation(1'000'000'000LL));
   mppi::State moved;
   moved.z = 0.6F;
@@ -69,7 +82,7 @@ TEST(MppiLivenessTest, VerticalAlignmentCountsAsMovement) {
 }
 
 TEST(MppiLivenessTest, LateralAndVerticalMotionDoNotMaskMissingRouteProgress) {
-  MppiLivenessSupervisor supervisor;
+  MppiLivenessSupervisor supervisor = optInSupervisor();
   MppiLivenessObservation first = observation(1'000'000'000LL);
   first.route_generation = 4U;
   first.route_station_m = 10.0;
@@ -92,7 +105,7 @@ TEST(MppiLivenessTest, LateralAndVerticalMotionDoNotMaskMissingRouteProgress) {
 }
 
 TEST(MppiLivenessTest, AlongRouteProgressCountsAsUsefulMovement) {
-  MppiLivenessSupervisor supervisor;
+  MppiLivenessSupervisor supervisor = optInSupervisor();
   MppiLivenessObservation first = observation(1'000'000'000LL);
   first.route_generation = 4U;
   first.route_station_m = 10.0;
@@ -111,7 +124,7 @@ TEST(MppiLivenessTest, AlongRouteProgressCountsAsUsefulMovement) {
 }
 
 TEST(MppiLivenessTest, VelocityWithoutNetDisplacementRequestsReseed) {
-  MppiLivenessSupervisor supervisor;
+  MppiLivenessSupervisor supervisor = optInSupervisor();
   (void)supervisor.evaluate(observation(1'000'000'000LL));
   mppi::State oscillating;
   oscillating.vy = 2.0F;

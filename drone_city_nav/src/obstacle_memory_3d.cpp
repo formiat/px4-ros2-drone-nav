@@ -221,6 +221,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     return stats;
   }
   const std::size_t stride = static_cast<std::size_t>(config_.scan_stride);
+  ScanEvidence scan_evidence;
   for (std::size_t index = 0U; index < scan.beams.size(); index += stride) {
     const LidarBeam3D& beam = scan.beams[index];
     const double direction_norm = vectorNorm(beam.direction_map);
@@ -233,12 +234,38 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     ++stats.processed_beams;
     stats.hit_beams += beam.hit ? 1U : 0U;
     stats.miss_beams += beam.hit ? 0U : 1U;
-    integrateRay(scan.origin_map, beam, stats);
+    integrateRay(scan.origin_map, beam, scan_evidence, stats);
+  }
+  for (const auto& [key, occupied] : scan_evidence) {
+    static_cast<void>(applyEvidence(
+        cellFromKey(key), occupied ? config_.hit_weight : -config_.miss_weight, stats));
+    stats.occupied_voxel_updates += occupied ? 1U : 0U;
+    stats.free_voxel_updates += occupied ? 0U : 1U;
   }
   if (stats.state_transitions > 0U) {
     ++revision_;
   }
   return stats;
+}
+
+std::uint64_t ObstacleMemory3D::cellKey(const GridIndex3D index) const noexcept {
+  const GridBounds3D& bounds = grid_.bounds();
+  return (static_cast<std::uint64_t>(index.z) *
+              static_cast<std::uint64_t>(bounds.height_cells) +
+          static_cast<std::uint64_t>(index.y)) *
+             static_cast<std::uint64_t>(bounds.width_cells) +
+         static_cast<std::uint64_t>(index.x);
+}
+
+GridIndex3D ObstacleMemory3D::cellFromKey(const std::uint64_t key) const noexcept {
+  const GridBounds3D& bounds = grid_.bounds();
+  const std::uint64_t width = static_cast<std::uint64_t>(bounds.width_cells);
+  const std::uint64_t height = static_cast<std::uint64_t>(bounds.height_cells);
+  return GridIndex3D{
+      .x = static_cast<int>(key % width),
+      .y = static_cast<int>((key / width) % height),
+      .z = static_cast<int>(key / (width * height)),
+  };
 }
 
 std::size_t ObstacleMemory3D::forgetDynamicVolumes(
@@ -368,7 +395,8 @@ bool ObstacleMemory3D::applyEvidence(const GridIndex3D index, const int delta,
 }
 
 void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& beam,
-                                    ObstacleMemory3DStats& stats) {
+                                    ScanEvidence& scan_evidence,
+                                    ObstacleMemory3DStats& stats) const {
   const double norm = vectorNorm(beam.direction_map);
   const Vec3 direction{beam.direction_map.x / norm, beam.direction_map.y / norm,
                        beam.direction_map.z / norm};
@@ -384,13 +412,11 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   }
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
-      static_cast<void>(applyEvidence(cell, -config_.miss_weight, stats));
-      ++stats.free_voxel_updates;
+      static_cast<void>(scan_evidence.try_emplace(cellKey(cell), false));
     }
   });
   if (hit_cell.has_value()) {
-    static_cast<void>(applyEvidence(*hit_cell, config_.hit_weight, stats));
-    ++stats.occupied_voxel_updates;
+    scan_evidence[cellKey(*hit_cell)] = true;
   }
 }
 

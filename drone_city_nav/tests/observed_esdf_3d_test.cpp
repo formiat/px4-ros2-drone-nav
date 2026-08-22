@@ -42,8 +42,14 @@ TEST(ObservedEsdf3DTest, PreservesUnknownFreeAndOccupiedSemantics) {
 
 TEST(ObservedEsdf3DTest, FingerprintIsDeterministicAndSensitiveToObservedState) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.5, 64, 64, 8};
+  const LocalObservedEsdfWindow3D window{
+      .horizontal_half_extent_m = 4.0,
+      .vertical_half_extent_m = 2.0,
+      .horizontal_recenter_margin_m = 2.0,
+      .vertical_recenter_margin_m = 1.0,
+  };
   const GridBounds3D local =
-      selectLocalObservedEsdfBounds(bounds, Point3{8.0, 8.0, 2.0}, 4.0);
+      selectLocalObservedEsdfBounds(bounds, Point3{8.0, 8.0, 2.0}, window);
   ObservedOccupancyGrid3D occupancy{bounds};
   const std::uint64_t empty = observedOccupancyFingerprint(occupancy, local);
 
@@ -102,6 +108,8 @@ TEST(ObservedEsdf3DTest,
 
   const ObservedEsdf3D field =
       buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed, &*support);
+  const ObservedEsdf3D unmasked =
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed);
 
   ASSERT_TRUE(field.local_occupancy);
   EXPECT_GT(field.stats.launch_support_voxels, 1U);
@@ -111,6 +119,7 @@ TEST(ObservedEsdf3DTest,
   EXPECT_EQ(field.local_occupancy->state(GridIndex3D{0, 0, 0}),
             ObservedVoxelState::kUnknown);
   EXPECT_EQ(occupancy.state(support_cell), ObservedVoxelState::kOccupied);
+  EXPECT_NE(field.occupancy_fingerprint, unmasked.occupancy_fingerprint);
 }
 
 TEST(ObservedEsdf3DTest, VehicleLandDetectorCreatesBoundedSupportWithoutLidarEvidence) {
@@ -225,14 +234,23 @@ TEST(ObservedEsdf3DTest, LaunchSupportCoversTheBoundedDepartureEnvelope) {
 
 TEST(ObservedEsdf3DTest, RecenterHonorsWorldEdges) {
   const GridBounds3D world{0.0, 0.0, 0.0, 1.0, 100, 80, 20};
+  const LocalObservedEsdfWindow3D window{
+      .horizontal_half_extent_m = 10.0,
+      .vertical_half_extent_m = 8.0,
+      .horizontal_recenter_margin_m = 4.0,
+      .vertical_recenter_margin_m = 3.0,
+  };
   const GridBounds3D left =
-      selectLocalObservedEsdfBounds(world, Point3{2.0, 40.0, 5.0}, 10.0);
+      selectLocalObservedEsdfBounds(world, Point3{2.0, 40.0, 5.0}, window);
 
   EXPECT_DOUBLE_EQ(left.origin_x, world.origin_x);
+  EXPECT_DOUBLE_EQ(left.origin_z, world.origin_z);
   EXPECT_FALSE(
-      localObservedEsdfNeedsRecenter(left, world, Point3{2.0, 40.0, 5.0}, 4.0));
+      localObservedEsdfNeedsRecenter(left, world, Point3{2.0, 40.0, 5.0}, window));
   EXPECT_TRUE(
-      localObservedEsdfNeedsRecenter(left, world, Point3{10.0, 40.0, 5.0}, 4.0));
+      localObservedEsdfNeedsRecenter(left, world, Point3{10.0, 40.0, 5.0}, window));
+  EXPECT_TRUE(
+      localObservedEsdfNeedsRecenter(left, world, Point3{2.0, 40.0, 12.0}, window));
 }
 
 } // namespace

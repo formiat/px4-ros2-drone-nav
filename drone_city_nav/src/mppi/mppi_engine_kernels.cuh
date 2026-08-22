@@ -441,9 +441,11 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           swept_state, body_axis, footprint,
           footprint.clearance_broad_phase_enabled ? risk.preferred_distance_m : 0.0F,
           grid, esdf_texture);
-      clearance = fminf(clearance, esdf_query.clearance_m);
-      segment_raw_hit =
-          segment_raw_hit || esdf_query.raw_collision || esdf_query.unknown_space;
+      if (!esdf_query.unknown_space) {
+        clearance = fminf(clearance, esdf_query.clearance_m);
+      }
+      segment_raw_hit = segment_raw_hit || esdf_query.raw_collision ||
+                        (risk.require_known_free_space && esdf_query.unknown_space);
       for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;
            ++solid_index) {
         solid_hit =

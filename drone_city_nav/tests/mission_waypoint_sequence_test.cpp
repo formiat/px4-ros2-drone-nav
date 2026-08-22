@@ -67,5 +67,20 @@ TEST(MissionWaypointSequenceTest, CompletesOnlyAfterTheLastWaypoint) {
   EXPECT_EQ(sequence.completedWaypointCount(), 2U);
 }
 
+TEST(MissionWaypointSequenceTest, AcceptsAuthoritativeControllerCaptures) {
+  MissionWaypointSequence sequence{{Point3{1.0, 2.0, 3.0}, Point3{4.0, 5.0, 6.0}}};
+
+  const MissionWaypointUpdate first = sequence.acknowledgeGoalCapture();
+  EXPECT_TRUE(first.waypoint_completed);
+  EXPECT_TRUE(first.advanced);
+  EXPECT_EQ(first.completed_index, 0U);
+
+  const MissionWaypointUpdate last = sequence.acknowledgeGoalCapture();
+  EXPECT_TRUE(last.waypoint_completed);
+  EXPECT_TRUE(last.mission_completed);
+  EXPECT_EQ(last.completed_index, 1U);
+  EXPECT_TRUE(sequence.missionCompleted());
+}
+
 } // namespace
 } // namespace drone_city_nav

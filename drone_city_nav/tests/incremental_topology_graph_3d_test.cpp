@@ -106,8 +106,44 @@ TEST(IncrementalTopologyGraph3DTest, ExtractsTJunctionAndFrontierNodes) {
   EXPECT_TRUE(std::ranges::any_of(
       snapshot.nodes(), [](const auto& node) { return node.traits.junction; }));
   EXPECT_TRUE(std::ranges::any_of(snapshot.nodes(), [](const auto& node) {
-    return node.traits.frontier && node.observation_frontier.has_value();
+    return node.traits.frontier && !node.observation_frontiers.empty();
   }));
+}
+
+TEST(IncrementalTopologyGraph3DTest, RetainsDistinctFrontierSectorsPerComponent) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 24, 16}};
+  fillFreeBox(occupancy, 4, 19, 4, 19, 3, 12);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.tile_size_cells = 24;
+  config.maximum_frontier_evaluations_per_component = 8U;
+  config.maximum_frontiers_per_component = 16U;
+  config.observability.frontier_identity_resolution_m = 2.0;
+  IncrementalTopologyGraph3D graph{config};
+
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+
+  const auto node = std::ranges::find_if(snapshot.nodes(), [](const auto& candidate) {
+    return candidate.observation_frontiers.size() > 1U;
+  });
+  ASSERT_NE(node, snapshot.nodes().end());
+  EXPECT_TRUE(
+      std::ranges::any_of(node->observation_frontiers, [](const auto& frontier) {
+        return std::abs(frontier.observation_direction.z) > 0.5;
+      }));
+  EXPECT_TRUE(
+      std::ranges::any_of(node->observation_frontiers, [](const auto& frontier) {
+        return std::hypot(frontier.observation_direction.x,
+                          frontier.observation_direction.y) > 0.8;
+      }));
+  EXPECT_TRUE(
+      std::ranges::any_of(node->observation_frontiers, [](const auto& frontier) {
+        return frontier.observation_direction.x > 0.5;
+      }));
+  EXPECT_TRUE(
+      std::ranges::any_of(node->observation_frontiers, [](const auto& frontier) {
+        return frontier.observation_direction.x < -0.5;
+      }));
 }
 
 TEST(IncrementalTopologyGraph3DTest, ExtractsXJunctionAndLoop) {
@@ -164,7 +200,7 @@ TEST(IncrementalTopologyGraph3DTest, ClassifiesClosedCulDeSacTerminalsAndCorrido
   EXPECT_TRUE(std::ranges::any_of(snapshot.nodes(),
                                   [](const auto& node) { return node.traits.turn; }));
   EXPECT_TRUE(std::ranges::none_of(snapshot.nodes(), [](const auto& node) {
-    return node.traits.frontier || node.observation_frontier.has_value();
+    return node.traits.frontier || !node.observation_frontiers.empty();
   }));
 }
 
@@ -197,6 +233,26 @@ TEST(IncrementalTopologyGraph3DTest, DirtyUpdateRetainsUnaffectedNodeIdentity) {
   EXPECT_EQ(distant_node->geometry_revision, 1U);
 }
 
+TEST(IncrementalTopologyGraph3DTest,
+     SparseDirtyVoxelsDoNotInvalidateTheBoundingVolumeBetweenThem) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 32, 32}};
+  fillStateBox(occupancy, 0, 31, 0, 31, 0, 31, ObservedVoxelState::kOccupied);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.maximum_observed_tiles_per_update = 1024U;
+  IncrementalTopologyGraph3D graph{config};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+
+  ASSERT_TRUE(occupancy.setState({1, 1, 1}, ObservedVoxelState::kFree));
+  ASSERT_TRUE(occupancy.setState({30, 30, 30}, ObservedVoxelState::kFree));
+  const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex({1, 1, 1});
+  const IncrementalTopologyGraph3DUpdate update =
+      graph.update(occupancy, 2U, std::span{&dirty, 1U}, false);
+
+  // The old chunk-wide min/max box covered the entire 8x8x8 tile volume.
+  // A topology update now touches only each changed tile and its footprint halo.
+  EXPECT_LT(update.discovered_dirty_tiles, 100U);
+}
+
 TEST(IncrementalTopologyGraph3DTest, StaticMapSeedsCompleteGraphWithoutFrontiers) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 20, 12}};
   IncrementalTopologyGraph3D graph{makeConfig()};
@@ -208,7 +264,7 @@ TEST(IncrementalTopologyGraph3DTest, StaticMapSeedsCompleteGraphWithoutFrontiers
   EXPECT_GT(snapshot.nodes().size(), 1U);
   EXPECT_GT(snapshot.edges().size(), 0U);
   EXPECT_TRUE(std::ranges::none_of(snapshot.nodes(), [](const auto& node) {
-    return node.traits.frontier || node.observation_frontier.has_value();
+    return node.traits.frontier || !node.observation_frontiers.empty();
   }));
 }
 
@@ -357,6 +413,7 @@ TEST(IncrementalTopologyGraph3DTest,
   fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
   IncrementalTopologyGraph3DConfig config = makeConfig();
   config.maximum_observed_tiles_per_update = 1U;
+  config.minimum_oldest_tiles_per_update = 0U;
   IncrementalTopologyGraph3D graph{config};
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
 
@@ -391,6 +448,7 @@ TEST(IncrementalTopologyGraph3DTest,
   fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
   IncrementalTopologyGraph3DConfig config = makeConfig();
   config.maximum_observed_tiles_per_update = 1U;
+  config.minimum_oldest_tiles_per_update = 0U;
   IncrementalTopologyGraph3D graph{config};
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
 
@@ -412,6 +470,52 @@ TEST(IncrementalTopologyGraph3DTest,
   EXPECT_FALSE(snapshot.nearestNode({20.5, 15.5, 7.5}, 8.0).has_value());
 }
 
+TEST(IncrementalTopologyGraph3DTest, RecurrentPriorityWorkCannotStarveOlderDirtyTiles) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
+  fillFreeBox(occupancy, 2, 10, 14, 16, 6, 8);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.maximum_observed_tiles_per_update = 2U;
+  config.minimum_oldest_tiles_per_update = 1U;
+  IncrementalTopologyGraph3D graph{config};
+  std::uint64_t revision = 1U;
+  IncrementalTopologyGraph3DUpdate update =
+      graph.update(occupancy, revision++, {}, true,
+                   IncrementalTopologyBuildPriority3D{.position = {20.5, 15.5, 7.5},
+                                                      .target = {80.5, 15.5, 7.5}});
+  while (update.pending_tiles > 0U) {
+    update = graph.update(occupancy, revision++, {}, false);
+  }
+
+  fillFreeBox(occupancy, 18, 22, 14, 16, 6, 8);
+  fillFreeBox(occupancy, 66, 70, 14, 16, 6, 8);
+  const OccupancyChunkIndex3D near_chunk =
+      ObservedOccupancyGrid3D::chunkIndex({18, 15, 7});
+  const OccupancyChunkIndex3D far_chunk =
+      ObservedOccupancyGrid3D::chunkIndex({66, 15, 7});
+  const std::array initial_dirty{near_chunk, far_chunk};
+  update =
+      graph.update(occupancy, revision++, initial_dirty, false,
+                   IncrementalTopologyBuildPriority3D{.position = {20.5, 15.5, 7.5},
+                                                      .target = {80.5, 15.5, 7.5}});
+
+  for (std::size_t attempt = 0U;
+       attempt < 64U &&
+       !graph.snapshot().nearestNode({68.5, 15.5, 7.5}, 8.0).has_value();
+       ++attempt) {
+    const GridIndex3D changing_cell{18, 15, 7};
+    const ObservedVoxelState changing_state =
+        attempt % 2U == 0U ? ObservedVoxelState::kUnknown : ObservedVoxelState::kFree;
+    ASSERT_TRUE(occupancy.setState(changing_cell, changing_state));
+    const std::array recurrent_dirty{near_chunk};
+    update =
+        graph.update(occupancy, revision++, recurrent_dirty, false,
+                     IncrementalTopologyBuildPriority3D{.position = {20.5, 15.5, 7.5},
+                                                        .target = {80.5, 15.5, 7.5}});
+  }
+
+  EXPECT_TRUE(graph.snapshot().nearestNode({68.5, 15.5, 7.5}, 8.0).has_value());
+}
+
 TEST(IncrementalTopologyGraph3DTest,
      InitialObservedResetIsBudgetedAndPrioritizedNearTheVehicle) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 96, 32, 16}};
@@ -419,6 +523,7 @@ TEST(IncrementalTopologyGraph3DTest,
   fillFreeBox(occupancy, 66, 74, 14, 16, 6, 8);
   IncrementalTopologyGraph3DConfig config = makeConfig();
   config.maximum_observed_tiles_per_update = 1U;
+  config.minimum_oldest_tiles_per_update = 0U;
   IncrementalTopologyGraph3D graph{config};
 
   const IncrementalTopologyGraph3DUpdate update =

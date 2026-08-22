@@ -58,6 +58,22 @@ TEST(ObstacleMemory3D, IntegratesHitAndMissEvidenceAlongFullRay) {
   EXPECT_GT(memory.revision(), 0U);
 }
 
+TEST(ObstacleMemory3D, NoReturnMarksFreeSpaceThroughMaximumSensorRange) {
+  constexpr GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 8, 8};
+  ObstacleMemory3D memory{
+      bounds, ObstacleMemory3DConfig{.maximum_range_m = 35.0, .minimum_range_m = 0.1}};
+  const std::array beams{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 35.0, .hit = false, .valid = true}};
+
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 1.5}, .beams = beams}));
+
+  EXPECT_TRUE(memory.grid().isKnownFree({1, 1, 1}));
+  EXPECT_TRUE(memory.grid().isKnownFree({35, 1, 1}));
+  EXPECT_TRUE(memory.grid().isKnownFree({36, 1, 1}));
+  EXPECT_EQ(memory.grid().state({37, 1, 1}), ObservedVoxelState::kUnknown);
+}
+
 TEST(ObstacleMemory3D, TraversesEveryVoxelAlongAnObliqueRay) {
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
@@ -125,6 +141,54 @@ TEST(ObstacleMemory3D, ConflictingEvidenceCanClearStaleOccupiedVoxel) {
   static_cast<void>(
       memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = miss}));
 
+  EXPECT_TRUE(memory.grid().isKnownFree({9, 1, 2}));
+}
+
+TEST(ObstacleMemory3D, HitEndpointDominatesCrossingMissesWithinOneScan) {
+  ObstacleMemory3D memory{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                                          .minimum_range_m = 0.1,
+                                                          .hit_weight = 4,
+                                                          .miss_weight = 1,
+                                                          .minimum_score = -8,
+                                                          .maximum_score = 12,
+                                                          .occupied_score = 3,
+                                                          .free_score = -1}};
+  const LidarBeam3D hit{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true};
+  const LidarBeam3D miss{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 12.0, .hit = false, .valid = true};
+  const std::array beams{hit, miss, miss, miss, miss, miss};
+
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = beams}));
+
+  EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2}));
+}
+
+TEST(ObstacleMemory3D, DuplicateMissesContributeOncePerScan) {
+  ObstacleMemory3D memory{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                                          .minimum_range_m = 0.1,
+                                                          .hit_weight = 4,
+                                                          .miss_weight = 2,
+                                                          .minimum_score = -8,
+                                                          .maximum_score = 12,
+                                                          .occupied_score = 3,
+                                                          .free_score = -1}};
+  const std::array hit{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+  const LidarBeam3D miss{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 12.0, .hit = false, .valid = true};
+  const std::array duplicate_misses{miss, miss, miss};
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = hit}));
+
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = duplicate_misses}));
+  EXPECT_EQ(memory.grid().state({9, 1, 2}), ObservedVoxelState::kUnknown);
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = duplicate_misses}));
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = duplicate_misses}));
   EXPECT_TRUE(memory.grid().isKnownFree({9, 1, 2}));
 }
 

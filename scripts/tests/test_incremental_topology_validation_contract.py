@@ -36,9 +36,13 @@ class IncrementalTopologyValidationContractTest(unittest.TestCase):
         self.assertIn("REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true", runner)
         self.assertIn("manhattan_low_altitude_point_to_point_scenario.json", runner)
         self.assertIn("MISSION_GOALS_XYZ_M=", runner)
+        self.assertIn('MANHATTAN_POINT_TO_POINT_TIMEOUT_S:-1800', runner)
         self.assertIn("cooperative_traffic_scenario.json", runner)
+        self.assertIn('MANHATTAN_COOPERATIVE_MISSION_TIMEOUT_S:-1200', runner)
+        self.assertIn('MANHATTAN_COOPERATIVE_TIMEOUT_S:-1300', runner)
         self.assertIn("sim-urban-point-to-point-headless", runner)
         self.assertIn("sim-cooperative-traffic-urban-headless", runner)
+        self.assertIn('URBAN_COOPERATIVE_MISSION_TIMEOUT_S:-780', runner)
 
     def test_host_wrapper_uses_one_container_for_the_complete_matrix(self) -> None:
         wrapper = WRAPPER.read_text(encoding="utf-8")

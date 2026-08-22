@@ -189,6 +189,7 @@ add_library(
   src/incremental_topological_navigation_3d.cpp
   src/incremental_topological_lattice_adapter_3d.cpp
   src/incremental_topological_planner_3d.cpp
+  src/incremental_topology_frontiers_3d.cpp
   src/incremental_topology_graph_3d.cpp
   src/incremental_topology_graph_3d_snapshot.cpp
   src/incremental_topology_tile_scheduler_3d.cpp

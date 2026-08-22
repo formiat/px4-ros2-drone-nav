@@ -32,14 +32,24 @@ struct ObservedEsdf3D {
   ObservedEsdf3DBuildStats stats{};
 };
 
+struct LocalObservedEsdfWindow3D {
+  double horizontal_half_extent_m{20.0};
+  double vertical_half_extent_m{15.0};
+  double horizontal_recenter_margin_m{12.0};
+  double vertical_recenter_margin_m{9.0};
+};
+
 [[nodiscard]] GridBounds3D
 selectLocalObservedEsdfBounds(const GridBounds3D& world_bounds, const Point3& position,
-                              double half_extent_m);
+                              const LocalObservedEsdfWindow3D& window);
 
-[[nodiscard]] bool localObservedEsdfNeedsRecenter(const GridBounds3D& local_bounds,
-                                                  const GridBounds3D& world_bounds,
-                                                  const Point3& position,
-                                                  double recenter_margin_m) noexcept;
+[[nodiscard]] bool
+localObservedEsdfNeedsRecenter(const GridBounds3D& local_bounds,
+                               const GridBounds3D& world_bounds, const Point3& position,
+                               const LocalObservedEsdfWindow3D& window) noexcept;
+
+[[nodiscard]] bool
+localObservedEsdfWindow3DIsValid(const LocalObservedEsdfWindow3D& window) noexcept;
 
 [[nodiscard]] std::uint64_t
 observedOccupancyFingerprint(const ObservedOccupancyGrid3D& occupancy,

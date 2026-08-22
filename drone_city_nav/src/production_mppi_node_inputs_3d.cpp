@@ -129,10 +129,21 @@ void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
       world->full_reset = world->full_reset || pending_raw_world_3d_->full_reset;
       mergeDirtyChunks(world->dirty_chunks, pending_raw_world_3d_->dirty_chunks);
     }
-    pending_raw_world_3d_ = std::move(world);
+    pending_raw_world_3d_ = world;
     latest_raw_world_3d_.store(pending_raw_world_3d_, std::memory_order_release);
   }
+  {
+    const std::scoped_lock lock{topology_queue_mutex_};
+    if (pending_topology_world_3d_) {
+      auto merged = std::make_shared<ProductionMppiRawWorld3D>(*world);
+      merged->full_reset = merged->full_reset || pending_topology_world_3d_->full_reset;
+      mergeDirtyChunks(merged->dirty_chunks, pending_topology_world_3d_->dirty_chunks);
+      world = std::move(merged);
+    }
+    pending_topology_world_3d_ = world;
+  }
   raw_queue_condition_.notify_all();
+  topology_queue_condition_.notify_all();
 }
 
 } // namespace drone_city_nav

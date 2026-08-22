@@ -39,6 +39,7 @@ def configure_sensor_collision_visual(visual: ET.Element) -> None:
     material = ET.SubElement(visual, "material")
     ET.SubElement(material, "ambient").text = "0.25 0.25 0.25 1"
     ET.SubElement(material, "diffuse").text = "0.5 0.5 0.5 1"
+    ET.SubElement(material, "double_sided").text = "true"
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,9 @@
 namespace drone_city_nav {
 
 struct MppiLivenessConfig {
-  bool enabled{true};
+  // Recovery heuristics are opt-in. Normal navigation must not reseed solely
+  // because a short observation window appears to show insufficient progress.
+  bool enabled{false};
   double observation_window_s{1.0};
   double minimum_actual_displacement_m{0.5};
   double minimum_predicted_terminal_progress_m{5.0};

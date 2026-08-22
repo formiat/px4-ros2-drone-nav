@@ -1,10 +1,14 @@
 #pragma once
 
+#include "drone_city_nav/observation_frontier.hpp"
+#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
+#include <vector>
 
 namespace drone_city_nav::incremental_topology_detail {
 
@@ -38,5 +42,10 @@ inline void hashUnsigned(std::uint64_t& hash, const std::uint64_t value) noexcep
              static_cast<std::uint64_t>(bounds.width_cells) +
          static_cast<std::uint64_t>(cell.x);
 }
+
+[[nodiscard]] std::vector<ObservationFrontier> selectComponentObservationFrontiers(
+    const ObservedOccupancyGrid3D& occupancy, std::span<const GridIndex3D> cells,
+    std::uint64_t update_revision, const SensorObservabilityConfig& observability,
+    std::size_t maximum_evaluations, std::size_t maximum_frontiers);
 
 } // namespace drone_city_nav::incremental_topology_detail

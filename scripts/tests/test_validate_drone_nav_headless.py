@@ -78,7 +78,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
     ) -> None:
         log = (
             "PRODUCTION_MPPI_GUIDE3D activated=true route_generation=15 "
-            "route_space=observed_known_free_3d "
+            "route_space=observed_occupancy_3d "
             "topology_acceleration=incremental_topological_graph\n"
             "INCREMENTAL_TOPOLOGICAL_PLAN3D directive_available=true "
             "activated=true commit_accepted=true\n"
@@ -101,7 +101,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
     def test_observed_route_volume_rejects_a_roof_level_flyover(self) -> None:
         log = (
             "PRODUCTION_MPPI_GUIDE3D activated=true route_generation=8 "
-            "route_space=observed_known_free_3d "
+            "route_space=observed_occupancy_3d "
             "topology_acceleration=incremental_topological_graph\n"
             "INCREMENTAL_TOPOLOGICAL_PLAN3D directive_available=true "
             "activated=true commit_accepted=true\n"
@@ -478,7 +478,7 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         self.assertEqual(
             errors,
             [
-                "FAIL: interceptor_1 collided with building obstacle "
+                "FAIL: interceptor_1 collided with static world obstacle "
                 "'building_014::link::collision'"
             ],
         )
@@ -494,7 +494,26 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         VALIDATOR.validate_building_collisions(log, errors)
 
         self.assertEqual(len(errors), 1)
-        self.assertIn("evader collided with building", errors[0])
+        self.assertIn("evader collided with static world obstacle", errors[0])
+
+    def test_passage_structure_collision_is_a_validation_failure(self) -> None:
+        log = (
+            "VEHICLE_DESTROYED role=0 vehicle_id='drone_0' "
+            "cause=physical_collision "
+            "obstacle_collision='passage_structure_54_162_straight_north_upper::"
+            "link::collision'\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_building_collisions(log, errors)
+
+        self.assertEqual(
+            errors,
+            [
+                "FAIL: drone_0 collided with static world obstacle "
+                "'passage_structure_54_162_straight_north_upper::link::collision'"
+            ],
+        )
 
     def test_proximity_intercept_is_not_a_building_collision(self) -> None:
         log = (

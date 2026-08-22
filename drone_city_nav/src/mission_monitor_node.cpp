@@ -1,4 +1,5 @@
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
+#include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -91,6 +92,13 @@ public:
             report(false, "vehicle_destroyed");
           }
         });
+    execution_horizon_sub_ = create_subscription<msg::MppiTrajectoryHorizon>(
+        declare_parameter<std::string>("execution_horizon_topic",
+                                       "/drone_city_nav/mppi/execution_horizon"),
+        rclcpp::QoS{rclcpp::KeepLast{2}}.reliable(),
+        [this](const msg::MppiTrajectoryHorizon::SharedPtr message) {
+          onExecutionHorizon(*message);
+        });
     summary_timer_ =
         create_wall_timer(std::chrono::seconds{5}, [this] { logSummary(); });
     RCLCPP_INFO(get_logger(),
@@ -139,6 +147,29 @@ private:
             .stamp_ns = now_time.nanoseconds(),
             .goal_captured = goal_distance_m <= goal_radius_m_ && armed_seen_,
             .horizontal_speed_mps = latest_speed_mps_});
+    handleWaypointUpdate(waypoint_update);
+  }
+
+  void onExecutionHorizon(const msg::MppiTrajectoryHorizon& horizon) {
+    if (result_reported_ || horizon.sequence <= last_goal_capture_horizon_sequence_ ||
+        horizon.execution_mode !=
+            msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD ||
+        horizon.execution_reason !=
+            msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE) {
+      return;
+    }
+    const Point3 captured_goal{horizon.route_target.x, horizon.route_target.y,
+                               horizon.route_target.z};
+    if (!latest_position_valid_ ||
+        distance3D(captured_goal, waypoint_sequence_->activeGoal()) > goal_radius_m_ ||
+        distance(latest_position_, goal_) > goal_radius_m_) {
+      return;
+    }
+    last_goal_capture_horizon_sequence_ = horizon.sequence;
+    handleWaypointUpdate(waypoint_sequence_->acknowledgeGoalCapture());
+  }
+
+  void handleWaypointUpdate(const MissionWaypointUpdate& waypoint_update) {
     if (!waypoint_update.waypoint_completed) {
       return;
     }
@@ -238,11 +269,13 @@ private:
   bool armed_seen_{false};
   bool result_reported_{false};
   bool shutdown_on_result_{false};
+  std::uint64_t last_goal_capture_horizon_sequence_{0U};
   std::unique_ptr<MissionWaypointSequence> waypoint_sequence_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
+  rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_sub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
   rclcpp::TimerBase::SharedPtr shutdown_timer_;
 };

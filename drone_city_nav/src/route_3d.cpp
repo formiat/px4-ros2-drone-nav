@@ -607,17 +607,41 @@ std::vector<RouteSample3D> sampleRoute3D(const std::span<const Point3> points,
   return result;
 }
 
-bool assignRouteRiskTiers(const std::span<RouteSample3D> route,
-                          const mppi::EsdfGrid& grid,
-                          const std::span<const float> esdf_m,
-                          const double critical_distance_m,
-                          const double preferred_distance_m) noexcept {
-  for (RouteSample3D& sample : route) {
+RouteRiskTierAssignmentResult assignRouteRiskTiers(
+    const std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
+    const std::span<const float> esdf_m, const double critical_distance_m,
+    const double preferred_distance_m, const bool require_known_free_space) noexcept {
+  for (std::size_t index = 0U; index < route.size(); ++index) {
+    RouteSample3D& sample = route[index];
     const EsdfQueryResult query = queryConservativeEsdf3D(
         grid, esdf_m, static_cast<float>(sample.position.x),
         static_cast<float>(sample.position.y), static_cast<float>(sample.position.z));
-    if (query.status != EsdfQueryStatus::kValid || query.raw_occupied) {
-      return false;
+    if (query.raw_occupied) {
+      return {.status = RouteRiskTierAssignmentStatus::kRawCollision,
+              .failure_sample_index = index,
+              .failure_point = sample.position};
+    }
+    if (query.status != EsdfQueryStatus::kValid && require_known_free_space) {
+      const RouteRiskTierAssignmentStatus status = [&]() noexcept {
+        switch (query.status) {
+          case EsdfQueryStatus::kOutsideGrid:
+            return RouteRiskTierAssignmentStatus::kOutsideGrid;
+          case EsdfQueryStatus::kUnknownSpace:
+            return RouteRiskTierAssignmentStatus::kUnknownSpace;
+          case EsdfQueryStatus::kInvalidDistance:
+            return RouteRiskTierAssignmentStatus::kInvalidEsdf;
+          case EsdfQueryStatus::kValid:
+            break;
+        }
+        return RouteRiskTierAssignmentStatus::kInvalidEsdf;
+      }();
+      return {.status = status,
+              .failure_sample_index = index,
+              .failure_point = sample.position};
+    }
+    if (query.status != EsdfQueryStatus::kValid) {
+      sample.required_risk_tier = mppi::RiskTier::kPreferred;
+      continue;
     }
     if (query.clearance_m < critical_distance_m) {
       sample.required_risk_tier = mppi::RiskTier::kCritical;
@@ -627,7 +651,24 @@ bool assignRouteRiskTiers(const std::span<RouteSample3D> route,
       sample.required_risk_tier = mppi::RiskTier::kPreferred;
     }
   }
-  return true;
+  return {.status = RouteRiskTierAssignmentStatus::kAccepted};
+}
+
+std::string_view
+routeRiskTierAssignmentStatusName(const RouteRiskTierAssignmentStatus status) noexcept {
+  switch (status) {
+    case RouteRiskTierAssignmentStatus::kAccepted:
+      return "accepted";
+    case RouteRiskTierAssignmentStatus::kOutsideGrid:
+      return "outside_grid";
+    case RouteRiskTierAssignmentStatus::kUnknownSpace:
+      return "unknown_space";
+    case RouteRiskTierAssignmentStatus::kInvalidEsdf:
+      return "invalid_esdf";
+    case RouteRiskTierAssignmentStatus::kRawCollision:
+      return "raw_collision";
+  }
+  return "invalid_status";
 }
 
 RouteProjection3D projectOntoRoute3D(const std::span<const RouteSample3D> route,

@@ -401,13 +401,13 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_base_sim_uses_environment_configurable_terminal_waypoints(self) -> None:
         self.assertIn("MISSION_GOALS_XYZ_M", self.makefile_text)
         self.assertIn(
-            "216,54,18;216,378,18;54,378,18;54,54,18", self.makefile_text
+            "216,378,18;216,54,18;54,378,18;54,54,18", self.makefile_text
         )
         self.assertIn(
             '-z "$${POINT_TO_POINT_SCENARIO_PATH:-}"', self.makefile_text
         )
         self.assertNotIn(
-            'MISSION_GOALS_XYZ_M="$${MISSION_GOALS_XYZ_M:-216,54,18',
+            'MISSION_GOALS_XYZ_M="$${MISSION_GOALS_XYZ_M:-216,378,18',
             self.makefile_text,
         )
         runtime_helpers = RUNTIME_HELPERS.read_text(encoding="utf-8")
@@ -417,6 +417,11 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("POINT_TO_POINT_SHUTDOWN_ON_MISSION_RESULT", self.text)
         self.assertIn("mission_goal_sequence_xyz_m", self.launch_text)
         self.assertIn("shutdown_on_mission_result", self.launch_text)
+        self.assertIn("ENABLE_LIVENESS_RECOVERY:-false", self.text)
+        self.assertIn("ENABLE_GLOBAL_GUIDE_STALL_RECOVERY:-false", self.text)
+        self.assertIn("ENABLE_NO_STATIC_CYCLE_RECOVERY:-false", self.text)
+        self.assertIn("global_guide_stall_recovery_enabled", self.launch_text)
+        self.assertIn("no_static_cycle_recovery_enabled", self.launch_text)
         self.assertIn(
             'if [[ -n "${point_to_point_scenario_path}" ]]', self.text
         )

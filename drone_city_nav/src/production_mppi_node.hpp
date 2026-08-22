@@ -40,6 +40,7 @@
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
 #include "drone_city_nav/noncooperative_collision_avoidance.hpp"
+#include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
@@ -196,6 +197,9 @@ struct ProductionGuideCandidateValidation {
 struct ProductionMppiPreparedEsdf {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t revision{0U};
+  // Raw-observation revision used to build this local ESDF. This keeps route
+  // replanning causal when a newer lidar observation blocks an active route.
+  std::uint64_t source_raw_revision{0U};
   std::uint64_t source_occupied_fingerprint{0U};
   std::int64_t source_stamp_ns{0};
   std::int64_t ready_stamp_ns{0};
@@ -427,6 +431,10 @@ struct ProductionMppiExecutionPublication {
   std::size_t latest_lidar_obstacle_hit_count{0U};
   double latest_lidar_obstacle_age_ms{-1.0};
   bool finite_path_validation_backoff{false};
+  mppi::FiniteExecutionPathStatus finite_path_validation_status{
+      mppi::FiniteExecutionPathStatus::kInvalidContract};
+  mppi::FiniteExecutionPathStatus finite_path_first_failed_validation_status{
+      mppi::FiniteExecutionPathStatus::kValid};
   bool latest_lidar_obstacle_fresh{false};
   bool latest_lidar_path_validation_backoff{false};
   bool retained_previous_finite_path{false};
@@ -553,9 +561,11 @@ private:
                                          std::int64_t now_ns);
   void finishStaticRouteExtension(std::uint64_t base_generation,
                                   bool extension_activated = false);
-  void finishStaticRouteReplan(std::uint64_t base_generation) noexcept;
+  void finishStaticRouteReplan(std::uint64_t base_generation);
   void esdfWorker(std::stop_token stop_token);
+  void topologyWorker(std::stop_token stop_token);
   void processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);
+  void processObservedTopology3D(const ProductionMppiRawWorld3D& raw_world);
   void guideWorker(std::stop_token stop_token);
   [[nodiscard]] ProductionGuideCandidateValidation validateGuideCandidateOnLatestWorld(
       const std::shared_ptr<const std::vector<Point2>>& candidate,
@@ -649,8 +659,7 @@ private:
   double no_static_esdf_half_extent_m_{100.0};
   double no_static_esdf_recenter_margin_m_{70.0};
   double no_static_3d_esdf_update_rate_hz_{1.0};
-  double no_static_3d_esdf_half_extent_m_{30.0};
-  double no_static_3d_esdf_recenter_margin_m_{18.0};
+  LocalObservedEsdfWindow3D no_static_3d_esdf_window_{};
   std::size_t planner_worker_count_{4U};
   MppiRolloutBudgetConfig rollout_budget_config_{};
   double planning_tick_phase_offset_s_{0.0};
@@ -670,6 +679,9 @@ private:
   DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_{};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
+  // The default exploration policy allows unknown space. A strict known-free
+  // execution policy remains available for conservative validation.
+  bool require_known_free_space_for_goal_{false};
   ProductionNoStaticWorldModel no_static_world_model_{
       ProductionNoStaticWorldModel::kOccupancy2D};
   bool cooperative_traffic_enabled_{false};
@@ -696,6 +708,8 @@ private:
   double stationary_hold_validity_s_{1.0};
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
+  bool global_guide_stall_recovery_enabled_{false};
+  bool no_static_cycle_recovery_enabled_{false};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   MppiNominalReseedTracker nominal_reseed_tracker_{};
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
@@ -709,6 +723,7 @@ private:
   IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};
   IncrementalTopologicalLatticeAdapter3DConfig topological_lattice_adapter_3d_config_{};
+  bool topological_backtracking_enabled_{false};
   FreeSpaceTopologyRouterConfig free_space_topology_router_config_{};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
@@ -728,6 +743,7 @@ private:
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::unique_ptr<IncrementalTopologicalNavigation3D> topological_navigation_3d_;
   std::atomic<std::int64_t> last_topological_observation_stamp_ns_{0};
+  std::atomic<std::uint64_t> last_topological_observation_graph_revision_{0U};
   std::int64_t topological_observation_period_ns_{200000000};
   std::chrono::steady_clock::time_point topological_no_executable_route_since_{};
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
@@ -773,6 +789,17 @@ private:
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
   std::shared_ptr<const ProductionMppiRawWorld3D> pending_raw_world_3d_;
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld3D>> latest_raw_world_3d_;
+  std::atomic<std::uint64_t> observed_route_blocked_raw_revision_{0U};
+  std::atomic<std::uint64_t> observed_route_replan_dispatched_raw_revision_{0U};
+  std::mutex topology_queue_mutex_;
+  std::condition_variable_any topology_queue_condition_;
+  std::shared_ptr<const ProductionMppiRawWorld3D> pending_topology_world_3d_;
+  std::jthread topology_worker_;
+  std::mutex topology_state_mutex_;
+  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
+      latest_observed_topological_graph_;
+  std::uint64_t latest_observed_topological_producer_instance_id_{0U};
+  IncrementalTopologyGraph3DUpdate latest_observed_topological_graph_update_;
   std::atomic<std::shared_ptr<const LatestLidarObstacleSnapshot>>
       latest_lidar_obstacle_scan_;
   std::mutex raw_reconstruction_mutex_;

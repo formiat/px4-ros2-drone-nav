@@ -100,6 +100,15 @@ MissionWaypointSequence::update(const MissionWaypointObservation& observation) {
     return update;
   }
 
+  return acknowledgeGoalCapture();
+}
+
+MissionWaypointUpdate MissionWaypointSequence::acknowledgeGoalCapture() noexcept {
+  MissionWaypointUpdate update;
+  if (mission_completed_) {
+    update.mission_completed = true;
+    return update;
+  }
   update.waypoint_completed = true;
   update.completed_index = active_index_;
   ++completed_waypoint_count_;

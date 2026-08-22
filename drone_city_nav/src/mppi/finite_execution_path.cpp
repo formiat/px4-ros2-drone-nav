@@ -124,7 +124,8 @@ validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis
   if (!raw_validation.accepted()) {
     failure_point = raw_validation.failure_point;
     if (raw_validation.status == SweptFootprintStatus::kUnknownSpace) {
-      return FiniteExecutionPathStatus::kUnknownSpace;
+      return world.require_known_free_space ? FiniteExecutionPathStatus::kUnknownSpace
+                                            : FiniteExecutionPathStatus::kValid;
     }
     return FiniteExecutionPathStatus::kRawCollision;
   }
@@ -278,6 +279,9 @@ buildValidatedFiniteExecutionPath(const std::span<const State> planned_states,
       if (result.validation.accepted()) {
         result.horizon = std::move(candidate);
         return result;
+      }
+      if (!result.path_validation_backoff) {
+        result.first_failed_validation_status = result.validation.status;
       }
       result.path_validation_backoff = true;
       result.latest_lidar_path_validation_backoff |=

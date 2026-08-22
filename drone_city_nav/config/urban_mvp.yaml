@@ -146,6 +146,7 @@ obstacle_memory_3d_node:
     lidar_3d_horizontal_max_angle_rad: 3.141592653589793
     lidar_3d_vertical_min_angle_rad: -1.3962634015954636
     lidar_3d_vertical_max_angle_rad: 1.3962634015954636
+    global_lattice_3d_observation_frontier_directional_cluster_half_angle_rad: 0.7853981633974483
     lidar_3d_minimum_range_m: 0.2
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
@@ -216,11 +217,22 @@ production_mppi_node:
     no_static_esdf_half_extent_m: 100.0
     no_static_esdf_recenter_margin_m: 70.0
     no_static_3d_esdf_update_rate_hz: 1.0
-    no_static_3d_esdf_half_extent_m: 30.0
-    no_static_3d_esdf_recenter_margin_m: 18.0
+    no_static_3d_esdf_horizontal_half_extent_m: 20.0
+    no_static_3d_esdf_vertical_half_extent_m: 15.0
+    no_static_3d_esdf_horizontal_recenter_margin_m: 12.0
+    no_static_3d_esdf_vertical_recenter_margin_m: 9.0
     topological_graph_3d_coarse_sample_stride_cells: 2
     topological_graph_3d_refined_sample_stride_cells: 1
-    topological_graph_3d_maximum_observed_tiles_per_update: 16
+    # Prioritize a fresh local topology snapshot over a wide stale batch.
+    # Remaining dirty tiles stay queued and are incrementally incorporated.
+    topological_graph_3d_maximum_observed_tiles_per_update: 4
+    topological_graph_3d_minimum_oldest_tiles_per_update: 4
+    topological_graph_3d_maximum_frontier_evaluations_per_component: 8
+    topological_graph_3d_maximum_frontiers_per_component: 16
+    topological_planner_3d_start_anchor_distance_m: 20.0
+    # Return routes from confirmed topological dead ends are opt-in. Normal
+    # Manhattan validation keeps goal-directed navigation only.
+    topological_backtracking_enabled: false
     no_static_world_model: occupancy_2d
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
@@ -269,7 +281,7 @@ production_mppi_node:
     start_z_m: 0.0
     mission_goal_sequence_xyz_m: [216.0, 378.0, 18.0]
     mission_waypoint_stop_speed_mps: 0.8
-    mission_waypoint_hold_s: 2.0
+    mission_waypoint_hold_s: 0.0
     minimum_target_z_m: 1.0
     maximum_target_z_m: 32.0
     navigation_objective_topic: /drone_city_nav/navigation_objective
@@ -310,7 +322,9 @@ production_mppi_node:
     applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     diagnostics_output_dir: log/mppi
     execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
-    liveness_enabled: true
+    # Recovery heuristics are opt-in. They may be useful for a diagnosed
+    # failure mode, but must not change ordinary navigation by default.
+    liveness_enabled: false
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5
     liveness_minimum_predicted_terminal_progress_m: 5.0
@@ -325,6 +339,7 @@ production_mppi_node:
     global_lattice_3d_horizontal_step_m: 2.0
     global_lattice_3d_vertical_step_m: 1.0
     global_lattice_3d_sample_step_m: 0.5
+    require_known_free_space: false
     global_lattice_3d_nominal_vertical_speed_mps: 4.0
     global_lattice_3d_vertical_alignment_cost_weight: 0.0
     global_lattice_3d_route_shape_turn_cost_per_rad: 0.10
@@ -350,12 +365,42 @@ production_mppi_node:
     global_lattice_3d_observation_frontier_clearance_weight: 0.10
     global_lattice_3d_observation_frontier_replacement_minimum_score_improvement: 0.5
     global_lattice_3d_observation_frontier_replacement_minimum_endpoint_improvement_m: 2.0
-    global_lattice_3d_observation_frontier_maximum_range_m: 8.0
+    # Probe one voxel beyond the lidar miss boundary so the adjacent unknown
+    # volume becomes an observation frontier, not an artificial obstacle.
+    global_lattice_3d_observation_frontier_maximum_range_m: 36.0
     global_lattice_3d_observation_frontier_minimum_known_free_ray_m: 1.0
+    global_lattice_3d_observation_frontier_identity_resolution_m: 8.0
+    lidar_3d_horizontal_min_angle_rad: -3.141592653589793
+    lidar_3d_horizontal_max_angle_rad: 3.141592653589793
+    lidar_3d_vertical_min_angle_rad: -1.3962634015954636
+    lidar_3d_vertical_max_angle_rad: 1.3962634015954636
+    lidar_3d_horizontal_samples: 240
+    lidar_3d_vertical_samples: 17
     global_lattice_3d_observation_frontier_minimum_supporting_rays: 2
     global_lattice_3d_observation_frontier_minimum_information_gain_voxels: 4
-    topological_planner_3d_goal_progress_reward: 1.0
+    # Observation routes are finite and terminate at rest. Keep their target
+    # beyond the local terminal-control neighbourhood so sensing advances
+    # while the vehicle is moving instead of creating a repeated micro-route.
+    global_lattice_3d_observation_frontier_minimum_pose_advance_m: 2.0
+    # Goal progress remains a soft term: a confirmed dead end can still be
+    # left through a temporarily goal-opposed branch. It must nevertheless
+    # outweigh a small information-gain difference when forward frontiers are
+    # available, otherwise an open world is explored sideways indefinitely.
+    topological_planner_3d_goal_progress_reward: 6.0
     topological_planner_3d_information_gain_reward: 1.0
+    topological_planner_3d_dead_end_penalty: 100.0
+    topological_planner_3d_frontier_completion_penalty: 48.0
+    # A lidar miss establishes known-free space up to the sensor range. Search
+    # observation poses over that same physical horizon instead of advancing
+    # through an arbitrary 8 m micro-frontier sequence.
+    topological_planner_3d_fresh_frontier_search_radius_m: 36.0
+    topological_planner_3d_maximum_fresh_frontier_anchor_distance_m: 36.0
+    topological_planner_3d_minimum_observation_target_displacement_m: 2.0
+    topological_planner_3d_fresh_frontier_cell_stride: 2
+    topological_planner_3d_maximum_fresh_frontier_evaluations: 64
+    topological_planner_3d_maximum_graph_frontier_revalidations: 16
+    topological_memory_3d_coverage_influence_radius_m: 4.0
+    topological_memory_3d_maximum_observed_transition_m: 4.0
     no_static_global_lattice_deadline_ms: 100.0
     static_global_lattice_roi_halo_m: 90.0
     no_static_global_lattice_roi_halo_m: 45.0
@@ -385,6 +430,7 @@ production_mppi_node:
     global_guide_validation_sample_step_m: 0.5
     static_global_guide_replan_remaining_m: 45.0
     no_static_global_guide_replan_remaining_m: 15.0
+    global_guide_extension_maximum_trigger_fraction: 0.65
     static_global_guide_extension_latency_margin_s: 0.5
     static_global_guide_extension_maximum_latency_s: 8.0
     static_global_guide_extension_retry_progress_m: 15.0
@@ -400,6 +446,8 @@ production_mppi_node:
     global_guide_stall_observation_window_s: 1.0
     global_guide_stall_minimum_progress_m: 0.5
     global_guide_stall_minimum_predicted_head_progress_m: 0.5
+    global_guide_stall_recovery_enabled: false
+    no_static_cycle_recovery_enabled: false
 
 mppi_offboard_node:
   ros__parameters:

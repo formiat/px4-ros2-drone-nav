@@ -11,6 +11,10 @@ namespace drone_city_nav {
 struct IncrementalTopologicalLatticeAdapter3DConfig {
   double maximum_lookahead_m{30.0};
   double minimum_target_displacement_m{0.25};
+  // Consecutive graph edges are locally executable as one segment only while
+  // they retain this directional alignment. The adapter stops at a bend
+  // instead of letting the local lattice shortcut across it.
+  double minimum_collinear_direction_cosine{0.95};
 };
 
 struct IncrementalTopologicalLatticeDirective3D {

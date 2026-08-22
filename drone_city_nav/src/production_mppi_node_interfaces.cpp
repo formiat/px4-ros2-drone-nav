@@ -145,6 +145,8 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
       std::jthread([this](const std::stop_token token) { diagnosticsWorker(token); });
   esdf_worker_ =
       std::jthread([this](const std::stop_token token) { esdfWorker(token); });
+  topology_worker_ =
+      std::jthread([this](const std::stop_token token) { topologyWorker(token); });
   guide_worker_ =
       std::jthread([this](const std::stop_token token) { guideWorker(token); });
   if (planning_tick_phase_offset_s_ > 0.0) {

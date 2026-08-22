@@ -68,10 +68,12 @@ struct DirectedEdgeMetrics {
   double repeated_distance_m{0.0};
   std::uint64_t supporting_revision{0U};
   bool active_dead_end{false};
+  bool every_source_edge_traversed{true};
 };
 
 struct PathMetrics {
   std::size_t traversal_count{0U};
+  std::size_t active_dead_end_count{0U};
   double repeated_distance_m{0.0};
 };
 
@@ -83,8 +85,28 @@ struct FrontierCandidate {
   double path_length_m{0.0};
   double goal_progress_m{0.0};
   double coverage_penalty{0.0};
+  std::size_t frontier_selection_count{0U};
+  std::size_t frontier_completion_count{0U};
   PathMetrics history{};
 };
+
+struct FrontierSelectionDiagnostics {
+  double maximum_goal_progress_m{-std::numeric_limits<double>::infinity()};
+  ObservationFrontierId maximum_goal_progress_id{};
+  std::size_t goal_directed_count{0U};
+};
+
+void recordFrontierSelectionDiagnostics(
+    const FrontierCandidate& candidate,
+    FrontierSelectionDiagnostics& diagnostics) noexcept {
+  if (candidate.goal_progress_m > 0.0) {
+    ++diagnostics.goal_directed_count;
+  }
+  if (candidate.goal_progress_m > diagnostics.maximum_goal_progress_m) {
+    diagnostics.maximum_goal_progress_m = candidate.goal_progress_m;
+    diagnostics.maximum_goal_progress_id = candidate.frontier.id;
+  }
+}
 
 [[nodiscard]] bool finitePoint(const Point3& point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
@@ -167,9 +189,17 @@ supportingRevision(const IncrementalTopologyGraph3DSnapshot& graph,
     const std::uint64_t support = supportingRevision(source_graph, source_edge);
     result.supporting_revision = std::max(result.supporting_revision, support);
     const DirectedTopologyEdgeEvidence3D evidence = memory.evidence(directed, support);
-    result.traversal_count += evidence.traversal_count;
-    if (evidence.traversal_count > 0U) {
+    const DirectedTopologyEdge3D reverse{
+        .edge_id = directed.edge_id, .from = directed.to, .to = directed.from};
+    const DirectedTopologyEdgeEvidence3D reverse_evidence =
+        memory.evidence(reverse, support);
+    const std::size_t physical_traversal_count =
+        evidence.traversal_count + reverse_evidence.traversal_count;
+    result.traversal_count += physical_traversal_count;
+    if (physical_traversal_count > 0U) {
       result.repeated_distance_m += source_edge.length_m;
+    } else {
+      result.every_source_edge_traversed = false;
     }
     result.active_dead_end =
         result.active_dead_end ||
@@ -185,7 +215,7 @@ supportingRevision(const IncrementalTopologyGraph3DSnapshot& graph,
     const IncrementalTopologicalPlanner3DConfig& config) {
   const DirectedEdgeMetrics history =
       directedEdgeMetrics(edge, from, source_graph, source_edges, memory);
-  if (mode == SearchMode::kExploration && history.active_dead_end) {
+  if (mode == SearchMode::kBacktrack && !history.every_source_edge_traversed) {
     return std::numeric_limits<double>::infinity();
   }
   double cost = edge.length_m;
@@ -193,6 +223,9 @@ supportingRevision(const IncrementalTopologyGraph3DSnapshot& graph,
     cost += config.directed_traversal_penalty *
             static_cast<double>(history.traversal_count);
     cost += config.repeated_distance_penalty * history.repeated_distance_m;
+    if (history.active_dead_end) {
+      cost += config.dead_end_penalty;
+    }
   }
   return cost;
 }
@@ -300,6 +333,7 @@ pathHistory(const std::span<const PathStep> path,
         directedEdgeMetrics(*step.edge, step.from, source_graph, source_edges, memory);
     result.traversal_count += edge.traversal_count;
     result.repeated_distance_m += edge.repeated_distance_m;
+    result.active_dead_end_count += edge.active_dead_end ? 1U : 0U;
   }
   return result;
 }
@@ -322,6 +356,16 @@ void appendOrientedPolyline(std::vector<Point3>& output,
   for (const Point3& point : std::views::reverse(edge.polyline)) {
     appendUnique(output, point);
   }
+}
+
+[[nodiscard]] double
+frontierCoveragePenalty(const Point3& observation_pose,
+                        const IncrementalTopologyGraph3DSnapshot& graph,
+                        const TopologicalExplorationMemory3D& memory) noexcept {
+  // Coverage is a soft preference between observation targets. Traversing a
+  // known-safe stem to reach an unexplored branch is handled by directed-edge
+  // history below and must not be made artificially expensive here.
+  return memory.softCoveragePenalty(observation_pose, graph.revision());
 }
 
 void materializePath(IncrementalTopologicalPlan3D& result,
@@ -396,6 +440,57 @@ void materializePath(IncrementalTopologicalPlan3D& result,
   return candidate.frontier.id < current.frontier.id;
 }
 
+[[nodiscard]] FrontierCandidate makeFrontierCandidate(
+    const IncrementalTopologyNode3D& node, const ObservationFrontier& frontier,
+    std::vector<PathStep> path, const Point3& start, const Point3& mission_goal,
+    const IncrementalTopologyGraph3DSnapshot& source_graph,
+    const SourceEdges& source_edges, const TopologicalExplorationMemory3D& memory,
+    const IncrementalTopologicalPlanner3DConfig& config,
+    const std::optional<ObservationFrontier>& active_frontier) {
+  // The contracted topology route ends at the anchor node. The finite route
+  // later appends a raw-safe connector from that node to the actual sensor
+  // viewpoint, so the selection score must include the same XYZ distance.
+  // Omitting it made a long descent or climb appear free to exploration.
+  const double physical_path_m =
+      pathLength(path) + distance3D(node.representative, frontier.observation_pose);
+  const PathMetrics history = pathHistory(path, source_graph, source_edges, memory);
+  const double goal_progress_m = distance3D(start, mission_goal) -
+                                 distance3D(frontier.observation_pose, mission_goal);
+  const double coverage_penalty =
+      frontierCoveragePenalty(frontier.observation_pose, source_graph, memory);
+  const std::size_t frontier_completion_count =
+      memory.frontierCompletionCount(frontier.id);
+  std::size_t frontier_selection_count = memory.frontierSelectionCount(frontier.id);
+  if (active_frontier.has_value() && active_frontier->id == frontier.id &&
+      frontier_selection_count > 0U) {
+    --frontier_selection_count;
+  }
+  const double score =
+      config.path_cost_weight * physical_path_m +
+      config.directed_traversal_penalty * static_cast<double>(history.traversal_count) +
+      config.repeated_distance_penalty * history.repeated_distance_m +
+      config.dead_end_penalty * static_cast<double>(history.active_dead_end_count) +
+      config.frontier_selection_penalty *
+          static_cast<double>(frontier_selection_count) +
+      config.frontier_completion_penalty *
+          static_cast<double>(frontier_completion_count) +
+      config.coverage_penalty_weight * coverage_penalty -
+      config.information_gain_reward *
+          std::log1p(static_cast<double>(frontier.information_gain_voxels)) -
+      config.clearance_reward * frontier.minimum_known_free_ray_m -
+      config.goal_progress_reward * goal_progress_m;
+  return FrontierCandidate{.node = &node,
+                           .frontier = frontier,
+                           .path = std::move(path),
+                           .score = score,
+                           .path_length_m = physical_path_m,
+                           .goal_progress_m = goal_progress_m,
+                           .coverage_penalty = coverage_penalty,
+                           .frontier_selection_count = frontier_selection_count,
+                           .frontier_completion_count = frontier_completion_count,
+                           .history = history};
+}
+
 [[nodiscard]] std::optional<FrontierCandidate> selectFrontier(
     const IncrementalTopologyGraph3DSnapshot& source_graph,
     const ContractedTopologyGraph3D& contracted, const SearchRecords& records,
@@ -405,10 +500,12 @@ void materializePath(IncrementalTopologicalPlan3D& result,
     const IncrementalTopologicalPlanner3DConfig& config,
     const ObservedOccupancyGrid3D* const occupancy,
     const SensorObservabilityConfig* const observability, std::size_t& reachable_count,
-    std::size_t& revalidated_count, std::size_t& retired_count) {
-  std::optional<FrontierCandidate> best;
+    std::size_t& revalidated_count, std::size_t& retired_count,
+    const std::optional<ObservationFrontier>& active_frontier,
+    FrontierSelectionDiagnostics& diagnostics) {
+  std::vector<FrontierCandidate> ranked;
   for (const IncrementalTopologyNode3D& node : source_graph.nodes()) {
-    if (!node.observation_frontier || contracted.findNode(node.id) == nullptr) {
+    if (node.observation_frontiers.empty() || contracted.findNode(node.id) == nullptr) {
       continue;
     }
     const std::optional<std::vector<PathStep>> path =
@@ -416,45 +513,163 @@ void materializePath(IncrementalTopologicalPlan3D& result,
     if (!path) {
       continue;
     }
-    ++reachable_count;
-    ObservationFrontier frontier = *node.observation_frontier;
-    if (occupancy != nullptr && observability != nullptr) {
-      ++revalidated_count;
-      const ObservationFrontierEvaluation current =
-          evaluateObservationFrontier(*occupancy, frontier.observation_pose,
-                                      source_graph.revision(), *observability);
-      if (!current.accepted()) {
-        ++retired_count;
+    for (ObservationFrontier frontier : node.observation_frontiers) {
+      if (distance3D(start, frontier.observation_pose) <
+          config.minimum_observation_target_displacement_m) {
         continue;
       }
-      frontier = current.frontier;
+      ++reachable_count;
+      FrontierCandidate candidate = makeFrontierCandidate(
+          node, frontier, *path, start, mission_goal, source_graph, source_edges,
+          memory, config, active_frontier);
+      recordFrontierSelectionDiagnostics(candidate, diagnostics);
+      ranked.push_back(std::move(candidate));
     }
-    const double physical_path_m = pathLength(*path);
-    const PathMetrics history = pathHistory(*path, source_graph, source_edges, memory);
-    const double goal_progress_m = distance3D(start, mission_goal) -
-                                   distance3D(frontier.observation_pose, mission_goal);
-    const double coverage_penalty =
-        memory.softCoveragePenalty(frontier.observation_pose, source_graph.revision());
-    const double score =
-        config.path_cost_weight * physical_path_m +
-        config.directed_traversal_penalty *
-            static_cast<double>(history.traversal_count) +
-        config.repeated_distance_penalty * history.repeated_distance_m +
-        config.frontier_selection_penalty *
-            static_cast<double>(memory.frontierSelectionCount(frontier.id)) +
-        config.coverage_penalty_weight * coverage_penalty -
-        config.information_gain_reward *
-            std::log1p(static_cast<double>(frontier.information_gain_voxels)) -
-        config.clearance_reward * frontier.minimum_known_free_ray_m -
-        config.goal_progress_reward * goal_progress_m;
-    FrontierCandidate candidate{.node = &node,
-                                .frontier = frontier,
-                                .path = *path,
-                                .score = score,
-                                .path_length_m = physical_path_m,
-                                .goal_progress_m = goal_progress_m,
-                                .coverage_penalty = coverage_penalty,
-                                .history = history};
+  }
+
+  std::ranges::sort(ranked, betterFrontier);
+  if (occupancy == nullptr || observability == nullptr) {
+    return ranked.empty() ? std::nullopt
+                          : std::optional<FrontierCandidate>{std::move(ranked.front())};
+  }
+
+  std::optional<FrontierCandidate> best;
+  const std::size_t evaluation_count =
+      std::min(ranked.size(), config.maximum_graph_frontier_revalidations);
+  for (std::size_t index = 0U; index < evaluation_count; ++index) {
+    FrontierCandidate& stale_candidate = ranked[index];
+    ++revalidated_count;
+    const ObservationFrontierSetEvaluation current = evaluateObservationFrontiers(
+        *occupancy, stale_candidate.frontier.observation_pose, source_graph.revision(),
+        *observability);
+    const auto matching = std::ranges::find(
+        current.frontiers, stale_candidate.frontier.id, &ObservationFrontier::id);
+    if (matching == current.frontiers.end()) {
+      ++retired_count;
+      continue;
+    }
+    // Stable frontier identities are boundary-based. A fresh sensor update
+    // can therefore preserve the same identity while moving its preferred
+    // observation pose into the already-reached terminal-control
+    // neighbourhood. Reapply the execution-distance contract after
+    // revalidation, not only to the stale graph representation.
+    if (distance3D(start, matching->observation_pose) <
+        config.minimum_observation_target_displacement_m) {
+      continue;
+    }
+    FrontierCandidate candidate = makeFrontierCandidate(
+        *stale_candidate.node, *matching, stale_candidate.path, start, mission_goal,
+        source_graph, source_edges, memory, config, active_frontier);
+    recordFrontierSelectionDiagnostics(candidate, diagnostics);
+    if (!best || betterFrontier(candidate, *best)) {
+      best = std::move(candidate);
+    }
+  }
+  return best;
+}
+
+[[nodiscard]] const ContractedTopologyNode3D*
+nearestReachableNode(const ContractedTopologyGraph3D& graph,
+                     const SearchRecords& records, const Point3& position,
+                     const double maximum_distance_m) noexcept {
+  const ContractedTopologyNode3D* best{nullptr};
+  double best_distance_m = maximum_distance_m;
+  for (const ContractedTopologyNode3D& node : graph.nodes()) {
+    if (!records.contains(node.source_node_id)) {
+      continue;
+    }
+    const double candidate_distance_m = distance3D(node.position, position);
+    if (candidate_distance_m + 1.0e-9 < best_distance_m ||
+        (std::abs(candidate_distance_m - best_distance_m) <= 1.0e-9 &&
+         (best == nullptr || node.source_node_id < best->source_node_id))) {
+      best = &node;
+      best_distance_m = candidate_distance_m;
+    }
+  }
+  return best;
+}
+
+[[nodiscard]] std::optional<IncrementalTopologyNodeId>
+selectObservedStartAnchor(const IncrementalTopologyGraph3DSnapshot& graph,
+                          const ObservedOccupancyGrid3D* const occupancy,
+                          const Point3& start, const double maximum_distance_m,
+                          const SweptFootprintConfig& footprint,
+                          const bool require_known_free_space) {
+  if (occupancy == nullptr) {
+    return graph.nearestNode(start, maximum_distance_m);
+  }
+
+  std::vector<const IncrementalTopologyNode3D*> candidates;
+  candidates.reserve(graph.nodes().size());
+  for (const IncrementalTopologyNode3D& node : graph.nodes()) {
+    if (distance3D(start, node.representative) <= maximum_distance_m) {
+      candidates.push_back(&node);
+    }
+  }
+  std::ranges::sort(
+      candidates, [&start](const auto* const first, const auto* const second) {
+        const double first_distance = distance3D(start, first->representative);
+        const double second_distance = distance3D(start, second->representative);
+        return std::abs(first_distance - second_distance) > 1.0e-9
+                   ? first_distance < second_distance
+                   : first->id < second->id;
+      });
+  for (const IncrementalTopologyNode3D* const candidate : candidates) {
+    const SweptFootprintResult connector = validateRawSweptFootprint(
+        *occupancy, start, FootprintBodyAxis{}, candidate->representative,
+        FootprintBodyAxis{}, footprint);
+    if (connector.accepted() ||
+        (!require_known_free_space &&
+         connector.status == SweptFootprintStatus::kUnknownSpace)) {
+      return candidate->id;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<FrontierCandidate> selectFreshFrontier(
+    const IncrementalTopologyGraph3DSnapshot& source_graph,
+    const ContractedTopologyGraph3D& contracted, const SearchRecords& records,
+    const IncrementalTopologyNodeId start_node, const Point3& start,
+    const Point3& mission_goal, const SourceEdges& source_edges,
+    const TopologicalExplorationMemory3D& memory,
+    const IncrementalTopologicalPlanner3DConfig& config,
+    const ObservedOccupancyGrid3D& occupancy,
+    const SensorObservabilityConfig& observability,
+    ObservationFrontierDiscovery& discovery, std::size_t& reachable_count,
+    const std::optional<ObservationFrontier>& active_frontier,
+    FrontierSelectionDiagnostics& diagnostics) {
+  discovery = discoverObservationFrontiers(
+      occupancy, source_graph.revision(), observability,
+      config.fresh_frontier_cell_stride, config.maximum_fresh_frontier_evaluations,
+      ObservationFrontierDiscoveryRegion{.center = start,
+                                         .maximum_distance_m =
+                                             config.fresh_frontier_search_radius_m,
+                                         .mission_goal = mission_goal});
+  std::optional<FrontierCandidate> best;
+  for (const ObservationFrontier& frontier : discovery.frontiers) {
+    if (distance3D(start, frontier.observation_pose) <
+        config.minimum_observation_target_displacement_m) {
+      continue;
+    }
+    const ContractedTopologyNode3D* anchor =
+        nearestReachableNode(contracted, records, frontier.observation_pose,
+                             config.maximum_fresh_frontier_anchor_distance_m);
+    if (anchor == nullptr) {
+      continue;
+    }
+    const IncrementalTopologyNode3D* source_node =
+        source_graph.findNode(anchor->source_node_id);
+    const std::optional<std::vector<PathStep>> path =
+        reconstructPath(start_node, anchor->source_node_id, records);
+    if (source_node == nullptr || !path.has_value()) {
+      continue;
+    }
+    ++reachable_count;
+    FrontierCandidate candidate = makeFrontierCandidate(
+        *source_node, frontier, *path, start, mission_goal, source_graph, source_edges,
+        memory, config, active_frontier);
+    recordFrontierSelectionDiagnostics(candidate, diagnostics);
     if (!best || betterFrontier(candidate, *best)) {
       best = std::move(candidate);
     }
@@ -576,8 +791,19 @@ bool incrementalTopologicalPlanner3DConfigIsValid(
          valid_nonnegative(config.goal_progress_reward) &&
          valid_nonnegative(config.directed_traversal_penalty) &&
          valid_nonnegative(config.repeated_distance_penalty) &&
+         valid_nonnegative(config.dead_end_penalty) &&
          valid_nonnegative(config.frontier_selection_penalty) &&
-         valid_nonnegative(config.coverage_penalty_weight);
+         valid_nonnegative(config.frontier_completion_penalty) &&
+         valid_nonnegative(config.coverage_penalty_weight) &&
+         std::isfinite(config.fresh_frontier_search_radius_m) &&
+         config.fresh_frontier_search_radius_m > 0.0 &&
+         std::isfinite(config.maximum_fresh_frontier_anchor_distance_m) &&
+         config.maximum_fresh_frontier_anchor_distance_m > 0.0 &&
+         std::isfinite(config.minimum_observation_target_displacement_m) &&
+         config.minimum_observation_target_displacement_m > 0.0 &&
+         config.fresh_frontier_cell_stride > 0U &&
+         config.maximum_fresh_frontier_evaluations > 0U &&
+         config.maximum_graph_frontier_revalidations > 0U;
 }
 
 IncrementalTopologicalPlanner3D::IncrementalTopologicalPlanner3D(
@@ -592,29 +818,34 @@ IncrementalTopologicalPlanner3D::IncrementalTopologicalPlanner3D(
 IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::plan(
     const IncrementalTopologyGraph3DSnapshot& graph, const Point3& start,
     const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const {
-  return planImpl(graph, nullptr, nullptr, start, mission_goal, memory);
+  return planImpl(graph, nullptr, nullptr, start, mission_goal, memory, std::nullopt);
 }
 
 IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planObserved(
     const IncrementalTopologyGraph3DSnapshot& graph,
     const ObservedOccupancyGrid3D& occupancy,
     const SensorObservabilityConfig& observability, const Point3& start,
-    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const {
-  return planImpl(graph, &occupancy, &observability, start, mission_goal, memory);
+    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
+    const std::optional<ObservationFrontier> active_frontier) const {
+  return planImpl(graph, &occupancy, &observability, start, mission_goal, memory,
+                  active_frontier);
 }
 
 IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     const IncrementalTopologyGraph3DSnapshot& graph,
     const ObservedOccupancyGrid3D* const occupancy,
     const SensorObservabilityConfig* const observability, const Point3& start,
-    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const {
+    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
+    const std::optional<ObservationFrontier> active_frontier) const {
   IncrementalTopologicalPlan3D result;
   result.graph_revision = graph.revision();
   if (graph.revision() == 0U || !finitePoint(start) || !finitePoint(mission_goal)) {
     return result;
   }
-  const std::optional<IncrementalTopologyNodeId> start_node =
-      graph.nearestNode(start, config_.maximum_start_anchor_distance_m);
+  const std::optional<IncrementalTopologyNodeId> start_node = selectObservedStartAnchor(
+      graph, occupancy, start, config_.maximum_start_anchor_distance_m,
+      observability != nullptr ? observability->footprint : SweptFootprintConfig{},
+      config_.require_known_free_space);
   if (!start_node) {
     result.status = IncrementalTopologicalPlanStatus3D::kStartNotRepresented;
     return result;
@@ -654,13 +885,36 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   std::size_t reachable_frontiers = 0U;
   std::size_t revalidated_frontiers = 0U;
   std::size_t retired_frontiers = 0U;
-  const std::optional<FrontierCandidate> frontier = selectFrontier(
+  FrontierSelectionDiagnostics frontier_diagnostics;
+  std::optional<FrontierCandidate> frontier = selectFrontier(
       graph, contracted, exploration_records, *start_node, start, mission_goal,
       source_edges, memory, config_, occupancy, observability, reachable_frontiers,
-      revalidated_frontiers, retired_frontiers);
+      revalidated_frontiers, retired_frontiers, active_frontier, frontier_diagnostics);
+  ObservationFrontierDiscovery fresh_discovery;
+  if (!frontier.has_value() && occupancy != nullptr && observability != nullptr) {
+    frontier = selectFreshFrontier(
+        graph, contracted, exploration_records, *start_node, start, mission_goal,
+        source_edges, memory, config_, *occupancy, *observability, fresh_discovery,
+        reachable_frontiers, active_frontier, frontier_diagnostics);
+  }
   result.reachable_frontier_count = reachable_frontiers;
+  result.goal_directed_reachable_frontier_count =
+      frontier_diagnostics.goal_directed_count;
+  result.maximum_goal_progress_frontier_id =
+      frontier_diagnostics.maximum_goal_progress_id;
+  result.maximum_reachable_frontier_goal_progress_m =
+      std::isfinite(frontier_diagnostics.maximum_goal_progress_m)
+          ? frontier_diagnostics.maximum_goal_progress_m
+          : 0.0;
   result.revalidated_frontier_count = revalidated_frontiers;
   result.retired_frontier_count = retired_frontiers;
+  result.fresh_frontier_candidate_count = fresh_discovery.boundary_candidates;
+  result.fresh_frontier_evaluated_count = fresh_discovery.evaluated_candidates;
+  result.fresh_frontier_discovered_count = fresh_discovery.frontiers.size();
+  result.fresh_frontier_sample_fingerprint =
+      fresh_discovery.evaluation_sample_fingerprint;
+  result.fresh_frontier_status_counts = fresh_discovery.evaluation_status_counts;
+  result.fresh_frontier_budget_exhausted = fresh_discovery.evaluation_budget_exhausted;
   if (frontier.has_value() && frontier->node != nullptr) {
     result.status = IncrementalTopologicalPlanStatus3D::kFrontierRoute;
     result.purpose = IncrementalTopologicalRoutePurpose3D::kObservationFrontier;
@@ -669,6 +923,8 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     result.selection_score = frontier->score;
     result.goal_progress_m = frontier->goal_progress_m;
     result.coverage_penalty = frontier->coverage_penalty;
+    result.selected_frontier_selection_count = frontier->frontier_selection_count;
+    result.selected_frontier_completion_count = frontier->frontier_completion_count;
     materializePath(result, frontier->path, start, frontier->frontier.observation_pose,
                     graph, source_edges, memory);
     return result;

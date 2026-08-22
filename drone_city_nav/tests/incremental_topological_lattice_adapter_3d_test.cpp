@@ -24,7 +24,7 @@ executablePlan(const IncrementalTopologicalRoutePurpose3D purpose,
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,
-     SelectsLookaheadAlongBentPolylineInsteadOfStraightChord) {
+     StopsAtTheNextPolylineVertexInsteadOfCuttingAcrossABend) {
   const IncrementalTopologicalPlan3D plan =
       executablePlan(IncrementalTopologicalRoutePurpose3D::kMissionTransit,
                      {{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, {10.0, 10.0, 0.0}});
@@ -37,7 +37,7 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
   const IncrementalTopologicalLatticeDirective3D directive =
       directive_result.value_or(IncrementalTopologicalLatticeDirective3D{});
   EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.x, 10.0);
-  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.y, 5.0);
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.y, 0.0);
   EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.z, 0.0);
   EXPECT_DOUBLE_EQ(directive.lattice.preferred_direction.x, 10.0);
   EXPECT_DOUBLE_EQ(directive.lattice.preferred_direction.y, 0.0);
@@ -61,8 +61,8 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
   EXPECT_DOUBLE_EQ(directive.source_station_m, 6.0);
   EXPECT_DOUBLE_EQ(directive.projection_distance_m, 1.0);
   EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.x, 10.0);
-  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.y, 4.0);
-  EXPECT_DOUBLE_EQ(directive.target_station_m, 14.0);
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.y, 0.0);
+  EXPECT_DOUBLE_EQ(directive.target_station_m, 10.0);
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,

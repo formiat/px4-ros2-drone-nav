@@ -20,6 +20,10 @@ namespace drone_city_nav {
 
 struct StaticRouteExtensionConfig {
   double minimum_remaining_m{45.0};
+  // Do not replace a short finite route before the vehicle has consumed a
+  // meaningful portion of it. This keeps a no-static route handoff from
+  // repeatedly resetting its terminal speed profile before the route is used.
+  double maximum_trigger_fraction_of_route{0.65};
   double latency_margin_s{0.5};
   double maximum_latency_s{8.0};
   double minimum_retry_progress_m{15.0};
@@ -131,6 +135,8 @@ public:
   void defer(StaticRouteDeferredReplan request) noexcept;
   [[nodiscard]] std::optional<StaticRouteDeferredReplan>
   finishExtension(std::uint64_t route_generation, bool extension_activated) noexcept;
+  [[nodiscard]] std::optional<StaticRouteDeferredReplan>
+  finishReplan(std::uint64_t route_generation) noexcept;
   [[nodiscard]] bool pending() const noexcept;
 
 private:
@@ -190,7 +196,8 @@ enum class ObservationRouteReplacementStatus : std::uint8_t {
   kInvalidCandidate,
   kNoActiveFrontier,
   kActiveFrontierRetired,
-  kFrontierAdvanced,
+  kActiveFrontierReached,
+  kActiveRouteExhausted,
   kEndpointAdvanced,
   kScoreImproved,
   kSameFrontierRetained,
@@ -207,7 +214,9 @@ struct ObservationRouteReplacementObservation {
   double endpoint_improvement_m{0.0};
   double minimum_endpoint_improvement_m{0.0};
   bool active_frontier_still_valid{false};
-  bool extension_requested{false};
+  bool active_frontier_reached{false};
+  bool active_route_exhausted{false};
+  bool route_extension_requested{false};
 };
 
 struct ObservationRouteReplacementDecision {
@@ -231,6 +240,8 @@ enum class StaticRouteActivationStatus : std::uint8_t {
 struct StaticRouteCandidateValidation {
   StaticRouteCandidateStatus status{StaticRouteCandidateStatus::kEmpty};
   double endpoint_improvement_m{0.0};
+  std::size_t failure_segment_index{0U};
+  Point3 failure_point{};
   bool accepted{false};
 };
 
@@ -295,7 +306,8 @@ staticRouteReplacementProtected(std::span<const RouteSample3D> route,
     const FlightEnvelopeConfig& flight_envelope,
     StaticRouteReplacementPolicy replacement_policy =
         StaticRouteReplacementPolicy::kRequireEndpointImprovement,
-    const SweptFootprintConfig& footprint_config = {}) noexcept;
+    const SweptFootprintConfig& footprint_config = {},
+    bool require_known_free_space = false) noexcept;
 
 [[nodiscard]] std::string_view
 staticRouteReplacementPolicyName(StaticRouteReplacementPolicy policy) noexcept;

@@ -132,6 +132,7 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
                 SENSOR_COLLISION_PROXY_VISIBILITY_FLAG,
                 int(proxy.findtext("visibility_flags", "")),
             )
+            self.assertEqual("true", proxy.findtext("material/double_sided"))
             self.assertEqual("sensor", report.mode)
             self.assertEqual(1, report.collision_instances)
             self.assertEqual(1, report.visual_instances)

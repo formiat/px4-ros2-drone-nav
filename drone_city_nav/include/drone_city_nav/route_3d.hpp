@@ -309,11 +309,32 @@ routeFingerprint(std::span<const RouteSample3D> route,
 
 [[nodiscard]] std::uint64_t routeFingerprint(std::span<const Point2> route) noexcept;
 
-[[nodiscard]] bool assignRouteRiskTiers(std::span<RouteSample3D> route,
-                                        const mppi::EsdfGrid& grid,
-                                        std::span<const float> esdf_m,
-                                        double critical_distance_m,
-                                        double preferred_distance_m) noexcept;
+enum class RouteRiskTierAssignmentStatus : std::uint8_t {
+  kAccepted,
+  kOutsideGrid,
+  kUnknownSpace,
+  kInvalidEsdf,
+  kRawCollision,
+};
+
+struct RouteRiskTierAssignmentResult {
+  RouteRiskTierAssignmentStatus status{RouteRiskTierAssignmentStatus::kInvalidEsdf};
+  std::size_t failure_sample_index{0U};
+  Point3 failure_point{};
+
+  [[nodiscard]] bool accepted() const noexcept {
+    return status == RouteRiskTierAssignmentStatus::kAccepted;
+  }
+};
+
+[[nodiscard]] RouteRiskTierAssignmentResult
+assignRouteRiskTiers(std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
+                     std::span<const float> esdf_m, double critical_distance_m,
+                     double preferred_distance_m,
+                     bool require_known_free_space = false) noexcept;
+
+[[nodiscard]] std::string_view
+routeRiskTierAssignmentStatusName(RouteRiskTierAssignmentStatus status) noexcept;
 
 [[nodiscard]] RouteProjection3D
 projectOntoRoute3D(std::span<const RouteSample3D> route, const Point3& position,

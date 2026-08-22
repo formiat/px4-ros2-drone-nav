@@ -318,33 +318,39 @@ RolloutMetrics simulateReference(
     const bool unknown_space =
         footprint_result.status == SweptFootprintStatus::kUnknownSpace;
     const float clearance = static_cast<float>(footprint_result.minimum_clearance_m);
-    metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
+    // In exploratory mode, the 3D map expands while the vehicle flies. A
+    // strict known-free policy remains available for conservative validation.
+    const float effective_clearance = unknown_space && !risk.require_known_free_space
+                                          ? std::numeric_limits<float>::infinity()
+                                          : clearance;
+    metrics.minimum_clearance_m =
+        std::min(metrics.minimum_clearance_m, effective_clearance);
     const float segment_speed_mps =
         std::hypot(std::hypot(state.vx, state.vy), state.vz);
     const float segment_m = dynamics.dt_s * segment_speed_mps;
     if (raw_collision) {
       metrics.collision = true;
       metrics.worst_tier = RiskTier::kCollision;
-    } else if (unknown_space) {
+    } else if (unknown_space && risk.require_known_free_space) {
       metrics.unknown_space_violation = true;
       metrics.worst_tier = RiskTier::kCollision;
-    } else if (clearance < risk.critical_distance_m) {
+    } else if (!unknown_space && clearance < risk.critical_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kCritical);
       metrics.critical_exposure_m += segment_m;
       metrics.costs.critical_clearance_proximity_s +=
           dynamics.dt_s *
           criticalClearanceProximitySeverity(clearance, risk.critical_distance_m);
-    } else if (clearance < risk.preferred_distance_m) {
+    } else if (!unknown_space && clearance < risk.preferred_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kPlanning);
       metrics.planning_exposure_m += segment_m;
     }
     metrics.costs.obstacle_approach_m2_s +=
-        dynamics.dt_s *
-        obstacleApproachSeverityM2(previous_clearance_m, clearance, segment_speed_mps,
-                                   dynamics.dt_s, risk.critical_distance_m,
-                                   risk.obstacle_approach_response_time_s,
-                                   risk.obstacle_approach_deceleration_mps2);
-    previous_clearance_m = clearance;
+        dynamics.dt_s * obstacleApproachSeverityM2(
+                            previous_clearance_m, effective_clearance,
+                            segment_speed_mps, dynamics.dt_s, risk.critical_distance_m,
+                            risk.obstacle_approach_response_time_s,
+                            risk.obstacle_approach_deceleration_mps2);
+    previous_clearance_m = effective_clearance;
 
     const float target_distance =
         moving_target.has_value()
@@ -409,7 +415,8 @@ RolloutMetrics simulateReference(
                                                       moving_target->capture_radius_m)
                                  : target_distance;
     previous = control;
-    if ((metrics.collision || metrics.unknown_space_violation ||
+    if ((metrics.collision ||
+         (metrics.unknown_space_violation && risk.require_known_free_space) ||
          metrics.altitude_envelope_violation) &&
         early_exit_on_collision) {
       break;

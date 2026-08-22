@@ -31,6 +31,7 @@ struct IncrementalTopologicalPlanCommit3D {
   std::uint64_t graph_revision{0U};
   std::size_t active_route_nodes{0U};
   bool accepted{false};
+  bool replaced_frontier_coverage_recorded{false};
   bool frontier_selection_recorded{false};
   bool dead_end_recorded{false};
 };
@@ -62,6 +63,9 @@ public:
       const Point3& position);
   [[nodiscard]] IncrementalTopologicalPlanCommit3D
   commitAcceptedPlan(const IncrementalTopologicalPlan3D& plan);
+  void rejectObservationFrontier(ObservationFrontierId frontier_id);
+  void completeObservationFrontier(const ObservationFrontier& frontier,
+                                   std::uint64_t revision);
   void beginMissionLeg();
 
   [[nodiscard]] std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
@@ -72,10 +76,12 @@ private:
   recordTransitionPath(const IncrementalTopologyGraph3DSnapshot& graph,
                        IncrementalTopologyNodeId from, IncrementalTopologyNodeId to);
 
-  mutable std::mutex mutex_;
+  mutable std::mutex graph_mutex_;
+  mutable std::mutex memory_mutex_;
   IncrementalTopologyGraph3D graph_;
   IncrementalTopologicalPlanner3D planner_;
   TopologicalExplorationMemory3D memory_;
+  SensorObservabilityConfig observability_;
   std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> snapshot_;
   std::optional<std::uint64_t> observed_producer_instance_id_;
   std::optional<IncrementalTopologyNodeId> current_node_;

@@ -80,6 +80,30 @@ TEST(TopologicalExplorationMemory3DTest,
   EXPECT_DOUBLE_EQ(memory.softCoveragePenalty(point, 10000U), 0.0);
 }
 
+TEST(TopologicalExplorationMemory3DTest,
+     CoverageSoftlyDiscouragesNearbyUnvisitedCells) {
+  TopologicalExplorationMemory3D memory;
+  memory.recordVisited({0.1, 0.1, 0.1}, 10U);
+
+  const double visited = memory.softCoveragePenalty({0.1, 0.1, 0.1}, 10U);
+  const double nearby = memory.softCoveragePenalty({2.1, 0.1, 0.1}, 10U);
+
+  EXPECT_GT(visited, nearby);
+  EXPECT_GT(nearby, 0.0);
+  EXPECT_DOUBLE_EQ(memory.softCoveragePenalty({6.1, 0.1, 0.1}, 10U), 0.0);
+}
+
+TEST(TopologicalExplorationMemory3DTest,
+     ZeroInfluenceRadiusPreservesExactCellCoverage) {
+  TopologicalExplorationMemory3DConfig config;
+  config.coverage_influence_radius_m = 0.0;
+  TopologicalExplorationMemory3D memory{config};
+  memory.recordVisited({0.1, 0.1, 0.1}, 10U);
+
+  EXPECT_GT(memory.softCoveragePenalty({0.1, 0.1, 0.1}, 10U), 0.0);
+  EXPECT_DOUBLE_EQ(memory.softCoveragePenalty({2.1, 0.1, 0.1}, 10U), 0.0);
+}
+
 TEST(TopologicalExplorationMemory3DTest, SamplesVisitedPathWithoutHardExclusion) {
   TopologicalExplorationMemory3D memory;
   const std::array points{Point3{0.0, 0.0, 0.0}, Point3{8.0, 0.0, 0.0}};
@@ -113,6 +137,17 @@ TEST(TopologicalExplorationMemory3DTest, CountsFrontierSelectionsByStableIdentit
   EXPECT_EQ(memory.frontierSelectionCount({19U}), 0U);
 }
 
+TEST(TopologicalExplorationMemory3DTest, CountsCompletedFrontiersSeparately) {
+  TopologicalExplorationMemory3D memory;
+  memory.recordFrontierCompletion({17U});
+  memory.recordFrontierCompletion({17U});
+  memory.recordFrontierCompletion({18U});
+
+  EXPECT_EQ(memory.frontierCompletionCount({17U}), 2U);
+  EXPECT_EQ(memory.frontierCompletionCount({18U}), 1U);
+  EXPECT_EQ(memory.frontierCompletionCount({19U}), 0U);
+}
+
 TEST(TopologicalExplorationMemory3DTest,
      NewMissionLegClearsAllGoalRelativeExplorationHistory) {
   TopologicalExplorationMemory3D memory;
@@ -123,6 +158,7 @@ TEST(TopologicalExplorationMemory3DTest,
   memory.recordVisited(visited, 8U);
   memory.recordObserved(visited, 8U);
   memory.recordFrontierSelection({17U});
+  memory.recordFrontierCompletion({17U});
   memory.resetTrail({1U});
   memory.recordTrailTransition({1U}, {2U});
 
@@ -137,6 +173,7 @@ TEST(TopologicalExplorationMemory3DTest,
   EXPECT_DOUBLE_EQ(reverse.traversed_distance_m, 0.0);
   EXPECT_DOUBLE_EQ(memory.softCoveragePenalty(visited, 8U), 0.0);
   EXPECT_EQ(memory.frontierSelectionCount({17U}), 0U);
+  EXPECT_EQ(memory.frontierCompletionCount({17U}), 0U);
   EXPECT_TRUE(memory.trail().empty());
 }
 

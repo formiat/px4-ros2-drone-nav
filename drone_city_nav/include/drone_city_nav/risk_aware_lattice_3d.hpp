@@ -103,6 +103,7 @@ struct RiskAwareLattice3DConfig {
   double goal_tolerance_m{2.0};
   double critical_distance_m{1.0};
   double preferred_distance_m{6.0};
+  bool require_known_free_space{false};
   double heading_bias_cost_per_rad{0.5};
   double nominal_horizontal_speed_mps{20.0};
   double nominal_vertical_speed_mps{4.0};

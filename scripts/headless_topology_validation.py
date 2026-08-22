@@ -55,10 +55,10 @@ def validate_observed_3d_route_volume(
     errors: list[str],
 ) -> None:
     require_pattern(
-        "an observed-known-free generic 3D route is activated",
+        "an observed-occupancy generic 3D route is activated",
         ros_log,
         r"PRODUCTION_MPPI_GUIDE3D .*activated=true .*"
-        r"route_space=observed_known_free_3d .*"
+        r"route_space=observed_occupancy_3d .*"
         r"topology_acceleration=incremental_topological_graph",
         errors,
     )

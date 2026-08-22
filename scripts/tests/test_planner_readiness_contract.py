@@ -12,9 +12,11 @@ PACKAGE = REPOSITORY / "drone_city_nav"
 SOURCE = PACKAGE / "src"
 INPUTS = SOURCE / "production_mppi_node_inputs.cpp"
 ESDF = SOURCE / "production_mppi_node_esdf.cpp"
+OBSERVED_ESDF = SOURCE / "production_mppi_node_observed_esdf.cpp"
 PLANNER = SOURCE / "production_mppi_node.cpp"
 PLANNER_INTERFACES = SOURCE / "production_mppi_node_interfaces.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
+STATIC_EXTENSION = SOURCE / "production_mppi_node_static_extension.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
@@ -39,6 +41,15 @@ MISSION_LAUNCH = PACKAGE / "launch" / "multi_vehicle_mission_launch.py"
 
 
 class PlannerReadinessContractTest(unittest.TestCase):
+    def test_execution_horizon_carries_typed_route_purpose(self) -> None:
+        text = HORIZON_MESSAGE.read_text(encoding="utf-8")
+        self.assertIn("uint8 ROUTE_PURPOSE_MISSION_TRANSIT=0", text)
+        self.assertIn("uint8 ROUTE_PURPOSE_LAUNCH_DEPARTURE=1", text)
+        self.assertIn("uint8 ROUTE_PURPOSE_OBSERVATION_FRONTIER=2", text)
+        self.assertIn("uint8 ROUTE_PURPOSE_TOPOLOGICAL_BACKTRACK=3", text)
+        self.assertIn("uint8 route_purpose", text)
+        self.assertIn("geometry_msgs/Point route_target", text)
+
     def test_static_esdf_bootstrap_does_not_consume_lidar_snapshots(self) -> None:
         inputs = INPUTS.read_text(encoding="utf-8")
         esdf = ESDF.read_text(encoding="utf-8")
@@ -57,6 +68,30 @@ class PlannerReadinessContractTest(unittest.TestCase):
             planning_tick,
             r"if \(esdf\.has_value\(\)\)\s*\{\s*"
             r"esdf_age_ms = use_static_map_\s*\?\s*0\.0",
+        )
+
+    def test_observed_esdf_refresh_preserves_an_active_route(self) -> None:
+        observed_esdf = OBSERVED_ESDF.read_text(encoding="utf-8")
+        planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
+        extension = STATIC_EXTENSION.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "prepared.global_guide_generation == 0U", observed_esdf
+        )
+        self.assertIn('"active_route_preserved"', observed_esdf)
+        self.assertIn("initial_route_search_already_pending", observed_esdf)
+        self.assertNotIn("dropped_guide_worlds_", observed_esdf)
+        self.assertIn("use_static_map_ || observed_3d_world", planning_tick)
+        self.assertIn("observed_world", extension)
+        self.assertIn('"observed_resident_esdf"', extension)
+        self.assertIn(
+            "Lattice3DRoutePurpose::kLaunchDeparture", extension
+        )
+        self.assertRegex(
+            planning_tick,
+            r"guide_progress_tracker_\s*&&\s*!direct_tracking_interception\s*&&\s*"
+            r"esdf->lattice_3d_route_purpose\s*!=\s*"
+            r"Lattice3DRoutePurpose::kLaunchDeparture",
         )
 
     def test_missing_executable_route_holds_without_a_clearance_gate(self) -> None:

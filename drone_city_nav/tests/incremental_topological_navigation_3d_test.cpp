@@ -90,6 +90,35 @@ TEST(IncrementalTopologicalNavigation3DTest,
 }
 
 TEST(IncrementalTopologicalNavigation3DTest,
+     RejectsLocalOccupancyForAWorldScaleTopologySnapshot) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 24, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 3, 34, 9, 11, 5, 7);
+  IncrementalTopologyGraph3DConfig graph_config;
+  graph_config.tile_size_cells = 4;
+  graph_config.coarse_sample_stride_cells = 1;
+  graph_config.refined_sample_stride_cells = 1;
+  graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
+                                                .lower_extent_m = 0.1,
+                                                .upper_extent_m = 0.1,
+                                                .perimeter_samples = 4,
+                                                .radial_rings = 1,
+                                                .axial_samples = 2,
+                                                .sweep_step_m = 0.25};
+  graph_config.observability.footprint = graph_config.footprint;
+  IncrementalTopologicalNavigation3D navigation{graph_config};
+  const IncrementalTopologicalWorldUpdate3D world =
+      navigation.updateObserved(occupancy, 17U, 1U, {}, true);
+  const ObservedOccupancyGrid3D local =
+      occupancy.crop(GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 24, 16});
+
+  const IncrementalTopologicalPlan3D plan = navigation.planObserved(
+      world.snapshot, local, {4.5, 10.5, 6.5}, {32.5, 10.5, 6.5});
+
+  EXPECT_EQ(plan.status, IncrementalTopologicalPlanStatus3D::kInvalidInput);
+}
+
+TEST(IncrementalTopologicalNavigation3DTest,
      RepeatedPlanCommitDoesNotDuplicateSelectionOrDeadEndEvidence) {
   IncrementalTopologicalNavigation3D navigation;
   IncrementalTopologicalPlan3D frontier_plan;
@@ -104,9 +133,30 @@ TEST(IncrementalTopologicalNavigation3DTest,
   const IncrementalTopologicalPlanCommit3D repeated_frontier_commit =
       navigation.commitAcceptedPlan(frontier_plan);
   EXPECT_TRUE(first_frontier_commit.accepted);
+  EXPECT_FALSE(first_frontier_commit.replaced_frontier_coverage_recorded);
   EXPECT_TRUE(first_frontier_commit.frontier_selection_recorded);
   EXPECT_TRUE(repeated_frontier_commit.accepted);
+  EXPECT_FALSE(repeated_frontier_commit.replaced_frontier_coverage_recorded);
   EXPECT_FALSE(repeated_frontier_commit.frontier_selection_recorded);
+
+  navigation.rejectObservationFrontier(frontier_plan.selected_frontier->id);
+  const IncrementalTopologicalPlanCommit3D rejected_frontier_retry =
+      navigation.commitAcceptedPlan(frontier_plan);
+  EXPECT_TRUE(rejected_frontier_retry.accepted);
+  EXPECT_TRUE(rejected_frontier_retry.frontier_selection_recorded);
+
+  navigation.completeObservationFrontier(*frontier_plan.selected_frontier, 42U);
+  const IncrementalTopologicalPlanCommit3D completed_frontier_retry =
+      navigation.commitAcceptedPlan(frontier_plan);
+  EXPECT_TRUE(completed_frontier_retry.accepted);
+  EXPECT_TRUE(completed_frontier_retry.frontier_selection_recorded);
+
+  frontier_plan.selected_frontier->observation_pose = {3.0, 0.0, 0.0};
+  const IncrementalTopologicalPlanCommit3D advanced_frontier_commit =
+      navigation.commitAcceptedPlan(frontier_plan);
+  EXPECT_TRUE(advanced_frontier_commit.accepted);
+  EXPECT_TRUE(advanced_frontier_commit.replaced_frontier_coverage_recorded);
+  EXPECT_TRUE(advanced_frontier_commit.frontier_selection_recorded);
 
   IncrementalTopologicalPlan3D backtrack_plan;
   backtrack_plan.status = IncrementalTopologicalPlanStatus3D::kBacktrackRoute;
@@ -164,6 +214,77 @@ TEST(IncrementalTopologicalNavigation3DTest,
       navigation.plan(retained_graph, {28.5, 7.5, 5.5}, {3.5, 7.5, 5.5});
   EXPECT_EQ(return_plan.status, IncrementalTopologicalPlanStatus3D::kMissionRoute);
   EXPECT_TRUE(return_plan.reaches_mission_goal);
+}
+
+TEST(IncrementalTopologicalNavigation3DTest,
+     DoesNotInferTraversalFromDiscoveredGraphConnectivity) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 24, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 3, 44, 9, 11, 5, 7);
+  IncrementalTopologyGraph3DConfig graph_config;
+  graph_config.tile_size_cells = 4;
+  graph_config.coarse_sample_stride_cells = 1;
+  graph_config.refined_sample_stride_cells = 1;
+  graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
+                                                .lower_extent_m = 0.1,
+                                                .upper_extent_m = 0.1,
+                                                .perimeter_samples = 4,
+                                                .radial_rings = 1,
+                                                .axial_samples = 2,
+                                                .sweep_step_m = 0.25};
+  graph_config.observability.footprint = graph_config.footprint;
+  IncrementalTopologicalNavigation3D navigation{graph_config};
+  const IncrementalTopologicalWorldUpdate3D world =
+      navigation.updateObserved(occupancy, 17U, 1U, {}, true);
+
+  const IncrementalTopologicalNavigationObservation3D first =
+      navigation.observePosition(world.snapshot, {4.5, 10.5, 6.5});
+  const IncrementalTopologicalNavigationObservation3D second =
+      navigation.observePosition(world.snapshot, {42.5, 10.5, 6.5});
+
+  ASSERT_TRUE(first.current_node.has_value());
+  ASSERT_TRUE(second.current_node.has_value());
+  EXPECT_NE(first.current_node, second.current_node);
+  EXPECT_EQ(second.traversed_edges, 0U);
+  EXPECT_TRUE(second.trail_reset);
+}
+
+TEST(IncrementalTopologicalNavigation3DTest,
+     RecordsShortObservedMultiEdgeTransitionWithoutResettingTrail) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 12, 8}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 2, 21, 4, 6, 2, 4);
+  IncrementalTopologyGraph3DConfig graph_config;
+  graph_config.tile_size_cells = 2;
+  graph_config.coarse_sample_stride_cells = 1;
+  graph_config.refined_sample_stride_cells = 1;
+  graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
+                                                .lower_extent_m = 0.1,
+                                                .upper_extent_m = 0.1,
+                                                .perimeter_samples = 4,
+                                                .radial_rings = 1,
+                                                .axial_samples = 2,
+                                                .sweep_step_m = 0.25};
+  graph_config.observability.footprint = graph_config.footprint;
+  IncrementalTopologicalPlanner3DConfig planner_config;
+  planner_config.maximum_start_anchor_distance_m = 3.0;
+  TopologicalExplorationMemory3DConfig memory_config;
+  memory_config.maximum_observed_transition_m = 4.0;
+  IncrementalTopologicalNavigation3D navigation{graph_config, planner_config,
+                                                memory_config};
+  const IncrementalTopologicalWorldUpdate3D world =
+      navigation.updateObserved(occupancy, 19U, 1U, {}, true);
+
+  const IncrementalTopologicalNavigationObservation3D first =
+      navigation.observePosition(world.snapshot, {3.5, 5.5, 3.5});
+  const IncrementalTopologicalNavigationObservation3D second =
+      navigation.observePosition(world.snapshot, {6.5, 5.5, 3.5});
+
+  ASSERT_TRUE(first.current_node.has_value());
+  ASSERT_TRUE(second.current_node.has_value());
+  EXPECT_NE(first.current_node, second.current_node);
+  EXPECT_GE(second.traversed_edges, 2U);
+  EXPECT_FALSE(second.trail_reset);
 }
 
 TEST(IncrementalTopologicalNavigation3DTest,

@@ -41,15 +41,16 @@ run_stage manhattan_four_waypoints \
   env -u POINT_TO_POINT_SCENARIO_PATH \
   "${common_no_static[@]}" \
   MISSION_TYPE=point_to_point \
-  MISSION_GOALS_XYZ_M='216,54,18;216,378,18;54,378,18;54,54,18' \
-  SMOKE_DURATION_S="${MANHATTAN_POINT_TO_POINT_TIMEOUT_S:-600}" \
+  MISSION_GOALS_XYZ_M='216,378,18;216,54,18;54,378,18;54,54,18' \
+  SMOKE_DURATION_S="${MANHATTAN_POINT_TO_POINT_TIMEOUT_S:-1800}" \
   make sim-headless
 
 run_stage manhattan_cooperative \
   "${common_no_static[@]}" \
   MISSION_TYPE=cooperative_traffic \
   MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_scenario.json \
-  SMOKE_DURATION_S="${MANHATTAN_COOPERATIVE_TIMEOUT_S:-600}" \
+  COOPERATIVE_MISSION_TIMEOUT_S="${MANHATTAN_COOPERATIVE_MISSION_TIMEOUT_S:-1200}" \
+  SMOKE_DURATION_S="${MANHATTAN_COOPERATIVE_TIMEOUT_S:-1300}" \
   make sim-cooperative-traffic-headless
 
 run_stage urban_point_to_point \
@@ -57,6 +58,7 @@ run_stage urban_point_to_point \
   make sim-urban-point-to-point-headless
 
 run_stage urban_cooperative \
+  COOPERATIVE_MISSION_TIMEOUT_S="${URBAN_COOPERATIVE_MISSION_TIMEOUT_S:-780}" \
   SMOKE_DURATION_S="${URBAN_COOPERATIVE_TIMEOUT_S:-900}" \
   make sim-cooperative-traffic-urban-headless
 

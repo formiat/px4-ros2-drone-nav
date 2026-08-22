@@ -40,6 +40,10 @@ public:
   [[nodiscard]] std::optional<std::int64_t>
   recoverPx4LocalTimeNs(std::uint64_t adjusted_timestamp_us) const noexcept;
 
+  [[nodiscard]] std::optional<std::int64_t> recoverPx4LocalTimeNsClosestToRosTime(
+      std::uint64_t adjusted_timestamp_us,
+      std::int64_t expected_ros_stamp_ns) const noexcept;
+
   [[nodiscard]] std::optional<std::int64_t>
   px4LocalToRosTimeNs(std::int64_t px4_local_stamp_ns) const noexcept;
 
@@ -60,6 +64,7 @@ private:
 
   Px4RosTimeMapperConfig config_{};
   std::deque<Sample> samples_;
+  std::deque<std::int64_t> recovery_offsets_us_;
   double scale_{1.0};
   double offset_ns_{0.0};
   double min_observed_latency_ns_{0.0};

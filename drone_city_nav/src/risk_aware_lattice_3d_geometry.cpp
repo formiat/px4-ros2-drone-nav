@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace drone_city_nav::detail {
 namespace {
@@ -89,6 +90,11 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
         return Lattice3DEdgeEvaluation{.status =
                                            Lattice3DEdgeEvaluationStatus::kOutsideGrid};
       case SweptFootprintStatus::kUnknownSpace:
+        if (!config.require_known_free_space) {
+          return Lattice3DEdgeEvaluation{
+              .status = Lattice3DEdgeEvaluationStatus::kValid,
+              .minimum_clearance_m = std::numeric_limits<double>::infinity()};
+        }
         return Lattice3DEdgeEvaluation{
             .status = Lattice3DEdgeEvaluationStatus::kUnknownSpace};
       case SweptFootprintStatus::kInvalidEsdf:

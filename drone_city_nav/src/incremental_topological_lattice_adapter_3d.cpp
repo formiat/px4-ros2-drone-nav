@@ -95,7 +95,10 @@ bool incrementalTopologicalLatticeAdapter3DConfigIsValid(
          config.maximum_lookahead_m > 0.0 &&
          std::isfinite(config.minimum_target_displacement_m) &&
          config.minimum_target_displacement_m >= 0.0 &&
-         config.minimum_target_displacement_m < config.maximum_lookahead_m;
+         config.minimum_target_displacement_m < config.maximum_lookahead_m &&
+         std::isfinite(config.minimum_collinear_direction_cosine) &&
+         config.minimum_collinear_direction_cosine >= -1.0 &&
+         config.minimum_collinear_direction_cosine <= 1.0;
 }
 
 std::optional<IncrementalTopologicalLatticeDirective3D>
@@ -112,12 +115,17 @@ makeIncrementalTopologicalLatticeDirective3D(
     return std::nullopt;
   }
 
+  // A topological polyline is not merely a preferred heading. Its vertices
+  // represent observed connectivity. Keep a useful local lookahead along a
+  // straight voxel chain, but stop at the first real bend. This prevents the
+  // local lattice from cutting across graph topology while avoiding terminal
+  // micro-routes for the many collinear cells in an incremental graph.
   Point3 cursor = projection->point;
   Point3 target = cursor;
   Vec3 preferred_direction{};
   double target_station_m = projection->station_m;
   double remaining_m = config.maximum_lookahead_m;
-  bool reaches_target = true;
+  bool reaches_target = false;
   for (std::size_t index = projection->segment_index + 1U;
        index < plan.guidance_points.size(); ++index) {
     const Point3& next = plan.guidance_points[index];
@@ -129,20 +137,38 @@ makeIncrementalTopologicalLatticeDirective3D(
       cursor = next;
       continue;
     }
-    if (preferred_direction.x == 0.0 && preferred_direction.y == 0.0 &&
-        preferred_direction.z == 0.0) {
+    if (preferred_direction.x != 0.0 || preferred_direction.y != 0.0 ||
+        preferred_direction.z != 0.0) {
+      const double preferred_length =
+          std::sqrt(preferred_direction.x * preferred_direction.x +
+                    preferred_direction.y * preferred_direction.y +
+                    preferred_direction.z * preferred_direction.z);
+      const double directional_cosine =
+          (preferred_direction.x * segment.x + preferred_direction.y * segment.y +
+           preferred_direction.z * segment.z) /
+          (preferred_length * segment_length);
+      if (directional_cosine + kGeometryEpsilon <
+          config.minimum_collinear_direction_cosine) {
+        break;
+      }
+    } else {
       preferred_direction = segment;
     }
     if (segment_length > remaining_m + kGeometryEpsilon) {
       target = interpolate(cursor, next, remaining_m / segment_length);
       target_station_m += remaining_m;
-      reaches_target = false;
       break;
     }
     target = next;
     target_station_m += segment_length;
     remaining_m -= segment_length;
     cursor = next;
+    if (index + 1U == plan.guidance_points.size()) {
+      reaches_target = true;
+    }
+    if (remaining_m <= kGeometryEpsilon) {
+      break;
+    }
   }
 
   if (distance3D(position, target) + kGeometryEpsilon <
