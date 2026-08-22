@@ -31,6 +31,9 @@ _LIDAR_PROFILE_SUPPORT = runpy.run_path(
 _MULTI_VEHICLE_LIDAR_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("multi_vehicle_lidar_launch.py"))
 )
+_VALUE_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("multi_vehicle_launch_values.py"))
+)
 _load_intercept_scenario = _SCENARIO_SUPPORT["load_intercept_scenario"]
 _load_multi_vehicle_scenario = _SCENARIO_SUPPORT["load_multi_vehicle_scenario"]
 _make_simulation_truth_adapter = _TRUTH_SUPPORT["make_simulation_truth_adapter"]
@@ -50,34 +53,16 @@ _validate_lidar_profile = _LIDAR_PROFILE_SUPPORT["validate_lidar_profile"]
 _DEFAULT_LIDAR_PROFILE = _LIDAR_PROFILE_SUPPORT["DEFAULT_LIDAR_PROFILE"]
 _make_lidar_topics = _MULTI_VEHICLE_LIDAR_SUPPORT["make_lidar_topics"]
 _make_memory_parameters = _MULTI_VEHICLE_LIDAR_SUPPORT["make_memory_parameters"]
+_optional_bool = _VALUE_SUPPORT["optional_bool"]
+_directional_hypothesis_offsets_rad = _VALUE_SUPPORT[
+    "directional_hypothesis_offsets_rad"
+]
 
 
 def _parameters(document, node_name, overrides):
     values = dict(document[node_name]["ros__parameters"])
     values.update(overrides)
     return values
-
-
-def _optional_bool(value, fallback):
-    text = value.strip().lower()
-    if not text:
-        return fallback
-    if text in ("1", "true", "yes", "on"):
-        return True
-    if text in ("0", "false", "no", "off"):
-        return False
-    raise RuntimeError(f"Expected boolean launch value, got '{value}'")
-
-
-def _directional_hypothesis_offsets_rad(enabled, interceptor_count, target_count):
-    if not enabled:
-        return tuple(0.0 for _ in range(interceptor_count))
-    if interceptor_count != 3 or target_count != 1:
-        raise RuntimeError(
-            "Directional hypotheses support only the legacy 3x1 scenario"
-        )
-    angle_rad = math.radians(45.0)
-    return (0.0, angle_rad, -angle_rad)
 
 
 def _make_role_configuration(

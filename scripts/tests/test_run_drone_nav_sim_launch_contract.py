@@ -44,6 +44,9 @@ MULTI_VEHICLE_MISSION_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
 MULTI_VEHICLE_LIDAR_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
     "multi_vehicle_lidar_launch.py"
 )
+MULTI_VEHICLE_LAUNCH_VALUES_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+    "multi_vehicle_launch_values.py"
+)
 INTERCEPT_DIAGNOSTICS_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
     "intercept_diagnostics_launch.py"
 )
@@ -110,6 +113,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             for path in (
                 INTERCEPT_LAUNCH_FILE,
                 MULTI_VEHICLE_LIDAR_LAUNCH_FILE,
+                MULTI_VEHICLE_LAUNCH_VALUES_FILE,
                 MULTI_VEHICLE_LAUNCH_FILE,
                 MULTI_VEHICLE_MISSION_LAUNCH_FILE,
                 INTERCEPT_DIAGNOSTICS_LAUNCH_FILE,
@@ -583,9 +587,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("ENABLE_OBSTACLE_MEMORY", self.text)
         self.assertIn('enable_obstacle_memory="false"', self.text)
         self.assertIn('enable_obstacle_memory:="${enable_obstacle_memory}"', self.text)
-        self.assertIn('elif bool_is_true "${active_static_map}"', self.text)
+        self.assertIn('elif ! bool_is_true "${active_static_map}" ||', self.text)
         self.assertIn("No-static navigation requires ENABLE_OBSTACLE_MEMORY=true", self.text)
-        self.assertIn("No-static navigation requires LIDAR_PROFILE=2d", self.text)
+        self.assertIn(
+            "No-static navigation requires LIDAR_PROFILE=2d or LIDAR_PROFILE=3d",
+            self.text,
+        )
         self.assertIn("LIDAR_PROFILE", self.container_text)
         self.assertIn(
             'DeclareLaunchArgument("enable_obstacle_memory", default_value="true")',

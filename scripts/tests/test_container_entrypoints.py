@@ -104,6 +104,24 @@ class ContainerEntrypointTest(unittest.TestCase):
             text,
         )
 
+    def test_container_runner_forwards_navigation_validation_contract(self) -> None:
+        text = self.read_script("container_run.sh")
+
+        for variable in (
+            "POINT_TO_POINT_SCENARIO_PATH",
+            "REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE",
+            "REQUIRE_KNOWN_FREE_SPACE",
+            "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING",
+            "OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M",
+            "MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS",
+            "ENABLE_TOPOLOGICAL_BACKTRACKING",
+            "ENABLE_LIVENESS_RECOVERY",
+            "ENABLE_GLOBAL_GUIDE_STALL_RECOVERY",
+            "ENABLE_NO_STATIC_CYCLE_RECOVERY",
+        ):
+            with self.subTest(variable=variable):
+                self.assertRegex(text, rf"(?m)^  {variable}$")
+
 
 if __name__ == "__main__":
     unittest.main()
