@@ -213,7 +213,7 @@ TEST(IncrementalTopologicalPlanner3DTest,
   EXPECT_GT(plan.fresh_frontier_candidate_count, 0U);
   EXPECT_GT(plan.fresh_frontier_evaluated_count, 0U);
   EXPECT_GT(plan.fresh_frontier_discovered_count, 0U);
-  EXPECT_LE(plan.fresh_frontier_candidate_count, refreshed_graph.samples().size());
+  EXPECT_LE(plan.fresh_frontier_candidate_count, refreshed_graph.nodes().size());
   EXPECT_GE(plan.route_length_m,
             distance3D({18.5, 14.5, 6.5}, selected_frontier.observation_pose));
   EXPECT_TRUE(plan.executableTargetSelected());

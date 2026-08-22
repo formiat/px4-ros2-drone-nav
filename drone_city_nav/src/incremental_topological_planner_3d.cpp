@@ -113,6 +113,22 @@ void recordFrontierSelectionDiagnostics(
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
 
+[[nodiscard]] std::optional<GridIndex3D> cellForPoint(const GridBounds3D& bounds,
+                                                      const Point3& point) noexcept {
+  if (!finitePoint(point) || !(bounds.resolution_m > 0.0)) {
+    return std::nullopt;
+  }
+  const GridIndex3D cell{
+      static_cast<int>(std::floor((point.x - bounds.origin_x) / bounds.resolution_m)),
+      static_cast<int>(std::floor((point.y - bounds.origin_y) / bounds.resolution_m)),
+      static_cast<int>(std::floor((point.z - bounds.origin_z) / bounds.resolution_m)),
+  };
+  return cell.x >= 0 && cell.y >= 0 && cell.z >= 0 && cell.x < bounds.width_cells &&
+                 cell.y < bounds.height_cells && cell.z < bounds.depth_cells
+             ? std::optional<GridIndex3D>{cell}
+             : std::nullopt;
+}
+
 [[nodiscard]] RegionalAdjacency
 buildRegionalAdjacency(const RegionalTopologyGraph3D& graph) {
   RegionalAdjacency result;
@@ -146,18 +162,10 @@ indexSourceEdges(const IncrementalTopologyGraph3DSnapshot& graph) {
 }
 
 void appendObservationAnchors(std::vector<IncrementalTopologyNodeId>& anchors,
-                              const IncrementalTopologyGraph3DSnapshot& graph,
-                              const ObservedOccupancyGrid3D& occupancy,
-                              const SensorObservabilityConfig& observability,
-                              const ObservedSpaceValidationPolicy validation_policy) {
-  if (!sensorObservabilityConfigIsValid(observability)) {
-    return;
-  }
-  for (const IncrementalTopologySample3D& sample : graph.samples()) {
-    if (occupancy.isKnownFree(sample.cell) &&
-        observationPoseHasSupportedUnknownBoundary(occupancy, sample.cell,
-                                                   observability, validation_policy)) {
-      anchors.push_back(sample.node);
+                              const IncrementalTopologyGraph3DSnapshot& graph) {
+  for (const IncrementalTopologyNode3D& node : graph.nodes()) {
+    if (node.unknown_boundary_exposure) {
+      anchors.push_back(node.id);
     }
   }
   std::ranges::sort(anchors);
@@ -564,10 +572,16 @@ connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
     const std::optional<ObservationFrontier>& active_frontier,
     FrontierSelectionDiagnostics& diagnostics) {
   std::vector<GridIndex3D> candidate_cells;
-  candidate_cells.reserve(source_graph.samples().size());
-  for (const IncrementalTopologySample3D& sample : source_graph.samples()) {
-    if (records.contains(sample.node)) {
-      candidate_cells.push_back(sample.cell);
+  candidate_cells.reserve(records.size());
+  for (const auto& [node_id, record] : records) {
+    static_cast<void>(record);
+    const IncrementalTopologyNode3D* const node = source_graph.findNode(node_id);
+    if (node == nullptr || !node->unknown_boundary_exposure) {
+      continue;
+    }
+    if (const std::optional<GridIndex3D> cell =
+            cellForPoint(source_graph.bounds(), node->representative)) {
+      candidate_cells.push_back(*cell);
     }
   }
   const ObservedSpaceValidationPolicy validation_policy =
@@ -792,10 +806,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     anchors.push_back(*result.goal_node);
   }
   if (occupancy != nullptr && observability != nullptr) {
-    appendObservationAnchors(anchors, graph, *occupancy, *observability,
-                             config_.require_known_free_space
-                                 ? ObservedSpaceValidationPolicy::kRequireKnownFree
-                                 : ObservedSpaceValidationPolicy::kAllowUnknown);
+    appendObservationAnchors(anchors, graph);
   }
   const RegionalTopologyGraph3D regional = buildRegionalTopologyGraph3D(graph, anchors);
   const RegionalAdjacency adjacency = buildRegionalAdjacency(regional);
