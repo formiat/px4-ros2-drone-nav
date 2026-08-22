@@ -251,7 +251,7 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
       const Point3 target = intentTarget(topology, directive);
       RouteIntent3D intent{
           .planned_on_revision = world.revision,
-          .source_graph_revision = topology.plan.graph_revision,
+          .source_graph_revision = topology.plan.planned_on_revision,
           .target_identity = intentTargetIdentity(topology),
           .mission_target = mission_goal,
           .intent_target = target,

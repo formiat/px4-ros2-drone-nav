@@ -610,9 +610,9 @@ private:
                                 const StaticRouteCandidateValidation& validation,
                                 StaticRouteActivationStatus activation_status,
                                 bool activated);
-  void maybeObserveIncrementalTopology3D(
-      const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-      const ProductionMppiNavigation& navigation, std::int64_t now_ns);
+  void maybeObserveIncrementalTopology3D(const ProductionMppiPreparedEsdf& world,
+                                         const ProductionMppiNavigation& navigation,
+                                         std::int64_t now_ns);
   void configureCooperativeTraffic();
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);

@@ -30,6 +30,16 @@ void fillFreeBox(ObservedOccupancyGrid3D& occupancy, const int min_x, const int 
   }
 }
 
+[[nodiscard]] SensorObservabilityConfig
+observabilityFor(const IncrementalTopologyGraph3DConfig& graph_config) {
+  SensorObservabilityConfig result;
+  result.footprint = graph_config.footprint;
+  result.minimum_supporting_rays = 1U;
+  result.minimum_information_gain_voxels = 1U;
+  result.minimum_known_free_ray_m = 0.0;
+  return result;
+}
+
 TEST(IncrementalTopologicalNavigation3DTest,
      RetainsPrivateTraversalAndFrontierEvidenceAcrossDirtyUpdates) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 24, 16}};
@@ -41,7 +51,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
     }
   }
   IncrementalTopologyGraph3DConfig graph_config;
-  graph_config.tile_size_cells = 4;
+  graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
@@ -51,14 +61,11 @@ TEST(IncrementalTopologicalNavigation3DTest,
                                                 .radial_rings = 1,
                                                 .axial_samples = 2,
                                                 .sweep_step_m = 0.25};
-  graph_config.observability.footprint = graph_config.footprint;
-  graph_config.observability.minimum_supporting_rays = 1U;
-  graph_config.observability.minimum_information_gain_voxels = 1U;
-  graph_config.observability.minimum_known_free_ray_m = 0.0;
   IncrementalTopologicalPlanner3DConfig planner_config;
   planner_config.maximum_start_anchor_distance_m = 6.0;
   planner_config.maximum_goal_anchor_distance_m = 6.0;
-  IncrementalTopologicalNavigation3D navigation{graph_config, planner_config};
+  IncrementalTopologicalNavigation3D navigation{
+      graph_config, planner_config, {}, observabilityFor(graph_config)};
 
   const IncrementalTopologicalWorldUpdate3D initial =
       navigation.updateObserved(occupancy, 17U, 1U, {}, true);
@@ -95,7 +102,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   fillOccupied(occupancy);
   fillFreeBox(occupancy, 3, 34, 9, 11, 5, 7);
   IncrementalTopologyGraph3DConfig graph_config;
-  graph_config.tile_size_cells = 4;
+  graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
@@ -105,8 +112,8 @@ TEST(IncrementalTopologicalNavigation3DTest,
                                                 .radial_rings = 1,
                                                 .axial_samples = 2,
                                                 .sweep_step_m = 0.25};
-  graph_config.observability.footprint = graph_config.footprint;
-  IncrementalTopologicalNavigation3D navigation{graph_config};
+  IncrementalTopologicalNavigation3D navigation{
+      graph_config, {}, {}, observabilityFor(graph_config)};
   const IncrementalTopologicalWorldUpdate3D world =
       navigation.updateObserved(occupancy, 17U, 1U, {}, true);
   const ObservedOccupancyGrid3D local =
@@ -124,7 +131,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   IncrementalTopologicalPlan3D frontier_plan;
   frontier_plan.status = IncrementalTopologicalPlanStatus3D::kFrontierRoute;
   frontier_plan.purpose = IncrementalTopologicalRoutePurpose3D::kObservationFrontier;
-  frontier_plan.graph_revision = 7U;
+  frontier_plan.planned_on_revision = 7U;
   frontier_plan.selected_frontier =
       ObservationFrontier{.id = ObservationFrontierId{23U}};
 
@@ -161,7 +168,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   IncrementalTopologicalPlan3D backtrack_plan;
   backtrack_plan.status = IncrementalTopologicalPlanStatus3D::kBacktrackRoute;
   backtrack_plan.purpose = IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack;
-  backtrack_plan.graph_revision = 7U;
+  backtrack_plan.planned_on_revision = 7U;
   backtrack_plan.dead_end_conclusion = TopologicalDeadEndConclusion3D{
       .attempted_direction =
           DirectedTopologyEdge3D{
@@ -169,7 +176,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
               .from = IncrementalTopologyNodeId{5U},
               .to = IncrementalTopologyNodeId{6U},
           },
-      .supporting_revision = 7U,
+      .validated_through_revision = 7U,
   };
 
   const IncrementalTopologicalPlanCommit3D first_dead_end_commit =
@@ -186,7 +193,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
      NewMissionLegDropsActivePlanWithoutResettingGraph) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 16, 12}};
   IncrementalTopologyGraph3DConfig graph_config;
-  graph_config.tile_size_cells = 4;
+  graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
@@ -196,8 +203,8 @@ TEST(IncrementalTopologicalNavigation3DTest,
                                                 .radial_rings = 1,
                                                 .axial_samples = 2,
                                                 .sweep_step_m = 0.25};
-  graph_config.observability.footprint = graph_config.footprint;
-  IncrementalTopologicalNavigation3D navigation{graph_config};
+  IncrementalTopologicalNavigation3D navigation{
+      graph_config, {}, {}, observabilityFor(graph_config)};
   const IncrementalTopologicalWorldUpdate3D world =
       navigation.resetStatic(occupancy, 9U);
   const IncrementalTopologicalPlan3D first =
@@ -222,7 +229,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   fillOccupied(occupancy);
   fillFreeBox(occupancy, 3, 44, 9, 11, 5, 7);
   IncrementalTopologyGraph3DConfig graph_config;
-  graph_config.tile_size_cells = 4;
+  graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
@@ -232,8 +239,8 @@ TEST(IncrementalTopologicalNavigation3DTest,
                                                 .radial_rings = 1,
                                                 .axial_samples = 2,
                                                 .sweep_step_m = 0.25};
-  graph_config.observability.footprint = graph_config.footprint;
-  IncrementalTopologicalNavigation3D navigation{graph_config};
+  IncrementalTopologicalNavigation3D navigation{
+      graph_config, {}, {}, observabilityFor(graph_config)};
   const IncrementalTopologicalWorldUpdate3D world =
       navigation.updateObserved(occupancy, 17U, 1U, {}, true);
 
@@ -255,7 +262,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
   fillOccupied(occupancy);
   fillFreeBox(occupancy, 2, 21, 4, 6, 2, 4);
   IncrementalTopologyGraph3DConfig graph_config;
-  graph_config.tile_size_cells = 2;
+  graph_config.block_size_cells = 2;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
@@ -265,13 +272,12 @@ TEST(IncrementalTopologicalNavigation3DTest,
                                                 .radial_rings = 1,
                                                 .axial_samples = 2,
                                                 .sweep_step_m = 0.25};
-  graph_config.observability.footprint = graph_config.footprint;
   IncrementalTopologicalPlanner3DConfig planner_config;
   planner_config.maximum_start_anchor_distance_m = 3.0;
   TopologicalExplorationMemory3DConfig memory_config;
   memory_config.maximum_observed_transition_m = 4.0;
-  IncrementalTopologicalNavigation3D navigation{graph_config, planner_config,
-                                                memory_config};
+  IncrementalTopologicalNavigation3D navigation{
+      graph_config, planner_config, memory_config, observabilityFor(graph_config)};
   const IncrementalTopologicalWorldUpdate3D world =
       navigation.updateObserved(occupancy, 19U, 1U, {}, true);
 
@@ -291,7 +297,7 @@ TEST(IncrementalTopologicalNavigation3DTest,
      StaticResetUsesTheSameGraphAndPlanningContract) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 16, 12}};
   IncrementalTopologyGraph3DConfig graph_config;
-  graph_config.tile_size_cells = 4;
+  graph_config.block_size_cells = 4;
   graph_config.coarse_sample_stride_cells = 1;
   graph_config.refined_sample_stride_cells = 1;
   graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
@@ -301,8 +307,8 @@ TEST(IncrementalTopologicalNavigation3DTest,
                                                 .radial_rings = 1,
                                                 .axial_samples = 2,
                                                 .sweep_step_m = 0.25};
-  graph_config.observability.footprint = graph_config.footprint;
-  IncrementalTopologicalNavigation3D navigation{graph_config};
+  IncrementalTopologicalNavigation3D navigation{
+      graph_config, {}, {}, observabilityFor(graph_config)};
 
   const IncrementalTopologicalWorldUpdate3D world =
       navigation.resetStatic(occupancy, 9U);

@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace drone_city_nav {
@@ -130,6 +131,12 @@ evaluateObservationFrontiers(const ObservedOccupancyGrid3D& occupancy,
     const SensorObservabilityConfig& config, std::size_t cell_stride,
     std::size_t maximum_evaluations,
     std::optional<ObservationFrontierDiscoveryRegion> region = std::nullopt);
+
+[[nodiscard]] ObservationFrontierDiscovery discoverObservationFrontiersAtCells(
+    const ObservedOccupancyGrid3D& occupancy, std::uint64_t map_revision,
+    const SensorObservabilityConfig& config,
+    std::span<const GridIndex3D> candidate_cells, std::size_t maximum_evaluations,
+    std::optional<Point3> mission_goal = std::nullopt);
 
 [[nodiscard]] bool
 sensorObservabilityConfigIsValid(const SensorObservabilityConfig& config) noexcept;

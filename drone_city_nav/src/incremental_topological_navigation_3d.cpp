@@ -12,6 +12,23 @@
 namespace drone_city_nav {
 namespace {
 
+[[nodiscard]] std::optional<GridIndex3D> worldToCell(const GridBounds3D& bounds,
+                                                     const Point3& point) noexcept {
+  if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z) ||
+      !(bounds.resolution_m > 0.0)) {
+    return std::nullopt;
+  }
+  const GridIndex3D cell{
+      static_cast<int>(std::floor((point.x - bounds.origin_x) / bounds.resolution_m)),
+      static_cast<int>(std::floor((point.y - bounds.origin_y) / bounds.resolution_m)),
+      static_cast<int>(std::floor((point.z - bounds.origin_z) / bounds.resolution_m)),
+  };
+  return cell.x >= 0 && cell.y >= 0 && cell.z >= 0 && cell.x < bounds.width_cells &&
+                 cell.y < bounds.height_cells && cell.z < bounds.depth_cells
+             ? std::optional<GridIndex3D>{cell}
+             : std::nullopt;
+}
+
 [[nodiscard]] std::optional<std::vector<IncrementalTopologyNodeId>>
 activeRouteSegment(const IncrementalTopologicalPlan3D& plan,
                    const IncrementalTopologyNodeId from,
@@ -144,11 +161,12 @@ localObservedTransition(const IncrementalTopologyGraph3DSnapshot& graph,
 IncrementalTopologicalNavigation3D::IncrementalTopologicalNavigation3D(
     const IncrementalTopologyGraph3DConfig& graph_config,
     const IncrementalTopologicalPlanner3DConfig& planner_config,
-    const TopologicalExplorationMemory3DConfig& memory_config)
+    const TopologicalExplorationMemory3DConfig& memory_config,
+    const SensorObservabilityConfig& observability)
     : graph_{graph_config},
       planner_{planner_config},
       memory_{memory_config},
-      observability_{graph_config.observability} {
+      observability_{observability} {
 }
 
 IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateObserved(
@@ -284,7 +302,7 @@ std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(
     }
     memory_.recordTraversal(
         DirectedTopologyEdge3D{.edge_id = edge->id, .from = edge_from, .to = edge_to},
-        edge->supporting_revision, edge->length_m);
+        edge->validated_through_revision, edge->length_m);
     ++traversed_edges;
   }
   return traversed_edges;
@@ -293,19 +311,37 @@ std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(
 IncrementalTopologicalNavigationObservation3D
 IncrementalTopologicalNavigation3D::observePosition(
     const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-    const Point3& position) {
+    const Point3& position, const ObservedOccupancyGrid3D* const occupancy) {
   IncrementalTopologicalNavigationObservation3D result;
   if (!graph) {
     return result;
   }
+  std::optional<IncrementalTopologyNodeId> observed_node;
+  if (const std::optional<GridIndex3D> cell = worldToCell(graph->bounds(), position)) {
+    observed_node = graph->nodeForSampleCell(*cell);
+  }
+  if (!observed_node.has_value() && occupancy != nullptr) {
+    if (sameBounds(graph->bounds(), occupancy->bounds())) {
+      const std::optional<IncrementalTopologyConnector3D> connector =
+          graph->connectObserved(
+              *occupancy, position, planner_.config().maximum_start_anchor_distance_m,
+              observability_.footprint, planner_.config().require_known_free_space);
+      if (connector.has_value()) {
+        observed_node = connector->node;
+      }
+    }
+  } else if (!observed_node.has_value()) {
+    observed_node =
+        graph->nearestNode(position, planner_.config().maximum_start_anchor_distance_m);
+  }
+
   const std::scoped_lock lock{memory_mutex_};
   result.graph_revision = graph->revision();
   result.previous_node = current_node_;
   memory_.recordVisited(position, graph->revision());
   memory_.recordObserved(position, graph->revision());
   result.coverage_cells = memory_.coverageCellCount();
-  result.current_node =
-      graph->nearestNode(position, planner_.config().maximum_start_anchor_distance_m);
+  result.current_node = observed_node;
   if (!result.current_node.has_value()) {
     current_node_.reset();
     return result;
@@ -325,30 +361,33 @@ IncrementalTopologicalNavigation3D::observePosition(
 IncrementalTopologicalPlanCommit3D
 IncrementalTopologicalNavigation3D::commitAcceptedPlan(
     const IncrementalTopologicalPlan3D& plan) {
-  IncrementalTopologicalPlanCommit3D result{.graph_revision = plan.graph_revision};
+  IncrementalTopologicalPlanCommit3D result{.graph_revision = plan.planned_on_revision};
   if (!plan.executableTargetSelected()) {
     return result;
   }
   const std::scoped_lock lock{memory_mutex_};
-  const auto previous_frontier_replaced = [&]() {
+  const std::optional<Point3> replaced_frontier_observation_pose = [&]() {
     if (!active_plan_.has_value() || !active_plan_->selected_frontier.has_value() ||
         !plan.selected_frontier.has_value()) {
-      return false;
+      return std::optional<Point3>{};
     }
     if (active_plan_->selected_frontier->id != plan.selected_frontier->id) {
-      return true;
+      return std::optional<Point3>{active_plan_->selected_frontier->observation_pose};
     }
-    return distance3D(active_plan_->selected_frontier->observation_pose,
-                      plan.selected_frontier->observation_pose) >
-           memory_.config().coverage_resolution_m;
-  };
-  if (previous_frontier_replaced()) {
+    if (distance3D(active_plan_->selected_frontier->observation_pose,
+                   plan.selected_frontier->observation_pose) <=
+        memory_.config().coverage_resolution_m) {
+      return std::optional<Point3>{};
+    }
+    return std::optional<Point3>{active_plan_->selected_frontier->observation_pose};
+  }();
+  if (replaced_frontier_observation_pose.has_value()) {
     // The route lifecycle replaces an observation target only after it was
     // reached, exhausted, retired by fresh sensing, or superseded by a
     // meaningfully better target. Preserve that completed observation pose as
     // soft coverage so an equivalent frontier is not immediately rediscovered.
-    memory_.recordObserved(active_plan_->selected_frontier->observation_pose,
-                           plan.graph_revision);
+    memory_.recordObserved(*replaced_frontier_observation_pose,
+                           plan.validated_through_revision);
     result.replaced_frontier_coverage_recorded = true;
   }
   const bool selected_frontier_already_active = [&]() {
@@ -370,11 +409,11 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
       plan.dead_end_conclusion.has_value() &&
       active_plan_->dead_end_conclusion->attempted_direction ==
           plan.dead_end_conclusion->attempted_direction &&
-      active_plan_->dead_end_conclusion->supporting_revision ==
-          plan.dead_end_conclusion->supporting_revision;
+      active_plan_->dead_end_conclusion->validated_through_revision ==
+          plan.dead_end_conclusion->validated_through_revision;
   if (plan.dead_end_conclusion.has_value() && !dead_end_already_active) {
     memory_.recordDeadEnd(plan.dead_end_conclusion->attempted_direction,
-                          plan.dead_end_conclusion->supporting_revision);
+                          plan.dead_end_conclusion->validated_through_revision);
     result.dead_end_recorded = true;
   }
   active_plan_ = plan;

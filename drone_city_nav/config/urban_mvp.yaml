@@ -223,12 +223,11 @@ production_mppi_node:
     no_static_3d_esdf_vertical_recenter_margin_m: 9.0
     topological_graph_3d_coarse_sample_stride_cells: 2
     topological_graph_3d_refined_sample_stride_cells: 1
-    # Prioritize a fresh local topology snapshot over a wide stale batch.
-    # Remaining dirty tiles stay queued and are incrementally incorporated.
-    topological_graph_3d_maximum_observed_tiles_per_update: 4
-    topological_graph_3d_minimum_oldest_tiles_per_update: 4
-    topological_graph_3d_maximum_frontier_evaluations_per_component: 8
-    topological_graph_3d_maximum_frontiers_per_component: 16
+    topological_graph_3d_block_size_cells: 16
+    # Region graph updates reserve capacity for both mission-local and oldest
+    # pending blocks. Frontier extraction is performed once at planning time.
+    topological_graph_3d_maximum_observed_blocks_per_update: 16
+    topological_graph_3d_minimum_oldest_blocks_per_update: 4
     topological_planner_3d_start_anchor_distance_m: 20.0
     # Return routes from confirmed topological dead ends are opt-in. Normal
     # Manhattan validation keeps goal-directed navigation only.
@@ -390,15 +389,11 @@ production_mppi_node:
     topological_planner_3d_information_gain_reward: 1.0
     topological_planner_3d_dead_end_penalty: 100.0
     topological_planner_3d_frontier_completion_penalty: 48.0
-    # A lidar miss establishes known-free space up to the sensor range. Search
-    # observation poses over that same physical horizon instead of advancing
-    # through an arbitrary 8 m micro-frontier sequence.
-    topological_planner_3d_fresh_frontier_search_radius_m: 36.0
+    # Fresh lidar observations may extend beyond an asynchronously rebuilt
+    # topology snapshot. Bound that raw-safe overlay by the connector horizon.
     topological_planner_3d_maximum_fresh_frontier_anchor_distance_m: 36.0
     topological_planner_3d_minimum_observation_target_displacement_m: 2.0
-    topological_planner_3d_fresh_frontier_cell_stride: 2
     topological_planner_3d_maximum_fresh_frontier_evaluations: 64
-    topological_planner_3d_maximum_graph_frontier_revalidations: 16
     topological_memory_3d_coverage_influence_radius_m: 4.0
     topological_memory_3d_maximum_observed_transition_m: 4.0
     no_static_global_lattice_deadline_ms: 100.0

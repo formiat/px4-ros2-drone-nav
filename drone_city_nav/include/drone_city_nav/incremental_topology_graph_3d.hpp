@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/observation_frontier.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -31,13 +30,13 @@ struct IncrementalTopologyEdgeId {
   operator<=>(const IncrementalTopologyEdgeId&) const noexcept = default;
 };
 
-struct IncrementalTopologyTileIndex3D {
+struct IncrementalTopologyBlockIndex3D {
   int x{0};
   int y{0};
   int z{0};
 
   [[nodiscard]] auto
-  operator<=>(const IncrementalTopologyTileIndex3D&) const noexcept = default;
+  operator<=>(const IncrementalTopologyBlockIndex3D&) const noexcept = default;
 };
 
 struct IncrementalTopologyNodeIdHash {
@@ -48,9 +47,16 @@ struct IncrementalTopologyEdgeIdHash {
   [[nodiscard]] std::size_t operator()(IncrementalTopologyEdgeId id) const noexcept;
 };
 
-struct IncrementalTopologyTileIndex3DHash {
+struct IncrementalTopologyBlockIndex3DHash {
   [[nodiscard]] std::size_t
-  operator()(IncrementalTopologyTileIndex3D index) const noexcept;
+  operator()(IncrementalTopologyBlockIndex3D index) const noexcept;
+};
+
+enum class IncrementalTopologyLineageEvent3D : std::uint8_t {
+  kCreated,
+  kRetained,
+  kSplit,
+  kMerge,
 };
 
 struct IncrementalTopologyNodeTraits3D {
@@ -63,14 +69,19 @@ struct IncrementalTopologyNodeTraits3D {
 
 struct IncrementalTopologyNode3D {
   IncrementalTopologyNodeId id{};
-  IncrementalTopologyTileIndex3D tile{};
+  IncrementalTopologyBlockIndex3D block{};
   Point3 representative{};
   std::size_t support_cell_count{0U};
   std::size_t degree{0U};
-  std::uint64_t geometry_revision{0U};
+  std::uint64_t created_on_revision{0U};
+  std::uint64_t validated_through_revision{0U};
+  std::uint64_t generation{0U};
   std::uint64_t classification_revision{0U};
+  IncrementalTopologyLineageEvent3D lineage_event{
+      IncrementalTopologyLineageEvent3D::kCreated};
+  std::vector<IncrementalTopologyNodeId> predecessors;
+  bool unknown_boundary_exposure{false};
   IncrementalTopologyNodeTraits3D traits{};
-  std::vector<ObservationFrontier> observation_frontiers;
 };
 
 struct IncrementalTopologyEdge3D {
@@ -79,36 +90,41 @@ struct IncrementalTopologyEdge3D {
   IncrementalTopologyNodeId second{};
   Point3 first_contact{};
   Point3 second_contact{};
+  std::vector<Point3> polyline;
   double length_m{0.0};
-  std::uint64_t supporting_revision{0U};
+  std::uint64_t created_on_revision{0U};
+  std::uint64_t validated_through_revision{0U};
+};
+
+struct IncrementalTopologyBlockCoverage3D {
+  IncrementalTopologyBlockIndex3D block{};
+  std::uint64_t validated_through_revision{0U};
+  bool pending_rebuild{false};
 };
 
 struct IncrementalTopologyGraph3DConfig {
-  int tile_size_cells{8};
+  int block_size_cells{16};
   int coarse_sample_stride_cells{2};
   int refined_sample_stride_cells{1};
-  std::size_t maximum_observed_tiles_per_update{64U};
-  std::size_t minimum_oldest_tiles_per_update{4U};
-  std::size_t maximum_frontier_evaluations_per_component{128U};
-  std::size_t maximum_frontiers_per_component{16U};
+  std::size_t maximum_observed_blocks_per_update{16U};
+  std::size_t minimum_oldest_blocks_per_update{4U};
   SweptFootprintConfig footprint{};
-  SensorObservabilityConfig observability{};
 };
 
 struct IncrementalTopologyGraph3DUpdate {
   std::uint64_t revision{0U};
   std::size_t requested_dirty_chunks{0U};
-  std::size_t discovered_dirty_tiles{0U};
-  std::size_t rebuilt_tiles{0U};
-  std::size_t pending_tiles{0U};
-  std::size_t adaptively_refined_tiles{0U};
+  std::size_t discovered_dirty_blocks{0U};
+  std::size_t rebuilt_blocks{0U};
+  std::size_t pending_blocks{0U};
+  std::size_t adaptively_refined_blocks{0U};
   std::size_t sampled_navigable_cells{0U};
   std::size_t retained_node_ids{0U};
   std::size_t created_nodes{0U};
   std::size_t retired_nodes{0U};
   std::size_t node_count{0U};
   std::size_t edge_count{0U};
-  double dirty_tile_discovery_ms{0.0};
+  double dirty_block_discovery_ms{0.0};
   double graph_rebuild_ms{0.0};
   bool full_reset{false};
 };
@@ -118,18 +134,39 @@ struct IncrementalTopologyBuildPriority3D {
   Point3 target{};
 };
 
+struct IncrementalTopologyConnector3D {
+  IncrementalTopologyNodeId node{};
+  std::vector<Point3> polyline;
+  double length_m{0.0};
+  std::uint64_t validated_through_revision{0U};
+  bool unknown_exposure{false};
+};
+
+struct IncrementalTopologySample3D {
+  GridIndex3D cell{};
+  IncrementalTopologyNodeId node{};
+};
+
 class IncrementalTopologyGraph3DSnapshot {
 public:
   [[nodiscard]] std::uint64_t revision() const noexcept;
   [[nodiscard]] const GridBounds3D& bounds() const noexcept;
   [[nodiscard]] std::span<const IncrementalTopologyNode3D> nodes() const noexcept;
   [[nodiscard]] std::span<const IncrementalTopologyEdge3D> edges() const noexcept;
+  [[nodiscard]] std::span<const IncrementalTopologyBlockCoverage3D>
+  blockCoverage() const noexcept;
+  [[nodiscard]] std::span<const IncrementalTopologySample3D> samples() const noexcept;
+  [[nodiscard]] std::size_t pendingBlockCount() const noexcept;
   [[nodiscard]] const IncrementalTopologyNode3D*
   findNode(IncrementalTopologyNodeId id) const noexcept;
   [[nodiscard]] std::optional<IncrementalTopologyNodeId>
   nodeForSampleCell(GridIndex3D cell) const noexcept;
   [[nodiscard]] std::optional<IncrementalTopologyNodeId>
   nearestNode(const Point3& position, double maximum_distance_m) const noexcept;
+  [[nodiscard]] std::optional<IncrementalTopologyConnector3D>
+  connectObserved(const ObservedOccupancyGrid3D& occupancy, const Point3& position,
+                  double maximum_distance_m, const SweptFootprintConfig& footprint,
+                  bool require_known_free_space) const;
 
 private:
   friend class IncrementalTopologyGraph3D;
@@ -138,10 +175,14 @@ private:
   GridBounds3D bounds_{};
   std::vector<IncrementalTopologyNode3D> nodes_;
   std::vector<IncrementalTopologyEdge3D> edges_;
+  std::vector<IncrementalTopologyBlockCoverage3D> block_coverage_;
+  std::vector<IncrementalTopologySample3D> samples_;
+  std::size_t pending_block_count_{0U};
   std::unordered_map<IncrementalTopologyNodeId, std::size_t,
                      IncrementalTopologyNodeIdHash>
       node_indices_;
   std::unordered_map<std::uint64_t, IncrementalTopologyNodeId> sample_cell_nodes_;
+  std::unordered_map<std::uint64_t, std::uint64_t> sample_cell_parents_;
 };
 
 class IncrementalTopologyGraph3D {

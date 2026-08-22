@@ -159,12 +159,12 @@ class MappingPipelineValidationTest(unittest.TestCase):
     ) -> None:
         log = (
             "INCREMENTAL_TOPOLOGY3D_UPDATE revision=1 full_reset=true "
-            "dirty_chunks=0 rebuilt_tiles=6 refined_tiles=4 "
+            "dirty_chunks=0 rebuilt_blocks=6 refined_tiles=4 "
             "base_resolution_m=0.250 coarse_resolution_m=0.500 "
             "refined_resolution_m=0.250 sampled_cells=24 retained_nodes=0 "
             "created_nodes=6 retired_nodes=0 nodes=6 edges=5 update_ms=1.2\n"
             "INCREMENTAL_TOPOLOGY3D_UPDATE revision=2 full_reset=false "
-            "dirty_chunks=1 rebuilt_tiles=2 refined_tiles=2 "
+            "dirty_chunks=1 rebuilt_blocks=2 refined_tiles=2 "
             "base_resolution_m=0.250 coarse_resolution_m=0.500 "
             "refined_resolution_m=0.250 sampled_cells=12 retained_nodes=5 "
             "created_nodes=1 retired_nodes=0 nodes=7 edges=6 update_ms=0.8\n"
@@ -190,7 +190,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
     ) -> None:
         log = (
             "INCREMENTAL_TOPOLOGY3D_UPDATE revision=2 full_reset=false "
-            "dirty_chunks=1 rebuilt_tiles=2 refined_tiles=2 "
+            "dirty_chunks=1 rebuilt_blocks=2 refined_tiles=2 "
             "base_resolution_m=0.250 coarse_resolution_m=0.500 "
             "refined_resolution_m=0.250 sampled_cells=12 retained_nodes=0 "
             "created_nodes=7 retired_nodes=6 nodes=7 edges=6 update_ms=0.8\n"

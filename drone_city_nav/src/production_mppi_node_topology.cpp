@@ -114,29 +114,30 @@ void ProductionMppiNode::processObservedTopology3D(
   RCLCPP_INFO(
       get_logger(),
       "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64
-      " full_reset=%s dirty_chunks=%zu discovered_dirty_tiles=%zu "
-      "rebuilt_tiles=%zu pending_tiles=%zu refined_tiles=%zu "
+      " full_reset=%s dirty_chunks=%zu discovered_dirty_blocks=%zu "
+      "rebuilt_blocks=%zu pending_blocks=%zu refined_blocks=%zu "
       "base_resolution_m=%.3f coarse_resolution_m=%.3f "
       "refined_resolution_m=%.3f retained_nodes=%zu created_nodes=%zu "
       "retired_nodes=%zu nodes=%zu edges=%zu dirty_discovery_ms=%.2f "
       "rebuild_ms=%.2f update_ms=%.2f",
       update.graph.revision, update.graph.full_reset ? "true" : "false",
-      update.graph.requested_dirty_chunks, update.graph.discovered_dirty_tiles,
-      update.graph.rebuilt_tiles, update.graph.pending_tiles,
-      update.graph.adaptively_refined_tiles, raw_world.occupancy->bounds().resolution_m,
+      update.graph.requested_dirty_chunks, update.graph.discovered_dirty_blocks,
+      update.graph.rebuilt_blocks, update.graph.pending_blocks,
+      update.graph.adaptively_refined_blocks,
+      raw_world.occupancy->bounds().resolution_m,
       raw_world.occupancy->bounds().resolution_m *
           static_cast<double>(topological_graph_3d_config_.coarse_sample_stride_cells),
       raw_world.occupancy->bounds().resolution_m *
           static_cast<double>(topological_graph_3d_config_.refined_sample_stride_cells),
       update.graph.retained_node_ids, update.graph.created_nodes,
       update.graph.retired_nodes, update.graph.node_count, update.graph.edge_count,
-      update.graph.dirty_tile_discovery_ms, update.graph.graph_rebuild_ms, update_ms);
+      update.graph.dirty_block_discovery_ms, update.graph.graph_rebuild_ms, update_ms);
 }
 
 void ProductionMppiNode::configureIncrementalTopology3D() {
-  topological_graph_3d_config_.tile_size_cells = checkedPositiveIntParameter(
-      declare_parameter<std::int64_t>("topological_graph_3d_tile_size_cells", 8),
-      "topological_graph_3d_tile_size_cells");
+  topological_graph_3d_config_.block_size_cells = checkedPositiveIntParameter(
+      declare_parameter<std::int64_t>("topological_graph_3d_block_size_cells", 16),
+      "topological_graph_3d_block_size_cells");
   topological_graph_3d_config_.coarse_sample_stride_cells = checkedPositiveIntParameter(
       declare_parameter<std::int64_t>("topological_graph_3d_coarse_sample_stride_cells",
                                       2),
@@ -146,28 +147,17 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
           declare_parameter<std::int64_t>(
               "topological_graph_3d_refined_sample_stride_cells", 1),
           "topological_graph_3d_refined_sample_stride_cells");
-  topological_graph_3d_config_.maximum_observed_tiles_per_update =
+  topological_graph_3d_config_.maximum_observed_blocks_per_update =
       checkedPositiveSizeParameter(
           declare_parameter<std::int64_t>(
-              "topological_graph_3d_maximum_observed_tiles_per_update", 16),
-          "topological_graph_3d_maximum_observed_tiles_per_update");
-  topological_graph_3d_config_.minimum_oldest_tiles_per_update =
+              "topological_graph_3d_maximum_observed_blocks_per_update", 16),
+          "topological_graph_3d_maximum_observed_blocks_per_update");
+  topological_graph_3d_config_.minimum_oldest_blocks_per_update =
       checkedNonnegativeSizeParameter(
           declare_parameter<std::int64_t>(
-              "topological_graph_3d_minimum_oldest_tiles_per_update", 4),
-          "topological_graph_3d_minimum_oldest_tiles_per_update");
-  topological_graph_3d_config_.maximum_frontier_evaluations_per_component =
-      checkedPositiveSizeParameter(
-          declare_parameter<std::int64_t>(
-              "topological_graph_3d_maximum_frontier_evaluations_per_component", 8),
-          "topological_graph_3d_maximum_frontier_evaluations_per_component");
-  topological_graph_3d_config_.maximum_frontiers_per_component =
-      checkedPositiveSizeParameter(
-          declare_parameter<std::int64_t>(
-              "topological_graph_3d_maximum_frontiers_per_component", 16),
-          "topological_graph_3d_maximum_frontiers_per_component");
+              "topological_graph_3d_minimum_oldest_blocks_per_update", 4),
+          "topological_graph_3d_minimum_oldest_blocks_per_update");
   topological_graph_3d_config_.footprint = physical_footprint_config_;
-  topological_graph_3d_config_.observability = lattice_3d_config_.sensor_observability;
 
   topological_planner_3d_config_.maximum_start_anchor_distance_m =
       declare_parameter<double>("topological_planner_3d_start_anchor_distance_m", 20.0);
@@ -196,10 +186,6 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
                                 48.0);
   topological_planner_3d_config_.coverage_penalty_weight =
       declare_parameter<double>("topological_planner_3d_coverage_penalty_weight", 1.0);
-  topological_planner_3d_config_.fresh_frontier_search_radius_m =
-      declare_parameter<double>(
-          "topological_planner_3d_fresh_frontier_search_radius_m",
-          lattice_3d_config_.sensor_observability.maximum_observation_range_m);
   topological_planner_3d_config_.maximum_fresh_frontier_anchor_distance_m =
       declare_parameter<double>(
           "topological_planner_3d_maximum_fresh_frontier_anchor_distance_m",
@@ -207,21 +193,11 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
   topological_planner_3d_config_.minimum_observation_target_displacement_m =
       declare_parameter<double>(
           "topological_planner_3d_minimum_observation_target_displacement_m", 2.0);
-  topological_planner_3d_config_.fresh_frontier_cell_stride =
-      checkedPositiveSizeParameter(
-          declare_parameter<std::int64_t>(
-              "topological_planner_3d_fresh_frontier_cell_stride", 2),
-          "topological_planner_3d_fresh_frontier_cell_stride");
   topological_planner_3d_config_.maximum_fresh_frontier_evaluations =
       checkedPositiveSizeParameter(
           declare_parameter<std::int64_t>(
               "topological_planner_3d_maximum_fresh_frontier_evaluations", 16),
           "topological_planner_3d_maximum_fresh_frontier_evaluations");
-  topological_planner_3d_config_.maximum_graph_frontier_revalidations =
-      checkedPositiveSizeParameter(
-          declare_parameter<std::int64_t>(
-              "topological_planner_3d_maximum_graph_frontier_revalidations", 16),
-          "topological_planner_3d_maximum_graph_frontier_revalidations");
   topological_backtracking_enabled_ =
       declare_parameter<bool>("topological_backtracking_enabled", false);
 
@@ -265,7 +241,7 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
 
   topological_navigation_3d_ = std::make_unique<IncrementalTopologicalNavigation3D>(
       topological_graph_3d_config_, topological_planner_3d_config_,
-      topological_memory_3d_config_);
+      topological_memory_3d_config_, lattice_3d_config_.sensor_observability);
 }
 
 void ProductionMppiNode::initializeStaticTopology3D() {
@@ -283,11 +259,11 @@ void ProductionMppiNode::initializeStaticTopology3D() {
                               .count();
   RCLCPP_INFO(get_logger(),
               "INCREMENTAL_TOPOLOGY3D_STATIC revision=%" PRIu64
-              " nodes=%zu edges=%zu rebuilt_tiles=%zu refined_tiles=%zu "
+              " nodes=%zu edges=%zu rebuilt_blocks=%zu refined_blocks=%zu "
               "base_resolution_m=%.3f coarse_resolution_m=%.3f "
               "refined_resolution_m=%.3f sampled_cells=%zu build_ms=%.2f",
               update.graph.revision, update.graph.node_count, update.graph.edge_count,
-              update.graph.rebuilt_tiles, update.graph.adaptively_refined_tiles,
+              update.graph.rebuilt_blocks, update.graph.adaptively_refined_blocks,
               static_occupancy_3d_->bounds().resolution_m,
               static_occupancy_3d_->bounds().resolution_m *
                   topological_graph_3d_config_.coarse_sample_stride_cells,
@@ -307,8 +283,8 @@ ProductionMppiNode::selectIncrementalTopologyRoute3D(
 
   result.graph_node_count = world.topological_graph->nodes().size();
   result.graph_edge_count = world.topological_graph->edges().size();
-  result.observation =
-      topological_navigation_3d_->observePosition(world.topological_graph, position);
+  result.observation = topological_navigation_3d_->observePosition(
+      world.topological_graph, position, world.observed_occupancy.get());
   result.plan = world.observed_occupancy
                     ? topological_navigation_3d_->planObserved(
                           world.topological_graph, *world.observed_occupancy, position,
@@ -391,7 +367,6 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "goal_directed_reachable_frontiers=%zu "
       "maximum_goal_progress_frontier_id=%" PRIu64
       " maximum_reachable_frontier_goal_progress_m=%.2f "
-      "revalidated_frontiers=%zu retired_frontiers=%zu "
       "fresh_frontier_candidates=%zu fresh_frontier_evaluated=%zu "
       "fresh_frontier_discovered=%zu "
       "fresh_frontier_sample_fingerprint=%" PRIu64 " "
@@ -418,7 +393,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "candidate_validation=%.*s activation=%.*s activated=%s "
       "commit_accepted=%s commit_route_nodes=%zu commit_frontier=%s "
       "commit_replaced_frontier_coverage=%s commit_dead_end=%s",
-      search.plan.graph_revision, search.graph_node_count, search.graph_edge_count,
+      search.plan.planned_on_revision, search.graph_node_count, search.graph_edge_count,
       incrementalTopologicalPlanStatus3DName(search.plan.status),
       incrementalTopologicalRoutePurpose3DName(search.plan.purpose),
       search.plan.start_node.value, search.plan.target_node.value,
@@ -440,7 +415,6 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       search.plan.goal_directed_reachable_frontier_count,
       search.plan.maximum_goal_progress_frontier_id.value,
       search.plan.maximum_reachable_frontier_goal_progress_m,
-      search.plan.revalidated_frontier_count, search.plan.retired_frontier_count,
       search.plan.fresh_frontier_candidate_count,
       search.plan.fresh_frontier_evaluated_count,
       search.plan.fresh_frontier_discovered_count,
@@ -466,7 +440,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       dead_end != nullptr ? dead_end->attempted_direction.edge_id.value : 0U,
       dead_end != nullptr ? dead_end->attempted_direction.from.value : 0U,
       dead_end != nullptr ? dead_end->attempted_direction.to.value : 0U,
-      dead_end != nullptr ? dead_end->supporting_revision : 0U,
+      dead_end != nullptr ? dead_end->validated_through_revision : 0U,
       search.no_executable_route_age_ms, nodeIdValue(search.observation.previous_node),
       nodeIdValue(search.observation.current_node), search.observation.traversed_edges,
       search.observation.coverage_cells,
@@ -495,14 +469,14 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
     const TopologicalRouteStep3D& step = search.plan.route_steps[index];
     RCLCPP_INFO(get_logger(),
                 "INCREMENTAL_TOPOLOGICAL_ROUTE_EDGE3D graph_revision=%" PRIu64
-                " step=%zu contracted_edge_id=%" PRIu64 " from=%" PRIu64 " to=%" PRIu64
+                " step=%zu regional_edge_id=%" PRIu64 " from=%" PRIu64 " to=%" PRIu64
                 " source_edges=%zu length_m=%.2f "
                 "repeated_distance_m=%.2f traversal_count=%zu "
-                "supporting_revision=%" PRIu64,
-                search.plan.graph_revision, index, step.contracted_edge_id.value,
+                "validated_through_revision=%" PRIu64,
+                search.plan.planned_on_revision, index, step.regional_edge_id.value,
                 step.from.value, step.to.value, step.directed_source_edges.size(),
                 step.length_m, step.repeated_distance_m, step.traversal_count,
-                step.supporting_revision);
+                step.validated_through_revision);
     for (std::size_t source_index = 0U;
          source_index < step.directed_source_edges.size(); ++source_index) {
       const DirectedTopologyEdge3D& source = step.directed_source_edges[source_index];
@@ -510,15 +484,17 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
                   "INCREMENTAL_TOPOLOGICAL_SOURCE_EDGE3D graph_revision=%" PRIu64
                   " step=%zu source_index=%zu edge_id=%" PRIu64 " from=%" PRIu64
                   " to=%" PRIu64,
-                  search.plan.graph_revision, index, source_index, source.edge_id.value,
-                  source.from.value, source.to.value);
+                  search.plan.planned_on_revision, index, source_index,
+                  source.edge_id.value, source.from.value, source.to.value);
     }
   }
 }
 
 void ProductionMppiNode::maybeObserveIncrementalTopology3D(
-    const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-    const ProductionMppiNavigation& navigation, const std::int64_t now_ns) {
+    const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
+    const std::int64_t now_ns) {
+  const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph =
+      world.topological_graph;
   if (!topological_navigation_3d_ || !graph || !navigation.valid || now_ns <= 0) {
     return;
   }
@@ -546,7 +522,8 @@ void ProductionMppiNode::maybeObserveIncrementalTopology3D(
 
   const IncrementalTopologicalNavigationObservation3D observation =
       topological_navigation_3d_->observePosition(
-          graph, Point3{navigation.state.x, navigation.state.y, navigation.state.z});
+          graph, Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+          world.observed_occupancy.get());
   if (observation.previous_node != observation.current_node ||
       observation.traversed_edges > 0U || observation.trail_reset) {
     RCLCPP_INFO(get_logger(),

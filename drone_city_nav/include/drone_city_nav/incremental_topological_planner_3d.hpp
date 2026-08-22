@@ -1,8 +1,8 @@
 #pragma once
 
-#include "drone_city_nav/contracted_topology_graph_3d.hpp"
 #include "drone_city_nav/incremental_topology_graph_3d.hpp"
 #include "drone_city_nav/observation_frontier.hpp"
+#include "drone_city_nav/regional_topology_graph_3d.hpp"
 #include "drone_city_nav/topological_exploration_memory_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -37,19 +37,19 @@ enum class TopologicalBacktrackReason3D : std::uint8_t {
 };
 
 struct TopologicalRouteStep3D {
-  ContractedTopologyEdgeId3D contracted_edge_id{};
+  RegionalTopologyEdgeId3D regional_edge_id{};
   IncrementalTopologyNodeId from{};
   IncrementalTopologyNodeId to{};
   std::vector<DirectedTopologyEdge3D> directed_source_edges;
   double length_m{0.0};
   double repeated_distance_m{0.0};
   std::size_t traversal_count{0U};
-  std::uint64_t supporting_revision{0U};
+  std::uint64_t validated_through_revision{0U};
 };
 
 struct TopologicalDeadEndConclusion3D {
   DirectedTopologyEdge3D attempted_direction{};
-  std::uint64_t supporting_revision{0U};
+  std::uint64_t validated_through_revision{0U};
 };
 
 struct IncrementalTopologicalPlan3D {
@@ -58,7 +58,8 @@ struct IncrementalTopologicalPlan3D {
   IncrementalTopologicalRoutePurpose3D purpose{
       IncrementalTopologicalRoutePurpose3D::kMissionTransit};
   TopologicalBacktrackReason3D backtrack_reason{TopologicalBacktrackReason3D::kNone};
-  std::uint64_t graph_revision{0U};
+  std::uint64_t planned_on_revision{0U};
+  std::uint64_t validated_through_revision{0U};
   IncrementalTopologyNodeId start_node{};
   IncrementalTopologyNodeId target_node{};
   std::optional<IncrementalTopologyNodeId> goal_node;
@@ -79,8 +80,6 @@ struct IncrementalTopologicalPlan3D {
   std::size_t goal_directed_reachable_frontier_count{0U};
   ObservationFrontierId maximum_goal_progress_frontier_id{};
   double maximum_reachable_frontier_goal_progress_m{0.0};
-  std::size_t revalidated_frontier_count{0U};
-  std::size_t retired_frontier_count{0U};
   std::size_t fresh_frontier_candidate_count{0U};
   std::size_t fresh_frontier_evaluated_count{0U};
   std::size_t fresh_frontier_discovered_count{0U};
@@ -109,18 +108,13 @@ struct IncrementalTopologicalPlanner3DConfig {
   // it is the only viable way to expose new free space.
   double frontier_completion_penalty{48.0};
   double coverage_penalty_weight{1.0};
-  double fresh_frontier_search_radius_m{20.0};
   double maximum_fresh_frontier_anchor_distance_m{20.0};
   // A frontier destination must extend beyond the terminal-control
   // neighbourhood of the current vehicle state. This preserves finite-path
   // stopping semantics without turning already-reached observations into
   // repeated sub-metre missions.
   double minimum_observation_target_displacement_m{2.0};
-  std::size_t fresh_frontier_cell_stride{2U};
   std::size_t maximum_fresh_frontier_evaluations{128U};
-  // Revalidate only the best graph candidates synchronously. The graph worker
-  // owns broad refreshes from dirty occupancy chunks.
-  std::size_t maximum_graph_frontier_revalidations{16U};
 };
 
 class IncrementalTopologicalPlanner3D {

@@ -41,7 +41,8 @@ public:
   IncrementalTopologicalNavigation3D(
       const IncrementalTopologyGraph3DConfig& graph_config = {},
       const IncrementalTopologicalPlanner3DConfig& planner_config = {},
-      const TopologicalExplorationMemory3DConfig& memory_config = {});
+      const TopologicalExplorationMemory3DConfig& memory_config = {},
+      const SensorObservabilityConfig& observability = {});
 
   [[nodiscard]] IncrementalTopologicalWorldUpdate3D updateObserved(
       const ObservedOccupancyGrid3D& occupancy, std::uint64_t producer_instance_id,
@@ -60,7 +61,7 @@ public:
                const Point3& mission_goal) const;
   [[nodiscard]] IncrementalTopologicalNavigationObservation3D observePosition(
       const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-      const Point3& position);
+      const Point3& position, const ObservedOccupancyGrid3D* occupancy = nullptr);
   [[nodiscard]] IncrementalTopologicalPlanCommit3D
   commitAcceptedPlan(const IncrementalTopologicalPlan3D& plan);
   void rejectObservationFrontier(ObservationFrontierId frontier_id);

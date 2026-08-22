@@ -18,8 +18,8 @@ std::size_t IncrementalTopologyEdgeIdHash::operator()(
   return std::hash<std::uint64_t>{}(id.value);
 }
 
-std::size_t IncrementalTopologyTileIndex3DHash::operator()(
-    const IncrementalTopologyTileIndex3D index) const noexcept {
+std::size_t IncrementalTopologyBlockIndex3DHash::operator()(
+    const IncrementalTopologyBlockIndex3D index) const noexcept {
   std::uint64_t hash{incremental_topology_detail::kFnvOffset};
   incremental_topology_detail::hashInteger(hash, index.x);
   incremental_topology_detail::hashInteger(hash, index.y);
@@ -29,16 +29,14 @@ std::size_t IncrementalTopologyTileIndex3DHash::operator()(
 
 bool incrementalTopologyGraph3DConfigIsValid(
     const IncrementalTopologyGraph3DConfig& config) noexcept {
-  return config.tile_size_cells > 0 && config.coarse_sample_stride_cells > 0 &&
+  return config.block_size_cells > 0 && config.coarse_sample_stride_cells > 0 &&
          config.refined_sample_stride_cells > 0 &&
          config.refined_sample_stride_cells <= config.coarse_sample_stride_cells &&
-         config.coarse_sample_stride_cells <= config.tile_size_cells &&
+         config.coarse_sample_stride_cells <= config.block_size_cells &&
          config.coarse_sample_stride_cells % config.refined_sample_stride_cells == 0 &&
-         config.maximum_observed_tiles_per_update > 0U &&
-         config.minimum_oldest_tiles_per_update <=
-             config.maximum_observed_tiles_per_update &&
-         config.maximum_frontier_evaluations_per_component > 0U &&
-         config.maximum_frontiers_per_component > 0U &&
+         config.maximum_observed_blocks_per_update > 0U &&
+         config.minimum_oldest_blocks_per_update <=
+             config.maximum_observed_blocks_per_update &&
          std::isfinite(config.footprint.radius_m) &&
          std::isfinite(config.footprint.lower_extent_m) &&
          std::isfinite(config.footprint.upper_extent_m) &&
@@ -47,8 +45,7 @@ bool incrementalTopologyGraph3DConfigIsValid(
          config.footprint.upper_extent_m >= 0.0 &&
          config.footprint.perimeter_samples > 0U &&
          config.footprint.radial_rings > 0U && config.footprint.axial_samples > 0U &&
-         config.footprint.sweep_step_m > 0.0 &&
-         sensorObservabilityConfigIsValid(config.observability);
+         config.footprint.sweep_step_m > 0.0;
 }
 
 } // namespace drone_city_nav

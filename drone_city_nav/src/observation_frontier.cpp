@@ -416,6 +416,96 @@ hasSupportedUnknownBoundaryImpl(const ObservedOccupancyGrid3D& occupancy,
   return false;
 }
 
+struct BoundaryCandidate {
+  GridIndex3D cell{};
+  ObservationFrontierId stable_id{};
+  double goal_distance_m{0.0};
+  std::uint64_t sampling_rank{0U};
+};
+
+[[nodiscard]] bool finitePoint(const Point3& point) noexcept {
+  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
+}
+
+[[nodiscard]] std::optional<BoundaryCandidate>
+makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3D cell,
+                      const std::uint64_t map_revision,
+                      const SensorObservabilityConfig& config,
+                      const std::optional<Point3> mission_goal) {
+  if (!occupancy.contains(cell) || !occupancy.isKnownFree(cell) ||
+      !observationPoseHasSupportedUnknownBoundary(occupancy, cell, config)) {
+    return std::nullopt;
+  }
+  const Point3 center = occupancy.cellCenter(cell);
+  // A raw boundary cell is only a possible sensor viewpoint. Validate the
+  // complete physical footprint before spending the bounded ray budget on it.
+  if (!validateRawFootprintAt(occupancy, center, FootprintBodyAxis{}, config.footprint)
+           .accepted()) {
+    return std::nullopt;
+  }
+  const ObservationFrontierId stable_id = makeCellId(occupancy, center);
+  return BoundaryCandidate{
+      .cell = cell,
+      .stable_id = stable_id,
+      .goal_distance_m =
+          mission_goal.has_value() ? distance3D(center, *mission_goal) : 0.0,
+      .sampling_rank = revisionRotatedRank(stable_id.value, map_revision),
+  };
+}
+
+[[nodiscard]] ObservationFrontierDiscovery evaluateBoundaryCandidates(
+    const ObservedOccupancyGrid3D& occupancy, const std::uint64_t map_revision,
+    const SensorObservabilityConfig& config,
+    std::vector<BoundaryCandidate> boundary_candidates,
+    const std::size_t sampled_free_voxels, const std::size_t maximum_evaluations) {
+  ObservationFrontierDiscovery result;
+  result.sampled_free_voxels = sampled_free_voxels;
+  result.boundary_candidates = boundary_candidates.size();
+  result.evaluation_budget_exhausted = boundary_candidates.size() > maximum_evaluations;
+  // Goal distance is only a budget-ordering term. Every reachable candidate
+  // remains eligible as map revisions rotate the deterministic tie-breaker.
+  std::ranges::sort(boundary_candidates, [](const BoundaryCandidate& lhs,
+                                            const BoundaryCandidate& rhs) {
+    return std::tuple{lhs.goal_distance_m, lhs.sampling_rank, lhs.stable_id.value,
+                      lhs.cell.z,          lhs.cell.y,        lhs.cell.x} <
+           std::tuple{rhs.goal_distance_m, rhs.sampling_rank, rhs.stable_id.value,
+                      rhs.cell.z,          rhs.cell.y,        rhs.cell.x};
+  });
+  const std::size_t evaluation_count =
+      std::min(boundary_candidates.size(), maximum_evaluations);
+  std::unordered_map<std::uint64_t, ObservationFrontier> frontier_by_id;
+  for (std::size_t index = 0U; index < evaluation_count; ++index) {
+    ++result.evaluated_candidates;
+    const BoundaryCandidate& candidate = boundary_candidates[index];
+    result.evaluation_sample_fingerprint ^=
+        candidate.stable_id.value + 0x9e3779b97f4a7c15ULL +
+        (result.evaluation_sample_fingerprint << 6U) +
+        (result.evaluation_sample_fingerprint >> 2U);
+    ObservationFrontierSetEvaluation evaluation = evaluateObservationFrontiers(
+        occupancy, occupancy.cellCenter(candidate.cell), map_revision, config);
+    const std::size_t status_index =
+        static_cast<std::size_t>(evaluation.evidence.status);
+    if (status_index < result.evaluation_status_counts.size()) {
+      ++result.evaluation_status_counts.at(status_index);
+    }
+    for (const ObservationFrontier& frontier : evaluation.frontiers) {
+      auto [found, inserted] = frontier_by_id.try_emplace(frontier.id.value, frontier);
+      if (!inserted && betterFrontierRepresentative(frontier, found->second)) {
+        found->second = frontier;
+      }
+    }
+  }
+  result.frontiers.reserve(frontier_by_id.size());
+  for (auto& [id, frontier] : frontier_by_id) {
+    static_cast<void>(id);
+    result.frontiers.push_back(frontier);
+  }
+  std::ranges::sort(result.frontiers, {}, [](const ObservationFrontier& frontier) {
+    return frontier.id.value;
+  });
+  return result;
+}
+
 } // namespace
 
 bool observationPoseHasSupportedUnknownBoundary(
@@ -581,7 +671,7 @@ ObservationFrontierSetEvaluation evaluateObservationFrontiers(
   result.frontiers.reserve(frontier_by_id.size());
   for (auto& [id, frontier] : frontier_by_id) {
     static_cast<void>(id);
-    result.frontiers.push_back(std::move(frontier));
+    result.frontiers.push_back(frontier);
   }
   std::ranges::sort(result.frontiers,
                     [](const ObservationFrontier& lhs, const ObservationFrontier& rhs) {
@@ -608,14 +698,13 @@ ObservationFrontierDiscovery discoverObservationFrontiers(
     const SensorObservabilityConfig& config, const std::size_t cell_stride,
     const std::size_t maximum_evaluations,
     const std::optional<ObservationFrontierDiscoveryRegion> region) {
-  ObservationFrontierDiscovery result;
   if (cell_stride == 0U || maximum_evaluations == 0U ||
+      !sensorObservabilityConfigIsValid(config) ||
       (region.has_value() &&
-       (!std::isfinite(region->center.x) || !std::isfinite(region->center.y) ||
-        !std::isfinite(region->center.z) ||
-        !std::isfinite(region->maximum_distance_m) ||
-        !(region->maximum_distance_m > 0.0)))) {
-    return result;
+       (!finitePoint(region->center) || !std::isfinite(region->maximum_distance_m) ||
+        !(region->maximum_distance_m > 0.0) ||
+        (region->mission_goal.has_value() && !finitePoint(*region->mission_goal))))) {
+    return {};
   }
 
   using ChunkEntry = std::pair<OccupancyChunkIndex3D, const ObservedOccupancyChunk3D*>;
@@ -628,14 +717,8 @@ ObservationFrontierDiscovery discoverObservationFrontiers(
     return std::tuple{entry.first.z, entry.first.y, entry.first.x};
   });
 
-  struct BoundaryCandidate {
-    GridIndex3D cell{};
-    ObservationFrontierId stable_id{};
-    double goal_distance_m{0.0};
-    std::uint64_t sampling_rank{0U};
-  };
-
   std::vector<BoundaryCandidate> boundary_candidates;
+  std::size_t sampled_free_voxels = 0U;
 
   for (const auto& [chunk_index, chunk] : chunks) {
     for (std::size_t bit_index = 0U; bit_index < OccupancyGrid3D::kVoxelsPerChunk;
@@ -666,80 +749,47 @@ ObservationFrontierDiscovery discoverObservationFrontiers(
           distance3D(center, region->center) > region->maximum_distance_m) {
         continue;
       }
-      ++result.sampled_free_voxels;
-      if (!observationPoseHasSupportedUnknownBoundary(occupancy, cell, config)) {
-        continue;
+      ++sampled_free_voxels;
+      if (std::optional<BoundaryCandidate> candidate = makeBoundaryCandidate(
+              occupancy, cell, map_revision, config,
+              region.has_value() ? region->mission_goal : std::nullopt)) {
+        boundary_candidates.push_back(*candidate);
       }
-      // A boundary cell only identifies where another observation could be
-      // useful. It is not necessarily a flight-safe observation pose: its
-      // footprint may already overlap a wall or extend into unobserved space.
-      // Filter it here with the same full 3D contract used by route execution
-      // so a bounded discovery budget is spent exclusively on executable
-      // candidates.
-      const SweptFootprintResult footprint = validateRawFootprintAt(
-          occupancy, center, FootprintBodyAxis{}, config.footprint);
-      if (!footprint.accepted()) {
-        continue;
-      }
-      const ObservationFrontierId stable_id = makeCellId(occupancy, center);
-      boundary_candidates.push_back(BoundaryCandidate{
-          .cell = cell,
-          .stable_id = stable_id,
-          .goal_distance_m = region.has_value() && region->mission_goal.has_value()
-                                 ? distance3D(center, *region->mission_goal)
-                                 : 0.0,
-          .sampling_rank = revisionRotatedRank(stable_id.value, map_revision)});
     }
   }
+  return evaluateBoundaryCandidates(occupancy, map_revision, config,
+                                    std::move(boundary_candidates), sampled_free_voxels,
+                                    maximum_evaluations);
+}
 
-  result.boundary_candidates = boundary_candidates.size();
-  result.evaluation_budget_exhausted = boundary_candidates.size() > maximum_evaluations;
-  // A bounded evaluation budget first favours locations that can advance the
-  // mission. The stable hash keeps equally useful candidates distributed over
-  // repeated map revisions instead of repeatedly exhausting the budget on one
-  // local boundary. Goal distance is a soft ranking term: candidates in every
-  // direction stay eligible and can be selected once forward frontiers are
-  // exhausted or invalidated.
-  std::ranges::sort(boundary_candidates, [](const BoundaryCandidate& lhs,
-                                            const BoundaryCandidate& rhs) {
-    return std::tuple{lhs.goal_distance_m, lhs.sampling_rank, lhs.stable_id.value,
-                      lhs.cell.z,          lhs.cell.y,        lhs.cell.x} <
-           std::tuple{rhs.goal_distance_m, rhs.sampling_rank, rhs.stable_id.value,
-                      rhs.cell.z,          rhs.cell.y,        rhs.cell.x};
-  });
-  const std::size_t evaluation_count =
-      std::min(boundary_candidates.size(), maximum_evaluations);
-  std::unordered_map<std::uint64_t, ObservationFrontier> frontier_by_id;
-  for (std::size_t index = 0U; index < evaluation_count; ++index) {
-    ++result.evaluated_candidates;
-    const BoundaryCandidate& candidate = boundary_candidates[index];
-    result.evaluation_sample_fingerprint ^=
-        candidate.stable_id.value + 0x9e3779b97f4a7c15ULL +
-        (result.evaluation_sample_fingerprint << 6U) +
-        (result.evaluation_sample_fingerprint >> 2U);
-    ObservationFrontierSetEvaluation evaluation = evaluateObservationFrontiers(
-        occupancy, occupancy.cellCenter(candidate.cell), map_revision, config);
-    const std::size_t status_index =
-        static_cast<std::size_t>(evaluation.evidence.status);
-    if (status_index < result.evaluation_status_counts.size()) {
-      ++result.evaluation_status_counts[status_index];
+ObservationFrontierDiscovery discoverObservationFrontiersAtCells(
+    const ObservedOccupancyGrid3D& occupancy, const std::uint64_t map_revision,
+    const SensorObservabilityConfig& config,
+    const std::span<const GridIndex3D> candidate_cells,
+    const std::size_t maximum_evaluations, const std::optional<Point3> mission_goal) {
+  if (maximum_evaluations == 0U || !sensorObservabilityConfigIsValid(config) ||
+      (mission_goal.has_value() && !finitePoint(*mission_goal))) {
+    return {};
+  }
+  std::unordered_set<GridIndex3D, GridIndex3DHash> unique_cells;
+  unique_cells.reserve(candidate_cells.size());
+  std::vector<BoundaryCandidate> boundary_candidates;
+  boundary_candidates.reserve(candidate_cells.size());
+  std::size_t sampled_free_voxels = 0U;
+  for (const GridIndex3D cell : candidate_cells) {
+    if (!unique_cells.insert(cell).second || !occupancy.contains(cell) ||
+        !occupancy.isKnownFree(cell)) {
+      continue;
     }
-    for (const ObservationFrontier& frontier : evaluation.frontiers) {
-      auto [found, inserted] = frontier_by_id.try_emplace(frontier.id.value, frontier);
-      if (!inserted && betterFrontierRepresentative(frontier, found->second)) {
-        found->second = frontier;
-      }
+    ++sampled_free_voxels;
+    if (std::optional<BoundaryCandidate> candidate = makeBoundaryCandidate(
+            occupancy, cell, map_revision, config, mission_goal)) {
+      boundary_candidates.push_back(*candidate);
     }
   }
-  result.frontiers.reserve(frontier_by_id.size());
-  for (auto& [id, frontier] : frontier_by_id) {
-    static_cast<void>(id);
-    result.frontiers.push_back(std::move(frontier));
-  }
-  std::ranges::sort(result.frontiers, {}, [](const ObservationFrontier& frontier) {
-    return frontier.id.value;
-  });
-  return result;
+  return evaluateBoundaryCandidates(occupancy, map_revision, config,
+                                    std::move(boundary_candidates), sampled_free_voxels,
+                                    maximum_evaluations);
 }
 
 const char*

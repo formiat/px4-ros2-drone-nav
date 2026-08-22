@@ -165,7 +165,7 @@ add_library(
   src/cooperative_space_time.cpp
   src/cooperative_traffic.cpp
   src/cooperative_traffic_mission.cpp
-  src/contracted_topology_graph_3d.cpp
+  src/regional_topology_graph_3d.cpp
   src/collision_voxelizer.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
   src/debug_image.cpp
@@ -189,11 +189,12 @@ add_library(
   src/incremental_topological_navigation_3d.cpp
   src/incremental_topological_lattice_adapter_3d.cpp
   src/incremental_topological_planner_3d.cpp
-  src/incremental_topology_frontiers_3d.cpp
   src/incremental_topology_graph_3d.cpp
   src/incremental_topology_graph_3d_snapshot.cpp
-  src/incremental_topology_tile_scheduler_3d.cpp
+  src/incremental_topology_block_scheduler_3d.cpp
+  src/incremental_topology_observed_blocks_3d.cpp
   src/incremental_topology_graph_3d_types.cpp
+  src/reachable_observation_domain_3d.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
@@ -1055,19 +1056,25 @@ if(BUILD_TESTING)
   target_link_libraries(incremental_topology_graph_3d_test drone_city_nav_core)
   enable_project_warnings(incremental_topology_graph_3d_test)
 
-  ament_add_gtest(incremental_topology_tile_scheduler_3d_test
-                  tests/incremental_topology_tile_scheduler_3d_test.cpp)
-  target_compile_features(incremental_topology_tile_scheduler_3d_test
-                          PRIVATE cxx_std_20)
-  target_link_libraries(incremental_topology_tile_scheduler_3d_test
-                        drone_city_nav_core)
-  enable_project_warnings(incremental_topology_tile_scheduler_3d_test)
+  ament_add_gtest(reachable_observation_domain_3d_test
+                  tests/reachable_observation_domain_3d_test.cpp)
+  target_compile_features(reachable_observation_domain_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(reachable_observation_domain_3d_test drone_city_nav_core)
+  enable_project_warnings(reachable_observation_domain_3d_test)
 
-  ament_add_gtest(contracted_topology_graph_3d_test
-                  tests/contracted_topology_graph_3d_test.cpp)
-  target_compile_features(contracted_topology_graph_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(contracted_topology_graph_3d_test drone_city_nav_core)
-  enable_project_warnings(contracted_topology_graph_3d_test)
+  ament_add_gtest(incremental_topology_block_scheduler_3d_test
+                  tests/incremental_topology_block_scheduler_3d_test.cpp)
+  target_compile_features(incremental_topology_block_scheduler_3d_test
+                          PRIVATE cxx_std_20)
+  target_link_libraries(incremental_topology_block_scheduler_3d_test
+                        drone_city_nav_core)
+  enable_project_warnings(incremental_topology_block_scheduler_3d_test)
+
+  ament_add_gtest(regional_topology_graph_3d_test
+                  tests/regional_topology_graph_3d_test.cpp)
+  target_compile_features(regional_topology_graph_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(regional_topology_graph_3d_test drone_city_nav_core)
+  enable_project_warnings(regional_topology_graph_3d_test)
 
   ament_add_gtest(incremental_topological_planner_3d_test
                   tests/incremental_topological_planner_3d_test.cpp)

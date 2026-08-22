@@ -64,12 +64,12 @@ public:
       const TopologicalExplorationMemory3DConfig& config = {});
 
   void recordTraversal(const DirectedTopologyEdge3D& edge,
-                       std::uint64_t supporting_revision, double distance_m);
+                       std::uint64_t validated_through_revision, double distance_m);
   void recordDeadEnd(const DirectedTopologyEdge3D& edge,
-                     std::uint64_t supporting_revision);
+                     std::uint64_t validated_through_revision);
   [[nodiscard]] DirectedTopologyEdgeEvidence3D
   evidence(const DirectedTopologyEdge3D& edge,
-           std::uint64_t current_supporting_revision) const noexcept;
+           std::uint64_t current_validated_through_revision) const noexcept;
 
   void recordVisited(const Point3& position, std::uint64_t revision);
   void recordObserved(const Point3& position, std::uint64_t revision);

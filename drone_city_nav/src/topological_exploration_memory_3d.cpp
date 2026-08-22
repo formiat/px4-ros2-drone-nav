@@ -71,43 +71,44 @@ TopologicalExplorationMemory3D::TopologicalExplorationMemory3D(
 }
 
 void TopologicalExplorationMemory3D::recordTraversal(
-    const DirectedTopologyEdge3D& edge, const std::uint64_t supporting_revision,
+    const DirectedTopologyEdge3D& edge, const std::uint64_t validated_through_revision,
     const double distance_m) {
   if (edge.edge_id.value == 0U || edge.from.value == 0U || edge.to.value == 0U ||
-      edge.from == edge.to || supporting_revision == 0U || !std::isfinite(distance_m) ||
-      distance_m < 0.0) {
+      edge.from == edge.to || validated_through_revision == 0U ||
+      !std::isfinite(distance_m) || distance_m < 0.0) {
     return;
   }
   DirectedTopologyEdgeEvidence3D& state = edge_evidence_[edge];
   ++state.traversal_count;
   state.traversed_distance_m += distance_m;
-  state.last_traversal_revision = supporting_revision;
-  state.conclusion_revision = supporting_revision;
+  state.last_traversal_revision = validated_through_revision;
+  state.conclusion_revision = validated_through_revision;
   state.result = TopologicalExplorationResult3D::kTraversed;
   recordTrailTransition(edge.from, edge.to);
 }
 
 void TopologicalExplorationMemory3D::recordDeadEnd(
-    const DirectedTopologyEdge3D& edge, const std::uint64_t supporting_revision) {
+    const DirectedTopologyEdge3D& edge,
+    const std::uint64_t validated_through_revision) {
   if (edge.edge_id.value == 0U || edge.from.value == 0U || edge.to.value == 0U ||
-      edge.from == edge.to || supporting_revision == 0U) {
+      edge.from == edge.to || validated_through_revision == 0U) {
     return;
   }
   DirectedTopologyEdgeEvidence3D& state = edge_evidence_[edge];
-  state.conclusion_revision = supporting_revision;
+  state.conclusion_revision = validated_through_revision;
   state.result = TopologicalExplorationResult3D::kDeadEnd;
 }
 
 DirectedTopologyEdgeEvidence3D TopologicalExplorationMemory3D::evidence(
     const DirectedTopologyEdge3D& edge,
-    const std::uint64_t current_supporting_revision) const noexcept {
+    const std::uint64_t current_validated_through_revision) const noexcept {
   const auto found = edge_evidence_.find(edge);
   if (found == edge_evidence_.end()) {
     return {};
   }
   DirectedTopologyEdgeEvidence3D result = found->second;
   if (result.result == TopologicalExplorationResult3D::kDeadEnd &&
-      current_supporting_revision > result.conclusion_revision) {
+      current_validated_through_revision > result.conclusion_revision) {
     result.result = TopologicalExplorationResult3D::kUnknown;
     result.conclusion_revision = 0U;
   }

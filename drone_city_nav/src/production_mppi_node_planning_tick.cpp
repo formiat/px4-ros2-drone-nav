@@ -119,7 +119,7 @@ void ProductionMppiNode::planningTick() {
   if (!engine_->ready()) {
     return;
   }
-  maybeObserveIncrementalTopology3D(esdf->topological_graph, navigation, now_ns);
+  maybeObserveIncrementalTopology3D(*esdf, navigation, now_ns);
   const bool uses_3d_route =
       use_static_map_ ||
       no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;

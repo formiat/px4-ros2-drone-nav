@@ -9,10 +9,10 @@
 
 namespace drone_city_nav {
 
-[[nodiscard]] std::vector<IncrementalTopologyTileIndex3D>
-selectIncrementalTopologyTiles3D(
-    std::span<const IncrementalTopologyTileIndex3D> pending_tiles,
-    std::size_t maximum_tiles, const GridBounds3D& bounds, int tile_size_cells,
+[[nodiscard]] std::vector<IncrementalTopologyBlockIndex3D>
+selectIncrementalTopologyBlocks3D(
+    std::span<const IncrementalTopologyBlockIndex3D> pending_blocks,
+    std::size_t maximum_blocks, const GridBounds3D& bounds, int block_size_cells,
     const std::optional<IncrementalTopologyBuildPriority3D>& priority);
 
 } // namespace drone_city_nav
