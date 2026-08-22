@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <optional>
 #include <utility>
 
@@ -11,6 +10,8 @@
 namespace drone_city_nav {
 namespace {
 
+using swept_footprint_detail::makeStatusResult;
+using swept_footprint_detail::mergeEvidence;
 using swept_footprint_detail::normalized;
 
 [[nodiscard]] double squaredDistanceToBox(const Point3& point, const Point3& minimum,
@@ -332,8 +333,7 @@ candidateRemainsInsideLaunchSupportEnvelope(const LaunchSupportContact3D& contac
 }
 
 [[nodiscard]] SweptFootprintResult validRawFootprint() noexcept {
-  return {.status = SweptFootprintStatus::kValid,
-          .minimum_clearance_m = std::numeric_limits<double>::infinity()};
+  return {.status = SweptFootprintStatus::kValid};
 }
 
 [[nodiscard]] bool pointIntersectsBody(const Point3& point, const Point3& center,
@@ -362,8 +362,7 @@ validateRawFootprintAt2D(const Occupancy& occupancy, const Point3& position,
     const std::optional<GridIndex> cell =
         occupancy.worldToCell(Point2{position.x, position.y});
     return cell.has_value() && occupancy.isOccupied(*cell)
-               ? SweptFootprintResult{.status = SweptFootprintStatus::kRawCollision,
-                                      .failure_point = position}
+               ? makeStatusResult(SweptFootprintStatus::kRawCollision, position)
                : validRawFootprint();
   }
   const GridBounds& bounds = occupancy.bounds();
@@ -393,8 +392,8 @@ validateRawFootprintAt2D(const Occupancy& occupancy, const Point3& position,
       const double dx = position.x - nearest_x;
       const double dy = position.y - nearest_y;
       if (dx * dx + dy * dy <= radius_squared) {
-        return {.status = SweptFootprintStatus::kRawCollision,
-                .failure_point = Point3{nearest_x, nearest_y, position.z}};
+        return makeStatusResult(SweptFootprintStatus::kRawCollision,
+                                Point3{nearest_x, nearest_y, position.z});
       }
     }
   }
@@ -412,20 +411,17 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
     const std::optional<GridIndex3D> cell = occupancy.worldToCell(position);
     if (!cell.has_value()) {
       if constexpr (RequireKnownFree) {
-        return {.status = SweptFootprintStatus::kUnknownSpace,
-                .failure_point = position};
+        return makeStatusResult(SweptFootprintStatus::kUnknownSpace, position);
       }
       return validRawFootprint();
     }
     if constexpr (RequireKnownFree) {
       if (!occupancy.isKnown(*cell)) {
-        return {.status = SweptFootprintStatus::kUnknownSpace,
-                .failure_point = position};
+        return makeStatusResult(SweptFootprintStatus::kUnknownSpace, position);
       }
     }
     return occupancy.isOccupied(*cell)
-               ? SweptFootprintResult{.status = SweptFootprintStatus::kRawCollision,
-                                      .failure_point = position}
+               ? makeStatusResult(SweptFootprintStatus::kRawCollision, position)
                : validRawFootprint();
   }
 
@@ -461,12 +457,17 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
   const int requested_maximum_z =
       maximumCell(std::max(lower.z, upper.z) + radial_extent.z, bounds.origin_z,
                   bounds.resolution_m);
+  SweptFootprintResult result = validRawFootprint();
   if constexpr (RequireKnownFree) {
     if (requested_minimum_x < 0 || requested_minimum_y < 0 || requested_minimum_z < 0 ||
         requested_maximum_x >= bounds.width_cells ||
         requested_maximum_y >= bounds.height_cells ||
         requested_maximum_z >= bounds.depth_cells) {
-      return {.status = SweptFootprintStatus::kOutsideGrid, .failure_point = position};
+      if constexpr (!PreserveFailureCategory) {
+        return makeStatusResult(SweptFootprintStatus::kOutsideGrid, position);
+      }
+      mergeEvidence(result,
+                    makeStatusResult(SweptFootprintStatus::kOutsideGrid, position));
     }
   }
   const int minimum_x = std::max(0, requested_minimum_x);
@@ -476,7 +477,6 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
   const int minimum_z = std::max(0, requested_minimum_z);
   const int maximum_z = std::min(bounds.depth_cells - 1, requested_maximum_z);
   const double radius_squared = radius_m * radius_m;
-  std::optional<Point3> first_unknown_point;
   for (int z = minimum_z; z <= maximum_z; ++z) {
     for (int y = minimum_y; y <= maximum_y; ++y) {
       for (int x = minimum_x; x <= maximum_x; ++x) {
@@ -516,12 +516,11 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
                !candidateIntersectionCoveredBySeed(cell_minimum, cell_maximum, position,
                                                    axis, config, *free_space_seed))) {
             if constexpr (!PreserveFailureCategory) {
-              return {.status = SweptFootprintStatus::kUnknownSpace,
-                      .failure_point = occupancy.cellCenter(cell)};
+              return makeStatusResult(SweptFootprintStatus::kUnknownSpace,
+                                      occupancy.cellCenter(cell));
             }
-            if (!first_unknown_point.has_value()) {
-              first_unknown_point = occupancy.cellCenter(cell);
-            }
+            mergeEvidence(result, makeStatusResult(SweptFootprintStatus::kUnknownSpace,
+                                                   occupancy.cellCenter(cell)));
           }
         }
         const bool occupied = [&]() noexcept {
@@ -534,17 +533,14 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
           if (launch_support_cell_allowed) {
             continue;
           }
-          return {.status = SweptFootprintStatus::kRawCollision,
-                  .failure_point = occupancy.cellCenter(cell)};
+          mergeEvidence(result, makeStatusResult(SweptFootprintStatus::kRawCollision,
+                                                 occupancy.cellCenter(cell)));
+          return result;
         }
       }
     }
   }
-  if (first_unknown_point.has_value()) {
-    return {.status = SweptFootprintStatus::kUnknownSpace,
-            .failure_point = *first_unknown_point};
-  }
-  return validRawFootprint();
+  return result;
 }
 
 template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy>
@@ -558,6 +554,7 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
   const double step_m = std::max(1.0e-3, config.sweep_step_m);
   const std::size_t samples =
       std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
+  SweptFootprintResult aggregate = validRawFootprint();
   for (std::size_t sample = 0U; sample <= samples; ++sample) {
     const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
     const SweptFootprintResult result =
@@ -571,11 +568,18 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
                 std::lerp(first_body_axis.y, second_body_axis.y, ratio),
                 std::lerp(first_body_axis.z, second_body_axis.z, ratio)}),
             config, free_space_seed, launch_support_contact);
-    if (!result.accepted()) {
-      return result;
+    if constexpr (!PreserveFailureCategory) {
+      if (!result.accepted()) {
+        return result;
+      }
+    } else {
+      mergeEvidence(aggregate, result);
+      if (result.evidence.raw_collision) {
+        return aggregate;
+      }
     }
   }
-  return validRawFootprint();
+  return aggregate;
 }
 
 } // namespace
@@ -754,7 +758,7 @@ SweptFootprintResult validateRawPointCloudFootprintAt(
           launchSupportAllowsPoint(*launch_support_contact, point, position)) {
         continue;
       }
-      return {.status = SweptFootprintStatus::kRawCollision, .failure_point = point};
+      return makeStatusResult(SweptFootprintStatus::kRawCollision, point);
     }
   }
   return validRawFootprint();

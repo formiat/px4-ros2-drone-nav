@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstdint>
 #include <limits>
@@ -20,6 +21,7 @@ enum class Lattice3DEdgeEvaluationStatus : std::uint8_t {
 
 struct Lattice3DEdgeEvaluation {
   Lattice3DEdgeEvaluationStatus status{Lattice3DEdgeEvaluationStatus::kInvalidEsdf};
+  SweptFootprintEvidence evidence{};
   double minimum_clearance_m{std::numeric_limits<double>::infinity()};
   double planning_exposure_m{0.0};
   double critical_exposure_m{0.0};

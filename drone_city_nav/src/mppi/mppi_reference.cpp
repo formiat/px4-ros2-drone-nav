@@ -312,19 +312,15 @@ RolloutMetrics simulateReference(
         sweptConfig(footprint, validation_step_m,
                     footprint.clearance_broad_phase_enabled ? risk.preferred_distance_m
                                                             : 0.0F));
-    const bool raw_collision =
-        footprint_result.status == SweptFootprintStatus::kRawCollision ||
-        footprint_result.status == SweptFootprintStatus::kInvalidEsdf;
-    const bool unknown_space =
-        footprint_result.status == SweptFootprintStatus::kUnknownSpace;
-    const float clearance = static_cast<float>(footprint_result.minimum_clearance_m);
-    // In exploratory mode, the 3D map expands while the vehicle flies. A
-    // strict known-free policy remains available for conservative validation.
-    const float effective_clearance = unknown_space && !risk.require_known_free_space
-                                          ? std::numeric_limits<float>::infinity()
-                                          : clearance;
-    metrics.minimum_clearance_m =
-        std::min(metrics.minimum_clearance_m, effective_clearance);
+    const bool raw_collision = footprint_result.evidence.raw_collision ||
+                               footprint_result.evidence.invalid_esdf_exposure;
+    const bool unknown_space = footprint_result.evidence.unknown_exposure;
+    const bool known_clearance = footprint_result.evidence.known_clearance_observed;
+    const float clearance =
+        known_clearance
+            ? static_cast<float>(footprint_result.evidence.minimum_known_clearance_m)
+            : std::numeric_limits<float>::infinity();
+    metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
     const float segment_speed_mps =
         std::hypot(std::hypot(state.vx, state.vy), state.vz);
     const float segment_m = dynamics.dt_s * segment_speed_mps;
@@ -334,23 +330,23 @@ RolloutMetrics simulateReference(
     } else if (unknown_space && risk.require_known_free_space) {
       metrics.unknown_space_violation = true;
       metrics.worst_tier = RiskTier::kCollision;
-    } else if (!unknown_space && clearance < risk.critical_distance_m) {
+    } else if (known_clearance && clearance < risk.critical_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kCritical);
       metrics.critical_exposure_m += segment_m;
       metrics.costs.critical_clearance_proximity_s +=
           dynamics.dt_s *
           criticalClearanceProximitySeverity(clearance, risk.critical_distance_m);
-    } else if (!unknown_space && clearance < risk.preferred_distance_m) {
+    } else if (known_clearance && clearance < risk.preferred_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kPlanning);
       metrics.planning_exposure_m += segment_m;
     }
     metrics.costs.obstacle_approach_m2_s +=
-        dynamics.dt_s * obstacleApproachSeverityM2(
-                            previous_clearance_m, effective_clearance,
-                            segment_speed_mps, dynamics.dt_s, risk.critical_distance_m,
-                            risk.obstacle_approach_response_time_s,
-                            risk.obstacle_approach_deceleration_mps2);
-    previous_clearance_m = effective_clearance;
+        dynamics.dt_s *
+        obstacleApproachSeverityM2(previous_clearance_m, clearance, segment_speed_mps,
+                                   dynamics.dt_s, risk.critical_distance_m,
+                                   risk.obstacle_approach_response_time_s,
+                                   risk.obstacle_approach_deceleration_mps2);
+    previous_clearance_m = clearance;
 
     const float target_distance =
         moving_target.has_value()

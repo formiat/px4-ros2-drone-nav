@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 #include "swept_footprint_internal.hpp"
 
@@ -12,7 +11,11 @@ namespace {
 
 using swept_footprint_detail::bodyPoint;
 using swept_footprint_detail::cross;
+using swept_footprint_detail::makeKnownClearanceResult;
+using swept_footprint_detail::makeStatusResult;
+using swept_footprint_detail::mergeEvidence;
 using swept_footprint_detail::normalized;
+using swept_footprint_detail::subtractKnownClearance;
 
 [[nodiscard]] SweptFootprintResult queryPoint(const mppi::EsdfGrid& grid,
                                               const std::span<const float> esdf_m,
@@ -21,21 +24,36 @@ using swept_footprint_detail::normalized;
       grid, esdf_m, static_cast<float>(query_point.x),
       static_cast<float>(query_point.y), static_cast<float>(query_point.z));
   if (query.status == EsdfQueryStatus::kOutsideGrid) {
-    return {.status = SweptFootprintStatus::kOutsideGrid, .failure_point = query_point};
+    return makeStatusResult(SweptFootprintStatus::kOutsideGrid, query_point);
   }
   if (query.status == EsdfQueryStatus::kUnknownSpace) {
-    return {.status = SweptFootprintStatus::kUnknownSpace,
-            .failure_point = query_point};
+    SweptFootprintResult result =
+        makeStatusResult(SweptFootprintStatus::kUnknownSpace, query_point);
+    result.evidence.outside_grid_exposure =
+        grid.outside_is_unknown &&
+        (query_point.x < static_cast<double>(grid.origin_x_m) ||
+         query_point.y < static_cast<double>(grid.origin_y_m) ||
+         query_point.z < static_cast<double>(grid.origin_z_m) ||
+         query_point.x >= static_cast<double>(grid.origin_x_m) +
+                              static_cast<double>(grid.width) * grid.resolution_m ||
+         query_point.y >= static_cast<double>(grid.origin_y_m) +
+                              static_cast<double>(grid.height) * grid.resolution_m ||
+         (grid.depth > 1 &&
+          query_point.z >= static_cast<double>(grid.origin_z_m) +
+                               static_cast<double>(grid.depth) * grid.resolution_m));
+    return result;
   }
   if (query.status != EsdfQueryStatus::kValid) {
-    return {.status = SweptFootprintStatus::kInvalidEsdf, .failure_point = query_point};
+    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, query_point);
   }
   if (query.raw_occupied) {
-    return {.status = SweptFootprintStatus::kRawCollision,
-            .failure_point = query_point};
+    SweptFootprintResult result =
+        makeStatusResult(SweptFootprintStatus::kRawCollision, query_point);
+    result.evidence.known_clearance_observed = true;
+    result.evidence.minimum_known_clearance_m = 0.0;
+    return result;
   }
-  return {.status = SweptFootprintStatus::kValid,
-          .minimum_clearance_m = query.clearance_m};
+  return makeKnownClearanceResult(query.clearance_m);
 }
 
 [[nodiscard]] SweptFootprintResult
@@ -55,9 +73,12 @@ validatePlanarCircleRawCells(const mppi::EsdfGrid& grid,
       static_cast<double>(grid.height) * static_cast<double>(grid.resolution_m);
   if (minimum_x < static_cast<double>(grid.origin_x_m) || maximum_x > world_maximum_x ||
       minimum_y < static_cast<double>(grid.origin_y_m) || maximum_y > world_maximum_y) {
-    return {.status = grid.outside_is_unknown ? SweptFootprintStatus::kUnknownSpace
-                                              : SweptFootprintStatus::kOutsideGrid,
-            .failure_point = position};
+    SweptFootprintResult boundary =
+        makeStatusResult(grid.outside_is_unknown ? SweptFootprintStatus::kUnknownSpace
+                                                 : SweptFootprintStatus::kOutsideGrid,
+                         position);
+    boundary.evidence.outside_grid_exposure = true;
+    mergeEvidence(result, boundary);
   }
 
   const auto minimumCell = [&](const double coordinate, const double origin) noexcept {
@@ -69,10 +90,12 @@ validatePlanarCircleRawCells(const mppi::EsdfGrid& grid,
                                       static_cast<double>(grid.resolution_m))) -
            1;
   };
-  const int minimum_cell_x = minimumCell(minimum_x, grid.origin_x_m);
-  const int maximum_cell_x = maximumCell(maximum_x, grid.origin_x_m);
-  const int minimum_cell_y = minimumCell(minimum_y, grid.origin_y_m);
-  const int maximum_cell_y = maximumCell(maximum_y, grid.origin_y_m);
+  const int minimum_cell_x = std::max(0, minimumCell(minimum_x, grid.origin_x_m));
+  const int maximum_cell_x =
+      std::min(grid.width - 1, maximumCell(maximum_x, grid.origin_x_m));
+  const int minimum_cell_y = std::max(0, minimumCell(minimum_y, grid.origin_y_m));
+  const int maximum_cell_y =
+      std::min(grid.height - 1, maximumCell(maximum_y, grid.origin_y_m));
   const double radius_squared = radius_m * radius_m;
 
   for (int cell_y = minimum_cell_y; cell_y <= maximum_cell_y; ++cell_y) {
@@ -81,20 +104,23 @@ validatePlanarCircleRawCells(const mppi::EsdfGrid& grid,
           static_cast<std::size_t>(cell_y) * static_cast<std::size_t>(grid.width) +
           static_cast<std::size_t>(cell_x);
       if (index >= esdf_m.size()) {
-        return {.status = SweptFootprintStatus::kInvalidEsdf,
-                .failure_point = position};
+        mergeEvidence(result,
+                      makeStatusResult(SweptFootprintStatus::kInvalidEsdf, position));
+        continue;
       }
       const float center_distance_m = esdf_m[index];
       if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
-        return {.status = SweptFootprintStatus::kUnknownSpace,
-                .failure_point = position};
+        mergeEvidence(result,
+                      makeStatusResult(SweptFootprintStatus::kUnknownSpace, position));
+        continue;
       }
       if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {
         continue;
       }
       if (!std::isfinite(center_distance_m) || center_distance_m < 0.0F) {
-        return {.status = SweptFootprintStatus::kInvalidEsdf,
-                .failure_point = position};
+        mergeEvidence(result,
+                      makeStatusResult(SweptFootprintStatus::kInvalidEsdf, position));
+        continue;
       }
       if (center_distance_m != 0.0F) {
         continue;
@@ -115,21 +141,16 @@ validatePlanarCircleRawCells(const mppi::EsdfGrid& grid,
       const double dx = position.x - nearest_x;
       const double dy = position.y - nearest_y;
       if (dx * dx + dy * dy <= radius_squared) {
-        return {.status = SweptFootprintStatus::kRawCollision,
-                .failure_point = Point3{nearest_x, nearest_y, position.z},
-                .minimum_clearance_m = 0.0};
+        mergeEvidence(result,
+                      makeStatusResult(SweptFootprintStatus::kRawCollision,
+                                       Point3{nearest_x, nearest_y, position.z}));
+        return result;
       }
     }
   }
 
-  result.minimum_clearance_m = std::max(0.0, result.minimum_clearance_m - radius_m);
+  subtractKnownClearance(result, radius_m);
   return result;
-}
-
-void accumulate(SweptFootprintResult& result,
-                const SweptFootprintResult& query) noexcept {
-  result.minimum_clearance_m =
-      std::min(result.minimum_clearance_m, query.minimum_clearance_m);
 }
 
 [[nodiscard]] SweptFootprintClearanceProfile sampleSweptFootprint(
@@ -143,8 +164,7 @@ void accumulate(SweptFootprintResult& result,
       std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
   const double exposure_per_sample = length_m / static_cast<double>(samples);
   SweptFootprintClearanceProfile profile{
-      .validation = {.status = SweptFootprintStatus::kValid,
-                     .minimum_clearance_m = std::numeric_limits<double>::infinity()}};
+      .validation = {.status = SweptFootprintStatus::kValid}};
   for (std::size_t sample = 0U; sample <= samples; ++sample) {
     const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
     const Point3 position{std::lerp(first.x, second.x, ratio),
@@ -157,18 +177,16 @@ void accumulate(SweptFootprintResult& result,
     });
     const SweptFootprintResult point =
         validateFootprintAt(grid, esdf_m, position, body_axis, config);
-    if (!point.accepted()) {
-      profile.validation = point;
+    mergeEvidence(profile.validation, point);
+    if (point.evidence.raw_collision) {
       return profile;
     }
-    profile.validation.minimum_clearance_m =
-        std::min(profile.validation.minimum_clearance_m, point.minimum_clearance_m);
-    if (sample == 0U) {
+    if (sample == 0U || !point.evidence.known_clearance_observed) {
       continue;
     }
-    if (point.minimum_clearance_m < critical_distance_m) {
+    if (point.evidence.minimum_known_clearance_m < critical_distance_m) {
       profile.critical_exposure_m += exposure_per_sample;
-    } else if (point.minimum_clearance_m < preferred_distance_m) {
+    } else if (point.evidence.minimum_known_clearance_m < preferred_distance_m) {
       profile.planning_exposure_m += exposure_per_sample;
     }
   }
@@ -190,7 +208,7 @@ SweptFootprintResult validateFootprintAt(const mppi::EsdfGrid& grid,
                                          const FootprintBodyAxis& requested_body_axis,
                                          const SweptFootprintConfig& config) noexcept {
   SweptFootprintResult result = queryPoint(grid, esdf_m, position);
-  if (!result.accepted()) {
+  if (result.evidence.raw_collision) {
     return result;
   }
   const double radius_m = std::max(0.0, config.radius_m);
@@ -209,10 +227,12 @@ SweptFootprintResult validateFootprintAt(const mppi::EsdfGrid& grid,
   const double bounding_radius_m =
       std::hypot(radius_m, std::max(std::max(0.0, config.lower_extent_m),
                                     std::max(0.0, config.upper_extent_m)));
-  if (config.safe_clearance_threshold_m > 0.0 &&
-      result.minimum_clearance_m - bounding_radius_m >=
+  if (result.status == SweptFootprintStatus::kValid &&
+      result.evidence.known_clearance_observed &&
+      config.safe_clearance_threshold_m > 0.0 &&
+      result.evidence.minimum_known_clearance_m - bounding_radius_m >=
           config.safe_clearance_threshold_m) {
-    result.minimum_clearance_m -= bounding_radius_m;
+    subtractKnownClearance(result, bounding_radius_m);
     return result;
   }
   const std::size_t axial_samples = std::max<std::size_t>(2U, config.axial_samples);
@@ -227,10 +247,10 @@ SweptFootprintResult validateFootprintAt(const mppi::EsdfGrid& grid,
     const SweptFootprintResult axis_query = queryPoint(
         grid, esdf_m,
         bodyPoint(position, axis, radial_x, radial_y, axial_offset_m, 0.0, 0.0));
-    if (!axis_query.accepted()) {
-      return axis_query;
+    mergeEvidence(result, axis_query);
+    if (axis_query.evidence.raw_collision) {
+      return result;
     }
-    accumulate(result, axis_query);
     for (std::size_t ring = 1U; ring <= radial_rings; ++ring) {
       const double radial_offset_m =
           radius_m * static_cast<double>(ring) / static_cast<double>(radial_rings);
@@ -241,10 +261,10 @@ SweptFootprintResult validateFootprintAt(const mppi::EsdfGrid& grid,
             queryPoint(grid, esdf_m,
                        bodyPoint(position, axis, radial_x, radial_y, axial_offset_m,
                                  radial_offset_m, angle));
-        if (!query.accepted()) {
-          return query;
+        mergeEvidence(result, query);
+        if (query.evidence.raw_collision) {
+          return result;
         }
-        accumulate(result, query);
       }
     }
   }

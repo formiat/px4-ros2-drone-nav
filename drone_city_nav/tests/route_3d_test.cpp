@@ -362,11 +362,13 @@ TEST(Route3DTest, DistinguishesUnknownSpaceFromLocalRoiBoundary) {
                 .status,
             detail::Lattice3DEdgeEvaluationStatus::kUnknownSpace);
   config.require_known_free_space = false;
-  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{1.5, 2.5, 1.5},
-                                          Point3{2.5, 2.5, 1.5},
-                                          Lattice3DRiskStage::kCriticalAllowed, config)
-                .status,
-            detail::Lattice3DEdgeEvaluationStatus::kValid);
+  const detail::Lattice3DEdgeEvaluation optimistic_unknown =
+      detail::evaluateLattice3DEdge(grid, esdf, Point3{1.5, 2.5, 1.5},
+                                    Point3{2.5, 2.5, 1.5},
+                                    Lattice3DRiskStage::kCriticalAllowed, config);
+  EXPECT_EQ(optimistic_unknown.status, detail::Lattice3DEdgeEvaluationStatus::kValid);
+  EXPECT_TRUE(optimistic_unknown.evidence.unknown_exposure);
+  EXPECT_FALSE(optimistic_unknown.evidence.raw_collision);
   EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{4.5, 2.5, 1.5},
                                           Point3{6.5, 2.5, 1.5},
                                           Lattice3DRiskStage::kCriticalAllowed, config)

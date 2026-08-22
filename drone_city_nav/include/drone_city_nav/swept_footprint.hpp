@@ -7,6 +7,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -75,10 +76,19 @@ enum class SweptFootprintStatus {
 [[nodiscard]] const char*
 sweptFootprintStatusName(SweptFootprintStatus status) noexcept;
 
+struct SweptFootprintEvidence {
+  bool raw_collision{false};
+  bool outside_grid_exposure{false};
+  bool unknown_exposure{false};
+  bool invalid_esdf_exposure{false};
+  bool known_clearance_observed{false};
+  double minimum_known_clearance_m{std::numeric_limits<double>::infinity()};
+};
+
 struct SweptFootprintResult {
   SweptFootprintStatus status{SweptFootprintStatus::kInvalidEsdf};
   Point3 failure_point{};
-  double minimum_clearance_m{0.0};
+  SweptFootprintEvidence evidence{};
 
   [[nodiscard]] bool accepted() const noexcept {
     return status == SweptFootprintStatus::kValid;

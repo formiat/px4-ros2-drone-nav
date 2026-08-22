@@ -88,31 +88,39 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
     switch (footprint.status) {
       case SweptFootprintStatus::kOutsideGrid:
         return Lattice3DEdgeEvaluation{.status =
-                                           Lattice3DEdgeEvaluationStatus::kOutsideGrid};
+                                           Lattice3DEdgeEvaluationStatus::kOutsideGrid,
+                                       .evidence = footprint.evidence};
       case SweptFootprintStatus::kUnknownSpace:
-        if (!config.require_known_free_space) {
+        if (config.require_known_free_space) {
           return Lattice3DEdgeEvaluation{
-              .status = Lattice3DEdgeEvaluationStatus::kValid,
-              .minimum_clearance_m = std::numeric_limits<double>::infinity()};
+              .status = Lattice3DEdgeEvaluationStatus::kUnknownSpace,
+              .evidence = footprint.evidence};
         }
-        return Lattice3DEdgeEvaluation{
-            .status = Lattice3DEdgeEvaluationStatus::kUnknownSpace};
+        break;
       case SweptFootprintStatus::kInvalidEsdf:
         return Lattice3DEdgeEvaluation{.status =
-                                           Lattice3DEdgeEvaluationStatus::kInvalidEsdf};
+                                           Lattice3DEdgeEvaluationStatus::kInvalidEsdf,
+                                       .evidence = footprint.evidence};
       case SweptFootprintStatus::kRawCollision:
-        return Lattice3DEdgeEvaluation{
-            .status = Lattice3DEdgeEvaluationStatus::kRawCollision};
+        return Lattice3DEdgeEvaluation{.status =
+                                           Lattice3DEdgeEvaluationStatus::kRawCollision,
+                                       .evidence = footprint.evidence};
       case SweptFootprintStatus::kValid:
         break;
     }
   }
-  if (!stageAllows(stage, footprint.minimum_clearance_m, config)) {
+  const double minimum_known_clearance_m =
+      footprint.evidence.known_clearance_observed
+          ? footprint.evidence.minimum_known_clearance_m
+          : std::numeric_limits<double>::infinity();
+  if (!stageAllows(stage, minimum_known_clearance_m, config)) {
     return Lattice3DEdgeEvaluation{
-        .status = Lattice3DEdgeEvaluationStatus::kRiskStageRejected};
+        .status = Lattice3DEdgeEvaluationStatus::kRiskStageRejected,
+        .evidence = footprint.evidence};
   }
   return Lattice3DEdgeEvaluation{.status = Lattice3DEdgeEvaluationStatus::kValid,
-                                 .minimum_clearance_m = footprint.minimum_clearance_m,
+                                 .evidence = footprint.evidence,
+                                 .minimum_clearance_m = minimum_known_clearance_m,
                                  .planning_exposure_m = profile.planning_exposure_m,
                                  .critical_exposure_m = profile.critical_exposure_m};
 }

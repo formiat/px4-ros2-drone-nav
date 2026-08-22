@@ -70,6 +70,62 @@ TEST(SweptFootprintTest, DetectsCollisionAboveVehicleReferencePoint) {
             SweptFootprintStatus::kRawCollision);
 }
 
+TEST(SweptFootprintTest, EsdfUnknownSampleDoesNotHideOccupiedFootprintSample) {
+  const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
+  std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
+                          std::numeric_limits<float>::infinity());
+  esdf[(3U * 8U + 3U) * 8U + 3U] = mppi::kUnknownEsdfDistanceM;
+  esdf[(4U * 8U + 3U) * 8U + 3U] = 0.0F;
+
+  const SweptFootprintResult result =
+      validateFootprintAt(grid, esdf, Point3{3.5, 3.5, 3.5},
+                          SweptFootprintConfig{.radius_m = 0.2,
+                                               .lower_extent_m = 0.2,
+                                               .upper_extent_m = 1.0,
+                                               .perimeter_samples = 8U,
+                                               .radial_rings = 1U,
+                                               .axial_samples = 3U});
+
+  EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(result.evidence.raw_collision);
+  EXPECT_TRUE(result.evidence.unknown_exposure);
+  EXPECT_TRUE(result.evidence.known_clearance_observed);
+  EXPECT_DOUBLE_EQ(result.evidence.minimum_known_clearance_m, 0.0);
+}
+
+TEST(SweptFootprintTest, EsdfUnknownPrefixDoesNotHideLaterSegmentCollision) {
+  const mppi::EsdfGrid grid{8, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  std::vector<float> esdf(std::size_t{8U} * 4U * 4U,
+                          std::numeric_limits<float>::infinity());
+  esdf[(1U * 4U + 1U) * 8U + 1U] = mppi::kUnknownEsdfDistanceM;
+  esdf[(1U * 4U + 1U) * 8U + 5U] = 0.0F;
+
+  const SweptFootprintResult result = validateSweptFootprint(
+      grid, esdf, Point3{1.5, 1.5, 1.5}, Point3{5.5, 1.5, 1.5},
+      SweptFootprintConfig{
+          .radius_m = 0.0, .perimeter_samples = 0U, .sweep_step_m = 0.25});
+
+  EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(result.evidence.raw_collision);
+  EXPECT_TRUE(result.evidence.unknown_exposure);
+}
+
+TEST(SweptFootprintTest, UnknownWithoutKnownSamplesHasNoClearanceEvidence) {
+  const mppi::EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  std::vector<float> esdf(std::size_t{4U} * 4U * 4U,
+                          std::numeric_limits<float>::infinity());
+  esdf[(1U * 4U + 1U) * 4U + 1U] = mppi::kUnknownEsdfDistanceM;
+
+  const SweptFootprintResult result = validateFootprintAt(
+      grid, esdf, Point3{1.5, 1.5, 1.5},
+      SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U});
+
+  EXPECT_EQ(result.status, SweptFootprintStatus::kUnknownSpace);
+  EXPECT_TRUE(result.evidence.unknown_exposure);
+  EXPECT_FALSE(result.evidence.raw_collision);
+  EXPECT_FALSE(result.evidence.known_clearance_observed);
+}
+
 TEST(SweptFootprintTest, RotatesPhysicalVolumeWithBodyAxis) {
   const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
@@ -111,8 +167,11 @@ TEST(SweptFootprintTest, ClearanceBroadPhaseReturnsAConservativeSafeBound) {
 
   ASSERT_TRUE(exact.accepted());
   ASSERT_TRUE(broad_phase.accepted());
-  EXPECT_GE(broad_phase.minimum_clearance_m, 6.0);
-  EXPECT_LE(broad_phase.minimum_clearance_m, exact.minimum_clearance_m);
+  ASSERT_TRUE(exact.evidence.known_clearance_observed);
+  ASSERT_TRUE(broad_phase.evidence.known_clearance_observed);
+  EXPECT_GE(broad_phase.evidence.minimum_known_clearance_m, 6.0);
+  EXPECT_LE(broad_phase.evidence.minimum_known_clearance_m,
+            exact.evidence.minimum_known_clearance_m);
 }
 
 TEST(SweptFootprintTest, RawTwoDimensionalSweepRejectsSideContact) {
@@ -274,6 +333,37 @@ TEST(SweptFootprintTest, ObservedWorldReportsCollisionBeforeUnknownSpace) {
                                                   .sweep_step_m = 0.25});
 
   EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(result.evidence.raw_collision);
+  EXPECT_TRUE(result.evidence.unknown_exposure);
+}
+
+TEST(SweptFootprintTest, ObservedWorldReportsLaterCollisionAfterUnknownSweepPrefix) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 40, 16, 16};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        static_cast<void>(
+            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree));
+      }
+    }
+  }
+  static_cast<void>(
+      occupancy.setState(GridIndex3D{10, 8, 8}, ObservedVoxelState::kUnknown));
+  static_cast<void>(
+      occupancy.setState(GridIndex3D{30, 8, 8}, ObservedVoxelState::kOccupied));
+
+  const SweptFootprintResult result = validateRawSweptFootprint(
+      occupancy, Point3{1.0, 2.125, 2.125}, FootprintBodyAxis{},
+      Point3{8.0, 2.125, 2.125}, FootprintBodyAxis{},
+      SweptFootprintConfig{.radius_m = 0.2,
+                           .lower_extent_m = 0.2,
+                           .upper_extent_m = 0.2,
+                           .sweep_step_m = 0.125});
+
+  EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(result.evidence.raw_collision);
+  EXPECT_TRUE(result.evidence.unknown_exposure);
 }
 
 TEST(SweptFootprintTest, ObservedWorldBoundaryIsOutsideGridRatherThanUnknown) {
