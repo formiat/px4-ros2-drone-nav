@@ -14,7 +14,8 @@ namespace drone_city_nav {
 struct ReachableObservationDomain3DConfig {
   double maximum_fresh_extension_m{20.0};
   SweptFootprintConfig footprint{};
-  bool require_known_free_space{false};
+  ObservedSpaceValidationPolicy validation_policy{
+      ObservedSpaceValidationPolicy::kAllowUnknown};
 };
 
 class ReachableObservationDomain3D {
@@ -36,7 +37,6 @@ private:
     std::uint64_t root_key{0U};
     IncrementalTopologyNodeId root_node{};
     double distance_from_graph_m{0.0};
-    bool unknown_exposure{false};
   };
 
   const IncrementalTopologyGraph3DSnapshot* graph_{nullptr};

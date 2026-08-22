@@ -612,13 +612,12 @@ TEST(IncrementalTopologyGraph3DTest, ObservedConnectorKeepsUnknownPolicyExplicit
 
   const std::optional<IncrementalTopologyConnector3D> parent_tree =
       snapshot.connectObserved(occupancy, {12.5, 7.5, 2.5}, 20.0, config.footprint,
-                               false);
+                               ObservedSpaceValidationPolicy::kAllowUnknown);
   if (!parent_tree.has_value()) {
     FAIL() << "permissive observed connector must accept unknown exposure";
   }
   const IncrementalTopologyConnector3D& connector = *parent_tree;
   ASSERT_GE(connector.polyline.size(), 2U);
-  EXPECT_TRUE(connector.unknown_exposure);
   EXPECT_TRUE(std::ranges::all_of(
       std::views::iota(std::size_t{1U}, connector.polyline.size()),
       [&](const std::size_t index) {
@@ -629,10 +628,10 @@ TEST(IncrementalTopologyGraph3DTest, ObservedConnectorKeepsUnknownPolicyExplicit
                !evidence.evidence.outside_grid_exposure;
       }));
 
-  EXPECT_FALSE(
-      snapshot
-          .connectObserved(occupancy, {12.5, 7.5, 2.5}, 20.0, config.footprint, true)
-          .has_value());
+  EXPECT_FALSE(snapshot
+                   .connectObserved(occupancy, {12.5, 7.5, 2.5}, 20.0, config.footprint,
+                                    ObservedSpaceValidationPolicy::kRequireKnownFree)
+                   .has_value());
 }
 
 TEST(IncrementalTopologyGraph3DTest, RecordsExplicitMergeAndSplitLineage) {

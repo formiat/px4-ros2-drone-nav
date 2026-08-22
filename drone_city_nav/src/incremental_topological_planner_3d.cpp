@@ -530,8 +530,11 @@ connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
                     const SweptFootprintConfig& footprint,
                     const bool require_known_free_space) {
   if (occupancy != nullptr) {
+    const ObservedSpaceValidationPolicy validation_policy =
+        require_known_free_space ? ObservedSpaceValidationPolicy::kRequireKnownFree
+                                 : ObservedSpaceValidationPolicy::kAllowUnknown;
     return graph.connectObserved(*occupancy, point, maximum_distance_m, footprint,
-                                 require_known_free_space);
+                                 validation_policy);
   }
   const std::optional<IncrementalTopologyNodeId> node =
       graph.nearestNode(point, maximum_distance_m);
@@ -572,7 +575,10 @@ connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
               .maximum_fresh_extension_m =
                   config.maximum_fresh_frontier_anchor_distance_m,
               .footprint = observability.footprint,
-              .require_known_free_space = config.require_known_free_space,
+              .validation_policy =
+                  config.require_known_free_space
+                      ? ObservedSpaceValidationPolicy::kRequireKnownFree
+                      : ObservedSpaceValidationPolicy::kAllowUnknown,
           });
   discovery = discoverObservationFrontiersAtCells(
       occupancy, source_graph.revision(), observability,

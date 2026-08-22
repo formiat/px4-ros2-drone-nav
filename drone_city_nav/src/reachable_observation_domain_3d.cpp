@@ -29,12 +29,6 @@ namespace {
   };
 }
 
-[[nodiscard]] bool evidenceAccepted(const SweptFootprintResult& evidence,
-                                    const bool require_known_free_space) noexcept {
-  return !evidence.evidence.raw_collision && !evidence.evidence.outside_grid_exposure &&
-         (!require_known_free_space || !evidence.evidence.unknown_exposure);
-}
-
 [[nodiscard]] bool sameBounds(const GridBounds3D& first,
                               const GridBounds3D& second) noexcept {
   constexpr double kTolerance{1.0e-9};
@@ -149,10 +143,10 @@ ReachableObservationDomain3D buildReachableObservationDomain3D(
         continue;
       }
       const Point3 next_position = occupancy.cellCenter(next);
-      const SweptFootprintResult evidence = validateRawSweptFootprint(
+      const SweptFootprintResult evidence = validateObservedSweptFootprint(
           occupancy, current_position, FootprintBodyAxis{}, next_position,
-          FootprintBodyAxis{}, config.footprint);
-      if (!evidenceAccepted(evidence, config.require_known_free_space)) {
+          FootprintBodyAxis{}, config.footprint, config.validation_policy);
+      if (!evidence.accepted()) {
         continue;
       }
       const auto found = result.extension_cells_.find(next_key);
@@ -167,8 +161,6 @@ ReachableObservationDomain3D buildReachableObservationDomain3D(
                         .root_key = current_found->second.root_key,
                         .root_node = current_found->second.root_node,
                         .distance_from_graph_m = next_distance_m,
-                        .unknown_exposure = current_found->second.unknown_exposure ||
-                                            evidence.evidence.unknown_exposure,
                     });
       pending.push(PendingCell{.distance_m = next_distance_m, .key = next_key});
     }
@@ -203,7 +195,7 @@ ReachableObservationDomain3D::connect(const Point3& position,
   }
   if (std::optional<IncrementalTopologyConnector3D> connector =
           graph_->connectObserved(*occupancy_, position, maximum_distance_m,
-                                  config_.footprint, config_.require_known_free_space);
+                                  config_.footprint, config_.validation_policy);
       connector.has_value() && reachable_nodes_.contains(connector->node)) {
     return connector;
   }
@@ -238,10 +230,10 @@ ReachableObservationDomain3D::connect(const Point3& position,
   for (const Candidate& candidate : candidates) {
     const ExtensionCell& extension = extension_cells_.at(candidate.key);
     const Point3 extension_position = occupancy_->cellCenter(extension.cell);
-    const SweptFootprintResult initial = validateRawSweptFootprint(
+    const SweptFootprintResult initial = validateObservedSweptFootprint(
         *occupancy_, position, FootprintBodyAxis{}, extension_position,
-        FootprintBodyAxis{}, config_.footprint);
-    if (!evidenceAccepted(initial, config_.require_known_free_space)) {
+        FootprintBodyAxis{}, config_.footprint, config_.validation_policy);
+    if (!initial.accepted()) {
       continue;
     }
     std::vector<Point3> polyline;
@@ -267,7 +259,7 @@ ReachableObservationDomain3D::connect(const Point3& position,
     const std::optional<IncrementalTopologyConnector3D> root_connector =
         graph_->connectObserved(*occupancy_, root_position,
                                 occupancy_->bounds().resolution_m * 0.5,
-                                config_.footprint, config_.require_known_free_space);
+                                config_.footprint, config_.validation_policy);
     if (!root_connector.has_value() || root_connector->node != extension.root_node ||
         !reachable_nodes_.contains(root_connector->node)) {
       continue;
@@ -287,9 +279,6 @@ ReachableObservationDomain3D::connect(const Point3& position,
           .polyline = std::move(polyline),
           .length_m = length_m,
           .validated_through_revision = graph_->revision(),
-          .unknown_exposure = initial.evidence.unknown_exposure ||
-                              extension.unknown_exposure ||
-                              root_connector->unknown_exposure,
       };
     }
   }

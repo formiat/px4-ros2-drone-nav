@@ -145,7 +145,6 @@ struct IncrementalTopologyConnector3D {
   std::vector<Point3> polyline;
   double length_m{0.0};
   std::uint64_t validated_through_revision{0U};
-  bool unknown_exposure{false};
 };
 
 struct IncrementalTopologySample3D {
@@ -172,7 +171,7 @@ public:
   [[nodiscard]] std::optional<IncrementalTopologyConnector3D>
   connectObserved(const ObservedOccupancyGrid3D& occupancy, const Point3& position,
                   double maximum_distance_m, const SweptFootprintConfig& footprint,
-                  bool require_known_free_space) const;
+                  ObservedSpaceValidationPolicy validation_policy) const;
 
 private:
   friend class IncrementalTopologyGraph3D;

@@ -323,9 +323,12 @@ IncrementalTopologicalNavigation3D::observePosition(
   if (!observed_node.has_value() && occupancy != nullptr) {
     if (sameBounds(graph->bounds(), occupancy->bounds())) {
       const std::optional<IncrementalTopologyConnector3D> connector =
-          graph->connectObserved(
-              *occupancy, position, planner_.config().maximum_start_anchor_distance_m,
-              observability_.footprint, planner_.config().require_known_free_space);
+          graph->connectObserved(*occupancy, position,
+                                 planner_.config().maximum_start_anchor_distance_m,
+                                 observability_.footprint,
+                                 planner_.config().require_known_free_space
+                                     ? ObservedSpaceValidationPolicy::kRequireKnownFree
+                                     : ObservedSpaceValidationPolicy::kAllowUnknown);
       if (connector.has_value()) {
         observed_node = connector->node;
       }

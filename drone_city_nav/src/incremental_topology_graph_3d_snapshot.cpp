@@ -110,7 +110,7 @@ std::optional<IncrementalTopologyConnector3D>
 IncrementalTopologyGraph3DSnapshot::connectObserved(
     const ObservedOccupancyGrid3D& occupancy, const Point3& position,
     const double maximum_distance_m, const SweptFootprintConfig& footprint,
-    const bool require_known_free_space) const {
+    const ObservedSpaceValidationPolicy validation_policy) const {
   if (!(maximum_distance_m >= 0.0) || !std::isfinite(maximum_distance_m) ||
       revision_ == 0U) {
     return std::nullopt;
@@ -163,14 +163,11 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
       continue;
     }
     bool valid = true;
-    bool unknown_exposure = false;
     for (std::size_t index = 1U; index < polyline.size(); ++index) {
-      const SweptFootprintResult evidence = validateRawSweptFootprint(
+      const SweptFootprintResult evidence = validateObservedSweptFootprint(
           occupancy, polyline[index - 1U], FootprintBodyAxis{}, polyline[index],
-          FootprintBodyAxis{}, footprint);
-      unknown_exposure = unknown_exposure || evidence.evidence.unknown_exposure;
-      if (evidence.evidence.raw_collision || evidence.evidence.outside_grid_exposure ||
-          (require_known_free_space && evidence.evidence.unknown_exposure)) {
+          FootprintBodyAxis{}, footprint, validation_policy);
+      if (!evidence.accepted()) {
         valid = false;
         break;
       }
@@ -187,7 +184,6 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
           .polyline = std::move(polyline),
           .length_m = length_m,
           .validated_through_revision = revision_,
-          .unknown_exposure = unknown_exposure,
       };
     }
   }
