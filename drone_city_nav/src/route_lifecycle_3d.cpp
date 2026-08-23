@@ -238,7 +238,7 @@ assessRouteActivation3D(const MaterializedRouteProposal3D& proposal,
         observation.latest_raw_occupancy != nullptr &&
         observation.latest_raw_producer_instance_id ==
             observation.resident_world.producer_instance_id &&
-        observation.latest_raw_revision ==
+        observation.latest_raw_revision >=
             observation.resident_world.esdf_source_raw_revision &&
         observation.latest_raw_revision >=
             proposal.validated_world.raw_validated_through_revision;

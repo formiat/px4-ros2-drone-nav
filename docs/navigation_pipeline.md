@@ -119,11 +119,14 @@ swept-footprint validation policy.
 Route activation is then a single optimistic transaction over that immutable
 resident world plus the jointly captured pose/applied-control snapshot. The
 current-pose connector and remaining suffix are swept against the raw occupancy
-that produced the resident ESDF; collisions in an already passed prefix do not
-reject the route. The same pose and applied control drive the dynamic handoff
-simulation. Publication is abandoned if the resident world, objective, or raw
-snapshot changes before the route supervisor commits it. Unknown voxels remain
-traversable during this raw check.
+from the same producer lineage at or beyond the resident ESDF source revision;
+this lets final validation consume newer obstacle evidence without mixing the
+resident CPU ESDF, GPU ESDF, and topology generation used for planning.
+Collisions in an already passed prefix do not reject the route. The same pose
+and applied control drive the dynamic handoff simulation. Publication is
+abandoned if the resident world, objective, or captured raw snapshot changes
+before the route supervisor commits it. Unknown voxels remain traversable
+during this raw check.
 
 Initial search heading uses a cascade:
 

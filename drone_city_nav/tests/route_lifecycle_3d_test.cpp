@@ -342,7 +342,7 @@ TEST(RouteLifecycle3DTest, ActivationSnapshotRejectsRawRemainingSuffixCollision)
   EXPECT_EQ(assessment.raw_validation.failure_route_segment, 3U);
 }
 
-TEST(RouteLifecycle3DTest, ActivationSnapshotWaitsForWorldBuiltFromLatestRawRevision) {
+TEST(RouteLifecycle3DTest, ActivationSnapshotValidatesAgainstNewerRawRevision) {
   const MaterializedRouteProposal3D proposal = validProposal();
   const std::vector<RouteSample3D> route = straightRoute();
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 5, 4}};
@@ -360,6 +360,39 @@ TEST(RouteLifecycle3DTest, ActivationSnapshotWaitsForWorldBuiltFromLatestRawRevi
                                   .latest_raw_occupancy = &occupancy,
                                   .latest_raw_producer_instance_id = 7U,
                                   .latest_raw_revision = 13U,
+                                  .footprint = {.radius_m = 0.0,
+                                                .perimeter_samples = 0U,
+                                                .radial_rings = 0U,
+                                                .axial_samples = 1U,
+                                                .sweep_step_m = 0.25},
+                                  .raw_validation_required = true,
+                              });
+
+  EXPECT_TRUE(assessment.accepted());
+  EXPECT_TRUE(assessment.raw_world_compatible);
+  EXPECT_TRUE(assessment.raw_validation.connector_validated);
+  EXPECT_TRUE(assessment.raw_validation.suffix_validated);
+  EXPECT_EQ(assessment.raw_validated_through_revision, 13U);
+}
+
+TEST(RouteLifecycle3DTest, ActivationSnapshotRejectsRawRevisionOlderThanResidentWorld) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const std::vector<RouteSample3D> route = straightRoute();
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 5, 4}};
+  NavigationWorldCertificate3D resident_world = proposal.validated_world;
+  resident_world.esdf_source_raw_revision = 13U;
+  resident_world.raw_validated_through_revision = 13U;
+
+  const RouteActivationAssessment3D assessment =
+      assessRouteActivation3D(proposal, route,
+                              RouteActivationObservation3D{
+                                  .resident_world = resident_world,
+                                  .current_objective = proposal.objective,
+                                  .position = {6.5, 2.5, 1.5},
+                                  .maximum_cross_track_m = 2.0,
+                                  .latest_raw_occupancy = &occupancy,
+                                  .latest_raw_producer_instance_id = 7U,
+                                  .latest_raw_revision = 12U,
                                   .footprint = {.radius_m = 0.0,
                                                 .perimeter_samples = 0U,
                                                 .radial_rings = 0U,
