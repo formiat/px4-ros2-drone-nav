@@ -429,6 +429,11 @@ struct ProductionIncrementalTopologySearch3D {
   double no_executable_route_age_ms{0.0};
 };
 
+enum class ProductionIncrementalTopologyRejectionReason3D : std::uint8_t {
+  kSegmentEvidenceRawCollision,
+  kMaterializedRouteRawCollision,
+};
+
 struct ProductionRouteCandidateSelection3D {
   RouteIntent3D intent{};
   SegmentEvidence3D evidence{};
@@ -643,6 +648,9 @@ private:
   selectIncrementalTopologyRoute3D(const ProductionMppiPreparedEsdf& world,
                                    const Point3& position, const Point3& mission_goal);
   void commitIncrementalTopologyRoute3D(ProductionIncrementalTopologySearch3D& search);
+  void rejectIncrementalTopologyRoute3D(
+      const ProductionIncrementalTopologySearch3D& search,
+      ProductionIncrementalTopologyRejectionReason3D reason);
   void
   logIncrementalTopologyRoute3D(const ProductionIncrementalTopologySearch3D& search,
                                 const RiskAwareLattice3DResult& lattice,

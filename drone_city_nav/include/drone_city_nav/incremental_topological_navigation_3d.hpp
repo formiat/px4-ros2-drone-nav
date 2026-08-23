@@ -36,13 +36,21 @@ struct IncrementalTopologicalPlanCommit3D {
   bool dead_end_recorded{false};
 };
 
+struct IncrementalTopologicalNavigation3DConfig {
+  double active_route_completion_tolerance_m{2.0};
+};
+
+[[nodiscard]] bool incrementalTopologicalNavigation3DConfigIsValid(
+    const IncrementalTopologicalNavigation3DConfig& config) noexcept;
+
 class IncrementalTopologicalNavigation3D {
 public:
   IncrementalTopologicalNavigation3D(
       const IncrementalTopologyGraph3DConfig& graph_config = {},
       const IncrementalTopologicalPlanner3DConfig& planner_config = {},
       const TopologicalExplorationMemory3DConfig& memory_config = {},
-      const SensorObservabilityConfig& observability = {});
+      const SensorObservabilityConfig& observability = {},
+      const IncrementalTopologicalNavigation3DConfig& navigation_config = {});
 
   [[nodiscard]] IncrementalTopologicalWorldUpdate3D updateObserved(
       const ObservedOccupancyGrid3D& occupancy, std::uint64_t producer_instance_id,
@@ -54,16 +62,17 @@ public:
 
   [[nodiscard]] IncrementalTopologicalPlan3D
   plan(const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-       const Point3& start, const Point3& mission_goal) const;
+       const Point3& start, const Point3& mission_goal);
   [[nodiscard]] IncrementalTopologicalPlan3D
   planObserved(const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
                const ObservedOccupancyGrid3D& occupancy, const Point3& start,
-               const Point3& mission_goal) const;
+               const Point3& mission_goal);
   [[nodiscard]] IncrementalTopologicalNavigationObservation3D observePosition(
       const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
       const Point3& position, const ObservedOccupancyGrid3D* occupancy = nullptr);
   [[nodiscard]] IncrementalTopologicalPlanCommit3D
   commitAcceptedPlan(const IncrementalTopologicalPlan3D& plan);
+  [[nodiscard]] bool invalidateAcceptedPlan(const IncrementalTopologicalPlan3D& plan);
   void rejectObservationFrontier(ObservationFrontierId frontier_id);
   void completeObservationFrontier(const ObservationFrontier& frontier,
                                    std::uint64_t revision);
@@ -76,6 +85,10 @@ private:
   [[nodiscard]] std::size_t
   recordTransitionPath(const IncrementalTopologyGraph3DSnapshot& graph,
                        IncrementalTopologyNodeId from, IncrementalTopologyNodeId to);
+  [[nodiscard]] std::optional<IncrementalTopologicalPlan3D>
+  continueAcceptedObservedPlan(const Point3& start, const Point3& mission_goal,
+                               const ObservedOccupancyGrid3D& occupancy,
+                               std::uint64_t current_revision);
 
   mutable std::mutex graph_mutex_;
   mutable std::mutex memory_mutex_;
@@ -83,6 +96,7 @@ private:
   IncrementalTopologicalPlanner3D planner_;
   TopologicalExplorationMemory3D memory_;
   SensorObservabilityConfig observability_;
+  IncrementalTopologicalNavigation3DConfig navigation_config_;
   std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> snapshot_;
   std::optional<std::uint64_t> observed_producer_instance_id_;
   std::optional<IncrementalTopologyNodeId> current_node_;

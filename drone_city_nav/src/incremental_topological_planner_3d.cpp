@@ -815,6 +815,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     const std::optional<ObservationFrontier> active_frontier) const {
   IncrementalTopologicalPlan3D result;
   result.planned_on_revision = graph.revision();
+  result.mission_target = mission_goal;
   if (graph.revision() == 0U || !finitePoint(start) || !finitePoint(mission_goal)) {
     return result;
   }

@@ -61,6 +61,7 @@ struct IncrementalTopologicalPlan3D {
   TopologicalBacktrackReason3D backtrack_reason{TopologicalBacktrackReason3D::kNone};
   std::uint64_t planned_on_revision{0U};
   std::uint64_t validated_through_revision{0U};
+  Point3 mission_target{};
   IncrementalTopologyNodeId start_node{};
   IncrementalTopologyNodeId target_node{};
   std::optional<IncrementalTopologyNodeId> goal_node;
@@ -90,6 +91,7 @@ struct IncrementalTopologicalPlan3D {
   std::array<std::size_t, 7U> fresh_frontier_status_counts{};
   bool fresh_frontier_budget_exhausted{false};
   bool reaches_mission_goal{false};
+  bool continued_from_active_plan{false};
 
   [[nodiscard]] bool executableTargetSelected() const noexcept;
 };

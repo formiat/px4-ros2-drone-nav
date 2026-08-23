@@ -686,14 +686,10 @@ void ProductionMppiNode::processGuideSearch3D(
     commitIncrementalTopologyRoute3D(topology);
   } else if (topology_route_used &&
              validation.status == StaticRouteCandidateStatus::kRawCollision &&
-             topology.plan.selected_frontier.has_value() &&
              topological_navigation_3d_) {
-    topological_navigation_3d_->rejectObservationFrontier(
-        topology.plan.selected_frontier->id);
-    RCLCPP_INFO(get_logger(),
-                "INCREMENTAL_TOPOLOGY3D_FRONTIER_REJECTED reason=raw_collision "
-                "frontier_id=%" PRIu64,
-                topology.plan.selected_frontier->id.value);
+    rejectIncrementalTopologyRoute3D(
+        topology,
+        ProductionIncrementalTopologyRejectionReason3D::kMaterializedRouteRawCollision);
   }
   if (activated && prepared.cooperative_passage_assignments) {
     for (const CooperativePassageAssignment& assignment :

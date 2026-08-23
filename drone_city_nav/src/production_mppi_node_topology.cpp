@@ -42,6 +42,17 @@ nodeIdValue(const std::optional<IncrementalTopologyNodeId>& node) noexcept {
   return node.has_value() ? node->value : 0U;
 }
 
+[[nodiscard]] const char* incrementalTopologyRejectionReasonName(
+    const ProductionIncrementalTopologyRejectionReason3D reason) noexcept {
+  switch (reason) {
+    case ProductionIncrementalTopologyRejectionReason3D::kSegmentEvidenceRawCollision:
+      return "segment_evidence_raw_collision";
+    case ProductionIncrementalTopologyRejectionReason3D::kMaterializedRouteRawCollision:
+      return "materialized_route_raw_collision";
+  }
+  return "unknown";
+}
+
 } // namespace
 
 void ProductionMppiNode::topologyWorker(const std::stop_token stop_token) {
@@ -252,7 +263,10 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
 
   topological_navigation_3d_ = std::make_unique<IncrementalTopologicalNavigation3D>(
       topological_graph_3d_config_, topological_planner_3d_config_,
-      topological_memory_3d_config_, lattice_3d_config_.sensor_observability);
+      topological_memory_3d_config_, lattice_3d_config_.sensor_observability,
+      IncrementalTopologicalNavigation3DConfig{
+          .active_route_completion_tolerance_m =
+              topological_lattice_adapter_3d_config_.segment_capture_radius_m});
 }
 
 void ProductionMppiNode::initializeStaticTopology3D() {
@@ -338,6 +352,31 @@ void ProductionMppiNode::commitIncrementalTopologyRoute3D(
   search.commit = topological_navigation_3d_->commitAcceptedPlan(search.plan);
 }
 
+void ProductionMppiNode::rejectIncrementalTopologyRoute3D(
+    const ProductionIncrementalTopologySearch3D& search,
+    const ProductionIncrementalTopologyRejectionReason3D reason) {
+  if (!topological_navigation_3d_) {
+    return;
+  }
+  const bool accepted_plan_invalidated =
+      topological_navigation_3d_->invalidateAcceptedPlan(search.plan);
+  RCLCPP_INFO(get_logger(),
+              "INCREMENTAL_TOPOLOGY3D_PLAN_INVALIDATED reason=%s "
+              "accepted_plan_invalidated=%s continued_active_plan=%s",
+              incrementalTopologyRejectionReasonName(reason),
+              accepted_plan_invalidated ? "true" : "false",
+              search.plan.continued_from_active_plan ? "true" : "false");
+  if (!search.plan.selected_frontier.has_value()) {
+    return;
+  }
+  topological_navigation_3d_->rejectObservationFrontier(
+      search.plan.selected_frontier->id);
+  RCLCPP_INFO(get_logger(),
+              "INCREMENTAL_TOPOLOGY3D_FRONTIER_REJECTED reason=%s frontier_id=%" PRIu64,
+              incrementalTopologyRejectionReasonName(reason),
+              search.plan.selected_frontier->id.value);
+}
+
 void ProductionMppiNode::logIncrementalTopologyRoute3D(
     const ProductionIncrementalTopologySearch3D& search,
     const RiskAwareLattice3DResult& lattice,
@@ -366,8 +405,8 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "INCREMENTAL_TOPOLOGICAL_PLAN3D graph_revision=%" PRIu64
       " graph_nodes=%zu graph_edges=%zu status=%s purpose=%s "
       "start_node=%" PRIu64 " target_node=%" PRIu64 " goal_node=%" PRIu64
-      " route_nodes=%zu route_edges=%zu selected_frontier_id=%" PRIu64
-      " frontier_boundary=(%.2f,%.2f,%.2f)"
+      " route_nodes=%zu route_edges=%zu continued_active_plan=%s "
+      "selected_frontier_id=%" PRIu64 " frontier_boundary=(%.2f,%.2f,%.2f)"
       " frontier_direction=(%.3f,%.3f,%.3f) frontier_gain=%zu"
       " frontier_required_gain=%zu"
       " reachable_mission_continuations=%zu "
@@ -410,6 +449,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       search.plan.start_node.value, search.plan.target_node.value,
       nodeIdValue(search.plan.goal_node), search.plan.route_nodes.size(),
       search.plan.route_steps.size(),
+      search.plan.continued_from_active_plan ? "true" : "false",
       selected_frontier != nullptr ? selected_frontier->id.value : 0U,
       selected_frontier != nullptr ? selected_frontier->boundary_centroid.x : 0.0,
       selected_frontier != nullptr ? selected_frontier->boundary_centroid.y : 0.0,

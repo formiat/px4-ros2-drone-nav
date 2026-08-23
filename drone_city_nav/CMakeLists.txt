@@ -187,6 +187,7 @@ add_library(
   src/intercept_guidance.cpp
   src/intercept_mission.cpp
   src/incremental_topological_navigation_3d.cpp
+  src/incremental_topological_navigation_3d_lifecycle.cpp
   src/incremental_topological_lattice_adapter_3d.cpp
   src/incremental_topological_planner_3d_contract.cpp
   src/incremental_topological_planner_3d.cpp
@@ -1084,6 +1085,14 @@ if(BUILD_TESTING)
   target_link_libraries(incremental_topological_navigation_3d_test
                         drone_city_nav_core)
   enable_project_warnings(incremental_topological_navigation_3d_test)
+
+  ament_add_gtest(incremental_topological_navigation_3d_lifecycle_test
+                  tests/incremental_topological_navigation_3d_lifecycle_test.cpp)
+  target_compile_features(incremental_topological_navigation_3d_lifecycle_test
+                          PRIVATE cxx_std_20)
+  target_link_libraries(incremental_topological_navigation_3d_lifecycle_test
+                        drone_city_nav_core)
+  enable_project_warnings(incremental_topological_navigation_3d_lifecycle_test)
 
   ament_add_gtest(incremental_topological_lattice_adapter_3d_test
                   tests/incremental_topological_lattice_adapter_3d_test.cpp)

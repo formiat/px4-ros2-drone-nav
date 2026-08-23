@@ -251,6 +251,7 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
                 " graph_nodes=%zu graph_edges=%zu status=%s purpose=%s "
                 "start_node=%" PRIu64 " target_node=%" PRIu64 " goal_node=%" PRIu64
                 " route_nodes=%zu route_edges=%zu reaches_mission_goal=%s "
+                "continued_active_plan=%s "
                 "reachable_mission_continuations=%zu "
                 "maximum_mission_continuation_goal_progress_m=%.2f "
                 "reachable_frontiers=%zu goal_progress_m=%.2f directive_available=%s "
@@ -264,6 +265,7 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
                                                     : 0U,
                 topology.plan.route_nodes.size(), topology.plan.route_steps.size(),
                 topology.plan.reaches_mission_goal ? "true" : "false",
+                topology.plan.continued_from_active_plan ? "true" : "false",
                 topology.plan.reachable_mission_continuation_count,
                 topology.plan.maximum_reachable_mission_continuation_goal_progress_m,
                 topology.plan.reachable_frontier_count, topology.plan.goal_progress_m,
@@ -338,6 +340,14 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
                     ? "true"
                     : "false",
                 candidate.evidence.objective_cost);
+  }
+  for (const ProductionRouteSearchCandidate3D& candidate : candidates) {
+    if (candidate.topology.has_value() &&
+        candidate.evidence.status == SegmentEvidenceStatus3D::kRawCollision) {
+      rejectIncrementalTopologyRoute3D(
+          *candidate.topology,
+          ProductionIncrementalTopologyRejectionReason3D::kSegmentEvidenceRawCollision);
+    }
   }
 
   ProductionRouteCandidateSelection3D result{

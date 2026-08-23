@@ -158,17 +158,6 @@ localObservedTransition(const IncrementalTopologyGraph3DSnapshot& graph,
 
 } // namespace
 
-IncrementalTopologicalNavigation3D::IncrementalTopologicalNavigation3D(
-    const IncrementalTopologyGraph3DConfig& graph_config,
-    const IncrementalTopologicalPlanner3DConfig& planner_config,
-    const TopologicalExplorationMemory3DConfig& memory_config,
-    const SensorObservabilityConfig& observability)
-    : graph_{graph_config},
-      planner_{planner_config},
-      memory_{memory_config},
-      observability_{observability} {
-}
-
 IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateObserved(
     const ObservedOccupancyGrid3D& occupancy, const std::uint64_t producer_instance_id,
     const std::uint64_t revision,
@@ -219,51 +208,6 @@ IncrementalTopologicalNavigation3D::resetStatic(const OccupancyGrid3D& occupancy
     memory_.clear();
   }
   return result;
-}
-
-IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
-    const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-    const Point3& start, const Point3& mission_goal) const {
-  if (!graph) {
-    return {};
-  }
-  TopologicalExplorationMemory3D memory_snapshot;
-  {
-    const std::scoped_lock lock{memory_mutex_};
-    memory_snapshot = memory_;
-  }
-  return planner_.plan(*graph, start, mission_goal, memory_snapshot);
-}
-
-IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
-    const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-    const ObservedOccupancyGrid3D& occupancy, const Point3& start,
-    const Point3& mission_goal) const {
-  if (!graph) {
-    return {};
-  }
-  if (!sameBounds(graph->bounds(), occupancy.bounds())) {
-    return {};
-  }
-  TopologicalExplorationMemory3D memory_snapshot;
-  std::optional<ObservationFrontier> active_frontier;
-  {
-    const std::scoped_lock lock{memory_mutex_};
-    memory_snapshot = memory_;
-    if (active_plan_.has_value() && active_plan_->selected_frontier.has_value()) {
-      const ObservationFrontier& candidate = *active_plan_->selected_frontier;
-      // Retain an active frontier only while it is still being approached.
-      // Once its observation pose has been reached, keeping the active
-      // discount would select the same frontier indefinitely even though the
-      // next plan must reveal a different volume or return through the graph.
-      if (distance3D(start, candidate.observation_pose) >
-          observability_.minimum_observation_pose_advance_m) {
-        active_frontier = candidate;
-      }
-    }
-  }
-  return planner_.planObserved(*graph, occupancy, observability_, start, mission_goal,
-                               memory_snapshot, active_frontier);
 }
 
 std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(
@@ -359,114 +303,6 @@ IncrementalTopologicalNavigation3D::observePosition(
   }
   current_node_ = result.current_node;
   return result;
-}
-
-IncrementalTopologicalPlanCommit3D
-IncrementalTopologicalNavigation3D::commitAcceptedPlan(
-    const IncrementalTopologicalPlan3D& plan) {
-  IncrementalTopologicalPlanCommit3D result{.graph_revision = plan.planned_on_revision};
-  if (!plan.executableTargetSelected()) {
-    return result;
-  }
-  const std::scoped_lock lock{memory_mutex_};
-  const std::optional<Point3> replaced_frontier_observation_pose = [&]() {
-    if (!active_plan_.has_value() || !active_plan_->selected_frontier.has_value() ||
-        !plan.selected_frontier.has_value()) {
-      return std::optional<Point3>{};
-    }
-    if (active_plan_->selected_frontier->id != plan.selected_frontier->id) {
-      return std::optional<Point3>{active_plan_->selected_frontier->observation_pose};
-    }
-    if (distance3D(active_plan_->selected_frontier->observation_pose,
-                   plan.selected_frontier->observation_pose) <=
-        memory_.config().coverage_resolution_m) {
-      return std::optional<Point3>{};
-    }
-    return std::optional<Point3>{active_plan_->selected_frontier->observation_pose};
-  }();
-  if (replaced_frontier_observation_pose.has_value()) {
-    // The route lifecycle replaces an observation target only after it was
-    // reached, exhausted, retired by fresh sensing, or superseded by a
-    // meaningfully better target. Preserve that completed observation pose as
-    // soft coverage so an equivalent frontier is not immediately rediscovered.
-    memory_.recordObserved(*replaced_frontier_observation_pose,
-                           plan.validated_through_revision);
-    result.replaced_frontier_coverage_recorded = true;
-  }
-  const bool selected_frontier_already_active = [&]() {
-    if (!active_plan_.has_value() || !active_plan_->selected_frontier.has_value() ||
-        !plan.selected_frontier.has_value() ||
-        active_plan_->selected_frontier->id != plan.selected_frontier->id) {
-      return false;
-    }
-    return distance3D(active_plan_->selected_frontier->observation_pose,
-                      plan.selected_frontier->observation_pose) <=
-           memory_.config().coverage_resolution_m;
-  }();
-  if (plan.selected_frontier.has_value() && !selected_frontier_already_active) {
-    memory_.recordFrontierSelection(plan.selected_frontier->id);
-    result.frontier_selection_recorded = true;
-  }
-  const bool dead_end_already_active =
-      active_plan_.has_value() && active_plan_->dead_end_conclusion.has_value() &&
-      plan.dead_end_conclusion.has_value() &&
-      active_plan_->dead_end_conclusion->attempted_direction ==
-          plan.dead_end_conclusion->attempted_direction &&
-      active_plan_->dead_end_conclusion->validated_through_revision ==
-          plan.dead_end_conclusion->validated_through_revision;
-  if (plan.dead_end_conclusion.has_value() && !dead_end_already_active) {
-    memory_.recordDeadEnd(plan.dead_end_conclusion->attempted_direction,
-                          plan.dead_end_conclusion->validated_through_revision);
-    result.dead_end_recorded = true;
-  }
-  active_plan_ = plan;
-  result.active_route_nodes = plan.route_nodes.size();
-  result.accepted = true;
-  return result;
-}
-
-void IncrementalTopologicalNavigation3D::rejectObservationFrontier(
-    const ObservationFrontierId frontier_id) {
-  if (frontier_id.value == 0U) {
-    return;
-  }
-  const std::scoped_lock lock{memory_mutex_};
-  // A raw-collision rejection is evidence that the currently materialized
-  // route cannot reach this observation target from the present pose. Keep it
-  // as a soft preference penalty, not a prohibited region: a later map update
-  // may expose a valid approach through a different branch.
-  memory_.recordFrontierSelection(frontier_id);
-  if (active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
-      active_plan_->selected_frontier->id == frontier_id) {
-    active_plan_.reset();
-  }
-}
-
-void IncrementalTopologicalNavigation3D::completeObservationFrontier(
-    const ObservationFrontier& frontier, const std::uint64_t revision) {
-  if (frontier.id.value == 0U) {
-    return;
-  }
-  const std::scoped_lock lock{memory_mutex_};
-  // A completed finite observation route is positive evidence. Preserve soft
-  // coverage and selection history, then force a fresh frontier decision.
-  // This remains a preference, not a prohibited spatial region.
-  memory_.recordObserved(frontier.observation_pose, revision);
-  memory_.recordFrontierSelection(frontier.id);
-  memory_.recordFrontierCompletion(frontier.id);
-  if (active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
-      active_plan_->selected_frontier->id == frontier.id) {
-    active_plan_.reset();
-  }
-}
-
-void IncrementalTopologicalNavigation3D::beginMissionLeg() {
-  const std::scoped_lock lock{memory_mutex_};
-  memory_.beginMissionLeg();
-  if (current_node_.has_value()) {
-    memory_.resetTrail(*current_node_);
-  }
-  active_plan_.reset();
 }
 
 std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
