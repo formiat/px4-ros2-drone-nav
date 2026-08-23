@@ -64,7 +64,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   maximum_control_feedback_age_ms_ =
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
   latest_lidar_obstacle_maximum_age_ms_ =
-      declare_parameter<double>("latest_lidar_obstacle_maximum_age_ms", 250.0);
+      declare_parameter<double>("latest_lidar_obstacle_maximum_age_ms", 1000.0);
   const std::int64_t planner_worker_count =
       declare_parameter<std::int64_t>("planner_worker_count", 4);
   if (planner_worker_count < 1 || planner_worker_count > 8) {

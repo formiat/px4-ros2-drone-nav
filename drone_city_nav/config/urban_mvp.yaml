@@ -236,7 +236,10 @@ production_mppi_node:
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
     latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
-    latest_lidar_obstacle_maximum_age_ms: 250.0
+    # Acquisition-aligned 3D returns are expressed in the map frame and remain
+    # valid while persistent integration catches up. This budget must exceed the
+    # mapper's allowed pose-alignment wait plus transport and executor jitter.
+    latest_lidar_obstacle_maximum_age_ms: 1000.0
     minimum_target_lookahead_m: 30.0
     maximum_target_lookahead_m: 100.0
     use_static_map: true

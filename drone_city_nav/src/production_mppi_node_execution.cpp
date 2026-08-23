@@ -433,6 +433,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     };
     publication.mode = ProductionMppiExecutionMode::kPositionHold;
     publication.reason = reason;
+    publication.latest_lidar_obstacle_sequence =
+        latest_lidar_obstacle_scan ? latest_lidar_obstacle_scan->sequence : 0U;
+    publication.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
+    publication.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
+    publication.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
     publication.published = true;
     return publication;
   };

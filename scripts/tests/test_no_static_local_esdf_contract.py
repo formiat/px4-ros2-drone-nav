@@ -68,6 +68,16 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertIn("latest_raw_occupancy", execution)
         self.assertNotIn("rawOccupancyGridViewFromRos", execution)
 
+    def test_latest_lidar_safety_age_covers_pose_alignment_wait(self) -> None:
+        config = yaml.safe_load((PACKAGE / "config/urban_mvp.yaml").read_text())
+        memory = config["obstacle_memory_3d_node"]["ros__parameters"]
+        planner = config["production_mppi_node"]["ros__parameters"]
+
+        self.assertGreaterEqual(
+            planner["latest_lidar_obstacle_maximum_age_ms"],
+            1000.0 * memory["lidar_scan_alignment_maximum_wait_s"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

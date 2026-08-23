@@ -700,7 +700,7 @@ def validate_building_collisions(ros_log: str, errors: list[str]) -> None:
     collisions = sorted(
         set(
             re.findall(
-                r"VEHICLE_DESTROYED role=[0-9]+ vehicle_id='([^']+)' "
+                r"VEHICLE_DESTROYED role=[0-9]+ vehicle_id='([^']*)' "
                 r"cause=physical_collision .*?obstacle_collision='([^']*"
                 r"(?:building|passage_structure_)[^']*)'",
                 ros_log,
@@ -711,8 +711,9 @@ def validate_building_collisions(ros_log: str, errors: list[str]) -> None:
         print("OK: no vehicle collided with a static world obstacle")
         return
     for vehicle_id, obstacle in collisions:
+        vehicle_label = vehicle_id or "default_vehicle"
         errors.append(
-            f"FAIL: {vehicle_id} collided with static world obstacle '{obstacle}'"
+            f"FAIL: {vehicle_label} collided with static world obstacle '{obstacle}'"
         )
 
 

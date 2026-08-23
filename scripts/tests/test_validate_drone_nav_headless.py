@@ -496,6 +496,24 @@ class InterceptSettlementValidationTest(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("evader collided with static world obstacle", errors[0])
 
+    def test_default_vehicle_building_collision_is_a_validation_failure(self) -> None:
+        log = (
+            "VEHICLE_DESTROYED role=0 vehicle_id='' cause=physical_collision "
+            "drone_collision='x500_lidar_3d_0::rotor_0::rotor_0_collision' "
+            "obstacle_collision='building_031::link::collision'\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_building_collisions(log, errors)
+
+        self.assertEqual(
+            errors,
+            [
+                "FAIL: default_vehicle collided with static world obstacle "
+                "'building_031::link::collision'"
+            ],
+        )
+
     def test_passage_structure_collision_is_a_validation_failure(self) -> None:
         log = (
             "VEHICLE_DESTROYED role=0 vehicle_id='drone_0' "
