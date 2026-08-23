@@ -421,8 +421,6 @@ std::string_view observationRouteReplacementStatusName(
       return "active_frontier_reached";
     case ObservationRouteReplacementStatus::kActiveRouteExhausted:
       return "active_route_exhausted";
-    case ObservationRouteReplacementStatus::kEndpointAdvanced:
-      return "endpoint_advanced";
     case ObservationRouteReplacementStatus::kScoreImproved:
       return "score_improved";
     case ObservationRouteReplacementStatus::kSameFrontierRetained:
@@ -590,8 +588,6 @@ staticRouteReplacementPolicyName(const StaticRouteReplacementPolicy policy) noex
       return "require_endpoint_improvement";
     case StaticRouteReplacementPolicy::kAllowSafetyReplan:
       return "allow_safety_replan";
-    case StaticRouteReplacementPolicy::kAllowExploration:
-      return "allow_exploration";
     case StaticRouteReplacementPolicy::kAllowTopologicalProgress:
       return "allow_topological_progress";
   }

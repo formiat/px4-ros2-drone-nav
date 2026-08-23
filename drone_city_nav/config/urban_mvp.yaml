@@ -361,21 +361,10 @@ production_mppi_node:
     global_lattice_3d_planning_exposure_cost_per_m: 0.05
     global_lattice_3d_critical_exposure_cost_per_m: 0.50
     global_lattice_3d_passage_connection_distance_m: 3.0
-    free_space_topology_maximum_entry_portals_per_component: 4
-    free_space_topology_maximum_traversals_per_component: 3
     global_lattice_3d_frontier_reachable_depth_m: 8.0
     global_lattice_3d_frontier_minimum_endpoint_displacement_m: 2.0
     global_lattice_3d_frontier_validation_maximum_states: 2048
-    global_lattice_3d_observation_frontier_maximum_evaluations: 1024
-    global_lattice_3d_observation_frontier_evaluation_stride: 2
-    global_lattice_3d_observation_frontier_maximum_searches: 4
-    global_lattice_3d_observation_frontier_search_time_ms: 250.0
-    global_lattice_3d_observation_frontier_information_gain_weight: 3.0
-    global_lattice_3d_observation_frontier_goal_progress_weight: 0.15
-    global_lattice_3d_observation_frontier_path_cost_weight: 0.25
-    global_lattice_3d_observation_frontier_clearance_weight: 0.10
     global_lattice_3d_observation_frontier_replacement_minimum_score_improvement: 0.5
-    global_lattice_3d_observation_frontier_replacement_minimum_endpoint_improvement_m: 2.0
     # Probe one voxel beyond the lidar miss boundary so the adjacent unknown
     # volume becomes an observation frontier, not an artificial obstacle.
     global_lattice_3d_observation_frontier_maximum_range_m: 36.0

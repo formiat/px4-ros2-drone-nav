@@ -112,11 +112,6 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       search_config.goal_tolerance_m =
           std::min(search_config.goal_tolerance_m, 0.5 * search_config.vertical_step_m);
     }
-    const Lattice3DExplorationContext exploration_context{
-        .observed_occupancy = world.observed_occupancy.get(),
-        .map_revision = world.revision,
-        .strategic_directive = directive,
-    };
     RCLCPP_INFO(get_logger(),
                 "ROUTE_PROPOSAL_SEARCH3D stage=begin revision=%" PRIu64
                 " purpose=%s target=(%.2f,%.2f,%.2f)",
@@ -126,7 +121,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     RiskAwareLattice3DResult result = planRiskAwareLattice3D(
         world.grid, *world.distances_m, search_start, directive.preferred_direction,
         mission_goal, std::span<const PassageTraversalEdge>{}, search_config,
-        planning_worker_pool_.get(), &exploration_context);
+        planning_worker_pool_.get(), &directive);
     RCLCPP_INFO(get_logger(),
                 "ROUTE_PROPOSAL_SEARCH3D stage=complete revision=%" PRIu64
                 " purpose=%s status=%s points=%zu",

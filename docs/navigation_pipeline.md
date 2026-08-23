@@ -95,6 +95,12 @@ therefore retains strategic priority without claiming that its local endpoint is
 the mission endpoint. Direct search remains an independent plan-level candidate
 in the same preparation and arbitration pipeline.
 
+Semantic frontier discovery belongs only to the incremental topological
+planner. The 3D lattice receives a typed strategic directive and materializes
+that local target; it does not run a competing observation-frontier search.
+Compiled static topology contributes passage traversal evidence directly and
+does not instantiate a separate route owner.
+
 Incremental-topology edges and connectors carry typed transition evidence.
 `observed_free` means the swept transition is supported without unknown-space
 exposure; `optimistic_unknown` records that the same raw-collision-free

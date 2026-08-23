@@ -181,7 +181,6 @@ add_library(
   src/free_space_topology_extractor_3d_api.cpp
   src/free_space_topology_extractor_3d_graph.cpp
   src/free_space_topology_extractor_3d_geometry.cpp
-  src/free_space_topology_router.cpp
   src/global_guide_candidate.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
@@ -998,19 +997,6 @@ if(BUILD_TESTING)
   target_link_libraries(free_space_topology_extractor_3d_test drone_city_nav_core)
   enable_project_warnings(free_space_topology_extractor_3d_test)
 
-  ament_add_gtest(
-    free_space_topology_router_test
-    tests/advanced_passage_fixture.cpp
-    tests/free_space_topology_router_test.cpp)
-  target_compile_features(free_space_topology_router_test PRIVATE cxx_std_20)
-  target_link_libraries(free_space_topology_router_test drone_city_nav_core)
-  target_compile_definitions(
-    free_space_topology_router_test
-    PRIVATE
-      TEST_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.occupancy3d"
-      TEST_FREE_SPACE_TOPOLOGY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.topology3d")
-  enable_project_warnings(free_space_topology_router_test)
-
   ament_add_gtest(collision_voxelizer_test tests/collision_voxelizer_test.cpp)
   target_compile_features(collision_voxelizer_test PRIVATE cxx_std_20)
   target_link_libraries(collision_voxelizer_test drone_city_nav_core)
@@ -1072,11 +1058,11 @@ if(BUILD_TESTING)
   target_link_libraries(observation_frontier_test drone_city_nav_core)
   enable_project_warnings(observation_frontier_test)
 
-  ament_add_gtest(observation_frontier_lattice_test
-                  tests/observation_frontier_lattice_test.cpp)
-  target_compile_features(observation_frontier_lattice_test PRIVATE cxx_std_20)
-  target_link_libraries(observation_frontier_lattice_test drone_city_nav_core)
-  enable_project_warnings(observation_frontier_lattice_test)
+  ament_add_gtest(risk_aware_lattice_3d_directive_test
+                  tests/risk_aware_lattice_3d_directive_test.cpp)
+  target_compile_features(risk_aware_lattice_3d_directive_test PRIVATE cxx_std_20)
+  target_link_libraries(risk_aware_lattice_3d_directive_test drone_city_nav_core)
+  enable_project_warnings(risk_aware_lattice_3d_directive_test)
 
   ament_add_gtest(incremental_topology_graph_3d_test
                   tests/incremental_topology_graph_3d_test.cpp)

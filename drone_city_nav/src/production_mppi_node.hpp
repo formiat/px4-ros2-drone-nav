@@ -10,7 +10,6 @@
 #include "drone_city_nav/execution_arbiter_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
-#include "drone_city_nav/free_space_topology_router.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/incremental_topological_lattice_adapter_3d.hpp"
 #include "drone_city_nav/incremental_topological_navigation_3d.hpp"
@@ -835,7 +834,6 @@ private:
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};
   IncrementalTopologicalLatticeAdapter3DConfig topological_lattice_adapter_3d_config_{};
   bool topological_backtracking_enabled_{false};
-  FreeSpaceTopologyRouterConfig free_space_topology_router_config_{};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
@@ -859,7 +857,6 @@ private:
   std::chrono::steady_clock::time_point topological_no_executable_route_since_{};
   std::optional<OccupancyGrid3D> static_occupancy_3d_;
   std::optional<FreeSpaceTopology3D> static_free_space_topology_3d_;
-  std::unique_ptr<FreeSpaceTopologyRouter> static_free_space_topology_router_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
   std::shared_ptr<const std::vector<PassageTraversalEdge>> static_portal_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;

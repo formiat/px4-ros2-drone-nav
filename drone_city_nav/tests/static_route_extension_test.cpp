@@ -262,14 +262,14 @@ TEST(StaticRouteExtensionTest, OrdinaryExtensionCannotReplaceRouteWithoutProgres
   EXPECT_EQ(result.status, StaticRouteCandidateStatus::kNoEndpointImprovement);
 }
 
-TEST(StaticRouteExtensionTest, ExplorationRouteMayMoveAwayFromGoal) {
+TEST(StaticRouteExtensionTest, TopologicalRouteMayMoveAwayFromGoal) {
   const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
                                 std::numeric_limits<float>::infinity());
 
   const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
       route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
-      FlightEnvelopeConfig{}, StaticRouteReplacementPolicy::kAllowExploration);
+      FlightEnvelopeConfig{}, StaticRouteReplacementPolicy::kAllowTopologicalProgress);
 
   EXPECT_TRUE(result.accepted);
   EXPECT_LT(result.endpoint_improvement_m, 0.0);
@@ -445,8 +445,6 @@ TEST(StaticRouteExtensionTest,
           .active_score = 12.0,
           .candidate_score = 20.0,
           .minimum_score_improvement = 0.5,
-          .endpoint_improvement_m = 5.0,
-          .minimum_endpoint_improvement_m = 5.0,
           .active_frontier_still_valid = true,
       });
 
@@ -462,8 +460,6 @@ TEST(StaticRouteExtensionTest, ObservationReplacementKeepsSoftGoalProgress) {
           .active_score = 12.0,
           .candidate_score = 11.5,
           .minimum_score_improvement = 0.5,
-          .endpoint_improvement_m = -4.0,
-          .minimum_endpoint_improvement_m = 5.0,
           .active_frontier_still_valid = true,
       });
 
@@ -478,9 +474,6 @@ TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteReplacementPolicyName(
                 StaticRouteReplacementPolicy::kAllowSafetyReplan),
             "allow_safety_replan");
-  EXPECT_EQ(
-      staticRouteReplacementPolicyName(StaticRouteReplacementPolicy::kAllowExploration),
-      "allow_exploration");
   EXPECT_EQ(staticRouteReplacementPolicyName(
                 StaticRouteReplacementPolicy::kAllowTopologicalProgress),
             "allow_topological_progress");

@@ -256,9 +256,7 @@ void ProductionMppiNode::processGuideSearch3D(
       "topology_acceleration=%s "
       "observation_frontier_id=%" PRIu64 " observation_frontier_revision=%" PRIu64
       " observation_frontier_rays=%zu observation_frontier_gain=%zu "
-      "observation_frontier_score=%.3f frontier_candidates=%zu "
-      "frontier_sampled_free=%zu frontier_boundary=%zu frontier_evaluated=%zu "
-      "frontier_searches=%zu frontier_evaluation_budget_exhausted=%s "
+      "observation_frontier_score=%.3f "
       "observation_replacement=%.*s observation_score_improvement=%.3f "
       "extension=%s replan=%s "
       "base_generation=%" PRIu64 " replan_reason=%s"
@@ -324,10 +322,7 @@ void ProductionMppiNode::processGuideSearch3D(
       observation_frontier ? observation_frontier->supporting_map_revision : 0U,
       observation_frontier ? observation_frontier->supporting_rays : 0U,
       observation_frontier ? observation_frontier->information_gain_voxels : 0U,
-      lattice.frontier_selection_score, lattice.frontier_candidates_considered,
-      lattice.frontier_sampled_free_voxels, lattice.frontier_boundary_candidates,
-      lattice.frontier_evaluated_candidates, lattice.frontier_searches,
-      lattice.frontier_evaluation_budget_exhausted ? "true" : "false",
+      lattice.frontier_selection_score,
       static_cast<int>(
           observationRouteReplacementStatusName(observation_replacement.status).size()),
       observationRouteReplacementStatusName(observation_replacement.status).data(),

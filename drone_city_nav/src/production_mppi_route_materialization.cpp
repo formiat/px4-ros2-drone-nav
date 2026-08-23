@@ -68,15 +68,12 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   prepared.lattice_frontier_endpoint_displacement_m =
       lattice.frontier_endpoint_displacement_m;
   prepared.lattice_frontier_selection_score = lattice.frontier_selection_score;
-  prepared.lattice_frontier_candidates_considered =
-      lattice.frontier_candidates_considered;
-  prepared.lattice_frontier_sampled_free_voxels = lattice.frontier_sampled_free_voxels;
-  prepared.lattice_frontier_boundary_candidates = lattice.frontier_boundary_candidates;
-  prepared.lattice_frontier_evaluated_candidates =
-      lattice.frontier_evaluated_candidates;
-  prepared.lattice_frontier_searches = lattice.frontier_searches;
-  prepared.lattice_frontier_evaluation_budget_exhausted =
-      lattice.frontier_evaluation_budget_exhausted;
+  prepared.lattice_frontier_candidates_considered = 0U;
+  prepared.lattice_frontier_sampled_free_voxels = 0U;
+  prepared.lattice_frontier_boundary_candidates = 0U;
+  prepared.lattice_frontier_evaluated_candidates = 0U;
+  prepared.lattice_frontier_searches = 0U;
+  prepared.lattice_frontier_evaluation_budget_exhausted = false;
   prepared.global_guide_cost = lattice.objective_cost;
   prepared.global_guide_reaches_mission_goal = lattice.reached_mission_goal;
   prepared.topology_candidates = lattice.topology_candidates;
@@ -117,13 +114,6 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         distance3D(search_start,
                    world.lattice_3d_observation_frontier->observation_pose) <=
             lattice_3d_config_.goal_tolerance_m;
-    double observation_endpoint_improvement_m = 0.0;
-    if (world.lattice_3d_observation_frontier && lattice.observation_frontier) {
-      observation_endpoint_improvement_m =
-          distance3D(world.lattice_3d_observation_frontier->observation_pose,
-                     mission_goal) -
-          distance3D(lattice.observation_frontier->observation_pose, mission_goal);
-    }
     result.observation_replacement =
         evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
             .active_frontier = world.lattice_3d_observation_frontier,
@@ -133,10 +123,6 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
             .minimum_score_improvement =
                 lattice_3d_config_
                     .observation_frontier_replacement_minimum_score_improvement,
-            .endpoint_improvement_m = observation_endpoint_improvement_m,
-            .minimum_endpoint_improvement_m =
-                lattice_3d_config_
-                    .observation_frontier_replacement_minimum_endpoint_improvement_m,
             .active_frontier_still_valid = active_observation_frontier_still_valid,
             .active_frontier_reached = active_observation_frontier_reached,
             .active_route_exhausted = active_observation_segment_completed,
@@ -220,7 +206,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   bool cooperative_route_valid = true;
   const bool passage_geometry_required =
       static_occupancy_3d_.has_value() && !geometry.constrained_spans.empty() &&
-      (cooperative_traffic_enabled_ || static_free_space_topology_router_ != nullptr);
+      (cooperative_traffic_enabled_ ||
+       (world.passage_traversals && !world.passage_traversals->empty()));
   if (passage_geometry_required) {
     const auto passage_started = std::chrono::steady_clock::now();
     PassageVolumeResource volume_resource = acquireDerivedPassageVolumes(

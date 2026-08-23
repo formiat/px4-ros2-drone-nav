@@ -488,19 +488,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("global_lattice_3d_critical_exposure_cost_per_m", 0.50);
   lattice_3d_config_.passage_connection_distance_m =
       declare_parameter<double>("global_lattice_3d_passage_connection_distance_m", 3.0);
-  const std::int64_t maximum_entry_portals_per_component =
-      declare_parameter<std::int64_t>(
-          "free_space_topology_maximum_entry_portals_per_component", 4);
-  const std::int64_t maximum_traversals_per_component = declare_parameter<std::int64_t>(
-      "free_space_topology_maximum_traversals_per_component", 3);
-  if (maximum_entry_portals_per_component <= 0 ||
-      maximum_traversals_per_component <= 0) {
-    throw std::invalid_argument{"invalid free-space topology router configuration"};
-  }
-  free_space_topology_router_config_.maximum_entry_portals_per_component =
-      static_cast<std::size_t>(maximum_entry_portals_per_component);
-  free_space_topology_router_config_.maximum_traversals_per_component =
-      static_cast<std::size_t>(maximum_traversals_per_component);
   lattice_3d_config_.frontier_minimum_reachable_depth_m =
       declare_parameter<double>("global_lattice_3d_frontier_reachable_depth_m", 8.0);
   lattice_3d_config_.frontier_minimum_endpoint_displacement_m =
@@ -509,37 +496,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_3d_config_.frontier_validation_maximum_states =
       static_cast<std::size_t>(declare_parameter<std::int64_t>(
           "global_lattice_3d_frontier_validation_maximum_states", 2048));
-  const std::int64_t observation_frontier_maximum_evaluations =
-      declare_parameter<std::int64_t>(
-          "global_lattice_3d_observation_frontier_maximum_evaluations", 1024);
-  const std::int64_t observation_frontier_evaluation_stride =
-      declare_parameter<std::int64_t>(
-          "global_lattice_3d_observation_frontier_evaluation_stride", 2);
-  const std::int64_t observation_frontier_maximum_searches =
-      declare_parameter<std::int64_t>(
-          "global_lattice_3d_observation_frontier_maximum_searches", 4);
-  lattice_3d_config_.observation_frontier_search_time_ms = declare_parameter<double>(
-      "global_lattice_3d_observation_frontier_search_time_ms", 250.0);
-  lattice_3d_config_.observation_frontier_information_gain_weight =
-      declare_parameter<double>(
-          "global_lattice_3d_observation_frontier_information_gain_weight", 3.0);
-  lattice_3d_config_.observation_frontier_goal_progress_weight =
-      declare_parameter<double>(
-          "global_lattice_3d_observation_frontier_goal_progress_weight", 0.15);
-  lattice_3d_config_.observation_frontier_path_cost_weight = declare_parameter<double>(
-      "global_lattice_3d_observation_frontier_path_cost_weight", 0.25);
-  lattice_3d_config_.observation_frontier_clearance_weight = declare_parameter<double>(
-      "global_lattice_3d_observation_frontier_clearance_weight", 0.10);
   lattice_3d_config_
       .observation_frontier_replacement_minimum_score_improvement = declare_parameter<
       double>(
       "global_lattice_3d_observation_frontier_replacement_minimum_score_improvement",
       0.5);
-  lattice_3d_config_.observation_frontier_replacement_minimum_endpoint_improvement_m =
-      declare_parameter<double>(
-          "global_lattice_3d_observation_frontier_replacement_minimum_endpoint_"
-          "improvement_m",
-          2.0);
   lattice_3d_config_.sensor_observability.maximum_observation_range_m =
       declare_parameter<double>(
           "global_lattice_3d_observation_frontier_maximum_range_m", 8.0);
@@ -572,20 +533,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   const std::int64_t observation_frontier_minimum_information_gain_voxels =
       declare_parameter<std::int64_t>(
           "global_lattice_3d_observation_frontier_minimum_information_gain_voxels", 4);
-  if (observation_frontier_maximum_evaluations <= 0 ||
-      observation_frontier_evaluation_stride <= 0 ||
-      observation_frontier_maximum_searches <= 0 ||
-      observation_frontier_minimum_supporting_rays <= 0 ||
+  if (observation_frontier_minimum_supporting_rays <= 0 ||
       observation_frontier_minimum_information_gain_voxels <= 0 ||
       lidar_3d_horizontal_samples <= 1 || lidar_3d_vertical_samples <= 1) {
     throw std::invalid_argument{"invalid observation frontier count configuration"};
   }
-  lattice_3d_config_.observation_frontier_maximum_evaluations =
-      static_cast<std::size_t>(observation_frontier_maximum_evaluations);
-  lattice_3d_config_.observation_frontier_evaluation_stride =
-      static_cast<std::size_t>(observation_frontier_evaluation_stride);
-  lattice_3d_config_.observation_frontier_maximum_searches =
-      static_cast<std::size_t>(observation_frontier_maximum_searches);
   lattice_3d_config_.sensor_observability.minimum_supporting_rays =
       static_cast<std::size_t>(observation_frontier_minimum_supporting_rays);
   lattice_3d_config_.sensor_observability.minimum_information_gain_voxels =
@@ -727,20 +679,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_.planning_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.critical_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.passage_connection_distance_m > 0.0) ||
-      free_space_topology_router_config_.maximum_entry_portals_per_component == 0U ||
-      free_space_topology_router_config_.maximum_traversals_per_component == 0U ||
       !(lattice_3d_config_.frontier_minimum_reachable_depth_m > 0.0) ||
       !(lattice_3d_config_.frontier_minimum_endpoint_displacement_m > 0.0) ||
       lattice_3d_config_.frontier_validation_maximum_states == 0U ||
-      !(lattice_3d_config_.observation_frontier_information_gain_weight >= 0.0) ||
-      !(lattice_3d_config_.observation_frontier_goal_progress_weight >= 0.0) ||
-      !(lattice_3d_config_.observation_frontier_path_cost_weight >= 0.0) ||
-      !(lattice_3d_config_.observation_frontier_clearance_weight >= 0.0) ||
       !(lattice_3d_config_.observation_frontier_replacement_minimum_score_improvement >=
         0.0) ||
-      !(lattice_3d_config_
-            .observation_frontier_replacement_minimum_endpoint_improvement_m > 0.0) ||
-      !(lattice_3d_config_.observation_frontier_search_time_ms > 0.0) ||
       !sensorObservabilityConfigIsValid(lattice_3d_config_.sensor_observability) ||
       !(physical_footprint_config_.sweep_step_m > 0.0) ||
       !(physical_footprint_config_.radius_m >= 0.0) ||
@@ -883,16 +826,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
             : std::span<const PassageTraversalEdge>{};
     static_portal_edges_ = std::make_shared<const std::vector<PassageTraversalEdge>>(
         passage_traversals.begin(), passage_traversals.end());
-    if (static_free_space_topology_3d_ &&
-        !static_free_space_topology_3d_->segments().empty()) {
-      static_free_space_topology_router_ = std::make_unique<FreeSpaceTopologyRouter>(
-          *static_free_space_topology_3d_, free_space_topology_router_config_);
-    }
     RCLCPP_INFO(get_logger(),
                 "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
                 " occupied_voxels=%zu passage_regions=%zu portals=%zu "
                 "passage_segments=%zu portal_edges=%zu topology_path=%s "
-                "topology_ready=%s topology_mode=%s "
+                "topology_ready=%s "
                 "dimensions=%dx%dx%d",
                 occupancy_path.c_str(), static_occupancy_3d_->fingerprint(),
                 static_occupancy_3d_->occupiedVoxelCount(),
@@ -907,7 +845,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                     : 0U,
                 static_portal_edges_->size(), topology_path.c_str(),
                 static_free_space_topology_3d_ ? "true" : "false",
-                static_free_space_topology_router_ ? "sparse_lazy" : "legacy_eager",
                 static_occupancy_3d_->bounds().width_cells,
                 static_occupancy_3d_->bounds().height_cells,
                 static_occupancy_3d_->bounds().depth_cells);
