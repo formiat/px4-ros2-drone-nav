@@ -151,6 +151,11 @@ bool RoutePublicationAssessment3D::compatible() const noexcept {
   return status == RoutePublicationStatus3D::kCompatible;
 }
 
+bool RouteActivationAssessment3D::accepted() const noexcept {
+  return publication.compatible() && objective_matches && projection.valid &&
+         cross_track_accepted && raw_world_compatible && raw_validation.accepted();
+}
+
 std::optional<ActivatedRouteIdentity3D>
 activateRouteProposal3D(const MaterializedRouteProposal3D& proposal,
                         const std::uint64_t generation) noexcept {
@@ -211,6 +216,66 @@ assessRoutePublication3D(const MaterializedRouteProposal3D& proposal,
     return {.status = RoutePublicationStatus3D::kResidentWorldPredatesPlan};
   }
   return {.status = RoutePublicationStatus3D::kCompatible};
+}
+
+RouteActivationAssessment3D
+assessRouteActivation3D(const MaterializedRouteProposal3D& proposal,
+                        const std::span<const RouteSample3D> route,
+                        const RouteActivationObservation3D& observation) noexcept {
+  RouteActivationAssessment3D result{
+      .publication = assessRoutePublication3D(proposal, observation.resident_world),
+      .raw_validated_through_revision =
+          proposal.validated_world.raw_validated_through_revision,
+      .raw_world_compatible = !observation.raw_validation_required,
+  };
+  result.objective_matches =
+      staticRouteObjectiveMatches(proposal.objective, observation.current_objective,
+                                  observation.minimum_tracking_sample_sequence,
+                                  std::numeric_limits<double>::infinity());
+  if (observation.raw_validation_required) {
+    result.raw_world_compatible =
+        observation.latest_raw_occupancy != nullptr &&
+        observation.latest_raw_producer_instance_id ==
+            observation.resident_world.producer_instance_id &&
+        observation.latest_raw_revision ==
+            observation.resident_world.esdf_source_raw_revision &&
+        observation.latest_raw_revision >=
+            proposal.validated_world.raw_validated_through_revision;
+  }
+  if (!result.publication.compatible() || !result.objective_matches ||
+      route.size() < 2U || !std::isfinite(observation.maximum_cross_track_m) ||
+      observation.maximum_cross_track_m <= 0.0) {
+    return result;
+  }
+
+  result.projection = projectOntoRoute3D(route, observation.position, 0.0);
+  result.cross_track_accepted =
+      result.projection.valid &&
+      result.projection.distance_m <= observation.maximum_cross_track_m;
+  if (!result.cross_track_accepted) {
+    return result;
+  }
+
+  if (!observation.raw_validation_required) {
+    result.raw_validation = RawRouteSuffixValidation3D{
+        .status = RawRouteSuffixStatus3D::kValid,
+    };
+    return result;
+  }
+  if (!result.raw_world_compatible) {
+    return result;
+  }
+
+  result.raw_validation = validateRawRouteSuffix3D(
+      route, observation.position, result.projection, *observation.latest_raw_occupancy,
+      observation.footprint, observation.proprioceptive_free_space_seed,
+      observation.launch_support_contact);
+  if (result.raw_validation.accepted() && result.raw_validation.connector_validated &&
+      result.raw_validation.suffix_validated) {
+    result.raw_validated_through_revision = std::max(
+        result.raw_validated_through_revision, observation.latest_raw_revision);
+  }
+  return result;
 }
 
 RawRouteSuffixValidation3D validateRawRouteSuffix3D(

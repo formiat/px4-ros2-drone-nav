@@ -638,6 +638,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "candidate_validation_rejected";
     case StaticRouteActivationStatus::kWorldPublicationRejected:
       return "world_publication_rejected";
+    case StaticRouteActivationStatus::kActivationSnapshotSuperseded:
+      return "activation_snapshot_superseded";
     case StaticRouteActivationStatus::kStaleRouteGeneration:
       return "stale_route_generation";
     case StaticRouteActivationStatus::kStaleObjective:

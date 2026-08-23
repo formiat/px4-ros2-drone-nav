@@ -279,6 +279,7 @@ enum class StaticRouteActivationStatus : std::uint8_t {
   kCandidateNotExecutable,
   kCandidateValidationRejected,
   kWorldPublicationRejected,
+  kActivationSnapshotSuperseded,
   kStaleRouteGeneration,
   kStaleObjective,
   kDynamicHandoffRejected,

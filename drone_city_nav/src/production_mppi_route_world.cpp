@@ -45,27 +45,4 @@ void adoptWorldResources(ProductionMppiPreparedEsdf& target,
   target.topological_graph_update = source.topological_graph_update;
 }
 
-std::optional<StaticRouteCandidateValidation>
-validateRouteAgainstLatestObservedRawOccupancy(
-    const std::span<const RouteSample3D> route,
-    const ObservedOccupancyGrid3D& occupancy,
-    const SweptFootprintConfig& footprint_config,
-    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_free_space_seed,
-    const LaunchSupportContact3D* const launch_support_contact) {
-  for (std::size_t index = 1U; index < route.size(); ++index) {
-    const SweptFootprintResult validation = validateObservedSweptFootprint(
-        occupancy, route[index - 1U].position, FootprintBodyAxis{},
-        route[index].position, FootprintBodyAxis{}, footprint_config,
-        ObservedSpaceValidationPolicy::kAllowUnknown, proprioceptive_free_space_seed,
-        launch_support_contact);
-    if (validation.status == SweptFootprintStatus::kRawCollision) {
-      return StaticRouteCandidateValidation{
-          .status = StaticRouteCandidateStatus::kRawCollision,
-          .failure_segment_index = index - 1U,
-          .failure_point = validation.failure_point};
-    }
-  }
-  return std::nullopt;
-}
-
 } // namespace drone_city_nav

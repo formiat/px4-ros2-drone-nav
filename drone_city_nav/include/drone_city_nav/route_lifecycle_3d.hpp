@@ -106,6 +106,33 @@ struct RawRouteSuffixValidation3D {
   [[nodiscard]] bool accepted() const noexcept;
 };
 
+struct RouteActivationObservation3D {
+  NavigationWorldCertificate3D resident_world{};
+  StaticRouteObjective current_objective{};
+  std::uint64_t minimum_tracking_sample_sequence{0U};
+  Point3 position{};
+  double maximum_cross_track_m{0.0};
+  const ObservedOccupancyGrid3D* latest_raw_occupancy{nullptr};
+  std::uint64_t latest_raw_producer_instance_id{0U};
+  std::uint64_t latest_raw_revision{0U};
+  SweptFootprintConfig footprint{};
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
+  const LaunchSupportContact3D* launch_support_contact{nullptr};
+  bool raw_validation_required{false};
+};
+
+struct RouteActivationAssessment3D {
+  RoutePublicationAssessment3D publication{};
+  RouteProjection3D projection{};
+  RawRouteSuffixValidation3D raw_validation{};
+  std::uint64_t raw_validated_through_revision{0U};
+  bool objective_matches{false};
+  bool cross_track_accepted{false};
+  bool raw_world_compatible{false};
+
+  [[nodiscard]] bool accepted() const noexcept;
+};
+
 enum class RouteExecutionStatus3D : std::uint8_t {
   kUsable,
   kNoActiveRoute,
@@ -216,6 +243,11 @@ activateRouteProposal3D(const MaterializedRouteProposal3D& proposal,
 [[nodiscard]] RoutePublicationAssessment3D
 assessRoutePublication3D(const MaterializedRouteProposal3D& proposal,
                          const NavigationWorldCertificate3D& resident_world) noexcept;
+
+[[nodiscard]] RouteActivationAssessment3D
+assessRouteActivation3D(const MaterializedRouteProposal3D& proposal,
+                        std::span<const RouteSample3D> route,
+                        const RouteActivationObservation3D& observation) noexcept;
 
 [[nodiscard]] RawRouteSuffixValidation3D validateRawRouteSuffix3D(
     std::span<const RouteSample3D> route, const Point3& position,

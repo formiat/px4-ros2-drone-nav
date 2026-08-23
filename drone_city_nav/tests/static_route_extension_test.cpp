@@ -188,8 +188,10 @@ TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterCompletedReplan) {
   const std::optional<StaticRouteDeferredReplan> replay = latch.finishReplan(12U);
 
   ASSERT_NE(replay, std::nullopt);
-  EXPECT_EQ(replay->reason, GlobalGuideReleaseReason::kExhausted);
-  EXPECT_EQ(replay->route_generation, 12U);
+  const StaticRouteDeferredReplan replayed =
+      replay.value_or(StaticRouteDeferredReplan{});
+  EXPECT_EQ(replayed.reason, GlobalGuideReleaseReason::kExhausted);
+  EXPECT_EQ(replayed.route_generation, 12U);
   EXPECT_FALSE(latch.pending());
 }
 
@@ -813,6 +815,9 @@ TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kWorldPublicationRejected),
             "world_publication_rejected");
+  EXPECT_EQ(staticRouteActivationStatusName(
+                StaticRouteActivationStatus::kActivationSnapshotSuperseded),
+            "activation_snapshot_superseded");
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kStaleRouteGeneration),
             "stale_route_generation");

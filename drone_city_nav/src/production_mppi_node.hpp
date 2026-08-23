@@ -168,6 +168,7 @@ enum class ProductionGuideCandidateValidationStatus : std::uint8_t {
 };
 
 struct ProductionMppiPreparedEsdf;
+struct ProductionRouteActivationResult3D;
 
 struct ProductionMppiRawWorld2D {
   RawMapVersion version{};
@@ -644,6 +645,14 @@ private:
   assessActiveRouteCompletion3D(const ProductionMppiPreparedEsdf& world,
                                 const Point3& position);
   [[nodiscard]] std::uint64_t nextRouteGeneration3D();
+  [[nodiscard]] ProductionRouteActivationResult3D
+  finalizeRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
+                            ProductionMppiPreparedEsdf prepared,
+                            NavigationWorldCertificate3D planned_world_certificate,
+                            StaticRouteCandidateValidation validation,
+                            StaticRouteReplacementPolicy replacement_policy,
+                            const Point3& mission_goal,
+                            std::uint64_t candidate_generation);
   [[nodiscard]] ProductionRouteCandidateSelection3D selectRouteCandidate3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,

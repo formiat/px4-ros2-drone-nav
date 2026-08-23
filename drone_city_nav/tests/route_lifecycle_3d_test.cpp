@@ -226,6 +226,171 @@ TEST(RouteLifecycle3DTest, ProposalCannotPublishOnAWorldOlderThanItsPlan) {
   EXPECT_EQ(assessment.status, RoutePublicationStatus3D::kResidentWorldPredatesPlan);
 }
 
+TEST(RouteLifecycle3DTest,
+     ActivationSnapshotValidatesConnectorAndRemainingSuffixButNotPassedPrefix) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const std::vector<RouteSample3D> route = straightRoute();
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 5, 4}};
+  ASSERT_TRUE(occupancy.setState({2, 1, 1}, ObservedVoxelState::kOccupied));
+  NavigationWorldCertificate3D resident_world = proposal.validated_world;
+  resident_world.esdf_source_raw_revision = 13U;
+  resident_world.raw_validated_through_revision = 13U;
+
+  const RouteActivationAssessment3D assessment =
+      assessRouteActivation3D(proposal, route,
+                              RouteActivationObservation3D{
+                                  .resident_world = resident_world,
+                                  .current_objective = proposal.objective,
+                                  .position = {6.5, 2.5, 1.5},
+                                  .maximum_cross_track_m = 2.0,
+                                  .latest_raw_occupancy = &occupancy,
+                                  .latest_raw_producer_instance_id = 7U,
+                                  .latest_raw_revision = 13U,
+                                  .footprint = {.radius_m = 0.0,
+                                                .perimeter_samples = 0U,
+                                                .radial_rings = 0U,
+                                                .axial_samples = 1U,
+                                                .sweep_step_m = 0.25},
+                                  .raw_validation_required = true,
+                              });
+
+  EXPECT_TRUE(assessment.accepted());
+  EXPECT_TRUE(assessment.raw_validation.connector_validated);
+  EXPECT_TRUE(assessment.raw_validation.suffix_validated);
+  EXPECT_GE(assessment.raw_validation.first_validated_route_segment, 2U);
+  EXPECT_EQ(assessment.raw_validated_through_revision, 13U);
+}
+
+TEST(RouteLifecycle3DTest, ActivationSnapshotRejectsRawConnectorCollision) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const std::vector<RouteSample3D> route = straightRoute();
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 5, 4}};
+  ASSERT_TRUE(occupancy.setState({6, 2, 1}, ObservedVoxelState::kOccupied));
+  NavigationWorldCertificate3D resident_world = proposal.validated_world;
+  resident_world.esdf_source_raw_revision = 13U;
+  resident_world.raw_validated_through_revision = 13U;
+
+  const RouteActivationAssessment3D assessment =
+      assessRouteActivation3D(proposal, route,
+                              RouteActivationObservation3D{
+                                  .resident_world = resident_world,
+                                  .current_objective = proposal.objective,
+                                  .position = {6.5, 3.5, 1.5},
+                                  .maximum_cross_track_m = 3.0,
+                                  .latest_raw_occupancy = &occupancy,
+                                  .latest_raw_producer_instance_id = 7U,
+                                  .latest_raw_revision = 13U,
+                                  .footprint = {.radius_m = 0.0,
+                                                .perimeter_samples = 0U,
+                                                .radial_rings = 0U,
+                                                .axial_samples = 1U,
+                                                .sweep_step_m = 0.25},
+                                  .raw_validation_required = true,
+                              });
+
+  EXPECT_FALSE(assessment.accepted());
+  EXPECT_EQ(assessment.raw_validation.status, RawRouteSuffixStatus3D::kRawCollision);
+  EXPECT_TRUE(assessment.raw_validation.connector_validated);
+  EXPECT_FALSE(assessment.raw_validation.suffix_validated);
+}
+
+TEST(RouteLifecycle3DTest, ActivationSnapshotRejectsRawRemainingSuffixCollision) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const std::vector<RouteSample3D> route = straightRoute();
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 5, 4}};
+  ASSERT_TRUE(occupancy.setState({8, 1, 1}, ObservedVoxelState::kOccupied));
+  NavigationWorldCertificate3D resident_world = proposal.validated_world;
+  resident_world.esdf_source_raw_revision = 13U;
+  resident_world.raw_validated_through_revision = 13U;
+
+  const RouteActivationAssessment3D assessment =
+      assessRouteActivation3D(proposal, route,
+                              RouteActivationObservation3D{
+                                  .resident_world = resident_world,
+                                  .current_objective = proposal.objective,
+                                  .position = {6.5, 1.5, 1.5},
+                                  .maximum_cross_track_m = 2.0,
+                                  .latest_raw_occupancy = &occupancy,
+                                  .latest_raw_producer_instance_id = 7U,
+                                  .latest_raw_revision = 13U,
+                                  .footprint = {.radius_m = 0.0,
+                                                .perimeter_samples = 0U,
+                                                .radial_rings = 0U,
+                                                .axial_samples = 1U,
+                                                .sweep_step_m = 0.25},
+                                  .raw_validation_required = true,
+                              });
+
+  EXPECT_FALSE(assessment.accepted());
+  EXPECT_EQ(assessment.raw_validation.status, RawRouteSuffixStatus3D::kRawCollision);
+  EXPECT_TRUE(assessment.raw_validation.connector_validated);
+  EXPECT_FALSE(assessment.raw_validation.suffix_validated);
+  EXPECT_EQ(assessment.raw_validation.failure_route_segment, 3U);
+}
+
+TEST(RouteLifecycle3DTest, ActivationSnapshotWaitsForWorldBuiltFromLatestRawRevision) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const std::vector<RouteSample3D> route = straightRoute();
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 5, 4}};
+  NavigationWorldCertificate3D resident_world = proposal.validated_world;
+  resident_world.esdf_source_raw_revision = 12U;
+  resident_world.raw_validated_through_revision = 12U;
+
+  const RouteActivationAssessment3D assessment =
+      assessRouteActivation3D(proposal, route,
+                              RouteActivationObservation3D{
+                                  .resident_world = resident_world,
+                                  .current_objective = proposal.objective,
+                                  .position = {6.5, 2.5, 1.5},
+                                  .maximum_cross_track_m = 2.0,
+                                  .latest_raw_occupancy = &occupancy,
+                                  .latest_raw_producer_instance_id = 7U,
+                                  .latest_raw_revision = 13U,
+                                  .footprint = {.radius_m = 0.0,
+                                                .perimeter_samples = 0U,
+                                                .radial_rings = 0U,
+                                                .axial_samples = 1U,
+                                                .sweep_step_m = 0.25},
+                                  .raw_validation_required = true,
+                              });
+
+  EXPECT_FALSE(assessment.accepted());
+  EXPECT_FALSE(assessment.raw_world_compatible);
+  EXPECT_FALSE(assessment.raw_validation.connector_validated);
+}
+
+TEST(RouteLifecycle3DTest, ActivationSnapshotSeparatesCrossTrackFromWorldCoherence) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const std::vector<RouteSample3D> route = straightRoute();
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 8, 4}};
+  NavigationWorldCertificate3D resident_world = proposal.validated_world;
+  resident_world.esdf_source_raw_revision = 13U;
+  resident_world.raw_validated_through_revision = 13U;
+
+  const RouteActivationAssessment3D assessment =
+      assessRouteActivation3D(proposal, route,
+                              RouteActivationObservation3D{
+                                  .resident_world = resident_world,
+                                  .current_objective = proposal.objective,
+                                  .position = {6.5, 6.5, 1.5},
+                                  .maximum_cross_track_m = 2.0,
+                                  .latest_raw_occupancy = &occupancy,
+                                  .latest_raw_producer_instance_id = 7U,
+                                  .latest_raw_revision = 13U,
+                                  .footprint = {.radius_m = 0.0,
+                                                .perimeter_samples = 0U,
+                                                .radial_rings = 0U,
+                                                .axial_samples = 1U,
+                                                .sweep_step_m = 0.25},
+                                  .raw_validation_required = true,
+                              });
+
+  EXPECT_FALSE(assessment.accepted());
+  EXPECT_TRUE(assessment.raw_world_compatible);
+  EXPECT_FALSE(assessment.cross_track_accepted);
+  EXPECT_FALSE(assessment.raw_validation.connector_validated);
+}
+
 TEST(RouteLifecycle3DTest, PublicationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(routePublicationStatus3DName(RoutePublicationStatus3D::kNotAssessed),
             "not_assessed");
