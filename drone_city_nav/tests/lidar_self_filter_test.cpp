@@ -24,6 +24,22 @@ TEST(LidarSelfFilter, PreservesNearbyExternalReturns) {
   EXPECT_FALSE(isLidarSelfReturn(Point3{0.0, 0.0, 0.51}, config));
 }
 
+TEST(LidarSelfFilter, SeparatesDirectSelfReturnsFromVoxelQuantization) {
+  const LidarSelfFilterConfig config{};
+
+  EXPECT_EQ(
+      classifyLidarSelfHit(Point3{0.89, 0.0, 0.0}, Point3{0.875, 0.0, 0.0}, config),
+      LidarSelfFilterDisposition::kDiscardFromAllObstacleInputs);
+  EXPECT_EQ(
+      classifyLidarSelfHit(Point3{0.91, 0.0, 0.0}, Point3{0.875, 0.0, 0.0}, config),
+      LidarSelfFilterDisposition::kDiscardFromPersistentMemory);
+  EXPECT_EQ(
+      classifyLidarSelfHit(Point3{0.91, 0.0, 0.0}, Point3{1.125, 0.0, 0.0}, config),
+      LidarSelfFilterDisposition::kKeep);
+  EXPECT_EQ(classifyLidarSelfHit(Point3{0.91, 0.0, 0.0}, std::nullopt, config),
+            LidarSelfFilterDisposition::kKeep);
+}
+
 TEST(LidarSelfFilter, InvalidInputCannotHideAHit) {
   LidarSelfFilterConfig config{};
   config.horizontal_radius_m = -1.0;

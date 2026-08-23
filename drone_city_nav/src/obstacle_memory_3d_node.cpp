@@ -669,10 +669,10 @@ private:
         acquisition.adjusted_timing.first_beam_stamp_ns;
     const DynamicAgentLidarFilterPlan filter_plan =
         dynamic_agent_state_->makeFilterPlan(now_ns, acquisition_stamp_ns);
-    std::vector<LidarBeam3D> map_beams;
+    std::vector<LidarBeam3D> memory_beams;
     std::vector<Point3> hit_points_map;
     std::vector<Point3> hit_points_body;
-    map_beams.reserve(decoded.beams.size());
+    memory_beams.reserve(decoded.beams.size());
     hit_points_map.reserve(decoded.hit_beams);
     hit_points_body.reserve(decoded.hit_beams);
     Point3 ray_origin{};
@@ -680,6 +680,7 @@ private:
     std::size_t tracked_agent_filtered{0U};
     std::size_t cooperative_filtered{0U};
     std::size_t self_filtered{0U};
+    std::size_t persistent_self_filtered{0U};
     std::size_t projection_invalid{0U};
     for (const LidarBeamSample3D& sample : decoded.beams) {
       const LidarRayProjection3D ray =
@@ -690,7 +691,7 @@ private:
                        .valid = sample.valid && ray.valid};
       if (!beam.valid) {
         ++projection_invalid;
-        map_beams.push_back(beam);
+        memory_beams.push_back(beam);
         continue;
       }
       ray_origin = ray.origin_map_m;
@@ -700,10 +701,22 @@ private:
                               ray.origin_map_m.y + beam.range_m * beam.direction_map.y,
                               ray.origin_map_m.z + beam.range_m * beam.direction_map.z};
         const Point3 endpoint_body = lidarMapPointToBody(body_frame, endpoint);
-        if (isLidarSelfReturn(endpoint_body, self_filter_config_)) {
+        std::optional<Point3> occupancy_voxel_center_body;
+        if (memory_) {
+          const std::optional<GridIndex3D> occupancy_cell =
+              memory_->grid().worldToCell(endpoint);
+          if (occupancy_cell.has_value()) {
+            occupancy_voxel_center_body = lidarMapPointToBody(
+                body_frame, memory_->grid().cellCenter(*occupancy_cell));
+          }
+        }
+        const LidarSelfFilterDisposition self_disposition = classifyLidarSelfHit(
+            endpoint_body, occupancy_voxel_center_body, self_filter_config_);
+        if (self_disposition ==
+            LidarSelfFilterDisposition::kDiscardFromAllObstacleInputs) {
           beam.valid = false;
           ++self_filtered;
-          map_beams.push_back(beam);
+          memory_beams.push_back(beam);
           continue;
         }
         const bool tracked_agent =
@@ -717,9 +730,14 @@ private:
         } else {
           hit_points_map.push_back(endpoint);
           hit_points_body.push_back(endpoint_body);
+          if (self_disposition ==
+              LidarSelfFilterDisposition::kDiscardFromPersistentMemory) {
+            beam.valid = false;
+            ++persistent_self_filtered;
+          }
         }
       }
-      map_beams.push_back(beam);
+      memory_beams.push_back(beam);
     }
     if (!origin_valid) {
       return PendingPointCloudDisposition::kConsumed;
@@ -759,7 +777,7 @@ private:
             forgotten_cooperative_voxels);
       }
       const ObstacleMemory3DStats stats = memory_->integrateScan(
-          LidarScan3DView{.origin_map = ray_origin, .beams = map_beams});
+          LidarScan3DView{.origin_map = ray_origin, .beams = memory_beams});
       const ObstacleMemory3DChanges changes = memory_->takeChanges();
       transport_->publish(memory_->grid(), changes,
                           rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME},
@@ -768,12 +786,13 @@ private:
           get_logger(), *get_clock(), 1000,
           "LIDAR3D_SCAN accepted=true stamp_ns=%" PRId64
           " source=%zu processed=%zu hits=%zu misses=%zu invalid=%zu "
-          "self_filtered=%zu dynamic_filtered=%zu dynamic_forgotten=%zu "
+          "self_filtered=%zu persistent_self_filtered=%zu dynamic_filtered=%zu "
+          "dynamic_forgotten=%zu "
           "transitions=%zu "
           "revision=%" PRIu64 " current_cloud=%s",
           acquisition_stamp_ns, decoded.beams.size(), stats.processed_beams,
           stats.hit_beams, stats.miss_beams, stats.invalid_beams + projection_invalid,
-          self_filtered, dynamic_filtered,
+          self_filtered, persistent_self_filtered, dynamic_filtered,
           forgotten_tracked_voxels + forgotten_cooperative_voxels,
           stats.state_transitions, memory_->revision(),
           publish_current_cloud ? "true" : "false");

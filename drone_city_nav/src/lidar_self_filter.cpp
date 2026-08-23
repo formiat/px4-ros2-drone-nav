@@ -25,4 +25,18 @@ bool isLidarSelfReturn(const Point3& point_body_frd,
          point_body_frd.z <= config.downward_extent_m;
 }
 
+LidarSelfFilterDisposition
+classifyLidarSelfHit(const Point3& endpoint_body_frd,
+                     const std::optional<Point3>& occupancy_voxel_center_body_frd,
+                     const LidarSelfFilterConfig& config) noexcept {
+  if (isLidarSelfReturn(endpoint_body_frd, config)) {
+    return LidarSelfFilterDisposition::kDiscardFromAllObstacleInputs;
+  }
+  if (occupancy_voxel_center_body_frd.has_value() &&
+      isLidarSelfReturn(*occupancy_voxel_center_body_frd, config)) {
+    return LidarSelfFilterDisposition::kDiscardFromPersistentMemory;
+  }
+  return LidarSelfFilterDisposition::kKeep;
+}
+
 } // namespace drone_city_nav
