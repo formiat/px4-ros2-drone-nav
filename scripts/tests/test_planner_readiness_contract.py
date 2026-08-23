@@ -18,6 +18,7 @@ PLANNER_INTERFACES = SOURCE / "production_mppi_node_interfaces.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 STATIC_EXTENSION = SOURCE / "production_mppi_node_static_extension.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
+ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
 HORIZON_MESSAGE = PACKAGE / "msg" / "MppiTrajectoryHorizon.msg"
@@ -90,13 +91,15 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertRegex(
             planning_tick,
             r"guide_progress_tracker_\s*&&\s*!direct_tracking_interception\s*&&\s*"
-            r"esdf->lattice_3d_route_purpose\s*!=\s*"
-            r"Lattice3DRoutePurpose::kLaunchDeparture",
+            r"route_purpose\s*!=\s*Lattice3DRoutePurpose::kLaunchDeparture\s*&&\s*"
+            r"route_purpose\s*!=\s*"
+            r"Lattice3DRoutePurpose::kObservationFrontier",
         )
 
     def test_missing_executable_route_holds_without_a_clearance_gate(self) -> None:
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         execution = EXECUTION.read_text(encoding="utf-8")
+        route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
         offboard = OFFBOARD.read_text(encoding="utf-8")
         planner = PLANNER.read_text(encoding="utf-8")
         horizon_message = HORIZON_MESSAGE.read_text(encoding="utf-8")
@@ -107,7 +110,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         finite_execution_path = FINITE_EXECUTION_PATH.read_text(encoding="utf-8")
 
         self.assertIn("kNoExecutableRouteHold", planning_tick)
-        self.assertIn("no_executable_route_hold_position_", planning_tick)
+        self.assertIn("route_hold_position = route_execution.hold_position", planning_tick)
+        self.assertIn(".hold_position =", route_execution)
+        self.assertIn("result.route_usable = assessment.usable()", route_execution)
         self.assertIn("temporary_frontier_is_terminal", planning_tick)
         self.assertIn("ProductionMppiExecutionReason::kNoExecutableRoute", execution)
         self.assertIn(

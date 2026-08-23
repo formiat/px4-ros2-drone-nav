@@ -152,7 +152,7 @@ def validate_incremental_topology_evidence(
 ) -> None:
     update_pattern = re.compile(
         rf"INCREMENTAL_TOPOLOGY3D_UPDATE .*?full_reset=(true|false) "
-        rf".*?refined_tiles=([0-9]+) .*?base_resolution_m=({FLOAT_PATTERN}) "
+        rf".*?refined_blocks=([0-9]+) .*?base_resolution_m=({FLOAT_PATTERN}) "
         rf"coarse_resolution_m=({FLOAT_PATTERN}) "
         rf"refined_resolution_m=({FLOAT_PATTERN}) .*?"
         rf"retained_nodes=([0-9]+) .*?nodes=([0-9]+) edges=([0-9]+)"
@@ -160,7 +160,7 @@ def validate_incremental_topology_evidence(
     updates = [
         (
             full_reset == "true",
-            int(refined_tiles),
+            int(refined_blocks),
             float(base_resolution_m),
             float(coarse_resolution_m),
             float(refined_resolution_m),
@@ -170,7 +170,7 @@ def validate_incremental_topology_evidence(
         )
         for (
             full_reset,
-            refined_tiles,
+            refined_blocks,
             base_resolution_m,
             coarse_resolution_m,
             refined_resolution_m,
