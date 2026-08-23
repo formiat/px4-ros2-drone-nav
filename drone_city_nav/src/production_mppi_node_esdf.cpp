@@ -181,7 +181,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
         if (roi_refresh.purpose ==
             StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
-          finishStaticRouteReplan(roi_refresh.base_route_generation);
+          finishStaticRouteReplan(roi_refresh.base_route_generation, false);
         } else {
           finishStaticRouteExtension(roi_refresh.base_route_generation);
         }
@@ -207,7 +207,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
             if (roi_refresh.purpose ==
                 StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
-              finishStaticRouteReplan(roi_refresh.base_route_generation);
+              finishStaticRouteReplan(roi_refresh.base_route_generation, false);
             } else {
               finishStaticRouteExtension(roi_refresh.base_route_generation);
             }
@@ -307,7 +307,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
           if (roi_refresh.purpose ==
               StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
-            finishStaticRouteReplan(roi_refresh.base_route_generation);
+            finishStaticRouteReplan(roi_refresh.base_route_generation, false);
           } else {
             finishStaticRouteExtension(roi_refresh.base_route_generation);
           }

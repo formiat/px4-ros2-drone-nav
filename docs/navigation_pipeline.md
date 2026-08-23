@@ -135,6 +135,14 @@ abandoned if the resident world, objective, or captured raw snapshot changes
 before the route supervisor commits it. Unknown voxels remain traversable
 during this raw check.
 
+The resident route and `RouteSupervisor3D` must name the same active generation
+at the execution boundary. A completed segment can temporarily leave its
+resident geometry behind when a successor loses the optimistic activation race.
+That ownership mismatch is a typed non-executable state: execution holds the
+current position and requests a gated recovery search for the resident
+generation until a successor commits. Repeated requests are coalesced, and a
+successful recovery drops the now-obsolete deferred `no_active_guide` request.
+
 Initial search heading uses a cascade:
 
 1. velocity heading at normal speed;

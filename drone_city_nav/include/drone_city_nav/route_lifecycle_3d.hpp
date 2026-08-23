@@ -58,6 +58,23 @@ struct ActivatedRouteIdentity3D {
   MaterializedRouteProposal3D proposal{};
 };
 
+enum class RouteExecutionOwnershipStatus3D : std::uint8_t {
+  kMatched,
+  kNoResidentRoute,
+  kNoSupervisedRoute,
+  kGenerationMismatch,
+};
+
+struct RouteExecutionOwnershipAssessment3D {
+  RouteExecutionOwnershipStatus3D status{
+      RouteExecutionOwnershipStatus3D::kNoResidentRoute};
+  std::uint64_t resident_generation{0U};
+  std::uint64_t supervised_generation{0U};
+
+  [[nodiscard]] bool matched() const noexcept;
+  [[nodiscard]] bool recoveryRequired() const noexcept;
+};
+
 enum class RouteLifecycleEventKind3D : std::uint8_t {
   kCompleted,
   kRawInvalidated,
@@ -136,6 +153,7 @@ struct RouteActivationAssessment3D {
 enum class RouteExecutionStatus3D : std::uint8_t {
   kUsable,
   kNoActiveRoute,
+  kSupervisorOwnershipMismatch,
   kWorldLineageMismatch,
   kObjectiveMismatch,
   kInvalidRoute,
@@ -261,6 +279,10 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* active_route,
                        std::span<const RouteSample3D> route,
                        const RouteExecutionObservation3D& observation) noexcept;
 
+[[nodiscard]] RouteExecutionOwnershipAssessment3D assessRouteExecutionOwnership3D(
+    const ActivatedRouteIdentity3D* resident_route,
+    const ActivatedRouteIdentity3D* supervised_route) noexcept;
+
 [[nodiscard]] RouteSegmentCompletionAssessment3D
 assessRouteSegmentCompletion3D(std::span<const RouteSample3D> route,
                                std::uint64_t expected_generation,
@@ -275,5 +297,7 @@ routePublicationStatus3DName(RoutePublicationStatus3D status) noexcept;
 rawRouteSuffixStatus3DName(RawRouteSuffixStatus3D status) noexcept;
 [[nodiscard]] std::string_view
 routeExecutionStatus3DName(RouteExecutionStatus3D status) noexcept;
+[[nodiscard]] std::string_view
+routeExecutionOwnershipStatus3DName(RouteExecutionOwnershipStatus3D status) noexcept;
 
 } // namespace drone_city_nav

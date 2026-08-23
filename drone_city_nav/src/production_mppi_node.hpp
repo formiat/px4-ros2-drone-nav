@@ -628,7 +628,7 @@ private:
                                          std::int64_t now_ns);
   void finishStaticRouteExtension(std::uint64_t base_generation,
                                   bool extension_activated = false);
-  void finishStaticRouteReplan(std::uint64_t base_generation);
+  void finishStaticRouteReplan(std::uint64_t base_generation, bool route_activated);
   void finishStaticRouteSearch(const ProductionMppiPreparedEsdf& world,
                                bool route_activated = false);
   void esdfWorker(std::stop_token stop_token);

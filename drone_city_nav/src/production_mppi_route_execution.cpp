@@ -51,38 +51,57 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   };
   RouteExecutionAssessment3D assessment;
   RouteExecutionState3D supervised_state;
+  RouteExecutionOwnershipAssessment3D ownership;
   {
     const std::scoped_lock lock{route_supervisor_mutex_};
     const ActivatedRouteIdentity3D* const supervised_route =
         route_supervisor_.activeRoute();
-    if (supervised_route == nullptr ||
-        supervised_route->generation != active_route->identity.generation) {
-      result.route.reset();
+    ownership =
+        assessRouteExecutionOwnership3D(&active_route->identity, supervised_route);
+    if (ownership.matched()) {
+      assessment = route_supervisor_.assessExecution(
+          route,
+          RouteExecutionObservation3D{
+              .current_objective = current_objective,
+              .minimum_tracking_sample_sequence = minimum_tracking_sample_sequence,
+              .position = {navigation.state.x, navigation.state.y, navigation.state.z},
+              .maximum_cross_track_m = active_guide_config_.maximum_cross_track_m,
+              .latest_raw_occupancy = latest_occupancy,
+              .latest_raw_producer_instance_id =
+                  latest_raw_world ? latest_raw_world->version.producer_instance_id
+                                   : 0U,
+              .latest_raw_revision =
+                  latest_raw_world ? latest_raw_world->version.revision : 0U,
+              .footprint = footprint,
+              .proprioceptive_free_space_seed =
+                  world.proprioceptive_free_space_seed
+                      ? std::addressof(*world.proprioceptive_free_space_seed)
+                      : nullptr,
+              .launch_support_contact =
+                  world.launch_support_contact
+                      ? std::addressof(*world.launch_support_contact)
+                      : nullptr,
+          });
+      supervised_state = route_supervisor_.executionState();
+    }
+  }
+  if (!ownership.matched()) {
+    result.route.reset();
+    if (!ownership.recoveryRequired()) {
       return result;
     }
-    assessment = route_supervisor_.assessExecution(
-        route,
-        RouteExecutionObservation3D{
-            .current_objective = current_objective,
-            .minimum_tracking_sample_sequence = minimum_tracking_sample_sequence,
-            .position = {navigation.state.x, navigation.state.y, navigation.state.z},
-            .maximum_cross_track_m = active_guide_config_.maximum_cross_track_m,
-            .latest_raw_occupancy = latest_occupancy,
-            .latest_raw_producer_instance_id =
-                latest_raw_world ? latest_raw_world->version.producer_instance_id : 0U,
-            .latest_raw_revision =
-                latest_raw_world ? latest_raw_world->version.revision : 0U,
-            .footprint = footprint,
-            .proprioceptive_free_space_seed =
-                world.proprioceptive_free_space_seed
-                    ? std::addressof(*world.proprioceptive_free_space_seed)
-                    : nullptr,
-            .launch_support_contact =
-                world.launch_support_contact
-                    ? std::addressof(*world.launch_support_contact)
-                    : nullptr,
-        });
-    supervised_state = route_supervisor_.executionState();
+    result.status = RouteExecutionStatus3D::kSupervisorOwnershipMismatch;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "ROUTE_EXECUTION3D status=supervisor_ownership_mismatch "
+        "ownership_status=%.*s resident_generation=%" PRIu64
+        " supervised_generation=%" PRIu64 " action=request_recovery_route",
+        static_cast<int>(routeExecutionOwnershipStatus3DName(ownership.status).size()),
+        routeExecutionOwnershipStatus3DName(ownership.status).data(),
+        ownership.resident_generation, ownership.supervised_generation);
+    requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide,
+                        ownership.resident_generation);
+    return result;
   }
   result.status = assessment.status;
   result.route_usable = assessment.usable();

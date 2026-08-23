@@ -327,12 +327,14 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
               now_ns);
 }
 
-void ProductionMppiNode::finishStaticRouteReplan(const std::uint64_t base_generation) {
+void ProductionMppiNode::finishStaticRouteReplan(const std::uint64_t base_generation,
+                                                 const bool route_activated) {
   std::optional<StaticRouteDeferredReplan> deferred_replan;
   {
     const std::scoped_lock lock{static_route_extension_mutex_};
     static_route_replan_gate_.finish(base_generation);
-    deferred_replan = static_route_deferred_replan_latch_.finishReplan(base_generation);
+    deferred_replan = static_route_deferred_replan_latch_.finishReplan(base_generation,
+                                                                       route_activated);
   }
   if (!deferred_replan.has_value()) {
     return;
@@ -353,7 +355,7 @@ void ProductionMppiNode::finishStaticRouteSearch(
                                route_activated);
   }
   if (world.static_route_replan_request) {
-    finishStaticRouteReplan(world.static_route_replan_base_generation);
+    finishStaticRouteReplan(world.static_route_replan_base_generation, route_activated);
   }
 }
 

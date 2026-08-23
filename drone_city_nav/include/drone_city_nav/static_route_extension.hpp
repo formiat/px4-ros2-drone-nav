@@ -183,7 +183,7 @@ public:
   [[nodiscard]] std::optional<StaticRouteDeferredReplan>
   finishExtension(std::uint64_t route_generation, bool extension_activated) noexcept;
   [[nodiscard]] std::optional<StaticRouteDeferredReplan>
-  finishReplan(std::uint64_t route_generation) noexcept;
+  finishReplan(std::uint64_t route_generation, bool route_activated) noexcept;
   [[nodiscard]] bool pending() const noexcept;
 
 private:

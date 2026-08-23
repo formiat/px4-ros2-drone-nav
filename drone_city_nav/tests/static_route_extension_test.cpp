@@ -185,12 +185,42 @@ TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterCompletedReplan) {
   latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kExhausted,
                                         .route_generation = 12U});
 
-  const std::optional<StaticRouteDeferredReplan> replay = latch.finishReplan(12U);
+  const std::optional<StaticRouteDeferredReplan> replay =
+      latch.finishReplan(12U, false);
 
   ASSERT_NE(replay, std::nullopt);
   const StaticRouteDeferredReplan replayed =
       replay.value_or(StaticRouteDeferredReplan{});
   EXPECT_EQ(replayed.reason, GlobalGuideReleaseReason::kExhausted);
+  EXPECT_EQ(replayed.route_generation, 12U);
+  EXPECT_FALSE(latch.pending());
+}
+
+TEST(StaticRouteExtensionTest, DropsDeferredMissingRouteRecoveryAfterSuccessfulReplan) {
+  StaticRouteDeferredReplanLatch latch;
+  latch.defer(StaticRouteDeferredReplan{
+      .reason = GlobalGuideReleaseReason::kNoActiveGuide,
+      .route_generation = 12U,
+  });
+
+  EXPECT_FALSE(latch.finishReplan(12U, true).has_value());
+  EXPECT_FALSE(latch.pending());
+}
+
+TEST(StaticRouteExtensionTest, ReplaysDeferredMissingRouteRecoveryAfterRejectedReplan) {
+  StaticRouteDeferredReplanLatch latch;
+  latch.defer(StaticRouteDeferredReplan{
+      .reason = GlobalGuideReleaseReason::kNoActiveGuide,
+      .route_generation = 12U,
+  });
+
+  const std::optional<StaticRouteDeferredReplan> replay =
+      latch.finishReplan(12U, false);
+
+  ASSERT_TRUE(replay.has_value());
+  const StaticRouteDeferredReplan replayed =
+      replay.value_or(StaticRouteDeferredReplan{});
+  EXPECT_EQ(replayed.reason, GlobalGuideReleaseReason::kNoActiveGuide);
   EXPECT_EQ(replayed.route_generation, 12U);
   EXPECT_FALSE(latch.pending());
 }

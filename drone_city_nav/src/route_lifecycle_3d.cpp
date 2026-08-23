@@ -132,6 +132,7 @@ bool RouteExecutionAssessment3D::replacementRequired() const noexcept {
     case RouteExecutionStatus3D::kUsable:
     case RouteExecutionStatus3D::kNoActiveRoute:
       return false;
+    case RouteExecutionStatus3D::kSupervisorOwnershipMismatch:
     case RouteExecutionStatus3D::kWorldLineageMismatch:
     case RouteExecutionStatus3D::kObjectiveMismatch:
     case RouteExecutionStatus3D::kInvalidRoute:
@@ -141,6 +142,15 @@ bool RouteExecutionAssessment3D::replacementRequired() const noexcept {
       return true;
   }
   return true;
+}
+
+bool RouteExecutionOwnershipAssessment3D::matched() const noexcept {
+  return status == RouteExecutionOwnershipStatus3D::kMatched;
+}
+
+bool RouteExecutionOwnershipAssessment3D::recoveryRequired() const noexcept {
+  return status == RouteExecutionOwnershipStatus3D::kNoSupervisedRoute ||
+         status == RouteExecutionOwnershipStatus3D::kGenerationMismatch;
 }
 
 bool RouteProposalReplacementAssessment3D::replacementAllowed() const noexcept {
@@ -394,6 +404,30 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
   return result;
 }
 
+RouteExecutionOwnershipAssessment3D assessRouteExecutionOwnership3D(
+    const ActivatedRouteIdentity3D* const resident_route,
+    const ActivatedRouteIdentity3D* const supervised_route) noexcept {
+  RouteExecutionOwnershipAssessment3D result{
+      .resident_generation =
+          resident_route != nullptr ? resident_route->generation : 0U,
+      .supervised_generation =
+          supervised_route != nullptr ? supervised_route->generation : 0U,
+  };
+  if (resident_route == nullptr) {
+    return result;
+  }
+  if (supervised_route == nullptr) {
+    result.status = RouteExecutionOwnershipStatus3D::kNoSupervisedRoute;
+    return result;
+  }
+  if (resident_route->generation != supervised_route->generation) {
+    result.status = RouteExecutionOwnershipStatus3D::kGenerationMismatch;
+    return result;
+  }
+  result.status = RouteExecutionOwnershipStatus3D::kMatched;
+  return result;
+}
+
 RouteSegmentCompletionAssessment3D
 assessRouteSegmentCompletion3D(const std::span<const RouteSample3D> route,
                                const std::uint64_t expected_generation,
@@ -608,6 +642,8 @@ routeExecutionStatus3DName(const RouteExecutionStatus3D status) noexcept {
       return "usable";
     case RouteExecutionStatus3D::kNoActiveRoute:
       return "no_active_route";
+    case RouteExecutionStatus3D::kSupervisorOwnershipMismatch:
+      return "supervisor_ownership_mismatch";
     case RouteExecutionStatus3D::kWorldLineageMismatch:
       return "world_lineage_mismatch";
     case RouteExecutionStatus3D::kObjectiveMismatch:
@@ -620,6 +656,21 @@ routeExecutionStatus3DName(const RouteExecutionStatus3D status) noexcept {
       return "excessive_cross_track";
     case RouteExecutionStatus3D::kRawCollision:
       return "raw_collision";
+  }
+  return "invalid_status";
+}
+
+std::string_view routeExecutionOwnershipStatus3DName(
+    const RouteExecutionOwnershipStatus3D status) noexcept {
+  switch (status) {
+    case RouteExecutionOwnershipStatus3D::kMatched:
+      return "matched";
+    case RouteExecutionOwnershipStatus3D::kNoResidentRoute:
+      return "no_resident_route";
+    case RouteExecutionOwnershipStatus3D::kNoSupervisedRoute:
+      return "no_supervised_route";
+    case RouteExecutionOwnershipStatus3D::kGenerationMismatch:
+      return "generation_mismatch";
   }
   return "invalid_status";
 }

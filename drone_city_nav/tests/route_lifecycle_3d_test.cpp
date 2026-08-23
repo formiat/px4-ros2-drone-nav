@@ -535,6 +535,83 @@ TEST(RouteLifecycle3DTest, MissingRouteWaitsForInitialPlanningWithoutReplacement
   EXPECT_FALSE(assessment.replacementRequired());
 }
 
+TEST(RouteLifecycle3DTest, MatchingResidentAndSupervisorGenerationOwnsExecution) {
+  RouteSupervisor3D supervisor;
+  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
+  ASSERT_EQ(generation.value_or(0U), 1U);
+
+  const RouteExecutionOwnershipAssessment3D assessment =
+      assessRouteExecutionOwnership3D(supervisor.activeRoute(),
+                                      supervisor.activeRoute());
+
+  EXPECT_TRUE(assessment.matched());
+  EXPECT_FALSE(assessment.recoveryRequired());
+  EXPECT_EQ(assessment.status, RouteExecutionOwnershipStatus3D::kMatched);
+  EXPECT_EQ(assessment.resident_generation, 1U);
+  EXPECT_EQ(assessment.supervised_generation, 1U);
+}
+
+TEST(RouteLifecycle3DTest,
+     CompletedSupervisorWithResidentGeometryRequiresRecoverySearch) {
+  RouteSupervisor3D supervisor;
+  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
+  ASSERT_EQ(generation.value_or(0U), 1U);
+  ASSERT_NE(supervisor.activeRoute(), nullptr);
+  const ActivatedRouteIdentity3D resident_route = *supervisor.activeRoute();
+  ASSERT_TRUE(supervisor.applyEvent(RouteLifecycleEvent3D{
+      .kind = RouteLifecycleEventKind3D::kCompleted,
+      .generation = generation.value_or(0U),
+  }));
+
+  const RouteExecutionOwnershipAssessment3D assessment =
+      assessRouteExecutionOwnership3D(&resident_route, supervisor.activeRoute());
+
+  EXPECT_FALSE(assessment.matched());
+  EXPECT_TRUE(assessment.recoveryRequired());
+  EXPECT_EQ(assessment.status, RouteExecutionOwnershipStatus3D::kNoSupervisedRoute);
+  EXPECT_EQ(assessment.resident_generation, 1U);
+  EXPECT_EQ(assessment.supervised_generation, 0U);
+  EXPECT_EQ(routeExecutionOwnershipStatus3DName(assessment.status),
+            "no_supervised_route");
+}
+
+TEST(RouteLifecycle3DTest, StaleResidentGenerationRequiresRecoverySearch) {
+  RouteSupervisor3D supervisor;
+  const std::optional<std::uint64_t> first_generation =
+      supervisor.activate(validProposal());
+  ASSERT_EQ(first_generation.value_or(0U), 1U);
+  ASSERT_NE(supervisor.activeRoute(), nullptr);
+  const ActivatedRouteIdentity3D stale_resident = *supervisor.activeRoute();
+  MaterializedRouteProposal3D replacement = validProposal();
+  ++replacement.route_fingerprint;
+  const std::optional<std::uint64_t> second_generation =
+      supervisor.activate(replacement);
+  ASSERT_EQ(second_generation.value_or(0U), 2U);
+
+  const RouteExecutionOwnershipAssessment3D assessment =
+      assessRouteExecutionOwnership3D(&stale_resident, supervisor.activeRoute());
+
+  EXPECT_FALSE(assessment.matched());
+  EXPECT_TRUE(assessment.recoveryRequired());
+  EXPECT_EQ(assessment.status, RouteExecutionOwnershipStatus3D::kGenerationMismatch);
+  EXPECT_EQ(assessment.resident_generation, 1U);
+  EXPECT_EQ(assessment.supervised_generation, 2U);
+}
+
+TEST(RouteLifecycle3DTest, MissingResidentRouteDoesNotRequestOwnershipRecovery) {
+  RouteSupervisor3D supervisor;
+  ASSERT_TRUE(supervisor.activate(validProposal()).has_value());
+
+  const RouteExecutionOwnershipAssessment3D assessment =
+      assessRouteExecutionOwnership3D(nullptr, supervisor.activeRoute());
+
+  EXPECT_FALSE(assessment.matched());
+  EXPECT_FALSE(assessment.recoveryRequired());
+  EXPECT_EQ(assessment.status, RouteExecutionOwnershipStatus3D::kNoResidentRoute);
+  EXPECT_EQ(assessment.resident_generation, 0U);
+  EXPECT_EQ(assessment.supervised_generation, 1U);
+}
+
 TEST(RouteLifecycle3DTest, ExecutionRejectsRawWorldFromAnotherProducerLineage) {
   const std::vector<RouteSample3D> route = straightRoute();
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 4, 4}};
@@ -711,6 +788,9 @@ TEST(RouteLifecycle3DTest, LifecycleEventsHaveStableDiagnosticNames) {
   EXPECT_EQ(
       routeLifecycleEventKind3DName(RouteLifecycleEventKind3D::kCrossTrackExceeded),
       "cross_track_exceeded");
+  EXPECT_EQ(
+      routeExecutionStatus3DName(RouteExecutionStatus3D::kSupervisorOwnershipMismatch),
+      "supervisor_ownership_mismatch");
 }
 
 TEST(RouteLifecycle3DTest, SegmentCompletionRequiresTheObservedGeneration) {

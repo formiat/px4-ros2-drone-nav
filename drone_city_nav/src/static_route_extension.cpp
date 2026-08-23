@@ -178,13 +178,18 @@ StaticRouteDeferredReplanLatch::finishExtension(
   return extension_activated ? std::nullopt : completed;
 }
 
-std::optional<StaticRouteDeferredReplan> StaticRouteDeferredReplanLatch::finishReplan(
-    const std::uint64_t route_generation) noexcept {
+std::optional<StaticRouteDeferredReplan>
+StaticRouteDeferredReplanLatch::finishReplan(const std::uint64_t route_generation,
+                                             const bool route_activated) noexcept {
   if (!request_.has_value() || request_->route_generation != route_generation) {
     return std::nullopt;
   }
   std::optional<StaticRouteDeferredReplan> completed = request_;
   request_.reset();
+  if (route_activated &&
+      completed->reason == GlobalGuideReleaseReason::kNoActiveGuide) {
+    return std::nullopt;
+  }
   return completed;
 }
 
