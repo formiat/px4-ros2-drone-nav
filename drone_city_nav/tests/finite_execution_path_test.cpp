@@ -223,6 +223,26 @@ TEST(FiniteExecutionPathTest, DefaultModeStillRejectsObservedRawCollision) {
   EXPECT_EQ(result.status, FiniteExecutionPathStatus::kRawCollision);
 }
 
+TEST(FiniteExecutionPathTest, AcceptsAValidatedVerticalFiniteSegmentWithTerminalRest) {
+  const TestWorld world;
+  const std::vector<TimedExecutionPathPoint> path{
+      {.time_from_start_s = 0.0,
+       .state = State{.x = 2.0F, .y = 2.0F, .z = 2.0F, .vz = 1.0F},
+       .control = Control{}},
+      {.time_from_start_s = 1.0,
+       .state = State{.x = 2.0F, .y = 2.0F, .z = 3.0F, .vz = 1.0F},
+       .control = Control{.az = -1.0F}},
+      {.time_from_start_s = 2.0,
+       .state = State{.x = 2.0F, .y = 2.0F, .z = 3.5F},
+       .control = Control{}},
+  };
+
+  const FiniteExecutionPathValidation result =
+      validateCompleteFiniteExecutionPath(path, Control{}, world.view());
+
+  EXPECT_TRUE(result.accepted());
+}
+
 TEST(FiniteExecutionPathTest,
      MovesArrivalProfileEarlierUntilCompletePathAvoidsNewObstacle) {
   TestWorld world;

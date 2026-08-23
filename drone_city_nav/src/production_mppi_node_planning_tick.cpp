@@ -727,16 +727,27 @@ void ProductionMppiNode::planningTick() {
     }
     if (result.route_directed_candidate_injected &&
         !result.route_directed_candidate_raw_safe && !direct_tracking_interception) {
-      // The finite route was valid when activated, but the vehicle can drift enough
-      // that rejoining its current station is no longer executable in the latest
-      // observed world. Replan from the measured pose instead of converging to a
-      // stationary locally safe trajectory beside the obsolete route.
+      // A route-directed seed is only one controller candidate. Its rejection does
+      // not invalidate the certified route geometry while the remaining MPPI
+      // rollouts can still provide an executable control result.
+      bool event_applied{false};
+      const RouteLifecycleEvent3D event{
+          .kind = RouteLifecycleEventKind3D::kControlCandidateRejected,
+          .generation = route_generation,
+      };
+      {
+        const std::scoped_lock lock{route_supervisor_mutex_};
+        event_applied = route_supervisor_.applyEvent(event);
+      }
+      static_cast<void>(execution_arbiter_.observe(event));
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "ROUTE_EXECUTION status=seed_not_executable route_generation=%" PRIu64
-          " cross_track_m=%.2f action=replan_from_measured_pose",
-          route_generation, route_projection.cross_track_m);
-      requestGuideRelease(GlobalGuideReleaseReason::kBlocked, route_generation);
+          " cross_track_m=%.2f alternative_rollout_available=%s "
+          "event_applied=%s action=reject_control_candidate",
+          route_generation, route_projection.cross_track_m,
+          result.feasibility_contract.available ? "true" : "false",
+          event_applied ? "true" : "false");
     }
     no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
         result.feasibility_contract.available, result.nominal_reseeded);

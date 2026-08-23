@@ -368,7 +368,11 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
   if (candidates.empty()) {
     return result;
   }
-  const std::size_t selected_index = selection.selected_index.value_or(0U);
+  const std::size_t selected_index =
+      selection.selected_index.value_or(candidates.size());
+  if (selected_index >= candidates.size()) {
+    return result;
+  }
   ProductionRouteSearchCandidate3D selected = std::move(candidates[selected_index]);
   result.intent = selected.intent;
   result.evidence = selected.evidence;

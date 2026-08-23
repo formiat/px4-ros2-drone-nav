@@ -31,13 +31,7 @@ void ProductionMppiNode::processGuideSearch3D(
       latest_raw_world_3d_.load(std::memory_order_acquire);
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   const RouteSegmentCompletionAssessment3D active_route_completion =
-      world.route_3d
-          ? assessRouteSegmentCompletion3D(
-                *world.route_3d, search_start,
-                RouteSegmentCompletionConfig3D{
-                    .capture_radius_m = topological_lattice_adapter_3d_config_
-                                            .segment_capture_radius_m})
-          : RouteSegmentCompletionAssessment3D{};
+      assessActiveRouteCompletion3D(world, search_start);
   const bool active_observation_segment_completed =
       world.lattice_3d_route_purpose == Lattice3DRoutePurpose::kObservationFrontier &&
       world.lattice_3d_observation_frontier && active_route_completion.captured;
@@ -213,12 +207,12 @@ void ProductionMppiNode::processGuideSearch3D(
   }
   prepared.observation_route_replacement_status = observation_replacement.status;
 
+  const std::uint64_t candidate_generation = nextRouteGeneration3D();
   StaticRouteCandidateValidation validation{.status =
                                                 StaticRouteCandidateStatus::kEmpty};
   if (prepared.lattice_executable) {
     const auto validation_started = std::chrono::steady_clock::now();
     auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(lattice.route);
-    const std::uint64_t candidate_generation = static_route_generation_ + 1U;
     std::vector<ConstrainedRouteSpan> initial_spans = makeConstrainedRouteSpans(
         *mutable_route, route_traversals, candidate_generation, route_envelope_config_);
     const auto smoothing_started = std::chrono::steady_clock::now();
@@ -548,7 +542,7 @@ void ProductionMppiNode::processGuideSearch3D(
       .base_route_generation = world.static_route_replan_request
                                    ? world.static_route_replan_base_generation
                                    : world.static_route_extension_base_generation,
-      .candidate_route_generation = static_route_generation_ + 1U,
+      .candidate_route_generation = candidate_generation,
       .fingerprint = prepared.route_fingerprint,
       .executable = prepared.lattice_executable,
       .reaches_mission_goal = prepared.global_guide_reaches_mission_goal,
@@ -620,7 +614,7 @@ void ProductionMppiNode::processGuideSearch3D(
 
   bool activated = false;
   {
-    const std::scoped_lock lock{esdf_state_mutex_};
+    const std::scoped_lock lock{esdf_state_mutex_, route_supervisor_mutex_};
     const std::uint64_t required_base_generation =
         world.static_route_replan_request
             ? world.static_route_replan_base_generation
@@ -643,26 +637,28 @@ void ProductionMppiNode::processGuideSearch3D(
       publication_world_advanced = true;
     }
     replacement_assessment = assessRouteProposalReplacement3D(
-        prepared_esdf_ && prepared_esdf_->activated_route_3d
-            ? std::addressof(prepared_esdf_->activated_route_3d->identity)
-            : nullptr,
-        materialized_proposal.identity,
-        RouteProposalReplacementObservation3D{.safety_replan_requested =
-                                                  world.static_route_replan_request});
-    const std::uint64_t candidate_generation = static_route_generation_ + 1U;
-    const std::optional<ActivatedRouteIdentity3D> activated_identity =
-        replacement_assessment.replacementAllowed()
-            ? activateRouteProposal3D(materialized_proposal.identity,
-                                      candidate_generation)
-            : std::nullopt;
+        route_supervisor_.activeRoute(), materialized_proposal.identity,
+        RouteProposalReplacementObservation3D{
+            .safety_replan_requested = world.static_route_replan_request &&
+                                       world.static_route_replan_reason ==
+                                           GlobalGuideReleaseReason::kBlocked});
+    std::optional<ActivatedRouteIdentity3D> activated_identity;
     if (route_candidate.executable && route_candidate.validation.accepted &&
         handoff.accepted && route_candidate.route &&
         route_candidate.constrained_spans && world_compatible && generation_matches &&
-        objective_matches && activated_identity.has_value()) {
+        objective_matches && replacement_assessment.replacementAllowed()) {
+      const std::optional<std::uint64_t> activated_generation =
+          route_supervisor_.activate(materialized_proposal.identity);
+      if (activated_generation.has_value() &&
+          *activated_generation == candidate_generation &&
+          route_supervisor_.activeRoute() != nullptr) {
+        activated_identity = *route_supervisor_.activeRoute();
+      }
+    }
+    if (activated_identity.has_value()) {
       activation_status = StaticRouteActivationStatus::kActivated;
       prepared.static_route_activation_status = activation_status;
       prepared.static_route_generation_matches = true;
-      static_route_generation_ = candidate_generation;
       prepared.global_guide_generation = candidate_generation;
       prepared.route_objective = world.search_objective;
       prepared.activated_route_3d =

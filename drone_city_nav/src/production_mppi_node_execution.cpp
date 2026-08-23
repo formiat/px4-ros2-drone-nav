@@ -232,20 +232,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const auto retain_active_finite_path =
       [&](const ProductionMppiExecutionReason replacement_failure_reason)
       -> std::optional<ProductionMppiExecutionPublication> {
-    if (!active_finite_execution_path_.has_value()) {
+    ProductionMppiActiveFiniteExecutionPath* const active_trajectory =
+        execution_arbiter_.activeTrajectory();
+    if (active_trajectory == nullptr) {
       return std::nullopt;
     }
-    ProductionMppiActiveFiniteExecutionPath& active = *active_finite_execution_path_;
+    ProductionMppiActiveFiniteExecutionPath& active = *active_trajectory;
     if (active.message.execution_mode !=
             msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED ||
         active.message.stationary_position_hold) {
-      active_finite_execution_path_.reset();
+      execution_arbiter_.rejectTrajectory();
       return std::nullopt;
     }
     const std::vector<mppi::TimedExecutionPathPoint> points =
         executionPathPoints(active.message);
     if (points.empty()) {
-      active_finite_execution_path_.reset();
+      execution_arbiter_.rejectTrajectory();
       return std::nullopt;
     }
     const std::int64_t original_valid_until_ns =
@@ -284,6 +286,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       retained.retained_previous_finite_path = true;
       retained.published = false;
       active.publication = retained;
+      execution_arbiter_.confirmRetainedTrajectory();
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "FINITE_EXECUTION_PATH retained=true replacement_failure_reason=%s "
@@ -330,7 +333,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           mppi::finiteExecutionPathStatusName(actual_state_validation.status),
           actual_state_validation.failure_segment_index,
           rebuilt.arrival_shaping_attempts);
-      active_finite_execution_path_.reset();
+      execution_arbiter_.rejectTrajectory();
       return std::nullopt;
     }
 
@@ -382,6 +385,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     retained.published = true;
     active.message = std::move(horizon);
     active.publication = retained;
+    execution_arbiter_.confirmRetainedTrajectory();
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "FINITE_EXECUTION_PATH retained=true replacement_failure_reason=%s "
@@ -401,7 +405,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
 
   const auto publish_position_hold = [&](const Point3& hold_position,
                                          const ProductionMppiExecutionReason reason) {
-    active_finite_execution_path_.reset();
+    execution_arbiter_.rejectTrajectory();
     if (!insideFlightEnvelope(hold_position, flight_envelope_config_)) {
       RCLCPP_ERROR(get_logger(),
                    "EXECUTION_HORIZON rejected reason=hold_outside_flight_envelope "
@@ -452,31 +456,31 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
             retained.has_value()) {
           return *retained;
         }
-        if (!no_executable_path_hold_position_.has_value()) {
-          no_executable_path_hold_position_ = Point3{
+        if (!execution_arbiter_.noExecutableHoldPosition().has_value()) {
+          execution_arbiter_.enterNoExecutableHold(Point3{
               input.initial_state.x,
               input.initial_state.y,
               clampToFlightEnvelope(input.initial_state.z, flight_envelope_config_)
                   .value_or(flight_envelope_config_.minimum_target_z_m),
-          };
+          });
+          const Point3& hold_position = *execution_arbiter_.noExecutableHoldPosition();
           RCLCPP_WARN(
               get_logger(),
               "MPPI_EXECUTION_CONTRACT transition=enter_no_executable_path_hold "
               "reason=%s origin=(%.3f,%.3f,%.3f) "
               "velocity=(%.3f,%.3f,%.3f) previous_acceleration_z=%.3f",
-              productionMppiExecutionReasonName(reason),
-              no_executable_path_hold_position_->x,
-              no_executable_path_hold_position_->y,
-              no_executable_path_hold_position_->z, input.initial_state.vx,
+              productionMppiExecutionReasonName(reason), hold_position.x,
+              hold_position.y, hold_position.z, input.initial_state.vx,
               input.initial_state.vy, input.initial_state.vz,
               input.previous_applied_control.value_or(mppi::Control{}).az);
         }
-        return publish_position_hold(*no_executable_path_hold_position_, reason);
+        return publish_position_hold(*execution_arbiter_.noExecutableHoldPosition(),
+                                     reason);
       };
 
   const auto publish_explicit_hold = [&](const Point3& hold_position,
                                          const ProductionMppiExecutionReason reason) {
-    no_executable_path_hold_position_.reset();
+    execution_arbiter_.leaveNoExecutableHold();
     return publish_position_hold(hold_position, reason);
   };
 
@@ -489,10 +493,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                                  ProductionMppiExecutionReason::kGoalCapture);
   }
   if (planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold) {
-    // Planning has rejected the current route against a newer raw observation.
-    // A previously published finite path may have been derived from that route,
-    // so it cannot be retained while the replacement search is in progress.
-    active_finite_execution_path_.reset();
+    // Route lifecycle invalidation requires the arbiter to revalidate the actual
+    // remaining finite trajectory. A physically safe terminal-rest path may still
+    // be retained while route replacement runs.
     return publish_no_executable_path_hold(
         ProductionMppiExecutionReason::kNoExecutableRoute);
   }
@@ -589,7 +592,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   }
   mppi::FiniteHorizon executable_path =
       std::move(validated_path.horizon).value_or(mppi::FiniteHorizon{});
-  if (no_executable_path_hold_position_.has_value()) {
+  if (execution_arbiter_.noExecutableHoldPosition().has_value()) {
     const double speed_mps =
         std::hypot(std::hypot(input.initial_state.vx, input.initial_state.vy),
                    input.initial_state.vz);
@@ -598,7 +601,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                 "reason=executable_path_available pose_revision=%" PRIu64
                 " speed_mps=%.3f",
                 input.pose_revision, speed_mps);
-    no_executable_path_hold_position_.reset();
+    execution_arbiter_.leaveNoExecutableHold();
   }
   if (validated_path.path_validation_backoff || nominal_candidate_degraded) {
     RCLCPP_INFO_THROTTLE(
@@ -669,11 +672,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       validated_path.latest_lidar_path_validation_backoff;
   publication.terminal_rest_state = true;
   publication.published = true;
-  active_finite_execution_path_ = ProductionMppiActiveFiniteExecutionPath{
-      .message = std::move(horizon),
-      .publication = publication,
-      .terminal_boundary = route_terminal_boundary,
-  };
+  execution_arbiter_.activate(esdf.global_guide_generation,
+                              ProductionMppiActiveFiniteExecutionPath{
+                                  .message = std::move(horizon),
+                                  .publication = publication,
+                                  .terminal_boundary = route_terminal_boundary,
+                              });
   return publication;
 }
 

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <memory>
 
 namespace drone_city_nav {
 namespace {
@@ -74,6 +75,36 @@ rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
 [[nodiscard]] bool samePoint(const Point3& first, const Point3& second,
                              const double tolerance_m) noexcept {
   return distance3D(first, second) <= tolerance_m;
+}
+
+[[nodiscard]] RawRouteSuffixValidation3D validateRawRouteConnector3D(
+    const std::span<const RouteSample3D> route, const Point3& position,
+    const RouteProjection3D& projection, const ObservedOccupancyGrid3D& occupancy,
+    const SweptFootprintConfig& footprint,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_free_space_seed,
+    const LaunchSupportContact3D* const launch_support_contact) noexcept {
+  if (route.size() < 2U) {
+    return {.status = RawRouteSuffixStatus3D::kInvalidRoute};
+  }
+  if (!projection.valid || !std::isfinite(projection.station_m)) {
+    return {.status = RawRouteSuffixStatus3D::kInvalidProjection};
+  }
+
+  const std::size_t first_route_segment =
+      routeSegmentAtStation(route, projection.station_m);
+  RawRouteSuffixValidation3D result{
+      .status = RawRouteSuffixStatus3D::kValid,
+      .first_validated_route_segment = first_route_segment,
+      .validated_from_station_m = projection.station_m,
+      .connector_validated = true,
+  };
+  if (rawCollision(occupancy, position, projection.point, footprint,
+                   proprioceptive_free_space_seed, launch_support_contact,
+                   result.failure_point)) {
+    result.status = RawRouteSuffixStatus3D::kRawCollision;
+    result.failure_route_segment = first_route_segment;
+  }
+  return result;
 }
 
 } // namespace
@@ -178,30 +209,14 @@ RawRouteSuffixValidation3D validateRawRouteSuffix3D(
     const SweptFootprintConfig& footprint,
     const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  if (route.size() < 2U) {
-    return {.status = RawRouteSuffixStatus3D::kInvalidRoute};
-  }
-  if (!projection.valid || !std::isfinite(projection.station_m)) {
-    return {.status = RawRouteSuffixStatus3D::kInvalidProjection};
-  }
-
-  const std::size_t first_route_sample =
-      firstRouteSampleAfter(route, projection.station_m);
-  const std::size_t first_route_segment =
-      routeSegmentAtStation(route, projection.station_m);
-  RawRouteSuffixValidation3D result{
-      .status = RawRouteSuffixStatus3D::kValid,
-      .first_validated_route_segment = first_route_segment,
-      .connector_validated = true,
-  };
-  if (rawCollision(occupancy, position, projection.point, footprint,
-                   proprioceptive_free_space_seed, launch_support_contact,
-                   result.failure_point)) {
-    result.status = RawRouteSuffixStatus3D::kRawCollision;
-    result.failure_route_segment = first_route_segment;
+  RawRouteSuffixValidation3D result = validateRawRouteConnector3D(
+      route, position, projection, occupancy, footprint, proprioceptive_free_space_seed,
+      launch_support_contact);
+  if (!result.accepted()) {
     return result;
   }
-
+  const std::size_t first_route_sample =
+      firstRouteSampleAfter(route, projection.station_m);
   Point3 previous = projection.point;
   for (std::size_t index = first_route_sample; index < route.size(); ++index) {
     if (rawCollision(occupancy, previous, route[index].position, footprint,
@@ -213,6 +228,7 @@ RawRouteSuffixValidation3D validateRawRouteSuffix3D(
     }
     previous = route[index].position;
   }
+  result.suffix_validated = true;
   return result;
 }
 
@@ -256,11 +272,33 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
     return result;
   }
   if (observation.latest_raw_occupancy != nullptr &&
-      observation.latest_raw_revision > result.validated_through_raw_revision) {
-    result.raw_validation = validateRawRouteSuffix3D(
-        route, observation.position, result.projection,
-        *observation.latest_raw_occupancy, observation.footprint,
-        observation.proprioceptive_free_space_seed, observation.launch_support_contact);
+      observation.latest_raw_revision >= result.validated_through_raw_revision) {
+    const bool suffix_validation_required =
+        observation.latest_raw_revision > result.validated_through_raw_revision;
+    RouteProjection3D validation_projection = result.projection;
+    if (std::isfinite(observation.minimum_station_m) &&
+        observation.minimum_station_m > validation_projection.station_m) {
+      validation_projection.station_m =
+          std::min(observation.minimum_station_m, route.back().station_m);
+      validation_projection.point =
+          sampleRoute3DAtStation(route, validation_projection.station_m).position;
+      validation_projection.distance_m =
+          distance3D(observation.position, validation_projection.point);
+      validation_projection.remaining_m =
+          std::max(0.0, route.back().station_m - validation_projection.station_m);
+    }
+    result.raw_validation =
+        suffix_validation_required
+            ? validateRawRouteSuffix3D(
+                  route, observation.position, validation_projection,
+                  *observation.latest_raw_occupancy, observation.footprint,
+                  observation.proprioceptive_free_space_seed,
+                  observation.launch_support_contact)
+            : validateRawRouteConnector3D(
+                  route, observation.position, validation_projection,
+                  *observation.latest_raw_occupancy, observation.footprint,
+                  observation.proprioceptive_free_space_seed,
+                  observation.launch_support_contact);
     if (!result.raw_validation.accepted()) {
       result.status =
           result.raw_validation.status == RawRouteSuffixStatus3D::kRawCollision
@@ -268,8 +306,10 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
               : RouteExecutionStatus3D::kInvalidRoute;
       return result;
     }
-    result.validated_through_raw_revision = std::max(
-        result.validated_through_raw_revision, observation.latest_raw_revision);
+    if (result.raw_validation.suffix_validated) {
+      result.validated_through_raw_revision = std::max(
+          result.validated_through_raw_revision, observation.latest_raw_revision);
+    }
   } else {
     result.raw_validation =
         RawRouteSuffixValidation3D{.status = RawRouteSuffixStatus3D::kValid};
@@ -280,20 +320,175 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
 
 RouteSegmentCompletionAssessment3D
 assessRouteSegmentCompletion3D(const std::span<const RouteSample3D> route,
-                               const Point3& position,
+                               const std::uint64_t expected_generation,
+                               const RouteSegmentCompletionObservation3D& observation,
                                const RouteSegmentCompletionConfig3D& config) noexcept {
   RouteSegmentCompletionAssessment3D result;
-  if (route.size() < 2U || !std::isfinite(config.capture_radius_m) ||
-      config.capture_radius_m < 0.0) {
+  result.generation_matches =
+      expected_generation != 0U && observation.route_generation == expected_generation;
+  if (!result.generation_matches || route.size() < 2U ||
+      !std::isfinite(observation.minimum_station_m) ||
+      !std::isfinite(config.capture_radius_m) || config.capture_radius_m < 0.0 ||
+      !std::isfinite(config.terminal_station_tolerance_m) ||
+      config.terminal_station_tolerance_m < 0.0 ||
+      !std::isfinite(route.back().station_m)) {
     return result;
   }
 
-  result.projection = projectOntoRoute3D(route, position);
-  result.endpoint_distance_m = distance3D(position, route.back().position);
-  result.captured = result.projection.valid &&
+  result.projection =
+      projectOntoRoute3D(route, observation.position, observation.minimum_station_m);
+  result.endpoint_distance_m = distance3D(observation.position, route.back().position);
+  result.monotonic_station_m =
+      result.projection.valid
+          ? std::max(observation.minimum_station_m, result.projection.station_m)
+          : observation.minimum_station_m;
+  result.terminal_station_reached =
+      result.projection.valid && std::isfinite(result.monotonic_station_m) &&
+      result.monotonic_station_m + config.terminal_station_tolerance_m >=
+          route.back().station_m;
+  result.captured = result.terminal_station_reached &&
                     std::isfinite(result.endpoint_distance_m) &&
                     result.endpoint_distance_m <= config.capture_radius_m;
   return result;
+}
+
+std::optional<std::uint64_t>
+RouteSupervisor3D::activate(const MaterializedRouteProposal3D& proposal) noexcept {
+  if (last_allocated_generation_ == std::numeric_limits<std::uint64_t>::max()) {
+    return std::nullopt;
+  }
+  const std::uint64_t generation = last_allocated_generation_ + 1U;
+  std::optional<ActivatedRouteIdentity3D> activated =
+      activateRouteProposal3D(proposal, generation);
+  if (!activated.has_value()) {
+    return std::nullopt;
+  }
+
+  active_route_ = activated;
+  last_allocated_generation_ = generation;
+  execution_state_ = RouteExecutionState3D{
+      .generation = generation,
+      .raw_validated_through_revision =
+          proposal.validated_world.raw_validated_through_revision,
+      .station_m = 0.0,
+  };
+  raw_certificate_ = RawRouteCertificate3D{
+      .generation = generation,
+      .producer_instance_id = proposal.validated_world.producer_instance_id,
+      .validated_through_revision =
+          proposal.validated_world.raw_validated_through_revision,
+      .suffix_start_station_m = 0.0,
+  };
+  return generation;
+}
+
+RouteExecutionAssessment3D RouteSupervisor3D::assessExecution(
+    const std::span<const RouteSample3D> route,
+    const RouteExecutionObservation3D& observation) noexcept {
+  RouteExecutionObservation3D supervised_observation = observation;
+  supervised_observation.previously_validated_through_raw_revision =
+      raw_certificate_.validated_through_revision;
+  supervised_observation.minimum_station_m = execution_state_.station_m;
+  RouteExecutionAssessment3D result = assessRouteExecution3D(
+      active_route_ ? &active_route_.value() : nullptr, route, supervised_observation);
+  if (!result.usable()) {
+    return result;
+  }
+
+  execution_state_.raw_validated_through_revision =
+      std::max(execution_state_.raw_validated_through_revision,
+               result.validated_through_raw_revision);
+  if (result.raw_validation.suffix_validated) {
+    raw_certificate_.validated_through_revision =
+        execution_state_.raw_validated_through_revision;
+    raw_certificate_.suffix_start_station_m =
+        result.raw_validation.validated_from_station_m;
+  }
+  if (result.projection.valid && std::isfinite(result.projection.station_m)) {
+    execution_state_.station_m =
+        std::max(execution_state_.station_m, result.projection.station_m);
+  }
+  return result;
+}
+
+RouteSegmentCompletionAssessment3D RouteSupervisor3D::assessCompletion(
+    const std::span<const RouteSample3D> route,
+    const RouteSegmentCompletionObservation3D& observation,
+    const RouteSegmentCompletionConfig3D& config) noexcept {
+  if (!active_route_.has_value()) {
+    return {};
+  }
+  RouteSegmentCompletionObservation3D supervised_observation = observation;
+  supervised_observation.minimum_station_m = execution_state_.station_m;
+  RouteSegmentCompletionAssessment3D result = assessRouteSegmentCompletion3D(
+      route, active_route_->generation, supervised_observation, config);
+  if (result.generation_matches && result.projection.valid &&
+      std::isfinite(result.monotonic_station_m)) {
+    execution_state_.station_m =
+        std::max(execution_state_.station_m, result.monotonic_station_m);
+  }
+  return result;
+}
+
+bool RouteSupervisor3D::applyEvent(const RouteLifecycleEvent3D& event) noexcept {
+  if (!active_route_.has_value() || event.generation == 0U ||
+      event.generation != active_route_->generation) {
+    return false;
+  }
+  switch (event.kind) {
+    case RouteLifecycleEventKind3D::kControlCandidateRejected:
+      return true;
+    case RouteLifecycleEventKind3D::kCompleted:
+    case RouteLifecycleEventKind3D::kRawInvalidated:
+    case RouteLifecycleEventKind3D::kObjectiveSuperseded:
+    case RouteLifecycleEventKind3D::kCrossTrackExceeded:
+      active_route_.reset();
+      execution_state_ = {};
+      raw_certificate_ = {};
+      return true;
+  }
+  return false;
+}
+
+bool RouteSupervisor3D::rejectControlCandidate(
+    const std::uint64_t generation) noexcept {
+  return applyEvent(RouteLifecycleEvent3D{
+      .kind = RouteLifecycleEventKind3D::kControlCandidateRejected,
+      .generation = generation,
+  });
+}
+
+const ActivatedRouteIdentity3D* RouteSupervisor3D::activeRoute() const noexcept {
+  return active_route_ ? std::addressof(*active_route_) : nullptr;
+}
+
+const RouteExecutionState3D& RouteSupervisor3D::executionState() const noexcept {
+  return execution_state_;
+}
+
+const RawRouteCertificate3D& RouteSupervisor3D::rawCertificate() const noexcept {
+  return raw_certificate_;
+}
+
+std::uint64_t RouteSupervisor3D::lastAllocatedGeneration() const noexcept {
+  return last_allocated_generation_;
+}
+
+std::string_view
+routeLifecycleEventKind3DName(const RouteLifecycleEventKind3D kind) noexcept {
+  switch (kind) {
+    case RouteLifecycleEventKind3D::kCompleted:
+      return "completed";
+    case RouteLifecycleEventKind3D::kRawInvalidated:
+      return "raw_invalidated";
+    case RouteLifecycleEventKind3D::kObjectiveSuperseded:
+      return "objective_superseded";
+    case RouteLifecycleEventKind3D::kControlCandidateRejected:
+      return "control_candidate_rejected";
+    case RouteLifecycleEventKind3D::kCrossTrackExceeded:
+      return "cross_track_exceeded";
+  }
+  return "invalid_event";
 }
 
 std::string_view

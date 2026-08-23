@@ -7,6 +7,7 @@
 #include "drone_city_nav/cooperative_passage_route.hpp"
 #include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
+#include "drone_city_nav/execution_arbiter_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/free_space_topology_router.hpp"
@@ -450,6 +451,7 @@ struct ProductionRouteExecutionSelection3D {
   std::shared_ptr<const ProductionActivatedRoute3D> route;
   GlobalGuideProjection projection{};
   RouteExecutionStatus3D status{RouteExecutionStatus3D::kNoActiveRoute};
+  std::optional<RouteLifecycleEvent3D> lifecycle_event;
   Point3 hold_position{};
   double station_m{0.0};
   bool route_usable{false};
@@ -635,6 +637,10 @@ private:
       bool reaches_mission_goal);
   void processGuideSearch3D(const ProductionMppiPreparedEsdf& world,
                             const ProductionMppiNavigation& navigation);
+  [[nodiscard]] RouteSegmentCompletionAssessment3D
+  assessActiveRouteCompletion3D(const ProductionMppiPreparedEsdf& world,
+                                const Point3& position);
+  [[nodiscard]] std::uint64_t nextRouteGeneration3D();
   [[nodiscard]] ProductionRouteCandidateSelection3D selectRouteCandidate3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
@@ -833,10 +839,10 @@ private:
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   bool static_esdf_uploaded_{false};
-  std::uint64_t static_route_generation_{0U};
+  mutable std::mutex route_supervisor_mutex_;
+  RouteSupervisor3D route_supervisor_{};
   std::uint64_t tracked_route_generation_{0U};
   double tracked_route_station_m_{0.0};
-  RouteExecutionState3D route_execution_state_3d_{};
   std::mutex static_route_extension_mutex_;
   bool static_route_extension_request_in_flight_{false};
   std::uint64_t static_route_extension_in_flight_generation_{0U};
@@ -919,8 +925,7 @@ private:
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
 
   std::optional<mppi::MppiTickResult> previous_result_;
-  std::optional<Point3> no_executable_path_hold_position_;
-  std::optional<ProductionMppiActiveFiniteExecutionPath> active_finite_execution_path_;
+  ExecutionArbiter3D<ProductionMppiActiveFiniteExecutionPath> execution_arbiter_{};
   std::optional<mppi::State> previous_predicted_next_state_;
   std::int64_t previous_prediction_stamp_ns_{0};
   ProductionMppiPredictionError latest_prediction_error_{};

@@ -56,6 +56,19 @@ struct ActivatedRouteIdentity3D {
   MaterializedRouteProposal3D proposal{};
 };
 
+enum class RouteLifecycleEventKind3D : std::uint8_t {
+  kCompleted,
+  kRawInvalidated,
+  kObjectiveSuperseded,
+  kControlCandidateRejected,
+  kCrossTrackExceeded,
+};
+
+struct RouteLifecycleEvent3D {
+  RouteLifecycleEventKind3D kind{RouteLifecycleEventKind3D::kCompleted};
+  std::uint64_t generation{0U};
+};
+
 enum class RouteProposalReplacementStatus3D : std::uint8_t {
   kReplace,
   kRetainEquivalentActiveSegment,
@@ -84,7 +97,9 @@ struct RawRouteSuffixValidation3D {
   std::size_t first_validated_route_segment{0U};
   std::size_t failure_route_segment{0U};
   Point3 failure_point{};
+  double validated_from_station_m{0.0};
   bool connector_validated{false};
+  bool suffix_validated{false};
 
   [[nodiscard]] bool accepted() const noexcept;
 };
@@ -131,14 +146,60 @@ struct RouteExecutionState3D {
   double station_m{0.0};
 };
 
+struct RawRouteCertificate3D {
+  std::uint64_t generation{0U};
+  std::uint64_t producer_instance_id{0U};
+  std::uint64_t validated_through_revision{0U};
+  double suffix_start_station_m{0.0};
+};
+
 struct RouteSegmentCompletionConfig3D {
   double capture_radius_m{2.0};
+  double terminal_station_tolerance_m{0.5};
+};
+
+struct RouteSegmentCompletionObservation3D {
+  std::uint64_t route_generation{0U};
+  Point3 position{};
+  double minimum_station_m{0.0};
 };
 
 struct RouteSegmentCompletionAssessment3D {
   RouteProjection3D projection{};
   double endpoint_distance_m{0.0};
+  double monotonic_station_m{0.0};
+  bool generation_matches{false};
+  bool terminal_station_reached{false};
   bool captured{false};
+};
+
+class RouteSupervisor3D {
+public:
+  [[nodiscard]] std::optional<std::uint64_t>
+  activate(const MaterializedRouteProposal3D& proposal) noexcept;
+
+  [[nodiscard]] RouteExecutionAssessment3D
+  assessExecution(std::span<const RouteSample3D> route,
+                  const RouteExecutionObservation3D& observation) noexcept;
+
+  [[nodiscard]] RouteSegmentCompletionAssessment3D
+  assessCompletion(std::span<const RouteSample3D> route,
+                   const RouteSegmentCompletionObservation3D& observation,
+                   const RouteSegmentCompletionConfig3D& config) noexcept;
+
+  [[nodiscard]] bool applyEvent(const RouteLifecycleEvent3D& event) noexcept;
+  [[nodiscard]] bool rejectControlCandidate(std::uint64_t generation) noexcept;
+
+  [[nodiscard]] const ActivatedRouteIdentity3D* activeRoute() const noexcept;
+  [[nodiscard]] const RouteExecutionState3D& executionState() const noexcept;
+  [[nodiscard]] const RawRouteCertificate3D& rawCertificate() const noexcept;
+  [[nodiscard]] std::uint64_t lastAllocatedGeneration() const noexcept;
+
+private:
+  std::optional<ActivatedRouteIdentity3D> active_route_{};
+  RouteExecutionState3D execution_state_{};
+  RawRouteCertificate3D raw_certificate_{};
+  std::uint64_t last_allocated_generation_{0U};
 };
 
 [[nodiscard]] std::optional<ActivatedRouteIdentity3D>
@@ -168,9 +229,12 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* active_route,
 
 [[nodiscard]] RouteSegmentCompletionAssessment3D
 assessRouteSegmentCompletion3D(std::span<const RouteSample3D> route,
-                               const Point3& position,
+                               std::uint64_t expected_generation,
+                               const RouteSegmentCompletionObservation3D& observation,
                                const RouteSegmentCompletionConfig3D& config) noexcept;
 
+[[nodiscard]] std::string_view
+routeLifecycleEventKind3DName(RouteLifecycleEventKind3D kind) noexcept;
 [[nodiscard]] std::string_view
 routePublicationStatus3DName(RoutePublicationStatus3D status) noexcept;
 [[nodiscard]] std::string_view

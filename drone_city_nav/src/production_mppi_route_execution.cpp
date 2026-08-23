@@ -15,6 +15,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     const bool observed_3d_world) {
   ProductionRouteExecutionSelection3D result{
       .route = world.activated_route_3d,
+      .lifecycle_event = std::nullopt,
       .hold_position =
           Point3{navigation.state.x, navigation.state.y,
                  clampToFlightEnvelope(navigation.state.z, flight_envelope_config_)
@@ -26,20 +27,10 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
 
   const ProductionActivatedRoute3D* const active_route = result.route.get();
   if (active_route == nullptr) {
-    route_execution_state_3d_ = {};
     return result;
   }
-  if (route_execution_state_3d_.generation != active_route->identity.generation) {
-    route_execution_state_3d_ = RouteExecutionState3D{
-        .generation = active_route->identity.generation,
-        .raw_validated_through_revision =
-            active_route->identity.proposal.validated_world
-                .raw_validated_through_revision,
-        .station_m = 0.0,
-    };
-  }
   const std::span<const RouteSample3D> route =
-      active_route != nullptr && active_route->geometry.route
+      active_route->geometry.route
           ? std::span<const RouteSample3D>{*active_route->geometry.route}
           : std::span<const RouteSample3D>{};
   const StaticRouteObjective current_objective =
@@ -58,54 +49,62 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       .axial_samples = physical_footprint_config_.axial_samples,
       .sweep_step_m = physical_footprint_config_.sweep_step_m,
   };
-  const RouteExecutionAssessment3D assessment = assessRouteExecution3D(
-      active_route != nullptr ? &active_route->identity : nullptr, route,
-      RouteExecutionObservation3D{
-          .current_objective = current_objective,
-          .minimum_tracking_sample_sequence = minimum_tracking_sample_sequence,
-          .previously_validated_through_raw_revision =
-              route_execution_state_3d_.raw_validated_through_revision,
-          .position = {navigation.state.x, navigation.state.y, navigation.state.z},
-          .minimum_station_m = route_execution_state_3d_.station_m,
-          .maximum_cross_track_m = active_guide_config_.maximum_cross_track_m,
-          .latest_raw_occupancy = latest_occupancy,
-          .latest_raw_producer_instance_id =
-              latest_raw_world ? latest_raw_world->producer_instance_id : 0U,
-          .latest_raw_revision = latest_raw_world ? latest_raw_world->revision : 0U,
-          .footprint = footprint,
-          .proprioceptive_free_space_seed =
-              world.proprioceptive_free_space_seed
-                  ? std::addressof(*world.proprioceptive_free_space_seed)
-                  : nullptr,
-          .launch_support_contact = world.launch_support_contact
-                                        ? std::addressof(*world.launch_support_contact)
-                                        : nullptr,
-      });
+  RouteExecutionAssessment3D assessment;
+  RouteExecutionState3D supervised_state;
+  {
+    const std::scoped_lock lock{route_supervisor_mutex_};
+    const ActivatedRouteIdentity3D* const supervised_route =
+        route_supervisor_.activeRoute();
+    if (supervised_route == nullptr ||
+        supervised_route->generation != active_route->identity.generation) {
+      result.route.reset();
+      return result;
+    }
+    assessment = route_supervisor_.assessExecution(
+        route,
+        RouteExecutionObservation3D{
+            .current_objective = current_objective,
+            .minimum_tracking_sample_sequence = minimum_tracking_sample_sequence,
+            .position = {navigation.state.x, navigation.state.y, navigation.state.z},
+            .maximum_cross_track_m = active_guide_config_.maximum_cross_track_m,
+            .latest_raw_occupancy = latest_occupancy,
+            .latest_raw_producer_instance_id =
+                latest_raw_world ? latest_raw_world->producer_instance_id : 0U,
+            .latest_raw_revision = latest_raw_world ? latest_raw_world->revision : 0U,
+            .footprint = footprint,
+            .proprioceptive_free_space_seed =
+                world.proprioceptive_free_space_seed
+                    ? std::addressof(*world.proprioceptive_free_space_seed)
+                    : nullptr,
+            .launch_support_contact =
+                world.launch_support_contact
+                    ? std::addressof(*world.launch_support_contact)
+                    : nullptr,
+        });
+    supervised_state = route_supervisor_.executionState();
+  }
   result.status = assessment.status;
   result.route_usable = assessment.usable();
-  route_execution_state_3d_.raw_validated_through_revision =
-      std::max(route_execution_state_3d_.raw_validated_through_revision,
-               assessment.validated_through_raw_revision);
   if (assessment.projection.valid) {
-    route_execution_state_3d_.station_m =
-        std::max(route_execution_state_3d_.station_m, assessment.projection.station_m);
     result.projection = GlobalGuideProjection{
         .valid = true,
-        .station_m = route_execution_state_3d_.station_m,
+        .station_m = supervised_state.station_m,
         .total_length_m = route.empty() ? 0.0 : route.back().station_m,
-        .remaining_m = route.empty()
-                           ? 0.0
-                           : std::max(0.0, route.back().station_m -
-                                               route_execution_state_3d_.station_m),
+        .remaining_m = route.empty() ? 0.0
+                                     : std::max(0.0, route.back().station_m -
+                                                         supervised_state.station_m),
         .cross_track_m = assessment.projection.distance_m,
         .point = {assessment.projection.point.x, assessment.projection.point.y},
     };
   }
-  result.station_m = route_execution_state_3d_.station_m;
+  result.station_m = supervised_state.station_m;
 
-  const std::uint64_t generation =
-      active_route != nullptr ? active_route->identity.generation : 0U;
+  const std::uint64_t generation = active_route->identity.generation;
   if (assessment.status == RouteExecutionStatus3D::kRawCollision) {
+    result.lifecycle_event = RouteLifecycleEvent3D{
+        .kind = RouteLifecycleEventKind3D::kRawInvalidated,
+        .generation = generation,
+    };
     const std::uint64_t raw_revision =
         latest_raw_world ? latest_raw_world->revision : 0U;
     std::uint64_t no_blocked_revision{0U};
@@ -126,6 +125,12 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         assessment.raw_validation.failure_point.z);
     requestGuideRelease(GlobalGuideReleaseReason::kBlocked, generation);
   } else if (assessment.replacementRequired()) {
+    const RouteLifecycleEventKind3D event_kind =
+        assessment.status == RouteExecutionStatus3D::kObjectiveMismatch
+            ? RouteLifecycleEventKind3D::kObjectiveSuperseded
+            : RouteLifecycleEventKind3D::kCrossTrackExceeded;
+    result.lifecycle_event =
+        RouteLifecycleEvent3D{.kind = event_kind, .generation = generation};
     const StaticRouteObjective& route_objective =
         active_route->identity.proposal.objective;
     RCLCPP_WARN_THROTTLE(
@@ -148,7 +153,15 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         route_objective.target_track_id,
         objective != nullptr ? objective->target_track_id : 0U,
         assessment.projection.distance_m, active_guide_config_.maximum_cross_track_m);
-    requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged, generation);
+    requestGuideRelease(event_kind == RouteLifecycleEventKind3D::kObjectiveSuperseded
+                            ? GlobalGuideReleaseReason::kObjectiveChanged
+                            : GlobalGuideReleaseReason::kDiverged,
+                        generation);
+  }
+  if (result.lifecycle_event.has_value()) {
+    static_cast<void>(execution_arbiter_.observe(*result.lifecycle_event));
+    const std::scoped_lock lock{route_supervisor_mutex_};
+    static_cast<void>(route_supervisor_.applyEvent(*result.lifecycle_event));
   }
   return result;
 }
