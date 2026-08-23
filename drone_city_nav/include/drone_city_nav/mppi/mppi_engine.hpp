@@ -127,11 +127,28 @@ mppiPostUpdateRepairName(const MppiPostUpdateRepair repair) noexcept {
   return "unknown";
 }
 
+enum class MppiControlSelection : std::uint8_t {
+  kWeightedUpdate,
+  kRouteDirectedCandidate,
+};
+
+[[nodiscard]] inline const char*
+mppiControlSelectionName(const MppiControlSelection selection) noexcept {
+  switch (selection) {
+    case MppiControlSelection::kWeightedUpdate:
+      return "weighted_update";
+    case MppiControlSelection::kRouteDirectedCandidate:
+      return "route_directed_candidate";
+  }
+  return "unknown";
+}
+
 struct MppiTickResult {
   std::vector<State> horizon;
   std::vector<Control> controls;
   MppiFeasibilityContract feasibility_contract{};
   MppiPostUpdateClassificationResult post_update_classification{};
+  MppiControlSelection control_selection{MppiControlSelection::kWeightedUpdate};
   MppiPostUpdateRepair post_update_repair{MppiPostUpdateRepair::kNotRequired};
   float post_update_backtrack_ratio{1.0F};
   RiskTier selected_tier{RiskTier::kCollision};

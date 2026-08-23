@@ -358,6 +358,8 @@ void ProductionMppiNode::processDiagnostics(
       << " post_update_classification="
       << mppi::mppiPostUpdateClassificationName(
              result.post_update_classification.classification)
+      << " control_selection="
+      << mppi::mppiControlSelectionName(result.control_selection)
       << " post_update_executable="
       << (result.post_update_classification.executable ? "true" : "false")
       << " post_update_repair="
@@ -887,7 +889,9 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"post_update_classification\":\""
         << mppi::mppiPostUpdateClassificationName(
                result.post_update_classification.classification)
-        << '"' << ",\"post_update_executable\":"
+        << '"' << ",\"control_selection\":\""
+        << mppi::mppiControlSelectionName(result.control_selection) << '"'
+        << ",\"post_update_executable\":"
         << (result.post_update_classification.executable ? "true" : "false")
         << ",\"post_update_repair\":\""
         << mppi::mppiPostUpdateRepairName(result.post_update_repair) << '"'

@@ -238,6 +238,59 @@ TEST(MppiControlSequenceTest, FiniteRouteSeedStopsAtTemporaryFrontier) {
   EXPECT_LT(std::abs(terminal.vx), 0.5F);
 }
 
+TEST(MppiControlSequenceTest,
+     SelectsBestFiniteRouteCandidateInsteadOfDilutingItInWeightedUpdate) {
+  BenchmarkConfig config;
+  config.rollouts = 512U;
+  config.steps = 40U;
+  config.dynamics.dt_s = 0.05F;
+  config.noise.horizontal_acceleration_sigma_mps2 = 0.01F;
+  config.noise.vertical_acceleration_sigma_mps2 = 0.01F;
+  config.noise.yaw_acceleration_sigma_radps2 = 0.01F;
+  config.costs.temperature = 1000.0F;
+  config.seed = 31U;
+  MppiCudaEngine engine{config};
+  const EsdfGrid grid{.width = 50,
+                      .height = 40,
+                      .resolution_m = 1.0F,
+                      .origin_x_m = 0.0F,
+                      .origin_y_m = 0.0F,
+                      .depth = 20,
+                      .origin_z_m = 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(50U) * 40U * 20U, 20.0F);
+  ASSERT_TRUE(engine.updateEsdf(EsdfSnapshot{grid, esdf, 1U}).accepted);
+  auto route =
+      std::make_shared<const std::vector<RouteSample3D>>(std::vector<RouteSample3D>{
+          RouteSample3D{.x_m = 5.0F,
+                        .y_m = 20.0F,
+                        .z_m = 10.0F,
+                        .tangent_x = 1.0F,
+                        .station_m = 0.0F},
+          RouteSample3D{.x_m = 35.0F,
+                        .y_m = 20.0F,
+                        .z_m = 10.0F,
+                        .tangent_x = 1.0F,
+                        .station_m = 30.0F},
+      });
+  MppiTickInput input;
+  input.initial_state = State{.x = 5.0F, .y = 20.0F, .z = 10.0F};
+  input.target = State{.x = 35.0F, .y = 20.0F, .z = 10.0F};
+  input.planning_stamp_ns = 1;
+  input.reference_speed_mps = 5.0F;
+  input.route = RouteReference{.points = std::move(route), .generation = 1U};
+  input.deterministic_candidate = DeterministicCandidateKind::kRouteDirectedCruise;
+
+  const MppiTickResult result = engine.plan(input);
+
+  EXPECT_TRUE(result.route_directed_candidate_raw_safe);
+  EXPECT_TRUE(result.route_directed_candidate_best_feasible);
+  EXPECT_EQ(result.control_selection, MppiControlSelection::kRouteDirectedCandidate);
+  ASSERT_FALSE(result.controls.empty());
+  ASSERT_FALSE(result.horizon.empty());
+  EXPECT_GT(result.controls.front().ax, 0.0F);
+  EXPECT_GT(result.terminal_progress_m, 1.0F);
+}
+
 TEST(MppiControlSequenceTest, AcquisitionCombinesRouteAccelerationAndClimb) {
   DynamicsConfig dynamics;
   dynamics.dt_s = 0.1F;

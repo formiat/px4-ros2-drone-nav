@@ -571,6 +571,15 @@ public:
         route_directed_candidate ? reacquisition_weight : 0.0F;
     result.route_directed_candidate_generation =
         route_directed_candidate ? input.route->generation : 0U;
+    if (result.route_directed_candidate_raw_safe &&
+        result.route_directed_candidate_best_feasible) {
+      // The single explicit route candidate must not be diluted by many
+      // individually worse rollouts when it is the objective winner.
+      std::ranges::copy(reacquisition_candidate_, updated_.begin());
+      limitControlSequence(updated_, config_.dynamics, previous_applied_control,
+                           first_control_interval_s);
+      result.control_selection = MppiControlSelection::kRouteDirectedCandidate;
+    }
     populateSeparationAcquisitionResult(result, acquisition_lifecycle,
                                         cooperative_avoidance_enabled,
                                         dynamic_aircraft_count);
