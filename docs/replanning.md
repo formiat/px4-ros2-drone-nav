@@ -60,8 +60,10 @@ resident CPU occupancy/ESDF/topology generation, the linked GPU ESDF revision,
 current raw occupancy, objective, pose, and applied control. Final validation
 starts at the current route projection: it checks the connector and remaining
 suffix, then runs dynamic handoff from the same pose/control snapshot. If newer
-raw content has not yet produced its matching local-world generation,
-activation waits for that generation instead of mixing revisions.
+same-lineage raw content is available, it may strengthen the connector and
+suffix check without changing the coherent resident CPU/GPU planning
+generation. Activation is abandoned if that captured raw snapshot changes
+before commit.
 
 Topology evidence remains explicit when bounded updates leave locally valid
 blocks at different revisions. `validated_through` can advance when observation

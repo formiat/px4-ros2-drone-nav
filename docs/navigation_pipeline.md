@@ -41,6 +41,13 @@ builds a recentered local ESDF3D that retains explicit unknown-space state.
 MPPI continues using the last complete immutable field until a newer revision
 is ready.
 
+Coherent-world publication and route activation serialize through the same
+resident-state transaction. A completed asynchronous ESDF build replaces only
+the linked world resources on the latest resident state; it cannot restore the
+route generation that was current when the build started. Whichever transaction
+wins first therefore leaves the CPU/GPU world generation and the route
+supervisor ownership mutually consistent.
+
 Rate-limited work is retained by a latest-wins deferred scheduler. The newest
 pending state is processed when the rate deadline arrives even if no later
 sensor message appears. A pose-driven recenter request is urgent and may build a
