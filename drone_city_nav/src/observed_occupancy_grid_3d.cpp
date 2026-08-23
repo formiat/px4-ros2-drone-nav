@@ -94,16 +94,11 @@ ObservedOccupancyGrid3D::state(const GridIndex3D index) const noexcept {
   if (!contains(index)) {
     return ObservedVoxelState::kUnknown;
   }
-  const auto found = chunks_.find(chunkIndex(index));
-  if (found == chunks_.end()) {
+  const Chunk* const chunk = findChunk(chunkIndex(index));
+  if (chunk == nullptr) {
     return ObservedVoxelState::kUnknown;
   }
-  const std::size_t bit_index = localBitIndex(index);
-  if (!bit(found->second->observed, bit_index)) {
-    return ObservedVoxelState::kUnknown;
-  }
-  return bit(found->second->occupied, bit_index) ? ObservedVoxelState::kOccupied
-                                                 : ObservedVoxelState::kFree;
+  return chunkState(*chunk, localBitIndex(index));
 }
 
 bool ObservedOccupancyGrid3D::isKnown(const GridIndex3D index) const noexcept {
@@ -133,6 +128,22 @@ std::size_t ObservedOccupancyGrid3D::occupiedVoxelCount() const noexcept {
 const ObservedOccupancyGrid3D::ChunkMap&
 ObservedOccupancyGrid3D::chunks() const noexcept {
   return chunks_;
+}
+
+const ObservedOccupancyGrid3D::Chunk*
+ObservedOccupancyGrid3D::findChunk(const OccupancyChunkIndex3D index) const noexcept {
+  const auto found = chunks_.find(index);
+  return found == chunks_.end() ? nullptr : &found->second.get();
+}
+
+ObservedVoxelState
+ObservedOccupancyGrid3D::chunkState(const Chunk& chunk,
+                                    const std::size_t bit_index) noexcept {
+  if (!bit(chunk.observed, bit_index)) {
+    return ObservedVoxelState::kUnknown;
+  }
+  return bit(chunk.occupied, bit_index) ? ObservedVoxelState::kOccupied
+                                        : ObservedVoxelState::kFree;
 }
 
 bool ObservedOccupancyGrid3D::setState(const GridIndex3D index,

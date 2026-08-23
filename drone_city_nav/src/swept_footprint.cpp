@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 #include "swept_footprint_internal.hpp"
@@ -511,18 +512,39 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
   const int minimum_z = std::max(0, requested_minimum_z);
   const int maximum_z = std::min(bounds.depth_cells - 1, requested_maximum_z);
   const double radius_squared = radius_m * radius_m;
+  OccupancyChunkIndex3D cached_chunk_index{};
+  const ObservedOccupancyGrid3D::Chunk* cached_chunk{nullptr};
+  bool cached_chunk_initialized{false};
+  const auto observed_state_at = [&](const GridIndex3D cell) noexcept {
+    if constexpr (!std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
+      return occupancy.isOccupied(cell) ? ObservedVoxelState::kOccupied
+                                        : ObservedVoxelState::kFree;
+    } else {
+      const OccupancyChunkIndex3D chunk_index =
+          ObservedOccupancyGrid3D::chunkIndex(cell);
+      if (!cached_chunk_initialized || chunk_index != cached_chunk_index) {
+        cached_chunk_index = chunk_index;
+        cached_chunk = occupancy.findChunk(chunk_index);
+        cached_chunk_initialized = true;
+      }
+      return cached_chunk == nullptr
+                 ? ObservedVoxelState::kUnknown
+                 : ObservedOccupancyGrid3D::chunkState(
+                       *cached_chunk, ObservedOccupancyGrid3D::localBitIndex(cell));
+    }
+  };
   for (int z = minimum_z; z <= maximum_z; ++z) {
     for (int y = minimum_y; y <= maximum_y; ++y) {
       for (int x = minimum_x; x <= maximum_x; ++x) {
         const GridIndex3D cell{x, y, z};
         ObservedVoxelState observed_state{ObservedVoxelState::kUnknown};
         if constexpr (RequireKnownFree) {
-          observed_state = occupancy.state(cell);
+          observed_state = observed_state_at(cell);
           if (observed_state == ObservedVoxelState::kFree) {
             continue;
           }
         } else {
-          if (!occupancy.isOccupied(cell)) {
+          if (observed_state_at(cell) != ObservedVoxelState::kOccupied) {
             continue;
           }
         }

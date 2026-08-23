@@ -61,6 +61,9 @@ public:
   [[nodiscard]] std::size_t freeVoxelCount() const noexcept;
   [[nodiscard]] std::size_t occupiedVoxelCount() const noexcept;
   [[nodiscard]] const ChunkMap& chunks() const noexcept;
+  [[nodiscard]] const Chunk* findChunk(OccupancyChunkIndex3D index) const noexcept;
+  [[nodiscard]] static ObservedVoxelState chunkState(const Chunk& chunk,
+                                                     std::size_t bit_index) noexcept;
 
   bool setState(GridIndex3D index, ObservedVoxelState state);
   bool replaceChunk(OccupancyChunkIndex3D index, const Chunk& chunk);
