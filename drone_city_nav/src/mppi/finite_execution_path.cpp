@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/mppi_route_projection.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -36,6 +37,34 @@ constexpr double kTerminalRestTolerance{1.0e-3};
   return bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
 }
 
+[[nodiscard]] bool
+validRouteActivation(const FiniteExecutionPathTerminalBoundary& boundary) noexcept {
+  if (boundary.activation_route.empty()) {
+    return true;
+  }
+  if (boundary.activation_route.size() < 2U ||
+      !std::isfinite(boundary.initial_route_station_m) ||
+      !std::isfinite(boundary.activation_route_station_m)) {
+    return false;
+  }
+  float previous_station_m{-std::numeric_limits<float>::infinity()};
+  for (const RouteSample3D& sample : boundary.activation_route) {
+    if (!std::isfinite(sample.x_m) || !std::isfinite(sample.y_m) ||
+        !std::isfinite(sample.z_m) || !std::isfinite(sample.station_m) ||
+        sample.station_m + 1.0e-4F < previous_station_m) {
+      return false;
+    }
+    previous_station_m = sample.station_m;
+  }
+  const float first_station_m = boundary.activation_route.front().station_m;
+  const float last_station_m = boundary.activation_route.back().station_m;
+  return last_station_m > first_station_m + 1.0e-4F &&
+         boundary.initial_route_station_m + 1.0e-4F >= first_station_m &&
+         boundary.initial_route_station_m <= last_station_m + 1.0e-4F &&
+         boundary.activation_route_station_m + 1.0e-4F >= first_station_m &&
+         boundary.activation_route_station_m <= last_station_m + 1.0e-4F;
+}
+
 [[nodiscard]] bool validWorld(const FiniteExecutionPathWorld& world) noexcept {
   if (world.flight_envelope == nullptr || world.dynamics == nullptr ||
       world.altitude_envelope == nullptr || world.footprint == nullptr) {
@@ -52,14 +81,29 @@ constexpr double kTerminalRestTolerance{1.0e-3};
          std::isfinite(boundary.forward.y) && std::isfinite(boundary.forward.z) &&
          std::isfinite(boundary.tolerance_m) && boundary.tolerance_m >= 0.0 &&
          boundary.activation_distance_m > 0.0 && boundary.maximum_cross_track_m > 0.0 &&
-         forward_norm > 1.0e-6;
+         forward_norm > 1.0e-6 && validRouteActivation(boundary);
 }
 
 [[nodiscard]] bool withinTerminalBoundary(
     const State& state,
-    const std::optional<FiniteExecutionPathTerminalBoundary>& boundary) noexcept {
+    const std::optional<FiniteExecutionPathTerminalBoundary>& boundary,
+    const float traveled_distance_m) noexcept {
   if (!boundary.has_value()) {
     return true;
+  }
+  if (!boundary->activation_route.empty()) {
+    const MppiRouteProjection3D projection = projectOntoMppiRoute3D(
+        state, boundary->activation_route, boundary->initial_route_station_m);
+    if (!projection.valid) {
+      return true;
+    }
+    const float credited_station_m =
+        boundary->initial_route_station_m +
+        creditedRouteProgressM(projection.station_m, boundary->initial_route_station_m,
+                               traveled_distance_m);
+    if (credited_station_m + 1.0e-4F < boundary->activation_route_station_m) {
+      return true;
+    }
   }
   const double forward_norm = std::hypot(
       std::hypot(boundary->forward.x, boundary->forward.y), boundary->forward.z);
@@ -74,6 +118,9 @@ constexpr double kTerminalRestTolerance{1.0e-3};
       forward_norm;
   if (signed_distance_m <= boundary->tolerance_m) {
     return true;
+  }
+  if (!boundary->activation_route.empty()) {
+    return false;
   }
   const double endpoint_distance_m = std::hypot(std::hypot(delta.x, delta.y), delta.z);
   const double cross_track_m =
@@ -226,7 +273,9 @@ FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
   if (altitude_status != FiniteExecutionPathStatus::kValid) {
     return reject(altitude_status, 0U, 0U, position(points.front().state), 0.0);
   }
-  if (!withinTerminalBoundary(points.front().state, world.terminal_boundary)) {
+  float terminal_boundary_travel_m{0.0F};
+  if (!withinTerminalBoundary(points.front().state, world.terminal_boundary,
+                              terminal_boundary_travel_m)) {
     return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded, 0U, 0U,
                   position(points.front().state), 0.0);
   }
@@ -235,11 +284,15 @@ FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
   for (std::size_t index = 1U; index < points.size(); ++index) {
     const TimedExecutionPathPoint& first = points[index - 1U];
     const TimedExecutionPathPoint& second = points[index];
+    terminal_boundary_travel_m += std::hypot(
+        std::hypot(second.state.x - first.state.x, second.state.y - first.state.y),
+        second.state.z - first.state.z);
     altitude_status = validateAltitudeState(second.state, first.control, world);
     if (altitude_status != FiniteExecutionPathStatus::kValid) {
       return reject(altitude_status, 0U, index - 1U, position(second.state), 0.0);
     }
-    if (!withinTerminalBoundary(second.state, world.terminal_boundary)) {
+    if (!withinTerminalBoundary(second.state, world.terminal_boundary,
+                                terminal_boundary_travel_m)) {
       return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded, 0U, index - 1U,
                     position(second.state), 0.0);
     }
@@ -348,11 +401,14 @@ FiniteExecutionPathValidation validateFiniteExecutionTrajectoryContinuation(
     return reject(altitude_status, first_remaining_index, first_remaining_index,
                   position(current_state), remaining_duration_s);
   }
-  if (!withinTerminalBoundary(current_state, world.terminal_boundary)) {
+  float terminal_boundary_travel_m{0.0F};
+  if (!withinTerminalBoundary(current_state, world.terminal_boundary,
+                              terminal_boundary_travel_m)) {
     return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded,
                   first_remaining_index, first_remaining_index, position(current_state),
                   remaining_duration_s);
   }
+  State terminal_boundary_previous_state = current_state;
   for (std::size_t index = first_remaining_index; index < points.size(); ++index) {
     const Control& applied_control =
         index == 0U ? current_control : points[index - 1U].control;
@@ -362,7 +418,13 @@ FiniteExecutionPathValidation validateFiniteExecutionTrajectoryContinuation(
       return reject(altitude_status, first_remaining_index, index,
                     position(points[index].state), remaining_duration_s);
     }
-    if (!withinTerminalBoundary(points[index].state, world.terminal_boundary)) {
+    terminal_boundary_travel_m += std::hypot(
+        std::hypot(points[index].state.x - terminal_boundary_previous_state.x,
+                   points[index].state.y - terminal_boundary_previous_state.y),
+        points[index].state.z - terminal_boundary_previous_state.z);
+    terminal_boundary_previous_state = points[index].state;
+    if (!withinTerminalBoundary(points[index].state, world.terminal_boundary,
+                                terminal_boundary_travel_m)) {
       return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded,
                     first_remaining_index, index, position(points[index].state),
                     remaining_duration_s);
@@ -425,6 +487,7 @@ FiniteExecutionPathValidation validateFiniteExecutionPathContinuation(
       trajectory_validation.first_remaining_point_index;
   State simulated_state = current_state;
   Control previous_control = current_control;
+  float terminal_boundary_travel_m{0.0F};
   FiniteExecutionPathStatus altitude_status{FiniteExecutionPathStatus::kValid};
   FiniteExecutionPathStatus segment_status{FiniteExecutionPathStatus::kValid};
   Point3 failure_point{};
@@ -437,7 +500,11 @@ FiniteExecutionPathValidation validateFiniteExecutionPathContinuation(
       return reject(altitude_status, first_remaining_index, index, position(next_state),
                     trajectory_validation.remaining_duration_s);
     }
-    if (!withinTerminalBoundary(next_state, world.terminal_boundary)) {
+    terminal_boundary_travel_m += std::hypot(
+        std::hypot(next_state.x - simulated_state.x, next_state.y - simulated_state.y),
+        next_state.z - simulated_state.z);
+    if (!withinTerminalBoundary(next_state, world.terminal_boundary,
+                                terminal_boundary_travel_m)) {
       return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded,
                     first_remaining_index, index, position(next_state),
                     trajectory_validation.remaining_duration_s);

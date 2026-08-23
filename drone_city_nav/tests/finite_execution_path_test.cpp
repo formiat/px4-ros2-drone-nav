@@ -294,6 +294,7 @@ TEST(FiniteExecutionPathTest, RejectsTerminalRestBeyondFiniteRouteEndpoint) {
       .endpoint = Point3{3.5, 1.0, 5.0},
       .forward = Vec3{1.0, 0.0, 0.0},
       .tolerance_m = 0.0,
+      .activation_route = {},
   };
 
   const FiniteExecutionPathValidation result =
@@ -310,6 +311,7 @@ TEST(FiniteExecutionPathTest, AcceptsTerminalRestBeforeFiniteRouteEndpoint) {
       .endpoint = Point3{4.5, 1.0, 5.0},
       .forward = Vec3{1.0, 0.0, 0.0},
       .tolerance_m = 0.0,
+      .activation_route = {},
   };
 
   EXPECT_TRUE(
@@ -325,10 +327,89 @@ TEST(FiniteExecutionPathTest, AcceptsCurvedApproachOutsideTerminalSegmentCorrido
       .tolerance_m = 0.0,
       .activation_distance_m = 10.0,
       .maximum_cross_track_m = 0.5,
+      .activation_route = {},
   };
 
   EXPECT_TRUE(
       validateCompleteFiniteExecutionPath(testPath(), Control{}, view).accepted());
+}
+
+TEST(FiniteExecutionPathTest,
+     DoesNotApplyFoldedRouteEndpointBeforeReachingItsFinalSegment) {
+  TestWorld world;
+  const std::vector<RouteSample3D> route{
+      RouteSample3D{.x_m = 4.0F, .y_m = 2.5F, .z_m = 5.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 1.0F, .y_m = 2.5F, .z_m = 5.0F, .station_m = 3.0F},
+      RouteSample3D{.x_m = 1.0F, .y_m = 3.0F, .z_m = 5.0F, .station_m = 3.5F},
+      RouteSample3D{.x_m = 3.0F, .y_m = 3.0F, .z_m = 5.0F, .station_m = 5.5F},
+  };
+  FiniteExecutionPathWorld view = world.view();
+  view.terminal_boundary = FiniteExecutionPathTerminalBoundary{
+      .endpoint = Point3{3.0, 3.0, 5.0},
+      .forward = Vec3{1.0, 0.0, 0.0},
+      .tolerance_m = 0.0,
+      .activation_distance_m = 10.0,
+      .maximum_cross_track_m = 2.0,
+      .activation_route = route,
+      .initial_route_station_m = 0.0F,
+      .activation_route_station_m = 3.5F,
+  };
+  const std::vector<TimedExecutionPathPoint> approach{
+      TimedExecutionPathPoint{
+          .time_from_start_s = 0.0,
+          .state = State{.x = 4.0F, .y = 2.5F, .z = 5.0F, .vx = -0.5F},
+      },
+      TimedExecutionPathPoint{
+          .time_from_start_s = 1.0,
+          .state = State{.x = 3.5F, .y = 2.5F, .z = 5.0F, .vx = -0.5F},
+      },
+      TimedExecutionPathPoint{
+          .time_from_start_s = 2.0,
+          .state = State{.x = 3.0F, .y = 2.5F, .z = 5.0F},
+      },
+  };
+
+  EXPECT_TRUE(
+      validateCompleteFiniteExecutionPath(approach, Control{}, view).accepted());
+}
+
+TEST(FiniteExecutionPathTest, RouteAwareBoundaryStillRejectsFinalSegmentOvershoot) {
+  TestWorld world;
+  const std::vector<RouteSample3D> route{
+      RouteSample3D{.x_m = 4.0F, .y_m = 2.5F, .z_m = 5.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 1.0F, .y_m = 2.5F, .z_m = 5.0F, .station_m = 3.0F},
+      RouteSample3D{.x_m = 1.0F, .y_m = 3.0F, .z_m = 5.0F, .station_m = 3.5F},
+      RouteSample3D{.x_m = 3.0F, .y_m = 3.0F, .z_m = 5.0F, .station_m = 5.5F},
+  };
+  FiniteExecutionPathWorld view = world.view();
+  view.terminal_boundary = FiniteExecutionPathTerminalBoundary{
+      .endpoint = Point3{3.0, 3.0, 5.0},
+      .forward = Vec3{1.0, 0.0, 0.0},
+      .tolerance_m = 0.0,
+      .activation_route = route,
+      .initial_route_station_m = 3.5F,
+      .activation_route_station_m = 3.5F,
+  };
+  std::vector<TimedExecutionPathPoint> path{
+      TimedExecutionPathPoint{
+          .time_from_start_s = 0.0,
+          .state = State{.x = 1.0F, .y = 3.0F, .z = 5.0F, .vx = 1.5F},
+      },
+      TimedExecutionPathPoint{
+          .time_from_start_s = 1.0,
+          .state = State{.x = 3.5F, .y = 3.0F, .z = 5.0F, .vx = 1.0F},
+      },
+      TimedExecutionPathPoint{
+          .time_from_start_s = 2.0,
+          .state = State{.x = 3.0F, .y = 3.0F, .z = 5.0F},
+      },
+  };
+
+  const FiniteExecutionPathValidation result =
+      validateCompleteFiniteExecutionPath(path, Control{}, view);
+
+  EXPECT_EQ(result.status, FiniteExecutionPathStatus::kRouteEndpointExceeded);
+  EXPECT_EQ(result.failure_segment_index, 0U);
 }
 
 TEST(FiniteExecutionPathTest, RejectsOvershootBeforeTerminalRestReturnsInsideRoute) {
@@ -338,6 +419,7 @@ TEST(FiniteExecutionPathTest, RejectsOvershootBeforeTerminalRestReturnsInsideRou
       .endpoint = Point3{4.5, 1.0, 5.0},
       .forward = Vec3{1.0, 0.0, 0.0},
       .tolerance_m = 0.0,
+      .activation_route = {},
   };
   std::vector<TimedExecutionPathPoint> path = testPath();
   path[1].state.x = 5.0F;

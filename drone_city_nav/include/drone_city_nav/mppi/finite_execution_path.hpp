@@ -41,6 +41,9 @@ struct FiniteExecutionPathTerminalBoundary {
   double tolerance_m{0.5};
   double activation_distance_m{std::numeric_limits<double>::infinity()};
   double maximum_cross_track_m{std::numeric_limits<double>::infinity()};
+  std::span<const RouteSample3D> activation_route;
+  float initial_route_station_m{0.0F};
+  float activation_route_station_m{0.0F};
 };
 
 struct FiniteExecutionPathValidation {

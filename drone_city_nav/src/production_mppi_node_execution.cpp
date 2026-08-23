@@ -97,6 +97,9 @@ finiteRouteTerminalBoundary(const mppi::MppiTickInput& input,
       .forward = forward,
       .activation_distance_m = 10.0,
       .maximum_cross_track_m = 2.0,
+      .activation_route = route,
+      .initial_route_station_m = input.route->initial_station_m,
+      .activation_route_station_m = previous.station_m,
   };
 }
 

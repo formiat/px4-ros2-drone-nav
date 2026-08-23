@@ -27,6 +27,18 @@ struct State {
   float yaw_rate{0.0F};
 };
 
+struct RouteSample3D {
+  float x_m{0.0F};
+  float y_m{0.0F};
+  float z_m{0.0F};
+  float tangent_x{0.0F};
+  float tangent_y{0.0F};
+  float tangent_z{0.0F};
+  float station_m{0.0F};
+  float reference_speed_mps{0.0F};
+  RiskTier required_risk_tier{RiskTier::kPreferred};
+};
+
 struct MovingTargetReference {
   State state{};
   float capture_radius_m{5.0F};

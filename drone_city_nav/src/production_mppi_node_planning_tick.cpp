@@ -828,96 +828,17 @@ void ProductionMppiNode::planningTick() {
     last_rviz_stamp_ns_ = now_ns;
   }
 
-  mppi::MppiTickResult diagnostic_result;
-  diagnostic_result.feasibility_contract = result.feasibility_contract;
-  diagnostic_result.post_update_classification = result.post_update_classification;
-  diagnostic_result.post_update_repair = result.post_update_repair;
-  diagnostic_result.post_update_backtrack_ratio = result.post_update_backtrack_ratio;
-  diagnostic_result.selected_tier = result.selected_tier;
-  diagnostic_result.raw_collision = result.raw_collision;
-  diagnostic_result.known_solid_collision = result.known_solid_collision;
-  diagnostic_result.critical_exposure_m = result.critical_exposure_m;
-  diagnostic_result.planning_exposure_m = result.planning_exposure_m;
-  diagnostic_result.critical_clearance_proximity_s =
-      result.critical_clearance_proximity_s;
-  diagnostic_result.obstacle_approach_m2_s = result.obstacle_approach_m2_s;
-  diagnostic_result.minimum_esdf_distance_m = result.minimum_esdf_distance_m;
-  diagnostic_result.head_progress_m = result.head_progress_m;
-  diagnostic_result.terminal_progress_m = result.terminal_progress_m;
-  diagnostic_result.minimum_target_separation_m = result.minimum_target_separation_m;
-  diagnostic_result.minimum_peer_separation_m = result.minimum_peer_separation_m;
-  diagnostic_result.peer_separation_cost = result.peer_separation_cost;
-  diagnostic_result.dynamic_aircraft_anticipation_cost =
-      result.dynamic_aircraft_anticipation_cost;
-  diagnostic_result.dynamic_aircraft_survival_cost =
-      result.dynamic_aircraft_survival_cost;
-  diagnostic_result.dynamic_aircraft_survival_cost_ratio =
-      result.dynamic_aircraft_survival_cost_ratio;
-  diagnostic_result.predicted_capture_time_s = result.predicted_capture_time_s;
-  diagnostic_result.maximum_acceleration_mps2 = result.maximum_acceleration_mps2;
-  diagnostic_result.maximum_jerk_mps3 = result.maximum_jerk_mps3;
-  diagnostic_result.first_control_delta = result.first_control_delta;
-  diagnostic_result.warm_start_shift_s = result.warm_start_shift_s;
-  diagnostic_result.nominal_reseeded = result.nominal_reseeded;
-  diagnostic_result.target_directed_candidate_injected =
-      result.target_directed_candidate_injected;
-  diagnostic_result.target_directed_candidate_raw_safe =
-      result.target_directed_candidate_raw_safe;
-  diagnostic_result.target_directed_candidate_best_feasible =
-      result.target_directed_candidate_best_feasible;
-  diagnostic_result.target_directed_candidate_weight =
-      result.target_directed_candidate_weight;
-  diagnostic_result.route_directed_candidate_injected =
-      result.route_directed_candidate_injected;
-  diagnostic_result.route_directed_candidate_raw_safe =
-      result.route_directed_candidate_raw_safe;
-  diagnostic_result.route_directed_candidate_best_feasible =
-      result.route_directed_candidate_best_feasible;
-  diagnostic_result.route_directed_candidate_weight =
-      result.route_directed_candidate_weight;
-  diagnostic_result.route_directed_candidate_generation =
-      result.route_directed_candidate_generation;
-  diagnostic_result.cooperative_acquisition_reseeded =
-      result.cooperative_acquisition_reseeded;
-  diagnostic_result.cooperative_release_reseeded = result.cooperative_release_reseeded;
-  diagnostic_result.cooperative_acquisition_available =
-      result.cooperative_acquisition_available;
-  diagnostic_result.cooperative_acquisition_positive_progress =
-      result.cooperative_acquisition_positive_progress;
-  diagnostic_result.cooperative_acquisition_backward_fallback =
-      result.cooperative_acquisition_backward_fallback;
-  diagnostic_result.cooperative_acquisition_candidate_index =
-      result.cooperative_acquisition_candidate_index;
-  diagnostic_result.cooperative_acquisition_head_progress_m =
-      result.cooperative_acquisition_head_progress_m;
-  diagnostic_result.cooperative_acquisition_terminal_progress_m =
-      result.cooperative_acquisition_terminal_progress_m;
-  diagnostic_result.cooperative_acquisition_separation_gain_m =
-      result.cooperative_acquisition_separation_gain_m;
-  diagnostic_result.cooperative_candidates_injected =
-      result.cooperative_candidates_injected;
-  diagnostic_result.noncooperative_acquisition_reseeded =
-      result.noncooperative_acquisition_reseeded;
-  diagnostic_result.noncooperative_release_reseeded =
-      result.noncooperative_release_reseeded;
-  diagnostic_result.noncooperative_acquisition_available =
-      result.noncooperative_acquisition_available;
-  diagnostic_result.noncooperative_acquisition_candidate_index =
-      result.noncooperative_acquisition_candidate_index;
-  diagnostic_result.noncooperative_acquisition_maneuver =
-      result.noncooperative_acquisition_maneuver;
-  diagnostic_result.noncooperative_acquisition_minimum_separation_m =
-      result.noncooperative_acquisition_minimum_separation_m;
-  diagnostic_result.noncooperative_acquisition_separation_gain_m =
-      result.noncooperative_acquisition_separation_gain_m;
-  diagnostic_result.noncooperative_acquisition_head_progress_m =
-      result.noncooperative_acquisition_head_progress_m;
-  diagnostic_result.noncooperative_acquisition_terminal_progress_m =
-      result.noncooperative_acquisition_terminal_progress_m;
-  diagnostic_result.dynamic_aircraft_count = result.dynamic_aircraft_count;
-  diagnostic_result.esdf_revision = result.esdf_revision;
-  diagnostic_result.active_rollouts = result.active_rollouts;
-  diagnostic_result.timings = result.timings;
+  {
+    const std::scoped_lock lock{input_mutex_};
+    if (result.horizon.size() > 1U) {
+      previous_predicted_next_state_ = result.horizon[1U];
+      previous_prediction_stamp_ns_ = now_ns;
+    }
+  }
+  previous_result_ = result;
+  mppi::MppiTickResult diagnostic_result = std::move(result);
+  diagnostic_result.horizon.clear();
+  diagnostic_result.controls.clear();
   ProductionMppiPreparedEsdf diagnostic_esdf = *esdf;
   diagnostic_esdf.distances_m.reset();
   if (!rviz.has_value()) {
@@ -959,14 +880,6 @@ void ProductionMppiNode::planningTick() {
       .noncooperative = noncooperative,
       .route_required_risk_tier = route_required_risk_tier,
   });
-  {
-    const std::scoped_lock lock{input_mutex_};
-    if (result.horizon.size() > 1U) {
-      previous_predicted_next_state_ = result.horizon[1U];
-      previous_prediction_stamp_ns_ = now_ns;
-    }
-  }
-  previous_result_ = result;
 }
 
 } // namespace drone_city_nav
