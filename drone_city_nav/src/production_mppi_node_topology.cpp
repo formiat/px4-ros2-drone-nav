@@ -230,13 +230,15 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
 
   topological_lattice_adapter_3d_config_.maximum_lookahead_m =
       declare_parameter<double>("topological_lattice_3d_maximum_lookahead_m", 30.0);
-  topological_lattice_adapter_3d_config_.minimum_target_displacement_m =
-      declare_parameter<double>("topological_lattice_3d_minimum_target_displacement_m",
-                                0.25);
+  topological_lattice_adapter_3d_config_.segment_capture_radius_m =
+      declare_parameter<double>("topological_lattice_3d_segment_capture_radius_m",
+                                lattice_3d_config_.goal_tolerance_m);
   const double observation_rate_hz =
       declare_parameter<double>("topological_observation_rate_hz", 5.0);
   if (!incrementalTopologicalLatticeAdapter3DConfigIsValid(
           topological_lattice_adapter_3d_config_) ||
+      topological_lattice_adapter_3d_config_.segment_capture_radius_m + 1.0e-9 <
+          lattice_3d_config_.goal_tolerance_m ||
       !std::isfinite(observation_rate_hz) || observation_rate_hz <= 0.0) {
     throw std::invalid_argument{"invalid incremental topology runtime configuration"};
   }
@@ -396,6 +398,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "observation_trail_reset=%s directive_available=%s "
       "directive_source_segment=%zu directive_source_station_m=%.2f "
       "directive_target_station_m=%.2f directive_projection_distance_m=%.2f "
+      "directive_captured_bends_skipped=%zu "
       "directive_target=(%.2f,%.2f,%.2f) directive_reaches_target=%s "
       "lattice_status=%s lattice_purpose=%s lattice_executable=%s "
       "candidate_validation=%.*s activation=%.*s activated=%s "
@@ -459,7 +462,8 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       directive != nullptr ? directive->source_segment_index : 0U,
       directive != nullptr ? directive->source_station_m : 0.0,
       directive != nullptr ? directive->target_station_m : 0.0,
-      directive != nullptr ? directive->projection_distance_m : 0.0, directive_target.x,
+      directive != nullptr ? directive->projection_distance_m : 0.0,
+      directive != nullptr ? directive->captured_bends_skipped : 0U, directive_target.x,
       directive_target.y, directive_target.z,
       directive != nullptr && directive->reaches_topological_target ? "true" : "false",
       lattice3DStatusName(lattice.status),

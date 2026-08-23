@@ -93,9 +93,9 @@ bool incrementalTopologicalLatticeAdapter3DConfigIsValid(
     const IncrementalTopologicalLatticeAdapter3DConfig& config) noexcept {
   return std::isfinite(config.maximum_lookahead_m) &&
          config.maximum_lookahead_m > 0.0 &&
-         std::isfinite(config.minimum_target_displacement_m) &&
-         config.minimum_target_displacement_m >= 0.0 &&
-         config.minimum_target_displacement_m < config.maximum_lookahead_m &&
+         std::isfinite(config.segment_capture_radius_m) &&
+         config.segment_capture_radius_m >= 0.0 &&
+         config.segment_capture_radius_m < config.maximum_lookahead_m &&
          std::isfinite(config.minimum_collinear_direction_cosine) &&
          config.minimum_collinear_direction_cosine >= -1.0 &&
          config.minimum_collinear_direction_cosine <= 1.0;
@@ -125,6 +125,7 @@ makeIncrementalTopologicalLatticeDirective3D(
   Vec3 preferred_direction{};
   double target_station_m = projection->station_m;
   double remaining_m = config.maximum_lookahead_m;
+  std::size_t captured_bends_skipped = 0U;
   bool reaches_target = false;
   for (std::size_t index = projection->segment_index + 1U;
        index < plan.guidance_points.size(); ++index) {
@@ -149,7 +150,15 @@ makeIncrementalTopologicalLatticeDirective3D(
           (preferred_length * segment_length);
       if (directional_cosine + kGeometryEpsilon <
           config.minimum_collinear_direction_cosine) {
-        break;
+        if (distance3D(position, cursor) >
+            config.segment_capture_radius_m + kGeometryEpsilon) {
+          break;
+        }
+        // The preceding connector or graph step terminates inside the same
+        // capture neighbourhood in which the lattice reports goal arrival.
+        // Treat the bend as acquired and aim along the outgoing segment.
+        preferred_direction = segment;
+        ++captured_bends_skipped;
       }
     } else {
       preferred_direction = segment;
@@ -171,8 +180,8 @@ makeIncrementalTopologicalLatticeDirective3D(
     }
   }
 
-  if (distance3D(position, target) + kGeometryEpsilon <
-      config.minimum_target_displacement_m) {
+  if (distance3D(position, target) <=
+      config.segment_capture_radius_m + kGeometryEpsilon) {
     return std::nullopt;
   }
 
@@ -190,6 +199,7 @@ makeIncrementalTopologicalLatticeDirective3D(
       .source_station_m = projection->station_m,
       .target_station_m = target_station_m,
       .projection_distance_m = projection->distance_m,
+      .captured_bends_skipped = captured_bends_skipped,
       .reaches_topological_target = reaches_target,
   };
 }

@@ -31,7 +31,7 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
       plan, {0.0, 0.0, 0.0},
-      {.maximum_lookahead_m = 15.0, .minimum_target_displacement_m = 0.1});
+      {.maximum_lookahead_m = 15.0, .segment_capture_radius_m = 0.1});
 
   ASSERT_TRUE(directive_result.has_value());
   const IncrementalTopologicalLatticeDirective3D directive =
@@ -53,7 +53,7 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
       plan, {6.0, 1.0, 0.0},
-      {.maximum_lookahead_m = 8.0, .minimum_target_displacement_m = 0.1});
+      {.maximum_lookahead_m = 8.0, .segment_capture_radius_m = 0.1});
 
   ASSERT_TRUE(directive_result.has_value());
   const IncrementalTopologicalLatticeDirective3D directive =
@@ -73,7 +73,7 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
       plan, {10.0, 0.0, 4.0},
-      {.maximum_lookahead_m = 30.0, .minimum_target_displacement_m = 0.1});
+      {.maximum_lookahead_m = 30.0, .segment_capture_radius_m = 0.1});
 
   ASSERT_TRUE(directive_result.has_value());
   const IncrementalTopologicalLatticeDirective3D directive =
@@ -94,7 +94,7 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
       plan, {0.0, 0.0, 4.0},
-      {.maximum_lookahead_m = 30.0, .minimum_target_displacement_m = 0.1});
+      {.maximum_lookahead_m = 30.0, .segment_capture_radius_m = 0.1});
 
   ASSERT_TRUE(directive_result.has_value());
   const IncrementalTopologicalLatticeDirective3D directive =
@@ -103,6 +103,27 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
   EXPECT_FALSE(directive.reaches_topological_target);
   EXPECT_FALSE(directive.lattice.reaches_mission_goal);
   EXPECT_FALSE(isExplicitTopologicalBacktrack3D(plan));
+}
+
+TEST(IncrementalTopologicalLatticeAdapter3DTest,
+     SkipsARegeneratedConnectorBendInsideGoalCaptureRadius) {
+  const IncrementalTopologicalPlan3D plan =
+      executablePlan(IncrementalTopologicalRoutePurpose3D::kMissionTransit,
+                     {{0.0, 0.0, 0.0}, {0.5, 0.0, 0.0}, {0.5, 10.0, 0.0}});
+
+  const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
+      plan, {0.0, 0.0, 0.0},
+      {.maximum_lookahead_m = 6.0, .segment_capture_radius_m = 2.0});
+
+  ASSERT_TRUE(directive_result.has_value());
+  const IncrementalTopologicalLatticeDirective3D directive =
+      directive_result.value_or(IncrementalTopologicalLatticeDirective3D{});
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.x, 0.5);
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.y, 5.5);
+  EXPECT_DOUBLE_EQ(directive.lattice.preferred_direction.x, 0.0);
+  EXPECT_DOUBLE_EQ(directive.lattice.preferred_direction.y, 10.0);
+  EXPECT_EQ(directive.captured_bends_skipped, 1U);
+  EXPECT_FALSE(directive.reaches_topological_target);
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,

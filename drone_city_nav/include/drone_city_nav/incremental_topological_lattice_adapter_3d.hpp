@@ -10,7 +10,11 @@ namespace drone_city_nav {
 
 struct IncrementalTopologicalLatticeAdapter3DConfig {
   double maximum_lookahead_m{30.0};
-  double minimum_target_displacement_m{0.25};
+  // A bend inside the local planner's goal-capture neighbourhood is already
+  // acquired and cannot be a useful finite segment endpoint. Continue to the
+  // first route point outside this radius instead of repeatedly stopping at a
+  // regenerated start connector.
+  double segment_capture_radius_m{2.0};
   // Consecutive graph edges are locally executable as one segment only while
   // they retain this directional alignment. The adapter stops at a bend
   // instead of letting the local lattice shortcut across it.
@@ -23,6 +27,7 @@ struct IncrementalTopologicalLatticeDirective3D {
   double source_station_m{0.0};
   double target_station_m{0.0};
   double projection_distance_m{0.0};
+  std::size_t captured_bends_skipped{0U};
   bool reaches_topological_target{false};
 };
 
