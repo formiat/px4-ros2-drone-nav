@@ -259,6 +259,7 @@ buildRegionalTopologyGraph3D(const IncrementalTopologyGraph3DSnapshot& graph,
             },
         .created_on_revision = node.created_on_revision,
         .validated_through_revision = node.validated_through_revision,
+        .complete_through_revision = node.complete_through_revision,
         .generation = node.generation,
         .lineage_event = node.lineage_event,
         .predecessors = node.predecessors,
@@ -279,6 +280,10 @@ buildRegionalTopologyGraph3D(const IncrementalTopologyGraph3DSnapshot& graph,
       std::vector<IncrementalTopologyEdgeId> source_edges;
       std::vector<Point3> polyline;
       std::uint64_t validated_through = std::numeric_limits<std::uint64_t>::max();
+      std::uint64_t complete_through = std::numeric_limits<std::uint64_t>::max();
+      std::uint64_t transition_lineage{kFnvOffset};
+      std::size_t support_segment_count = 0U;
+      bool unknown_exposure = false;
       std::uint64_t created_on = 0U;
       IncrementalTopologyNodeId current = start;
       const IncrementalTopologyEdge3D* edge = initial.edge;
@@ -301,7 +306,12 @@ buildRegionalTopologyGraph3D(const IncrementalTopologyGraph3DSnapshot& graph,
         source_nodes.push_back(next);
         appendOrientedEdge(polyline, *edge, current, next);
         validated_through =
-            std::min(validated_through, edge->validated_through_revision);
+            std::min(validated_through, edge->evidence.validated_through_revision);
+        complete_through =
+            std::min(complete_through, edge->evidence.complete_through_revision);
+        support_segment_count += edge->evidence.support_segment_count;
+        unknown_exposure = unknown_exposure || edge->evidence.unknown_exposure;
+        hashUnsigned(transition_lineage, edge->evidence.lineage_id);
         created_on = std::max(created_on, edge->created_on_revision);
         if (preserved.contains(next)) {
           complete = true;
@@ -342,10 +352,23 @@ buildRegionalTopologyGraph3D(const IncrementalTopologyGraph3DSnapshot& graph,
           .polyline = std::move(polyline),
           .length_m = length_m,
           .created_on_revision = created_on,
-          .validated_through_revision =
-              validated_through == std::numeric_limits<std::uint64_t>::max()
-                  ? 0U
-                  : validated_through,
+          .evidence =
+              IncrementalTopologyTransitionEvidence3D{
+                  .kind = unknown_exposure
+                              ? IncrementalTopologyTransitionKind3D::kOptimisticUnknown
+                              : IncrementalTopologyTransitionKind3D::kObservedFree,
+                  .support_segment_count = support_segment_count,
+                  .validated_through_revision =
+                      validated_through == std::numeric_limits<std::uint64_t>::max()
+                          ? 0U
+                          : validated_through,
+                  .complete_through_revision =
+                      complete_through == std::numeric_limits<std::uint64_t>::max()
+                          ? 0U
+                          : complete_through,
+                  .lineage_id = transition_lineage == 0U ? 1U : transition_lineage,
+                  .unknown_exposure = unknown_exposure,
+              },
       });
     }
   }

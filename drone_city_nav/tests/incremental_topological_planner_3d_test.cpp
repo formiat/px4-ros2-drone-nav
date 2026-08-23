@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <ranges>
 #include <utility>
 
 namespace drone_city_nav {
@@ -122,6 +123,16 @@ TEST(IncrementalTopologicalPlanner3DTest, KnownMissionRouteHasPriority) {
   EXPECT_TRUE(plan.reaches_mission_goal);
   ASSERT_FALSE(plan.route_steps.empty());
   EXPECT_GT(plan.guidance_points.size(), 2U);
+  EXPECT_FALSE(plan.unknown_exposure);
+  EXPECT_GT(plan.transition_support_segment_count, 0U);
+  EXPECT_EQ(plan.validated_through_revision, 1U);
+  EXPECT_EQ(plan.complete_through_revision, 1U);
+  EXPECT_NE(plan.topology_lineage_id, 0U);
+  EXPECT_TRUE(std::ranges::all_of(plan.route_steps, [](const auto& step) {
+    return step.evidence.kind == IncrementalTopologyTransitionKind3D::kObservedFree &&
+           !step.evidence.unknown_exposure &&
+           step.evidence.support_segment_count > 0U && step.evidence.lineage_id != 0U;
+  }));
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
@@ -196,6 +207,17 @@ TEST(IncrementalTopologicalPlanner3DTest,
   EXPECT_LT(plan.goal_progress_m, 0.0);
   EXPECT_TRUE(plan.executableTargetSelected());
   EXPECT_FALSE(isExplicitTopologicalBacktrack3D(plan));
+  ASSERT_GE(plan.guidance_points.size(), 2U);
+  EXPECT_TRUE(std::ranges::all_of(
+      std::views::iota(std::size_t{1U}, plan.guidance_points.size()),
+      [&](const std::size_t index) {
+        return validateObservedSweptFootprint(
+                   occupancy, plan.guidance_points[index - 1U], FootprintBodyAxis{},
+                   plan.guidance_points[index], FootprintBodyAxis{},
+                   graphConfig().footprint,
+                   ObservedSpaceValidationPolicy::kAllowUnknown)
+            .accepted();
+      }));
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
@@ -328,7 +350,11 @@ TEST(IncrementalTopologicalPlanner3DTest,
   const IncrementalTopologicalPlan3D normal = normal_planner.planObserved(
       stale_graph, occupancy, observabilityConfig(graph_config.footprint),
       {34.5, 14.5, 6.5}, {52.5, 14.5, 6.5}, memory);
+  ASSERT_TRUE(normal.executableTargetSelected());
   EXPECT_NE(normal.status, IncrementalTopologicalPlanStatus3D::kStartNotRepresented);
+  EXPECT_TRUE(normal.unknown_exposure);
+  EXPECT_GT(normal.transition_support_segment_count, 0U);
+  EXPECT_NE(normal.topology_lineage_id, 0U);
 
   IncrementalTopologicalPlanner3DConfig strict_config = normal_config;
   strict_config.require_known_free_space = true;
@@ -596,7 +622,7 @@ TEST(IncrementalTopologicalPlanner3DTest,
   ASSERT_FALSE(initial.route_steps.empty());
   for (const TopologicalRouteStep3D& step : initial.route_steps) {
     for (const DirectedTopologyEdge3D& edge : step.directed_source_edges) {
-      memory.recordDeadEnd(edge, step.validated_through_revision);
+      memory.recordDeadEnd(edge, step.evidence.validated_through_revision);
     }
   }
 
@@ -644,7 +670,7 @@ TEST(IncrementalTopologicalPlanner3DTest,
   memory.recordTraversal(DirectedTopologyEdge3D{.edge_id = branch->id,
                                                 .from = junction->id,
                                                 .to = terminal->id},
-                         branch->validated_through_revision, branch->length_m);
+                         branch->evidence.validated_through_revision, branch->length_m);
   IncrementalTopologicalPlanner3D planner;
 
   const IncrementalTopologicalPlan3D plan =

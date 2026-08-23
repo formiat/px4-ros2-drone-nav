@@ -79,7 +79,7 @@ TEST(RegionalTopologyGraph3DTest,
   EXPECT_GT(edge.length_m, 0.0);
   EXPECT_GE(edge.polyline.size(), 2U);
   EXPECT_EQ(edge.created_on_revision, 1U);
-  EXPECT_EQ(edge.validated_through_revision, 1U);
+  EXPECT_EQ(edge.evidence.validated_through_revision, 1U);
   EXPECT_TRUE(std::ranges::all_of(
       std::views::iota(std::size_t{1U}, edge.polyline.size()),
       [&](const std::size_t index) {

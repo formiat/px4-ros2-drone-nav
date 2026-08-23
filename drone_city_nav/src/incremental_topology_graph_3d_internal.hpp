@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -183,6 +184,79 @@ polylineLength(const std::span<const Point3> polyline) noexcept {
     result += distance3D(polyline[index - 1U], polyline[index]);
   }
   return result;
+}
+
+[[nodiscard]] inline std::uint64_t
+makeTransitionLineage(const std::uint64_t semantic_id,
+                      const std::span<const Point3> polyline) noexcept {
+  std::uint64_t hash{kFnvOffset};
+  hashUnsigned(hash, semantic_id);
+  for (const Point3& point : polyline) {
+    hashUnsigned(hash, std::bit_cast<std::uint64_t>(point.x));
+    hashUnsigned(hash, std::bit_cast<std::uint64_t>(point.y));
+    hashUnsigned(hash, std::bit_cast<std::uint64_t>(point.z));
+  }
+  return hash == 0U ? 1U : hash;
+}
+
+template<typename Occupancy>
+[[nodiscard]] IncrementalTopologyTransitionEvidence3D
+makeTransitionEvidence(const Occupancy& occupancy,
+                       const std::span<const Point3> polyline,
+                       const SweptFootprintConfig& footprint,
+                       const std::uint64_t validated_through_revision,
+                       const std::uint64_t complete_through_revision,
+                       const std::uint64_t lineage_id) noexcept {
+  bool unknown_exposure = false;
+  if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
+    for (std::size_t index = 1U; index < polyline.size(); ++index) {
+      const SweptFootprintResult evidence = validateRawSweptFootprint(
+          occupancy, polyline[index - 1U], FootprintBodyAxis{}, polyline[index],
+          FootprintBodyAxis{}, footprint);
+      unknown_exposure = unknown_exposure || evidence.evidence.unknown_exposure;
+    }
+  } else {
+    static_cast<void>(occupancy);
+    static_cast<void>(footprint);
+  }
+  return IncrementalTopologyTransitionEvidence3D{
+      .kind = unknown_exposure ? IncrementalTopologyTransitionKind3D::kOptimisticUnknown
+                               : IncrementalTopologyTransitionKind3D::kObservedFree,
+      .support_segment_count = polyline.empty() ? 0U : polyline.size() - 1U,
+      .validated_through_revision = validated_through_revision,
+      .complete_through_revision = complete_through_revision,
+      .lineage_id = lineage_id,
+      .unknown_exposure = unknown_exposure,
+  };
+}
+
+[[nodiscard]] inline std::uint64_t
+minimumNonzeroRevision(const std::uint64_t first, const std::uint64_t second) noexcept {
+  if (first == 0U) {
+    return second;
+  }
+  if (second == 0U) {
+    return first;
+  }
+  return std::min(first, second);
+}
+
+inline void mergeTransitionEvidence(
+    IncrementalTopologyTransitionEvidence3D& target,
+    const IncrementalTopologyTransitionEvidence3D& source) noexcept {
+  target.support_segment_count += source.support_segment_count;
+  target.validated_through_revision = minimumNonzeroRevision(
+      target.validated_through_revision, source.validated_through_revision);
+  target.complete_through_revision = minimumNonzeroRevision(
+      target.complete_through_revision, source.complete_through_revision);
+  if (target.lineage_id == 0U) {
+    target.lineage_id = kFnvOffset;
+  }
+  hashUnsigned(target.lineage_id, source.lineage_id);
+  target.unknown_exposure = target.unknown_exposure || source.unknown_exposure;
+  target.kind = target.unknown_exposure
+                    ? IncrementalTopologyTransitionKind3D::kOptimisticUnknown
+                    : IncrementalTopologyTransitionKind3D::kObservedFree;
 }
 
 } // namespace drone_city_nav::incremental_topology_detail

@@ -59,6 +59,21 @@ enum class IncrementalTopologyLineageEvent3D : std::uint8_t {
   kMerge,
 };
 
+enum class IncrementalTopologyTransitionKind3D : std::uint8_t {
+  kObservedFree,
+  kOptimisticUnknown,
+};
+
+struct IncrementalTopologyTransitionEvidence3D {
+  IncrementalTopologyTransitionKind3D kind{
+      IncrementalTopologyTransitionKind3D::kObservedFree};
+  std::size_t support_segment_count{0U};
+  std::uint64_t validated_through_revision{0U};
+  std::uint64_t complete_through_revision{0U};
+  std::uint64_t lineage_id{0U};
+  bool unknown_exposure{false};
+};
+
 struct IncrementalTopologyNodeTraits3D {
   bool junction{false};
   bool turn{false};
@@ -75,6 +90,7 @@ struct IncrementalTopologyNode3D {
   std::size_t degree{0U};
   std::uint64_t created_on_revision{0U};
   std::uint64_t validated_through_revision{0U};
+  std::uint64_t complete_through_revision{0U};
   std::uint64_t generation{0U};
   std::uint64_t classification_revision{0U};
   IncrementalTopologyLineageEvent3D lineage_event{
@@ -93,12 +109,13 @@ struct IncrementalTopologyEdge3D {
   std::vector<Point3> polyline;
   double length_m{0.0};
   std::uint64_t created_on_revision{0U};
-  std::uint64_t validated_through_revision{0U};
+  IncrementalTopologyTransitionEvidence3D evidence{};
 };
 
 struct IncrementalTopologyBlockCoverage3D {
   IncrementalTopologyBlockIndex3D block{};
   std::uint64_t validated_through_revision{0U};
+  std::uint64_t complete_through_revision{0U};
   bool pending_rebuild{false};
 };
 
@@ -144,7 +161,7 @@ struct IncrementalTopologyConnector3D {
   IncrementalTopologyNodeId node{};
   std::vector<Point3> polyline;
   double length_m{0.0};
-  std::uint64_t validated_through_revision{0U};
+  IncrementalTopologyTransitionEvidence3D evidence{};
 };
 
 struct IncrementalTopologySampleRecord3D {
@@ -179,6 +196,10 @@ public:
   connectObserved(const ObservedOccupancyGrid3D& occupancy, const Point3& position,
                   double maximum_distance_m, const SweptFootprintConfig& footprint,
                   ObservedSpaceValidationPolicy validation_policy) const;
+  [[nodiscard]] std::optional<IncrementalTopologyConnector3D>
+  connectObservedSample(const ObservedOccupancyGrid3D& occupancy, GridIndex3D cell,
+                        const SweptFootprintConfig& footprint,
+                        ObservedSpaceValidationPolicy validation_policy) const;
 
 private:
   friend class IncrementalTopologyGraph3D;
@@ -225,5 +246,8 @@ private:
 
 [[nodiscard]] bool incrementalTopologyGraph3DConfigIsValid(
     const IncrementalTopologyGraph3DConfig& config) noexcept;
+
+[[nodiscard]] const char* incrementalTopologyTransitionKind3DName(
+    IncrementalTopologyTransitionKind3D kind) noexcept;
 
 } // namespace drone_city_nav

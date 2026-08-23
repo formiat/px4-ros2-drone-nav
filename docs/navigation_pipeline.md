@@ -95,6 +95,21 @@ therefore retains strategic priority without claiming that its local endpoint is
 the mission endpoint. Direct search remains an independent plan-level candidate
 in the same preparation and arbitration pipeline.
 
+Incremental-topology edges and connectors carry typed transition evidence.
+`observed_free` means the swept transition is supported without unknown-space
+exposure; `optimistic_unknown` records that the same raw-collision-free
+transition crosses unknown space. Each record also carries its supporting
+segment count, validation revision, last complete geometry revision, and
+geometry lineage. Route steps preserve those records and the plan reports their
+minimum revisions and aggregate unknown exposure. Unknown remains traversable
+and receives no topology cost or execution penalty.
+
+An observation-frontier connector follows the sampled component's stored
+parent-cell path from its supporting viewpoint back to the representative. It
+does not substitute a straight representative chord that may cross an obstacle
+inside a non-convex component. Every segment remains subject to the same raw
+swept-footprint validation policy.
+
 Route activation is then a single optimistic transaction over that immutable
 resident world plus the jointly captured pose/applied-control snapshot. The
 current-pose connector and remaining suffix are swept against the raw occupancy

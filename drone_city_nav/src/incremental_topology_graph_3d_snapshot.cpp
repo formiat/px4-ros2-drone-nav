@@ -81,6 +81,63 @@ findSampleRecord(const IncrementalTopologySampleBlock3D& block,
   return found != block.records.end() && found->cell == cell ? &*found : nullptr;
 }
 
+struct SampleTreePath3D {
+  IncrementalTopologyNodeId node{};
+  std::vector<Point3> polyline;
+};
+
+[[nodiscard]] std::optional<SampleTreePath3D>
+reconstructSampleTree(const GridBounds3D& bounds,
+                      const IncrementalTopologySampleBlock3D& block,
+                      const IncrementalTopologySampleRecord3D& sample) {
+  SampleTreePath3D result{.node = sample.node, .polyline = {}};
+  const IncrementalTopologySampleRecord3D* current = &sample;
+  bool complete = false;
+  for (std::size_t guard = 0U; guard <= block.records.size(); ++guard) {
+    appendUnique(result.polyline,
+                 incremental_topology_detail::cellCenter(bounds, current->cell));
+    if (current->parent_cell == current->cell) {
+      complete = true;
+      break;
+    }
+    current = findSampleRecord(block, current->parent_cell);
+    if (current == nullptr || current->node != result.node) {
+      break;
+    }
+  }
+  return complete ? std::optional<SampleTreePath3D>{std::move(result)} : std::nullopt;
+}
+
+[[nodiscard]] std::optional<IncrementalTopologyConnector3D> makeObservedConnector(
+    const ObservedOccupancyGrid3D& occupancy, const IncrementalTopologyNode3D& node,
+    std::vector<Point3> polyline, const SweptFootprintConfig& footprint,
+    const ObservedSpaceValidationPolicy validation_policy,
+    const std::uint64_t graph_revision) {
+  for (std::size_t index = 1U; index < polyline.size(); ++index) {
+    const SweptFootprintResult evidence = validateObservedSweptFootprint(
+        occupancy, polyline[index - 1U], FootprintBodyAxis{}, polyline[index],
+        FootprintBodyAxis{}, footprint, validation_policy);
+    if (!evidence.accepted()) {
+      return std::nullopt;
+    }
+  }
+  const double length_m = pathLength(polyline);
+  const std::uint64_t validated_through_revision =
+      std::min(graph_revision, node.validated_through_revision);
+  const std::uint64_t lineage_id =
+      incremental_topology_detail::makeTransitionLineage(node.id.value, polyline);
+  const IncrementalTopologyTransitionEvidence3D transition_evidence =
+      incremental_topology_detail::makeTransitionEvidence(
+          occupancy, polyline, footprint, validated_through_revision,
+          node.complete_through_revision, lineage_id);
+  return IncrementalTopologyConnector3D{
+      .node = node.id,
+      .polyline = std::move(polyline),
+      .length_m = length_m,
+      .evidence = transition_evidence,
+  };
+}
+
 } // namespace
 
 std::uint64_t IncrementalTopologyGraph3DSnapshot::revision() const noexcept {
@@ -169,7 +226,8 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
     const double maximum_distance_m, const SweptFootprintConfig& footprint,
     const ObservedSpaceValidationPolicy validation_policy) const {
   if (!(maximum_distance_m >= 0.0) || !std::isfinite(maximum_distance_m) ||
-      revision_ == 0U) {
+      revision_ == 0U ||
+      !incremental_topology_detail::sameBounds(bounds_, occupancy.bounds())) {
     return std::nullopt;
   }
 
@@ -243,51 +301,56 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
 
   std::optional<IncrementalTopologyConnector3D> best;
   for (const Candidate& candidate : candidates) {
+    const std::optional<SampleTreePath3D> tree = reconstructSampleTree(
+        bounds_, *candidate.block, candidate.block->records[candidate.sample_index]);
+    const IncrementalTopologyNode3D* const node = findNode(candidate.node);
+    if (!tree.has_value() || tree->node != candidate.node || node == nullptr) {
+      continue;
+    }
     std::vector<Point3> polyline;
     appendUnique(polyline, position);
-    const IncrementalTopologySampleRecord3D* current =
-        &candidate.block->records[candidate.sample_index];
-    bool complete = false;
-    for (std::size_t guard = 0U; guard <= candidate.block->records.size(); ++guard) {
-      appendUnique(polyline, occupancy.cellCenter(current->cell));
-      if (current->parent_cell == current->cell) {
-        complete = true;
-        break;
-      }
-      current = findSampleRecord(*candidate.block, current->parent_cell);
-      if (current == nullptr) {
-        break;
-      }
+    for (const Point3& point : tree->polyline) {
+      appendUnique(polyline, point);
     }
-    if (!complete) {
+    std::optional<IncrementalTopologyConnector3D> connector = makeObservedConnector(
+        occupancy, *node, std::move(polyline), footprint, validation_policy, revision_);
+    if (!connector.has_value()) {
       continue;
     }
-    bool valid = true;
-    for (std::size_t index = 1U; index < polyline.size(); ++index) {
-      const SweptFootprintResult evidence = validateObservedSweptFootprint(
-          occupancy, polyline[index - 1U], FootprintBodyAxis{}, polyline[index],
-          FootprintBodyAxis{}, footprint, validation_policy);
-      if (!evidence.accepted()) {
-        valid = false;
-        break;
-      }
-    }
-    if (!valid) {
-      continue;
-    }
-    const double length_m = pathLength(polyline);
-    if (!best.has_value() || length_m + 1.0e-9 < best->length_m ||
-        (std::abs(length_m - best->length_m) <= 1.0e-9 &&
+    if (!best.has_value() || connector->length_m + 1.0e-9 < best->length_m ||
+        (std::abs(connector->length_m - best->length_m) <= 1.0e-9 &&
          candidate.node < best->node)) {
-      best = IncrementalTopologyConnector3D{
-          .node = candidate.node,
-          .polyline = std::move(polyline),
-          .length_m = length_m,
-          .validated_through_revision = revision_,
-      };
+      best = std::move(connector);
     }
   }
   return best;
+}
+
+std::optional<IncrementalTopologyConnector3D>
+IncrementalTopologyGraph3DSnapshot::connectObservedSample(
+    const ObservedOccupancyGrid3D& occupancy, const GridIndex3D cell,
+    const SweptFootprintConfig& footprint,
+    const ObservedSpaceValidationPolicy validation_policy) const {
+  if (revision_ == 0U ||
+      !incremental_topology_detail::sameBounds(bounds_, occupancy.bounds())) {
+    return std::nullopt;
+  }
+  const IncrementalTopologySampleBlock3D* const block = findSampleBlock(
+      sample_blocks_,
+      incremental_topology_detail::blockForCell(cell, sample_block_size_cells_));
+  const IncrementalTopologySampleRecord3D* const sample =
+      block != nullptr ? findSampleRecord(*block, cell) : nullptr;
+  if (block == nullptr || sample == nullptr) {
+    return std::nullopt;
+  }
+  const std::optional<SampleTreePath3D> tree =
+      reconstructSampleTree(bounds_, *block, *sample);
+  const IncrementalTopologyNode3D* const node = findNode(sample->node);
+  if (!tree.has_value() || node == nullptr || tree->node != node->id) {
+    return std::nullopt;
+  }
+  return makeObservedConnector(occupancy, *node, tree->polyline, footprint,
+                               validation_policy, revision_);
 }
 
 } // namespace drone_city_nav

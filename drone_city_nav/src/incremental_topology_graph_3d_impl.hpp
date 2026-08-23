@@ -34,6 +34,8 @@ using incremental_topology_detail::cellLess;
 using incremental_topology_detail::firstAlignedCell;
 using incremental_topology_detail::makeEdgeId;
 using incremental_topology_detail::makeNodeIdValue;
+using incremental_topology_detail::makeTransitionEvidence;
+using incremental_topology_detail::makeTransitionLineage;
 using incremental_topology_detail::navigableAt;
 using incremental_topology_detail::navigableBetween;
 using incremental_topology_detail::polylineLength;
@@ -316,8 +318,16 @@ struct IncrementalTopologyGraph3D::Impl {
       const std::uint64_t support =
           std::min(block_validated_through.at(nodes.at(edge.first).block),
                    block_validated_through.at(nodes.at(edge.second).block));
-      edge.validated_through_revision =
-          std::max(edge.validated_through_revision, support);
+      const std::uint64_t validated_through_revision =
+          std::max(edge.evidence.validated_through_revision, support);
+      const std::uint64_t complete_through_revision =
+          std::min(block_complete_through.at(nodes.at(edge.first).block),
+                   block_complete_through.at(nodes.at(edge.second).block));
+      const std::uint64_t lineage_id =
+          makeTransitionLineage(edge.id.value, edge.polyline);
+      edge.evidence = makeTransitionEvidence(occupancy, edge.polyline, config.footprint,
+                                             validated_through_revision,
+                                             complete_through_revision, lineage_id);
     }
     return refreshed_blocks;
   }
@@ -584,6 +594,7 @@ struct IncrementalTopologyGraph3D::Impl {
           .support_cell_count = component.cells.size(),
           .created_on_revision = created_on_revision,
           .validated_through_revision = update_revision,
+          .complete_through_revision = update_revision,
           .generation = generation,
           .classification_revision = update_revision,
           .lineage_event = lineage_event,
@@ -600,6 +611,7 @@ struct IncrementalTopologyGraph3D::Impl {
     }
     stats.retired_nodes += previous.size() - retained_ids.size();
     block_validated_through[block] = update_revision;
+    block_complete_through[block] = update_revision;
     if (!components.empty()) {
       auto snapshot_samples = std::make_shared<IncrementalTopologySampleBlock3D>();
       snapshot_samples->block = block;
@@ -846,8 +858,15 @@ struct IncrementalTopologyGraph3D::Impl {
       const std::uint64_t validated_through_revision =
           std::min(block_validated_through.at(first_block),
                    block_validated_through.at(second_block));
+      const std::uint64_t complete_through_revision =
+          std::min(block_complete_through.at(first_block),
+                   block_complete_through.at(second_block));
       const std::uint64_t created_on_revision =
           edge_created_on_revision.try_emplace(edge_id, update_revision).first->second;
+      const std::uint64_t lineage_id = makeTransitionLineage(edge_id.value, polyline);
+      const IncrementalTopologyTransitionEvidence3D evidence = makeTransitionEvidence(
+          occupancy, polyline, config.footprint, validated_through_revision,
+          complete_through_revision, lineage_id);
       edges[edge_id] = IncrementalTopologyEdge3D{
           .id = edge_id,
           .first = contact.first,
@@ -857,7 +876,7 @@ struct IncrementalTopologyGraph3D::Impl {
           .polyline = std::move(polyline),
           .length_m = length_m,
           .created_on_revision = created_on_revision,
-          .validated_through_revision = validated_through_revision,
+          .evidence = evidence,
       };
     }
   }
@@ -909,6 +928,7 @@ struct IncrementalTopologyGraph3D::Impl {
       sample_cell_nodes.clear();
       sample_cell_parents.clear();
       block_validated_through.clear();
+      block_complete_through.clear();
       issued_node_ids.clear();
       edge_created_on_revision.clear();
     }
@@ -967,6 +987,9 @@ struct IncrementalTopologyGraph3D::Impl {
   std::unordered_map<IncrementalTopologyBlockIndex3D, std::uint64_t,
                      IncrementalTopologyBlockIndex3DHash>
       block_validated_through;
+  std::unordered_map<IncrementalTopologyBlockIndex3D, std::uint64_t,
+                     IncrementalTopologyBlockIndex3DHash>
+      block_complete_through;
   std::unordered_set<IncrementalTopologyNodeId, IncrementalTopologyNodeIdHash>
       issued_node_ids;
   std::unordered_map<IncrementalTopologyEdgeId, std::uint64_t,

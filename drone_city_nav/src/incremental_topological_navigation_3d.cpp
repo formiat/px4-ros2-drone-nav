@@ -248,7 +248,7 @@ std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(
     }
     memory_.recordTraversal(
         DirectedTopologyEdge3D{.edge_id = edge->id, .from = edge_from, .to = edge_to},
-        edge->validated_through_revision, edge->length_m);
+        edge->evidence.validated_through_revision, edge->length_m);
     ++traversed_edges;
   }
   return traversed_edges;

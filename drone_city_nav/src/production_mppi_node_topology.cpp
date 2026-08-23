@@ -440,6 +440,9 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       " graph_nodes=%zu graph_edges=%zu status=%s purpose=%s "
       "start_node=%" PRIu64 " target_node=%" PRIu64 " goal_node=%" PRIu64
       " route_nodes=%zu route_edges=%zu continued_active_plan=%s "
+      "transition_support_segments=%zu transition_kind=%s "
+      "transition_unknown_exposure=%s transition_validated_through=%" PRIu64
+      " transition_complete_through=%" PRIu64 " topology_lineage_id=%" PRIu64 " "
       "selected_frontier_id=%" PRIu64 " frontier_boundary=(%.2f,%.2f,%.2f)"
       " frontier_direction=(%.3f,%.3f,%.3f) frontier_gain=%zu"
       " frontier_required_gain=%zu"
@@ -487,6 +490,14 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       nodeIdValue(search.plan.goal_node), search.plan.route_nodes.size(),
       search.plan.route_steps.size(),
       search.plan.continued_from_active_plan ? "true" : "false",
+      search.plan.transition_support_segment_count,
+      incrementalTopologyTransitionKind3DName(
+          search.plan.unknown_exposure
+              ? IncrementalTopologyTransitionKind3D::kOptimisticUnknown
+              : IncrementalTopologyTransitionKind3D::kObservedFree),
+      search.plan.unknown_exposure ? "true" : "false",
+      search.plan.validated_through_revision, search.plan.complete_through_revision,
+      search.plan.topology_lineage_id,
       selected_frontier != nullptr ? selected_frontier->id.value : 0U,
       selected_frontier != nullptr ? selected_frontier->boundary_centroid.x : 0.0,
       selected_frontier != nullptr ? selected_frontier->boundary_centroid.y : 0.0,
@@ -564,11 +575,17 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
                 " step=%zu regional_edge_id=%" PRIu64 " from=%" PRIu64 " to=%" PRIu64
                 " source_edges=%zu length_m=%.2f "
                 "repeated_distance_m=%.2f traversal_count=%zu "
-                "validated_through_revision=%" PRIu64,
+                "transition_kind=%s support_segments=%zu unknown_exposure=%s "
+                "validated_through_revision=%" PRIu64
+                " complete_through_revision=%" PRIu64 " lineage_id=%" PRIu64,
                 search.plan.planned_on_revision, index, step.regional_edge_id.value,
                 step.from.value, step.to.value, step.directed_source_edges.size(),
                 step.length_m, step.repeated_distance_m, step.traversal_count,
-                step.validated_through_revision);
+                incrementalTopologyTransitionKind3DName(step.evidence.kind),
+                step.evidence.support_segment_count,
+                step.evidence.unknown_exposure ? "true" : "false",
+                step.evidence.validated_through_revision,
+                step.evidence.complete_through_revision, step.evidence.lineage_id);
     for (std::size_t source_index = 0U;
          source_index < step.directed_source_edges.size(); ++source_index) {
       const DirectedTopologyEdge3D& source = step.directed_source_edges[source_index];

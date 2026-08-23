@@ -45,7 +45,7 @@ struct TopologicalRouteStep3D {
   double length_m{0.0};
   double repeated_distance_m{0.0};
   std::size_t traversal_count{0U};
-  std::uint64_t validated_through_revision{0U};
+  IncrementalTopologyTransitionEvidence3D evidence{};
 };
 
 struct TopologicalDeadEndConclusion3D {
@@ -62,6 +62,8 @@ struct IncrementalTopologicalPlan3D {
   std::uint64_t strategic_plan_id{0U};
   std::uint64_t planned_on_revision{0U};
   std::uint64_t validated_through_revision{0U};
+  std::uint64_t complete_through_revision{0U};
+  std::uint64_t topology_lineage_id{0U};
   Point3 mission_target{};
   IncrementalTopologyNodeId start_node{};
   IncrementalTopologyNodeId target_node{};
@@ -79,6 +81,7 @@ struct IncrementalTopologicalPlan3D {
   std::size_t selected_frontier_completion_count{0U};
   double repeated_edge_distance_m{0.0};
   std::size_t directed_traversal_count{0U};
+  std::size_t transition_support_segment_count{0U};
   std::size_t reachable_mission_continuation_count{0U};
   double maximum_reachable_mission_continuation_goal_progress_m{0.0};
   std::size_t reachable_frontier_count{0U};
@@ -92,6 +95,7 @@ struct IncrementalTopologicalPlan3D {
   std::array<std::size_t, 7U> fresh_frontier_status_counts{};
   bool fresh_frontier_budget_exhausted{false};
   bool reaches_mission_goal{false};
+  bool unknown_exposure{false};
   bool continued_from_active_plan{false};
 
   [[nodiscard]] bool executableTargetSelected() const noexcept;

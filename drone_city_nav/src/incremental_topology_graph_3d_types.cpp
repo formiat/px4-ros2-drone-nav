@@ -48,4 +48,15 @@ bool incrementalTopologyGraph3DConfigIsValid(
          config.footprint.sweep_step_m > 0.0;
 }
 
+const char* incrementalTopologyTransitionKind3DName(
+    const IncrementalTopologyTransitionKind3D kind) noexcept {
+  switch (kind) {
+    case IncrementalTopologyTransitionKind3D::kObservedFree:
+      return "observed_free";
+    case IncrementalTopologyTransitionKind3D::kOptimisticUnknown:
+      return "optimistic_unknown";
+  }
+  return "unknown";
+}
+
 } // namespace drone_city_nav

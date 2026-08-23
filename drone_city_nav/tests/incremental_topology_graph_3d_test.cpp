@@ -402,6 +402,12 @@ TEST(IncrementalTopologyGraph3DTest,
       snapshot.findNode(before.value_or(IncrementalTopologyNodeId{}));
   ASSERT_NE(retained, nullptr);
   EXPECT_EQ(retained->validated_through_revision, 2U);
+  EXPECT_EQ(retained->complete_through_revision, 1U);
+  const auto coverage = std::ranges::find(snapshot.blockCoverage(), retained->block,
+                                          &IncrementalTopologyBlockCoverage3D::block);
+  ASSERT_NE(coverage, snapshot.blockCoverage().end());
+  EXPECT_EQ(coverage->validated_through_revision, 2U);
+  EXPECT_EQ(coverage->complete_through_revision, 1U);
 }
 
 TEST(IncrementalTopologyGraph3DTest,
@@ -630,6 +636,133 @@ TEST(IncrementalTopologyGraph3DTest,
   EXPECT_TRUE(found_non_chord_edge);
 }
 
+TEST(IncrementalTopologyGraph3DTest,
+     UShapedFrontierAnchorUsesParentCellsInsteadOfABlockedChord) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 12, 6}};
+  fillStateBox(occupancy, 0, 15, 0, 11, 0, 5, ObservedVoxelState::kOccupied);
+  fillFreeBox(occupancy, 1, 14, 1, 3, 1, 3);
+  fillFreeBox(occupancy, 1, 3, 1, 8, 1, 3);
+  fillFreeBox(occupancy, 1, 14, 6, 8, 1, 3);
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
+  config.block_size_cells = 16;
+  IncrementalTopologyGraph3D graph{config};
+  static_cast<void>(graph.update(occupancy, 5U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+
+  bool reconstructed_non_chord = false;
+  for (int y = 0; y < occupancy.bounds().height_cells && !reconstructed_non_chord;
+       ++y) {
+    for (int x = 0; x < occupancy.bounds().width_cells && !reconstructed_non_chord;
+         ++x) {
+      const GridIndex3D cell{x, y, 2};
+      const std::optional<IncrementalTopologyNodeId> node_id =
+          snapshot.nodeForSampleCell(cell);
+      const IncrementalTopologyNode3D* const node =
+          node_id.has_value() ? snapshot.findNode(*node_id) : nullptr;
+      if (node == nullptr ||
+          rawSweptFootprintIsNavigable(occupancy, occupancy.cellCenter(cell),
+                                       FootprintBodyAxis{}, node->representative,
+                                       FootprintBodyAxis{}, config.footprint)) {
+        continue;
+      }
+      const std::optional<IncrementalTopologyConnector3D> connector =
+          snapshot.connectObservedSample(
+              occupancy, cell, config.footprint,
+              ObservedSpaceValidationPolicy::kRequireKnownFree);
+      if (!connector.has_value()) {
+        FAIL() << "sampled parent-cell connector must be reconstructible";
+      }
+      const IncrementalTopologyConnector3D& reconstructed = connector.value();
+      ASSERT_GT(reconstructed.polyline.size(), 2U);
+      EXPECT_TRUE(std::ranges::all_of(
+          std::views::iota(std::size_t{1U}, reconstructed.polyline.size()),
+          [&](const std::size_t index) {
+            return validateObservedSweptFootprint(
+                       occupancy, reconstructed.polyline[index - 1U],
+                       FootprintBodyAxis{}, reconstructed.polyline[index],
+                       FootprintBodyAxis{}, config.footprint,
+                       ObservedSpaceValidationPolicy::kRequireKnownFree)
+                .accepted();
+          }));
+      EXPECT_EQ(reconstructed.evidence.kind,
+                IncrementalTopologyTransitionKind3D::kObservedFree);
+      EXPECT_FALSE(reconstructed.evidence.unknown_exposure);
+      EXPECT_EQ(reconstructed.evidence.validated_through_revision, 5U);
+      EXPECT_EQ(reconstructed.evidence.complete_through_revision, 5U);
+      EXPECT_NE(reconstructed.evidence.lineage_id, 0U);
+      reconstructed_non_chord = true;
+    }
+  }
+  EXPECT_TRUE(reconstructed_non_chord);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     DistinguishesObservedFreeAndOptimisticUnknownTransitions) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 12, 6}};
+  fillStateBox(occupancy, 0, 23, 0, 11, 0, 5, ObservedVoxelState::kOccupied);
+  fillFreeBox(occupancy, 1, 9, 4, 6, 1, 3);
+  fillStateBox(occupancy, 10, 22, 4, 6, 1, 3, ObservedVoxelState::kUnknown);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.maximum_observed_blocks_per_update = 4096U;
+  IncrementalTopologyGraph3D graph{config};
+  static_cast<void>(graph.update(occupancy, 7U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+
+  bool observed_free = false;
+  bool optimistic_unknown = false;
+  for (const IncrementalTopologyEdge3D& edge : snapshot.edges()) {
+    EXPECT_GT(edge.evidence.support_segment_count, 0U);
+    EXPECT_EQ(edge.evidence.validated_through_revision, 7U);
+    EXPECT_EQ(edge.evidence.complete_through_revision, 7U);
+    EXPECT_NE(edge.evidence.lineage_id, 0U);
+    if (edge.evidence.kind == IncrementalTopologyTransitionKind3D::kOptimisticUnknown) {
+      EXPECT_TRUE(edge.evidence.unknown_exposure);
+      optimistic_unknown = true;
+    } else {
+      EXPECT_FALSE(edge.evidence.unknown_exposure);
+      observed_free = true;
+    }
+  }
+  EXPECT_TRUE(observed_free);
+  EXPECT_TRUE(optimistic_unknown);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
+     FreeEvidenceAdvancesValidationWithoutRewritingTransitionLineage) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 8, 6}};
+  fillStateBox(occupancy, 0, 15, 0, 7, 0, 5, ObservedVoxelState::kOccupied);
+  fillStateBox(occupancy, 1, 14, 2, 4, 1, 3, ObservedVoxelState::kUnknown);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  config.maximum_observed_blocks_per_update = 4096U;
+  IncrementalTopologyGraph3D graph{config};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot optimistic = graph.snapshot();
+  ASSERT_FALSE(optimistic.edges().empty());
+  const IncrementalTopologyEdge3D first = optimistic.edges().front();
+  EXPECT_EQ(first.evidence.kind,
+            IncrementalTopologyTransitionKind3D::kOptimisticUnknown);
+  EXPECT_EQ(first.evidence.validated_through_revision, 1U);
+  EXPECT_EQ(first.evidence.complete_through_revision, 1U);
+
+  fillFreeBox(occupancy, 1, 14, 2, 4, 1, 3);
+  const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex({1, 2, 1});
+  const IncrementalTopologyGraph3DUpdate update =
+      graph.update(occupancy, 2U, std::span{&dirty, 1U}, false);
+  const IncrementalTopologyGraph3DSnapshot observed = graph.snapshot();
+  const auto retained =
+      std::ranges::find(observed.edges(), first.id, &IncrementalTopologyEdge3D::id);
+
+  ASSERT_NE(retained, observed.edges().end());
+  EXPECT_EQ(update.rebuilt_blocks, 0U);
+  EXPECT_GT(update.refreshed_observation_blocks, 0U);
+  EXPECT_EQ(retained->evidence.kind,
+            IncrementalTopologyTransitionKind3D::kObservedFree);
+  EXPECT_FALSE(retained->evidence.unknown_exposure);
+  EXPECT_EQ(retained->evidence.validated_through_revision, 2U);
+  EXPECT_EQ(retained->evidence.complete_through_revision, 1U);
+  EXPECT_EQ(retained->evidence.lineage_id, first.evidence.lineage_id);
+}
+
 TEST(IncrementalTopologyGraph3DTest, ObservedConnectorKeepsUnknownPolicyExplicit) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 12, 6}};
   fillStateBox(occupancy, 0, 19, 0, 11, 0, 5, ObservedVoxelState::kOccupied);
@@ -651,6 +784,13 @@ TEST(IncrementalTopologyGraph3DTest, ObservedConnectorKeepsUnknownPolicyExplicit
   }
   const IncrementalTopologyConnector3D& connector = *parent_tree;
   ASSERT_GE(connector.polyline.size(), 2U);
+  EXPECT_EQ(connector.evidence.kind,
+            IncrementalTopologyTransitionKind3D::kOptimisticUnknown);
+  EXPECT_TRUE(connector.evidence.unknown_exposure);
+  EXPECT_GT(connector.evidence.support_segment_count, 0U);
+  EXPECT_EQ(connector.evidence.validated_through_revision, 1U);
+  EXPECT_EQ(connector.evidence.complete_through_revision, 1U);
+  EXPECT_NE(connector.evidence.lineage_id, 0U);
   EXPECT_TRUE(std::ranges::all_of(
       std::views::iota(std::size_t{1U}, connector.polyline.size()),
       [&](const std::size_t index) {
@@ -758,10 +898,12 @@ TEST(IncrementalTopologyGraph3DTest,
   const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
   EXPECT_GT(second.pending_blocks, 0U);
   EXPECT_TRUE(std::ranges::any_of(snapshot.blockCoverage(), [](const auto& coverage) {
-    return !coverage.pending_rebuild && coverage.validated_through_revision == 1U;
+    return !coverage.pending_rebuild && coverage.validated_through_revision == 1U &&
+           coverage.complete_through_revision == 1U;
   }));
   EXPECT_TRUE(std::ranges::any_of(snapshot.blockCoverage(), [](const auto& coverage) {
-    return !coverage.pending_rebuild && coverage.validated_through_revision == 2U;
+    return !coverage.pending_rebuild && coverage.validated_through_revision == 2U &&
+           coverage.complete_through_revision == 2U;
   }));
   EXPECT_TRUE(std::ranges::any_of(snapshot.blockCoverage(), [](const auto& coverage) {
     return coverage.pending_rebuild;

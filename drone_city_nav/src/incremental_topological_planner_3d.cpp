@@ -10,8 +10,12 @@
 #include <unordered_map>
 #include <utility>
 
+#include "incremental_topology_graph_3d_internal.hpp"
+
 namespace drone_city_nav {
 namespace {
+
+using incremental_topology_detail::mergeTransitionEvidence;
 
 struct RegionalAdjacencyEntry {
   IncrementalTopologyNodeId neighbor{};
@@ -66,7 +70,7 @@ struct DirectedEdgeMetrics {
   std::vector<DirectedTopologyEdge3D> edges;
   std::size_t traversal_count{0U};
   double repeated_distance_m{0.0};
-  std::uint64_t validated_through_revision{0U};
+  IncrementalTopologyTransitionEvidence3D evidence{};
   bool active_dead_end{false};
   bool every_source_edge_traversed{true};
 };
@@ -183,7 +187,7 @@ void appendObservationAnchors(std::vector<IncrementalTopologyNodeId>& anchors,
 supportingRevision(const IncrementalTopologyGraph3DSnapshot& graph,
                    const IncrementalTopologyEdge3D& edge) noexcept {
   static_cast<void>(graph);
-  return edge.validated_through_revision;
+  return edge.evidence.validated_through_revision;
 }
 
 [[nodiscard]] DirectedEdgeMetrics directedEdgeMetrics(
@@ -216,10 +220,7 @@ supportingRevision(const IncrementalTopologyGraph3DSnapshot& graph,
     }
     const IncrementalTopologyEdge3D& source_edge = *source_found->second;
     const std::uint64_t support = supportingRevision(source_graph, source_edge);
-    result.validated_through_revision =
-        result.validated_through_revision == 0U
-            ? support
-            : std::min(result.validated_through_revision, support);
+    mergeTransitionEvidence(result.evidence, source_edge.evidence);
     const DirectedTopologyEdgeEvidence3D evidence = memory.evidence(directed, support);
     const DirectedTopologyEdge3D reverse{
         .edge_id = directed.edge_id, .from = directed.to, .to = directed.from};
@@ -481,12 +482,11 @@ void materializePath(IncrementalTopologicalPlan3D& result,
   result.guidance_points.clear();
   result.route_nodes.clear();
   result.route_steps.clear();
+  IncrementalTopologyTransitionEvidence3D route_evidence;
   for (const Point3& point : start_connector.polyline) {
     appendUnique(result.guidance_points, point);
   }
-  result.validated_through_revision =
-      std::min(start_connector.validated_through_revision,
-               target_connector.validated_through_revision);
+  mergeTransitionEvidence(route_evidence, start_connector.evidence);
   result.route_nodes.push_back(result.start_node);
   for (const PathStep& path_step : path) {
     if (path_step.edge == nullptr) {
@@ -502,14 +502,11 @@ void materializePath(IncrementalTopologicalPlan3D& result,
         .length_m = path_step.edge->length_m,
         .repeated_distance_m = history.repeated_distance_m,
         .traversal_count = history.traversal_count,
-        .validated_through_revision = history.validated_through_revision,
+        .evidence = history.evidence,
     });
     result.directed_traversal_count += history.traversal_count;
     result.repeated_edge_distance_m += history.repeated_distance_m;
-    if (history.validated_through_revision != 0U) {
-      result.validated_through_revision = std::min(result.validated_through_revision,
-                                                   history.validated_through_revision);
-    }
+    mergeTransitionEvidence(route_evidence, history.evidence);
     appendOrientedPolyline(result.guidance_points, *path_step.edge, path_step.from);
     const bool forward = path_step.from == path_step.edge->first;
     if (path_step.edge->source_nodes.size() >= 2U) {
@@ -536,6 +533,12 @@ void materializePath(IncrementalTopologicalPlan3D& result,
   for (const Point3& point : std::views::reverse(target_connector.polyline)) {
     appendUnique(result.guidance_points, point);
   }
+  mergeTransitionEvidence(route_evidence, target_connector.evidence);
+  result.validated_through_revision = route_evidence.validated_through_revision;
+  result.complete_through_revision = route_evidence.complete_through_revision;
+  result.topology_lineage_id = route_evidence.lineage_id;
+  result.transition_support_segment_count = route_evidence.support_segment_count;
+  result.unknown_exposure = route_evidence.unknown_exposure;
   result.route_length_m = 0.0;
   for (std::size_t index = 1U; index < result.guidance_points.size(); ++index) {
     result.route_length_m +=
@@ -609,6 +612,31 @@ void materializePath(IncrementalTopologicalPlan3D& result,
                            .history = history};
 }
 
+[[nodiscard]] IncrementalTopologyConnector3D
+makeObservedFreeConnector(const IncrementalTopologyNodeId node,
+                          std::vector<Point3> polyline,
+                          const std::uint64_t validated_through_revision,
+                          const std::uint64_t complete_through_revision) {
+  const double length_m = incremental_topology_detail::polylineLength(polyline);
+  const std::size_t support_segment_count =
+      polyline.empty() ? 0U : polyline.size() - 1U;
+  const std::uint64_t lineage_id =
+      incremental_topology_detail::makeTransitionLineage(node.value, polyline);
+  return IncrementalTopologyConnector3D{
+      .node = node,
+      .polyline = std::move(polyline),
+      .length_m = length_m,
+      .evidence =
+          IncrementalTopologyTransitionEvidence3D{
+              .kind = IncrementalTopologyTransitionKind3D::kObservedFree,
+              .support_segment_count = support_segment_count,
+              .validated_through_revision = validated_through_revision,
+              .complete_through_revision = complete_through_revision,
+              .lineage_id = lineage_id,
+          },
+  };
+}
+
 [[nodiscard]] std::optional<IncrementalTopologyConnector3D>
 connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
                     const ObservedOccupancyGrid3D* const occupancy, const Point3& point,
@@ -629,12 +657,10 @@ connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
   if (target == nullptr) {
     return std::nullopt;
   }
-  return IncrementalTopologyConnector3D{
-      .node = target->id,
-      .polyline = {point, target->representative},
-      .length_m = distance3D(point, target->representative),
-      .validated_through_revision = graph.revision(),
-  };
+  return makeObservedFreeConnector(
+      target->id, {point, target->representative},
+      std::min(graph.revision(), target->validated_through_revision),
+      target->complete_through_revision);
 }
 
 [[nodiscard]] std::optional<FrontierCandidate> selectFreshFrontier(
@@ -677,32 +703,66 @@ connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
     }
     const std::optional<GridIndex3D> supporting_cell =
         cellForPoint(source_graph.bounds(), frontier.supporting_viewpoint);
-    const std::optional<IncrementalTopologyNodeId> supporting_node =
-        supporting_cell.has_value() ? source_graph.nodeForSampleCell(*supporting_cell)
-                                    : std::nullopt;
-    if (!supporting_node.has_value() || !records.contains(*supporting_node)) {
+    const std::optional<IncrementalTopologyConnector3D> parent_tree =
+        supporting_cell.has_value()
+            ? source_graph.connectObservedSample(occupancy, *supporting_cell,
+                                                 observability.footprint,
+                                                 validation_policy)
+            : std::nullopt;
+    if (!parent_tree.has_value()) {
       continue;
     }
+    const IncrementalTopologyConnector3D& parent_connector = parent_tree.value();
+    if (!records.contains(parent_connector.node)) {
+      continue;
+    }
+    const IncrementalTopologyNodeId supporting_node = parent_connector.node;
     const IncrementalTopologyNode3D* source_node =
-        source_graph.findNode(*supporting_node);
+        source_graph.findNode(supporting_node);
     const std::optional<std::vector<PathStep>> path =
-        reconstructPath(start_node, *supporting_node, records);
+        reconstructPath(start_node, supporting_node, records);
     if (source_node == nullptr || !path.has_value()) {
       continue;
     }
+    const std::vector<PathStep>& path_steps = path.value();
+    std::vector<Point3> connector_polyline{frontier.observation_pose};
+    appendUnique(connector_polyline, frontier.supporting_viewpoint);
+    for (const Point3& point : parent_connector.polyline) {
+      appendUnique(connector_polyline, point);
+    }
+    const bool connector_accepted = std::ranges::all_of(
+        std::views::iota(std::size_t{1U}, connector_polyline.size()),
+        [&](const std::size_t index) {
+          return validateObservedSweptFootprint(
+                     occupancy, connector_polyline[index - 1U], FootprintBodyAxis{},
+                     connector_polyline[index], FootprintBodyAxis{},
+                     observability.footprint, validation_policy)
+              .accepted();
+        });
+    if (!connector_accepted) {
+      continue;
+    }
+    const std::uint64_t validated_through_revision =
+        std::min(parent_connector.evidence.validated_through_revision,
+                 frontier.supporting_map_revision);
+    const std::uint64_t lineage_id = incremental_topology_detail::makeTransitionLineage(
+        frontier.id.value, connector_polyline);
+    const IncrementalTopologyTransitionEvidence3D connector_evidence =
+        incremental_topology_detail::makeTransitionEvidence(
+            occupancy, connector_polyline, observability.footprint,
+            validated_through_revision,
+            parent_connector.evidence.complete_through_revision, lineage_id);
+    const double connector_length_m =
+        incremental_topology_detail::polylineLength(connector_polyline);
     IncrementalTopologyConnector3D connector{
-        .node = *supporting_node,
-        .polyline = {frontier.observation_pose, frontier.supporting_viewpoint,
-                     source_node->representative},
-        .length_m =
-            distance3D(frontier.observation_pose, frontier.supporting_viewpoint) +
-            distance3D(frontier.supporting_viewpoint, source_node->representative),
-        .validated_through_revision =
-            std::min(source_graph.revision(), frontier.supporting_map_revision),
+        .node = supporting_node,
+        .polyline = std::move(connector_polyline),
+        .length_m = connector_length_m,
+        .evidence = connector_evidence,
     };
     ++reachable_count;
     FrontierCandidate candidate = makeFrontierCandidate(
-        *source_node, frontier, std::move(connector), *path, start, mission_goal,
+        *source_node, frontier, std::move(connector), path_steps, start, mission_goal,
         source_graph, source_edges, memory, config, active_frontier);
     recordFrontierSelectionDiagnostics(candidate, diagnostics);
     if (!best || betterFrontier(candidate, *best)) {
@@ -919,12 +979,10 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     result.target_node = mission_continuation->node->source_node_id;
     result.selection_score = mission_continuation->score;
     result.goal_progress_m = mission_continuation->goal_progress_m;
-    const IncrementalTopologyConnector3D target_connector{
-        .node = result.target_node,
-        .polyline = {mission_continuation->node->position},
-        .validated_through_revision =
-            mission_continuation->node->validated_through_revision,
-    };
+    const IncrementalTopologyConnector3D target_connector = makeObservedFreeConnector(
+        result.target_node, {mission_continuation->node->position},
+        mission_continuation->node->validated_through_revision,
+        mission_continuation->node->complete_through_revision);
     materializePath(result, mission_continuation->path, *start_connector,
                     target_connector, graph, source_edges, memory);
     return result;
@@ -971,11 +1029,10 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   if (result.dead_end_conclusion) {
     result.backtrack_reason = TopologicalBacktrackReason3D::kConfirmedTerminal;
   }
-  const IncrementalTopologyConnector3D target_connector{
-      .node = *backtrack_target,
-      .polyline = {target_node->position},
-      .validated_through_revision = graph.revision(),
-  };
+  const IncrementalTopologyConnector3D target_connector = makeObservedFreeConnector(
+      *backtrack_target, {target_node->position},
+      std::min(graph.revision(), target_node->validated_through_revision),
+      target_node->complete_through_revision);
   materializePath(result, *backtrack_path, *start_connector, target_connector, graph,
                   source_edges, memory);
   result.selection_score = result.route_length_m;

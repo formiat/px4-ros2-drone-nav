@@ -159,6 +159,7 @@ IncrementalTopologyGraph3DSnapshot IncrementalTopologyGraph3D::snapshot() const 
     result.block_coverage_.push_back(IncrementalTopologyBlockCoverage3D{
         .block = block,
         .validated_through_revision = validated_through,
+        .complete_through_revision = impl_->block_complete_through.at(block),
         .pending_rebuild = pending_blocks.contains(block),
     });
   }

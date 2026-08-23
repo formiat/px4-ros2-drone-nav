@@ -63,6 +63,14 @@ suffix, then runs dynamic handoff from the same pose/control snapshot. If newer
 raw content has not yet produced its matching local-world generation,
 activation waits for that generation instead of mixing revisions.
 
+Topology evidence remains explicit when bounded updates leave locally valid
+blocks at different revisions. `validated_through` can advance when observation
+evidence changes without rebuilding geometry; `complete_through` advances only
+when that transition's supporting geometry is rebuilt. Transition lineage stays
+stable across evidence-only refreshes and changes with geometry. Plans aggregate
+the conservative minimum instead of claiming that every transition matches the
+newest graph revision.
+
 Heading bias for a replacement guide comes from velocity at speed, the previous
 accepted-guide tangent at low speed, or mission-goal direction as the final
 fallback. Vehicle yaw is not a global-search direction constraint.
