@@ -239,6 +239,27 @@ TEST(RouteLifecycle3DTest, ObjectiveIdentityIsCheckedAtExecutionBoundary) {
       assessRouteExecution3D(&activated, route, observation(changed));
 
   EXPECT_EQ(assessment.status, RouteExecutionStatus3D::kObjectiveMismatch);
+  EXPECT_TRUE(assessment.replacementRequired());
+}
+
+TEST(RouteLifecycle3DTest, AStructurallyInvalidActiveRouteRequiresReplacement) {
+  const ActivatedRouteIdentity3D activated = validActivatedRoute();
+  const std::vector<RouteSample3D> route{
+      {.position = {1.5, 1.5, 1.5}, .station_m = 0.0}};
+
+  const RouteExecutionAssessment3D assessment = assessRouteExecution3D(
+      &activated, route, observation(activated.proposal.objective));
+
+  EXPECT_EQ(assessment.status, RouteExecutionStatus3D::kInvalidRoute);
+  EXPECT_TRUE(assessment.replacementRequired());
+}
+
+TEST(RouteLifecycle3DTest, MissingRouteWaitsForInitialPlanningWithoutReplacement) {
+  const RouteExecutionAssessment3D assessment =
+      assessRouteExecution3D(nullptr, {}, RouteExecutionObservation3D{});
+
+  EXPECT_EQ(assessment.status, RouteExecutionStatus3D::kNoActiveRoute);
+  EXPECT_FALSE(assessment.replacementRequired());
 }
 
 TEST(RouteLifecycle3DTest, ExecutionRejectsRawWorldFromAnotherProducerLineage) {

@@ -78,6 +78,22 @@ bool RouteExecutionAssessment3D::usable() const noexcept {
   return status == RouteExecutionStatus3D::kUsable;
 }
 
+bool RouteExecutionAssessment3D::replacementRequired() const noexcept {
+  switch (status) {
+    case RouteExecutionStatus3D::kUsable:
+    case RouteExecutionStatus3D::kNoActiveRoute:
+      return false;
+    case RouteExecutionStatus3D::kWorldLineageMismatch:
+    case RouteExecutionStatus3D::kObjectiveMismatch:
+    case RouteExecutionStatus3D::kInvalidRoute:
+    case RouteExecutionStatus3D::kInvalidProjection:
+    case RouteExecutionStatus3D::kExcessiveCrossTrack:
+    case RouteExecutionStatus3D::kRawCollision:
+      return true;
+  }
+  return true;
+}
+
 bool RoutePublicationAssessment3D::compatible() const noexcept {
   return status == RoutePublicationStatus3D::kCompatible;
 }

@@ -125,26 +125,30 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         assessment.raw_validation.failure_point.y,
         assessment.raw_validation.failure_point.z);
     requestGuideRelease(GlobalGuideReleaseReason::kBlocked, generation);
-  } else if (assessment.status == RouteExecutionStatus3D::kWorldLineageMismatch ||
-             assessment.status == RouteExecutionStatus3D::kExcessiveCrossTrack ||
-             assessment.status == RouteExecutionStatus3D::kInvalidProjection) {
+  } else if (assessment.replacementRequired()) {
+    const StaticRouteObjective& route_objective =
+        active_route->identity.proposal.objective;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "ROUTE_EXECUTION3D status=%.*s route_generation=%" PRIu64
+        " route_epoch=%" PRIu64 " current_epoch=%" PRIu64 " route_sample=%" PRIu64
+        " current_sample=%" PRIu64 " required_sample=%" PRIu64
+        " route_assignment_generation=%" PRIu64
+        " current_assignment_generation=%" PRIu64 " route_target_track_id=%" PRIu64
+        " current_target_track_id=%" PRIu64
         " cross_track_m=%.2f maximum_m=%.2f action=replan",
         static_cast<int>(routeExecutionStatus3DName(result.status).size()),
         routeExecutionStatus3DName(result.status).data(), generation,
+        route_objective.mission_epoch,
+        objective != nullptr ? objective->mission_epoch : 0U,
+        route_objective.sample_sequence,
+        objective != nullptr ? objective->sample_sequence : 0U,
+        minimum_tracking_sample_sequence, route_objective.assignment_generation,
+        objective != nullptr ? objective->assignment_generation : 0U,
+        route_objective.target_track_id,
+        objective != nullptr ? objective->target_track_id : 0U,
         assessment.projection.distance_m, active_guide_config_.maximum_cross_track_m);
     requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged, generation);
-  } else if (result.status == RouteExecutionStatus3D::kObjectiveMismatch &&
-             objective != nullptr && objective->continuous_tracking) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "ROUTE_EXECUTION3D status=objective_mismatch route_generation=%" PRIu64
-        " current_epoch=%" PRIu64 " current_sample=%" PRIu64
-        " required_sample=%" PRIu64,
-        generation, objective->mission_epoch, objective->sample_sequence,
-        minimum_tracking_sample_sequence);
   }
   return result;
 }

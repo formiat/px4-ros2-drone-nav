@@ -106,6 +106,7 @@ struct RouteExecutionAssessment3D {
   std::uint64_t validated_through_raw_revision{0U};
 
   [[nodiscard]] bool usable() const noexcept;
+  [[nodiscard]] bool replacementRequired() const noexcept;
 };
 
 struct RouteExecutionState3D {
