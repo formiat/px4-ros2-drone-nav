@@ -18,6 +18,7 @@ enum class IncrementalTopologicalPlanStatus3D : std::uint8_t {
   kInvalidInput,
   kStartNotRepresented,
   kMissionRoute,
+  kMissionContinuationRoute,
   kFrontierRoute,
   kBacktrackRoute,
   kNoRoute,
@@ -76,6 +77,8 @@ struct IncrementalTopologicalPlan3D {
   std::size_t selected_frontier_completion_count{0U};
   double repeated_edge_distance_m{0.0};
   std::size_t directed_traversal_count{0U};
+  std::size_t reachable_mission_continuation_count{0U};
+  double maximum_reachable_mission_continuation_goal_progress_m{0.0};
   std::size_t reachable_frontier_count{0U};
   std::size_t goal_directed_reachable_frontier_count{0U};
   ObservationFrontierId maximum_goal_progress_frontier_id{};

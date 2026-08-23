@@ -720,8 +720,10 @@ void ProductionMppiNode::processGuideSearch3D(
       world.observed_occupancy ? "observed_occupancy_3d" : "static_occupancy_3d";
   const char* const topology_acceleration =
       world.topological_graph ? "incremental_topological_graph" : "unavailable";
-  logIncrementalTopologyRoute3D(topology, lattice, validation, activation_status,
-                                activated);
+  if (topology_route_used) {
+    logIncrementalTopologyRoute3D(topology, lattice, validation, activation_status,
+                                  activated);
+  }
   const ObservationFrontier* const observation_frontier =
       lattice.observation_frontier ? &*lattice.observation_frontier : nullptr;
   RCLCPP_INFO(

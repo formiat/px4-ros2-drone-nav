@@ -6,7 +6,6 @@
 #include <limits>
 #include <queue>
 #include <ranges>
-#include <stdexcept>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -40,6 +39,7 @@ struct PathStep {
 
 struct SearchRecord {
   double cost{std::numeric_limits<double>::infinity()};
+  double path_length_m{std::numeric_limits<double>::infinity()};
   IncrementalTopologyNodeId parent{};
   const RegionalTopologyEdge3D* incoming_edge{nullptr};
   bool has_parent{false};
@@ -75,6 +75,13 @@ struct PathMetrics {
   std::size_t traversal_count{0U};
   std::size_t active_dead_end_count{0U};
   double repeated_distance_m{0.0};
+};
+
+struct MissionContinuationCandidate {
+  const RegionalTopologyNode3D* node{nullptr};
+  std::vector<PathStep> path;
+  double score{std::numeric_limits<double>::infinity()};
+  double goal_progress_m{0.0};
 };
 
 struct FrontierCandidate {
@@ -264,7 +271,7 @@ runDijkstra(const RegionalTopologyGraph3D& graph, const RegionalAdjacency& adjac
             const IncrementalTopologicalPlanner3DConfig& config) {
   SearchRecords records;
   records.reserve(graph.nodes().size());
-  records[start] = SearchRecord{.cost = 0.0};
+  records[start] = SearchRecord{.cost = 0.0, .path_length_m = 0.0};
   std::priority_queue<QueueEntry, std::vector<QueueEntry>, QueueGreater> pending;
   std::uint64_t sequence = 0U;
   pending.push({.cost = 0.0, .sequence = sequence++, .node = start});
@@ -290,6 +297,8 @@ runDijkstra(const RegionalTopologyGraph3D& graph, const RegionalAdjacency& adjac
         continue;
       }
       const double candidate_cost = current.cost + edge_cost;
+      const double candidate_path_length_m =
+          record_found->second.path_length_m + next.edge->length_m;
       SearchRecord& candidate = records[next.neighbor];
       const bool strictly_better = candidate_cost + 1.0e-9 < candidate.cost;
       const bool deterministic_tie =
@@ -301,6 +310,7 @@ runDijkstra(const RegionalTopologyGraph3D& graph, const RegionalAdjacency& adjac
         continue;
       }
       candidate = SearchRecord{.cost = candidate_cost,
+                               .path_length_m = candidate_path_length_m,
                                .parent = current.node,
                                .incoming_edge = next.edge,
                                .has_parent = true};
@@ -343,6 +353,71 @@ reconstructPath(const IncrementalTopologyNodeId start,
     }
   }
   return result;
+}
+
+[[nodiscard]] bool
+betterMissionContinuation(const MissionContinuationCandidate& candidate,
+                          const MissionContinuationCandidate& current) noexcept {
+  if (candidate.score + 1.0e-9 < current.score) {
+    return true;
+  }
+  if (std::abs(candidate.score - current.score) > 1.0e-9 || candidate.node == nullptr ||
+      current.node == nullptr) {
+    return false;
+  }
+  if (candidate.goal_progress_m > current.goal_progress_m + 1.0e-9) {
+    return true;
+  }
+  if (std::abs(candidate.goal_progress_m - current.goal_progress_m) > 1.0e-9) {
+    return false;
+  }
+  return candidate.node->source_node_id < current.node->source_node_id;
+}
+
+[[nodiscard]] std::optional<MissionContinuationCandidate> selectMissionContinuation(
+    const RegionalTopologyGraph3D& graph, const SearchRecords& records,
+    const IncrementalTopologyNodeId start_node, const Point3& start,
+    const Point3& mission_goal, const IncrementalTopologicalPlanner3DConfig& config,
+    std::size_t& reachable_count, double& maximum_goal_progress_m) {
+  std::optional<MissionContinuationCandidate> best;
+  const double initial_goal_distance_m = distance3D(start, mission_goal);
+  for (const auto& [node_id, record] : records) {
+    static_cast<void>(record);
+    const RegionalTopologyNode3D* const node = graph.findNode(node_id);
+    if (node == nullptr || node_id == start_node) {
+      continue;
+    }
+    const double goal_progress_m =
+        initial_goal_distance_m - distance3D(node->position, mission_goal);
+    if (!(goal_progress_m > 1.0e-9)) {
+      continue;
+    }
+    if (!std::isfinite(record.cost) || !std::isfinite(record.path_length_m)) {
+      continue;
+    }
+    ++reachable_count;
+    maximum_goal_progress_m = std::max(maximum_goal_progress_m, goal_progress_m);
+    MissionContinuationCandidate candidate{
+        .node = node,
+        .path = {},
+        .score = record.cost + (config.path_cost_weight - 1.0) * record.path_length_m -
+                 config.goal_progress_reward * goal_progress_m,
+        .goal_progress_m = goal_progress_m,
+    };
+    if (!best.has_value() || betterMissionContinuation(candidate, *best)) {
+      best = std::move(candidate);
+    }
+  }
+  if (!best.has_value() || best->node == nullptr) {
+    return std::nullopt;
+  }
+  const std::optional<std::vector<PathStep>> path =
+      reconstructPath(start_node, best->node->source_node_id, records);
+  if (!path.has_value() || path->empty()) {
+    return std::nullopt;
+  }
+  best->path = *path;
+  return best;
 }
 
 [[nodiscard]] PathMetrics
@@ -730,61 +805,6 @@ deadEndConclusion(const IncrementalTopologyGraph3DSnapshot& graph,
 
 } // namespace
 
-bool IncrementalTopologicalPlan3D::executableTargetSelected() const noexcept {
-  return status == IncrementalTopologicalPlanStatus3D::kMissionRoute ||
-         status == IncrementalTopologicalPlanStatus3D::kFrontierRoute ||
-         status == IncrementalTopologicalPlanStatus3D::kBacktrackRoute;
-}
-
-bool incrementalTopologicalPlanner3DConfigIsValid(
-    const IncrementalTopologicalPlanner3DConfig& config) noexcept {
-  const auto valid_nonnegative = [](const double value) {
-    return std::isfinite(value) && value >= 0.0;
-  };
-  return valid_nonnegative(config.maximum_start_anchor_distance_m) &&
-         valid_nonnegative(config.maximum_goal_anchor_distance_m) &&
-         valid_nonnegative(config.path_cost_weight) &&
-         valid_nonnegative(config.information_gain_reward) &&
-         valid_nonnegative(config.clearance_reward) &&
-         valid_nonnegative(config.goal_progress_reward) &&
-         valid_nonnegative(config.directed_traversal_penalty) &&
-         valid_nonnegative(config.repeated_distance_penalty) &&
-         valid_nonnegative(config.dead_end_penalty) &&
-         valid_nonnegative(config.frontier_selection_penalty) &&
-         valid_nonnegative(config.frontier_completion_penalty) &&
-         valid_nonnegative(config.coverage_penalty_weight) &&
-         std::isfinite(config.maximum_fresh_frontier_anchor_distance_m) &&
-         config.maximum_fresh_frontier_anchor_distance_m > 0.0 &&
-         std::isfinite(config.minimum_observation_target_displacement_m) &&
-         config.minimum_observation_target_displacement_m > 0.0 &&
-         config.maximum_fresh_frontier_evaluations > 0U;
-}
-
-IncrementalTopologicalPlanner3D::IncrementalTopologicalPlanner3D(
-    const IncrementalTopologicalPlanner3DConfig& config)
-    : config_{config} {
-  if (!incrementalTopologicalPlanner3DConfigIsValid(config_)) {
-    throw std::invalid_argument{
-        "invalid incremental topological planner configuration"};
-  }
-}
-
-IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::plan(
-    const IncrementalTopologyGraph3DSnapshot& graph, const Point3& start,
-    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const {
-  return planImpl(graph, nullptr, nullptr, start, mission_goal, memory, std::nullopt);
-}
-
-IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planObserved(
-    const IncrementalTopologyGraph3DSnapshot& graph,
-    const ObservedOccupancyGrid3D& occupancy,
-    const SensorObservabilityConfig& observability, const Point3& start,
-    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
-    const std::optional<ObservationFrontier> active_frontier) const {
-  return planImpl(graph, &occupancy, &observability, start, mission_goal, memory,
-                  active_frontier);
-}
-
 IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     const IncrementalTopologyGraph3DSnapshot& graph,
     const ObservedOccupancyGrid3D* const occupancy,
@@ -824,11 +844,11 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   const RegionalTopologyGraph3D regional = buildRegionalTopologyGraph3D(graph, anchors);
   const RegionalAdjacency adjacency = buildRegionalAdjacency(regional);
   const SourceEdges source_edges = indexSourceEdges(graph);
+  const SearchRecords mission_records =
+      runDijkstra(regional, adjacency, result.start_node, SearchMode::kMission, graph,
+                  source_edges, memory, config_);
 
   if (result.goal_node && goal_connector.has_value()) {
-    const SearchRecords mission_records =
-        runDijkstra(regional, adjacency, result.start_node, SearchMode::kMission, graph,
-                    source_edges, memory, config_);
     if (const std::optional<std::vector<PathStep>> path =
             reconstructPath(result.start_node, *result.goal_node, mission_records)) {
       result.status = IncrementalTopologicalPlanStatus3D::kMissionRoute;
@@ -843,9 +863,24 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     }
   }
 
+  std::size_t reachable_mission_continuations = 0U;
+  double maximum_mission_continuation_goal_progress_m = 0.0;
   const SearchRecords exploration_records =
       runDijkstra(regional, adjacency, result.start_node, SearchMode::kExploration,
                   graph, source_edges, memory, config_);
+  const std::optional<TopologicalDeadEndConclusion3D> start_dead_end =
+      deadEndConclusion(graph, result.start_node, memory);
+  const std::optional<MissionContinuationCandidate> mission_continuation =
+      start_dead_end.has_value()
+          ? std::nullopt
+          : selectMissionContinuation(regional, exploration_records, result.start_node,
+                                      start, mission_goal, config_,
+                                      reachable_mission_continuations,
+                                      maximum_mission_continuation_goal_progress_m);
+  result.reachable_mission_continuation_count = reachable_mission_continuations;
+  result.maximum_reachable_mission_continuation_goal_progress_m =
+      maximum_mission_continuation_goal_progress_m;
+
   std::size_t reachable_frontiers = 0U;
   FrontierSelectionDiagnostics frontier_diagnostics;
   std::optional<FrontierCandidate> frontier;
@@ -872,6 +907,25 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
       fresh_discovery.evaluation_sample_fingerprint;
   result.fresh_frontier_status_counts = fresh_discovery.evaluation_status_counts;
   result.fresh_frontier_budget_exhausted = fresh_discovery.evaluation_budget_exhausted;
+  const bool select_mission_continuation =
+      mission_continuation.has_value() && mission_continuation->node != nullptr &&
+      (!frontier.has_value() || mission_continuation->score + 1.0e-9 < frontier->score);
+  if (select_mission_continuation) {
+    result.status = IncrementalTopologicalPlanStatus3D::kMissionContinuationRoute;
+    result.purpose = IncrementalTopologicalRoutePurpose3D::kMissionTransit;
+    result.target_node = mission_continuation->node->source_node_id;
+    result.selection_score = mission_continuation->score;
+    result.goal_progress_m = mission_continuation->goal_progress_m;
+    const IncrementalTopologyConnector3D target_connector{
+        .node = result.target_node,
+        .polyline = {mission_continuation->node->position},
+        .validated_through_revision =
+            mission_continuation->node->validated_through_revision,
+    };
+    materializePath(result, mission_continuation->path, *start_connector,
+                    target_connector, graph, source_edges, memory);
+    return result;
+  }
   if (frontier.has_value() && frontier->node != nullptr) {
     result.status = IncrementalTopologicalPlanStatus3D::kFrontierRoute;
     result.purpose = IncrementalTopologicalRoutePurpose3D::kObservationFrontier;
@@ -910,7 +964,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   result.purpose = IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack;
   result.backtrack_reason = backtrack_reason;
   result.target_node = *backtrack_target;
-  result.dead_end_conclusion = deadEndConclusion(graph, result.start_node, memory);
+  result.dead_end_conclusion = start_dead_end;
   if (result.dead_end_conclusion) {
     result.backtrack_reason = TopologicalBacktrackReason3D::kConfirmedTerminal;
   }
@@ -923,64 +977,6 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
                   source_edges, memory);
   result.selection_score = result.route_length_m;
   return result;
-}
-
-const IncrementalTopologicalPlanner3DConfig&
-IncrementalTopologicalPlanner3D::config() const noexcept {
-  return config_;
-}
-
-bool isExplicitTopologicalBacktrack3D(
-    const IncrementalTopologicalPlan3D& plan) noexcept {
-  return plan.status == IncrementalTopologicalPlanStatus3D::kBacktrackRoute ||
-         plan.purpose == IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack;
-}
-
-const char* incrementalTopologicalPlanStatus3DName(
-    const IncrementalTopologicalPlanStatus3D status) noexcept {
-  switch (status) {
-    case IncrementalTopologicalPlanStatus3D::kInvalidInput:
-      return "invalid_input";
-    case IncrementalTopologicalPlanStatus3D::kStartNotRepresented:
-      return "start_not_represented";
-    case IncrementalTopologicalPlanStatus3D::kMissionRoute:
-      return "mission_route";
-    case IncrementalTopologicalPlanStatus3D::kFrontierRoute:
-      return "frontier_route";
-    case IncrementalTopologicalPlanStatus3D::kBacktrackRoute:
-      return "backtrack_route";
-    case IncrementalTopologicalPlanStatus3D::kNoRoute:
-      return "no_route";
-  }
-  return "unknown";
-}
-
-const char* incrementalTopologicalRoutePurpose3DName(
-    const IncrementalTopologicalRoutePurpose3D purpose) noexcept {
-  switch (purpose) {
-    case IncrementalTopologicalRoutePurpose3D::kMissionTransit:
-      return "mission_transit";
-    case IncrementalTopologicalRoutePurpose3D::kObservationFrontier:
-      return "observation_frontier";
-    case IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack:
-      return "topological_backtrack";
-  }
-  return "unknown";
-}
-
-const char*
-topologicalBacktrackReason3DName(const TopologicalBacktrackReason3D reason) noexcept {
-  switch (reason) {
-    case TopologicalBacktrackReason3D::kNone:
-      return "none";
-    case TopologicalBacktrackReason3D::kConfirmedTerminal:
-      return "confirmed_terminal";
-    case TopologicalBacktrackReason3D::kNoReachableFrontier:
-      return "no_reachable_frontier";
-    case TopologicalBacktrackReason3D::kAllReachableBranchesExplored:
-      return "all_reachable_branches_explored";
-  }
-  return "unknown";
 }
 
 } // namespace drone_city_nav

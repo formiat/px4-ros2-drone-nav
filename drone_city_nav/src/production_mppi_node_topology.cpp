@@ -365,7 +365,9 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       " frontier_boundary=(%.2f,%.2f,%.2f)"
       " frontier_direction=(%.3f,%.3f,%.3f) frontier_gain=%zu"
       " frontier_required_gain=%zu"
-      " reachable_frontiers=%zu selection_score=%.3f goal_progress_m=%.2f "
+      " reachable_mission_continuations=%zu "
+      "maximum_mission_continuation_goal_progress_m=%.2f "
+      "reachable_frontiers=%zu selection_score=%.3f goal_progress_m=%.2f "
       "frontier_selection_count=%zu frontier_completion_count=%zu "
       "goal_directed_reachable_frontiers=%zu "
       "maximum_goal_progress_frontier_id=%" PRIu64
@@ -412,6 +414,8 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       selected_frontier != nullptr ? selected_frontier->information_gain_voxels : 0U,
       selected_frontier != nullptr ? selected_frontier->required_information_gain_voxels
                                    : 0U,
+      search.plan.reachable_mission_continuation_count,
+      search.plan.maximum_reachable_mission_continuation_goal_progress_m,
       search.plan.reachable_frontier_count, search.plan.selection_score,
       search.plan.goal_progress_m, search.plan.selected_frontier_selection_count,
       search.plan.selected_frontier_completion_count,

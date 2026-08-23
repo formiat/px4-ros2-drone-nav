@@ -214,9 +214,11 @@ def validate_incremental_topology_evidence(
         errors.append("FAIL: dirty topology updates retain stable node identities")
 
     require_pattern(
-        "topological exploration commits a reachable observation frontier",
+        "topological planning commits a reachable strategic route",
         ros_log,
-        r"INCREMENTAL_TOPOLOGICAL_PLAN3D .*selected_frontier_id=[1-9][0-9]* "
+        r"INCREMENTAL_TOPOLOGICAL_PLAN3D "
+        r".*status=(?:mission_route|mission_continuation_route|frontier_route) "
+        r".*route_edges=[1-9][0-9]* "
         r".*activated=true .*commit_accepted=true",
         errors,
     )

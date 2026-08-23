@@ -188,6 +188,7 @@ add_library(
   src/intercept_mission.cpp
   src/incremental_topological_navigation_3d.cpp
   src/incremental_topological_lattice_adapter_3d.cpp
+  src/incremental_topological_planner_3d_contract.cpp
   src/incremental_topological_planner_3d.cpp
   src/incremental_topology_graph_3d.cpp
   src/incremental_topology_graph_3d_snapshot.cpp

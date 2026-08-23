@@ -125,6 +125,53 @@ TEST(IncrementalTopologicalPlanner3DTest, KnownMissionRouteHasPriority) {
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
+     KnownConnectivityContinuesTowardAnUnanchoredMissionGoal) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 64, 40, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 7, 9, 7, 24, 5, 7);
+  fillFreeBox(occupancy, 7, 40, 7, 9, 5, 7);
+  fillFreeBox(occupancy, 38, 40, 7, 24, 5, 7);
+  const IncrementalTopologyGraph3DSnapshot graph = buildGraph(occupancy);
+  IncrementalTopologicalPlanner3D planner;
+  TopologicalExplorationMemory3D memory;
+  const Point3 start{8.5, 23.5, 6.5};
+  const Point3 goal{57.5, 23.5, 6.5};
+
+  const IncrementalTopologicalPlan3D plan = planner.plan(graph, start, goal, memory);
+
+  ASSERT_EQ(plan.status, IncrementalTopologicalPlanStatus3D::kMissionContinuationRoute);
+  EXPECT_EQ(plan.purpose, IncrementalTopologicalRoutePurpose3D::kMissionTransit);
+  EXPECT_FALSE(plan.reaches_mission_goal);
+  EXPECT_FALSE(plan.goal_node.has_value());
+  EXPECT_FALSE(isExplicitTopologicalBacktrack3D(plan));
+  EXPECT_GT(plan.reachable_mission_continuation_count, 0U);
+  EXPECT_GT(plan.maximum_reachable_mission_continuation_goal_progress_m, 0.0);
+  EXPECT_GT(plan.goal_progress_m, 0.0);
+  ASSERT_FALSE(plan.guidance_points.empty());
+  EXPECT_LT(distance3D(plan.guidance_points.back(), goal), distance3D(start, goal));
+  EXPECT_TRUE(std::ranges::any_of(plan.guidance_points,
+                                  [](const Point3& point) { return point.y < 12.0; }));
+}
+
+TEST(IncrementalTopologicalPlanner3DTest,
+     KnownConnectivityDoesNotRelabelNegativeProgressAsMissionTransit) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 24, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 4, 20, 9, 11, 5, 7);
+  const IncrementalTopologyGraph3DSnapshot graph = buildGraph(occupancy);
+  IncrementalTopologicalPlanner3D planner;
+  TopologicalExplorationMemory3D memory;
+
+  const IncrementalTopologicalPlan3D plan =
+      planner.plan(graph, {20.5, 10.5, 6.5}, {44.5, 10.5, 6.5}, memory);
+
+  EXPECT_EQ(plan.status, IncrementalTopologicalPlanStatus3D::kNoRoute);
+  EXPECT_EQ(plan.reachable_mission_continuation_count, 0U);
+  EXPECT_DOUBLE_EQ(plan.maximum_reachable_mission_continuation_goal_progress_m, 0.0);
+  EXPECT_FALSE(plan.executableTargetSelected());
+}
+
+TEST(IncrementalTopologicalPlanner3DTest,
      SelectsSafeFrontierEvenWhenInitialMotionMovesAwayFromGoal) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 32, 16}};
   fillOccupied(occupancy);
@@ -193,7 +240,7 @@ TEST(IncrementalTopologicalPlanner3DTest,
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
-     FreshOccupancyWaitsForTopologySnapshotBeforeAdvancing) {
+     FreshOccupancyDoesNotLeakIntoTheTopologySnapshot) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 56, 32, 16}};
   fillOccupied(occupancy);
   fillFreeBox(occupancy, 4, 20, 13, 15, 5, 7);
@@ -209,7 +256,10 @@ TEST(IncrementalTopologicalPlanner3DTest,
   const IncrementalTopologicalPlan3D stale_plan = planner.planObserved(
       stale_graph, occupancy, observabilityConfig(graph_config.footprint),
       {18.5, 14.5, 6.5}, {52.5, 14.5, 6.5}, memory);
-  EXPECT_EQ(stale_plan.status, IncrementalTopologicalPlanStatus3D::kNoRoute);
+  ASSERT_EQ(stale_plan.status,
+            IncrementalTopologicalPlanStatus3D::kMissionContinuationRoute);
+  ASSERT_FALSE(stale_plan.guidance_points.empty());
+  EXPECT_LE(stale_plan.guidance_points.back().x, 20.5);
 
   const IncrementalTopologyGraph3DSnapshot refreshed_graph = buildGraph(occupancy, 2U);
   const IncrementalTopologicalPlan3D plan = planner.planObserved(
@@ -447,7 +497,7 @@ TEST(IncrementalTopologicalPlanner3DTest,
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
-     RetiredFrontierFallsBackToTheRemainingReachableBranch) {
+     RetiredFrontierAllowsGoalDirectedKnownConnectivity) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 56, 32, 16}};
   fillOccupied(occupancy);
   fillFreeBox(occupancy, 8, 39, 13, 15, 5, 7);
@@ -470,11 +520,10 @@ TEST(IncrementalTopologicalPlanner3DTest,
       graph, occupancy, observabilityConfig(graphConfig().footprint), {23.5, 14.5, 6.5},
       {52.5, 14.5, 6.5}, memory, retired);
 
-  if (!plan.selected_frontier.has_value()) {
-    FAIL() << "reachable=" << plan.reachable_frontier_count
-           << " fresh_discovered=" << plan.fresh_frontier_discovered_count;
-  }
-  EXPECT_LT(plan.selected_frontier->observation_pose.x, 23.5);
+  EXPECT_EQ(plan.status, IncrementalTopologicalPlanStatus3D::kMissionContinuationRoute);
+  EXPECT_FALSE(plan.selected_frontier.has_value());
+  EXPECT_GT(plan.goal_progress_m, 0.0);
+  EXPECT_GT(plan.reachable_frontier_count, 0U);
 }
 
 TEST(IncrementalTopologicalPlanner3DTest, RouteCoverageSoftlyPrefersAnUnvisitedBranch) {

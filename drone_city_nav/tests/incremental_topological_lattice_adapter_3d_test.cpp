@@ -86,6 +86,26 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,
+     MissionContinuationRemainsExecutableWithoutClaimingGoalArrival) {
+  IncrementalTopologicalPlan3D plan;
+  plan.status = IncrementalTopologicalPlanStatus3D::kMissionContinuationRoute;
+  plan.purpose = IncrementalTopologicalRoutePurpose3D::kMissionTransit;
+  plan.guidance_points = {{0.0, 0.0, 4.0}, {0.0, 8.0, 4.0}, {8.0, 8.0, 4.0}};
+
+  const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
+      plan, {0.0, 0.0, 4.0},
+      {.maximum_lookahead_m = 30.0, .minimum_target_displacement_m = 0.1});
+
+  ASSERT_TRUE(directive_result.has_value());
+  const IncrementalTopologicalLatticeDirective3D directive =
+      directive_result.value_or(IncrementalTopologicalLatticeDirective3D{});
+  EXPECT_EQ(directive.lattice.route_purpose, Lattice3DRoutePurpose::kMissionTransit);
+  EXPECT_FALSE(directive.reaches_topological_target);
+  EXPECT_FALSE(directive.lattice.reaches_mission_goal);
+  EXPECT_FALSE(isExplicitTopologicalBacktrack3D(plan));
+}
+
+TEST(IncrementalTopologicalLatticeAdapter3DTest,
      RejectsNonExecutableAndDegeneratePlans) {
   IncrementalTopologicalPlan3D unavailable;
   EXPECT_FALSE(
