@@ -347,6 +347,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 )
                 self.assertIn("Decay Time: 0", accumulated)
                 self.assertIn("Style: Points", accumulated)
+                self.assertIn("Depth: 1", accumulated)
+                self.assertIn("Durability Policy: Transient Local", accumulated)
+                self.assertIn("History Policy: Keep Last", accumulated)
+                self.assertIn("Reliability Policy: Best Effort", accumulated)
                 self.assertIn(
                     "Value: /drone_city_nav/raw_memory_obstacle_points_3d",
                     accumulated,

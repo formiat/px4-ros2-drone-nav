@@ -106,6 +106,18 @@ class InterceptDiagnosticsContractTest(unittest.TestCase):
             with self.subTest(topic=topic):
                 self.assertIn(topic, source)
 
+    def test_mux_accepts_best_effort_3d_memory_clouds(self) -> None:
+        source = MUX.read_text(encoding="utf-8")
+        self.assertRegex(
+            source,
+            r"const auto memory_3d_source_qos\s*=\s*"
+            r"rclcpp::QoS\{1\}\.best_effort\(\)\.transient_local\(\);",
+        )
+        memory_subscription = source.split(
+            "topicParameter(\"memory_3d_topics\", \"/raw_memory_points_3d\")", 1
+        )[1].split("createCloudSubscriptions", 1)[0]
+        self.assertIn("memory_3d_source_qos", memory_subscription)
+
     def test_rviz_shows_all_routes_and_only_selected_full_diagnostics(self) -> None:
         for config_path in RVIZ_CONFIGS:
             config = config_path.read_text(encoding="utf-8")

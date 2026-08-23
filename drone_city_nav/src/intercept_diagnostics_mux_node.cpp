@@ -123,6 +123,7 @@ public:
     const auto reliable_qos = rclcpp::QoS{1}.reliable();
     const auto best_effort_qos = rclcpp::QoS{10}.best_effort();
     const auto transient_qos = rclcpp::QoS{1}.reliable().transient_local();
+    const auto memory_3d_source_qos = rclcpp::QoS{1}.best_effort().transient_local();
     const auto current_lidar_3d_qos = rclcpp::QoS{1}.best_effort();
 
     path_pub_ = create_publisher<nav_msgs::msg::Path>(
@@ -170,7 +171,8 @@ public:
     createSubscriptions(paths, markers, statuses, horizons, states);
     createCloudSubscriptions(
         CloudLayer::kMemory3d,
-        topicParameter("memory_3d_topics", "/raw_memory_points_3d"), transient_qos);
+        topicParameter("memory_3d_topics", "/raw_memory_points_3d"),
+        memory_3d_source_qos);
     createCloudSubscriptions(
         CloudLayer::kCurrentLidar,
         topicParameter("lidar_pointcloud_topics", "/lidar_debug_points"), reliable_qos);
