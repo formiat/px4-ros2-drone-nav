@@ -547,9 +547,20 @@ private:
   void onTimesync(const px4_msgs::msg::TimesyncStatus& message) {
     {
       const std::scoped_lock pose_lock{pose_history_mutex_};
-      time_mapper_.observeTimesync(message.timestamp, message.estimated_offset,
-                                   message.round_trip_time,
-                                   get_clock()->now().nanoseconds());
+      const Px4RosTimeObservation observation = time_mapper_.observeTimesync(
+          message.timestamp, message.estimated_offset, message.round_trip_time,
+          get_clock()->now().nanoseconds());
+      if (observation.rebased()) {
+        lidar_pose_history_.startNewGeneration();
+        const Px4RosTimeMappingDiagnostics diagnostics = time_mapper_.diagnostics();
+        RCLCPP_WARN(get_logger(),
+                    "LIDAR3D_TIME_MAPPING rebased=true time_generation=%" PRIu64
+                    " pose_history_generation=%" PRIu64 " samples=%zu rejected=%" PRIu64
+                    " discontinuities=%" PRIu64 " rebases=%" PRIu64,
+                    diagnostics.generation, lidar_pose_history_.generation(),
+                    diagnostics.sample_count, diagnostics.rejected_sample_count,
+                    diagnostics.clock_discontinuity_count, diagnostics.rebase_count);
+      }
     }
     processPendingClouds();
   }

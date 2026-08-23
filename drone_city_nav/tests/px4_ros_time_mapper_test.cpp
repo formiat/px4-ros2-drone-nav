@@ -70,6 +70,53 @@ TEST(Px4RosTimeMapperTest, RejectedOffsetDiscontinuityDoesNotPoisonRecovery) {
   EXPECT_EQ(diagnostics.latest_estimated_offset_ns, estimated_offset_us * 1000);
 }
 
+TEST(Px4RosTimeMapperTest, IsolatedDiscontinuityDoesNotStartNewGeneration) {
+  Px4RosTimeMapper mapper{
+      Px4RosTimeMapperConfig{2U, 16U, 0.999, 1.001, 50'000'000, 500'000'000, 3U}};
+  mapper.observeTimesync(1'000'000U, 0, 100U, 10'000'000'000);
+  mapper.observeTimesync(1'100'000U, 0, 100U, 10'100'000'000);
+  ASSERT_TRUE(mapper.ready());
+
+  const Px4RosTimeObservation outlier =
+      mapper.observeTimesync(5'000'000U, 0, 100U, 10'200'000'000);
+  EXPECT_EQ(outlier.status, Px4RosTimeObservationStatus::kRejectedDiscontinuity);
+  EXPECT_EQ(mapper.diagnostics().pending_rebase_sample_count, 1U);
+
+  const Px4RosTimeObservation recovered =
+      mapper.observeTimesync(1'200'000U, 0, 100U, 10'200'000'000);
+  EXPECT_EQ(recovered.status, Px4RosTimeObservationStatus::kAccepted);
+  const Px4RosTimeMappingDiagnostics diagnostics = mapper.diagnostics();
+  EXPECT_EQ(diagnostics.generation, 0U);
+  EXPECT_EQ(diagnostics.rebase_count, 0U);
+  EXPECT_EQ(diagnostics.pending_rebase_sample_count, 0U);
+}
+
+TEST(Px4RosTimeMapperTest, RebasesAfterPersistentCoherentClockTransition) {
+  Px4RosTimeMapper mapper{
+      Px4RosTimeMapperConfig{2U, 16U, 0.999, 1.001, 50'000'000, 500'000'000, 3U}};
+  mapper.observeTimesync(1'000'000U, 0, 100U, 10'000'000'000);
+  mapper.observeTimesync(1'100'000U, 0, 100U, 10'100'000'000);
+  ASSERT_TRUE(mapper.ready());
+
+  EXPECT_EQ(mapper.observeTimesync(5'000'000U, 0, 100U, 10'200'000'000).status,
+            Px4RosTimeObservationStatus::kRejectedDiscontinuity);
+  EXPECT_EQ(mapper.observeTimesync(5'100'000U, 0, 100U, 10'300'000'000).status,
+            Px4RosTimeObservationStatus::kRejectedDiscontinuity);
+  const Px4RosTimeObservation transition =
+      mapper.observeTimesync(5'200'000U, 0, 100U, 10'400'000'000);
+
+  EXPECT_TRUE(transition.rebased());
+  EXPECT_EQ(transition.generation, 1U);
+  const Px4RosTimeMappingDiagnostics diagnostics = mapper.diagnostics();
+  EXPECT_TRUE(diagnostics.ready);
+  EXPECT_EQ(diagnostics.sample_count, 3U);
+  EXPECT_EQ(diagnostics.pending_rebase_sample_count, 0U);
+  EXPECT_EQ(diagnostics.generation, 1U);
+  EXPECT_EQ(diagnostics.rebase_count, 1U);
+  EXPECT_EQ(mapper.px4LocalToRosTimeNs(5'250'000'000),
+            std::optional<std::int64_t>{10'450'000'000});
+}
+
 TEST(Px4RosTimeMapperTest, RejectedHighRttSampleDoesNotReplaceAcceptedOffset) {
   Px4RosTimeMapper mapper;
   mapper.observeTimesync(1'701'000'000U, -1'700'000'000, 100U, 1'000'000'000);

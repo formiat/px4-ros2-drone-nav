@@ -650,8 +650,11 @@ std::string formatLidarPoseAlignmentDiagnostic(
          << 1.0e-6 * static_cast<double>(result.attitude_timing.signed_extrapolation_ns)
          << "] time_mapping[ready=" << (result.time_mapping.ready ? "true" : "false")
          << " samples=" << result.time_mapping.sample_count
+         << " pending_rebase=" << result.time_mapping.pending_rebase_sample_count
          << " rejected=" << result.time_mapping.rejected_sample_count
          << " discontinuities=" << result.time_mapping.clock_discontinuity_count
+         << " generation=" << result.time_mapping.generation
+         << " rebases=" << result.time_mapping.rebase_count
          << " scale=" << result.time_mapping.scale
          << " offset_ms=" << 1.0e-6 * result.time_mapping.offset_ns
          << " max_residual_ms=" << 1.0e-6 * result.time_mapping.max_fit_residual_ns

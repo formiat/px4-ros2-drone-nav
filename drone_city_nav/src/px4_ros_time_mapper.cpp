@@ -72,12 +72,13 @@ Px4RosTimeMapper::Px4RosTimeMapper(const Px4RosTimeMapperConfig& config)
       std::max<std::int64_t>(0, config_.max_round_trip_time_ns);
   config_.max_clock_step_error_ns =
       std::max<std::int64_t>(0, config_.max_clock_step_error_ns);
+  config_.rebase_confirmation_samples = std::clamp(
+      config_.rebase_confirmation_samples, config_.min_samples, config_.max_samples);
 }
 
-void Px4RosTimeMapper::observeTimesync(const std::uint64_t adjusted_timestamp_us,
-                                       const std::int64_t estimated_offset_us,
-                                       const std::uint32_t round_trip_time_us,
-                                       const std::int64_t ros_receive_stamp_ns) {
+Px4RosTimeObservation Px4RosTimeMapper::observeTimesync(
+    const std::uint64_t adjusted_timestamp_us, const std::int64_t estimated_offset_us,
+    const std::uint32_t round_trip_time_us, const std::int64_t ros_receive_stamp_ns) {
   const auto px4_local_stamp_ns =
       checkedAdjustedTimestampNs(adjusted_timestamp_us, estimated_offset_us);
   const auto estimated_offset_ns = checkedOffsetNs(estimated_offset_us);
@@ -88,43 +89,84 @@ void Px4RosTimeMapper::observeTimesync(const std::uint64_t adjusted_timestamp_us
       ros_receive_stamp_ns <= 0 ||
       round_trip_time_ns > static_cast<std::uint64_t>(config_.max_round_trip_time_ns)) {
     ++rejected_sample_count_;
-    return;
+    return Px4RosTimeObservation{Px4RosTimeObservationStatus::kRejectedInvalid,
+                                 generation_};
   }
-  if (!samples_.empty()) {
-    const Sample& previous = samples_.back();
-    if (*px4_local_stamp_ns <= previous.px4_local_stamp_ns ||
-        ros_receive_stamp_ns <= previous.ros_receive_stamp_ns) {
-      ++rejected_sample_count_;
-      return;
+  const Sample sample{*px4_local_stamp_ns, ros_receive_stamp_ns, estimated_offset_us,
+                      *estimated_offset_ns};
+  if (!samples_.empty() && !stepsConsistent(samples_.back(), sample)) {
+    ++rejected_sample_count_;
+    ++clock_discontinuity_count_;
+    if (stageRebaseCandidate(sample)) {
+      rebaseFromCandidates();
+      return Px4RosTimeObservation{Px4RosTimeObservationStatus::kRebased, generation_};
     }
-    const std::int64_t px4_step_ns = *px4_local_stamp_ns - previous.px4_local_stamp_ns;
-    const std::int64_t ros_step_ns =
-        ros_receive_stamp_ns - previous.ros_receive_stamp_ns;
-    const std::int64_t clock_step_error_ns = px4_step_ns >= ros_step_ns
-                                                 ? px4_step_ns - ros_step_ns
-                                                 : ros_step_ns - px4_step_ns;
-    if (clock_step_error_ns > config_.max_clock_step_error_ns) {
-      ++rejected_sample_count_;
-      ++clock_discontinuity_count_;
-      return;
-    }
+    return Px4RosTimeObservation{Px4RosTimeObservationStatus::kRejectedDiscontinuity,
+                                 generation_};
   }
 
-  latest_estimated_offset_us_ = estimated_offset_us;
-  latest_estimated_offset_ns_ = *estimated_offset_ns;
+  rebase_candidates_.clear();
+  acceptSample(sample);
+  return Px4RosTimeObservation{Px4RosTimeObservationStatus::kAccepted, generation_};
+}
+
+bool Px4RosTimeMapper::stepsConsistent(const Sample& previous,
+                                       const Sample& current) const noexcept {
+  if (current.px4_local_stamp_ns <= previous.px4_local_stamp_ns ||
+      current.ros_receive_stamp_ns <= previous.ros_receive_stamp_ns) {
+    return false;
+  }
+  const std::int64_t px4_step_ns =
+      current.px4_local_stamp_ns - previous.px4_local_stamp_ns;
+  const std::int64_t ros_step_ns =
+      current.ros_receive_stamp_ns - previous.ros_receive_stamp_ns;
+  const std::int64_t clock_step_error_ns = px4_step_ns >= ros_step_ns
+                                               ? px4_step_ns - ros_step_ns
+                                               : ros_step_ns - px4_step_ns;
+  return clock_step_error_ns <= config_.max_clock_step_error_ns;
+}
+
+void Px4RosTimeMapper::acceptSample(const Sample& sample) {
+  latest_estimated_offset_us_ = sample.estimated_offset_us;
+  latest_estimated_offset_ns_ = sample.estimated_offset_ns;
   offset_available_ = true;
   if (std::find(recovery_offsets_us_.begin(), recovery_offsets_us_.end(),
-                estimated_offset_us) == recovery_offsets_us_.end()) {
-    recovery_offsets_us_.push_back(estimated_offset_us);
+                sample.estimated_offset_us) == recovery_offsets_us_.end()) {
+    recovery_offsets_us_.push_back(sample.estimated_offset_us);
   }
   while (recovery_offsets_us_.size() > config_.max_samples) {
     recovery_offsets_us_.pop_front();
   }
-  samples_.push_back(Sample{*px4_local_stamp_ns, ros_receive_stamp_ns});
+  samples_.push_back(sample);
   while (samples_.size() > config_.max_samples) {
     samples_.pop_front();
   }
   refit();
+}
+
+bool Px4RosTimeMapper::stageRebaseCandidate(const Sample& sample) {
+  if (!rebase_candidates_.empty() &&
+      !stepsConsistent(rebase_candidates_.back(), sample)) {
+    rebase_candidates_.clear();
+  }
+  rebase_candidates_.push_back(sample);
+  while (rebase_candidates_.size() > config_.rebase_confirmation_samples) {
+    rebase_candidates_.pop_front();
+  }
+  return rebase_candidates_.size() >= config_.rebase_confirmation_samples;
+}
+
+void Px4RosTimeMapper::rebaseFromCandidates() {
+  samples_.clear();
+  recovery_offsets_us_.clear();
+  offset_available_ = false;
+  ready_ = false;
+  for (const Sample& sample : rebase_candidates_) {
+    acceptSample(sample);
+  }
+  rebase_candidates_.clear();
+  ++generation_;
+  ++rebase_count_;
 }
 
 std::optional<std::int64_t> Px4RosTimeMapper::recoverPx4LocalTimeNs(
@@ -191,8 +233,11 @@ Px4RosTimeMappingDiagnostics Px4RosTimeMapper::diagnostics() const noexcept {
   return Px4RosTimeMappingDiagnostics{
       .ready = ready_,
       .sample_count = samples_.size(),
+      .pending_rebase_sample_count = rebase_candidates_.size(),
       .rejected_sample_count = rejected_sample_count_,
       .clock_discontinuity_count = clock_discontinuity_count_,
+      .generation = generation_,
+      .rebase_count = rebase_count_,
       .scale = scale_,
       .offset_ns = offset_ns_,
       .min_observed_latency_ns = min_observed_latency_ns_,
@@ -203,6 +248,7 @@ Px4RosTimeMappingDiagnostics Px4RosTimeMapper::diagnostics() const noexcept {
 
 void Px4RosTimeMapper::clear() noexcept {
   samples_.clear();
+  rebase_candidates_.clear();
   recovery_offsets_us_.clear();
   scale_ = 1.0;
   offset_ns_ = 0.0;
@@ -212,6 +258,8 @@ void Px4RosTimeMapper::clear() noexcept {
   latest_estimated_offset_us_ = 0;
   rejected_sample_count_ = 0U;
   clock_discontinuity_count_ = 0U;
+  generation_ = 0U;
+  rebase_count_ = 0U;
   offset_available_ = false;
   ready_ = false;
 }
