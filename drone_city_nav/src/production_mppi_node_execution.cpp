@@ -135,20 +135,16 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const std::shared_ptr<const LatestLidarObstacleSnapshot> latest_lidar_obstacle_scan =
       use_static_map_ ? nullptr
                       : latest_lidar_obstacle_scan_.load(std::memory_order_acquire);
-  constexpr std::int64_t kMaximumFutureScanSkewNs{100'000'000LL};
   double latest_lidar_obstacle_age_ms{-1.0};
   bool latest_lidar_obstacle_fresh{false};
+  bool latest_lidar_obstacle_receive_time_fallback{false};
   std::span<const Point3> latest_lidar_obstacle_points;
-  if (latest_lidar_obstacle_scan &&
-      latest_lidar_obstacle_scan->acquisition_stamp_ns > 0) {
-    const std::int64_t age_ns =
-        now_ns - latest_lidar_obstacle_scan->acquisition_stamp_ns;
-    latest_lidar_obstacle_age_ms =
-        static_cast<double>(std::max<std::int64_t>(0, age_ns)) * 1.0e-6;
-    const auto maximum_age_ns = static_cast<std::int64_t>(
-        std::llround(latest_lidar_obstacle_maximum_age_ms_ * 1.0e6));
-    latest_lidar_obstacle_fresh =
-        age_ns >= -kMaximumFutureScanSkewNs && age_ns <= maximum_age_ns;
+  if (latest_lidar_obstacle_scan) {
+    const LatestLidarObstacleFreshness freshness = assessLatestLidarObstacleFreshness(
+        *latest_lidar_obstacle_scan, now_ns, latest_lidar_obstacle_maximum_age_ms_);
+    latest_lidar_obstacle_age_ms = freshness.age_ms;
+    latest_lidar_obstacle_fresh = freshness.fresh;
+    latest_lidar_obstacle_receive_time_fallback = freshness.receive_time_fallback;
     if (latest_lidar_obstacle_fresh) {
       latest_lidar_obstacle_points =
           std::span<const Point3>{latest_lidar_obstacle_scan->hit_points_map_m};
@@ -283,6 +279,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       retained.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
       retained.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
       retained.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
+      retained.latest_lidar_obstacle_receive_time_fallback =
+          latest_lidar_obstacle_receive_time_fallback;
       retained.retained_previous_finite_path = true;
       retained.published = false;
       active.publication = retained;
@@ -377,6 +375,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     retained.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
     retained.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
     retained.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
+    retained.latest_lidar_obstacle_receive_time_fallback =
+        latest_lidar_obstacle_receive_time_fallback;
     retained.finite_path_validation_backoff = rebuilt.path_validation_backoff;
     retained.latest_lidar_path_validation_backoff =
         rebuilt.latest_lidar_path_validation_backoff;
@@ -445,6 +445,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     publication.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
     publication.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
     publication.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
+    publication.latest_lidar_obstacle_receive_time_fallback =
+        latest_lidar_obstacle_receive_time_fallback;
     publication.published = true;
     return publication;
   };
@@ -668,6 +670,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   publication.finite_path_first_failed_validation_status =
       validated_path.first_failed_validation_status;
   publication.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
+  publication.latest_lidar_obstacle_receive_time_fallback =
+      latest_lidar_obstacle_receive_time_fallback;
   publication.latest_lidar_path_validation_backoff =
       validated_path.latest_lidar_path_validation_backoff;
   publication.terminal_rest_state = true;

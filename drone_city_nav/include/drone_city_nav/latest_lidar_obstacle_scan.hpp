@@ -38,7 +38,17 @@ struct LatestLidarObstacleSnapshot {
   std::size_t invalid_beam_count{0U};
 };
 
+struct LatestLidarObstacleFreshness {
+  double age_ms{-1.0};
+  bool fresh{false};
+  bool receive_time_fallback{false};
+};
+
 [[nodiscard]] LatestLidarObstacleScanBuildResult
 buildLatestLidarObstacleScan(const LatestLidarObstacleScanBuildInput& input);
+
+[[nodiscard]] LatestLidarObstacleFreshness
+assessLatestLidarObstacleFreshness(const LatestLidarObstacleSnapshot& snapshot,
+                                   std::int64_t now_ns, double maximum_age_ms) noexcept;
 
 } // namespace drone_city_nav

@@ -31,6 +31,8 @@ std::string executionInfoFields(const ProductionMppiExecutionPublication& execut
                 execution.finite_path_first_failed_validation_status)
          << " latest_lidar_obstacle_fresh="
          << (execution.latest_lidar_obstacle_fresh ? "true" : "false")
+         << " latest_lidar_obstacle_receive_time_fallback="
+         << (execution.latest_lidar_obstacle_receive_time_fallback ? "true" : "false")
          << " latest_lidar_obstacle_sequence="
          << execution.latest_lidar_obstacle_sequence
          << " latest_lidar_obstacle_age_ms=" << execution.latest_lidar_obstacle_age_ms
@@ -69,6 +71,8 @@ std::string executionJsonFields(const ProductionMppiExecutionPublication& execut
                 execution.finite_path_first_failed_validation_status)
          << '\"' << ",\"latest_lidar_obstacle_fresh\":"
          << (execution.latest_lidar_obstacle_fresh ? "true" : "false")
+         << ",\"latest_lidar_obstacle_receive_time_fallback\":"
+         << (execution.latest_lidar_obstacle_receive_time_fallback ? "true" : "false")
          << ",\"latest_lidar_obstacle_sequence\":"
          << execution.latest_lidar_obstacle_sequence
          << ",\"latest_lidar_obstacle_age_ms\":"

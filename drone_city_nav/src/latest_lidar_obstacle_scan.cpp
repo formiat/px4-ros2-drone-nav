@@ -1,5 +1,6 @@
 #include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace drone_city_nav {
@@ -41,6 +42,33 @@ buildLatestLidarObstacleScan(const LatestLidarObstacleScanBuildInput& input) {
     }
   }
   result.valid = true;
+  return result;
+}
+
+LatestLidarObstacleFreshness
+assessLatestLidarObstacleFreshness(const LatestLidarObstacleSnapshot& snapshot,
+                                   const std::int64_t now_ns,
+                                   const double maximum_age_ms) noexcept {
+  LatestLidarObstacleFreshness result;
+  if (snapshot.acquisition_stamp_ns <= 0 || snapshot.receive_stamp_ns <= 0 ||
+      now_ns <= 0 || !std::isfinite(maximum_age_ms) || maximum_age_ms <= 0.0) {
+    return result;
+  }
+
+  const auto maximum_age_ns =
+      static_cast<std::int64_t>(std::llround(maximum_age_ms * 1.0e6));
+  if (maximum_age_ns <= 0) {
+    return result;
+  }
+  const std::int64_t acquisition_age_ns = now_ns - snapshot.acquisition_stamp_ns;
+  const std::int64_t receive_age_ns = now_ns - snapshot.receive_stamp_ns;
+  result.receive_time_fallback = acquisition_age_ns < 0;
+  result.age_ms = static_cast<double>(
+                      std::max({std::int64_t{0}, acquisition_age_ns, receive_age_ns})) *
+                  1.0e-6;
+  result.fresh = acquisition_age_ns >= -maximum_age_ns &&
+                 acquisition_age_ns <= maximum_age_ns && receive_age_ns >= 0 &&
+                 receive_age_ns <= maximum_age_ns;
   return result;
 }
 

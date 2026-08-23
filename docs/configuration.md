@@ -57,8 +57,11 @@ No-static direct raw validation:
 - `latest_lidar_obstacle_scan_topic` selects the timestamp-aligned raw-hit
   stream produced by obstacle memory;
 - `latest_lidar_obstacle_maximum_age_ms` bounds how long that direct evidence
-  participates in complete finite-path validation. Stale or missing data does
-  not create an obstacle.
+  participates in complete finite-path validation. Both acquisition and local
+  receipt must remain within this budget. A bounded acquisition timestamp ahead
+  of the consumer's simulated clock uses local receipt age so executor load does
+  not discard current evidence while `/clock` delivery catches up. Stale or
+  missing data does not create an obstacle.
 
 No-static 3D world:
 

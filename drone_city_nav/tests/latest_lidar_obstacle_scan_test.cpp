@@ -8,6 +8,8 @@
 namespace drone_city_nav {
 namespace {
 
+constexpr std::int64_t kSecondNs{1'000'000'000LL};
+
 TEST(LatestLidarObstacleScanTest, PreservesHitInAcquisitionBodyFrame) {
   LidarProjectionPose pose;
   pose.position = Point2{10.0, 20.0};
@@ -78,6 +80,69 @@ TEST(LatestLidarObstacleScanTest, UsesTimestampAlignedPoseForEveryBeam) {
   ASSERT_EQ(result.hit_points_body_frd.size(), 2U);
   EXPECT_NEAR(result.hit_points_body_frd[0].x, 5.0, 1.0e-9);
   EXPECT_GT(result.hit_points_body_frd[1].x, 5.9);
+}
+
+TEST(LatestLidarObstacleScanTest, UsesAcquisitionAgeWhenProducerClockIsCurrent) {
+  LatestLidarObstacleSnapshot snapshot;
+  snapshot.acquisition_stamp_ns = 9 * kSecondNs + 800'000'000LL;
+  snapshot.receive_stamp_ns = 9 * kSecondNs + 900'000'000LL;
+
+  const LatestLidarObstacleFreshness freshness =
+      assessLatestLidarObstacleFreshness(snapshot, 10 * kSecondNs, 1000.0);
+
+  EXPECT_TRUE(freshness.fresh);
+  EXPECT_DOUBLE_EQ(freshness.age_ms, 200.0);
+  EXPECT_FALSE(freshness.receive_time_fallback);
+}
+
+TEST(LatestLidarObstacleScanTest, UsesReceiveAgeForBoundedFutureAcquisitionStamp) {
+  LatestLidarObstacleSnapshot snapshot;
+  snapshot.acquisition_stamp_ns = 10 * kSecondNs + 800'000'000LL;
+  snapshot.receive_stamp_ns = 9 * kSecondNs + 950'000'000LL;
+
+  const LatestLidarObstacleFreshness freshness =
+      assessLatestLidarObstacleFreshness(snapshot, 10 * kSecondNs, 1000.0);
+
+  EXPECT_TRUE(freshness.fresh);
+  EXPECT_DOUBLE_EQ(freshness.age_ms, 50.0);
+  EXPECT_TRUE(freshness.receive_time_fallback);
+}
+
+TEST(LatestLidarObstacleScanTest, RejectsFutureAcquisitionBeyondFreshnessBudget) {
+  LatestLidarObstacleSnapshot snapshot;
+  snapshot.acquisition_stamp_ns = 11 * kSecondNs + 100'000'000LL;
+  snapshot.receive_stamp_ns = 9 * kSecondNs + 950'000'000LL;
+
+  const LatestLidarObstacleFreshness freshness =
+      assessLatestLidarObstacleFreshness(snapshot, 10 * kSecondNs, 1000.0);
+
+  EXPECT_FALSE(freshness.fresh);
+  EXPECT_TRUE(freshness.receive_time_fallback);
+}
+
+TEST(LatestLidarObstacleScanTest, RejectsDelayedAcquisitionDespiteRecentReceipt) {
+  LatestLidarObstacleSnapshot snapshot;
+  snapshot.acquisition_stamp_ns = 8 * kSecondNs + 900'000'000LL;
+  snapshot.receive_stamp_ns = 9 * kSecondNs + 950'000'000LL;
+
+  const LatestLidarObstacleFreshness freshness =
+      assessLatestLidarObstacleFreshness(snapshot, 10 * kSecondNs, 1000.0);
+
+  EXPECT_FALSE(freshness.fresh);
+  EXPECT_DOUBLE_EQ(freshness.age_ms, 1100.0);
+  EXPECT_FALSE(freshness.receive_time_fallback);
+}
+
+TEST(LatestLidarObstacleScanTest, RejectsStaleReceipt) {
+  LatestLidarObstacleSnapshot snapshot;
+  snapshot.acquisition_stamp_ns = 9 * kSecondNs + 500'000'000LL;
+  snapshot.receive_stamp_ns = 8 * kSecondNs + 900'000'000LL;
+
+  const LatestLidarObstacleFreshness freshness =
+      assessLatestLidarObstacleFreshness(snapshot, 10 * kSecondNs, 1000.0);
+
+  EXPECT_FALSE(freshness.fresh);
+  EXPECT_DOUBLE_EQ(freshness.age_ms, 1100.0);
 }
 
 } // namespace

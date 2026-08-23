@@ -502,6 +502,7 @@ struct ProductionMppiExecutionPublication {
   mppi::FiniteExecutionPathStatus finite_path_first_failed_validation_status{
       mppi::FiniteExecutionPathStatus::kValid};
   bool latest_lidar_obstacle_fresh{false};
+  bool latest_lidar_obstacle_receive_time_fallback{false};
   bool latest_lidar_path_validation_backoff{false};
   bool retained_previous_finite_path{false};
   bool terminal_rest_state{false};
