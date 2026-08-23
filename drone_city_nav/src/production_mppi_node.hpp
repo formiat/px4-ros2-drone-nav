@@ -168,7 +168,9 @@ enum class ProductionGuideCandidateValidationStatus : std::uint8_t {
 };
 
 struct ProductionMppiPreparedEsdf;
+struct ProductionRouteActivationSnapshot3D;
 struct ProductionRouteActivationResult3D;
+struct ProductionRouteMaterialization3D;
 
 struct ProductionMppiRawWorld2D {
   RawMapVersion version{};
@@ -435,16 +437,18 @@ enum class ProductionIncrementalTopologyRejectionReason3D : std::uint8_t {
   kMaterializedRouteRawCollision,
 };
 
-struct ProductionRouteCandidateSelection3D {
+struct ProductionRouteSearchCandidate3D {
   RouteIntent3D intent{};
   SegmentEvidence3D evidence{};
   RiskAwareLattice3DResult lattice{};
-  ProductionIncrementalTopologySearch3D topology{};
-  std::optional<Lattice3DStrategicDirective> directive;
-  RouteProposalSelection3D proposal_selection{};
+  std::optional<ProductionIncrementalTopologySearch3D> topology;
+  Lattice3DStrategicDirective directive{};
+};
+
+struct ProductionRouteCandidateSet3D {
+  std::vector<ProductionRouteSearchCandidate3D> candidates;
   Vec3 preferred_direction{};
   double search_ms{0.0};
-  bool topology_route_used{false};
 };
 
 struct ProductionRouteExecutionSelection3D {
@@ -645,15 +649,25 @@ private:
   assessActiveRouteCompletion3D(const ProductionMppiPreparedEsdf& world,
                                 const Point3& position);
   [[nodiscard]] std::uint64_t nextRouteGeneration3D();
+  [[nodiscard]] ProductionRouteActivationSnapshot3D captureRouteActivationSnapshot3D();
   [[nodiscard]] ProductionRouteActivationResult3D
-  finalizeRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
-                            ProductionMppiPreparedEsdf prepared,
-                            NavigationWorldCertificate3D planned_world_certificate,
-                            StaticRouteCandidateValidation validation,
-                            StaticRouteReplacementPolicy replacement_policy,
-                            const Point3& mission_goal,
-                            std::uint64_t candidate_generation);
-  [[nodiscard]] ProductionRouteCandidateSelection3D selectRouteCandidate3D(
+  prepareRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
+                           ProductionMppiPreparedEsdf prepared,
+                           NavigationWorldCertificate3D planned_world_certificate,
+                           StaticRouteCandidateValidation validation,
+                           StaticRouteReplacementPolicy replacement_policy,
+                           const Point3& mission_goal,
+                           const ProductionRouteActivationSnapshot3D& snapshot);
+  void commitRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
+                               const ProductionRouteActivationSnapshot3D& snapshot,
+                               std::uint64_t candidate_generation,
+                               ProductionRouteActivationResult3D& result);
+  [[nodiscard]] ProductionRouteMaterialization3D materializeRouteCandidate3D(
+      const ProductionMppiPreparedEsdf& world,
+      const ProductionMppiNavigation& navigation, const Point3& mission_goal,
+      const ProductionRouteSearchCandidate3D& candidate,
+      std::uint64_t candidate_generation, bool active_observation_segment_completed);
+  [[nodiscard]] ProductionRouteCandidateSet3D generateRouteCandidates3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
       const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world);

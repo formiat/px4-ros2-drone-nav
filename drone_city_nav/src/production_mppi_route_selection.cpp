@@ -13,14 +13,6 @@
 namespace drone_city_nav {
 namespace {
 
-struct ProductionRouteSearchCandidate3D {
-  RouteIntent3D intent{};
-  SegmentEvidence3D evidence{};
-  RiskAwareLattice3DResult lattice{};
-  std::optional<ProductionIncrementalTopologySearch3D> topology;
-  Lattice3DStrategicDirective directive{};
-};
-
 [[nodiscard]] bool latticeExecutable(const RiskAwareLattice3DResult& lattice) noexcept {
   return lattice.status == Lattice3DStatus::kReachedPlanningGoal ||
          lattice.status == Lattice3DStatus::kViableFrontier;
@@ -84,19 +76,9 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
   };
 }
 
-[[nodiscard]] RouteProposal3D
-proposal(const ProductionRouteSearchCandidate3D& candidate) noexcept {
-  return RouteProposal3D{
-      .intent = candidate.intent,
-      .evidence = candidate.evidence,
-      .route_fingerprint = candidate.lattice.route_fingerprint,
-      .activation_eligible = candidate.evidence.physical_executable,
-  };
-}
-
 } // namespace
 
-ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
+ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
     const Point3& mission_goal,
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world) {
@@ -241,10 +223,7 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
     add_candidate(intent, directive, plan_lattice(directive));
   }
 
-  const bool direct_completed = !candidates.empty() &&
-                                candidates.front().evidence.physical_executable &&
-                                candidates.front().evidence.reaches_segment_target;
-  if (direct_mission_candidate && !direct_completed) {
+  if (direct_mission_candidate) {
     ProductionIncrementalTopologySearch3D topology =
         selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
     RCLCPP_INFO(get_logger(),
@@ -300,91 +279,41 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
     }
   }
 
-  std::vector<RouteProposal3D> proposals;
-  proposals.reserve(candidates.size());
-  for (const ProductionRouteSearchCandidate3D& candidate : candidates) {
-    proposals.push_back(proposal(candidate));
-  }
-  RouteProposalSelection3D selection =
-      selectRouteProposal3D(proposals, route_proposal_selection_3d_config_);
   for (std::size_t index = 0U; index < candidates.size(); ++index) {
     const ProductionRouteSearchCandidate3D& candidate = candidates[index];
-    RCLCPP_INFO(get_logger(),
-                "ROUTE_PROPOSAL3D revision=%" PRIu64 " index=%zu selected=%s "
-                "intent_id=%" PRIu64 " source=%s purpose=%s planned_on=%" PRIu64
-                " validated_through=%" PRIu64 " status=%s physical=%s "
-                "segment_target=%s intent_target=%s mission_target=%s strategic=%s "
-                "strategic_mission_continuation=%s "
-                "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
-                "route_length_m=%.2f endpoint_displacement_m=%.2f "
-                "mission_progress_m=%.2f productive_direct=%s objective=%.3f",
-                world.revision, index,
-                selection.selected_index.value_or(candidates.size()) == index ? "true"
-                                                                              : "false",
-                candidate.intent.id, routeIntentSource3DName(candidate.intent.source),
-                routeIntentPurpose3DName(candidate.intent.purpose),
-                candidate.evidence.planned_on_revision,
-                candidate.evidence.validated_through_revision,
-                segmentEvidenceStatus3DName(candidate.evidence.status),
-                candidate.evidence.physical_executable ? "true" : "false",
-                candidate.evidence.reaches_segment_target ? "true" : "false",
-                candidate.evidence.reaches_intent_target ? "true" : "false",
-                candidate.evidence.reaches_mission_target ? "true" : "false",
-                candidate.intent.strategic_continuation_available ? "true" : "false",
-                isStrategicMissionContinuation3D(proposals[index]) ? "true" : "false",
-                candidate.evidence.unknown_exposure ? "true" : "false",
-                candidate.evidence.known_clearance_observed ? "true" : "false",
-                candidate.evidence.minimum_known_clearance_m,
-                candidate.evidence.route_length_m,
-                candidate.evidence.endpoint_displacement_m,
-                candidate.evidence.mission_progress_m,
-                isProductiveDirectTransit3D(proposals[index],
-                                            route_proposal_selection_3d_config_)
-                    ? "true"
-                    : "false",
-                candidate.evidence.objective_cost);
+    RCLCPP_INFO(
+        get_logger(),
+        "ROUTE_PROPOSAL3D stage=generated revision=%" PRIu64 " index=%zu "
+        "intent_id=%" PRIu64 " source=%s purpose=%s planned_on=%" PRIu64
+        " validated_through=%" PRIu64 " status=%s physical=%s "
+        "segment_target=%s intent_target=%s mission_target=%s strategic=%s "
+        "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
+        "route_length_m=%.2f endpoint_displacement_m=%.2f "
+        "mission_progress_m=%.2f objective=%.3f",
+        world.revision, index, candidate.intent.id,
+        routeIntentSource3DName(candidate.intent.source),
+        routeIntentPurpose3DName(candidate.intent.purpose),
+        candidate.evidence.planned_on_revision,
+        candidate.evidence.validated_through_revision,
+        segmentEvidenceStatus3DName(candidate.evidence.status),
+        candidate.evidence.physical_executable ? "true" : "false",
+        candidate.evidence.reaches_segment_target ? "true" : "false",
+        candidate.evidence.reaches_intent_target ? "true" : "false",
+        candidate.evidence.reaches_mission_target ? "true" : "false",
+        candidate.intent.strategic_continuation_available ? "true" : "false",
+        candidate.evidence.unknown_exposure ? "true" : "false",
+        candidate.evidence.known_clearance_observed ? "true" : "false",
+        candidate.evidence.minimum_known_clearance_m, candidate.evidence.route_length_m,
+        candidate.evidence.endpoint_displacement_m,
+        candidate.evidence.mission_progress_m, candidate.evidence.objective_cost);
   }
-  for (const ProductionRouteSearchCandidate3D& candidate : candidates) {
-    if (candidate.topology.has_value() &&
-        candidate.evidence.status == SegmentEvidenceStatus3D::kRawCollision) {
-      rejectIncrementalTopologyRoute3D(
-          *candidate.topology,
-          ProductionIncrementalTopologyRejectionReason3D::kSegmentEvidenceRawCollision);
-    }
-  }
-
-  ProductionRouteCandidateSelection3D result{
-      .intent = {},
-      .evidence = {},
-      .lattice = {},
-      .topology = {},
-      .directive = std::nullopt,
-      .proposal_selection = selection,
-      .preferred_direction = {},
+  return ProductionRouteCandidateSet3D{
+      .candidates = std::move(candidates),
+      .preferred_direction = preferred_direction,
       .search_ms = std::chrono::duration<double, std::milli>(
                        std::chrono::steady_clock::now() - search_started)
                        .count(),
-      .topology_route_used = false,
   };
-  if (candidates.empty()) {
-    return result;
-  }
-  const std::size_t selected_index =
-      selection.selected_index.value_or(candidates.size());
-  if (selected_index >= candidates.size()) {
-    return result;
-  }
-  ProductionRouteSearchCandidate3D selected = std::move(candidates[selected_index]);
-  result.intent = selected.intent;
-  result.evidence = selected.evidence;
-  result.lattice = std::move(selected.lattice);
-  result.directive = selected.directive;
-  result.preferred_direction = selected.directive.preferred_direction;
-  if (selected.topology) {
-    result.topology = std::move(*selected.topology);
-    result.topology_route_used = true;
-  }
-  return result;
 }
 
 } // namespace drone_city_nav

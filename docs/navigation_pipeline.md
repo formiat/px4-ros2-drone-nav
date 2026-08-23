@@ -80,15 +80,20 @@ An accepted guide is sticky. It is retained across ESDF revisions while its
 remaining portion is valid and useful. Replacement reasons include blocking,
 exhaustion, excessive cross-track error, and observed stall.
 
-Route activation is a single optimistic transaction over an immutable resident
-world plus one jointly captured pose/applied-control snapshot. The final
-candidate is rebased onto that resident generation before publication. Its
-current-pose connector and remaining suffix are then swept against the raw
-occupancy that produced the resident ESDF; collisions in an already passed
-prefix do not reject the route. The same pose and applied control drive the
-dynamic handoff simulation. Publication is abandoned if the resident world,
-objective, or raw snapshot changes before the route supervisor commits it.
-Unknown voxels remain traversable during this raw check.
+Direct and incremental-topology searches produce at most two plan-level
+candidates. Both are materialized, geometry-optimized, certified, rebased onto
+one immutable resident generation, and checked for dynamic handoff before route
+arbitration. A failed final check makes that candidate ineligible, so another
+fully prepared candidate can win; an empty selection publishes no route.
+
+Route activation is then a single optimistic transaction over that immutable
+resident world plus the jointly captured pose/applied-control snapshot. The
+current-pose connector and remaining suffix are swept against the raw occupancy
+that produced the resident ESDF; collisions in an already passed prefix do not
+reject the route. The same pose and applied control drive the dynamic handoff
+simulation. Publication is abandoned if the resident world, objective, or raw
+snapshot changes before the route supervisor commits it. Unknown voxels remain
+traversable during this raw check.
 
 Initial search heading uses a cascade:
 

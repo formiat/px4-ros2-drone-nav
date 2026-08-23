@@ -13,17 +13,6 @@
 namespace drone_city_nav {
 namespace {
 
-struct ProductionRouteActivationSnapshot3D {
-  std::optional<ProductionMppiPreparedEsdf> resident_world;
-  ProductionMppiNavigation navigation{};
-  ProductionMppiAppliedControl applied_control{};
-  std::shared_ptr<const ProductionNavigationObjective> objective;
-  std::shared_ptr<const ProductionMppiRawWorld3D> raw_world;
-  std::uint64_t minimum_tracking_route_mission_epoch{0U};
-  std::uint64_t minimum_tracking_route_sample_sequence{0U};
-  std::int64_t stamp_ns{0};
-};
-
 [[nodiscard]] StaticRouteCandidateStatus
 candidateStatusFromRiskAssignment(const RouteRiskTierAssignmentStatus status) noexcept {
   if (status == RouteRiskTierAssignmentStatus::kRawCollision) {
@@ -48,12 +37,35 @@ sameActivationWorld(const ProductionMppiPreparedEsdf& current,
 
 } // namespace
 
-ProductionRouteActivationResult3D ProductionMppiNode::finalizeRouteActivation3D(
+bool ProductionRouteActivationResult3D::readyForArbitration() const noexcept {
+  return proposal.identity.activation_eligible && assessment.accepted() &&
+         handoff.accepted && proposal.geometry.route &&
+         proposal.geometry.constrained_spans && world_compatible && objective_matches;
+}
+
+ProductionRouteActivationSnapshot3D
+ProductionMppiNode::captureRouteActivationSnapshot3D() {
+  ProductionRouteActivationSnapshot3D snapshot;
+  const std::scoped_lock lock{input_mutex_, esdf_state_mutex_};
+  snapshot.resident_world = prepared_esdf_;
+  snapshot.navigation = navigation_;
+  snapshot.applied_control = applied_control_;
+  snapshot.objective = navigationObjective();
+  snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);
+  snapshot.minimum_tracking_route_mission_epoch =
+      minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
+  snapshot.minimum_tracking_route_sample_sequence =
+      minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire);
+  snapshot.stamp_ns = get_clock()->now().nanoseconds();
+  return snapshot;
+}
+
+ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     const ProductionMppiPreparedEsdf& search_world, ProductionMppiPreparedEsdf prepared,
     const NavigationWorldCertificate3D planned_world_certificate,
     StaticRouteCandidateValidation validation,
     const StaticRouteReplacementPolicy replacement_policy, const Point3& mission_goal,
-    const std::uint64_t candidate_generation) {
+    const ProductionRouteActivationSnapshot3D& snapshot) {
   ProductionRouteActivationResult3D result{
       .prepared = std::move(prepared),
       .validation = validation,
@@ -64,20 +76,6 @@ ProductionRouteActivationResult3D ProductionMppiNode::finalizeRouteActivation3D(
           : StaticRouteActivationStatus::kCandidateNotExecutable;
   ProductionMppiPreparedEsdf& candidate = result.prepared;
 
-  ProductionRouteActivationSnapshot3D snapshot;
-  {
-    const std::scoped_lock lock{input_mutex_, esdf_state_mutex_};
-    snapshot.resident_world = prepared_esdf_;
-    snapshot.navigation = navigation_;
-    snapshot.applied_control = applied_control_;
-    snapshot.objective = navigationObjective();
-    snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);
-    snapshot.minimum_tracking_route_mission_epoch =
-        minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
-    snapshot.minimum_tracking_route_sample_sequence =
-        minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire);
-    snapshot.stamp_ns = get_clock()->now().nanoseconds();
-  }
   result.snapshot_pose_revision = snapshot.navigation.revision;
   result.snapshot_raw_revision =
       snapshot.raw_world ? snapshot.raw_world->version.revision : 0U;
@@ -162,6 +160,23 @@ ProductionRouteActivationResult3D ProductionMppiNode::finalizeRouteActivation3D(
   NavigationWorldCertificate3D validated_world_certificate =
       navigationWorldCertificate3D(candidate);
   SegmentEvidence3D activation_evidence = candidate.route_segment_evidence;
+  if (candidate.route_3d && candidate.route_3d->size() >= 2U) {
+    const Point3 snapshot_position{snapshot.navigation.state.x,
+                                   snapshot.navigation.state.y,
+                                   snapshot.navigation.state.z};
+    activation_evidence.route_length_m = 0.0;
+    for (std::size_t index = 1U; index < candidate.route_3d->size(); ++index) {
+      activation_evidence.route_length_m +=
+          distance3D((*candidate.route_3d)[index - 1U].position,
+                     (*candidate.route_3d)[index].position);
+    }
+    activation_evidence.endpoint_displacement_m =
+        distance3D(snapshot_position, candidate.route_3d->back().position);
+    activation_evidence.mission_progress_m =
+        distance3D(snapshot_position, candidate.route_intent.mission_target) -
+        distance3D(candidate.route_3d->back().position,
+                   candidate.route_intent.mission_target);
+  }
   activation_evidence.physical_executable =
       candidate.lattice_executable && result.validation.accepted;
   const MaterializedRouteProposal3D activation_identity{
@@ -266,7 +281,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::finalizeRouteActivation3D(
   validated_world_certificate.raw_validated_through_revision =
       result.assessment.raw_validated_through_revision;
 
-  const ProductionMaterializedRouteProposal3D materialized_proposal{
+  result.proposal = ProductionMaterializedRouteProposal3D{
       .identity =
           MaterializedRouteProposal3D{
               .planned_world = planned_world_certificate,
@@ -303,9 +318,8 @@ ProductionRouteActivationResult3D ProductionMppiNode::finalizeRouteActivation3D(
                           snapshot.applied_control.receive_stamp_ns) *
               1.0e-6 <=
           maximum_control_feedback_age_ms_;
-  if (materialized_proposal.identity.activation_eligible &&
-      result.assessment.accepted() && candidate.mppi_route && candidate.distances_m &&
-      snapshot.navigation.valid) {
+  if (result.proposal.identity.activation_eligible && result.assessment.accepted() &&
+      candidate.mppi_route && candidate.distances_m && snapshot.navigation.valid) {
     result.handoff = mppi::validateStaticRouteHandoff(
         snapshot.navigation.state,
         handoff_control_fresh ? snapshot.applied_control.control : mppi::Control{},
@@ -314,6 +328,34 @@ ProductionRouteActivationResult3D ProductionMppiNode::finalizeRouteActivation3D(
         static_cast<float>(active_guide_config_.maximum_cross_track_m), mppi_config_,
         candidate.grid, *candidate.distances_m);
   }
+
+  result.proposal.identity.activation_eligible =
+      result.proposal.identity.activation_eligible && result.assessment.accepted() &&
+      result.handoff.accepted && result.proposal.geometry.route &&
+      result.proposal.geometry.constrained_spans && result.world_compatible &&
+      result.objective_matches;
+
+  if (result.validation.accepted && !result.world_compatible) {
+    result.activation_status = StaticRouteActivationStatus::kWorldPublicationRejected;
+  } else if (result.validation.accepted && !result.objective_matches) {
+    result.activation_status = StaticRouteActivationStatus::kStaleObjective;
+  } else if (result.validation.accepted && !result.readyForArbitration()) {
+    result.activation_status = StaticRouteActivationStatus::kDynamicHandoffRejected;
+  }
+  candidate.static_route_activation_status = result.activation_status;
+  candidate.static_route_publication_status = result.assessment.publication.status;
+  candidate.static_route_world_compatible = result.world_compatible;
+  return result;
+}
+
+void ProductionMppiNode::commitRouteActivation3D(
+    const ProductionMppiPreparedEsdf& search_world,
+    const ProductionRouteActivationSnapshot3D& snapshot,
+    const std::uint64_t candidate_generation,
+    ProductionRouteActivationResult3D& result) {
+  ProductionMppiPreparedEsdf& candidate = result.prepared;
+  const ProductionMaterializedRouteProposal3D& materialized_proposal = result.proposal;
+  const bool raw_validation_required = candidate.observed_occupancy != nullptr;
 
   {
     const std::scoped_lock lock{esdf_state_mutex_, route_supervisor_mutex_};
@@ -355,11 +397,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::finalizeRouteActivation3D(
                                            GlobalGuideReleaseReason::kBlocked});
 
     std::optional<ActivatedRouteIdentity3D> activated_identity;
-    if (materialized_proposal.identity.activation_eligible &&
-        result.assessment.accepted() && result.handoff.accepted &&
-        materialized_proposal.geometry.route &&
-        materialized_proposal.geometry.constrained_spans && result.world_compatible &&
-        result.generation_matches && result.objective_matches &&
+    if (result.readyForArbitration() && result.generation_matches &&
         result.snapshot_current && result.replacement.replacementAllowed()) {
       const std::optional<std::uint64_t> activated_generation =
           route_supervisor_.activate(materialized_proposal.identity);
@@ -410,7 +448,6 @@ ProductionRouteActivationResult3D ProductionMppiNode::finalizeRouteActivation3D(
     candidate.static_route_world_compatible = result.world_compatible;
     candidate.static_route_generation_matches = result.generation_matches;
   }
-  return result;
 }
 
 } // namespace drone_city_nav

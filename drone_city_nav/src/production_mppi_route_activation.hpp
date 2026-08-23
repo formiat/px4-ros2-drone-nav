@@ -6,8 +6,20 @@
 
 namespace drone_city_nav {
 
+struct ProductionRouteActivationSnapshot3D {
+  std::optional<ProductionMppiPreparedEsdf> resident_world;
+  ProductionMppiNavigation navigation{};
+  ProductionMppiAppliedControl applied_control{};
+  std::shared_ptr<const ProductionNavigationObjective> objective;
+  std::shared_ptr<const ProductionMppiRawWorld3D> raw_world;
+  std::uint64_t minimum_tracking_route_mission_epoch{0U};
+  std::uint64_t minimum_tracking_route_sample_sequence{0U};
+  std::int64_t stamp_ns{0};
+};
+
 struct ProductionRouteActivationResult3D {
   ProductionMppiPreparedEsdf prepared{};
+  ProductionMaterializedRouteProposal3D proposal{};
   StaticRouteCandidateValidation validation{};
   RouteActivationAssessment3D assessment{};
   RouteProposalReplacementAssessment3D replacement{};
@@ -24,6 +36,8 @@ struct ProductionRouteActivationResult3D {
   bool observed_world_rebased{false};
   bool publication_world_advanced{false};
   bool activated{false};
+
+  [[nodiscard]] bool readyForArbitration() const noexcept;
 };
 
 } // namespace drone_city_nav

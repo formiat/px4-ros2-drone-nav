@@ -71,6 +71,40 @@ TEST(RoutePlanning3DTest, RawRejectedDirectCandidateLosesToTopologyInSameDecisio
   EXPECT_EQ(selection.eligible_candidates, 1U);
 }
 
+TEST(RoutePlanning3DTest,
+     DirectCandidateRejectedByFinalHandoffFallsBackToPreparedTopology) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, false, true, true, true, 1.0,
+               20.0, 20.0, 15U, 20.0),
+      proposal(RouteIntentSource3D::kTopology, true, true, true, true, false, false,
+               10.0, 8.0, 30.0, 16U),
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
+
+  ASSERT_TRUE(selection.selected_index.has_value());
+  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
+  EXPECT_EQ(selection.eligible_candidates, 1U);
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kOnlyEligibleCandidate);
+}
+
+TEST(RoutePlanning3DTest, NoPreparedCandidateLeavesSelectionEmpty) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, false, true, true, true, 1.0,
+               20.0, 20.0, 17U, 20.0),
+      proposal(RouteIntentSource3D::kTopology, true, false, false, false, false, false,
+               10.0, 8.0, 30.0, 18U),
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
+
+  EXPECT_FALSE(selection.selected_index.has_value());
+  EXPECT_EQ(selection.eligible_candidates, 0U);
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kNoEligibleCandidate);
+}
+
 TEST(RoutePlanning3DTest, StrategicBypassBeatsShorterGoalDirectedPrefix) {
   const std::vector<RouteProposal3D> proposals{
       proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,

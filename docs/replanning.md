@@ -42,13 +42,19 @@ pretending that ESDF content changed. Raw-map revisions and local-world
 generations therefore remain stable until new content or a pose-driven local
 window recenter produces a new immutable planning snapshot.
 
-A replacement is activated from one immutable bundle containing the resident
-CPU occupancy/ESDF/topology generation, the linked GPU ESDF revision, current
-raw occupancy, objective, pose, and applied control. Final validation starts at
-the current route projection: it checks the connector and remaining suffix,
-then runs dynamic handoff from the same pose/control snapshot. If newer raw
-content has not yet produced its matching local-world generation, activation
-waits for that generation instead of mixing revisions.
+A replacement search prepares both direct and incremental-topology candidates
+when available. Geometry optimization, final certification, and dynamic handoff
+all precede arbitration, so a preferred candidate rejected at the final check
+does not hide an executable fallback. `selected_index == nullopt` means that no
+route is eligible.
+
+The selected replacement is activated from one immutable bundle containing the
+resident CPU occupancy/ESDF/topology generation, the linked GPU ESDF revision,
+current raw occupancy, objective, pose, and applied control. Final validation
+starts at the current route projection: it checks the connector and remaining
+suffix, then runs dynamic handoff from the same pose/control snapshot. If newer
+raw content has not yet produced its matching local-world generation,
+activation waits for that generation instead of mixing revisions.
 
 Heading bias for a replacement guide comes from velocity at speed, the previous
 accepted-guide tangent at low speed, or mission-goal direction as the final
