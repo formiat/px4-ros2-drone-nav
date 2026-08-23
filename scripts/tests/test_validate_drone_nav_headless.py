@@ -22,8 +22,10 @@ class MappingPipelineValidationTest(unittest.TestCase):
         self,
     ) -> None:
         log = (
-            "LIDAR3D_SCAN accepted=true source=4080 hits=1500 misses=2500 "
-            "revision=8 current_cloud=true\n"
+            "LIDAR3D_CURRENT_SCAN accepted=true stamp_ns=123 sequence=8 "
+            "source=4080 hits=1500 invalid=80 debug=true\n"
+            "LIDAR3D_MEMORY accepted=true stamp_ns=123 source=4080 processed=4000 "
+            "hits=1500 misses=2500 revision=8 debug=true\n"
             "ONLINE_OCCUPANCY3D_UPDATE revision=8 known=12000 "
             "snapshot=true delta=false debug_cloud=true\n"
         )
@@ -37,7 +39,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
         errors: list[str] = []
 
         VALIDATOR.validate_mapping_pipeline(
-            "LIDAR3D_SCAN accepted=true hits=4300 revision=8\n",
+            "LIDAR3D_MEMORY accepted=true stamp_ns=123 hits=4300 revision=8\n",
             "3d",
             True,
             False,
@@ -53,7 +55,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
         errors: list[str] = []
 
         VALIDATOR.validate_mapping_pipeline(
-            "LIDAR3D_SCAN accepted=true hits=4300 misses=0 revision=8\n",
+            "LIDAR3D_MEMORY accepted=true stamp_ns=123 hits=4300 misses=0 revision=8\n",
             "3d",
             True,
             False,

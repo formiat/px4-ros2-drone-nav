@@ -203,6 +203,42 @@ TEST_F(IncrementalTopologicalNavigation3DLifecycleTest,
 }
 
 TEST_F(IncrementalTopologicalNavigation3DLifecycleTest,
+       AcceptedRouteExecutionDoesNotRegressAtSelfOverlap) {
+  IncrementalTopologicalPlan3D plan;
+  plan.status = IncrementalTopologicalPlanStatus3D::kMissionRoute;
+  plan.purpose = IncrementalTopologicalRoutePurpose3D::kMissionTransit;
+  plan.planned_on_revision = world().graph.revision;
+  plan.validated_through_revision = world().graph.revision;
+  plan.mission_target = goal();
+  plan.target_node = IncrementalTopologyNodeId{42U};
+  plan.route_nodes = {IncrementalTopologyNodeId{1U}, plan.target_node};
+  plan.guidance_points = {
+      {0.0, 0.0, 5.5}, {10.0, 0.0, 5.5}, {0.0, 0.0, 5.5}, {0.0, 10.0, 5.5}};
+  ASSERT_TRUE(navigation().commitAcceptedPlan(plan).accepted);
+  const IncrementalTopologicalLatticeAdapter3DConfig adapter_config{
+      .maximum_lookahead_m = 5.0, .segment_capture_radius_m = 0.1};
+
+  const auto initial =
+      navigation().makeLatticeDirective(plan, {9.0, 0.0, 5.5}, adapter_config);
+  ASSERT_TRUE(initial.has_value());
+  const IncrementalTopologicalLatticeDirective3D initial_directive =
+      initial.value_or(IncrementalTopologicalLatticeDirective3D{});
+  EXPECT_DOUBLE_EQ(initial_directive.source_station_m, 9.0);
+
+  plan.continued_from_active_plan = true;
+  ASSERT_TRUE(navigation().commitAcceptedPlan(plan).accepted);
+  const auto continued =
+      navigation().makeLatticeDirective(plan, {2.0, 0.0, 5.5}, adapter_config);
+
+  ASSERT_TRUE(continued.has_value());
+  const IncrementalTopologicalLatticeDirective3D continued_directive =
+      continued.value_or(IncrementalTopologicalLatticeDirective3D{});
+  EXPECT_DOUBLE_EQ(continued_directive.progress_floor_station_m, 9.0);
+  EXPECT_DOUBLE_EQ(continued_directive.source_station_m, 18.0);
+  EXPECT_EQ(continued_directive.source_segment_index, 1U);
+}
+
+TEST_F(IncrementalTopologicalNavigation3DLifecycleTest,
        FrontierWithoutRemainingUnknownVolumeIsNotContinued) {
   IncrementalTopologicalPlan3D frontier_plan;
   frontier_plan.status = IncrementalTopologicalPlanStatus3D::kFrontierRoute;

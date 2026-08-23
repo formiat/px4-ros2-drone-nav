@@ -27,6 +27,7 @@ struct IncrementalTopologicalLatticeDirective3D {
   std::size_t source_segment_index{0U};
   double source_station_m{0.0};
   double target_station_m{0.0};
+  double progress_floor_station_m{0.0};
   double projection_distance_m{0.0};
   std::size_t captured_bends_skipped{0U};
   bool reaches_topological_target{false};
@@ -42,8 +43,8 @@ struct TopologicalPolylineProjection3D {
 };
 
 [[nodiscard]] std::optional<TopologicalPolylineProjection3D>
-projectOntoTopologicalPolyline3D(std::span<const Point3> points,
-                                 const Point3& position);
+projectOntoTopologicalPolyline3D(std::span<const Point3> points, const Point3& position,
+                                 double minimum_station_m = 0.0);
 
 [[nodiscard]] bool incrementalTopologicalLatticeAdapter3DConfigIsValid(
     const IncrementalTopologicalLatticeAdapter3DConfig& config) noexcept;
@@ -51,6 +52,7 @@ projectOntoTopologicalPolyline3D(std::span<const Point3> points,
 [[nodiscard]] std::optional<IncrementalTopologicalLatticeDirective3D>
 makeIncrementalTopologicalLatticeDirective3D(
     const IncrementalTopologicalPlan3D& plan, const Point3& position,
-    const IncrementalTopologicalLatticeAdapter3DConfig& config = {});
+    const IncrementalTopologicalLatticeAdapter3DConfig& config = {},
+    double minimum_source_station_m = 0.0);
 
 } // namespace drone_city_nav

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/incremental_topological_planner_3d.hpp"
+#include "drone_city_nav/incremental_topological_lattice_adapter_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 
@@ -41,6 +41,11 @@ struct IncrementalTopologicalNavigation3DConfig {
   double maximum_active_route_cross_track_m{20.0};
 };
 
+struct IncrementalTopologicalRouteExecution3D {
+  double station_m{0.0};
+  std::size_t segment_index{0U};
+};
+
 [[nodiscard]] bool incrementalTopologicalNavigation3DConfigIsValid(
     const IncrementalTopologicalNavigation3DConfig& config) noexcept;
 
@@ -68,6 +73,9 @@ public:
   planObserved(const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
                const ObservedOccupancyGrid3D& occupancy, const Point3& start,
                const Point3& mission_goal);
+  [[nodiscard]] std::optional<IncrementalTopologicalLatticeDirective3D>
+  makeLatticeDirective(const IncrementalTopologicalPlan3D& plan, const Point3& position,
+                       const IncrementalTopologicalLatticeAdapter3DConfig& config = {});
   [[nodiscard]] IncrementalTopologicalNavigationObservation3D observePosition(
       const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
       const Point3& position, const ObservedOccupancyGrid3D* occupancy = nullptr);
@@ -103,6 +111,7 @@ private:
   std::optional<std::uint64_t> observed_producer_instance_id_;
   std::optional<IncrementalTopologyNodeId> current_node_;
   std::optional<IncrementalTopologicalPlan3D> active_plan_;
+  std::optional<IncrementalTopologicalRouteExecution3D> active_route_execution_;
 };
 
 } // namespace drone_city_nav

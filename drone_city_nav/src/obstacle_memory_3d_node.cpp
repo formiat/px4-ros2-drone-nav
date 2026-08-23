@@ -804,11 +804,11 @@ private:
         "LIDAR3D_CURRENT_SCAN accepted=true stamp_ns=%" PRId64 " sequence=%" PRIu64
         " source=%zu hits=%zu invalid=%zu "
         "acquisition_age_ms=%.3f processing_ms=%.3f alignment_coalesced=%" PRIu64
-        " memory_coalesced=%s",
+        " memory_coalesced=%s debug=%s",
         acquisition_stamp_ns, latest_scan_sequence_, decoded.beams.size(),
         hit_points_body.size(), latest.invalid_beam_count, acquisition_age_ms,
-        processing_ms, alignment_coalesced_clouds_,
-        memory_coalesced ? "true" : "false");
+        processing_ms, alignment_coalesced_clouds_, memory_coalesced ? "true" : "false",
+        publish_current_cloud ? "true" : "false");
     return PendingPointCloudDisposition::kConsumed;
   }
 

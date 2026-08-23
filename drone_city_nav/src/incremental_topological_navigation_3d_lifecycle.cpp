@@ -81,16 +81,21 @@ IncrementalTopologicalNavigation3D::continueAcceptedObservedPlan(
     const Point3& start, const Point3& mission_goal,
     const ObservedOccupancyGrid3D& occupancy, const std::uint64_t current_revision) {
   std::optional<IncrementalTopologicalPlan3D> candidate;
+  double minimum_station_m{0.0};
   {
     const std::scoped_lock lock{memory_mutex_};
     candidate = active_plan_;
+    if (candidate.has_value() && active_route_execution_.has_value()) {
+      minimum_station_m = active_route_execution_->station_m;
+    }
   }
   if (!candidate.has_value()) {
     return std::nullopt;
   }
 
   const std::optional<TopologicalPolylineProjection3D> projection =
-      projectOntoTopologicalPolyline3D(candidate->guidance_points, start);
+      projectOntoTopologicalPolyline3D(candidate->guidance_points, start,
+                                       minimum_station_m);
   bool continuable =
       candidate->executableTargetSelected() && finitePoint(start) &&
       finitePoint(mission_goal) && projection.has_value() &&
@@ -110,6 +115,16 @@ IncrementalTopologicalNavigation3D::continueAcceptedObservedPlan(
     continuable = frontier_evaluation.accepted();
   }
   if (continuable) {
+    const std::scoped_lock lock{memory_mutex_};
+    if (!active_plan_.has_value() || !samePlanIdentity(*active_plan_, *candidate)) {
+      return std::nullopt;
+    }
+    if (!active_route_execution_.has_value()) {
+      active_route_execution_.emplace();
+    }
+    active_route_execution_->station_m =
+        std::max(active_route_execution_->station_m, projection->station_m);
+    active_route_execution_->segment_index = projection->segment_index;
     candidate->continued_from_active_plan = true;
     return candidate;
   }
@@ -117,8 +132,41 @@ IncrementalTopologicalNavigation3D::continueAcceptedObservedPlan(
   const std::scoped_lock lock{memory_mutex_};
   if (active_plan_.has_value() && samePlanIdentity(*active_plan_, *candidate)) {
     active_plan_.reset();
+    active_route_execution_.reset();
   }
   return std::nullopt;
+}
+
+std::optional<IncrementalTopologicalLatticeDirective3D>
+IncrementalTopologicalNavigation3D::makeLatticeDirective(
+    const IncrementalTopologicalPlan3D& plan, const Point3& position,
+    const IncrementalTopologicalLatticeAdapter3DConfig& config) {
+  double minimum_station_m{0.0};
+  {
+    const std::scoped_lock lock{memory_mutex_};
+    if (active_plan_.has_value() && samePlanIdentity(*active_plan_, plan) &&
+        active_route_execution_.has_value()) {
+      minimum_station_m = active_route_execution_->station_m;
+    }
+  }
+
+  std::optional<IncrementalTopologicalLatticeDirective3D> directive =
+      makeIncrementalTopologicalLatticeDirective3D(plan, position, config,
+                                                   minimum_station_m);
+  if (!directive.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::scoped_lock lock{memory_mutex_};
+  if (active_plan_.has_value() && samePlanIdentity(*active_plan_, plan)) {
+    if (!active_route_execution_.has_value()) {
+      active_route_execution_.emplace();
+    }
+    active_route_execution_->station_m =
+        std::max(active_route_execution_->station_m, directive->source_station_m);
+    active_route_execution_->segment_index = directive->source_segment_index;
+  }
+  return directive;
 }
 
 IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
@@ -209,7 +257,13 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
                           plan.dead_end_conclusion->validated_through_revision);
     result.dead_end_recorded = true;
   }
+  const bool preserve_execution = active_plan_.has_value() &&
+                                  active_route_execution_.has_value() &&
+                                  samePlanIdentity(*active_plan_, plan);
   active_plan_ = plan;
+  if (!preserve_execution) {
+    active_route_execution_ = IncrementalTopologicalRouteExecution3D{};
+  }
   result.active_route_nodes = plan.route_nodes.size();
   result.accepted = true;
   return result;
@@ -222,6 +276,7 @@ bool IncrementalTopologicalNavigation3D::invalidateAcceptedPlan(
     return false;
   }
   active_plan_.reset();
+  active_route_execution_.reset();
   return true;
 }
 
@@ -229,6 +284,7 @@ bool IncrementalTopologicalNavigation3D::supersedeAcceptedPlan() {
   const std::scoped_lock lock{memory_mutex_};
   const bool superseded = active_plan_.has_value();
   active_plan_.reset();
+  active_route_execution_.reset();
   return superseded;
 }
 
@@ -243,6 +299,7 @@ void IncrementalTopologicalNavigation3D::rejectObservationFrontier(
   if (active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
       active_plan_->selected_frontier->id == frontier_id) {
     active_plan_.reset();
+    active_route_execution_.reset();
   }
 }
 
@@ -258,6 +315,7 @@ void IncrementalTopologicalNavigation3D::completeObservationFrontier(
   if (active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
       active_plan_->selected_frontier->id == frontier.id) {
     active_plan_.reset();
+    active_route_execution_.reset();
   }
 }
 
@@ -268,6 +326,7 @@ void IncrementalTopologicalNavigation3D::beginMissionLeg() {
     memory_.resetTrail(*current_node_);
   }
   active_plan_.reset();
+  active_route_execution_.reset();
 }
 
 } // namespace drone_city_nav

@@ -66,14 +66,18 @@ def validate_mapping_pipeline(
 ) -> None:
     if lidar_profile == "3d":
         scan_pattern = (
-            r"LIDAR3D_SCAN accepted=true .*hits=[1-9][0-9]* "
+            r"LIDAR3D_MEMORY accepted=true stamp_ns=[1-9][0-9]* .*"
+            r"hits=[1-9][0-9]* "
             r"misses=[1-9][0-9]*"
         )
         update_pattern = (
             r"ONLINE_OCCUPANCY3D_UPDATE .*revision=[1-9][0-9]* .*"
             r"(?:snapshot=true|delta=true)"
         )
-        memory_activity_pattern = r"LIDAR3D_SCAN accepted=true|ONLINE_OCCUPANCY3D_UPDATE"
+        memory_activity_pattern = (
+            r"LIDAR3D_(?:CURRENT_SCAN|MEMORY) accepted=true|"
+            r"ONLINE_OCCUPANCY3D_UPDATE"
+        )
         scan_label = "3D obstacle memory receives timestamped hit/miss scans"
         update_label = "revisioned Occupancy3D snapshots or deltas are published"
     else:
@@ -97,7 +101,7 @@ def validate_mapping_pipeline(
         require(
             "current 3D lidar cloud is published",
             ros_log,
-            r"LIDAR3D_SCAN accepted=true .*current_cloud=true",
+            r"LIDAR3D_CURRENT_SCAN accepted=true .*debug=true",
             errors,
         )
         require(

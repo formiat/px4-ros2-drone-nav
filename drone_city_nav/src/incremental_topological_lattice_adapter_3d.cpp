@@ -23,8 +23,10 @@ constexpr double kGeometryEpsilon{1.0e-9};
 
 std::optional<TopologicalPolylineProjection3D>
 projectOntoTopologicalPolyline3D(const std::span<const Point3> points,
-                                 const Point3& position) {
-  if (points.size() < 2U || !finitePoint(position)) {
+                                 const Point3& position,
+                                 const double minimum_station_m) {
+  if (points.size() < 2U || !finitePoint(position) ||
+      !std::isfinite(minimum_station_m) || minimum_station_m < 0.0) {
     return std::nullopt;
   }
 
@@ -44,13 +46,20 @@ projectOntoTopologicalPolyline3D(const std::span<const Point3> points,
     if (segment_length <= kGeometryEpsilon) {
       continue;
     }
+    const double segment_end_station_m = segment_start_station_m + segment_length;
+    if (segment_end_station_m + kGeometryEpsilon < minimum_station_m) {
+      segment_start_station_m = segment_end_station_m;
+      continue;
+    }
     const Vec3 offset{.x = position.x - first.x,
                       .y = position.y - first.y,
                       .z = position.z - first.z};
+    const double minimum_fraction = std::clamp(
+        (minimum_station_m - segment_start_station_m) / segment_length, 0.0, 1.0);
     const double fraction = std::clamp(
         (offset.x * segment.x + offset.y * segment.y + offset.z * segment.z) /
             length_squared,
-        0.0, 1.0);
+        minimum_fraction, 1.0);
     const Point3 projection = interpolate(first, second, fraction);
     const double projection_distance = distance3D(position, projection);
     const double station = segment_start_station_m + fraction * segment_length;
@@ -64,7 +73,7 @@ projectOntoTopologicalPolyline3D(const std::span<const Point3> points,
                                              .remaining_m = 0.0,
                                              .distance_m = projection_distance};
     }
-    segment_start_station_m += segment_length;
+    segment_start_station_m = segment_end_station_m;
   }
   if (best.has_value()) {
     best->remaining_m = std::max(0.0, segment_start_station_m - best->station_m);
@@ -104,13 +113,16 @@ bool incrementalTopologicalLatticeAdapter3DConfigIsValid(
 std::optional<IncrementalTopologicalLatticeDirective3D>
 makeIncrementalTopologicalLatticeDirective3D(
     const IncrementalTopologicalPlan3D& plan, const Point3& position,
-    const IncrementalTopologicalLatticeAdapter3DConfig& config) {
+    const IncrementalTopologicalLatticeAdapter3DConfig& config,
+    const double minimum_source_station_m) {
   if (!incrementalTopologicalLatticeAdapter3DConfigIsValid(config) ||
-      !plan.executableTargetSelected()) {
+      !plan.executableTargetSelected() || !std::isfinite(minimum_source_station_m) ||
+      minimum_source_station_m < 0.0) {
     return std::nullopt;
   }
   const std::optional<TopologicalPolylineProjection3D> projection =
-      projectOntoTopologicalPolyline3D(plan.guidance_points, position);
+      projectOntoTopologicalPolyline3D(plan.guidance_points, position,
+                                       minimum_source_station_m);
   if (!projection) {
     return std::nullopt;
   }
@@ -201,6 +213,7 @@ makeIncrementalTopologicalLatticeDirective3D(
       .source_segment_index = projection->segment_index,
       .source_station_m = projection->station_m,
       .target_station_m = target_station_m,
+      .progress_floor_station_m = minimum_source_station_m,
       .projection_distance_m = projection->distance_m,
       .captured_bends_skipped = captured_bends_skipped,
       .reaches_topological_target = reaches_target,

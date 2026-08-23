@@ -66,6 +66,27 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,
+     ProjectionFloorDisambiguatesASelfOverlappingRoute) {
+  const std::vector<Point3> points{
+      {0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 10.0, 0.0}};
+
+  const auto initial = projectOntoTopologicalPolyline3D(points, {2.0, 0.0, 0.0});
+  const auto continued = projectOntoTopologicalPolyline3D(points, {2.0, 0.0, 0.0}, 9.0);
+
+  ASSERT_TRUE(initial.has_value());
+  ASSERT_TRUE(continued.has_value());
+  const TopologicalPolylineProjection3D initial_projection =
+      initial.value_or(TopologicalPolylineProjection3D{});
+  const TopologicalPolylineProjection3D continued_projection =
+      continued.value_or(TopologicalPolylineProjection3D{});
+  EXPECT_EQ(initial_projection.segment_index, 0U);
+  EXPECT_DOUBLE_EQ(initial_projection.station_m, 2.0);
+  EXPECT_EQ(continued_projection.segment_index, 1U);
+  EXPECT_DOUBLE_EQ(continued_projection.station_m, 18.0);
+  EXPECT_NEAR(continued_projection.distance_m, 0.0, 1.0e-12);
+}
+
+TEST(IncrementalTopologicalLatticeAdapter3DTest,
      PreservesBacktrackPurposeAndAllowsMovementAwayFromMissionGoal) {
   const IncrementalTopologicalPlan3D plan =
       executablePlan(IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack,
@@ -158,6 +179,13 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
                      {{1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}});
   EXPECT_FALSE(makeIncrementalTopologicalLatticeDirective3D(degenerate, {1.0, 2.0, 3.0})
                    .has_value());
+
+  const IncrementalTopologicalPlan3D route =
+      executablePlan(IncrementalTopologicalRoutePurpose3D::kMissionTransit,
+                     {{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}});
+  EXPECT_FALSE(
+      makeIncrementalTopologicalLatticeDirective3D(route, {1.0, 0.0, 0.0}, {}, -1.0)
+          .has_value());
 }
 
 } // namespace

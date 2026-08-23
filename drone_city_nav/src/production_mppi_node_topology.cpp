@@ -318,7 +318,7 @@ ProductionMppiNode::selectIncrementalTopologyRoute3D(
                           mission_goal)
                     : topological_navigation_3d_->plan(world.topological_graph,
                                                        position, mission_goal);
-  result.directive = makeIncrementalTopologicalLatticeDirective3D(
+  result.directive = topological_navigation_3d_->makeLatticeDirective(
       result.plan, position, topological_lattice_adapter_3d_config_);
   if (!topological_backtracking_enabled_ &&
       isExplicitTopologicalBacktrack3D(result.plan)) {
@@ -438,7 +438,8 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       " observation_traversed_edges=%zu observation_coverage_cells=%zu "
       "observation_trail_reset=%s directive_available=%s "
       "directive_source_segment=%zu directive_source_station_m=%.2f "
-      "directive_target_station_m=%.2f directive_projection_distance_m=%.2f "
+      "directive_target_station_m=%.2f directive_progress_floor_station_m=%.2f "
+      "directive_projection_distance_m=%.2f "
       "directive_captured_bends_skipped=%zu "
       "directive_target=(%.2f,%.2f,%.2f) directive_reaches_target=%s "
       "lattice_status=%s lattice_purpose=%s lattice_executable=%s "
@@ -504,6 +505,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       directive != nullptr ? directive->source_segment_index : 0U,
       directive != nullptr ? directive->source_station_m : 0.0,
       directive != nullptr ? directive->target_station_m : 0.0,
+      directive != nullptr ? directive->progress_floor_station_m : 0.0,
       directive != nullptr ? directive->projection_distance_m : 0.0,
       directive != nullptr ? directive->captured_bends_skipped : 0U, directive_target.x,
       directive_target.y, directive_target.z,
