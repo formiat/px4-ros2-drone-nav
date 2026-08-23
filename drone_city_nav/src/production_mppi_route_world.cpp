@@ -12,11 +12,14 @@ navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept {
       .esdf_source_raw_revision = world.source_raw_revision,
       .esdf_source_occupied_fingerprint = world.source_occupied_fingerprint,
       .raw_validated_through_revision = world.source_raw_revision,
+      .local_world_generation = world.local_world_generation.generation,
+      .topology_revision = world.topology_source_raw_revision,
   };
 }
 
 void adoptWorldResources(ProductionMppiPreparedEsdf& target,
                          const ProductionMppiPreparedEsdf& source) {
+  target.local_world_generation = source.local_world_generation;
   target.producer_instance_id = source.producer_instance_id;
   target.revision = source.revision;
   target.source_raw_revision = source.source_raw_revision;
@@ -38,6 +41,7 @@ void adoptWorldResources(ProductionMppiPreparedEsdf& target,
   target.launch_support_contact = source.launch_support_contact;
   target.launch_support_resolution_pending = source.launch_support_resolution_pending;
   target.topological_graph = source.topological_graph;
+  target.topology_source_raw_revision = source.topology_source_raw_revision;
   target.topological_graph_update = source.topological_graph_update;
 }
 

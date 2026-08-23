@@ -69,8 +69,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             .maximum_cross_track_m = active_guide_config_.maximum_cross_track_m,
             .latest_raw_occupancy = latest_occupancy,
             .latest_raw_producer_instance_id =
-                latest_raw_world ? latest_raw_world->producer_instance_id : 0U,
-            .latest_raw_revision = latest_raw_world ? latest_raw_world->revision : 0U,
+                latest_raw_world ? latest_raw_world->version.producer_instance_id : 0U,
+            .latest_raw_revision =
+                latest_raw_world ? latest_raw_world->version.revision : 0U,
             .footprint = footprint,
             .proprioceptive_free_space_seed =
                 world.proprioceptive_free_space_seed
@@ -106,7 +107,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         .generation = generation,
     };
     const std::uint64_t raw_revision =
-        latest_raw_world ? latest_raw_world->revision : 0U;
+        latest_raw_world ? latest_raw_world->version.revision : 0U;
     std::uint64_t no_blocked_revision{0U};
     observed_route_blocked_raw_revision_.compare_exchange_strong(
         no_blocked_revision, raw_revision, std::memory_order_release,

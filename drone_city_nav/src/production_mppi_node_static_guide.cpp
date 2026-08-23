@@ -481,8 +481,9 @@ void ProductionMppiNode::processGuideSearch3D(
         latest_raw_world_3d_.load(std::memory_order_acquire);
     const bool raw_world_available =
         activation_raw_world && activation_raw_world->occupancy &&
-        activation_raw_world->producer_instance_id == prepared.producer_instance_id &&
-        activation_raw_world->revision >= prepared.source_raw_revision;
+        activation_raw_world->version.producer_instance_id ==
+            prepared.producer_instance_id &&
+        activation_raw_world->version.revision >= prepared.source_raw_revision;
     if (!raw_world_available) {
       validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kInvalidEsdf};
@@ -510,7 +511,7 @@ void ProductionMppiNode::processGuideSearch3D(
       validation = *raw_validation;
     } else {
       validated_world_certificate.raw_validated_through_revision =
-          activation_raw_world->revision;
+          activation_raw_world->version.revision;
     }
   }
   prepared.static_route_candidate_status = validation.status;
@@ -632,7 +633,8 @@ void ProductionMppiNode::processGuideSearch3D(
     world_compatible = publication_assessment.compatible();
     prepared.static_route_publication_status = publication_status;
     prepared.static_route_world_compatible = world_compatible;
-    if (world_compatible && prepared_esdf_->revision != prepared.revision) {
+    if (world_compatible && prepared_esdf_->local_world_generation.generation !=
+                                prepared.local_world_generation.generation) {
       adoptWorldResources(prepared, *prepared_esdf_);
       publication_world_advanced = true;
     }

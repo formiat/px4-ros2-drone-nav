@@ -163,6 +163,9 @@ void ProductionMppiNode::onLocalPosition(
       latest_prediction_error_.valid = true;
     }
   }
+  if (navigation.valid) {
+    queueLatestObservedWorldForPose(navigation);
+  }
   if (navigation.valid && use_static_map_ && navigationObjective() &&
       !world_ready_.load()) {
     requestStaticEsdfWork();
@@ -297,9 +300,12 @@ void ProductionMppiNode::queueRawWorld(const RawObstacleGridState& state,
                                        const double reconstruction_ms) {
   auto world =
       std::make_shared<const ProductionMppiRawWorld2D>(ProductionMppiRawWorld2D{
-          .producer_instance_id = state.producer_instance_id,
-          .base_snapshot_revision = state.base_snapshot_revision,
-          .revision = state.obstacle_snapshot_revision,
+          .version =
+              RawMapVersion{
+                  .producer_instance_id = state.producer_instance_id,
+                  .base_snapshot_revision = state.base_snapshot_revision,
+                  .revision = state.obstacle_snapshot_revision,
+              },
           .ready_stamp_ns = get_clock()->now().nanoseconds(),
           .reconstruction_ms = reconstruction_ms,
           .occupancy = state.occupancy,
@@ -308,10 +314,10 @@ void ProductionMppiNode::queueRawWorld(const RawObstacleGridState& state,
   no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
   {
     const std::scoped_lock lock{raw_queue_mutex_};
-    if (pending_raw_world_) {
+    const auto submission = raw_world_scheduler_.submit(world);
+    if (submission.replaced_pending) {
       ++dropped_raw_snapshots_;
     }
-    pending_raw_world_ = std::move(world);
   }
   raw_queue_condition_.notify_all();
 }
@@ -360,8 +366,9 @@ void ProductionMppiNode::publishWorldReadiness(const bool ready) {
 
 void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message) {
   const std::scoped_lock lock{input_mutex_};
-  memory_sequence_ = message.sequence;
-  memory_receive_stamp_ns_ = get_clock()->now().nanoseconds();
+  static_cast<void>(latest_observation_tracker_.observe(
+      message.producer_instance_id, message.sequence,
+      get_clock()->now().nanoseconds()));
 }
 
 void ProductionMppiNode::onLatestLidarObstacleScan(

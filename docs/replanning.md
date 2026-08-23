@@ -9,6 +9,7 @@ uses:
 
 - current pose and velocity;
 - the latest complete ESDF revision;
+- a matching CPU/GPU local-world generation;
 - the active global lattice guide;
 - the previous control sequence as a warm start;
 - the latest applied-control feedback.
@@ -35,6 +36,11 @@ risk becomes worse than the level at which it was accepted, the guide remains
 executable while a background replacement search starts. A replacement is
 activated only after validation; risk degradation does not become a movement
 prohibition.
+
+An unchanged scene remains live through the obstacle-memory heartbeat without
+pretending that ESDF content changed. Raw-map revisions and local-world
+generations therefore remain stable until new content or a pose-driven local
+window recenter produces a new immutable planning snapshot.
 
 Heading bias for a replacement guide comes from velocity at speed, the previous
 accepted-guide tangent at low speed, or mission-goal direction as the final

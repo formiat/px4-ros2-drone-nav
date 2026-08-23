@@ -35,7 +35,12 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
   const bool geometry_changed =
       impl_->graph_revision != 0U && !sameBounds(impl_->bounds, occupancy.bounds());
   const bool reset_required = impl_->graph_revision == 0U || geometry_changed;
-  if (!reset_required && revision <= impl_->graph_revision) {
+  const bool continue_pending_revision = !reset_required &&
+                                         revision == impl_->graph_revision &&
+                                         impl_->observed_blocks.pendingCount() > 0U;
+  if (!reset_required &&
+      (revision < impl_->graph_revision ||
+       (revision == impl_->graph_revision && !continue_pending_revision))) {
     return IncrementalTopologyGraph3DUpdate{
         .revision = impl_->graph_revision,
         .node_count = impl_->nodes.size(),
@@ -44,7 +49,7 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
   }
   impl_->bounds = occupancy.bounds();
   const std::vector<OccupancyChunkIndex3D> complete_snapshot_chunks =
-      !reset_required && full_reset
+      !reset_required && !continue_pending_revision && full_reset
           ? impl_->observed_blocks.completeSnapshotChunks(occupancy)
           : std::vector<OccupancyChunkIndex3D>{};
   const std::span<const OccupancyChunkIndex3D> effective_dirty_chunks =
@@ -54,7 +59,10 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
   const auto discovery_started = std::chrono::steady_clock::now();
   std::vector<IncrementalTopologyBlockIndex3D> dirty_blocks;
   std::vector<IncrementalTopologyBlockIndex3D> observation_evidence_blocks;
-  if (reset_required) {
+  if (continue_pending_revision) {
+    // Dirty discovery already ran for this immutable raw revision. Continue the
+    // bounded pending-block queue without requiring another sensor update.
+  } else if (reset_required) {
     dirty_blocks = impl_->observed_blocks.allObservedBlocks(occupancy);
   } else {
     incremental_topology_detail::ObservedBlockChanges3D changes =
@@ -80,6 +88,8 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
     impl_->observed_blocks.clearPending();
     impl_->observed_blocks.enqueue(dirty_blocks);
     rebuilt_blocks = impl_->observed_blocks.takePending(impl_->bounds, priority, false);
+  } else if (continue_pending_revision) {
+    rebuilt_blocks = impl_->observed_blocks.takePending(impl_->bounds, priority, true);
   } else {
     impl_->observed_blocks.enqueue(dirty_blocks);
     rebuilt_blocks = impl_->observed_blocks.takePending(impl_->bounds, priority, true);

@@ -27,7 +27,7 @@ ProductionMppiNode::validateGuideCandidateOnLatestWorld(
     return result;
   }
 
-  result.validation_revision = raw_world->revision;
+  result.validation_revision = raw_world->version.revision;
   result.validation_position = Point2{navigation.state.x, navigation.state.y};
   const GlobalGuideProjection projection =
       projectOntoGlobalGuide(*candidate, result.validation_position);

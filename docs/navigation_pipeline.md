@@ -22,6 +22,14 @@ deltas, so skipped superseded messages do not invalidate the newest state. In
 static mode the planner loads canonical Occupancy3D directly and does not merge
 the sensor grid into the static 3D map.
 
+Sensor liveness, raw-map content, and local planning state have independent
+identities. `LatestObservation` is refreshed by the lightweight heartbeat even
+when the scene is unchanged. `RawMapVersion` changes only with reconstructed map
+content. A `LocalWorldGeneration` binds one raw version, the pose used to select
+the local window, the CPU ESDF, the active GPU ESDF revision, and compatible
+topology evidence. A heartbeat never rewrites ESDF content timestamps or map
+revisions.
+
 ## 2. ESDF Preparation
 
 The production MPPI node prepares a mode-specific occupied-distance field
@@ -32,6 +40,12 @@ ESDF2D. No-static 3D mode reconstructs the revisioned observed occupancy and
 builds a recentered local ESDF3D that retains explicit unknown-space state.
 MPPI continues using the last complete immutable field until a newer revision
 is ready.
+
+Rate-limited work is retained by a latest-wins deferred scheduler. The newest
+pending state is processed when the rate deadline arrives even if no later
+sensor message appears. A pose-driven recenter request is urgent and may build a
+new local generation before that deadline. Planning starts only when the
+captured CPU generation names the ESDF revision active in the GPU engine.
 
 Distance classifications are:
 

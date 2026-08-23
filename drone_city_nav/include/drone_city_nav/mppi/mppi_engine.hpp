@@ -48,6 +48,7 @@ struct MppiTickInput {
   State target{};
   std::uint64_t pose_revision{0U};
   std::uint64_t obstacle_revision{0U};
+  std::uint64_t expected_esdf_revision{0U};
   std::int64_t planning_stamp_ns{0};
   std::optional<Control> previous_applied_control;
   std::uint64_t nominal_reseed_generation{0U};
@@ -65,6 +66,12 @@ struct MppiTickInput {
   bool cooperative_avoidance_active{false};
   bool noncooperative_avoidance_active{false};
 };
+
+[[nodiscard]] inline bool
+mppiEsdfRevisionMatches(const std::uint64_t expected_revision,
+                        const std::uint64_t active_revision) noexcept {
+  return expected_revision == 0U || expected_revision == active_revision;
+}
 
 [[nodiscard]] inline std::size_t
 resolveMppiActiveRollouts(const std::size_t capacity,

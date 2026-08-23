@@ -77,8 +77,9 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
                                     : nullptr,
       .footprint = footprint,
       .flight_envelope = lattice_config.flight_envelope,
-      .validated_through_revision =
-          latest_raw_world ? latest_raw_world->revision : world.source_raw_revision,
+      .validated_through_revision = latest_raw_world
+                                        ? latest_raw_world->version.revision
+                                        : world.source_raw_revision,
       .require_known_free_space = lattice_config.require_known_free_space,
   };
 }

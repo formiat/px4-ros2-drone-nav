@@ -13,15 +13,15 @@
 
 namespace drone_city_nav {
 
-void ProductionMppiNode::processObservedEsdf3D(
-    const ProductionMppiRawWorld3D& raw_world) {
+std::optional<std::chrono::steady_clock::time_point>
+ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world) {
   const std::shared_ptr<const ObservedOccupancyGrid3D> occupancy = raw_world.occupancy;
   if (!occupancy) {
     RCLCPP_WARN(get_logger(),
                 "PRODUCTION_MPPI_ESDF3D_ONLINE rejected revision=%" PRIu64
                 " reason=unavailable_observed_grid",
-                raw_world.revision);
-    return;
+                raw_world.version.revision);
+    return std::nullopt;
   }
 
   ProductionMppiNavigation navigation;
@@ -38,13 +38,15 @@ void ProductionMppiNode::processObservedEsdf3D(
   {
     const std::scoped_lock lock{topology_state_mutex_};
     if (latest_observed_topological_producer_instance_id_ ==
-        raw_world.producer_instance_id) {
+            raw_world.version.producer_instance_id &&
+        latest_observed_topological_graph_ &&
+        latest_observed_topological_graph_->revision() <= raw_world.version.revision) {
       topology_graph = latest_observed_topological_graph_;
       topology_graph_update = latest_observed_topological_graph_update_;
     }
   }
   if (!navigation.valid) {
-    return;
+    return std::nullopt;
   }
 
   std::optional<ProductionMppiPreparedEsdf> active_prepared;
@@ -88,7 +90,7 @@ void ProductionMppiNode::processObservedEsdf3D(
           RCLCPP_INFO(get_logger(),
                       "LAUNCH_SUPPORT_CONTACT state=not_present source="
                       "observed_known_free revision=%" PRIu64,
-                      raw_world.revision);
+                      raw_world.version.revision);
         }
       }
     }
@@ -98,7 +100,7 @@ void ProductionMppiNode::processObservedEsdf3D(
                   "LAUNCH_SUPPORT_CONTACT state=active revision=%" PRIu64
                   " source=%s cells=%zu occupied_evidence=%zu"
                   " anchor=(%.3f,%.3f,%.3f)",
-                  raw_world.revision,
+                  raw_world.version.revision,
                   launch_support_contact_->evidence_source ==
                           LaunchSupportEvidenceSource::kVehicleLandDetector
                       ? "vehicle_land_detector"
@@ -114,13 +116,13 @@ void ProductionMppiNode::processObservedEsdf3D(
       RCLCPP_INFO(get_logger(),
                   "LAUNCH_SUPPORT_CONTACT state=not_detected_after_departure"
                   " revision=%" PRIu64 " position=(%.3f,%.3f,%.3f)",
-                  raw_world.revision, position.x, position.y, position.z);
+                  raw_world.version.revision, position.x, position.y, position.z);
     } else if (!launch_support_evaluated_) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "LAUNCH_SUPPORT_CONTACT state=awaiting_evidence revision=%" PRIu64
           " anchor=(%.3f,%.3f,%.3f)",
-          raw_world.revision, launch_support_seed_->position.x,
+          raw_world.version.revision, launch_support_seed_->position.x,
           launch_support_seed_->position.y, launch_support_seed_->position.z);
     }
   }
@@ -129,7 +131,7 @@ void ProductionMppiNode::processObservedEsdf3D(
       RCLCPP_INFO(get_logger(),
                   "LAUNCH_SUPPORT_CONTACT state=settled revision=%" PRIu64
                   " minimum_axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
-                  raw_world.revision,
+                  raw_world.version.revision,
                   launch_support_contact_->minimum_axial_departure_m, position.x,
                   position.y, position.z);
     }
@@ -150,8 +152,8 @@ void ProductionMppiNode::processObservedEsdf3D(
       RCLCPP_INFO(get_logger(),
                   "LAUNCH_SUPPORT_CONTACT state=released revision=%" PRIu64
                   " axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
-                  raw_world.revision, support_axial_departure_m, position.x, position.y,
-                  position.z);
+                  raw_world.version.revision, support_axial_departure_m, position.x,
+                  position.y, position.z);
       launch_support_contact_.reset();
     }
   }
@@ -198,7 +200,7 @@ void ProductionMppiNode::processObservedEsdf3D(
       " support_maximum_lateral_departure_m=%.3f"
       " support_minimum_axial_departure_m=%.3f"
       " support_maximum_axial_settling_m=%.3f",
-      raw_world.revision, sweptFootprintStatusName(current_footprint.status),
+      raw_world.version.revision, sweptFootprintStatusName(current_footprint.status),
       position.x, position.y, position.z, current_footprint.failure_point.x,
       current_footprint.failure_point.y, current_footprint.failure_point.z,
       launch_support_contact != nullptr ? "true" : "false",
@@ -256,7 +258,7 @@ void ProductionMppiNode::processObservedEsdf3D(
     RCLCPP_INFO(get_logger(),
                 "LAUNCH_SUPPORT_WORLD_INVALIDATED raw_revision=%" PRIu64
                 " support_active=%s resolution_pending=%s",
-                raw_world.revision,
+                raw_world.version.revision,
                 launch_support_contact != nullptr ? "true" : "false",
                 launch_support_resolution_pending ? "true" : "false");
   }
@@ -271,28 +273,35 @@ void ProductionMppiNode::processObservedEsdf3D(
       first_build ||
       std::chrono::duration<double>(build_started_at - no_static_esdf_last_build_time_)
               .count() >= 1.0 / no_static_3d_esdf_update_rate_hz_;
-  if (local_occupancy_unchanged || (active_prepared && !recenter && !build_rate_due)) {
-    if (!local_occupancy_unchanged) {
-      no_static_esdf_throttled_updates_.fetch_add(1U, std::memory_order_relaxed);
-    } else {
-      const std::scoped_lock lock{esdf_state_mutex_};
-      if (prepared_esdf_ && prepared_esdf_->revision == active_prepared->revision) {
-        prepared_esdf_->source_stamp_ns = raw_world.ready_stamp_ns;
-        prepared_esdf_->ready_stamp_ns = raw_world.ready_stamp_ns;
-      }
-    }
+  if (local_occupancy_unchanged) {
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "NO_STATIC_ESDF3D_DEFERRED raw_revision=%" PRIu64
-        " reason=%s reconstruction_ms=%.2f raw_updates=%" PRIu64 " builds=%" PRIu64
-        " throttled=%" PRIu64,
-        raw_world.revision,
-        local_occupancy_unchanged ? "observed_unchanged" : "rate_limited",
-        raw_world.reconstruction_ms,
+        " reason=observed_unchanged reconstruction_ms=%.2f raw_updates=%" PRIu64
+        " builds=%" PRIu64 " throttled=%" PRIu64,
+        raw_world.version.revision, raw_world.reconstruction_ms,
         no_static_raw_updates_.load(std::memory_order_relaxed),
         no_static_esdf_builds_.load(std::memory_order_relaxed),
         no_static_esdf_throttled_updates_.load(std::memory_order_relaxed));
-    return;
+    return std::nullopt;
+  }
+  if (active_prepared && !recenter && !build_rate_due) {
+    no_static_esdf_throttled_updates_.fetch_add(1U, std::memory_order_relaxed);
+    const auto update_period =
+        std::chrono::duration<double>{1.0 / no_static_3d_esdf_update_rate_hz_};
+    const auto retry_not_before =
+        no_static_esdf_last_build_time_ +
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(update_period);
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "NO_STATIC_ESDF3D_DEFERRED raw_revision=%" PRIu64
+        " reason=rate_limited reconstruction_ms=%.2f raw_updates=%" PRIu64
+        " builds=%" PRIu64 " throttled=%" PRIu64,
+        raw_world.version.revision, raw_world.reconstruction_ms,
+        no_static_raw_updates_.load(std::memory_order_relaxed),
+        no_static_esdf_builds_.load(std::memory_order_relaxed),
+        no_static_esdf_throttled_updates_.load(std::memory_order_relaxed));
+    return retry_not_before;
   }
 
   ObservedEsdf3D field = buildObservedEsdf3D(
@@ -302,7 +311,7 @@ void ProductionMppiNode::processObservedEsdf3D(
   const mppi::EsdfUploadResult upload = engine_->updateEsdf(
       mppi::EsdfSnapshot{field.grid, field.distances_m, field.occupancy_fingerprint});
   if (!upload.accepted) {
-    return;
+    return std::nullopt;
   }
   auto host_distances =
       std::make_shared<const std::vector<float>>(std::move(field.distances_m));
@@ -318,10 +327,11 @@ void ProductionMppiNode::processObservedEsdf3D(
   }
   const bool retained_topology_is_compatible =
       !prepared.topological_graph ||
-      prepared.producer_instance_id == raw_world.producer_instance_id;
-  prepared.producer_instance_id = raw_world.producer_instance_id;
+      (prepared.producer_instance_id == raw_world.version.producer_instance_id &&
+       prepared.topology_source_raw_revision <= raw_world.version.revision);
+  prepared.producer_instance_id = raw_world.version.producer_instance_id;
   prepared.revision = field.occupancy_fingerprint;
-  prepared.source_raw_revision = raw_world.revision;
+  prepared.source_raw_revision = raw_world.version.revision;
   prepared.source_occupied_fingerprint = local_fingerprint;
   prepared.source_stamp_ns = raw_world.ready_stamp_ns;
   prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
@@ -347,9 +357,11 @@ void ProductionMppiNode::processObservedEsdf3D(
   if (topology_graph) {
     prepared.topological_graph = std::move(topology_graph);
     prepared.topological_graph_update = topology_graph_update;
+    prepared.topology_source_raw_revision = prepared.topological_graph->revision();
   } else if (!retained_topology_is_compatible) {
     prepared.topological_graph.reset();
     prepared.topological_graph_update = {};
+    prepared.topology_source_raw_revision = 0U;
   }
   if (const std::shared_ptr<const ProductionNavigationObjective> objective =
           navigationObjective()) {
@@ -357,6 +369,20 @@ void ProductionMppiNode::processObservedEsdf3D(
   }
   prepared.lattice_search_performed = false;
   prepared.lattice_continuation_attempt = 0U;
+  const std::uint64_t topology_revision =
+      prepared.topological_graph ? prepared.topological_graph->revision() : 0U;
+  const std::optional<LocalWorldGeneration> local_world_generation =
+      local_world_generation_counter_.issue(raw_world.version, navigation.revision,
+                                            prepared.revision, upload.revision,
+                                            topology_revision);
+  if (!local_world_generation.has_value()) {
+    RCLCPP_ERROR(get_logger(),
+                 "PRODUCTION_MPPI_ESDF3D_ONLINE rejected raw_revision=%" PRIu64
+                 " reason=invalid_local_world_generation",
+                 raw_world.version.revision);
+    return std::nullopt;
+  }
+  prepared.local_world_generation = *local_world_generation;
 
   {
     const std::scoped_lock lock{esdf_state_mutex_};
@@ -366,7 +392,8 @@ void ProductionMppiNode::processObservedEsdf3D(
       observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
   const std::uint64_t dispatched_raw_revision =
       observed_route_replan_dispatched_raw_revision_.load(std::memory_order_acquire);
-  if (blocked_raw_revision != 0U && blocked_raw_revision <= raw_world.revision &&
+  if (blocked_raw_revision != 0U &&
+      blocked_raw_revision <= raw_world.version.revision &&
       dispatched_raw_revision < blocked_raw_revision &&
       prepared.global_guide_generation != 0U) {
     observed_route_replan_dispatched_raw_revision_.store(blocked_raw_revision,
@@ -374,7 +401,7 @@ void ProductionMppiNode::processObservedEsdf3D(
     RCLCPP_INFO(get_logger(),
                 "OBSERVED_ROUTE_REPLAN status=esdf_caught_up raw_revision=%" PRIu64
                 " esdf_revision=%" PRIu64 " generation=%" PRIu64,
-                raw_world.revision, prepared.revision,
+                raw_world.version.revision, prepared.revision,
                 prepared.global_guide_generation);
     requestStaticRouteReplan(GlobalGuideReleaseReason::kBlocked,
                              prepared.global_guide_generation);
@@ -408,7 +435,7 @@ void ProductionMppiNode::processObservedEsdf3D(
               "launch_support=%zu "
               "recenter=%s route_search=%s builds=%" PRIu64 " throttled=%" PRIu64
               " dropped_raw=%" PRIu64,
-              prepared.revision, raw_world.revision, prepared.build_ms,
+              prepared.revision, raw_world.version.revision, prepared.build_ms,
               field.stats.classification_ms, prepared.upload_ms, prepared.grid.width,
               prepared.grid.height, prepared.grid.depth, field.stats.known_voxels,
               field.stats.free_voxels, field.stats.occupied_voxels,
@@ -423,6 +450,7 @@ void ProductionMppiNode::processObservedEsdf3D(
               no_static_esdf_builds_.load(std::memory_order_relaxed),
               no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
               dropped_raw_snapshots_.load(std::memory_order_relaxed));
+  return std::nullopt;
 }
 
 } // namespace drone_city_nav

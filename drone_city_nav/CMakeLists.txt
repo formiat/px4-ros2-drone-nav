@@ -168,6 +168,7 @@ add_library(
   src/regional_topology_graph_3d.cpp
   src/collision_voxelizer.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
+  src/world_generation.cpp
   src/debug_image.cpp
   src/distance_field.cpp
   src/distance_field_3d.cpp
@@ -840,6 +841,11 @@ if(BUILD_TESTING)
   target_compile_features(latest_processing_queue_test PRIVATE cxx_std_20)
   target_include_directories(latest_processing_queue_test PRIVATE include)
   enable_project_warnings(latest_processing_queue_test)
+
+  ament_add_gtest(world_generation_test tests/world_generation_test.cpp)
+  target_compile_features(world_generation_test PRIVATE cxx_std_20)
+  target_link_libraries(world_generation_test drone_city_nav_core)
+  enable_project_warnings(world_generation_test)
 
   ament_add_gtest(mppi_post_update_classification_test
                   tests/mppi_post_update_classification_test.cpp)

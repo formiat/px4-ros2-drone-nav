@@ -20,6 +20,8 @@ struct NavigationWorldCertificate3D {
   std::uint64_t esdf_source_raw_revision{0U};
   std::uint64_t esdf_source_occupied_fingerprint{0U};
   std::uint64_t raw_validated_through_revision{0U};
+  std::uint64_t local_world_generation{0U};
+  std::uint64_t topology_revision{0U};
 
   [[nodiscard]] bool valid() const noexcept;
 };

@@ -112,9 +112,12 @@ void ProductionMppiNode::onRawObstacleDelta3D(
 void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
                                          const double reconstruction_ms) {
   auto world = std::make_shared<ProductionMppiRawWorld3D>(ProductionMppiRawWorld3D{
-      .producer_instance_id = update.state.producer_instance_id,
-      .base_snapshot_revision = update.state.base_snapshot_revision,
-      .revision = update.state.obstacle_snapshot_revision,
+      .version =
+          RawMapVersion{
+              .producer_instance_id = update.state.producer_instance_id,
+              .base_snapshot_revision = update.state.base_snapshot_revision,
+              .revision = update.state.obstacle_snapshot_revision,
+          },
       .ready_stamp_ns = get_clock()->now().nanoseconds(),
       .reconstruction_ms = reconstruction_ms,
       .occupancy = update.state.occupancy,
@@ -122,28 +125,79 @@ void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
       .full_reset = update.full_reset,
   });
   no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
+  std::shared_ptr<const ProductionMppiRawWorld3D> immutable_world;
   {
     const std::scoped_lock lock{raw_queue_mutex_};
-    if (pending_raw_world_3d_) {
+    const auto& pending = raw_world_scheduler_3d_.pending();
+    if (pending.has_value() && *pending) {
       dropped_raw_snapshots_.fetch_add(1U, std::memory_order_relaxed);
-      world->full_reset = world->full_reset || pending_raw_world_3d_->full_reset;
-      mergeDirtyChunks(world->dirty_chunks, pending_raw_world_3d_->dirty_chunks);
+      world->full_reset = world->full_reset || (*pending)->full_reset;
+      mergeDirtyChunks(world->dirty_chunks, (*pending)->dirty_chunks);
     }
-    pending_raw_world_3d_ = world;
-    latest_raw_world_3d_.store(pending_raw_world_3d_, std::memory_order_release);
+    immutable_world = world;
+    static_cast<void>(raw_world_scheduler_3d_.submit(immutable_world));
+    latest_raw_world_3d_.store(immutable_world, std::memory_order_release);
   }
+  std::shared_ptr<const ProductionMppiRawWorld3D> topology_world = immutable_world;
   {
     const std::scoped_lock lock{topology_queue_mutex_};
     if (pending_topology_world_3d_) {
-      auto merged = std::make_shared<ProductionMppiRawWorld3D>(*world);
+      auto merged = std::make_shared<ProductionMppiRawWorld3D>(*topology_world);
       merged->full_reset = merged->full_reset || pending_topology_world_3d_->full_reset;
       mergeDirtyChunks(merged->dirty_chunks, pending_topology_world_3d_->dirty_chunks);
-      world = std::move(merged);
+      topology_world = std::move(merged);
     }
-    pending_topology_world_3d_ = world;
+    pending_topology_world_3d_ = std::move(topology_world);
   }
   raw_queue_condition_.notify_all();
   topology_queue_condition_.notify_all();
+}
+
+void ProductionMppiNode::queueLatestObservedWorldForPose(
+    const ProductionMppiNavigation& navigation) {
+  if (use_static_map_ || !navigation.valid ||
+      no_static_world_model_ != ProductionNoStaticWorldModel::kObservedOccupancy3D) {
+    return;
+  }
+  const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
+      latest_raw_world_3d_.load(std::memory_order_acquire);
+  if (!raw_world || !raw_world->occupancy) {
+    return;
+  }
+
+  bool local_world_required{false};
+  {
+    const std::scoped_lock lock{esdf_state_mutex_};
+    if (!prepared_esdf_ || !prepared_esdf_->distances_m ||
+        prepared_esdf_->producer_instance_id !=
+            raw_world->version.producer_instance_id ||
+        prepared_esdf_->grid.depth <= 1 || !prepared_esdf_->grid.outside_is_unknown) {
+      local_world_required = true;
+    } else {
+      const GridBounds3D local_bounds{
+          .origin_x = prepared_esdf_->grid.origin_x_m,
+          .origin_y = prepared_esdf_->grid.origin_y_m,
+          .origin_z = prepared_esdf_->grid.origin_z_m,
+          .resolution_m = prepared_esdf_->grid.resolution_m,
+          .width_cells = prepared_esdf_->grid.width,
+          .height_cells = prepared_esdf_->grid.height,
+          .depth_cells = prepared_esdf_->grid.depth,
+      };
+      const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
+      local_world_required =
+          localObservedEsdfNeedsRecenter(local_bounds, raw_world->occupancy->bounds(),
+                                         position, no_static_3d_esdf_window_);
+    }
+  }
+  if (!local_world_required) {
+    return;
+  }
+
+  {
+    const std::scoped_lock lock{raw_queue_mutex_};
+    static_cast<void>(raw_world_scheduler_3d_.submit(raw_world, true));
+  }
+  raw_queue_condition_.notify_all();
 }
 
 } // namespace drone_city_nav

@@ -68,15 +68,27 @@ void ProductionMppiNode::topologyWorker(const std::stop_token stop_token) {
       raw_world = std::exchange(pending_topology_world_3d_, nullptr);
     }
     if (raw_world) {
-      processObservedTopology3D(*raw_world);
+      const std::size_t pending_blocks = processObservedTopology3D(*raw_world);
+      if (pending_blocks > 0U) {
+        auto continuation = std::make_shared<ProductionMppiRawWorld3D>(*raw_world);
+        continuation->dirty_chunks.clear();
+        continuation->full_reset = false;
+        {
+          const std::scoped_lock lock{topology_queue_mutex_};
+          if (!pending_topology_world_3d_) {
+            pending_topology_world_3d_ = std::move(continuation);
+          }
+        }
+        topology_queue_condition_.notify_all();
+      }
     }
   }
 }
 
-void ProductionMppiNode::processObservedTopology3D(
+std::size_t ProductionMppiNode::processObservedTopology3D(
     const ProductionMppiRawWorld3D& raw_world) {
   if (!topological_navigation_3d_ || !raw_world.occupancy) {
-    return;
+    return 0U;
   }
 
   ProductionMppiNavigation navigation;
@@ -98,28 +110,46 @@ void ProductionMppiNode::processObservedTopology3D(
   RCLCPP_INFO(get_logger(),
               "INCREMENTAL_TOPOLOGY3D_UPDATE_START raw_revision=%" PRIu64
               " full_reset=%s dirty_chunks=%zu",
-              raw_world.revision, raw_world.full_reset ? "true" : "false",
+              raw_world.version.revision, raw_world.full_reset ? "true" : "false",
               raw_world.dirty_chunks.size());
   const auto started = std::chrono::steady_clock::now();
   const IncrementalTopologicalWorldUpdate3D update =
       topological_navigation_3d_->updateObserved(
-          *raw_world.occupancy, raw_world.producer_instance_id, raw_world.revision,
-          raw_world.dirty_chunks, raw_world.full_reset, priority);
+          *raw_world.occupancy, raw_world.version.producer_instance_id,
+          raw_world.version.revision, raw_world.dirty_chunks, raw_world.full_reset,
+          priority);
   const double update_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - started)
                                .count();
   {
     const std::scoped_lock lock{topology_state_mutex_};
     latest_observed_topological_graph_ = update.snapshot;
-    latest_observed_topological_producer_instance_id_ = raw_world.producer_instance_id;
+    latest_observed_topological_producer_instance_id_ =
+        raw_world.version.producer_instance_id;
     latest_observed_topological_graph_update_ = update.graph;
   }
   {
     const std::scoped_lock lock{esdf_state_mutex_};
-    if (prepared_esdf_ &&
-        prepared_esdf_->producer_instance_id == raw_world.producer_instance_id) {
-      prepared_esdf_->topological_graph = update.snapshot;
-      prepared_esdf_->topological_graph_update = update.graph;
+    if (prepared_esdf_ && update.snapshot &&
+        prepared_esdf_->producer_instance_id ==
+            raw_world.version.producer_instance_id &&
+        update.snapshot->revision() <= prepared_esdf_->source_raw_revision &&
+        update.snapshot->revision() >= prepared_esdf_->topology_source_raw_revision) {
+      ProductionMppiPreparedEsdf coherent_world = *prepared_esdf_;
+      coherent_world.topological_graph = update.snapshot;
+      coherent_world.topological_graph_update = update.graph;
+      coherent_world.topology_source_raw_revision = update.snapshot->revision();
+      const LocalWorldGeneration& previous_generation =
+          coherent_world.local_world_generation;
+      const std::optional<LocalWorldGeneration> generation =
+          local_world_generation_counter_.issue(
+              previous_generation.raw_map, previous_generation.pose_revision,
+              previous_generation.esdf_revision, previous_generation.gpu_esdf_revision,
+              coherent_world.topology_source_raw_revision);
+      if (generation.has_value()) {
+        coherent_world.local_world_generation = *generation;
+        prepared_esdf_ = std::move(coherent_world);
+      }
     }
   }
   RCLCPP_INFO(
@@ -147,6 +177,7 @@ void ProductionMppiNode::processObservedTopology3D(
       update.graph.dirty_block_discovery_ms, update.graph.block_build_ms,
       update.graph.block_replace_ms, update.graph.block_connect_ms,
       update.graph.node_classification_ms, update.graph.graph_rebuild_ms, update_ms);
+  return update.graph.pending_blocks;
 }
 
 void ProductionMppiNode::configureIncrementalTopology3D() {

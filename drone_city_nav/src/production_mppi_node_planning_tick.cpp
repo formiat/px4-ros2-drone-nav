@@ -52,6 +52,7 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiAppliedControl applied_control;
   std::optional<ProductionMppiCooperativeCommand> cooperative_command;
   ProductionMppiNonCooperativeTracks noncooperative_tracks;
+  LatestObservation latest_observation;
   std::uint64_t memory_sequence{0U};
   {
     const std::scoped_lock lock{input_mutex_};
@@ -60,7 +61,8 @@ void ProductionMppiNode::planningTick() {
     applied_control = applied_control_;
     cooperative_command = cooperative_command_;
     noncooperative_tracks = noncooperative_tracks_;
-    memory_sequence = memory_sequence_;
+    latest_observation = latest_observation_tracker_.latest();
+    memory_sequence = latest_observation.sequence;
   }
   std::optional<ProductionMppiPreparedEsdf> esdf;
   {
@@ -76,9 +78,10 @@ void ProductionMppiNode::planningTick() {
       return esdf_revision;
     }
     if (no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D) {
-      return latest_raw_world_3d ? latest_raw_world_3d->revision : esdf_revision;
+      return latest_raw_world_3d ? latest_raw_world_3d->version.revision
+                                 : esdf_revision;
     }
-    return latest_raw_world ? latest_raw_world->revision : esdf_revision;
+    return latest_raw_world ? latest_raw_world->version.revision : esdf_revision;
   };
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const double pose_age_ms =
@@ -88,6 +91,27 @@ void ProductionMppiNode::planningTick() {
     esdf_age_ms = use_static_map_
                       ? 0.0
                       : static_cast<double>(now_ns - esdf->ready_stamp_ns) / 1.0e6;
+  }
+  double observation_age_ms = std::numeric_limits<double>::infinity();
+  if (use_static_map_) {
+    observation_age_ms = 0.0;
+  } else if (esdf.has_value() && latest_observation.available() &&
+             latest_observation.producer_instance_id == esdf->producer_instance_id) {
+    observation_age_ms = latest_observation.ageMs(now_ns);
+  } else if (esdf.has_value() && !latest_observation.available()) {
+    std::int64_t raw_ready_stamp_ns{0};
+    if (observed_3d_world && latest_raw_world_3d &&
+        latest_raw_world_3d->version.producer_instance_id ==
+            esdf->producer_instance_id) {
+      raw_ready_stamp_ns = latest_raw_world_3d->ready_stamp_ns;
+    } else if (!observed_3d_world && latest_raw_world &&
+               latest_raw_world->version.producer_instance_id ==
+                   esdf->producer_instance_id) {
+      raw_ready_stamp_ns = latest_raw_world->ready_stamp_ns;
+    }
+    if (raw_ready_stamp_ns > 0 && now_ns >= raw_ready_stamp_ns) {
+      observation_age_ms = static_cast<double>(now_ns - raw_ready_stamp_ns) * 1.0e-6;
+    }
   }
   const double control_feedback_age_ms =
       applied_control.valid
@@ -107,13 +131,22 @@ void ProductionMppiNode::planningTick() {
     navigation.state = predicted.state;
     pose_predicted = predicted.predicted;
   }
-  if (!esdf.has_value() || esdf_age_ms < 0.0 ||
-      esdf_age_ms > maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_) {
-    RCLCPP_WARN_THROTTLE(
+  if (!esdf.has_value() || observation_age_ms < 0.0 ||
+      observation_age_ms > maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_world "
+                         "observation_age_ms=%.1f esdf_content_age_ms=%.1f "
+                         "maximum_execution_age_ms=%.1f",
+                         observation_age_ms, esdf_age_ms,
+                         maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_);
+    return;
+  }
+  if (!esdf->local_world_generation.coherent()) {
+    RCLCPP_ERROR_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_world esdf_age_ms=%.1f "
-        "maximum_execution_age_ms=%.1f",
-        esdf_age_ms, maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_);
+        "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_coherent_generation "
+        "local_world_generation=%" PRIu64,
+        esdf->local_world_generation.generation);
     return;
   }
   if (!engine_->ready()) {
@@ -643,7 +676,7 @@ void ProductionMppiNode::planningTick() {
           .direct_tracking = direct_tracking_interception,
           .clearance_valid = current_clearance.status == EsdfQueryStatus::kValid,
           .clearance_m = current_clearance.clearance_m,
-          .world_age_ms = esdf_age_ms,
+          .world_age_ms = observation_age_ms,
           .tracking_age_ms = tracking_age_ms,
           .required_risk_tier = direct_tracking_interception
                                     ? mppi::RiskTier::kPreferred
@@ -663,6 +696,7 @@ void ProductionMppiNode::planningTick() {
       .target = target,
       .pose_revision = navigation.revision,
       .obstacle_revision = raw_revision(esdf->revision),
+      .expected_esdf_revision = esdf->local_world_generation.gpu_esdf_revision,
       .planning_stamp_ns = now_ns,
       .previous_applied_control = previous_applied_control,
       .nominal_reseed_generation = nominal_reseed.generation,
@@ -876,6 +910,7 @@ void ProductionMppiNode::planningTick() {
       .memory_sequence = memory_sequence,
       .pose_age_ms = pose_age_ms,
       .esdf_age_ms = esdf_age_ms,
+      .observation_age_ms = observation_age_ms,
       .control_feedback_age_ms = control_feedback_age_ms,
       .route_station_m = route_projection.station_m,
       .route_remaining_m = route_projection.remaining_m,

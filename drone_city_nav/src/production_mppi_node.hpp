@@ -59,6 +59,7 @@
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
+#include "drone_city_nav/world_generation.hpp"
 
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/vehicle_land_detected.hpp>
@@ -169,18 +170,14 @@ enum class ProductionGuideCandidateValidationStatus : std::uint8_t {
 struct ProductionMppiPreparedEsdf;
 
 struct ProductionMppiRawWorld2D {
-  std::uint64_t producer_instance_id{0U};
-  std::uint64_t base_snapshot_revision{0U};
-  std::uint64_t revision{0U};
+  RawMapVersion version{};
   std::int64_t ready_stamp_ns{0};
   double reconstruction_ms{0.0};
   std::shared_ptr<const OccupancyGrid2D> occupancy;
 };
 
 struct ProductionMppiRawWorld3D {
-  std::uint64_t producer_instance_id{0U};
-  std::uint64_t base_snapshot_revision{0U};
-  std::uint64_t revision{0U};
+  RawMapVersion version{};
   std::int64_t ready_stamp_ns{0};
   double reconstruction_ms{0.0};
   std::shared_ptr<const ObservedOccupancyGrid3D> occupancy;
@@ -222,6 +219,7 @@ struct ProductionActivatedRoute3D {
 };
 
 struct ProductionMppiPreparedEsdf {
+  LocalWorldGeneration local_world_generation{};
   std::uint64_t producer_instance_id{0U};
   std::uint64_t revision{0U};
   // Raw-observation revision used to build this local ESDF. This keeps route
@@ -260,6 +258,7 @@ struct ProductionMppiPreparedEsdf {
   std::optional<LaunchSupportContact3D> launch_support_contact;
   bool launch_support_resolution_pending{false};
   std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> topological_graph;
+  std::uint64_t topology_source_raw_revision{0U};
   IncrementalTopologyGraph3DUpdate topological_graph_update{};
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
@@ -547,6 +546,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   std::uint64_t memory_sequence{0U};
   double pose_age_ms{0.0};
   double esdf_age_ms{0.0};
+  double observation_age_ms{0.0};
   double control_feedback_age_ms{0.0};
   double route_station_m{0.0};
   double route_remaining_m{0.0};
@@ -629,8 +629,11 @@ private:
                                bool route_activated = false);
   void esdfWorker(std::stop_token stop_token);
   void topologyWorker(std::stop_token stop_token);
-  void processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);
-  void processObservedTopology3D(const ProductionMppiRawWorld3D& raw_world);
+  [[nodiscard]] std::optional<std::chrono::steady_clock::time_point>
+  processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);
+  [[nodiscard]] std::size_t
+  processObservedTopology3D(const ProductionMppiRawWorld3D& raw_world);
+  void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
   void guideWorker(std::stop_token stop_token);
   [[nodiscard]] ProductionGuideCandidateValidation validateGuideCandidateOnLatestWorld(
       const std::shared_ptr<const std::vector<Point2>>& candidate,
@@ -859,8 +862,7 @@ private:
   ProductionMppiAppliedControl applied_control_{};
   std::optional<ProductionMppiCooperativeCommand> cooperative_command_;
   ProductionMppiNonCooperativeTracks noncooperative_tracks_{};
-  std::uint64_t memory_sequence_{0U};
-  std::int64_t memory_receive_stamp_ns_{0};
+  LatestObservationTracker latest_observation_tracker_{};
   std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
       navigation_objective_;
   std::atomic<std::uint64_t> minimum_tracking_route_mission_epoch_{0U};
@@ -871,9 +873,11 @@ private:
 
   std::mutex raw_queue_mutex_;
   std::condition_variable_any raw_queue_condition_;
-  std::shared_ptr<const ProductionMppiRawWorld2D> pending_raw_world_;
+  LatestWinsDeferredScheduler<std::shared_ptr<const ProductionMppiRawWorld2D>>
+      raw_world_scheduler_{};
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
-  std::shared_ptr<const ProductionMppiRawWorld3D> pending_raw_world_3d_;
+  LatestWinsDeferredScheduler<std::shared_ptr<const ProductionMppiRawWorld3D>>
+      raw_world_scheduler_3d_{};
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld3D>> latest_raw_world_3d_;
   std::atomic<std::uint64_t> observed_route_blocked_raw_revision_{0U};
   std::atomic<std::uint64_t> observed_route_replan_dispatched_raw_revision_{0U};
@@ -894,6 +898,7 @@ private:
   RawObstacleDeltaAccumulator3D raw_delta_accumulator_3d_;
   msg::RawObstacleDelta3D::ConstSharedPtr pending_raw_delta_3d_;
   std::chrono::steady_clock::time_point no_static_esdf_last_build_time_{};
+  LocalWorldGenerationCounter local_world_generation_counter_{};
   bool launch_support_evaluated_{false};
   std::optional<ProprioceptiveFreeSpaceSeed3D> launch_support_seed_;
   std::optional<LaunchSupportContact3D> launch_support_contact_;

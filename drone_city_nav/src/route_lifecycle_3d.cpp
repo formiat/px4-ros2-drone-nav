@@ -17,8 +17,13 @@ namespace {
 [[nodiscard]] bool
 validatesPlannedWorld(const NavigationWorldCertificate3D& planned,
                       const NavigationWorldCertificate3D& validated) {
+  const bool local_generation_valid =
+      (planned.local_world_generation == 0U &&
+       validated.local_world_generation == 0U) ||
+      (planned.local_world_generation != 0U &&
+       validated.local_world_generation >= planned.local_world_generation);
   return planned.valid() && validated.valid() &&
-         sameProducerLineage(planned, validated) &&
+         sameProducerLineage(planned, validated) && local_generation_valid &&
          validated.esdf_source_raw_revision >= planned.esdf_source_raw_revision &&
          validated.raw_validated_through_revision >=
              validated.esdf_source_raw_revision &&
@@ -198,6 +203,11 @@ assessRoutePublication3D(const MaterializedRouteProposal3D& proposal,
   }
   if (resident_world.esdf_source_raw_revision <
       proposal.planned_world.esdf_source_raw_revision) {
+    return {.status = RoutePublicationStatus3D::kResidentWorldPredatesPlan};
+  }
+  if (proposal.planned_world.local_world_generation != 0U &&
+      resident_world.local_world_generation <
+          proposal.planned_world.local_world_generation) {
     return {.status = RoutePublicationStatus3D::kResidentWorldPredatesPlan};
   }
   return {.status = RoutePublicationStatus3D::kCompatible};

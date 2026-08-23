@@ -200,10 +200,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       mppi::finitePathControlIntervalNanoseconds(mppi_config_.dynamics.dt_s);
   std::uint64_t latest_obstacle_revision = input.obstacle_revision;
   if (latest_raw_world) {
-    latest_obstacle_revision = latest_raw_world->revision;
+    latest_obstacle_revision = latest_raw_world->version.revision;
   }
   if (latest_raw_world_3d) {
-    latest_obstacle_revision = latest_raw_world_3d->revision;
+    latest_obstacle_revision = latest_raw_world_3d->version.revision;
   }
 
   const auto make_horizon = [&](const std::int64_t valid_until_ns,

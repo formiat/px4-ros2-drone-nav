@@ -198,6 +198,11 @@ public:
     if (!textures_[active_texture_].ready()) {
       throw std::runtime_error{"MPPI engine has no ESDF"};
     }
+    const std::uint64_t active_esdf_revision = textures_[active_texture_].revision();
+    if (!mppiEsdfRevisionMatches(input.expected_esdf_revision, active_esdf_revision)) {
+      throw std::runtime_error{"MPPI engine ESDF revision does not match the "
+                               "captured local world"};
+    }
     validateMppiTickInput(input, config_.steps, kMaximumDynamicAircraft);
     const auto host_started = std::chrono::steady_clock::now();
     const std::size_t active_rollouts =
@@ -739,7 +744,7 @@ public:
         acquisition_lifecycle.cooperative_release_reseeded ||
         acquisition_lifecycle.noncooperative_acquisition_reseeded ||
         acquisition_lifecycle.noncooperative_release_reseeded;
-    result.esdf_revision = textures_[active_texture_].revision();
+    result.esdf_revision = active_esdf_revision;
     result.active_rollouts = active_rollouts;
     result.timings.warm_start_ms = elapsedMs(started_, warm_done_);
     result.timings.noise_generation_ms = elapsedMs(warm_done_, noise_done_);

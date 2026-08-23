@@ -118,6 +118,28 @@ TEST(IncrementalTopologyGraph3DTest,
   }));
 }
 
+TEST(IncrementalTopologyGraph3DTest, DrainsPendingBlocksWithoutANewerRawRevision) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 16, 8}};
+  fillFreeBox(occupancy, 0, 23, 0, 15, 0, 7);
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
+  config.maximum_observed_blocks_per_update = 1U;
+  config.minimum_oldest_blocks_per_update = 0U;
+  IncrementalTopologyGraph3D graph{config};
+
+  IncrementalTopologyGraph3DUpdate update = graph.update(occupancy, 1U, {}, true);
+  ASSERT_GT(update.pending_blocks, 0U);
+  std::size_t continuation_count{0U};
+  while (update.pending_blocks > 0U && continuation_count < 1'000U) {
+    update = graph.update(occupancy, 1U, {}, false);
+    ++continuation_count;
+    EXPECT_EQ(update.revision, 1U);
+  }
+
+  EXPECT_GT(continuation_count, 0U);
+  EXPECT_EQ(update.pending_blocks, 0U);
+  EXPECT_LT(continuation_count, 1'000U);
+}
+
 TEST(IncrementalTopologyGraph3DTest, ExtractsXJunctionAndLoop) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 48, 16}};
   fillOccupied(occupancy);
