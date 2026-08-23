@@ -108,7 +108,7 @@ TEST(LatestLidarObstacleScanTest, UsesReceiveAgeForBoundedFutureAcquisitionStamp
   EXPECT_TRUE(freshness.receive_time_fallback);
 }
 
-TEST(LatestLidarObstacleScanTest, RejectsFutureAcquisitionBeyondFreshnessBudget) {
+TEST(LatestLidarObstacleScanTest, UsesRecentReceiptForArbitrarilyAheadProducerClock) {
   LatestLidarObstacleSnapshot snapshot;
   snapshot.acquisition_stamp_ns = 11 * kSecondNs + 100'000'000LL;
   snapshot.receive_stamp_ns = 9 * kSecondNs + 950'000'000LL;
@@ -116,7 +116,21 @@ TEST(LatestLidarObstacleScanTest, RejectsFutureAcquisitionBeyondFreshnessBudget)
   const LatestLidarObstacleFreshness freshness =
       assessLatestLidarObstacleFreshness(snapshot, 10 * kSecondNs, 1000.0);
 
+  EXPECT_TRUE(freshness.fresh);
+  EXPECT_DOUBLE_EQ(freshness.age_ms, 50.0);
+  EXPECT_TRUE(freshness.receive_time_fallback);
+}
+
+TEST(LatestLidarObstacleScanTest, RejectsFutureAcquisitionAfterStaleReceipt) {
+  LatestLidarObstacleSnapshot snapshot;
+  snapshot.acquisition_stamp_ns = 12 * kSecondNs;
+  snapshot.receive_stamp_ns = 8 * kSecondNs + 900'000'000LL;
+
+  const LatestLidarObstacleFreshness freshness =
+      assessLatestLidarObstacleFreshness(snapshot, 10 * kSecondNs, 1000.0);
+
   EXPECT_FALSE(freshness.fresh);
+  EXPECT_DOUBLE_EQ(freshness.age_ms, 1100.0);
   EXPECT_TRUE(freshness.receive_time_fallback);
 }
 

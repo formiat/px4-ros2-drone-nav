@@ -66,9 +66,8 @@ assessLatestLidarObstacleFreshness(const LatestLidarObstacleSnapshot& snapshot,
   result.age_ms = static_cast<double>(
                       std::max({std::int64_t{0}, acquisition_age_ns, receive_age_ns})) *
                   1.0e-6;
-  result.fresh = acquisition_age_ns >= -maximum_age_ns &&
-                 acquisition_age_ns <= maximum_age_ns && receive_age_ns >= 0 &&
-                 receive_age_ns <= maximum_age_ns;
+  result.fresh = receive_age_ns >= 0 && receive_age_ns <= maximum_age_ns &&
+                 (acquisition_age_ns < 0 || acquisition_age_ns <= maximum_age_ns);
   return result;
 }
 
