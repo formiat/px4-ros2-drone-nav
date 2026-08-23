@@ -644,6 +644,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "stale_objective";
     case StaticRouteActivationStatus::kDynamicHandoffRejected:
       return "dynamic_handoff_rejected";
+    case StaticRouteActivationStatus::kEquivalentActiveSegmentRetained:
+      return "equivalent_active_segment_retained";
   }
   return "unknown";
 }

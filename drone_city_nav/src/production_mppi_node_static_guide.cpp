@@ -528,6 +528,7 @@ void ProductionMppiNode::processGuideSearch3D(
   bool world_compatible = false;
   bool publication_world_advanced = false;
   bool generation_matches = false;
+  RouteProposalReplacementAssessment3D replacement_assessment;
   const std::shared_ptr<const ProductionNavigationObjective> activation_objective =
       navigationObjective();
   const std::uint64_t required_objective_epoch =
@@ -641,9 +642,19 @@ void ProductionMppiNode::processGuideSearch3D(
       adoptWorldResources(prepared, *prepared_esdf_);
       publication_world_advanced = true;
     }
+    replacement_assessment = assessRouteProposalReplacement3D(
+        prepared_esdf_ && prepared_esdf_->activated_route_3d
+            ? std::addressof(prepared_esdf_->activated_route_3d->identity)
+            : nullptr,
+        materialized_proposal.identity,
+        RouteProposalReplacementObservation3D{.safety_replan_requested =
+                                                  world.static_route_replan_request});
     const std::uint64_t candidate_generation = static_route_generation_ + 1U;
     const std::optional<ActivatedRouteIdentity3D> activated_identity =
-        activateRouteProposal3D(materialized_proposal.identity, candidate_generation);
+        replacement_assessment.replacementAllowed()
+            ? activateRouteProposal3D(materialized_proposal.identity,
+                                      candidate_generation)
+            : std::nullopt;
     if (route_candidate.executable && route_candidate.validation.accepted &&
         handoff.accepted && route_candidate.route &&
         route_candidate.constrained_spans && world_compatible && generation_matches &&
@@ -667,6 +678,9 @@ void ProductionMppiNode::processGuideSearch3D(
       prepared.static_route_replan_reason = GlobalGuideReleaseReason::kNone;
       prepared_esdf_ = prepared;
       activated = true;
+    } else if (route_candidate.validation.accepted &&
+               !replacement_assessment.replacementAllowed()) {
+      activation_status = StaticRouteActivationStatus::kEquivalentActiveSegmentRetained;
     } else if (route_candidate.validation.accepted && !world_compatible) {
       activation_status = StaticRouteActivationStatus::kWorldPublicationRejected;
     } else if (route_candidate.validation.accepted && !generation_matches) {

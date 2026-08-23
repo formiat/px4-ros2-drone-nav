@@ -56,6 +56,22 @@ struct ActivatedRouteIdentity3D {
   MaterializedRouteProposal3D proposal{};
 };
 
+enum class RouteProposalReplacementStatus3D : std::uint8_t {
+  kReplace,
+  kRetainEquivalentActiveSegment,
+};
+
+struct RouteProposalReplacementObservation3D {
+  double segment_target_tolerance_m{1.0e-6};
+  bool safety_replan_requested{false};
+};
+
+struct RouteProposalReplacementAssessment3D {
+  RouteProposalReplacementStatus3D status{RouteProposalReplacementStatus3D::kReplace};
+
+  [[nodiscard]] bool replacementAllowed() const noexcept;
+};
+
 enum class RawRouteSuffixStatus3D : std::uint8_t {
   kValid,
   kInvalidRoute,
@@ -128,6 +144,11 @@ struct RouteSegmentCompletionAssessment3D {
 [[nodiscard]] std::optional<ActivatedRouteIdentity3D>
 activateRouteProposal3D(const MaterializedRouteProposal3D& proposal,
                         std::uint64_t generation) noexcept;
+
+[[nodiscard]] RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
+    const ActivatedRouteIdentity3D* active_route,
+    const MaterializedRouteProposal3D& candidate,
+    const RouteProposalReplacementObservation3D& observation) noexcept;
 
 [[nodiscard]] RoutePublicationAssessment3D
 assessRoutePublication3D(const MaterializedRouteProposal3D& proposal,

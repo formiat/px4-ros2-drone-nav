@@ -282,6 +282,7 @@ enum class StaticRouteActivationStatus : std::uint8_t {
   kStaleRouteGeneration,
   kStaleObjective,
   kDynamicHandoffRejected,
+  kEquivalentActiveSegmentRetained,
 };
 
 struct StaticRouteCandidateValidation {

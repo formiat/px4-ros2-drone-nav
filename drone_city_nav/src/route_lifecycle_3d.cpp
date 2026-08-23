@@ -63,6 +63,19 @@ rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
   return true;
 }
 
+[[nodiscard]] bool isStrategicMissionIntent(const RouteIntent3D& intent) noexcept {
+  return intent.valid && intent.id != 0U &&
+         intent.source == RouteIntentSource3D::kTopology &&
+         intent.purpose == RouteIntentPurpose3D::kMissionTransit &&
+         intent.strategic_continuation_available &&
+         intent.intent_reaches_mission_target;
+}
+
+[[nodiscard]] bool samePoint(const Point3& first, const Point3& second,
+                             const double tolerance_m) noexcept {
+  return distance3D(first, second) <= tolerance_m;
+}
+
 } // namespace
 
 bool NavigationWorldCertificate3D::valid() const noexcept {
@@ -94,6 +107,10 @@ bool RouteExecutionAssessment3D::replacementRequired() const noexcept {
   return true;
 }
 
+bool RouteProposalReplacementAssessment3D::replacementAllowed() const noexcept {
+  return status == RouteProposalReplacementStatus3D::kReplace;
+}
+
 bool RoutePublicationAssessment3D::compatible() const noexcept {
   return status == RoutePublicationStatus3D::kCompatible;
 }
@@ -109,6 +126,31 @@ activateRouteProposal3D(const MaterializedRouteProposal3D& proposal,
     return std::nullopt;
   }
   return ActivatedRouteIdentity3D{.generation = generation, .proposal = proposal};
+}
+
+RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
+    const ActivatedRouteIdentity3D* const active_route,
+    const MaterializedRouteProposal3D& candidate,
+    const RouteProposalReplacementObservation3D& observation) noexcept {
+  if (active_route == nullptr || observation.safety_replan_requested ||
+      !std::isfinite(observation.segment_target_tolerance_m) ||
+      observation.segment_target_tolerance_m < 0.0) {
+    return {};
+  }
+  const RouteIntent3D& active = active_route->proposal.intent;
+  const RouteIntent3D& replacement = candidate.intent;
+  if (!isStrategicMissionIntent(active) || !isStrategicMissionIntent(replacement) ||
+      active.id != replacement.id ||
+      active.target_identity != replacement.target_identity ||
+      !samePoint(active.mission_target, replacement.mission_target,
+                 observation.segment_target_tolerance_m) ||
+      !samePoint(active.intent_target, replacement.intent_target,
+                 observation.segment_target_tolerance_m) ||
+      !samePoint(active.segment_target, replacement.segment_target,
+                 observation.segment_target_tolerance_m)) {
+    return {};
+  }
+  return {.status = RouteProposalReplacementStatus3D::kRetainEquivalentActiveSegment};
 }
 
 RoutePublicationAssessment3D
