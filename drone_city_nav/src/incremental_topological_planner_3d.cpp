@@ -389,7 +389,9 @@ betterMissionContinuation(const MissionContinuationCandidate& candidate,
     }
     const double goal_progress_m =
         initial_goal_distance_m - distance3D(node->position, mission_goal);
-    if (!(goal_progress_m > 1.0e-9)) {
+    if (!(goal_progress_m > 1.0e-9) ||
+        goal_progress_m + 1.0e-9 <
+            config.minimum_mission_continuation_goal_progress_m) {
       continue;
     }
     if (!std::isfinite(record.cost) || !std::isfinite(record.path_length_m)) {

@@ -240,7 +240,7 @@ TEST(IncrementalTopologicalPlanner3DTest,
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
-     FreshOccupancyDoesNotLeakIntoTheTopologySnapshot) {
+     MissionContinuationRejectsAMicroStepOnAStaleTopologySnapshot) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 56, 32, 16}};
   fillOccupied(occupancy);
   fillFreeBox(occupancy, 4, 20, 13, 15, 5, 7);
@@ -256,10 +256,8 @@ TEST(IncrementalTopologicalPlanner3DTest,
   const IncrementalTopologicalPlan3D stale_plan = planner.planObserved(
       stale_graph, occupancy, observabilityConfig(graph_config.footprint),
       {18.5, 14.5, 6.5}, {52.5, 14.5, 6.5}, memory);
-  ASSERT_EQ(stale_plan.status,
-            IncrementalTopologicalPlanStatus3D::kMissionContinuationRoute);
-  ASSERT_FALSE(stale_plan.guidance_points.empty());
-  EXPECT_LE(stale_plan.guidance_points.back().x, 20.5);
+  EXPECT_EQ(stale_plan.status, IncrementalTopologicalPlanStatus3D::kNoRoute);
+  EXPECT_EQ(stale_plan.reachable_mission_continuation_count, 0U);
 
   const IncrementalTopologyGraph3DSnapshot refreshed_graph = buildGraph(occupancy, 2U);
   const IncrementalTopologicalPlan3D plan = planner.planObserved(

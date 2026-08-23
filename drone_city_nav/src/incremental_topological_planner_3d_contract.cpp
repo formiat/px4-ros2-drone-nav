@@ -19,6 +19,7 @@ bool incrementalTopologicalPlanner3DConfigIsValid(
   };
   return valid_nonnegative(config.maximum_start_anchor_distance_m) &&
          valid_nonnegative(config.maximum_goal_anchor_distance_m) &&
+         valid_nonnegative(config.minimum_mission_continuation_goal_progress_m) &&
          valid_nonnegative(config.path_cost_weight) &&
          valid_nonnegative(config.information_gain_reward) &&
          valid_nonnegative(config.clearance_reward) &&

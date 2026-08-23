@@ -171,6 +171,9 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
       require_known_free_space_for_goal_;
   topological_planner_3d_config_.maximum_goal_anchor_distance_m =
       declare_parameter<double>("topological_planner_3d_goal_anchor_distance_m", 8.0);
+  topological_planner_3d_config_.minimum_mission_continuation_goal_progress_m =
+      declare_parameter<double>(
+          "topological_planner_3d_minimum_mission_continuation_goal_progress_m", 8.0);
   topological_planner_3d_config_.path_cost_weight =
       declare_parameter<double>("topological_planner_3d_path_cost_weight", 1.0);
   topological_planner_3d_config_.information_gain_reward =

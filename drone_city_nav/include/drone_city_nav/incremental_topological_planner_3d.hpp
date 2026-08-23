@@ -98,6 +98,7 @@ struct IncrementalTopologicalPlanner3DConfig {
   double maximum_start_anchor_distance_m{20.0};
   bool require_known_free_space{false};
   double maximum_goal_anchor_distance_m{8.0};
+  double minimum_mission_continuation_goal_progress_m{8.0};
   double path_cost_weight{1.0};
   double information_gain_reward{1.0};
   double clearance_reward{0.5};
