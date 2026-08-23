@@ -40,6 +40,7 @@ void DynamicAgentLidarState::updateTrackedAgent(const Point3& position,
                                                 const bool position_valid,
                                                 const bool velocity_valid,
                                                 const std::int64_t stamp_ns) noexcept {
+  const std::scoped_lock lock{mutex_};
   tracked_agent_ = TrackedAgentState{
       .position = position,
       .velocity = velocity,
@@ -51,6 +52,7 @@ void DynamicAgentLidarState::updateTrackedAgent(const Point3& position,
 
 CooperativePeerUpdateStatus DynamicAgentLidarState::updateCooperativeIntent(
     const CooperativeFlightIntentData& intent, const std::int64_t now_ns) {
+  const std::scoped_lock lock{mutex_};
   if (!peer_store_) {
     return CooperativePeerUpdateStatus::kInvalid;
   }
@@ -60,6 +62,7 @@ CooperativePeerUpdateStatus DynamicAgentLidarState::updateCooperativeIntent(
 DynamicAgentLidarFilterPlan
 DynamicAgentLidarState::makeFilterPlan(const std::int64_t now_ns,
                                        const std::int64_t acquisition_stamp_ns) {
+  const std::scoped_lock lock{mutex_};
   DynamicAgentLidarFilterPlan result;
   const auto maximum_track_age_ns = static_cast<std::int64_t>(
       std::llround(config_.tracked_agent_maximum_age_s * kNanosecondsPerSecond));

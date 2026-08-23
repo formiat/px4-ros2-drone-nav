@@ -9,7 +9,7 @@ int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   auto node =
       std::make_shared<drone_city_nav::ProductionMppiNode>(rclcpp::NodeOptions{});
-  rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 2U};
+  rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 3U};
   executor.add_node(node);
   executor.spin();
   rclcpp::shutdown();

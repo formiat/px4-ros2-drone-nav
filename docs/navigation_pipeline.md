@@ -14,11 +14,13 @@ heartbeat without copying the grid. The 2D profile publishes
 `/drone_city_nav/raw_obstacle_delta_3d` dirty chunks. RViz and provenance
 representations are debug-only and are never planner inputs.
 
-In no-static mode the raw snapshot is the planning world and is published after
-every accepted update. In static mode the status heartbeat keeps memory
-diagnostics observable, while the raw and full snapshots run at the lower debug
-cadence; the planner loads canonical Occupancy3D directly and does not merge the
-sensor grid into the static 3D map.
+In no-static mode the reconstructed raw state is the planning world. The 3D
+pipeline publishes the current physical scan first, integrates persistent memory
+on a latest-value worker, and transports immutable world revisions at a bounded
+rate. Base snapshots are adaptive and intervening updates are cumulative dirty
+deltas, so skipped superseded messages do not invalidate the newest state. In
+static mode the planner loads canonical Occupancy3D directly and does not merge
+the sensor grid into the static 3D map.
 
 ## 2. ESDF Preparation
 

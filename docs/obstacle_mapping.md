@@ -294,7 +294,7 @@ costs; a risk band does not independently remove a physically free rollout.
 
 ## Memory Transport
 
-Every accepted memory update publishes a small `ObstacleMemoryStatus` carrying
+Every bounded transport update publishes a small `ObstacleMemoryStatus` carrying
 the producer identity, monotonically increasing sequence, occupied count, and
 which larger artifacts were emitted for that update. The planner consumes this
 message for memory revision diagnostics without receiving the grid or sparse
@@ -302,15 +302,21 @@ provenance payload.
 
 No-static 2D planning receives `RawObstacleSnapshot`, which contains the raw 2D
 grid and risk-policy identity but no sparse diagnostic provenance. No-static 3D
-planning receives a `RawObstacleSnapshot3D` base and matching
-`RawObstacleDelta3D` dirty chunks. Both become immutable planner revisions.
-Static planning consumes neither sensor-world transport; canonical Occupancy3D
-is its authoritative world.
+planning receives an adaptive `RawObstacleSnapshot3D` base and the latest
+cumulative `RawObstacleDelta3D` dirty chunks relative to that base. The direct
+current-scan safety message is published before persistent-memory integration.
+Memory integration and DDS serialization run on separate coalescing workers, so
+an expensive snapshot cannot make the physical scan stale. Static planning
+consumes neither sensor-world transport; canonical Occupancy3D is its
+authoritative world.
 
 `ObstacleMemorySnapshot` remains an atomic raw-grid/provenance artifact for
 offline auditing and debug consumers. It, the standalone grid/provenance topics,
-and the 3D diagnostic point cloud default to a 1 Hz cadence. This avoids repeated
-multi-megabyte provenance assembly and DDS deserialization in the runtime path.
+and the 3D diagnostic point cloud use bounded cadences. The 3D runtime transport
+coalesces superseded revisions, publishes cumulative deltas at a configured
+rate, and rebases only when the delta approaches snapshot size or the maximum
+base age expires. This avoids rebuilding a multi-megabyte full snapshot for
+every scan.
 
 ## RViz Outputs
 

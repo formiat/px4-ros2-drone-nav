@@ -17,10 +17,14 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
 
   input_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  world_input_callback_group_ =
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   planning_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions input_subscription_options;
   input_subscription_options.callback_group = input_callback_group_;
+  rclcpp::SubscriptionOptions world_subscription_options;
+  world_subscription_options.callback_group = world_input_callback_group_;
   const auto sensor_qos = rclcpp::SensorDataQoS{};
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
       declare_parameter<std::string>("px4_local_position_topic",
@@ -62,26 +66,26 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
         [this](msg::RawObstacleSnapshot::ConstSharedPtr message) {
           onRawObstacleSnapshot(std::move(message));
         },
-        input_subscription_options);
+        world_subscription_options);
     raw_delta_sub_ = create_subscription<msg::RawObstacleDelta>(
         raw_delta_topic, rclcpp::QoS{1}.reliable().transient_local(),
         [this](msg::RawObstacleDelta::ConstSharedPtr message) {
           onRawObstacleDelta(std::move(message));
         },
-        input_subscription_options);
+        world_subscription_options);
   } else if (!use_static_map_) {
     raw_snapshot_3d_sub_ = create_subscription<msg::RawObstacleSnapshot3D>(
         raw_snapshot_3d_topic, rclcpp::QoS{1}.reliable().transient_local(),
         [this](msg::RawObstacleSnapshot3D::ConstSharedPtr message) {
           onRawObstacleSnapshot3D(std::move(message));
         },
-        input_subscription_options);
+        world_subscription_options);
     raw_delta_3d_sub_ = create_subscription<msg::RawObstacleDelta3D>(
-        raw_delta_3d_topic, rclcpp::QoS{1}.reliable().transient_local(),
+        raw_delta_3d_topic, rclcpp::QoS{1}.best_effort().transient_local(),
         [this](msg::RawObstacleDelta3D::ConstSharedPtr message) {
           onRawObstacleDelta3D(std::move(message));
         },
-        input_subscription_options);
+        world_subscription_options);
   }
   latest_lidar_obstacle_scan_sub_ = create_subscription<msg::LatestLidarObstacleScan>(
       declare_parameter<std::string>("latest_lidar_obstacle_scan_topic",

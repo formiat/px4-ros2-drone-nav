@@ -2,6 +2,7 @@
 #include "drone_city_nav/dynamic_agent_lidar_state.hpp"
 #include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
 #include "drone_city_nav/latest_lidar_obstacle_scan_ros.hpp"
+#include "drone_city_nav/latest_processing_queue.hpp"
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
@@ -9,7 +10,6 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_scan_3d.hpp"
 #include "drone_city_nav/lidar_self_filter.hpp"
-#include "drone_city_nav/mapping_lifecycle.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/latest_lidar_obstacle_scan.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
@@ -32,12 +32,14 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
-#include <deque>
+#include <exception>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -50,8 +52,8 @@
 #include <utility>
 #include <vector>
 
+#include "obstacle_memory_3d_worker.hpp"
 #include "obstacle_memory_node_helpers.hpp"
-#include "obstacle_memory_transport_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -161,7 +163,8 @@ class ObstacleMemory3DNode final : public rclcpp::Node {
 public:
   ObstacleMemory3DNode()
       : Node{"obstacle_memory_3d_node"},
-        bounds_{declareGridBounds3D(*this)} {
+        bounds_{declareGridBounds3D(*this)},
+        grid_geometry_{bounds_} {
     cloud_callback_group_ =
         create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     pose_callback_group_ =
@@ -218,11 +221,6 @@ public:
         declare_parameter<std::int64_t>("occupied_score", 3), 1, 100000));
     memory_config.free_score = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("free_score", -1), -100000, -1));
-    if (persistent_memory_enabled_) {
-      memory_ = std::make_unique<ObstacleMemory3D>(bounds_, memory_config);
-      transport_ = std::make_unique<ObstacleMemoryTransport3D>(*this, frame_id_);
-    }
-
     const LidarMappingYawConfig yaw_config = declareLidarMappingYawConfig(*this);
     use_px4_heading_for_scan_ = yaw_config.use_px4_heading;
     initial_heading_rad_ = yaw_config.initial_heading_rad;
@@ -246,9 +244,6 @@ public:
             declare_parameter<double>("lidar_scan_alignment_maximum_wait_s", 0.35), 0.0,
             2.0) *
         1.0e9);
-    queue_capacity_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("lidar_scan_alignment_queue_capacity", 8), 1,
-        100));
     pose_source_stamp_config_.maximum_receive_delay_ns = static_cast<std::int64_t>(
         std::clamp(
             declare_parameter<double>("lidar_pose_source_maximum_receive_delay_s", 1.0),
@@ -262,7 +257,8 @@ public:
     static_cast<void>(declare_parameter<double>("max_pose_staleness_s", 1.0));
     min_mapping_altitude_m_ = declare_parameter<double>("min_mapping_altitude_m", 0.0);
     if (persistent_memory_enabled_) {
-      mapping_lifecycle_ = std::make_unique<MappingLifecycle>(min_mapping_altitude_m_);
+      memory_worker_ = std::make_unique<ObstacleMemory3DWorker>(
+          *this, bounds_, memory_config, min_mapping_altitude_m_, frame_id_);
     }
 
     projection_config_.max_lidar_range_m = scan_config_.maximum_range_m;
@@ -363,8 +359,8 @@ public:
     vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
         vehicle_status_topic, sensor_qos,
         [this](const px4_msgs::msg::VehicleStatus::SharedPtr message) {
-          if (mapping_lifecycle_) {
-            mapping_lifecycle_->updateArmed(
+          if (memory_worker_) {
+            memory_worker_->updateArmed(
                 message->arming_state ==
                 px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED);
           }
@@ -430,7 +426,10 @@ public:
   ObstacleMemory3DNode& operator=(const ObstacleMemory3DNode&) = delete;
   ObstacleMemory3DNode(ObstacleMemory3DNode&&) = delete;
   ObstacleMemory3DNode& operator=(ObstacleMemory3DNode&&) = delete;
-  ~ObstacleMemory3DNode() override = default;
+
+  ~ObstacleMemory3DNode() override {
+    memory_worker_.reset();
+  }
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message) {
@@ -566,39 +565,42 @@ private:
   }
 
   void onPointCloud(sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
-    bool pending_pose_alignment{false};
-    {
-      const std::scoped_lock queue_lock{pending_clouds_mutex_};
-      if (!pending_clouds_.empty()) {
-        pending_pose_alignment = true;
-        RCLCPP_DEBUG_THROTTLE(
-            get_logger(), *get_clock(), 5000,
-            "LIDAR3D_ALIGNMENT coalesced=true reason=awaiting_pose_bracket");
-      } else {
-        pending_clouds_.push_back(
-            PendingPointCloud3D{std::move(*cloud), get_clock()->now().nanoseconds()});
-      }
+    const auto submission = pending_clouds_.submit(
+        PendingPointCloud3D{std::move(*cloud), get_clock()->now().nanoseconds()});
+    if (submission.replaced_pending) {
+      ++alignment_coalesced_clouds_;
+      RCLCPP_DEBUG_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "LIDAR3D_ALIGNMENT coalesced=true reason=newer_cloud_available "
+          "coalesced_total=%" PRIu64,
+          alignment_coalesced_clouds_);
     }
-    if (pending_pose_alignment) {
-      return;
+    if (submission.processor_acquired) {
+      drainPendingClouds();
     }
-    processPendingClouds();
   }
 
   void processPendingClouds() {
-    const std::scoped_lock queue_lock{pending_clouds_mutex_};
-    while (!pending_clouds_.empty()) {
-      const PendingPointCloudDisposition disposition =
-          processPendingCloud(pending_clouds_.front());
+    if (pending_clouds_.tryAcquireProcessor()) {
+      drainPendingClouds();
+    }
+  }
+
+  void drainPendingClouds() {
+    while (std::optional<PendingPointCloud3D> pending = pending_clouds_.take()) {
+      const PendingPointCloudDisposition disposition = processPendingCloud(*pending);
       if (disposition == PendingPointCloudDisposition::kWaitForPoseBracket) {
+        if (pending_clouds_.deferOrContinue(std::move(*pending))) {
+          continue;
+        }
         return;
       }
-      pending_clouds_.pop_front();
     }
   }
 
   [[nodiscard]] PendingPointCloudDisposition
   processPendingCloud(const PendingPointCloud3D& pending) {
+    const auto processing_started = std::chrono::steady_clock::now();
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
     const std::optional<std::int64_t> scan_stamp_ns =
         validRosStampNanoseconds(pending.cloud.header.stamp);
@@ -678,7 +680,7 @@ private:
     }
     const std::int64_t acquisition_stamp_ns =
         acquisition.adjusted_timing.first_beam_stamp_ns;
-    const DynamicAgentLidarFilterPlan filter_plan =
+    DynamicAgentLidarFilterPlan filter_plan =
         dynamic_agent_state_->makeFilterPlan(now_ns, acquisition_stamp_ns);
     std::vector<LidarBeam3D> memory_beams;
     std::vector<Point3> hit_points_map;
@@ -713,13 +715,11 @@ private:
                               ray.origin_map_m.z + beam.range_m * beam.direction_map.z};
         const Point3 endpoint_body = lidarMapPointToBody(body_frame, endpoint);
         std::optional<Point3> occupancy_voxel_center_body;
-        if (memory_) {
-          const std::optional<GridIndex3D> occupancy_cell =
-              memory_->grid().worldToCell(endpoint);
-          if (occupancy_cell.has_value()) {
-            occupancy_voxel_center_body = lidarMapPointToBody(
-                body_frame, memory_->grid().cellCenter(*occupancy_cell));
-          }
+        const std::optional<GridIndex3D> occupancy_cell =
+            grid_geometry_.worldToCell(endpoint);
+        if (occupancy_cell.has_value()) {
+          occupancy_voxel_center_body = lidarMapPointToBody(
+              body_frame, grid_geometry_.cellCenter(*occupancy_cell));
         }
         const LidarSelfFilterDisposition self_disposition = classifyLidarSelfHit(
             endpoint_body, occupancy_voxel_center_body, self_filter_config_);
@@ -773,51 +773,51 @@ private:
           hit_points_map, rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME}, frame_id_));
     }
 
-    if (memory_ && mapping_lifecycle_ && transport_ &&
-        mapping_lifecycle_->updateAltitude(pose.altitude_m, pose.altitude_valid)) {
-      const std::size_t forgotten_tracked_voxels =
-          memory_->forgetDynamicVolumes(filter_plan.tracked_agent_exclusions);
-      const std::size_t forgotten_cooperative_voxels =
-          memory_->forgetDynamicVolumes(filter_plan.cooperative_memory_exclusions);
-      if (!filter_plan.cooperative_memory_exclusions.empty()) {
-        RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "COOPERATIVE_PEER_LIDAR_FILTER3D filtered_beams=%zu known_peers=%zu "
-            "forgotten_voxels=%zu",
-            cooperative_filtered, filter_plan.cooperative_memory_exclusions.size(),
-            forgotten_cooperative_voxels);
-      }
-      const ObstacleMemory3DStats stats = memory_->integrateScan(
-          LidarScan3DView{.origin_map = ray_origin, .beams = memory_beams});
-      const ObstacleMemory3DChanges changes = memory_->takeChanges();
-      transport_->publish(memory_->grid(), changes,
-                          rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME},
-                          publish_current_cloud);
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "LIDAR3D_SCAN accepted=true stamp_ns=%" PRId64
-          " source=%zu processed=%zu hits=%zu misses=%zu invalid=%zu "
-          "self_filtered=%zu persistent_self_filtered=%zu dynamic_filtered=%zu "
-          "dynamic_forgotten=%zu "
-          "transitions=%zu "
-          "revision=%" PRIu64 " current_cloud=%s",
-          acquisition_stamp_ns, decoded.beams.size(), stats.processed_beams,
-          stats.hit_beams, stats.miss_beams, stats.invalid_beams + projection_invalid,
-          self_filtered, persistent_self_filtered, dynamic_filtered,
-          forgotten_tracked_voxels + forgotten_cooperative_voxels,
-          stats.state_transitions, memory_->revision(),
-          publish_current_cloud ? "true" : "false");
+    bool memory_coalesced{false};
+    if (memory_worker_) {
+      memory_coalesced = memory_worker_->enqueue(PersistentLidarScan3D{
+          .origin_map = ray_origin,
+          .beams = std::move(memory_beams),
+          .dynamic_filter_plan = std::move(filter_plan),
+          .acquisition_stamp_ns = acquisition_stamp_ns,
+          .enqueued_at = std::chrono::steady_clock::now(),
+          .altitude_m = pose.altitude_m,
+          .source_beams = decoded.beams.size(),
+          .projection_invalid = projection_invalid,
+          .self_filtered = self_filtered,
+          .persistent_self_filtered = persistent_self_filtered,
+          .tracked_agent_filtered = tracked_agent_filtered,
+          .cooperative_filtered = cooperative_filtered,
+          .altitude_valid = pose.altitude_valid,
+          .publish_debug = publish_current_cloud,
+      });
     }
+    const auto processing_finished = std::chrono::steady_clock::now();
+    const double processing_ms = std::chrono::duration<double, std::milli>(
+                                     processing_finished - processing_started)
+                                     .count();
+    const double acquisition_age_ms =
+        1.0e-6 *
+        static_cast<double>(get_clock()->now().nanoseconds() - acquisition_stamp_ns);
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "LIDAR3D_CURRENT_SCAN accepted=true stamp_ns=%" PRId64 " sequence=%" PRIu64
+        " source=%zu hits=%zu invalid=%zu "
+        "acquisition_age_ms=%.3f processing_ms=%.3f alignment_coalesced=%" PRIu64
+        " memory_coalesced=%s",
+        acquisition_stamp_ns, latest_scan_sequence_, decoded.beams.size(),
+        hit_points_body.size(), latest.invalid_beam_count, acquisition_age_ms,
+        processing_ms, alignment_coalesced_clouds_,
+        memory_coalesced ? "true" : "false");
     return PendingPointCloudDisposition::kConsumed;
   }
 
   GridBounds3D bounds_{};
+  ObservedOccupancyGrid3D grid_geometry_;
   OrganizedLidarScan3DConfig scan_config_{};
   LidarProjectionConfig projection_config_{};
   LidarSelfFilterConfig self_filter_config_{};
-  std::unique_ptr<ObstacleMemory3D> memory_;
-  std::unique_ptr<ObstacleMemoryTransport3D> transport_;
-  std::unique_ptr<MappingLifecycle> mapping_lifecycle_;
+  std::unique_ptr<ObstacleMemory3DWorker> memory_worker_;
   std::unique_ptr<DynamicAgentLidarState> dynamic_agent_state_;
   NavigationPose2D current_pose_{};
   Px4LocalPoseConfig px4_local_pose_config_{};
@@ -828,19 +828,18 @@ private:
   LidarAcquisitionPoseConfig acquisition_pose_config_{};
   LidarPoseSourceStampConfig pose_source_stamp_config_{};
   SpectatorDiagnosticsSelection persistent_memory_selection_;
-  std::deque<PendingPointCloud3D> pending_clouds_;
+  LatestProcessingQueue<PendingPointCloud3D> pending_clouds_;
   std::mutex pose_history_mutex_;
-  std::mutex pending_clouds_mutex_;
   std::string frame_id_{"map"};
   double initial_heading_rad_{0.0};
   double maximum_heading_variance_rad2_{0.05};
   double startup_heading_maximum_sample_delta_rad_{0.05};
   double min_mapping_altitude_m_{0.0};
   std::size_t startup_heading_stable_sample_count_{5U};
-  std::size_t queue_capacity_{8U};
   std::int64_t alignment_maximum_wait_ns_{350'000'000};
   std::int64_t last_pose_update_ns_{0};
   std::uint64_t latest_scan_sequence_{0U};
+  std::uint64_t alignment_coalesced_clouds_{0U};
   bool persistent_memory_enabled_{true};
   bool persistent_memory_diagnostics_enabled_{true};
   bool use_px4_heading_for_scan_{true};
@@ -863,12 +862,22 @@ private:
 
 } // namespace drone_city_nav
 
-int main(int argc, char* argv[]) {
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<drone_city_nav::ObstacleMemory3DNode>();
-  rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 2U};
-  executor.add_node(node);
-  executor.spin();
-  rclcpp::shutdown();
-  return 0;
+int main(int argc, char* argv[]) noexcept {
+  try {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<drone_city_nav::ObstacleMemory3DNode>();
+    rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 2U};
+    executor.add_node(node);
+    executor.spin();
+    rclcpp::shutdown();
+    return 0;
+  } catch (const std::exception& error) {
+    std::fprintf(stderr, "obstacle_memory_3d_node failed: %s\n", error.what());
+  } catch (...) {
+    std::fputs("obstacle_memory_3d_node failed: unknown exception\n", stderr);
+  }
+  if (rclcpp::ok()) {
+    rclcpp::shutdown();
+  }
+  return 1;
 }

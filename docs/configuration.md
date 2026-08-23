@@ -64,6 +64,11 @@ No-static 3D world:
 
 - `raw_obstacle_snapshot_3d_topic` and `raw_obstacle_delta_3d_topic` define the
   revisioned observed-world transport;
+- `obstacle_memory_3d_transport_rate_hz` bounds planner-world publication;
+- `obstacle_memory_3d_snapshot_minimum_period_s`,
+  `obstacle_memory_3d_snapshot_maximum_period_s`, and
+  `obstacle_memory_3d_snapshot_rebase_dirty_ratio` control adaptive base
+  rebasing without coupling it to lidar cadence;
 - local ESDF half extent, recenter margin, and update rate bound the dense GPU
   resource built from sparse observed occupancy;
 - outside-ROI and unknown voxels remain unavailable for execution rather than

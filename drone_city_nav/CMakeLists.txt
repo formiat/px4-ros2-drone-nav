@@ -260,6 +260,7 @@ add_library(
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
   src/obstacle_memory_3d.cpp
+  src/obstacle_memory_transport_policy_3d.cpp
   src/observed_esdf_3d.cpp
   src/observed_occupancy_grid_3d.cpp
   src/observation_frontier.cpp
@@ -353,6 +354,7 @@ ament_target_dependencies(
 enable_project_warnings(obstacle_memory_node)
 
 add_executable(obstacle_memory_3d_node src/obstacle_memory_3d_node.cpp
+                                       src/obstacle_memory_3d_worker.cpp
                                        src/obstacle_memory_node_helpers.cpp
                                        src/obstacle_memory_transport_3d.cpp)
 target_compile_features(obstacle_memory_3d_node PRIVATE cxx_std_20)
@@ -832,6 +834,12 @@ if(BUILD_TESTING)
   target_include_directories(latest_value_mailbox_test PRIVATE include)
   enable_project_warnings(latest_value_mailbox_test)
 
+  ament_add_gtest(latest_processing_queue_test
+                  tests/latest_processing_queue_test.cpp)
+  target_compile_features(latest_processing_queue_test PRIVATE cxx_std_20)
+  target_include_directories(latest_processing_queue_test PRIVATE include)
+  enable_project_warnings(latest_processing_queue_test)
+
   ament_add_gtest(mppi_post_update_classification_test
                   tests/mppi_post_update_classification_test.cpp)
   target_compile_features(mppi_post_update_classification_test PRIVATE cxx_std_20)
@@ -930,6 +938,13 @@ if(BUILD_TESTING)
   target_compile_features(obstacle_memory_3d_test PRIVATE cxx_std_20)
   target_link_libraries(obstacle_memory_3d_test drone_city_nav_core)
   enable_project_warnings(obstacle_memory_3d_test)
+
+  ament_add_gtest(obstacle_memory_transport_policy_3d_test
+                  tests/obstacle_memory_transport_policy_3d_test.cpp)
+  target_compile_features(obstacle_memory_transport_policy_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(obstacle_memory_transport_policy_3d_test
+                        drone_city_nav_core)
+  enable_project_warnings(obstacle_memory_transport_policy_3d_test)
 
   ament_add_gtest(lidar_scan_3d_test tests/lidar_scan_3d_test.cpp)
   target_compile_features(lidar_scan_3d_test PRIVATE cxx_std_20)

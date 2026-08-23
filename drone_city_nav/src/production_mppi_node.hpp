@@ -958,6 +958,7 @@ private:
   std::jthread diagnostics_worker_;
 
   rclcpp::CallbackGroup::SharedPtr input_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr world_input_callback_group_;
   rclcpp::CallbackGroup::SharedPtr planning_callback_group_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -53,6 +54,7 @@ private:
   };
 
   DynamicAgentLidarStateConfig config_{};
+  std::mutex mutex_;
   TrackedAgentState tracked_agent_{};
   std::unique_ptr<CooperativePeerStore> peer_store_;
 };

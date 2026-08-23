@@ -583,10 +583,12 @@ Obstacle topics follow a strict raw/runtime/debug contract.
 `/drone_city_nav/obstacle_memory_status` is the lightweight per-update heartbeat.
 For the 2D profile, `/drone_city_nav/raw_obstacle_snapshot` carries the current
 raw grid. For the 3D profile, `/drone_city_nav/raw_obstacle_snapshot_3d` and
-`/drone_city_nav/raw_obstacle_delta_3d` carry revisioned base snapshots and dirty
-chunks. The larger debug representation is published at a bounded cadence and
-is not deserialized by the planner. Raw grids contain only direct sensor
-evidence. Each timestamp-aligned scan also publishes
+`/drone_city_nav/raw_obstacle_delta_3d` carry adaptive base snapshots and the
+latest cumulative dirty chunks. Persistent integration and DDS serialization
+run on independent latest-value workers; superseded work is coalesced rather
+than allowed to make sensor evidence stale. The larger debug representation is
+published at a bounded cadence and is not deserialized by the planner. Raw grids
+contain only direct sensor evidence. Each timestamp-aligned scan first publishes
 `/drone_city_nav/latest_lidar_obstacle_scan`; while fresh, those physical hit
 points validate the complete finite path without waiting for persistent-memory
 integration. The planner builds a distance-derived risk field without

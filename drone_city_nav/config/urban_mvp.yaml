@@ -157,7 +157,11 @@ obstacle_memory_3d_node:
     max_score: 12
     occupied_score: 3
     free_score: -1
-    obstacle_memory_3d_snapshot_period_s: 1.0
+    obstacle_memory_3d_transport_rate_hz: 2.0
+    obstacle_memory_3d_snapshot_minimum_period_s: 10.0
+    obstacle_memory_3d_snapshot_maximum_period_s: 30.0
+    obstacle_memory_3d_snapshot_rebase_dirty_ratio: 0.75
+    obstacle_memory_3d_debug_period_s: 1.0
     obstacle_memory_3d_debug_stride: 2
 
 world_visualization_node:
