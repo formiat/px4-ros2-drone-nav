@@ -195,6 +195,11 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("publishLatestLidarObstacleScan", obstacle_memory)
         self.assertIn("onLatestLidarObstacleScan", inputs)
         self.assertIn("latest_lidar_obstacle_maximum_age_ms_", execution)
+        scan_load = execution.index("latest_lidar_obstacle_scan_.load")
+        validation_now = execution.index("latest_lidar_validation_now_ns")
+        freshness_assessment = execution.index("assessLatestLidarObstacleFreshness")
+        self.assertLess(scan_load, validation_now)
+        self.assertLess(validation_now, freshness_assessment)
         self.assertIn("buildValidatedFiniteExecutionPath", execution)
         self.assertIn("validateCompleteFiniteExecutionPath", finite_execution_path)
         self.assertIn(

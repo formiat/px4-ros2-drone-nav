@@ -135,13 +135,17 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const std::shared_ptr<const LatestLidarObstacleSnapshot> latest_lidar_obstacle_scan =
       use_static_map_ ? nullptr
                       : latest_lidar_obstacle_scan_.load(std::memory_order_acquire);
+  // The scan callback may run after the planning tick captured now_ns. Sample
+  // consumer time after the atomic load so receipt age uses the same boundary.
+  const std::int64_t latest_lidar_validation_now_ns = get_clock()->now().nanoseconds();
   double latest_lidar_obstacle_age_ms{-1.0};
   bool latest_lidar_obstacle_fresh{false};
   bool latest_lidar_obstacle_receive_time_fallback{false};
   std::span<const Point3> latest_lidar_obstacle_points;
   if (latest_lidar_obstacle_scan) {
     const LatestLidarObstacleFreshness freshness = assessLatestLidarObstacleFreshness(
-        *latest_lidar_obstacle_scan, now_ns, latest_lidar_obstacle_maximum_age_ms_);
+        *latest_lidar_obstacle_scan, latest_lidar_validation_now_ns,
+        latest_lidar_obstacle_maximum_age_ms_);
     latest_lidar_obstacle_age_ms = freshness.age_ms;
     latest_lidar_obstacle_fresh = freshness.fresh;
     latest_lidar_obstacle_receive_time_fallback = freshness.receive_time_fallback;

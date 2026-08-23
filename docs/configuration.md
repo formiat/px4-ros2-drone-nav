@@ -61,8 +61,9 @@ No-static direct raw validation:
   receipt must remain within this budget when the producer clock is not ahead.
   An acquisition timestamp ahead of the consumer's simulated clock uses local
   receipt age as the freshness authority so executor load does not discard
-  current evidence while `/clock` delivery catches up. Stale or missing data
-  does not create an obstacle.
+  current evidence while `/clock` delivery catches up. Receipt age is evaluated
+  after selecting the atomic latest scan rather than against the older planning
+  tick start. Stale or missing data does not create an obstacle.
 
 No-static 3D world:
 
