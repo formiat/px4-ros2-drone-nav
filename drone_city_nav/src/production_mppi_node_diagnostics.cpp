@@ -135,6 +135,8 @@ void ProductionMppiNode::processDiagnostics(
       << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
       << " route_intent_target_reached="
       << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
+      << " route_intent_reaches_mission_target="
+      << (esdf.route_intent.intent_reaches_mission_target ? "true" : "false")
       << " route_proposal_candidates=" << esdf.route_proposal_candidate_count
       << " route_proposal_eligible=" << esdf.route_proposal_eligible_count
       << " route_proposal_selection="
@@ -602,6 +604,8 @@ void ProductionMppiNode::processDiagnostics(
         << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
         << ",\"route_intent_target_reached\":"
         << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
+        << ",\"route_intent_reaches_mission_target\":"
+        << (esdf.route_intent.intent_reaches_mission_target ? "true" : "false")
         << ",\"route_proposal_candidates\":" << esdf.route_proposal_candidate_count
         << ",\"route_proposal_eligible\":" << esdf.route_proposal_eligible_count
         << ",\"route_proposal_selection\":\""

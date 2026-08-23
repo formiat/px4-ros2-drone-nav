@@ -16,12 +16,14 @@ proposal(const RouteIntentSource3D source, const bool strategic,
          const bool reaches_mission, const double objective_cost,
          const double endpoint_displacement_m, const double route_length_m,
          const std::uint64_t fingerprint, const double mission_progress_m = 0.0,
-         const RouteIntentPurpose3D purpose = RouteIntentPurpose3D::kMissionTransit) {
+         const RouteIntentPurpose3D purpose = RouteIntentPurpose3D::kMissionTransit,
+         const bool intent_reaches_mission_target = false) {
   return RouteProposal3D{
       .intent = {.id = fingerprint + 100U,
                  .source = source,
                  .purpose = purpose,
                  .strategic_continuation_available = strategic,
+                 .intent_reaches_mission_target = intent_reaches_mission_target,
                  .valid = true},
       .evidence = {.status = physical_executable
                                  ? SegmentEvidenceStatus3D::kValid
@@ -133,6 +135,24 @@ TEST(RoutePlanning3DTest, ProductiveDirectTransitBeatsAValidatedStrategicFrontie
   ASSERT_TRUE(selection.selected_index.has_value());
   EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 0U);
   EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kProductiveDirectTransit);
+}
+
+TEST(RoutePlanning3DTest,
+     StrategicMissionContinuationBeatsAProductiveUnfinishedDirectPrefix) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
+               1.0, 9.0, 11.0, 13U, 3.0),
+      proposal(RouteIntentSource3D::kTopology, true, true, true, true, false, false,
+               10.0, 3.0, 4.0, 14U, -2.0, RouteIntentPurpose3D::kMissionTransit, true),
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
+
+  ASSERT_TRUE(selection.selected_index.has_value());
+  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
+  EXPECT_EQ(selection.reason,
+            RouteProposalSelectionReason3D::kStrategicMissionContinuation);
 }
 
 TEST(RoutePlanning3DTest, InefficientDirectPrefixYieldsToAValidatedStrategicFrontier) {

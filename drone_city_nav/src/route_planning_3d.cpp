@@ -89,6 +89,7 @@ rejectedStatus(const SweptFootprintResult& result,
   return std::tuple{
       evidence.reaches_mission_target ? 0 : 1,
       evidence.reaches_intent_target ? 0 : 1,
+      isStrategicMissionContinuation3D(proposal) ? 0 : 1,
       isProductiveDirectTransit3D(proposal, config) ? 0 : 1,
       proposal.intent.strategic_continuation_available ? 0 : 1,
       purposeRank(proposal.intent.purpose),
@@ -225,6 +226,14 @@ bool isProductiveDirectTransit3D(
          progress_ratio >= config.productive_direct_minimum_progress_ratio;
 }
 
+bool isStrategicMissionContinuation3D(const RouteProposal3D& proposal) noexcept {
+  return proposal.intent.valid &&
+         proposal.intent.source == RouteIntentSource3D::kTopology &&
+         proposal.intent.purpose == RouteIntentPurpose3D::kMissionTransit &&
+         proposal.intent.strategic_continuation_available &&
+         proposal.intent.intent_reaches_mission_target;
+}
+
 bool betterRouteProposal3D(const RouteProposal3D& candidate,
                            const RouteProposal3D& current,
                            const RouteProposalSelection3DConfig& config) noexcept {
@@ -266,6 +275,8 @@ selectRouteProposal3D(const std::span<const RouteProposal3D> proposals,
     result.reason = RouteProposalSelectionReason3D::kMissionTarget;
   } else if (selected.evidence.reaches_intent_target) {
     result.reason = RouteProposalSelectionReason3D::kIntentTarget;
+  } else if (isStrategicMissionContinuation3D(selected)) {
+    result.reason = RouteProposalSelectionReason3D::kStrategicMissionContinuation;
   } else if (isProductiveDirectTransit3D(selected, config)) {
     result.reason = RouteProposalSelectionReason3D::kProductiveDirectTransit;
   } else if (selected.intent.strategic_continuation_available) {
@@ -337,6 +348,8 @@ const char* routeProposalSelectionReason3DName(
       return "mission_target";
     case RouteProposalSelectionReason3D::kIntentTarget:
       return "intent_target";
+    case RouteProposalSelectionReason3D::kStrategicMissionContinuation:
+      return "strategic_mission_continuation";
     case RouteProposalSelectionReason3D::kProductiveDirectTransit:
       return "productive_direct_transit";
     case RouteProposalSelectionReason3D::kStrategicContinuation:

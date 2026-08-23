@@ -109,6 +109,7 @@ enum class RouteProposalSelectionReason3D : std::uint8_t {
   kOnlyEligibleCandidate,
   kMissionTarget,
   kIntentTarget,
+  kStrategicMissionContinuation,
   kProductiveDirectTransit,
   kStrategicContinuation,
   kRouteQuality,
@@ -139,6 +140,9 @@ makeRouteIntentId3D(RouteIntentSource3D source, RouteIntentPurpose3D purpose,
 [[nodiscard]] bool
 isProductiveDirectTransit3D(const RouteProposal3D& proposal,
                             const RouteProposalSelection3DConfig& config) noexcept;
+
+[[nodiscard]] bool
+isStrategicMissionContinuation3D(const RouteProposal3D& proposal) noexcept;
 
 [[nodiscard]] bool
 betterRouteProposal3D(const RouteProposal3D& candidate, const RouteProposal3D& current,

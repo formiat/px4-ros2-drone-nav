@@ -313,6 +313,7 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
                 "intent_id=%" PRIu64 " source=%s purpose=%s planned_on=%" PRIu64
                 " validated_through=%" PRIu64 " status=%s physical=%s "
                 "segment_target=%s intent_target=%s mission_target=%s strategic=%s "
+                "strategic_mission_continuation=%s "
                 "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
                 "route_length_m=%.2f endpoint_displacement_m=%.2f "
                 "mission_progress_m=%.2f productive_direct=%s objective=%.3f",
@@ -329,6 +330,7 @@ ProductionRouteCandidateSelection3D ProductionMppiNode::selectRouteCandidate3D(
                 candidate.evidence.reaches_intent_target ? "true" : "false",
                 candidate.evidence.reaches_mission_target ? "true" : "false",
                 candidate.intent.strategic_continuation_available ? "true" : "false",
+                isStrategicMissionContinuation3D(proposals[index]) ? "true" : "false",
                 candidate.evidence.unknown_exposure ? "true" : "false",
                 candidate.evidence.known_clearance_observed ? "true" : "false",
                 candidate.evidence.minimum_known_clearance_m,
