@@ -266,7 +266,9 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
       topological_memory_3d_config_, lattice_3d_config_.sensor_observability,
       IncrementalTopologicalNavigation3DConfig{
           .active_route_completion_tolerance_m =
-              topological_lattice_adapter_3d_config_.segment_capture_radius_m});
+              topological_lattice_adapter_3d_config_.segment_capture_radius_m,
+          .maximum_active_route_cross_track_m =
+              topological_planner_3d_config_.maximum_start_anchor_distance_m});
 }
 
 void ProductionMppiNode::initializeStaticTopology3D() {

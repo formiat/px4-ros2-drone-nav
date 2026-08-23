@@ -64,7 +64,8 @@ protected:
                     {},
                     observabilityFor(graph_config_),
                     IncrementalTopologicalNavigation3DConfig{
-                        .active_route_completion_tolerance_m = 0.5}} {
+                        .active_route_completion_tolerance_m = 0.5,
+                        .maximum_active_route_cross_track_m = 4.0}} {
   }
 
   void SetUp() override {
@@ -171,6 +172,34 @@ TEST_F(IncrementalTopologicalNavigation3DLifecycleTest,
   const IncrementalTopologicalPlan3D replacement =
       navigation().planObserved(world().snapshot, occupancy(), advanced_start, goal());
   EXPECT_FALSE(replacement.continued_from_active_plan);
+}
+
+TEST_F(IncrementalTopologicalNavigation3DLifecycleTest,
+       ActivatedNonTopologyRouteSupersedesAcceptedPlan) {
+  const IncrementalTopologicalPlan3D accepted = makeAcceptedMissionPlan();
+  advanceWorldRevision();
+
+  EXPECT_TRUE(navigation().supersedeAcceptedPlan());
+  EXPECT_FALSE(navigation().supersedeAcceptedPlan());
+  const IncrementalTopologicalPlan3D replacement =
+      navigation().planObserved(world().snapshot, occupancy(), {8.5, 9.5, 5.5}, goal());
+
+  EXPECT_FALSE(replacement.continued_from_active_plan);
+  EXPECT_EQ(replacement.planned_on_revision, world().graph.revision);
+  EXPECT_LT(accepted.planned_on_revision, replacement.planned_on_revision);
+}
+
+TEST_F(IncrementalTopologicalNavigation3DLifecycleTest,
+       ExcessiveCrossTrackDropsAcceptedPlan) {
+  const IncrementalTopologicalPlan3D accepted = makeAcceptedMissionPlan();
+  advanceWorldRevision();
+
+  const IncrementalTopologicalPlan3D replacement = navigation().planObserved(
+      world().snapshot, occupancy(), {8.5, 15.5, 5.5}, goal());
+
+  EXPECT_FALSE(replacement.continued_from_active_plan);
+  EXPECT_EQ(replacement.planned_on_revision, world().graph.revision);
+  EXPECT_LT(accepted.planned_on_revision, replacement.planned_on_revision);
 }
 
 TEST_F(IncrementalTopologicalNavigation3DLifecycleTest,

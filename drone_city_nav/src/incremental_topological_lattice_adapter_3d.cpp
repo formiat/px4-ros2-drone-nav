@@ -2,20 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace drone_city_nav {
 namespace {
 
 constexpr double kGeometryEpsilon{1.0e-9};
-
-struct PolylineProjection3D {
-  Point3 point{};
-  std::size_t segment_index{0U};
-  double segment_fraction{0.0};
-  double station_m{0.0};
-  double distance_m{std::numeric_limits<double>::infinity()};
-};
 
 [[nodiscard]] bool finitePoint(const Point3& point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
@@ -28,13 +19,16 @@ struct PolylineProjection3D {
                 .z = std::lerp(from.z, to.z, fraction)};
 }
 
-[[nodiscard]] std::optional<PolylineProjection3D>
-projectOntoPolyline(const std::vector<Point3>& points, const Point3& position) {
+} // namespace
+
+std::optional<TopologicalPolylineProjection3D>
+projectOntoTopologicalPolyline3D(const std::span<const Point3> points,
+                                 const Point3& position) {
   if (points.size() < 2U || !finitePoint(position)) {
     return std::nullopt;
   }
 
-  std::optional<PolylineProjection3D> best;
+  std::optional<TopologicalPolylineProjection3D> best;
   double segment_start_station_m = 0.0;
   for (std::size_t index = 0U; index + 1U < points.size(); ++index) {
     const Point3& first = points[index];
@@ -63,16 +57,22 @@ projectOntoPolyline(const std::vector<Point3>& points, const Point3& position) {
     if (!best || projection_distance + kGeometryEpsilon < best->distance_m ||
         (std::abs(projection_distance - best->distance_m) <= kGeometryEpsilon &&
          station + kGeometryEpsilon < best->station_m)) {
-      best = PolylineProjection3D{.point = projection,
-                                  .segment_index = index,
-                                  .segment_fraction = fraction,
-                                  .station_m = station,
-                                  .distance_m = projection_distance};
+      best = TopologicalPolylineProjection3D{.point = projection,
+                                             .segment_index = index,
+                                             .segment_fraction = fraction,
+                                             .station_m = station,
+                                             .remaining_m = 0.0,
+                                             .distance_m = projection_distance};
     }
     segment_start_station_m += segment_length;
   }
+  if (best.has_value()) {
+    best->remaining_m = std::max(0.0, segment_start_station_m - best->station_m);
+  }
   return best;
 }
+
+namespace {
 
 [[nodiscard]] Lattice3DRoutePurpose
 latticePurpose(const IncrementalTopologicalRoutePurpose3D purpose) noexcept {
@@ -109,9 +109,12 @@ makeIncrementalTopologicalLatticeDirective3D(
       !plan.executableTargetSelected()) {
     return std::nullopt;
   }
-  const std::optional<PolylineProjection3D> projection =
-      projectOntoPolyline(plan.guidance_points, position);
+  const std::optional<TopologicalPolylineProjection3D> projection =
+      projectOntoTopologicalPolyline3D(plan.guidance_points, position);
   if (!projection) {
+    return std::nullopt;
+  }
+  if (projection->remaining_m <= config.segment_capture_radius_m + kGeometryEpsilon) {
     return std::nullopt;
   }
 

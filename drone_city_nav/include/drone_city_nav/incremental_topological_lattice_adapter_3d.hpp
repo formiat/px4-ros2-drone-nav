@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 
 namespace drone_city_nav {
 
@@ -30,6 +31,19 @@ struct IncrementalTopologicalLatticeDirective3D {
   std::size_t captured_bends_skipped{0U};
   bool reaches_topological_target{false};
 };
+
+struct TopologicalPolylineProjection3D {
+  Point3 point{};
+  std::size_t segment_index{0U};
+  double segment_fraction{0.0};
+  double station_m{0.0};
+  double remaining_m{0.0};
+  double distance_m{0.0};
+};
+
+[[nodiscard]] std::optional<TopologicalPolylineProjection3D>
+projectOntoTopologicalPolyline3D(std::span<const Point3> points,
+                                 const Point3& position);
 
 [[nodiscard]] bool incrementalTopologicalLatticeAdapter3DConfigIsValid(
     const IncrementalTopologicalLatticeAdapter3DConfig& config) noexcept;

@@ -1,3 +1,4 @@
+#include "drone_city_nav/incremental_topological_lattice_adapter_3d.hpp"
 #include "drone_city_nav/incremental_topological_navigation_3d.hpp"
 
 #include <algorithm>
@@ -53,7 +54,9 @@ constexpr double kMissionTargetIdentityToleranceM{1.0e-6};
 bool incrementalTopologicalNavigation3DConfigIsValid(
     const IncrementalTopologicalNavigation3DConfig& config) noexcept {
   return std::isfinite(config.active_route_completion_tolerance_m) &&
-         config.active_route_completion_tolerance_m >= 0.0;
+         config.active_route_completion_tolerance_m >= 0.0 &&
+         std::isfinite(config.maximum_active_route_cross_track_m) &&
+         config.maximum_active_route_cross_track_m > 0.0;
 }
 
 IncrementalTopologicalNavigation3D::IncrementalTopologicalNavigation3D(
@@ -86,13 +89,16 @@ IncrementalTopologicalNavigation3D::continueAcceptedObservedPlan(
     return std::nullopt;
   }
 
-  bool continuable = candidate->executableTargetSelected() && finitePoint(start) &&
-                     finitePoint(mission_goal) &&
-                     distance3D(candidate->mission_target, mission_goal) <=
-                         kMissionTargetIdentityToleranceM &&
-                     candidate->guidance_points.size() >= 2U &&
-                     distance3D(start, candidate->guidance_points.back()) >
-                         navigation_config_.active_route_completion_tolerance_m;
+  const std::optional<TopologicalPolylineProjection3D> projection =
+      projectOntoTopologicalPolyline3D(candidate->guidance_points, start);
+  bool continuable =
+      candidate->executableTargetSelected() && finitePoint(start) &&
+      finitePoint(mission_goal) && projection.has_value() &&
+      distance3D(candidate->mission_target, mission_goal) <=
+          kMissionTargetIdentityToleranceM &&
+      projection->remaining_m >
+          navigation_config_.active_route_completion_tolerance_m &&
+      projection->distance_m <= navigation_config_.maximum_active_route_cross_track_m;
   if (continuable && candidate->selected_frontier.has_value()) {
     const ObservationFrontierSetEvaluation frontier_evaluation =
         evaluateObservationFrontiers(
@@ -217,6 +223,13 @@ bool IncrementalTopologicalNavigation3D::invalidateAcceptedPlan(
   }
   active_plan_.reset();
   return true;
+}
+
+bool IncrementalTopologicalNavigation3D::supersedeAcceptedPlan() {
+  const std::scoped_lock lock{memory_mutex_};
+  const bool superseded = active_plan_.has_value();
+  active_plan_.reset();
+  return superseded;
 }
 
 void IncrementalTopologicalNavigation3D::rejectObservationFrontier(

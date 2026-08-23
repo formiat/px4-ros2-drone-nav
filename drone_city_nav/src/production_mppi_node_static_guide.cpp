@@ -682,8 +682,15 @@ void ProductionMppiNode::processGuideSearch3D(
       observed_route_blocked_raw_revision_.store(0U, std::memory_order_release);
     }
   }
-  if (activated && topology_route_used) {
-    commitIncrementalTopologyRoute3D(topology);
+  if (activated) {
+    if (topology_route_used) {
+      commitIncrementalTopologyRoute3D(topology);
+    } else if (topological_navigation_3d_ &&
+               topological_navigation_3d_->supersedeAcceptedPlan()) {
+      RCLCPP_INFO(
+          get_logger(),
+          "INCREMENTAL_TOPOLOGY3D_PLAN_SUPERSEDED replacement=non_topology_route");
+    }
   } else if (topology_route_used &&
              validation.status == StaticRouteCandidateStatus::kRawCollision &&
              topological_navigation_3d_) {

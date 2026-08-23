@@ -38,6 +38,7 @@ struct IncrementalTopologicalPlanCommit3D {
 
 struct IncrementalTopologicalNavigation3DConfig {
   double active_route_completion_tolerance_m{2.0};
+  double maximum_active_route_cross_track_m{20.0};
 };
 
 [[nodiscard]] bool incrementalTopologicalNavigation3DConfigIsValid(
@@ -73,6 +74,7 @@ public:
   [[nodiscard]] IncrementalTopologicalPlanCommit3D
   commitAcceptedPlan(const IncrementalTopologicalPlan3D& plan);
   [[nodiscard]] bool invalidateAcceptedPlan(const IncrementalTopologicalPlan3D& plan);
+  [[nodiscard]] bool supersedeAcceptedPlan();
   void rejectObservationFrontier(ObservationFrontierId frontier_id);
   void completeObservationFrontier(const ObservationFrontier& frontier,
                                    std::uint64_t revision);

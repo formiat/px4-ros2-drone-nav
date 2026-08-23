@@ -127,6 +127,26 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,
+     DoesNotReacquireACompletedPolylineFromCrossTrack) {
+  const IncrementalTopologicalPlan3D plan =
+      executablePlan(IncrementalTopologicalRoutePurpose3D::kMissionTransit,
+                     {{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}});
+  const Point3 position{15.0, 8.0, 0.0};
+
+  const auto projection =
+      projectOntoTopologicalPolyline3D(plan.guidance_points, position);
+  const auto directive = makeIncrementalTopologicalLatticeDirective3D(
+      plan, position, {.maximum_lookahead_m = 15.0, .segment_capture_radius_m = 0.1});
+
+  ASSERT_TRUE(projection.has_value());
+  const auto completed_projection =
+      projection.value_or(TopologicalPolylineProjection3D{});
+  EXPECT_DOUBLE_EQ(completed_projection.station_m, 10.0);
+  EXPECT_DOUBLE_EQ(completed_projection.remaining_m, 0.0);
+  EXPECT_FALSE(directive.has_value());
+}
+
+TEST(IncrementalTopologicalLatticeAdapter3DTest,
      RejectsNonExecutableAndDegeneratePlans) {
   IncrementalTopologicalPlan3D unavailable;
   EXPECT_FALSE(
