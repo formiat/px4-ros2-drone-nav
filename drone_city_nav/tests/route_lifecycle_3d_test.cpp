@@ -60,8 +60,10 @@ namespace {
   MaterializedRouteProposal3D proposal = validProposal();
   proposal.intent.source = RouteIntentSource3D::kTopology;
   proposal.intent.purpose = RouteIntentPurpose3D::kMissionTransit;
+  proposal.intent.strategic_plan_id = 17U;
   proposal.intent.target_identity = 42U;
   proposal.intent.strategic_continuation_available = true;
+  proposal.intent.strategic_mission_continuation = true;
   proposal.intent.intent_reaches_mission_target = true;
   return proposal;
 }
@@ -156,6 +158,18 @@ TEST(RouteLifecycle3DTest, AdvancedStrategicSegmentCanReplaceTheActiveRoute) {
   const ActivatedRouteIdentity3D active = strategicMissionActivatedRoute();
   MaterializedRouteProposal3D replacement = active_proposal;
   replacement.intent.segment_target.x += 0.75;
+
+  const RouteProposalReplacementAssessment3D assessment =
+      assessRouteProposalReplacement3D(&active, replacement, {});
+
+  EXPECT_TRUE(assessment.replacementAllowed());
+}
+
+TEST(RouteLifecycle3DTest, SupersedingStrategicPlanCanReplaceEquivalentSegment) {
+  const MaterializedRouteProposal3D active_proposal = strategicMissionProposal();
+  const ActivatedRouteIdentity3D active = strategicMissionActivatedRoute();
+  MaterializedRouteProposal3D replacement = active_proposal;
+  ++replacement.intent.strategic_plan_id;
 
   const RouteProposalReplacementAssessment3D assessment =
       assessRouteProposalReplacement3D(&active, replacement, {});

@@ -29,6 +29,7 @@ enum class RouteIntentPurpose3D : std::uint8_t {
 
 struct RouteIntent3D {
   std::uint64_t id{0U};
+  std::uint64_t strategic_plan_id{0U};
   std::uint64_t planned_on_revision{0U};
   std::uint64_t source_graph_revision{0U};
   std::uint64_t target_identity{0U};
@@ -39,6 +40,7 @@ struct RouteIntent3D {
   RouteIntentPurpose3D purpose{RouteIntentPurpose3D::kMissionTransit};
   std::size_t graph_step_count{0U};
   bool strategic_continuation_available{false};
+  bool strategic_mission_continuation{false};
   bool segment_reaches_intent_target{false};
   bool intent_reaches_mission_target{false};
   bool valid{false};

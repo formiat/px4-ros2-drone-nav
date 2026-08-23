@@ -26,29 +26,6 @@ constexpr double kMissionTargetIdentityToleranceM{1.0e-6};
          first.depth_cells == second.depth_cells;
 }
 
-[[nodiscard]] bool samePlanIdentity(const IncrementalTopologicalPlan3D& first,
-                                    const IncrementalTopologicalPlan3D& second) {
-  if (first.status != second.status || first.purpose != second.purpose ||
-      first.planned_on_revision != second.planned_on_revision ||
-      first.target_node != second.target_node ||
-      distance3D(first.mission_target, second.mission_target) >
-          kMissionTargetIdentityToleranceM ||
-      first.route_nodes != second.route_nodes ||
-      first.guidance_points.size() != second.guidance_points.size()) {
-    return false;
-  }
-  if (first.selected_frontier.has_value() != second.selected_frontier.has_value() ||
-      (first.selected_frontier.has_value() &&
-       first.selected_frontier->id != second.selected_frontier->id)) {
-    return false;
-  }
-  return std::ranges::equal(first.guidance_points, second.guidance_points,
-                            [](const Point3& lhs, const Point3& rhs) {
-                              return distance3D(lhs, rhs) <=
-                                     kMissionTargetIdentityToleranceM;
-                            });
-}
-
 } // namespace
 
 bool incrementalTopologicalNavigation3DConfigIsValid(
@@ -84,9 +61,10 @@ IncrementalTopologicalNavigation3D::continueAcceptedObservedPlan(
   double minimum_station_m{0.0};
   {
     const std::scoped_lock lock{memory_mutex_};
-    candidate = active_plan_;
-    if (candidate.has_value() && active_route_execution_.has_value()) {
-      minimum_station_m = active_route_execution_->station_m;
+    const StrategicRoutePlan3D* const active = strategic_route_manager_.active();
+    if (active != nullptr) {
+      candidate = active->plan;
+      minimum_station_m = active->cursor.station_m;
     }
   }
   if (!candidate.has_value()) {
@@ -116,24 +94,16 @@ IncrementalTopologicalNavigation3D::continueAcceptedObservedPlan(
   }
   if (continuable) {
     const std::scoped_lock lock{memory_mutex_};
-    if (!active_plan_.has_value() || !samePlanIdentity(*active_plan_, *candidate)) {
+    if (!strategic_route_manager_.advance(*candidate, projection->station_m,
+                                          projection->segment_index)) {
       return std::nullopt;
     }
-    if (!active_route_execution_.has_value()) {
-      active_route_execution_.emplace();
-    }
-    active_route_execution_->station_m =
-        std::max(active_route_execution_->station_m, projection->station_m);
-    active_route_execution_->segment_index = projection->segment_index;
     candidate->continued_from_active_plan = true;
     return candidate;
   }
 
   const std::scoped_lock lock{memory_mutex_};
-  if (active_plan_.has_value() && samePlanIdentity(*active_plan_, *candidate)) {
-    active_plan_.reset();
-    active_route_execution_.reset();
-  }
+  static_cast<void>(strategic_route_manager_.invalidate(*candidate));
   return std::nullopt;
 }
 
@@ -144,9 +114,9 @@ IncrementalTopologicalNavigation3D::makeLatticeDirective(
   double minimum_station_m{0.0};
   {
     const std::scoped_lock lock{memory_mutex_};
-    if (active_plan_.has_value() && samePlanIdentity(*active_plan_, plan) &&
-        active_route_execution_.has_value()) {
-      minimum_station_m = active_route_execution_->station_m;
+    const StrategicRoutePlan3D* const active = strategic_route_manager_.active();
+    if (active != nullptr && sameStrategicRoutePlan3D(active->plan, plan)) {
+      minimum_station_m = active->cursor.station_m;
     }
   }
 
@@ -158,14 +128,8 @@ IncrementalTopologicalNavigation3D::makeLatticeDirective(
   }
 
   const std::scoped_lock lock{memory_mutex_};
-  if (active_plan_.has_value() && samePlanIdentity(*active_plan_, plan)) {
-    if (!active_route_execution_.has_value()) {
-      active_route_execution_.emplace();
-    }
-    active_route_execution_->station_m =
-        std::max(active_route_execution_->station_m, directive->source_station_m);
-    active_route_execution_->segment_index = directive->source_segment_index;
-  }
+  static_cast<void>(strategic_route_manager_.advance(plan, directive->source_station_m,
+                                                     directive->source_segment_index));
   return directive;
 }
 
@@ -180,7 +144,13 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
     const std::scoped_lock lock{memory_mutex_};
     memory_snapshot = memory_;
   }
-  return planner_.plan(*graph, start, mission_goal, memory_snapshot);
+  IncrementalTopologicalPlan3D result =
+      planner_.plan(*graph, start, mission_goal, memory_snapshot);
+  {
+    const std::scoped_lock lock{memory_mutex_};
+    result.strategic_plan_id = strategic_route_manager_.previewPlanId(result);
+  }
+  return result;
 }
 
 IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
@@ -199,8 +169,14 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
     const std::scoped_lock lock{memory_mutex_};
     memory_snapshot = memory_;
   }
-  return planner_.planObserved(*graph, occupancy, observability_, start, mission_goal,
-                               memory_snapshot, std::nullopt);
+  IncrementalTopologicalPlan3D result =
+      planner_.planObserved(*graph, occupancy, observability_, start, mission_goal,
+                            memory_snapshot, std::nullopt);
+  {
+    const std::scoped_lock lock{memory_mutex_};
+    result.strategic_plan_id = strategic_route_manager_.previewPlanId(result);
+  }
+  return result;
 }
 
 IncrementalTopologicalPlanCommit3D
@@ -211,20 +187,23 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
     return result;
   }
   const std::scoped_lock lock{memory_mutex_};
+  const StrategicRoutePlan3D* const active_route = strategic_route_manager_.active();
+  const IncrementalTopologicalPlan3D* const active_plan =
+      active_route != nullptr ? std::addressof(active_route->plan) : nullptr;
   const std::optional<Point3> replaced_frontier_observation_pose = [&]() {
-    if (!active_plan_.has_value() || !active_plan_->selected_frontier.has_value() ||
+    if (active_plan == nullptr || !active_plan->selected_frontier.has_value() ||
         !plan.selected_frontier.has_value()) {
       return std::optional<Point3>{};
     }
-    if (active_plan_->selected_frontier->id != plan.selected_frontier->id) {
-      return std::optional<Point3>{active_plan_->selected_frontier->observation_pose};
+    if (active_plan->selected_frontier->id != plan.selected_frontier->id) {
+      return std::optional<Point3>{active_plan->selected_frontier->observation_pose};
     }
-    if (distance3D(active_plan_->selected_frontier->observation_pose,
+    if (distance3D(active_plan->selected_frontier->observation_pose,
                    plan.selected_frontier->observation_pose) <=
         memory_.config().coverage_resolution_m) {
       return std::optional<Point3>{};
     }
-    return std::optional<Point3>{active_plan_->selected_frontier->observation_pose};
+    return std::optional<Point3>{active_plan->selected_frontier->observation_pose};
   }();
   if (replaced_frontier_observation_pose.has_value()) {
     memory_.recordObserved(*replaced_frontier_observation_pose,
@@ -232,12 +211,12 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
     result.replaced_frontier_coverage_recorded = true;
   }
   const bool selected_frontier_already_active = [&]() {
-    if (!active_plan_.has_value() || !active_plan_->selected_frontier.has_value() ||
+    if (active_plan == nullptr || !active_plan->selected_frontier.has_value() ||
         !plan.selected_frontier.has_value() ||
-        active_plan_->selected_frontier->id != plan.selected_frontier->id) {
+        active_plan->selected_frontier->id != plan.selected_frontier->id) {
       return false;
     }
-    return distance3D(active_plan_->selected_frontier->observation_pose,
+    return distance3D(active_plan->selected_frontier->observation_pose,
                       plan.selected_frontier->observation_pose) <=
            memory_.config().coverage_resolution_m;
   }();
@@ -246,46 +225,33 @@ IncrementalTopologicalNavigation3D::commitAcceptedPlan(
     result.frontier_selection_recorded = true;
   }
   const bool dead_end_already_active =
-      active_plan_.has_value() && active_plan_->dead_end_conclusion.has_value() &&
+      active_plan != nullptr && active_plan->dead_end_conclusion.has_value() &&
       plan.dead_end_conclusion.has_value() &&
-      active_plan_->dead_end_conclusion->attempted_direction ==
+      active_plan->dead_end_conclusion->attempted_direction ==
           plan.dead_end_conclusion->attempted_direction &&
-      active_plan_->dead_end_conclusion->validated_through_revision ==
+      active_plan->dead_end_conclusion->validated_through_revision ==
           plan.dead_end_conclusion->validated_through_revision;
   if (plan.dead_end_conclusion.has_value() && !dead_end_already_active) {
     memory_.recordDeadEnd(plan.dead_end_conclusion->attempted_direction,
                           plan.dead_end_conclusion->validated_through_revision);
     result.dead_end_recorded = true;
   }
-  const bool preserve_execution = active_plan_.has_value() &&
-                                  active_route_execution_.has_value() &&
-                                  samePlanIdentity(*active_plan_, plan);
-  active_plan_ = plan;
-  if (!preserve_execution) {
-    active_route_execution_ = IncrementalTopologicalRouteExecution3D{};
-  }
+  const StrategicRouteCommit3D strategic_commit = strategic_route_manager_.accept(plan);
+  result.strategic_plan_id = strategic_commit.plan_id;
   result.active_route_nodes = plan.route_nodes.size();
-  result.accepted = true;
+  result.accepted = strategic_commit.accepted;
   return result;
 }
 
 bool IncrementalTopologicalNavigation3D::invalidateAcceptedPlan(
     const IncrementalTopologicalPlan3D& plan) {
   const std::scoped_lock lock{memory_mutex_};
-  if (!active_plan_.has_value() || !samePlanIdentity(*active_plan_, plan)) {
-    return false;
-  }
-  active_plan_.reset();
-  active_route_execution_.reset();
-  return true;
+  return strategic_route_manager_.invalidate(plan);
 }
 
 bool IncrementalTopologicalNavigation3D::supersedeAcceptedPlan() {
   const std::scoped_lock lock{memory_mutex_};
-  const bool superseded = active_plan_.has_value();
-  active_plan_.reset();
-  active_route_execution_.reset();
-  return superseded;
+  return strategic_route_manager_.supersede();
 }
 
 void IncrementalTopologicalNavigation3D::rejectObservationFrontier(
@@ -296,10 +262,10 @@ void IncrementalTopologicalNavigation3D::rejectObservationFrontier(
   const std::scoped_lock lock{memory_mutex_};
   // Rejection remains evidence about this proposal, not a prohibited region.
   memory_.recordFrontierSelection(frontier_id);
-  if (active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
-      active_plan_->selected_frontier->id == frontier_id) {
-    active_plan_.reset();
-    active_route_execution_.reset();
+  const StrategicRoutePlan3D* const active = strategic_route_manager_.active();
+  if (active != nullptr && active->plan.selected_frontier.has_value() &&
+      active->plan.selected_frontier->id == frontier_id) {
+    static_cast<void>(strategic_route_manager_.supersede());
   }
 }
 
@@ -312,10 +278,10 @@ void IncrementalTopologicalNavigation3D::completeObservationFrontier(
   memory_.recordObserved(frontier.observation_pose, revision);
   memory_.recordFrontierSelection(frontier.id);
   memory_.recordFrontierCompletion(frontier.id);
-  if (active_plan_.has_value() && active_plan_->selected_frontier.has_value() &&
-      active_plan_->selected_frontier->id == frontier.id) {
-    active_plan_.reset();
-    active_route_execution_.reset();
+  const StrategicRoutePlan3D* const active = strategic_route_manager_.active();
+  if (active != nullptr && active->plan.selected_frontier.has_value() &&
+      active->plan.selected_frontier->id == frontier.id) {
+    static_cast<void>(strategic_route_manager_.supersede());
   }
 }
 
@@ -325,8 +291,7 @@ void IncrementalTopologicalNavigation3D::beginMissionLeg() {
   if (current_node_.has_value()) {
     memory_.resetTrail(*current_node_);
   }
-  active_plan_.reset();
-  active_route_execution_.reset();
+  strategic_route_manager_.reset();
 }
 
 } // namespace drone_city_nav

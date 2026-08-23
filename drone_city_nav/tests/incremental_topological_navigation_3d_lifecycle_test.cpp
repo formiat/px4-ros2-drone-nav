@@ -83,7 +83,11 @@ protected:
         navigation_.planObserved(world_.snapshot, occupancy_, start_, goal_);
     EXPECT_TRUE(plan.executableTargetSelected());
     EXPECT_GE(plan.guidance_points.size(), 2U);
-    EXPECT_TRUE(navigation_.commitAcceptedPlan(plan).accepted);
+    const IncrementalTopologicalPlanCommit3D commit =
+        navigation_.commitAcceptedPlan(plan);
+    EXPECT_TRUE(commit.accepted);
+    EXPECT_NE(plan.strategic_plan_id, 0U);
+    EXPECT_EQ(commit.strategic_plan_id, plan.strategic_plan_id);
     return plan;
   }
 
@@ -125,6 +129,7 @@ TEST_F(IncrementalTopologicalNavigation3DLifecycleTest,
       navigation().planObserved(world().snapshot, occupancy(), {8.5, 9.5, 5.5}, goal());
 
   EXPECT_TRUE(continued.continued_from_active_plan);
+  EXPECT_EQ(continued.strategic_plan_id, accepted.strategic_plan_id);
   EXPECT_EQ(continued.planned_on_revision, accepted.planned_on_revision);
   EXPECT_LT(continued.planned_on_revision, world().graph.revision);
   expectSamePolyline(accepted.guidance_points, continued.guidance_points);

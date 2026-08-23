@@ -436,6 +436,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
   RCLCPP_INFO(
       get_logger(),
       "INCREMENTAL_TOPOLOGICAL_PLAN3D graph_revision=%" PRIu64
+      " strategic_plan_id=%" PRIu64
       " graph_nodes=%zu graph_edges=%zu status=%s purpose=%s "
       "start_node=%" PRIu64 " target_node=%" PRIu64 " goal_node=%" PRIu64
       " route_nodes=%zu route_edges=%zu continued_active_plan=%s "
@@ -475,9 +476,11 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "directive_target=(%.2f,%.2f,%.2f) directive_reaches_target=%s "
       "lattice_status=%s lattice_purpose=%s lattice_executable=%s "
       "candidate_validation=%.*s activation=%.*s activated=%s "
-      "commit_accepted=%s commit_route_nodes=%zu commit_frontier=%s "
+      "commit_accepted=%s commit_plan_id=%" PRIu64
+      " commit_route_nodes=%zu commit_frontier=%s "
       "commit_replaced_frontier_coverage=%s commit_dead_end=%s",
-      search.plan.planned_on_revision, search.graph_node_count, search.graph_edge_count,
+      search.plan.planned_on_revision, search.plan.strategic_plan_id,
+      search.graph_node_count, search.graph_edge_count,
       incrementalTopologicalPlanStatus3DName(search.plan.status),
       incrementalTopologicalRoutePurpose3DName(search.plan.purpose),
       search.plan.start_node.value, search.plan.target_node.value,
@@ -549,7 +552,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
       staticRouteActivationStatusName(activation_status).data(),
       activated ? "true" : "false", search.commit.accepted ? "true" : "false",
-      search.commit.active_route_nodes,
+      search.commit.strategic_plan_id, search.commit.active_route_nodes,
       search.commit.frontier_selection_recorded ? "true" : "false",
       search.commit.replaced_frontier_coverage_recorded ? "true" : "false",
       search.commit.dead_end_recorded ? "true" : "false");

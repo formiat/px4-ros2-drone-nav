@@ -86,6 +86,15 @@ one immutable resident generation, and checked for dynamic handoff before route
 arbitration. A failed final check makes that candidate ineligible, so another
 fully prepared candidate can win; an empty selection publishes no route.
 
+The `StrategicRouteManager3D` owns the complete accepted incremental-topology
+intent and corridor under a nonzero monotonically allocated plan identifier. It
+also owns a monotonic station/segment cursor, so local replanning cannot move
+backward along that corridor. The lattice adapter materializes only the next
+finite segment from this persistent plan. A partial mission-continuation segment
+therefore retains strategic priority without claiming that its local endpoint is
+the mission endpoint. Direct search remains an independent plan-level candidate
+in the same preparation and arbitration pipeline.
+
 Route activation is then a single optimistic transaction over that immutable
 resident world plus the jointly captured pose/applied-control snapshot. The
 current-pose connector and remaining suffix are swept against the raw occupancy

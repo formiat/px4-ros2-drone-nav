@@ -111,6 +111,7 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
   IncrementalTopologicalPlan3D plan;
   plan.status = IncrementalTopologicalPlanStatus3D::kMissionContinuationRoute;
   plan.purpose = IncrementalTopologicalRoutePurpose3D::kMissionTransit;
+  plan.strategic_plan_id = 27U;
   plan.guidance_points = {{0.0, 0.0, 4.0}, {0.0, 8.0, 4.0}, {8.0, 8.0, 4.0}};
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
@@ -121,6 +122,7 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
   const IncrementalTopologicalLatticeDirective3D directive =
       directive_result.value_or(IncrementalTopologicalLatticeDirective3D{});
   EXPECT_EQ(directive.lattice.route_purpose, Lattice3DRoutePurpose::kMissionTransit);
+  EXPECT_EQ(directive.strategic_plan_id, plan.strategic_plan_id);
   EXPECT_FALSE(directive.reaches_topological_target);
   EXPECT_FALSE(directive.lattice.reaches_mission_goal);
   EXPECT_FALSE(isExplicitTopologicalBacktrack3D(plan));

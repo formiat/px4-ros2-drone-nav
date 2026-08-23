@@ -20,9 +20,12 @@ proposal(const RouteIntentSource3D source, const bool strategic,
          const bool intent_reaches_mission_target = false) {
   return RouteProposal3D{
       .intent = {.id = fingerprint + 100U,
+                 .strategic_plan_id =
+                     source == RouteIntentSource3D::kTopology && strategic ? 1U : 0U,
                  .source = source,
                  .purpose = purpose,
                  .strategic_continuation_available = strategic,
+                 .strategic_mission_continuation = intent_reaches_mission_target,
                  .intent_reaches_mission_target = intent_reaches_mission_target,
                  .valid = true},
       .evidence = {.status = physical_executable
@@ -185,6 +188,31 @@ TEST(RoutePlanning3DTest,
 
   ASSERT_TRUE(selection.selected_index.has_value());
   EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
+  EXPECT_EQ(selection.reason,
+            RouteProposalSelectionReason3D::kStrategicMissionContinuation);
+}
+
+TEST(RoutePlanning3DTest,
+     PartialMissionContinuationKeepsStrategicPriorityWithoutClaimingArrival) {
+  RouteProposal3D partial =
+      proposal(RouteIntentSource3D::kTopology, true, true, true, true, false, false,
+               10.0, 3.0, 4.0, 19U, -2.0, RouteIntentPurpose3D::kMissionTransit, false);
+  partial.intent.strategic_plan_id = 7U;
+  partial.intent.strategic_mission_continuation = true;
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
+               1.0, 9.0, 11.0, 20U, 3.0),
+      partial,
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, kSelectionConfig);
+
+  ASSERT_TRUE(selection.selected_index.has_value());
+  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
+  EXPECT_TRUE(isStrategicMissionContinuation3D(partial));
+  EXPECT_FALSE(partial.intent.intent_reaches_mission_target);
+  EXPECT_FALSE(partial.evidence.reaches_mission_target);
   EXPECT_EQ(selection.reason,
             RouteProposalSelectionReason3D::kStrategicMissionContinuation);
 }

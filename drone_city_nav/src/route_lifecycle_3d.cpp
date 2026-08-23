@@ -70,11 +70,11 @@ rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
 }
 
 [[nodiscard]] bool isStrategicMissionIntent(const RouteIntent3D& intent) noexcept {
-  return intent.valid && intent.id != 0U &&
+  return intent.valid && intent.id != 0U && intent.strategic_plan_id != 0U &&
          intent.source == RouteIntentSource3D::kTopology &&
          intent.purpose == RouteIntentPurpose3D::kMissionTransit &&
          intent.strategic_continuation_available &&
-         intent.intent_reaches_mission_target;
+         intent.strategic_mission_continuation;
 }
 
 [[nodiscard]] bool samePoint(const Point3& first, const Point3& second,
@@ -181,6 +181,7 @@ RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
   const RouteIntent3D& active = active_route->proposal.intent;
   const RouteIntent3D& replacement = candidate.intent;
   if (!isStrategicMissionIntent(active) || !isStrategicMissionIntent(replacement) ||
+      active.strategic_plan_id != replacement.strategic_plan_id ||
       active.id != replacement.id ||
       active.target_identity != replacement.target_identity ||
       !samePoint(active.mission_target, replacement.mission_target,

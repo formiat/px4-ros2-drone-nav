@@ -124,6 +124,7 @@ void ProductionMppiNode::processDiagnostics(
       << " guide_reaches_mission_goal="
       << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
       << " route_intent_id=" << esdf.route_intent.id
+      << " strategic_plan_id=" << esdf.route_intent.strategic_plan_id
       << " route_intent_source=" << routeIntentSource3DName(esdf.route_intent.source)
       << " route_intent_purpose=" << routeIntentPurpose3DName(esdf.route_intent.purpose)
       << " route_intent_planned_on=" << esdf.route_intent.planned_on_revision
@@ -139,6 +140,8 @@ void ProductionMppiNode::processDiagnostics(
       << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
       << " route_intent_reaches_mission_target="
       << (esdf.route_intent.intent_reaches_mission_target ? "true" : "false")
+      << " route_strategic_mission_continuation="
+      << (esdf.route_intent.strategic_mission_continuation ? "true" : "false")
       << " route_proposal_candidates=" << esdf.route_proposal_candidate_count
       << " route_proposal_eligible=" << esdf.route_proposal_eligible_count
       << " route_proposal_selection="
@@ -595,6 +598,7 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"route_intent_id\":" << esdf.route_intent.id
         << ",\"route_intent_source\":\""
         << routeIntentSource3DName(esdf.route_intent.source) << '"'
+        << ",\"strategic_plan_id\":" << esdf.route_intent.strategic_plan_id
         << ",\"route_intent_purpose\":\""
         << routeIntentPurpose3DName(esdf.route_intent.purpose) << '"'
         << ",\"route_intent_planned_on\":" << esdf.route_intent.planned_on_revision
@@ -610,6 +614,8 @@ void ProductionMppiNode::processDiagnostics(
         << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
         << ",\"route_intent_reaches_mission_target\":"
         << (esdf.route_intent.intent_reaches_mission_target ? "true" : "false")
+        << ",\"route_strategic_mission_continuation\":"
+        << (esdf.route_intent.strategic_mission_continuation ? "true" : "false")
         << ",\"route_proposal_candidates\":" << esdf.route_proposal_candidate_count
         << ",\"route_proposal_eligible\":" << esdf.route_proposal_eligible_count
         << ",\"route_proposal_selection\":\""

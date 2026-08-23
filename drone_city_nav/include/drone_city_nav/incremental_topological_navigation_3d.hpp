@@ -3,6 +3,7 @@
 #include "drone_city_nav/incremental_topological_lattice_adapter_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
+#include "drone_city_nav/strategic_route_manager_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -28,6 +29,7 @@ struct IncrementalTopologicalNavigationObservation3D {
 };
 
 struct IncrementalTopologicalPlanCommit3D {
+  std::uint64_t strategic_plan_id{0U};
   std::uint64_t graph_revision{0U};
   std::size_t active_route_nodes{0U};
   bool accepted{false};
@@ -39,11 +41,6 @@ struct IncrementalTopologicalPlanCommit3D {
 struct IncrementalTopologicalNavigation3DConfig {
   double active_route_completion_tolerance_m{2.0};
   double maximum_active_route_cross_track_m{20.0};
-};
-
-struct IncrementalTopologicalRouteExecution3D {
-  double station_m{0.0};
-  std::size_t segment_index{0U};
 };
 
 [[nodiscard]] bool incrementalTopologicalNavigation3DConfigIsValid(
@@ -110,8 +107,7 @@ private:
   std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> snapshot_;
   std::optional<std::uint64_t> observed_producer_instance_id_;
   std::optional<IncrementalTopologyNodeId> current_node_;
-  std::optional<IncrementalTopologicalPlan3D> active_plan_;
-  std::optional<IncrementalTopologicalRouteExecution3D> active_route_execution_;
+  StrategicRouteManager3D strategic_route_manager_;
 };
 
 } // namespace drone_city_nav

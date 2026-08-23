@@ -210,6 +210,7 @@ makeIncrementalTopologicalLatticeDirective3D(
               .selection_score = plan.selection_score,
               .reaches_mission_goal = plan.reaches_mission_goal && reaches_target,
           },
+      .strategic_plan_id = plan.strategic_plan_id,
       .source_segment_index = projection->segment_index,
       .source_station_m = projection->station_m,
       .target_station_m = target_station_m,

@@ -48,6 +48,13 @@ all precede arbitration, so a preferred candidate rejected at the final check
 does not hide an executable fallback. `selected_index == nullopt` means that no
 route is eligible.
 
+Accepted incremental-topology strategy is persistent separately from its local
+geometry. `StrategicRouteManager3D` owns the complete intent/corridor, a stable
+plan identifier, and a monotonic progress cursor. The lattice planner consumes
+that state by materializing only the next finite segment. A partial mission
+continuation remains strategic even though that segment does not yet reach the
+mission target; direct routes compete as independent plan-level candidates.
+
 The selected replacement is activated from one immutable bundle containing the
 resident CPU occupancy/ESDF/topology generation, the linked GPU ESDF revision,
 current raw occupancy, objective, pose, and applied control. Final validation
@@ -83,9 +90,11 @@ or no longer physically executable, a `no_executable_horizon` position hold
 supersedes it. A newly validated finite path releases the hold immediately; low
 clearance by itself does not activate it.
 
-The current lattice still has limited recovery primitives and no persistent
-topological memory. A dead end may therefore end in hold rather than a complete
-route around the obstacle.
+The current lattice still has limited recovery primitives. The accepted
+topological corridor and its progress are persistent, but there is not yet a
+region-portal multigraph with split/merge lineage and fair frontier scheduling.
+A dead end may therefore end in hold rather than a complete route around the
+obstacle.
 
 ## Safety During Updates
 

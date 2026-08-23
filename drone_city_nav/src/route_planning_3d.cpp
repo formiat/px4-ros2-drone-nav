@@ -227,11 +227,11 @@ bool isProductiveDirectTransit3D(
 }
 
 bool isStrategicMissionContinuation3D(const RouteProposal3D& proposal) noexcept {
-  return proposal.intent.valid &&
+  return proposal.intent.valid && proposal.intent.strategic_plan_id != 0U &&
          proposal.intent.source == RouteIntentSource3D::kTopology &&
          proposal.intent.purpose == RouteIntentPurpose3D::kMissionTransit &&
          proposal.intent.strategic_continuation_available &&
-         proposal.intent.intent_reaches_mission_target;
+         proposal.intent.strategic_mission_continuation;
 }
 
 bool betterRouteProposal3D(const RouteProposal3D& candidate,

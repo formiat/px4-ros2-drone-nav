@@ -59,6 +59,7 @@ struct IncrementalTopologicalPlan3D {
   IncrementalTopologicalRoutePurpose3D purpose{
       IncrementalTopologicalRoutePurpose3D::kMissionTransit};
   TopologicalBacktrackReason3D backtrack_reason{TopologicalBacktrackReason3D::kNone};
+  std::uint64_t strategic_plan_id{0U};
   std::uint64_t planned_on_revision{0U};
   std::uint64_t validated_through_revision{0U};
   Point3 mission_target{};

@@ -228,6 +228,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
         selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
     RCLCPP_INFO(get_logger(),
                 "INCREMENTAL_TOPOLOGY3D_SEARCH graph_revision=%" PRIu64
+                " strategic_plan_id=%" PRIu64
                 " graph_nodes=%zu graph_edges=%zu status=%s purpose=%s "
                 "start_node=%" PRIu64 " target_node=%" PRIu64 " goal_node=%" PRIu64
                 " route_nodes=%zu route_edges=%zu reaches_mission_goal=%s "
@@ -236,8 +237,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                 "maximum_mission_continuation_goal_progress_m=%.2f "
                 "reachable_frontiers=%zu goal_progress_m=%.2f directive_available=%s "
                 "no_executable_route_age_ms=%.2f",
-                topology.plan.planned_on_revision, topology.graph_node_count,
-                topology.graph_edge_count,
+                topology.plan.planned_on_revision, topology.plan.strategic_plan_id,
+                topology.graph_node_count, topology.graph_edge_count,
                 incrementalTopologicalPlanStatus3DName(topology.plan.status),
                 incrementalTopologicalRoutePurpose3DName(topology.plan.purpose),
                 topology.plan.start_node.value, topology.plan.target_node.value,
@@ -255,6 +256,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       const Lattice3DStrategicDirective directive = topology.directive->lattice;
       const Point3 target = intentTarget(topology, directive);
       RouteIntent3D intent{
+          .strategic_plan_id = topology.plan.strategic_plan_id,
           .planned_on_revision = world.revision,
           .source_graph_revision = topology.plan.planned_on_revision,
           .target_identity = intentTargetIdentity(topology),
@@ -265,8 +267,14 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
           .purpose = intentPurpose(directive.route_purpose),
           .graph_step_count = topology.plan.route_steps.size(),
           .strategic_continuation_available =
-              !topology.plan.route_steps.empty() ||
-              topology.plan.selected_frontier.has_value(),
+              topology.plan.guidance_points.size() >= 2U,
+          .strategic_mission_continuation =
+              topology.plan.purpose ==
+                  IncrementalTopologicalRoutePurpose3D::kMissionTransit &&
+              (topology.plan.status ==
+                   IncrementalTopologicalPlanStatus3D::kMissionRoute ||
+               topology.plan.status ==
+                   IncrementalTopologicalPlanStatus3D::kMissionContinuationRoute),
           .segment_reaches_intent_target =
               topology.directive->reaches_topological_target,
           .intent_reaches_mission_target = topology.plan.reaches_mission_goal,
@@ -284,13 +292,15 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     RCLCPP_INFO(
         get_logger(),
         "ROUTE_PROPOSAL3D stage=generated revision=%" PRIu64 " index=%zu "
-        "intent_id=%" PRIu64 " source=%s purpose=%s planned_on=%" PRIu64
-        " validated_through=%" PRIu64 " status=%s physical=%s "
+        "intent_id=%" PRIu64 " strategic_plan_id=%" PRIu64
+        " source=%s purpose=%s planned_on=%" PRIu64 " validated_through=%" PRIu64
+        " status=%s physical=%s "
         "segment_target=%s intent_target=%s mission_target=%s strategic=%s "
+        "strategic_mission=%s "
         "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
         "route_length_m=%.2f endpoint_displacement_m=%.2f "
         "mission_progress_m=%.2f objective=%.3f",
-        world.revision, index, candidate.intent.id,
+        world.revision, index, candidate.intent.id, candidate.intent.strategic_plan_id,
         routeIntentSource3DName(candidate.intent.source),
         routeIntentPurpose3DName(candidate.intent.purpose),
         candidate.evidence.planned_on_revision,
@@ -301,6 +311,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
         candidate.evidence.reaches_intent_target ? "true" : "false",
         candidate.evidence.reaches_mission_target ? "true" : "false",
         candidate.intent.strategic_continuation_available ? "true" : "false",
+        candidate.intent.strategic_mission_continuation ? "true" : "false",
         candidate.evidence.unknown_exposure ? "true" : "false",
         candidate.evidence.known_clearance_observed ? "true" : "false",
         candidate.evidence.minimum_known_clearance_m, candidate.evidence.route_length_m,

@@ -105,7 +105,8 @@ void ProductionMppiNode::processGuideSearch3D(
     RCLCPP_INFO(
         get_logger(),
         "ROUTE_PROPOSAL3D stage=arbitrated revision=%" PRIu64
-        " index=%zu selected=%s intent_id=%" PRIu64 " source=%s purpose=%s "
+        " index=%zu selected=%s intent_id=%" PRIu64 " strategic_plan_id=%" PRIu64
+        " source=%s purpose=%s "
         "physical=%s activation_eligible=%s validation=%.*s handoff=%s "
         "raw_connector_validated=%s raw_suffix_validated=%s "
         "route_length_m=%.2f mission_progress_m=%.2f objective=%.3f",
@@ -113,7 +114,8 @@ void ProductionMppiNode::processGuideSearch3D(
         proposal_selection.selected_index == std::optional<std::size_t>{index}
             ? "true"
             : "false",
-        proposal.intent.id, routeIntentSource3DName(proposal.intent.source),
+        proposal.intent.id, proposal.intent.strategic_plan_id,
+        routeIntentSource3DName(proposal.intent.source),
         routeIntentPurpose3DName(proposal.intent.purpose),
         proposal.evidence.physical_executable ? "true" : "false",
         proposal.activation_eligible ? "true" : "false",

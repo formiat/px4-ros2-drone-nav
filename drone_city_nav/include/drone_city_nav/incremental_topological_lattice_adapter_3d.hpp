@@ -24,6 +24,7 @@ struct IncrementalTopologicalLatticeAdapter3DConfig {
 
 struct IncrementalTopologicalLatticeDirective3D {
   Lattice3DStrategicDirective lattice{};
+  std::uint64_t strategic_plan_id{0U};
   std::size_t source_segment_index{0U};
   double source_station_m{0.0};
   double target_station_m{0.0};

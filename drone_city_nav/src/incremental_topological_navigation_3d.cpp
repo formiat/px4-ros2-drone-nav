@@ -183,7 +183,7 @@ IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateOb
   if (producer_changed) {
     const std::scoped_lock lock{memory_mutex_};
     current_node_.reset();
-    active_plan_.reset();
+    strategic_route_manager_.reset();
     memory_.clear();
   }
   return result;
@@ -204,7 +204,7 @@ IncrementalTopologicalNavigation3D::resetStatic(const OccupancyGrid3D& occupancy
   {
     const std::scoped_lock lock{memory_mutex_};
     current_node_.reset();
-    active_plan_.reset();
+    strategic_route_manager_.reset();
     memory_.clear();
   }
   return result;
@@ -214,8 +214,10 @@ std::size_t IncrementalTopologicalNavigation3D::recordTransitionPath(
     const IncrementalTopologyGraph3DSnapshot& graph,
     const IncrementalTopologyNodeId from, const IncrementalTopologyNodeId to) {
   std::vector<IncrementalTopologyNodeId> transition_nodes;
-  if (active_plan_) {
-    if (const auto active_segment = activeRouteSegment(*active_plan_, from, to)) {
+  const StrategicRoutePlan3D* const strategic_route = strategic_route_manager_.active();
+  if (strategic_route != nullptr) {
+    if (const auto active_segment =
+            activeRouteSegment(strategic_route->plan, from, to)) {
       transition_nodes = *active_segment;
     }
   }
