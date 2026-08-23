@@ -273,5 +273,41 @@ TEST(RouteLifecycle3DTest, OlderRawSnapshotCannotInvalidateNewerCertification) {
   EXPECT_FALSE(assessment.raw_validation.connector_validated);
 }
 
+TEST(RouteLifecycle3DTest, SegmentCompletionUsesTheConfiguredCaptureRadius) {
+  const std::vector<RouteSample3D> route = straightRoute();
+
+  const RouteSegmentCompletionAssessment3D assessment = assessRouteSegmentCompletion3D(
+      route, Point3{8.7, 1.5, 1.5},
+      RouteSegmentCompletionConfig3D{.capture_radius_m = 2.0});
+
+  ASSERT_TRUE(assessment.projection.valid);
+  EXPECT_NEAR(assessment.projection.remaining_m, 0.8, 1.0e-9);
+  EXPECT_NEAR(assessment.endpoint_distance_m, 0.8, 1.0e-9);
+  EXPECT_TRUE(assessment.captured);
+}
+
+TEST(RouteLifecycle3DTest, SegmentCompletionRejectsPositionOutsideCaptureRadius) {
+  const std::vector<RouteSample3D> route = straightRoute();
+
+  const RouteSegmentCompletionAssessment3D assessment = assessRouteSegmentCompletion3D(
+      route, Point3{7.0, 1.5, 1.5},
+      RouteSegmentCompletionConfig3D{.capture_radius_m = 2.0});
+
+  ASSERT_TRUE(assessment.projection.valid);
+  EXPECT_NEAR(assessment.endpoint_distance_m, 2.5, 1.0e-9);
+  EXPECT_FALSE(assessment.captured);
+}
+
+TEST(RouteLifecycle3DTest, SegmentCompletionRejectsInvalidContract) {
+  const std::vector<RouteSample3D> route = straightRoute();
+
+  const RouteSegmentCompletionAssessment3D assessment = assessRouteSegmentCompletion3D(
+      route, Point3{9.5, 1.5, 1.5},
+      RouteSegmentCompletionConfig3D{.capture_radius_m = -1.0});
+
+  EXPECT_FALSE(assessment.projection.valid);
+  EXPECT_FALSE(assessment.captured);
+}
+
 } // namespace
 } // namespace drone_city_nav

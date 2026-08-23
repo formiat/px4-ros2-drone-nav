@@ -114,6 +114,16 @@ struct RouteExecutionState3D {
   double station_m{0.0};
 };
 
+struct RouteSegmentCompletionConfig3D {
+  double capture_radius_m{2.0};
+};
+
+struct RouteSegmentCompletionAssessment3D {
+  RouteProjection3D projection{};
+  double endpoint_distance_m{0.0};
+  bool captured{false};
+};
+
 [[nodiscard]] std::optional<ActivatedRouteIdentity3D>
 activateRouteProposal3D(const MaterializedRouteProposal3D& proposal,
                         std::uint64_t generation) noexcept;
@@ -133,6 +143,11 @@ assessRoutePublication3D(const MaterializedRouteProposal3D& proposal,
 assessRouteExecution3D(const ActivatedRouteIdentity3D* active_route,
                        std::span<const RouteSample3D> route,
                        const RouteExecutionObservation3D& observation) noexcept;
+
+[[nodiscard]] RouteSegmentCompletionAssessment3D
+assessRouteSegmentCompletion3D(std::span<const RouteSample3D> route,
+                               const Point3& position,
+                               const RouteSegmentCompletionConfig3D& config) noexcept;
 
 [[nodiscard]] std::string_view
 routePublicationStatus3DName(RoutePublicationStatus3D status) noexcept;

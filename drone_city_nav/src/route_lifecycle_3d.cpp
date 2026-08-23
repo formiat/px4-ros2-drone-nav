@@ -220,6 +220,24 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
   return result;
 }
 
+RouteSegmentCompletionAssessment3D
+assessRouteSegmentCompletion3D(const std::span<const RouteSample3D> route,
+                               const Point3& position,
+                               const RouteSegmentCompletionConfig3D& config) noexcept {
+  RouteSegmentCompletionAssessment3D result;
+  if (route.size() < 2U || !std::isfinite(config.capture_radius_m) ||
+      config.capture_radius_m < 0.0) {
+    return result;
+  }
+
+  result.projection = projectOntoRoute3D(route, position);
+  result.endpoint_distance_m = distance3D(position, route.back().position);
+  result.captured = result.projection.valid &&
+                    std::isfinite(result.endpoint_distance_m) &&
+                    result.endpoint_distance_m <= config.capture_radius_m;
+  return result;
+}
+
 std::string_view
 routePublicationStatus3DName(const RoutePublicationStatus3D status) noexcept {
   switch (status) {

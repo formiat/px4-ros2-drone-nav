@@ -30,30 +30,40 @@ void ProductionMppiNode::processGuideSearch3D(
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       latest_raw_world_3d_.load(std::memory_order_acquire);
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
-  const double completed_observation_tolerance_m =
-      std::min(lattice_3d_config_.goal_tolerance_m,
-               0.5 * std::min(lattice_3d_config_.horizontal_step_m,
-                              lattice_3d_config_.vertical_step_m));
-  if (topological_navigation_3d_ &&
+  const RouteSegmentCompletionAssessment3D active_route_completion =
+      world.route_3d
+          ? assessRouteSegmentCompletion3D(
+                *world.route_3d, search_start,
+                RouteSegmentCompletionConfig3D{
+                    .capture_radius_m = topological_lattice_adapter_3d_config_
+                                            .segment_capture_radius_m})
+          : RouteSegmentCompletionAssessment3D{};
+  const bool active_observation_segment_completed =
       world.lattice_3d_route_purpose == Lattice3DRoutePurpose::kObservationFrontier &&
-      world.lattice_3d_observation_frontier && world.route_3d &&
-      !world.route_3d->empty() &&
-      distance3D(search_start, world.route_3d->back().position) <=
-          completed_observation_tolerance_m) {
+      world.lattice_3d_observation_frontier && active_route_completion.captured;
+  if (topological_navigation_3d_ && active_observation_segment_completed) {
     if (world.route_intent.valid && world.route_intent.segment_reaches_intent_target) {
       topological_navigation_3d_->completeObservationFrontier(
           *world.lattice_3d_observation_frontier, world.revision);
       RCLCPP_INFO(get_logger(),
                   "INCREMENTAL_TOPOLOGY3D_FRONTIER_COMPLETED frontier_id=%" PRIu64
-                  " route_endpoint_reached=true intent_id=%" PRIu64,
+                  " route_endpoint_reached=true intent_id=%" PRIu64
+                  " endpoint_distance_m=%.3f route_remaining_m=%.3f "
+                  "capture_radius_m=%.3f",
                   world.lattice_3d_observation_frontier->id.value,
-                  world.route_intent.id);
+                  world.route_intent.id, active_route_completion.endpoint_distance_m,
+                  active_route_completion.projection.remaining_m,
+                  topological_lattice_adapter_3d_config_.segment_capture_radius_m);
     } else {
       RCLCPP_INFO(get_logger(),
                   "INCREMENTAL_TOPOLOGY3D_SEGMENT_COMPLETED frontier_id=%" PRIu64
-                  " intent_id=%" PRIu64 " intent_target_reached=false",
+                  " intent_id=%" PRIu64
+                  " intent_target_reached=false endpoint_distance_m=%.3f "
+                  "route_remaining_m=%.3f capture_radius_m=%.3f",
                   world.lattice_3d_observation_frontier->id.value,
-                  world.route_intent.id);
+                  world.route_intent.id, active_route_completion.endpoint_distance_m,
+                  active_route_completion.projection.remaining_m,
+                  topological_lattice_adapter_3d_config_.segment_capture_radius_m);
     }
     requestGuideRelease(GlobalGuideReleaseReason::kExhausted,
                         world.global_guide_generation);
@@ -168,20 +178,13 @@ void ProductionMppiNode::processGuideSearch3D(
   }
   ObservationRouteReplacementDecision observation_replacement;
   if (lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier) {
-    const double active_route_completion_tolerance_m =
-        std::min(lattice_3d_config_.goal_tolerance_m,
-                 0.5 * std::min(lattice_3d_config_.horizontal_step_m,
-                                lattice_3d_config_.vertical_step_m));
     const bool active_observation_frontier_reached =
         world.lattice_3d_observation_frontier.has_value() &&
         distance3D(search_start,
                    world.lattice_3d_observation_frontier->observation_pose) <=
             lattice_3d_config_.goal_tolerance_m;
     const bool active_observation_route_exhausted =
-        world.lattice_3d_route_purpose == Lattice3DRoutePurpose::kObservationFrontier &&
-        world.route_3d && !world.route_3d->empty() &&
-        distance3D(search_start, world.route_3d->back().position) <=
-            active_route_completion_tolerance_m;
+        active_observation_segment_completed;
     double observation_endpoint_improvement_m = 0.0;
     if (world.lattice_3d_observation_frontier && lattice.observation_frontier) {
       observation_endpoint_improvement_m =
