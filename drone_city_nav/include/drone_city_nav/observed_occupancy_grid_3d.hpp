@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 
@@ -21,12 +22,29 @@ struct ObservedOccupancyChunk3D {
   OccupancyGrid3D::Chunk occupied{};
 };
 
+class ObservedOccupancyChunkStorage3D {
+public:
+  ObservedOccupancyChunkStorage3D() = delete;
+
+  [[nodiscard]] const ObservedOccupancyChunk3D& get() const noexcept;
+  [[nodiscard]] const ObservedOccupancyChunk3D* operator->() const noexcept;
+
+private:
+  friend class ObservedOccupancyGrid3D;
+
+  explicit ObservedOccupancyChunkStorage3D(ObservedOccupancyChunk3D chunk);
+  [[nodiscard]] ObservedOccupancyChunk3D& mutableChunk();
+
+  std::shared_ptr<ObservedOccupancyChunk3D> chunk_;
+};
+
 class ObservedOccupancyGrid3D {
 public:
   static constexpr int kChunkSize{OccupancyGrid3D::kChunkSize};
   using Chunk = ObservedOccupancyChunk3D;
-  using ChunkMap =
-      std::unordered_map<OccupancyChunkIndex3D, Chunk, OccupancyChunkIndex3DHash>;
+  using ChunkStorage = ObservedOccupancyChunkStorage3D;
+  using ChunkMap = std::unordered_map<OccupancyChunkIndex3D, ChunkStorage,
+                                      OccupancyChunkIndex3DHash>;
 
   explicit ObservedOccupancyGrid3D(const GridBounds3D& bounds);
 
@@ -59,6 +77,7 @@ private:
                                 std::size_t index) noexcept;
   static void setBit(OccupancyGrid3D::Chunk& words, std::size_t index,
                      bool value) noexcept;
+  [[nodiscard]] Chunk& mutableChunk(OccupancyChunkIndex3D index);
   void updateCounts(ObservedVoxelState before, ObservedVoxelState after) noexcept;
 
   GridBounds3D bounds_{};

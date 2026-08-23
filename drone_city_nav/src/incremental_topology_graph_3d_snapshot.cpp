@@ -13,16 +13,6 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] Point3 pointForKey(const GridBounds3D& bounds,
-                                 const std::uint64_t key) noexcept {
-  const GridIndex3D cell = incremental_topology_detail::sampleCellForKey(bounds, key);
-  return Point3{
-      bounds.origin_x + (static_cast<double>(cell.x) + 0.5) * bounds.resolution_m,
-      bounds.origin_y + (static_cast<double>(cell.y) + 0.5) * bounds.resolution_m,
-      bounds.origin_z + (static_cast<double>(cell.z) + 0.5) * bounds.resolution_m,
-  };
-}
-
 void appendUnique(std::vector<Point3>& output, const Point3& point) {
   if (output.empty() || distance3D(output.back(), point) > 1.0e-9) {
     output.push_back(point);
@@ -71,6 +61,26 @@ bucketDistanceLowerBound(const GridBounds3D& bounds,
                     distanceToInterval(position.z, minimum_z, maximum_z));
 }
 
+[[nodiscard]] const IncrementalTopologySampleBlock3D* findSampleBlock(
+    const std::span<const std::shared_ptr<const IncrementalTopologySampleBlock3D>>
+        blocks,
+    const IncrementalTopologyBlockIndex3D index) noexcept {
+  const auto found = std::ranges::lower_bound(
+      blocks, index, {}, [](const auto& block) { return block->block; });
+  return found != blocks.end() && (*found)->block == index ? found->get() : nullptr;
+}
+
+[[nodiscard]] const IncrementalTopologySampleRecord3D*
+findSampleRecord(const IncrementalTopologySampleBlock3D& block,
+                 const GridIndex3D cell) noexcept {
+  const auto found = std::lower_bound(
+      block.records.begin(), block.records.end(), cell,
+      [](const IncrementalTopologySampleRecord3D& record, const GridIndex3D candidate) {
+        return incremental_topology_detail::cellLess(record.cell, candidate);
+      });
+  return found != block.records.end() && found->cell == cell ? &*found : nullptr;
+}
+
 } // namespace
 
 std::uint64_t IncrementalTopologyGraph3DSnapshot::revision() const noexcept {
@@ -96,13 +106,16 @@ IncrementalTopologyGraph3DSnapshot::blockCoverage() const noexcept {
   return block_coverage_;
 }
 
-std::span<const IncrementalTopologySample3D>
-IncrementalTopologyGraph3DSnapshot::samples() const noexcept {
-  return samples_;
-}
-
 std::size_t IncrementalTopologyGraph3DSnapshot::pendingBlockCount() const noexcept {
   return pending_block_count_;
+}
+
+std::size_t IncrementalTopologyGraph3DSnapshot::sampleBlockCount() const noexcept {
+  return sample_blocks_.size();
+}
+
+std::size_t IncrementalTopologyGraph3DSnapshot::sampleCount() const noexcept {
+  return sample_count_;
 }
 
 const IncrementalTopologyNode3D* IncrementalTopologyGraph3DSnapshot::findNode(
@@ -114,11 +127,20 @@ const IncrementalTopologyNode3D* IncrementalTopologyGraph3DSnapshot::findNode(
 std::optional<IncrementalTopologyNodeId>
 IncrementalTopologyGraph3DSnapshot::nodeForSampleCell(
     const GridIndex3D cell) const noexcept {
-  const auto found = sample_cell_nodes_.find(
-      incremental_topology_detail::sampleCellKey(bounds_, cell));
-  return found == sample_cell_nodes_.end()
-             ? std::nullopt
-             : std::optional<IncrementalTopologyNodeId>{found->second};
+  if (cell.x < 0 || cell.y < 0 || cell.z < 0 || cell.x >= bounds_.width_cells ||
+      cell.y >= bounds_.height_cells || cell.z >= bounds_.depth_cells) {
+    return std::nullopt;
+  }
+  const IncrementalTopologySampleBlock3D* const block = findSampleBlock(
+      sample_blocks_,
+      incremental_topology_detail::blockForCell(cell, sample_block_size_cells_));
+  if (block == nullptr) {
+    return std::nullopt;
+  }
+  const IncrementalTopologySampleRecord3D* const record =
+      findSampleRecord(*block, cell);
+  return record == nullptr ? std::nullopt
+                           : std::optional<IncrementalTopologyNodeId>{record->node};
 }
 
 std::optional<IncrementalTopologyNodeId>
@@ -152,37 +174,42 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
   }
 
   struct Candidate {
-    std::uint64_t cell_key{0U};
+    const IncrementalTopologySampleBlock3D* block{nullptr};
+    std::size_t sample_index{0U};
     IncrementalTopologyNodeId node{};
     double distance_m{0.0};
   };
 
   const auto candidate_less = [](const Candidate& first, const Candidate& second) {
-    return std::tie(first.distance_m, first.node.value, first.cell_key) <
-           std::tie(second.distance_m, second.node.value, second.cell_key);
+    const GridIndex3D& first_cell = first.block->records[first.sample_index].cell;
+    const GridIndex3D& second_cell = second.block->records[second.sample_index].cell;
+    return std::tie(first.distance_m, first.node.value, first_cell.z, first_cell.y,
+                    first_cell.x) < std::tie(second.distance_m, second.node.value,
+                                             second_cell.z, second_cell.y,
+                                             second_cell.x);
   };
 
   struct BucketCandidate {
-    const SampleSpatialBucket* bucket{nullptr};
+    const IncrementalTopologySampleBlock3D* block{nullptr};
     double distance_lower_bound_m{0.0};
   };
 
   std::vector<BucketCandidate> nearby_buckets;
-  nearby_buckets.reserve(sample_spatial_buckets_.size());
-  for (const SampleSpatialBucket& bucket : sample_spatial_buckets_) {
+  nearby_buckets.reserve(sample_blocks_.size());
+  for (const auto& block : sample_blocks_) {
     const double lower_bound_m = bucketDistanceLowerBound(
-        bounds_, bucket.index, sample_spatial_bucket_size_cells_, position);
+        bounds_, block->block, sample_block_size_cells_, position);
     if (lower_bound_m <= maximum_distance_m) {
       nearby_buckets.push_back(BucketCandidate{
-          .bucket = &bucket,
+          .block = block.get(),
           .distance_lower_bound_m = lower_bound_m,
       });
     }
   }
   std::ranges::sort(
       nearby_buckets, [](const BucketCandidate& first, const BucketCandidate& second) {
-        return std::tie(first.distance_lower_bound_m, first.bucket->index) <
-               std::tie(second.distance_lower_bound_m, second.bucket->index);
+        return std::tie(first.distance_lower_bound_m, first.block->block) <
+               std::tie(second.distance_lower_bound_m, second.block->block);
       });
 
   std::vector<Candidate> candidates;
@@ -193,15 +220,15 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
         bucket.distance_lower_bound_m > candidates.front().distance_m + 1.0e-9) {
       break;
     }
-    for (const std::size_t sample_index : bucket.bucket->sample_indices) {
-      const IncrementalTopologySample3D& sample = samples_.at(sample_index);
-      const std::uint64_t cell_key =
-          incremental_topology_detail::sampleCellKey(bounds_, sample.cell);
-      const double distance_m = distance3D(position, pointForKey(bounds_, cell_key));
+    for (std::size_t sample_index = 0U; sample_index < bucket.block->records.size();
+         ++sample_index) {
+      const IncrementalTopologySampleRecord3D& sample =
+          bucket.block->records[sample_index];
+      const double distance_m = distance3D(position, occupancy.cellCenter(sample.cell));
       if (distance_m > maximum_distance_m) {
         continue;
       }
-      const Candidate candidate{cell_key, sample.node, distance_m};
+      const Candidate candidate{bucket.block, sample_index, sample.node, distance_m};
       if (candidates.size() < kMaximumCandidates) {
         candidates.push_back(candidate);
         std::ranges::push_heap(candidates, candidate_less);
@@ -218,21 +245,19 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
   for (const Candidate& candidate : candidates) {
     std::vector<Point3> polyline;
     appendUnique(polyline, position);
-    std::uint64_t current = candidate.cell_key;
+    const IncrementalTopologySampleRecord3D* current =
+        &candidate.block->records[candidate.sample_index];
     bool complete = false;
-    for (std::size_t guard = 0U; guard <= sample_cell_parents_.size(); ++guard) {
-      appendUnique(polyline,
-                   occupancy.cellCenter(incremental_topology_detail::sampleCellForKey(
-                       bounds_, current)));
-      const auto parent = sample_cell_parents_.find(current);
-      if (parent == sample_cell_parents_.end()) {
-        break;
-      }
-      if (parent->second == current) {
+    for (std::size_t guard = 0U; guard <= candidate.block->records.size(); ++guard) {
+      appendUnique(polyline, occupancy.cellCenter(current->cell));
+      if (current->parent_cell == current->cell) {
         complete = true;
         break;
       }
-      current = parent->second;
+      current = findSampleRecord(*candidate.block, current->parent_cell);
+      if (current == nullptr) {
+        break;
+      }
     }
     if (!complete) {
       continue;

@@ -31,6 +31,27 @@ namespace {
 
 } // namespace
 
+ObservedOccupancyChunkStorage3D::ObservedOccupancyChunkStorage3D(
+    ObservedOccupancyChunk3D chunk)
+    : chunk_{std::make_shared<ObservedOccupancyChunk3D>(chunk)} {
+}
+
+const ObservedOccupancyChunk3D& ObservedOccupancyChunkStorage3D::get() const noexcept {
+  return *chunk_;
+}
+
+const ObservedOccupancyChunk3D*
+ObservedOccupancyChunkStorage3D::operator->() const noexcept {
+  return chunk_.get();
+}
+
+ObservedOccupancyChunk3D& ObservedOccupancyChunkStorage3D::mutableChunk() {
+  if (!chunk_.unique()) {
+    chunk_ = std::make_shared<ObservedOccupancyChunk3D>(*chunk_);
+  }
+  return *chunk_;
+}
+
 ObservedOccupancyGrid3D::ObservedOccupancyGrid3D(const GridBounds3D& bounds)
     : bounds_{bounds} {
   if (!validBounds(bounds_)) {
@@ -78,11 +99,11 @@ ObservedOccupancyGrid3D::state(const GridIndex3D index) const noexcept {
     return ObservedVoxelState::kUnknown;
   }
   const std::size_t bit_index = localBitIndex(index);
-  if (!bit(found->second.observed, bit_index)) {
+  if (!bit(found->second->observed, bit_index)) {
     return ObservedVoxelState::kUnknown;
   }
-  return bit(found->second.occupied, bit_index) ? ObservedVoxelState::kOccupied
-                                                : ObservedVoxelState::kFree;
+  return bit(found->second->occupied, bit_index) ? ObservedVoxelState::kOccupied
+                                                 : ObservedVoxelState::kFree;
 }
 
 bool ObservedOccupancyGrid3D::isKnown(const GridIndex3D index) const noexcept {
@@ -130,13 +151,14 @@ bool ObservedOccupancyGrid3D::setState(const GridIndex3D index,
     if (found == chunks_.end()) {
       return false;
     }
-    setBit(found->second.observed, bit_index, false);
-    setBit(found->second.occupied, bit_index, false);
-    if (chunkEmpty(found->second)) {
+    Chunk& chunk = found->second.mutableChunk();
+    setBit(chunk.observed, bit_index, false);
+    setBit(chunk.occupied, bit_index, false);
+    if (chunkEmpty(chunk)) {
       chunks_.erase(found);
     }
   } else {
-    Chunk& chunk = chunks_[chunk_index];
+    Chunk& chunk = mutableChunk(chunk_index);
     setBit(chunk.observed, bit_index, true);
     setBit(chunk.occupied, bit_index, state_value == ObservedVoxelState::kOccupied);
   }
@@ -147,13 +169,13 @@ bool ObservedOccupancyGrid3D::setState(const GridIndex3D index,
 bool ObservedOccupancyGrid3D::replaceChunk(const OccupancyChunkIndex3D index,
                                            const Chunk& chunk) {
   const auto found = chunks_.find(index);
-  if (found != chunks_.end() && found->second.observed == chunk.observed &&
-      found->second.occupied == chunk.occupied) {
+  if (found != chunks_.end() && found->second->observed == chunk.observed &&
+      found->second->occupied == chunk.occupied) {
     return false;
   }
   if (found != chunks_.end()) {
-    const std::size_t old_known = popcount(found->second.observed);
-    const std::size_t old_occupied = popcount(found->second.occupied);
+    const std::size_t old_known = popcount(found->second->observed);
+    const std::size_t old_occupied = popcount(found->second->occupied);
     known_voxels_ -= old_known;
     occupied_voxels_ -= old_occupied;
     free_voxels_ -= old_known - old_occupied;
@@ -170,8 +192,15 @@ bool ObservedOccupancyGrid3D::replaceChunk(const OccupancyChunkIndex3D index,
   known_voxels_ += new_known;
   occupied_voxels_ += new_occupied;
   free_voxels_ += new_known - new_occupied;
-  chunks_[index] = normalized;
+  chunks_.insert_or_assign(index, ChunkStorage{normalized});
   return true;
+}
+
+ObservedOccupancyGrid3D::Chunk&
+ObservedOccupancyGrid3D::mutableChunk(const OccupancyChunkIndex3D index) {
+  const auto [found, inserted] = chunks_.try_emplace(index, ChunkStorage{Chunk{}});
+  static_cast<void>(inserted);
+  return found->second.mutableChunk();
 }
 
 void ObservedOccupancyGrid3D::clear() {
@@ -183,7 +212,8 @@ void ObservedOccupancyGrid3D::clear() {
 
 OccupancyGrid3D ObservedOccupancyGrid3D::occupiedSnapshot() const {
   OccupancyGrid3D snapshot{bounds_};
-  for (const auto& [chunk_index, chunk] : chunks_) {
+  for (const auto& [chunk_index, storage] : chunks_) {
+    const Chunk& chunk = storage.get();
     for (std::size_t bit_index = 0U; bit_index < OccupancyGrid3D::kVoxelsPerChunk;
          ++bit_index) {
       if (!bit(chunk.occupied, bit_index)) {

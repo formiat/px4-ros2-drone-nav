@@ -24,6 +24,30 @@ TEST(ObservedOccupancyGrid3D, PreservesUnknownFreeAndOccupiedStates) {
   EXPECT_EQ(grid.chunks().size(), 2U);
 }
 
+TEST(ObservedOccupancyGrid3D, CopiesRemainIndependentAfterChunkMutations) {
+  ObservedOccupancyGrid3D original{kBounds};
+  constexpr GridIndex3D first{1, 2, 3};
+  constexpr GridIndex3D second{17, 18, 4};
+  ASSERT_TRUE(original.setState(first, ObservedVoxelState::kFree));
+  ASSERT_TRUE(original.setState(second, ObservedVoxelState::kOccupied));
+
+  ObservedOccupancyGrid3D copy = original;
+  ASSERT_TRUE(copy.setState(first, ObservedVoxelState::kOccupied));
+
+  EXPECT_TRUE(original.isKnownFree(first));
+  EXPECT_TRUE(original.isOccupied(second));
+  EXPECT_EQ(original.freeVoxelCount(), 1U);
+  EXPECT_EQ(original.occupiedVoxelCount(), 1U);
+  EXPECT_TRUE(copy.isOccupied(first));
+  EXPECT_TRUE(copy.isOccupied(second));
+  EXPECT_EQ(copy.freeVoxelCount(), 0U);
+  EXPECT_EQ(copy.occupiedVoxelCount(), 2U);
+
+  ASSERT_TRUE(original.setState(second, ObservedVoxelState::kUnknown));
+  EXPECT_EQ(original.state(second), ObservedVoxelState::kUnknown);
+  EXPECT_TRUE(copy.isOccupied(second));
+}
+
 TEST(ObservedOccupancyGrid3D, CropDoesNotTurnUnknownIntoFree) {
   ObservedOccupancyGrid3D grid{kBounds};
   static_cast<void>(grid.setState({8, 8, 4}, ObservedVoxelState::kFree));

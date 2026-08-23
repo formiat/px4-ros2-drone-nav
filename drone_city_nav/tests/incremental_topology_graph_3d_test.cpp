@@ -183,6 +183,10 @@ TEST(IncrementalTopologyGraph3DTest, DirtyUpdateRetainsUnaffectedNodeIdentity) {
   IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
   static_cast<void>(graph.update(occupancy, 1U, {}, true));
   const IncrementalTopologyGraph3DSnapshot before = graph.snapshot();
+  ASSERT_GT(before.sampleBlockCount(), 0U);
+  ASSERT_GT(before.sampleCount(), 0U);
+  const std::size_t before_sample_block_count = before.sampleBlockCount();
+  const std::size_t before_sample_count = before.sampleCount();
   const std::optional<IncrementalTopologyNodeId> distant_before =
       before.nearestNode({56.5, 15.5, 7.5}, 8.0);
   ASSERT_TRUE(distant_before.has_value());
@@ -194,12 +198,19 @@ TEST(IncrementalTopologyGraph3DTest, DirtyUpdateRetainsUnaffectedNodeIdentity) {
   const IncrementalTopologyGraph3DUpdate update =
       graph.update(occupancy, 2U, dirty_chunks, false);
   const IncrementalTopologyGraph3DSnapshot after = graph.snapshot();
+  const std::optional<IncrementalTopologyConnector3D> retained_connector =
+      before.connectObserved(occupancy, {8.5, 15.5, 7.5}, 2.0,
+                             makeKnownSpaceConfig().footprint,
+                             ObservedSpaceValidationPolicy::kRequireKnownFree);
   const std::optional<IncrementalTopologyNodeId> distant_after =
       after.nearestNode({56.5, 15.5, 7.5}, 8.0);
 
+  ASSERT_TRUE(retained_connector.has_value());
   EXPECT_FALSE(update.full_reset);
   EXPECT_EQ(update.requested_dirty_chunks, 1U);
   EXPECT_GT(update.retained_node_ids, 0U);
+  EXPECT_EQ(before.sampleBlockCount(), before_sample_block_count);
+  EXPECT_EQ(before.sampleCount(), before_sample_count);
   EXPECT_EQ(distant_after, distant_before);
   const IncrementalTopologyNode3D* distant_node = after.findNode(distant_id);
   ASSERT_NE(distant_node, nullptr);

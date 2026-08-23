@@ -139,7 +139,8 @@ sensor_msgs::msg::PointCloud2 buildObservedOccupancyPointCloud3D(
   std::vector<Point3> points;
   points.reserve(grid.occupiedVoxelCount() / effective_stride + 1U);
   std::size_t occupied_index{0U};
-  for (const auto& [chunk_index, chunk] : grid.chunks()) {
+  for (const auto& [chunk_index, storage] : grid.chunks()) {
+    const ObservedOccupancyGrid3D::Chunk& chunk = storage.get();
     for (std::size_t word_index = 0U; word_index < chunk.occupied.size();
          ++word_index) {
       std::uint64_t word = chunk.occupied.at(word_index);

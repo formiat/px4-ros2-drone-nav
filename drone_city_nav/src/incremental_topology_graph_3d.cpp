@@ -5,8 +5,6 @@
 #include <memory>
 #include <ranges>
 #include <stdexcept>
-#include <tuple>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -14,7 +12,6 @@
 
 namespace drone_city_nav {
 
-using incremental_topology_detail::blockForCell;
 using incremental_topology_detail::sameBounds;
 
 IncrementalTopologyGraph3D::IncrementalTopologyGraph3D(
@@ -166,40 +163,17 @@ IncrementalTopologyGraph3DSnapshot IncrementalTopologyGraph3D::snapshot() const 
   std::ranges::sort(result.block_coverage_, {},
                     &IncrementalTopologyBlockCoverage3D::block);
   result.pending_block_count_ = pending_blocks.size();
-  result.sample_cell_nodes_ = impl_->sample_cell_nodes;
-  result.sample_cell_parents_ = impl_->sample_cell_parents;
-  result.samples_.reserve(impl_->sample_cell_nodes.size());
-  for (const auto& [cell_key, node] : impl_->sample_cell_nodes) {
-    result.samples_.push_back(IncrementalTopologySample3D{
-        .cell = incremental_topology_detail::sampleCellForKey(impl_->bounds, cell_key),
-        .node = node,
-    });
+  result.sample_block_size_cells_ = impl_->config.block_size_cells;
+  result.sample_blocks_.reserve(impl_->blocks.size());
+  for (const auto& [block, data] : impl_->blocks) {
+    static_cast<void>(block);
+    if (data.snapshot_samples) {
+      result.sample_count_ += data.snapshot_samples->records.size();
+      result.sample_blocks_.push_back(data.snapshot_samples);
+    }
   }
-  std::ranges::sort(result.samples_, [](const IncrementalTopologySample3D& first,
-                                        const IncrementalTopologySample3D& second) {
-    return std::tie(first.cell.z, first.cell.y, first.cell.x, first.node.value) <
-           std::tie(second.cell.z, second.cell.y, second.cell.x, second.node.value);
-  });
-  result.sample_spatial_bucket_size_cells_ = impl_->config.block_size_cells;
-  std::unordered_map<IncrementalTopologyBlockIndex3D, std::vector<std::size_t>,
-                     IncrementalTopologyBlockIndex3DHash>
-      sample_indices_by_bucket;
-  sample_indices_by_bucket.reserve(impl_->blocks.size());
-  for (std::size_t index = 0U; index < result.samples_.size(); ++index) {
-    sample_indices_by_bucket[blockForCell(result.samples_[index].cell,
-                                          result.sample_spatial_bucket_size_cells_)]
-        .push_back(index);
-  }
-  result.sample_spatial_buckets_.reserve(sample_indices_by_bucket.size());
-  for (auto& [bucket, sample_indices] : sample_indices_by_bucket) {
-    result.sample_spatial_buckets_.push_back(
-        IncrementalTopologyGraph3DSnapshot::SampleSpatialBucket{
-            .index = bucket,
-            .sample_indices = std::move(sample_indices),
-        });
-  }
-  std::ranges::sort(result.sample_spatial_buckets_, {},
-                    &IncrementalTopologyGraph3DSnapshot::SampleSpatialBucket::index);
+  std::ranges::sort(result.sample_blocks_, {},
+                    [](const auto& block) { return block->block; });
   return result;
 }
 

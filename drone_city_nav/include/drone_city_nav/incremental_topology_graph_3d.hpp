@@ -147,9 +147,15 @@ struct IncrementalTopologyConnector3D {
   std::uint64_t validated_through_revision{0U};
 };
 
-struct IncrementalTopologySample3D {
+struct IncrementalTopologySampleRecord3D {
   GridIndex3D cell{};
+  GridIndex3D parent_cell{};
   IncrementalTopologyNodeId node{};
+};
+
+struct IncrementalTopologySampleBlock3D {
+  IncrementalTopologyBlockIndex3D block{};
+  std::vector<IncrementalTopologySampleRecord3D> records;
 };
 
 class IncrementalTopologyGraph3DSnapshot {
@@ -160,8 +166,9 @@ public:
   [[nodiscard]] std::span<const IncrementalTopologyEdge3D> edges() const noexcept;
   [[nodiscard]] std::span<const IncrementalTopologyBlockCoverage3D>
   blockCoverage() const noexcept;
-  [[nodiscard]] std::span<const IncrementalTopologySample3D> samples() const noexcept;
   [[nodiscard]] std::size_t pendingBlockCount() const noexcept;
+  [[nodiscard]] std::size_t sampleBlockCount() const noexcept;
+  [[nodiscard]] std::size_t sampleCount() const noexcept;
   [[nodiscard]] const IncrementalTopologyNode3D*
   findNode(IncrementalTopologyNodeId id) const noexcept;
   [[nodiscard]] std::optional<IncrementalTopologyNodeId>
@@ -176,25 +183,18 @@ public:
 private:
   friend class IncrementalTopologyGraph3D;
 
-  struct SampleSpatialBucket {
-    IncrementalTopologyBlockIndex3D index{};
-    std::vector<std::size_t> sample_indices;
-  };
-
   std::uint64_t revision_{0U};
   GridBounds3D bounds_{};
   std::vector<IncrementalTopologyNode3D> nodes_;
   std::vector<IncrementalTopologyEdge3D> edges_;
   std::vector<IncrementalTopologyBlockCoverage3D> block_coverage_;
-  std::vector<IncrementalTopologySample3D> samples_;
   std::size_t pending_block_count_{0U};
+  std::size_t sample_count_{0U};
   std::unordered_map<IncrementalTopologyNodeId, std::size_t,
                      IncrementalTopologyNodeIdHash>
       node_indices_;
-  std::unordered_map<std::uint64_t, IncrementalTopologyNodeId> sample_cell_nodes_;
-  std::unordered_map<std::uint64_t, std::uint64_t> sample_cell_parents_;
-  int sample_spatial_bucket_size_cells_{1};
-  std::vector<SampleSpatialBucket> sample_spatial_buckets_;
+  int sample_block_size_cells_{1};
+  std::vector<std::shared_ptr<const IncrementalTopologySampleBlock3D>> sample_blocks_;
 };
 
 class IncrementalTopologyGraph3D {

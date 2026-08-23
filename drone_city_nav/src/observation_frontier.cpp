@@ -771,7 +771,8 @@ ObservationFrontierDiscovery discoverObservationFrontiers(
   using ChunkEntry = std::pair<OccupancyChunkIndex3D, const ObservedOccupancyChunk3D*>;
   std::vector<ChunkEntry> chunks;
   chunks.reserve(occupancy.chunks().size());
-  for (const auto& [index, chunk] : occupancy.chunks()) {
+  for (const auto& [index, storage] : occupancy.chunks()) {
+    const ObservedOccupancyGrid3D::Chunk& chunk = storage.get();
     chunks.emplace_back(index, &chunk);
   }
   std::ranges::sort(chunks, {}, [](const ChunkEntry& entry) {

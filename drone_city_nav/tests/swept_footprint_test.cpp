@@ -190,6 +190,18 @@ TEST(SweptFootprintTest, RawTwoDimensionalSweepRejectsSideContact) {
   EXPECT_EQ(physical.status, SweptFootprintStatus::kRawCollision);
 }
 
+TEST(SweptFootprintTest, RawTwoDimensionalFootprintIncludesTangentCells) {
+  OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 1.0, 8, 6}};
+  occupancy.reset(CellState::kFree);
+  occupancy.setOccupied(GridIndex{4, 2});
+  const SweptFootprintConfig footprint{.radius_m = 1.0};
+
+  EXPECT_EQ(validateRawFootprintAt(occupancy, Point3{3.0, 2.5, 5.0}, footprint).status,
+            SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(
+      validateRawFootprintAt(occupancy, Point3{2.999, 2.5, 5.0}, footprint).accepted());
+}
+
 TEST(SweptFootprintTest, MiddlewareRawViewMatchesOwnedGridCollisionSemantics) {
   const GridBounds bounds{0.0, 0.0, 1.0, 8, 6};
   OccupancyGrid2D owned{bounds};
@@ -235,6 +247,32 @@ TEST(SweptFootprintTest, RawThreeDimensionalBodyDoesNotRoundItsAxialCaps) {
                                        .sweep_step_m = 0.25};
 
   EXPECT_TRUE(validateRawFootprintAt(occupancy, Point3{2.125, 2.125, 2.0},
+                                     FootprintBodyAxis{}, footprint)
+                  .accepted());
+}
+
+TEST(SweptFootprintTest, RawThreeDimensionalFootprintIncludesTangentCapCells) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
+  const SweptFootprintConfig footprint{
+      .radius_m = 0.25, .lower_extent_m = 0.25, .upper_extent_m = 0.5};
+
+  OccupancyGrid3D upper_contact{bounds};
+  upper_contact.setOccupied(GridIndex3D{8, 8, 10});
+  EXPECT_EQ(validateRawFootprintAt(upper_contact, Point3{2.125, 2.125, 2.0},
+                                   FootprintBodyAxis{}, footprint)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(validateRawFootprintAt(upper_contact, Point3{2.125, 2.125, 1.999},
+                                     FootprintBodyAxis{}, footprint)
+                  .accepted());
+
+  OccupancyGrid3D lower_contact{bounds};
+  lower_contact.setOccupied(GridIndex3D{8, 8, 9});
+  EXPECT_EQ(validateRawFootprintAt(lower_contact, Point3{2.125, 2.125, 2.75},
+                                   FootprintBodyAxis{}, footprint)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(validateRawFootprintAt(lower_contact, Point3{2.125, 2.125, 2.751},
                                      FootprintBodyAxis{}, footprint)
                   .accepted());
 }
@@ -435,6 +473,25 @@ TEST(SweptFootprintTest, ObservedWorldBoundaryIsOutsideGridRatherThanUnknown) {
   EXPECT_EQ(result.status, SweptFootprintStatus::kOutsideGrid);
 }
 
+TEST(SweptFootprintTest, ExactObservedWorldBoundaryContactRemainsInsideGrid) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 4, 4, 4};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        static_cast<void>(
+            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree));
+      }
+    }
+  }
+
+  EXPECT_TRUE(validateRawFootprintAt(
+                  occupancy, Point3{0.5, 0.5, 0.5}, FootprintBodyAxis{},
+                  SweptFootprintConfig{
+                      .radius_m = 0.5, .lower_extent_m = 0.5, .upper_extent_m = 0.5})
+                  .accepted());
+}
+
 TEST(SweptFootprintTest, ProprioceptiveSeedCoversOnlyTheAlreadyOccupiedBodyVolume) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
   ObservedOccupancyGrid3D occupancy{bounds};
@@ -465,10 +522,12 @@ TEST(SweptFootprintTest,
      ProprioceptiveSeedAllowsObservedAxialDepartureButNotUnknownDescent) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
   ObservedOccupancyGrid3D occupancy{bounds};
-  for (int y = 0; y < bounds.height_cells; ++y) {
-    for (int x = 0; x < bounds.width_cells; ++x) {
-      static_cast<void>(
-          occupancy.setState(GridIndex3D{x, y, 9}, ObservedVoxelState::kFree));
+  for (int z = 9; z <= 10; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        static_cast<void>(
+            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree));
+      }
     }
   }
   const SweptFootprintConfig footprint{.radius_m = 0.5,

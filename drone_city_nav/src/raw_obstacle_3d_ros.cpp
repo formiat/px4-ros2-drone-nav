@@ -159,9 +159,9 @@ changedChunkIndices(const ObservedOccupancyGrid3D& previous,
     const auto current_chunk = current.chunks().find(index);
     if (!chunksEqual(
             previous_chunk == previous.chunks().end() ? nullptr
-                                                      : &previous_chunk->second,
+                                                      : &previous_chunk->second.get(),
             current_chunk == current.chunks().end() ? nullptr
-                                                    : &current_chunk->second)) {
+                                                    : &current_chunk->second.get())) {
       changed.push_back(index);
     }
   }
@@ -184,7 +184,7 @@ msg::RawObstacleSnapshot3D makeRawObstacleSnapshot3D(
   setGeometry(message, grid.bounds());
   message.chunks.reserve(grid.chunks().size());
   for (const auto& [index, chunk] : grid.chunks()) {
-    message.chunks.push_back(makeChunk(index, &chunk));
+    message.chunks.push_back(makeChunk(index, &chunk.get()));
   }
   std::ranges::sort(message.chunks, [](const auto& first, const auto& second) {
     return std::tie(first.z, first.y, first.x) < std::tie(second.z, second.y, second.x);
@@ -206,8 +206,8 @@ msg::RawObstacleDelta3D makeRawObstacleDelta3D(
   message.chunks.reserve(dirty_chunks.size());
   for (const OccupancyChunkIndex3D index : dirty_chunks) {
     const auto found = grid.chunks().find(index);
-    message.chunks.push_back(
-        makeChunk(index, found == grid.chunks().end() ? nullptr : &found->second));
+    message.chunks.push_back(makeChunk(
+        index, found == grid.chunks().end() ? nullptr : &found->second.get()));
   }
   return message;
 }

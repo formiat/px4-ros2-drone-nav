@@ -73,6 +73,35 @@ using swept_footprint_detail::normalized;
     return false;
   }
 
+  const auto squared_interval_distance = [](const double value, const double minimum,
+                                            const double maximum) noexcept {
+    if (value < minimum) {
+      const double distance = minimum - value;
+      return distance * distance;
+    }
+    if (value > maximum) {
+      const double distance = value - maximum;
+      return distance * distance;
+    }
+    return 0.0;
+  };
+  constexpr double kCardinalAxisTolerance{1.0e-12};
+  if (std::abs(axis.x) >= 1.0 - kCardinalAxisTolerance) {
+    return squared_interval_distance(center.y, lower.y, upper.y) +
+               squared_interval_distance(center.z, lower.z, upper.z) <=
+           radius_squared;
+  }
+  if (std::abs(axis.y) >= 1.0 - kCardinalAxisTolerance) {
+    return squared_interval_distance(center.x, lower.x, upper.x) +
+               squared_interval_distance(center.z, lower.z, upper.z) <=
+           radius_squared;
+  }
+  if (std::abs(axis.z) >= 1.0 - kCardinalAxisTolerance) {
+    return squared_interval_distance(center.x, lower.x, upper.x) +
+               squared_interval_distance(center.y, lower.y, upper.y) <=
+           radius_squared;
+  }
+
   const Point3 axis_lower{center.x - lower_extent_m * axis.x,
                           center.y - lower_extent_m * axis.y,
                           center.z - lower_extent_m * axis.z};
@@ -322,14 +351,14 @@ candidateRemainsInsideLaunchSupportEnvelope(const LaunchSupportContact3D& contac
          });
 }
 
-[[nodiscard]] int minimumCell(const double coordinate, const double origin,
-                              const double resolution) noexcept {
-  return static_cast<int>(std::floor((coordinate - origin) / resolution));
+[[nodiscard]] int minimumContactCell(const double coordinate, const double origin,
+                                     const double resolution) noexcept {
+  return static_cast<int>(std::ceil((coordinate - origin) / resolution)) - 1;
 }
 
-[[nodiscard]] int maximumCell(const double coordinate, const double origin,
-                              const double resolution) noexcept {
-  return static_cast<int>(std::ceil((coordinate - origin) / resolution)) - 1;
+[[nodiscard]] int maximumContactCell(const double coordinate, const double origin,
+                                     const double resolution) noexcept {
+  return static_cast<int>(std::floor((coordinate - origin) / resolution));
 }
 
 [[nodiscard]] SweptFootprintResult validRawFootprint() noexcept {
@@ -366,16 +395,18 @@ validateRawFootprintAt2D(const Occupancy& occupancy, const Point3& position,
                : validRawFootprint();
   }
   const GridBounds& bounds = occupancy.bounds();
-  const int minimum_x = std::max(
-      0, minimumCell(position.x - radius_m, bounds.origin_x, bounds.resolution_m));
+  const int minimum_x =
+      std::max(0, minimumContactCell(position.x - radius_m, bounds.origin_x,
+                                     bounds.resolution_m));
   const int maximum_x = std::min(
       bounds.width_cells - 1,
-      maximumCell(position.x + radius_m, bounds.origin_x, bounds.resolution_m));
-  const int minimum_y = std::max(
-      0, minimumCell(position.y - radius_m, bounds.origin_y, bounds.resolution_m));
+      maximumContactCell(position.x + radius_m, bounds.origin_x, bounds.resolution_m));
+  const int minimum_y =
+      std::max(0, minimumContactCell(position.y - radius_m, bounds.origin_y,
+                                     bounds.resolution_m));
   const int maximum_y = std::min(
       bounds.height_cells - 1,
-      maximumCell(position.y + radius_m, bounds.origin_y, bounds.resolution_m));
+      maximumContactCell(position.y + radius_m, bounds.origin_y, bounds.resolution_m));
   const double radius_squared = radius_m * radius_m;
   for (int y = minimum_y; y <= maximum_y; ++y) {
     for (int x = minimum_x; x <= maximum_x; ++x) {
@@ -439,30 +470,33 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
                              radius_m *
                                  std::sqrt(std::max(0.0, 1.0 - axis.z * axis.z))};
   const GridBounds3D& bounds = occupancy.bounds();
+  const Point3 body_minimum{std::min(lower.x, upper.x) - radial_extent.x,
+                            std::min(lower.y, upper.y) - radial_extent.y,
+                            std::min(lower.z, upper.z) - radial_extent.z};
+  const Point3 body_maximum{std::max(lower.x, upper.x) + radial_extent.x,
+                            std::max(lower.y, upper.y) + radial_extent.y,
+                            std::max(lower.z, upper.z) + radial_extent.z};
   const int requested_minimum_x =
-      minimumCell(std::min(lower.x, upper.x) - radial_extent.x, bounds.origin_x,
-                  bounds.resolution_m);
+      minimumContactCell(body_minimum.x, bounds.origin_x, bounds.resolution_m);
   const int requested_maximum_x =
-      maximumCell(std::max(lower.x, upper.x) + radial_extent.x, bounds.origin_x,
-                  bounds.resolution_m);
+      maximumContactCell(body_maximum.x, bounds.origin_x, bounds.resolution_m);
   const int requested_minimum_y =
-      minimumCell(std::min(lower.y, upper.y) - radial_extent.y, bounds.origin_y,
-                  bounds.resolution_m);
+      minimumContactCell(body_minimum.y, bounds.origin_y, bounds.resolution_m);
   const int requested_maximum_y =
-      maximumCell(std::max(lower.y, upper.y) + radial_extent.y, bounds.origin_y,
-                  bounds.resolution_m);
+      maximumContactCell(body_maximum.y, bounds.origin_y, bounds.resolution_m);
   const int requested_minimum_z =
-      minimumCell(std::min(lower.z, upper.z) - radial_extent.z, bounds.origin_z,
-                  bounds.resolution_m);
+      minimumContactCell(body_minimum.z, bounds.origin_z, bounds.resolution_m);
   const int requested_maximum_z =
-      maximumCell(std::max(lower.z, upper.z) + radial_extent.z, bounds.origin_z,
-                  bounds.resolution_m);
+      maximumContactCell(body_maximum.z, bounds.origin_z, bounds.resolution_m);
   SweptFootprintResult result = validRawFootprint();
   if constexpr (RequireKnownFree) {
-    if (requested_minimum_x < 0 || requested_minimum_y < 0 || requested_minimum_z < 0 ||
-        requested_maximum_x >= bounds.width_cells ||
-        requested_maximum_y >= bounds.height_cells ||
-        requested_maximum_z >= bounds.depth_cells) {
+    const Point3 world_maximum{
+        bounds.origin_x + bounds.width_cells * bounds.resolution_m,
+        bounds.origin_y + bounds.height_cells * bounds.resolution_m,
+        bounds.origin_z + bounds.depth_cells * bounds.resolution_m};
+    if (body_minimum.x < bounds.origin_x || body_minimum.y < bounds.origin_y ||
+        body_minimum.z < bounds.origin_z || body_maximum.x > world_maximum.x ||
+        body_maximum.y > world_maximum.y || body_maximum.z > world_maximum.z) {
       if constexpr (!PreserveFailureCategory) {
         return makeStatusResult(SweptFootprintStatus::kOutsideGrid, position);
       }

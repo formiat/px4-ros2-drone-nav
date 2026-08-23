@@ -120,7 +120,8 @@ struct SourceCellRegion {
 template<typename Callback>
 void forEachObservedVoxel(const ObservedOccupancyGrid3D& occupancy,
                           const SourceCellRegion& region, Callback&& callback) {
-  for (const auto& [chunk_index, chunk] : occupancy.chunks()) {
+  for (const auto& [chunk_index, storage] : occupancy.chunks()) {
+    const ObservedOccupancyGrid3D::Chunk& chunk = storage.get();
     if (!overlaps(chunk_index, region)) {
       continue;
     }
@@ -398,7 +399,8 @@ std::uint64_t observedOccupancyFingerprint(const ObservedOccupancyGrid3D& occupa
   using ChunkEntry = std::pair<OccupancyChunkIndex3D, const ObservedOccupancyChunk3D*>;
   std::vector<ChunkEntry> chunks;
   chunks.reserve(occupancy.chunks().size());
-  for (const auto& [index, chunk] : occupancy.chunks()) {
+  for (const auto& [index, storage] : occupancy.chunks()) {
+    const ObservedOccupancyGrid3D::Chunk& chunk = storage.get();
     if (overlaps(index, region)) {
       chunks.emplace_back(index, &chunk);
     }

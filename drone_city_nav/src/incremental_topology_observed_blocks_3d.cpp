@@ -50,7 +50,8 @@ ObservedBlockLifecycle3D::allObservedBlocks(
   std::unordered_set<IncrementalTopologyBlockIndex3D,
                      IncrementalTopologyBlockIndex3DHash>
       unique;
-  for (const auto& [chunk, data] : occupancy.chunks()) {
+  for (const auto& [chunk, storage] : occupancy.chunks()) {
+    const ObservedOccupancyGrid3D::Chunk& data = storage.get();
     for (std::size_t word = 0U; word < data.observed.size(); ++word) {
       const std::uint64_t relevant =
           config_.require_known_free_space
@@ -88,13 +89,13 @@ ObservedBlockChanges3D ObservedBlockLifecycle3D::dirtyObservedBlocks(
     const auto current = occupancy.chunks().find(chunk_index);
     for (std::size_t word = 0U; word < OccupancyGrid3D::kWordsPerChunk; ++word) {
       const std::uint64_t previous_observed =
-          previous == observed_chunks_.end() ? 0U : previous->second.observed.at(word);
+          previous == observed_chunks_.end() ? 0U : previous->second->observed.at(word);
       const std::uint64_t previous_occupied =
-          previous == observed_chunks_.end() ? 0U : previous->second.occupied.at(word);
+          previous == observed_chunks_.end() ? 0U : previous->second->occupied.at(word);
       const std::uint64_t current_observed =
-          current == occupancy.chunks().end() ? 0U : current->second.observed.at(word);
+          current == occupancy.chunks().end() ? 0U : current->second->observed.at(word);
       const std::uint64_t current_occupied =
-          current == occupancy.chunks().end() ? 0U : current->second.occupied.at(word);
+          current == occupancy.chunks().end() ? 0U : current->second->occupied.at(word);
       const std::uint64_t observation_changed = previous_observed ^ current_observed;
       const std::uint64_t occupancy_changed = previous_occupied ^ current_occupied;
       const std::uint64_t geometry_changed =
@@ -134,7 +135,7 @@ ObservedBlockChanges3D ObservedBlockLifecycle3D::dirtyObservedBlocks(
     if (current == occupancy.chunks().end()) {
       observed_chunks_.erase(chunk_index);
     } else {
-      observed_chunks_[chunk_index] = current->second;
+      observed_chunks_.insert_or_assign(chunk_index, current->second);
     }
   }
   return ObservedBlockChanges3D{

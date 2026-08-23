@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <deque>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <ranges>
 #include <span>
@@ -51,6 +52,7 @@ struct IncrementalTopologyGraph3D::Impl {
   struct BlockData {
     std::vector<BlockComponent> components;
     int sample_stride_cells{1};
+    std::shared_ptr<const IncrementalTopologySampleBlock3D> snapshot_samples;
   };
 
   struct BuiltBlock {
@@ -599,9 +601,32 @@ struct IncrementalTopologyGraph3D::Impl {
     stats.retired_nodes += previous.size() - retained_ids.size();
     block_validated_through[block] = update_revision;
     if (!components.empty()) {
+      auto snapshot_samples = std::make_shared<IncrementalTopologySampleBlock3D>();
+      snapshot_samples->block = block;
+      std::size_t sample_count{0U};
+      for (const BlockComponent& component : components) {
+        sample_count += component.cells.size();
+      }
+      snapshot_samples->records.reserve(sample_count);
+      for (const BlockComponent& component : components) {
+        for (const GridIndex3D cell : component.cells) {
+          const std::uint64_t key = sampleCellKey(bounds, cell);
+          snapshot_samples->records.push_back(IncrementalTopologySampleRecord3D{
+              .cell = cell,
+              .parent_cell = component.parent_by_cell.at(key),
+              .node = component.id,
+          });
+        }
+      }
+      std::ranges::sort(snapshot_samples->records,
+                        [](const IncrementalTopologySampleRecord3D& first,
+                           const IncrementalTopologySampleRecord3D& second) {
+                          return cellLess(first.cell, second.cell);
+                        });
       blocks.emplace(block,
                      BlockData{.components = std::move(components),
-                               .sample_stride_cells = replacement.sample_stride_cells});
+                               .sample_stride_cells = replacement.sample_stride_cells,
+                               .snapshot_samples = std::move(snapshot_samples)});
     }
   }
 
