@@ -321,6 +321,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<float>(declare_parameter<double>("head_progress_horizon_s", 0.4));
   mppi_config_.costs.head_progress_weight =
       static_cast<float>(declare_parameter<double>("head_progress_weight", 8.0));
+  mppi_config_.costs.route_progress_integral_weight = static_cast<float>(
+      declare_parameter<double>("route_progress_integral_weight", 2.0));
   mppi_config_.costs.planning_exposure_weight =
       static_cast<float>(declare_parameter<double>("planning_exposure_weight", 2.0));
   mppi_config_.costs.critical_exposure_weight =
@@ -746,6 +748,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(physical_footprint_config_.upper_extent_m >= 0.0) ||
       !(mppi_config_.costs.planning_exposure_weight >= 0.0F) ||
       !(mppi_config_.costs.critical_exposure_weight >= 0.0F) ||
+      !(mppi_config_.costs.route_progress_integral_weight >= 0.0F) ||
       !(mppi_config_.costs.obstacle_approach_weight >= 0.0F) ||
       !(mppi_config_.risk.obstacle_approach_response_time_s >= 0.0F) ||
       !(mppi_config_.risk.obstacle_approach_deceleration_mps2 > 0.0F) ||

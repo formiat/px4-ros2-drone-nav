@@ -366,6 +366,7 @@ void ProductionMppiNode::processDiagnostics(
       << " minimum_esdf_m=" << result.minimum_esdf_distance_m
       << " head_progress_m=" << result.head_progress_m
       << " terminal_progress_m=" << result.terminal_progress_m
+      << " route_progress_integral_m_s=" << result.route_progress_integral_m_s
       << " warm_start_shift_ms=" << result.warm_start_shift_s * 1000.0
       << " previous_control_source="
       << productionMppiPreviousControlSourceName(snapshot.previous_control_source)
@@ -393,6 +394,7 @@ void ProductionMppiNode::processDiagnostics(
       << (result.route_directed_candidate_raw_safe ? "true" : "false")
       << " route_directed_candidate_best_feasible="
       << (result.route_directed_candidate_best_feasible ? "true" : "false")
+      << " route_directed_candidate_weight=" << result.route_directed_candidate_weight
       << " route_directed_candidate_generation="
       << result.route_directed_candidate_generation
       << " temporary_frontier_is_terminal="
@@ -897,6 +899,7 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"obstacle_approach_m2_s\":" << result.obstacle_approach_m2_s
         << ",\"head_progress_m\":" << result.head_progress_m
         << ",\"terminal_progress_m\":" << result.terminal_progress_m
+        << ",\"route_progress_integral_m_s\":" << result.route_progress_integral_m_s
         << ",\"warm_start_shift_ms\":" << result.warm_start_shift_s * 1000.0
         << ",\"nominal_reseeded\":" << (result.nominal_reseeded ? "true" : "false")
         << ",\"direct_maneuver_reseed\":"
@@ -923,6 +926,8 @@ void ProductionMppiNode::processDiagnostics(
         << (result.route_directed_candidate_raw_safe ? "true" : "false")
         << ",\"route_directed_candidate_best_feasible\":"
         << (result.route_directed_candidate_best_feasible ? "true" : "false")
+        << ",\"route_directed_candidate_weight\":"
+        << result.route_directed_candidate_weight
         << ",\"route_directed_candidate_generation\":"
         << result.route_directed_candidate_generation
         << ",\"temporary_frontier_is_terminal\":"

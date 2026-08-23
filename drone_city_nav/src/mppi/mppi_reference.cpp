@@ -108,6 +108,8 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.head_progress_horizon_s > 0.0F &&
          std::isfinite(config.costs.head_progress_weight) &&
          config.costs.head_progress_weight >= 0.0F &&
+         std::isfinite(config.costs.route_progress_integral_weight) &&
+         config.costs.route_progress_integral_weight >= 0.0F &&
          std::isfinite(config.costs.speed_tracking_weight) &&
          config.costs.speed_tracking_weight >= 0.0F &&
          std::isfinite(config.costs.planning_exposure_weight) &&

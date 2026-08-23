@@ -117,6 +117,21 @@ TEST(MppiControlSequenceTest, RouteProjectionUsesZToDisambiguateStackedSegments)
   EXPECT_NEAR(projection.reference_z_m, 10.0F, 1.0e-5F);
 }
 
+TEST(MppiControlSequenceTest, FoldedRouteCannotCreditMoreThanPhysicalTravel) {
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .y_m = 0.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 10.0F, .y_m = 0.0F, .station_m = 10.0F},
+      RouteSample3D{.x_m = 10.0F, .y_m = 1.0F, .station_m = 11.0F},
+      RouteSample3D{.x_m = 0.0F, .y_m = 1.0F, .station_m = 21.0F},
+  };
+  const MppiRouteProjection3D projection =
+      projectOntoMppiRoute3D(State{.x = 0.0F, .y = 1.0F}, route, 0.0F);
+
+  ASSERT_TRUE(projection.valid);
+  EXPECT_FLOAT_EQ(projection.station_m, 21.0F);
+  EXPECT_FLOAT_EQ(creditedRouteProgressM(projection.station_m, 0.0F, 1.0F), 1.0F);
+}
+
 TEST(MppiControlSequenceTest, VerticalRouteProjectionNeverMovesBehindPreviousStation) {
   const std::array route{
       RouteSample3D{.z_m = 0.0F, .station_m = 0.0F},

@@ -195,6 +195,9 @@ production_mppi_node:
     maximum_vertical_speed_mps: 5.0
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
+    # Prefer progress earlier in the finite horizon so receding-horizon updates
+    # cannot indefinitely postpone an otherwise executable route segment.
+    route_progress_integral_weight: 2.0
     planning_exposure_weight: 8.0
     critical_exposure_weight: 2000.0
     critical_clearance_proximity_weight: 4000.0

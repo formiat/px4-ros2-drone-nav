@@ -28,6 +28,14 @@ struct MppiRouteProjection3D {
 };
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline float
+creditedRouteProgressM(const float projected_station_m, const float initial_station_m,
+                       const float traveled_distance_m) noexcept {
+  const float projected_progress_m =
+      fmaxf(0.0F, projected_station_m - initial_station_m);
+  return fminf(projected_progress_m, fmaxf(0.0F, traveled_distance_m));
+}
+
+[[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline float
 routeTrackingSpeedMps(const State& state,
                       const MppiRouteProjection3D& projection) noexcept {
   const float along_route_speed_mps = state.vx * projection.tangent_x +

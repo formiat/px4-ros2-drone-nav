@@ -756,7 +756,9 @@ public:
     float fixed_target_head_progress_m = 0.0F;
     float reconstruction_route_station_m =
         input.route.has_value() ? input.route->initial_station_m : 0.0F;
+    float reconstruction_traveled_distance_m = 0.0F;
     std::optional<float> latest_route_station;
+    float latest_credited_route_progress_m = 0.0F;
     const RolloutMetrics& metrics = selected_evaluation.metrics;
     result.altitude_envelope_violation = metrics.altitude_envelope_violation;
     result.raw_collision = metrics.collision;
@@ -808,18 +810,26 @@ public:
                      control.az - previous_control.az) /
               (index == 0U ? first_control_interval_s : config_.dynamics.dt_s));
       previous_control = control;
+      const State previous_state = state;
       state = result.horizon[index + 1U];
+      reconstruction_traveled_distance_m +=
+          std::hypot(std::hypot(state.x - previous_state.x, state.y - previous_state.y),
+                     state.z - previous_state.z);
       if (input.route.has_value() && input.route->points) {
         latest_route_station = projectForwardRouteStation(
             *input.route->points, state, reconstruction_route_station_m);
         if (latest_route_station.has_value()) {
           reconstruction_route_station_m = *latest_route_station;
+          latest_credited_route_progress_m = creditedRouteProgressM(
+              *latest_route_station, input.route->initial_station_m,
+              reconstruction_traveled_distance_m);
+          result.route_progress_integral_m_s +=
+              config_.dynamics.dt_s * latest_credited_route_progress_m;
         }
       }
       if (index + 1U == head_steps) {
         if (latest_route_station.has_value()) {
-          result.head_progress_m =
-              *latest_route_station - input.route->initial_station_m;
+          result.head_progress_m = latest_credited_route_progress_m;
         } else {
           fixed_target_head_progress_m =
               initial_distance -
@@ -828,8 +838,7 @@ public:
       }
     }
     if (latest_route_station.has_value()) {
-      result.terminal_progress_m =
-          *latest_route_station - input.route->initial_station_m;
+      result.terminal_progress_m = latest_credited_route_progress_m;
     } else {
       const MppiProgressDiagnostics progress = resolveUnroutedProgressDiagnostics(
           metrics, moving_target_enabled, fixed_target_head_progress_m,

@@ -399,6 +399,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float minimum_target_separation_m = initial_distance;
   float head_progress = 0.0F;
   float terminal_route_progress = 0.0F;
+  float route_progress_integral_m_s = 0.0F;
+  float traveled_distance_m = 0.0F;
   float rollout_route_station_m = initial_route_station_m;
   const std::size_t requested_head_steps =
       static_cast<std::size_t>(ceilf(costs.head_progress_horizon_s / dynamics.dt_s));
@@ -424,6 +426,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     const float segment_length_m =
         hypotf(hypotf(state.x - previous_state.x, state.y - previous_state.y),
                state.z - previous_state.z);
+    traveled_distance_m += segment_length_m;
     const float validation_step_m = fmaxf(0.05F, 0.5F * grid.resolution_m);
     const int validation_samples =
         max(1, static_cast<int>(ceilf(segment_length_m / validation_step_m)));
@@ -532,7 +535,12 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
         rollout_route_station_m = route_projection.station_m;
         guide_cost +=
             sample_weight * route_projection.distance_m * route_projection.distance_m;
-        terminal_route_progress = route_projection.station_m - initial_route_station_m;
+        terminal_route_progress = creditedRouteProgressM(
+            route_projection.station_m, initial_route_station_m, traveled_distance_m);
+        if (!moving_target_enabled) {
+          route_progress_integral_m_s +=
+              sample_weight * dynamics.dt_s * terminal_route_progress;
+        }
       } else {
         const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
                                   (state.x - initial.x) * (target.y - initial.y);
@@ -561,7 +569,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       head_progress =
           moving_target_enabled ? initial_distance - target_distance
           : route_projection.valid
-              ? route_projection.station_m - initial_route_station_m
+              ? terminal_route_progress
               : initial_distance - hypotf(target.x - state.x, target.y - state.y);
     }
     acceleration_cost +=
@@ -585,6 +593,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                                 : initial_distance - terminal_distance;
   soft_cost[rollout] =
       costs.head_progress_weight * -head_progress + costs.progress_weight * -progress +
+      costs.route_progress_integral_weight * -route_progress_integral_m_s +
       costs.speed_tracking_weight * dynamics.dt_s * speed_tracking_cost +
       costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
       costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +

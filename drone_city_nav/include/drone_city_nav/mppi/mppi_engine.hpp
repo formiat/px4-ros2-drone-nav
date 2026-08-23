@@ -146,6 +146,7 @@ struct MppiTickResult {
   float minimum_esdf_distance_m{0.0F};
   float head_progress_m{0.0F};
   float terminal_progress_m{0.0F};
+  float route_progress_integral_m_s{0.0F};
   float minimum_target_separation_m{0.0F};
   float minimum_peer_separation_m{0.0F};
   float peer_separation_cost{0.0F};
