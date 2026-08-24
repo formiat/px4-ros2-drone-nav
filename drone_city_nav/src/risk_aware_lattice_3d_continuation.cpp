@@ -155,7 +155,8 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
                           worker_pool->canParallelizeFromCurrentThread() &&
                           evaluations.size() > 1U;
     if (parallel) {
-      worker_pool->parallelFor(evaluations.size(), evaluate_neighbor);
+      worker_pool->parallelFor(evaluations.size(), WorkerTaskLane::kRouteCritical,
+                               evaluate_neighbor);
     } else {
       for (std::size_t index = 0U; index < evaluations.size(); ++index) {
         evaluate_neighbor(index);

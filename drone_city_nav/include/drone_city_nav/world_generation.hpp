@@ -56,6 +56,12 @@ struct LocalWorldGeneration {
   std::uint64_t topology_revision{0U};
 
   [[nodiscard]] bool coherent() const noexcept;
+  [[nodiscard]] bool matches(const RawMapVersion& expected_raw_map,
+                             std::uint64_t expected_pose_revision,
+                             std::uint64_t expected_esdf_revision,
+                             std::uint64_t expected_gpu_esdf_revision,
+                             std::uint64_t expected_topology_revision) const noexcept;
+  [[nodiscard]] bool sameSnapshot(const LocalWorldGeneration& other) const noexcept;
 };
 
 class LocalWorldGenerationCounter final {

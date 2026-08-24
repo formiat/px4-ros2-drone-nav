@@ -98,6 +98,9 @@ void ProductionMppiNode::publishSummary() {
           ? static_cast<double>(arrival_shaping_attempt_total) /
                 static_cast<double>(terminal_rest_horizon_ticks)
           : 0.0;
+  const BoundedWorkerPoolSnapshot workers = planning_worker_pool_
+                                                ? planning_worker_pool_->snapshot()
+                                                : BoundedWorkerPoolSnapshot{};
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
@@ -132,7 +135,13 @@ void ProductionMppiNode::publishSummary() {
       " continuity_preserving_reseed_ticks=%" PRIu64
       " route_generation_changes=%" PRIu64
       " continuity_preserving_generation_changes=%" PRIu64
-      " geometry_revision_changes=%" PRIu64,
+      " geometry_revision_changes=%" PRIu64
+      " worker_route_pending=%zu worker_world_pending=%zu "
+      "worker_background_pending=%zu worker_route_capacity_waits=%" PRIu64
+      " worker_world_capacity_waits=%" PRIu64
+      " worker_background_capacity_waits=%" PRIu64
+      " world_generation_superseded_ticks=%" PRIu64
+      " world_generation_rejected_publications=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, altitude_envelope_violation_horizons,
@@ -167,7 +176,12 @@ void ProductionMppiNode::publishSummary() {
       rolling_route.continuity_preserving_reseed_ticks,
       rolling_route.route_generation_changes,
       rolling_route.continuity_preserving_generation_changes,
-      rolling_route.geometry_revision_changes);
+      rolling_route.geometry_revision_changes, workers.lanes[0U].pending,
+      workers.lanes[1U].pending, workers.lanes[2U].pending,
+      workers.lanes[0U].capacity_waits, workers.lanes[1U].capacity_waits,
+      workers.lanes[2U].capacity_waits,
+      superseded_world_generation_ticks_.load(std::memory_order_relaxed),
+      rejected_world_generation_publications_.load(std::memory_order_relaxed));
 }
 
 } // namespace drone_city_nav

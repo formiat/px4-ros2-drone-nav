@@ -373,7 +373,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
           prefetched[index] =
               collect_successors(cellCenter(grid, candidate.key), candidate.key, stage);
         };
-        worker_pool->parallelFor(preview.size(), evaluate_preview);
+        worker_pool->parallelFor(preview.size(), WorkerTaskLane::kRouteCritical,
+                                 evaluate_preview);
         std::unordered_set<LatticeKey, LatticeKeyHash> preview_keys;
         preview_keys.reserve(preview.size());
         std::size_t prefetched_count = 0U;
@@ -818,7 +819,8 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       evaluated[candidate_index] = std::move(candidate);
     };
     if (worker_pool != nullptr && frontier_pool.size() > 1U) {
-      worker_pool->parallelFor(frontier_pool.size(), evaluate_candidate);
+      worker_pool->parallelFor(frontier_pool.size(), WorkerTaskLane::kRouteCritical,
+                               evaluate_candidate);
     } else {
       for (std::size_t candidate_index = 0U; candidate_index < frontier_pool.size();
            ++candidate_index) {

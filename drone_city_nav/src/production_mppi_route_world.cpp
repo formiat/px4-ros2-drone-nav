@@ -4,8 +4,91 @@
 
 namespace drone_city_nav {
 
+ProductionWorldGenerationStatus
+assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcept {
+  const LocalWorldGeneration& generation = world.local_world_generation;
+  if (!generation.coherent()) {
+    return ProductionWorldGenerationStatus::kInvalidGeneration;
+  }
+  if (!world.distances_m || world.revision == 0U || world.grid.width <= 1 ||
+      world.grid.height <= 1) {
+    return ProductionWorldGenerationStatus::kMissingEsdfResources;
+  }
+  if (generation.esdf_revision != world.revision ||
+      generation.gpu_esdf_revision != world.revision) {
+    return ProductionWorldGenerationStatus::kEsdfRevisionMismatch;
+  }
+  const bool topology_present = world.topological_graph != nullptr;
+  if (generation.topology_revision != world.topology_source_raw_revision ||
+      topology_present != (world.topology_source_raw_revision != 0U) ||
+      (topology_present &&
+       (world.topological_graph->revision() != world.topology_source_raw_revision ||
+        world.topological_graph_update.revision !=
+            world.topology_source_raw_revision))) {
+    return ProductionWorldGenerationStatus::kTopologyRevisionMismatch;
+  }
+
+  const RawMapVersion& raw = generation.raw_map;
+  if (world.observed_occupancy) {
+    if (world.producer_instance_id != raw.producer_instance_id ||
+        world.source_raw_revision != raw.revision) {
+      return ProductionWorldGenerationStatus::kRawVersionMismatch;
+    }
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& owner =
+        world.observed_raw_world_owner;
+    if (!owner || !owner->valid() ||
+        owner->version().producer_instance_id != raw.producer_instance_id ||
+        owner->version().base_snapshot_revision != raw.base_snapshot_revision ||
+        owner->version().revision != raw.revision ||
+        std::addressof(owner->occupancy()) != world.observed_occupancy.get()) {
+      return ProductionWorldGenerationStatus::kObservedOwnerMismatch;
+    }
+  } else if (world.raw_occupancy) {
+    if (world.producer_instance_id != raw.producer_instance_id ||
+        world.source_raw_revision != raw.revision) {
+      return ProductionWorldGenerationStatus::kRawVersionMismatch;
+    }
+  } else if (world.producer_instance_id != 0U || world.source_raw_revision != 0U ||
+             raw.producer_instance_id != 0U ||
+             raw.base_snapshot_revision != world.revision ||
+             raw.revision != world.revision) {
+    return ProductionWorldGenerationStatus::kRawVersionMismatch;
+  }
+  return ProductionWorldGenerationStatus::kCoherent;
+}
+
+bool productionWorldGenerationCoherent(
+    const ProductionMppiPreparedEsdf& world) noexcept {
+  return assessProductionWorldGeneration(world) ==
+         ProductionWorldGenerationStatus::kCoherent;
+}
+
+std::string_view productionWorldGenerationStatusName(
+    const ProductionWorldGenerationStatus status) noexcept {
+  switch (status) {
+    case ProductionWorldGenerationStatus::kCoherent:
+      return "coherent";
+    case ProductionWorldGenerationStatus::kInvalidGeneration:
+      return "invalid_generation";
+    case ProductionWorldGenerationStatus::kMissingEsdfResources:
+      return "missing_esdf_resources";
+    case ProductionWorldGenerationStatus::kEsdfRevisionMismatch:
+      return "esdf_revision_mismatch";
+    case ProductionWorldGenerationStatus::kRawVersionMismatch:
+      return "raw_version_mismatch";
+    case ProductionWorldGenerationStatus::kObservedOwnerMismatch:
+      return "observed_owner_mismatch";
+    case ProductionWorldGenerationStatus::kTopologyRevisionMismatch:
+      return "topology_revision_mismatch";
+  }
+  return "unknown";
+}
+
 NavigationWorldCertificate3D
 navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept {
+  if (!productionWorldGenerationCoherent(world)) {
+    return {};
+  }
   return NavigationWorldCertificate3D{
       .producer_instance_id = world.producer_instance_id,
       .esdf_fingerprint = world.revision,

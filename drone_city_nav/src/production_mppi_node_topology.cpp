@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "production_mppi_node.hpp"
+#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -128,8 +129,9 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
         raw_world.version.producer_instance_id;
     latest_observed_topological_graph_update_ = update.graph;
   }
+  bool coherent_world_rejected{false};
   {
-    const std::scoped_lock lock{esdf_state_mutex_};
+    const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
     if (prepared_esdf_ && update.snapshot &&
         prepared_esdf_->producer_instance_id ==
             raw_world.version.producer_instance_id &&
@@ -148,9 +150,22 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
               coherent_world.topology_source_raw_revision);
       if (generation.has_value()) {
         coherent_world.local_world_generation = *generation;
-        prepared_esdf_ = std::move(coherent_world);
+        if (productionWorldGenerationCoherent(coherent_world)) {
+          prepared_esdf_ = std::move(coherent_world);
+        } else {
+          coherent_world_rejected = true;
+        }
+      } else {
+        coherent_world_rejected = true;
       }
     }
+  }
+  if (coherent_world_rejected) {
+    rejected_world_generation_publications_.fetch_add(1U, std::memory_order_relaxed);
+    RCLCPP_ERROR(get_logger(),
+                 "INCREMENTAL_TOPOLOGY3D_UPDATE rejected revision=%" PRIu64
+                 " reason=mixed_local_world_generation",
+                 update.graph.revision);
   }
   RCLCPP_INFO(
       get_logger(),

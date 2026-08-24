@@ -30,11 +30,9 @@ candidateStatusFromRiskAssignment(const RouteRiskTierAssignmentStatus status) no
 [[nodiscard]] bool
 sameActivationWorld(const ProductionMppiPreparedEsdf& current,
                     const ProductionMppiPreparedEsdf& captured) noexcept {
-  return current.local_world_generation.generation ==
-             captured.local_world_generation.generation &&
-         current.producer_instance_id == captured.producer_instance_id &&
-         current.revision == captured.revision &&
-         current.source_raw_revision == captured.source_raw_revision;
+  return productionWorldGenerationCoherent(current) &&
+         productionWorldGenerationCoherent(captured) &&
+         current.local_world_generation.sameSnapshot(captured.local_world_generation);
 }
 
 [[nodiscard]] bool
@@ -150,7 +148,8 @@ ProductionMppiNode::captureRouteActivationSnapshot3D() {
     snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);
   }
   {
-    const std::scoped_lock lock{input_mutex_, esdf_state_mutex_};
+    const std::scoped_lock lock{world_generation_publication_mutex_, input_mutex_,
+                                esdf_state_mutex_};
     snapshot.resident_world = prepared_esdf_;
     snapshot.navigation = navigation_;
     snapshot.applied_control = applied_control_;
@@ -639,7 +638,8 @@ void ProductionMppiNode::commitRouteActivation3D(
 
   bool published_pending{false};
   {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_, esdf_state_mutex_};
+    const std::scoped_lock lock{execution_evidence_commit_mutex_,
+                                world_generation_publication_mutex_, esdf_state_mutex_};
     const bool resident_world_current =
         prepared_esdf_ && snapshot.resident_world &&
         sameActivationWorld(*prepared_esdf_, *snapshot.resident_world);
@@ -654,8 +654,10 @@ void ProductionMppiNode::commitRouteActivation3D(
         latest_raw_world_3d_.load(std::memory_order_acquire) == snapshot.raw_world;
     const bool execution_base_current =
         sameExecutionRouteBase(current_execution, execution_route_store_.snapshot());
+    const bool candidate_world_coherent = productionWorldGenerationCoherent(candidate);
     result.snapshot_current = resident_world_current && objective_current &&
-                              raw_world_current && execution_base_current;
+                              raw_world_current && execution_base_current &&
+                              candidate_world_coherent;
     if (pending != nullptr && result.snapshot_current) {
       published_pending = pending_certified_route_mailbox_.publish(pending);
     }

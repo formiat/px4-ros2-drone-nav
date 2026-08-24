@@ -143,7 +143,7 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
     }
   };
   if (worker_pool != nullptr) {
-    worker_pool->parallelFor(height, transform_row);
+    worker_pool->parallelFor(height, WorkerTaskLane::kWorldUpdate, transform_row);
   } else {
     for (std::size_t row = 0U; row < height; ++row) {
       transform_row(row);
@@ -182,7 +182,7 @@ DistanceField2D DistanceField2D::build(const OccupancyGrid2D& grid,
     }
   };
   if (worker_pool != nullptr) {
-    worker_pool->parallelFor(width, transform_column);
+    worker_pool->parallelFor(width, WorkerTaskLane::kWorldUpdate, transform_column);
   } else {
     for (std::size_t column = 0U; column < width; ++column) {
       transform_column(column);

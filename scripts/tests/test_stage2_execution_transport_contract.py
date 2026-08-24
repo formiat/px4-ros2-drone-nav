@@ -607,7 +607,8 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             activation_capture,
             r"snapshot\.raw_world = latest_raw_world_3d_\.load\("
             r"std::memory_order_acquire\);\s*\}\s*\{\s*"
-            r"const std::scoped_lock lock\{input_mutex_, esdf_state_mutex_\};",
+            r"const std::scoped_lock lock\{world_generation_publication_mutex_,\s*"
+            r"input_mutex_,\s*esdf_state_mutex_\};",
         )
 
         execution_publication = EXECUTION_PUBLICATION.read_text(encoding="utf-8")

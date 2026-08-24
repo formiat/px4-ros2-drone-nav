@@ -619,6 +619,12 @@ private:
       const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
       std::int64_t now_ns);
   void planningTick();
+  [[nodiscard]] bool
+  worldGenerationAvailableForPlanning(const ProductionMppiPreparedEsdf& world,
+                                      std::int64_t now_ns);
+  [[nodiscard]] std::optional<mppi::MppiTickResult>
+  planOnCapturedWorldGeneration(const ProductionMppiPreparedEsdf& world,
+                                const mppi::MppiTickInput& input);
   void finalizePlanningTick(const ProductionMppiPlanningTickFinalization& finalization);
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void logDiagnosticsEvents(const ProductionMppiDiagnosticsSnapshot& snapshot,
@@ -935,8 +941,14 @@ private:
   std::optional<GlobalGuideCandidate> pending_global_guide_;
   std::vector<LatticeFrontierBlacklistEntry> frontier_blacklist_;
 
+  // Linearizes the active GPU ESDF with its exact immutable CPU world. Planning
+  // holds this gate only while revalidating and executing the GPU tick; heavy
+  // host-side snapshot preparation remains outside the critical section.
+  mutable std::mutex world_generation_publication_mutex_;
   mutable std::mutex esdf_state_mutex_;
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
+  std::atomic<std::uint64_t> superseded_world_generation_ticks_{0U};
+  std::atomic<std::uint64_t> rejected_world_generation_publications_{0U};
 
   std::optional<mppi::MppiTickResult> previous_result_;
   ExecutionRouteSnapshotStore3D execution_route_store_{};

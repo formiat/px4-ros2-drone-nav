@@ -1,4 +1,5 @@
 #include "production_mppi_node.hpp"
+#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 
@@ -8,8 +9,9 @@ ProductionMppiNode::validateGuideCandidateOnLatestWorld(
     const bool reaches_mission_goal) {
   ProductionGuideCandidateValidation result;
   {
-    const std::scoped_lock lock{esdf_state_mutex_};
-    if (prepared_esdf_.has_value()) {
+    const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
+    if (prepared_esdf_.has_value() &&
+        productionWorldGenerationCoherent(*prepared_esdf_)) {
       result.publication_world =
           std::make_shared<const ProductionMppiPreparedEsdf>(*prepared_esdf_);
     }

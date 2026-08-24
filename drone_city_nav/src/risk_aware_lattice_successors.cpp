@@ -92,7 +92,7 @@ LatticeSuccessorCollection collectLatticeSuccessors(
                         worker_pool->canParallelizeFromCurrentThread() &&
                         specs.size() > 1U;
   if (parallel) {
-    worker_pool->parallelFor(specs.size(), evaluate);
+    worker_pool->parallelFor(specs.size(), WorkerTaskLane::kRouteCritical, evaluate);
   } else {
     for (std::size_t index = 0U; index < specs.size(); ++index) {
       evaluate(index);

@@ -508,7 +508,8 @@ reconstruct(const Key& terminal, const Point3& origin,
                              worker_pool->canParallelizeFromCurrentThread() &&
                              root_candidate_count > 1U;
   if (root_parallel) {
-    worker_pool->parallelFor(root_candidate_count, evaluate_root_passage);
+    worker_pool->parallelFor(root_candidate_count, WorkerTaskLane::kRouteCritical,
+                             evaluate_root_passage);
   } else {
     for (std::size_t candidate_index = 0U; candidate_index < root_candidate_count;
          ++candidate_index) {
@@ -665,7 +666,8 @@ reconstruct(const Key& terminal, const Point3& origin,
                                   worker_pool->canParallelizeFromCurrentThread() &&
                                   lattice_evaluations.size() > 1U;
     if (lattice_parallel) {
-      worker_pool->parallelFor(lattice_evaluations.size(), evaluate_lattice);
+      worker_pool->parallelFor(lattice_evaluations.size(),
+                               WorkerTaskLane::kRouteCritical, evaluate_lattice);
     } else {
       for (std::size_t candidate_index = 0U;
            candidate_index < lattice_evaluations.size(); ++candidate_index) {
@@ -737,7 +739,8 @@ reconstruct(const Key& terminal, const Point3& origin,
                                   worker_pool->canParallelizeFromCurrentThread() &&
                                   passage_candidate_count > 1U;
     if (passage_parallel) {
-      worker_pool->parallelFor(passage_candidate_count, evaluate_passage);
+      worker_pool->parallelFor(passage_candidate_count, WorkerTaskLane::kRouteCritical,
+                               evaluate_passage);
     } else {
       for (std::size_t candidate_index = 0U; candidate_index < passage_candidate_count;
            ++candidate_index) {

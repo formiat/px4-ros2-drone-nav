@@ -155,7 +155,8 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
                                  worker_pool->canParallelizeFromCurrentThread() &&
                                  topology_searches.size() > 1U;
   if (topology_parallel) {
-    worker_pool->parallelFor(topology_searches.size(), run_topology_search);
+    worker_pool->parallelFor(topology_searches.size(), WorkerTaskLane::kBackground,
+                             run_topology_search);
   } else {
     for (std::size_t search_index = 0U; search_index < topology_searches.size();
          ++search_index) {

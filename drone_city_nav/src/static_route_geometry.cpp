@@ -122,7 +122,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
                             worker_pool->canParallelizeFromCurrentThread() &&
                             candidates.size() > 1U;
       if (parallel) {
-        worker_pool->parallelFor(candidates.size(), validate_candidate);
+        worker_pool->parallelFor(candidates.size(), WorkerTaskLane::kRouteCritical,
+                                 validate_candidate);
         result.parallel_shortcut_candidates += candidates.size();
       } else {
         for (std::size_t candidate_index = 0U; candidate_index < candidates.size();
@@ -180,7 +181,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
                                 worker_pool->canParallelizeFromCurrentThread() &&
                                 corner_candidates.size() > 1U;
   if (corners_parallel) {
-    worker_pool->parallelFor(corner_candidates.size(), validate_corner);
+    worker_pool->parallelFor(corner_candidates.size(), WorkerTaskLane::kRouteCritical,
+                             validate_corner);
     result.parallel_corner_candidates = corner_candidates.size();
   } else {
     for (std::size_t candidate_index = 0U; candidate_index < corner_candidates.size();

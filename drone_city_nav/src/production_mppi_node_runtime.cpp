@@ -13,6 +13,7 @@
 
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_helpers.hpp"
+#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -91,8 +92,17 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
         search_session_started = std::chrono::steady_clock::now();
       }
     }
-    if (!world || !world->distances_m) {
+    if (!world || !productionWorldGenerationCoherent(*world)) {
       if (world) {
+        const ProductionWorldGenerationStatus status =
+            assessProductionWorldGeneration(*world);
+        const std::string_view status_name =
+            productionWorldGenerationStatusName(status);
+        RCLCPP_ERROR(get_logger(),
+                     "PRODUCTION_MPPI_GUIDE rejected local_world_generation=%" PRIu64
+                     " reason=%.*s",
+                     world->local_world_generation.generation,
+                     static_cast<int>(status_name.size()), status_name.data());
         finishStaticRouteSearch(*world);
       }
       world.reset();
@@ -681,19 +691,31 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     prepared.route_fingerprint = guide ? routeFingerprint(*guide) : 0U;
     bool activated = false;
     {
-      const std::scoped_lock lock{esdf_state_mutex_};
-      if (prepared_esdf_.has_value() && prepared_esdf_->revision == prepared.revision) {
+      const std::scoped_lock lock{world_generation_publication_mutex_,
+                                  esdf_state_mutex_};
+      if (prepared_esdf_.has_value() &&
+          productionWorldGenerationCoherent(*prepared_esdf_) &&
+          prepared_esdf_->local_world_generation.sameSnapshot(
+              prepared.local_world_generation)) {
         prepared.source_stamp_ns =
             std::max(prepared.source_stamp_ns, prepared_esdf_->source_stamp_ns);
         prepared.ready_stamp_ns =
             std::max(prepared.ready_stamp_ns, prepared_esdf_->ready_stamp_ns);
         if (const std::shared_ptr<const ProductionMppiRawWorld2D> raw_world =
                 latest_raw_world_.load(std::memory_order_acquire);
-            raw_world && raw_world->occupancy) {
+            raw_world && raw_world->occupancy &&
+            prepared.local_world_generation.raw_map.producer_instance_id ==
+                raw_world->version.producer_instance_id &&
+            prepared.local_world_generation.raw_map.base_snapshot_revision ==
+                raw_world->version.base_snapshot_revision &&
+            prepared.local_world_generation.raw_map.revision ==
+                raw_world->version.revision) {
           prepared.raw_occupancy = raw_world->occupancy;
         }
-        prepared_esdf_ = prepared;
-        activated = true;
+        if (productionWorldGenerationCoherent(prepared)) {
+          prepared_esdf_ = prepared;
+          activated = true;
+        }
       }
     }
     RCLCPP_INFO(

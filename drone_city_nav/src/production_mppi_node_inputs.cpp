@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "production_mppi_node.hpp"
+#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -245,8 +246,9 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
 
   std::shared_ptr<ProductionMppiPreparedEsdf> request;
   {
-    const std::scoped_lock lock{esdf_state_mutex_};
-    if (prepared_esdf_ && prepared_esdf_->global_guide_generation == 0U) {
+    const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
+    if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_) &&
+        prepared_esdf_->global_guide_generation == 0U) {
       request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
       if (const auto objective = navigationObjective()) {
         request->search_objective = makeStaticRouteObjective(*objective);

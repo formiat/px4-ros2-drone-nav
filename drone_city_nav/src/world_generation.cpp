@@ -73,6 +73,29 @@ bool LocalWorldGeneration::coherent() const noexcept {
          topology_revision <= raw_map.revision;
 }
 
+bool LocalWorldGeneration::matches(
+    const RawMapVersion& expected_raw_map, const std::uint64_t expected_pose_revision,
+    const std::uint64_t expected_esdf_revision,
+    const std::uint64_t expected_gpu_esdf_revision,
+    const std::uint64_t expected_topology_revision) const noexcept {
+  return coherent() && expected_raw_map.valid() &&
+         raw_map.producer_instance_id == expected_raw_map.producer_instance_id &&
+         raw_map.base_snapshot_revision == expected_raw_map.base_snapshot_revision &&
+         raw_map.revision == expected_raw_map.revision &&
+         pose_revision == expected_pose_revision &&
+         esdf_revision == expected_esdf_revision &&
+         gpu_esdf_revision == expected_gpu_esdf_revision &&
+         topology_revision == expected_topology_revision;
+}
+
+bool LocalWorldGeneration::sameSnapshot(
+    const LocalWorldGeneration& other) const noexcept {
+  return generation == other.generation &&
+         matches(other.raw_map, other.pose_revision, other.esdf_revision,
+                 other.gpu_esdf_revision, other.topology_revision) &&
+         other.coherent();
+}
+
 std::optional<LocalWorldGeneration> LocalWorldGenerationCounter::issue(
     const RawMapVersion& raw_map, const std::uint64_t pose_revision,
     const std::uint64_t esdf_revision, const std::uint64_t gpu_esdf_revision,

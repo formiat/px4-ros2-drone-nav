@@ -282,7 +282,8 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       free_space_seed_unchanged && launch_support_unchanged;
   if (active_prepared && !execution_evidence_unchanged) {
     {
-      const std::scoped_lock lock{esdf_state_mutex_};
+      const std::scoped_lock lock{world_generation_publication_mutex_,
+                                  esdf_state_mutex_};
       prepared_esdf_.reset();
     }
     {
@@ -360,15 +361,8 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       planning_worker_pool_.get(),
       free_space_seed.has_value() ? std::addressof(*free_space_seed) : nullptr,
       launch_support_contact);
-  const mppi::EsdfUploadResult upload = engine_->updateEsdf(
-      mppi::EsdfSnapshot{field.grid, field.distances_m, field.occupancy_fingerprint});
-  if (!upload.accepted) {
-    return std::nullopt;
-  }
   auto host_distances =
       std::make_shared<const std::vector<float>>(std::move(field.distances_m));
-  no_static_esdf_last_build_time_ = build_started_at;
-  no_static_esdf_builds_.fetch_add(1U, std::memory_order_relaxed);
 
   ProductionMppiPreparedEsdf world_update;
   world_update.producer_instance_id = raw_world.version.producer_instance_id;
@@ -385,7 +379,6 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   world_update.esdf_finalize_ms = field.stats.distance_field.finalize_ms;
   world_update.conversion_ms =
       raw_world.reconstruction_ms + field.stats.classification_ms;
-  world_update.upload_ms = upload.upload_ms;
   world_update.grid = field.grid;
   world_update.distances_m = host_distances;
   world_update.observed_occupancy = occupancy;
@@ -411,6 +404,13 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       navigationObjective();
   ProductionMppiPreparedEsdf prepared;
   bool local_world_generation_valid{false};
+  std::unique_lock generation_lock{world_generation_publication_mutex_};
+  const mppi::EsdfUploadResult upload = engine_->updateEsdf(
+      mppi::EsdfSnapshot{field.grid, *host_distances, field.occupancy_fingerprint});
+  if (!upload.accepted) {
+    return std::nullopt;
+  }
+  world_update.upload_ms = upload.upload_ms;
   {
     const std::scoped_lock lock{esdf_state_mutex_};
     if (prepared_esdf_) {
@@ -454,17 +454,29 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       }
       prepared.lattice_search_performed = false;
       prepared.lattice_continuation_attempt = 0U;
-      prepared_esdf_ = prepared;
-      local_world_generation_valid = true;
+      local_world_generation_valid = productionWorldGenerationCoherent(prepared);
+      if (local_world_generation_valid) {
+        prepared_esdf_ = prepared;
+      }
+    }
+    if (!local_world_generation_valid) {
+      prepared_esdf_.reset();
     }
   }
+  generation_lock.unlock();
   if (!local_world_generation_valid) {
+    rejected_world_generation_publications_.fetch_add(1U, std::memory_order_relaxed);
+    if (world_ready_.exchange(false, std::memory_order_acq_rel)) {
+      publishWorldReadiness(false);
+    }
     RCLCPP_ERROR(get_logger(),
                  "PRODUCTION_MPPI_ESDF3D_ONLINE rejected raw_revision=%" PRIu64
-                 " reason=invalid_local_world_generation",
+                 " reason=mixed_local_world_generation",
                  raw_world.version.revision);
     return std::nullopt;
   }
+  no_static_esdf_last_build_time_ = build_started_at;
+  no_static_esdf_builds_.fetch_add(1U, std::memory_order_relaxed);
   const std::uint64_t blocked_raw_revision =
       observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
   const std::uint64_t dispatched_raw_revision =

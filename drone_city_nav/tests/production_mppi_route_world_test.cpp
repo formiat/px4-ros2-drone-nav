@@ -10,6 +10,86 @@
 namespace drone_city_nav {
 namespace {
 
+[[nodiscard]] ProductionMppiPreparedEsdf coherentObservedWorld() {
+  ProductionMppiPreparedEsdf world;
+  world.producer_instance_id = 7U;
+  world.revision = 99U;
+  world.source_raw_revision = 451U;
+  world.grid = mppi::EsdfGrid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  world.distances_m = std::make_shared<const std::vector<float>>(64U, 2.0F);
+  world.observed_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4});
+  world.observed_raw_world_owner = VersionedObservedRawWorld3D::captureOwned(
+      RawMapVersion{
+          .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 451U},
+      world.observed_occupancy, std::nullopt, std::nullopt);
+  world.local_world_generation = LocalWorldGeneration{
+      .generation = 12U,
+      .raw_map = {.producer_instance_id = 7U,
+                  .base_snapshot_revision = 400U,
+                  .revision = 451U},
+      .pose_revision = 21U,
+      .esdf_revision = 99U,
+      .gpu_esdf_revision = 99U,
+  };
+  return world;
+}
+
+TEST(ProductionMppiRouteWorldTest, ExactObservedResourcesFormOneCoherentGeneration) {
+  const ProductionMppiPreparedEsdf world = coherentObservedWorld();
+
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kCoherent);
+  EXPECT_TRUE(productionWorldGenerationCoherent(world));
+  EXPECT_NE(navigationWorldCertificate3D(world).local_world_generation, 0U);
+}
+
+TEST(ProductionMppiRouteWorldTest, MixedEsdfAndRawGenerationsFailClosed) {
+  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  ++world.local_world_generation.gpu_esdf_revision;
+
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kInvalidGeneration);
+  EXPECT_EQ(navigationWorldCertificate3D(world).local_world_generation, 0U);
+
+  world = coherentObservedWorld();
+  ++world.source_raw_revision;
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kRawVersionMismatch);
+  EXPECT_EQ(navigationWorldCertificate3D(world).local_world_generation, 0U);
+}
+
+TEST(ProductionMppiRouteWorldTest, ObservedOwnerMustMatchExactRawSnapshot) {
+  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  const auto other_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4});
+  world.observed_raw_world_owner = VersionedObservedRawWorld3D::captureOwned(
+      world.local_world_generation.raw_map, other_occupancy, std::nullopt,
+      std::nullopt);
+
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kObservedOwnerMismatch);
+}
+
+TEST(ProductionMppiRouteWorldTest, StaticWorldUsesItsEsdfAsRawGenerationAnchor) {
+  ProductionMppiPreparedEsdf world;
+  world.revision = 77U;
+  world.grid = mppi::EsdfGrid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  world.distances_m = std::make_shared<const std::vector<float>>(64U, 2.0F);
+  world.local_world_generation = LocalWorldGeneration{
+      .generation = 3U,
+      .raw_map = {.base_snapshot_revision = 77U, .revision = 77U},
+      .pose_revision = 5U,
+      .esdf_revision = 77U,
+      .gpu_esdf_revision = 77U,
+  };
+
+  EXPECT_TRUE(productionWorldGenerationCoherent(world));
+  --world.local_world_generation.raw_map.base_snapshot_revision;
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kRawVersionMismatch);
+}
+
 TEST(ProductionMppiRouteWorldTest,
      CompletedWorldBuildPreservesNewerRoutePlanningCache) {
   auto generation_33_route = std::make_shared<const std::vector<RouteSample3D>>(2U);

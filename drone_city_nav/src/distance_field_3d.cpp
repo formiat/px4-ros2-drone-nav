@@ -141,7 +141,8 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
     }
   };
   if (worker_pool != nullptr) {
-    worker_pool->parallelFor(x_line_count, transform_x_line);
+    worker_pool->parallelFor(x_line_count, WorkerTaskLane::kWorldUpdate,
+                             transform_x_line);
   } else {
     for (std::size_t line_index = 0U; line_index < x_line_count; ++line_index) {
       transform_x_line(line_index);
@@ -170,7 +171,8 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
     }
   };
   if (worker_pool != nullptr) {
-    worker_pool->parallelFor(y_line_count, transform_y_line);
+    worker_pool->parallelFor(y_line_count, WorkerTaskLane::kWorldUpdate,
+                             transform_y_line);
   } else {
     for (std::size_t line_index = 0U; line_index < y_line_count; ++line_index) {
       transform_y_line(line_index);
@@ -197,7 +199,8 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
     }
   };
   if (worker_pool != nullptr) {
-    worker_pool->parallelFor(z_line_count, transform_z_line);
+    worker_pool->parallelFor(z_line_count, WorkerTaskLane::kWorldUpdate,
+                             transform_z_line);
   } else {
     for (std::size_t line_index = 0U; line_index < z_line_count; ++line_index) {
       transform_z_line(line_index);

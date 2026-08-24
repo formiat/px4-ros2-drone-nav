@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "production_mppi_node.hpp"
+#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -298,6 +299,19 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                       proactive_roi_refresh ? roi_refresh.base_route_generation : 0U);
         }
       }
+      ProductionMppiNavigation activation_navigation;
+      {
+        const std::scoped_lock lock{input_mutex_};
+        activation_navigation = navigation_;
+      }
+      if (!activation_navigation.valid) {
+        if (proactive_roi_refresh) {
+          finish_roi_refresh();
+        }
+        completeStaticEsdfWork(false);
+        continue;
+      }
+      std::unique_lock generation_lock{world_generation_publication_mutex_};
       mppi::EsdfUploadResult upload{true, 0.0, static_occupancy_3d_->fingerprint()};
       if (!reused_uploaded_roi) {
         upload = engine_->updateEsdf(mppi::EsdfSnapshot{
@@ -311,18 +325,6 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         continue;
       }
       static_esdf_uploaded_ = true;
-      ProductionMppiNavigation activation_navigation;
-      {
-        const std::scoped_lock lock{input_mutex_};
-        activation_navigation = navigation_;
-      }
-      if (!activation_navigation.valid) {
-        if (proactive_roi_refresh) {
-          finish_roi_refresh();
-        }
-        completeStaticEsdfWork(false);
-        continue;
-      }
       const std::shared_ptr<const ExecutionRouteSnapshot3D> binding_execution =
           proactive_roi_refresh ? execution_route_store_.snapshot() : nullptr;
       const bool refresh_base_current = proactive_roi_refresh &&
@@ -378,6 +380,16 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
               static_world_version, activation_navigation.revision, prepared.revision,
               upload.revision, prepared.topology_source_raw_revision);
       if (!local_world_generation.has_value()) {
+        {
+          const std::scoped_lock lock{esdf_state_mutex_};
+          prepared_esdf_.reset();
+        }
+        generation_lock.unlock();
+        rejected_world_generation_publications_.fetch_add(1U,
+                                                          std::memory_order_relaxed);
+        if (world_ready_.exchange(false, std::memory_order_acq_rel)) {
+          publishWorldReadiness(false);
+        }
         RCLCPP_ERROR(get_logger(),
                      "STATIC_ESDF3D rejected reason=invalid_local_world_generation");
         if (proactive_roi_refresh) {
@@ -423,9 +435,29 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.static_route_replan_reason =
           tracking_roi_refresh ? GlobalGuideReleaseReason::kObjectiveChanged
                                : GlobalGuideReleaseReason::kNone;
+      const bool coherent_generation = productionWorldGenerationCoherent(prepared);
       {
         const std::scoped_lock lock{esdf_state_mutex_};
-        prepared_esdf_ = prepared;
+        if (coherent_generation) {
+          prepared_esdf_ = prepared;
+        } else {
+          prepared_esdf_.reset();
+        }
+      }
+      generation_lock.unlock();
+      if (!coherent_generation) {
+        rejected_world_generation_publications_.fetch_add(1U,
+                                                          std::memory_order_relaxed);
+        if (world_ready_.exchange(false, std::memory_order_acq_rel)) {
+          publishWorldReadiness(false);
+        }
+        RCLCPP_ERROR(get_logger(),
+                     "STATIC_ESDF3D rejected reason=mixed_local_world_generation");
+        if (proactive_roi_refresh) {
+          finish_roi_refresh();
+        }
+        completeStaticEsdfWork(false);
+        continue;
       }
       if (proactive_roi_refresh) {
         static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
@@ -590,6 +622,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                               static_cast<float>(bounds.resolution_m),
                               static_cast<float>(bounds.origin_x),
                               static_cast<float>(bounds.origin_y)};
+    std::unique_lock generation_lock{world_generation_publication_mutex_};
     const mppi::EsdfUploadResult upload = engine_->updateEsdf(
         mppi::EsdfSnapshot{grid, distances, local_occupied_fingerprint});
     if (!upload.accepted) {
@@ -626,6 +659,15 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         local_world_generation_counter_.issue(raw_world->version, navigation.revision,
                                               prepared.revision, upload.revision);
     if (!local_world_generation.has_value()) {
+      {
+        const std::scoped_lock lock{esdf_state_mutex_};
+        prepared_esdf_.reset();
+      }
+      generation_lock.unlock();
+      rejected_world_generation_publications_.fetch_add(1U, std::memory_order_relaxed);
+      if (world_ready_.exchange(false, std::memory_order_acq_rel)) {
+        publishWorldReadiness(false);
+      }
       RCLCPP_ERROR(get_logger(),
                    "PRODUCTION_MPPI_ESDF rejected revision=%" PRIu64
                    " reason=invalid_local_world_generation",
@@ -640,9 +682,26 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
     prepared.lattice_search_performed = false;
     prepared.lattice_continuation_attempt = 0U;
 
+    const bool coherent_generation = productionWorldGenerationCoherent(prepared);
     {
       const std::scoped_lock lock{esdf_state_mutex_};
-      prepared_esdf_ = prepared;
+      if (coherent_generation) {
+        prepared_esdf_ = prepared;
+      } else {
+        prepared_esdf_.reset();
+      }
+    }
+    generation_lock.unlock();
+    if (!coherent_generation) {
+      rejected_world_generation_publications_.fetch_add(1U, std::memory_order_relaxed);
+      if (world_ready_.exchange(false, std::memory_order_acq_rel)) {
+        publishWorldReadiness(false);
+      }
+      RCLCPP_ERROR(get_logger(),
+                   "PRODUCTION_MPPI_ESDF rejected revision=%" PRIu64
+                   " reason=mixed_local_world_generation",
+                   raw_world->version.revision);
+      continue;
     }
     auto guide_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
     {

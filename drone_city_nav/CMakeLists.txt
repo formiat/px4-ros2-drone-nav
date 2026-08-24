@@ -628,6 +628,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_inputs_3d.cpp
     src/production_mppi_node_raw_input.cpp
     src/production_mppi_node_planning_tick.cpp
+    src/production_mppi_node_world_generation.cpp
     src/production_mppi_node_planning_tick_finalize.cpp
     src/production_mppi_node_planning_tick_rearm.cpp
     src/production_mppi_node_raw_world.cpp
@@ -929,6 +930,12 @@ if(BUILD_TESTING)
   target_compile_features(world_generation_test PRIVATE cxx_std_20)
   target_link_libraries(world_generation_test drone_city_nav_core)
   enable_project_warnings(world_generation_test)
+
+  ament_add_gtest(bounded_worker_pool_test
+                  tests/bounded_worker_pool_test.cpp)
+  target_compile_features(bounded_worker_pool_test PRIVATE cxx_std_20)
+  target_link_libraries(bounded_worker_pool_test drone_city_nav_core)
+  enable_project_warnings(bounded_worker_pool_test)
 
   ament_add_gtest(mppi_post_update_classification_test
                   tests/mppi_post_update_classification_test.cpp)

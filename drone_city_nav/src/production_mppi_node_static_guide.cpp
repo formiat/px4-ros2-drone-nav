@@ -560,8 +560,9 @@ void ProductionMppiNode::processGuideSearch3D(
             : 0U;
     StaticRouteObjective resident_route_objective;
     {
-      const std::scoped_lock lock{esdf_state_mutex_};
-      if (prepared_esdf_) {
+      const std::scoped_lock lock{world_generation_publication_mutex_,
+                                  esdf_state_mutex_};
+      if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_)) {
         resident_route_objective = prepared_esdf_->route_objective;
       }
     }

@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "production_mppi_node.hpp"
+#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -305,8 +306,9 @@ void ProductionMppiNode::requestStaticRouteReplan(
     return;
   }
   {
-    const std::scoped_lock esdf_lock{esdf_state_mutex_};
-    if (!prepared_esdf_) {
+    const std::scoped_lock esdf_lock{world_generation_publication_mutex_,
+                                     esdf_state_mutex_};
+    if (!prepared_esdf_ || !productionWorldGenerationCoherent(*prepared_esdf_)) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "

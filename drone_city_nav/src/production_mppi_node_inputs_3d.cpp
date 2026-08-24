@@ -2,6 +2,7 @@
 #include <optional>
 
 #include "production_mppi_node.hpp"
+#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 void ProductionMppiNode::queueLatestObservedWorldForPose(
@@ -18,8 +19,8 @@ void ProductionMppiNode::queueLatestObservedWorldForPose(
 
   bool local_world_required{false};
   {
-    const std::scoped_lock lock{esdf_state_mutex_};
-    if (!prepared_esdf_ || !prepared_esdf_->distances_m ||
+    const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
+    if (!prepared_esdf_ || !productionWorldGenerationCoherent(*prepared_esdf_) ||
         prepared_esdf_->producer_instance_id !=
             raw_world->version.producer_instance_id ||
         prepared_esdf_->grid.depth <= 1 || !prepared_esdf_->grid.outside_is_unknown) {

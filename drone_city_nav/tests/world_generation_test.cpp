@@ -141,6 +141,38 @@ TEST(WorldGenerationTest, MixedFutureTopologyRevisionIsRejected) {
   EXPECT_EQ(counter.lastIssued(), 0U);
 }
 
+TEST(WorldGenerationTest, GenerationMatchesOnlyTheExactCapturedComponents) {
+  LocalWorldGenerationCounter counter;
+  const RawMapVersion raw{
+      .producer_instance_id = 7U, .base_snapshot_revision = 10U, .revision = 14U};
+  const LocalWorldGeneration generation =
+      counter.issue(raw, 21U, 99U, 99U, 13U).value();
+
+  EXPECT_TRUE(generation.matches(raw, 21U, 99U, 99U, 13U));
+  EXPECT_FALSE(generation.matches(RawMapVersion{.producer_instance_id = 7U,
+                                                .base_snapshot_revision = 11U,
+                                                .revision = 14U},
+                                  21U, 99U, 99U, 13U));
+  EXPECT_FALSE(generation.matches(raw, 22U, 99U, 99U, 13U));
+  EXPECT_FALSE(generation.matches(raw, 21U, 100U, 100U, 13U));
+  EXPECT_FALSE(generation.matches(raw, 21U, 99U, 99U, 12U));
+}
+
+TEST(WorldGenerationTest, SameSnapshotRequiresGenerationAndAllComponents) {
+  LocalWorldGenerationCounter counter;
+  const RawMapVersion raw{
+      .producer_instance_id = 7U, .base_snapshot_revision = 10U, .revision = 14U};
+  const LocalWorldGeneration first = counter.issue(raw, 21U, 99U, 99U, 13U).value();
+  LocalWorldGeneration copy = first;
+
+  EXPECT_TRUE(first.sameSnapshot(copy));
+  ++copy.generation;
+  EXPECT_FALSE(first.sameSnapshot(copy));
+  copy = first;
+  ++copy.topology_revision;
+  EXPECT_FALSE(first.sameSnapshot(copy));
+}
+
 TEST(WorldGenerationTest, CpuWorldMustMatchTheActiveGpuEsdfRevision) {
   EXPECT_TRUE(mppi::mppiEsdfRevisionMatches(55U, 55U));
   EXPECT_FALSE(mppi::mppiEsdfRevisionMatches(55U, 56U));

@@ -9,6 +9,7 @@
 #include <limits>
 #include <memory>
 #include <span>
+#include <utility>
 
 #include "production_mppi_node.hpp"
 #include "production_mppi_node_planning_tick_context.hpp"
@@ -113,7 +114,7 @@ void ProductionMppiNode::planningTick() {
   }
   std::optional<ProductionMppiPreparedEsdf> esdf;
   {
-    const std::scoped_lock lock{esdf_state_mutex_};
+    const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
     esdf = prepared_esdf_;
   }
   const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
@@ -223,14 +224,7 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiExecutionReason::kUnavailableWorld, now_ns);
     return;
   }
-  if (!esdf->local_world_generation.coherent()) {
-    RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_coherent_generation "
-        "local_world_generation=%" PRIu64,
-        esdf->local_world_generation.generation);
-    publishFailClosedExecutionRevocation(
-        ProductionMppiExecutionReason::kUnavailableWorld, now_ns);
+  if (!worldGenerationAvailableForPlanning(*esdf, now_ns)) {
     return;
   }
   if (!engine_->ready()) {
@@ -919,7 +913,12 @@ void ProductionMppiNode::planningTick() {
             .count();
   } else {
     try {
-      result = engine_->plan(input);
+      std::optional<mppi::MppiTickResult> planned =
+          planOnCapturedWorldGeneration(*esdf, input);
+      if (!planned.has_value()) {
+        return;
+      }
+      result = std::move(*planned);
     } catch (const std::exception& error) {
       RCLCPP_ERROR(get_logger(), "PRODUCTION_MPPI_TICK failed: %s", error.what());
       publishFailClosedExecutionRevocation(
