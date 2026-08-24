@@ -7,6 +7,7 @@
 #include <limits>
 #include <vector>
 
+#include "risk_aware_lattice_3d_cost.hpp"
 #include "risk_aware_lattice_3d_geometry.hpp"
 
 namespace drone_city_nav {
@@ -46,6 +47,71 @@ TEST(Route3DTest, EqualCostSearchKeepsLevelAltitudeBeforeVerticalAlternatives) {
     EXPECT_GE(sample.position.z, config.flight_envelope.minimum_target_z_m);
     EXPECT_LT(sample.position.z, config.flight_envelope.maximum_target_z_m);
   }
+}
+
+TEST(Route3DTest, VerticalMotionAndPitchReversalCarryExplicitCost) {
+  RiskAwareLattice3DConfig config;
+  config.nominal_horizontal_speed_mps = 10.0;
+  config.nominal_vertical_speed_mps = 2.0;
+  config.vertical_alignment_cost_weight = 0.5;
+  config.route_shape_turn_cost_per_rad = 0.0;
+  config.route_shape_vertical_turn_cost_per_rad = 1.0;
+  config.heading_bias_cost_per_rad = 0.0;
+  config.planning_exposure_cost_per_m = 0.0;
+  config.critical_exposure_cost_per_m = 0.0;
+  const detail::Lattice3DEdgeEvaluation exposure{
+      .status = detail::Lattice3DEdgeEvaluationStatus::kValid};
+
+  const detail::Lattice3DCostMetrics climb = detail::evaluateLattice3DEdgeCost(
+      Point3{0.0, 0.0, 0.0}, Point3{1.0, 0.0, 1.0}, Vec3{1.0, 0.0, 0.0},
+      Vec3{1.0, 0.0, 0.0}, exposure, config);
+  const detail::Lattice3DCostMetrics reversal = detail::evaluateLattice3DEdgeCost(
+      Point3{1.0, 0.0, 1.0}, Point3{2.0, 0.0, 0.0},
+      detail::lattice3DUnitDirection(Point3{0.0, 0.0, 0.0}, Point3{1.0, 0.0, 1.0}),
+      Vec3{1.0, 0.0, 0.0}, exposure, config);
+
+  EXPECT_DOUBLE_EQ(climb.vertical_alignment_time_s, 0.5);
+  EXPECT_GT(climb.objective_cost, climb.travel_time_s);
+  EXPECT_GT(climb.turn_cost, 0.0);
+  EXPECT_GT(reversal.turn_cost, climb.turn_cost);
+  EXPECT_NEAR(detail::lattice3DTravelHeuristic(Point3{0.0, 0.0, 0.0},
+                                               Point3{1.0, 0.0, 1.0}, config),
+              climb.travel_time_s + config.vertical_alignment_cost_weight *
+                                        climb.vertical_alignment_time_s,
+              1.0e-9);
+}
+
+TEST(Route3DTest, VerticalCostDoesNotForbidRequiredAltitudeChange) {
+  const OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 30, 10, 12}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.planning_goal_distance_m = 30.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.maximum_search_time_ms = 1000.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+  config.vertical_alignment_cost_weight = 0.5;
+  config.route_shape_vertical_turn_cost_per_rad = 0.5;
+
+  const RiskAwareLattice3DResult result =
+      planRiskAwareLattice3D(grid, field.distancesM(), Point3{1.5, 4.5, 2.5},
+                             Vec3{1.0, 0.0, 0.0}, Point3{20.5, 4.5, 7.5}, {}, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  ASSERT_FALSE(result.route.empty());
+  EXPECT_GT(result.vertical_alignment_time_s, 0.0);
+  EXPECT_NEAR(result.route.back().position.z, 7.5, 1.0e-6);
 }
 
 TEST(Route3DTest, EdgeFootprintContinuouslyCoversCoarseAndFineSweepIntervals) {

@@ -14,6 +14,9 @@ class BoundedWorkerPool;
 struct StaticRouteGeometryConfig {
   double sample_step_m{0.5};
   double maximum_shortcut_length_m{30.0};
+  double sparse_deviation_tolerance_m{0.05};
+  double maximum_shortcut_turn_increase_rad{0.35};
+  std::size_t shortcut_validation_batch_size{4U};
   double corner_smoothing_distance_m{2.0};
   std::size_t corner_curve_samples{4U};
 };
@@ -23,6 +26,10 @@ struct StaticRouteGeometryResult {
   std::vector<ConstrainedRouteSpan> constrained_spans;
   std::size_t shortcuts_applied{0U};
   std::size_t corners_smoothed{0U};
+  std::size_t sparse_anchor_count{0U};
+  std::size_t sparse_samples_removed{0U};
+  std::size_t shortcut_validation_batches{0U};
+  std::size_t shortcut_turn_budget_rejections{0U};
   std::size_t shortcut_candidates{0U};
   std::size_t parallel_shortcut_candidates{0U};
   std::size_t corner_candidates{0U};

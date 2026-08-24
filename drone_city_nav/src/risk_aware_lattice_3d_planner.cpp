@@ -35,6 +35,12 @@ struct TopologySearchBatch {
          config.sample_step_m > 0.0 && config.physical_footprint_sweep_step_m > 0.0 &&
          config.nominal_horizontal_speed_mps > 0.0 &&
          config.nominal_vertical_speed_mps > 0.0 &&
+         std::isfinite(config.vertical_alignment_cost_weight) &&
+         config.vertical_alignment_cost_weight >= 0.0 &&
+         std::isfinite(config.route_shape_turn_cost_per_rad) &&
+         config.route_shape_turn_cost_per_rad >= 0.0 &&
+         std::isfinite(config.route_shape_vertical_turn_cost_per_rad) &&
+         config.route_shape_vertical_turn_cost_per_rad >= 0.0 &&
          config.passage_connection_distance_m > 0.0 &&
          config.frontier_minimum_endpoint_displacement_m > 0.0 &&
          evaluateFlightEnvelopeAltitude(start.z, config.flight_envelope) ==

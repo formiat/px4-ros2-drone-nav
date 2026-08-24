@@ -6,8 +6,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <ranges>
+#include <utility>
 
 namespace drone_city_nav {
 namespace {
@@ -26,6 +28,196 @@ protectedStation(const double station_m,
   return Point3{std::lerp(first.x, second.x, ratio),
                 std::lerp(first.y, second.y, ratio),
                 std::lerp(first.z, second.z, ratio)};
+}
+
+[[nodiscard]] Vec3 segmentVector(const Point3& first, const Point3& second) noexcept {
+  return Vec3{second.x - first.x, second.y - first.y, second.z - first.z};
+}
+
+[[nodiscard]] double vectorNorm(const Vec3& vector) noexcept {
+  return std::hypot(std::hypot(vector.x, vector.y), vector.z);
+}
+
+[[nodiscard]] double angleBetween(const Vec3& first, const Vec3& second) noexcept {
+  const double first_norm = vectorNorm(first);
+  const double second_norm = vectorNorm(second);
+  if (!(first_norm > 1.0e-9) || !(second_norm > 1.0e-9)) {
+    return 0.0;
+  }
+  const double cosine =
+      std::clamp((first.x * second.x + first.y * second.y + first.z * second.z) /
+                     (first_norm * second_norm),
+                 -1.0, 1.0);
+  return std::acos(cosine);
+}
+
+[[nodiscard]] double pointSegmentDistance(const Point3& point, const Point3& first,
+                                          const Point3& second) noexcept {
+  const Vec3 segment = segmentVector(first, second);
+  const double squared_length =
+      segment.x * segment.x + segment.y * segment.y + segment.z * segment.z;
+  if (!(squared_length > 1.0e-12)) {
+    return distance3D(point, first);
+  }
+  const Vec3 offset = segmentVector(first, point);
+  const double ratio =
+      std::clamp((offset.x * segment.x + offset.y * segment.y + offset.z * segment.z) /
+                     squared_length,
+                 0.0, 1.0);
+  return distance3D(point, lerpPoint(first, second, ratio));
+}
+
+[[nodiscard]] std::vector<std::size_t>
+sparseRouteIndices(const std::span<const RouteSample3D> route,
+                   const std::span<const ConstrainedRouteSpan> constrained_spans,
+                   const double deviation_tolerance_m) {
+  std::vector<bool> retained(route.size(), false);
+  retained.front() = true;
+  retained.back() = true;
+  for (std::size_t index = 0U; index < route.size(); ++index) {
+    retained[index] =
+        retained[index] || protectedStation(route[index].station_m, constrained_spans);
+  }
+  for (std::size_t index = 1U; index + 1U < route.size(); ++index) {
+    const Vec3 incoming =
+        segmentVector(route[index - 1U].position, route[index].position);
+    const Vec3 outgoing =
+        segmentVector(route[index].position, route[index + 1U].position);
+    const double dot =
+        incoming.x * outgoing.x + incoming.y * outgoing.y + incoming.z * outgoing.z;
+    if (dot <= 0.0) {
+      retained[index] = true;
+    }
+  }
+
+  std::vector<std::size_t> mandatory;
+  mandatory.reserve(route.size());
+  for (std::size_t index = 0U; index < retained.size(); ++index) {
+    if (retained[index]) {
+      mandatory.push_back(index);
+    }
+  }
+  for (std::size_t segment = 1U; segment < mandatory.size(); ++segment) {
+    std::vector<std::pair<std::size_t, std::size_t>> pending{
+        {mandatory[segment - 1U], mandatory[segment]}};
+    while (!pending.empty()) {
+      const auto [begin, end] = pending.back();
+      pending.pop_back();
+      if (end <= begin + 1U) {
+        continue;
+      }
+      double maximum_deviation_m = 0.0;
+      std::size_t maximum_index = begin;
+      for (std::size_t index = begin + 1U; index < end; ++index) {
+        const double deviation_m = pointSegmentDistance(
+            route[index].position, route[begin].position, route[end].position);
+        if (deviation_m > maximum_deviation_m) {
+          maximum_deviation_m = deviation_m;
+          maximum_index = index;
+        }
+      }
+      if (maximum_deviation_m <= deviation_tolerance_m || maximum_index == begin) {
+        continue;
+      }
+      retained[maximum_index] = true;
+      pending.emplace_back(begin, maximum_index);
+      pending.emplace_back(maximum_index, end);
+    }
+  }
+
+  std::vector<std::size_t> sparse;
+  sparse.reserve(route.size());
+  for (std::size_t index = 0U; index < retained.size(); ++index) {
+    if (retained[index]) {
+      sparse.push_back(index);
+    }
+  }
+  return sparse;
+}
+
+[[nodiscard]] double originalTurn(const std::span<const RouteSample3D> route,
+                                  const std::size_t begin,
+                                  const std::size_t end) noexcept {
+  double result = 0.0;
+  const std::size_t first_corner = begin == 0U ? 1U : begin;
+  const std::size_t last_corner =
+      std::min(end, route.size() > 1U ? route.size() - 2U : 0U);
+  for (std::size_t corner = first_corner; corner <= last_corner; ++corner) {
+    result += angleBetween(
+        segmentVector(route[corner - 1U].position, route[corner].position),
+        segmentVector(route[corner].position, route[corner + 1U].position));
+  }
+  return result;
+}
+
+[[nodiscard]] double shortcutTurn(const std::span<const RouteSample3D> route,
+                                  const std::size_t begin,
+                                  const std::size_t end) noexcept {
+  const Vec3 shortcut = segmentVector(route[begin].position, route[end].position);
+  double result = 0.0;
+  if (begin > 0U) {
+    result += angleBetween(
+        segmentVector(route[begin - 1U].position, route[begin].position), shortcut);
+  }
+  if (end + 1U < route.size()) {
+    result += angleBetween(
+        shortcut, segmentVector(route[end].position, route[end + 1U].position));
+  }
+  return result;
+}
+
+[[nodiscard]] bool
+shortcutWithinTurnBudget(const std::span<const RouteSample3D> route,
+                         const std::size_t begin, const std::size_t end,
+                         const double maximum_turn_increase_rad) noexcept {
+  return shortcutTurn(route, begin, end) <=
+         originalTurn(route, begin, end) + maximum_turn_increase_rad + 1.0e-9;
+}
+
+[[nodiscard]] std::size_t
+maximumShortcutIndex(const std::span<const RouteSample3D> route,
+                     const std::size_t current,
+                     const std::span<const ConstrainedRouteSpan> constrained_spans,
+                     const double maximum_shortcut_length_m) noexcept {
+  std::size_t maximum = current + 1U;
+  while (maximum + 1U < route.size() &&
+         route[maximum + 1U].station_m - route[current].station_m <=
+             maximum_shortcut_length_m + 1.0e-9 &&
+         !protectedStation(route[maximum + 1U].station_m, constrained_spans)) {
+    ++maximum;
+  }
+  return maximum;
+}
+
+[[nodiscard]] std::vector<std::size_t> shortcutCandidateIndices(
+    const std::span<const RouteSample3D> route,
+    const std::span<const std::size_t> sparse_indices, const std::size_t current,
+    const std::span<const ConstrainedRouteSpan> constrained_spans,
+    const StaticRouteGeometryConfig& config, std::size_t& turn_budget_rejections) {
+  std::vector<std::size_t> candidates;
+  if (protectedStation(route[current].station_m, constrained_spans)) {
+    return candidates;
+  }
+  const std::size_t maximum = maximumShortcutIndex(route, current, constrained_spans,
+                                                   config.maximum_shortcut_length_m);
+  if (maximum <= current + 1U) {
+    return candidates;
+  }
+  candidates.push_back(maximum);
+  for (const std::size_t index : sparse_indices) {
+    if (index > current + 1U && index <= maximum) {
+      candidates.push_back(index);
+    }
+  }
+  std::ranges::sort(candidates, std::greater<>{});
+  candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+  std::erase_if(candidates, [&](const std::size_t candidate) {
+    const bool accepted = shortcutWithinTurnBudget(
+        route, current, candidate, config.maximum_shortcut_turn_increase_rad);
+    turn_budget_rejections += static_cast<std::size_t>(!accepted);
+    return !accepted;
+  });
+  return candidates;
 }
 
 [[nodiscard]] std::optional<std::vector<Point3>>
@@ -80,9 +272,14 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
   StaticRouteGeometryResult result;
   if (route.size() < 2U) {
     result.route.assign(route.begin(), route.end());
+    result.sparse_anchor_count = route.size();
     return result;
   }
 
+  const std::vector<std::size_t> sparse_indices = sparseRouteIndices(
+      route, constrained_spans, geometry_config.sparse_deviation_tolerance_m);
+  result.sparse_anchor_count = sparse_indices.size();
+  result.sparse_samples_removed = route.size() - sparse_indices.size();
   std::vector<Point3> anchors;
   anchors.reserve(route.size());
   anchors.push_back(route.front().position);
@@ -90,53 +287,44 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
   const auto shortcut_validation_started = std::chrono::steady_clock::now();
   while (current + 1U < route.size()) {
     std::size_t selected = current + 1U;
-    if (!protectedStation(route[current].station_m, constrained_spans)) {
-      std::vector<std::size_t> candidates;
-      for (std::size_t candidate = current + 2U; candidate < route.size();
-           ++candidate) {
-        if (route[candidate].station_m - route[current].station_m >
-            geometry_config.maximum_shortcut_length_m) {
-          break;
-        }
-        bool crosses_protected = false;
-        for (std::size_t index = current + 1U; index <= candidate; ++index) {
-          if (protectedStation(route[index].station_m, constrained_spans)) {
-            crosses_protected = true;
-            break;
-          }
-        }
-        if (crosses_protected) {
-          break;
-        }
-        candidates.push_back(candidate);
-      }
-      std::vector<std::uint8_t> accepted(candidates.size(), 0U);
-      const auto validate_candidate = [&](const std::size_t candidate_index) {
-        accepted[candidate_index] = static_cast<std::uint8_t>(
+    const std::vector<std::size_t> candidates = shortcutCandidateIndices(
+        route, sparse_indices, current, constrained_spans, geometry_config,
+        result.shortcut_turn_budget_rejections);
+    const std::size_t batch_size =
+        std::max<std::size_t>(1U, geometry_config.shortcut_validation_batch_size);
+    for (std::size_t batch_begin = 0U; batch_begin < candidates.size();
+         batch_begin += batch_size) {
+      const std::size_t candidate_count =
+          std::min(batch_size, candidates.size() - batch_begin);
+      std::vector<std::uint8_t> accepted(candidate_count, 0U);
+      const auto validate_candidate = [&](const std::size_t batch_index) {
+        const std::size_t candidate = candidates[batch_begin + batch_index];
+        accepted[batch_index] = static_cast<std::uint8_t>(
             validateSweptFootprint(grid, esdf_m, route[current].position,
-                                   route[candidates[candidate_index]].position,
-                                   footprint_config)
+                                   route[candidate].position, footprint_config)
                 .accepted());
       };
       const bool parallel = worker_pool != nullptr &&
                             worker_pool->canParallelizeFromCurrentThread() &&
-                            candidates.size() > 1U;
+                            candidate_count > 1U;
       if (parallel) {
-        worker_pool->parallelFor(candidates.size(), WorkerTaskLane::kRouteCritical,
+        worker_pool->parallelFor(candidate_count, WorkerTaskLane::kRouteCritical,
                                  validate_candidate);
-        result.parallel_shortcut_candidates += candidates.size();
+        result.parallel_shortcut_candidates += candidate_count;
       } else {
-        for (std::size_t candidate_index = 0U; candidate_index < candidates.size();
-             ++candidate_index) {
-          validate_candidate(candidate_index);
+        for (std::size_t batch_index = 0U; batch_index < candidate_count;
+             ++batch_index) {
+          validate_candidate(batch_index);
         }
       }
-      result.shortcut_candidates += candidates.size();
-      for (std::size_t candidate_index = 0U; candidate_index < candidates.size();
-           ++candidate_index) {
-        if (accepted[candidate_index] != 0U) {
-          selected = candidates[candidate_index];
-        }
+      ++result.shortcut_validation_batches;
+      result.shortcut_candidates += candidate_count;
+      const auto accepted_candidate = std::ranges::find(accepted, std::uint8_t{1U});
+      if (accepted_candidate != accepted.end()) {
+        const std::size_t batch_index = static_cast<std::size_t>(
+            std::distance(accepted.begin(), accepted_candidate));
+        selected = candidates[batch_begin + batch_index];
+        break;
       }
     }
     if (selected > current + 1U) {

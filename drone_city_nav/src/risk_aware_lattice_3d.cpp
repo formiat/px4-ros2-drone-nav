@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "risk_aware_lattice_3d_continuation.hpp"
+#include "risk_aware_lattice_3d_cost.hpp"
 #include "risk_aware_lattice_3d_geometry.hpp"
 #include "risk_aware_lattice_3d_passage_index.hpp"
 #include "risk_aware_lattice_3d_search.hpp"
@@ -65,16 +66,6 @@ struct KeyHash {
   }
 };
 
-struct CostMetrics {
-  double objective_cost{0.0};
-  double route_length_m{0.0};
-  double travel_time_s{0.0};
-  double vertical_alignment_time_s{0.0};
-  double planning_exposure_m{0.0};
-  double critical_exposure_m{0.0};
-  double turn_cost{0.0};
-};
-
 struct PassageTransition {
   std::size_t passage_index{0U};
   bool reversed{false};
@@ -87,7 +78,7 @@ struct Record {
   std::optional<PassageTransition> passage_transition;
   double minimum_clearance_m{std::numeric_limits<double>::infinity()};
   Vec3 incoming_direction{};
-  CostMetrics metrics{};
+  detail::Lattice3DCostMetrics metrics{};
 };
 
 struct QueueEntry {
@@ -168,82 +159,6 @@ passageInsideFlightEnvelope(const PassageTraversalEdge& passage,
              .topology_progress = topology_progress};
 }
 
-[[nodiscard]] Vec3 directionBetween(const Point3& first,
-                                    const Point3& second) noexcept {
-  const double length = distance3D(first, second);
-  return length > 1.0e-9
-             ? Vec3{(second.x - first.x) / length, (second.y - first.y) / length,
-                    (second.z - first.z) / length}
-             : Vec3{};
-}
-
-[[nodiscard]] double horizontalAngle(const Vec3& first, const Vec3& second) noexcept {
-  const double first_norm = std::hypot(first.x, first.y);
-  const double second_norm = std::hypot(second.x, second.y);
-  if (!(first_norm > 1.0e-9) || !(second_norm > 1.0e-9)) {
-    return 0.0;
-  }
-  const double cosine =
-      std::clamp((first.x * second.x + first.y * second.y) / (first_norm * second_norm),
-                 -1.0, 1.0);
-  return std::acos(cosine);
-}
-
-[[nodiscard]] CostMetrics edgeCost(const Point3& first, const Point3& second,
-                                   const Vec3& incoming_direction,
-                                   const Vec3& preferred_direction,
-                                   const Lattice3DEdgeEvaluation& exposure,
-                                   const RiskAwareLattice3DConfig& config,
-                                   const bool charge_shape_turn = true) noexcept {
-  CostMetrics result;
-  result.route_length_m = distance3D(first, second);
-  const double horizontal_m = std::hypot(second.x - first.x, second.y - first.y);
-  const double vertical_m = std::abs(second.z - first.z);
-  const double horizontal_time_s =
-      horizontal_m / std::max(1.0e-6, config.nominal_horizontal_speed_mps);
-  result.vertical_alignment_time_s =
-      vertical_m / std::max(1.0e-6, config.nominal_vertical_speed_mps);
-  result.travel_time_s = std::max(horizontal_time_s, result.vertical_alignment_time_s);
-  result.planning_exposure_m = exposure.planning_exposure_m;
-  result.critical_exposure_m = exposure.critical_exposure_m;
-  const Vec3 outgoing = directionBetween(first, second);
-  result.turn_cost = charge_shape_turn
-                         ? config.route_shape_turn_cost_per_rad *
-                               horizontalAngle(incoming_direction, outgoing)
-                         : 0.0;
-  const bool first_maneuver =
-      std::hypot(incoming_direction.x, incoming_direction.y) <= 1.0e-9;
-  const double heading_cost = first_maneuver
-                                  ? config.heading_bias_cost_per_rad *
-                                        horizontalAngle(preferred_direction, outgoing)
-                                  : 0.0;
-  result.objective_cost =
-      result.travel_time_s +
-      config.vertical_alignment_cost_weight * result.vertical_alignment_time_s +
-      config.planning_exposure_cost_per_m * result.planning_exposure_m +
-      config.critical_exposure_cost_per_m * result.critical_exposure_m +
-      result.turn_cost + heading_cost;
-  return result;
-}
-
-void accumulate(CostMetrics& target, const CostMetrics& addition) noexcept {
-  target.objective_cost += addition.objective_cost;
-  target.route_length_m += addition.route_length_m;
-  target.travel_time_s += addition.travel_time_s;
-  target.vertical_alignment_time_s += addition.vertical_alignment_time_s;
-  target.planning_exposure_m += addition.planning_exposure_m;
-  target.critical_exposure_m += addition.critical_exposure_m;
-  target.turn_cost += addition.turn_cost;
-}
-
-[[nodiscard]] double heuristicCost(const Point3& point, const Point3& goal,
-                                   const RiskAwareLattice3DConfig& config) noexcept {
-  const double horizontal_m = std::hypot(goal.x - point.x, goal.y - point.y);
-  const double vertical_m = std::abs(goal.z - point.z);
-  return std::max(horizontal_m / std::max(1.0e-6, config.nominal_horizontal_speed_mps),
-                  vertical_m / std::max(1.0e-6, config.nominal_vertical_speed_mps));
-}
-
 [[nodiscard]] double
 requiredPassageHeuristic(const Point3& point, const Point3& goal,
                          const std::span<const PassageTraversalEdge> passages,
@@ -253,10 +168,10 @@ requiredPassageHeuristic(const Point3& point, const Point3& goal,
     for (const bool reversed : {false, true}) {
       const Point3 entry = passageEntry(passage, reversed);
       const Point3 exit = passageExit(passage, reversed);
-      best = std::min(best, heuristicCost(point, entry, config) +
+      best = std::min(best, detail::lattice3DTravelHeuristic(point, entry, config) +
                                 config.passage_topology_transition_cost +
-                                heuristicCost(entry, exit, config) +
-                                heuristicCost(exit, goal, config));
+                                detail::lattice3DTravelHeuristic(entry, exit, config) +
+                                detail::lattice3DTravelHeuristic(exit, goal, config));
     }
   }
   return best;
@@ -270,7 +185,7 @@ searchHeuristic(const Point3& point, const Point3& goal,
                 const RiskAwareLattice3DConfig& config) noexcept {
   if (topology_requirement == detail::Lattice3DTopologyRequirement::kUnconstrained ||
       topology_progress == TopologyProgress::kPassageTraversed) {
-    return heuristicCost(point, goal, config);
+    return detail::lattice3DTravelHeuristic(point, goal, config);
   }
   return requiredPassageHeuristic(point, goal, passages, config);
 }
@@ -282,25 +197,26 @@ searchHeuristic(const Point3& point, const Point3& goal,
          topology_progress == TopologyProgress::kPassageTraversed;
 }
 
-[[nodiscard]] bool
-appendEvaluatedSegment(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-                       const Point3& first, const Point3& second,
-                       const Lattice3DRiskStage stage, const Vec3& preferred_direction,
-                       const RiskAwareLattice3DConfig& config, Vec3& incoming_direction,
-                       CostMetrics& metrics, double& minimum_clearance_m,
-                       Lattice3DEdgeEvaluationStatus& evaluation_status,
-                       const bool charge_shape_turn = true) {
+[[nodiscard]] bool appendEvaluatedSegment(
+    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+    const Point3& first, const Point3& second, const Lattice3DRiskStage stage,
+    const Vec3& preferred_direction, const RiskAwareLattice3DConfig& config,
+    Vec3& incoming_direction, detail::Lattice3DCostMetrics& metrics,
+    double& minimum_clearance_m, Lattice3DEdgeEvaluationStatus& evaluation_status,
+    const bool charge_shape_turn = true) {
   const Lattice3DEdgeEvaluation evaluation =
       detail::evaluateLattice3DEdge(grid, esdf_m, first, second, stage, config);
   evaluation_status = evaluation.status;
   if (evaluation.status != Lattice3DEdgeEvaluationStatus::kValid) {
     return false;
   }
-  accumulate(metrics, edgeCost(first, second, incoming_direction, preferred_direction,
-                               evaluation, config, charge_shape_turn));
+  detail::accumulateLattice3DCost(
+      metrics, detail::evaluateLattice3DEdgeCost(first, second, incoming_direction,
+                                                 preferred_direction, evaluation,
+                                                 config, charge_shape_turn));
   minimum_clearance_m = std::min(minimum_clearance_m, evaluation.minimum_clearance_m);
   if (distance3D(first, second) > 1.0e-9) {
-    incoming_direction = directionBetween(first, second);
+    incoming_direction = detail::lattice3DUnitDirection(first, second);
   }
   return true;
 }
@@ -535,12 +451,13 @@ reconstruct(const Key& terminal, const Point3& origin,
     records[next] = *evaluation.candidate;
     records[next].parent = root;
     const Point3 successor = passageExit(passages[passage_index], reversed);
-    open.push(QueueEntry{.f = evaluation.candidate->g +
-                              1.5 * heuristicCost(successor, planning_goal, config),
-                         .g_at_insert = evaluation.candidate->g,
-                         .topology_satisfied = true,
-                         .sequence = sequence++,
-                         .key = next});
+    open.push(QueueEntry{
+        .f = evaluation.candidate->g +
+             1.5 * detail::lattice3DTravelHeuristic(successor, planning_goal, config),
+        .g_at_insert = evaluation.candidate->g,
+        .topology_satisfied = true,
+        .sequence = sequence++,
+        .key = next});
     ++successor_diagnostics.passage_accepted;
   }
   if (root_candidate_count > 0U) {
@@ -568,7 +485,7 @@ reconstruct(const Key& terminal, const Point3& origin,
   std::size_t records_peak = records.size();
   bool reached = false;
   Lattice3DSearchTermination termination{Lattice3DSearchTermination::kOpenSetExhausted};
-  std::optional<CostMetrics> goal_connector_metrics;
+  std::optional<detail::Lattice3DCostMetrics> goal_connector_metrics;
   double goal_connector_clearance = std::numeric_limits<double>::infinity();
   constexpr std::array<int, 3> kHorizontalOffsets{-1, 0, 1};
   constexpr std::array<int, 3> kVerticalOffsets{0, 1, -1};
@@ -601,7 +518,7 @@ reconstruct(const Key& terminal, const Point3& origin,
       best_satisfies_topology = true;
     }
     if (satisfies_topology && remaining <= config.goal_tolerance_m) {
-      CostMetrics connector;
+      detail::Lattice3DCostMetrics connector;
       Vec3 incoming = found->second.incoming_direction;
       double clearance = found->second.minimum_clearance_m;
       Lattice3DEdgeEvaluationStatus connector_status{
@@ -691,14 +608,15 @@ reconstruct(const Key& terminal, const Point3& origin,
       candidate.parent = entry.key;
       candidate.has_parent = true;
       candidate.passage_transition.reset();
-      const CostMetrics addition =
-          edgeCost(current, evaluation.successor, found->second.incoming_direction,
-                   preferred_direction, evaluation.edge, config);
-      accumulate(candidate.metrics, addition);
+      const detail::Lattice3DCostMetrics addition = detail::evaluateLattice3DEdgeCost(
+          current, evaluation.successor, found->second.incoming_direction,
+          preferred_direction, evaluation.edge, config);
+      detail::accumulateLattice3DCost(candidate.metrics, addition);
       candidate.g = candidate.metrics.objective_cost;
       candidate.minimum_clearance_m = std::min(found->second.minimum_clearance_m,
                                                evaluation.edge.minimum_clearance_m);
-      candidate.incoming_direction = directionBetween(current, evaluation.successor);
+      candidate.incoming_direction =
+          detail::lattice3DUnitDirection(current, evaluation.successor);
       Record& stored = records[evaluation.next];
       if (!(candidate.g + 1.0e-9 < stored.g)) {
         ++successor_diagnostics.lattice_rejected_no_cost_improvement;
@@ -773,8 +691,8 @@ reconstruct(const Key& terminal, const Point3& origin,
       stored = *evaluation.candidate;
       stored.parent = entry.key;
       const Point3 successor = passageExit(passages[passage_index], reversed);
-      open.push(QueueEntry{.f = stored.g +
-                                1.5 * heuristicCost(successor, planning_goal, config),
+      open.push(QueueEntry{.f = stored.g + 1.5 * detail::lattice3DTravelHeuristic(
+                                                     successor, planning_goal, config),
                            .g_at_insert = stored.g,
                            .topology_satisfied = true,
                            .sequence = sequence++,
@@ -819,9 +737,9 @@ reconstruct(const Key& terminal, const Point3& origin,
   result.frontier_endpoint_displacement_m =
       result.points.empty() ? 0.0 : distance3D(start, result.points.back());
   result.minimum_clearance_m = records.at(best).minimum_clearance_m;
-  CostMetrics metrics = records.at(best).metrics;
+  detail::Lattice3DCostMetrics metrics = records.at(best).metrics;
   if (reached && goal_connector_metrics.has_value()) {
-    accumulate(metrics, *goal_connector_metrics);
+    detail::accumulateLattice3DCost(metrics, *goal_connector_metrics);
     result.minimum_clearance_m =
         std::min(result.minimum_clearance_m, goal_connector_clearance);
     double unused_station_m = 0.0;
@@ -880,7 +798,7 @@ reconstruct(const Key& terminal, const Point3& origin,
               : Lattice3DStatus::kMotionGraphExhausted;
     }
     if (continuation_materializable) {
-      CostMetrics continuation_metrics;
+      detail::Lattice3DCostMetrics continuation_metrics;
       Vec3 incoming_direction = records.at(best).incoming_direction;
       double continuation_clearance_m = records.at(best).minimum_clearance_m;
       Lattice3DEdgeEvaluationStatus continuation_status{
@@ -896,7 +814,7 @@ reconstruct(const Key& terminal, const Point3& origin,
         }
       }
       if (continuation_accepted) {
-        accumulate(metrics, continuation_metrics);
+        detail::accumulateLattice3DCost(metrics, continuation_metrics);
         result.minimum_clearance_m =
             std::min(result.minimum_clearance_m, continuation_clearance_m);
         result.achieved_progress_m =

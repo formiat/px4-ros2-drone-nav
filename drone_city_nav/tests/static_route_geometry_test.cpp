@@ -1,4 +1,5 @@
 #include "drone_city_nav/bounded_worker_pool.hpp"
+#include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
 
 #include <gtest/gtest.h>
@@ -29,6 +30,65 @@ TEST(StaticRouteGeometryTest, ShortcutsOpenUnconstrainedZigzag) {
   ASSERT_GE(result.route.size(), 2U);
   EXPECT_GT(result.shortcuts_applied, 0U);
   EXPECT_LT(result.route.back().station_m, route.back().station_m);
+  EXPECT_LT(result.sparse_anchor_count, route.size());
+  EXPECT_GT(result.sparse_samples_removed, 0U);
+}
+
+TEST(StaticRouteGeometryTest, SparseBatchesAvoidDenseAllPairsOnLongRoute) {
+  const mppi::EsdfGrid grid{140, 20, 1.0F, 0.0F, 0.0F, 10, 0.0F};
+  const std::vector<float> esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth),
+      std::numeric_limits<float>::infinity());
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{5.0, 5.0, 5.0}, {125.0, 5.0, 5.0}}, 0.5, 20.0);
+
+  const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
+      route, {}, grid, esdf,
+      SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
+      StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
+
+  EXPECT_EQ(result.sparse_anchor_count, 2U);
+  EXPECT_EQ(result.sparse_samples_removed, route.size() - 2U);
+  EXPECT_LE(result.shortcut_candidates, 5U);
+  EXPECT_EQ(result.shortcut_validation_batches, result.shortcut_candidates);
+  EXPECT_GE(result.shortcuts_applied, 4U);
+  ASSERT_FALSE(result.route.empty());
+  EXPECT_NEAR(result.route.back().position.x, 125.0, 1.0e-9);
+}
+
+TEST(StaticRouteGeometryTest, SparseShortcutsRemainRawFootprintSafe) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 40, 10}};
+  for (int y = 0; y <= 25; ++y) {
+    for (int z = 0; z < 10; ++z) {
+      occupancy.setOccupied(GridIndex3D{20, y, z});
+    }
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 40.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{
+          {5.5, 5.5, 5.5}, {15.5, 30.5, 5.5}, {25.5, 30.5, 5.5}, {35.5, 5.5, 5.5}},
+      0.5, 20.0);
+  const SweptFootprintConfig footprint{.radius_m = 0.0, .perimeter_samples = 0U};
+
+  const StaticRouteGeometryResult result =
+      optimizeStaticRouteGeometry(route, {}, grid, field.distancesM(), footprint,
+                                  StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
+
+  ASSERT_GE(result.route.size(), 2U);
+  for (std::size_t index = 1U; index < result.route.size(); ++index) {
+    EXPECT_TRUE(validateSweptFootprint(grid, field.distancesM(),
+                                       result.route[index - 1U].position,
+                                       result.route[index].position, footprint)
+                    .accepted());
+  }
 }
 
 TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {

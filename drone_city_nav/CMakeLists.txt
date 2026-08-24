@@ -231,6 +231,7 @@ add_library(
   src/risk_aware_lattice_successors.cpp
   src/risk_aware_lattice_3d.cpp
   src/risk_aware_lattice_3d_continuation.cpp
+  src/risk_aware_lattice_3d_cost.cpp
   src/risk_aware_lattice_3d_geometry.cpp
   src/risk_aware_lattice_3d_passage_index.cpp
   src/risk_aware_lattice_3d_planner.cpp

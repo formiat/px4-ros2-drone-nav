@@ -550,14 +550,25 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_3d_config_.nominal_vertical_speed_mps =
       declare_parameter<double>("global_lattice_3d_nominal_vertical_speed_mps", 4.0);
   lattice_3d_config_.vertical_alignment_cost_weight = declare_parameter<double>(
-      "global_lattice_3d_vertical_alignment_cost_weight", 0.0);
+      "global_lattice_3d_vertical_alignment_cost_weight", 0.35);
   lattice_3d_config_.route_shape_turn_cost_per_rad = declare_parameter<double>(
       "global_lattice_3d_route_shape_turn_cost_per_rad", 0.10);
+  lattice_3d_config_.route_shape_vertical_turn_cost_per_rad = declare_parameter<double>(
+      "global_lattice_3d_route_shape_vertical_turn_cost_per_rad", 0.20);
   lattice_3d_config_.passage_topology_transition_cost = declare_parameter<double>(
       "global_lattice_3d_passage_topology_transition_cost", 0.0);
   static_route_geometry_config_.sample_step_m = lattice_3d_config_.sample_step_m;
   static_route_geometry_config_.maximum_shortcut_length_m =
       declare_parameter<double>("static_route_maximum_shortcut_length_m", 30.0);
+  static_route_geometry_config_.sparse_deviation_tolerance_m =
+      declare_parameter<double>("static_route_sparse_deviation_tolerance_m", 0.05);
+  static_route_geometry_config_.maximum_shortcut_turn_increase_rad =
+      declare_parameter<double>("static_route_maximum_shortcut_turn_increase_rad",
+                                0.35);
+  static_route_geometry_config_.shortcut_validation_batch_size =
+      static_cast<std::size_t>(std::max<std::int64_t>(
+          0, declare_parameter<std::int64_t>(
+                 "static_route_shortcut_validation_batch_size", 4)));
   static_route_geometry_config_.corner_smoothing_distance_m =
       declare_parameter<double>("static_route_corner_smoothing_distance_m", 2.0);
   static_route_geometry_config_.corner_curve_samples = static_cast<std::size_t>(
@@ -737,8 +748,12 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_.nominal_vertical_speed_mps > 0.0) ||
       !(lattice_3d_config_.vertical_alignment_cost_weight >= 0.0) ||
       !(lattice_3d_config_.route_shape_turn_cost_per_rad >= 0.0) ||
+      !(lattice_3d_config_.route_shape_vertical_turn_cost_per_rad >= 0.0) ||
       !(lattice_3d_config_.passage_topology_transition_cost >= 0.0) ||
       !(static_route_geometry_config_.maximum_shortcut_length_m > 0.0) ||
+      !(static_route_geometry_config_.sparse_deviation_tolerance_m >= 0.0) ||
+      !(static_route_geometry_config_.maximum_shortcut_turn_increase_rad >= 0.0) ||
+      static_route_geometry_config_.shortcut_validation_batch_size == 0U ||
       !(static_route_geometry_config_.corner_smoothing_distance_m >= 0.0) ||
       static_route_geometry_config_.corner_curve_samples < 2U ||
       !(lattice_3d_config_.planning_exposure_cost_per_m >= 0.0) ||

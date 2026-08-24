@@ -121,7 +121,13 @@ Static world:
 - `global_lattice_3d_nominal_vertical_speed_mps` participates in physical travel
   time estimation;
 - `global_lattice_3d_vertical_alignment_cost_weight` is the additional vertical
-  preference and is intentionally `0.0` during passage development;
+  travel-time preference; it ranks a level route ahead of an otherwise equal
+  climb without making a required certified vertical passage unreachable;
+- `global_lattice_3d_route_shape_vertical_turn_cost_per_rad` charges changes in
+  flight-path angle, including climb/descent reversals, while the horizontal
+  turn parameter continues to charge yaw-plane shape changes;
+- static-route sparse-deviation, turn-increase, and validation-batch parameters
+  control bounded farthest-first shortcut validation before final resampling;
 - planning/critical exposure and turn-cost parameters rank complete route
   candidates with finite costs;
 - `global_lattice_3d_passage_connection_distance_m` connects ordinary lattice
