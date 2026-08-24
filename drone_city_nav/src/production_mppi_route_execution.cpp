@@ -83,6 +83,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                       : nullptr,
           });
       supervised_state = route_supervisor_.executionState();
+      result.execution_owner_available = true;
     }
   }
   if (!ownership.matched()) {
@@ -182,6 +183,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     static_cast<void>(execution_arbiter_.observe(*result.lifecycle_event));
     const std::scoped_lock lock{route_supervisor_mutex_};
     static_cast<void>(route_supervisor_.applyEvent(*result.lifecycle_event));
+    result.execution_owner_available = route_supervisor_.activeRoute() != nullptr;
   }
   return result;
 }

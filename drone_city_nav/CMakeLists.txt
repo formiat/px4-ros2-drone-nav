@@ -234,6 +234,7 @@ add_library(
   src/route_3d.cpp
   src/route_lifecycle_3d.cpp
   src/route_planning_3d.cpp
+  src/rolling_route_telemetry_3d.cpp
   src/simulation_truth_alignment.cpp
   src/spectator_selection.cpp
   src/static_route_extension.cpp
@@ -1158,6 +1159,12 @@ if(BUILD_TESTING)
   target_compile_features(route_lifecycle_3d_test PRIVATE cxx_std_20)
   target_link_libraries(route_lifecycle_3d_test drone_city_nav_core)
   enable_project_warnings(route_lifecycle_3d_test)
+
+  ament_add_gtest(rolling_route_telemetry_3d_test
+                  tests/rolling_route_telemetry_3d_test.cpp)
+  target_compile_features(rolling_route_telemetry_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(rolling_route_telemetry_3d_test drone_city_nav_core)
+  enable_project_warnings(rolling_route_telemetry_3d_test)
 
   ament_add_gtest(execution_arbiter_3d_test tests/execution_arbiter_3d_test.cpp)
   target_compile_features(execution_arbiter_3d_test PRIVATE cxx_std_20)

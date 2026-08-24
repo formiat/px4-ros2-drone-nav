@@ -46,6 +46,7 @@ void ProductionMppiNode::publishSummary() {
   std::uint64_t full_rollout_ticks{0U};
   std::uint64_t reduced_rollout_ticks{0U};
   std::uint64_t active_rollout_total{0U};
+  RollingRouteTelemetrySnapshot3D rolling_route;
   {
     const std::scoped_lock lock{statistics_mutex_};
     runtime_samples_ms = runtime_samples_ms_;
@@ -70,6 +71,7 @@ void ProductionMppiNode::publishSummary() {
     full_rollout_ticks = full_rollout_ticks_;
     reduced_rollout_ticks = reduced_rollout_ticks_;
     active_rollout_total = active_rollout_total_;
+    rolling_route = rolling_route_telemetry_.snapshot();
   }
   if (runtime_samples_ms.empty()) {
     return;
@@ -114,7 +116,23 @@ void ProductionMppiNode::publishSummary() {
       " dropped_esdf_updates=%" PRIu64 " no_static_raw_updates=%" PRIu64
       " no_static_esdf_builds=%" PRIu64 " no_static_esdf_throttled=%" PRIu64
       " dropped_diagnostics=%" PRIu64 " full_rollout_ticks=%" PRIu64
-      " reduced_rollout_ticks=%" PRIu64 " average_active_rollouts=%.1f",
+      " reduced_rollout_ticks=%" PRIu64 " average_active_rollouts=%.1f"
+      " rolling_route_observations=%" PRIu64 " continuation_boundary_ticks=%" PRIu64
+      " continuation_minimum_speed_mps=%.3f"
+      " continuation_zero_speed_ticks=%" PRIu64
+      " continuation_endpoint_limited_ticks=%" PRIu64
+      " continuity_transition_ticks=%" PRIu64
+      " continuity_transition_minimum_speed_mps=%.3f"
+      " continuity_transition_zero_speed_ticks=%" PRIu64
+      " maximum_continuity_transition_speed_drop_mps=%.3f"
+      " ownership_gap_ticks=%" PRIu64 " ownership_gap_episodes=%" PRIu64
+      " maximum_ownership_gap_ticks=%" PRIu64 " moving_raw_invalidation_ticks=%" PRIu64
+      " moving_raw_invalidation_without_braking_tail_ticks=%" PRIu64
+      " finite_braking_tail_activations=%" PRIu64 " nominal_reseed_ticks=%" PRIu64
+      " continuity_preserving_reseed_ticks=%" PRIu64
+      " route_generation_changes=%" PRIu64
+      " continuity_preserving_generation_changes=%" PRIu64
+      " geometry_revision_changes=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, altitude_envelope_violation_horizons,
@@ -128,7 +146,28 @@ void ProductionMppiNode::publishSummary() {
       no_static_esdf_builds_.load(std::memory_order_relaxed),
       no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
       dropped_diagnostics_snapshots_.load(std::memory_order_relaxed),
-      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts);
+      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts,
+      rolling_route.observations, rolling_route.continuation_boundary_ticks,
+      std::isfinite(rolling_route.minimum_continuation_boundary_speed_mps)
+          ? rolling_route.minimum_continuation_boundary_speed_mps
+          : -1.0,
+      rolling_route.continuation_zero_speed_ticks,
+      rolling_route.continuation_endpoint_limited_ticks,
+      rolling_route.continuity_transition_ticks,
+      std::isfinite(rolling_route.minimum_continuity_transition_speed_mps)
+          ? rolling_route.minimum_continuity_transition_speed_mps
+          : -1.0,
+      rolling_route.continuity_transition_zero_speed_ticks,
+      rolling_route.maximum_continuity_transition_speed_drop_mps,
+      rolling_route.ownership_gap_ticks, rolling_route.ownership_gap_episodes,
+      rolling_route.maximum_consecutive_ownership_gap_ticks,
+      rolling_route.moving_raw_invalidation_ticks,
+      rolling_route.moving_raw_invalidation_without_braking_tail_ticks,
+      rolling_route.finite_braking_tail_activations, rolling_route.nominal_reseed_ticks,
+      rolling_route.continuity_preserving_reseed_ticks,
+      rolling_route.route_generation_changes,
+      rolling_route.continuity_preserving_generation_changes,
+      rolling_route.geometry_revision_changes);
 }
 
 } // namespace drone_city_nav

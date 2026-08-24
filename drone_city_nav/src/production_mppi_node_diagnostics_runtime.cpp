@@ -46,7 +46,8 @@ void ProductionMppiNode::recordTickStatistics(
     const mppi::MppiTickResult& result,
     const ProductionMppiPlanningState planning_state,
     const ProductionMppiExecutionPublication& execution,
-    const bool liveness_reseed_requested) {
+    const bool liveness_reseed_requested,
+    const RollingRouteTelemetryObservation3D& rolling_route) {
   const std::scoped_lock lock{statistics_mutex_};
   ++completed_ticks_;
   runtime_samples_ms_.push_back(result.timings.host_total_ms);
@@ -81,6 +82,7 @@ void ProductionMppiNode::recordTickStatistics(
     full_rollout_ticks_ += result.active_rollouts == mppi_config_.rollouts ? 1U : 0U;
     reduced_rollout_ticks_ += result.active_rollouts < mppi_config_.rollouts ? 1U : 0U;
   }
+  rolling_route_telemetry_.observe(rolling_route);
 }
 
 void ProductionMppiNode::publishRviz(

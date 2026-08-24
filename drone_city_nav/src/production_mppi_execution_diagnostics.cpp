@@ -84,4 +84,45 @@ std::string executionJsonFields(const ProductionMppiExecutionPublication& execut
   return fields.str();
 }
 
+std::string
+rollingRouteInfoFields(const RollingRouteTelemetryObservation3D& observation) {
+  std::ostringstream fields;
+  fields << " route_endpoint_semantics="
+         << routeEndpointSemantics3DName(observation.endpoint_semantics)
+         << " route_continuity_id=" << observation.continuity_id
+         << " route_geometry_revision=" << observation.geometry_revision
+         << " route_speed_mps=" << observation.speed_mps << " resident_route_available="
+         << (observation.resident_route_available ? "true" : "false")
+         << " execution_owner_available="
+         << (observation.execution_owner_available ? "true" : "false")
+         << " endpoint_limiter_active="
+         << (observation.endpoint_limiter_active ? "true" : "false")
+         << " raw_invalidation_active="
+         << (observation.raw_invalidation_active ? "true" : "false")
+         << " finite_braking_tail_active="
+         << (observation.finite_braking_tail_active ? "true" : "false");
+  return fields.str();
+}
+
+std::string
+rollingRouteJsonFields(const RollingRouteTelemetryObservation3D& observation) {
+  std::ostringstream fields;
+  fields << ",\"route_endpoint_semantics\":\""
+         << routeEndpointSemantics3DName(observation.endpoint_semantics) << '"'
+         << ",\"route_continuity_id\":" << observation.continuity_id
+         << ",\"route_geometry_revision\":" << observation.geometry_revision
+         << ",\"route_speed_mps\":" << observation.speed_mps
+         << ",\"resident_route_available\":"
+         << (observation.resident_route_available ? "true" : "false")
+         << ",\"execution_owner_available\":"
+         << (observation.execution_owner_available ? "true" : "false")
+         << ",\"endpoint_limiter_active\":"
+         << (observation.endpoint_limiter_active ? "true" : "false")
+         << ",\"raw_invalidation_active\":"
+         << (observation.raw_invalidation_active ? "true" : "false")
+         << ",\"finite_braking_tail_active\":"
+         << (observation.finite_braking_tail_active ? "true" : "false");
+  return fields.str();
+}
+
 } // namespace drone_city_nav::detail

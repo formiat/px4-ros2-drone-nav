@@ -49,6 +49,7 @@
 #include "drone_city_nav/raw_obstacle_delta.hpp"
 #include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
+#include "drone_city_nav/rolling_route_telemetry_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
@@ -458,6 +459,7 @@ struct ProductionRouteExecutionSelection3D {
   Point3 hold_position{};
   double station_m{0.0};
   bool route_usable{false};
+  bool execution_owner_available{false};
 };
 
 struct ProductionMppiRvizSnapshot {
@@ -557,6 +559,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   double route_remaining_m{0.0};
   double snapshot_ms{0.0};
   double stability_ms{0.0};
+  RollingRouteTelemetryObservation3D rolling_route{};
   bool route_projection_valid{false};
   bool temporary_frontier_is_terminal{false};
   bool liveness_reseed_requested{false};
@@ -728,7 +731,8 @@ private:
   void recordTickStatistics(const mppi::MppiTickResult& result,
                             ProductionMppiPlanningState planning_state,
                             const ProductionMppiExecutionPublication& execution,
-                            bool liveness_reseed_requested);
+                            bool liveness_reseed_requested,
+                            const RollingRouteTelemetryObservation3D& rolling_route);
   void publishSummary();
   [[nodiscard]] ProductionMppiExecutionPublication publishExecutionHorizon(
       const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
@@ -976,6 +980,7 @@ private:
   std::uint64_t full_rollout_ticks_{0U};
   std::uint64_t reduced_rollout_ticks_{0U};
   std::uint64_t active_rollout_total_{0U};
+  RollingRouteTelemetry3D rolling_route_telemetry_{};
   std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
   mutable std::mutex statistics_mutex_;

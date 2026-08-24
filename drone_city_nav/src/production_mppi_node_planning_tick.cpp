@@ -235,6 +235,29 @@ void ProductionMppiNode::planningTick() {
       activated_route != nullptr
           ? activated_route->identity.proposal.reaches_mission_goal
           : esdf->global_guide_reaches_mission_goal;
+  const bool route_reaches_intent_target =
+      activated_route != nullptr
+          ? activated_route->identity.proposal.evidence.reaches_intent_target
+          : esdf->route_segment_evidence.reaches_intent_target;
+  const RouteIntent3D& route_intent = activated_route != nullptr
+                                          ? activated_route->identity.proposal.intent
+                                          : esdf->route_intent;
+  const StaticRouteObjective& active_route_objective =
+      activated_route != nullptr ? activated_route->identity.proposal.objective
+                                 : esdf->route_objective;
+  const RouteEndpointSemantics3D route_endpoint_semantics = routeEndpointSemantics3D(
+      route_intent, route_reaches_intent_target, route_reaches_mission_goal);
+  const std::uint64_t route_continuity_id = routeContinuityId3D(
+      route_intent,
+      RouteContinuityLineage3D{
+          .mission_epoch = active_route_objective.mission_epoch,
+          .assignment_generation = active_route_objective.assignment_generation,
+          .target_detection_id = active_route_objective.target_detection_id,
+          .target_track_id = active_route_objective.target_track_id,
+      });
+  const std::uint64_t route_geometry_revision =
+      activated_route != nullptr ? activated_route->identity.proposal.route_fingerprint
+                                 : esdf->route_fingerprint;
   const Lattice3DRoutePurpose route_purpose = route_geometry != nullptr
                                                   ? route_geometry->route_purpose
                                                   : esdf->lattice_3d_route_purpose;
@@ -835,9 +858,36 @@ void ProductionMppiNode::planningTick() {
   ++tick_sequence_;
   ProductionMppiExecutionPublication execution =
       publishExecutionHorizon(input, result, *esdf, planning_state, now_ns);
+  const bool raw_invalidation_active =
+      route_execution_status == RouteExecutionStatus3D::kRawCollision;
+  const bool finite_braking_tail_active =
+      execution.retained_previous_finite_path && execution.terminal_rest_state;
+  const RollingRouteTelemetryObservation3D rolling_route{
+      .route_generation = route_generation,
+      .continuity_id = route_continuity_id,
+      .geometry_revision = route_geometry_revision,
+      .endpoint_semantics = effectiveRouteEndpointSemantics3D(
+          route_endpoint_semantics, raw_invalidation_active,
+          finite_braking_tail_active),
+      .route_remaining_m = route_projection.valid
+                               ? route_projection.remaining_m
+                               : std::numeric_limits<double>::infinity(),
+      .speed_mps = routeSpeed3D(
+          Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz}),
+      .resident_route_available = uses_3d_route && !direct_tracking_interception &&
+                                  esdf->activated_route_3d != nullptr,
+      .execution_owner_available = !uses_3d_route || direct_tracking_interception ||
+                                   route_execution.execution_owner_available,
+      .endpoint_limiter_active =
+          speed_policy.active_limiter == MppiSpeedLimiter::kRouteEndpoint,
+      .raw_invalidation_active = raw_invalidation_active,
+      .finite_braking_tail_active = finite_braking_tail_active,
+      .nominal_reseeded = result.nominal_reseeded,
+  };
   recordTickStatistics(result, planning_state, execution,
                        liveness.reseed_requested ||
-                           guide_progress.local_reseed_requested);
+                           guide_progress.local_reseed_requested,
+                       rolling_route);
 
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);
@@ -916,6 +966,7 @@ void ProductionMppiNode::planningTick() {
       .route_remaining_m = route_projection.remaining_m,
       .snapshot_ms = snapshot_ms,
       .stability_ms = stability_ms,
+      .rolling_route = rolling_route,
       .route_projection_valid = route_projection.valid,
       .temporary_frontier_is_terminal = temporary_frontier_is_terminal,
       .liveness_reseed_requested = liveness.reseed_requested,

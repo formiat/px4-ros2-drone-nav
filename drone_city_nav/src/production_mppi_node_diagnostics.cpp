@@ -408,7 +408,7 @@ void ProductionMppiNode::processDiagnostics(
       << result.route_directed_candidate_generation
       << " temporary_frontier_is_terminal="
       << (snapshot.temporary_frontier_is_terminal ? "true" : "false")
-      << " no_eligible_phase="
+      << detail::rollingRouteInfoFields(snapshot.rolling_route) << " no_eligible_phase="
       << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase)
       << " no_eligible_recovery_generation="
       << snapshot.no_eligible_recovery.no_eligible_recovery_generation
@@ -950,6 +950,7 @@ void ProductionMppiNode::processDiagnostics(
         << result.route_directed_candidate_generation
         << ",\"temporary_frontier_is_terminal\":"
         << (snapshot.temporary_frontier_is_terminal ? "true" : "false")
+        << detail::rollingRouteJsonFields(snapshot.rolling_route)
         << ",\"no_eligible_phase\":\""
         << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase) << '"'
         << ",\"no_eligible_recovery_generation\":"
