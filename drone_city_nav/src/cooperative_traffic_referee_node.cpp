@@ -1,6 +1,7 @@
 #include "cooperative_traffic_referee_node.hpp"
 
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
+#include "drone_city_nav/execution_horizon_contract_ros.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -8,9 +9,11 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -22,10 +25,13 @@ namespace {
 
 [[nodiscard]] std::int64_t timeoutNanoseconds(const double seconds,
                                               const std::string& label) {
-  if (!(seconds > 0.0) || !std::isfinite(seconds)) {
-    throw std::invalid_argument{label + " must be finite and positive"};
+  const long double nanoseconds = static_cast<long double>(seconds) * 1'000'000'000.0L;
+  if (!(seconds > 0.0) || !std::isfinite(seconds) ||
+      nanoseconds >
+          static_cast<long double>(std::numeric_limits<std::int64_t>::max())) {
+    throw std::invalid_argument{label + " must be finite, positive, and representable"};
   }
-  return static_cast<std::int64_t>(std::llround(seconds * 1.0e9));
+  return static_cast<std::int64_t>(std::llround(nanoseconds));
 }
 
 [[nodiscard]] bool finite(const Point3& point) noexcept {
@@ -99,6 +105,9 @@ CooperativeTrafficRefereeNode::CooperativeTrafficRefereeNode()
   };
   maximum_input_age_ns_ = timeoutNanoseconds(
       declare_parameter<double>("maximum_state_age_s", 1.0), "maximum state age");
+  maximum_offboard_feedback_age_ns_ = timeoutNanoseconds(
+      declare_parameter<double>("maximum_offboard_feedback_age_s", 1.0),
+      "maximum offboard feedback age");
   const double maximum_intent_age_s =
       declare_parameter<double>("maximum_intent_age_s", 0.5);
   maximum_intent_age_ns_ =
@@ -195,6 +204,9 @@ void CooperativeTrafficRefereeNode::configureVehicles(
   const std::vector<std::string> horizon_topics =
       declare_parameter<std::vector<std::string>>("vehicle_execution_horizon_topics",
                                                   defaults("/mppi/execution_horizon"));
+  const std::vector<std::string> control_feedback_topics =
+      declare_parameter<std::vector<std::string>>(
+          "vehicle_applied_control_feedback_topics", defaults("/mppi/applied_control"));
   const std::vector<std::string> world_topics =
       declare_parameter<std::vector<std::string>>("vehicle_world_readiness_topics",
                                                   defaults("/mppi/world_ready"));
@@ -212,6 +224,7 @@ void CooperativeTrafficRefereeNode::configureVehicles(
            {&state_topics, "vehicle_state_topics"},
            {&truth_topics, "vehicle_truth_state_topics"},
            {&horizon_topics, "vehicle_execution_horizon_topics"},
+           {&control_feedback_topics, "vehicle_applied_control_feedback_topics"},
            {&world_topics, "vehicle_world_readiness_topics"},
            {&destroyed_topics, "vehicle_destroyed_topics"},
            {&objective_topics, "vehicle_objective_topics"},
@@ -221,6 +234,7 @@ void CooperativeTrafficRefereeNode::configureVehicles(
 
   const auto state_qos = rclcpp::QoS{10}.best_effort();
   const auto horizon_qos = rclcpp::QoS{4}.reliable();
+  const auto control_feedback_qos = rclcpp::QoS{10}.reliable();
   const auto latched_qos = rclcpp::QoS{1}.reliable().transient_local();
   vehicles_.resize(ids.size());
   for (std::size_t index = 0U; index < ids.size(); ++index) {
@@ -251,27 +265,12 @@ void CooperativeTrafficRefereeNode::configureVehicles(
     runtime.horizon_sub = create_subscription<msg::MppiTrajectoryHorizon>(
         horizon_topics[index], horizon_qos,
         [this, index](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
-          VehicleRuntime& vehicle = vehicles_[index];
-          vehicle.hold_horizon = HoldHorizon{
-              .position = Point3{horizon->stationary_hold_position.x,
-                                 horizon->stationary_hold_position.y,
-                                 horizon->stationary_hold_position.z},
-              .sequence = horizon->sequence,
-              .active = horizon->stationary_position_hold &&
-                        horizon->execution_mode ==
-                            msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
-          };
-          if (!vehicle.executable_horizon_ready && horizon->sequence > 0U &&
-              horizon->execution_mode ==
-                  msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-              horizon->points.size() >= 2U) {
-            vehicle.executable_horizon_ready = true;
-            vehicle.first_executable_horizon_sequence = horizon->sequence;
-            RCLCPP_INFO(get_logger(),
-                        "COOPERATIVE_EXECUTABLE_HORIZON_READY vehicle_id='%s' "
-                        "sequence=%" PRIu64,
-                        vehicle.id.c_str(), horizon->sequence);
-          }
+          onExecutionHorizon(*horizon, index);
+        });
+    runtime.control_feedback_sub = create_subscription<msg::MppiControlFeedback>(
+        control_feedback_topics[index], control_feedback_qos,
+        [this, index](const msg::MppiControlFeedback::SharedPtr feedback) {
+          onControlFeedback(*feedback, index);
         });
     runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
         world_topics[index], latched_qos,
@@ -288,6 +287,252 @@ void CooperativeTrafficRefereeNode::configureVehicles(
     runtime.start_pub =
         create_publisher<std_msgs::msg::Bool>(start_topics[index], latched_qos);
   }
+}
+
+void CooperativeTrafficRefereeNode::revokeExecutionHorizonEvidence(
+    VehicleRuntime& vehicle) {
+  vehicle.hold_horizon.reset();
+  vehicle.executable_horizon_ready = false;
+  vehicle.executable_horizon_valid_from_ns = 0;
+  vehicle.executable_horizon_valid_until_ns = 0;
+  vehicle.goal_hold_confirmed = false;
+  if (vehicle.goal_hold_confirmation) {
+    vehicle.goal_hold_confirmation->reset();
+  }
+  if (vehicle.failure_hold_confirmation) {
+    vehicle.failure_hold_confirmation->reset();
+  }
+}
+
+void CooperativeTrafficRefereeNode::refreshExecutionHorizonEvidence(
+    VehicleRuntime& vehicle, const std::int64_t now_ns) {
+  if (!vehicle.hold_horizon.has_value()) {
+    vehicle.executable_horizon_ready = false;
+    vehicle.goal_hold_confirmed = false;
+    if (vehicle.goal_hold_confirmation) {
+      vehicle.goal_hold_confirmation->reset();
+    }
+    if (vehicle.failure_hold_confirmation) {
+      vehicle.failure_hold_confirmation->reset();
+    }
+    return;
+  }
+  HoldHorizon& horizon = *vehicle.hold_horizon;
+  const ExecutionHorizonWitnessRequirement requirement{
+      .target_offboard_instance_id = horizon.target_offboard_instance_id,
+      .horizon_producer_instance_id = horizon.producer_instance_id,
+      .horizon_sequence = horizon.sequence,
+      .valid_from_ns = horizon.valid_from_ns,
+      .valid_until_ns = horizon.valid_until_ns,
+      .execution_mode =
+          horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED
+              ? ExecutionHorizonWitnessMode::kPlanned
+              : ExecutionHorizonWitnessMode::kPositionHold,
+  };
+  const bool receipt =
+      executionHorizonReceiptFreshAt(vehicle.horizon_witness_state, requirement, now_ns,
+                                     maximum_offboard_feedback_age_ns_);
+  const bool strict_witness =
+      executionHorizonWitnessFreshAt(vehicle.horizon_witness_state, requirement, now_ns,
+                                     maximum_offboard_feedback_age_ns_);
+  horizon.witnessed = strict_witness;
+  if (!horizon.active || !strict_witness) {
+    vehicle.goal_hold_confirmed = false;
+    if (vehicle.goal_hold_confirmation) {
+      vehicle.goal_hold_confirmation->reset();
+    }
+    if (vehicle.failure_hold_confirmation) {
+      vehicle.failure_hold_confirmation->reset();
+    }
+  }
+  const bool ready_witness = mission_started_ ? strict_witness : receipt;
+  const bool newly_ready =
+      ready_witness && !vehicle.executable_horizon_ready &&
+      horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED;
+  vehicle.executable_horizon_ready =
+      ready_witness &&
+      horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED;
+  if (newly_ready && vehicle.first_executable_horizon_sequence == 0U) {
+    vehicle.first_executable_horizon_sequence = horizon.sequence;
+    RCLCPP_INFO(get_logger(),
+                "COOPERATIVE_EXECUTABLE_HORIZON_READY vehicle_id='%s' "
+                "producer=%" PRIu64 " sequence=%" PRIu64 " target_offboard=%" PRIu64,
+                vehicle.id.c_str(), horizon.producer_instance_id, horizon.sequence,
+                horizon.target_offboard_instance_id);
+  }
+}
+
+void CooperativeTrafficRefereeNode::expireOffboardEvidence(const std::int64_t now_ns) {
+  for (VehicleRuntime& vehicle : vehicles_) {
+    refreshExecutionHorizonEvidence(vehicle, now_ns);
+  }
+}
+
+void CooperativeTrafficRefereeNode::onControlFeedback(
+    const msg::MppiControlFeedback& feedback, const std::size_t vehicle_index) {
+  VehicleRuntime& vehicle = vehicles_.at(vehicle_index);
+  const std::int64_t receive_stamp_ns = now().nanoseconds();
+  const ExecutionControlFeedbackAssessment assessment =
+      assessExecutionControlFeedback(feedback, "map", receive_stamp_ns);
+  if (!assessment.valid()) {
+    const ExecutionHorizonWitnessAdmissionResult malformed =
+        revokeMalformedExecutionHorizonFeedback(vehicle.horizon_witness_state,
+                                                assessment.candidate, receive_stamp_ns);
+    if (malformed.state_advanced) {
+      vehicle.horizon_witness_state = malformed.next_state;
+      if (malformed.witness_revoked) {
+        refreshExecutionHorizonEvidence(vehicle, receive_stamp_ns);
+      }
+    }
+    const std::string_view reason =
+        executionControlFeedbackStatusName(assessment.status);
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "COOPERATIVE_CONTROL_FEEDBACK rejected=true vehicle_id='%s' "
+                         "offboard_producer=%" PRIu64 " horizon_producer=%" PRIu64
+                         " sequence=%" PRIu64 " reason=%.*s",
+                         vehicle.id.c_str(), feedback.producer_instance_id,
+                         feedback.horizon_producer_instance_id,
+                         feedback.horizon_sequence, static_cast<int>(reason.size()),
+                         reason.data());
+    return;
+  }
+  const ExecutionHorizonWitnessAdmissionResult admission =
+      admitExecutionHorizonFeedbackPayload(vehicle.horizon_witness_state,
+                                           assessment.candidate, assessment.valid());
+  if (!admission.accept) {
+    if (admission.state_advanced) {
+      vehicle.horizon_witness_state = admission.next_state;
+      if (admission.witness_revoked) {
+        refreshExecutionHorizonEvidence(vehicle, receive_stamp_ns);
+      }
+    }
+    const char* const reason = admission.stale                 ? "stale"
+                               : admission.replay              ? "replay"
+                               : admission.conflict            ? "conflict"
+                               : admission.non_current_session ? "non_current_session"
+                                                               : "invalid";
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "COOPERATIVE_CONTROL_FEEDBACK rejected=true vehicle_id='%s' "
+                         "offboard_producer=%" PRIu64 " horizon_producer=%" PRIu64
+                         " sequence=%" PRIu64 " reason=%s",
+                         vehicle.id.c_str(), feedback.producer_instance_id,
+                         feedback.horizon_producer_instance_id,
+                         feedback.horizon_sequence, reason);
+    return;
+  }
+  vehicle.horizon_witness_state = admission.next_state;
+  if (admission.session_transitioned && vehicle.hold_horizon.has_value() &&
+      vehicle.hold_horizon->target_offboard_instance_id !=
+          vehicle.horizon_witness_state.offboard_session.current_producer_instance_id) {
+    revokeExecutionHorizonEvidence(vehicle);
+  }
+  refreshExecutionHorizonEvidence(vehicle, receive_stamp_ns);
+}
+
+void CooperativeTrafficRefereeNode::onExecutionHorizon(
+    const msg::MppiTrajectoryHorizon& horizon, const std::size_t vehicle_index) {
+  VehicleRuntime& vehicle = vehicles_.at(vehicle_index);
+  const std::int64_t now_ns = now().nanoseconds();
+  const ExecutionHorizonAdmissionCandidate candidate{
+      .producer_instance_id = horizon.producer_instance_id,
+      .sequence = horizon.sequence,
+      .source_stamp_ns = executionHorizonTimeNanoseconds(horizon.header.stamp),
+      .valid_from_ns = executionHorizonTimeNanoseconds(horizon.valid_from),
+      .content_fingerprint = executionHorizonContentFingerprint(horizon),
+  };
+  const ExecutionHorizonPayloadStatus payload_status = assessExecutionHorizonPayload(
+      horizon, ExecutionHorizonPayloadValidationConfig{.expected_frame_id = "map"});
+  const bool revoked =
+      horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED;
+  const std::int64_t valid_until_ns =
+      executionHorizonTimeNanoseconds(horizon.valid_until);
+  const bool expired = !revoked && now_ns >= valid_until_ns;
+  const bool payload_admissible =
+      payload_status == ExecutionHorizonPayloadStatus::kValid && !expired;
+  const ExecutionHorizonAdmissionResult admission = admitExecutionHorizonIdentity(
+      vehicle.horizon_admission, candidate, payload_admissible);
+  if (admission.state_advanced) {
+    vehicle.horizon_admission = admission.next_state;
+  }
+  if (admission.revoke) {
+    revokeExecutionHorizonEvidence(vehicle);
+  }
+  if (admission.replay) {
+    return;
+  }
+  if (!admission.accept_identity &&
+      (!candidate.valid() || payload_admissible || admission.stale ||
+       admission.conflict || admission.retired_capacity_exhausted ||
+       admission.prospective_capacity_exhausted)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "COOPERATIVE_EXECUTION_HORIZON rejected=true vehicle_id='%s' "
+        "producer=%" PRIu64 " sequence=%" PRIu64 " current_producer=%" PRIu64
+        " current_sequence=%" PRIu64 " reason=%s",
+        vehicle.id.c_str(), horizon.producer_instance_id, horizon.sequence,
+        vehicle.horizon_admission.current_producer_instance_id,
+        vehicle.horizon_admission.current_sequence,
+        admission.conflict                     ? "identity_content_conflict"
+        : admission.stale                      ? "stale_identity"
+        : admission.retired_capacity_exhausted ? "retired_identity_capacity_exhausted"
+        : admission.prospective_capacity_exhausted
+            ? "prospective_identity_capacity_exhausted"
+            : "invalid_identity");
+    return;
+  }
+  if (payload_status != ExecutionHorizonPayloadStatus::kValid || expired) {
+    const std::string_view reason =
+        payload_status == ExecutionHorizonPayloadStatus::kValid
+            ? std::string_view{"expired_validity_window"}
+            : executionHorizonPayloadStatusName(payload_status);
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "COOPERATIVE_EXECUTION_HORIZON rejected=true vehicle_id='%s' "
+                         "producer=%" PRIu64 " sequence=%" PRIu64 " reason=%.*s",
+                         vehicle.id.c_str(), horizon.producer_instance_id,
+                         horizon.sequence, static_cast<int>(reason.size()),
+                         reason.data());
+    return;
+  }
+  if (!admission.payload_installable) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "COOPERATIVE_EXECUTION_HORIZON rejected=true vehicle_id='%s' "
+                         "producer=%" PRIu64 " sequence=%" PRIu64
+                         " reason=nonadvancing_producer_timestamps",
+                         vehicle.id.c_str(), horizon.producer_instance_id,
+                         horizon.sequence);
+    return;
+  }
+  if (revoked) {
+    revokeExecutionHorizonEvidence(vehicle);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "COOPERATIVE_EXECUTION_HORIZON revoked=true vehicle_id='%s' producer=%" PRIu64
+        " sequence=%" PRIu64,
+        vehicle.id.c_str(), horizon.producer_instance_id, horizon.sequence);
+    return;
+  }
+
+  const std::int64_t valid_from_ns =
+      executionHorizonTimeNanoseconds(horizon.valid_from);
+  vehicle.hold_horizon = HoldHorizon{
+      .position =
+          Point3{horizon.stationary_hold_position.x, horizon.stationary_hold_position.y,
+                 horizon.stationary_hold_position.z},
+      .producer_instance_id = horizon.producer_instance_id,
+      .target_offboard_instance_id = horizon.target_offboard_instance_id,
+      .sequence = horizon.sequence,
+      .execution_mode = horizon.execution_mode,
+      .valid_from_ns = valid_from_ns,
+      .valid_until_ns = valid_until_ns,
+      .active = horizon.stationary_position_hold &&
+                horizon.execution_mode ==
+                    msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
+      .witnessed = false,
+  };
+  vehicle.executable_horizon_ready = false;
+  vehicle.executable_horizon_valid_from_ns = valid_from_ns;
+  vehicle.executable_horizon_valid_until_ns = valid_until_ns;
+  refreshExecutionHorizonEvidence(vehicle, now_ns);
 }
 
 void CooperativeTrafficRefereeNode::configureGroundTruthBoundary() {
@@ -451,7 +696,12 @@ bool CooperativeTrafficRefereeNode::missionReady(const std::int64_t now_ns) cons
   return std::ranges::all_of(vehicles_, [this, now_ns](const VehicleRuntime& vehicle) {
     return !vehicle.destroyed && vehicle.navigation_state && vehicle.truth_state &&
            vehicle.navigation_state->navigation_ready && vehicle.world_ready &&
-           vehicle.executable_horizon_ready && vehicle.intent_ready &&
+           vehicle.executable_horizon_ready &&
+           vehicle.executable_horizon_valid_from_ns > 0 &&
+           vehicle.executable_horizon_valid_until_ns >
+               vehicle.executable_horizon_valid_from_ns &&
+           now_ns >= vehicle.executable_horizon_valid_from_ns &&
+           now_ns < vehicle.executable_horizon_valid_until_ns && vehicle.intent_ready &&
            vehicle.latest_intent_receive_ns > 0 &&
            now_ns >= vehicle.latest_intent_receive_ns &&
            now_ns - vehicle.latest_intent_receive_ns <= maximum_intent_age_ns_ &&
@@ -470,6 +720,12 @@ void CooperativeTrafficRefereeNode::logMissionReadiness(
                 now_ns >= vehicle.latest_intent_receive_ns
             ? static_cast<double>(now_ns - vehicle.latest_intent_receive_ns) * 1.0e-6
             : std::numeric_limits<double>::infinity();
+    const bool horizon_current = vehicle.executable_horizon_ready &&
+                                 vehicle.executable_horizon_valid_from_ns > 0 &&
+                                 vehicle.executable_horizon_valid_until_ns >
+                                     vehicle.executable_horizon_valid_from_ns &&
+                                 now_ns >= vehicle.executable_horizon_valid_from_ns &&
+                                 now_ns < vehicle.executable_horizon_valid_until_ns;
     RCLCPP_ERROR(
         get_logger(),
         "COOPERATIVE_READINESS_STATUS vehicle_id='%s' destroyed=%s navigation=%s "
@@ -479,7 +735,7 @@ void CooperativeTrafficRefereeNode::logMissionReadiness(
             ? "ready"
             : "not_ready",
         vehicle.world_ready ? "ready" : "not_ready",
-        vehicle.executable_horizon_ready ? "ready" : "not_ready",
+        horizon_current ? "ready" : "not_ready",
         vehicle.intent_ready ? "ready" : "not_ready", intent_age_ms,
         now_ns <= vehicle.latest_intent_valid_until_ns ? "true" : "false");
   }

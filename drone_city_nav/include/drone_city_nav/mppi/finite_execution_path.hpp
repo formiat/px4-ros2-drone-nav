@@ -19,6 +19,9 @@ namespace drone_city_nav::mppi {
 struct TimedExecutionPathPoint {
   double time_from_start_s{0.0};
   State state{};
+  // Arrival convention: point zero carries the exact previously applied
+  // control; every later point carries the control of the interval ending at
+  // that point.
   Control control{};
 };
 

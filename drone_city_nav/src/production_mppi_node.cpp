@@ -1,15 +1,18 @@
 #include "production_mppi_node.hpp"
 
 #include "drone_city_nav/occupancy_grid_3d.hpp"
+#include "drone_city_nav/producer_instance_id.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <numbers>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
+#include <string>
 
 namespace drone_city_nav {
 namespace {
@@ -37,10 +40,44 @@ noStaticWorldModelName(const ProductionNoStaticWorldModel model) noexcept {
   return "unknown";
 }
 
+[[nodiscard]] std::int64_t durationNanoseconds(const double seconds,
+                                               const char* const parameter_name,
+                                               const bool allow_zero = false) {
+  const long double nanoseconds = static_cast<long double>(seconds) * 1'000'000'000.0L;
+  const long double first_unrepresentable_rounding_input =
+      static_cast<long double>(std::numeric_limits<std::int64_t>::max()) + 0.5L;
+  if (!std::isfinite(seconds) || (allow_zero ? seconds < 0.0 : !(seconds > 0.0)) ||
+      nanoseconds >= first_unrepresentable_rounding_input) {
+    throw std::invalid_argument{std::string{parameter_name} +
+                                " must be finite, non-negative, and representable"};
+  }
+  const std::int64_t duration_ns = static_cast<std::int64_t>(std::llround(nanoseconds));
+  if (!allow_zero && duration_ns <= 0) {
+    throw std::invalid_argument{std::string{parameter_name} +
+                                " rounds to a non-positive duration"};
+  }
+  return duration_ns;
+}
+
+[[nodiscard]] std::int64_t checkedDurationSum(const std::int64_t first_ns,
+                                              const std::int64_t second_ns,
+                                              const std::int64_t third_ns,
+                                              const char* const name) {
+  if (first_ns < 0 || second_ns < 0 || third_ns < 0 ||
+      first_ns > std::numeric_limits<std::int64_t>::max() - second_ns ||
+      first_ns + second_ns > std::numeric_limits<std::int64_t>::max() - third_ns) {
+    throw std::invalid_argument{std::string{name} + " is not representable"};
+  }
+  return first_ns + second_ns + third_ns;
+}
+
 } // namespace
 
 ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     : Node{"production_mppi_node", options} {
+  constexpr std::uint64_t kExecutionHorizonProducerDomain{0x45584543484f5249ULL};
+  execution_horizon_producer_instance_id_ =
+      createProducerInstanceId(kExecutionHorizonProducerDomain);
   tick_rate_hz_ = declare_parameter<double>("tick_rate_hz", 50.0);
   rviz_rate_hz_ = declare_parameter<double>("rviz_rate_hz", 10.0);
   diagnostics_info_rate_hz_ =
@@ -58,6 +95,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<std::size_t>(diagnostics_error_ring_capacity);
   deadline_ms_ = declare_parameter<double>("deadline_ms", 20.0);
   maximum_pose_age_ms_ = declare_parameter<double>("maximum_pose_age_ms", 150.0);
+  maximum_vehicle_status_age_ms_ =
+      declare_parameter<double>("maximum_vehicle_status_age_ms", 1000.0);
   maximum_pose_prediction_age_ms_ =
       declare_parameter<double>("maximum_pose_prediction_age_ms", 1000.0);
   maximum_esdf_age_ms_ = declare_parameter<double>("maximum_esdf_age_ms", 1000.0);
@@ -127,6 +166,30 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("mission_waypoint_stop_speed_mps", 0.8);
   mission_waypoint_sequence_config_.stop_hold_s =
       declare_parameter<double>("mission_waypoint_hold_s", 2.0);
+  mission_waypoint_capture_gate_config_ = MissionWaypointCaptureGateConfig{
+      .goal_radius_m = mission_goal_capture_config_.capture_radius_m,
+      .target_match_tolerance_m = declare_parameter<double>(
+          "mission_waypoint_target_match_tolerance_m", 1.0e-3),
+      .stop_speed_mps = mission_waypoint_sequence_config_.stop_speed_mps,
+      .stop_hold_s = mission_waypoint_sequence_config_.stop_hold_s,
+      .maximum_pose_age_s = maximum_pose_age_ms_ * 1.0e-3,
+      .maximum_vehicle_status_age_s = maximum_vehicle_status_age_ms_ * 1.0e-3,
+      .maximum_feedback_age_s = maximum_control_feedback_age_ms_ * 1.0e-3,
+  };
+  if (!std::isfinite(tick_rate_hz_) || !(tick_rate_hz_ > 0.0)) {
+    throw std::invalid_argument{"tick_rate_hz must be finite and positive"};
+  }
+  const std::int64_t goal_capture_hold_ns =
+      durationNanoseconds(mission_waypoint_sequence_config_.stop_hold_s,
+                          "mission waypoint stop hold", true);
+  const std::int64_t goal_capture_feedback_margin_ns =
+      durationNanoseconds(maximum_control_feedback_age_ms_ * 1.0e-3,
+                          "mission goal capture feedback margin");
+  const std::int64_t goal_capture_tick_margin_ns =
+      durationNanoseconds(2.0 / tick_rate_hz_, "mission goal capture tick margin");
+  mission_goal_capture_hold_validity_ns_ = checkedDurationSum(
+      goal_capture_hold_ns, goal_capture_feedback_margin_ns,
+      goal_capture_tick_margin_ns, "mission goal capture hold lease");
   const std::vector<Point3> mission_waypoints =
       missionWaypointsFromFlatParameters(declare_parameter<std::vector<double>>(
           "mission_goal_sequence_xyz_m", std::vector<double>{}));
@@ -212,6 +275,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("no_static_horizon_duration_s", 4.0);
   stationary_hold_validity_s_ =
       declare_parameter<double>("stationary_hold_validity_s", 1.0);
+  stationary_hold_validity_ns_ =
+      durationNanoseconds(stationary_hold_validity_s_, "stationary_hold_validity_s");
   const double active_horizon_duration_s =
       use_static_map_ ? static_horizon_duration_s : no_static_horizon_duration_s;
   const double static_stale_esdf_execution_window_s = declare_parameter<double>(
@@ -275,6 +340,26 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<float>(speed_policy_config_.stopping_capability.reaction_latency_s);
   mppi_config_.dynamics.maximum_vertical_speed_mps =
       static_cast<float>(declare_parameter<double>("maximum_vertical_speed_mps", 5.0));
+  const double navigation_angular_derivative_minimum_interval_ms =
+      declare_parameter<double>("navigation_angular_derivative_minimum_interval_ms",
+                                1.0);
+  const double navigation_angular_derivative_maximum_interval_ms =
+      declare_parameter<double>("navigation_angular_derivative_maximum_interval_ms",
+                                100.0);
+  navigation_angular_derivative_config_ = NavigationAngularDerivativeConfig{
+      .minimum_interval_s = navigation_angular_derivative_minimum_interval_ms * 1.0e-3,
+      .maximum_interval_s = navigation_angular_derivative_maximum_interval_ms * 1.0e-3,
+      .maximum_yaw_rate_radps =
+          static_cast<double>(mppi_config_.dynamics.maximum_yaw_rate_radps),
+      .maximum_yaw_acceleration_radps2 =
+          static_cast<double>(mppi_config_.dynamics.maximum_yaw_acceleration_radps2),
+  };
+  if (!navigationAngularDerivativeConfigIsValid(
+          navigation_angular_derivative_config_)) {
+    throw std::invalid_argument{"invalid navigation angular derivative configuration"};
+  }
+  navigation_angular_derivative_estimator_ =
+      NavigationAngularDerivativeEstimator{navigation_angular_derivative_config_};
   constrained_route_control_config_.maximum_vertical_acceleration_mps2 =
       mppi_config_.dynamics.maximum_vertical_acceleration_mps2;
   constrained_route_control_config_.maximum_vertical_speed_mps =
@@ -733,6 +818,14 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
         "planning tick phase offset must be in [0, tick period)"};
   }
 
+  execution_validation_policy_ = VersionedExecutionValidationPolicy3D::capture(
+      flight_envelope_config_, mppi_config_.dynamics, mppi_config_.altitude_envelope,
+      physical_footprint_config_, latest_lidar_obstacle_maximum_age_ms_,
+      maximum_pose_prediction_age_ms_, maximum_control_feedback_age_ms_);
+  if (execution_validation_policy_ == nullptr) {
+    throw std::invalid_argument{"invalid immutable execution validation policy"};
+  }
+
   liveness_supervisor_ = std::make_unique<MppiLivenessSupervisor>(liveness_config_);
   active_guide_lifecycle_ =
       std::make_unique<ActiveGlobalGuideLifecycle>(active_guide_config_);
@@ -742,6 +835,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   }
   mission_goal_capture_latch_ =
       std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
+  mission_waypoint_capture_gate_ = std::make_unique<MissionWaypointCaptureGate>(
+      mission_waypoint_capture_gate_config_);
   if (no_static_cycle_recovery_enabled_) {
     no_static_cycle_detector_ =
         std::make_unique<NoStaticRouteCycleDetector>(no_static_cycle_config_);
@@ -756,7 +851,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     if (occupancy_path.is_relative()) {
       occupancy_path = package_share / occupancy_path;
     }
-    static_occupancy_3d_ = OccupancyGrid3D::load(occupancy_path);
+    static_occupancy_3d_ =
+        std::make_shared<const OccupancyGrid3D>(OccupancyGrid3D::load(occupancy_path));
+    if (static_occupancy_3d_->contentFingerprint() == 0U) {
+      throw std::runtime_error{"invalid static occupancy content fingerprint"};
+    }
     initializeStaticTopology3D();
     std::filesystem::path cache_path = declare_parameter<std::string>(
         "static_esdf_3d_cache_path", "worlds/generated_city.esdf3d");
@@ -896,36 +995,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
               no_static_3d_esdf_window_.vertical_half_extent_m,
               no_static_3d_esdf_window_.horizontal_recenter_margin_m,
               no_static_3d_esdf_window_.vertical_recenter_margin_m);
-}
-
-void ProductionMppiNode::startPlanningTimer() {
-  planning_timer_ = create_wall_timer(
-      std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); },
-      planning_callback_group_);
-}
-
-ProductionMppiNode::~ProductionMppiNode() {
-  if (topology_worker_.joinable()) {
-    topology_worker_.request_stop();
-    topology_queue_condition_.notify_all();
-    topology_worker_.join();
-  }
-  if (diagnostics_worker_.joinable()) {
-    diagnostics_worker_.request_stop();
-    diagnostics_mailbox_.notifyAll();
-    diagnostics_worker_.join();
-  }
-  if (esdf_worker_.joinable()) {
-    esdf_worker_.request_stop();
-    raw_queue_condition_.notify_all();
-    esdf_worker_.join();
-  }
-  if (guide_worker_.joinable()) {
-    guide_worker_.request_stop();
-    guide_queue_condition_.notify_all();
-    guide_worker_.join();
-  }
-  publishSummary();
 }
 
 } // namespace drone_city_nav

@@ -58,6 +58,17 @@ struct LaunchSupportContact3D {
 };
 
 [[nodiscard]] bool
+sameProprioceptiveFreeSpaceSeed3D(const ProprioceptiveFreeSpaceSeed3D& first,
+                                  const ProprioceptiveFreeSpaceSeed3D& second) noexcept;
+
+[[nodiscard]] bool
+sameLaunchSupportContact3D(const LaunchSupportContact3D& first,
+                           const LaunchSupportContact3D& second) noexcept;
+
+[[nodiscard]] bool
+launchSupportContactValid3D(const LaunchSupportContact3D& contact) noexcept;
+
+[[nodiscard]] bool
 updateLaunchSupportSettling(LaunchSupportContact3D& contact,
                             const Point3& observed_position) noexcept;
 
@@ -145,6 +156,20 @@ validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
                           const Point3& second,
                           const FootprintBodyAxis& second_body_axis,
                           const SweptFootprintConfig& config) noexcept;
+
+// Static occupancy is complete only inside its declared bounds. Unlike a raw
+// occupied-only snapshot, leaving those bounds cannot be treated as free space.
+[[nodiscard]] SweptFootprintResult
+validateKnownStaticFootprintAt(const OccupancyGrid3D& occupancy, const Point3& position,
+                               const FootprintBodyAxis& body_axis,
+                               const SweptFootprintConfig& config) noexcept;
+
+[[nodiscard]] SweptFootprintResult
+validateKnownStaticSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
+                                  const FootprintBodyAxis& first_body_axis,
+                                  const Point3& second,
+                                  const FootprintBodyAxis& second_body_axis,
+                                  const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] SweptFootprintResult validateRawFootprintAt(
     const ObservedOccupancyGrid3D& occupancy, const Point3& position,

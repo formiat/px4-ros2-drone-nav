@@ -87,7 +87,7 @@ void ProductionMppiNode::processGuideSearch3D(
     activations.push_back(prepareRouteActivation3D(
         world, std::move(materialization.prepared), planned_world_certificate,
         materialization.validation, materialization.replacement_policy, mission_goal,
-        activation_snapshot));
+        candidate_generation, activation_snapshot));
     const ProductionRouteActivationResult3D& activation = activations.back();
     final_proposals.push_back(RouteProposal3D{
         .intent = activation.proposal.identity.intent,
@@ -192,18 +192,10 @@ void ProductionMppiNode::processGuideSearch3D(
   const bool activation_snapshot_current = activation.snapshot_current;
   const std::uint64_t required_objective_sample = activation.required_objective_sample;
   const bool observed_world_rebased = activation.observed_world_rebased;
-  const bool activated = activation.activated;
+  const bool certified_pending = activation.certified_pending;
   const mppi::StaticRouteHandoffResult& handoff = activation.handoff;
 
-  if (activated && !use_static_map_) {
-    const std::uint64_t blocked_raw_revision =
-        observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
-    if (blocked_raw_revision != 0U &&
-        blocked_raw_revision <= prepared.source_raw_revision) {
-      observed_route_blocked_raw_revision_.store(0U, std::memory_order_release);
-    }
-  }
-  if (activated) {
+  if (certified_pending) {
     if (topology_route_used) {
       commitIncrementalTopologyRoute3D(topology);
     } else if (topological_navigation_3d_ &&
@@ -213,7 +205,7 @@ void ProductionMppiNode::processGuideSearch3D(
           "INCREMENTAL_TOPOLOGY3D_PLAN_SUPERSEDED replacement=non_topology_route");
     }
   }
-  if (activated && prepared.cooperative_passage_assignments) {
+  if (certified_pending && prepared.cooperative_passage_assignments) {
     for (const CooperativePassageAssignment& assignment :
          *prepared.cooperative_passage_assignments) {
       RCLCPP_INFO(
@@ -240,14 +232,14 @@ void ProductionMppiNode::processGuideSearch3D(
       world.topological_graph ? "incremental_topological_graph" : "unavailable";
   if (topology_route_used) {
     logIncrementalTopologyRoute3D(topology, lattice, validation, activation_status,
-                                  activated);
+                                  certified_pending);
   }
   const ObservationFrontier* const observation_frontier =
       lattice.observation_frontier ? &*lattice.observation_frontier : nullptr;
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_GUIDE3D revision=%" PRIu64
-      " activated=%s activation_status=%.*s publication_status=%.*s "
+      " certified_pending=%s activation_status=%.*s publication_status=%.*s "
       "world_compatible=%s activation_snapshot_current=%s "
       "snapshot_pose_revision=%" PRIu64 " snapshot_raw_revision=%" PRIu64 " "
       "generation_matches=%s objective_matches=%s route_generation=%" PRIu64
@@ -306,7 +298,7 @@ void ProductionMppiNode::processGuideSearch3D(
       "shortcut_candidates=%zu parallel_shortcut_candidates=%zu "
       "corner_candidates=%zu parallel_corner_candidates=%zu "
       "shortcuts=%zu smoothed_corners=%zu route_fingerprint=%" PRIu64,
-      prepared.revision, activated ? "true" : "false",
+      prepared.revision, certified_pending ? "true" : "false",
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
       staticRouteActivationStatusName(activation_status).data(),
       static_cast<int>(routePublicationStatus3DName(publication_status).size()),
@@ -436,7 +428,7 @@ void ProductionMppiNode::processGuideSearch3D(
           ObservationRouteReplacementStatus::kSameFrontierRetained;
   if (world.static_route_replan_request || initial_route_search) {
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-    if (activated) {
+    if (certified_pending) {
       static_route_failed_search_latch_.clear();
     } else if (initial_route_search ||
                (world_compatible && generation_matches && objective_matches &&
@@ -463,11 +455,11 @@ void ProductionMppiNode::processGuideSearch3D(
           staticRouteCandidateStatusName(validation.status).data(), search_start.x,
           search_start.y, search_start.z);
     }
-  } else if (activated) {
+  } else if (certified_pending) {
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
     static_route_failed_search_latch_.clear();
   }
-  finishStaticRouteSearch(world, activated);
+  finishStaticRouteSearch(world, certified_pending);
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();
   if (current_objective && current_objective->continuous_tracking) {

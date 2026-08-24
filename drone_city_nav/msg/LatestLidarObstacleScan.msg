@@ -1,7 +1,10 @@
 # The stamp includes the calibrated sensor time offset and identifies the
-# resolved first-beam acquisition pose. Points are current raw lidar returns;
-# they never contain persistent obstacle-memory cells.
+# resolved first-beam acquisition pose. Consumers use their local receive time
+# as the freshness fallback when producer time is ahead. Points are current raw returns;
+# they never contain persistent obstacle-memory cells. The producer instance is
+# stable for one publisher lifetime and changes when that publisher restarts.
 std_msgs/Header header
+uint64 producer_instance_id
 uint64 sequence
 uint64 pose_generation
 geometry_msgs/Point frame_origin_map

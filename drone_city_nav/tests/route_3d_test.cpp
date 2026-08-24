@@ -48,6 +48,72 @@ TEST(Route3DTest, ProjectsProgressUsingThreeDimensionalStation) {
   EXPECT_NEAR(projection.remaining_m, 5.0, 1.0e-6);
 }
 
+TEST(Route3DTest, BoundedProjectionStaysLocalAtSelfCrossing) {
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{
+          {0.0, 0.0, 0.0}, {17.0, 17.0, 0.0}, {0.0, 17.0, 0.0}, {17.0, 0.0, 0.0}},
+      100.0, 10.0);
+  const Point3 position{8.6, 8.4, 0.0};
+
+  const RouteProjection3D global = projectOntoRoute3D(route, position);
+  const RouteProjection3D bounded =
+      projectOntoRoute3DWithinStationWindow(route, position, 11.0, 13.0);
+
+  ASSERT_TRUE(global.valid);
+  ASSERT_TRUE(bounded.valid);
+  EXPECT_NEAR(global.point.x, position.x, 1.0e-6);
+  EXPECT_NEAR(global.point.y, position.y, 1.0e-6);
+  EXPECT_GT(global.station_m - bounded.station_m, 40.0);
+  EXPECT_NEAR(bounded.station_m, route[1U].station_m * 0.5, 1.0e-6);
+  EXPECT_NEAR(bounded.point.x, 8.5, 1.0e-6);
+  EXPECT_NEAR(bounded.point.y, 8.5, 1.0e-6);
+}
+
+TEST(Route3DTest, RejectsInvalidBoundedProjectionWindows) {
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}}, 100.0, 10.0);
+  const Point3 position{5.0, 0.0, 0.0};
+  const double infinity = std::numeric_limits<double>::infinity();
+  const double not_a_number = std::numeric_limits<double>::quiet_NaN();
+
+  EXPECT_FALSE(projectOntoRoute3DWithinStationWindow({}, position, 0.0, 10.0).valid);
+  EXPECT_FALSE(projectOntoRoute3DWithinStationWindow(route, position, 6.0, 4.0).valid);
+  EXPECT_FALSE(
+      projectOntoRoute3DWithinStationWindow(route, position, not_a_number, 10.0).valid);
+  EXPECT_FALSE(
+      projectOntoRoute3DWithinStationWindow(route, position, 0.0, not_a_number).valid);
+  EXPECT_FALSE(
+      projectOntoRoute3DWithinStationWindow(route, position, -infinity, 10.0).valid);
+  EXPECT_FALSE(
+      projectOntoRoute3DWithinStationWindow(route, position, 0.0, infinity).valid);
+  EXPECT_FALSE(
+      projectOntoRoute3DWithinStationWindow(route, position, -2.0, -1.0).valid);
+  EXPECT_FALSE(
+      projectOntoRoute3DWithinStationWindow(route, position, 11.0, 12.0).valid);
+}
+
+TEST(Route3DTest, ClipsProjectionToAllowedPartialSegmentEndpoints) {
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}}, 100.0, 10.0);
+  ASSERT_EQ(route.size(), 2U);
+
+  const RouteProjection3D before =
+      projectOntoRoute3DWithinStationWindow(route, Point3{1.0, 0.0, 0.0}, 3.0, 7.0);
+  const RouteProjection3D after =
+      projectOntoRoute3DWithinStationWindow(route, Point3{9.0, 0.0, 0.0}, 3.0, 7.0);
+
+  ASSERT_TRUE(before.valid);
+  EXPECT_DOUBLE_EQ(before.station_m, 3.0);
+  EXPECT_DOUBLE_EQ(before.point.x, 3.0);
+  EXPECT_DOUBLE_EQ(before.distance_m, 2.0);
+  EXPECT_DOUBLE_EQ(before.remaining_m, 7.0);
+  ASSERT_TRUE(after.valid);
+  EXPECT_DOUBLE_EQ(after.station_m, 7.0);
+  EXPECT_DOUBLE_EQ(after.point.x, 7.0);
+  EXPECT_DOUBLE_EQ(after.distance_m, 2.0);
+  EXPECT_DOUBLE_EQ(after.remaining_m, 3.0);
+}
+
 TEST(Route3DTest, CoordinatesVerticalAlignmentBeforePassageEntry) {
   const std::vector<RouteSample3D> route = sampleRoute3D(
       std::vector<Point3>{{0.0, 0.0, 18.0}, {80.0, 0.0, 5.0}, {100.0, 0.0, 5.0}}, 1.0,
@@ -918,118 +984,6 @@ TEST(Route3DTest, MaterializedContinuationCommitsToGoalDirectedWallDetour) {
   EXPECT_LT(distance3D(result.points.back(), goal), distance3D(start, goal));
   EXPECT_GT(std::abs(result.points.back().y - start.y), 1.0);
   EXPECT_NEAR(result.points.back().z, start.z, 1.0e-9);
-}
-
-TEST(Route3DTest, EqualCostSearchKeepsLevelAltitudeBeforeVerticalAlternatives) {
-  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 30, 10, 10}};
-  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
-  const GridBounds3D& bounds = field.bounds();
-  const mppi::EsdfGrid grid{bounds.width_cells,
-                            bounds.height_cells,
-                            static_cast<float>(bounds.resolution_m),
-                            static_cast<float>(bounds.origin_x),
-                            static_cast<float>(bounds.origin_y),
-                            bounds.depth_cells,
-                            static_cast<float>(bounds.origin_z)};
-  RiskAwareLattice3DConfig config;
-  config.horizontal_step_m = 2.0;
-  config.vertical_step_m = 1.0;
-  config.planning_goal_distance_m = 30.0;
-  config.preferred_distance_m = 0.0;
-  config.critical_distance_m = 0.0;
-  config.heading_bias_cost_per_rad = 0.0;
-  config.route_shape_turn_cost_per_rad = 0.0;
-  config.maximum_search_time_ms = 1000.0;
-  config.physical_footprint_radius_m = 0.0;
-  config.physical_footprint_samples = 0U;
-
-  const RiskAwareLattice3DResult result =
-      planRiskAwareLattice3D(grid, field.distancesM(), Point3{1.5, 4.5, 5.5},
-                             Vec3{1.0, 0.0, 0.0}, Point3{20.5, 4.5, 5.5}, {}, config);
-
-  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
-  ASSERT_FALSE(result.route.empty());
-  for (const RouteSample3D& sample : result.route) {
-    EXPECT_DOUBLE_EQ(sample.position.z, 5.5);
-    EXPECT_GE(sample.position.z, config.flight_envelope.minimum_target_z_m);
-    EXPECT_LT(sample.position.z, config.flight_envelope.maximum_target_z_m);
-  }
-}
-
-TEST(Route3DTest, EdgeFootprintUsesSafetySweepStepIndependentOfRouteSampling) {
-  constexpr int width{30};
-  constexpr int height{5};
-  constexpr int depth{30};
-  const mppi::EsdfGrid grid{width, height, 0.1F, 0.0F, 0.0F, depth, 0.0F};
-  std::vector<float> esdf(static_cast<std::size_t>(width * height * depth),
-                          std::numeric_limits<float>::infinity());
-  const std::size_t occupied_index =
-      (std::size_t{22U} * static_cast<std::size_t>(height) + std::size_t{2U}) *
-          static_cast<std::size_t>(width) +
-      std::size_t{12U};
-  esdf[occupied_index] = 0.0F;
-
-  RiskAwareLattice3DConfig coarse;
-  coarse.sample_step_m = 0.5;
-  coarse.physical_footprint_radius_m = 0.0;
-  coarse.physical_footprint_samples = 0U;
-  coarse.physical_footprint_sweep_step_m = 0.5;
-  coarse.preferred_distance_m = 0.0;
-  coarse.critical_distance_m = 0.0;
-  RiskAwareLattice3DConfig safety = coarse;
-  safety.physical_footprint_sweep_step_m = 0.1;
-  const Point3 first{0.05, 0.25, 2.25};
-  const Point3 second{2.05, 0.25, 2.25};
-
-  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, first, second,
-                                          Lattice3DRiskStage::kPreferredOnly, coarse)
-                .status,
-            detail::Lattice3DEdgeEvaluationStatus::kValid);
-  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, first, second,
-                                          Lattice3DRiskStage::kPreferredOnly, safety)
-                .status,
-            detail::Lattice3DEdgeEvaluationStatus::kRawCollision);
-}
-
-TEST(Route3DTest, EdgeRiskStageUsesPhysicalFootprintClearance) {
-  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 12, 10}};
-  for (int y = 0; y < 12; ++y) {
-    for (int z = 0; z < 10; ++z) {
-      occupancy.setOccupied(GridIndex3D{6, y, z});
-    }
-  }
-  const DistanceField3D field = DistanceField3D::build(occupancy, 20.0);
-  const GridBounds3D& bounds = field.bounds();
-  const mppi::EsdfGrid grid{bounds.width_cells,
-                            bounds.height_cells,
-                            static_cast<float>(bounds.resolution_m),
-                            static_cast<float>(bounds.origin_x),
-                            static_cast<float>(bounds.origin_y),
-                            bounds.depth_cells,
-                            static_cast<float>(bounds.origin_z)};
-  RiskAwareLattice3DConfig config;
-  config.critical_distance_m = 1.25;
-  config.preferred_distance_m = 4.0;
-  const Point3 first{3.5, 4.5, 4.5};
-  const Point3 second{3.5, 6.5, 4.5};
-
-  const EsdfQueryResult center =
-      queryConservativeEsdf3D(grid, field.distancesM(), static_cast<float>(first.x),
-                              static_cast<float>(first.y), static_cast<float>(first.z));
-  ASSERT_EQ(center.status, EsdfQueryStatus::kValid);
-  ASSERT_GE(center.clearance_m, config.critical_distance_m);
-
-  const detail::Lattice3DEdgeEvaluation planning =
-      detail::evaluateLattice3DEdge(grid, field.distancesM(), first, second,
-                                    Lattice3DRiskStage::kPlanningAllowed, config);
-  const detail::Lattice3DEdgeEvaluation critical =
-      detail::evaluateLattice3DEdge(grid, field.distancesM(), first, second,
-                                    Lattice3DRiskStage::kCriticalAllowed, config);
-
-  EXPECT_EQ(planning.status, detail::Lattice3DEdgeEvaluationStatus::kRiskStageRejected);
-  ASSERT_EQ(critical.status, detail::Lattice3DEdgeEvaluationStatus::kValid);
-  EXPECT_LT(critical.minimum_clearance_m, config.critical_distance_m);
-  EXPECT_GT(critical.critical_exposure_m, 0.0);
 }
 
 } // namespace

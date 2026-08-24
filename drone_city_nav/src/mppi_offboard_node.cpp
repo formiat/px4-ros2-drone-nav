@@ -1,8 +1,13 @@
+#include "drone_city_nav/execution_horizon_admission.hpp"
+#include "drone_city_nav/execution_horizon_contract_ros.hpp"
+#include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
+#include "drone_city_nav/navigation_pose.hpp"
+#include "drone_city_nav/producer_instance_id.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
 #include "drone_city_nav/vehicle_destruction_disarm_lifecycle.hpp"
@@ -22,32 +27,15 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
-#include <ranges>
 #include <stdexcept>
+#include <string_view>
 #include <tf2_ros/transform_broadcaster.h>
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] std::int64_t timeNanoseconds(const builtin_interfaces::msg::Time& time) {
-  return static_cast<std::int64_t>(time.sec) * 1'000'000'000LL +
-         static_cast<std::int64_t>(time.nanosec);
-}
-
-[[nodiscard]] bool finitePoint(const msg::MppiHorizonPoint& point) {
-  return std::isfinite(point.time_from_start_s) && std::isfinite(point.position.x) &&
-         std::isfinite(point.position.y) && std::isfinite(point.position.z) &&
-         std::isfinite(point.velocity.x) && std::isfinite(point.velocity.y) &&
-         std::isfinite(point.velocity.z) && std::isfinite(point.acceleration.x) &&
-         std::isfinite(point.acceleration.y) && std::isfinite(point.acceleration.z) &&
-         std::isfinite(point.yaw_rad) && std::isfinite(point.yaw_rate_radps);
-}
-
-[[nodiscard]] bool finitePoint(const geometry_msgs::msg::Point& point) {
-  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
-}
 
 [[nodiscard]] double interpolate(const double first, const double second,
                                  const double ratio) {
@@ -60,6 +48,8 @@ namespace {
       return "planned";
     case msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD:
       return "position_hold";
+    case msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED:
+      return "revoked";
     default:
       return "invalid";
   }
@@ -124,6 +114,9 @@ class MppiOffboardNode final : public rclcpp::Node {
 public:
   MppiOffboardNode()
       : Node{"mppi_offboard_node"} {
+    constexpr std::uint64_t kOffboardFeedbackProducerDomain{0x4f4646424f415244ULL};
+    offboard_producer_instance_id_ =
+        createProducerInstanceId(kOffboardFeedbackProducerDomain);
     initial_altitude_m_ = declare_parameter<double>("initial_altitude_m", 18.0);
     flight_envelope_config_.minimum_target_z_m =
         declare_parameter<double>("minimum_target_z_m", 1.0);
@@ -133,7 +126,17 @@ public:
       throw std::invalid_argument{"takeoff altitude is outside flight envelope"};
     }
     takeoff_hover_s_ = declare_parameter<double>("takeoff_hover_s", 1.0);
-    control_lookahead_s_ = declare_parameter<double>("mppi_control_lookahead_s", 0.05);
+    const double control_lookahead_s =
+        declare_parameter<double>("mppi_control_lookahead_s", 0.05);
+    const long double control_lookahead_ns =
+        static_cast<long double>(control_lookahead_s) * 1'000'000'000.0L;
+    if (!std::isfinite(control_lookahead_s) || control_lookahead_s < 0.0 ||
+        control_lookahead_ns >
+            static_cast<long double>(std::numeric_limits<std::int64_t>::max()) - 0.5L) {
+      throw std::invalid_argument{"mppi_control_lookahead_s is invalid"};
+    }
+    control_lookahead_ns_ =
+        static_cast<std::int64_t>(std::floor(control_lookahead_ns + 0.5L));
     warmup_setpoints_ =
         static_cast<int>(declare_parameter<std::int64_t>("warmup_setpoints", 20));
     command_resend_period_s_ =
@@ -226,8 +229,7 @@ public:
         declare_parameter<std::string>("px4_vehicle_status_topic",
                                        "/fmu/out/vehicle_status_v1"),
         px4_qos, [this](const px4_msgs::msg::VehicleStatus::SharedPtr status) {
-          vehicle_status_ = *status;
-          vehicle_status_seen_ = true;
+          onVehicleStatus(*status);
         });
     vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
         declare_parameter<std::string>("vehicle_destroyed_topic",
@@ -306,6 +308,39 @@ public:
   }
 
 private:
+  void onVehicleStatus(const px4_msgs::msg::VehicleStatus& status) {
+    const bool was_armed =
+        vehicle_status_seen_ && vehicle_status_.arming_state ==
+                                    px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+    const bool armed =
+        status.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+    vehicle_status_ = status;
+    vehicle_status_seen_ = true;
+    if (!armed && (was_armed || horizon_.has_value())) {
+      execution_horizon_rearm_required_ = true;
+      horizon_.reset();
+      unavailable_path_hold_target_.reset();
+      if (horizon_admission_.current_producer_instance_id != 0U) {
+        static_cast<void>(tombstoneExecutionHorizonIdentity(
+            horizon_admission_,
+            ExecutionHorizonAdmissionCandidate{
+                .producer_instance_id = horizon_admission_.current_producer_instance_id,
+                .sequence = horizon_admission_.current_sequence,
+                .source_stamp_ns = horizon_admission_.latest_source_stamp_ns,
+                .valid_from_ns = horizon_admission_.latest_valid_from_ns,
+                .content_fingerprint = horizon_admission_.current_content_fingerprint,
+            }));
+      }
+      RCLCPP_WARN(get_logger(),
+                  "EXECUTION_HORIZON cleared=true reason=vehicle_disarmed "
+                  "action=require_new_identity_after_rearm");
+    } else if (!was_armed && armed && execution_horizon_rearm_required_) {
+      execution_horizon_rearm_required_ = false;
+      RCLCPP_INFO(get_logger(), "EXECUTION_HORIZON rearm_observed=true "
+                                "action=wait_for_new_identity");
+    }
+  }
+
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& state) {
     if (!state.xy_valid || !state.z_valid || !state.v_xy_valid || !state.v_z_valid) {
       position_valid_ = false;
@@ -421,60 +456,112 @@ private:
   }
 
   void onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
-    const char* rejection_reason = nullptr;
-    if (horizon.sequence <= horizon_sequence_) {
-      rejection_reason = "stale_sequence";
-    } else if (horizon.header.frame_id != "map") {
-      rejection_reason = "invalid_frame";
-    } else if (horizon.points.size() < 2U) {
-      rejection_reason = "insufficient_points";
-    } else if (timeNanoseconds(horizon.valid_until) <=
-               timeNanoseconds(horizon.valid_from)) {
-      rejection_reason = "invalid_validity_window";
-    } else if (!std::ranges::all_of(horizon.points,
-                                    [](const msg::MppiHorizonPoint& point) {
-                                      return finitePoint(point);
-                                    })) {
-      rejection_reason = "non_finite_point";
-    } else if (horizon.stationary_position_hold &&
-               !finitePoint(horizon.stationary_hold_position)) {
-      rejection_reason = "non_finite_hold_target";
-    } else if (!std::ranges::all_of(horizon.points,
-                                    [this](const msg::MppiHorizonPoint& point) {
-                                      return insideFlightEnvelope(
-                                          point.position.z, flight_envelope_config_);
-                                    })) {
-      rejection_reason = "point_outside_flight_envelope";
-    } else if (horizon.stationary_position_hold &&
-               !insideFlightEnvelope(horizon.stationary_hold_position.z,
-                                     flight_envelope_config_)) {
-      rejection_reason = "hold_target_outside_flight_envelope";
-    } else if (horizon.execution_mode >
-               msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD) {
-      rejection_reason = "invalid_execution_mode";
-    } else if (horizon.execution_reason >
-               msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD) {
-      rejection_reason = "invalid_execution_reason";
-    } else if (horizon.execution_mode ==
-                   msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-               (std::hypot(std::hypot(horizon.points.back().velocity.x,
-                                      horizon.points.back().velocity.y),
-                           horizon.points.back().velocity.z) > 1.0e-3 ||
-                std::abs(horizon.points.back().yaw_rate_radps) > 1.0e-3)) {
-      rejection_reason = "planned_horizon_without_terminal_rest_state";
+    if (horizon.target_offboard_instance_id != offboard_producer_instance_id_) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "EXECUTION_HORIZON rejected producer=%" PRIu64 " sequence=%" PRIu64
+          " target_offboard=%" PRIu64 " current_offboard=%" PRIu64
+          " reason=non_current_offboard_session",
+          horizon.producer_instance_id, horizon.sequence,
+          horizon.target_offboard_instance_id, offboard_producer_instance_id_);
+      return;
     }
-    if (rejection_reason != nullptr) {
+
+    const ExecutionHorizonAdmissionCandidate candidate{
+        .producer_instance_id = horizon.producer_instance_id,
+        .sequence = horizon.sequence,
+        .source_stamp_ns = executionHorizonTimeNanoseconds(horizon.header.stamp),
+        .valid_from_ns = executionHorizonTimeNanoseconds(horizon.valid_from),
+        .content_fingerprint = executionHorizonContentFingerprint(horizon),
+    };
+    const std::uint64_t previous_sequence = horizon_admission_.current_sequence;
+    const ExecutionHorizonPayloadStatus payload_status = assessExecutionHorizonPayload(
+        horizon, ExecutionHorizonPayloadValidationConfig{
+                     .expected_frame_id = "map",
+                     .flight_envelope = &flight_envelope_config_,
+                 });
+    const bool revoked =
+        horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED;
+    const bool expired =
+        !revoked &&
+        now().nanoseconds() >= executionHorizonTimeNanoseconds(horizon.valid_until);
+    const bool rearm_blocked = execution_horizon_rearm_required_ && !revoked;
+    const bool payload_admissible =
+        payload_status == ExecutionHorizonPayloadStatus::kValid && !expired &&
+        !rearm_blocked;
+    const ExecutionHorizonAdmissionResult admission = admitExecutionHorizonIdentity(
+        horizon_admission_, candidate, payload_admissible);
+    if (admission.state_advanced) {
+      horizon_admission_ = admission.next_state;
+    }
+    if (admission.revoke) {
+      // A newer current-producer identity or an ambiguity is authoritative even
+      // when its payload is unusable. A rejected prospective producer does not
+      // receive authority and therefore cannot clear the resident horizon.
+      horizon_.reset();
+    }
+    if (admission.replay) {
+      // An exact replay proves no new lease or evidence. A rejected exact
+      // identity remains tombstoned and cannot be repaired in place.
+      return;
+    }
+    if (!admission.accept_identity &&
+        (!candidate.valid() || payload_admissible || admission.stale ||
+         admission.conflict || admission.retired_capacity_exhausted ||
+         admission.prospective_capacity_exhausted)) {
+      const char* const reason = admission.conflict ? "identity_content_conflict"
+                                 : admission.stale  ? "stale_identity"
+                                 : admission.retired_capacity_exhausted
+                                     ? "retired_identity_capacity_exhausted"
+                                 : admission.prospective_capacity_exhausted
+                                     ? "prospective_identity_capacity_exhausted"
+                                     : "invalid_identity";
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "EXECUTION_HORIZON rejected producer=%" PRIu64
+                           " sequence=%" PRIu64 " current_producer=%" PRIu64
+                           " current_sequence=%" PRIu64 " reason=%s",
+                           horizon.producer_instance_id, horizon.sequence,
+                           horizon_admission_.current_producer_instance_id,
+                           horizon_admission_.current_sequence, reason);
+      return;
+    }
+    if (payload_status != ExecutionHorizonPayloadStatus::kValid || expired ||
+        rearm_blocked) {
+      const std::string_view rejection_reason =
+          payload_status != ExecutionHorizonPayloadStatus::kValid
+              ? executionHorizonPayloadStatusName(payload_status)
+          : expired ? std::string_view{"expired_validity_window"}
+                    : std::string_view{"vehicle_disarmed_require_new_identity"};
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                            "EXECUTION_HORIZON rejected sequence=%" PRIu64
-                           " previous=%" PRIu64 " reason=%s",
-                           horizon.sequence, horizon_sequence_, rejection_reason);
+                           " previous=%" PRIu64 " reason=%.*s",
+                           horizon.sequence, previous_sequence,
+                           static_cast<int>(rejection_reason.size()),
+                           rejection_reason.data());
+      return;
+    }
+    if (!admission.payload_installable) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "EXECUTION_HORIZON rejected producer=%" PRIu64
+                           " sequence=%" PRIu64
+                           " reason=non_advancing_timestamp_identity_tombstoned",
+                           horizon.producer_instance_id, horizon.sequence);
+      return;
+    }
+    if (revoked) {
+      horizon_.reset();
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "EXECUTION_HORIZON revoked=true producer=%" PRIu64
+                           " sequence=%" PRIu64
+                           " reason=%s action=local_non_authoritative_hold",
+                           horizon.producer_instance_id, horizon.sequence,
+                           executionReasonName(horizon.execution_reason));
       return;
     }
     const bool execution_changed =
         !horizon_.has_value() || horizon_->execution_mode != horizon.execution_mode ||
         horizon_->execution_reason != horizon.execution_reason;
     horizon_ = horizon;
-    horizon_sequence_ = horizon.sequence;
     unavailable_path_hold_target_.reset();
     if (execution_changed) {
       RCLCPP_INFO(get_logger(),
@@ -494,12 +581,12 @@ private:
       return false;
     }
     const std::int64_t now_ns = now().nanoseconds();
-    return now_ns >= timeNanoseconds(horizon_->valid_from) &&
-           now_ns < timeNanoseconds(horizon_->valid_until);
+    return now_ns >= executionHorizonTimeNanoseconds(horizon_->valid_from) &&
+           now_ns < executionHorizonTimeNanoseconds(horizon_->valid_until);
   }
 
   [[nodiscard]] bool stationaryPositionHoldActive() const noexcept {
-    return horizon_.has_value() && horizon_->stationary_position_hold;
+    return horizon_.has_value() && horizon_->stationary_position_hold && horizonFresh();
   }
 
   [[nodiscard]] double currentSpeedMps() const noexcept {
@@ -517,7 +604,8 @@ private:
     return horizon_.has_value() &&
            horizon_->execution_mode ==
                msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-           now().nanoseconds() >= timeNanoseconds(horizon_->valid_until);
+           now().nanoseconds() >=
+               executionHorizonTimeNanoseconds(horizon_->valid_until);
   }
 
   [[nodiscard]] bool plannedLaunchDepartureFresh() const {
@@ -553,6 +641,7 @@ private:
                     vehicleDeathCauseName(destroyed_cause_), destruction_mission_epoch_,
                     destruction_detail_.c_str());
       }
+      publishUnavailableControlFeedback();
       return;
     }
     const bool takeoff_ready =
@@ -569,8 +658,12 @@ private:
       mode = OffboardSetpointMode::kTrajectoryPositionTracking;
     }
     offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
+    bool exact_horizon_feedback_published{false};
     if (!navigating) {
       publishTakeoffSetpoint();
+      if (takeoff_ready && require_mission_start_signal_ && !mission_started_) {
+        exact_horizon_feedback_published = publishPrestartPlannedHorizonReceipt();
+      }
       if (position_valid_ && mapAltitudeM() >= initial_altitude_m_ - 0.5 &&
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
@@ -578,11 +671,17 @@ private:
     } else if (launch_departure_fresh) {
       publishLaunchDepartureSetpoint();
     } else if (stationary_position_hold) {
-      publishStationaryPositionHoldSetpoint();
+      exact_horizon_feedback_published = publishStationaryPositionHoldSetpoint();
     } else if (planned_path_completed) {
       publishCompletedFinitePathHoldSetpoint();
-    } else if (!publishHorizonSetpoint()) {
-      publishUnavailablePathHoldSetpoint();
+    } else {
+      exact_horizon_feedback_published = publishHorizonSetpoint();
+      if (!exact_horizon_feedback_published) {
+        publishUnavailablePathHoldSetpoint();
+      }
+    }
+    if (!exact_horizon_feedback_published) {
+      publishUnavailableControlFeedback();
     }
     if (warmup_count_ < warmup_setpoints_) {
       ++warmup_count_;
@@ -614,9 +713,21 @@ private:
         px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
   }
 
-  void publishStationaryPositionHoldSetpoint() {
+  [[nodiscard]] bool publishPrestartPlannedHorizonReceipt() {
+    if (!plannedFinitePathFresh()) {
+      return false;
+    }
+    // The takeoff/hover setpoint was emitted immediately before this receipt.
+    // It proves delivery of the exact planned identity for cooperative startup,
+    // but remains non-authoritative until mission-start permits trajectory use.
+    publishAppliedControlFeedback(Point2{}, 0.0, 0.0, 0.0, false,
+                                  msg::MppiControlFeedback::EXECUTION_MODE_PLANNED);
+    return true;
+  }
+
+  [[nodiscard]] bool publishStationaryPositionHoldSetpoint() {
     if (!horizon_.has_value()) {
-      return;
+      return false;
     }
     const geometry_msgs::msg::Point& target = horizon_.value().stationary_hold_position;
     const Point2 local_target =
@@ -624,7 +735,12 @@ private:
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
         nowMicros(), local_target, target.z - px4_map_transform_.map_origin.z,
         px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
-    publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
+    // This exact non-authoritative witness is valid only because the matching
+    // certified stationary setpoint was emitted immediately above.
+    publishAppliedControlFeedback(
+        Point2{}, 0.0, 0.0, 0.0, false,
+        msg::MppiControlFeedback::EXECUTION_MODE_POSITION_HOLD);
+    return true;
   }
 
   void publishLaunchDepartureSetpoint() {
@@ -635,12 +751,12 @@ private:
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
         nowMicros(), local_target, target.z - px4_map_transform_.map_origin.z,
         px4_map_transform_.mapYawToPx4Heading(terminal.yaw_rad)));
-    publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "LAUNCH_DEPARTURE_EXECUTION mode=terminal_position sequence=%" PRIu64
         " target=(%.3f,%.3f,%.3f) current_altitude=%.3f",
-        horizon_sequence_, target.x, target.y, target.z, mapAltitudeM());
+        horizon_admission_.current_sequence, target.x, target.y, target.z,
+        mapAltitudeM());
   }
 
   void publishCompletedFinitePathHoldSetpoint() {
@@ -654,15 +770,14 @@ private:
         nowMicros(), local_target,
         terminal.position.z - px4_map_transform_.map_origin.z,
         px4_map_transform_.mapYawToPx4Heading(terminal.yaw_rad)));
-    publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
     const Point2 map_position =
         px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
                          "FINITE_EXECUTION_PATH terminal_hold=true sequence=%" PRIu64
                          " target=(%.3f,%.3f,%.3f) current=(%.3f,%.3f,%.3f) speed=%.3f",
-                         horizon_sequence_, terminal.position.x, terminal.position.y,
-                         terminal.position.z, map_position.x, map_position.y,
-                         mapAltitudeM(), currentSpeedMps());
+                         horizon_admission_.current_sequence, terminal.position.x,
+                         terminal.position.y, terminal.position.z, map_position.x,
+                         map_position.y, mapAltitudeM(), currentSpeedMps());
   }
 
   [[nodiscard]] bool publishHorizonSetpoint() {
@@ -670,27 +785,21 @@ private:
       return false;
     }
     const msg::MppiTrajectoryHorizon& horizon = horizon_.value();
-    const double elapsed_s =
-        static_cast<double>(now().nanoseconds() - timeNanoseconds(horizon.valid_from)) /
-            1.0e9 +
-        control_lookahead_s_;
-    const auto upper = std::ranges::find_if(
-        horizon.points, [elapsed_s](const msg::MppiHorizonPoint& point) {
-          return static_cast<double>(point.time_from_start_s) >= elapsed_s;
-        });
-    const std::size_t upper_index =
-        upper == horizon.points.end()
-            ? horizon.points.size() - 1U
-            : static_cast<std::size_t>(std::distance(horizon.points.begin(), upper));
-    const std::size_t lower_index = upper_index > 0U ? upper_index - 1U : 0U;
-    const auto& first = horizon.points[lower_index];
-    const auto& second = horizon.points[upper_index];
-    const double duration =
-        static_cast<double>(second.time_from_start_s - first.time_from_start_s);
-    const double ratio =
-        duration > 1.0e-6
-            ? std::clamp((elapsed_s - first.time_from_start_s) / duration, 0.0, 1.0)
-            : 0.0;
+    const std::int64_t elapsed_without_lookahead_ns =
+        now().nanoseconds() - executionHorizonTimeNanoseconds(horizon.valid_from);
+    const std::int64_t elapsed_ns =
+        control_lookahead_ns_ >
+                std::numeric_limits<std::int64_t>::max() - elapsed_without_lookahead_ns
+            ? std::numeric_limits<std::int64_t>::max()
+            : elapsed_without_lookahead_ns + control_lookahead_ns_;
+    const std::optional<ExecutionHorizonBracket> bracket = executionHorizonBracketAt(
+        horizon.points.size(), horizon.control_interval_ns, elapsed_ns);
+    if (!bracket || !bracket->valid()) {
+      return false;
+    }
+    const auto& first = horizon.points[bracket->lower_index];
+    const auto& second = horizon.points[bracket->upper_index];
+    const double ratio = bracket->ratio();
     const Point2 map_position{interpolate(first.position.x, second.position.x, ratio),
                               interpolate(first.position.y, second.position.y, ratio)};
     const Point2 local_position = px4_map_transform_.mapPositionToLocal(map_position);
@@ -708,15 +817,18 @@ private:
     const double vertical_acceleration =
         interpolate(first.acceleration.z, second.acceleration.z, ratio);
     const double yaw = px4_map_transform_.mapYawToPx4Heading(
-        interpolate(first.yaw_rad, second.yaw_rad, ratio));
+        interpolateYawShortestPath(first.yaw_rad, second.yaw_rad, ratio));
     const double map_yaw_rate =
         interpolate(first.yaw_rate_radps, second.yaw_rate_radps, ratio);
+    const double map_yaw_acceleration = interpolate(
+        first.yaw_acceleration_radps2, second.yaw_acceleration_radps2, ratio);
     const double yaw_rate = px4_map_transform_.mapYawRateToPx4(map_yaw_rate);
     setpoint_pub_->publish(buildMppiPathTrajectorySetpoint(
         nowMicros(), local_position, altitude, velocity, vertical_velocity,
         acceleration, vertical_acceleration, yaw, yaw_rate));
-    publishAppliedControlFeedback(map_acceleration, vertical_acceleration,
-                                  map_yaw_rate);
+    publishAppliedControlFeedback(map_acceleration, vertical_acceleration, map_yaw_rate,
+                                  map_yaw_acceleration, true,
+                                  msg::MppiControlFeedback::EXECUTION_MODE_PLANNED);
     return true;
   }
 
@@ -730,7 +842,8 @@ private:
       const Point2 map_target = px4_map_transform_.localPositionToMap(
           Point2{unavailable_path_hold_target_->x, unavailable_path_hold_target_->y});
       RCLCPP_WARN(get_logger(),
-                  "FINITE_EXECUTION_PATH unavailable=true action=position_hold "
+                  "FINITE_EXECUTION_PATH unavailable=true "
+                  "authority=local_non_authoritative action=position_hold "
                   "target=(%.3f,%.3f,%.3f)",
                   map_target.x, map_target.y,
                   unavailable_path_hold_target_->z + px4_map_transform_.map_origin.z);
@@ -740,24 +853,53 @@ private:
         Point2{unavailable_path_hold_target_->x, unavailable_path_hold_target_->y},
         unavailable_path_hold_target_->z,
         px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
-    publishAppliedControlFeedback(Point2{}, 0.0, 0.0);
   }
 
   void publishAppliedControlFeedback(const Point2 acceleration,
                                      const double vertical_acceleration,
-                                     const double yaw_rate) {
+                                     const double yaw_rate,
+                                     const double yaw_acceleration,
+                                     const bool control_authoritative,
+                                     const std::uint8_t execution_mode) {
     if (!applied_control_feedback_pub_) {
       return;
     }
     msg::MppiControlFeedback feedback;
     feedback.header.stamp = now();
     feedback.header.frame_id = applied_control_feedback_frame_id_;
-    feedback.horizon_sequence = horizon_sequence_;
+    feedback.producer_instance_id = offboard_producer_instance_id_;
+    feedback.horizon_producer_instance_id =
+        horizon_admission_.current_producer_instance_id;
+    feedback.horizon_sequence = horizon_admission_.current_sequence;
+    feedback.execution_mode = execution_mode;
+    feedback.control_authoritative = control_authoritative;
     feedback.acceleration.x = acceleration.x;
     feedback.acceleration.y = acceleration.y;
     feedback.acceleration.z = vertical_acceleration;
     feedback.yaw_rate_radps = static_cast<float>(yaw_rate);
+    feedback.yaw_acceleration_radps2 = static_cast<float>(yaw_acceleration);
     applied_control_feedback_pub_->publish(feedback);
+  }
+
+  void publishOffboardSessionHeartbeat() {
+    if (!applied_control_feedback_pub_) {
+      return;
+    }
+    msg::MppiControlFeedback heartbeat;
+    heartbeat.header.stamp = now();
+    heartbeat.header.frame_id = applied_control_feedback_frame_id_;
+    heartbeat.producer_instance_id = offboard_producer_instance_id_;
+    heartbeat.horizon_producer_instance_id = 0U;
+    heartbeat.horizon_sequence = 0U;
+    heartbeat.execution_mode = msg::MppiControlFeedback::EXECUTION_MODE_POSITION_HOLD;
+    heartbeat.control_authoritative = false;
+    applied_control_feedback_pub_->publish(heartbeat);
+  }
+
+  void publishUnavailableControlFeedback() {
+    // Takeoff, destruction, expired/completed horizons, and local fallback
+    // holds are not evidence that any planner horizon was applied.
+    publishOffboardSessionHeartbeat();
   }
 
   [[nodiscard]] double mapAltitudeM() const noexcept {
@@ -778,7 +920,7 @@ private:
   double initial_altitude_m_{18.0};
   FlightEnvelopeConfig flight_envelope_config_{};
   double takeoff_hover_s_{1.0};
-  double control_lookahead_s_{0.05};
+  std::int64_t control_lookahead_ns_{50'000'000};
   double command_resend_period_s_{2.0};
   double local_x_{0.0};
   double local_y_{0.0};
@@ -799,6 +941,7 @@ private:
   bool rviz_drone_follow_tf_enabled_{true};
   bool position_valid_{false};
   bool vehicle_status_seen_{false};
+  bool execution_horizon_rearm_required_{false};
   bool destruction_disarm_confirmed_logged_{false};
   bool require_mission_start_signal_{false};
   bool mission_started_{false};
@@ -810,7 +953,8 @@ private:
   std::optional<Point3> unavailable_path_hold_target_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
   std::optional<bool> last_navigation_readiness_;
-  std::uint64_t horizon_sequence_{0U};
+  std::uint64_t offboard_producer_instance_id_{0U};
+  ExecutionHorizonAdmissionState horizon_admission_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   std::string rviz_drone_follow_frame_{"drone_follow"};

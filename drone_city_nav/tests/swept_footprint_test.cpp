@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <iterator>
 #include <limits>
@@ -190,6 +191,32 @@ TEST(SweptFootprintTest, RawTwoDimensionalSweepRejectsSideContact) {
   EXPECT_EQ(physical.status, SweptFootprintStatus::kRawCollision);
 }
 
+TEST(SweptFootprintTest, RawTwoDimensionalSweepHasNoSamplingScallops) {
+  OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 0.05, 80, 40}};
+  occupancy.reset(CellState::kFree);
+  occupancy.setOccupied(GridIndex{20, 14});
+  const SweptFootprintConfig footprint{.radius_m = 0.25, .sweep_step_m = 1.0};
+
+  const SweptFootprintResult result = validateRawSweptFootprint(
+      occupancy, Point3{0.5, 0.5, 2.0}, Point3{2.5, 0.5, 4.0}, footprint);
+
+  EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
+  EXPECT_NEAR(result.failure_point.y, 0.7, 1.0e-12);
+  EXPECT_GE(result.failure_point.z, 2.0);
+  EXPECT_LE(result.failure_point.z, 4.0);
+}
+
+TEST(SweptFootprintTest, RawTwoDimensionalCapsuleDoesNotInflateBeyondRadius) {
+  OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 0.05, 80, 40}};
+  occupancy.reset(CellState::kFree);
+  occupancy.setOccupied(GridIndex{20, 16});
+
+  EXPECT_TRUE(validateRawSweptFootprint(
+                  occupancy, Point3{0.5, 0.5, 2.0}, Point3{2.5, 0.5, 4.0},
+                  SweptFootprintConfig{.radius_m = 0.25, .sweep_step_m = 1.0})
+                  .accepted());
+}
+
 TEST(SweptFootprintTest, RawTwoDimensionalFootprintIncludesTangentCells) {
   OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 1.0, 8, 6}};
   occupancy.reset(CellState::kFree);
@@ -251,6 +278,30 @@ TEST(SweptFootprintTest, RawThreeDimensionalBodyDoesNotRoundItsAxialCaps) {
                   .accepted());
 }
 
+TEST(SweptFootprintTest, NonCardinalFiniteBodyIncludesExactTangentBox) {
+  const Point3 position{0.0, 0.0, 0.0};
+  const FootprintBodyAxis axis{0.6, 0.8, 0.0};
+  const SweptFootprintConfig footprint{
+      .radius_m = 0.2, .lower_extent_m = 0.4, .upper_extent_m = 0.6};
+
+  EXPECT_TRUE(footprintIntersectsAxisAlignedBox(
+      position, axis, footprint, Point3{-0.26, 0.12, 0.0}, Point3{-0.16, 0.22, 0.1}));
+}
+
+TEST(SweptFootprintTest, NonCardinalFiniteBodyIncludesShallowPenetrationBox) {
+  const Point3 position{0.0, 0.0, 0.0};
+  const FootprintBodyAxis axis{0.6, 0.8, 0.0};
+  const SweptFootprintConfig footprint{
+      .radius_m = 0.2, .lower_extent_m = 0.4, .upper_extent_m = 0.6};
+  constexpr double kPenetrationM{1.0e-11};
+  const Point3 tangent_corner{-0.8 * (0.2 - kPenetrationM), 0.6 * (0.2 - kPenetrationM),
+                              0.0};
+
+  EXPECT_TRUE(footprintIntersectsAxisAlignedBox(
+      position, axis, footprint, Point3{tangent_corner.x - 0.1, tangent_corner.y, 0.0},
+      Point3{tangent_corner.x, tangent_corner.y + 0.1, 0.1}));
+}
+
 TEST(SweptFootprintTest, RawThreeDimensionalFootprintIncludesTangentCapCells) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
   const SweptFootprintConfig footprint{
@@ -285,6 +336,81 @@ TEST(SweptFootprintTest, RawWorldBoundaryIsNotAnArtificialObstacle) {
                   Point3{8.0, 1.5, 1.5}, FootprintBodyAxis{},
                   SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25})
                   .accepted());
+}
+
+TEST(SweptFootprintTest, KnownStaticWorldRejectsPartialAndCompleteBoundsExposure) {
+  const OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4}};
+  const SweptFootprintConfig footprint{
+      .radius_m = 0.82,
+      .lower_extent_m = 0.23,
+      .upper_extent_m = 0.35,
+      .sweep_step_m = 0.25,
+  };
+
+  EXPECT_EQ(validateKnownStaticFootprintAt(occupancy, Point3{0.5, 1.5, 1.5},
+                                           FootprintBodyAxis{}, footprint)
+                .status,
+            SweptFootprintStatus::kOutsideGrid);
+  EXPECT_EQ(validateKnownStaticSweptFootprint(
+                occupancy, Point3{1.5, 1.5, 1.5}, FootprintBodyAxis{},
+                Point3{8.0, 1.5, 1.5}, FootprintBodyAxis{}, footprint)
+                .status,
+            SweptFootprintStatus::kOutsideGrid);
+}
+
+TEST(SweptFootprintTest, RotatingStaticSweepRejectsIntermediateBoundsExposure) {
+  const OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.1, 45, 40, 20}};
+  const Point3 position{3.0, 2.0, 1.0};
+  const double lateral_axis = std::sqrt(0.75);
+  const FootprintBodyAxis first_axis{0.5, lateral_axis, 0.0};
+  const FootprintBodyAxis second_axis{0.5, -lateral_axis, 0.0};
+  const SweptFootprintConfig footprint{.radius_m = 0.1,
+                                       .lower_extent_m = 2.0,
+                                       .upper_extent_m = 2.0,
+                                       .sweep_step_m = 0.25};
+
+  ASSERT_TRUE(validateKnownStaticFootprintAt(occupancy, position, first_axis, footprint)
+                  .accepted());
+  ASSERT_TRUE(
+      validateKnownStaticFootprintAt(occupancy, position, second_axis, footprint)
+          .accepted());
+  EXPECT_EQ(validateKnownStaticSweptFootprint(occupancy, position, first_axis, position,
+                                              second_axis, footprint)
+                .status,
+            SweptFootprintStatus::kOutsideGrid);
+}
+
+TEST(SweptFootprintTest, RotatingRawSweepRejectsIntermediateOccupiedVoxelContact) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.1, 60, 40, 20}};
+  occupancy.setOccupied(GridIndex3D{44, 20, 10});
+  const Point3 position{3.0, 2.0, 1.0};
+  const double lateral_axis = std::sqrt(0.75);
+  const FootprintBodyAxis first_axis{0.5, lateral_axis, 0.0};
+  const FootprintBodyAxis second_axis{0.5, -lateral_axis, 0.0};
+  const SweptFootprintConfig footprint{.radius_m = 0.1,
+                                       .lower_extent_m = 2.0,
+                                       .upper_extent_m = 2.0,
+                                       .sweep_step_m = 0.25};
+
+  ASSERT_TRUE(
+      validateRawFootprintAt(occupancy, position, first_axis, footprint).accepted());
+  ASSERT_TRUE(
+      validateRawFootprintAt(occupancy, position, second_axis, footprint).accepted());
+  EXPECT_EQ(validateRawSweptFootprint(occupancy, position, first_axis, position,
+                                      second_axis, footprint)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+}
+
+TEST(SweptFootprintTest, AmbiguousAntipodalBodyAxisSweepFailsClosed) {
+  const OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.25, 20, 20, 20}};
+
+  EXPECT_EQ(validateRawSweptFootprint(
+                occupancy, Point3{2.0, 2.0, 2.0}, FootprintBodyAxis{1.0, 0.0, 0.0},
+                Point3{2.0, 2.0, 2.0}, FootprintBodyAxis{-1.0, 0.0, 0.0},
+                SweptFootprintConfig{})
+                .status,
+            SweptFootprintStatus::kInvalidEsdf);
 }
 
 TEST(SweptFootprintTest, ObservedWorldRequiresEntireSweptBodyToBeKnownFree) {
@@ -540,6 +666,9 @@ TEST(SweptFootprintTest,
       .footprint = footprint,
   };
 
+  ASSERT_TRUE(validateRawFootprintAt(occupancy, Point3{2.0, 2.0, 2.25},
+                                     FootprintBodyAxis{}, footprint, &seed)
+                  .accepted());
   EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, seed.body_axis,
                                         Point3{2.0, 2.0, 2.25}, FootprintBodyAxis{},
                                         footprint, &seed)
@@ -666,6 +795,29 @@ TEST(SweptFootprintTest, RawPointCloudSweepRejectsPhysicalSideContact) {
   EXPECT_DOUBLE_EQ(result.failure_point.y, obstacle_points.front().y);
 }
 
+TEST(SweptFootprintTest, RotatingRawPointCloudSweepRejectsIntermediateContact) {
+  const std::vector<Point3> obstacle_points{{4.5, 2.0, 1.0}};
+  const Point3 position{3.0, 2.0, 1.0};
+  const double lateral_axis = std::sqrt(0.75);
+  const FootprintBodyAxis first_axis{0.5, lateral_axis, 0.0};
+  const FootprintBodyAxis second_axis{0.5, -lateral_axis, 0.0};
+  const SweptFootprintConfig footprint{.radius_m = 0.1,
+                                       .lower_extent_m = 2.0,
+                                       .upper_extent_m = 2.0,
+                                       .sweep_step_m = 0.25};
+
+  ASSERT_TRUE(
+      validateRawPointCloudFootprintAt(obstacle_points, position, first_axis, footprint)
+          .accepted());
+  ASSERT_TRUE(validateRawPointCloudFootprintAt(obstacle_points, position, second_axis,
+                                               footprint)
+                  .accepted());
+  EXPECT_EQ(validateRawPointCloudSweptFootprint(obstacle_points, position, first_axis,
+                                                position, second_axis, footprint)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+}
+
 TEST(SweptFootprintTest,
      RawPointCloudLaunchSupportMatchesPersistentSupportCellContract) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
@@ -686,6 +838,13 @@ TEST(SweptFootprintTest,
   ASSERT_TRUE(support.has_value());
 
   const std::vector<Point3> support_return{{2.6, 2.0, 1.875}};
+  ASSERT_TRUE(validateRawPointCloudFootprintAt(support_return, seed.position,
+                                               seed.body_axis, footprint, &*support)
+                  .accepted());
+  ASSERT_EQ(validateRawPointCloudFootprintAt(support_return, Point3{2.3, 2.0, 2.0},
+                                             seed.body_axis, footprint, &*support)
+                .status,
+            SweptFootprintStatus::kRawCollision);
   EXPECT_TRUE(validateRawPointCloudSweptFootprint(
                   support_return, seed.position, seed.body_axis, Point3{2.2, 2.0, 2.25},
                   seed.body_axis, footprint, &*support)

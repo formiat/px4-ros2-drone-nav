@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <limits>
 #include <stdexcept>
 
 namespace drone_city_nav {
@@ -16,6 +17,17 @@ TEST(MissionWaypointSequenceTest, RejectsAnEmptyParameter) {
 TEST(MissionWaypointSequenceTest, RejectsIncompleteWaypointTriples) {
   EXPECT_THROW(missionWaypointsFromFlatParameters(std::array<double, 2U>{1.0, 2.0}),
                std::invalid_argument);
+}
+
+TEST(MissionWaypointSequenceTest, RejectsUnrepresentableStopHoldDuration) {
+  EXPECT_THROW(
+      MissionWaypointSequence({Point3{1.0, 2.0, 3.0}},
+                              MissionWaypointSequenceConfig{
+                                  .goal_radius_m = 2.0,
+                                  .stop_speed_mps = 0.8,
+                                  .stop_hold_s = std::numeric_limits<double>::max(),
+                              }),
+      std::invalid_argument);
 }
 
 TEST(MissionWaypointSequenceTest, RequiresTerminalStopBeforeAdvancing) {
@@ -65,6 +77,30 @@ TEST(MissionWaypointSequenceTest, CompletesOnlyAfterTheLastWaypoint) {
   EXPECT_TRUE(complete.mission_completed);
   EXPECT_TRUE(sequence.missionCompleted());
   EXPECT_EQ(sequence.completedWaypointCount(), 2U);
+}
+
+TEST(MissionWaypointSequenceTest,
+     PhysicalHoldContinuityCanBeGatedByAnIndependentExecutionWitness) {
+  MissionWaypointSequence sequence{{Point3{10.0, 20.0, 18.0}},
+                                   MissionWaypointSequenceConfig{.goal_radius_m = 2.0,
+                                                                 .stop_speed_mps = 0.8,
+                                                                 .stop_hold_s = 2.0}};
+  EXPECT_FALSE(sequence.physicalGoalHoldReady(
+      {.stamp_ns = 1'000'000'000, .goal_captured = true, .horizontal_speed_mps = 0.1}));
+  EXPECT_FALSE(sequence.physicalGoalHoldReady({.stamp_ns = 2'000'000'000,
+                                               .goal_captured = false,
+                                               .horizontal_speed_mps = 0.1}));
+  EXPECT_FALSE(sequence.physicalGoalHoldReady(
+      {.stamp_ns = 3'000'000'000, .goal_captured = true, .horizontal_speed_mps = 0.1}));
+  EXPECT_FALSE(sequence.physicalGoalHoldReady(
+      {.stamp_ns = 4'900'000'000, .goal_captured = true, .horizontal_speed_mps = 0.1}));
+  EXPECT_TRUE(sequence.physicalGoalHoldReady(
+      {.stamp_ns = 5'100'000'000, .goal_captured = true, .horizontal_speed_mps = 0.1}));
+  EXPECT_FALSE(sequence.missionCompleted());
+
+  const MissionWaypointUpdate acknowledged = sequence.acknowledgeGoalCapture();
+  EXPECT_TRUE(acknowledged.mission_completed);
+  EXPECT_TRUE(sequence.missionCompleted());
 }
 
 TEST(MissionWaypointSequenceTest, AcceptsAuthoritativeControllerCaptures) {

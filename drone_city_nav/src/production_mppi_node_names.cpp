@@ -22,12 +22,16 @@ productionMppiPlanningStateName(const ProductionMppiPlanningState state) noexcep
 const char* productionMppiPreviousControlSourceName(
     const ProductionMppiPreviousControlSource source) noexcept {
   switch (source) {
+    case ProductionMppiPreviousControlSource::kUnavailable:
+      return "unavailable";
     case ProductionMppiPreviousControlSource::kEngineFallback:
       return "engine_fallback";
     case ProductionMppiPreviousControlSource::kMeasuredAcceleration:
       return "measured_acceleration";
     case ProductionMppiPreviousControlSource::kOffboardFeedback:
       return "offboard_feedback";
+    case ProductionMppiPreviousControlSource::kStationaryCaptureRearm:
+      return "stationary_capture_rearm";
   }
   return "unknown";
 }
@@ -39,6 +43,8 @@ productionMppiExecutionModeName(const ProductionMppiExecutionMode mode) noexcept
       return "planned";
     case ProductionMppiExecutionMode::kPositionHold:
       return "position_hold";
+    case ProductionMppiExecutionMode::kRevoked:
+      return "revoked";
   }
   return "unknown";
 }
@@ -56,6 +62,8 @@ productionMppiExecutionReasonName(const ProductionMppiExecutionReason reason) no
       return "goal_capture";
     case ProductionMppiExecutionReason::kNoExecutableRoute:
       return "no_executable_route";
+    case ProductionMppiExecutionReason::kUnavailableWorld:
+      return "unavailable_world";
   }
   return "unknown";
 }

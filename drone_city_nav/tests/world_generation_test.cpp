@@ -8,22 +8,106 @@
 namespace drone_city_nav {
 namespace {
 
+constexpr ProducerEpochAdmissionConfig kObservationAdmissionConfig{
+    .maximum_observation_age_ns = 5'000'000'000LL,
+    .maximum_confirmation_interval_ns = 1'000'000'000LL,
+};
+
+[[nodiscard]] ProducerEpochObservation
+observation(const std::uint64_t producer, const std::uint64_t sequence,
+            const std::int64_t source_stamp_ns, const std::int64_t receive_stamp_ns,
+            const std::uint64_t fingerprint = 99U) noexcept {
+  return ProducerEpochObservation{
+      .producer_instance_id = producer,
+      .sequence = sequence,
+      .source_stamp_ns = source_stamp_ns,
+      .receive_stamp_ns = receive_stamp_ns,
+      .content_fingerprint = fingerprint,
+  };
+}
+
 TEST(WorldGenerationTest, StableWorldHeartbeatRefreshesSensorLiveness) {
   LatestObservationTracker tracker;
-  ASSERT_TRUE(tracker.observe(7U, 12U, 1'000'000'000LL));
-  EXPECT_DOUBLE_EQ(tracker.latest().ageMs(1'500'000'000LL), 500.0);
+  ASSERT_TRUE(tracker
+                  .observe(kObservationAdmissionConfig,
+                           observation(7U, 12U, 990'000'000LL, 1'000'000'000LL),
+                           1'000'000'000LL)
+                  .install_observation);
+  EXPECT_DOUBLE_EQ(tracker.latest().ageMs(1'500'000'000LL), 510.0);
 
-  ASSERT_TRUE(tracker.observe(7U, 13U, 2'000'000'000LL));
-  EXPECT_DOUBLE_EQ(tracker.latest().ageMs(2'100'000'000LL), 100.0);
+  ASSERT_TRUE(tracker
+                  .observe(kObservationAdmissionConfig,
+                           observation(7U, 13U, 1'990'000'000LL, 2'000'000'000LL),
+                           2'000'000'000LL)
+                  .install_observation);
+  EXPECT_DOUBLE_EQ(tracker.latest().ageMs(2'100'000'000LL), 110.0);
 }
 
 TEST(WorldGenerationTest, OutOfOrderHeartbeatCannotRewindLatestObservation) {
   LatestObservationTracker tracker;
-  ASSERT_TRUE(tracker.observe(7U, 12U, 1'000'000'000LL));
+  ASSERT_TRUE(tracker
+                  .observe(kObservationAdmissionConfig,
+                           observation(7U, 12U, 990'000'000LL, 1'000'000'000LL),
+                           1'000'000'000LL)
+                  .install_observation);
 
-  EXPECT_FALSE(tracker.observe(7U, 11U, 2'000'000'000LL));
+  EXPECT_FALSE(tracker
+                   .observe(kObservationAdmissionConfig,
+                            observation(7U, 11U, 1'990'000'000LL, 2'000'000'000LL),
+                            2'000'000'000LL)
+                   .install_observation);
   EXPECT_EQ(tracker.latest().sequence, 12U);
   EXPECT_EQ(tracker.latest().receive_stamp_ns, 1'000'000'000LL);
+}
+
+TEST(WorldGenerationTest, ExactHeartbeatReplayDoesNotRefreshObservationAge) {
+  LatestObservationTracker tracker;
+  ASSERT_TRUE(tracker
+                  .observe(kObservationAdmissionConfig,
+                           observation(7U, 12U, 990'000'000LL, 1'000'000'000LL),
+                           1'000'000'000LL)
+                  .install_observation);
+
+  const ProducerEpochAdmissionResult replay = tracker.observe(
+      kObservationAdmissionConfig, observation(7U, 12U, 990'000'000LL, 1'500'000'000LL),
+      1'500'000'000LL);
+
+  EXPECT_EQ(replay.status, ProducerEpochAdmissionStatus::kIdempotentReplay);
+  EXPECT_EQ(tracker.latest().receive_stamp_ns, 1'000'000'000LL);
+  EXPECT_DOUBLE_EQ(tracker.latest().ageMs(1'500'000'000LL), 510.0);
+}
+
+TEST(WorldGenerationTest, ObservationAgeIncludesDelayedSourceContent) {
+  LatestObservationTracker tracker;
+  ASSERT_TRUE(tracker
+                  .observe(kObservationAdmissionConfig,
+                           observation(7U, 12U, 100'000'000LL, 4'900'000'000LL),
+                           5'000'000'000LL)
+                  .install_observation);
+
+  EXPECT_DOUBLE_EQ(tracker.latest().ageMs(5'050'000'000LL), 4'950.0);
+}
+
+TEST(WorldGenerationTest, ConflictedHeartbeatIdentityIsUnavailableUntilNewer) {
+  LatestObservationTracker tracker;
+  ASSERT_TRUE(tracker
+                  .observe(kObservationAdmissionConfig,
+                           observation(7U, 12U, 990'000'000LL, 1'000'000'000LL),
+                           1'000'000'000LL)
+                  .install_observation);
+
+  const ProducerEpochAdmissionResult conflict = tracker.observe(
+      kObservationAdmissionConfig,
+      observation(7U, 12U, 990'000'000LL, 1'010'000'000LL, 100U), 1'010'000'000LL);
+  ASSERT_EQ(conflict.status, ProducerEpochAdmissionStatus::kRejectedIdentityConflict);
+  EXPECT_FALSE(tracker.latest().available());
+  EXPECT_TRUE(tracker.latest().identity_conflicted);
+
+  const ProducerEpochAdmissionResult recovered = tracker.observe(
+      kObservationAdmissionConfig,
+      observation(7U, 13U, 1'020'000'000LL, 1'030'000'000LL, 101U), 1'030'000'000LL);
+  ASSERT_TRUE(recovered.install_observation);
+  EXPECT_TRUE(tracker.latest().available());
 }
 
 TEST(WorldGenerationTest, LocalWorldGenerationLinksRawPoseEsdfGpuAndTopology) {

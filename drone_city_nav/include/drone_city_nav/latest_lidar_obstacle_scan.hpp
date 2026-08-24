@@ -28,27 +28,9 @@ struct LatestLidarObstacleScanBuildResult {
   bool valid{false};
 };
 
-struct LatestLidarObstacleSnapshot {
-  std::vector<Point3> hit_points_map_m;
-  std::int64_t acquisition_stamp_ns{0};
-  std::int64_t receive_stamp_ns{0};
-  std::uint64_t sequence{0U};
-  std::uint64_t pose_generation{0U};
-  std::size_t source_beam_count{0U};
-  std::size_t invalid_beam_count{0U};
-};
-
-struct LatestLidarObstacleFreshness {
-  double age_ms{-1.0};
-  bool fresh{false};
-  bool receive_time_fallback{false};
-};
-
 [[nodiscard]] LatestLidarObstacleScanBuildResult
 buildLatestLidarObstacleScan(const LatestLidarObstacleScanBuildInput& input);
 
-[[nodiscard]] LatestLidarObstacleFreshness
-assessLatestLidarObstacleFreshness(const LatestLidarObstacleSnapshot& snapshot,
-                                   std::int64_t now_ns, double maximum_age_ms) noexcept;
+[[nodiscard]] std::uint64_t createLatestLidarObstacleProducerInstanceId() noexcept;
 
 } // namespace drone_city_nav

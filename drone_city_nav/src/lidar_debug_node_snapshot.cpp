@@ -152,6 +152,10 @@ void LidarDebugNode::writeSnapshot() {
       .use_full_lidar_extrinsic = use_full_lidar_extrinsic_,
       .lidar_translation_body_frd_m = lidar_translation_body_frd_m_,
       .lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_,
+      .px4_to_map_m00 = px4_map_transform_.m00,
+      .px4_to_map_m01 = px4_map_transform_.m01,
+      .px4_to_map_m10 = px4_map_transform_.m10,
+      .px4_to_map_m11 = px4_map_transform_.m11,
   };
 }
 

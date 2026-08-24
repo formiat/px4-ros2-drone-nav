@@ -11,6 +11,10 @@ namespace {
 
 using swept_footprint_detail::bodyPoint;
 using swept_footprint_detail::cross;
+using swept_footprint_detail::inflatedSweepFootprint;
+using swept_footprint_detail::interpolateSweepAxis;
+using swept_footprint_detail::interpolateSweepPosition;
+using swept_footprint_detail::makeConservativeSweepCover3D;
 using swept_footprint_detail::makeKnownClearanceResult;
 using swept_footprint_detail::makeStatusResult;
 using swept_footprint_detail::mergeEvidence;
@@ -159,29 +163,30 @@ validatePlanarCircleRawCells(const mppi::EsdfGrid& grid,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const double critical_distance_m, const double preferred_distance_m) noexcept {
   const double length_m = distance3D(first, second);
-  const double step_m = std::max(1.0e-3, config.sweep_step_m);
-  const std::size_t samples =
-      std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
-  const double exposure_per_sample = length_m / static_cast<double>(samples);
   SweptFootprintClearanceProfile profile{
       .validation = {.status = SweptFootprintStatus::kValid}};
-  for (std::size_t sample = 0U; sample <= samples; ++sample) {
-    const double ratio = static_cast<double>(sample) / static_cast<double>(samples);
-    const Point3 position{std::lerp(first.x, second.x, ratio),
-                          std::lerp(first.y, second.y, ratio),
-                          std::lerp(first.z, second.z, ratio)};
-    const FootprintBodyAxis body_axis = normalized(FootprintBodyAxis{
-        std::lerp(first_body_axis.x, second_body_axis.x, ratio),
-        std::lerp(first_body_axis.y, second_body_axis.y, ratio),
-        std::lerp(first_body_axis.z, second_body_axis.z, ratio),
-    });
+  const auto cover = makeConservativeSweepCover3D(first, first_body_axis, second,
+                                                  second_body_axis, config);
+  if (!cover.valid()) {
+    profile.validation = makeStatusResult(SweptFootprintStatus::kInvalidEsdf, first);
+    return profile;
+  }
+  const double exposure_per_sample =
+      length_m / static_cast<double>(cover.interval_count);
+  for (std::size_t interval = 0U; interval < cover.interval_count; ++interval) {
+    const double ratio = (static_cast<double>(interval) + 0.5) /
+                         static_cast<double>(cover.interval_count);
+    const FootprintBodyAxis midpoint_axis = interpolateSweepAxis(cover, ratio);
+    const SweptFootprintConfig inflated_config =
+        inflatedSweepFootprint(config, cover, midpoint_axis);
     const SweptFootprintResult point =
-        validateFootprintAt(grid, esdf_m, position, body_axis, config);
+        validateFootprintAt(grid, esdf_m, interpolateSweepPosition(cover, ratio),
+                            midpoint_axis, inflated_config);
     mergeEvidence(profile.validation, point);
     if (point.evidence.raw_collision) {
       return profile;
     }
-    if (sample == 0U || !point.evidence.known_clearance_observed) {
+    if (!point.evidence.known_clearance_observed) {
       continue;
     }
     if (point.evidence.minimum_known_clearance_m < critical_distance_m) {

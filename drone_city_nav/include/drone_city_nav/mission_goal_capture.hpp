@@ -18,7 +18,7 @@ struct MissionGoalCaptureObservation {
 struct MissionGoalCaptureResult {
   bool latched{false};
   bool newly_latched{false};
-  double horizontal_distance_m{0.0};
+  double distance_m{0.0};
 };
 
 class MissionGoalCaptureLatch final {
@@ -27,6 +27,7 @@ public:
 
   [[nodiscard]] MissionGoalCaptureResult
   update(const MissionGoalCaptureObservation& observation);
+  [[nodiscard]] bool latchedFor(const Point3& mission_goal) const noexcept;
 
 private:
   MissionGoalCaptureConfig config_{};

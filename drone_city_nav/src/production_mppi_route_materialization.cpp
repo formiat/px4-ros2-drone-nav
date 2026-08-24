@@ -3,8 +3,10 @@
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
+#include <ranges>
 #include <span>
 #include <string>
 #include <utility>
@@ -137,6 +139,36 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     return result;
   }
 
+  std::shared_ptr<const OccupancyGrid3D> observed_passage_occupancy;
+  std::uint64_t observed_passage_occupancy_content_fingerprint{0U};
+  if (world.observed_occupancy) {
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& owner =
+        world.observed_raw_world_owner;
+    const RawMapVersion& prepared_raw_version = world.local_world_generation.raw_map;
+    if (!owner || !owner->valid() || !prepared_raw_version.valid() ||
+        std::addressof(owner->occupancy()) != world.observed_occupancy.get() ||
+        owner->version().producer_instance_id != world.producer_instance_id ||
+        owner->version().revision != world.source_raw_revision ||
+        owner->version().producer_instance_id !=
+            prepared_raw_version.producer_instance_id ||
+        owner->version().base_snapshot_revision !=
+            prepared_raw_version.base_snapshot_revision ||
+        owner->version().revision != prepared_raw_version.revision) {
+      result.validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidEsdf};
+      return result;
+    }
+    observed_passage_occupancy = owner->occupiedSnapshot();
+    observed_passage_occupancy_content_fingerprint =
+        owner->occupiedContentFingerprint();
+    if (!observed_passage_occupancy ||
+        observed_passage_occupancy_content_fingerprint == 0U) {
+      result.validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidEsdf};
+      return result;
+    }
+  }
+
   const auto validation_started = std::chrono::steady_clock::now();
   auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(lattice.route);
   std::vector<ConstrainedRouteSpan> initial_spans = makeConstrainedRouteSpans(
@@ -204,19 +236,19 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   std::vector<CooperativePassageAssignment> passage_assignments;
   std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
   bool cooperative_route_valid = true;
-  const bool passage_geometry_required =
-      static_occupancy_3d_.has_value() && !geometry.constrained_spans.empty() &&
-      (cooperative_traffic_enabled_ ||
-       (world.passage_traversals && !world.passage_traversals->empty()));
-  if (passage_geometry_required) {
+  const OccupancyGrid3D* passage_occupancy = observed_passage_occupancy.get();
+  std::uint64_t passage_occupancy_content_fingerprint =
+      observed_passage_occupancy_content_fingerprint;
+  if (passage_occupancy == nullptr && static_occupancy_3d_ != nullptr) {
+    passage_occupancy = &*static_occupancy_3d_;
+    passage_occupancy_content_fingerprint = static_occupancy_3d_->contentFingerprint();
+  }
+  const bool passage_geometry_required = !geometry.constrained_spans.empty();
+  if (passage_geometry_required && passage_occupancy != nullptr) {
     const auto passage_started = std::chrono::steady_clock::now();
     PassageVolumeResource volume_resource = acquireDerivedPassageVolumes(
-        *mutable_route, geometry.constrained_spans, *static_occupancy_3d_,
-        cooperative_passage_volume_config_);
-    prepared.passage_volume_build_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  passage_started)
-            .count();
+        *mutable_route, geometry.constrained_spans, *passage_occupancy,
+        passage_occupancy_content_fingerprint, cooperative_passage_volume_config_);
     prepared.passage_volume_resource_reused = volume_resource.shared_resource_reused;
     passage_volumes = std::move(volume_resource.volumes);
     const std::span<const PassageVolume> volumes =
@@ -228,7 +260,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     if (cooperative_traffic_enabled_) {
       CooperativePassageRouteResult cooperative_route =
           applyCooperativePassageCorridors(*mutable_route, geometry.constrained_spans,
-                                           volumes, *static_occupancy_3d_,
+                                           volumes, *passage_occupancy,
                                            cooperative_passage_route_config_);
       cooperative_route_valid = cooperative_route.valid;
       if (cooperative_route.valid) {
@@ -237,6 +269,56 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       }
       passage_assignments = std::move(cooperative_route.assignments);
     }
+    if (cooperative_route_valid) {
+      PassageVolumeResource final_volume_resource = acquireDerivedPassageVolumes(
+          *mutable_route, geometry.constrained_spans, *passage_occupancy,
+          passage_occupancy_content_fingerprint, cooperative_passage_volume_config_);
+      prepared.passage_volume_resource_reused =
+          prepared.passage_volume_resource_reused ||
+          final_volume_resource.shared_resource_reused;
+      passage_volumes = std::move(final_volume_resource.volumes);
+      const std::span<const PassageVolume> final_volumes =
+          passage_volumes ? std::span<const PassageVolume>{*passage_volumes}
+                          : std::span<const PassageVolume>{};
+      cooperative_route_valid =
+          final_volumes.size() == geometry.constrained_spans.size() &&
+          (passage_assignments.empty() ||
+           passage_assignments.size() == geometry.constrained_spans.size()) &&
+          std::ranges::all_of(final_volumes, &PassageVolume::raw_validated) &&
+          projectPassageVolumeEnvelopes(geometry.constrained_spans, final_volumes,
+                                        cooperative_passage_volume_config_.footprint) ==
+              geometry.constrained_spans.size();
+      for (std::size_t index = 0U;
+           cooperative_route_valid && index < passage_assignments.size(); ++index) {
+        CooperativePassageAssignment& assignment = passage_assignments[index];
+        const PassageVolume& volume = final_volumes[index];
+        const ConstrainedRouteSpan& span = geometry.constrained_spans[index];
+        const double first_lateral_bound_m =
+            volume.minimum_lateral_offset_m * static_cast<double>(span.direction_sign) +
+            assignment.applied_lateral_offset_m;
+        const double second_lateral_bound_m =
+            volume.maximum_lateral_offset_m * static_cast<double>(span.direction_sign) +
+            assignment.applied_lateral_offset_m;
+        assignment.physical_width_m = volume.minimum_physical_width_m;
+        assignment.minimum_lateral_offset_m =
+            std::min(first_lateral_bound_m, second_lateral_bound_m);
+        assignment.maximum_lateral_offset_m =
+            std::max(first_lateral_bound_m, second_lateral_bound_m);
+        assignment.minimum_secondary_offset_m = volume.minimum_secondary_offset_m;
+        assignment.maximum_secondary_offset_m = volume.maximum_secondary_offset_m;
+        assignment.passage_cross_section_count = volume.cross_sections.size();
+        assignment.passage_volume_raw_validated = volume.raw_validated;
+      }
+    }
+    prepared.passage_volume_build_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  passage_started)
+            .count();
+  }
+  if (passage_geometry_required && (passage_occupancy == nullptr || !passage_volumes)) {
+    cooperative_route_valid = false;
+  } else if (!passage_volumes) {
+    passage_volumes = std::make_shared<const std::vector<PassageVolume>>();
   }
 
   auto mutable_spans = std::make_shared<std::vector<ConstrainedRouteSpan>>(
@@ -303,9 +385,12 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   }
 
   std::vector<PassageTraversalId> selected_passage_traversal_ids;
-  selected_passage_traversal_ids.reserve(route_traversals.size());
-  for (const SelectedPassageTraversal& traversal : route_traversals) {
-    selected_passage_traversal_ids.push_back(traversal.passage_traversal_id);
+  selected_passage_traversal_ids.reserve(spans->size());
+  for (const ConstrainedRouteSpan& span : *spans) {
+    if (std::ranges::find(selected_passage_traversal_ids, span.passage_traversal_id) ==
+        selected_passage_traversal_ids.end()) {
+      selected_passage_traversal_ids.push_back(span.passage_traversal_id);
+    }
   }
   prepared.route_3d = route;
   prepared.route_2d_projection = projectRouteTo2D(*route);

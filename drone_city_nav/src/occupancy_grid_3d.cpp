@@ -5,8 +5,10 @@
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
 
 namespace drone_city_nav {
@@ -209,6 +211,56 @@ std::uint64_t OccupancyGrid3D::fingerprint() const noexcept {
   return fingerprint_;
 }
 
+std::uint64_t OccupancyGrid3D::contentFingerprint() const {
+  if (content_fingerprint_cache_.has_value()) {
+    return *content_fingerprint_cache_;
+  }
+  constexpr std::uint64_t kOffset{1469598103934665603ULL};
+  constexpr std::uint64_t kPrime{1099511628211ULL};
+  std::uint64_t hash{kOffset};
+  const auto add = [&](const std::uint64_t value) {
+    for (std::size_t byte = 0U; byte < sizeof(value); ++byte) {
+      hash ^= (value >> (byte * 8U)) & 0xffU;
+      hash *= kPrime;
+    }
+  };
+  const auto add_number = [&](const double value) {
+    add(value == 0.0 ? 0U : std::bit_cast<std::uint64_t>(value));
+  };
+  add_number(bounds_.origin_x);
+  add_number(bounds_.origin_y);
+  add_number(bounds_.origin_z);
+  add_number(bounds_.resolution_m);
+  add(static_cast<std::uint64_t>(bounds_.width_cells));
+  add(static_cast<std::uint64_t>(bounds_.height_cells));
+  add(static_cast<std::uint64_t>(bounds_.depth_cells));
+
+  std::vector<std::pair<OccupancyChunkIndex3D, const Chunk*>> sorted_chunks;
+  sorted_chunks.reserve(chunks_.size());
+  for (const auto& [index, chunk] : chunks_) {
+    sorted_chunks.emplace_back(index, &chunk);
+  }
+  std::ranges::sort(sorted_chunks, {}, [](const auto& entry) {
+    return std::tuple{entry.first.x, entry.first.y, entry.first.z};
+  });
+  add(static_cast<std::uint64_t>(sorted_chunks.size()));
+  for (const auto& [index, chunk] : sorted_chunks) {
+    add(static_cast<std::uint64_t>(static_cast<std::int64_t>(index.x)));
+    add(static_cast<std::uint64_t>(static_cast<std::int64_t>(index.y)));
+    add(static_cast<std::uint64_t>(static_cast<std::int64_t>(index.z)));
+    for (const std::uint64_t word : *chunk) {
+      add(word);
+    }
+  }
+  content_fingerprint_cache_ = hash == 0U ? 1U : hash;
+  return *content_fingerprint_cache_;
+}
+
+std::optional<std::uint64_t>
+OccupancyGrid3D::cachedContentFingerprint() const noexcept {
+  return content_fingerprint_cache_;
+}
+
 std::size_t OccupancyGrid3D::occupiedChunkCount() const noexcept {
   return chunks_.size();
 }
@@ -281,6 +333,7 @@ void OccupancyGrid3D::setOccupied(const GridIndex3D index) {
   if ((word & mask) == 0U) {
     word |= mask;
     ++occupied_voxels_;
+    content_fingerprint_cache_.reset();
   }
 }
 
@@ -300,6 +353,7 @@ void OccupancyGrid3D::clearOccupied(const GridIndex3D index) {
   }
   word &= ~mask;
   --occupied_voxels_;
+  content_fingerprint_cache_.reset();
   if (std::ranges::all_of(chunk->second,
                           [](const std::uint64_t value) { return value == 0U; })) {
     chunks_.erase(chunk);

@@ -9,6 +9,9 @@
 namespace drone_city_nav {
 namespace {
 
+constexpr double kMaximumStationCreditPerTravel{1.0};
+constexpr double kStationCreditToleranceM{1.0e-6};
+
 [[nodiscard]] bool sameProducerLineage(const NavigationWorldCertificate3D& first,
                                        const NavigationWorldCertificate3D& second) {
   return first.producer_instance_id == second.producer_instance_id;
@@ -259,7 +262,14 @@ assessRouteActivation3D(const MaterializedRouteProposal3D& proposal,
     return result;
   }
 
-  result.projection = projectOntoRoute3D(route, observation.position, 0.0);
+  const double maximum_station_m =
+      std::min(route.back().station_m,
+               route.front().station_m +
+                   kMaximumStationCreditPerTravel *
+                       distance3D(route.front().position, observation.position) +
+                   kStationCreditToleranceM);
+  result.projection = projectOntoRoute3DWithinStationWindow(
+      route, observation.position, route.front().station_m, maximum_station_m);
   result.cross_track_accepted =
       result.projection.valid &&
       result.projection.distance_m <= observation.maximum_cross_track_m;
@@ -340,9 +350,19 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
     result.status = RouteExecutionStatus3D::kInvalidRoute;
     return result;
   }
+  if (!std::isfinite(observation.minimum_station_m) ||
+      std::isnan(observation.maximum_station_m) ||
+      observation.maximum_station_m < observation.minimum_station_m ||
+      !std::isfinite(observation.maximum_cross_track_m) ||
+      observation.maximum_cross_track_m <= 0.0) {
+    result.status = RouteExecutionStatus3D::kInvalidProjection;
+    return result;
+  }
 
-  result.projection =
-      projectOntoRoute3D(route, observation.position, observation.minimum_station_m);
+  const double maximum_station_m =
+      std::min(observation.maximum_station_m, route.back().station_m);
+  result.projection = projectOntoRoute3DWithinStationWindow(
+      route, observation.position, observation.minimum_station_m, maximum_station_m);
   if (!result.projection.valid) {
     result.status = RouteExecutionStatus3D::kInvalidProjection;
     return result;

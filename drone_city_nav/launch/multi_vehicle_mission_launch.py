@@ -218,6 +218,11 @@ def make_cooperative_mission_nodes(
                         "execution_horizon_topic": (
                             f"{prefix}/mppi/execution_horizon"
                         ),
+                        "applied_control_feedback_topic": (
+                            f"{prefix}/mppi/applied_control"
+                        ),
+                        "require_mission_start_signal": True,
+                        "mission_start_topic": f"{prefix}/mission_start",
                         "passage_state_topic": (
                             f"{prefix}/cooperative/passage_state"
                         ),

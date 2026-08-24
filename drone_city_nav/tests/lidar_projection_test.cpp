@@ -3,10 +3,82 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace drone_city_nav {
 namespace {
+
+[[nodiscard]] LidarProjectionBodyFrame validReflectedBodyFrame() noexcept {
+  return LidarProjectionBodyFrame{
+      .origin_map_m = Point3{1.0, 2.0, 3.0},
+      .x_axis_map = Point3{1.0, 0.0, 0.0},
+      .y_axis_map = Point3{0.0, 1.0, 0.0},
+      .z_axis_map = Point3{0.0, 0.0, -1.0},
+      .valid = true,
+  };
+}
+
+TEST(LidarProjectionBodyFrameValidation, AcceptsGeneratedReflectedMapBasis) {
+  LidarProjectionPose pose{};
+  pose.position = Point2{1.0, 2.0};
+  pose.altitude_m = 3.0;
+  pose.altitude_valid = true;
+  pose.attitude_valid = true;
+
+  const LidarProjectionBodyFrame frame =
+      lidarProjectionBodyFrame(pose, LidarProjectionConfig{});
+
+  ASSERT_TRUE(frame.valid);
+  EXPECT_TRUE(lidarProjectionBodyFrameIsValid(frame));
+  EXPECT_DOUBLE_EQ(frame.x_axis_map.x, 1.0);
+  EXPECT_DOUBLE_EQ(frame.x_axis_map.y, 0.0);
+  EXPECT_DOUBLE_EQ(frame.x_axis_map.z, 0.0);
+  EXPECT_DOUBLE_EQ(frame.y_axis_map.x, 0.0);
+  EXPECT_DOUBLE_EQ(frame.y_axis_map.y, 1.0);
+  EXPECT_DOUBLE_EQ(frame.y_axis_map.z, 0.0);
+  EXPECT_DOUBLE_EQ(frame.z_axis_map.x, 0.0);
+  EXPECT_DOUBLE_EQ(frame.z_axis_map.y, 0.0);
+  EXPECT_DOUBLE_EQ(frame.z_axis_map.z, -1.0);
+}
+
+TEST(LidarProjectionBodyFrameValidation, AcceptsPositiveDeterminantBasis) {
+  LidarProjectionBodyFrame frame = validReflectedBodyFrame();
+  frame.z_axis_map.z = 1.0;
+
+  EXPECT_TRUE(lidarProjectionBodyFrameIsValid(frame));
+}
+
+TEST(LidarProjectionBodyFrameValidation, RejectsNonunitAxes) {
+  LidarProjectionBodyFrame frame = validReflectedBodyFrame();
+  frame.x_axis_map = Point3{2.0, 0.0, 0.0};
+  frame.y_axis_map = Point3{0.0, 0.5, 0.0};
+
+  EXPECT_FALSE(lidarProjectionBodyFrameIsValid(frame));
+}
+
+TEST(LidarProjectionBodyFrameValidation, RejectsNonorthogonalAxes) {
+  LidarProjectionBodyFrame frame = validReflectedBodyFrame();
+  constexpr double kXAxisComponent{1.0e-2};
+  frame.y_axis_map =
+      Point3{kXAxisComponent, std::sqrt(1.0 - kXAxisComponent * kXAxisComponent), 0.0};
+
+  EXPECT_FALSE(lidarProjectionBodyFrameIsValid(frame));
+}
+
+TEST(LidarProjectionBodyFrameValidation, RejectsInvalidAndNonfiniteFrames) {
+  LidarProjectionBodyFrame invalid_frame = validReflectedBodyFrame();
+  invalid_frame.valid = false;
+  EXPECT_FALSE(lidarProjectionBodyFrameIsValid(invalid_frame));
+
+  LidarProjectionBodyFrame nonfinite_origin = validReflectedBodyFrame();
+  nonfinite_origin.origin_map_m.x = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(lidarProjectionBodyFrameIsValid(nonfinite_origin));
+
+  LidarProjectionBodyFrame nonfinite_axis = validReflectedBodyFrame();
+  nonfinite_axis.x_axis_map.y = std::numeric_limits<double>::infinity();
+  EXPECT_FALSE(lidarProjectionBodyFrameIsValid(nonfinite_axis));
+}
 
 TEST(LidarProjection3D, AppliesFullPoseAndSensorExtrinsic) {
   LidarProjectionPose pose;
@@ -30,6 +102,97 @@ TEST(LidarProjection3D, AppliesFullPoseAndSensorExtrinsic) {
   EXPECT_NEAR(ray.direction_map.x, 0.0, 1.0e-9);
   EXPECT_NEAR(ray.direction_map.y, 1.0, 1.0e-9);
   EXPECT_NEAR(ray.direction_map.z, 0.0, 1.0e-9);
+}
+
+TEST(LidarProjection3D, AppliesReflectedHorizontalPx4ToMapTransformExactly) {
+  constexpr double kBeamAngleRad{0.2};
+  LidarProjectionPose pose;
+  pose.position = {10.0, 20.0};
+  pose.altitude_m = 5.0;
+  pose.yaw_rad = 0.5 * std::numbers::pi;
+  pose.altitude_valid = true;
+  pose.attitude_valid = true;
+  pose.body_to_ned_quaternion = {1.0, 0.0, 0.0, 0.0};
+  pose.body_to_ned_quaternion_valid = true;
+  LidarProjectionConfig config;
+  config.min_projected_altitude_m = -100.0;
+  config.px4_to_map_m00 = 0.0;
+  config.px4_to_map_m01 = 1.0;
+  config.px4_to_map_m10 = 1.0;
+  config.px4_to_map_m11 = 0.0;
+
+  const LidarProjectionBodyFrame frame = lidarProjectionBodyFrame(pose, config);
+  ASSERT_TRUE(frame.valid);
+  EXPECT_NEAR(frame.x_axis_map.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(frame.x_axis_map.y, 1.0, 1.0e-9);
+  EXPECT_NEAR(frame.y_axis_map.x, 1.0, 1.0e-9);
+  EXPECT_NEAR(frame.y_axis_map.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(frame.z_axis_map.z, -1.0, 1.0e-9);
+
+  const Point3 body_point{2.0, -0.5, 0.25};
+  const Point3 map_point = lidarBodyPointToMap(frame, body_point);
+  const Point3 recovered = lidarMapPointToBody(frame, map_point);
+  EXPECT_NEAR(recovered.x, body_point.x, 1.0e-9);
+  EXPECT_NEAR(recovered.y, body_point.y, 1.0e-9);
+  EXPECT_NEAR(recovered.z, body_point.z, 1.0e-9);
+
+  const LidarBeamProjection beam =
+      projectLidarBeam(pose, config, 0.1, 35.0, kBeamAngleRad, 0.1, 0U, 5.0F);
+  ASSERT_EQ(beam.status, LidarBeamProjectionStatus::kAccepted);
+  EXPECT_NEAR(beam.ray_direction_map.x, -std::sin(kBeamAngleRad), 1.0e-9);
+  EXPECT_NEAR(beam.ray_direction_map.y, std::cos(kBeamAngleRad), 1.0e-9);
+  EXPECT_NEAR(beam.endpoint.x, 10.0 - 5.0 * std::sin(kBeamAngleRad), 1.0e-6);
+  EXPECT_NEAR(beam.endpoint.y, 20.0 + 5.0 * std::cos(kBeamAngleRad), 1.0e-6);
+
+  const LidarRayProjection3D ray = projectLidarRay3D(
+      pose, config, Vec3{std::cos(kBeamAngleRad), std::sin(kBeamAngleRad), 0.0});
+  ASSERT_TRUE(ray.valid);
+  EXPECT_NEAR(ray.direction_map.x, beam.ray_direction_map.x, 1.0e-9);
+  EXPECT_NEAR(ray.direction_map.y, beam.ray_direction_map.y, 1.0e-9);
+  EXPECT_NEAR(ray.direction_map.z, beam.ray_direction_map.z, 1.0e-9);
+}
+
+TEST(LidarProjection3D, ReflectedTransformAppliesFullExtrinsicInMapFrame) {
+  LidarProjectionPose pose;
+  pose.position = {10.0, 20.0};
+  pose.altitude_m = 5.0;
+  pose.yaw_rad = 0.5 * std::numbers::pi;
+  pose.altitude_valid = true;
+  pose.attitude_valid = true;
+  pose.body_to_ned_quaternion = {1.0, 0.0, 0.0, 0.0};
+  pose.body_to_ned_quaternion_valid = true;
+  LidarProjectionConfig config;
+  config.use_full_lidar_extrinsic = true;
+  config.lidar_translation_body_frd_m = {0.2, 0.0, -0.3};
+  config.lidar_flu_to_body_frd_quaternion = {0.0, 1.0, 0.0, 0.0};
+  config.px4_to_map_m00 = 0.0;
+  config.px4_to_map_m01 = 1.0;
+  config.px4_to_map_m10 = 1.0;
+  config.px4_to_map_m11 = 0.0;
+
+  const LidarRayProjection3D ray = projectLidarRay3D(pose, config, Vec3{1.0, 0.0, 0.0});
+
+  ASSERT_TRUE(ray.valid);
+  EXPECT_NEAR(ray.origin_map_m.x, 10.0, 1.0e-9);
+  EXPECT_NEAR(ray.origin_map_m.y, 20.2, 1.0e-9);
+  EXPECT_NEAR(ray.origin_map_m.z, 5.3, 1.0e-9);
+  EXPECT_NEAR(ray.direction_map.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(ray.direction_map.y, 1.0, 1.0e-9);
+  EXPECT_NEAR(ray.direction_map.z, 0.0, 1.0e-9);
+}
+
+TEST(LidarProjection3D, RejectsNonorthonormalPx4ToMapTransform) {
+  LidarProjectionPose pose;
+  pose.altitude_m = 5.0;
+  pose.altitude_valid = true;
+  pose.attitude_valid = true;
+  LidarProjectionConfig config;
+  config.px4_to_map_m11 = 2.0;
+
+  EXPECT_FALSE(lidarProjectionBodyFrame(pose, config).valid);
+  EXPECT_FALSE(projectLidarRay3D(pose, config, Vec3{1.0, 0.0, 0.0}).valid);
+  EXPECT_EQ(projectLidarBeam(pose, config, 0.1, 35.0, 0.0, 0.1, 0U, 5.0F).status,
+            LidarBeamProjectionStatus::kInvalidScan);
 }
 
 [[nodiscard]] LidarBeamProjection project(const LidarProjectionPose& pose,

@@ -1,14 +1,18 @@
 #include "intercept_mission_referee_node.hpp"
 
+#include "drone_city_nav/execution_horizon_contract_ros.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -26,6 +30,33 @@ void requireUniqueIds(const std::vector<std::string>& ids, const std::string& la
       throw std::invalid_argument{label + " must be non-empty and unique"};
     }
   }
+}
+
+[[nodiscard]] std::vector<std::string>
+vehicleTopics(const std::vector<std::string>& ids, const std::string& suffix) {
+  std::vector<std::string> topics;
+  topics.reserve(ids.size());
+  for (const std::string& id : ids) {
+    topics.push_back("/vehicles/" + id + suffix);
+  }
+  return topics;
+}
+
+[[nodiscard]] const char* witnessRejectionReason(
+    const ExecutionHorizonWitnessAdmissionResult& admission) noexcept {
+  if (admission.stale) {
+    return "stale";
+  }
+  if (admission.replay) {
+    return "replay";
+  }
+  if (admission.conflict) {
+    return "conflict";
+  }
+  if (admission.non_current_session) {
+    return "non_current_session";
+  }
+  return "invalid";
 }
 
 } // namespace
@@ -50,6 +81,8 @@ InterceptMissionRefereeNode::InterceptMissionRefereeNode()
   }
   state_config_.maximum_state_age_s =
       declare_parameter<double>("maximum_state_age_s", 1.0);
+  maximum_offboard_feedback_age_ns_ = missionTimeoutNanoseconds(
+      declare_parameter<double>("maximum_offboard_feedback_age_s", 1.0));
   state_config_.maximum_degraded_duration_s =
       declare_parameter<double>("maximum_degraded_state_duration_s", 5.0);
   hold_config_.position_tolerance_m =
@@ -112,7 +145,16 @@ void InterceptMissionRefereeNode::configureInterceptors(
   }
   requireUniqueIds(ids, "interceptor ids");
   const InterceptorTopicConfig topics = declareInterceptorTopicConfig(*this, ids);
+  const std::vector<std::string> control_feedback_topics =
+      declare_parameter<std::vector<std::string>>(
+          "interceptor_applied_control_feedback_topics",
+          vehicleTopics(ids, "/mppi/applied_control"));
+  if (control_feedback_topics.size() != ids.size()) {
+    throw std::invalid_argument{
+        "interceptor_applied_control_feedback_topics must match interceptor ids"};
+  }
   const auto state_qos = rclcpp::QoS{10}.best_effort();
+  const auto control_feedback_qos = rclcpp::QoS{10}.reliable();
   const auto latched_qos = rclcpp::QoS{1}.reliable().transient_local();
   interceptors_.resize(ids.size());
   for (std::size_t index = 0U; index < ids.size(); ++index) {
@@ -139,24 +181,14 @@ void InterceptMissionRefereeNode::configureInterceptors(
           }
         });
     runtime.horizon_sub = create_subscription<msg::MppiTrajectoryHorizon>(
-        topics.execution_horizon[index], rclcpp::QoS{10}.best_effort(),
+        topics.execution_horizon[index], control_feedback_qos,
         [this, index](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
-          InterceptorRuntime& interceptor = interceptors_[index];
-          interceptor.hold_horizon = HoldHorizon{
-              .position = Point3{horizon->stationary_hold_position.x,
-                                 horizon->stationary_hold_position.y,
-                                 horizon->stationary_hold_position.z},
-              .sequence = horizon->sequence,
-              .active = horizon->stationary_position_hold &&
-                        horizon->execution_mode ==
-                            msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
-          };
-          interceptor.executable_horizon_ready =
-              interceptor.executable_horizon_ready ||
-              (horizon->sequence > 0U &&
-               horizon->execution_mode ==
-                   msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-               horizon->points.size() >= 2U);
+          onInterceptorExecutionHorizon(*horizon, index);
+        });
+    runtime.control_feedback_sub = create_subscription<msg::MppiControlFeedback>(
+        control_feedback_topics[index], control_feedback_qos,
+        [this, index](const msg::MppiControlFeedback::SharedPtr feedback) {
+          onInterceptorControlFeedback(*feedback, index);
         });
     runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
         topics.world_readiness[index], latched_qos,
@@ -192,7 +224,16 @@ void InterceptMissionRefereeNode::configureTargets(
   }
   requireUniqueIds(ids, "target ids");
   const TargetTopicConfig topics = declareTargetTopicConfig(*this, ids);
+  const std::vector<std::string> control_feedback_topics =
+      declare_parameter<std::vector<std::string>>(
+          "target_applied_control_feedback_topics",
+          vehicleTopics(ids, "/mppi/applied_control"));
+  if (control_feedback_topics.size() != ids.size()) {
+    throw std::invalid_argument{
+        "target_applied_control_feedback_topics must match target ids"};
+  }
   const auto state_qos = rclcpp::QoS{10}.best_effort();
+  const auto control_feedback_qos = rclcpp::QoS{10}.reliable();
   const auto latched_qos = rclcpp::QoS{1}.reliable().transient_local();
   std::unordered_set<std::uint64_t> unique_detection_ids;
   targets_.resize(ids.size());
@@ -230,15 +271,14 @@ void InterceptMissionRefereeNode::configureTargets(
           }
         });
     runtime.horizon_sub = create_subscription<msg::MppiTrajectoryHorizon>(
-        topics.execution_horizon[index], rclcpp::QoS{10}.best_effort(),
+        topics.execution_horizon[index], control_feedback_qos,
         [this, index](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
-          TargetRuntime& target = targets_[index];
-          target.executable_horizon_ready =
-              target.executable_horizon_ready ||
-              (horizon->sequence > 0U &&
-               horizon->execution_mode ==
-                   msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-               horizon->points.size() >= 2U);
+          onTargetExecutionHorizon(*horizon, index);
+        });
+    runtime.control_feedback_sub = create_subscription<msg::MppiControlFeedback>(
+        control_feedback_topics[index], control_feedback_qos,
+        [this, index](const msg::MppiControlFeedback::SharedPtr feedback) {
+          onTargetControlFeedback(*feedback, index);
         });
     runtime.world_ready_sub = create_subscription<std_msgs::msg::Bool>(
         topics.world_readiness[index], latched_qos,
@@ -257,6 +297,441 @@ void InterceptMissionRefereeNode::configureTargets(
     runtime.destroyed_pub =
         create_publisher<msg::VehicleDestroyed>(topics.destroyed[index], latched_qos);
   }
+}
+
+void InterceptMissionRefereeNode::revokeExecutionHorizonEvidence(
+    InterceptorRuntime& interceptor) {
+  interceptor.hold_horizon.reset();
+  interceptor.accepted_horizon.reset();
+  interceptor.executable_horizon_ready = false;
+  interceptor.executable_horizon_valid_from_ns = 0;
+  interceptor.executable_horizon_valid_until_ns = 0;
+  if (interceptor.hold_confirmation) {
+    interceptor.hold_confirmation =
+        std::make_unique<InterceptorHoldConfirmation>(hold_config_);
+  }
+}
+
+void InterceptMissionRefereeNode::revokeExecutionHorizonEvidence(
+    TargetRuntime& target) {
+  target.accepted_horizon.reset();
+  target.executable_horizon_ready = false;
+  target.executable_horizon_valid_from_ns = 0;
+  target.executable_horizon_valid_until_ns = 0;
+}
+
+void InterceptMissionRefereeNode::refreshExecutionHorizonEvidence(
+    InterceptorRuntime& interceptor, const std::int64_t now_ns) {
+  if (!interceptor.accepted_horizon.has_value()) {
+    interceptor.executable_horizon_ready = false;
+    if (interceptor.hold_horizon.has_value()) {
+      interceptor.hold_horizon->witnessed = false;
+    }
+    return;
+  }
+  AcceptedHorizon& horizon = *interceptor.accepted_horizon;
+  const ExecutionHorizonWitnessRequirement requirement{
+      .target_offboard_instance_id = horizon.target_offboard_instance_id,
+      .horizon_producer_instance_id = horizon.producer_instance_id,
+      .horizon_sequence = horizon.sequence,
+      .valid_from_ns = horizon.valid_from_ns,
+      .valid_until_ns = horizon.valid_until_ns,
+      .execution_mode =
+          horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED
+              ? ExecutionHorizonWitnessMode::kPlanned
+              : ExecutionHorizonWitnessMode::kPositionHold,
+  };
+  const bool receipt =
+      executionHorizonReceiptFreshAt(interceptor.horizon_witness_state, requirement,
+                                     now_ns, maximum_offboard_feedback_age_ns_);
+  const bool strict_witness =
+      executionHorizonWitnessFreshAt(interceptor.horizon_witness_state, requirement,
+                                     now_ns, maximum_offboard_feedback_age_ns_);
+  const bool ready_witness = mission_started_ ? strict_witness : receipt;
+  horizon.witnessed = ready_witness;
+  const bool was_hold_actionable = interceptor.hold_horizon.has_value() &&
+                                   interceptor.hold_horizon->active &&
+                                   interceptor.hold_horizon->witnessed;
+  if (interceptor.hold_horizon.has_value()) {
+    interceptor.hold_horizon->witnessed = strict_witness;
+  }
+  const bool hold_actionable = interceptor.hold_horizon.has_value() &&
+                               interceptor.hold_horizon->active && strict_witness;
+  if (was_hold_actionable && !hold_actionable && interceptor.hold_confirmation) {
+    interceptor.hold_confirmation =
+        std::make_unique<InterceptorHoldConfirmation>(hold_config_);
+  }
+  interceptor.executable_horizon_ready =
+      ready_witness &&
+      horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED;
+}
+
+void InterceptMissionRefereeNode::refreshExecutionHorizonEvidence(
+    TargetRuntime& target, const std::int64_t now_ns) {
+  if (!target.accepted_horizon.has_value()) {
+    target.executable_horizon_ready = false;
+    return;
+  }
+  AcceptedHorizon& horizon = *target.accepted_horizon;
+  const ExecutionHorizonWitnessRequirement requirement{
+      .target_offboard_instance_id = horizon.target_offboard_instance_id,
+      .horizon_producer_instance_id = horizon.producer_instance_id,
+      .horizon_sequence = horizon.sequence,
+      .valid_from_ns = horizon.valid_from_ns,
+      .valid_until_ns = horizon.valid_until_ns,
+      .execution_mode =
+          horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED
+              ? ExecutionHorizonWitnessMode::kPlanned
+              : ExecutionHorizonWitnessMode::kPositionHold,
+  };
+  const bool receipt =
+      executionHorizonReceiptFreshAt(target.horizon_witness_state, requirement, now_ns,
+                                     maximum_offboard_feedback_age_ns_);
+  const bool strict_witness =
+      executionHorizonWitnessFreshAt(target.horizon_witness_state, requirement, now_ns,
+                                     maximum_offboard_feedback_age_ns_);
+  horizon.witnessed = mission_started_ ? strict_witness : receipt;
+  target.executable_horizon_ready =
+      horizon.witnessed &&
+      horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED;
+}
+
+void InterceptMissionRefereeNode::expireOffboardEvidence(const std::int64_t now_ns) {
+  for (InterceptorRuntime& interceptor : interceptors_) {
+    refreshExecutionHorizonEvidence(interceptor, now_ns);
+  }
+  for (TargetRuntime& target : targets_) {
+    refreshExecutionHorizonEvidence(target, now_ns);
+  }
+}
+
+void InterceptMissionRefereeNode::onInterceptorControlFeedback(
+    const msg::MppiControlFeedback& feedback, const std::size_t interceptor_index) {
+  InterceptorRuntime& interceptor = interceptors_.at(interceptor_index);
+  const std::int64_t receive_stamp_ns = now().nanoseconds();
+  const ExecutionControlFeedbackAssessment assessment =
+      assessExecutionControlFeedback(feedback, "map", receive_stamp_ns);
+  if (!assessment.valid()) {
+    const ExecutionHorizonWitnessAdmissionResult malformed =
+        revokeMalformedExecutionHorizonFeedback(interceptor.horizon_witness_state,
+                                                assessment.candidate, receive_stamp_ns);
+    if (malformed.state_advanced) {
+      interceptor.horizon_witness_state = malformed.next_state;
+      if (malformed.witness_revoked) {
+        refreshExecutionHorizonEvidence(interceptor, receive_stamp_ns);
+      }
+    }
+    const std::string_view reason =
+        executionControlFeedbackStatusName(assessment.status);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "INTERCEPT_CONTROL_FEEDBACK rejected=true role=interceptor "
+        "vehicle_id='%s' offboard_producer=%" PRIu64 " horizon_producer=%" PRIu64
+        " sequence=%" PRIu64 " reason=%.*s",
+        interceptor.id.c_str(), feedback.producer_instance_id,
+        feedback.horizon_producer_instance_id, feedback.horizon_sequence,
+        static_cast<int>(reason.size()), reason.data());
+    return;
+  }
+  const ExecutionHorizonWitnessAdmissionResult admission =
+      admitExecutionHorizonFeedbackPayload(interceptor.horizon_witness_state,
+                                           assessment.candidate, assessment.valid());
+  if (!admission.accept) {
+    if (admission.state_advanced) {
+      interceptor.horizon_witness_state = admission.next_state;
+      if (admission.witness_revoked) {
+        refreshExecutionHorizonEvidence(interceptor, receive_stamp_ns);
+      }
+    }
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "INTERCEPT_CONTROL_FEEDBACK rejected=true role=interceptor "
+                         "vehicle_id='%s' offboard_producer=%" PRIu64
+                         " horizon_producer=%" PRIu64 " sequence=%" PRIu64 " reason=%s",
+                         interceptor.id.c_str(), feedback.producer_instance_id,
+                         feedback.horizon_producer_instance_id,
+                         feedback.horizon_sequence, witnessRejectionReason(admission));
+    return;
+  }
+  interceptor.horizon_witness_state = admission.next_state;
+  if (admission.session_transitioned && interceptor.accepted_horizon.has_value() &&
+      interceptor.accepted_horizon->target_offboard_instance_id !=
+          interceptor.horizon_witness_state.offboard_session
+              .current_producer_instance_id) {
+    revokeExecutionHorizonEvidence(interceptor);
+  }
+  refreshExecutionHorizonEvidence(interceptor, receive_stamp_ns);
+}
+
+void InterceptMissionRefereeNode::onTargetControlFeedback(
+    const msg::MppiControlFeedback& feedback, const std::size_t target_index) {
+  TargetRuntime& target = targets_.at(target_index);
+  const std::int64_t receive_stamp_ns = now().nanoseconds();
+  const ExecutionControlFeedbackAssessment assessment =
+      assessExecutionControlFeedback(feedback, "map", receive_stamp_ns);
+  if (!assessment.valid()) {
+    const ExecutionHorizonWitnessAdmissionResult malformed =
+        revokeMalformedExecutionHorizonFeedback(target.horizon_witness_state,
+                                                assessment.candidate, receive_stamp_ns);
+    if (malformed.state_advanced) {
+      target.horizon_witness_state = malformed.next_state;
+      if (malformed.witness_revoked) {
+        refreshExecutionHorizonEvidence(target, receive_stamp_ns);
+      }
+    }
+    const std::string_view reason =
+        executionControlFeedbackStatusName(assessment.status);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "INTERCEPT_CONTROL_FEEDBACK rejected=true role=target vehicle_id='%s' "
+        "offboard_producer=%" PRIu64 " horizon_producer=%" PRIu64 " sequence=%" PRIu64
+        " reason=%.*s",
+        target.id.c_str(), feedback.producer_instance_id,
+        feedback.horizon_producer_instance_id, feedback.horizon_sequence,
+        static_cast<int>(reason.size()), reason.data());
+    return;
+  }
+  const ExecutionHorizonWitnessAdmissionResult admission =
+      admitExecutionHorizonFeedbackPayload(target.horizon_witness_state,
+                                           assessment.candidate, assessment.valid());
+  if (!admission.accept) {
+    if (admission.state_advanced) {
+      target.horizon_witness_state = admission.next_state;
+      if (admission.witness_revoked) {
+        refreshExecutionHorizonEvidence(target, receive_stamp_ns);
+      }
+    }
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "INTERCEPT_CONTROL_FEEDBACK rejected=true role=target vehicle_id='%s' "
+        "offboard_producer=%" PRIu64 " horizon_producer=%" PRIu64 " sequence=%" PRIu64
+        " reason=%s",
+        target.id.c_str(), feedback.producer_instance_id,
+        feedback.horizon_producer_instance_id, feedback.horizon_sequence,
+        witnessRejectionReason(admission));
+    return;
+  }
+  target.horizon_witness_state = admission.next_state;
+  if (admission.session_transitioned && target.accepted_horizon.has_value() &&
+      target.accepted_horizon->target_offboard_instance_id !=
+          target.horizon_witness_state.offboard_session.current_producer_instance_id) {
+    revokeExecutionHorizonEvidence(target);
+  }
+  refreshExecutionHorizonEvidence(target, receive_stamp_ns);
+}
+
+void InterceptMissionRefereeNode::onInterceptorExecutionHorizon(
+    const msg::MppiTrajectoryHorizon& horizon, const std::size_t interceptor_index) {
+  InterceptorRuntime& interceptor = interceptors_.at(interceptor_index);
+  const std::int64_t now_ns = now().nanoseconds();
+  const ExecutionHorizonAdmissionCandidate candidate{
+      .producer_instance_id = horizon.producer_instance_id,
+      .sequence = horizon.sequence,
+      .source_stamp_ns = executionHorizonTimeNanoseconds(horizon.header.stamp),
+      .valid_from_ns = executionHorizonTimeNanoseconds(horizon.valid_from),
+      .content_fingerprint = executionHorizonContentFingerprint(horizon),
+  };
+  const ExecutionHorizonPayloadStatus payload_status = assessExecutionHorizonPayload(
+      horizon, ExecutionHorizonPayloadValidationConfig{.expected_frame_id = "map"});
+  const bool revoked =
+      horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED;
+  const std::int64_t valid_until_ns =
+      executionHorizonTimeNanoseconds(horizon.valid_until);
+  const bool expired = !revoked && now_ns >= valid_until_ns;
+  const bool payload_admissible =
+      payload_status == ExecutionHorizonPayloadStatus::kValid && !expired;
+  const ExecutionHorizonAdmissionResult admission = admitExecutionHorizonIdentity(
+      interceptor.horizon_admission, candidate, payload_admissible);
+  if (admission.state_advanced) {
+    interceptor.horizon_admission = admission.next_state;
+  }
+  if (admission.revoke) {
+    revokeExecutionHorizonEvidence(interceptor);
+  }
+  if (admission.replay) {
+    return;
+  }
+  if (!admission.accept_identity &&
+      (!candidate.valid() || payload_admissible || admission.stale ||
+       admission.conflict || admission.retired_capacity_exhausted ||
+       admission.prospective_capacity_exhausted)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "INTERCEPT_EXECUTION_HORIZON rejected=true role=interceptor "
+        "vehicle_id='%s' producer=%" PRIu64 " sequence=%" PRIu64
+        " current_producer=%" PRIu64 " current_sequence=%" PRIu64 " reason=%s",
+        interceptor.id.c_str(), horizon.producer_instance_id, horizon.sequence,
+        interceptor.horizon_admission.current_producer_instance_id,
+        interceptor.horizon_admission.current_sequence,
+        admission.conflict                     ? "identity_content_conflict"
+        : admission.stale                      ? "stale_identity"
+        : admission.retired_capacity_exhausted ? "retired_identity_capacity_exhausted"
+        : admission.prospective_capacity_exhausted
+            ? "prospective_identity_capacity_exhausted"
+            : "invalid_identity");
+    return;
+  }
+  if (payload_status != ExecutionHorizonPayloadStatus::kValid || expired) {
+    const std::string_view reason =
+        payload_status == ExecutionHorizonPayloadStatus::kValid
+            ? std::string_view{"expired_validity_window"}
+            : executionHorizonPayloadStatusName(payload_status);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "INTERCEPT_EXECUTION_HORIZON rejected=true role=interceptor "
+        "vehicle_id='%s' producer=%" PRIu64 " sequence=%" PRIu64 " reason=%.*s",
+        interceptor.id.c_str(), horizon.producer_instance_id, horizon.sequence,
+        static_cast<int>(reason.size()), reason.data());
+    return;
+  }
+  if (!admission.payload_installable) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "INTERCEPT_EXECUTION_HORIZON rejected=true role=interceptor "
+                         "vehicle_id='%s' producer=%" PRIu64 " sequence=%" PRIu64
+                         " reason=nonadvancing_producer_timestamps",
+                         interceptor.id.c_str(), horizon.producer_instance_id,
+                         horizon.sequence);
+    return;
+  }
+  if (revoked) {
+    revokeExecutionHorizonEvidence(interceptor);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "INTERCEPT_EXECUTION_HORIZON revoked=true role=interceptor vehicle_id='%s' "
+        "producer=%" PRIu64 " sequence=%" PRIu64,
+        interceptor.id.c_str(), horizon.producer_instance_id, horizon.sequence);
+    return;
+  }
+
+  const std::int64_t valid_from_ns =
+      executionHorizonTimeNanoseconds(horizon.valid_from);
+  interceptor.accepted_horizon = AcceptedHorizon{
+      .producer_instance_id = horizon.producer_instance_id,
+      .target_offboard_instance_id = horizon.target_offboard_instance_id,
+      .sequence = horizon.sequence,
+      .execution_mode = horizon.execution_mode,
+      .valid_from_ns = valid_from_ns,
+      .valid_until_ns = valid_until_ns,
+      .witnessed = false,
+  };
+  interceptor.hold_horizon = HoldHorizon{
+      .position =
+          Point3{horizon.stationary_hold_position.x, horizon.stationary_hold_position.y,
+                 horizon.stationary_hold_position.z},
+      .producer_instance_id = horizon.producer_instance_id,
+      .target_offboard_instance_id = horizon.target_offboard_instance_id,
+      .sequence = horizon.sequence,
+      .execution_mode = horizon.execution_mode,
+      .valid_from_ns = valid_from_ns,
+      .valid_until_ns = valid_until_ns,
+      .active = horizon.stationary_position_hold &&
+                horizon.execution_mode ==
+                    msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
+      .witnessed = false,
+  };
+  interceptor.executable_horizon_ready = false;
+  interceptor.executable_horizon_valid_from_ns = valid_from_ns;
+  interceptor.executable_horizon_valid_until_ns = valid_until_ns;
+  refreshExecutionHorizonEvidence(interceptor, now_ns);
+}
+
+void InterceptMissionRefereeNode::onTargetExecutionHorizon(
+    const msg::MppiTrajectoryHorizon& horizon, const std::size_t target_index) {
+  TargetRuntime& target = targets_.at(target_index);
+  const std::int64_t now_ns = now().nanoseconds();
+  const ExecutionHorizonAdmissionCandidate candidate{
+      .producer_instance_id = horizon.producer_instance_id,
+      .sequence = horizon.sequence,
+      .source_stamp_ns = executionHorizonTimeNanoseconds(horizon.header.stamp),
+      .valid_from_ns = executionHorizonTimeNanoseconds(horizon.valid_from),
+      .content_fingerprint = executionHorizonContentFingerprint(horizon),
+  };
+  const ExecutionHorizonPayloadStatus payload_status = assessExecutionHorizonPayload(
+      horizon, ExecutionHorizonPayloadValidationConfig{.expected_frame_id = "map"});
+  const bool revoked =
+      horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED;
+  const std::int64_t valid_until_ns =
+      executionHorizonTimeNanoseconds(horizon.valid_until);
+  const bool expired = !revoked && now_ns >= valid_until_ns;
+  const bool payload_admissible =
+      payload_status == ExecutionHorizonPayloadStatus::kValid && !expired;
+  const ExecutionHorizonAdmissionResult admission = admitExecutionHorizonIdentity(
+      target.horizon_admission, candidate, payload_admissible);
+  if (admission.state_advanced) {
+    target.horizon_admission = admission.next_state;
+  }
+  if (admission.revoke) {
+    revokeExecutionHorizonEvidence(target);
+  }
+  if (admission.replay) {
+    return;
+  }
+  if (!admission.accept_identity &&
+      (!candidate.valid() || payload_admissible || admission.stale ||
+       admission.conflict || admission.retired_capacity_exhausted ||
+       admission.prospective_capacity_exhausted)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "INTERCEPT_EXECUTION_HORIZON rejected=true role=target vehicle_id='%s' "
+        "producer=%" PRIu64 " sequence=%" PRIu64 " current_producer=%" PRIu64
+        " current_sequence=%" PRIu64 " reason=%s",
+        target.id.c_str(), horizon.producer_instance_id, horizon.sequence,
+        target.horizon_admission.current_producer_instance_id,
+        target.horizon_admission.current_sequence,
+        admission.conflict                     ? "identity_content_conflict"
+        : admission.stale                      ? "stale_identity"
+        : admission.retired_capacity_exhausted ? "retired_identity_capacity_exhausted"
+        : admission.prospective_capacity_exhausted
+            ? "prospective_identity_capacity_exhausted"
+            : "invalid_identity");
+    return;
+  }
+  if (payload_status != ExecutionHorizonPayloadStatus::kValid || expired) {
+    const std::string_view reason =
+        payload_status == ExecutionHorizonPayloadStatus::kValid
+            ? std::string_view{"expired_validity_window"}
+            : executionHorizonPayloadStatusName(payload_status);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "INTERCEPT_EXECUTION_HORIZON rejected=true role=target vehicle_id='%s' "
+        "producer=%" PRIu64 " sequence=%" PRIu64 " reason=%.*s",
+        target.id.c_str(), horizon.producer_instance_id, horizon.sequence,
+        static_cast<int>(reason.size()), reason.data());
+    return;
+  }
+  if (!admission.payload_installable) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "INTERCEPT_EXECUTION_HORIZON rejected=true role=target vehicle_id='%s' "
+        "producer=%" PRIu64 " sequence=%" PRIu64
+        " reason=nonadvancing_producer_timestamps",
+        target.id.c_str(), horizon.producer_instance_id, horizon.sequence);
+    return;
+  }
+  if (revoked) {
+    revokeExecutionHorizonEvidence(target);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "INTERCEPT_EXECUTION_HORIZON revoked=true role=target vehicle_id='%s' "
+        "producer=%" PRIu64 " sequence=%" PRIu64,
+        target.id.c_str(), horizon.producer_instance_id, horizon.sequence);
+    return;
+  }
+
+  const std::int64_t valid_from_ns =
+      executionHorizonTimeNanoseconds(horizon.valid_from);
+  target.accepted_horizon = AcceptedHorizon{
+      .producer_instance_id = horizon.producer_instance_id,
+      .target_offboard_instance_id = horizon.target_offboard_instance_id,
+      .sequence = horizon.sequence,
+      .execution_mode = horizon.execution_mode,
+      .valid_from_ns = valid_from_ns,
+      .valid_until_ns = valid_until_ns,
+      .witnessed = false,
+  };
+  target.executable_horizon_ready = false;
+  target.executable_horizon_valid_from_ns = valid_from_ns;
+  target.executable_horizon_valid_until_ns = valid_until_ns;
+  refreshExecutionHorizonEvidence(target, now_ns);
 }
 
 void InterceptMissionRefereeNode::configureGroundTruthBoundary() {
@@ -391,21 +866,31 @@ bool InterceptMissionRefereeNode::verifyGroundTruthBoundary(const std::int64_t n
   return boundary_verified_;
 }
 
-bool InterceptMissionRefereeNode::missionReady() const {
+bool InterceptMissionRefereeNode::missionReady(const std::int64_t now_ns) const {
   if (!truth_alignment_mission_update_.startup_ready) {
     return false;
   }
   const bool targets_ready =
-      std::ranges::all_of(targets_, [](const TargetRuntime& target) {
+      std::ranges::all_of(targets_, [now_ns](const TargetRuntime& target) {
         return !target.destroyed && target.state && target.truth_state &&
                target.state->navigation_ready && target.world_ready &&
-               target.executable_horizon_ready;
+               target.executable_horizon_ready &&
+               target.executable_horizon_valid_from_ns > 0 &&
+               target.executable_horizon_valid_until_ns >
+                   target.executable_horizon_valid_from_ns &&
+               now_ns >= target.executable_horizon_valid_from_ns &&
+               now_ns < target.executable_horizon_valid_until_ns;
       });
-  const bool interceptors_ready =
-      std::ranges::all_of(interceptors_, [](const InterceptorRuntime& interceptor) {
+  const bool interceptors_ready = std::ranges::all_of(
+      interceptors_, [now_ns](const InterceptorRuntime& interceptor) {
         return !interceptor.destroyed && interceptor.state && interceptor.truth_state &&
                interceptor.state->navigation_ready && interceptor.world_ready &&
-               interceptor.track_ready && interceptor.executable_horizon_ready;
+               interceptor.track_ready && interceptor.executable_horizon_ready &&
+               interceptor.executable_horizon_valid_from_ns > 0 &&
+               interceptor.executable_horizon_valid_until_ns >
+                   interceptor.executable_horizon_valid_from_ns &&
+               now_ns >= interceptor.executable_horizon_valid_from_ns &&
+               now_ns < interceptor.executable_horizon_valid_until_ns;
       });
   return targets_ready && interceptors_ready;
 }
@@ -453,137 +938,6 @@ void InterceptMissionRefereeNode::publishTargetStatus(const std::size_t index,
   }
   status.detail = detail_text;
   target_status_pub_->publish(status);
-}
-
-void InterceptMissionRefereeNode::publishMissionStart() {
-  if (!truth_alignment_lifecycle_.latchStartupContract()) {
-    failMission("truth_alignment_contract_not_ready");
-    return;
-  }
-  std_msgs::msg::Bool start;
-  start.data = true;
-  for (InterceptorRuntime& interceptor : interceptors_) {
-    interceptor.start_pub->publish(start);
-  }
-  for (std::size_t index = 0U; index < targets_.size(); ++index) {
-    targets_[index].start_pub->publish(start);
-    publishTargetStatus(index, "mission_started");
-  }
-  mission_started_ = true;
-  RCLCPP_INFO(get_logger(),
-              "INTERCEPT_MISSION state=running mission='%s' epoch=%" PRIu64
-              " interceptor_count=%zu target_count=%zu "
-              "startup_coordinate_contract_latched=true "
-              "all_executable_horizons_ready=true",
-              mission_name_.c_str(), mission_epoch_, interceptors_.size(),
-              targets_.size());
-}
-
-std::size_t InterceptMissionRefereeNode::operationalInterceptorCount() const noexcept {
-  return static_cast<std::size_t>(
-      std::ranges::count_if(interceptors_, [](const InterceptorRuntime& runtime) {
-        return !runtime.destroyed && !runtime.destruction_requested &&
-               !runtime.disabled;
-      }));
-}
-
-std::size_t InterceptMissionRefereeNode::survivingInterceptorCount() const noexcept {
-  return static_cast<std::size_t>(
-      std::ranges::count_if(interceptors_, [](const InterceptorRuntime& runtime) {
-        return !runtime.destroyed && !runtime.destruction_requested;
-      }));
-}
-
-std::size_t InterceptMissionRefereeNode::activeTargetCount() const noexcept {
-  return static_cast<std::size_t>(
-      std::ranges::count(targets_, TargetOutcome::kActive, &TargetRuntime::outcome));
-}
-
-void InterceptMissionRefereeNode::requestHold(const std::size_t index,
-                                              const std::string& reason) {
-  InterceptorRuntime& interceptor = interceptors_[index];
-  if (interceptor.destroyed || interceptor.destruction_requested ||
-      interceptor.hold_confirmation) {
-    return;
-  }
-  if (!interceptor.state || !interceptor.state->position_valid) {
-    if (mission_started_) {
-      system_failure_reason_ =
-          "interceptor_hold_position_unavailable:" + interceptor.id;
-    }
-    return;
-  }
-  interceptor.disabled = true;
-  interceptor.hold_confirmation =
-      std::make_unique<InterceptorHoldConfirmation>(hold_config_);
-  interceptor.hold_request_horizon_sequence =
-      interceptor.hold_horizon ? interceptor.hold_horizon->sequence : 0U;
-  interceptor.hold_requested_ns = now().nanoseconds();
-  msg::InterceptMissionCommand command;
-  command.stamp = now();
-  command.mission_epoch = mission_epoch_;
-  command.command = msg::InterceptMissionCommand::COMMAND_HOLD_CURRENT_POSITION;
-  command.reason = reason;
-  interceptor.command_pub->publish(command);
-  RCLCPP_INFO(get_logger(),
-              "INTERCEPTOR_HOLD requested=true vehicle_id='%s' reason='%s' "
-              "position=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64,
-              interceptor.id.c_str(), reason.c_str(), interceptor.state->position.x,
-              interceptor.state->position.y, interceptor.state->position.z,
-              mission_epoch_);
-}
-
-void InterceptMissionRefereeNode::requestHoldsForSurvivors(
-    const std::string& reason, const std::optional<std::size_t> excluded) {
-  for (std::size_t index = 0U; index < interceptors_.size(); ++index) {
-    if (!excluded.has_value() || *excluded != index) {
-      requestHold(index, reason);
-    }
-  }
-}
-
-void InterceptMissionRefereeNode::requestTargetHold(const std::size_t index,
-                                                    const std::string& reason) {
-  TargetRuntime& target = targets_[index];
-  if (target.hold_requested || target.destroyed || !target.state ||
-      !target.state->position_valid) {
-    return;
-  }
-  target.hold_requested = true;
-  msg::NavigationObjective objective;
-  objective.stamp = now();
-  objective.mission_epoch = mission_epoch_;
-  objective.sample_sequence = ++target.objective_sequence;
-  objective.position.x = target.state->position.x;
-  objective.position.y = target.state->position.y;
-  objective.position.z = target.state->position.z;
-  objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
-  objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
-  objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD;
-  target.objective_pub->publish(objective);
-  RCLCPP_INFO(get_logger(),
-              "TARGET_HOLD requested=true target_id='%s' reason='%s' "
-              "position=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64,
-              target.id.c_str(), reason.c_str(), target.state->position.x,
-              target.state->position.y, target.state->position.z, mission_epoch_);
-}
-
-void InterceptMissionRefereeNode::handleStartupCoordinateAlignmentFailure() {
-  if (system_failure_reason_.has_value()) {
-    return;
-  }
-  system_failure_reason_ =
-      "coordinate_alignment_mismatch:" + truth_alignment_vehicle_id_ + ":" +
-      truth_alignment_reason_;
-  RCLCPP_ERROR(get_logger(),
-               "SIMULATION_TRUTH_ALIGNMENT startup_mission_blocked=true reason='%s' "
-               "vehicle_id='%s' max_error_m=%.3f mission_started=%s",
-               truth_alignment_reason_.c_str(), truth_alignment_vehicle_id_.c_str(),
-               truth_alignment_maximum_error_m_, mission_started_ ? "true" : "false");
-  requestHoldsForSurvivors(*system_failure_reason_);
-  for (std::size_t index = 0U; index < targets_.size(); ++index) {
-    requestTargetHold(index, *system_failure_reason_);
-  }
 }
 
 } // namespace drone_city_nav

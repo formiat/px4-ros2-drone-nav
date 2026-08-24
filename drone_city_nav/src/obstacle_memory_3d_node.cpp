@@ -310,6 +310,10 @@ public:
                            declare_parameter<double>("px4_to_map_m01", 0.0),
                            declare_parameter<double>("px4_to_map_m10", 0.0),
                            declare_parameter<double>("px4_to_map_m11", 1.0)};
+    projection_config_.px4_to_map_m00 = px4_local_pose_config_.px4_to_map_m00;
+    projection_config_.px4_to_map_m01 = px4_local_pose_config_.px4_to_map_m01;
+    projection_config_.px4_to_map_m10 = px4_local_pose_config_.px4_to_map_m10;
+    projection_config_.px4_to_map_m11 = px4_local_pose_config_.px4_to_map_m11;
     current_pose_.pose.yaw_rad = initial_heading_rad_;
     current_pose_.yaw_valid =
         !use_px4_heading_for_scan_ && std::isfinite(initial_heading_rad_);
@@ -760,12 +764,11 @@ private:
     latest.hit_points_body_frd = hit_points_body;
     latest.source_beam_count = decoded.beams.size();
     const std::size_t dynamic_filtered = tracked_agent_filtered + cooperative_filtered;
-    latest.invalid_beam_count =
-        decoded.invalid_beams + projection_invalid + dynamic_filtered + self_filtered;
+    latest.invalid_beam_count = projection_invalid + dynamic_filtered + self_filtered;
     latest.valid = true;
     latest_scan_pub_->publish(makeLatestLidarObstacleScanMessage(
-        latest, source_header, frame_id_, acquisition_stamp_ns, ++latest_scan_sequence_,
-        pose_generation));
+        latest, source_header, frame_id_, acquisition_stamp_ns,
+        latest_scan_producer_instance_id_, ++latest_scan_sequence_, pose_generation));
     const bool publish_current_cloud = persistent_memory_diagnostics_enabled_ &&
                                        persistent_memory_selection_.selected();
     if (publish_current_cloud) {
@@ -838,6 +841,8 @@ private:
   std::size_t startup_heading_stable_sample_count_{5U};
   std::int64_t alignment_maximum_wait_ns_{350'000'000};
   std::int64_t last_pose_update_ns_{0};
+  const std::uint64_t latest_scan_producer_instance_id_{
+      createLatestLidarObstacleProducerInstanceId()};
   std::uint64_t latest_scan_sequence_{0U};
   std::uint64_t alignment_coalesced_clouds_{0U};
   bool persistent_memory_enabled_{true};

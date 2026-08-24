@@ -1,6 +1,7 @@
 #include "obstacle_memory_transport_3d.hpp"
 
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
+#include "drone_city_nav/producer_instance_id.hpp"
 #include "drone_city_nav/raw_obstacle_3d_ros.hpp"
 
 #include <algorithm>
@@ -53,6 +54,7 @@ ObstacleMemoryTransport3D::ObstacleMemoryTransport3D(rclcpp::Node& node,
                              "obstacle_memory_3d_snapshot_rebase_dirty_ratio", 0.75),
                          0.05, 1.0),
       }},
+      producer_instance_id_{createRawObstacleProducerInstanceId()},
       dirty_chunks_since_base_{chunkLess} {
   const double update_rate_hz = std::clamp(
       node_.declare_parameter<double>("obstacle_memory_3d_transport_rate_hz", 2.0), 0.1,
@@ -168,11 +170,6 @@ void ObstacleMemoryTransport3D::workerLoop(const std::stop_token stop_token) {
 
 void ObstacleMemoryTransport3D::publishUpdate(PendingUpdate update) {
   const auto started = std::chrono::steady_clock::now();
-  const std::int64_t stamp_ns = update.stamp.nanoseconds();
-  if (producer_instance_id_ == 0U) {
-    producer_instance_id_ =
-        static_cast<std::uint64_t>(std::max<std::int64_t>(1, stamp_ns));
-  }
   ++sequence_;
   if (update.changes.full_reset) {
     dirty_chunks_since_base_.clear();

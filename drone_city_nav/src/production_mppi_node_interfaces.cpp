@@ -34,6 +34,14 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
         onLocalPosition(*message);
       },
       input_subscription_options);
+  vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
+      declare_parameter<std::string>("px4_vehicle_status_topic",
+                                     "/fmu/out/vehicle_status_v1"),
+      sensor_qos,
+      [this](const px4_msgs::msg::VehicleStatus::SharedPtr message) {
+        onVehicleStatus(*message);
+      },
+      input_subscription_options);
   vehicle_land_detected_sub_ = create_subscription<px4_msgs::msg::VehicleLandDetected>(
       declare_parameter<std::string>("px4_vehicle_land_detected_topic",
                                      "/fmu/out/vehicle_land_detected"),
@@ -143,6 +151,12 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
       declare_parameter<std::string>("execution_horizon_topic",
                                      "/drone_city_nav/mppi/execution_horizon"),
       rclcpp::QoS{2}.reliable());
+  mission_waypoint_acknowledgement_pub_ =
+      create_publisher<msg::MissionWaypointAcknowledgement>(
+          declare_parameter<std::string>(
+              "mission_waypoint_acknowledgement_topic",
+              "/drone_city_nav/mission_waypoint_acknowledgement"),
+          rclcpp::QoS{32}.reliable().transient_local());
   publishWorldReadiness(false);
 
   diagnostics_worker_ =

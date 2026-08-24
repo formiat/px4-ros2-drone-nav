@@ -29,6 +29,11 @@ constexpr double kTerminalRestTolerance{1.0e-3};
          std::isfinite(control.az) && std::isfinite(control.yaw_accel);
 }
 
+[[nodiscard]] bool sameControl(const Control& first, const Control& second) noexcept {
+  return first.ax == second.ax && first.ay == second.ay && first.az == second.az &&
+         first.yaw_accel == second.yaw_accel;
+}
+
 [[nodiscard]] Point3 position(const State& state) noexcept {
   return Point3{state.x, state.y, state.z};
 }
@@ -154,8 +159,8 @@ validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis
   SweptFootprintResult raw_validation;
   if (world.static_occupancy != nullptr) {
     raw_validation =
-        validateRawSweptFootprint(*world.static_occupancy, first, first_axis, second,
-                                  second_axis, *world.footprint);
+        validateKnownStaticSweptFootprint(*world.static_occupancy, first, first_axis,
+                                          second, second_axis, *world.footprint);
   } else if (world.observed_occupancy != nullptr) {
     const ObservedSpaceValidationPolicy observed_policy =
         world.require_known_free_space
@@ -237,7 +242,8 @@ validateAltitudeState(const State& state, const Control& applied_control,
 }
 
 [[nodiscard]] std::vector<TimedExecutionPathPoint>
-timedPathPoints(const FiniteHorizon& horizon, const float dt_s) {
+timedPathPoints(const FiniteHorizon& horizon, const Control& previous_applied_control,
+                const float dt_s) {
   std::vector<TimedExecutionPathPoint> points;
   if (horizon.states.size() != horizon.controls.size() + 1U ||
       horizon.controls.empty() || !(dt_s > 0.0F)) {
@@ -248,7 +254,8 @@ timedPathPoints(const FiniteHorizon& horizon, const float dt_s) {
     points.push_back(TimedExecutionPathPoint{
         .time_from_start_s = static_cast<double>(index) * dt_s,
         .state = horizon.states[index],
-        .control = horizon.controls[std::min(index, horizon.controls.size() - 1U)],
+        .control =
+            index == 0U ? previous_applied_control : horizon.controls[index - 1U],
     });
   }
   return points;
@@ -266,6 +273,10 @@ FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
   const FiniteExecutionPathValidation contract = validatePathContract(points);
   if (!contract.accepted()) {
     return contract;
+  }
+  if (!sameControl(points.front().control, previous_applied_control)) {
+    return reject(FiniteExecutionPathStatus::kInvalidContract, 0U, 0U,
+                  position(points.front().state), 0.0);
   }
 
   FiniteExecutionPathStatus altitude_status =
@@ -287,7 +298,7 @@ FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
     terminal_boundary_travel_m += std::hypot(
         std::hypot(second.state.x - first.state.x, second.state.y - first.state.y),
         second.state.z - first.state.z);
-    altitude_status = validateAltitudeState(second.state, first.control, world);
+    altitude_status = validateAltitudeState(second.state, second.control, world);
     if (altitude_status != FiniteExecutionPathStatus::kValid) {
       return reject(altitude_status, 0U, index - 1U, position(second.state), 0.0);
     }
@@ -297,9 +308,8 @@ FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
                     position(second.state), 0.0);
     }
     const FiniteExecutionPathStatus segment_status = validatePhysicalSegment(
-        position(first.state),
-        bodyAxis(index == 1U ? previous_applied_control : points[index - 2U].control),
-        position(second.state), bodyAxis(first.control), world, failure_point);
+        position(first.state), bodyAxis(first.control), position(second.state),
+        bodyAxis(second.control), world, failure_point);
     if (segment_status != FiniteExecutionPathStatus::kValid) {
       return reject(segment_status, 0U, index - 1U, failure_point, 0.0);
     }
@@ -332,7 +342,8 @@ buildValidatedFiniteExecutionPath(const std::span<const State> planned_states,
         previous_applied_control, finite_horizon_config);
     if (candidate.has_value()) {
       result.validation = validateCompleteFiniteExecutionPath(
-          timedPathPoints(*candidate, dynamics.dt_s), previous_applied_control, world);
+          timedPathPoints(*candidate, previous_applied_control, dynamics.dt_s),
+          previous_applied_control, world);
       if (result.validation.accepted()) {
         result.horizon = std::move(candidate);
         return result;
@@ -410,10 +421,8 @@ FiniteExecutionPathValidation validateFiniteExecutionTrajectoryContinuation(
   }
   State terminal_boundary_previous_state = current_state;
   for (std::size_t index = first_remaining_index; index < points.size(); ++index) {
-    const Control& applied_control =
-        index == 0U ? current_control : points[index - 1U].control;
     altitude_status =
-        validateAltitudeState(points[index].state, applied_control, world);
+        validateAltitudeState(points[index].state, points[index].control, world);
     if (altitude_status != FiniteExecutionPathStatus::kValid) {
       return reject(altitude_status, first_remaining_index, index,
                     position(points[index].state), remaining_duration_s);
@@ -492,7 +501,7 @@ FiniteExecutionPathValidation validateFiniteExecutionPathContinuation(
   FiniteExecutionPathStatus segment_status{FiniteExecutionPathStatus::kValid};
   Point3 failure_point{};
   for (std::size_t index = source_control_index; index + 1U < points.size(); ++index) {
-    const Control& control = points[index].control;
+    const Control& control = points[index + 1U].control;
     const State next_state =
         integrateReference(simulated_state, control, *world.dynamics);
     altitude_status = validateAltitudeState(next_state, control, world);
@@ -577,7 +586,7 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
   std::vector<Control> controls;
   controls.reserve(control_count);
   for (std::size_t offset = 0U; offset < control_count; ++offset) {
-    controls.push_back(points[result.source_control_index + offset].control);
+    controls.push_back(points[result.source_control_index + offset + 1U].control);
   }
   std::vector<State> states{current_state};
   states.reserve(controls.size() + 1U);

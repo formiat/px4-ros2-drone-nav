@@ -633,6 +633,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "not_attempted";
     case StaticRouteActivationStatus::kActivated:
       return "activated";
+    case StaticRouteActivationStatus::kCertifiedPending:
+      return "certified_pending";
     case StaticRouteActivationStatus::kCandidateNotExecutable:
       return "candidate_not_executable";
     case StaticRouteActivationStatus::kCandidateValidationRejected:
@@ -645,6 +647,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "stale_route_generation";
     case StaticRouteActivationStatus::kStaleObjective:
       return "stale_objective";
+    case StaticRouteActivationStatus::kInvalidExecutionGeometry:
+      return "invalid_execution_geometry";
     case StaticRouteActivationStatus::kDynamicHandoffRejected:
       return "dynamic_handoff_rejected";
     case StaticRouteActivationStatus::kEquivalentActiveSegmentRetained:

@@ -414,7 +414,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
     const ProductionIncrementalTopologySearch3D& search,
     const RiskAwareLattice3DResult& lattice,
     const StaticRouteCandidateValidation& validation,
-    const StaticRouteActivationStatus activation_status, const bool activated) {
+    const StaticRouteActivationStatus activation_status, const bool certified_pending) {
   const ObservationFrontier* selected_frontier{nullptr};
   if (search.plan.selected_frontier.has_value()) {
     selected_frontier = std::addressof(search.plan.selected_frontier.value());
@@ -478,7 +478,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "directive_captured_bends_skipped=%zu "
       "directive_target=(%.2f,%.2f,%.2f) directive_reaches_target=%s "
       "lattice_status=%s lattice_purpose=%s lattice_executable=%s "
-      "candidate_validation=%.*s activation=%.*s activated=%s "
+      "candidate_validation=%.*s activation=%.*s certified_pending=%s "
       "commit_accepted=%s commit_plan_id=%" PRIu64
       " commit_route_nodes=%zu commit_frontier=%s "
       "commit_replaced_frontier_coverage=%s commit_dead_end=%s",
@@ -562,7 +562,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       staticRouteCandidateStatusName(validation.status).data(),
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
       staticRouteActivationStatusName(activation_status).data(),
-      activated ? "true" : "false", search.commit.accepted ? "true" : "false",
+      certified_pending ? "true" : "false", search.commit.accepted ? "true" : "false",
       search.commit.strategic_plan_id, search.commit.active_route_nodes,
       search.commit.frontier_selection_recorded ? "true" : "false",
       search.commit.replaced_frontier_coverage_recorded ? "true" : "false",

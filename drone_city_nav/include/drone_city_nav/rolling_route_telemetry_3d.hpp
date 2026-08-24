@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/route_planning_3d.hpp"
+#include "drone_city_nav/route_execution_contract_3d.hpp"
 
 #include <cstdint>
 #include <limits>
@@ -8,37 +8,12 @@
 
 namespace drone_city_nav {
 
-enum class RouteEndpointSemantics3D : std::uint8_t {
-  kContinuation,
-  kObservationStop,
-  kMissionStop,
-  kEmergencyBrakeTail,
-};
-
-struct RouteContinuityLineage3D {
-  std::uint64_t mission_epoch{0U};
-  std::uint64_t assignment_generation{0U};
-  std::uint64_t target_detection_id{0U};
-  std::uint64_t target_track_id{0U};
-};
-
-[[nodiscard]] RouteEndpointSemantics3D
-routeEndpointSemantics3D(const RouteIntent3D& intent, bool reaches_intent_target,
-                         bool reaches_mission_goal) noexcept;
-
 [[nodiscard]] RouteEndpointSemantics3D
 effectiveRouteEndpointSemantics3D(RouteEndpointSemantics3D planned_semantics,
                                   bool raw_invalidation_active,
                                   bool finite_braking_tail_active) noexcept;
 
-[[nodiscard]] std::uint64_t
-routeContinuityId3D(const RouteIntent3D& intent,
-                    const RouteContinuityLineage3D& lineage = {}) noexcept;
-
 [[nodiscard]] double routeSpeed3D(const Vec3& velocity) noexcept;
-
-[[nodiscard]] std::string_view
-routeEndpointSemantics3DName(RouteEndpointSemantics3D semantics) noexcept;
 
 struct RollingRouteTelemetryConfig3D {
   double continuation_boundary_distance_m{1.0};

@@ -6,6 +6,7 @@
 #include "drone_city_nav/msg/obstacle_memory_status.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
+#include "drone_city_nav/producer_instance_id.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -41,6 +42,7 @@ ObstacleMemoryTransport::ObstacleMemoryTransport(
       static_grid_{std::move(static_grid)},
       risk_critical_distance_m_{risk_critical_distance_m},
       risk_preferred_distance_m_{risk_preferred_distance_m},
+      producer_instance_id_{createRawObstacleProducerInstanceId()},
       risk_policy_fingerprint_{
           riskPolicyFingerprint(risk_critical_distance_m, risk_preferred_distance_m)},
       use_static_map_{use_static_map} {
@@ -115,10 +117,6 @@ void ObstacleMemoryTransport::publish(
     const GridCellCounts& cell_counts, RawGridChanges changes,
     const rclcpp::Time& stamp) {
   const std::int64_t stamp_ns = stamp.nanoseconds();
-  if (producer_instance_id_ == 0U) {
-    producer_instance_id_ =
-        static_cast<std::uint64_t>(std::max<std::int64_t>(1, stamp_ns));
-  }
   ++sequence_;
   if (!rclcpp::ok(node_.get_node_base_interface()->get_context())) {
     return;

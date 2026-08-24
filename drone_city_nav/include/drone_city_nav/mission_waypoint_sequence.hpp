@@ -34,7 +34,7 @@ missionWaypointsFromFlatParameters(std::span<const double> parameters);
 class MissionWaypointSequence final {
 public:
   MissionWaypointSequence(std::vector<Point3> waypoints,
-                          MissionWaypointSequenceConfig config = {});
+                          const MissionWaypointSequenceConfig& config = {});
 
   [[nodiscard]] const Point3& activeGoal() const noexcept;
   [[nodiscard]] std::size_t activeIndex() const noexcept;
@@ -45,6 +45,11 @@ public:
   [[nodiscard]] MissionWaypointUpdate
   update(const MissionWaypointObservation& observation);
 
+  // Updates only physical stop continuity. A caller with an independent
+  // execution witness may acknowledge separately once this becomes true.
+  [[nodiscard]] bool
+  physicalGoalHoldReady(const MissionWaypointObservation& observation);
+
   // Records a capture already confirmed by the navigation controller.
   [[nodiscard]] MissionWaypointUpdate acknowledgeGoalCapture() noexcept;
 
@@ -54,6 +59,7 @@ private:
   std::size_t active_index_{0U};
   std::size_t completed_waypoint_count_{0U};
   bool mission_completed_{false};
+  std::int64_t required_stop_hold_ns_{0};
   std::int64_t stopped_since_ns_{0};
 };
 

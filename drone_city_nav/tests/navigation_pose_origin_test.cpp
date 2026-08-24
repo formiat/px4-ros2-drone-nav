@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace drone_city_nav {
@@ -65,6 +67,26 @@ TEST(NavigationPoseOriginTest, ConvertsPx4NorthEastIntoUrbanEnuMap) {
   EXPECT_DOUBLE_EQ(23.0, actual.pose.position.y);
   EXPECT_DOUBLE_EQ(3.8, actual.altitude_m);
   EXPECT_NEAR(std::numbers::pi / 2.0, actual.pose.yaw_rad, 1.0e-12);
+}
+
+TEST(NavigationPoseOriginTest, InterpolatesYawAcrossPiOnTheShortestPath) {
+  constexpr double kFirstYawRad{3.13};
+  constexpr double kSecondYawRad{-3.13};
+
+  EXPECT_NEAR(kFirstYawRad,
+              interpolateYawShortestPath(kFirstYawRad, kSecondYawRad, 0.0), 1.0e-12);
+  EXPECT_NEAR(kSecondYawRad,
+              interpolateYawShortestPath(kFirstYawRad, kSecondYawRad, 1.0), 1.0e-12);
+  EXPECT_NEAR(std::numbers::pi,
+              std::abs(interpolateYawShortestPath(kFirstYawRad, kSecondYawRad, 0.5)),
+              1.0e-12);
+}
+
+TEST(NavigationPoseOriginTest, YawInterpolationClampsRatioAndRejectsNonfiniteInput) {
+  EXPECT_DOUBLE_EQ(0.25, interpolateYawShortestPath(0.25, 1.0, -1.0));
+  EXPECT_DOUBLE_EQ(1.0, interpolateYawShortestPath(0.25, 1.0, 2.0));
+  EXPECT_FALSE(std::isfinite(
+      interpolateYawShortestPath(0.25, 1.0, std::numeric_limits<double>::quiet_NaN())));
 }
 
 } // namespace

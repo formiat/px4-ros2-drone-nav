@@ -37,6 +37,7 @@ void adoptWorldResources(ProductionMppiPreparedEsdf& target,
   target.distances_m = source.distances_m;
   target.raw_occupancy = source.raw_occupancy;
   target.observed_occupancy = source.observed_occupancy;
+  target.observed_raw_world_owner = source.observed_raw_world_owner;
   target.proprioceptive_free_space_seed = source.proprioceptive_free_space_seed;
   target.launch_support_contact = source.launch_support_contact;
   target.launch_support_resolution_pending = source.launch_support_resolution_pending;

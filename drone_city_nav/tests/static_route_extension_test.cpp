@@ -835,6 +835,9 @@ TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kCandidateValidationRejected),
             "candidate_validation_rejected");
+  EXPECT_EQ(
+      staticRouteActivationStatusName(StaticRouteActivationStatus::kCertifiedPending),
+      "certified_pending");
   EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kWorldPublicationRejected),
             "world_publication_rejected");
@@ -847,6 +850,9 @@ TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(
       staticRouteActivationStatusName(StaticRouteActivationStatus::kStaleObjective),
       "stale_objective");
+  EXPECT_EQ(staticRouteActivationStatusName(
+                StaticRouteActivationStatus::kInvalidExecutionGeometry),
+            "invalid_execution_geometry");
 }
 
 } // namespace

@@ -914,4 +914,34 @@ ProductionMppiNode::compareWithPrevious(const mppi::MppiTickResult& result) cons
   return stability;
 }
 
+void ProductionMppiNode::startPlanningTimer() {
+  planning_timer_ = create_wall_timer(
+      std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); },
+      planning_callback_group_);
+}
+
+ProductionMppiNode::~ProductionMppiNode() {
+  if (topology_worker_.joinable()) {
+    topology_worker_.request_stop();
+    topology_queue_condition_.notify_all();
+    topology_worker_.join();
+  }
+  if (diagnostics_worker_.joinable()) {
+    diagnostics_worker_.request_stop();
+    diagnostics_mailbox_.notifyAll();
+    diagnostics_worker_.join();
+  }
+  if (esdf_worker_.joinable()) {
+    esdf_worker_.request_stop();
+    raw_queue_condition_.notify_all();
+    esdf_worker_.join();
+  }
+  if (guide_worker_.joinable()) {
+    guide_worker_.request_stop();
+    guide_queue_condition_.notify_all();
+    guide_worker_.join();
+  }
+  publishSummary();
+}
+
 } // namespace drone_city_nav

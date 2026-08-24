@@ -724,6 +724,72 @@ RouteProjection3D projectOntoRoute3D(const std::span<const RouteSample3D> route,
   return best;
 }
 
+RouteProjection3D projectOntoRoute3DWithinStationWindow(
+    const std::span<const RouteSample3D> route, const Point3& position,
+    const double minimum_station_m, const double maximum_station_m) noexcept {
+  RouteProjection3D best;
+  if (route.empty() || !std::isfinite(minimum_station_m) ||
+      !std::isfinite(maximum_station_m) || maximum_station_m < minimum_station_m) {
+    return best;
+  }
+  best.distance_m = std::numeric_limits<double>::infinity();
+  if (route.size() == 1U) {
+    if (route.front().station_m < minimum_station_m ||
+        route.front().station_m > maximum_station_m) {
+      return best;
+    }
+    best.valid = true;
+    best.station_m = route.front().station_m;
+    best.point = route.front().position;
+    best.distance_m = distance3D(position, best.point);
+    return best;
+  }
+
+  for (std::size_t index = 0U; index + 1U < route.size(); ++index) {
+    const RouteSample3D& first = route[index];
+    const RouteSample3D& second = route[index + 1U];
+    const double allowed_begin_station_m = std::max(first.station_m, minimum_station_m);
+    const double allowed_end_station_m = std::min(second.station_m, maximum_station_m);
+    const double station_length_m = second.station_m - first.station_m;
+    if (!(station_length_m > 0.0) || allowed_end_station_m < allowed_begin_station_m) {
+      continue;
+    }
+
+    const Vec3 segment{second.position.x - first.position.x,
+                       second.position.y - first.position.y,
+                       second.position.z - first.position.z};
+    const double squared_length =
+        segment.x * segment.x + segment.y * segment.y + segment.z * segment.z;
+    const Vec3 offset{position.x - first.position.x, position.y - first.position.y,
+                      position.z - first.position.z};
+    const double unconstrained_ratio =
+        squared_length > 1.0e-12
+            ? (offset.x * segment.x + offset.y * segment.y + offset.z * segment.z) /
+                  squared_length
+            : 0.0;
+    const double unconstrained_station_m =
+        std::lerp(first.station_m, second.station_m, unconstrained_ratio);
+    const double station_m = std::clamp(unconstrained_station_m,
+                                        allowed_begin_station_m, allowed_end_station_m);
+    const double ratio = (station_m - first.station_m) / station_length_m;
+    const Point3 projected{first.position.x + ratio * segment.x,
+                           first.position.y + ratio * segment.y,
+                           first.position.z + ratio * segment.z};
+    const double distance_m = distance3D(position, projected);
+    if (distance_m >= best.distance_m) {
+      continue;
+    }
+    best.valid = true;
+    best.station_m = station_m;
+    best.distance_m = distance_m;
+    best.point = projected;
+  }
+  if (best.valid) {
+    best.remaining_m = std::max(0.0, route.back().station_m - best.station_m);
+  }
+  return best;
+}
+
 std::vector<ConstrainedRouteSpan>
 makeConstrainedRouteSpans(const std::span<const RouteSample3D> route,
                           const std::span<const SelectedPassageTraversal> traversals,

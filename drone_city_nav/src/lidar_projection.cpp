@@ -29,6 +29,25 @@ namespace {
   return vector.x * vector.x + vector.y * vector.y + vector.z * vector.z;
 }
 
+[[nodiscard]] double dotProduct(const Point3& first, const Point3& second) noexcept {
+  return first.x * second.x + first.y * second.y + first.z * second.z;
+}
+
+[[nodiscard]] bool validUnitAxis(const Point3& axis) noexcept {
+  constexpr double kUnitTolerance{1.0e-3};
+  const double squared_norm = squaredNorm(axis);
+  return std::isfinite(squared_norm) && std::abs(squared_norm - 1.0) <= kUnitTolerance;
+}
+
+[[nodiscard]] double basisDeterminant(const LidarProjectionBodyFrame& frame) noexcept {
+  const Point3 y_cross_z{
+      frame.y_axis_map.y * frame.z_axis_map.z - frame.y_axis_map.z * frame.z_axis_map.y,
+      frame.y_axis_map.z * frame.z_axis_map.x - frame.y_axis_map.x * frame.z_axis_map.z,
+      frame.y_axis_map.x * frame.z_axis_map.y - frame.y_axis_map.y * frame.z_axis_map.x,
+  };
+  return dotProduct(frame.x_axis_map, y_cross_z);
+}
+
 [[nodiscard]] Point3 normalizeOrZero(const Point3& vector) noexcept {
   const double norm_sq = squaredNorm(vector);
   if (!std::isfinite(norm_sq) || norm_sq <= 0.0) {
@@ -134,16 +153,49 @@ rotateByQuaternion(const Point3& vector,
       vector.z + w * twice_cross.z + (q.x * twice_cross.y - q.y * twice_cross.x)};
 }
 
-[[nodiscard]] Point3 nedVectorToMap(const Point3& vector) noexcept {
-  return Point3{vector.x, vector.y, -vector.z};
+[[nodiscard]] bool
+validPx4ToMapHorizontalTransform(const LidarProjectionConfig& config) noexcept {
+  constexpr double kTolerance{1.0e-6};
+  const double first_row_norm_sq = config.px4_to_map_m00 * config.px4_to_map_m00 +
+                                   config.px4_to_map_m01 * config.px4_to_map_m01;
+  const double second_row_norm_sq = config.px4_to_map_m10 * config.px4_to_map_m10 +
+                                    config.px4_to_map_m11 * config.px4_to_map_m11;
+  const double row_dot = config.px4_to_map_m00 * config.px4_to_map_m10 +
+                         config.px4_to_map_m01 * config.px4_to_map_m11;
+  const double determinant = config.px4_to_map_m00 * config.px4_to_map_m11 -
+                             config.px4_to_map_m01 * config.px4_to_map_m10;
+  return std::isfinite(first_row_norm_sq) && std::isfinite(second_row_norm_sq) &&
+         std::isfinite(row_dot) && std::isfinite(determinant) &&
+         std::abs(first_row_norm_sq - 1.0) <= kTolerance &&
+         std::abs(second_row_norm_sq - 1.0) <= kTolerance &&
+         std::abs(row_dot) <= kTolerance &&
+         std::abs(std::abs(determinant) - 1.0) <= kTolerance;
 }
 
-[[nodiscard]] Point3 applyMapYawOffset(const Point3& vector,
-                                       const double yaw_offset_rad) noexcept {
+[[nodiscard]] Point3 localNedVectorToMap(const Point3& vector,
+                                         const LidarProjectionConfig& config) noexcept {
+  return Point3{config.px4_to_map_m00 * vector.x + config.px4_to_map_m01 * vector.y,
+                config.px4_to_map_m10 * vector.x + config.px4_to_map_m11 * vector.y,
+                -vector.z};
+}
+
+[[nodiscard]] Point3 applyLocalNedYawOffset(const Point3& vector,
+                                            const double yaw_offset_rad) noexcept {
   const double cosine = std::cos(yaw_offset_rad);
   const double sine = std::sin(yaw_offset_rad);
   return Point3{cosine * vector.x - sine * vector.y,
                 sine * vector.x + cosine * vector.y, vector.z};
+}
+
+[[nodiscard]] double mapYawToPx4LocalYaw(const double map_yaw_rad,
+                                         const LidarProjectionConfig& config) noexcept {
+  const double map_heading_x = std::cos(map_yaw_rad);
+  const double map_heading_y = std::sin(map_yaw_rad);
+  const double local_heading_x =
+      config.px4_to_map_m00 * map_heading_x + config.px4_to_map_m10 * map_heading_y;
+  const double local_heading_y =
+      config.px4_to_map_m01 * map_heading_x + config.px4_to_map_m11 * map_heading_y;
+  return std::atan2(local_heading_y, local_heading_x);
 }
 
 [[nodiscard]] Point3 lidarFluToBodyFrd(const Point3& vector) noexcept {
@@ -166,8 +218,9 @@ projectionBodyQuaternion(const LidarProjectionPose& pose,
       pose.body_to_ned_quaternion_valid &&
       validQuaternion(pose.body_to_ned_quaternion)) {
     const auto attitude = normalizedQuaternion(pose.body_to_ned_quaternion);
+    const double local_yaw_rad = mapYawToPx4LocalYaw(pose.yaw_rad, config);
     const double yaw_delta_rad =
-        normalizedAngle(pose.yaw_rad - quaternionYaw(attitude));
+        normalizedAngle(local_yaw_rad - quaternionYaw(attitude));
     const std::array<double, 4> mapping_yaw_correction{
         std::cos(0.5 * yaw_delta_rad), 0.0, 0.0, std::sin(0.5 * yaw_delta_rad)};
     return normalizedQuaternion(quaternionMultiply(mapping_yaw_correction, attitude));
@@ -177,8 +230,9 @@ projectionBodyQuaternion(const LidarProjectionPose& pose,
   const double pitch =
       config.compensate_attitude && pose.attitude_valid ? pose.pitch_rad : 0.0;
   // Mapping yaw may intentionally differ from the estimator quaternion during
-  // startup. Keep quaternion-derived tilt, but honor the synchronized mapping yaw.
-  return quaternionFromRpy(roll, pitch, pose.yaw_rad);
+  // startup. Keep quaternion-derived tilt, but honor the synchronized mapping yaw
+  // after converting it back into the PX4-local NED frame.
+  return quaternionFromRpy(roll, pitch, mapYawToPx4LocalYaw(pose.yaw_rad, config));
 }
 
 [[nodiscard]] Point3 projectDirectionToNed(const Point3& lidar_direction,
@@ -188,9 +242,9 @@ projectionBodyQuaternion(const LidarProjectionPose& pose,
                                            const double applied_pitch_rad) noexcept {
   const Point3 body_frd_direction =
       lidarFluToBodyFrd(mountedLidarDirection(lidar_direction, config));
-  return normalizeOrZero(rotateRzyx(body_frd_direction, applied_roll_rad,
-                                    applied_pitch_rad,
-                                    pose.yaw_rad + config.scan_yaw_offset_rad));
+  return normalizeOrZero(rotateRzyx(
+      body_frd_direction, applied_roll_rad, applied_pitch_rad,
+      mapYawToPx4LocalYaw(pose.yaw_rad, config) + config.scan_yaw_offset_rad));
 }
 
 [[nodiscard]] bool validProjectionInputs(const LidarProjectionPose& pose,
@@ -209,6 +263,7 @@ projectionBodyQuaternion(const LidarProjectionPose& pose,
          std::isfinite(config.lidar_mount_roll_rad) &&
          std::isfinite(config.lidar_mount_pitch_rad) &&
          std::isfinite(config.lidar_mount_yaw_rad) &&
+         validPx4ToMapHorizontalTransform(config) &&
          finite2D(Point2{config.lidar_translation_body_frd_m.x,
                          config.lidar_translation_body_frd_m.y}) &&
          std::isfinite(config.lidar_translation_body_frd_m.z) &&
@@ -221,6 +276,26 @@ projectionBodyQuaternion(const LidarProjectionPose& pose,
 }
 
 } // namespace
+
+bool lidarProjectionBodyFrameIsValid(const LidarProjectionBodyFrame& frame) noexcept {
+  constexpr double kOrthogonalityTolerance{1.0e-3};
+  constexpr double kDeterminantTolerance{1.0e-3};
+  if (!frame.valid || !finite3D(frame.origin_map_m) || !finite3D(frame.x_axis_map) ||
+      !finite3D(frame.y_axis_map) || !finite3D(frame.z_axis_map) ||
+      !validUnitAxis(frame.x_axis_map) || !validUnitAxis(frame.y_axis_map) ||
+      !validUnitAxis(frame.z_axis_map)) {
+    return false;
+  }
+  const double determinant = basisDeterminant(frame);
+  return std::abs(dotProduct(frame.x_axis_map, frame.y_axis_map)) <=
+             kOrthogonalityTolerance &&
+         std::abs(dotProduct(frame.x_axis_map, frame.z_axis_map)) <=
+             kOrthogonalityTolerance &&
+         std::abs(dotProduct(frame.y_axis_map, frame.z_axis_map)) <=
+             kOrthogonalityTolerance &&
+         std::isfinite(determinant) &&
+         std::abs(std::abs(determinant) - 1.0) <= kDeterminantTolerance;
+}
 
 std::optional<AttitudeEuler>
 quaternionToEuler(const std::array<float, 4>& quaternion) noexcept {
@@ -305,10 +380,10 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
                           : lidarFluToBodyFrd(mountedLidarDirection(
                                 projection.lidar_direction, config)));
   if (config.use_full_lidar_extrinsic) {
-    projection.ned_direction = normalizeOrZero(
-        applyMapYawOffset(rotateByQuaternion(projection.body_frd_direction,
-                                             projectionBodyQuaternion(pose, config)),
-                          config.scan_yaw_offset_rad));
+    projection.ned_direction = normalizeOrZero(applyLocalNedYawOffset(
+        rotateByQuaternion(projection.body_frd_direction,
+                           projectionBodyQuaternion(pose, config)),
+        config.scan_yaw_offset_rad));
   } else {
     projection.ned_direction = projectDirectionToNed(
         projection.lidar_direction, pose, config, projection.applied_roll_rad,
@@ -325,21 +400,24 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
   projection.used_range_m =
       projection.hit ? static_cast<double>(raw_range) : scan_range_max;
 
-  const Point3 world_direction = projection.ned_direction;
+  const Point3 map_direction =
+      normalizeOrZero(localNedVectorToMap(projection.ned_direction, config));
 
   if (pose.altitude_valid) {
     projection.ray_origin_before_extrinsic_map_m =
         Point3{pose.position.x, pose.position.y, pose.altitude_m};
     projection.applied_extrinsic_map_m =
         config.use_full_lidar_extrinsic
-            ? nedVectorToMap(rotateByQuaternion(config.lidar_translation_body_frd_m,
-                                                projectionBodyQuaternion(pose, config)))
+            ? localNedVectorToMap(
+                  rotateByQuaternion(config.lidar_translation_body_frd_m,
+                                     projectionBodyQuaternion(pose, config)),
+                  config)
             : Point3{0.0, 0.0, config.lidar_z_offset_m};
     projection.ray_origin_map_m =
         Point3{pose.position.x + projection.applied_extrinsic_map_m.x,
                pose.position.y + projection.applied_extrinsic_map_m.y,
                pose.altitude_m + projection.applied_extrinsic_map_m.z};
-    projection.ray_direction_map = nedVectorToMap(world_direction);
+    projection.ray_direction_map = map_direction;
     projection.endpoint_map_m =
         Point3{projection.ray_origin_map_m.x +
                    projection.used_range_m * projection.ray_direction_map.x,
@@ -359,8 +437,8 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
 
   if (!projection.endpoint_xyz_valid) {
     projection.endpoint =
-        Point2{pose.position.x + projection.used_range_m * world_direction.x,
-               pose.position.y + projection.used_range_m * world_direction.y};
+        Point2{pose.position.x + projection.used_range_m * map_direction.x,
+               pose.position.y + projection.used_range_m * map_direction.y};
   }
 
   projection.status = LidarBeamProjectionStatus::kAccepted;
@@ -372,7 +450,7 @@ lidarProjectionBodyFrame(const LidarProjectionPose& pose,
                          const LidarProjectionConfig& config) noexcept {
   LidarProjectionBodyFrame frame{};
   if (!finite2D(pose.position) || !std::isfinite(pose.altitude_m) ||
-      !std::isfinite(pose.yaw_rad) ||
+      !std::isfinite(pose.yaw_rad) || !validPx4ToMapHorizontalTransform(config) ||
       (config.compensate_attitude &&
        (!pose.attitude_valid || !std::isfinite(pose.roll_rad) ||
         !std::isfinite(pose.pitch_rad)))) {
@@ -380,17 +458,14 @@ lidarProjectionBodyFrame(const LidarProjectionPose& pose,
   }
   const std::array<double, 4> quaternion = projectionBodyQuaternion(pose, config);
   frame.origin_map_m = Point3{pose.position.x, pose.position.y, pose.altitude_m};
-  frame.x_axis_map =
-      nedVectorToMap(rotateByQuaternion(Point3{1.0, 0.0, 0.0}, quaternion));
-  frame.y_axis_map =
-      nedVectorToMap(rotateByQuaternion(Point3{0.0, 1.0, 0.0}, quaternion));
-  frame.z_axis_map =
-      nedVectorToMap(rotateByQuaternion(Point3{0.0, 0.0, 1.0}, quaternion));
-  frame.valid = finite2D(Point2{frame.x_axis_map.x, frame.x_axis_map.y}) &&
-                finite2D(Point2{frame.y_axis_map.x, frame.y_axis_map.y}) &&
-                finite2D(Point2{frame.z_axis_map.x, frame.z_axis_map.y}) &&
-                std::isfinite(frame.x_axis_map.z) &&
-                std::isfinite(frame.y_axis_map.z) && std::isfinite(frame.z_axis_map.z);
+  frame.x_axis_map = localNedVectorToMap(
+      rotateByQuaternion(Point3{1.0, 0.0, 0.0}, quaternion), config);
+  frame.y_axis_map = localNedVectorToMap(
+      rotateByQuaternion(Point3{0.0, 1.0, 0.0}, quaternion), config);
+  frame.z_axis_map = localNedVectorToMap(
+      rotateByQuaternion(Point3{0.0, 0.0, 1.0}, quaternion), config);
+  frame.valid = true;
+  frame.valid = lidarProjectionBodyFrameIsValid(frame);
   return frame;
 }
 
@@ -454,10 +529,10 @@ LidarRayProjection3D projectLidarRay3D(const LidarProjectionPose& pose,
                    body_endpoint.y - body_frame.origin_map_m.y,
                    body_endpoint.z - body_frame.origin_map_m.z};
   if (config.scan_yaw_offset_rad != 0.0) {
-    const double cosine = std::cos(config.scan_yaw_offset_rad);
-    const double sine = std::sin(config.scan_yaw_offset_rad);
-    direction = Point3{cosine * direction.x - sine * direction.y,
-                       sine * direction.x + cosine * direction.y, direction.z};
+    const Point3 local_ned_direction = applyLocalNedYawOffset(
+        rotateByQuaternion(body_direction, projectionBodyQuaternion(pose, config)),
+        config.scan_yaw_offset_rad);
+    direction = localNedVectorToMap(local_ned_direction, config);
   }
   direction = normalizeOrZero(direction);
   result.direction_map = Vec3{direction.x, direction.y, direction.z};

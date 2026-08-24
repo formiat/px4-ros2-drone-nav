@@ -2,7 +2,10 @@
 
 #include "drone_city_nav/cooperative_traffic.hpp"
 #include "drone_city_nav/cooperative_traffic_mission.hpp"
+#include "drone_city_nav/execution_horizon_admission.hpp"
+#include "drone_city_nav/execution_horizon_witness.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
+#include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
 #include "drone_city_nav/msg/simulation_truth_alignment.hpp"
@@ -34,8 +37,21 @@ public:
 private:
   struct HoldHorizon {
     Point3 position{};
+    std::uint64_t producer_instance_id{0U};
+    std::uint64_t target_offboard_instance_id{0U};
     std::uint64_t sequence{0U};
+    std::uint8_t execution_mode{
+        msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD};
+    std::int64_t valid_from_ns{0};
+    std::int64_t valid_until_ns{0};
     bool active{false};
+    bool witnessed{false};
+
+    [[nodiscard]] bool activeAt(std::int64_t now_ns) const noexcept {
+      return active && witnessed && valid_from_ns > 0 &&
+             valid_until_ns > valid_from_ns && now_ns >= valid_from_ns &&
+             now_ns < valid_until_ns;
+    }
   };
 
   struct VehicleRuntime {
@@ -45,6 +61,8 @@ private:
     std::optional<TimedVehicleState> navigation_state;
     std::optional<TimedVehicleState> truth_state;
     std::optional<HoldHorizon> hold_horizon;
+    ExecutionHorizonAdmissionState horizon_admission{};
+    ExecutionHorizonWitnessState horizon_witness_state{};
     std::unique_ptr<CooperativeGoalHoldConfirmation> goal_hold_confirmation;
     std::unique_ptr<CooperativeGoalHoldConfirmation> failure_hold_confirmation;
     std::optional<Point3> requested_hold_position;
@@ -57,7 +75,10 @@ private:
     std::uint64_t objective_sequence{0U};
     std::uint64_t latest_intent_generation{0U};
     std::uint64_t first_executable_horizon_sequence{0U};
+    std::uint64_t hold_request_horizon_producer_instance_id{0U};
     std::uint64_t hold_request_horizon_sequence{0U};
+    std::int64_t executable_horizon_valid_from_ns{0};
+    std::int64_t executable_horizon_valid_until_ns{0};
     std::int64_t latest_intent_receive_ns{0};
     std::int64_t latest_intent_valid_until_ns{0};
     std::int64_t degraded_since_ns{0};
@@ -66,6 +87,7 @@ private:
     rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr state_sub;
     rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr truth_state_sub;
     rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub;
+    rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr control_feedback_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr world_ready_sub;
     rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr destroyed_sub;
     rclcpp::Publisher<msg::NavigationObjective>::SharedPtr objective_pub;
@@ -77,8 +99,15 @@ private:
   void configureGroundTruthBoundary();
   void onTruthAlignmentStatus(const msg::SimulationTruthAlignment& status);
   void onFlightIntent(const msg::CooperativeFlightIntent& intent);
+  void onExecutionHorizon(const msg::MppiTrajectoryHorizon& horizon,
+                          std::size_t vehicle_index);
+  void onControlFeedback(const msg::MppiControlFeedback& feedback,
+                         std::size_t vehicle_index);
   void onVehicleDestroyed(const msg::VehicleDestroyed& destroyed,
                           std::size_t vehicle_index);
+  void revokeExecutionHorizonEvidence(VehicleRuntime& vehicle);
+  void refreshExecutionHorizonEvidence(VehicleRuntime& vehicle, std::int64_t now_ns);
+  void expireOffboardEvidence(std::int64_t now_ns);
 
   [[nodiscard]] std::optional<TimedVehicleState>
   physicalState(std::size_t index) const noexcept;
@@ -89,7 +118,7 @@ private:
   void logMissionReadiness(std::int64_t now_ns) const;
   [[nodiscard]] bool runtimeInputsHealthy(std::int64_t now_ns);
   void updateSeparationMetrics();
-  void updateGoalHolds();
+  void updateGoalHolds(std::int64_t now_ns);
   [[nodiscard]] bool allGoalHoldsConfirmed() const noexcept;
 
   void beginFailure(const std::string& reason);
@@ -121,6 +150,7 @@ private:
   double truth_alignment_maximum_error_m_{0.0};
   std::uint64_t mission_epoch_{1U};
   std::int64_t maximum_input_age_ns_{1'000'000'000LL};
+  std::int64_t maximum_offboard_feedback_age_ns_{1'000'000'000LL};
   std::int64_t maximum_intent_age_ns_{500'000'000LL};
   std::int64_t maximum_degraded_duration_ns_{5'000'000'000LL};
   std::int64_t readiness_timeout_ns_{60'000'000'000LL};

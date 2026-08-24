@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/producer_epoch_admission.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -11,7 +13,11 @@ namespace drone_city_nav {
 struct LatestObservation {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t sequence{0U};
+  std::int64_t source_stamp_ns{0};
   std::int64_t receive_stamp_ns{0};
+  std::uint64_t content_fingerprint{0U};
+  std::uint64_t producer_epoch_generation{0U};
+  bool identity_conflicted{false};
 
   [[nodiscard]] bool available() const noexcept;
   [[nodiscard]] double ageMs(std::int64_t now_ns) const noexcept;
@@ -19,12 +25,17 @@ struct LatestObservation {
 
 class LatestObservationTracker final {
 public:
-  [[nodiscard]] bool observe(std::uint64_t producer_instance_id, std::uint64_t sequence,
-                             std::int64_t receive_stamp_ns) noexcept;
+  [[nodiscard]] ProducerEpochAdmissionResult
+  observe(const ProducerEpochAdmissionConfig& config,
+          const ProducerEpochObservation& observation, std::int64_t now_ns,
+          bool observation_contract_valid = true) noexcept;
   [[nodiscard]] const LatestObservation& latest() const noexcept;
+  [[nodiscard]] const ProducerEpochAdmissionState& admissionState() const noexcept;
+  [[nodiscard]] ProducerEpochAuthority authority() const noexcept;
 
 private:
   LatestObservation latest_{};
+  ProducerEpochAdmissionState admission_state_{};
 };
 
 struct RawMapVersion {

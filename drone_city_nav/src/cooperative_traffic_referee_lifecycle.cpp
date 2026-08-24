@@ -166,7 +166,7 @@ void CooperativeTrafficRefereeNode::updateSeparationMetrics() {
   }
 }
 
-void CooperativeTrafficRefereeNode::updateGoalHolds() {
+void CooperativeTrafficRefereeNode::updateGoalHolds(const std::int64_t now_ns) {
   for (std::size_t index = 0U; index < vehicles_.size(); ++index) {
     VehicleRuntime& vehicle = vehicles_[index];
     const std::optional<TimedVehicleState> state = physicalState(index);
@@ -174,7 +174,7 @@ void CooperativeTrafficRefereeNode::updateGoalHolds() {
       continue;
     }
     std::optional<Point3> active_hold_position;
-    if (vehicle.hold_horizon && vehicle.hold_horizon->active) {
+    if (vehicle.hold_horizon && vehicle.hold_horizon->activeAt(now_ns)) {
       active_hold_position = vehicle.hold_horizon->position;
     }
     const CooperativeGoalHoldUpdate update = vehicle.goal_hold_confirmation->update(
@@ -220,8 +220,9 @@ void CooperativeTrafficRefereeNode::requestHold(const std::size_t index,
   }
   vehicle.hold_requested = true;
   vehicle.hold_requested_ns = now().nanoseconds();
-  vehicle.hold_request_horizon_sequence =
-      vehicle.hold_horizon ? vehicle.hold_horizon->sequence : 0U;
+  vehicle.hold_request_horizon_producer_instance_id =
+      vehicle.horizon_admission.current_producer_instance_id;
+  vehicle.hold_request_horizon_sequence = vehicle.horizon_admission.current_sequence;
   vehicle.requested_hold_position = vehicle.navigation_state->position;
   vehicle.failure_hold_confirmation =
       std::make_unique<CooperativeGoalHoldConfirmation>(CooperativeGoalHoldConfig{
@@ -283,8 +284,10 @@ bool CooperativeTrafficRefereeNode::allSurvivorsHeld(const std::int64_t now_ns) 
       return false;
     }
     std::optional<Point3> active_hold_position;
-    if (vehicle.hold_horizon && vehicle.hold_horizon->active &&
-        vehicle.hold_horizon->sequence > vehicle.hold_request_horizon_sequence) {
+    if (vehicle.hold_horizon && vehicle.hold_horizon->activeAt(now_ns) &&
+        (vehicle.hold_horizon->producer_instance_id !=
+             vehicle.hold_request_horizon_producer_instance_id ||
+         vehicle.hold_horizon->sequence > vehicle.hold_request_horizon_sequence)) {
       active_hold_position = vehicle.hold_horizon->position;
     }
     const CooperativeGoalHoldUpdate update = vehicle.failure_hold_confirmation->update(
@@ -420,6 +423,7 @@ void CooperativeTrafficRefereeNode::tick() {
     return;
   }
   const std::int64_t now_ns = now().nanoseconds();
+  expireOffboardEvidence(now_ns);
   if (readiness_started_ns_ <= 0) {
     readiness_started_ns_ = now_ns;
   }
@@ -466,7 +470,7 @@ void CooperativeTrafficRefereeNode::tick() {
     return;
   }
   updateSeparationMetrics();
-  updateGoalHolds();
+  updateGoalHolds(now_ns);
   if (allGoalHoldsConfirmed()) {
     finishSuccess();
   }

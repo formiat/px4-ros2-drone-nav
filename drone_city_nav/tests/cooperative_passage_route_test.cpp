@@ -126,7 +126,6 @@ TEST(CooperativePassageRoute, AppliesContinuousOppositeOffsetsByDirection) {
   EXPECT_NEAR(forward_middle->position.y, -3.0, 1.0e-6);
   EXPECT_NEAR(forward_result.route.front().position.y, 0.0, 1.0e-9);
   EXPECT_NEAR(forward_result.route.back().position.y, 0.0, 1.0e-9);
-
   const std::vector<RouteSample3D> reverse = sampleRoute3D(
       std::vector<Point3>{{30.0, 0.0, 5.0}, {-10.0, 0.0, 5.0}}, 1.0, 10.0);
   const ConstrainedRouteSpan reverse_span = span(-1);

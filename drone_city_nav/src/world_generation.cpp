@@ -1,38 +1,62 @@
 #include "drone_city_nav/world_generation.hpp"
 
+#include <algorithm>
 #include <limits>
 
 namespace drone_city_nav {
 
 bool LatestObservation::available() const noexcept {
-  return producer_instance_id != 0U && receive_stamp_ns > 0;
+  return producer_instance_id != 0U && source_stamp_ns > 0 && receive_stamp_ns > 0 &&
+         content_fingerprint != 0U && producer_epoch_generation != 0U &&
+         !identity_conflicted;
 }
 
 double LatestObservation::ageMs(const std::int64_t now_ns) const noexcept {
-  if (!available() || now_ns < receive_stamp_ns) {
+  if (!available() || now_ns < source_stamp_ns || now_ns < receive_stamp_ns) {
     return std::numeric_limits<double>::infinity();
   }
-  return static_cast<double>(now_ns - receive_stamp_ns) * 1.0e-6;
+  return static_cast<double>(
+             std::max(now_ns - source_stamp_ns, now_ns - receive_stamp_ns)) *
+         1.0e-6;
 }
 
-bool LatestObservationTracker::observe(const std::uint64_t producer_instance_id,
-                                       const std::uint64_t sequence,
-                                       const std::int64_t receive_stamp_ns) noexcept {
-  if (producer_instance_id == 0U || receive_stamp_ns <= 0 ||
-      (latest_.available() && producer_instance_id == latest_.producer_instance_id &&
-       sequence < latest_.sequence)) {
-    return false;
+ProducerEpochAdmissionResult
+LatestObservationTracker::observe(const ProducerEpochAdmissionConfig& config,
+                                  const ProducerEpochObservation& observation,
+                                  const std::int64_t now_ns,
+                                  const bool observation_contract_valid) noexcept {
+  ProducerEpochAdmissionResult result = admitProducerEpoch(
+      config, admission_state_, observation, now_ns, observation_contract_valid);
+  admission_state_ = result.next_state;
+  if (result.install_observation) {
+    latest_ = LatestObservation{
+        .producer_instance_id = observation.producer_instance_id,
+        .sequence = observation.sequence,
+        .source_stamp_ns = observation.source_stamp_ns,
+        .receive_stamp_ns = observation.receive_stamp_ns,
+        .content_fingerprint = observation.content_fingerprint,
+        .producer_epoch_generation = admission_state_.authority_generation,
+        .identity_conflicted = false,
+    };
+  } else if (admission_state_.current_identity_conflicted &&
+             latest_.producer_instance_id ==
+                 admission_state_.current_producer_instance_id) {
+    latest_.identity_conflicted = true;
   }
-  latest_ = LatestObservation{
-      .producer_instance_id = producer_instance_id,
-      .sequence = sequence,
-      .receive_stamp_ns = receive_stamp_ns,
-  };
-  return true;
+  return result;
 }
 
 const LatestObservation& LatestObservationTracker::latest() const noexcept {
   return latest_;
+}
+
+const ProducerEpochAdmissionState&
+LatestObservationTracker::admissionState() const noexcept {
+  return admission_state_;
+}
+
+ProducerEpochAuthority LatestObservationTracker::authority() const noexcept {
+  return producerEpochAuthority(admission_state_);
 }
 
 bool RawMapVersion::valid() const noexcept {

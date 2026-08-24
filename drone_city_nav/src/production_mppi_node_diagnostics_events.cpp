@@ -88,7 +88,7 @@ void ProductionMppiNode::logDiagnosticsEvents(
                 "MISSION_GOAL_CAPTURE state=latched goal=(%.2f, %.2f, %.2f) "
                 "distance_m=%.3f action=position_hold",
                 mission_goal.x, mission_goal.y, mission_goal.z,
-                snapshot.goal_capture.horizontal_distance_m);
+                snapshot.goal_capture.distance_m);
   }
 
   const bool constraint_transition =

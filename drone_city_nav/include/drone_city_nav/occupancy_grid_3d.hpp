@@ -41,6 +41,10 @@ public:
 
   [[nodiscard]] const GridBounds3D& bounds() const noexcept;
   [[nodiscard]] std::uint64_t fingerprint() const noexcept;
+  [[nodiscard]] std::uint64_t contentFingerprint() const;
+  // Immutable snapshots prime this value before publication so hot-path
+  // consumers can verify an owner-provided identity without rescanning chunks.
+  [[nodiscard]] std::optional<std::uint64_t> cachedContentFingerprint() const noexcept;
   [[nodiscard]] std::size_t occupiedChunkCount() const noexcept;
   [[nodiscard]] std::size_t occupiedVoxelCount() const noexcept;
   [[nodiscard]] bool contains(GridIndex3D index) const noexcept;
@@ -60,6 +64,7 @@ private:
   std::uint64_t fingerprint_{0U};
   std::size_t occupied_voxels_{0U};
   std::unordered_map<OccupancyChunkIndex3D, Chunk, OccupancyChunkIndex3DHash> chunks_;
+  mutable std::optional<std::uint64_t> content_fingerprint_cache_;
 };
 
 } // namespace drone_city_nav

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/active_global_guide.hpp"
+#include "drone_city_nav/applied_control_admission.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
 #include "drone_city_nav/cooperative_passage_execution.hpp"
@@ -8,15 +9,18 @@
 #include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/execution_arbiter_3d.hpp"
+#include "drone_city_nav/execution_evidence_3d.hpp"
+#include "drone_city_nav/execution_route_geometry_3d.hpp"
+#include "drone_city_nav/execution_route_snapshot_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/incremental_topological_lattice_adapter_3d.hpp"
 #include "drone_city_nav/incremental_topological_navigation_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
-#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
+#include "drone_city_nav/mission_waypoint_capture_gate.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
@@ -27,6 +31,7 @@
 #include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
 #include "drone_city_nav/msg/cooperative_passage_intent.hpp"
 #include "drone_city_nav/msg/latest_lidar_obstacle_scan.hpp"
+#include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
@@ -37,12 +42,15 @@
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot3_d.hpp"
 #include "drone_city_nav/msg/target_track_array.hpp"
+#include "drone_city_nav/navigation_angular_derivative.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
 #include "drone_city_nav/noncooperative_collision_avoidance.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/offboard_session_admission.hpp"
 #include "drone_city_nav/passage_volume.hpp"
+#include "drone_city_nav/pending_certified_route_3d.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/raw_obstacle_3d_ros.hpp"
@@ -64,6 +72,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/vehicle_land_detected.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
+#include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -85,66 +94,10 @@
 #include <thread>
 #include <vector>
 
+#include "production_mppi_execution_control.hpp"
+#include "production_mppi_node_types.hpp"
+
 namespace drone_city_nav {
-
-struct ProductionMppiNavigation {
-  mppi::State state{};
-  mppi::Control measured_equivalent_control{};
-  std::int64_t receive_stamp_ns{0};
-  std::uint64_t revision{0U};
-  bool measured_acceleration_valid{false};
-  bool valid{false};
-};
-
-struct ProductionTrackingObjective {
-  Point3 observed_position{};
-  Point3 current_target_position{};
-  Point3 unconstrained_predicted_position{};
-  Vec3 observed_velocity{};
-  std::int64_t observation_stamp_ns{0};
-  double prediction_horizon_s{0.0};
-  double resolved_fraction{0.0};
-  InterceptGuidanceMode guidance_mode{InterceptGuidanceMode::kDirect};
-  TrackingObjectiveResolutionStatus resolution_status{
-      TrackingObjectiveResolutionStatus::kInvalidInput};
-  DirectTrackingTargetStatus direct_target_status{
-      DirectTrackingTargetStatus::kWorldUnavailable};
-  std::uint8_t radar_cadence_reason{
-      msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE};
-  bool vertical_prediction_clipped{false};
-  bool observed_target_visible{false};
-  bool predicted_intercept_path_clear{false};
-  bool direct_interception_active{false};
-  std::uint64_t line_of_sight_generation{0U};
-  std::uint64_t target_track_id{0U};
-};
-
-struct ProductionNavigationObjective {
-  Point3 goal{};
-  std::optional<ProductionTrackingObjective> tracking;
-  std::uint64_t mission_epoch{0U};
-  std::uint64_t sample_sequence{0U};
-  std::uint64_t assignment_generation{0U};
-  std::uint64_t target_detection_id{0U};
-  std::uint64_t target_track_id{0U};
-  std::int64_t stamp_ns{0};
-  bool continuous_tracking{false};
-  bool immediate_hold{false};
-};
-
-[[nodiscard]] inline StaticRouteObjective
-makeStaticRouteObjective(const ProductionNavigationObjective& objective) noexcept {
-  return StaticRouteObjective{
-      .goal = objective.goal,
-      .mission_epoch = objective.mission_epoch,
-      .sample_sequence = objective.sample_sequence,
-      .assignment_generation = objective.assignment_generation,
-      .target_detection_id = objective.target_detection_id,
-      .target_track_id = objective.target_track_id,
-      .continuous_tracking = objective.continuous_tracking,
-      .available = true,
-  };
-}
 
 enum class ProductionPlanningSearchKind : std::uint8_t {
   kNone,
@@ -168,9 +121,13 @@ enum class ProductionGuideCandidateValidationStatus : std::uint8_t {
 };
 
 struct ProductionMppiPreparedEsdf;
+struct ProductionMppiPlanningTickFinalization;
 struct ProductionRouteActivationSnapshot3D;
 struct ProductionRouteActivationResult3D;
 struct ProductionRouteMaterialization3D;
+struct ProductionMppiExecutionCycle;
+struct ProductionMppiHorizonCommit;
+enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 
 struct ProductionMppiRawWorld2D {
   RawMapVersion version{};
@@ -184,6 +141,7 @@ struct ProductionMppiRawWorld3D {
   std::int64_t ready_stamp_ns{0};
   double reconstruction_ms{0.0};
   std::shared_ptr<const ObservedOccupancyGrid3D> occupancy;
+  std::shared_ptr<const VersionedObservedRawWorld3D> execution_owner;
   std::vector<OccupancyChunkIndex3D> dirty_chunks;
   bool full_reset{false};
 };
@@ -198,26 +156,8 @@ struct ProductionGuideCandidateValidation {
   bool accepted{false};
 };
 
-struct ProductionRouteGeometry3D {
-  std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
-  std::shared_ptr<const std::vector<RouteSample3D>> route;
-  std::shared_ptr<const std::vector<Point2>> route_2d_projection;
-  std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
-  std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
-  std::shared_ptr<const std::vector<CooperativePassageAssignment>>
-      cooperative_passage_assignments;
-  std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
-  Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};
-  std::optional<ObservationFrontier> observation_frontier;
-};
-
 struct ProductionMaterializedRouteProposal3D {
   MaterializedRouteProposal3D identity{};
-  ProductionRouteGeometry3D geometry{};
-};
-
-struct ProductionActivatedRoute3D {
-  ActivatedRouteIdentity3D identity{};
   ProductionRouteGeometry3D geometry{};
 };
 
@@ -257,6 +197,7 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
+  std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner;
   std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
   std::optional<LaunchSupportContact3D> launch_support_contact;
   bool launch_support_resolution_pending{false};
@@ -265,7 +206,6 @@ struct ProductionMppiPreparedEsdf {
   IncrementalTopologyGraph3DUpdate topological_graph_update{};
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
-  std::shared_ptr<const ProductionActivatedRoute3D> activated_route_3d;
   RouteIntent3D route_intent{};
   SegmentEvidence3D route_segment_evidence{};
   RouteProposalSelectionReason3D route_proposal_selection_reason{
@@ -389,13 +329,6 @@ struct ProductionMppiPredictionError {
   bool valid{false};
 };
 
-struct ProductionMppiAppliedControl {
-  mppi::Control control{};
-  std::int64_t receive_stamp_ns{0};
-  std::uint64_t horizon_sequence{0U};
-  bool valid{false};
-};
-
 struct ProductionMppiCooperativeCommand {
   CooperativeManeuverCommandData data;
   std::int64_t receive_stamp_ns{0};
@@ -452,7 +385,9 @@ struct ProductionRouteCandidateSet3D {
 };
 
 struct ProductionRouteExecutionSelection3D {
-  std::shared_ptr<const ProductionActivatedRoute3D> route;
+  std::shared_ptr<const CertifiedRouteSuffix3D> route;
+  std::shared_ptr<const ExecutionRouteSnapshot3D> source_snapshot;
+  std::shared_ptr<const PendingCertifiedRoute3D> pending_route;
   GlobalGuideProjection projection{};
   RouteExecutionStatus3D status{RouteExecutionStatus3D::kNoActiveRoute};
   std::optional<RouteLifecycleEvent3D> lifecycle_event;
@@ -460,6 +395,8 @@ struct ProductionRouteExecutionSelection3D {
   double station_m{0.0};
   bool route_usable{false};
   bool execution_owner_available{false};
+  bool pending_activation{false};
+  std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;
 };
 
 struct ProductionMppiRvizSnapshot {
@@ -469,67 +406,6 @@ struct ProductionMppiRvizSnapshot {
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> route;
   std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_traversals;
   std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
-};
-
-enum class ProductionMppiExecutionMode : std::uint8_t {
-  kPlanned = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED,
-  kPositionHold = msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
-};
-
-enum class ProductionMppiExecutionReason : std::uint8_t {
-  kNone = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE,
-  kNoExecutableHorizon =
-      msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_HORIZON,
-  kCooperativePassageYield =
-      msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_PASSAGE_YIELD,
-  kGoalCapture = msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE,
-  kNoExecutableRoute = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_ROUTE,
-};
-
-struct ProductionMppiExecutionPublication {
-  std::vector<mppi::State> horizon;
-  ProductionMppiExecutionMode mode{ProductionMppiExecutionMode::kPlanned};
-  ProductionMppiExecutionReason reason{ProductionMppiExecutionReason::kNone};
-  std::size_t planned_control_count{0U};
-  std::size_t nominal_prefix_control_count{0U};
-  std::size_t arrival_control_count{0U};
-  std::size_t arrival_shaping_attempts{0U};
-  mppi::Control first_control{};
-  std::uint64_t latest_lidar_obstacle_sequence{0U};
-  std::size_t latest_lidar_obstacle_hit_count{0U};
-  double latest_lidar_obstacle_age_ms{-1.0};
-  bool finite_path_validation_backoff{false};
-  mppi::FiniteExecutionPathStatus finite_path_validation_status{
-      mppi::FiniteExecutionPathStatus::kInvalidContract};
-  mppi::FiniteExecutionPathStatus finite_path_first_failed_validation_status{
-      mppi::FiniteExecutionPathStatus::kValid};
-  bool latest_lidar_obstacle_fresh{false};
-  bool latest_lidar_obstacle_receive_time_fallback{false};
-  bool latest_lidar_path_validation_backoff{false};
-  bool retained_previous_finite_path{false};
-  bool terminal_rest_state{false};
-  bool first_control_available{false};
-  bool published{false};
-};
-
-struct ProductionMppiActiveFiniteExecutionPath {
-  msg::MppiTrajectoryHorizon message;
-  ProductionMppiExecutionPublication publication;
-  std::optional<mppi::FiniteExecutionPathTerminalBoundary> terminal_boundary;
-};
-
-enum class ProductionMppiPlanningState {
-  kPlanned,
-  kMissionCommandPositionHold,
-  kCooperativePassageYieldHold,
-  kMissionGoalPositionHold,
-  kNoExecutableRouteHold,
-};
-
-enum class ProductionMppiPreviousControlSource {
-  kEngineFallback,
-  kMeasuredAcceleration,
-  kOffboardFeedback,
 };
 
 struct ProductionMppiDiagnosticsSnapshot {
@@ -573,14 +449,6 @@ struct ProductionMppiDiagnosticsSnapshot {
 };
 
 [[nodiscard]] const char*
-productionMppiPlanningStateName(ProductionMppiPlanningState state) noexcept;
-[[nodiscard]] const char* productionMppiPreviousControlSourceName(
-    ProductionMppiPreviousControlSource source) noexcept;
-[[nodiscard]] const char*
-productionMppiExecutionModeName(ProductionMppiExecutionMode mode) noexcept;
-[[nodiscard]] const char*
-productionMppiExecutionReasonName(ProductionMppiExecutionReason reason) noexcept;
-[[nodiscard]] const char*
 productionPlanningSearchKindName(ProductionPlanningSearchKind kind) noexcept;
 [[nodiscard]] const char* productionGuideCandidateValidationStatusName(
     ProductionGuideCandidateValidationStatus status) noexcept;
@@ -597,6 +465,7 @@ public:
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message);
+  void onVehicleStatus(const px4_msgs::msg::VehicleStatus& message);
   void onVehicleLandDetected(const px4_msgs::msg::VehicleLandDetected& message);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
@@ -604,10 +473,11 @@ private:
   void onRawObstacleSnapshot3D(msg::RawObstacleSnapshot3D::ConstSharedPtr message);
   void onRawObstacleDelta3D(msg::RawObstacleDelta3D::ConstSharedPtr message);
   void onLatestLidarObstacleScan(const msg::LatestLidarObstacleScan& message);
-  void queueRawWorld(const RawObstacleGridState& state, double reconstruction_ms);
+  void queueRawWorld(const RawObstacleGridUpdate& update, double reconstruction_ms);
   void queueRawWorld3D(const RawObstacleGridUpdate3D& update, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
+  void invalidateAppliedControlWitnessLocked() noexcept;
   void onNavigationObjective(const msg::NavigationObjective& message);
   void onCooperativeManeuverCommand(const msg::CooperativeManeuverCommand& message);
   void publishRadarTrackModeCommand(const ProductionNavigationObjective& objective,
@@ -660,6 +530,7 @@ private:
                            StaticRouteCandidateValidation validation,
                            StaticRouteReplacementPolicy replacement_policy,
                            const Point3& mission_goal,
+                           std::uint64_t candidate_generation,
                            const ProductionRouteActivationSnapshot3D& snapshot);
   void commitRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
                                const ProductionRouteActivationSnapshot3D& snapshot,
@@ -691,7 +562,7 @@ private:
                                 const RiskAwareLattice3DResult& lattice,
                                 const StaticRouteCandidateValidation& validation,
                                 StaticRouteActivationStatus activation_status,
-                                bool activated);
+                                bool certified_pending);
   void maybeObserveIncrementalTopology3D(const ProductionMppiPreparedEsdf& world,
                                          const ProductionMppiNavigation& navigation,
                                          std::int64_t now_ns);
@@ -699,8 +570,10 @@ private:
       const ProductionMppiPreparedEsdf& world,
       const ProductionNavigationObjective* objective,
       const ProductionMppiNavigation& navigation,
+      const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
       const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-      std::uint64_t minimum_tracking_sample_sequence, bool direct_tracking,
+      std::uint64_t minimum_tracking_sample_sequence,
+      std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity,
       bool observed_3d_world);
   void configureCooperativeTraffic();
   void createCooperativeTrafficInterfaces(
@@ -721,8 +594,20 @@ private:
   [[nodiscard]] MissionWaypointUpdate updateMissionWaypoint(
       const std::shared_ptr<const ProductionNavigationObjective>& objective,
       const ProductionMppiNavigation& navigation,
-      const MissionGoalCaptureResult& goal_capture, std::int64_t now_ns);
+      const ProductionMppiVehicleStatus& vehicle_status,
+      const ProductionMppiAppliedControl& applied_control,
+      const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
+      std::uint64_t applied_control_discontinuity_generation,
+      bool applied_control_discontinuity_generation_valid,
+      bool vehicle_status_epoch_stable, bool goal_capture_latched, std::int64_t now_ns);
+  void publishMissionWaypointAcknowledgement(
+      const ProductionNavigationObjective& completed_objective,
+      const MissionWaypointUpdate& update,
+      const ProductionMppiAppliedControl& applied_control,
+      const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
+      std::int64_t now_ns);
   void planningTick();
+  void finalizePlanningTick(const ProductionMppiPlanningTickFinalization& finalization);
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void logDiagnosticsEvents(const ProductionMppiDiagnosticsSnapshot& snapshot,
                             const ConstrainedRouteObservation& route_constraint);
@@ -737,7 +622,67 @@ private:
   [[nodiscard]] ProductionMppiExecutionPublication publishExecutionHorizon(
       const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
       const ProductionMppiPreparedEsdf& esdf,
+      const ProductionRouteExecutionSelection3D& route_execution,
+      const std::shared_ptr<const ProductionNavigationObjective>& objective,
+      const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
+      const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
+          latest_lidar_evidence,
       ProductionMppiPlanningState planning_state, std::int64_t now_ns);
+  [[nodiscard]] msg::MppiTrajectoryHorizon
+  makeExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
+                       std::int64_t valid_until_ns, ProductionMppiExecutionMode mode,
+                       ProductionMppiExecutionReason reason);
+  [[nodiscard]] bool
+  commitAndPublishExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
+                                   const msg::MppiTrajectoryHorizon& horizon,
+                                   const ProductionMppiHorizonCommit& commit);
+  [[nodiscard]] bool
+  publishLegacyExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
+                                const msg::MppiTrajectoryHorizon& horizon);
+  [[nodiscard]] bool commitExecutionSnapshotHorizon(
+      const ProductionMppiExecutionCycle& cycle,
+      const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected,
+      const ExecutionRouteTransitionResult3D& transition,
+      const msg::MppiTrajectoryHorizon& horizon,
+      const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending);
+  [[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>
+  exactSnapshotValidationWorld(
+      const ProductionMppiExecutionCycle& cycle, const CertifiedRouteSuffix3D& route,
+      std::optional<mppi::FiniteExecutionPathTerminalBoundary> terminal_boundary,
+      const std::shared_ptr<const VersionedObservedRawWorld3D>&
+          observed_world_override = nullptr);
+  [[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>
+  exactDirectValidationWorld(const ProductionMppiExecutionCycle& cycle,
+                             const DirectTrackingFiniteExecution3D& execution);
+  [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
+  retainSnapshotFinitePath(const ProductionMppiExecutionCycle& cycle,
+                           ProductionMppiExecutionReason replacement_failure_reason);
+  [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
+  retainDirectFinitePath(const ProductionMppiExecutionCycle& cycle,
+                         ProductionMppiExecutionReason replacement_failure_reason);
+  [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
+  retainActiveFinitePath(const ProductionMppiExecutionCycle& cycle,
+                         ProductionMppiExecutionReason replacement_failure_reason);
+  [[nodiscard]] ProductionMppiExecutionPublication
+  publishPositionHold(const ProductionMppiExecutionCycle& cycle,
+                      const Point3& hold_position, ProductionMppiExecutionReason reason,
+                      ProductionMppiHoldOwnershipTransition3D ownership_transition);
+  [[nodiscard]] ProductionMppiExecutionPublication
+  publishNoExecutablePathHold(const ProductionMppiExecutionCycle& cycle,
+                              ProductionMppiExecutionReason reason);
+  [[nodiscard]] ProductionMppiExecutionPublication
+  publishExecutionRevocation(ProductionMppiExecutionReason reason, std::int64_t now_ns);
+  [[nodiscard]] bool handleRequestedExecutionRevocation(std::int64_t now_ns);
+  void publishFailClosedExecutionRevocation(ProductionMppiExecutionReason reason,
+                                            std::int64_t now_ns);
+  // Input callbacks only enqueue a monotonic request. The planning thread owns
+  // the snapshot CAS and ROS publication so epoch-reset handling cannot race a
+  // normal execution-owner commit.
+  void requestExecutionRevocation(ProductionMppiExecutionReason reason) noexcept;
+  [[nodiscard]] ProductionMppiExecutionPublication
+  publishExplicitHold(const ProductionMppiExecutionCycle& cycle,
+                      const Point3& hold_position,
+                      ProductionMppiExecutionReason reason);
 
   [[nodiscard]] mppi::State
   selectTarget(std::span<const RouteSample3D> route,
@@ -755,6 +700,7 @@ private:
   std::size_t diagnostics_error_ring_capacity_{25U};
   double deadline_ms_{20.0};
   double maximum_pose_age_ms_{150.0};
+  double maximum_vehicle_status_age_ms_{1000.0};
   double maximum_pose_prediction_age_ms_{1000.0};
   double maximum_esdf_age_ms_{1000.0};
   double stale_esdf_execution_window_ms_{4000.0};
@@ -780,6 +726,7 @@ private:
   NoStaticRouteCycleConfig no_static_cycle_config_{};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
   MissionWaypointSequenceConfig mission_waypoint_sequence_config_{};
+  MissionWaypointCaptureGateConfig mission_waypoint_capture_gate_config_{};
   Px4MapFrameTransform px4_map_transform_{};
   Point3 mission_start_{54.0, 54.0, 0.0};
   Point3 mission_goal_{216.0, 378.0, 18.0};
@@ -815,11 +762,16 @@ private:
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
 
   mppi::BenchmarkConfig mppi_config_{};
+  NavigationAngularDerivativeConfig navigation_angular_derivative_config_{};
   SweptFootprintConfig physical_footprint_config_{};
+  std::shared_ptr<const VersionedExecutionValidationPolicy3D>
+      execution_validation_policy_;
   MppiLivenessConfig liveness_config_{};
   MppiSpeedPolicyConfig speed_policy_config_{};
   mppi::FiniteHorizonConfig finite_horizon_config_{};
   double stationary_hold_validity_s_{1.0};
+  std::int64_t stationary_hold_validity_ns_{1'000'000'000LL};
+  std::int64_t mission_goal_capture_hold_validity_ns_{0};
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
   bool global_guide_stall_recovery_enabled_{false};
@@ -830,6 +782,7 @@ private:
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
   std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
+  std::unique_ptr<MissionWaypointCaptureGate> mission_waypoint_capture_gate_;
   std::unique_ptr<NoStaticRouteCycleDetector> no_static_cycle_detector_;
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
@@ -860,15 +813,13 @@ private:
   std::atomic<std::uint64_t> last_topological_observation_graph_revision_{0U};
   std::int64_t topological_observation_period_ns_{200000000};
   std::chrono::steady_clock::time_point topological_no_executable_route_since_{};
-  std::optional<OccupancyGrid3D> static_occupancy_3d_;
+  std::shared_ptr<const OccupancyGrid3D> static_occupancy_3d_;
   std::optional<FreeSpaceTopology3D> static_free_space_topology_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
   std::shared_ptr<const std::vector<PassageTraversalEdge>> static_portal_edges_;
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   bool static_esdf_uploaded_{false};
-  mutable std::mutex route_supervisor_mutex_;
-  RouteSupervisor3D route_supervisor_{};
   std::uint64_t tracked_route_generation_{0U};
   double tracked_route_station_m_{0.0};
   std::mutex static_route_extension_mutex_;
@@ -884,10 +835,27 @@ private:
 
   mutable std::mutex input_mutex_;
   ProductionMppiNavigation navigation_{};
+  bool navigation_revision_exhausted_{false};
+  // Cleared only by node restart. Safe recovery needs one coordinated
+  // planner/offboard/world transform handoff, not a callback-local correction.
+  bool navigation_frame_reset_unresolved_{false};
+  ProductionMppiVehicleStatus vehicle_status_{};
+  Px4TimestampEpochAdmissionState vehicle_status_timestamp_admission_{};
+  bool vehicle_status_epoch_probation_{false};
+  bool vehicle_status_revision_exhausted_{false};
+  NavigationAngularDerivativeEstimator navigation_angular_derivative_estimator_{};
   ProductionMppiAppliedControl applied_control_{};
+  std::uint64_t applied_control_discontinuity_generation_{0U};
+  bool applied_control_discontinuity_generation_exhausted_{false};
+  ProductionMppiExecutionHorizonOwner execution_horizon_owner_{};
+  ExecutionHorizonWitnessState applied_control_admission_state_{};
+  OffboardSessionAdmissionState offboard_session_admission_{};
+  std::int64_t offboard_session_receive_stamp_ns_{0};
   std::optional<ProductionMppiCooperativeCommand> cooperative_command_;
   ProductionMppiNonCooperativeTracks noncooperative_tracks_{};
   LatestObservationTracker latest_observation_tracker_{};
+  std::int64_t required_raw_world_source_stamp_ns_{0};
+  bool raw_world_identity_conflicted_{false};
   std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
       navigation_objective_;
   std::atomic<std::uint64_t> minimum_tracking_route_mission_epoch_{0U};
@@ -915,13 +883,14 @@ private:
       latest_observed_topological_graph_;
   std::uint64_t latest_observed_topological_producer_instance_id_{0U};
   IncrementalTopologyGraph3DUpdate latest_observed_topological_graph_update_;
-  std::atomic<std::shared_ptr<const LatestLidarObstacleSnapshot>>
-      latest_lidar_obstacle_scan_;
+  std::mutex execution_evidence_commit_mutex_;
+  LatestLidarEvidenceAdmissionState3D latest_lidar_evidence_admission_state_{};
+  std::atomic_bool latest_lidar_evidence_identity_conflicted_{false};
+  std::atomic<std::shared_ptr<const VersionedLatestLidarEvidence3D>>
+      latest_lidar_evidence_;
   std::mutex raw_reconstruction_mutex_;
   RawObstacleDeltaAccumulator raw_delta_accumulator_;
-  msg::RawObstacleDelta::ConstSharedPtr pending_raw_delta_;
   RawObstacleDeltaAccumulator3D raw_delta_accumulator_3d_;
-  msg::RawObstacleDelta3D::ConstSharedPtr pending_raw_delta_3d_;
   std::chrono::steady_clock::time_point no_static_esdf_last_build_time_{};
   LocalWorldGenerationCounter local_world_generation_counter_{};
   bool launch_support_evaluated_{false};
@@ -955,11 +924,22 @@ private:
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
 
   std::optional<mppi::MppiTickResult> previous_result_;
-  ExecutionArbiter3D<ProductionMppiActiveFiniteExecutionPath> execution_arbiter_{};
+  ExecutionRouteSnapshotStore3D execution_route_store_{};
+  PendingCertifiedRouteMailbox3D pending_certified_route_mailbox_{};
+  std::atomic<std::uint64_t> pending_certified_route_sequence_{0U};
+  std::atomic<std::uint64_t> requested_execution_revocation_{0U};
+  std::uint64_t handled_execution_revocation_request_{0U};
+  ExecutionArbiter3D<ProductionMppiActiveFiniteExecutionPath>
+      legacy_execution_arbiter_{};
   std::optional<mppi::State> previous_predicted_next_state_;
   std::int64_t previous_prediction_stamp_ns_{0};
   ProductionMppiPredictionError latest_prediction_error_{};
+  std::uint64_t execution_input_capture_sequence_{0U};
   std::uint64_t tick_sequence_{0U};
+  std::uint64_t execution_horizon_sequence_{0U};
+  std::uint64_t execution_horizon_producer_instance_id_{0U};
+  std::uint64_t mission_waypoint_acknowledgement_sequence_{0U};
+  bool mission_goal_capture_attempt_invalidated_{false};
   std::uint64_t completed_ticks_{0U};
   std::uint64_t deadline_misses_{0U};
   std::uint64_t altitude_envelope_violation_horizons_{0U};
@@ -998,6 +978,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr planning_callback_group_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLandDetected>::SharedPtr
       vehicle_land_detected_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
@@ -1020,6 +1001,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr world_readiness_pub_;
   rclcpp::Publisher<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_pub_;
+  rclcpp::Publisher<msg::MissionWaypointAcknowledgement>::SharedPtr
+      mission_waypoint_acknowledgement_pub_;
   rclcpp::Publisher<msg::CooperativePassageIntent>::SharedPtr
       cooperative_passage_state_pub_;
   rclcpp::TimerBase::SharedPtr planning_start_timer_;

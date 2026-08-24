@@ -214,6 +214,7 @@ production_mppi_node:
     no_static_speed_tracking_weight: 1.0
     deadline_ms: 20.0
     maximum_pose_age_ms: 150.0
+    maximum_vehicle_status_age_ms: 1000.0
     maximum_pose_prediction_age_ms: 1000.0
     maximum_esdf_age_ms: 1000.0
     static_stale_esdf_execution_window_s: 6.0
@@ -290,10 +291,13 @@ production_mppi_node:
     start_z_m: 0.0
     mission_goal_sequence_xyz_m: [216.0, 378.0, 18.0]
     mission_waypoint_stop_speed_mps: 0.8
-    mission_waypoint_hold_s: 0.0
+    mission_waypoint_hold_s: 2.0
+    mission_waypoint_target_match_tolerance_m: 0.001
     minimum_target_z_m: 1.0
     maximum_target_z_m: 32.0
     navigation_objective_topic: /drone_city_nav/navigation_objective
+    px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
+    mission_waypoint_acknowledgement_topic: /drone_city_nav/mission_waypoint_acknowledgement
     dynamic_objective_replan_distance_m: 5.0
     dynamic_objective_replan_period_s: 0.25
     tracking_objective_ray_sample_spacing_m: 0.25
@@ -549,7 +553,9 @@ lidar_debug_node:
 mission_monitor_node:
   ros__parameters:
     use_static_map: true
+    frame_id: map
     vehicle_destroyed_topic: /drone_city_nav/vehicle_destroyed
+    mission_waypoint_acknowledgement_topic: /drone_city_nav/mission_waypoint_acknowledgement
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     start_x_m: 54.0
@@ -559,9 +565,7 @@ mission_monitor_node:
     px4_local_origin_y_m: 54.0
     spawn_tolerance_m: 1.0
     min_movement_distance_m: 5.0
-    goal_radius_m: 2.0
-    stop_speed_mps: 0.8
-    stop_hold_s: 2.0
+    mission_waypoint_target_match_tolerance_m: 0.001
     shutdown_on_result: false
     building_clearance_m: 0.5
     vertical_clearance_m: 1.0

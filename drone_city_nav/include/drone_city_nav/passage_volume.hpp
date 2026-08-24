@@ -82,6 +82,14 @@ struct PassageVolumeResource {
 [[nodiscard]] bool
 passageVolumeConfigIsValid(const PassageVolumeConfig& config) noexcept;
 
+[[nodiscard]] bool samePassageVolumeConfig(const PassageVolumeConfig& first,
+                                           const PassageVolumeConfig& second) noexcept;
+
+// Covers every derivation input carried by PassageVolumeConfig. Returns zero
+// when the configuration is invalid.
+[[nodiscard]] std::uint64_t
+passageVolumeConfigFingerprint(const PassageVolumeConfig& config) noexcept;
+
 [[nodiscard]] std::vector<PassageVolume>
 derivePassageVolumes(std::span<const RouteSample3D> route,
                      std::span<const ConstrainedRouteSpan> constrained_spans,
@@ -92,6 +100,7 @@ derivePassageVolumes(std::span<const RouteSample3D> route,
 acquireDerivedPassageVolumes(std::span<const RouteSample3D> route,
                              std::span<const ConstrainedRouteSpan> constrained_spans,
                              const OccupancyGrid3D& occupancy,
+                             std::uint64_t occupancy_content_fingerprint,
                              const PassageVolumeConfig& config);
 
 [[nodiscard]] std::size_t

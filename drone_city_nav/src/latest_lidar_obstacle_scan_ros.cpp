@@ -12,12 +12,13 @@ namespace drone_city_nav {
 msg::LatestLidarObstacleScan makeLatestLidarObstacleScanMessage(
     const LatestLidarObstacleScanBuildResult& scan,
     const std_msgs::msg::Header& source_header, const std::string_view frame_id,
-    const std::int64_t acquisition_stamp_ns, const std::uint64_t sequence,
-    const std::uint64_t pose_generation) {
+    const std::int64_t acquisition_stamp_ns, const std::uint64_t producer_instance_id,
+    const std::uint64_t sequence, const std::uint64_t pose_generation) {
   msg::LatestLidarObstacleScan message;
   message.header = source_header;
   message.header.stamp = rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME};
   message.header.frame_id = std::string{frame_id};
+  message.producer_instance_id = producer_instance_id;
   message.sequence = sequence;
   message.pose_generation = pose_generation;
   message.frame_origin_map.x = scan.acquisition_body_frame.origin_map_m.x;

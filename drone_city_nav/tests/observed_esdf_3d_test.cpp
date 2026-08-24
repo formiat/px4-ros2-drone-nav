@@ -89,6 +89,30 @@ TEST(ObservedEsdf3DTest,
             ObservedVoxelState::kFree);
 }
 
+TEST(ObservedEsdf3DTest, TiltedProprioceptiveSeedPromotesOnlyItsActualBodyVolume) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
+  const ObservedOccupancyGrid3D occupancy{bounds};
+  const ProprioceptiveFreeSpaceSeed3D tilted_seed{
+      .position = Point3{2.125, 2.125, 2.125},
+      .body_axis = FootprintBodyAxis{0.6, 0.0, 0.8},
+      .footprint = SweptFootprintConfig{.radius_m = 0.2,
+                                        .lower_extent_m = 0.2,
+                                        .upper_extent_m = 1.0},
+  };
+  const GridIndex3D tilted_only_cell{10, 8, 10};
+
+  const ObservedEsdf3D without_seed = buildObservedEsdf3D(occupancy, bounds, 10.0);
+  const ObservedEsdf3D with_tilted_seed =
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &tilted_seed);
+
+  ASSERT_TRUE(without_seed.local_occupancy);
+  ASSERT_TRUE(with_tilted_seed.local_occupancy);
+  EXPECT_EQ(without_seed.local_occupancy->state(tilted_only_cell),
+            ObservedVoxelState::kUnknown);
+  EXPECT_EQ(with_tilted_seed.local_occupancy->state(tilted_only_cell),
+            ObservedVoxelState::kFree);
+}
+
 TEST(ObservedEsdf3DTest,
      ProprioceptiveSupportContactIsFreeOnlyInThePreparedPlanningWorld) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};

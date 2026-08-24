@@ -4,39 +4,37 @@
 
 namespace drone_city_nav {
 
-RouteSegmentCompletionAssessment3D ProductionMppiNode::assessActiveRouteCompletion3D(
-    const ProductionMppiPreparedEsdf& world, const Point3& position) {
-  if (!world.route_3d || !world.activated_route_3d) {
+RouteSegmentCompletionAssessment3D
+ProductionMppiNode::assessActiveRouteCompletion3D(const ProductionMppiPreparedEsdf&,
+                                                  const Point3& position) {
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
+      execution_route_store_.snapshot();
+  if (snapshot == nullptr || !snapshot->route.has_value() ||
+      snapshot->route->geometry == nullptr ||
+      snapshot->route->geometry->route == nullptr) {
     return {};
   }
-
-  const std::scoped_lock lock{route_supervisor_mutex_};
-  RouteSegmentCompletionAssessment3D assessment = route_supervisor_.assessCompletion(
-      *world.route_3d,
+  return assessRouteSegmentCompletion3D(
+      *snapshot->route->geometry->route, snapshot->route->identity.generation,
       RouteSegmentCompletionObservation3D{
-          .route_generation = world.activated_route_3d->identity.generation,
+          .route_generation = snapshot->route->identity.generation,
           .position = position,
+          .minimum_station_m = snapshot->route->progress.station_m,
       },
       RouteSegmentCompletionConfig3D{
           .capture_radius_m =
               topological_lattice_adapter_3d_config_.segment_capture_radius_m,
       });
-  if (assessment.captured) {
-    static_cast<void>(route_supervisor_.applyEvent(RouteLifecycleEvent3D{
-        .kind = RouteLifecycleEventKind3D::kCompleted,
-        .generation = world.activated_route_3d->identity.generation,
-    }));
-  }
-  return assessment;
 }
 
 std::uint64_t ProductionMppiNode::nextRouteGeneration3D() {
-  const std::scoped_lock lock{route_supervisor_mutex_};
-  if (route_supervisor_.lastAllocatedGeneration() ==
-      std::numeric_limits<std::uint64_t>::max()) {
-    return 0U;
-  }
-  return route_supervisor_.lastAllocatedGeneration() + 1U;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
+      execution_route_store_.snapshot();
+  const std::uint64_t current_generation =
+      snapshot != nullptr ? snapshot->routeGenerationHighWater() : 0U;
+  return current_generation == std::numeric_limits<std::uint64_t>::max()
+             ? 0U
+             : current_generation + 1U;
 }
 
 } // namespace drone_city_nav

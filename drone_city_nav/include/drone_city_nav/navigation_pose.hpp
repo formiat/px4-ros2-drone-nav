@@ -84,6 +84,12 @@ private:
 
 [[nodiscard]] double normalizeYaw(double yaw_rad) noexcept;
 
+// Clamps ratio to [0, 1] and follows the wrapped angular displacement with the
+// smallest magnitude.
+[[nodiscard]] double interpolateYawShortestPath(double first_yaw_rad,
+                                                double second_yaw_rad,
+                                                double ratio) noexcept;
+
 [[nodiscard]] const char* mappingYawSourceName(MappingYawSource source) noexcept;
 
 // Mapping confidence is based on estimator uncertainty and temporal stability;

@@ -40,6 +40,10 @@ struct LaserScan2DView {
   bool use_full_lidar_extrinsic{false};
   Point3 lidar_translation_body_frd_m{};
   std::array<double, 4> lidar_flu_to_body_frd_quaternion{0.0, 1.0, 0.0, 0.0};
+  double px4_to_map_m00{1.0};
+  double px4_to_map_m01{0.0};
+  double px4_to_map_m10{0.0};
+  double px4_to_map_m11{1.0};
   LaserScanTiming timing{};
   std::span<const LidarProjectionPose> beam_projection_poses{};
   LidarProjectionPoseSource projection_pose_source{

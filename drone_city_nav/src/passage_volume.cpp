@@ -1,7 +1,9 @@
 #include "drone_city_nav/passage_volume.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <iomanip>
 #include <limits>
 #include <locale>
@@ -16,6 +18,33 @@ namespace drone_city_nav {
 namespace {
 
 constexpr double kAxisEpsilon{1.0e-9};
+constexpr std::uint64_t kFnvOffset{1469598103934665603ULL};
+constexpr std::uint64_t kFnvPrime{1099511628211ULL};
+constexpr std::size_t kPassageVolumeRegistryMaximumEntries{256U};
+constexpr std::size_t kPassageVolumeRegistrySweepInterval{32U};
+
+void hashValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
+  for (std::size_t byte = 0U; byte < sizeof(value); ++byte) {
+    hash ^= (value >> (byte * 8U)) & 0xffU;
+    hash *= kFnvPrime;
+  }
+}
+
+void hashDouble(std::uint64_t& hash, const double value) noexcept {
+  hashValue(hash, value == 0.0 ? 0U : std::bit_cast<std::uint64_t>(value));
+}
+
+void hashFootprint(std::uint64_t& hash,
+                   const SweptFootprintConfig& footprint) noexcept {
+  hashDouble(hash, footprint.radius_m);
+  hashDouble(hash, footprint.lower_extent_m);
+  hashDouble(hash, footprint.upper_extent_m);
+  hashValue(hash, static_cast<std::uint64_t>(footprint.perimeter_samples));
+  hashValue(hash, static_cast<std::uint64_t>(footprint.radial_rings));
+  hashValue(hash, static_cast<std::uint64_t>(footprint.axial_samples));
+  hashDouble(hash, footprint.sweep_step_m);
+  hashDouble(hash, footprint.safe_clearance_threshold_m);
+}
 
 struct CrossSectionFrame {
   Vec3 tangent{};
@@ -73,7 +102,12 @@ struct CrossSectionFrame {
          std::isfinite(config.footprint.lower_extent_m) &&
          config.footprint.lower_extent_m >= 0.0 &&
          std::isfinite(config.footprint.upper_extent_m) &&
-         config.footprint.upper_extent_m >= 0.0;
+         config.footprint.upper_extent_m >= 0.0 &&
+         std::isfinite(config.footprint.sweep_step_m) &&
+         config.footprint.sweep_step_m > 0.0 &&
+         std::isfinite(config.footprint.safe_clearance_threshold_m) &&
+         config.footprint.safe_clearance_threshold_m >= 0.0 &&
+         config.footprint.axial_samples != 0U;
 }
 
 [[nodiscard]] CrossSectionFrame makeFrame(const RouteSample3D& sample,
@@ -333,23 +367,34 @@ verticalCenterRange(const PassageCrossSection& section) noexcept {
 [[nodiscard]] std::string
 resourceKey(const std::span<const RouteSample3D> route,
             const std::span<const ConstrainedRouteSpan> constrained_spans,
-            const OccupancyGrid3D& occupancy, const PassageVolumeConfig& config) {
+            const OccupancyGrid3D& occupancy,
+            const std::uint64_t occupancy_content_fingerprint,
+            const PassageVolumeConfig& config) {
   std::ostringstream stream;
   stream.imbue(std::locale::classic());
-  stream << occupancy.fingerprint() << '|' << routeFingerprint(route) << '|'
-         << std::hexfloat << config.cross_section_spacing_m << '|'
-         << config.lateral_probe_step_m << '|' << config.secondary_probe_step_m << '|'
-         << config.maximum_cross_section_probe_m << '|'
-         << config.minimum_wall_clearance_m << '|'
+  stream << occupancy.fingerprint() << '|' << occupancy_content_fingerprint << '|'
+         << routeFingerprint(route) << '|' << route.size() << '|' << std::hexfloat;
+  for (const RouteSample3D& sample : route) {
+    stream << sample.position.x << '|' << sample.position.y << '|' << sample.position.z
+           << '|' << sample.tangent.x << '|' << sample.tangent.y << '|'
+           << sample.tangent.z << '|' << sample.station_m << '|';
+  }
+  stream << config.cross_section_spacing_m << '|' << config.lateral_probe_step_m << '|'
+         << config.secondary_probe_step_m << '|' << config.maximum_cross_section_probe_m
+         << '|' << config.minimum_wall_clearance_m << '|'
          << config.flight_envelope.minimum_target_z_m << '|'
          << config.flight_envelope.maximum_target_z_m << '|'
          << config.footprint.radius_m << '|' << config.footprint.lower_extent_m << '|'
-         << config.footprint.upper_extent_m << '|' << std::defaultfloat
-         << constrained_spans.size();
+         << config.footprint.upper_extent_m << '|' << config.footprint.perimeter_samples
+         << '|' << config.footprint.radial_rings << '|'
+         << config.footprint.axial_samples << '|' << config.footprint.sweep_step_m
+         << '|' << config.footprint.safe_clearance_threshold_m << '|'
+         << std::defaultfloat << constrained_spans.size();
   for (const ConstrainedRouteSpan& span : constrained_spans) {
     stream << '|' << span.passage_traversal_id.value().size() << ':'
            << span.passage_traversal_id.value() << '|' << std::hexfloat
-           << span.begin_station_m << '|' << span.end_station_m;
+           << span.begin_station_m << '|' << span.end_station_m << '|'
+           << std::defaultfloat << span.segment_spans.size() << '|' << std::hexfloat;
     for (const PassageTraversalSegmentSpan& segment : span.segment_spans) {
       stream << '|' << segment.passage_segment_id.value().size() << ':'
              << segment.passage_segment_id.value() << '|' << segment.begin_station_m
@@ -363,6 +408,45 @@ resourceKey(const std::span<const RouteSample3D> route,
 
 bool passageVolumeConfigIsValid(const PassageVolumeConfig& config) noexcept {
   return validConfig(config);
+}
+
+bool samePassageVolumeConfig(const PassageVolumeConfig& first,
+                             const PassageVolumeConfig& second) noexcept {
+  return first.cross_section_spacing_m == second.cross_section_spacing_m &&
+         first.lateral_probe_step_m == second.lateral_probe_step_m &&
+         first.secondary_probe_step_m == second.secondary_probe_step_m &&
+         first.maximum_cross_section_probe_m == second.maximum_cross_section_probe_m &&
+         first.minimum_wall_clearance_m == second.minimum_wall_clearance_m &&
+         first.flight_envelope.minimum_target_z_m ==
+             second.flight_envelope.minimum_target_z_m &&
+         first.flight_envelope.maximum_target_z_m ==
+             second.flight_envelope.maximum_target_z_m &&
+         first.footprint.radius_m == second.footprint.radius_m &&
+         first.footprint.lower_extent_m == second.footprint.lower_extent_m &&
+         first.footprint.upper_extent_m == second.footprint.upper_extent_m &&
+         first.footprint.perimeter_samples == second.footprint.perimeter_samples &&
+         first.footprint.radial_rings == second.footprint.radial_rings &&
+         first.footprint.axial_samples == second.footprint.axial_samples &&
+         first.footprint.sweep_step_m == second.footprint.sweep_step_m &&
+         first.footprint.safe_clearance_threshold_m ==
+             second.footprint.safe_clearance_threshold_m;
+}
+
+std::uint64_t
+passageVolumeConfigFingerprint(const PassageVolumeConfig& config) noexcept {
+  if (!validConfig(config)) {
+    return 0U;
+  }
+  std::uint64_t hash{kFnvOffset};
+  hashDouble(hash, config.cross_section_spacing_m);
+  hashDouble(hash, config.lateral_probe_step_m);
+  hashDouble(hash, config.secondary_probe_step_m);
+  hashDouble(hash, config.maximum_cross_section_probe_m);
+  hashDouble(hash, config.minimum_wall_clearance_m);
+  hashDouble(hash, config.flight_envelope.minimum_target_z_m);
+  hashDouble(hash, config.flight_envelope.maximum_target_z_m);
+  hashFootprint(hash, config.footprint);
+  return hash == 0U ? 1U : hash;
 }
 
 std::vector<PassageVolume>
@@ -385,22 +469,34 @@ derivePassageVolumes(const std::span<const RouteSample3D> route,
 PassageVolumeResource acquireDerivedPassageVolumes(
     const std::span<const RouteSample3D> route,
     const std::span<const ConstrainedRouteSpan> constrained_spans,
-    const OccupancyGrid3D& occupancy, const PassageVolumeConfig& config) {
+    const OccupancyGrid3D& occupancy, const std::uint64_t occupancy_content_fingerprint,
+    const PassageVolumeConfig& config) {
   if (!validConfig(config)) {
     return {};
   }
   using VolumeVector = std::vector<PassageVolume>;
-  if (occupancy.fingerprint() == 0U) {
+  const std::optional<std::uint64_t> cached_content_fingerprint =
+      occupancy.cachedContentFingerprint();
+  if (occupancy_content_fingerprint == 0U || !cached_content_fingerprint.has_value() ||
+      *cached_content_fingerprint != occupancy_content_fingerprint) {
     return PassageVolumeResource{
         .volumes = std::make_shared<const VolumeVector>(
             derivePassageVolumes(route, constrained_spans, occupancy, config)),
         .shared_resource_reused = false,
     };
   }
-  const std::string key = resourceKey(route, constrained_spans, occupancy, config);
+  const std::string key = resourceKey(route, constrained_spans, occupancy,
+                                      occupancy_content_fingerprint, config);
   static std::mutex registry_mutex;
   static std::unordered_map<std::string, std::weak_ptr<const VolumeVector>> registry;
+  static std::size_t acquisitions_since_sweep{0U};
   const std::scoped_lock registry_lock{registry_mutex};
+  ++acquisitions_since_sweep;
+  if (acquisitions_since_sweep >= kPassageVolumeRegistrySweepInterval ||
+      registry.size() >= kPassageVolumeRegistryMaximumEntries) {
+    std::erase_if(registry, [](const auto& entry) { return entry.second.expired(); });
+    acquisitions_since_sweep = 0U;
+  }
   if (const auto found = registry.find(key); found != registry.end()) {
     if (std::shared_ptr<const VolumeVector> existing = found->second.lock()) {
       return PassageVolumeResource{
@@ -412,7 +508,12 @@ PassageVolumeResource acquireDerivedPassageVolumes(
   }
   auto volumes = std::make_shared<const VolumeVector>(
       derivePassageVolumes(route, constrained_spans, occupancy, config));
-  registry.emplace(key, volumes);
+  // Live resources are never evicted: removing one would defeat exact sharing
+  // for a route still owned by an active world. Once the hard bound is full,
+  // derive an uncached resource until owners release entries for the next sweep.
+  if (registry.size() < kPassageVolumeRegistryMaximumEntries) {
+    registry.emplace(key, volumes);
+  }
   return PassageVolumeResource{
       .volumes = std::move(volumes),
       .shared_resource_reused = false,

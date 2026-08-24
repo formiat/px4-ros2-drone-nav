@@ -1,6 +1,7 @@
 std_msgs/Header header
 uint8 EXECUTION_MODE_PLANNED=0
 uint8 EXECUTION_MODE_POSITION_HOLD=1
+uint8 EXECUTION_MODE_REVOKED=2
 uint8 EXECUTION_REASON_NONE=0
 uint8 EXECUTION_REASON_NO_EXECUTABLE_HORIZON=1
 uint8 EXECUTION_REASON_COOPERATIVE_PASSAGE_YIELD=2
@@ -11,9 +12,12 @@ uint8 ROUTE_PURPOSE_MISSION_TRANSIT=0
 uint8 ROUTE_PURPOSE_LAUNCH_DEPARTURE=1
 uint8 ROUTE_PURPOSE_OBSERVATION_FRONTIER=2
 uint8 ROUTE_PURPOSE_TOPOLOGICAL_BACKTRACK=3
+# Sequence is monotonic only within producer_instance_id. The target offboard
+# process must match target_offboard_instance_id before admitting the identity.
 uint64 sequence
 builtin_interfaces/Time valid_from
 builtin_interfaces/Time valid_until
+int64 control_interval_ns
 uint64 pose_revision
 uint64 obstacle_revision
 uint8 risk_tier
@@ -24,4 +28,6 @@ geometry_msgs/Point route_target
 bool route_constrained
 bool stationary_position_hold
 geometry_msgs/Point stationary_hold_position
+uint64 producer_instance_id
+uint64 target_offboard_instance_id
 MppiHorizonPoint[] points

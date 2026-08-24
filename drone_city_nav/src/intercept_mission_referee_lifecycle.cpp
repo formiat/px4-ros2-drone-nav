@@ -523,9 +523,11 @@ bool InterceptMissionRefereeNode::allSurvivorsHeld(const std::int64_t now_ns) {
       continue;
     }
     std::optional<Point3> active_hold_position;
-    if (interceptor.hold_horizon && interceptor.hold_horizon->active &&
-        interceptor.hold_horizon->sequence >
-            interceptor.hold_request_horizon_sequence) {
+    if (interceptor.hold_horizon && interceptor.hold_horizon->activeAt(now_ns) &&
+        (interceptor.hold_horizon->producer_instance_id !=
+             interceptor.hold_request_horizon_producer_instance_id ||
+         interceptor.hold_horizon->sequence >
+             interceptor.hold_request_horizon_sequence)) {
       active_hold_position = interceptor.hold_horizon->position;
     }
     const InterceptorHoldUpdate update =
@@ -546,11 +548,15 @@ bool InterceptMissionRefereeNode::allSurvivorsHeld(const std::int64_t now_ns) {
             get_logger(),
             "INTERCEPTOR_HOLD_TIMEOUT vehicle_id='%s' position_error_m=%.3f "
             "speed_mps=%.3f active_hold_horizon=%s hold_horizon_sequence=%" PRIu64
-            " request_horizon_sequence=%" PRIu64 " mission_epoch=%" PRIu64,
+            " hold_horizon_producer=%" PRIu64 " request_horizon_sequence=%" PRIu64
+            " request_horizon_producer=%" PRIu64 " mission_epoch=%" PRIu64,
             interceptor.id.c_str(), update.position_error_m, update.speed_mps,
             active_hold_position.has_value() ? "true" : "false",
             interceptor.hold_horizon ? interceptor.hold_horizon->sequence : 0U,
-            interceptor.hold_request_horizon_sequence, mission_epoch_);
+            interceptor.hold_horizon ? interceptor.hold_horizon->producer_instance_id
+                                     : 0U,
+            interceptor.hold_request_horizon_sequence,
+            interceptor.hold_request_horizon_producer_instance_id, mission_epoch_);
         timed_out_interceptor = interceptor.id;
       }
     }
@@ -665,6 +671,7 @@ void InterceptMissionRefereeNode::tick() {
     return;
   }
   const std::int64_t now_ns = now().nanoseconds();
+  expireOffboardEvidence(now_ns);
   if (boundary_check_started_ns_ <= 0) {
     boundary_check_started_ns_ = now_ns;
   }
@@ -704,7 +711,7 @@ void InterceptMissionRefereeNode::tick() {
     if (navigation_ready && mission_readiness_started_ns_ <= 0) {
       mission_readiness_started_ns_ = now_ns;
     }
-    if (missionReady()) {
+    if (missionReady(now_ns)) {
       publishMissionStart();
     } else if (navigation_ready && mission_readiness_started_ns_ > 0 &&
                now_ns - mission_readiness_started_ns_ > mission_readiness_timeout_ns_) {
@@ -727,6 +734,139 @@ void InterceptMissionRefereeNode::tick() {
   updatePreviousPhysicalStates();
   updateAggregateTerminal();
   settleTerminal(now_ns);
+}
+
+void InterceptMissionRefereeNode::publishMissionStart() {
+  if (!truth_alignment_lifecycle_.latchStartupContract()) {
+    failMission("truth_alignment_contract_not_ready");
+    return;
+  }
+  std_msgs::msg::Bool start;
+  start.data = true;
+  for (InterceptorRuntime& interceptor : interceptors_) {
+    interceptor.start_pub->publish(start);
+  }
+  for (std::size_t index = 0U; index < targets_.size(); ++index) {
+    targets_[index].start_pub->publish(start);
+    publishTargetStatus(index, "mission_started");
+  }
+  mission_started_ = true;
+  RCLCPP_INFO(get_logger(),
+              "INTERCEPT_MISSION state=running mission='%s' epoch=%" PRIu64
+              " interceptor_count=%zu target_count=%zu "
+              "startup_coordinate_contract_latched=true "
+              "all_executable_horizons_ready=true",
+              mission_name_.c_str(), mission_epoch_, interceptors_.size(),
+              targets_.size());
+}
+
+std::size_t InterceptMissionRefereeNode::operationalInterceptorCount() const noexcept {
+  return static_cast<std::size_t>(
+      std::ranges::count_if(interceptors_, [](const InterceptorRuntime& runtime) {
+        return !runtime.destroyed && !runtime.destruction_requested &&
+               !runtime.disabled;
+      }));
+}
+
+std::size_t InterceptMissionRefereeNode::survivingInterceptorCount() const noexcept {
+  return static_cast<std::size_t>(
+      std::ranges::count_if(interceptors_, [](const InterceptorRuntime& runtime) {
+        return !runtime.destroyed && !runtime.destruction_requested;
+      }));
+}
+
+std::size_t InterceptMissionRefereeNode::activeTargetCount() const noexcept {
+  return static_cast<std::size_t>(
+      std::ranges::count(targets_, TargetOutcome::kActive, &TargetRuntime::outcome));
+}
+
+void InterceptMissionRefereeNode::requestHold(const std::size_t index,
+                                              const std::string& reason) {
+  InterceptorRuntime& interceptor = interceptors_[index];
+  if (interceptor.destroyed || interceptor.destruction_requested ||
+      interceptor.hold_confirmation) {
+    return;
+  }
+  if (!interceptor.state || !interceptor.state->position_valid) {
+    if (mission_started_) {
+      system_failure_reason_ =
+          "interceptor_hold_position_unavailable:" + interceptor.id;
+    }
+    return;
+  }
+  interceptor.disabled = true;
+  interceptor.hold_confirmation =
+      std::make_unique<InterceptorHoldConfirmation>(hold_config_);
+  interceptor.hold_request_horizon_producer_instance_id =
+      interceptor.horizon_admission.current_producer_instance_id;
+  interceptor.hold_request_horizon_sequence =
+      interceptor.horizon_admission.current_sequence;
+  interceptor.hold_requested_ns = now().nanoseconds();
+  msg::InterceptMissionCommand command;
+  command.stamp = now();
+  command.mission_epoch = mission_epoch_;
+  command.command = msg::InterceptMissionCommand::COMMAND_HOLD_CURRENT_POSITION;
+  command.reason = reason;
+  interceptor.command_pub->publish(command);
+  RCLCPP_INFO(get_logger(),
+              "INTERCEPTOR_HOLD requested=true vehicle_id='%s' reason='%s' "
+              "position=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64,
+              interceptor.id.c_str(), reason.c_str(), interceptor.state->position.x,
+              interceptor.state->position.y, interceptor.state->position.z,
+              mission_epoch_);
+}
+
+void InterceptMissionRefereeNode::requestHoldsForSurvivors(
+    const std::string& reason, const std::optional<std::size_t> excluded) {
+  for (std::size_t index = 0U; index < interceptors_.size(); ++index) {
+    if (!excluded.has_value() || *excluded != index) {
+      requestHold(index, reason);
+    }
+  }
+}
+
+void InterceptMissionRefereeNode::requestTargetHold(const std::size_t index,
+                                                    const std::string& reason) {
+  TargetRuntime& target = targets_[index];
+  if (target.hold_requested || target.destroyed || !target.state ||
+      !target.state->position_valid) {
+    return;
+  }
+  target.hold_requested = true;
+  msg::NavigationObjective objective;
+  objective.stamp = now();
+  objective.mission_epoch = mission_epoch_;
+  objective.sample_sequence = ++target.objective_sequence;
+  objective.position.x = target.state->position.x;
+  objective.position.y = target.state->position.y;
+  objective.position.z = target.state->position.z;
+  objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
+  objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
+  objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD;
+  target.objective_pub->publish(objective);
+  RCLCPP_INFO(get_logger(),
+              "TARGET_HOLD requested=true target_id='%s' reason='%s' "
+              "position=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64,
+              target.id.c_str(), reason.c_str(), target.state->position.x,
+              target.state->position.y, target.state->position.z, mission_epoch_);
+}
+
+void InterceptMissionRefereeNode::handleStartupCoordinateAlignmentFailure() {
+  if (system_failure_reason_.has_value()) {
+    return;
+  }
+  system_failure_reason_ =
+      "coordinate_alignment_mismatch:" + truth_alignment_vehicle_id_ + ":" +
+      truth_alignment_reason_;
+  RCLCPP_ERROR(get_logger(),
+               "SIMULATION_TRUTH_ALIGNMENT startup_mission_blocked=true reason='%s' "
+               "vehicle_id='%s' max_error_m=%.3f mission_started=%s",
+               truth_alignment_reason_.c_str(), truth_alignment_vehicle_id_.c_str(),
+               truth_alignment_maximum_error_m_, mission_started_ ? "true" : "false");
+  requestHoldsForSurvivors(*system_failure_reason_);
+  for (std::size_t index = 0U; index < targets_.size(); ++index) {
+    requestTargetHold(index, *system_failure_reason_);
+  }
 }
 
 } // namespace drone_city_nav

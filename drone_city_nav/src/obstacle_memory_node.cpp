@@ -656,6 +656,10 @@ private:
     scan_view.use_full_lidar_extrinsic = use_full_lidar_extrinsic_;
     scan_view.lidar_translation_body_frd_m = lidar_translation_body_frd_m_;
     scan_view.lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_;
+    scan_view.px4_to_map_m00 = px4_map_transform_.m00;
+    scan_view.px4_to_map_m01 = px4_map_transform_.m01;
+    scan_view.px4_to_map_m10 = px4_map_transform_.m10;
+    scan_view.px4_to_map_m11 = px4_map_transform_.m11;
     scan_view.timing = scan_timing;
     scan_view.beam_projection_poses = acquisition_pose.alignment.poses;
     scan_view.projection_pose_source =
@@ -819,6 +823,10 @@ private:
         .use_full_lidar_extrinsic = use_full_lidar_extrinsic_,
         .lidar_translation_body_frd_m = lidar_translation_body_frd_m_,
         .lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_,
+        .px4_to_map_m00 = px4_map_transform_.m00,
+        .px4_to_map_m01 = px4_map_transform_.m01,
+        .px4_to_map_m10 = px4_map_transform_.m10,
+        .px4_to_map_m11 = px4_map_transform_.m11,
     };
   }
 
@@ -849,14 +857,17 @@ private:
     }
     msg::LatestLidarObstacleScan message = makeLatestLidarObstacleScanMessage(
         obstacle_scan, scan.header, frame_id_, acquisition_stamp_ns,
+        latest_lidar_obstacle_scan_producer_instance_id_,
         ++latest_lidar_obstacle_scan_sequence_, pose_generation);
     latest_lidar_obstacle_scan_pub_->publish(message);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "LATEST_LIDAR_OBSTACLE_SCAN published=true sequence=%" PRIu64
+        "LATEST_LIDAR_OBSTACLE_SCAN published=true producer=%" PRIu64
+        " sequence=%" PRIu64
         " source_beams=%u hit_points=%zu invalid_beams=%u pose_generation=%" PRIu64,
-        message.sequence, message.source_beam_count, message.hit_points_body_frd.size(),
-        message.invalid_beam_count, message.pose_generation);
+        message.producer_instance_id, message.sequence, message.source_beam_count,
+        message.hit_points_body_frd.size(), message.invalid_beam_count,
+        message.pose_generation);
   }
 
   void openLidarMemoryHitDump() {
@@ -971,6 +982,8 @@ private:
   LidarMemoryHitDumpWriter lidar_memory_hit_dump_;
   LatestValueMailbox<LidarMemoryHitDiagnosticBatch> lidar_diagnostics_mailbox_;
   std::atomic<std::uint64_t> dropped_lidar_diagnostic_batches_{0U};
+  const std::uint64_t latest_lidar_obstacle_scan_producer_instance_id_{
+      createLatestLidarObstacleProducerInstanceId()};
   std::uint64_t latest_lidar_obstacle_scan_sequence_{0U};
   std::size_t lidar_scan_alignment_queue_capacity_{8U};
   std::deque<PendingLidarScan> pending_lidar_scans_;

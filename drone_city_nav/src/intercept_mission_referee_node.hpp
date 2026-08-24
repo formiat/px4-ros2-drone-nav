@@ -1,8 +1,11 @@
 #pragma once
 
+#include "drone_city_nav/execution_horizon_admission.hpp"
+#include "drone_city_nav/execution_horizon_witness.hpp"
 #include "drone_city_nav/intercept_mission.hpp"
 #include "drone_city_nav/msg/intercept_mission_command.hpp"
 #include "drone_city_nav/msg/intercept_target_status.hpp"
+#include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
 #include "drone_city_nav/msg/simulation_truth_alignment.hpp"
@@ -37,10 +40,34 @@ private:
     kDestroyed,
   };
 
+  struct AcceptedHorizon {
+    std::uint64_t producer_instance_id{0U};
+    std::uint64_t target_offboard_instance_id{0U};
+    std::uint64_t sequence{0U};
+    std::uint8_t execution_mode{
+        msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD};
+    std::int64_t valid_from_ns{0};
+    std::int64_t valid_until_ns{0};
+    bool witnessed{false};
+  };
+
   struct HoldHorizon {
     Point3 position{};
+    std::uint64_t producer_instance_id{0U};
+    std::uint64_t target_offboard_instance_id{0U};
     std::uint64_t sequence{0U};
+    std::uint8_t execution_mode{
+        msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD};
+    std::int64_t valid_from_ns{0};
+    std::int64_t valid_until_ns{0};
     bool active{false};
+    bool witnessed{false};
+
+    [[nodiscard]] bool activeAt(std::int64_t now_ns) const noexcept {
+      return active && witnessed && valid_from_ns > 0 &&
+             valid_until_ns > valid_from_ns && now_ns >= valid_from_ns &&
+             now_ns < valid_until_ns;
+    }
   };
 
   struct InterceptorRuntime {
@@ -51,6 +78,9 @@ private:
     std::optional<TimedVehicleState> truth_state;
     std::optional<TimedVehicleState> previous_physical_state;
     std::optional<HoldHorizon> hold_horizon;
+    std::optional<AcceptedHorizon> accepted_horizon;
+    ExecutionHorizonAdmissionState horizon_admission{};
+    ExecutionHorizonWitnessState horizon_witness_state{};
     std::vector<std::unique_ptr<InterceptStateAdjudicationLifecycle>>
         target_adjudications;
     std::unique_ptr<InterceptorHoldConfirmation> hold_confirmation;
@@ -62,10 +92,14 @@ private:
     bool disabled{false};
     std::int64_t destruction_requested_ns{0};
     std::int64_t hold_requested_ns{0};
+    std::int64_t executable_horizon_valid_from_ns{0};
+    std::int64_t executable_horizon_valid_until_ns{0};
+    std::uint64_t hold_request_horizon_producer_instance_id{0U};
     std::uint64_t hold_request_horizon_sequence{0U};
     rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr state_sub;
     rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr truth_state_sub;
     rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub;
+    rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr control_feedback_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr world_ready_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr track_ready_sub;
     rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr destroyed_sub;
@@ -85,6 +119,9 @@ private:
     std::optional<TimedVehicleState> state;
     std::optional<TimedVehicleState> truth_state;
     std::optional<TimedVehicleState> previous_physical_state;
+    std::optional<AcceptedHorizon> accepted_horizon;
+    ExecutionHorizonAdmissionState horizon_admission{};
+    ExecutionHorizonWitnessState horizon_witness_state{};
     std::string capturing_interceptor_id;
     TargetOutcome outcome{TargetOutcome::kActive};
     bool world_ready{false};
@@ -93,10 +130,13 @@ private:
     bool destruction_requested{false};
     bool hold_requested{false};
     std::int64_t destruction_requested_ns{0};
+    std::int64_t executable_horizon_valid_from_ns{0};
+    std::int64_t executable_horizon_valid_until_ns{0};
     std::uint64_t objective_sequence{0U};
     rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr state_sub;
     rclcpp::Subscription<msg::SimulationTruthState>::SharedPtr truth_state_sub;
     rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub;
+    rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr control_feedback_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr world_ready_sub;
     rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr destroyed_sub;
     rclcpp::Publisher<msg::NavigationObjective>::SharedPtr objective_pub;
@@ -116,10 +156,24 @@ private:
                         const std::vector<double>& goals_xyz);
   void configureGroundTruthBoundary();
   void onTruthAlignmentStatus(const msg::SimulationTruthAlignment& status);
+  void onInterceptorExecutionHorizon(const msg::MppiTrajectoryHorizon& horizon,
+                                     std::size_t interceptor_index);
+  void onTargetExecutionHorizon(const msg::MppiTrajectoryHorizon& horizon,
+                                std::size_t target_index);
+  void onInterceptorControlFeedback(const msg::MppiControlFeedback& feedback,
+                                    std::size_t interceptor_index);
+  void onTargetControlFeedback(const msg::MppiControlFeedback& feedback,
+                               std::size_t target_index);
+  void revokeExecutionHorizonEvidence(InterceptorRuntime& interceptor);
+  void revokeExecutionHorizonEvidence(TargetRuntime& target);
+  void refreshExecutionHorizonEvidence(InterceptorRuntime& interceptor,
+                                       std::int64_t now_ns);
+  void refreshExecutionHorizonEvidence(TargetRuntime& target, std::int64_t now_ns);
+  void expireOffboardEvidence(std::int64_t now_ns);
   void onVehicleDestroyed(const msg::VehicleDestroyed& destroyed, bool interceptor,
                           std::size_t index);
   [[nodiscard]] bool verifyGroundTruthBoundary(std::int64_t now_ns);
-  [[nodiscard]] bool missionReady() const;
+  [[nodiscard]] bool missionReady(std::int64_t now_ns) const;
   [[nodiscard]] std::optional<TimedVehicleState>
   interceptorPhysicalState(std::size_t index) const noexcept;
   [[nodiscard]] std::optional<TimedVehicleState>
@@ -180,6 +234,7 @@ private:
   std::int64_t hold_timeout_ns_{20'000'000'000LL};
   std::int64_t boundary_startup_timeout_ns_{10'000'000'000LL};
   std::int64_t mission_readiness_timeout_ns_{30'000'000'000LL};
+  std::int64_t maximum_offboard_feedback_age_ns_{1'000'000'000LL};
   std::int64_t destruction_requested_ns_{0};
   std::int64_t boundary_check_started_ns_{0};
   std::int64_t last_boundary_check_ns_{0};

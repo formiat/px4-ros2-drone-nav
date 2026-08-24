@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -86,6 +87,8 @@ enum class RouteLifecycleEventKind3D : std::uint8_t {
 struct RouteLifecycleEvent3D {
   RouteLifecycleEventKind3D kind{RouteLifecycleEventKind3D::kCompleted};
   std::uint64_t generation{0U};
+  std::uint64_t raw_producer_instance_id{0U};
+  std::uint64_t raw_revision{0U};
 };
 
 enum class RouteProposalReplacementStatus3D : std::uint8_t {
@@ -168,6 +171,7 @@ struct RouteExecutionObservation3D {
   std::uint64_t previously_validated_through_raw_revision{0U};
   Point3 position{};
   double minimum_station_m{0.0};
+  double maximum_station_m{std::numeric_limits<double>::infinity()};
   double maximum_cross_track_m{0.0};
   const ObservedOccupancyGrid3D* latest_raw_occupancy{nullptr};
   std::uint64_t latest_raw_producer_instance_id{0U};

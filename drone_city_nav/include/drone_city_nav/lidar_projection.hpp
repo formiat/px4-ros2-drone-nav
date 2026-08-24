@@ -41,6 +41,10 @@ struct LidarProjectionConfig {
   bool use_full_lidar_extrinsic{false};
   Point3 lidar_translation_body_frd_m{};
   std::array<double, 4> lidar_flu_to_body_frd_quaternion{0.0, 1.0, 0.0, 0.0};
+  double px4_to_map_m00{1.0};
+  double px4_to_map_m01{0.0};
+  double px4_to_map_m10{0.0};
+  double px4_to_map_m11{1.0};
 };
 
 struct LidarProjectionBodyFrame {
@@ -103,6 +107,11 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
 [[nodiscard]] LidarProjectionBodyFrame
 lidarProjectionBodyFrame(const LidarProjectionPose& pose,
                          const LidarProjectionConfig& config) noexcept;
+
+// A valid PX4-local-NED-to-map transform may reflect either the vertical axis
+// alone or one horizontal axis as well, so both orthonormal handednesses are valid.
+[[nodiscard]] bool
+lidarProjectionBodyFrameIsValid(const LidarProjectionBodyFrame& frame) noexcept;
 
 [[nodiscard]] Point3 lidarBodyPointToMap(const LidarProjectionBodyFrame& frame,
                                          const Point3& body_frd_point) noexcept;

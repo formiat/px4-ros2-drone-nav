@@ -147,8 +147,7 @@ void ProductionMppiNode::processDiagnostics(
       << " route_proposal_selection="
       << routeProposalSelectionReason3DName(esdf.route_proposal_selection_reason)
       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
-      << " goal_distance_m=" << snapshot.goal_capture.horizontal_distance_m
-      << " guide_release="
+      << " goal_distance_m=" << snapshot.goal_capture.distance_m << " guide_release="
       << globalGuideReleaseReasonName(esdf.global_guide_release_reason)
       << " guide_heading_source="
       << globalGuideHeadingSourceName(esdf.global_guide_heading_source)
@@ -622,7 +621,7 @@ void ProductionMppiNode::processDiagnostics(
         << routeProposalSelectionReason3DName(esdf.route_proposal_selection_reason)
         << '"' << ",\"goal_capture_latched\":"
         << (snapshot.goal_capture.latched ? "true" : "false")
-        << ",\"goal_distance_m\":" << snapshot.goal_capture.horizontal_distance_m
+        << ",\"goal_distance_m\":" << snapshot.goal_capture.distance_m
         << ",\"guide_release\":\""
         << globalGuideReleaseReasonName(esdf.global_guide_release_reason) << '"'
         << ",\"guide_heading_source\":\""

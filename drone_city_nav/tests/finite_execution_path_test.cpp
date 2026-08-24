@@ -88,7 +88,7 @@ TEST(FiniteExecutionPathTest, RetainsOnlyRemainingPartOfActiveTerminalPath) {
 TEST(FiniteExecutionPathTest,
      DistinguishesTrackedTrajectoryFromUnsafeActualStateContinuation) {
   TestWorld world;
-  world.occupancy.setOccupied(GridIndex3D{8, 5, 10});
+  world.occupancy.setOccupied(GridIndex3D{6, 6, 10});
   const std::vector<TimedExecutionPathPoint> path = testPath();
   const State actual{
       .x = 2.2F,
@@ -109,6 +109,7 @@ TEST(FiniteExecutionPathTest,
 
   EXPECT_TRUE(tracked_trajectory.accepted());
   EXPECT_EQ(actual_state_continuation.status, FiniteExecutionPathStatus::kRawCollision);
+  EXPECT_EQ(actual_state_continuation.failure_segment_index, 1U);
 }
 
 TEST(FiniteExecutionPathTest, RejectsExpiredPathWithoutExtendingItsLifetime) {
@@ -169,6 +170,45 @@ TEST(FiniteExecutionPathTest, CompleteValidationChecksEveryRawPathSegment) {
 
   EXPECT_EQ(result.status, FiniteExecutionPathStatus::kRawCollision);
   EXPECT_EQ(result.failure_segment_index, 1U);
+}
+
+TEST(FiniteExecutionPathTest,
+     CompleteValidationRequiresExactPreviousControlAtPointZero) {
+  const TestWorld world;
+  std::vector<TimedExecutionPathPoint> path = testPath();
+  path.front().control.ax = 0.25F;
+
+  const FiniteExecutionPathValidation result =
+      validateCompleteFiniteExecutionPath(path, Control{}, world.view());
+
+  EXPECT_EQ(result.status, FiniteExecutionPathStatus::kInvalidContract);
+}
+
+TEST(FiniteExecutionPathTest,
+     ArrivalControlAxisDetectsFirstIntervalObstacleInCompleteAndContinuationChecks) {
+  TestWorld world;
+  world.footprint.radius_m = 0.1;
+  world.footprint.upper_extent_m = 0.8;
+  std::vector<TimedExecutionPathPoint> tilted_path = testPath();
+  tilted_path[1].control = Control{.ay = 4.0F};
+  const std::vector<Point3> tilted_body_obstacle{{3.0, 1.25, 5.6}};
+
+  EXPECT_TRUE(validateCompleteFiniteExecutionPath(testPath(), Control{},
+                                                  world.view(tilted_body_obstacle))
+                  .accepted());
+  const FiniteExecutionPathValidation complete_validation =
+      validateCompleteFiniteExecutionPath(tilted_path, Control{},
+                                          world.view(tilted_body_obstacle));
+  EXPECT_EQ(complete_validation.status,
+            FiniteExecutionPathStatus::kLatestLidarRawCollision);
+  EXPECT_EQ(complete_validation.failure_segment_index, 0U);
+  const FiniteExecutionPathValidation continuation_validation =
+      validateFiniteExecutionPathContinuation(
+          tilted_path, 10 * kSecondNs, 12 * kSecondNs, 10 * kSecondNs + 100'000'000LL,
+          State{.x = 1.2F, .y = 1.0F, .z = 5.0F, .vx = 2.0F}, Control{},
+          world.view(tilted_body_obstacle));
+  EXPECT_EQ(continuation_validation.status,
+            FiniteExecutionPathStatus::kLatestLidarRawCollision);
 }
 
 TEST(FiniteExecutionPathTest, ConservativeModeStopsAtUnknownObservedFrontier) {
@@ -284,7 +324,7 @@ TEST(FiniteExecutionPathTest, RejectsDynamicallyUnrecoverableCurrentAltitude) {
 TEST(FiniteExecutionPathTest, RejectsRemainingControlsUnsafeFromActualState) {
   const TestWorld world;
   std::vector<TimedExecutionPathPoint> path = testPath();
-  path.front().control.az = -4.0F;
+  path[1].control.az = -4.0F;
 
   const FiniteExecutionPathValidation result = validateFiniteExecutionPathContinuation(
       path, 10 * kSecondNs, 12 * kSecondNs, 10 * kSecondNs + 100'000'000LL,
@@ -469,7 +509,7 @@ TEST(FiniteExecutionPathTest, RebuildsContinuationFromActualStateWithoutExtensio
     points.push_back(TimedExecutionPathPoint{
         .time_from_start_s = static_cast<double>(index) * world.dynamics.dt_s,
         .state = source->states[index],
-        .control = source->controls[std::min(index, source->controls.size() - 1U)],
+        .control = index == 0U ? Control{} : source->controls[index - 1U],
     });
   }
   const State actual{.x = 1.8F, .y = 1.5F, .z = 5.0F, .vx = 2.0F};

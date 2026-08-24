@@ -1,16 +1,66 @@
-#include "drone_city_nav/mppi/mppi_reference.hpp"
-
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
-#include <numbers>
+#include <limits>
 #include <utility>
 
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
 namespace {
+
+constexpr std::uint64_t kLatestLidarWireFingerprintOffset{1469598103934665603ULL};
+constexpr std::uint64_t kLatestLidarWireFingerprintPrime{1099511628211ULL};
+constexpr std::uint64_t kLatestLidarWireFingerprintDomain{0x4c49444152575233ULL};
+
+void hashLatestLidarWireValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
+  for (std::size_t index = 0U; index < sizeof(value); ++index) {
+    hash ^= static_cast<std::uint8_t>(value >> (index * 8U));
+    hash *= kLatestLidarWireFingerprintPrime;
+  }
+}
+
+[[nodiscard]] std::uint64_t
+latestLidarRawWireFingerprint(const msg::LatestLidarObstacleScan& message) noexcept {
+  std::uint64_t hash{kLatestLidarWireFingerprintOffset};
+  hashLatestLidarWireValue(hash, kLatestLidarWireFingerprintDomain);
+  hashLatestLidarWireValue(hash, static_cast<std::uint32_t>(message.header.stamp.sec));
+  hashLatestLidarWireValue(hash, message.header.stamp.nanosec);
+  hashLatestLidarWireValue(hash, message.header.frame_id.size());
+  for (const char value : message.header.frame_id) {
+    hash ^= static_cast<std::uint8_t>(value);
+    hash *= kLatestLidarWireFingerprintPrime;
+  }
+  hashLatestLidarWireValue(hash, message.producer_instance_id);
+  hashLatestLidarWireValue(hash, message.sequence);
+  hashLatestLidarWireValue(hash, message.pose_generation);
+  const auto hash_double = [&hash](const double value) noexcept {
+    hashLatestLidarWireValue(hash, std::bit_cast<std::uint64_t>(value));
+  };
+  hash_double(message.frame_origin_map.x);
+  hash_double(message.frame_origin_map.y);
+  hash_double(message.frame_origin_map.z);
+  hash_double(message.body_x_axis_map.x);
+  hash_double(message.body_x_axis_map.y);
+  hash_double(message.body_x_axis_map.z);
+  hash_double(message.body_y_axis_map.x);
+  hash_double(message.body_y_axis_map.y);
+  hash_double(message.body_y_axis_map.z);
+  hash_double(message.body_z_axis_map.x);
+  hash_double(message.body_z_axis_map.y);
+  hash_double(message.body_z_axis_map.z);
+  hashLatestLidarWireValue(hash, message.hit_points_body_frd.size());
+  for (const geometry_msgs::msg::Point32& point : message.hit_points_body_frd) {
+    hashLatestLidarWireValue(hash, std::bit_cast<std::uint32_t>(point.x));
+    hashLatestLidarWireValue(hash, std::bit_cast<std::uint32_t>(point.y));
+    hashLatestLidarWireValue(hash, std::bit_cast<std::uint32_t>(point.z));
+  }
+  hashLatestLidarWireValue(hash, message.source_beam_count);
+  hashLatestLidarWireValue(hash, message.invalid_beam_count);
+  return hash == 0U ? 1U : hash;
+}
 
 [[nodiscard]] std::int64_t
 timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
@@ -24,29 +74,6 @@ timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
 
 [[nodiscard]] bool finiteVector(const geometry_msgs::msg::Vector3& vector) noexcept {
   return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
-}
-
-[[nodiscard]] double dotProduct(const Point3& first, const Point3& second) noexcept {
-  return first.x * second.x + first.y * second.y + first.z * second.z;
-}
-
-[[nodiscard]] bool validUnitAxis(const Point3& axis) noexcept {
-  constexpr double kUnitTolerance{1.0e-3};
-  const double squared_norm = dotProduct(axis, axis);
-  return std::isfinite(squared_norm) && std::abs(squared_norm - 1.0) <= kUnitTolerance;
-}
-
-[[nodiscard]] bool validBodyFrame(const LidarProjectionBodyFrame& frame) noexcept {
-  constexpr double kOrthogonalityTolerance{1.0e-3};
-  return std::isfinite(frame.origin_map_m.x) && std::isfinite(frame.origin_map_m.y) &&
-         std::isfinite(frame.origin_map_m.z) && validUnitAxis(frame.x_axis_map) &&
-         validUnitAxis(frame.y_axis_map) && validUnitAxis(frame.z_axis_map) &&
-         std::abs(dotProduct(frame.x_axis_map, frame.y_axis_map)) <=
-             kOrthogonalityTolerance &&
-         std::abs(dotProduct(frame.x_axis_map, frame.z_axis_map)) <=
-             kOrthogonalityTolerance &&
-         std::abs(dotProduct(frame.y_axis_map, frame.z_axis_map)) <=
-             kOrthogonalityTolerance;
 }
 
 [[nodiscard]] std::optional<InterceptGuidanceMode>
@@ -104,72 +131,90 @@ currentTrackingTarget(const geometry_msgs::msg::Point& observed,
 
 } // namespace
 
-void ProductionMppiNode::onLocalPosition(
-    const px4_msgs::msg::VehicleLocalPosition& message) {
-  ProductionMppiNavigation navigation;
-  navigation.receive_stamp_ns = get_clock()->now().nanoseconds();
-  navigation.valid = message.xy_valid && message.z_valid && message.v_xy_valid &&
-                     std::isfinite(message.x) && std::isfinite(message.y) &&
-                     std::isfinite(message.z) && std::isfinite(message.vx) &&
-                     std::isfinite(message.vy) && std::isfinite(message.vz);
-  if (navigation.valid) {
-    const Point2 map_position = px4_map_transform_.localPositionToMap(
-        Point2{static_cast<double>(message.x), static_cast<double>(message.y)});
-    const Point2 map_velocity = px4_map_transform_.localVectorToMap(
-        Point2{static_cast<double>(message.vx), static_cast<double>(message.vy)});
-    navigation.state.x = static_cast<float>(map_position.x);
-    navigation.state.y = static_cast<float>(map_position.y);
-    navigation.state.z = static_cast<float>(-static_cast<double>(message.z) +
-                                            px4_map_transform_.map_origin.z);
-    navigation.state.vx = static_cast<float>(map_velocity.x);
-    navigation.state.vy = static_cast<float>(map_velocity.y);
-    navigation.state.vz = -message.vz;
-    if (message.heading_good_for_control && std::isfinite(message.heading)) {
-      navigation.state.yaw =
-          static_cast<float>(px4_map_transform_.px4HeadingToMapYaw(message.heading));
+void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& message) {
+  const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+  const bool armed =
+      message.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+  const std::scoped_lock lock{input_mutex_};
+  const Px4TimestampEpochAdmissionResult admission = admitPx4TimestampEpoch(
+      Px4TimestampEpochAdmissionConfig{
+          .maximum_epoch_confirmation_interval_s = 2.0,
+          .maximum_post_reset_unprobated_receive_gap_s = 2.0,
+          .require_corroborating_timestamp_for_reset = false,
+      },
+      vehicle_status_timestamp_admission_,
+      Px4TimestampEpochObservation{
+          .primary_timestamp_us = message.timestamp,
+          .corroborating_timestamp_us = 0U,
+          .receive_timestamp_ns = receive_stamp_ns,
+      });
+  const bool timestamp_probation_opened =
+      vehicle_status_timestamp_admission_.pending_confirmation_count == 0U &&
+      admission.next_state.pending_confirmation_count != 0U;
+  vehicle_status_timestamp_admission_ = admission.next_state;
+  // Derive eligibility from the persisted admission state. Some malformed
+  // observations preserve an already-open reset probation even though their
+  // individual status is not kPendingEpochReset.
+  vehicle_status_epoch_probation_ =
+      vehicle_status_timestamp_admission_.pending_confirmation_count != 0U;
+  const auto invalidate_vehicle_status = [this]() noexcept {
+    if (!vehicle_status_.valid) {
+      return;
     }
-    navigation.measured_acceleration_valid = std::isfinite(message.ax) &&
-                                             std::isfinite(message.ay) &&
-                                             std::isfinite(message.az);
-    if (navigation.measured_acceleration_valid) {
-      const Point2 map_acceleration = px4_map_transform_.localVectorToMap(
-          Point2{static_cast<double>(message.ax), static_cast<double>(message.ay)});
-      navigation.measured_equivalent_control =
-          mppi::equivalentControlFromMeasuredAcceleration(
-              navigation.state, static_cast<float>(map_acceleration.x),
-              static_cast<float>(map_acceleration.y), -message.az,
-              mppi_config_.dynamics);
+    if (vehicle_status_.revision != std::numeric_limits<std::uint64_t>::max()) {
+      ++vehicle_status_.revision;
+      vehicle_status_.valid = false;
+    } else {
+      // The payload cannot change at an exhausted revision identity. The
+      // exhausted latch still makes it ineligible for every publication gate.
+      vehicle_status_revision_exhausted_ = true;
     }
+  };
+  if (timestamp_probation_opened) {
+    // Invalidate authority once when reset/reacquisition probation opens. A
+    // repeated candidate in the same probation cannot rejuvenate status or
+    // flood the monotonic revocation request token.
+    invalidate_vehicle_status();
+    applied_control_ = {};
+    requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
   }
-  {
-    const std::scoped_lock lock{input_mutex_};
-    navigation.revision = navigation_.revision + 1U;
-    navigation_ = navigation;
-    latest_prediction_error_ = {};
-    if (previous_predicted_next_state_.has_value() &&
-        previous_prediction_stamp_ns_ > 0 && navigation.valid) {
-      const mppi::State& predicted = *previous_predicted_next_state_;
-      latest_prediction_error_.position_m =
-          std::hypot(std::hypot(static_cast<double>(predicted.x - navigation.state.x),
-                                static_cast<double>(predicted.y - navigation.state.y)),
-                     static_cast<double>(predicted.z - navigation.state.z));
-      latest_prediction_error_.velocity_mps = std::hypot(
-          std::hypot(static_cast<double>(predicted.vx - navigation.state.vx),
-                     static_cast<double>(predicted.vy - navigation.state.vy)),
-          static_cast<double>(predicted.vz - navigation.state.vz));
-      latest_prediction_error_.yaw_rad = std::abs(
-          std::remainder(static_cast<double>(predicted.yaw - navigation.state.yaw),
-                         2.0 * std::numbers::pi));
-      latest_prediction_error_.valid = true;
+  if (!px4TimestampEpochAdmissionAccepted(admission.status)) {
+    const bool same_identity_conflict =
+        vehicle_status_.valid && !vehicle_status_revision_exhausted_ &&
+        message.timestamp != 0U &&
+        message.timestamp == vehicle_status_.source_timestamp_us &&
+        armed != vehicle_status_.armed;
+    if (same_identity_conflict) {
+      invalidate_vehicle_status();
+      applied_control_ = {};
+      requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
+    return;
   }
-  if (navigation.valid) {
-    queueLatestObservedWorldForPose(navigation);
+  if (vehicle_status_.revision == std::numeric_limits<std::uint64_t>::max()) {
+    // The admitted timestamp high-water still advances, but the payload cannot
+    // change without a new revision identity. Retain it and fail closed.
+    vehicle_status_revision_exhausted_ = true;
+    applied_control_ = {};
+    requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
+    return;
   }
-  if (navigation.valid && use_static_map_ && navigationObjective() &&
-      !world_ready_.load()) {
-    requestStaticEsdfWork();
+  const bool disarm_transition =
+      vehicle_status_.valid && vehicle_status_.armed && !armed;
+  if (admission.epoch_reset || disarm_transition) {
+    // A PX4 reboot invalidates applied-control evidence immediately. The owner
+    // remains as the exact wire witness until the planning thread publishes
+    // revoke. An admitted armed-to-disarmed transition has the same barrier.
+    applied_control_ = {};
+    requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
   }
+  vehicle_status_ = ProductionMppiVehicleStatus{
+      .receive_stamp_ns = receive_stamp_ns,
+      .source_timestamp_us = message.timestamp,
+      .revision = vehicle_status_.revision + 1U,
+      .armed = armed,
+      .valid = receive_stamp_ns > 0 && message.timestamp != 0U,
+  };
 }
 
 void ProductionMppiNode::onVehicleLandDetected(
@@ -223,105 +268,6 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
   }
 }
 
-void ProductionMppiNode::onRawObstacleSnapshot(
-    msg::RawObstacleSnapshot::ConstSharedPtr message) {
-  if (use_static_map_) {
-    return;
-  }
-  const auto started = std::chrono::steady_clock::now();
-  RawObstacleGridUpdate update;
-  {
-    const std::scoped_lock lock{raw_reconstruction_mutex_};
-    update = raw_delta_accumulator_.apply(*message);
-    if (update.accepted()) {
-      msg::RawObstacleDelta::ConstSharedPtr pending =
-          std::exchange(pending_raw_delta_, nullptr);
-      if (pending &&
-          pending->producer_instance_id == update.state.producer_instance_id &&
-          pending->base_snapshot_revision == update.state.base_snapshot_revision &&
-          pending->obstacle_snapshot_revision >
-              update.state.obstacle_snapshot_revision) {
-        const RawObstacleGridUpdate pending_update =
-            raw_delta_accumulator_.apply(*pending);
-        if (pending_update.accepted()) {
-          update = pending_update;
-        }
-      }
-    }
-  }
-  if (!update.accepted()) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "RAW_OBSTACLE_FULL rejected status=%s producer=%" PRIu64 " revision=%" PRIu64,
-        rawObstacleGridUpdateStatusName(update.status), message->producer_instance_id,
-        message->obstacle_snapshot_revision);
-    return;
-  }
-  const double reconstruction_ms = std::chrono::duration<double, std::milli>(
-                                       std::chrono::steady_clock::now() - started)
-                                       .count();
-  queueRawWorld(update.state, reconstruction_ms);
-}
-
-void ProductionMppiNode::onRawObstacleDelta(
-    msg::RawObstacleDelta::ConstSharedPtr message) {
-  if (use_static_map_) {
-    return;
-  }
-  const auto started = std::chrono::steady_clock::now();
-  RawObstacleGridUpdate update;
-  {
-    const std::scoped_lock lock{raw_reconstruction_mutex_};
-    update = raw_delta_accumulator_.apply(*message);
-    if (update.status == RawObstacleGridUpdateStatus::kBaseUnavailable &&
-        (!pending_raw_delta_ || message->obstacle_snapshot_revision >
-                                    pending_raw_delta_->obstacle_snapshot_revision)) {
-      pending_raw_delta_ = message;
-    }
-  }
-  if (!update.accepted()) {
-    if (update.status == RawObstacleGridUpdateStatus::kInvalidMessage) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "RAW_OBSTACLE_DELTA rejected status=%s producer=%" PRIu64 " base=%" PRIu64
-          " revision=%" PRIu64,
-          rawObstacleGridUpdateStatusName(update.status), message->producer_instance_id,
-          message->base_snapshot_revision, message->obstacle_snapshot_revision);
-    }
-    return;
-  }
-  const double reconstruction_ms = std::chrono::duration<double, std::milli>(
-                                       std::chrono::steady_clock::now() - started)
-                                       .count();
-  queueRawWorld(update.state, reconstruction_ms);
-}
-
-void ProductionMppiNode::queueRawWorld(const RawObstacleGridState& state,
-                                       const double reconstruction_ms) {
-  auto world =
-      std::make_shared<const ProductionMppiRawWorld2D>(ProductionMppiRawWorld2D{
-          .version =
-              RawMapVersion{
-                  .producer_instance_id = state.producer_instance_id,
-                  .base_snapshot_revision = state.base_snapshot_revision,
-                  .revision = state.obstacle_snapshot_revision,
-              },
-          .ready_stamp_ns = get_clock()->now().nanoseconds(),
-          .reconstruction_ms = reconstruction_ms,
-          .occupancy = state.occupancy,
-      });
-  latest_raw_world_.store(world, std::memory_order_release);
-  no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
-  {
-    const std::scoped_lock lock{raw_queue_mutex_};
-    const auto submission = raw_world_scheduler_.submit(world);
-    if (submission.replaced_pending) {
-      ++dropped_raw_snapshots_;
-    }
-  }
-  raw_queue_condition_.notify_all();
-}
-
 void ProductionMppiNode::requestStaticEsdfWork(const bool force_refresh) {
   if (!use_static_map_ || !navigationObjective()) {
     return;
@@ -364,19 +310,48 @@ void ProductionMppiNode::publishWorldReadiness(const bool ready) {
               use_static_map_ ? "resident_static_esdf" : "raw_snapshot_esdf");
 }
 
-void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message) {
-  const std::scoped_lock lock{input_mutex_};
-  static_cast<void>(latest_observation_tracker_.observe(
-      message.producer_instance_id, message.sequence,
-      get_clock()->now().nanoseconds()));
-}
-
 void ProductionMppiNode::onLatestLidarObstacleScan(
     const msg::LatestLidarObstacleScan& message) {
   constexpr std::size_t kMaximumObstacleBeamCount{20'000U};
-  if (use_static_map_) {
+  const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+  LatestLidarEvidenceClaimResult3D claimed;
+  {
+    const std::scoped_lock lock{execution_evidence_commit_mutex_};
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D> current =
+        latest_lidar_evidence_.load(std::memory_order_acquire);
+    claimed = claimLatestLidarEvidenceIdentity3D(
+        latest_lidar_evidence_admission_state_, current.get(),
+        LatestLidarEvidenceIdentityClaim3D{
+            .producer_instance_id = message.producer_instance_id,
+            .sequence = message.sequence,
+            .raw_wire_fingerprint = latestLidarRawWireFingerprint(message),
+            .first_receive_stamp_ns = receive_stamp_ns,
+        });
+    latest_lidar_evidence_admission_state_ = claimed.next_state;
+    latest_lidar_evidence_identity_conflicted_.store(
+        latestLidarEvidenceAuthorityQuarantined3D(claimed.next_state),
+        std::memory_order_release);
+    if (claimed.authority_quarantine_opened) {
+      // This mutex also guards execution-owner publication, so the persisted
+      // quarantine and its monotonic revocation request are one boundary.
+      requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
+    }
+  }
+  if (!claimed.assess_candidate) {
+    if (claimed.status == LatestLidarEvidenceClaimStatus3D::kInstalledReplay) {
+      return;
+    }
+    rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
+    const auto status_name = latestLidarEvidenceClaimStatus3DName(claimed.status);
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=claim_%.*s "
+                         "producer=%" PRIu64 " sequence=%" PRIu64,
+                         static_cast<int>(status_name.size()), status_name.data(),
+                         message.producer_instance_id, message.sequence);
     return;
   }
+
+  // The identity is durable before any interpretation of untrusted wire data.
   const std::int64_t acquisition_stamp_ns = timeNanoseconds(message.header.stamp);
   const LidarProjectionBodyFrame frame{
       .origin_map_m = Point3{message.frame_origin_map.x, message.frame_origin_map.y,
@@ -389,24 +364,37 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
                            message.body_z_axis_map.z},
       .valid = true,
   };
-  const bool valid_counts =
-      message.source_beam_count <= kMaximumObstacleBeamCount &&
-      message.hit_points_body_frd.size() <= message.source_beam_count;
+  const bool valid_counts = message.source_beam_count > 0U &&
+                            message.source_beam_count <= kMaximumObstacleBeamCount &&
+                            message.invalid_beam_count < message.source_beam_count &&
+                            message.hit_points_body_frd.size() <=
+                                message.source_beam_count - message.invalid_beam_count;
   if (message.header.frame_id != frame_id_ || acquisition_stamp_ns <= 0 ||
-      !valid_counts || !validBodyFrame(frame)) {
+      message.producer_instance_id == 0U || message.sequence == 0U || !valid_counts ||
+      !lidarProjectionBodyFrameIsValid(frame)) {
     rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=invalid_contract "
-        "sequence=%" PRIu64 " frame='%s' acquisition_stamp_ns=%" PRId64
-        " source_beams=%u hit_points=%zu",
-        message.sequence, message.header.frame_id.c_str(), acquisition_stamp_ns,
-        message.source_beam_count, message.hit_points_body_frd.size());
+        "producer=%" PRIu64 " sequence=%" PRIu64
+        " frame='%s' acquisition_stamp_ns=%" PRId64 " source_beams=%u hit_points=%zu",
+        message.producer_instance_id, message.sequence, message.header.frame_id.c_str(),
+        acquisition_stamp_ns, message.source_beam_count,
+        message.hit_points_body_frd.size());
     return;
   }
 
-  auto snapshot = std::make_shared<LatestLidarObstacleSnapshot>();
-  snapshot->hit_points_map_m.reserve(message.hit_points_body_frd.size());
+  LatestLidarEvidenceCapture3D capture{
+      .producer_instance_id = message.producer_instance_id,
+      .sequence = message.sequence,
+      .pose_generation = message.pose_generation,
+      .acquisition_stamp_ns = acquisition_stamp_ns,
+      .receive_stamp_ns = claimed.claim.first_receive_stamp_ns,
+      .source_beam_count = message.source_beam_count,
+      .invalid_beam_count = message.invalid_beam_count,
+      .hit_points_map_m = {},
+  };
+  capture.hit_points_map_m.reserve(message.hit_points_body_frd.size());
   for (const geometry_msgs::msg::Point32& point : message.hit_points_body_frd) {
     const Point3 body_point{point.x, point.y, point.z};
     if (!std::isfinite(body_point.x) || !std::isfinite(body_point.y) ||
@@ -425,31 +413,93 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
       rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
       return;
     }
-    snapshot->hit_points_map_m.push_back(map_point);
+    capture.hit_points_map_m.push_back(map_point);
   }
-  snapshot->acquisition_stamp_ns = acquisition_stamp_ns;
-  snapshot->receive_stamp_ns = get_clock()->now().nanoseconds();
-  snapshot->sequence = message.sequence;
-  snapshot->pose_generation = message.pose_generation;
-  snapshot->source_beam_count = message.source_beam_count;
-  snapshot->invalid_beam_count = message.invalid_beam_count;
-  latest_lidar_obstacle_scan_.store(std::move(snapshot), std::memory_order_release);
-}
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D> evidence =
+      VersionedLatestLidarEvidence3D::capture(std::move(capture));
+  if (evidence == nullptr) {
+    rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=invalid_evidence "
+        "producer=%" PRIu64 " sequence=%" PRIu64,
+        message.producer_instance_id, message.sequence);
+    return;
+  }
 
-void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& message) {
-  ProductionMppiAppliedControl feedback;
-  feedback.receive_stamp_ns = get_clock()->now().nanoseconds();
-  feedback.horizon_sequence = message.horizon_sequence;
-  feedback.valid =
-      message.header.frame_id == frame_id_ && std::isfinite(message.acceleration.x) &&
-      std::isfinite(message.acceleration.y) && std::isfinite(message.acceleration.z);
-  if (feedback.valid) {
-    feedback.control.ax = static_cast<float>(message.acceleration.x);
-    feedback.control.ay = static_cast<float>(message.acceleration.y);
-    feedback.control.az = static_cast<float>(message.acceleration.z);
+  LatestLidarEvidenceUpdateStatus3D update_status{
+      LatestLidarEvidenceUpdateStatus3D::kRejectedInvalid};
+  bool acquisition_epoch_reset{false};
+  bool producer_handoff{false};
+  std::uint64_t previous_producer_instance_id{0U};
+  std::int64_t previous_acquisition_stamp_ns{0};
+  {
+    const std::scoped_lock lock{execution_evidence_commit_mutex_};
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D> current =
+        latest_lidar_evidence_.load(std::memory_order_acquire);
+    previous_producer_instance_id =
+        current != nullptr ? current->producerInstanceId() : 0U;
+    previous_acquisition_stamp_ns =
+        current != nullptr ? current->acquisitionStampNs() : 0;
+    const LatestLidarEvidenceAdmissionResult3D admission =
+        admitClaimedLatestLidarEvidence3D(
+            latest_lidar_evidence_admission_state_, current.get(), *evidence,
+            claimed.claim, get_clock()->now().nanoseconds(),
+            execution_validation_policy_ != nullptr
+                ? execution_validation_policy_->latestLidarMaximumAgeMs()
+                : 0.0);
+    latest_lidar_evidence_admission_state_ = admission.next_state;
+    latest_lidar_evidence_identity_conflicted_.store(
+        latestLidarEvidenceAuthorityQuarantined3D(admission.next_state),
+        std::memory_order_release);
+    update_status = admission.status;
+    acquisition_epoch_reset = admission.acquisition_epoch_reset;
+    producer_handoff = admission.producer_handoff;
+    if (admission.install_candidate) {
+      latest_lidar_evidence_.store(evidence, std::memory_order_release);
+    }
+    if (producer_handoff || acquisition_epoch_reset ||
+        admission.current_identity_conflict) {
+      // Linearize the evidence authority boundary with its admission state.
+      // Execution-owner publication takes this mutex and observes the
+      // revocation token before it may commit against the replacement evidence.
+      requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
+    }
   }
-  const std::scoped_lock lock{input_mutex_};
-  applied_control_ = feedback;
+  if (producer_handoff) {
+    RCLCPP_WARN(
+        get_logger(),
+        "LATEST_LIDAR_OBSTACLE_SCAN producer_handoff=true previous_producer=%" PRIu64
+        " producer=%" PRIu64 " sequence=%" PRIu64,
+        previous_producer_instance_id, evidence->producerInstanceId(),
+        evidence->sequence());
+  }
+  if (acquisition_epoch_reset) {
+    RCLCPP_WARN(
+        get_logger(),
+        "LATEST_LIDAR_OBSTACLE_SCAN acquisition_epoch_reset=true producer=%" PRIu64
+        " sequence=%" PRIu64 " previous_acquisition_stamp_ns=%" PRId64
+        " acquisition_stamp_ns=%" PRId64,
+        evidence->producerInstanceId(), evidence->sequence(),
+        previous_acquisition_stamp_ns, evidence->acquisitionStampNs());
+  }
+  if (update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial ||
+      update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer ||
+      update_status ==
+          LatestLidarEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset ||
+      update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedProducerHandoff ||
+      update_status == LatestLidarEvidenceUpdateStatus3D::kIdempotentDuplicate) {
+    return;
+  }
+  rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
+  const auto update_status_name = latestLidarEvidenceUpdateStatus3DName(update_status);
+  RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=%.*s producer=%" PRIu64
+      " sequence=%" PRIu64 " acquisition_stamp_ns=%" PRId64,
+      static_cast<int>(update_status_name.size()), update_status_name.data(),
+      evidence->producerInstanceId(), evidence->sequence(),
+      evidence->acquisitionStampNs());
 }
 
 std::shared_ptr<const ProductionNavigationObjective>
@@ -513,8 +563,13 @@ void ProductionMppiNode::onNavigationObjective(
                 message.mission_epoch, message.sample_sequence);
     return;
   }
-  const std::shared_ptr<const ProductionNavigationObjective> previous =
-      navigationObjective();
+  std::shared_ptr<const ProductionNavigationObjective> previous;
+  TrackingLineOfSightLifecycle next_line_of_sight_lifecycle;
+  {
+    const std::scoped_lock lock{input_mutex_};
+    previous = navigation_objective_.load(std::memory_order_acquire);
+    next_line_of_sight_lifecycle = tracking_line_of_sight_lifecycle_;
+  }
   if (previous && message.mission_epoch < previous->mission_epoch) {
     return;
   }
@@ -648,10 +703,10 @@ void ProductionMppiNode::onNavigationObjective(
         previous->target_detection_id != message.target_detection_id ||
         previous->target_track_id != message.target_track_id;
     if (epoch_changed || assignment_changed) {
-      tracking_line_of_sight_lifecycle_.reset();
+      next_line_of_sight_lifecycle.reset();
     }
-    line_of_sight = tracking_line_of_sight_lifecycle_.update(
-        direct_resolution.observed_target_visible);
+    line_of_sight =
+        next_line_of_sight_lifecycle.update(direct_resolution.observed_target_visible);
     goal = line_of_sight.active ? direct_resolution.selected_position
                                 : resolution.resolved_position;
     if (!world_available || !navigation.valid) {
@@ -689,7 +744,7 @@ void ProductionMppiNode::onNavigationObjective(
         .target_track_id = message.target_track_id,
     };
   } else {
-    tracking_line_of_sight_lifecycle_.reset();
+    next_line_of_sight_lifecycle.reset();
   }
   const auto objective = std::make_shared<const ProductionNavigationObjective>(
       ProductionNavigationObjective{
@@ -710,8 +765,19 @@ void ProductionMppiNode::onNavigationObjective(
   bool request_replan = false;
   bool require_new_tracking_route = false;
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
+  const bool execution_lineage_changed =
+      previous != nullptr &&
+      (previous->mission_epoch != objective->mission_epoch ||
+       previous->assignment_generation != objective->assignment_generation ||
+       previous->target_detection_id != objective->target_detection_id ||
+       previous->target_track_id != objective->target_track_id ||
+       previous->continuous_tracking != objective->continuous_tracking ||
+       previous->immediate_hold != objective->immediate_hold);
   {
-    const std::scoped_lock lock{objective_replan_mutex_};
+    const std::scoped_lock lock{input_mutex_, objective_replan_mutex_};
+    if (navigation_objective_.load(std::memory_order_acquire) != previous) {
+      return;
+    }
     const bool epoch_changed =
         !previous || previous->mission_epoch != message.mission_epoch;
     const bool assignment_changed =
@@ -737,21 +803,25 @@ void ProductionMppiNode::onNavigationObjective(
         tracking && (epoch_changed || assignment_changed || direct_interception_lost);
     request_replan = epoch_changed || assignment_changed || direct_interception_lost ||
                      (moved && period_elapsed);
+    navigation_objective_.store(objective, std::memory_order_release);
+    tracking_line_of_sight_lifecycle_ = next_line_of_sight_lifecycle;
     if (request_replan) {
       objective_replan_anchor_ = goal;
       objective_replan_stamp_ns_ = now_ns;
     }
-  }
-  if (require_new_tracking_route) {
-    minimum_tracking_route_sample_sequence_.store(message.sample_sequence,
+    if (require_new_tracking_route) {
+      minimum_tracking_route_sample_sequence_.store(message.sample_sequence,
+                                                    std::memory_order_release);
+      minimum_tracking_route_mission_epoch_.store(message.mission_epoch,
                                                   std::memory_order_release);
-    minimum_tracking_route_mission_epoch_.store(message.mission_epoch,
-                                                std::memory_order_release);
-  } else if (!tracking) {
-    minimum_tracking_route_sample_sequence_.store(0U, std::memory_order_release);
-    minimum_tracking_route_mission_epoch_.store(0U, std::memory_order_release);
+    } else if (!tracking) {
+      minimum_tracking_route_sample_sequence_.store(0U, std::memory_order_release);
+      minimum_tracking_route_mission_epoch_.store(0U, std::memory_order_release);
+    }
+    if (execution_lineage_changed) {
+      requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
   }
-  navigation_objective_.store(objective, std::memory_order_release);
   publishRadarTrackModeCommand(*objective, radar_cadence_reason);
   if (use_static_map_ && !world_ready_.load(std::memory_order_acquire)) {
     requestStaticEsdfWork();

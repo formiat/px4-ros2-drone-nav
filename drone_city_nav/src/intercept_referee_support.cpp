@@ -2,6 +2,7 @@
 
 #include <cinttypes>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -125,10 +126,14 @@ declareTargetTopicConfig(rclcpp::Node& node,
 }
 
 std::int64_t missionTimeoutNanoseconds(const double seconds) {
-  if (!(seconds > 0.0) || !std::isfinite(seconds)) {
-    throw std::invalid_argument{"mission timeout must be finite and positive"};
+  const long double nanoseconds = static_cast<long double>(seconds) * 1'000'000'000.0L;
+  if (!(seconds > 0.0) || !std::isfinite(seconds) ||
+      nanoseconds >
+          static_cast<long double>(std::numeric_limits<std::int64_t>::max())) {
+    throw std::invalid_argument{
+        "mission timeout must be finite, positive, and representable"};
   }
-  return static_cast<std::int64_t>(seconds * 1.0e9);
+  return static_cast<std::int64_t>(nanoseconds);
 }
 
 bool validateVehicleDestroyedEvent(const rclcpp::Logger& logger,

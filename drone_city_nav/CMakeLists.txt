@@ -60,6 +60,7 @@ rosidl_generate_interfaces(
   "msg/MppiHorizonPoint.msg"
   "msg/MppiTrajectoryHorizon.msg"
   "msg/MppiControlFeedback.msg"
+  "msg/MissionWaypointAcknowledgement.msg"
   "msg/NavigationObjective.msg"
   "msg/RadarDetection.msg"
   "msg/RadarScan.msg"
@@ -209,11 +210,14 @@ add_library(
   src/local_esdf_2d.cpp
   src/mapping_lifecycle.cpp
   src/mission_goal_capture.cpp
+  src/mission_waypoint_capture_gate.cpp
+  src/mission_waypoint_acknowledgement_admission.cpp
   src/mission_waypoint_sequence.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/lidar_scan_3d.cpp
   src/lidar_self_filter.cpp
+  src/offboard_session_admission.cpp
   src/px4_ros_time_mapper.cpp
   src/radar_cadence.cpp
   src/radar_model.cpp
@@ -231,7 +235,27 @@ add_library(
   src/risk_aware_lattice_3d_passage_index.cpp
   src/risk_aware_lattice_3d_planner.cpp
   src/risk_aware_lattice_3d_result.cpp
+  src/execution_evidence_3d.cpp
+  src/applied_control_admission.cpp
+  src/execution_horizon_admission.cpp
+  src/execution_horizon_witness.cpp
+  src/execution_horizon_timing.cpp
+  src/execution_publication_currentness_3d.cpp
+  src/execution_route_geometry_3d.cpp
+  src/execution_route_snapshot_3d.cpp
+  src/execution_route_snapshot_3d_certificates.cpp
+  src/execution_route_snapshot_3d_certification.cpp
+  src/execution_route_snapshot_3d_finite_execution.cpp
+  src/execution_route_snapshot_3d_geometry.cpp
+  src/execution_route_snapshot_3d_hold.cpp
+  src/execution_route_snapshot_3d_progress.cpp
+  src/execution_route_snapshot_3d_store.cpp
+  src/execution_route_snapshot_3d_transitions.cpp
+  src/execution_route_snapshot_3d_validation.cpp
+  src/producer_epoch_admission.cpp
+  src/producer_instance_id.cpp
   src/route_3d.cpp
+  src/route_execution_contract_3d.cpp
   src/route_lifecycle_3d.cpp
   src/route_planning_3d.cpp
   src/rolling_route_telemetry_3d.cpp
@@ -242,6 +266,8 @@ add_library(
   src/static_esdf_cache.cpp
   src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
+  src/swept_footprint_2d.cpp
+  src/swept_footprint_contract.cpp
   src/swept_footprint_esdf.cpp
   src/topological_exploration_memory_3d.cpp
   src/tracked_agent_lidar_filter.cpp
@@ -255,6 +281,8 @@ add_library(
   src/mppi_nominal_reseed.cpp
   src/mppi_rollout_budget.cpp
   src/mppi_speed_policy.cpp
+  src/pending_certified_route_3d.cpp
+  src/navigation_angular_derivative.cpp
   src/navigation_state_prediction.cpp
   src/noncooperative_collision_avoidance.cpp
   src/no_static_route_cycle.cpp
@@ -311,6 +339,7 @@ enable_project_warnings(drone_contact_system)
 add_library(
   drone_city_nav_ros_adapters
   src/cooperative_traffic_ros.cpp
+  src/execution_horizon_contract_ros.cpp
   src/latest_lidar_obstacle_scan_ros.cpp
   src/lidar_debug_node_config.cpp
   src/memory_provenance_audit_tracker.cpp
@@ -400,7 +429,7 @@ enable_project_warnings(collision_crash_node)
 add_executable(mission_monitor_node src/mission_monitor_node.cpp)
 target_compile_features(mission_monitor_node PRIVATE cxx_std_20)
 target_link_libraries(mission_monitor_node drone_city_nav_core
-                      ${cpp_typesupport_target})
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
 ament_target_dependencies(
   mission_monitor_node
   ament_index_cpp
@@ -415,7 +444,7 @@ add_executable(intercept_mission_referee_node
                src/intercept_referee_support.cpp)
 target_compile_features(intercept_mission_referee_node PRIVATE cxx_std_20)
 target_link_libraries(intercept_mission_referee_node drone_city_nav_core
-                      ${cpp_typesupport_target})
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
 ament_target_dependencies(intercept_mission_referee_node rclcpp std_msgs)
 enable_project_warnings(intercept_mission_referee_node)
 
@@ -483,7 +512,8 @@ target_link_libraries(
 ament_target_dependencies(
   drone_city_nav_cooperative_components
   rclcpp
-  rclcpp_components)
+  rclcpp_components
+  std_msgs)
 rclcpp_components_register_nodes(
   drone_city_nav_cooperative_components
   "drone_city_nav::CooperativeTrafficAgentNode")
@@ -590,8 +620,13 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_observed_esdf.cpp
     src/production_mppi_node_topology.cpp
     src/production_mppi_node_inputs.cpp
+    src/production_mppi_node_navigation_input.cpp
+    src/production_mppi_node_control_feedback.cpp
     src/production_mppi_node_inputs_3d.cpp
+    src/production_mppi_node_raw_input.cpp
     src/production_mppi_node_planning_tick.cpp
+    src/production_mppi_node_planning_tick_finalize.cpp
+    src/production_mppi_node_planning_tick_rearm.cpp
     src/production_mppi_node_raw_world.cpp
     src/production_mppi_node_runtime.cpp
     src/production_mppi_route_execution.cpp
@@ -609,7 +644,9 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_execution_diagnostics.cpp
     src/production_mppi_node_summary.cpp
     src/tracking_objective_diagnostics.cpp
-    src/production_mppi_node_execution.cpp)
+    src/production_mppi_node_execution.cpp
+    src/production_mppi_node_execution_publication.cpp
+    src/production_mppi_node_execution_retention.cpp)
   target_compile_features(drone_city_nav_production_mppi_component PRIVATE cxx_std_20)
   target_link_libraries(
     drone_city_nav_production_mppi_component
@@ -784,6 +821,13 @@ if(BUILD_TESTING)
   target_link_libraries(raw_obstacle_delta_test drone_city_nav_ros_adapters)
   enable_project_warnings(raw_obstacle_delta_test)
 
+  ament_add_gtest(execution_horizon_contract_ros_test
+                  tests/execution_horizon_contract_ros_test.cpp)
+  target_compile_features(execution_horizon_contract_ros_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_horizon_contract_ros_test
+                        drone_city_nav_ros_adapters)
+  enable_project_warnings(execution_horizon_contract_ros_test)
+
   ament_add_gtest(flight_envelope_test tests/flight_envelope_test.cpp)
   target_compile_features(flight_envelope_test PRIVATE cxx_std_20)
   target_link_libraries(flight_envelope_test drone_city_nav_core)
@@ -816,6 +860,33 @@ if(BUILD_TESTING)
   target_link_libraries(mission_waypoint_sequence_test drone_city_nav_core)
   enable_project_warnings(mission_waypoint_sequence_test)
 
+  ament_add_gtest(mission_waypoint_capture_gate_test
+                  tests/mission_waypoint_capture_gate_test.cpp)
+  target_compile_features(mission_waypoint_capture_gate_test PRIVATE cxx_std_20)
+  target_link_libraries(mission_waypoint_capture_gate_test drone_city_nav_core)
+  enable_project_warnings(mission_waypoint_capture_gate_test)
+
+  ament_add_gtest(mission_waypoint_acknowledgement_admission_test
+                  tests/mission_waypoint_acknowledgement_admission_test.cpp)
+  target_compile_features(mission_waypoint_acknowledgement_admission_test
+                          PRIVATE cxx_std_20)
+  target_link_libraries(mission_waypoint_acknowledgement_admission_test
+                        drone_city_nav_core)
+  enable_project_warnings(mission_waypoint_acknowledgement_admission_test)
+
+  ament_add_gtest(mission_waypoint_acknowledgement_transport_test
+                  tests/mission_waypoint_acknowledgement_transport_test.cpp)
+  target_compile_features(mission_waypoint_acknowledgement_transport_test
+                          PRIVATE cxx_std_20)
+  target_link_libraries(mission_waypoint_acknowledgement_transport_test
+                        drone_city_nav_core ${cpp_typesupport_target})
+  ament_target_dependencies(mission_waypoint_acknowledgement_transport_test rclcpp)
+  set_tests_properties(
+    mission_waypoint_acknowledgement_transport_test
+    PROPERTIES ENVIRONMENT
+               "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
+  enable_project_warnings(mission_waypoint_acknowledgement_transport_test)
+
   ament_add_gtest(mapping_lifecycle_test tests/mapping_lifecycle_test.cpp)
   target_compile_features(mapping_lifecycle_test PRIVATE cxx_std_20)
   target_link_libraries(mapping_lifecycle_test drone_city_nav_core)
@@ -826,6 +897,12 @@ if(BUILD_TESTING)
   target_compile_features(navigation_state_prediction_test PRIVATE cxx_std_20)
   target_link_libraries(navigation_state_prediction_test drone_city_nav_core)
   enable_project_warnings(navigation_state_prediction_test)
+
+  ament_add_gtest(navigation_angular_derivative_test
+                  tests/navigation_angular_derivative_test.cpp)
+  target_compile_features(navigation_angular_derivative_test PRIVATE cxx_std_20)
+  target_link_libraries(navigation_angular_derivative_test drone_city_nav_core)
+  enable_project_warnings(navigation_angular_derivative_test)
 
   ament_add_gtest(no_static_route_cycle_test
                   tests/no_static_route_cycle_test.cpp)
@@ -1144,7 +1221,8 @@ if(BUILD_TESTING)
       TEST_COMPACT_PASSAGE_ESDF3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../environments/fixtures/compact_3d_passage/world.esdf3d")
   enable_project_warnings(static_esdf_cache_test)
 
-  ament_add_gtest(route_3d_test tests/route_3d_test.cpp)
+  ament_add_gtest(route_3d_test tests/route_3d_test.cpp
+                  tests/route_3d_lattice_geometry_test.cpp)
   target_compile_features(route_3d_test PRIVATE cxx_std_20)
   target_include_directories(route_3d_test PRIVATE src)
   target_link_libraries(route_3d_test drone_city_nav_core)
@@ -1159,6 +1237,72 @@ if(BUILD_TESTING)
   target_compile_features(route_lifecycle_3d_test PRIVATE cxx_std_20)
   target_link_libraries(route_lifecycle_3d_test drone_city_nav_core)
   enable_project_warnings(route_lifecycle_3d_test)
+
+  ament_add_gtest(execution_route_snapshot_3d_test
+                  tests/execution_route_snapshot_3d_test.cpp
+                  tests/execution_route_snapshot_3d_certification_test.cpp
+                  tests/execution_route_snapshot_3d_edge_cases_test.cpp
+                  tests/execution_route_snapshot_3d_transitions_test.cpp
+                  tests/execution_route_snapshot_3d_validation_test.cpp)
+  target_compile_features(execution_route_snapshot_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_route_snapshot_3d_test drone_city_nav_core)
+  enable_project_warnings(execution_route_snapshot_3d_test)
+
+  ament_add_gtest(execution_evidence_3d_test
+                  tests/execution_evidence_3d_test.cpp)
+  target_compile_features(execution_evidence_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_evidence_3d_test drone_city_nav_core)
+  enable_project_warnings(execution_evidence_3d_test)
+
+  ament_add_gtest(execution_horizon_admission_test
+                  tests/execution_horizon_admission_test.cpp)
+  target_compile_features(execution_horizon_admission_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_horizon_admission_test drone_city_nav_core)
+  enable_project_warnings(execution_horizon_admission_test)
+
+  ament_add_gtest(execution_horizon_witness_test
+                  tests/execution_horizon_witness_test.cpp)
+  target_compile_features(execution_horizon_witness_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_horizon_witness_test drone_city_nav_core)
+  enable_project_warnings(execution_horizon_witness_test)
+
+  ament_add_gtest(applied_control_admission_test
+                  tests/applied_control_admission_test.cpp)
+  target_compile_features(applied_control_admission_test PRIVATE cxx_std_20)
+  target_link_libraries(applied_control_admission_test drone_city_nav_core)
+  enable_project_warnings(applied_control_admission_test)
+
+  ament_add_gtest(execution_horizon_timing_test
+                  tests/execution_horizon_timing_test.cpp)
+  target_compile_features(execution_horizon_timing_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_horizon_timing_test drone_city_nav_core)
+  enable_project_warnings(execution_horizon_timing_test)
+
+  ament_add_gtest(producer_instance_id_test
+                  tests/producer_instance_id_test.cpp)
+  target_compile_features(producer_instance_id_test PRIVATE cxx_std_20)
+  target_link_libraries(producer_instance_id_test drone_city_nav_core)
+  enable_project_warnings(producer_instance_id_test)
+
+  ament_add_gtest(producer_epoch_admission_test
+                  tests/producer_epoch_admission_test.cpp)
+  target_compile_features(producer_epoch_admission_test PRIVATE cxx_std_20)
+  target_link_libraries(producer_epoch_admission_test drone_city_nav_core)
+  enable_project_warnings(producer_epoch_admission_test)
+
+  ament_add_gtest(offboard_session_admission_test
+                  tests/offboard_session_admission_test.cpp)
+  target_compile_features(offboard_session_admission_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_session_admission_test drone_city_nav_core)
+  enable_project_warnings(offboard_session_admission_test)
+
+  ament_add_gtest(execution_publication_currentness_3d_test
+                  tests/execution_publication_currentness_3d_test.cpp)
+  target_compile_features(execution_publication_currentness_3d_test
+                          PRIVATE cxx_std_20)
+  target_link_libraries(execution_publication_currentness_3d_test
+                        drone_city_nav_core)
+  enable_project_warnings(execution_publication_currentness_3d_test)
 
   ament_add_gtest(rolling_route_telemetry_3d_test
                   tests/rolling_route_telemetry_3d_test.cpp)

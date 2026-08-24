@@ -1,6 +1,7 @@
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -38,7 +39,7 @@ missionWaypointsFromFlatParameters(const std::span<const double> parameters) {
 }
 
 MissionWaypointSequence::MissionWaypointSequence(
-    std::vector<Point3> waypoints, const MissionWaypointSequenceConfig config)
+    std::vector<Point3> waypoints, const MissionWaypointSequenceConfig& config)
     : waypoints_{std::move(waypoints)},
       config_{config} {
   if (waypoints_.empty()) {
@@ -54,6 +55,14 @@ MissionWaypointSequence::MissionWaypointSequence(
       throw std::invalid_argument{"mission waypoint must be finite"};
     }
   }
+  const long double hold_nanoseconds =
+      static_cast<long double>(config_.stop_hold_s) * 1'000'000'000.0L;
+  const long double first_unrepresentable_rounding_input =
+      static_cast<long double>(std::numeric_limits<std::int64_t>::max()) + 0.5L;
+  if (hold_nanoseconds >= first_unrepresentable_rounding_input) {
+    throw std::invalid_argument{"mission stop hold duration is not representable"};
+  }
+  required_stop_hold_ns_ = static_cast<std::int64_t>(std::llround(hold_nanoseconds));
 }
 
 const Point3& MissionWaypointSequence::activeGoal() const noexcept {
@@ -83,24 +92,33 @@ MissionWaypointSequence::update(const MissionWaypointObservation& observation) {
     update.mission_completed = true;
     return update;
   }
+  if (!physicalGoalHoldReady(observation)) {
+    return update;
+  }
+  return acknowledgeGoalCapture();
+}
+
+bool MissionWaypointSequence::physicalGoalHoldReady(
+    const MissionWaypointObservation& observation) {
+  if (mission_completed_) {
+    return false;
+  }
   if (observation.stamp_ns <= 0 || !std::isfinite(observation.horizontal_speed_mps) ||
       !observation.goal_captured ||
       observation.horizontal_speed_mps > config_.stop_speed_mps) {
     stopped_since_ns_ = 0;
-    return update;
+    return false;
   }
   if (stopped_since_ns_ == 0) {
     stopped_since_ns_ = observation.stamp_ns;
-    return update;
+    return false;
   }
 
-  const std::int64_t required_hold_ns =
-      static_cast<std::int64_t>(std::llround(config_.stop_hold_s * 1'000'000'000.0));
-  if (observation.stamp_ns - stopped_since_ns_ < required_hold_ns) {
-    return update;
+  if (observation.stamp_ns < stopped_since_ns_) {
+    stopped_since_ns_ = observation.stamp_ns;
+    return false;
   }
-
-  return acknowledgeGoalCapture();
+  return observation.stamp_ns - stopped_since_ns_ >= required_stop_hold_ns_;
 }
 
 MissionWaypointUpdate MissionWaypointSequence::acknowledgeGoalCapture() noexcept {

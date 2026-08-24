@@ -179,5 +179,132 @@ TEST(PassageVolume, RejectsNonFiniteConfiguration) {
   EXPECT_FALSE(passageVolumeConfigIsValid(invalid));
 }
 
+TEST(PassageVolume, CacheKeyIncludesExactDerivationRouteGeometry) {
+  const OccupancyGrid3D occupancy{GridBounds3D{-5.0, -10.0, 0.0, 1.0, 40, 20, 20},
+                                  4'321U};
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{2.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 10.0);
+  const ConstrainedRouteSpan constrained = span(1.0, route.back().station_m - 1.0);
+  std::vector<RouteSample3D> changed_tangents = route;
+  constexpr double kHalf{0.5};
+  const double forward = std::sqrt(1.0 - kHalf * kHalf);
+  for (RouteSample3D& sample : changed_tangents) {
+    sample.tangent = Vec3{forward, kHalf, 0.0};
+  }
+  ASSERT_EQ(routeFingerprint(route), routeFingerprint(changed_tangents));
+  const std::uint64_t occupancy_content_fingerprint = occupancy.contentFingerprint();
+
+  const PassageVolumeResource original = acquireDerivedPassageVolumes(
+      route, std::vector<ConstrainedRouteSpan>{constrained}, occupancy,
+      occupancy_content_fingerprint, config());
+  const PassageVolumeResource changed = acquireDerivedPassageVolumes(
+      changed_tangents, std::vector<ConstrainedRouteSpan>{constrained}, occupancy,
+      occupancy_content_fingerprint, config());
+  const PassageVolumeResource changed_again = acquireDerivedPassageVolumes(
+      changed_tangents, std::vector<ConstrainedRouteSpan>{constrained}, occupancy,
+      occupancy_content_fingerprint, config());
+  const std::uint64_t mismatched_fingerprint =
+      occupancy_content_fingerprint == 1U ? 2U : 1U;
+  const PassageVolumeResource mismatched = acquireDerivedPassageVolumes(
+      route, std::vector<ConstrainedRouteSpan>{constrained}, occupancy,
+      mismatched_fingerprint, config());
+  const PassageVolumeResource mismatched_again = acquireDerivedPassageVolumes(
+      route, std::vector<ConstrainedRouteSpan>{constrained}, occupancy,
+      mismatched_fingerprint, config());
+
+  ASSERT_TRUE(original.volumes);
+  ASSERT_TRUE(changed.volumes);
+  EXPECT_NE(original.volumes, changed.volumes);
+  EXPECT_FALSE(changed.shared_resource_reused);
+  EXPECT_EQ(changed.volumes, changed_again.volumes);
+  EXPECT_TRUE(changed_again.shared_resource_reused);
+  ASSERT_FALSE(original.volumes->front().cross_sections.empty());
+  ASSERT_FALSE(changed.volumes->front().cross_sections.empty());
+  EXPECT_NE(original.volumes->front().cross_sections.front().tangent.y,
+            changed.volumes->front().cross_sections.front().tangent.y);
+  ASSERT_TRUE(mismatched.volumes);
+  ASSERT_TRUE(mismatched_again.volumes);
+  EXPECT_FALSE(mismatched.shared_resource_reused);
+  EXPECT_FALSE(mismatched_again.shared_resource_reused);
+  EXPECT_NE(mismatched.volumes, mismatched_again.volumes);
+}
+
+TEST(PassageVolume, BoundsRegistryAcrossLiveAndExpiredGeometryChurn) {
+  const OccupancyGrid3D occupancy{GridBounds3D{-5.0, -10.0, 0.0, 1.0, 40, 20, 20},
+                                  8'765U};
+  const std::uint64_t occupancy_content_fingerprint = occupancy.contentFingerprint();
+  const std::vector<ConstrainedRouteSpan> no_constrained_spans;
+  const auto churn_route = [](const std::size_t identity) {
+    const double y = static_cast<double>(identity) * 1.0e-3;
+    return sampleRoute3D(std::vector<Point3>{{2.0, y, 5.0}, {20.0, y, 5.0}}, 1.0, 10.0);
+  };
+
+  constexpr std::size_t kLiveGeometryCount{384U};
+  {
+    std::vector<PassageVolumeResource> live_resources;
+    live_resources.reserve(kLiveGeometryCount);
+    for (std::size_t identity = 0U; identity < kLiveGeometryCount; ++identity) {
+      const std::vector<RouteSample3D> route = churn_route(identity);
+      live_resources.push_back(
+          acquireDerivedPassageVolumes(route, no_constrained_spans, occupancy,
+                                       occupancy_content_fingerprint, config()));
+      ASSERT_TRUE(live_resources.back().volumes);
+    }
+
+    const PassageVolumeResource first_replay =
+        acquireDerivedPassageVolumes(churn_route(0U), no_constrained_spans, occupancy,
+                                     occupancy_content_fingerprint, config());
+    EXPECT_TRUE(first_replay.shared_resource_reused);
+    EXPECT_EQ(first_replay.volumes, live_resources.front().volumes);
+
+    const PassageVolumeResource overflow_replay = acquireDerivedPassageVolumes(
+        churn_route(kLiveGeometryCount - 1U), no_constrained_spans, occupancy,
+        occupancy_content_fingerprint, config());
+    EXPECT_FALSE(overflow_replay.shared_resource_reused);
+    EXPECT_NE(overflow_replay.volumes, live_resources.back().volumes);
+  }
+
+  constexpr std::size_t kExpiredGeometryCount{512U};
+  for (std::size_t identity = 0U; identity < kExpiredGeometryCount; ++identity) {
+    const PassageVolumeResource expired = acquireDerivedPassageVolumes(
+        churn_route(kLiveGeometryCount + identity), no_constrained_spans, occupancy,
+        occupancy_content_fingerprint, config());
+    ASSERT_TRUE(expired.volumes);
+  }
+
+  const std::vector<RouteSample3D> sentinel_route =
+      churn_route(kLiveGeometryCount + kExpiredGeometryCount + 1U);
+  const PassageVolumeResource sentinel =
+      acquireDerivedPassageVolumes(sentinel_route, no_constrained_spans, occupancy,
+                                   occupancy_content_fingerprint, config());
+  const PassageVolumeResource sentinel_replay =
+      acquireDerivedPassageVolumes(sentinel_route, no_constrained_spans, occupancy,
+                                   occupancy_content_fingerprint, config());
+  ASSERT_TRUE(sentinel.volumes);
+  EXPECT_TRUE(sentinel_replay.shared_resource_reused);
+  EXPECT_EQ(sentinel_replay.volumes, sentinel.volumes);
+}
+
+TEST(PassageVolume, ReusesAuthenticatedObservedSnapshotWithNoArtifactFingerprint) {
+  OccupancyGrid3D observed_snapshot{GridBounds3D{-5.0, -10.0, 0.0, 1.0, 40, 20, 20}};
+  observed_snapshot.setOccupied(GridIndex3D{0, 0, 0});
+  ASSERT_EQ(observed_snapshot.fingerprint(), 0U);
+  const std::uint64_t content_fingerprint = observed_snapshot.contentFingerprint();
+  ASSERT_NE(content_fingerprint, 0U);
+
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{2.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 10.0);
+  const std::vector<ConstrainedRouteSpan> no_constrained_spans;
+  const PassageVolumeResource first = acquireDerivedPassageVolumes(
+      route, no_constrained_spans, observed_snapshot, content_fingerprint, config());
+  const PassageVolumeResource replay = acquireDerivedPassageVolumes(
+      route, no_constrained_spans, observed_snapshot, content_fingerprint, config());
+
+  ASSERT_TRUE(first.volumes);
+  EXPECT_FALSE(first.shared_resource_reused);
+  EXPECT_TRUE(replay.shared_resource_reused);
+  EXPECT_EQ(replay.volumes, first.volumes);
+}
+
 } // namespace
 } // namespace drone_city_nav

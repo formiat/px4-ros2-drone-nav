@@ -206,6 +206,10 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       .use_full_lidar_extrinsic = scan.use_full_lidar_extrinsic,
       .lidar_translation_body_frd_m = scan.lidar_translation_body_frd_m,
       .lidar_flu_to_body_frd_quaternion = scan.lidar_flu_to_body_frd_quaternion,
+      .px4_to_map_m00 = scan.px4_to_map_m00,
+      .px4_to_map_m01 = scan.px4_to_map_m01,
+      .px4_to_map_m10 = scan.px4_to_map_m10,
+      .px4_to_map_m11 = scan.px4_to_map_m11,
   };
 
   const auto stride = static_cast<std::size_t>(std::max(1, config.scan_stride));

@@ -31,9 +31,16 @@ TRUTH_ADAPTER = SOURCE / "simulation_truth_adapter_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
+EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
+EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
+EXECUTION_FILES = (EXECUTION, EXECUTION_PUBLICATION, EXECUTION_RETENTION)
 MPPI_ENGINE = SOURCE / "mppi" / "mppi_engine.cu"
 NONCOOPERATIVE_PLANNER = SOURCE / "production_mppi_node_noncooperative.cpp"
 NAVIGATION_OBJECTIVE = PACKAGE / "msg" / "NavigationObjective.msg"
+
+
+def read_execution_sources() -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in EXECUTION_FILES)
 
 
 class InterceptRadarContractTest(unittest.TestCase):
@@ -151,10 +158,8 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("objective->immediate_hold", planning)
         self.assertIn("kMissionCommandPositionHold", planning)
         self.assertIn("mission_command_position_hold", planning)
-        execution = (
-            SOURCE / "production_mppi_node_execution.cpp"
-        ).read_text(encoding="utf-8")
-        self.assertIn("publish_position_hold", execution)
+        execution = read_execution_sources()
+        self.assertIn("publishPositionHold", execution)
         self.assertIn("ProductionMppiPlanningState::kMissionCommandPositionHold", execution)
         self.assertNotIn("forced_braking_hold", execution)
         self.assertIn(
@@ -267,7 +272,7 @@ class InterceptRadarContractTest(unittest.TestCase):
 
     def test_attacker_avoidance_preserves_physical_obstacle_safety(self) -> None:
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
-        execution = EXECUTION.read_text(encoding="utf-8")
+        execution = read_execution_sources()
         engine = MPPI_ENGINE.read_text(encoding="utf-8")
 
         self.assertNotIn("maximum_eligible_risk_tier", planning_tick)
@@ -290,7 +295,7 @@ class InterceptRadarContractTest(unittest.TestCase):
                 SOURCE / "production_mppi_node.cpp",
                 SOURCE / "production_mppi_node.hpp",
                 PLANNING_TICK,
-                EXECUTION,
+                *EXECUTION_FILES,
             )
         )
         for forbidden in (

@@ -13,7 +13,7 @@ namespace drone_city_nav {
 [[nodiscard]] msg::LatestLidarObstacleScan makeLatestLidarObstacleScanMessage(
     const LatestLidarObstacleScanBuildResult& scan,
     const std_msgs::msg::Header& source_header, std::string_view frame_id,
-    std::int64_t acquisition_stamp_ns, std::uint64_t sequence,
-    std::uint64_t pose_generation);
+    std::int64_t acquisition_stamp_ns, std::uint64_t producer_instance_id,
+    std::uint64_t sequence, std::uint64_t pose_generation);
 
 } // namespace drone_city_nav

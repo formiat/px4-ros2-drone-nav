@@ -1,18 +1,23 @@
+#include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
-#include <builtin_interfaces/msg/time.hpp>
 #include <cinttypes>
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <ranges>
 #include <span>
+#include <utility>
 #include <vector>
 
-#include "production_mppi_node.hpp"
+#include "production_mppi_node_execution_internal.hpp"
+#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 
@@ -26,53 +31,6 @@ static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kTopologicalBackt
               msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_TOPOLOGICAL_BACKTRACK);
 
 namespace {
-
-[[nodiscard]] builtin_interfaces::msg::Time
-timeFromNanoseconds(const std::int64_t nanoseconds) {
-  builtin_interfaces::msg::Time time;
-  time.sec = static_cast<std::int32_t>(nanoseconds / 1000000000LL);
-  time.nanosec = static_cast<std::uint32_t>(nanoseconds % 1000000000LL);
-  return time;
-}
-
-[[nodiscard]] std::int64_t
-timeToNanoseconds(const builtin_interfaces::msg::Time& time) noexcept {
-  return static_cast<std::int64_t>(time.sec) * 1000000000LL +
-         static_cast<std::int64_t>(time.nanosec);
-}
-
-[[nodiscard]] mppi::TimedExecutionPathPoint
-executionPathPoint(const msg::MppiHorizonPoint& point) noexcept {
-  return mppi::TimedExecutionPathPoint{
-      .time_from_start_s = point.time_from_start_s,
-      .state =
-          mppi::State{
-              .x = static_cast<float>(point.position.x),
-              .y = static_cast<float>(point.position.y),
-              .z = static_cast<float>(point.position.z),
-              .vx = static_cast<float>(point.velocity.x),
-              .vy = static_cast<float>(point.velocity.y),
-              .vz = static_cast<float>(point.velocity.z),
-              .yaw = point.yaw_rad,
-              .yaw_rate = point.yaw_rate_radps,
-          },
-      .control =
-          mppi::Control{
-              .ax = static_cast<float>(point.acceleration.x),
-              .ay = static_cast<float>(point.acceleration.y),
-              .az = static_cast<float>(point.acceleration.z),
-          },
-  };
-}
-
-[[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
-executionPathPoints(const msg::MppiTrajectoryHorizon& horizon) {
-  std::vector<mppi::TimedExecutionPathPoint> points;
-  points.reserve(horizon.points.size());
-  std::ranges::transform(horizon.points, std::back_inserter(points),
-                         executionPathPoint);
-  return points;
-}
 
 [[nodiscard]] std::optional<mppi::FiniteExecutionPathTerminalBoundary>
 finiteRouteTerminalBoundary(const mppi::MppiTickInput& input,
@@ -103,412 +61,368 @@ finiteRouteTerminalBoundary(const mppi::MppiTickInput& input,
   };
 }
 
-void appendStationaryHoldPoint(msg::MppiTrajectoryHorizon& horizon,
-                               const Point3& hold_position,
-                               const float time_from_start_s, const float yaw_rad) {
-  msg::MppiHorizonPoint point;
-  point.time_from_start_s = time_from_start_s;
-  point.position.x = hold_position.x;
-  point.position.y = hold_position.y;
-  point.position.z = hold_position.z;
-  point.yaw_rad = yaw_rad;
-  horizon.points.push_back(point);
-}
-
 } // namespace
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
     const ProductionMppiPreparedEsdf& esdf,
+    const ProductionRouteExecutionSelection3D& route_execution,
+    const std::shared_ptr<const ProductionNavigationObjective>& objective,
+    const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence,
     const ProductionMppiPlanningState planning_state, const std::int64_t now_ns) {
   ProductionMppiExecutionPublication publication;
   if (!execution_horizon_pub_) {
     return publication;
   }
-  const std::shared_ptr<const ProductionNavigationObjective> objective =
-      navigationObjective();
-  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
+  const bool stationary_capture_rearm =
+      planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold &&
+      execution_input != nullptr &&
+      execution_input->stationaryCaptureStateAuthoritative();
+  if (objective == nullptr || execution_input == nullptr || !execution_input->valid() ||
+      (!execution_input->nominalStateAuthoritative() && !stationary_capture_rearm) ||
+      execution_input->effectiveStampNs() != now_ns ||
+      execution_input->poseRevision() != input.pose_revision ||
+      !production_mppi_execution_detail::sameState(execution_input->state(),
+                                                   input.initial_state) ||
+      !input.previous_applied_control.has_value() ||
+      !production_mppi_execution_detail::sameControl(execution_input->previousControl(),
+                                                     *input.previous_applied_control)) {
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
+                          "FINITE_EXECUTION_INPUT rejected=true reason=owner_mismatch "
+                          "pose_revision=%" PRIu64,
+                          input.pose_revision);
+    return publication;
+  }
+  const mppi::State& exact_initial_state = execution_input->state();
+  const mppi::Control& exact_previous_control = execution_input->previousControl();
+  std::uint64_t target_offboard_instance_id{0U};
+  {
+    const std::scoped_lock lock{input_mutex_};
+    const bool offboard_session_fresh =
+        offboard_session_admission_.valid() &&
+        offboard_session_admission_.latest_source_stamp_ns > 0 &&
+        offboard_session_receive_stamp_ns_ > 0 &&
+        now_ns >= offboard_session_admission_.latest_source_stamp_ns &&
+        now_ns >= offboard_session_receive_stamp_ns_ &&
+        static_cast<double>(now_ns -
+                            offboard_session_admission_.latest_source_stamp_ns) *
+                1.0e-6 <=
+            maximum_control_feedback_age_ms_ &&
+        static_cast<double>(now_ns - offboard_session_receive_stamp_ns_) * 1.0e-6 <=
+            maximum_control_feedback_age_ms_;
+    if (offboard_session_fresh) {
+      target_offboard_instance_id =
+          offboard_session_admission_.current_producer_instance_id;
+    }
+  }
+  if (target_offboard_instance_id == 0U) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "EXECUTION_HORIZON published=false reason=offboard_session_unavailable");
+    return publication;
+  }
+  const std::int64_t lidar_validation_now_ns = get_clock()->now().nanoseconds();
+  const Point3 mission_goal = objective->goal;
   const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
       latest_raw_world_.load(std::memory_order_acquire);
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       latest_raw_world_3d_.load(std::memory_order_acquire);
-  const std::shared_ptr<const LatestLidarObstacleSnapshot> latest_lidar_obstacle_scan =
-      use_static_map_ ? nullptr
-                      : latest_lidar_obstacle_scan_.load(std::memory_order_acquire);
-  // The scan callback may run after the planning tick captured now_ns. Sample
-  // consumer time after the atomic load so receipt age uses the same boundary.
-  const std::int64_t latest_lidar_validation_now_ns = get_clock()->now().nanoseconds();
+  const bool snapshot_owner_required = route_execution.source_snapshot != nullptr;
+  const bool direct_tracking_requested =
+      route_execution.direct_tracking_identity.has_value();
+  const CertifiedRouteSuffix3D* const selected_snapshot_route =
+      snapshot_owner_required && !direct_tracking_requested
+          ? route_execution.route.get()
+          : nullptr;
+  const ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed{
+      .position =
+          Point3{exact_initial_state.x, exact_initial_state.y, exact_initial_state.z},
+      .body_axis = bodyAxisFromWorldAcceleration(Vec3{exact_previous_control.ax,
+                                                      exact_previous_control.ay,
+                                                      exact_previous_control.az}),
+      .footprint = physical_footprint_config_,
+  };
+  std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
+  std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
+  if (snapshot_owner_required &&
+      (direct_tracking_requested || stationary_capture_rearm)) {
+    if (use_static_map_ && static_occupancy_3d_ != nullptr) {
+      if (route_execution.source_snapshot->direct_tracking_execution.has_value() &&
+          route_execution.source_snapshot->direct_tracking_execution->static_world !=
+              nullptr) {
+        direct_static_world =
+            route_execution.source_snapshot->direct_tracking_execution->static_world;
+      } else if (route_execution.source_snapshot->route.has_value() &&
+                 route_execution.source_snapshot->route->static_world != nullptr) {
+        direct_static_world = route_execution.source_snapshot->route->static_world;
+      } else {
+        direct_static_world = VersionedStaticWorld3D::captureOwned(
+            navigationWorldCertificate3D(esdf), static_occupancy_3d_);
+      }
+    } else if (latest_raw_world_3d != nullptr &&
+               latest_raw_world_3d->execution_owner != nullptr &&
+               latest_raw_world_3d->occupancy != nullptr &&
+               latest_raw_world_3d->execution_owner->valid() &&
+               std::addressof(latest_raw_world_3d->execution_owner->occupancy()) ==
+                   latest_raw_world_3d->occupancy.get() &&
+               latest_raw_world_3d->execution_owner->version().producer_instance_id ==
+                   latest_raw_world_3d->version.producer_instance_id &&
+               latest_raw_world_3d->execution_owner->version().base_snapshot_revision ==
+                   latest_raw_world_3d->version.base_snapshot_revision &&
+               latest_raw_world_3d->execution_owner->version().revision ==
+                   latest_raw_world_3d->version.revision) {
+      direct_observed_world = latest_raw_world_3d->execution_owner->deriveRouteEvidence(
+          proprioceptive_free_space_seed, esdf.launch_support_contact);
+    }
+  }
+  const VersionedExecutionValidationPolicy3D* const selected_policy =
+      selected_snapshot_route != nullptr
+          ? selected_snapshot_route->validation_policy.get()
+      : direct_tracking_requested || stationary_capture_rearm
+          ? execution_validation_policy_.get()
+          : nullptr;
+  const double latest_lidar_maximum_age_ms =
+      selected_policy != nullptr ? selected_policy->latestLidarMaximumAgeMs()
+                                 : latest_lidar_obstacle_maximum_age_ms_;
+  const LatestLidarEvidenceFreshness3D latest_lidar_freshness =
+      production_mppi_execution_detail::latestLidarEvidenceFreshness(
+          latest_lidar_evidence, lidar_validation_now_ns, latest_lidar_maximum_age_ms);
   double latest_lidar_obstacle_age_ms{-1.0};
   bool latest_lidar_obstacle_fresh{false};
   bool latest_lidar_obstacle_receive_time_fallback{false};
   std::span<const Point3> latest_lidar_obstacle_points;
-  if (latest_lidar_obstacle_scan) {
-    const LatestLidarObstacleFreshness freshness = assessLatestLidarObstacleFreshness(
-        *latest_lidar_obstacle_scan, latest_lidar_validation_now_ns,
-        latest_lidar_obstacle_maximum_age_ms_);
-    latest_lidar_obstacle_age_ms = freshness.age_ms;
-    latest_lidar_obstacle_fresh = freshness.fresh;
-    latest_lidar_obstacle_receive_time_fallback = freshness.receive_time_fallback;
+  if (latest_lidar_evidence != nullptr) {
+    latest_lidar_obstacle_age_ms = latest_lidar_freshness.age_ms;
+    latest_lidar_obstacle_fresh = latest_lidar_freshness.fresh;
+    latest_lidar_obstacle_receive_time_fallback =
+        latest_lidar_freshness.receive_time_fallback;
     if (latest_lidar_obstacle_fresh) {
       latest_lidar_obstacle_points =
-          std::span<const Point3>{latest_lidar_obstacle_scan->hit_points_map_m};
+          std::span<const Point3>{latest_lidar_evidence->hitPointsMapM()};
     }
   }
+  const std::uint64_t latest_lidar_obstacle_sequence =
+      latest_lidar_evidence != nullptr ? latest_lidar_evidence->sequence() : 0U;
   const OccupancyGrid2D* latest_raw_occupancy =
       latest_raw_world && latest_raw_world->occupancy
           ? latest_raw_world->occupancy.get()
           : nullptr;
+  const bool exact_snapshot_world =
+      snapshot_owner_required && selected_policy != nullptr &&
+      selected_policy->valid() &&
+      ((selected_snapshot_route != nullptr &&
+        (selected_snapshot_route->static_world != nullptr) !=
+            (selected_snapshot_route->observed_raw_world != nullptr)) ||
+       ((direct_tracking_requested || stationary_capture_rearm) &&
+        (direct_static_world != nullptr) != (direct_observed_world != nullptr)));
+  const Lattice3DRoutePurpose publication_route_purpose =
+      direct_tracking_requested ? Lattice3DRoutePurpose::kMissionTransit
+      : selected_snapshot_route != nullptr &&
+              selected_snapshot_route->geometry != nullptr
+          ? selected_snapshot_route->geometry->route_purpose
+          : esdf.lattice_3d_route_purpose;
+  const bool publication_route_constrained =
+      direct_tracking_requested ? false
+      : selected_snapshot_route != nullptr &&
+              selected_snapshot_route->geometry != nullptr &&
+              selected_snapshot_route->geometry->constrained_spans != nullptr
+          ? !selected_snapshot_route->geometry->constrained_spans->empty()
+          : esdf.constrained_spans != nullptr && !esdf.constrained_spans->empty();
   const OccupancyGrid3D* static_occupancy =
-      use_static_map_ && static_occupancy_3d_ ? &*static_occupancy_3d_ : nullptr;
+      exact_snapshot_world && direct_static_world != nullptr
+          ? &direct_static_world->occupancy()
+      : exact_snapshot_world && selected_snapshot_route != nullptr &&
+              selected_snapshot_route->static_world != nullptr
+          ? &selected_snapshot_route->static_world->occupancy()
+      : !snapshot_owner_required && use_static_map_ && static_occupancy_3d_
+          ? &*static_occupancy_3d_
+          : nullptr;
   const ObservedOccupancyGrid3D* observed_occupancy =
-      latest_raw_world_3d && latest_raw_world_3d->occupancy
+      exact_snapshot_world && direct_observed_world != nullptr
+          ? &direct_observed_world->occupancy()
+      : exact_snapshot_world && selected_snapshot_route != nullptr &&
+              selected_snapshot_route->observed_raw_world != nullptr
+          ? &selected_snapshot_route->observed_raw_world->occupancy()
+      : !snapshot_owner_required && latest_raw_world_3d != nullptr &&
+              latest_raw_world_3d->occupancy != nullptr
           ? latest_raw_world_3d->occupancy.get()
           : nullptr;
   const std::optional<mppi::FiniteExecutionPathTerminalBoundary>
-      route_terminal_boundary = finiteRouteTerminalBoundary(input, esdf);
-  const mppi::Control current_applied_control =
-      input.previous_applied_control.value_or(mppi::Control{});
-  const ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed{
-      .position =
-          Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
-      .body_axis = bodyAxisFromWorldAcceleration(Vec3{current_applied_control.ax,
-                                                      current_applied_control.ay,
-                                                      current_applied_control.az}),
-      .footprint = physical_footprint_config_,
-  };
+      route_terminal_boundary =
+          direct_tracking_requested ? std::nullopt
+                                    : finiteRouteTerminalBoundary(input, esdf);
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed_owner =
+      exact_snapshot_world && direct_observed_world != nullptr &&
+              direct_observed_world->proprioceptiveFreeSpaceSeed().has_value()
+          ? &*direct_observed_world->proprioceptiveFreeSpaceSeed()
+      : exact_snapshot_world && selected_snapshot_route != nullptr &&
+              selected_snapshot_route->observed_raw_world != nullptr &&
+              selected_snapshot_route->observed_raw_world->proprioceptiveFreeSpaceSeed()
+                  .has_value()
+          ? &*selected_snapshot_route->observed_raw_world->proprioceptiveFreeSpaceSeed()
+      : !snapshot_owner_required && observed_occupancy != nullptr
+          ? &proprioceptive_free_space_seed
+          : nullptr;
+  const LaunchSupportContact3D* launch_support_contact_owner =
+      exact_snapshot_world && direct_observed_world != nullptr &&
+              direct_observed_world->launchSupportContact().has_value()
+          ? &*direct_observed_world->launchSupportContact()
+      : exact_snapshot_world && selected_snapshot_route != nullptr &&
+              selected_snapshot_route->observed_raw_world != nullptr &&
+              selected_snapshot_route->observed_raw_world->launchSupportContact()
+                  .has_value()
+          ? &*selected_snapshot_route->observed_raw_world->launchSupportContact()
+      : !snapshot_owner_required && esdf.launch_support_contact
+          ? &*esdf.launch_support_contact
+          : nullptr;
+  const FlightEnvelopeConfig* const execution_flight_envelope =
+      snapshot_owner_required
+          ? exact_snapshot_world ? &selected_policy->flightEnvelope() : nullptr
+          : &flight_envelope_config_;
+  const mppi::DynamicsConfig* const execution_dynamics =
+      snapshot_owner_required
+          ? exact_snapshot_world ? &selected_policy->dynamics() : nullptr
+          : &mppi_config_.dynamics;
+  const mppi::AltitudeEnvelopeConfig* const execution_altitude_envelope =
+      snapshot_owner_required
+          ? exact_snapshot_world ? &selected_policy->altitudeEnvelope() : nullptr
+          : &mppi_config_.altitude_envelope;
+  const SweptFootprintConfig* const execution_footprint =
+      snapshot_owner_required
+          ? exact_snapshot_world ? &selected_policy->sweptFootprint() : nullptr
+          : &physical_footprint_config_;
   const mppi::FiniteExecutionPathWorld execution_path_world{
-      .flight_envelope = &flight_envelope_config_,
-      .dynamics = &mppi_config_.dynamics,
-      .altitude_envelope = &mppi_config_.altitude_envelope,
-      .footprint = &physical_footprint_config_,
+      .flight_envelope = execution_flight_envelope,
+      .dynamics = execution_dynamics,
+      .altitude_envelope = execution_altitude_envelope,
+      .footprint = execution_footprint,
       .static_occupancy = static_occupancy,
       .observed_occupancy = observed_occupancy,
-      .require_known_free_space = lattice_3d_config_.require_known_free_space,
-      .proprioceptive_free_space_seed =
-          observed_occupancy != nullptr ? &proprioceptive_free_space_seed : nullptr,
-      .launch_support_contact =
-          esdf.launch_support_contact ? &*esdf.launch_support_contact : nullptr,
-      .raw_occupancy = latest_raw_occupancy,
+      .require_known_free_space = exact_snapshot_world
+                                      ? static_occupancy != nullptr
+                                      : lattice_3d_config_.require_known_free_space,
+      .proprioceptive_free_space_seed = proprioceptive_free_space_seed_owner,
+      .launch_support_contact = launch_support_contact_owner,
+      .raw_occupancy = snapshot_owner_required ? nullptr : latest_raw_occupancy,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = route_terminal_boundary,
   };
   constexpr float kArrivalSearchIntervalS{0.5F};
+  const float execution_dt_s = execution_dynamics != nullptr
+                                   ? execution_dynamics->dt_s
+                                   : mppi_config_.dynamics.dt_s;
   const std::size_t arrival_search_step_controls = std::max<std::size_t>(
-      1U, static_cast<std::size_t>(
-              std::ceil(kArrivalSearchIntervalS / mppi_config_.dynamics.dt_s)));
+      1U,
+      static_cast<std::size_t>(std::ceil(kArrivalSearchIntervalS / execution_dt_s)));
   const std::int64_t finite_path_control_interval_ns =
-      mppi::finitePathControlIntervalNanoseconds(mppi_config_.dynamics.dt_s);
+      mppi::finitePathControlIntervalNanoseconds(execution_dt_s);
   std::uint64_t latest_obstacle_revision = input.obstacle_revision;
   if (latest_raw_world) {
     latest_obstacle_revision = latest_raw_world->version.revision;
   }
-  if (latest_raw_world_3d) {
+  if (exact_snapshot_world && direct_observed_world != nullptr) {
+    latest_obstacle_revision = direct_observed_world->version().revision;
+  } else if (exact_snapshot_world && selected_snapshot_route != nullptr &&
+             selected_snapshot_route->observed_raw_world != nullptr) {
+    latest_obstacle_revision =
+        selected_snapshot_route->observed_raw_world->version().revision;
+  } else if (!snapshot_owner_required && latest_raw_world_3d) {
     latest_obstacle_revision = latest_raw_world_3d->version.revision;
   }
 
-  const auto make_horizon = [&](const std::int64_t valid_until_ns,
-                                const ProductionMppiExecutionMode mode,
-                                const ProductionMppiExecutionReason reason) {
-    msg::MppiTrajectoryHorizon horizon;
-    horizon.header.stamp = now();
-    horizon.header.frame_id = frame_id_;
-    horizon.sequence = tick_sequence_;
-    horizon.valid_from = timeFromNanoseconds(now_ns);
-    horizon.valid_until = timeFromNanoseconds(valid_until_ns);
-    horizon.pose_revision = input.pose_revision;
-    horizon.obstacle_revision = latest_obstacle_revision;
-    horizon.risk_tier = static_cast<std::uint8_t>(result.selected_tier);
-    horizon.execution_mode = static_cast<std::uint8_t>(mode);
-    horizon.execution_reason = static_cast<std::uint8_t>(reason);
-    horizon.route_purpose = static_cast<std::uint8_t>(esdf.lattice_3d_route_purpose);
-    horizon.route_target.x = input.target.x;
-    horizon.route_target.y = input.target.y;
-    horizon.route_target.z = input.target.z;
-    horizon.route_constrained =
-        esdf.constrained_spans != nullptr && !esdf.constrained_spans->empty();
-    return horizon;
-  };
-
-  const auto retain_active_finite_path =
-      [&](const ProductionMppiExecutionReason replacement_failure_reason)
-      -> std::optional<ProductionMppiExecutionPublication> {
-    ProductionMppiActiveFiniteExecutionPath* const active_trajectory =
-        execution_arbiter_.activeTrajectory();
-    if (active_trajectory == nullptr) {
-      return std::nullopt;
-    }
-    ProductionMppiActiveFiniteExecutionPath& active = *active_trajectory;
-    if (active.message.execution_mode !=
-            msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED ||
-        active.message.stationary_position_hold) {
-      execution_arbiter_.rejectTrajectory();
-      return std::nullopt;
-    }
-    const std::vector<mppi::TimedExecutionPathPoint> points =
-        executionPathPoints(active.message);
-    if (points.empty()) {
-      execution_arbiter_.rejectTrajectory();
-      return std::nullopt;
-    }
-    const std::int64_t original_valid_until_ns =
-        timeToNanoseconds(active.message.valid_until);
-    mppi::FiniteExecutionPathWorld continuation_world = execution_path_world;
-    continuation_world.terminal_boundary = active.terminal_boundary;
-    const mppi::FiniteExecutionPathValidation actual_state_validation =
-        mppi::validateFiniteExecutionPathContinuation(
-            points, timeToNanoseconds(active.message.valid_from),
-            original_valid_until_ns, now_ns, input.initial_state,
-            input.previous_applied_control.value_or(mppi::Control{}),
-            continuation_world);
-    const mppi::FiniteExecutionPathValidation trajectory_validation =
-        actual_state_validation.accepted()
-            ? actual_state_validation
-            : mppi::validateFiniteExecutionTrajectoryContinuation(
-                  points, timeToNanoseconds(active.message.valid_from),
-                  original_valid_until_ns, now_ns, input.initial_state,
-                  input.previous_applied_control.value_or(mppi::Control{}),
-                  continuation_world);
-    const std::size_t trajectory_expected_index =
-        std::min(trajectory_validation.first_remaining_point_index, points.size() - 1U);
-    const mppi::State& trajectory_expected_state =
-        points[trajectory_expected_index].state;
-    const double trajectory_tracking_error_m = distance3D(
-        Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
-        Point3{trajectory_expected_state.x, trajectory_expected_state.y,
-               trajectory_expected_state.z});
-    if (actual_state_validation.accepted()) {
-      ProductionMppiExecutionPublication retained = active.publication;
-      retained.latest_lidar_obstacle_sequence =
-          latest_lidar_obstacle_scan ? latest_lidar_obstacle_scan->sequence : 0U;
-      retained.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
-      retained.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
-      retained.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
-      retained.latest_lidar_obstacle_receive_time_fallback =
-          latest_lidar_obstacle_receive_time_fallback;
-      retained.retained_previous_finite_path = true;
-      retained.published = false;
-      active.publication = retained;
-      execution_arbiter_.confirmRetainedTrajectory();
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "FINITE_EXECUTION_PATH retained=true replacement_failure_reason=%s "
-          "trajectory_continuation=true actual_state_continuation=true "
-          "republished=false "
-          "remaining_s=%.3f "
-          "tracking_error_m=%.3f vertical_error_m=%.3f valid_until_ns=%" PRId64,
-          productionMppiExecutionReasonName(replacement_failure_reason),
-          trajectory_validation.remaining_duration_s, trajectory_tracking_error_m,
-          static_cast<double>(input.initial_state.z - trajectory_expected_state.z),
-          original_valid_until_ns);
-      return retained;
-    }
-
-    const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
-        mppi::rebuildFiniteExecutionPathContinuation(
-            points, timeToNanoseconds(active.message.valid_from),
-            original_valid_until_ns, now_ns, input.initial_state,
-            input.previous_applied_control.value_or(mppi::Control{}),
-            mppi_config_.dynamics, arrival_search_step_controls, finite_horizon_config_,
-            continuation_world);
-    const std::size_t expected_index =
-        std::min(rebuilt.source_control_index, points.size() - 1U);
-    const mppi::State& expected_state = points[expected_index].state;
-    const double tracking_error_m = distance3D(
-        Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
-        Point3{expected_state.x, expected_state.y, expected_state.z});
-    if (!rebuilt.accepted()) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "FINITE_EXECUTION_PATH retained=false replacement_failure_reason=%s "
-          "rebuild_validation=%s failure_segment=%zu "
-          "failure=(%.3f,%.3f,%.3f) current_z=%.3f expected_z=%.3f "
-          "tracking_error_m=%.3f trajectory_validation=%s "
-          "trajectory_failure_segment=%zu actual_state_validation=%s "
-          "actual_state_failure_segment=%zu arrival_shaping_attempts=%zu",
-          productionMppiExecutionReasonName(replacement_failure_reason),
-          mppi::finiteExecutionPathStatusName(rebuilt.validation.status),
-          rebuilt.validation.failure_segment_index, rebuilt.validation.failure_point.x,
-          rebuilt.validation.failure_point.y, rebuilt.validation.failure_point.z,
-          input.initial_state.z, expected_state.z, tracking_error_m,
-          mppi::finiteExecutionPathStatusName(trajectory_validation.status),
-          trajectory_validation.failure_segment_index,
-          mppi::finiteExecutionPathStatusName(actual_state_validation.status),
-          actual_state_validation.failure_segment_index,
-          rebuilt.arrival_shaping_attempts);
-      execution_arbiter_.rejectTrajectory();
-      return std::nullopt;
-    }
-
-    const mppi::FiniteHorizon& finite_horizon = *rebuilt.horizon;
-    msg::MppiTrajectoryHorizon horizon =
-        make_horizon(rebuilt.valid_until_ns, ProductionMppiExecutionMode::kPlanned,
-                     ProductionMppiExecutionReason::kNone);
-    horizon.risk_tier = active.message.risk_tier;
-    horizon.points.reserve(finite_horizon.states.size());
-    for (std::size_t index = 0U; index < finite_horizon.states.size(); ++index) {
-      const mppi::State& state = finite_horizon.states[index];
-      const mppi::Control control =
-          finite_horizon.controls[std::min(index, finite_horizon.controls.size() - 1U)];
-      msg::MppiHorizonPoint point;
-      point.time_from_start_s = static_cast<float>(index) * mppi_config_.dynamics.dt_s;
-      point.position.x = state.x;
-      point.position.y = state.y;
-      point.position.z = state.z;
-      point.velocity.x = state.vx;
-      point.velocity.y = state.vy;
-      point.velocity.z = state.vz;
-      point.acceleration.x = control.ax;
-      point.acceleration.y = control.ay;
-      point.acceleration.z = control.az;
-      point.yaw_rad = state.yaw;
-      point.yaw_rate_radps = state.yaw_rate;
-      horizon.points.push_back(point);
-    }
-    execution_horizon_pub_->publish(horizon);
-
-    ProductionMppiExecutionPublication retained = active.publication;
-    retained.horizon = finite_horizon.states;
-    retained.planned_control_count = finite_horizon.controls.size();
-    retained.nominal_prefix_control_count = finite_horizon.nominal_prefix_control_count;
-    retained.arrival_control_count = finite_horizon.arrival_control_count;
-    retained.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
-    retained.first_control = finite_horizon.controls.front();
-    retained.first_control_available = true;
-    retained.latest_lidar_obstacle_sequence =
-        latest_lidar_obstacle_scan ? latest_lidar_obstacle_scan->sequence : 0U;
-    retained.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
-    retained.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
-    retained.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
-    retained.latest_lidar_obstacle_receive_time_fallback =
-        latest_lidar_obstacle_receive_time_fallback;
-    retained.finite_path_validation_backoff = rebuilt.path_validation_backoff;
-    retained.latest_lidar_path_validation_backoff =
-        rebuilt.latest_lidar_path_validation_backoff;
-    retained.retained_previous_finite_path = true;
-    retained.terminal_rest_state = true;
-    retained.published = true;
-    active.message = std::move(horizon);
-    active.publication = retained;
-    execution_arbiter_.confirmRetainedTrajectory();
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "FINITE_EXECUTION_PATH retained=true replacement_failure_reason=%s "
-        "rebased_from_actual=true source_trajectory_validation=%s "
-        "source_actual_state_validation=%s source_control=%zu tracking_error_m=%.3f "
-        "vertical_error_m=%.3f arrival_shaping_attempts=%zu "
-        "original_valid_until_ns=%" PRId64 " rebuilt_valid_until_ns=%" PRId64,
-        productionMppiExecutionReasonName(replacement_failure_reason),
-        mppi::finiteExecutionPathStatusName(trajectory_validation.status),
-        mppi::finiteExecutionPathStatusName(actual_state_validation.status),
-        rebuilt.source_control_index, tracking_error_m,
-        static_cast<double>(input.initial_state.z - expected_state.z),
-        rebuilt.arrival_shaping_attempts, original_valid_until_ns,
-        rebuilt.valid_until_ns);
-    return retained;
-  };
-
-  const auto publish_position_hold = [&](const Point3& hold_position,
-                                         const ProductionMppiExecutionReason reason) {
-    execution_arbiter_.rejectTrajectory();
-    if (!insideFlightEnvelope(hold_position, flight_envelope_config_)) {
-      RCLCPP_ERROR(get_logger(),
-                   "EXECUTION_HORIZON rejected reason=hold_outside_flight_envelope "
-                   "target_z=%.3f",
-                   hold_position.z);
-      return publication;
-    }
-    const auto hold_duration_ns = static_cast<std::int64_t>(
-        std::max(stationary_hold_validity_s_,
-                 2.0 * static_cast<double>(mppi_config_.dynamics.dt_s)) *
-        1.0e9);
-    msg::MppiTrajectoryHorizon horizon = make_horizon(
-        now_ns + hold_duration_ns, ProductionMppiExecutionMode::kPositionHold, reason);
-    horizon.stationary_position_hold = true;
-    horizon.stationary_hold_position.x = hold_position.x;
-    horizon.stationary_hold_position.y = hold_position.y;
-    horizon.stationary_hold_position.z = hold_position.z;
-    horizon.points.reserve(2U);
-    appendStationaryHoldPoint(horizon, hold_position, 0.0F, input.initial_state.yaw);
-    appendStationaryHoldPoint(horizon, hold_position, mppi_config_.dynamics.dt_s,
-                              input.initial_state.yaw);
-    execution_horizon_pub_->publish(horizon);
-    publication.horizon = {
-        mppi::State{.x = static_cast<float>(hold_position.x),
-                    .y = static_cast<float>(hold_position.y),
-                    .z = static_cast<float>(hold_position.z),
-                    .yaw = input.initial_state.yaw},
-        mppi::State{.x = static_cast<float>(hold_position.x),
-                    .y = static_cast<float>(hold_position.y),
-                    .z = static_cast<float>(hold_position.z),
-                    .yaw = input.initial_state.yaw},
-    };
-    publication.mode = ProductionMppiExecutionMode::kPositionHold;
-    publication.reason = reason;
-    publication.latest_lidar_obstacle_sequence =
-        latest_lidar_obstacle_scan ? latest_lidar_obstacle_scan->sequence : 0U;
-    publication.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
-    publication.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
-    publication.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
-    publication.latest_lidar_obstacle_receive_time_fallback =
-        latest_lidar_obstacle_receive_time_fallback;
-    publication.published = true;
-    return publication;
-  };
-
-  const auto publish_no_executable_path_hold =
-      [&](const ProductionMppiExecutionReason reason) {
-        if (std::optional<ProductionMppiExecutionPublication> retained =
-                retain_active_finite_path(reason);
-            retained.has_value()) {
-          return *retained;
-        }
-        if (!execution_arbiter_.noExecutableHoldPosition().has_value()) {
-          execution_arbiter_.enterNoExecutableHold(Point3{
-              input.initial_state.x,
-              input.initial_state.y,
-              clampToFlightEnvelope(input.initial_state.z, flight_envelope_config_)
-                  .value_or(flight_envelope_config_.minimum_target_z_m),
-          });
-          const Point3& hold_position = *execution_arbiter_.noExecutableHoldPosition();
-          RCLCPP_WARN(
-              get_logger(),
-              "MPPI_EXECUTION_CONTRACT transition=enter_no_executable_path_hold "
-              "reason=%s origin=(%.3f,%.3f,%.3f) "
-              "velocity=(%.3f,%.3f,%.3f) previous_acceleration_z=%.3f",
-              productionMppiExecutionReasonName(reason), hold_position.x,
-              hold_position.y, hold_position.z, input.initial_state.vx,
-              input.initial_state.vy, input.initial_state.vz,
-              input.previous_applied_control.value_or(mppi::Control{}).az);
-        }
-        return publish_position_hold(*execution_arbiter_.noExecutableHoldPosition(),
-                                     reason);
-      };
-
-  const auto publish_explicit_hold = [&](const Point3& hold_position,
-                                         const ProductionMppiExecutionReason reason) {
-    execution_arbiter_.leaveNoExecutableHold();
-    return publish_position_hold(hold_position, reason);
+  const ProductionMppiExecutionCycle cycle{
+      .input = input,
+      .result = result,
+      .esdf = esdf,
+      .route_execution = route_execution,
+      .objective = objective,
+      .execution_input = execution_input,
+      .latest_lidar_evidence = latest_lidar_evidence,
+      .planning_state = planning_state,
+      .now_ns = now_ns,
+      .publication = publication,
+      .exact_initial_state = exact_initial_state,
+      .exact_previous_control = exact_previous_control,
+      .target_offboard_instance_id = target_offboard_instance_id,
+      .lidar_validation_now_ns = lidar_validation_now_ns,
+      .mission_goal = mission_goal,
+      .latest_raw_world = latest_raw_world,
+      .latest_raw_world_3d = latest_raw_world_3d,
+      .snapshot_owner_required = snapshot_owner_required,
+      .direct_tracking_requested = direct_tracking_requested,
+      .selected_snapshot_route = selected_snapshot_route,
+      .direct_observed_world = direct_observed_world,
+      .direct_static_world = direct_static_world,
+      .selected_policy = selected_policy,
+      .latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms,
+      .latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh,
+      .latest_lidar_obstacle_receive_time_fallback =
+          latest_lidar_obstacle_receive_time_fallback,
+      .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
+      .latest_lidar_obstacle_sequence = latest_lidar_obstacle_sequence,
+      .exact_snapshot_world = exact_snapshot_world,
+      .publication_route_purpose = publication_route_purpose,
+      .publication_route_constrained = publication_route_constrained,
+      .route_terminal_boundary = route_terminal_boundary,
+      .execution_flight_envelope = execution_flight_envelope,
+      .execution_dynamics = execution_dynamics,
+      .execution_altitude_envelope = execution_altitude_envelope,
+      .execution_footprint = execution_footprint,
+      .execution_path_world = execution_path_world,
+      .arrival_search_step_controls = arrival_search_step_controls,
+      .finite_path_control_interval_ns = finite_path_control_interval_ns,
+      .latest_obstacle_revision = latest_obstacle_revision,
   };
 
   if (planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold) {
-    return publish_explicit_hold(mission_goal,
-                                 ProductionMppiExecutionReason::kGoalCapture);
+    ProductionMppiExecutionPublication hold = publishExplicitHold(
+        cycle, mission_goal, ProductionMppiExecutionReason::kGoalCapture);
+    if (hold.published) {
+      return hold;
+    }
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
   if (planning_state == ProductionMppiPlanningState::kMissionCommandPositionHold) {
-    return publish_explicit_hold(Point3{input.target.x, input.target.y, input.target.z},
-                                 ProductionMppiExecutionReason::kGoalCapture);
+    ProductionMppiExecutionPublication hold = publishExplicitHold(
+        cycle, Point3{input.target.x, input.target.y, input.target.z},
+        ProductionMppiExecutionReason::kGoalCapture);
+    if (hold.published) {
+      return hold;
+    }
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
   if (planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold) {
     // Route lifecycle invalidation requires the arbiter to revalidate the actual
     // remaining finite trajectory. A physically safe terminal-rest path may still
     // be retained while route replacement runs.
-    return publish_no_executable_path_hold(
-        ProductionMppiExecutionReason::kNoExecutableRoute);
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableRoute);
   }
   if (planning_state == ProductionMppiPlanningState::kCooperativePassageYieldHold) {
-    return publish_explicit_hold(
-        Point3{input.target.x, input.target.y, input.target.z},
+    ProductionMppiExecutionPublication hold = publishExplicitHold(
+        cycle, Point3{input.target.x, input.target.y, input.target.z},
         ProductionMppiExecutionReason::kCooperativePassageYield);
+    if (hold.published) {
+      return hold;
+    }
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+  }
+  if (!latest_lidar_obstacle_fresh || execution_dynamics == nullptr ||
+      execution_flight_envelope == nullptr || execution_altitude_envelope == nullptr ||
+      execution_footprint == nullptr) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_HORIZON executable=false reason=missing_exact_owner "
+        "lidar_present=%s lidar_fresh=%s snapshot_world=%s action=hold",
+        latest_lidar_evidence != nullptr ? "true" : "false",
+        latest_lidar_obstacle_fresh ? "true" : "false",
+        exact_snapshot_world ? "true" : "false");
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
 
   const std::span<const mppi::State> states{result.horizon};
@@ -522,8 +436,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
             result.post_update_classification.classification),
         mppi::mppiPostUpdateRepairName(result.post_update_repair), states.size(),
         controls.size());
-    return publish_no_executable_path_hold(
-        ProductionMppiExecutionReason::kNoExecutableHorizon);
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
   const auto altitude_violation =
       std::ranges::find_if(states, [this](const mppi::State& state) {
@@ -575,9 +489,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
 
   mppi::ValidatedFiniteExecutionPath validated_path =
       mppi::buildValidatedFiniteExecutionPath(
-          states, controls, input.previous_applied_control.value_or(mppi::Control{}),
-          mppi_config_.dynamics, arrival_search_step_controls, finite_horizon_config_,
-          execution_path_world);
+          states, controls, exact_previous_control, *execution_dynamics,
+          arrival_search_step_controls, finite_horizon_config_, execution_path_world);
   if (!validated_path.accepted()) {
     RCLCPP_ERROR_THROTTLE(
         get_logger(), *get_clock(), 1000,
@@ -590,25 +503,170 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         validated_path.validation.failure_segment_index,
         validated_path.validation.failure_point.x,
         validated_path.validation.failure_point.y,
-        validated_path.validation.failure_point.z,
-        latest_lidar_obstacle_scan ? latest_lidar_obstacle_scan->sequence : 0U,
+        validated_path.validation.failure_point.z, latest_lidar_obstacle_sequence,
         latest_lidar_obstacle_age_ms, latest_lidar_obstacle_points.size());
-    return publish_no_executable_path_hold(
-        ProductionMppiExecutionReason::kNoExecutableHorizon);
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
   mppi::FiniteHorizon executable_path =
       std::move(validated_path.horizon).value_or(mppi::FiniteHorizon{});
-  if (execution_arbiter_.noExecutableHoldPosition().has_value()) {
+  if (!snapshot_owner_required &&
+      legacy_execution_arbiter_.noExecutableHoldPosition().has_value()) {
     const double speed_mps =
-        std::hypot(std::hypot(input.initial_state.vx, input.initial_state.vy),
-                   input.initial_state.vz);
+        std::hypot(std::hypot(exact_initial_state.vx, exact_initial_state.vy),
+                   exact_initial_state.vz);
     RCLCPP_INFO(get_logger(),
                 "MPPI_EXECUTION_CONTRACT transition=leave_no_executable_path_hold "
                 "reason=executable_path_available pose_revision=%" PRIu64
                 " speed_mps=%.3f",
                 input.pose_revision, speed_mps);
-    execution_arbiter_.leaveNoExecutableHold();
+    legacy_execution_arbiter_.leaveNoExecutableHold();
   }
+
+  std::shared_ptr<const ExecutionRouteSnapshot3D> committed_snapshot;
+  std::optional<ExecutionRouteTransitionResult3D> snapshot_transition;
+  if (snapshot_owner_required) {
+    const std::shared_ptr<const ExecutionRouteSnapshot3D> expected =
+        route_execution.source_snapshot;
+    const std::shared_ptr<const ExecutionRouteSnapshot3D> resident =
+        execution_route_store_.snapshot();
+    if (expected == nullptr || resident != expected) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    if (direct_tracking_requested) {
+      if (!route_execution.direct_tracking_identity->valid() ||
+          execution_validation_policy_ == nullptr ||
+          (direct_observed_world == nullptr) == (direct_static_world == nullptr)) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      const std::uint64_t previous_trajectory_revision =
+          expected->direct_tracking_execution.has_value()
+              ? expected->direct_tracking_execution->trajectory_revision
+          : expected->finite_execution.has_value()
+              ? expected->finite_execution->trajectory_revision
+              : 0U;
+      if (previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      const std::optional<DirectTrackingFiniteExecution3D> certified_execution =
+          certifyDirectTrackingExecution3D(
+              *expected,
+              DirectTrackingExecutionCertification3D{
+                  .identity = *route_execution.direct_tracking_identity,
+                  .trajectory_revision = previous_trajectory_revision + 1U,
+                  .target = Point3{input.target.x, input.target.y, input.target.z},
+                  .horizon = std::move(executable_path),
+                  .observed_raw_world = direct_observed_world,
+                  .static_world = direct_static_world,
+                  .validation_policy = execution_validation_policy_,
+                  .execution_input = execution_input,
+                  .latest_lidar_evidence = latest_lidar_evidence,
+                  .valid_from_ns = now_ns,
+                  .kind = FiniteExecutionKind3D::kNominal,
+              });
+      if (!certified_execution.has_value()) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      const ExecutionRouteTransitionResult3D transition =
+          expected->phase == ExecutionRoutePhase3D::kDirectTracking
+              ? replaceDirectTrackingExecution3D(*expected, expected->version,
+                                                 *certified_execution)
+              : transferToDirectTracking3D(*expected, expected->version,
+                                           *certified_execution);
+      if (!transition.applied() || transition.next == nullptr ||
+          !transition.next->direct_tracking_execution.has_value()) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      committed_snapshot = transition.next;
+      snapshot_transition.emplace(transition);
+    } else {
+      if (route_execution.route == nullptr) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      const CertifiedRouteSuffix3D* const target_route =
+          route_execution.pending_activation ? route_execution.route.get()
+          : expected->route.has_value()      ? std::addressof(*expected->route)
+                                             : nullptr;
+      if (target_route == nullptr) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      const std::uint64_t previous_trajectory_revision =
+          expected->finite_execution.has_value()
+              ? expected->finite_execution->trajectory_revision
+          : expected->direct_tracking_execution.has_value()
+              ? expected->direct_tracking_execution->trajectory_revision
+              : 0U;
+      if (previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      const std::optional<FiniteExecutionState3D> certified_execution =
+          certifyFiniteExecution3D(
+              *expected, *target_route,
+              FiniteExecutionCertification3D{
+                  .trajectory_revision = previous_trajectory_revision + 1U,
+                  .horizon = std::move(executable_path),
+                  .execution_input = execution_input,
+                  .latest_lidar_evidence = latest_lidar_evidence,
+                  .valid_from_ns = now_ns,
+                  .kind = FiniteExecutionKind3D::kNominal,
+              });
+      if (!certified_execution.has_value()) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      const ExecutionRouteTransitionResult3D transition = [&] {
+        if (expected->phase == ExecutionRoutePhase3D::kDirectTracking) {
+          return transferDirectTrackingToCertifiedRoute3D(
+              *expected, expected->version, *target_route, *certified_execution);
+        }
+        if (!expected->route.has_value()) {
+          return activateCertifiedRoute3D(*expected, expected->version, *target_route,
+                                          *certified_execution);
+        }
+        const ExecutionRouteTransitionGuard3D guard{
+            .expected_snapshot_version = expected->version,
+            .expected_route_generation = expected->route->identity.generation,
+            .expected_geometry_revision =
+                expected->route->geometry->executable_geometry_revision,
+        };
+        return route_execution.pending_activation
+                   ? replaceCertifiedRoute3D(*expected, guard, *target_route,
+                                             *certified_execution)
+                   : replaceFiniteExecution3D(*expected, guard, *certified_execution);
+      }();
+      if (!transition.applied() || transition.next == nullptr ||
+          !transition.next->route.has_value() ||
+          !transition.next->finite_execution.has_value()) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
+      committed_snapshot = transition.next;
+      snapshot_transition.emplace(transition);
+    }
+  }
+
+  const mppi::FiniteHorizon* committed_path =
+      committed_snapshot != nullptr && committed_snapshot->finite_execution.has_value()
+          ? committed_snapshot->finite_execution->horizon.get()
+      : committed_snapshot != nullptr &&
+              committed_snapshot->direct_tracking_execution.has_value()
+          ? committed_snapshot->direct_tracking_execution->horizon.get()
+          : std::addressof(executable_path);
+  if (committed_path == nullptr) {
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+  }
+
+  const std::span<const mppi::State> execution_states{committed_path->states};
+  const std::span<const mppi::Control> execution_controls{committed_path->controls};
   if (validated_path.path_validation_backoff || nominal_candidate_degraded) {
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
@@ -620,53 +678,109 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         nominal_candidate_degraded ? "true" : "false",
         validated_path.path_validation_backoff ? "true" : "false",
         validated_path.arrival_shaping_attempts,
-        executable_path.nominal_prefix_control_count, controls.size(),
-        executable_path.arrival_control_count,
+        committed_path->nominal_prefix_control_count, controls.size(),
+        committed_path->arrival_control_count,
         validated_path.latest_lidar_path_validation_backoff ? "true" : "false",
-        latest_lidar_obstacle_scan ? latest_lidar_obstacle_scan->sequence : 0U,
-        latest_lidar_obstacle_age_ms, latest_lidar_obstacle_points.size());
+        latest_lidar_obstacle_sequence, latest_lidar_obstacle_age_ms,
+        latest_lidar_obstacle_points.size());
   }
 
-  const std::span<const mppi::State> execution_states{executable_path.states};
-  const std::span<const mppi::Control> execution_controls{executable_path.controls};
-
-  msg::MppiTrajectoryHorizon horizon = make_horizon(
-      now_ns + static_cast<std::int64_t>(execution_controls.size()) *
-                   finite_path_control_interval_ns,
-      ProductionMppiExecutionMode::kPlanned, ProductionMppiExecutionReason::kNone);
-  horizon.points.reserve(execution_states.size());
-  for (std::size_t index = 0U; index < execution_states.size(); ++index) {
-    const mppi::State& state = execution_states[index];
-    const mppi::Control control =
-        execution_controls[std::min(index, execution_controls.size() - 1U)];
-    msg::MppiHorizonPoint point;
-    point.time_from_start_s = static_cast<float>(index) * mppi_config_.dynamics.dt_s;
-    point.position.x = state.x;
-    point.position.y = state.y;
-    point.position.z = state.z;
-    point.velocity.x = state.vx;
-    point.velocity.y = state.vy;
-    point.velocity.z = state.vz;
-    point.acceleration.x = control.ax;
-    point.acceleration.y = control.ay;
-    point.acceleration.z = control.az;
-    point.yaw_rad = state.yaw;
-    point.yaw_rate_radps = state.yaw_rate;
-    horizon.points.push_back(point);
+  std::int64_t committed_valid_until_ns{0};
+  if (committed_snapshot != nullptr) {
+    committed_valid_until_ns =
+        committed_snapshot->finite_execution.has_value()
+            ? committed_snapshot->finite_execution->valid_until_ns
+            : committed_snapshot->direct_tracking_execution->valid_until_ns;
+  } else {
+    const std::optional<std::int64_t> terminal_offset_ns =
+        executionHorizonTerminalOffsetNs(execution_states.size(),
+                                         finite_path_control_interval_ns);
+    const std::optional<std::int64_t> valid_until_ns =
+        terminal_offset_ns.has_value()
+            ? production_mppi_execution_detail::canonicalHorizonEndTime(
+                  now_ns, *terminal_offset_ns)
+            : std::nullopt;
+    if (!valid_until_ns.has_value()) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    committed_valid_until_ns = *valid_until_ns;
   }
-  execution_horizon_pub_->publish(horizon);
+  msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
+      cycle, committed_valid_until_ns, ProductionMppiExecutionMode::kPlanned,
+      ProductionMppiExecutionReason::kNone);
+  if (committed_snapshot != nullptr &&
+      committed_snapshot->direct_tracking_execution.has_value()) {
+    const DirectTrackingFiniteExecution3D& committed_direct =
+        *committed_snapshot->direct_tracking_execution;
+    horizon.route_purpose =
+        static_cast<std::uint8_t>(Lattice3DRoutePurpose::kMissionTransit);
+    horizon.route_constrained = false;
+    horizon.route_target.x = committed_direct.target.x;
+    horizon.route_target.y = committed_direct.target.y;
+    horizon.route_target.z = committed_direct.target.z;
+    if (committed_direct.observed_raw_world != nullptr) {
+      horizon.obstacle_revision =
+          committed_direct.observed_raw_world->version().revision;
+    }
+  } else if (committed_snapshot != nullptr && committed_snapshot->route.has_value() &&
+             committed_snapshot->finite_execution.has_value()) {
+    if (!production_mppi_execution_detail::bindHorizonRouteMetadata(
+            horizon, *committed_snapshot->route)) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    if (committed_snapshot->finite_execution->observed_raw_world != nullptr) {
+      horizon.obstacle_revision =
+          committed_snapshot->finite_execution->observed_raw_world->version().revision;
+    }
+  }
+  if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
+          horizon, execution_states, execution_controls, exact_previous_control,
+          finite_path_control_interval_ns)) {
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+  }
+  if (snapshot_owner_required) {
+    if (!snapshot_transition.has_value() ||
+        (route_execution.pending_activation &&
+         route_execution.pending_route == nullptr) ||
+        !commitExecutionSnapshotHorizon(
+            cycle, route_execution.source_snapshot, *snapshot_transition, horizon,
+            route_execution.pending_activation ? route_execution.pending_route
+                                               : nullptr)) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    if (route_execution.pending_activation &&
+        route_execution.pending_route != nullptr) {
+      if (committed_snapshot != nullptr && committed_snapshot->route.has_value() &&
+          committed_snapshot->route->observed_raw_world != nullptr) {
+        const std::uint64_t blocked_raw_revision =
+            observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
+        if (blocked_raw_revision != 0U &&
+            blocked_raw_revision <=
+                committed_snapshot->route->observed_raw_world->version().revision) {
+          observed_route_blocked_raw_revision_.store(0U, std::memory_order_release);
+        }
+      }
+    }
+  } else {
+    if (!publishLegacyExecutionHorizon(cycle, horizon)) {
+      return publication;
+    }
+  }
   publication.horizon.assign(execution_states.begin(), execution_states.end());
   publication.mode = ProductionMppiExecutionMode::kPlanned;
   publication.reason = ProductionMppiExecutionReason::kNone;
-  publication.planned_control_count = controls.size();
+  publication.planned_control_count = execution_controls.size();
   publication.nominal_prefix_control_count =
-      executable_path.nominal_prefix_control_count;
-  publication.arrival_control_count = executable_path.arrival_control_count;
+      committed_path->nominal_prefix_control_count;
+  publication.arrival_control_count = committed_path->arrival_control_count;
   publication.arrival_shaping_attempts = validated_path.arrival_shaping_attempts;
   publication.first_control = execution_controls.front();
   publication.first_control_available = true;
-  publication.latest_lidar_obstacle_sequence =
-      latest_lidar_obstacle_scan ? latest_lidar_obstacle_scan->sequence : 0U;
+  publication.latest_lidar_obstacle_sequence = latest_lidar_obstacle_sequence;
   publication.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
   publication.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
   publication.finite_path_validation_backoff = validated_path.path_validation_backoff;
@@ -680,12 +794,14 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       validated_path.latest_lidar_path_validation_backoff;
   publication.terminal_rest_state = true;
   publication.published = true;
-  execution_arbiter_.activate(esdf.global_guide_generation,
-                              ProductionMppiActiveFiniteExecutionPath{
-                                  .message = std::move(horizon),
-                                  .publication = publication,
-                                  .terminal_boundary = route_terminal_boundary,
-                              });
+  if (!snapshot_owner_required) {
+    legacy_execution_arbiter_.activate(esdf.global_guide_generation,
+                                       ProductionMppiActiveFiniteExecutionPath{
+                                           .message = std::move(horizon),
+                                           .publication = publication,
+                                           .terminal_boundary = route_terminal_boundary,
+                                       });
+  }
   return publication;
 }
 

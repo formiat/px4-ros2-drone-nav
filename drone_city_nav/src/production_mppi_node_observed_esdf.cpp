@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "production_mppi_node.hpp"
@@ -24,13 +25,32 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
                 raw_world.version.revision);
     return std::nullopt;
   }
+  const std::shared_ptr<const VersionedObservedRawWorld3D> execution_owner =
+      raw_world.execution_owner;
+  if (!execution_owner || !execution_owner->valid() ||
+      std::addressof(execution_owner->occupancy()) != occupancy.get() ||
+      execution_owner->version().producer_instance_id !=
+          raw_world.version.producer_instance_id ||
+      execution_owner->version().base_snapshot_revision !=
+          raw_world.version.base_snapshot_revision ||
+      execution_owner->version().revision != raw_world.version.revision ||
+      execution_owner->proprioceptiveFreeSpaceSeed().has_value() ||
+      execution_owner->launchSupportContact().has_value()) {
+    RCLCPP_ERROR(get_logger(),
+                 "PRODUCTION_MPPI_ESDF3D_ONLINE rejected revision=%" PRIu64
+                 " reason=raw_execution_owner_mismatch",
+                 raw_world.version.revision);
+    return std::nullopt;
+  }
 
   ProductionMppiNavigation navigation;
   ProductionMppiAppliedControl applied_control;
+  ProductionMppiExecutionHorizonOwner execution_horizon_owner;
   {
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
     applied_control = applied_control_;
+    execution_horizon_owner = execution_horizon_owner_;
   }
   if (!navigation.valid) {
     return std::nullopt;
@@ -43,21 +63,23 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   }
   const GridBounds3D& world_bounds = occupancy->bounds();
   const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
-  const FootprintBodyAxis current_body_axis =
-      applied_control.valid
-          ? bodyAxisFromWorldAcceleration(Vec3{applied_control.control.ax,
-                                               applied_control.control.ay,
-                                               applied_control.control.az})
-          : FootprintBodyAxis{};
-  const ProprioceptiveFreeSpaceSeed3D free_space_seed{
-      .position = position,
-      .body_axis = current_body_axis,
-      .footprint = physical_footprint_config_,
-  };
-  if (!launch_support_seed_) {
+  const std::optional<FootprintBodyAxis> current_body_axis =
+      authoritativeBodyAxisForExecution(applied_control, execution_horizon_owner,
+                                        navigation, get_clock()->now().nanoseconds(),
+                                        maximum_control_feedback_age_ms_,
+                                        maximum_pose_age_ms_);
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed =
+      current_body_axis.has_value()
+          ? std::optional<ProprioceptiveFreeSpaceSeed3D>{ProprioceptiveFreeSpaceSeed3D{
+                .position = position,
+                .body_axis = *current_body_axis,
+                .footprint = physical_footprint_config_,
+            }}
+          : std::nullopt;
+  if (!launch_support_seed_ && free_space_seed.has_value()) {
     launch_support_seed_ = free_space_seed;
   }
-  if (!launch_support_evaluated_) {
+  if (!launch_support_evaluated_ && launch_support_seed_.has_value()) {
     const bool vehicle_land_contact_received =
         vehicle_land_contact_received_.load(std::memory_order_acquire);
     const bool vehicle_launch_support_confirmed =
@@ -122,37 +144,42 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
                   launch_support_contact_->minimum_axial_departure_m, position.x,
                   position.y, position.z);
     }
-    const SweptFootprintResult without_support =
-        validateRawFootprintAt(*occupancy, position, current_body_axis,
-                               physical_footprint_config_, &free_space_seed);
-    const FootprintBodyAxis support_axis = launch_support_contact_->seed.body_axis;
-    const Point3 support_delta{
-        position.x - launch_support_contact_->seed.position.x,
-        position.y - launch_support_contact_->seed.position.y,
-        position.z - launch_support_contact_->seed.position.z,
-    };
-    const double support_axial_departure_m = support_delta.x * support_axis.x +
-                                             support_delta.y * support_axis.y +
-                                             support_delta.z * support_axis.z;
-    if (without_support.accepted() &&
-        support_axial_departure_m > occupancy->bounds().resolution_m) {
-      RCLCPP_INFO(get_logger(),
-                  "LAUNCH_SUPPORT_CONTACT state=released revision=%" PRIu64
-                  " axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
-                  raw_world.version.revision, support_axial_departure_m, position.x,
-                  position.y, position.z);
-      launch_support_contact_.reset();
+    if (current_body_axis.has_value() && free_space_seed.has_value()) {
+      const SweptFootprintResult without_support =
+          validateRawFootprintAt(*occupancy, position, *current_body_axis,
+                                 physical_footprint_config_, &*free_space_seed);
+      const FootprintBodyAxis support_axis = launch_support_contact_->seed.body_axis;
+      const Point3 support_delta{
+          position.x - launch_support_contact_->seed.position.x,
+          position.y - launch_support_contact_->seed.position.y,
+          position.z - launch_support_contact_->seed.position.z,
+      };
+      const double support_axial_departure_m = support_delta.x * support_axis.x +
+                                               support_delta.y * support_axis.y +
+                                               support_delta.z * support_axis.z;
+      if (without_support.accepted() &&
+          support_axial_departure_m > occupancy->bounds().resolution_m) {
+        RCLCPP_INFO(get_logger(),
+                    "LAUNCH_SUPPORT_CONTACT state=released revision=%" PRIu64
+                    " axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
+                    raw_world.version.revision, support_axial_departure_m, position.x,
+                    position.y, position.z);
+        launch_support_contact_.reset();
+      }
     }
   }
   const LaunchSupportContact3D* const launch_support_contact =
       launch_support_contact_ ? &*launch_support_contact_ : nullptr;
-  const SweptFootprintResult current_footprint = validateRawFootprintAt(
-      *occupancy, position, current_body_axis, physical_footprint_config_,
-      &free_space_seed, launch_support_contact);
+  const std::optional<SweptFootprintResult> current_footprint =
+      current_body_axis.has_value() && free_space_seed.has_value()
+          ? std::optional<SweptFootprintResult>{validateRawFootprintAt(
+                *occupancy, position, *current_body_axis, physical_footprint_config_,
+                &*free_space_seed, launch_support_contact)}
+          : std::nullopt;
   double support_axial_departure_m{0.0};
   double support_lateral_departure_m{0.0};
   bool failure_is_launch_support_cell{false};
-  if (launch_support_contact != nullptr) {
+  if (launch_support_contact != nullptr && current_footprint.has_value()) {
     const FootprintBodyAxis axis = launch_support_contact->seed.body_axis;
     const Point3 delta{position.x - launch_support_contact->seed.position.x,
                        position.y - launch_support_contact->seed.position.y,
@@ -164,44 +191,53 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     constexpr double kCellContainmentToleranceM{1.0e-6};
     failure_is_launch_support_cell = std::ranges::any_of(
         launch_support_contact->contact_cells, [&](const AxisAlignedBox3D& cell) {
-          return current_footprint.failure_point.x >=
+          return current_footprint->failure_point.x >=
                      cell.minimum.x - kCellContainmentToleranceM &&
-                 current_footprint.failure_point.x <=
+                 current_footprint->failure_point.x <=
                      cell.maximum.x + kCellContainmentToleranceM &&
-                 current_footprint.failure_point.y >=
+                 current_footprint->failure_point.y >=
                      cell.minimum.y - kCellContainmentToleranceM &&
-                 current_footprint.failure_point.y <=
+                 current_footprint->failure_point.y <=
                      cell.maximum.y + kCellContainmentToleranceM &&
-                 current_footprint.failure_point.z >=
+                 current_footprint->failure_point.z >=
                      cell.minimum.z - kCellContainmentToleranceM &&
-                 current_footprint.failure_point.z <=
+                 current_footprint->failure_point.z <=
                      cell.maximum.z + kCellContainmentToleranceM;
         });
   }
-  RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 1000,
-      "OBSERVED_FOOTPRINT_READINESS revision=%" PRIu64
-      " status=%s position=(%.3f,%.3f,%.3f) failure_point=(%.3f,%.3f,%.3f)"
-      " launch_support_active=%s support_failure_cell=%s"
-      " support_axial_departure_m=%.3f support_lateral_departure_m=%.3f"
-      " support_maximum_lateral_departure_m=%.3f"
-      " support_minimum_axial_departure_m=%.3f"
-      " support_maximum_axial_settling_m=%.3f",
-      raw_world.version.revision, sweptFootprintStatusName(current_footprint.status),
-      position.x, position.y, position.z, current_footprint.failure_point.x,
-      current_footprint.failure_point.y, current_footprint.failure_point.z,
-      launch_support_contact != nullptr ? "true" : "false",
-      failure_is_launch_support_cell ? "true" : "false", support_axial_departure_m,
-      support_lateral_departure_m,
-      launch_support_contact != nullptr
-          ? launch_support_contact->maximum_lateral_departure_m
-          : 0.0,
-      launch_support_contact != nullptr
-          ? launch_support_contact->minimum_axial_departure_m
-          : 0.0,
-      launch_support_contact != nullptr
-          ? launch_support_contact->maximum_axial_settling_m
-          : 0.0);
+  if (current_footprint.has_value()) {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "OBSERVED_FOOTPRINT_READINESS revision=%" PRIu64
+        " status=%s position=(%.3f,%.3f,%.3f) failure_point=(%.3f,%.3f,%.3f)"
+        " launch_support_active=%s support_failure_cell=%s"
+        " support_axial_departure_m=%.3f support_lateral_departure_m=%.3f"
+        " support_maximum_lateral_departure_m=%.3f"
+        " support_minimum_axial_departure_m=%.3f"
+        " support_maximum_axial_settling_m=%.3f",
+        raw_world.version.revision, sweptFootprintStatusName(current_footprint->status),
+        position.x, position.y, position.z, current_footprint->failure_point.x,
+        current_footprint->failure_point.y, current_footprint->failure_point.z,
+        launch_support_contact != nullptr ? "true" : "false",
+        failure_is_launch_support_cell ? "true" : "false", support_axial_departure_m,
+        support_lateral_departure_m,
+        launch_support_contact != nullptr
+            ? launch_support_contact->maximum_lateral_departure_m
+            : 0.0,
+        launch_support_contact != nullptr
+            ? launch_support_contact->minimum_axial_departure_m
+            : 0.0,
+        launch_support_contact != nullptr
+            ? launch_support_contact->maximum_axial_settling_m
+            : 0.0);
+  } else {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "OBSERVED_FOOTPRINT_READINESS revision=%" PRIu64
+                         " status=body_axis_unavailable position=(%.3f,%.3f,%.3f)"
+                         " proprioceptive_free_space=false",
+                         raw_world.version.revision, position.x, position.y,
+                         position.z);
+  }
   GridBounds3D local_bounds;
   bool recenter = true;
   if (active_prepared && active_prepared->distances_m &&
@@ -226,13 +262,25 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   const std::uint64_t local_fingerprint =
       observedOccupancyFingerprint(*occupancy, local_bounds);
   const bool launch_support_resolution_pending = !launch_support_evaluated_;
+  const bool free_space_seed_unchanged =
+      active_prepared &&
+      active_prepared->proprioceptive_free_space_seed.has_value() ==
+          free_space_seed.has_value() &&
+      (!free_space_seed.has_value() ||
+       sameProprioceptiveFreeSpaceSeed3D(
+           *active_prepared->proprioceptive_free_space_seed, *free_space_seed));
   const bool launch_support_unchanged =
       active_prepared &&
       active_prepared->launch_support_contact.has_value() ==
-          (launch_support_contact != nullptr) &&
+          launch_support_contact_.has_value() &&
+      (!launch_support_contact_.has_value() ||
+       sameLaunchSupportContact3D(*active_prepared->launch_support_contact,
+                                  *launch_support_contact_)) &&
       active_prepared->launch_support_resolution_pending ==
           launch_support_resolution_pending;
-  if (active_prepared && !launch_support_unchanged) {
+  const bool execution_evidence_unchanged =
+      free_space_seed_unchanged && launch_support_unchanged;
+  if (active_prepared && !execution_evidence_unchanged) {
     {
       const std::scoped_lock lock{esdf_state_mutex_};
       prepared_esdf_.reset();
@@ -243,16 +291,17 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     }
     active_prepared.reset();
     RCLCPP_INFO(get_logger(),
-                "LAUNCH_SUPPORT_WORLD_INVALIDATED raw_revision=%" PRIu64
-                " support_active=%s resolution_pending=%s",
+                "EXECUTION_EVIDENCE_WORLD_INVALIDATED raw_revision=%" PRIu64
+                " free_space_seed=%s support_active=%s resolution_pending=%s",
                 raw_world.version.revision,
+                free_space_seed.has_value() ? "true" : "false",
                 launch_support_contact != nullptr ? "true" : "false",
                 launch_support_resolution_pending ? "true" : "false");
   }
   const bool local_occupancy_unchanged =
       active_prepared && active_prepared->distances_m && !recenter &&
       active_prepared->source_occupied_fingerprint == local_fingerprint &&
-      launch_support_unchanged;
+      execution_evidence_unchanged;
   const auto build_started_at = std::chrono::steady_clock::now();
   const bool first_build =
       no_static_esdf_last_build_time_ == std::chrono::steady_clock::time_point{};
@@ -291,10 +340,26 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     return retry_not_before;
   }
 
+  const std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner =
+      execution_owner->deriveRouteEvidence(free_space_seed, launch_support_contact_);
+  if (!observed_raw_world_owner ||
+      !execution_owner->sharesObservationOwner(*observed_raw_world_owner) ||
+      std::addressof(observed_raw_world_owner->occupancy()) != occupancy.get() ||
+      observed_raw_world_owner->occupiedSnapshot() !=
+          execution_owner->occupiedSnapshot()) {
+    RCLCPP_ERROR(get_logger(),
+                 "PRODUCTION_MPPI_ESDF3D_ONLINE rejected revision=%" PRIu64
+                 " reason=route_evidence_derivation_failed",
+                 raw_world.version.revision);
+    return std::nullopt;
+  }
+
   ObservedEsdf3D field = buildObservedEsdf3D(
       *occupancy, local_bounds,
       static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
-      planning_worker_pool_.get(), &free_space_seed, launch_support_contact);
+      planning_worker_pool_.get(),
+      free_space_seed.has_value() ? std::addressof(*free_space_seed) : nullptr,
+      launch_support_contact);
   const mppi::EsdfUploadResult upload = engine_->updateEsdf(
       mppi::EsdfSnapshot{field.grid, field.distances_m, field.occupancy_fingerprint});
   if (!upload.accepted) {
@@ -324,6 +389,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   world_update.grid = field.grid;
   world_update.distances_m = host_distances;
   world_update.observed_occupancy = occupancy;
+  world_update.observed_raw_world_owner = observed_raw_world_owner;
   world_update.proprioceptive_free_space_seed = free_space_seed;
   world_update.launch_support_contact = launch_support_contact_;
   world_update.launch_support_resolution_pending = launch_support_resolution_pending;

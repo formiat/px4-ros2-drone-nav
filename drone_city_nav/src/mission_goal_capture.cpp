@@ -30,7 +30,7 @@ MissionGoalCaptureResult
 MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation) {
   MissionGoalCaptureResult result;
   if (!finiteMission(observation.mission_goal) || !std::isfinite(observation.state.x) ||
-      !std::isfinite(observation.state.y)) {
+      !std::isfinite(observation.state.y) || !std::isfinite(observation.state.z)) {
     return result;
   }
   if (!mission_initialized_ || !sameMission(mission_goal_, observation.mission_goal)) {
@@ -39,16 +39,21 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
     latched_ = false;
   }
 
-  result.horizontal_distance_m =
-      std::hypot(static_cast<double>(observation.state.x) - mission_goal_.x,
-                 static_cast<double>(observation.state.y) - mission_goal_.y);
+  result.distance_m =
+      distance3D(Point3{observation.state.x, observation.state.y, observation.state.z},
+                 mission_goal_);
   if (!latched_ && observation.terminal_route_available &&
-      result.horizontal_distance_m <= config_.capture_radius_m) {
+      result.distance_m <= config_.capture_radius_m) {
     latched_ = true;
     result.newly_latched = true;
   }
   result.latched = latched_;
   return result;
+}
+
+bool MissionGoalCaptureLatch::latchedFor(const Point3& mission_goal) const noexcept {
+  return mission_initialized_ && latched_ && finiteMission(mission_goal) &&
+         sameMission(mission_goal_, mission_goal);
 }
 
 } // namespace drone_city_nav

@@ -59,10 +59,17 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
     def test_execution_validates_latest_reconstructed_raw_world_independently(
         self,
     ) -> None:
-        inputs = (PACKAGE / "src/production_mppi_node_inputs.cpp").read_text()
-        execution = (PACKAGE / "src/production_mppi_node_execution.cpp").read_text()
+        raw_input = (PACKAGE / "src/production_mppi_node_raw_input.cpp").read_text()
+        execution = "\n".join(
+            (PACKAGE / "src" / name).read_text()
+            for name in (
+                "production_mppi_node_execution.cpp",
+                "production_mppi_node_execution_publication.cpp",
+                "production_mppi_node_execution_retention.cpp",
+            )
+        )
 
-        self.assertIn("latest_raw_world_.store", inputs)
+        self.assertIn("latest_raw_world_.store", raw_input)
         self.assertIn("latest_raw_world_.load", execution)
         self.assertIn("latest_raw_world->occupancy.get()", execution)
         self.assertIn("latest_raw_occupancy", execution)

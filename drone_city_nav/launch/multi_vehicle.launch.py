@@ -478,6 +478,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "minimum_target_z_m": navigation["minimum_target_z_m"],
                     "maximum_target_z_m": navigation["maximum_target_z_m"],
                     "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
+                    "px4_vehicle_status_topic": f"{px4}/out/vehicle_status_v1",
                     "px4_vehicle_land_detected_topic": (
                         f"{px4}/out/vehicle_land_detected"
                     ),
@@ -501,6 +502,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "obstacle_memory_status_topic": memory_status,
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",
                     "execution_horizon_topic": f"{prefix}/mppi/execution_horizon",
+                    "mission_waypoint_acknowledgement_topic": (
+                        f"{prefix}/mission_waypoint_acknowledgement"
+                    ),
                     "status_topic": f"{prefix}/mppi/status",
                     "world_readiness_topic": f"{prefix}/mppi/world_ready",
                     "path_topic": path_topic,

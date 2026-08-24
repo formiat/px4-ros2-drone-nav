@@ -4,13 +4,18 @@
 #include "drone_city_nav/cooperative_space_time.hpp"
 #include "drone_city_nav/cooperative_traffic.hpp"
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
+#include "drone_city_nav/execution_horizon_admission.hpp"
+#include "drone_city_nav/execution_horizon_contract_ros.hpp"
+#include "drone_city_nav/execution_horizon_witness.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
 #include "drone_city_nav/msg/cooperative_passage_intent.hpp"
+#include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -23,6 +28,7 @@
 #include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -37,8 +43,30 @@ namespace {
   return Vec3{value.x, value.y, value.z};
 }
 
-[[nodiscard]] std::int64_t secondsToNanoseconds(const double seconds) noexcept {
-  return static_cast<std::int64_t>(std::llround(seconds * 1.0e9));
+[[nodiscard]] std::int64_t durationNanoseconds(const double seconds,
+                                               const std::string_view parameter_name) {
+  const long double nanoseconds = static_cast<long double>(seconds) * 1'000'000'000.0L;
+  const long double first_unrepresentable_rounding_input =
+      static_cast<long double>(std::numeric_limits<std::int64_t>::max()) + 0.5L;
+  if (!std::isfinite(seconds) || !(seconds > 0.0) ||
+      nanoseconds >= first_unrepresentable_rounding_input) {
+    throw std::invalid_argument{std::string{parameter_name} +
+                                " must be finite, positive, and representable"};
+  }
+  return static_cast<std::int64_t>(std::llround(nanoseconds));
+}
+
+[[nodiscard]] std::optional<std::int64_t>
+addCanonicalTime(const std::int64_t base_ns, const std::int64_t duration_ns) noexcept {
+  constexpr std::int64_t kMaximumCanonicalTimeNs =
+      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()) *
+          1'000'000'000LL +
+      999'999'999LL;
+  if (base_ns <= 0 || duration_ns <= 0 || duration_ns > kMaximumCanonicalTimeNs ||
+      base_ns > kMaximumCanonicalTimeNs - duration_ns) {
+    return std::nullopt;
+  }
+  return base_ns + duration_ns;
 }
 
 } // namespace
@@ -52,6 +80,10 @@ public:
         publication_rate_hz_{
             declare_parameter<double>("intent_publication_rate_hz", 20.0)},
         maximum_input_age_s_{declare_parameter<double>("maximum_input_age_s", 0.5)},
+        maximum_offboard_feedback_age_s_{
+            declare_parameter<double>("maximum_offboard_feedback_age_s", 1.0)},
+        require_mission_start_signal_{
+            declare_parameter<bool>("require_mission_start_signal", false)},
         maximum_intent_horizon_s_{
             declare_parameter<double>("maximum_intent_horizon_s", 5.0)},
         command_validity_s_{declare_parameter<double>("command_validity_s", 0.25)},
@@ -80,11 +112,27 @@ public:
                 declare_parameter<double>("release_confirmation_s", 0.5),
         }} {
     if (vehicle_id_.empty() || frame_id_.empty() || !(publication_rate_hz_ > 0.0) ||
-        !(maximum_input_age_s_ > 0.0) || !(maximum_intent_horizon_s_ > 0.0) ||
-        !(command_validity_s_ > 0.0) || !(footprint_radius_m_ > 0.0) ||
-        !(footprint_lower_extent_m_ >= 0.0) || !(footprint_upper_extent_m_ >= 0.0)) {
+        !std::isfinite(publication_rate_hz_) || !(maximum_input_age_s_ > 0.0) ||
+        !std::isfinite(maximum_input_age_s_) ||
+        !(maximum_offboard_feedback_age_s_ > 0.0) ||
+        !std::isfinite(maximum_offboard_feedback_age_s_) ||
+        !(maximum_intent_horizon_s_ > 0.0) ||
+        !std::isfinite(maximum_intent_horizon_s_) || !(command_validity_s_ > 0.0) ||
+        !std::isfinite(command_validity_s_) || !(footprint_radius_m_ > 0.0) ||
+        !std::isfinite(footprint_radius_m_) || !(footprint_lower_extent_m_ >= 0.0) ||
+        !std::isfinite(footprint_lower_extent_m_) ||
+        !(footprint_upper_extent_m_ >= 0.0) ||
+        !std::isfinite(footprint_upper_extent_m_)) {
       throw std::invalid_argument{"invalid cooperative traffic agent configuration"};
     }
+    maximum_input_age_ns_ =
+        durationNanoseconds(maximum_input_age_s_, "maximum_input_age_s");
+    maximum_offboard_feedback_age_ns_ = durationNanoseconds(
+        maximum_offboard_feedback_age_s_, "maximum_offboard_feedback_age_s");
+    maximum_intent_horizon_ns_ =
+        durationNanoseconds(maximum_intent_horizon_s_, "maximum_intent_horizon_s");
+    command_validity_ns_ =
+        durationNanoseconds(command_validity_s_, "command_validity_s");
     passage_config_.reservation_time_margin_s =
         declare_parameter<double>("passage_reservation_time_margin_s", 0.5);
     passage_config_.same_path_entry_headway_s =
@@ -140,8 +188,23 @@ public:
         declare_parameter<std::string>("execution_horizon_topic",
                                        "/vehicles/civilian_0/mppi/execution_horizon"),
         horizon_qos, [this](const msg::MppiTrajectoryHorizon::SharedPtr message) {
-          execution_horizon_ = *message;
-          execution_horizon_receive_ns_ = now().nanoseconds();
+          onExecutionHorizon(*message);
+        });
+    control_feedback_sub_ = create_subscription<msg::MppiControlFeedback>(
+        declare_parameter<std::string>("applied_control_feedback_topic",
+                                       "/vehicles/civilian_0/mppi/applied_control"),
+        rclcpp::QoS{10}.reliable(),
+        [this](const msg::MppiControlFeedback::SharedPtr message) {
+          onControlFeedback(*message);
+        });
+    mission_start_sub_ = create_subscription<std_msgs::msg::Bool>(
+        declare_parameter<std::string>("mission_start_topic",
+                                       "/drone_city_nav/mission_start"),
+        rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const std_msgs::msg::Bool::SharedPtr start) {
+          // Mission start is a one-way authority transition. A later false
+          // replay must never re-enable the weaker pre-start receipt rule.
+          mission_started_ = mission_started_ || start->data;
         });
     passage_sub_ = create_subscription<msg::CooperativePassageIntent>(
         declare_parameter<std::string>(
@@ -181,10 +244,145 @@ public:
   }
 
 private:
+  void onExecutionHorizon(const msg::MppiTrajectoryHorizon& horizon) {
+    const std::int64_t now_ns = now().nanoseconds();
+    const ExecutionHorizonAdmissionCandidate candidate{
+        .producer_instance_id = horizon.producer_instance_id,
+        .sequence = horizon.sequence,
+        .source_stamp_ns = cooperativeTimeNanoseconds(horizon.header.stamp),
+        .valid_from_ns = cooperativeTimeNanoseconds(horizon.valid_from),
+        .content_fingerprint = executionHorizonContentFingerprint(horizon),
+    };
+    const ExecutionHorizonPayloadStatus payload_status =
+        assessExecutionHorizonPayload(horizon, ExecutionHorizonPayloadValidationConfig{
+                                                   .expected_frame_id = frame_id_,
+                                               });
+    const bool revoked =
+        horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED;
+    const bool expired =
+        !revoked && now_ns >= executionHorizonTimeNanoseconds(horizon.valid_until);
+    const bool payload_admissible =
+        payload_status == ExecutionHorizonPayloadStatus::kValid && !expired;
+    const ExecutionHorizonAdmissionResult admission = admitExecutionHorizonIdentity(
+        horizon_admission_, candidate, payload_admissible);
+    if (admission.state_advanced) {
+      horizon_admission_ = admission.next_state;
+    }
+    if (admission.revoke) {
+      execution_horizon_.reset();
+      execution_horizon_receive_ns_ = 0;
+    }
+    if (admission.replay) {
+      return;
+    }
+    if (!admission.accept_identity &&
+        (!candidate.valid() || payload_admissible || admission.stale ||
+         admission.conflict || admission.retired_capacity_exhausted ||
+         admission.prospective_capacity_exhausted)) {
+      const char* const reason = admission.conflict ? "identity_content_conflict"
+                                 : admission.stale  ? "stale_identity"
+                                 : admission.retired_capacity_exhausted
+                                     ? "retired_identity_capacity_exhausted"
+                                 : admission.prospective_capacity_exhausted
+                                     ? "prospective_identity_capacity_exhausted"
+                                     : "invalid_identity";
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "COOPERATIVE_HORIZON_REJECTED vehicle_id='%s' producer=%" PRIu64
+          " sequence=%" PRIu64 " current_producer=%" PRIu64 " current_sequence=%" PRIu64
+          " reason=%s",
+          vehicle_id_.c_str(), horizon.producer_instance_id, horizon.sequence,
+          horizon_admission_.current_producer_instance_id,
+          horizon_admission_.current_sequence, reason);
+      return;
+    }
+    if (payload_status != ExecutionHorizonPayloadStatus::kValid || expired) {
+      const std::string_view rejection_reason =
+          payload_status != ExecutionHorizonPayloadStatus::kValid
+              ? executionHorizonPayloadStatusName(payload_status)
+              : std::string_view{"expired_validity_window"};
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "COOPERATIVE_HORIZON_REJECTED vehicle_id='%s' producer=%" PRIu64
+          " sequence=%" PRIu64 " reason=%.*s",
+          vehicle_id_.c_str(), horizon.producer_instance_id, horizon.sequence,
+          static_cast<int>(rejection_reason.size()), rejection_reason.data());
+      return;
+    }
+    if (!admission.payload_installable) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "COOPERATIVE_HORIZON_REJECTED vehicle_id='%s' producer=%" PRIu64
+          " sequence=%" PRIu64 " reason=nonadvancing_producer_timestamps",
+          vehicle_id_.c_str(), horizon.producer_instance_id, horizon.sequence);
+      return;
+    }
+    if (revoked) {
+      execution_horizon_.reset();
+      execution_horizon_receive_ns_ = 0;
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "COOPERATIVE_HORIZON_REVOKED vehicle_id='%s' producer=%" PRIu64
+          " sequence=%" PRIu64,
+          vehicle_id_.c_str(), horizon.producer_instance_id, horizon.sequence);
+      return;
+    }
+
+    execution_horizon_ = horizon;
+    execution_horizon_receive_ns_ = now().nanoseconds();
+  }
+
+  void onControlFeedback(const msg::MppiControlFeedback& feedback) {
+    const std::int64_t receive_stamp_ns = now().nanoseconds();
+    const ExecutionControlFeedbackAssessment assessment =
+        assessExecutionControlFeedback(feedback, frame_id_, receive_stamp_ns);
+    if (!assessment.valid()) {
+      const ExecutionHorizonWitnessAdmissionResult malformed =
+          revokeMalformedExecutionHorizonFeedback(
+              horizon_witness_state_, assessment.candidate, receive_stamp_ns);
+      if (malformed.state_advanced) {
+        horizon_witness_state_ = malformed.next_state;
+      }
+      const std::string_view reason =
+          executionControlFeedbackStatusName(assessment.status);
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "COOPERATIVE_CONTROL_FEEDBACK_REJECTED vehicle_id='%s' reason=%.*s",
+          vehicle_id_.c_str(), static_cast<int>(reason.size()), reason.data());
+      return;
+    }
+    const ExecutionHorizonWitnessAdmissionResult admission =
+        admitExecutionHorizonFeedbackPayload(horizon_witness_state_,
+                                             assessment.candidate, assessment.valid());
+    if (!admission.accept) {
+      if (admission.state_advanced) {
+        horizon_witness_state_ = admission.next_state;
+      }
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "COOPERATIVE_CONTROL_FEEDBACK_REJECTED vehicle_id='%s' "
+                           "reason=%s",
+                           vehicle_id_.c_str(),
+                           admission.conflict              ? "identity_conflict"
+                           : admission.replay              ? "replay"
+                           : admission.stale               ? "stale"
+                           : admission.non_current_session ? "non_current_session"
+                                                           : "invalid_admission");
+      return;
+    }
+    horizon_witness_state_ = admission.next_state;
+    if (admission.session_transitioned &&
+        (!execution_horizon_.has_value() ||
+         execution_horizon_->target_offboard_instance_id !=
+             horizon_witness_state_.offboard_session.current_producer_instance_id)) {
+      execution_horizon_.reset();
+      execution_horizon_receive_ns_ = 0;
+    }
+  }
+
   [[nodiscard]] bool inputFresh(const std::int64_t receive_ns,
                                 const std::int64_t now_ns) const noexcept {
     return receive_ns > 0 && now_ns >= receive_ns &&
-           now_ns - receive_ns <= secondsToNanoseconds(maximum_input_age_s_);
+           now_ns - receive_ns <= maximum_input_age_ns_;
   }
 
   [[nodiscard]] std::optional<CooperativeFlightIntentData>
@@ -219,11 +417,38 @@ private:
         cooperativeTimeNanoseconds(horizon.valid_until);
     const std::int64_t valid_until_ns =
         std::min(horizon_valid_until_ns,
-                 valid_from_ns + secondsToNanoseconds(maximum_intent_horizon_s_));
+                 addCanonicalTime(valid_from_ns, maximum_intent_horizon_ns_)
+                     .value_or(horizon_valid_until_ns));
     const bool stationary_hold =
         horizon.stationary_position_hold &&
         horizon.execution_mode ==
             msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD;
+    const ExecutionHorizonWitnessRequirement witness_requirement{
+        .target_offboard_instance_id = horizon.target_offboard_instance_id,
+        .horizon_producer_instance_id = horizon.producer_instance_id,
+        .horizon_sequence = horizon.sequence,
+        .valid_from_ns = valid_from_ns,
+        .valid_until_ns = horizon_valid_until_ns,
+        .execution_mode =
+            static_cast<ExecutionHorizonWitnessMode>(horizon.execution_mode),
+    };
+    const bool strict_witness =
+        executionHorizonWitnessFreshAt(horizon_witness_state_, witness_requirement,
+                                       now_ns, maximum_offboard_feedback_age_ns_);
+    const bool prestart_receipt =
+        require_mission_start_signal_ && !mission_started_ &&
+        horizon.execution_mode == msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+        executionHorizonReceiptFreshAt(horizon_witness_state_, witness_requirement,
+                                       now_ns, maximum_offboard_feedback_age_ns_);
+    if (!strict_witness && !prestart_receipt) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "COOPERATIVE_INTENT_UNAVAILABLE vehicle_id='%s' "
+                           "reason=horizon_not_executed producer=%" PRIu64
+                           " horizon=%" PRIu64 " target_offboard=%" PRIu64,
+                           vehicle_id_.c_str(), horizon.producer_instance_id,
+                           horizon.sequence, horizon.target_offboard_instance_id);
+      return std::nullopt;
+    }
     // An execution horizon is a time-indexed contract and remains current until
     // its own validity boundary. The planner intentionally does not republish an
     // unchanged finite path on every control tick.
@@ -272,8 +497,13 @@ private:
     intent.trajectory.reserve(horizon.points.size());
     std::int64_t previous_time_ns = 0;
     for (const msg::MppiHorizonPoint& point_message : horizon.points) {
+      if (point_message.time_from_start_ns < 0 ||
+          valid_from_ns > std::numeric_limits<std::int64_t>::max() -
+                              point_message.time_from_start_ns) {
+        continue;
+      }
       const std::int64_t sample_time_ns =
-          valid_from_ns + secondsToNanoseconds(point_message.time_from_start_s);
+          valid_from_ns + point_message.time_from_start_ns;
       if (sample_time_ns < valid_from_ns || sample_time_ns > valid_until_ns ||
           sample_time_ns <= previous_time_ns) {
         continue;
@@ -378,8 +608,15 @@ private:
     command.header.frame_id = frame_id_;
     command.vehicle_id = vehicle_id_;
     command.command_generation = ++command_generation_;
-    command.valid_until =
-        cooperativeTimeMessage(now_ns + secondsToNanoseconds(command_validity_s_));
+    const std::optional<std::int64_t> valid_until_ns =
+        addCanonicalTime(now_ns, command_validity_ns_);
+    if (!valid_until_ns.has_value()) {
+      RCLCPP_ERROR_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "COOPERATIVE_COMMAND rejected=true reason=unrepresentable_valid_until");
+      return;
+    }
+    command.valid_until = cooperativeTimeMessage(*valid_until_ns);
     command.avoidance_active = avoidance.active;
     command.preferred_maneuver = static_cast<std::uint8_t>(ownship.maneuver_state);
     command.preferred_acceleration_direction.x =
@@ -429,17 +666,25 @@ private:
   std::string frame_id_;
   double publication_rate_hz_{20.0};
   double maximum_input_age_s_{0.5};
+  double maximum_offboard_feedback_age_s_{1.0};
+  bool require_mission_start_signal_{false};
   double maximum_intent_horizon_s_{5.0};
   double command_validity_s_{0.25};
   double footprint_radius_m_{0.82};
   double footprint_lower_extent_m_{0.23};
   double footprint_upper_extent_m_{0.35};
+  std::int64_t maximum_input_age_ns_{500'000'000LL};
+  std::int64_t maximum_offboard_feedback_age_ns_{1'000'000'000LL};
+  std::int64_t maximum_intent_horizon_ns_{5'000'000'000LL};
+  std::int64_t command_validity_ns_{250'000'000LL};
   CooperativePeerStore peer_store_;
   CooperativeConflictLifecycle conflict_lifecycle_;
   CooperativePassageCoordinationConfig passage_config_{};
   CooperativeSpaceTimeConfig space_time_config_{};
   std::optional<msg::VehicleNavigationState> navigation_state_;
   std::optional<msg::MppiTrajectoryHorizon> execution_horizon_;
+  ExecutionHorizonAdmissionState horizon_admission_{};
+  ExecutionHorizonWitnessState horizon_witness_state_{};
   std::optional<CooperativePassageUse> passage_state_;
   std::int64_t navigation_state_receive_ns_{0};
   std::int64_t execution_horizon_receive_ns_{0};
@@ -451,9 +696,12 @@ private:
   std::optional<CooperativeManeuver> last_space_time_maneuver_;
   std::uint64_t last_space_time_conflict_generation_{0U};
   bool last_passage_yield_{false};
+  bool mission_started_{false};
   std::string last_primary_peer_id_;
   rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr state_sub_;
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
+  rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr control_feedback_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_start_sub_;
   rclcpp::Subscription<msg::CooperativePassageIntent>::SharedPtr passage_sub_;
   rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr intent_sub_;
   rclcpp::Publisher<msg::CooperativeFlightIntent>::SharedPtr intent_pub_;

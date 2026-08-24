@@ -48,6 +48,30 @@ TEST(OccupancyGrid3D, StoresSparseVoxelsAcrossChunks) {
   EXPECT_EQ(grid.fingerprint(), 42U);
 }
 
+TEST(OccupancyGrid3D, ContentFingerprintCacheTracksOnlyActualMutations) {
+  OccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 0.5, 40, 40, 40}, 42U};
+  EXPECT_FALSE(grid.cachedContentFingerprint().has_value());
+
+  const std::uint64_t empty_fingerprint = grid.contentFingerprint();
+  EXPECT_EQ(grid.cachedContentFingerprint(), empty_fingerprint);
+
+  grid.setOccupied({17, 18, 19});
+  EXPECT_FALSE(grid.cachedContentFingerprint().has_value());
+  const std::uint64_t occupied_fingerprint = grid.contentFingerprint();
+  EXPECT_NE(occupied_fingerprint, empty_fingerprint);
+
+  grid.setOccupied({17, 18, 19});
+  EXPECT_EQ(grid.cachedContentFingerprint(), occupied_fingerprint);
+  grid.clearOccupied({1, 1, 1});
+  EXPECT_EQ(grid.cachedContentFingerprint(), occupied_fingerprint);
+
+  grid.clearOccupied({17, 18, 19});
+  EXPECT_FALSE(grid.cachedContentFingerprint().has_value());
+  EXPECT_EQ(grid.contentFingerprint(), empty_fingerprint);
+  const OccupancyGrid3D copy = grid;
+  EXPECT_EQ(copy.cachedContentFingerprint(), empty_fingerprint);
+}
+
 TEST(OccupancyGrid3D, ConvertsWorldCoordinates) {
   OccupancyGrid3D grid{GridBounds3D{-1.0, -2.0, 3.0, 0.5, 4, 6, 8}};
   const std::optional<GridIndex3D> cell = grid.worldToCell({-0.74, -1.26, 4.26});

@@ -340,6 +340,11 @@ routeRiskTierAssignmentStatusName(RouteRiskTierAssignmentStatus status) noexcept
 projectOntoRoute3D(std::span<const RouteSample3D> route, const Point3& position,
                    double minimum_station_m = 0.0) noexcept;
 
+[[nodiscard]] RouteProjection3D
+projectOntoRoute3DWithinStationWindow(std::span<const RouteSample3D> route,
+                                      const Point3& position, double minimum_station_m,
+                                      double maximum_station_m) noexcept;
+
 [[nodiscard]] std::vector<ConstrainedRouteSpan>
 makeConstrainedRouteSpans(std::span<const RouteSample3D> route,
                           std::span<const SelectedPassageTraversal> traversals,
