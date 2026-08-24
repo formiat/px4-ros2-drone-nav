@@ -61,6 +61,7 @@
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
+#include "drone_city_nav/route_strategy_arbitrator_3d.hpp"
 #include "drone_city_nav/static_esdf_cache.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
@@ -492,6 +493,7 @@ private:
   void requestStaticRouteReplan(GlobalGuideReleaseReason reason,
                                 std::uint64_t guide_generation);
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
+  void configureRouteStrategyArbitration();
   static void
   bindStaticRouteRequestToExecution(ProductionMppiPreparedEsdf& request,
                                     const CertifiedRouteSuffix3D& active_route,
@@ -797,6 +799,7 @@ private:
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
   RouteProposalSelection3DConfig route_proposal_selection_3d_config_{};
+  RouteStrategyArbitrator3D route_strategy_arbitrator_3d_{};
   IncrementalTopologyGraph3DConfig topological_graph_3d_config_{};
   IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};

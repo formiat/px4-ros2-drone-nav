@@ -58,11 +58,6 @@ rejectedStatus(const SweptFootprintResult& result,
   return SegmentEvidenceStatus3D::kValid;
 }
 
-[[nodiscard]] bool eligible(const RouteProposal3D& proposal) noexcept {
-  return proposal.intent.valid && proposal.activation_eligible &&
-         proposal.evidence.physical_executable;
-}
-
 [[nodiscard]] double finiteCost(const double value) noexcept {
   return std::isfinite(value) ? value : std::numeric_limits<double>::infinity();
 }
@@ -116,6 +111,51 @@ std::uint64_t makeRouteIntentId3D(const RouteIntentSource3D source,
   hashPoint(hash, mission_target);
   hashPoint(hash, intent_target);
   return hash == 0U ? 1U : hash;
+}
+
+bool RouteStrategyReturnLineage3D::valid() const noexcept {
+  return id != 0U && strategic_plan_id != 0U && topology_lineage_id != 0U &&
+         planned_on_revision != 0U && return_anchor_identity != 0U &&
+         excursion_target_identity != 0U;
+}
+
+bool RouteStrategyReturnLineage3D::validForMission(
+    const Point3& mission_target) const noexcept {
+  if (!valid()) {
+    return false;
+  }
+  return makeRouteStrategyReturnLineage3D(strategic_plan_id, topology_lineage_id,
+                                          planned_on_revision, return_anchor_identity,
+                                          excursion_target_identity, mission_target)
+             .id == id;
+}
+
+RouteStrategyReturnLineage3D makeRouteStrategyReturnLineage3D(
+    const std::uint64_t strategic_plan_id, const std::uint64_t topology_lineage_id,
+    const std::uint64_t planned_on_revision, const std::uint64_t return_anchor_identity,
+    const std::uint64_t excursion_target_identity,
+    const Point3& mission_target) noexcept {
+  if (strategic_plan_id == 0U || topology_lineage_id == 0U ||
+      planned_on_revision == 0U || return_anchor_identity == 0U ||
+      excursion_target_identity == 0U || !std::isfinite(mission_target.x) ||
+      !std::isfinite(mission_target.y) || !std::isfinite(mission_target.z)) {
+    return {};
+  }
+  std::uint64_t hash{kFnvOffset};
+  hashValue(hash, strategic_plan_id);
+  hashValue(hash, topology_lineage_id);
+  hashValue(hash, planned_on_revision);
+  hashValue(hash, return_anchor_identity);
+  hashValue(hash, excursion_target_identity);
+  hashPoint(hash, mission_target);
+  return RouteStrategyReturnLineage3D{
+      .id = hash == 0U ? 1U : hash,
+      .strategic_plan_id = strategic_plan_id,
+      .topology_lineage_id = topology_lineage_id,
+      .planned_on_revision = planned_on_revision,
+      .return_anchor_identity = return_anchor_identity,
+      .excursion_target_identity = excursion_target_identity,
+  };
 }
 
 SegmentEvidence3D evaluateSegmentEvidence3D(
@@ -208,10 +248,16 @@ bool routeProposalSelection3DConfigIsValid(
          config.productive_direct_minimum_progress_ratio <= 1.0;
 }
 
+bool routeProposalEligible3D(const RouteProposal3D& proposal) noexcept {
+  return proposal.intent.valid && proposal.activation_eligible &&
+         proposal.evidence.physical_executable;
+}
+
 bool isProductiveDirectTransit3D(
     const RouteProposal3D& proposal,
     const RouteProposalSelection3DConfig& config) noexcept {
-  if (!routeProposalSelection3DConfigIsValid(config) || !eligible(proposal) ||
+  if (!routeProposalSelection3DConfigIsValid(config) ||
+      !routeProposalEligible3D(proposal) ||
       proposal.intent.source != RouteIntentSource3D::kDirect ||
       proposal.intent.purpose != RouteIntentPurpose3D::kMissionTransit ||
       !(proposal.evidence.route_length_m > 0.0) ||
@@ -237,8 +283,8 @@ bool isStrategicMissionContinuation3D(const RouteProposal3D& proposal) noexcept 
 bool betterRouteProposal3D(const RouteProposal3D& candidate,
                            const RouteProposal3D& current,
                            const RouteProposalSelection3DConfig& config) noexcept {
-  if (eligible(candidate) != eligible(current)) {
-    return eligible(candidate);
+  if (routeProposalEligible3D(candidate) != routeProposalEligible3D(current)) {
+    return routeProposalEligible3D(candidate);
   }
   return proposalRank(candidate, config) < proposalRank(current, config);
 }
@@ -253,7 +299,7 @@ selectRouteProposal3D(const std::span<const RouteProposal3D> proposals,
       .eligible_candidates = 0U,
   };
   for (std::size_t index = 0U; index < proposals.size(); ++index) {
-    if (!eligible(proposals[index])) {
+    if (!routeProposalEligible3D(proposals[index])) {
       continue;
     }
     ++result.eligible_candidates;
@@ -313,6 +359,25 @@ const char* routeIntentPurpose3DName(const RouteIntentPurpose3D purpose) noexcep
   return "unknown";
 }
 
+const char*
+routeStrategyLeaseReason3DName(const RouteStrategyLeaseReason3D reason) noexcept {
+  switch (reason) {
+    case RouteStrategyLeaseReason3D::kNone:
+      return "none";
+    case RouteStrategyLeaseReason3D::kMissionTopologyContinuation:
+      return "mission_topology_continuation";
+    case RouteStrategyLeaseReason3D::kObservationFrontier:
+      return "observation_frontier";
+    case RouteStrategyLeaseReason3D::kBacktrackConfirmedTerminal:
+      return "backtrack_confirmed_terminal";
+    case RouteStrategyLeaseReason3D::kBacktrackNoReachableFrontier:
+      return "backtrack_no_reachable_frontier";
+    case RouteStrategyLeaseReason3D::kBacktrackAllReachableBranchesExplored:
+      return "backtrack_all_reachable_branches_explored";
+  }
+  return "unknown";
+}
+
 const char* segmentEvidenceStatus3DName(const SegmentEvidenceStatus3D status) noexcept {
   switch (status) {
     case SegmentEvidenceStatus3D::kValid:
@@ -356,6 +421,14 @@ const char* routeProposalSelectionReason3DName(
       return "strategic_continuation";
     case RouteProposalSelectionReason3D::kRouteQuality:
       return "route_quality";
+    case RouteProposalSelectionReason3D::kActiveStrategyLease:
+      return "active_strategy_lease";
+    case RouteProposalSelectionReason3D::kStrategyLeaseHysteresis:
+      return "strategy_lease_hysteresis";
+    case RouteProposalSelectionReason3D::kStrategyReturnRequired:
+      return "strategy_return_required";
+    case RouteProposalSelectionReason3D::kInvalidStrategyLineageFallback:
+      return "invalid_strategy_lineage_fallback";
   }
   return "unknown";
 }

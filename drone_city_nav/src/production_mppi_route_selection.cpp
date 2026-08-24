@@ -48,6 +48,29 @@ intentTargetIdentity(const ProductionIncrementalTopologySearch3D& topology) noex
                                          : topology.plan.target_node.value;
 }
 
+[[nodiscard]] RouteStrategyLeaseReason3D
+strategyLeaseReason(const IncrementalTopologicalPlan3D& plan) noexcept {
+  switch (plan.purpose) {
+    case IncrementalTopologicalRoutePurpose3D::kMissionTransit:
+      return RouteStrategyLeaseReason3D::kMissionTopologyContinuation;
+    case IncrementalTopologicalRoutePurpose3D::kObservationFrontier:
+      return RouteStrategyLeaseReason3D::kObservationFrontier;
+    case IncrementalTopologicalRoutePurpose3D::kTopologicalBacktrack:
+      switch (plan.backtrack_reason) {
+        case TopologicalBacktrackReason3D::kConfirmedTerminal:
+          return RouteStrategyLeaseReason3D::kBacktrackConfirmedTerminal;
+        case TopologicalBacktrackReason3D::kNoReachableFrontier:
+          return RouteStrategyLeaseReason3D::kBacktrackNoReachableFrontier;
+        case TopologicalBacktrackReason3D::kAllReachableBranchesExplored:
+          return RouteStrategyLeaseReason3D::kBacktrackAllReachableBranchesExplored;
+        case TopologicalBacktrackReason3D::kNone:
+          return RouteStrategyLeaseReason3D::kNone;
+      }
+      return RouteStrategyLeaseReason3D::kNone;
+  }
+  return RouteStrategyLeaseReason3D::kNone;
+}
+
 [[nodiscard]] SegmentEvidenceWorld3D
 evidenceWorld(const ProductionMppiPreparedEsdf& world,
               const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
@@ -250,16 +273,22 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     if (topology.directive) {
       const Lattice3DStrategicDirective directive = topology.directive->lattice;
       const Point3 target = intentTarget(topology, directive);
+      const std::uint64_t target_identity = intentTargetIdentity(topology);
       RouteIntent3D intent{
           .strategic_plan_id = topology.plan.strategic_plan_id,
           .planned_on_revision = world.revision,
           .source_graph_revision = topology.plan.planned_on_revision,
-          .target_identity = intentTargetIdentity(topology),
+          .target_identity = target_identity,
+          .return_lineage = makeRouteStrategyReturnLineage3D(
+              topology.plan.strategic_plan_id, topology.plan.topology_lineage_id,
+              topology.plan.planned_on_revision, topology.plan.start_node.value,
+              target_identity, mission_goal),
           .mission_target = mission_goal,
           .intent_target = target,
           .segment_target = directive.planning_goal,
           .source = RouteIntentSource3D::kTopology,
           .purpose = intentPurpose(directive.route_purpose),
+          .lease_reason = strategyLeaseReason(topology.plan),
           .graph_step_count = topology.plan.route_steps.size(),
           .strategic_continuation_available =
               topology.plan.guidance_points.size() >= 2U,

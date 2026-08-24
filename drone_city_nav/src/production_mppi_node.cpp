@@ -544,12 +544,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<bool>("require_known_free_space", false);
   lattice_3d_config_.require_known_free_space = require_known_free_space_for_goal_;
   mppi_config_.risk.require_known_free_space = require_known_free_space_for_goal_;
-  route_proposal_selection_3d_config_.productive_direct_minimum_mission_progress_m =
-      declare_parameter<double>(
-          "route_proposal_productive_direct_minimum_mission_progress_m", 2.0);
-  route_proposal_selection_3d_config_.productive_direct_minimum_progress_ratio =
-      declare_parameter<double>(
-          "route_proposal_productive_direct_minimum_progress_ratio", 0.15);
+  configureRouteStrategyArbitration();
   lattice_3d_config_.nominal_horizontal_speed_mps =
       speed_policy_config_.cruise_speed_mps;
   lattice_3d_config_.nominal_vertical_speed_mps =

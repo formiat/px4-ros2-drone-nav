@@ -27,17 +27,40 @@ enum class RouteIntentPurpose3D : std::uint8_t {
   kTopologicalBacktrack,
 };
 
+enum class RouteStrategyLeaseReason3D : std::uint8_t {
+  kNone,
+  kMissionTopologyContinuation,
+  kObservationFrontier,
+  kBacktrackConfirmedTerminal,
+  kBacktrackNoReachableFrontier,
+  kBacktrackAllReachableBranchesExplored,
+};
+
+struct RouteStrategyReturnLineage3D {
+  std::uint64_t id{0U};
+  std::uint64_t strategic_plan_id{0U};
+  std::uint64_t topology_lineage_id{0U};
+  std::uint64_t planned_on_revision{0U};
+  std::uint64_t return_anchor_identity{0U};
+  std::uint64_t excursion_target_identity{0U};
+
+  [[nodiscard]] bool valid() const noexcept;
+  [[nodiscard]] bool validForMission(const Point3& mission_target) const noexcept;
+};
+
 struct RouteIntent3D {
   std::uint64_t id{0U};
   std::uint64_t strategic_plan_id{0U};
   std::uint64_t planned_on_revision{0U};
   std::uint64_t source_graph_revision{0U};
   std::uint64_t target_identity{0U};
+  RouteStrategyReturnLineage3D return_lineage{};
   Point3 mission_target{};
   Point3 intent_target{};
   Point3 segment_target{};
   RouteIntentSource3D source{RouteIntentSource3D::kDirect};
   RouteIntentPurpose3D purpose{RouteIntentPurpose3D::kMissionTransit};
+  RouteStrategyLeaseReason3D lease_reason{RouteStrategyLeaseReason3D::kNone};
   std::size_t graph_step_count{0U};
   bool strategic_continuation_available{false};
   bool strategic_mission_continuation{false};
@@ -115,6 +138,10 @@ enum class RouteProposalSelectionReason3D : std::uint8_t {
   kProductiveDirectTransit,
   kStrategicContinuation,
   kRouteQuality,
+  kActiveStrategyLease,
+  kStrategyLeaseHysteresis,
+  kStrategyReturnRequired,
+  kInvalidStrategyLineageFallback,
 };
 
 struct RouteProposalSelection3D {
@@ -130,6 +157,11 @@ makeRouteIntentId3D(RouteIntentSource3D source, RouteIntentPurpose3D purpose,
                     const Point3& mission_target, const Point3& intent_target,
                     std::uint64_t target_identity = 0U) noexcept;
 
+[[nodiscard]] RouteStrategyReturnLineage3D makeRouteStrategyReturnLineage3D(
+    std::uint64_t strategic_plan_id, std::uint64_t topology_lineage_id,
+    std::uint64_t planned_on_revision, std::uint64_t return_anchor_identity,
+    std::uint64_t excursion_target_identity, const Point3& mission_target) noexcept;
+
 [[nodiscard]] SegmentEvidence3D evaluateSegmentEvidence3D(
     const RouteIntent3D& intent, std::span<const RouteSample3D> route,
     const Point3& search_start, bool planner_executable, bool reaches_segment_target,
@@ -138,6 +170,8 @@ makeRouteIntentId3D(RouteIntentSource3D source, RouteIntentPurpose3D purpose,
 
 [[nodiscard]] bool routeProposalSelection3DConfigIsValid(
     const RouteProposalSelection3DConfig& config) noexcept;
+
+[[nodiscard]] bool routeProposalEligible3D(const RouteProposal3D& proposal) noexcept;
 
 [[nodiscard]] bool
 isProductiveDirectTransit3D(const RouteProposal3D& proposal,
@@ -157,6 +191,8 @@ selectRouteProposal3D(std::span<const RouteProposal3D> proposals,
 [[nodiscard]] const char* routeIntentSource3DName(RouteIntentSource3D source) noexcept;
 [[nodiscard]] const char*
 routeIntentPurpose3DName(RouteIntentPurpose3D purpose) noexcept;
+[[nodiscard]] const char*
+routeStrategyLeaseReason3DName(RouteStrategyLeaseReason3D reason) noexcept;
 [[nodiscard]] const char*
 segmentEvidenceStatus3DName(SegmentEvidenceStatus3D status) noexcept;
 [[nodiscard]] const char*

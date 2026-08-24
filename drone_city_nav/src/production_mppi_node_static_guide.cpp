@@ -98,8 +98,21 @@ void ProductionMppiNode::processGuideSearch3D(
     });
   }
 
-  const RouteProposalSelection3D proposal_selection =
-      selectRouteProposal3D(final_proposals, route_proposal_selection_3d_config_);
+  const RouteStrategyArbitrationObservation3D strategy_observation{
+      .position = search_start,
+      .mission_target = mission_goal,
+      .world_revision = world.revision,
+      .active_intent = world.route_intent.valid
+                           ? std::optional<RouteIntent3D>{world.route_intent}
+                           : std::nullopt,
+      .active_intent_completed = active_route_completion.captured &&
+                                 world.route_intent.valid &&
+                                 world.route_intent.segment_reaches_intent_target,
+  };
+  const RouteStrategyArbitrationDecision3D strategy_decision =
+      route_strategy_arbitrator_3d_.evaluate(
+          final_proposals, route_proposal_selection_3d_config_, strategy_observation);
+  const RouteProposalSelection3D& proposal_selection = strategy_decision.selection;
   for (std::size_t index = 0U; index < final_proposals.size(); ++index) {
     const RouteProposal3D& proposal = final_proposals[index];
     const ProductionRouteActivationResult3D& activation = activations[index];
@@ -107,7 +120,8 @@ void ProductionMppiNode::processGuideSearch3D(
         get_logger(),
         "ROUTE_PROPOSAL3D stage=arbitrated revision=%" PRIu64
         " index=%zu selected=%s intent_id=%" PRIu64 " strategic_plan_id=%" PRIu64
-        " source=%s purpose=%s "
+        " source=%s purpose=%s lease_reason=%s return_lineage=%" PRIu64
+        " return_anchor=%" PRIu64 " "
         "physical=%s activation_eligible=%s validation=%.*s handoff=%s "
         "raw_connector_validated=%s raw_suffix_validated=%s "
         "route_length_m=%.2f mission_progress_m=%.2f objective=%.3f",
@@ -118,6 +132,9 @@ void ProductionMppiNode::processGuideSearch3D(
         proposal.intent.id, proposal.intent.strategic_plan_id,
         routeIntentSource3DName(proposal.intent.source),
         routeIntentPurpose3DName(proposal.intent.purpose),
+        routeStrategyLeaseReason3DName(proposal.intent.lease_reason),
+        proposal.intent.return_lineage.id,
+        proposal.intent.return_lineage.return_anchor_identity,
         proposal.evidence.physical_executable ? "true" : "false",
         proposal.activation_eligible ? "true" : "false",
         static_cast<int>(
@@ -203,6 +220,57 @@ void ProductionMppiNode::processGuideSearch3D(
   const bool observed_world_rebased = activation.observed_world_rebased;
   const bool certified_pending = activation.certified_pending;
   const mppi::StaticRouteHandoffResult& handoff = activation.handoff;
+
+  const bool strategy_outcome_recorded =
+      route_strategy_arbitrator_3d_.recordOutcome(strategy_decision, certified_pending);
+  const RouteStrategyArbitrationState3D& strategy_state =
+      route_strategy_arbitrator_3d_.state();
+  const RouteStrategyLease3D* const strategy_lease =
+      strategy_state.lease ? std::addressof(*strategy_state.lease) : nullptr;
+  const RetiredRouteStrategyLineage3D* const retired_lineage =
+      strategy_state.retired_lineage ? std::addressof(*strategy_state.retired_lineage)
+                                     : nullptr;
+  RCLCPP_INFO(
+      get_logger(),
+      "ROUTE_STRATEGY_ARBITRATION3D sequence=%" PRIu64
+      " action=%.*s selection_committed=%s outcome_recorded=%s "
+      "lease_id=%" PRIu64 " lease_kind=%.*s lease_reason=%s "
+      "lease_plan_id=%" PRIu64 " lease_target=%" PRIu64 " lease_return_lineage=%" PRIu64
+      " lease_budget_remaining_m=%.2f "
+      "lease_travelled_m=%.2f direct_advantage_confirmations=%zu "
+      "retired_kind=%.*s retired_target=%" PRIu64 " retired_return_lineage=%" PRIu64,
+      strategy_decision.sequence,
+      static_cast<int>(
+          routeStrategyArbitrationAction3DName(strategy_decision.action).size()),
+      routeStrategyArbitrationAction3DName(strategy_decision.action).data(),
+      certified_pending ? "true" : "false",
+      strategy_outcome_recorded ? "true" : "false",
+      strategy_lease != nullptr ? strategy_lease->lease_id : 0U,
+      static_cast<int>(routeStrategyKind3DName(strategy_lease != nullptr
+                                                   ? strategy_lease->kind
+                                                   : RouteStrategyKind3D::kNone)
+                           .size()),
+      routeStrategyKind3DName(strategy_lease != nullptr ? strategy_lease->kind
+                                                        : RouteStrategyKind3D::kNone)
+          .data(),
+      routeStrategyLeaseReason3DName(strategy_lease != nullptr
+                                         ? strategy_lease->reason
+                                         : RouteStrategyLeaseReason3D::kNone),
+      strategy_lease != nullptr ? strategy_lease->strategic_plan_id : 0U,
+      strategy_lease != nullptr ? strategy_lease->target_identity : 0U,
+      strategy_lease != nullptr ? strategy_lease->return_lineage.id : 0U,
+      strategy_lease != nullptr ? strategy_lease->remainingBudgetM() : 0.0,
+      strategy_lease != nullptr ? strategy_lease->travelled_m : 0.0,
+      strategy_lease != nullptr ? strategy_lease->direct_advantage_confirmations : 0U,
+      static_cast<int>(routeStrategyKind3DName(retired_lineage != nullptr
+                                                   ? retired_lineage->kind
+                                                   : RouteStrategyKind3D::kNone)
+                           .size()),
+      routeStrategyKind3DName(retired_lineage != nullptr ? retired_lineage->kind
+                                                         : RouteStrategyKind3D::kNone)
+          .data(),
+      retired_lineage != nullptr ? retired_lineage->target_identity : 0U,
+      retired_lineage != nullptr ? retired_lineage->return_lineage_id : 0U);
 
   if (certified_pending) {
     if (topology_route_used) {
