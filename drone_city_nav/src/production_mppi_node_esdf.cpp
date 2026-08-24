@@ -161,23 +161,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           navigationObjective();
       const StaticRouteRoiRefreshRequest roi_refresh =
           static_roi_refresh_lifecycle_.latest();
-      std::optional<ProductionMppiPreparedEsdf> active_prepared;
-      {
-        const std::scoped_lock lock{esdf_state_mutex_};
-        active_prepared = prepared_esdf_;
-      }
-      const bool roi_refresh_pending =
-          static_roi_refresh_lifecycle_.pending(roi_refresh);
-      bool proactive_roi_refresh =
-          roi_refresh_pending && active_prepared &&
-          active_prepared->global_guide_generation == roi_refresh.base_route_generation;
-      double static_build_ms = active_prepared ? active_prepared->build_ms : 0.0;
-      double static_x_pass_ms = active_prepared ? active_prepared->esdf_x_pass_ms : 0.0;
-      double static_y_pass_ms = active_prepared ? active_prepared->esdf_y_pass_ms : 0.0;
-      double static_z_pass_ms = active_prepared ? active_prepared->esdf_z_pass_ms : 0.0;
-      double static_finalize_ms =
-          active_prepared ? active_prepared->esdf_finalize_ms : 0.0;
-      if (roi_refresh_pending && !proactive_roi_refresh) {
+      const auto finish_roi_refresh = [this, &roi_refresh]() {
         static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
         if (roi_refresh.purpose ==
             StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
@@ -185,6 +169,29 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         } else {
           finishStaticRouteExtension(roi_refresh.base_route_generation);
         }
+      };
+      std::optional<ProductionMppiPreparedEsdf> active_prepared;
+      {
+        const std::scoped_lock lock{esdf_state_mutex_};
+        active_prepared = prepared_esdf_;
+      }
+      const bool roi_refresh_pending =
+          static_roi_refresh_lifecycle_.pending(roi_refresh);
+      const std::shared_ptr<const ExecutionRouteSnapshot3D> refresh_execution =
+          roi_refresh_pending ? execution_route_store_.snapshot() : nullptr;
+      const bool proactive_roi_refresh =
+          roi_refresh_pending && refresh_execution != nullptr &&
+          refresh_execution->route.has_value() &&
+          refresh_execution->route->identity.generation ==
+              roi_refresh.base_route_generation;
+      double static_build_ms = active_prepared ? active_prepared->build_ms : 0.0;
+      double static_x_pass_ms = active_prepared ? active_prepared->esdf_x_pass_ms : 0.0;
+      double static_y_pass_ms = active_prepared ? active_prepared->esdf_y_pass_ms : 0.0;
+      double static_z_pass_ms = active_prepared ? active_prepared->esdf_z_pass_ms : 0.0;
+      double static_finalize_ms =
+          active_prepared ? active_prepared->esdf_finalize_ms : 0.0;
+      if (roi_refresh_pending && !proactive_roi_refresh) {
+        finish_roi_refresh();
       }
       if (static_esdf_3d_ && static_esdf_uploaded_ && !proactive_roi_refresh &&
           active_prepared) {
@@ -204,13 +211,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         }
         if (!navigation.valid) {
           if (proactive_roi_refresh) {
-            static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
-            if (roi_refresh.purpose ==
-                StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
-              finishStaticRouteReplan(roi_refresh.base_route_generation, false);
-            } else {
-              finishStaticRouteExtension(roi_refresh.base_route_generation);
-            }
+            finish_roi_refresh();
           }
           completeStaticEsdfWork(false);
           continue;
@@ -304,29 +305,41 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       }
       if (!upload.accepted) {
         if (proactive_roi_refresh) {
-          static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
-          if (roi_refresh.purpose ==
-              StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
-            finishStaticRouteReplan(roi_refresh.base_route_generation, false);
-          } else {
-            finishStaticRouteExtension(roi_refresh.base_route_generation);
-          }
+          finish_roi_refresh();
         }
         completeStaticEsdfWork(false);
         continue;
       }
       static_esdf_uploaded_ = true;
-      if (proactive_roi_refresh) {
-        static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
-      }
       ProductionMppiNavigation activation_navigation;
       {
         const std::scoped_lock lock{input_mutex_};
         activation_navigation = navigation_;
       }
       if (!activation_navigation.valid) {
+        if (proactive_roi_refresh) {
+          finish_roi_refresh();
+        }
         completeStaticEsdfWork(false);
         continue;
+      }
+      const std::shared_ptr<const ExecutionRouteSnapshot3D> binding_execution =
+          proactive_roi_refresh ? execution_route_store_.snapshot() : nullptr;
+      const bool refresh_base_current = proactive_roi_refresh &&
+                                        binding_execution != nullptr &&
+                                        binding_execution->route.has_value() &&
+                                        binding_execution->route->identity.generation ==
+                                            roi_refresh.base_route_generation;
+      const bool refresh_superseded = proactive_roi_refresh && !refresh_base_current;
+      if (refresh_superseded) {
+        RCLCPP_INFO(
+            get_logger(),
+            "STATIC_ESDF3D refresh_superseded=true requested_generation=%" PRIu64
+            " resident_generation=%" PRIu64
+            " action=publish_world_without_stale_route_search",
+            roi_refresh.base_route_generation,
+            binding_execution != nullptr ? binding_execution->routeGenerationHighWater()
+                                         : 0U);
       }
       ProductionMppiPreparedEsdf prepared;
       if (proactive_roi_refresh && active_prepared) {
@@ -367,6 +380,9 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       if (!local_world_generation.has_value()) {
         RCLCPP_ERROR(get_logger(),
                      "STATIC_ESDF3D rejected reason=invalid_local_world_generation");
+        if (proactive_roi_refresh) {
+          finish_roi_refresh();
+        }
         completeStaticEsdfWork(false);
         continue;
       }
@@ -374,12 +390,30 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       if (objective) {
         prepared.search_objective = makeStaticRouteObjective(*objective);
       }
+      if (refresh_base_current) {
+        const CertifiedRouteSuffix3D& active_route = *binding_execution->route;
+        const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
+            *active_route.geometry->route,
+            Point3{activation_navigation.state.x, activation_navigation.state.y,
+                   activation_navigation.state.z},
+            active_route.progress.station_m, active_route.endStationM());
+        bindStaticRouteRequestToExecution(
+            prepared, active_route,
+            GlobalGuideProjection{
+                .valid = projection.valid,
+                .station_m = projection.station_m,
+                .total_length_m = active_route.endStationM(),
+                .remaining_m = projection.remaining_m,
+                .cross_track_m = projection.distance_m,
+                .point = {projection.point.x, projection.point.y},
+            });
+      }
       const bool tracking_roi_refresh =
-          proactive_roi_refresh &&
+          refresh_base_current &&
           roi_refresh.purpose ==
               StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective;
       prepared.static_route_extension_request =
-          proactive_roi_refresh && !tracking_roi_refresh;
+          refresh_base_current && !tracking_roi_refresh;
       prepared.static_route_extension_base_generation =
           prepared.static_route_extension_request ? roi_refresh.base_route_generation
                                                   : 0U;
@@ -393,15 +427,27 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         const std::scoped_lock lock{esdf_state_mutex_};
         prepared_esdf_ = prepared;
       }
+      if (proactive_roi_refresh) {
+        static_roi_refresh_lifecycle_.complete(roi_refresh.sequence);
+        if (refresh_superseded) {
+          if (roi_refresh.purpose ==
+              StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective) {
+            finishStaticRouteReplan(roi_refresh.base_route_generation, false);
+          } else {
+            finishStaticRouteExtension(roi_refresh.base_route_generation);
+          }
+        }
+      }
       const bool readiness_transition = !world_ready_.load(std::memory_order_acquire);
       completeStaticEsdfWork(true);
       if (readiness_transition) {
         publishWorldReadiness(true);
       }
       const bool route_search_required =
-          prepared.static_route_extension_request ||
-          prepared.static_route_replan_request ||
-          vehicle_navigation_ready_.load(std::memory_order_acquire);
+          !refresh_superseded &&
+          (prepared.static_route_extension_request ||
+           prepared.static_route_replan_request ||
+           vehicle_navigation_ready_.load(std::memory_order_acquire));
       if (route_search_required) {
         bool queued = false;
         {

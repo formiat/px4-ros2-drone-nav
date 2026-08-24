@@ -79,6 +79,7 @@ TEST(ExecutionRouteSnapshot3DTest,
               active->route->geometry->executable_geometry_revision,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
+          .route_splice = testRouteSplice(*active->route, *successor),
           .route = *successor,
       });
   auto second_value = *first;
@@ -131,6 +132,7 @@ TEST(ExecutionRouteSnapshot3DTest,
               active->route->geometry->executable_geometry_revision,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
+          .route_splice = testRouteSplice(*active->route, *successor),
           .route = *successor,
       });
   const std::shared_ptr<const PendingCertifiedRoute3D> const_alias = mutable_candidate;
@@ -149,6 +151,38 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     RouteBasedPendingPublicationRequiresACertifiedSplice) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const auto pending =
+      std::make_shared<const PendingCertifiedRoute3D>(PendingCertifiedRoute3D{
+          .publication_sequence = 1U,
+          .base_execution_owner_epoch = active->execution_owner_epoch,
+          .base_kind = PendingExecutionBaseKind3D::kRoute,
+          .base_route_generation = active->route->identity.generation,
+          .base_geometry_revision =
+              active->route->geometry->executable_geometry_revision,
+          .base_continuity_id = active->route->continuity_id,
+          .base_direct_tracking_identity = std::nullopt,
+          .route_splice = std::nullopt,
+          .route = *successor,
+      });
+
+  PendingCertifiedRouteMailbox3D mailbox;
+  EXPECT_FALSE(pending->valid());
+  EXPECT_FALSE(mailbox.publish(pending));
+  EXPECT_EQ(mailbox.snapshot(), nullptr);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      PendingCommitConsumesOnlyAfterSuccessfulExecutionCas) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
@@ -162,6 +196,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_geometry_revision = 0U,
           .base_continuity_id = 0U,
           .base_direct_tracking_identity = std::nullopt,
+          .route_splice = std::nullopt,
           .route = *suffix,
       });
 
@@ -208,6 +243,71 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(retained_mailbox.snapshot(), retained);
 }
 
+TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCasLoss) {
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> base = fixture.certify();
+  ASSERT_TRUE(base.has_value());
+  ExecutionRouteSnapshotStore3D store;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
+  ASSERT_NE(initial, nullptr);
+  const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
+      *initial, initial->version, *base,
+      SnapshotFixture3D::finiteExecutionForRoute(
+          *initial, *base, FiniteExecutionKind3D::kNominal, true, 100U));
+  ASSERT_TRUE(activation.applied());
+  ASSERT_EQ(store.publish(initial, activation),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active = store.snapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const CertifiedRouteSplice3D splice = testRouteSplice(*active->route, *successor);
+  const ExecutionRouteTransitionResult3D replacement = replaceCertifiedRoute3D(
+      *active, SnapshotFixture3D::guard(*active), *successor,
+      SnapshotFixture3D::finiteExecutionForRoute(
+          *active, *successor, FiniteExecutionKind3D::kNominal, true, 101U),
+      splice);
+  ASSERT_TRUE(replacement.applied());
+  const auto pending =
+      std::make_shared<const PendingCertifiedRoute3D>(PendingCertifiedRoute3D{
+          .publication_sequence = 1U,
+          .base_execution_owner_epoch = active->execution_owner_epoch,
+          .base_kind = PendingExecutionBaseKind3D::kRoute,
+          .base_route_generation = active->route->identity.generation,
+          .base_geometry_revision =
+              active->route->geometry->executable_geometry_revision,
+          .base_continuity_id = active->route->continuity_id,
+          .base_direct_tracking_identity = std::nullopt,
+          .route_splice = splice,
+          .route = *successor,
+      });
+  PendingCertifiedRouteMailbox3D mailbox;
+  ASSERT_TRUE(mailbox.publish(pending));
+  const std::shared_ptr<const PendingCertifiedRoute3D> sealed = mailbox.snapshot();
+  ASSERT_NE(sealed, nullptr);
+
+  constexpr std::uint64_t kAdvancedRawRevision =
+      SnapshotFixture3D::kLatestRawRevision + 1U;
+  const ExecutionRouteTransitionResult3D advanced = advanceCertifiedRoute3D(
+      *active, SnapshotFixture3D::guard(*active),
+      fixture.executionObservation({4.0, 0.0, 5.0}, kAdvancedRawRevision,
+                                   &fixture.raw_occupancy),
+      SnapshotFixture3D::progressInput(*active, {4.0, 0.0, 5.0}),
+      fixture.rawWorld(kAdvancedRawRevision));
+  ASSERT_TRUE(advanced.applied());
+  ASSERT_EQ(store.publish(active, advanced),
+            ExecutionRoutePublicationStatus3D::kPublished);
+
+  EXPECT_FALSE(mailbox.commitExecutionIfSame(sealed, store, active, replacement));
+  EXPECT_EQ(store.snapshot(), advanced.next);
+  EXPECT_EQ(mailbox.snapshot(), sealed);
+}
+
 TEST(ExecutionRouteSnapshot3DTest,
      ConcurrentNewerPendingPublicationRejectsCapturedActivation) {
   SnapshotFixture3D fixture;
@@ -222,6 +322,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_geometry_revision = 0U,
           .base_continuity_id = 0U,
           .base_direct_tracking_identity = std::nullopt,
+          .route_splice = std::nullopt,
           .route = *suffix,
       });
   auto newer_value = *first;
@@ -292,6 +393,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_geometry_revision = active->route->geometry->executable_geometry_revision,
       .base_continuity_id = active->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
+      .route_splice = testRouteSplice(*active->route, *successor),
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -305,12 +407,12 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   PendingCertifiedRoute3D wrong_geometry = pending;
   ++wrong_geometry.base_geometry_revision;
-  EXPECT_TRUE(wrong_geometry.valid());
+  EXPECT_FALSE(wrong_geometry.valid());
   EXPECT_FALSE(pendingCertifiedRouteEligible3D(wrong_geometry, *newer_finite.next));
 
   PendingCertifiedRoute3D wrong_continuity = pending;
   ++wrong_continuity.base_continuity_id;
-  EXPECT_TRUE(wrong_continuity.valid());
+  EXPECT_FALSE(wrong_continuity.valid());
   EXPECT_FALSE(pendingCertifiedRouteEligible3D(wrong_continuity, *newer_finite.next));
 
   PendingCertifiedRoute3D wrong_generation = pending;
@@ -334,6 +436,7 @@ TEST(ExecutionRouteSnapshot3DTest, PendingInitialLineageDoesNotAliasRevokedOwner
       .base_geometry_revision = 0U,
       .base_continuity_id = 0U,
       .base_direct_tracking_identity = std::nullopt,
+      .route_splice = std::nullopt,
       .route = *first_route,
   };
   ASSERT_TRUE(initial_pending.valid());
@@ -376,6 +479,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_geometry_revision = 0U,
       .base_continuity_id = 0U,
       .base_direct_tracking_identity = std::nullopt,
+      .route_splice = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -494,6 +598,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_geometry_revision = active->route->geometry->executable_geometry_revision,
       .base_continuity_id = active->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
+      .route_splice = testRouteSplice(*active->route, *successor),
       .route = *successor,
   };
   ASSERT_TRUE(route_pending.valid());
@@ -515,6 +620,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_geometry_revision = 0U,
       .base_continuity_id = 0U,
       .base_direct_tracking_identity = direct_identity,
+      .route_splice = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(direct_pending.valid());
@@ -566,9 +672,10 @@ TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) 
           stopped.next->route->geometry->executable_geometry_revision,
       .base_continuity_id = stopped.next->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
+      .route_splice = std::nullopt,
       .route = *successor,
   };
-  ASSERT_TRUE(pending.valid());
+  ASSERT_FALSE(pending.valid());
   EXPECT_FALSE(pendingCertifiedRouteEligible3D(pending, *stopped.next));
 }
 
@@ -706,6 +813,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_geometry_revision = 0U,
       .base_continuity_id = 0U,
       .base_direct_tracking_identity = updated_identity,
+      .route_splice = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -724,6 +832,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           route_owner->route->geometry->executable_geometry_revision,
       .base_continuity_id = route_owner->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
+      .route_splice = testRouteSplice(*route_owner->route, *successor),
       .route = *successor,
   };
   ASSERT_TRUE(pre_direct_pending.valid());

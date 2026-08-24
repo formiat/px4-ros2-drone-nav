@@ -636,14 +636,62 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   }
   if (result.pending_route != nullptr &&
       pendingCertifiedRouteEligible3D(*result.pending_route, *result.source_snapshot)) {
-    result.route = refreshPendingRoute(
-        *result.pending_route, world, objective, execution_navigation, latest_raw_world,
-        minimum_tracking_sample_sequence, active_guide_config_.maximum_cross_track_m,
-        footprint);
-    if (result.route != nullptr) {
+    std::shared_ptr<const CertifiedRouteSuffix3D> refreshed_pending =
+        refreshPendingRoute(*result.pending_route, world, objective,
+                            execution_navigation, latest_raw_world,
+                            minimum_tracking_sample_sequence,
+                            active_guide_config_.maximum_cross_track_m, footprint);
+    RouteSpliceReadiness3D splice_readiness{.status =
+                                                RouteSpliceReadinessStatus3D::kReady};
+    const bool route_splice_required =
+        result.pending_route->base_kind == PendingExecutionBaseKind3D::kRoute;
+    if (route_splice_required) {
+      if (!result.pending_route->route_splice.has_value() ||
+          !result.source_snapshot->route.has_value()) {
+        splice_readiness.status = RouteSpliceReadinessStatus3D::kInvalidProof;
+      } else if (refreshed_pending == nullptr) {
+        splice_readiness.status =
+            RouteSpliceReadinessStatus3D::kSuccessorProjectionUnavailable;
+      } else {
+        splice_readiness = assessRouteSpliceReadiness3D(
+            *result.pending_route->route_splice, *result.source_snapshot->route,
+            *refreshed_pending,
+            Point3{execution_navigation.state.x, execution_navigation.state.y,
+                   execution_navigation.state.z});
+      }
+    }
+    if (refreshed_pending != nullptr && splice_readiness.ready()) {
+      result.route = std::move(refreshed_pending);
       result.pending_activation = true;
       result.route_usable = true;
       result.status = RouteExecutionStatus3D::kUsable;
+    } else if (route_splice_required) {
+      const bool splice_expired =
+          result.pending_route->route_splice.has_value() &&
+          result.source_snapshot->route.has_value() &&
+          routeSpliceWindowExpired3D(*result.pending_route->route_splice,
+                                     *result.source_snapshot->route);
+      const bool permanently_unavailable =
+          splice_expired || !splice_readiness.canStillBecomeReady();
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "ROUTE_SPLICE3D pending_generation=%" PRIu64 " base_generation=%" PRIu64
+          " status=%.*s expired=%s "
+          "base_station_m=%.2f successor_station_m=%.2f "
+          "position_separation_m=%.2f tangent_alignment=%.3f action=%s",
+          result.pending_route->route.identity.generation,
+          result.pending_route->base_route_generation,
+          static_cast<int>(
+              routeSpliceReadinessStatus3DName(splice_readiness.status).size()),
+          routeSpliceReadinessStatus3DName(splice_readiness.status).data(),
+          splice_expired ? "true" : "false", splice_readiness.base_station_m,
+          splice_readiness.successor_station_m, splice_readiness.position_separation_m,
+          splice_readiness.tangent_alignment,
+          permanently_unavailable ? "discard_and_replan" : "retain_active_route");
+      if (permanently_unavailable &&
+          pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route)) {
+        result.pending_route.reset();
+      }
     }
   }
 

@@ -1,18 +1,138 @@
+#include <algorithm>
 #include <cinttypes>
 #include <cmath>
 #include <memory>
+#include <stdexcept>
 #include <utility>
 
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] double
+forwardHorizontalAcceleration(const ProductionMppiNavigation& navigation) noexcept {
+  if (!navigation.measured_acceleration_valid) {
+    return 0.0;
+  }
+  const double speed_mps = std::hypot(navigation.state.vx, navigation.state.vy);
+  if (!(speed_mps > 1.0e-6)) {
+    return 0.0;
+  }
+  return (static_cast<double>(navigation.state.vx) *
+              navigation.measured_equivalent_control.ax +
+          static_cast<double>(navigation.state.vy) *
+              navigation.measured_equivalent_control.ay) /
+         speed_mps;
+}
+
+} // namespace
+
+void ProductionMppiNode::configureStaticRouteExtension(
+    const double maximum_horizontal_acceleration_mps2) {
+  static_route_extension_config_.minimum_remaining_m =
+      active_guide_config_.minimum_remaining_m;
+  static_route_extension_config_.required_certified_overlap_m =
+      declare_parameter<double>("static_global_guide_required_certified_overlap_m",
+                                8.0);
+  static_route_extension_config_.latency_margin_s =
+      declare_parameter<double>("static_global_guide_extension_latency_margin_s", 0.5);
+  static_route_extension_config_.maximum_latency_s =
+      declare_parameter<double>("static_global_guide_extension_maximum_latency_s", 8.0);
+  static_route_extension_config_.maximum_horizontal_acceleration_mps2 =
+      maximum_horizontal_acceleration_mps2;
+  static_route_extension_config_.maximum_control_jerk_mps3 =
+      mppi_config_.dynamics.maximum_control_jerk_mps3;
+  static_route_extension_config_.stopping_capability =
+      speed_policy_config_.stopping_capability;
+  static_route_extension_config_.minimum_retry_progress_m =
+      declare_parameter<double>("static_global_guide_extension_retry_progress_m", 15.0);
+  static_route_extension_config_.minimum_retry_interval_s =
+      declare_parameter<double>("static_global_guide_extension_retry_interval_s", 1.0);
+  static_route_extension_config_.minimum_endpoint_improvement_m =
+      declare_parameter<double>(
+          "static_global_guide_extension_minimum_endpoint_improvement_m", 5.0);
+  certified_route_splice_config_.required_overlap_m =
+      static_route_extension_config_.required_certified_overlap_m;
+  certified_route_splice_config_.sample_step_m = declare_parameter<double>(
+      "static_global_guide_splice_sample_step_m", lattice_3d_config_.sample_step_m);
+  certified_route_splice_config_.maximum_position_separation_m =
+      declare_parameter<double>(
+          "static_global_guide_splice_maximum_position_separation_m", 2.0);
+  certified_route_splice_config_.minimum_tangent_alignment = declare_parameter<double>(
+      "static_global_guide_splice_minimum_tangent_alignment", 0.5);
+  certified_route_splice_config_.activation_station_tolerance_m =
+      declare_parameter<double>(
+          "static_global_guide_splice_activation_station_tolerance_m", 1.0);
+  if (!staticRouteExtensionConfigValid(static_route_extension_config_) ||
+      !certifiedRouteSpliceConfig3DValid(certified_route_splice_config_)) {
+    throw std::invalid_argument{
+        "invalid static route extension or certified splice configuration"};
+  }
+}
+
+void ProductionMppiNode::bindStaticRouteRequestToExecution(
+    ProductionMppiPreparedEsdf& request, const CertifiedRouteSuffix3D& active_route,
+    const GlobalGuideProjection& projection) {
+  const ExecutionRouteGeometry3D& geometry = *active_route.geometry;
+  request.global_guide_generation = active_route.identity.generation;
+  request.global_guide_reaches_mission_goal =
+      active_route.identity.proposal.reaches_mission_goal;
+  request.global_guide_projection = projection;
+  request.route_fingerprint = active_route.identity.proposal.route_fingerprint;
+  request.route_intent = active_route.identity.proposal.intent;
+  request.route_segment_evidence = active_route.identity.proposal.evidence;
+  request.route_objective = active_route.identity.proposal.objective;
+  request.mppi_route = geometry.mppi_route;
+  request.route_3d = geometry.route;
+  request.route_2d_projection = geometry.route_2d_projection;
+  request.constrained_spans = geometry.constrained_spans;
+  request.passage_volumes = geometry.passage_volumes;
+  request.cooperative_passage_assignments = geometry.cooperative_passage_assignments;
+  request.selected_passage_traversal_ids = geometry.selected_passage_traversal_ids;
+  request.lattice_3d_route_purpose = geometry.route_purpose;
+  request.lattice_3d_observation_frontier = geometry.observation_frontier;
+}
+
+void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
+    const ProductionMppiPreparedEsdf& esdf,
+    const ProductionRouteExecutionSelection3D& route_execution,
+    const ProductionMppiNavigation& navigation, const std::int64_t now_ns) {
+  if (route_execution.source_snapshot == nullptr ||
+      route_execution.source_snapshot->phase != ExecutionRoutePhase3D::kFollowing ||
+      !route_execution.source_snapshot->route.has_value()) {
+    return;
+  }
+  const CertifiedRouteSuffix3D& active_route = *route_execution.source_snapshot->route;
+  const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
+      *active_route.geometry->route,
+      Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+      active_route.progress.station_m, active_route.endStationM());
+  if (!projection.valid ||
+      projection.distance_m > active_guide_config_.maximum_cross_track_m) {
+    return;
+  }
+  maybeRequestStaticRouteExtension(
+      esdf, active_route, navigation,
+      GlobalGuideProjection{
+          .valid = true,
+          .station_m = projection.station_m,
+          .total_length_m = active_route.endStationM(),
+          .remaining_m = projection.remaining_m,
+          .cross_track_m = projection.distance_m,
+          .point = {projection.point.x, projection.point.y},
+      },
+      now_ns);
+}
 
 void ProductionMppiNode::maybeRequestStaticRouteExtension(
-    const ProductionMppiPreparedEsdf& esdf, const ProductionMppiNavigation& navigation,
+    const ProductionMppiPreparedEsdf& esdf, const CertifiedRouteSuffix3D& active_route,
+    const ProductionMppiNavigation& navigation,
     const GlobalGuideProjection& route_projection, const std::int64_t now_ns) {
-  if (!esdf.route_3d || esdf.route_3d->size() < 2U ||
-      esdf.global_guide_generation == 0U ||
-      esdf.lattice_3d_route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
+  if (!active_route.valid() || active_route.geometry == nullptr ||
+      active_route.geometry->route == nullptr ||
+      active_route.geometry->route->size() < 2U ||
+      active_route.geometry->route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
     return;
   }
   const std::shared_ptr<const ProductionNavigationObjective> objective =
@@ -24,23 +144,36 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   const bool observed_world =
       !use_static_map_ &&
       no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+  const bool pending_successor = pending_certified_route_mailbox_.snapshot() != nullptr;
 
   std::scoped_lock extension_lock{static_route_extension_mutex_};
+  StaticRoutePlanningLatencyStats latency =
+      static_route_planning_latency_tracker_.stats();
+  if (latency.sample_count == 0U) {
+    latency.planning_p95_ms = std::max(0.0, esdf.global_guide_search_ms);
+    latency.planning_p99_ms = latency.planning_p95_ms;
+    latency.build_and_planning_p99_ms =
+        latency.planning_p99_ms + std::max(0.0, esdf.build_ms);
+  }
   const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
       static_route_extension_config_,
       StaticRouteExtensionObservation{
-          .route_generation = esdf.global_guide_generation,
+          .route_generation = active_route.identity.generation,
           .route_station_m = route_projection.station_m,
           .route_remaining_m = route_projection.remaining_m,
           .horizontal_speed_mps = std::hypot(navigation.state.vx, navigation.state.vy),
-          .guide_search_latency_ms = esdf.global_guide_search_ms,
-          .esdf_build_latency_ms = esdf.build_ms,
-          .route_reaches_mission_goal = esdf.global_guide_reaches_mission_goal,
+          .forward_acceleration_mps2 = forwardHorizontalAcceleration(navigation),
+          .planning_latency_p95_ms = latency.planning_p95_ms,
+          .planning_latency_p99_ms = latency.planning_p99_ms,
+          .build_and_planning_latency_p99_ms = latency.build_and_planning_p99_ms,
+          .route_reaches_mission_goal =
+              active_route.identity.proposal.reaches_mission_goal,
           .next_planning_goal_inside_esdf =
               observed_world ||
               staticRoutePointInsideEsdf(esdf.grid, next_planning_goal),
           .request_in_flight = static_route_extension_request_in_flight_ ||
-                               static_route_replan_gate_.inFlight(),
+                               static_route_replan_gate_.inFlight() ||
+                               pending_successor,
           .last_request_generation = static_route_extension_last_request_generation_,
           .last_request_station_m = static_route_extension_last_request_station_m_,
           .request_stamp_ns = now_ns,
@@ -53,11 +186,12 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   std::uint64_t roi_refresh_sequence = 0U;
   if (decision.request_extension) {
     auto request = std::make_shared<ProductionMppiPreparedEsdf>(esdf);
+    bindStaticRouteRequestToExecution(*request, active_route, route_projection);
     if (objective) {
       request->search_objective = makeStaticRouteObjective(*objective);
     }
     request->static_route_extension_request = true;
-    request->static_route_extension_base_generation = esdf.global_guide_generation;
+    request->static_route_extension_base_generation = active_route.identity.generation;
     {
       const std::scoped_lock queue_lock{guide_queue_mutex_};
       if (pending_guide_world_) {
@@ -65,7 +199,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
             get_logger(), *get_clock(), 1000,
             "STATIC_ROUTE_EXTENSION_REQUEST status=deferred_guide_queue_busy "
             "generation=%" PRIu64 " station_m=%.2f remaining_m=%.2f",
-            esdf.global_guide_generation, route_projection.station_m,
+            active_route.identity.generation, route_projection.station_m,
             route_projection.remaining_m);
         return;
       }
@@ -74,27 +208,32 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
     guide_queue_condition_.notify_all();
   } else {
     roi_refresh_sequence =
-        static_roi_refresh_lifecycle_.queue(esdf.global_guide_generation).sequence;
+        static_roi_refresh_lifecycle_.queue(active_route.identity.generation).sequence;
     requestStaticEsdfWork(true);
   }
 
   static_route_extension_request_in_flight_ = true;
-  static_route_extension_in_flight_generation_ = esdf.global_guide_generation;
-  static_route_extension_last_request_generation_ = esdf.global_guide_generation;
+  static_route_extension_in_flight_generation_ = active_route.identity.generation;
+  static_route_extension_last_request_generation_ = active_route.identity.generation;
   static_route_extension_last_request_station_m_ = route_projection.station_m;
   static_route_extension_last_request_stamp_ns_ = now_ns;
   RCLCPP_INFO(
       get_logger(),
       "STATIC_ROUTE_EXTENSION_REQUEST status=queued generation=%" PRIu64
       " station_m=%.2f remaining_m=%.2f mode=%s extension_trigger_m=%.2f "
-      "roi_trigger_m=%.2f roi_request_sequence=%" PRIu64
-      " search_latency_ms=%.2f build_latency_ms=%.2f",
-      esdf.global_guide_generation, route_projection.station_m,
+      "p95_trigger_m=%.2f roi_trigger_m=%.2f braking_path_m=%.2f "
+      "required_overlap_m=%.2f roi_request_sequence=%" PRIu64
+      " latency_samples=%zu planning_p95_ms=%.2f planning_p99_ms=%.2f "
+      "build_and_planning_p99_ms=%.2f",
+      active_route.identity.generation, route_projection.station_m,
       route_projection.remaining_m,
       observed_world ? "observed_resident_esdf"
                      : (decision.request_roi_refresh ? "roi_refresh" : "resident_esdf"),
-      decision.extension_trigger_remaining_m, decision.roi_refresh_trigger_remaining_m,
-      roi_refresh_sequence, esdf.global_guide_search_ms, esdf.build_ms);
+      decision.extension_trigger_remaining_m, decision.planning_p95_trigger_remaining_m,
+      decision.roi_refresh_trigger_remaining_m, decision.braking_path_m,
+      decision.required_certified_overlap_m, roi_refresh_sequence, latency.sample_count,
+      latency.planning_p95_ms, latency.planning_p99_ms,
+      latency.build_and_planning_p99_ms);
 }
 
 void ProductionMppiNode::finishStaticRouteExtension(const std::uint64_t base_generation,
@@ -295,9 +434,17 @@ void ProductionMppiNode::requestStaticRouteReplan(
 void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
     const ProductionMppiPreparedEsdf& esdf, const ProductionMppiNavigation& navigation,
     const ProductionNavigationObjective& objective, const std::int64_t now_ns) {
-  if (esdf.global_guide_generation == 0U || !navigation.valid) {
+  if (!navigation.valid) {
     return;
   }
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+      execution_route_store_.snapshot();
+  if (execution_snapshot == nullptr || !execution_snapshot->route.has_value() ||
+      !execution_snapshot->route->valid()) {
+    return;
+  }
+  const std::uint64_t active_generation =
+      execution_snapshot->route->identity.generation;
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
   const Point3 planning_goal = staticRoutePlanningGoal(
       current, objective.goal, lattice_3d_config_.planning_goal_distance_m);
@@ -311,12 +458,11 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
   std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
   if (static_route_extension_request_in_flight_ ||
       static_route_replan_gate_.inFlight() ||
-      !static_route_replan_gate_.tryBegin(esdf.global_guide_generation)) {
+      !static_route_replan_gate_.tryBegin(active_generation)) {
     return;
   }
   const StaticRouteRoiRefreshRequest request = static_roi_refresh_lifecycle_.queue(
-      esdf.global_guide_generation,
-      StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
+      active_generation, StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
   requestStaticEsdfWork(true);
   RCLCPP_INFO(get_logger(),
               "STATIC_TRACKING_ROI_REFRESH status=queued sequence=%" PRIu64

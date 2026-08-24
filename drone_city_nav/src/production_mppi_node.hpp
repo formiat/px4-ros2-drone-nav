@@ -491,7 +491,17 @@ private:
                            std::uint64_t guide_generation = 0U);
   void requestStaticRouteReplan(GlobalGuideReleaseReason reason,
                                 std::uint64_t guide_generation);
+  void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
+  static void
+  bindStaticRouteRequestToExecution(ProductionMppiPreparedEsdf& request,
+                                    const CertifiedRouteSuffix3D& active_route,
+                                    const GlobalGuideProjection& projection);
+  void maybeRequestStaticRouteExtensionFromExecution(
+      const ProductionMppiPreparedEsdf& esdf,
+      const ProductionRouteExecutionSelection3D& route_execution,
+      const ProductionMppiNavigation& navigation, std::int64_t now_ns);
   void maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
+                                        const CertifiedRouteSuffix3D& active_route,
                                         const ProductionMppiNavigation& navigation,
                                         const GlobalGuideProjection& route_projection,
                                         std::int64_t now_ns);
@@ -798,6 +808,7 @@ private:
   PassageTraversalEvidenceTracker passage_traversal_evidence_tracker_{};
   PassageGeometryEvidenceTracker passage_geometry_evidence_tracker_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
+  CertifiedRouteSpliceConfig3D certified_route_splice_config_{};
   StaticRouteSearchRetryConfig static_route_search_retry_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};
   PassageVolumeConfig cooperative_passage_volume_config_{};
@@ -828,6 +839,7 @@ private:
   std::uint64_t static_route_extension_last_request_generation_{0U};
   double static_route_extension_last_request_station_m_{0.0};
   std::int64_t static_route_extension_last_request_stamp_ns_{0};
+  StaticRoutePlanningLatencyTracker static_route_planning_latency_tracker_{};
   StaticRouteDeferredReplanLatch static_route_deferred_replan_latch_{};
   StaticRouteReplanGate static_route_replan_gate_{};
   StaticRouteFailedSearchLatch static_route_failed_search_latch_{};

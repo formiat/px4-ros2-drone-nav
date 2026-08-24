@@ -649,22 +649,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   active_guide_config_.minimum_remaining_m = use_static_map_
                                                  ? static_guide_replan_remaining_m
                                                  : no_static_guide_replan_remaining_m;
-  static_route_extension_config_.minimum_remaining_m =
-      active_guide_config_.minimum_remaining_m;
-  static_route_extension_config_.maximum_trigger_fraction_of_route =
-      declare_parameter<double>("global_guide_extension_maximum_trigger_fraction",
-                                0.65);
-  static_route_extension_config_.latency_margin_s =
-      declare_parameter<double>("static_global_guide_extension_latency_margin_s", 0.5);
-  static_route_extension_config_.maximum_latency_s =
-      declare_parameter<double>("static_global_guide_extension_maximum_latency_s", 8.0);
-  static_route_extension_config_.minimum_retry_progress_m =
-      declare_parameter<double>("static_global_guide_extension_retry_progress_m", 15.0);
-  static_route_extension_config_.minimum_retry_interval_s =
-      declare_parameter<double>("static_global_guide_extension_retry_interval_s", 1.0);
-  static_route_extension_config_.minimum_endpoint_improvement_m =
-      declare_parameter<double>(
-          "static_global_guide_extension_minimum_endpoint_improvement_m", 5.0);
+  configureStaticRouteExtension(maximum_horizontal_acceleration_mps2);
   static_route_search_retry_config_.minimum_pose_change_m =
       declare_parameter<double>("static_global_guide_failed_search_pose_change_m", 2.0);
   static_route_search_retry_config_.minimum_objective_change_m =

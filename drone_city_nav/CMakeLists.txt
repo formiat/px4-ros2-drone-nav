@@ -241,6 +241,7 @@ add_library(
   src/execution_horizon_witness.cpp
   src/execution_horizon_timing.cpp
   src/execution_publication_currentness_3d.cpp
+  src/certified_route_splice_3d.cpp
   src/execution_route_geometry_3d.cpp
   src/execution_route_snapshot_3d.cpp
   src/execution_route_snapshot_3d_certificates.cpp
@@ -1333,6 +1334,12 @@ if(BUILD_TESTING)
   target_compile_features(static_route_extension_test PRIVATE cxx_std_20)
   target_link_libraries(static_route_extension_test drone_city_nav_core)
   enable_project_warnings(static_route_extension_test)
+
+  ament_add_gtest(certified_route_splice_3d_test
+                  tests/certified_route_splice_3d_test.cpp)
+  target_compile_features(certified_route_splice_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(certified_route_splice_3d_test drone_city_nav_core)
+  enable_project_warnings(certified_route_splice_3d_test)
 
   ament_add_gtest(static_route_geometry_test tests/static_route_geometry_test.cpp)
   target_compile_features(static_route_geometry_test PRIVATE cxx_std_20)

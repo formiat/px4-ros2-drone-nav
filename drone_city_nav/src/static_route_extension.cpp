@@ -4,10 +4,41 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <ranges>
 
 namespace drone_city_nav {
 namespace {
+
+[[nodiscard]] bool
+extensionConfigValidImpl(const StaticRouteExtensionConfig& config) noexcept {
+  return std::isfinite(config.minimum_remaining_m) &&
+         config.minimum_remaining_m >= 0.0 &&
+         std::isfinite(config.required_certified_overlap_m) &&
+         config.required_certified_overlap_m > 0.0 &&
+         std::isfinite(config.latency_margin_s) && config.latency_margin_s >= 0.0 &&
+         std::isfinite(config.maximum_latency_s) && config.maximum_latency_s > 0.0 &&
+         std::isfinite(config.maximum_horizontal_acceleration_mps2) &&
+         config.maximum_horizontal_acceleration_mps2 > 0.0 &&
+         std::isfinite(config.maximum_control_jerk_mps3) &&
+         config.maximum_control_jerk_mps3 > 0.0 &&
+         stoppingCapabilityIsValid(config.stopping_capability);
+}
+
+template<std::size_t Size>
+[[nodiscard]] double percentile(const std::array<double, Size>& samples,
+                                const std::size_t sample_count,
+                                const double quantile) noexcept {
+  if (sample_count == 0U || sample_count > samples.size() || !std::isfinite(quantile) ||
+      quantile <= 0.0 || quantile > 1.0) {
+    return 0.0;
+  }
+  std::array<double, Size> ordered = samples;
+  std::ranges::sort(ordered.begin(), ordered.begin() + sample_count);
+  const std::size_t rank =
+      static_cast<std::size_t>(std::ceil(quantile * static_cast<double>(sample_count)));
+  return ordered[std::clamp<std::size_t>(rank, 1U, sample_count) - 1U];
+}
 
 [[nodiscard]] double boundedLatencySeconds(const double latency_ms,
                                            const StaticRouteExtensionConfig& config) {
@@ -39,6 +70,94 @@ deferredReplanPriority(const GlobalGuideReleaseReason reason) noexcept {
 }
 
 } // namespace
+
+bool staticRouteExtensionConfigValid(
+    const StaticRouteExtensionConfig& config) noexcept {
+  return extensionConfigValidImpl(config);
+}
+
+void StaticRoutePlanningLatencyTracker::record(
+    const double planning_latency_ms, const double world_build_latency_ms) noexcept {
+  if (!std::isfinite(planning_latency_ms) || planning_latency_ms < 0.0 ||
+      !std::isfinite(world_build_latency_ms) || world_build_latency_ms < 0.0) {
+    return;
+  }
+  planning_latency_ms_[next_index_] = planning_latency_ms;
+  build_and_planning_latency_ms_[next_index_] =
+      planning_latency_ms + world_build_latency_ms;
+  next_index_ = (next_index_ + 1U) % kMaximumSamples;
+  sample_count_ = std::min(sample_count_ + 1U, kMaximumSamples);
+}
+
+StaticRoutePlanningLatencyStats
+StaticRoutePlanningLatencyTracker::stats() const noexcept {
+  return StaticRoutePlanningLatencyStats{
+      .sample_count = sample_count_,
+      .planning_p95_ms = percentile(planning_latency_ms_, sample_count_, 0.95),
+      .planning_p99_ms = percentile(planning_latency_ms_, sample_count_, 0.99),
+      .build_and_planning_p99_ms =
+          percentile(build_and_planning_latency_ms_, sample_count_, 0.99),
+  };
+}
+
+void StaticRoutePlanningLatencyTracker::clear() noexcept {
+  planning_latency_ms_.fill(0.0);
+  build_and_planning_latency_ms_.fill(0.0);
+  next_index_ = 0U;
+  sample_count_ = 0U;
+}
+
+double jerkLimitedHorizontalStoppingDistanceM(
+    const double horizontal_speed_mps, const double forward_acceleration_mps2,
+    const StoppingCapability& capability,
+    const double maximum_horizontal_acceleration_mps2,
+    const double maximum_control_jerk_mps3) noexcept {
+  if (!std::isfinite(horizontal_speed_mps) || horizontal_speed_mps < 0.0 ||
+      !std::isfinite(forward_acceleration_mps2) ||
+      !std::isfinite(maximum_horizontal_acceleration_mps2) ||
+      !(maximum_horizontal_acceleration_mps2 > 0.0) ||
+      !std::isfinite(maximum_control_jerk_mps3) || !(maximum_control_jerk_mps3 > 0.0) ||
+      !stoppingCapabilityIsValid(capability)) {
+    return std::numeric_limits<double>::infinity();
+  }
+  if (!(horizontal_speed_mps > 0.0)) {
+    return 0.0;
+  }
+
+  const double deceleration_mps2 = capability.guaranteed_horizontal_deceleration_mps2;
+  const double forward_acceleration =
+      std::clamp(std::max(0.0, forward_acceleration_mps2), 0.0,
+                 maximum_horizontal_acceleration_mps2);
+  const double reaction_s = capability.reaction_latency_s;
+  const double reaction_distance_m =
+      horizontal_speed_mps * reaction_s +
+      0.5 * forward_acceleration * reaction_s * reaction_s;
+  const double speed_after_reaction_mps =
+      horizontal_speed_mps + forward_acceleration * reaction_s;
+  const double ramp_time_s =
+      (forward_acceleration + deceleration_mps2) / maximum_control_jerk_mps3;
+  const double stop_during_ramp_s =
+      (forward_acceleration +
+       std::sqrt(forward_acceleration * forward_acceleration +
+                 2.0 * maximum_control_jerk_mps3 * speed_after_reaction_mps)) /
+      maximum_control_jerk_mps3;
+  const double applied_ramp_time_s = std::min(ramp_time_s, stop_during_ramp_s);
+  const double ramp_time_squared_s2 = applied_ramp_time_s * applied_ramp_time_s;
+  const double ramp_distance_m =
+      speed_after_reaction_mps * applied_ramp_time_s +
+      0.5 * forward_acceleration * ramp_time_squared_s2 -
+      maximum_control_jerk_mps3 * ramp_time_squared_s2 * applied_ramp_time_s / 6.0;
+  if (stop_during_ramp_s <= ramp_time_s) {
+    return std::max(0.0, reaction_distance_m + ramp_distance_m);
+  }
+  const double speed_after_ramp_mps =
+      speed_after_reaction_mps + forward_acceleration * ramp_time_s -
+      0.5 * maximum_control_jerk_mps3 * ramp_time_s * ramp_time_s;
+  const double constant_deceleration_distance_m =
+      speed_after_ramp_mps * speed_after_ramp_mps / (2.0 * deceleration_mps2);
+  return std::max(0.0, reaction_distance_m + ramp_distance_m +
+                           constant_deceleration_distance_m);
+}
 
 bool StaticRouteReplanGate::tryBegin(const std::uint64_t route_generation) noexcept {
   if (generation_.has_value()) {
@@ -304,29 +423,47 @@ StaticRouteExtensionDecision evaluateStaticRouteExtension(
     const StaticRouteExtensionConfig& config,
     const StaticRouteExtensionObservation& observation) noexcept {
   StaticRouteExtensionDecision decision;
+  if (!staticRouteExtensionConfigValid(config) ||
+      !std::isfinite(observation.horizontal_speed_mps) ||
+      !std::isfinite(observation.forward_acceleration_mps2) ||
+      !std::isfinite(observation.planning_latency_p95_ms) ||
+      !std::isfinite(observation.planning_latency_p99_ms) ||
+      !std::isfinite(observation.build_and_planning_latency_p99_ms)) {
+    return decision;
+  }
   const double speed_mps = std::max(0.0, observation.horizontal_speed_mps);
-  const double search_latency_s =
-      boundedLatencySeconds(observation.guide_search_latency_ms, config);
-  const double build_and_search_latency_s = boundedLatencySeconds(
-      observation.esdf_build_latency_ms + observation.guide_search_latency_ms, config);
-  decision.extension_trigger_remaining_m =
-      std::max(0.0, config.minimum_remaining_m) + speed_mps * search_latency_s;
-  decision.roi_refresh_trigger_remaining_m = std::max(0.0, config.minimum_remaining_m) +
-                                             speed_mps * build_and_search_latency_s;
+  const double planning_p95_s =
+      boundedLatencySeconds(observation.planning_latency_p95_ms, config);
+  const double planning_p99_s =
+      boundedLatencySeconds(std::max(observation.planning_latency_p95_ms,
+                                     observation.planning_latency_p99_ms),
+                            config);
+  const double build_and_planning_p99_s =
+      boundedLatencySeconds(std::max(observation.planning_latency_p99_ms,
+                                     observation.build_and_planning_latency_p99_ms),
+                            config);
+  decision.braking_path_m = jerkLimitedHorizontalStoppingDistanceM(
+      speed_mps, observation.forward_acceleration_mps2, config.stopping_capability,
+      config.maximum_horizontal_acceleration_mps2, config.maximum_control_jerk_mps3);
+  decision.required_certified_overlap_m = config.required_certified_overlap_m;
+  if (!std::isfinite(decision.braking_path_m)) {
+    return {};
+  }
+  const double protected_distance_m =
+      decision.required_certified_overlap_m + decision.braking_path_m;
+  decision.planning_p95_trigger_remaining_m = std::max(
+      config.minimum_remaining_m, protected_distance_m + speed_mps * planning_p95_s);
+  decision.extension_trigger_remaining_m = std::max(
+      config.minimum_remaining_m, protected_distance_m + speed_mps * planning_p99_s);
+  decision.roi_refresh_trigger_remaining_m =
+      std::max(config.minimum_remaining_m,
+               protected_distance_m + speed_mps * build_and_planning_p99_s);
 
   if (observation.route_generation == 0U || observation.route_reaches_mission_goal ||
       observation.request_in_flight || !std::isfinite(observation.route_station_m) ||
       !std::isfinite(observation.route_remaining_m) ||
       observation.route_remaining_m < 0.0) {
     return decision;
-  }
-  const double route_length_m =
-      observation.route_station_m + observation.route_remaining_m;
-  const double maximum_trigger_m =
-      std::max(0.0, config.maximum_trigger_fraction_of_route) * route_length_m;
-  if (std::isfinite(route_length_m) && route_length_m > 0.0) {
-    decision.extension_trigger_remaining_m =
-        std::min(decision.extension_trigger_remaining_m, maximum_trigger_m);
   }
   if (observation.last_request_generation == observation.route_generation) {
     const bool enough_progress = observation.route_station_m >=
@@ -651,6 +788,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "invalid_execution_geometry";
     case StaticRouteActivationStatus::kDynamicHandoffRejected:
       return "dynamic_handoff_rejected";
+    case StaticRouteActivationStatus::kCertifiedSpliceRejected:
+      return "certified_splice_rejected";
     case StaticRouteActivationStatus::kEquivalentActiveSegmentRetained:
       return "equivalent_active_segment_retained";
   }

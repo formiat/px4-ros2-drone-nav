@@ -88,6 +88,24 @@ makeGeometry(const std::vector<RouteSample3D>& route,
   return geometry;
 }
 
+[[nodiscard, maybe_unused]] CertifiedRouteSplice3D
+testRouteSplice(const CertifiedRouteSuffix3D& base,
+                const CertifiedRouteSuffix3D& successor) {
+  const RouteSpliceCertificationResult3D certification =
+      certifyRouteSplice3D(base, successor, successor.progress.last_observed_position,
+                           CertifiedRouteSpliceConfig3D{
+                               .required_overlap_m = 2.0,
+                               .sample_step_m = 0.5,
+                               .maximum_position_separation_m = 2.0,
+                               .minimum_tangent_alignment = 0.5,
+                               .activation_station_tolerance_m = 1.0,
+                           });
+  if (!certification.certified()) {
+    throw std::runtime_error{"failed to create test route splice"};
+  }
+  return *certification.splice;
+}
+
 [[nodiscard, maybe_unused]] std::shared_ptr<const ExecutionRouteGeometry3D>
 withTerminalMppiSpeed(const std::shared_ptr<const ExecutionRouteGeometry3D>& source,
                       const float terminal_speed_mps) {

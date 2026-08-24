@@ -31,19 +31,29 @@ bool PendingCertifiedRoute3D::valid() const noexcept {
     case PendingExecutionBaseKind3D::kEmpty:
       return base_route_generation == 0U && base_geometry_revision == 0U &&
              base_continuity_id == 0U && !base_direct_tracking_identity.has_value() &&
-             successor_generation;
+             !route_splice.has_value() && successor_generation;
     case PendingExecutionBaseKind3D::kRoute:
       return base_route_generation != 0U && base_geometry_revision != 0U &&
              base_continuity_id != 0U && !base_direct_tracking_identity.has_value() &&
+             route_splice.has_value() && route_splice->structurallyValid() &&
+             route_splice->base_route_generation == base_route_generation &&
+             route_splice->base_geometry_revision == base_geometry_revision &&
+             route_splice->base_continuity_id == base_continuity_id &&
+             route_splice->successor_route_generation == route.identity.generation &&
+             route_splice->successor_geometry_revision ==
+                 route.geometry->executable_geometry_revision &&
+             route_splice->successor_continuity_id == route.continuity_id &&
              successor_generation;
     case PendingExecutionBaseKind3D::kDirectTracking:
       return base_geometry_revision == 0U && base_continuity_id == 0U &&
              base_direct_tracking_identity.has_value() &&
-             base_direct_tracking_identity->valid() && successor_generation;
+             base_direct_tracking_identity->valid() && !route_splice.has_value() &&
+             successor_generation;
     case PendingExecutionBaseKind3D::kStationaryHold:
     case PendingExecutionBaseKind3D::kRevoked:
       return base_geometry_revision == 0U && base_continuity_id == 0U &&
-             !base_direct_tracking_identity.has_value() && successor_generation;
+             !base_direct_tracking_identity.has_value() && !route_splice.has_value() &&
+             successor_generation;
   }
   return false;
 }
@@ -76,7 +86,9 @@ bool pendingCertifiedRouteEligible3D(
              snapshot.route->identity.generation == pending.base_route_generation &&
              snapshot.route->geometry->executable_geometry_revision ==
                  pending.base_geometry_revision &&
-             snapshot.route->continuity_id == pending.base_continuity_id;
+             snapshot.route->continuity_id == pending.base_continuity_id &&
+             pending.route_splice.has_value() &&
+             pending.route_splice->validFor(*snapshot.route, pending.route);
     case PendingExecutionBaseKind3D::kDirectTracking:
       return snapshot.phase == ExecutionRoutePhase3D::kDirectTracking &&
              snapshot.direct_tracking_execution.has_value() &&

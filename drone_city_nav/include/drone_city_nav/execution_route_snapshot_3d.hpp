@@ -18,6 +18,7 @@ namespace drone_city_nav {
 
 class VersionedObservedRawWorld3D;
 class VersionedStaticWorld3D;
+struct CertifiedRouteSplice3D;
 
 struct CertifiedRouteProgress3D {
   std::uint64_t route_generation{0U};
@@ -506,7 +507,8 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
 replaceCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
                         const ExecutionRouteTransitionGuard3D& guard,
                         CertifiedRouteSuffix3D successor,
-                        std::optional<FiniteExecutionState3D> successor_execution);
+                        std::optional<FiniteExecutionState3D> successor_execution,
+                        const CertifiedRouteSplice3D& splice);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 transferToDirectTracking3D(const ExecutionRouteSnapshot3D& current,

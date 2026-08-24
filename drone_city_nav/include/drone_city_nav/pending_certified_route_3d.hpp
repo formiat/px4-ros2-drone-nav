@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/certified_route_splice_3d.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -25,6 +25,7 @@ struct PendingCertifiedRoute3D {
   std::uint64_t base_geometry_revision{0U};
   std::uint64_t base_continuity_id{0U};
   std::optional<DirectTrackingOwnerIdentity3D> base_direct_tracking_identity;
+  std::optional<CertifiedRouteSplice3D> route_splice;
   CertifiedRouteSuffix3D route{};
 
   [[nodiscard]] bool valid() const noexcept;

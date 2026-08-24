@@ -1,3 +1,4 @@
+#include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
@@ -563,7 +564,8 @@ ExecutionRouteTransitionResult3D
 replaceCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
                         const ExecutionRouteTransitionGuard3D& guard,
                         CertifiedRouteSuffix3D successor,
-                        std::optional<FiniteExecutionState3D> successor_execution) {
+                        std::optional<FiniteExecutionState3D> successor_execution,
+                        const CertifiedRouteSplice3D& splice) {
   const ExecutionRouteTransitionStatus3D guard_status = checkGuard(current, guard);
   if (guard_status != ExecutionRouteTransitionStatus3D::kApplied) {
     return transitionFailure(guard_status);
@@ -592,6 +594,13 @@ replaceCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
       successor_execution->execution_input == nullptr) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  }
+  const mppi::State& splice_state = successor_execution->execution_input->state();
+  const RouteSpliceReadiness3D splice_readiness = assessRouteSpliceReadiness3D(
+      splice, *current_route, successor,
+      Point3{splice_state.x, splice_state.y, splice_state.z});
+  if (!splice_readiness.ready()) {
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
   }
   if (successor_execution.has_value() &&
       (successor_execution->kind != FiniteExecutionKind3D::kNominal ||

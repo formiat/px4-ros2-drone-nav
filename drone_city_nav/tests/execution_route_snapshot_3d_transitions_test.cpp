@@ -569,7 +569,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   const ExecutionRouteTransitionResult3D replacement = replaceCertifiedRoute3D(
       *following.next, SnapshotFixture3D::guard(*following.next), *successor,
-      predecessor_execution);
+      predecessor_execution, testRouteSplice(*following.next->route, *successor));
 
   EXPECT_EQ(replacement.status,
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
@@ -580,9 +580,17 @@ TEST(ExecutionRouteSnapshot3DTest,
   const FiniteExecutionState3D successor_execution =
       SnapshotFixture3D::finiteExecutionForRoute(
           *following.next, *successor, FiniteExecutionKind3D::kNominal, true, 102U);
+  CertifiedRouteSplice3D tampered_splice =
+      testRouteSplice(*following.next->route, *successor);
+  ++tampered_splice.successor_geometry_revision;
+  EXPECT_EQ(replaceCertifiedRoute3D(*following.next,
+                                    SnapshotFixture3D::guard(*following.next),
+                                    *successor, successor_execution, tampered_splice)
+                .status,
+            ExecutionRouteTransitionStatus3D::kInvalidCandidate);
   const ExecutionRouteTransitionResult3D accepted = replaceCertifiedRoute3D(
       *following.next, SnapshotFixture3D::guard(*following.next), *successor,
-      successor_execution);
+      successor_execution, testRouteSplice(*following.next->route, *successor));
   ASSERT_TRUE(accepted.applied());
   ASSERT_TRUE(accepted.next->route.has_value());
   EXPECT_EQ(accepted.next->route->identity.generation,
@@ -621,11 +629,12 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finiteExecutionForRoute(*advanced.next, *stale_successor,
                                                  FiniteExecutionKind3D::kNominal, true,
                                                  102U);
-  EXPECT_EQ(replaceCertifiedRoute3D(*advanced.next,
-                                    SnapshotFixture3D::guard(*advanced.next),
-                                    *stale_successor, stale_execution)
-                .status,
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  EXPECT_EQ(
+      replaceCertifiedRoute3D(*advanced.next, SnapshotFixture3D::guard(*advanced.next),
+                              *stale_successor, stale_execution,
+                              testRouteSplice(*advanced.next->route, *stale_successor))
+          .status,
+      ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
 
   ExecutionRouteActivation3D fresh_activation = stale_activation;
   fresh_activation.observation.latest_raw_revision = current_raw_revision;
@@ -637,9 +646,9 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finiteExecutionForRoute(*advanced.next, *fresh_successor,
                                                  FiniteExecutionKind3D::kNominal, true,
                                                  102U);
-  const ExecutionRouteTransitionResult3D accepted =
-      replaceCertifiedRoute3D(*advanced.next, SnapshotFixture3D::guard(*advanced.next),
-                              *fresh_successor, fresh_execution);
+  const ExecutionRouteTransitionResult3D accepted = replaceCertifiedRoute3D(
+      *advanced.next, SnapshotFixture3D::guard(*advanced.next), *fresh_successor,
+      fresh_execution, testRouteSplice(*advanced.next->route, *fresh_successor));
   EXPECT_TRUE(accepted.applied());
 
   constexpr std::uint64_t kUnauthenticatedProducer{SnapshotFixture3D::kRawProducer +
@@ -662,9 +671,10 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finiteExecutionForRoute(*advanced.next, *switched_successor,
                                                  FiniteExecutionKind3D::kNominal, true,
                                                  102U);
-  EXPECT_EQ(replaceCertifiedRoute3D(*advanced.next,
-                                    SnapshotFixture3D::guard(*advanced.next),
-                                    *switched_successor, switched_execution)
+  EXPECT_EQ(replaceCertifiedRoute3D(
+                *advanced.next, SnapshotFixture3D::guard(*advanced.next),
+                *switched_successor, switched_execution,
+                testRouteSplice(*advanced.next->route, *switched_successor))
                 .status,
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
 }

@@ -26,6 +26,7 @@ struct ProductionRouteActivationResult3D {
   RouteActivationAssessment3D assessment{};
   RouteProposalReplacementAssessment3D replacement{};
   mppi::StaticRouteHandoffResult handoff{};
+  RouteSpliceCertificationResult3D splice{};
   StaticRouteActivationStatus activation_status{
       StaticRouteActivationStatus::kNotAttempted};
   std::uint64_t candidate_generation{0U};

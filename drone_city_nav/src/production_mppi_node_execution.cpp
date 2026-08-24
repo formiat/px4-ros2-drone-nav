@@ -633,6 +633,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         return publishNoExecutablePathHold(
             cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
       }
+      if (route_execution.pending_activation && expected->route.has_value() &&
+          (route_execution.pending_route == nullptr ||
+           !route_execution.pending_route->route_splice.has_value())) {
+        return publishNoExecutablePathHold(
+            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+      }
       const ExecutionRouteTransitionResult3D transition = [&] {
         if (expected->phase == ExecutionRoutePhase3D::kDirectTracking) {
           return transferDirectTrackingToCertifiedRoute3D(
@@ -649,8 +655,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                 expected->route->geometry->executable_geometry_revision,
         };
         return route_execution.pending_activation
-                   ? replaceCertifiedRoute3D(*expected, guard, *target_route,
-                                             *certified_execution)
+                   ? replaceCertifiedRoute3D(
+                         *expected, guard, *target_route, *certified_execution,
+                         *route_execution.pending_route->route_splice)
                    : replaceFiniteExecution3D(*expected, guard, *certified_execution);
       }();
       if (!transition.applied() || transition.next == nullptr ||

@@ -588,8 +588,19 @@ void ProductionMppiNode::commitRouteActivation3D(
             })
           : std::nullopt;
 
+  const bool route_base =
+      current_execution != nullptr && current_execution->route.has_value();
+  if (certified_route.has_value() && route_base) {
+    result.splice = certifyRouteSplice3D(*current_execution->route, *certified_route,
+                                         Point3{snapshot.navigation.state.x,
+                                                snapshot.navigation.state.y,
+                                                snapshot.navigation.state.z},
+                                         certified_route_splice_config_);
+  }
+  const bool splice_ready = !route_base || result.splice.certified();
+
   const std::optional<std::uint64_t> publication_sequence =
-      certified_route.has_value()
+      certified_route.has_value() && splice_ready
           ? nextPendingPublicationSequence(pending_certified_route_sequence_)
           : std::nullopt;
   const auto pending =
@@ -621,6 +632,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                                                                  ->direct_tracking_execution
                                                                  ->identity}
                         : std::nullopt,
+                .route_splice = route_base ? result.splice.splice : std::nullopt,
                 .route = *certified_route,
             })
           : nullptr;
@@ -683,6 +695,9 @@ void ProductionMppiNode::commitRouteActivation3D(
   } else if (!published_pending && result.validation.accepted &&
              !execution_geometry_valid) {
     result.activation_status = StaticRouteActivationStatus::kInvalidExecutionGeometry;
+  } else if (!published_pending && result.validation.accepted && route_base &&
+             certified_route.has_value() && !result.splice.certified()) {
+    result.activation_status = StaticRouteActivationStatus::kCertifiedSpliceRejected;
   } else if (!published_pending && result.validation.accepted &&
              (!result.assessment.accepted() || !result.handoff.accepted ||
               !certified_route.has_value())) {

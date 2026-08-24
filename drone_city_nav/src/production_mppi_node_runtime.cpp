@@ -108,11 +108,10 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           world->static_route_replan_request,
           world->static_route_replan_base_generation);
       std::uint64_t resident_route_generation = 0U;
-      {
-        const std::scoped_lock lock{esdf_state_mutex_};
-        if (prepared_esdf_) {
-          resident_route_generation = prepared_esdf_->global_guide_generation;
-        }
+      const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+          execution_route_store_.snapshot();
+      if (execution_snapshot != nullptr) {
+        resident_route_generation = execution_snapshot->routeGenerationHighWater();
       }
       const StaticRouteSearchCurrencyAssessment currency =
           assessStaticRouteSearchCurrency(request, resident_route_generation);

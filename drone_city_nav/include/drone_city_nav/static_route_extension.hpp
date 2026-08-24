@@ -5,10 +5,13 @@
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/observation_frontier.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/stopping_capability.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -20,17 +23,47 @@ namespace drone_city_nav {
 
 struct StaticRouteExtensionConfig {
   double minimum_remaining_m{45.0};
-  // Do not replace a short finite route before the vehicle has consumed a
-  // meaningful portion of it. This keeps a no-static route handoff from
-  // repeatedly resetting its terminal speed profile before the route is used.
-  double maximum_trigger_fraction_of_route{0.65};
+  double required_certified_overlap_m{8.0};
   double latency_margin_s{0.5};
   double maximum_latency_s{8.0};
+  double maximum_horizontal_acceleration_mps2{4.0};
+  double maximum_control_jerk_mps3{12.0};
+  StoppingCapability stopping_capability{};
   double minimum_retry_progress_m{15.0};
   double minimum_retry_interval_s{1.0};
   double minimum_endpoint_improvement_m{5.0};
   double protected_departure_m{5.0};
 };
+
+[[nodiscard]] bool
+staticRouteExtensionConfigValid(const StaticRouteExtensionConfig& config) noexcept;
+
+struct StaticRoutePlanningLatencyStats {
+  std::size_t sample_count{0U};
+  double planning_p95_ms{0.0};
+  double planning_p99_ms{0.0};
+  double build_and_planning_p99_ms{0.0};
+};
+
+class StaticRoutePlanningLatencyTracker final {
+public:
+  static constexpr std::size_t kMaximumSamples{128U};
+
+  void record(double planning_latency_ms, double world_build_latency_ms) noexcept;
+  [[nodiscard]] StaticRoutePlanningLatencyStats stats() const noexcept;
+  void clear() noexcept;
+
+private:
+  std::array<double, kMaximumSamples> planning_latency_ms_{};
+  std::array<double, kMaximumSamples> build_and_planning_latency_ms_{};
+  std::size_t next_index_{0U};
+  std::size_t sample_count_{0U};
+};
+
+[[nodiscard]] double jerkLimitedHorizontalStoppingDistanceM(
+    double horizontal_speed_mps, double forward_acceleration_mps2,
+    const StoppingCapability& capability, double maximum_horizontal_acceleration_mps2,
+    double maximum_control_jerk_mps3) noexcept;
 
 struct StaticRouteObjective {
   Point3 goal{};
@@ -96,8 +129,10 @@ struct StaticRouteExtensionObservation {
   double route_station_m{0.0};
   double route_remaining_m{0.0};
   double horizontal_speed_mps{0.0};
-  double guide_search_latency_ms{0.0};
-  double esdf_build_latency_ms{0.0};
+  double forward_acceleration_mps2{0.0};
+  double planning_latency_p95_ms{0.0};
+  double planning_latency_p99_ms{0.0};
+  double build_and_planning_latency_p99_ms{0.0};
   bool route_reaches_mission_goal{false};
   bool next_planning_goal_inside_esdf{true};
   bool request_in_flight{false};
@@ -110,8 +145,11 @@ struct StaticRouteExtensionObservation {
 struct StaticRouteExtensionDecision {
   bool request_extension{false};
   bool request_roi_refresh{false};
+  double planning_p95_trigger_remaining_m{0.0};
   double extension_trigger_remaining_m{0.0};
   double roi_refresh_trigger_remaining_m{0.0};
+  double braking_path_m{0.0};
+  double required_certified_overlap_m{0.0};
 };
 
 class StaticRouteReplanGate {
@@ -280,6 +318,7 @@ enum class StaticRouteActivationStatus : std::uint8_t {
   kStaleObjective,
   kInvalidExecutionGeometry,
   kDynamicHandoffRejected,
+  kCertifiedSpliceRejected,
   kEquivalentActiveSegmentRetained,
   kCertifiedPending,
 };

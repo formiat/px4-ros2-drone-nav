@@ -450,9 +450,9 @@ void ProductionMppiNode::planningTick() {
   if (use_static_map_ && objective && objective->continuous_tracking) {
     maybeRequestStaticTrackingWorldRefresh(*esdf, navigation, *objective, now_ns);
   }
-  if ((use_static_map_ || observed_3d_world) && route_usable &&
-      route_projection.valid) {
-    maybeRequestStaticRouteExtension(*esdf, navigation, route_projection, now_ns);
+  if (use_static_map_ || observed_3d_world) {
+    maybeRequestStaticRouteExtensionFromExecution(*esdf, route_execution, navigation,
+                                                  now_ns);
   }
   const std::span<const RouteSample3D> route_3d =
       route_usable && execution_route ? std::span<const RouteSample3D>{*execution_route}

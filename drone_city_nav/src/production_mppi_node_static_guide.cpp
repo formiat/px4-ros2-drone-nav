@@ -25,6 +25,7 @@ namespace drone_city_nav {
 void ProductionMppiNode::processGuideSearch3D(
     const ProductionMppiPreparedEsdf& world,
     const ProductionMppiNavigation& navigation) {
+  const auto planning_started = std::chrono::steady_clock::now();
   const Point3 mission_goal =
       world.search_objective.available ? world.search_objective.goal : mission_goal_;
   const NavigationWorldCertificate3D planned_world_certificate =
@@ -163,6 +164,14 @@ void ProductionMppiNode::processGuideSearch3D(
     commitRouteActivation3D(world, activation_snapshot, candidate_generation,
                             activation);
   }
+  const double route_planning_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                planning_started)
+          .count();
+  {
+    const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
+    static_route_planning_latency_tracker_.record(route_planning_ms, world.build_ms);
+  }
 
   RiskAwareLattice3DResult& lattice = selected_candidate.lattice;
   ProductionIncrementalTopologySearch3D empty_topology;
@@ -258,6 +267,8 @@ void ProductionMppiNode::processGuideSearch3D(
       "raw_validated_from_station_m=%.2f "
       "handoff=%s handoff_cross_track_m=%.2f handoff_minimum_clearance_m=%.2f "
       "handoff_planning_exposure_m=%.2f handoff_critical_exposure_m=%.2f "
+      "splice=%.*s splice_overlap_m=%.2f splice_max_separation_m=%.2f "
+      "splice_min_tangent_alignment=%.3f "
       "status=%s termination=%s "
       "points=%zu samples=%zu spans=%zu expansions=%zu expansion_limit=%zu "
       "deadline_ms=%.2f "
@@ -291,6 +302,7 @@ void ProductionMppiNode::processGuideSearch3D(
       "objective=%.3f route_length_m=%.2f travel_time_s=%.2f "
       "vertical_alignment_time_s=%.2f planning_exposure_m=%.2f "
       "critical_exposure_m=%.2f selected_passage_traversals=%zu search_ms=%.2f "
+      "route_planning_ms=%.2f "
       "topology_searches=%zu parallel_topology_searches=%zu "
       "topology_search_worker_ms=%.2f "
       "continuation_ms=%.2f validation_ms=%.2f smoothing_ms=%.2f "
@@ -336,7 +348,16 @@ void ProductionMppiNode::processGuideSearch3D(
       activation.assessment.raw_validation.validated_from_station_m,
       mppi::staticRouteHandoffStatusName(handoff.status), handoff.cross_track_m,
       handoff.minimum_clearance_m, handoff.planning_exposure_m,
-      handoff.critical_exposure_m, lattice3DStatusName(lattice.status),
+      handoff.critical_exposure_m,
+      static_cast<int>(
+          routeSpliceCertificationStatus3DName(activation.splice.status).size()),
+      routeSpliceCertificationStatus3DName(activation.splice.status).data(),
+      activation.splice.splice.has_value()
+          ? activation.splice.splice->required_overlap_m
+          : 0.0,
+      activation.splice.measured_maximum_position_separation_m,
+      activation.splice.measured_minimum_tangent_alignment,
+      lattice3DStatusName(lattice.status),
       lattice3DSearchTerminationName(lattice.termination), lattice.points.size(),
       lattice.route.size(),
       prepared.constrained_spans ? prepared.constrained_spans->size() : 0U,
@@ -384,7 +405,7 @@ void ProductionMppiNode::processGuideSearch3D(
       lattice.route_length_m, lattice.estimated_travel_time_s,
       lattice.vertical_alignment_time_s, lattice.planning_exposure_m,
       lattice.critical_exposure_m, route_traversals.size(), search_ms,
-      lattice.topology_searches, lattice.parallel_topology_searches,
+      route_planning_ms, lattice.topology_searches, lattice.parallel_topology_searches,
       lattice.topology_search_worker_ms, prepared.continuation_validation_ms,
       prepared.candidate_validation_ms, prepared.route_smoothing_ms,
       prepared.route_shortcut_validation_ms, prepared.route_corner_validation_ms,

@@ -20,31 +20,36 @@ TEST(StaticRouteExtensionTest, RequestsResidentExtensionUsingSearchLatency) {
       StaticRouteExtensionConfig{},
       StaticRouteExtensionObservation{.route_generation = 4U,
                                       .route_station_m = 70.0,
-                                      .route_remaining_m = 55.0,
-                                      .horizontal_speed_mps = 20.0,
-                                      .guide_search_latency_ms = 100.0,
-                                      .esdf_build_latency_ms = 6000.0});
+                                      .route_remaining_m = 40.0,
+                                      .horizontal_speed_mps = 5.0,
+                                      .planning_latency_p95_ms = 100.0,
+                                      .planning_latency_p99_ms = 250.0,
+                                      .build_and_planning_latency_p99_ms = 6250.0});
 
   EXPECT_TRUE(decision.request_extension);
   EXPECT_FALSE(decision.request_roi_refresh);
-  EXPECT_DOUBLE_EQ(decision.extension_trigger_remaining_m, 57.0);
+  EXPECT_GE(decision.extension_trigger_remaining_m,
+            decision.planning_p95_trigger_remaining_m);
+  EXPECT_GT(decision.braking_path_m, 0.0);
+  EXPECT_DOUBLE_EQ(decision.required_certified_overlap_m, 8.0);
 }
 
-TEST(StaticRouteExtensionTest, DoesNotImmediatelyReplaceShortFiniteRoute) {
+TEST(StaticRouteExtensionTest, ShortContinuationRequestsSuccessorWithoutFractionCap) {
   const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
       StaticRouteExtensionConfig{.minimum_remaining_m = 15.0,
-                                 .maximum_trigger_fraction_of_route = 0.65,
+                                 .required_certified_overlap_m = 8.0,
                                  .latency_margin_s = 0.5},
       StaticRouteExtensionObservation{.route_generation = 4U,
                                       .route_station_m = 0.0,
                                       .route_remaining_m = 10.0,
                                       .horizontal_speed_mps = 3.0,
-                                      .guide_search_latency_ms = 100.0,
-                                      .esdf_build_latency_ms = 1200.0});
+                                      .planning_latency_p95_ms = 100.0,
+                                      .planning_latency_p99_ms = 200.0,
+                                      .build_and_planning_latency_p99_ms = 1400.0});
 
-  EXPECT_FALSE(decision.request_extension);
+  EXPECT_TRUE(decision.request_extension);
   EXPECT_FALSE(decision.request_roi_refresh);
-  EXPECT_DOUBLE_EQ(decision.extension_trigger_remaining_m, 6.5);
+  EXPECT_GE(decision.extension_trigger_remaining_m, 15.0);
 }
 
 TEST(StaticRouteExtensionTest, RequestsEarlyRoiRefreshOnlyWhenGoalLeavesEsdf) {
@@ -53,8 +58,9 @@ TEST(StaticRouteExtensionTest, RequestsEarlyRoiRefreshOnlyWhenGoalLeavesEsdf) {
       .route_station_m = 10.0,
       .route_remaining_m = 120.0,
       .horizontal_speed_mps = 15.0,
-      .guide_search_latency_ms = 100.0,
-      .esdf_build_latency_ms = 6000.0,
+      .planning_latency_p95_ms = 100.0,
+      .planning_latency_p99_ms = 200.0,
+      .build_and_planning_latency_p99_ms = 6200.0,
       .next_planning_goal_inside_esdf = false,
   };
   StaticRouteExtensionDecision decision =
@@ -66,6 +72,103 @@ TEST(StaticRouteExtensionTest, RequestsEarlyRoiRefreshOnlyWhenGoalLeavesEsdf) {
   decision = evaluateStaticRouteExtension(StaticRouteExtensionConfig{}, observation);
   EXPECT_FALSE(decision.request_roi_refresh);
   EXPECT_FALSE(decision.request_extension);
+}
+
+TEST(StaticRouteExtensionTest, RollingLatencyUsesMeasuredUpperTailQuantiles) {
+  StaticRoutePlanningLatencyTracker tracker;
+  for (std::size_t index = 1U; index <= 100U; ++index) {
+    tracker.record(static_cast<double>(index), 2.0 * static_cast<double>(index));
+  }
+
+  const StaticRoutePlanningLatencyStats stats = tracker.stats();
+  EXPECT_EQ(stats.sample_count, 100U);
+  EXPECT_DOUBLE_EQ(stats.planning_p95_ms, 95.0);
+  EXPECT_DOUBLE_EQ(stats.planning_p99_ms, 99.0);
+  EXPECT_DOUBLE_EQ(stats.build_and_planning_p99_ms, 297.0);
+
+  tracker.record(std::numeric_limits<double>::quiet_NaN(), 1.0);
+  EXPECT_EQ(tracker.stats().sample_count, 100U);
+  tracker.clear();
+  EXPECT_EQ(tracker.stats().sample_count, 0U);
+}
+
+TEST(StaticRouteExtensionTest, RollingLatencyRemainsBoundedAndLatest) {
+  StaticRoutePlanningLatencyTracker tracker;
+  for (std::size_t index = 0U;
+       index < StaticRoutePlanningLatencyTracker::kMaximumSamples; ++index) {
+    tracker.record(1000.0, 1000.0);
+  }
+  for (std::size_t index = 0U;
+       index < StaticRoutePlanningLatencyTracker::kMaximumSamples; ++index) {
+    tracker.record(10.0, 20.0);
+  }
+
+  const StaticRoutePlanningLatencyStats stats = tracker.stats();
+  EXPECT_EQ(stats.sample_count, StaticRoutePlanningLatencyTracker::kMaximumSamples);
+  EXPECT_DOUBLE_EQ(stats.planning_p95_ms, 10.0);
+  EXPECT_DOUBLE_EQ(stats.planning_p99_ms, 10.0);
+  EXPECT_DOUBLE_EQ(stats.build_and_planning_p99_ms, 30.0);
+}
+
+TEST(StaticRouteExtensionTest, JerkAndForwardAccelerationIncreaseBrakingPath) {
+  const StoppingCapability capability{
+      .maximum_commanded_horizontal_deceleration_mps2 = 4.0,
+      .guaranteed_horizontal_deceleration_mps2 = 4.0,
+      .guaranteed_vertical_deceleration_mps2 = 2.0,
+      .reaction_latency_s = 0.1,
+  };
+  const double nominal =
+      jerkLimitedHorizontalStoppingDistanceM(10.0, 0.0, capability, 4.0, 12.0);
+  const double accelerating =
+      jerkLimitedHorizontalStoppingDistanceM(10.0, 3.0, capability, 4.0, 12.0);
+  const double lower_jerk =
+      jerkLimitedHorizontalStoppingDistanceM(10.0, 0.0, capability, 4.0, 3.0);
+
+  EXPECT_GT(nominal, 12.5);
+  EXPECT_GT(accelerating, nominal);
+  EXPECT_GT(lower_jerk, nominal);
+}
+
+TEST(StaticRouteExtensionTest, TriggerDistanceScalesWithLatencyOverlapAndJerkLimits) {
+  const StaticRouteExtensionObservation observation{
+      .route_generation = 4U,
+      .route_remaining_m = 1000.0,
+      .horizontal_speed_mps = 10.0,
+      .planning_latency_p95_ms = 500.0,
+      .planning_latency_p99_ms = 1000.0,
+      .build_and_planning_latency_p99_ms = 2000.0,
+  };
+  StaticRouteExtensionConfig baseline_config;
+  baseline_config.minimum_remaining_m = 0.0;
+  const StaticRouteExtensionDecision baseline =
+      evaluateStaticRouteExtension(baseline_config, observation);
+
+  StaticRouteExtensionObservation slower_planning = observation;
+  slower_planning.planning_latency_p95_ms = 1500.0;
+  slower_planning.planning_latency_p99_ms = 3000.0;
+  slower_planning.build_and_planning_latency_p99_ms = 5000.0;
+  const StaticRouteExtensionDecision latency_scaled =
+      evaluateStaticRouteExtension(baseline_config, slower_planning);
+
+  StaticRouteExtensionConfig larger_overlap = baseline_config;
+  larger_overlap.required_certified_overlap_m = 20.0;
+  const StaticRouteExtensionDecision overlap_scaled =
+      evaluateStaticRouteExtension(larger_overlap, observation);
+
+  StaticRouteExtensionConfig lower_jerk = baseline_config;
+  lower_jerk.maximum_control_jerk_mps3 = 3.0;
+  const StaticRouteExtensionDecision jerk_scaled =
+      evaluateStaticRouteExtension(lower_jerk, observation);
+
+  EXPECT_GT(latency_scaled.extension_trigger_remaining_m,
+            baseline.extension_trigger_remaining_m);
+  EXPECT_GT(latency_scaled.roi_refresh_trigger_remaining_m,
+            baseline.roi_refresh_trigger_remaining_m);
+  EXPECT_GT(overlap_scaled.extension_trigger_remaining_m,
+            baseline.extension_trigger_remaining_m);
+  EXPECT_GT(jerk_scaled.braking_path_m, baseline.braking_path_m);
+  EXPECT_GT(jerk_scaled.extension_trigger_remaining_m,
+            baseline.extension_trigger_remaining_m);
 }
 
 TEST(StaticRouteExtensionTest, DoesNotDuplicateRequestForSameGenerationAndStation) {

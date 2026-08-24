@@ -21,6 +21,10 @@ pendingForSnapshot(const ExecutionRouteSnapshot3D& snapshot,
       .base_continuity_id =
           route_base && snapshot.route.has_value() ? snapshot.route->continuity_id : 0U,
       .base_direct_tracking_identity = std::nullopt,
+      .route_splice = route_base && snapshot.route.has_value()
+                          ? std::optional<CertifiedRouteSplice3D>{testRouteSplice(
+                                *snapshot.route, route)}
+                          : std::nullopt,
       .route = route,
   };
 }
