@@ -89,6 +89,18 @@ makeGeometry(const std::vector<RouteSample3D>& route,
 }
 
 [[nodiscard, maybe_unused]] std::shared_ptr<const ExecutionRouteGeometry3D>
+withTerminalMppiSpeed(const std::shared_ptr<const ExecutionRouteGeometry3D>& source,
+                      const float terminal_speed_mps) {
+  auto geometry = std::make_shared<ExecutionRouteGeometry3D>(*source);
+  auto mppi_route =
+      std::make_shared<std::vector<mppi::RouteSample3D>>(*geometry->mppi_route);
+  mppi_route->back().reference_speed_mps = terminal_speed_mps;
+  geometry->mppi_route = std::move(mppi_route);
+  geometry->executable_geometry_revision = executionRouteGeometryRevision3D(*geometry);
+  return geometry;
+}
+
+[[nodiscard, maybe_unused]] std::shared_ptr<const ExecutionRouteGeometry3D>
 makeConstrainedGeometry(const std::vector<RouteSample3D>& route,
                         const std::uint64_t physical_route_fingerprint,
                         const std::uint64_t route_generation,

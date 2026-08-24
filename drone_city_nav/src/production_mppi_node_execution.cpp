@@ -33,10 +33,12 @@ static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kTopologicalBackt
 namespace {
 
 [[nodiscard]] std::optional<mppi::FiniteExecutionPathTerminalBoundary>
-finiteRouteTerminalBoundary(const mppi::MppiTickInput& input,
-                            const ProductionMppiPreparedEsdf& esdf) noexcept {
-  if (esdf.global_guide_reaches_mission_goal || !input.route.has_value() ||
-      !input.route->points || input.route->points->size() < 2U) {
+finiteRouteTerminalBoundary(
+    const mppi::MppiTickInput& input,
+    const RouteEndpointSemantics3D endpoint_semantics) noexcept {
+  if (!routeEndpointUsesLocalBoundary3D(endpoint_semantics) ||
+      !input.route.has_value() || !input.route->points ||
+      input.route->points->size() < 2U) {
     return std::nullopt;
   }
   const std::vector<mppi::RouteSample3D>& route = *input.route->points;
@@ -248,10 +250,19 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               latest_raw_world_3d->occupancy != nullptr
           ? latest_raw_world_3d->occupancy.get()
           : nullptr;
+  RouteEndpointSemantics3D finite_boundary_endpoint_semantics =
+      esdf.global_guide_reaches_mission_goal
+          ? RouteEndpointSemantics3D::kMissionStop
+          : RouteEndpointSemantics3D::kObservationStop;
+  if (selected_snapshot_route != nullptr) {
+    finite_boundary_endpoint_semantics =
+        selected_snapshot_route->planned_endpoint_semantics;
+  }
   const std::optional<mppi::FiniteExecutionPathTerminalBoundary>
       route_terminal_boundary =
-          direct_tracking_requested ? std::nullopt
-                                    : finiteRouteTerminalBoundary(input, esdf);
+          direct_tracking_requested
+              ? std::nullopt
+              : finiteRouteTerminalBoundary(input, finite_boundary_endpoint_semantics);
   const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed_owner =
       exact_snapshot_world && direct_observed_world != nullptr &&
               direct_observed_world->proprioceptiveFreeSpaceSeed().has_value()

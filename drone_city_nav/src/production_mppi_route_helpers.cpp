@@ -7,6 +7,7 @@ namespace drone_city_nav {
 std::shared_ptr<const std::vector<mppi::RouteSample3D>>
 makeMppiRoute2D(const std::span<const Point2> route, const double z_m,
                 const double reference_speed_mps,
+                const RouteEndpointSemantics3D endpoint_semantics,
                 const MppiSpeedPolicyConfig& speed_policy_config) {
   std::vector<Point3> points;
   points.reserve(route.size());
@@ -14,7 +15,8 @@ makeMppiRoute2D(const std::span<const Point2> route, const double z_m,
     points.push_back(Point3{point.x, point.y, z_m});
   }
   return makeMppiRoute3D(sampleRoute3D(points, 0.5, reference_speed_mps), {},
-                         reference_speed_mps, reference_speed_mps, speed_policy_config);
+                         reference_speed_mps, reference_speed_mps, endpoint_semantics,
+                         speed_policy_config);
 }
 
 std::shared_ptr<const std::vector<mppi::RouteSample3D>>
@@ -22,6 +24,7 @@ makeMppiRoute3D(const std::span<const RouteSample3D> route,
                 const std::span<const ConstrainedRouteSpan> spans,
                 const double unconstrained_speed_mps,
                 const double constrained_speed_mps,
+                const RouteEndpointSemantics3D endpoint_semantics,
                 const MppiSpeedPolicyConfig& speed_policy_config) {
   auto points = std::make_shared<std::vector<mppi::RouteSample3D>>();
   points->reserve(route.size());
@@ -38,10 +41,12 @@ makeMppiRoute3D(const std::span<const RouteSample3D> route,
                                 ? constrained_speed_mps
                                 : constrained->envelope.front().reference_speed_mps;
     }
-    const double terminal_speed_mps =
-        stoppingLimitedSpeed(std::max(0.0, terminal_station_m - sample.station_m), 0.0,
-                             speed_policy_config.stopping_capability);
-    reference_speed_mps = std::min(reference_speed_mps, terminal_speed_mps);
+    if (routeEndpointHasTerminalStop3D(endpoint_semantics)) {
+      const double terminal_speed_mps =
+          stoppingLimitedSpeed(std::max(0.0, terminal_station_m - sample.station_m),
+                               0.0, speed_policy_config.stopping_capability);
+      reference_speed_mps = std::min(reference_speed_mps, terminal_speed_mps);
+    }
     points->push_back(mppi::RouteSample3D{
         .x_m = static_cast<float>(sample.position.x),
         .y_m = static_cast<float>(sample.position.y),

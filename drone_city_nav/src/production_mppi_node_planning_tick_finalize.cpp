@@ -179,13 +179,13 @@ void ProductionMppiNode::finalizePlanningTick(
           Point3{navigation.state.x, navigation.state.y, navigation.state.z},
           mission_goal,
       };
-      rviz_route =
-          makeMppiRoute3D(sampleRoute3D(direct_points,
-                                        std::max(0.5, distance3D(direct_points.front(),
-                                                                 direct_points.back())),
-                                        speed_policy.reference_speed_mps),
-                          {}, speed_policy.reference_speed_mps,
-                          speed_policy.reference_speed_mps, speed_policy_config_);
+      rviz_route = makeMppiRoute3D(
+          sampleRoute3D(
+              direct_points,
+              std::max(0.5, distance3D(direct_points.front(), direct_points.back())),
+              speed_policy.reference_speed_mps),
+          {}, speed_policy.reference_speed_mps, speed_policy.reference_speed_mps,
+          RouteEndpointSemantics3D::kContinuation, speed_policy_config_);
     }
     rviz = ProductionMppiRvizSnapshot{
         .candidate_horizon = result.horizon,

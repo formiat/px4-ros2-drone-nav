@@ -983,6 +983,14 @@ if(BUILD_TESTING)
     target_link_libraries(production_mppi_route_world_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(production_mppi_route_world_test)
+
+    ament_add_gtest(production_mppi_route_helpers_test
+                    tests/production_mppi_route_helpers_test.cpp)
+    target_compile_features(production_mppi_route_helpers_test PRIVATE cxx_std_20)
+    target_include_directories(production_mppi_route_helpers_test PRIVATE src)
+    target_link_libraries(production_mppi_route_helpers_test
+                          drone_city_nav_production_mppi_component)
+    enable_project_warnings(production_mppi_route_helpers_test)
   endif()
 
   ament_add_gtest(risk_aware_lattice_test

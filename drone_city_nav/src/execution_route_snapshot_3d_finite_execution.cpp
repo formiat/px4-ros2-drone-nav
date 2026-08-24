@@ -114,8 +114,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
             raw_invalidation->raw_producer_instance_id ||
         observed_raw_validation_world->version().revision !=
             raw_invalidation->raw_revision ||
-        (certification.kind != FiniteExecutionKind3D::kRetained &&
-         certification.kind != FiniteExecutionKind3D::kEmergencyBrakeTail) ||
+        certification.kind != FiniteExecutionKind3D::kEmergencyBrakeTail ||
         (previous_raw_lineage != nullptr &&
          (raw_invalidation->raw_revision <
               previous_raw_lineage->validated_through_raw_revision ||

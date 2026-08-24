@@ -23,7 +23,19 @@ struct RouteContinuityLineage3D {
 
 [[nodiscard]] RouteEndpointSemantics3D
 routeEndpointSemantics3D(const RouteIntent3D& intent, bool reaches_intent_target,
-                         bool reaches_mission_goal) noexcept;
+                         bool reaches_mission_goal,
+                         bool mission_endpoint_is_terminal) noexcept;
+
+// Only true endpoint semantics may shape the nominal route speed to zero.
+// Unknown enum values fail closed as terminal stops.
+[[nodiscard]] bool
+routeEndpointHasTerminalStop3D(RouteEndpointSemantics3D semantics) noexcept;
+
+// A local execution boundary keeps every non-mission finite fallback inside
+// certified route geometry. Continuations still use this boundary even though
+// their nominal speed profile remains nonzero.
+[[nodiscard]] bool
+routeEndpointUsesLocalBoundary3D(RouteEndpointSemantics3D semantics) noexcept;
 
 [[nodiscard]] std::uint64_t
 routeContinuityId3D(const RouteIntent3D& intent,

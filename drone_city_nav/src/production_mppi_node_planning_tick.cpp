@@ -402,6 +402,15 @@ void ProductionMppiNode::planningTick() {
       activated_route != nullptr
           ? activated_route->identity.proposal.reaches_mission_goal
           : esdf->global_guide_reaches_mission_goal;
+  RouteEndpointSemantics3D route_endpoint_semantics =
+      RouteEndpointSemantics3D::kObservationStop;
+  if (activated_route != nullptr) {
+    route_endpoint_semantics = activated_route->planned_endpoint_semantics;
+  } else if (route_reaches_mission_goal) {
+    route_endpoint_semantics = terminal_hold_enabled
+                                   ? RouteEndpointSemantics3D::kMissionStop
+                                   : RouteEndpointSemantics3D::kContinuation;
+  }
   const Lattice3DRoutePurpose route_purpose = route_geometry != nullptr
                                                   ? route_geometry->route_purpose
                                                   : esdf->lattice_3d_route_purpose;
@@ -555,7 +564,8 @@ void ProductionMppiNode::planningTick() {
             })
           : MissionGoalCaptureResult{};
   const bool temporary_frontier_is_terminal =
-      route_usable && route_projection.valid && !route_reaches_mission_goal;
+      route_usable && route_projection.valid &&
+      route_endpoint_semantics == RouteEndpointSemantics3D::kObservationStop;
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
       speed_policy_config_,
       MppiSpeedPolicyInput{
@@ -563,13 +573,15 @@ void ProductionMppiNode::planningTick() {
           .mission_goal = mission_goal,
           .guide = guide,
           .route_endpoint_remaining_m =
-              route_usable && route_projection.valid && !route_reaches_mission_goal
+              route_usable && route_projection.valid &&
+                      routeEndpointHasTerminalStop3D(route_endpoint_semantics)
                   ? std::optional<double>{route_projection.remaining_m}
                   : std::nullopt,
           .route_constraint_speed_limit_mps =
               route_control.active
                   ? std::optional<double>{route_control.speed_limit_mps}
                   : std::nullopt,
+          .route_endpoint_semantics = route_endpoint_semantics,
           .terminal_goal_limit_enabled = terminal_hold_enabled,
       });
   const std::span<const CooperativePassageAssignment> passage_assignments =

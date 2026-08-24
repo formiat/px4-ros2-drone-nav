@@ -13,12 +13,16 @@ TEST(RollingRouteTelemetry3DTest, ClassifiesTypedEndpointSemantics) {
       .valid = true,
   };
 
-  EXPECT_EQ(routeEndpointSemantics3D(transit, false, false),
+  EXPECT_EQ(routeEndpointSemantics3D(transit, false, false, true),
             RouteEndpointSemantics3D::kContinuation);
-  EXPECT_EQ(routeEndpointSemantics3D(observation, true, false),
+  EXPECT_EQ(routeEndpointSemantics3D(observation, true, false, true),
             RouteEndpointSemantics3D::kObservationStop);
-  EXPECT_EQ(routeEndpointSemantics3D(transit, true, true),
+  EXPECT_EQ(routeEndpointSemantics3D(transit, true, true, true),
             RouteEndpointSemantics3D::kMissionStop);
+  EXPECT_EQ(routeEndpointSemantics3D(transit, true, true, false),
+            RouteEndpointSemantics3D::kContinuation);
+  EXPECT_EQ(routeEndpointSemantics3D(observation, true, true, false),
+            RouteEndpointSemantics3D::kContinuation);
   EXPECT_EQ(routeEndpointSemantics3DName(RouteEndpointSemantics3D::kEmergencyBrakeTail),
             "emergency_brake_tail");
   EXPECT_EQ(effectiveRouteEndpointSemantics3D(RouteEndpointSemantics3D::kContinuation,
@@ -46,10 +50,35 @@ TEST(RollingRouteTelemetry3DTest, KeepsPartialTopologySegmentsNonTerminal) {
       .valid = true,
   };
 
-  EXPECT_EQ(routeEndpointSemantics3D(topology, false, false),
+  EXPECT_EQ(routeEndpointSemantics3D(topology, false, false, true),
             RouteEndpointSemantics3D::kContinuation);
-  EXPECT_EQ(routeEndpointSemantics3D(observation, false, false),
+  EXPECT_EQ(routeEndpointSemantics3D(observation, false, false, true),
             RouteEndpointSemantics3D::kContinuation);
+}
+
+TEST(RollingRouteTelemetry3DTest,
+     EndpointSpeedAndFiniteBoundaryPoliciesRemainIndependent) {
+  EXPECT_FALSE(routeEndpointHasTerminalStop3D(RouteEndpointSemantics3D::kContinuation));
+  EXPECT_TRUE(
+      routeEndpointUsesLocalBoundary3D(RouteEndpointSemantics3D::kContinuation));
+
+  EXPECT_TRUE(
+      routeEndpointHasTerminalStop3D(RouteEndpointSemantics3D::kObservationStop));
+  EXPECT_TRUE(
+      routeEndpointUsesLocalBoundary3D(RouteEndpointSemantics3D::kObservationStop));
+
+  EXPECT_TRUE(routeEndpointHasTerminalStop3D(RouteEndpointSemantics3D::kMissionStop));
+  EXPECT_FALSE(
+      routeEndpointUsesLocalBoundary3D(RouteEndpointSemantics3D::kMissionStop));
+
+  EXPECT_TRUE(
+      routeEndpointHasTerminalStop3D(RouteEndpointSemantics3D::kEmergencyBrakeTail));
+  EXPECT_TRUE(
+      routeEndpointUsesLocalBoundary3D(RouteEndpointSemantics3D::kEmergencyBrakeTail));
+
+  const auto invalid = static_cast<RouteEndpointSemantics3D>(255U);
+  EXPECT_TRUE(routeEndpointHasTerminalStop3D(invalid));
+  EXPECT_TRUE(routeEndpointUsesLocalBoundary3D(invalid));
 }
 
 TEST(RollingRouteTelemetry3DTest, KeepsDirectReplansInOneContinuityLineage) {

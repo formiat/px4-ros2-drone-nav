@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/route_execution_contract_3d.hpp"
 #include "drone_city_nav/stopping_capability.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -43,6 +44,8 @@ struct MppiSpeedPolicyInput {
   std::span<const Point2> guide;
   std::optional<double> route_endpoint_remaining_m;
   std::optional<double> route_constraint_speed_limit_mps;
+  RouteEndpointSemantics3D route_endpoint_semantics{
+      RouteEndpointSemantics3D::kContinuation};
   bool terminal_goal_limit_enabled{true};
 };
 
@@ -59,6 +62,9 @@ struct MppiSpeedPolicyResult {
   double maximum_preview_curvature_1pm{0.0};
   double target_lookahead_m{0.0};
   MppiSpeedLimiter active_limiter{MppiSpeedLimiter::kGoal};
+  RouteEndpointSemantics3D route_endpoint_semantics{
+      RouteEndpointSemantics3D::kContinuation};
+  bool route_endpoint_stop_required{false};
   bool terminal_goal_limit_enabled{true};
 };
 

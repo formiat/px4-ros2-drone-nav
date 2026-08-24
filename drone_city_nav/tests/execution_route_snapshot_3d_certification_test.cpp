@@ -63,11 +63,46 @@ TEST(ExecutionRouteSnapshot3DTest, DerivesPlannedEndpointSemanticsFromTheProposa
 
   activation.proposal.reaches_mission_goal = false;
   activation.proposal.evidence.reaches_mission_target = false;
+  activation.geometry = withTerminalMppiSpeed(activation.geometry, 4.0F);
   const std::optional<CertifiedRouteSuffix3D> continuation =
       certifyExecutionRoute3D(activation);
   ASSERT_TRUE(continuation.has_value());
   EXPECT_EQ(continuation->planned_endpoint_semantics,
             RouteEndpointSemantics3D::kContinuation);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
+     ContinuousTrackingMissionEndpointRemainsAContinuation) {
+  SnapshotFixture3D fixture;
+  ExecutionRouteActivation3D activation = fixture.activation();
+  activation.proposal.objective.continuous_tracking = true;
+  activation.proposal.objective.target_detection_id = 7U;
+  activation.proposal.objective.target_track_id = 8U;
+  activation.observation.current_objective.continuous_tracking = true;
+  activation.observation.current_objective.target_detection_id = 7U;
+  activation.observation.current_objective.target_track_id = 8U;
+  activation.geometry = withTerminalMppiSpeed(activation.geometry, 4.0F);
+
+  const std::optional<CertifiedRouteSuffix3D> continuation =
+      certifyExecutionRoute3D(activation);
+
+  ASSERT_TRUE(continuation.has_value());
+  EXPECT_EQ(continuation->planned_endpoint_semantics,
+            RouteEndpointSemantics3D::kContinuation);
+  EXPECT_TRUE(continuation->valid());
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
+     EndpointSemanticsRejectsAMismatchedNominalSpeedProfile) {
+  SnapshotFixture3D fixture;
+  ExecutionRouteActivation3D continuation = fixture.activation();
+  continuation.proposal.reaches_mission_goal = false;
+  continuation.proposal.evidence.reaches_mission_target = false;
+  EXPECT_FALSE(certifyExecutionRoute3D(continuation).has_value());
+
+  ExecutionRouteActivation3D mission = fixture.activation();
+  mission.geometry = withTerminalMppiSpeed(mission.geometry, 4.0F);
+  EXPECT_FALSE(certifyExecutionRoute3D(mission).has_value());
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

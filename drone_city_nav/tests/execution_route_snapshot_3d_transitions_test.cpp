@@ -169,16 +169,19 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   const std::optional<FiniteExecutionState3D> retained =
       certify_against(invalidation, newer_world, FiniteExecutionKind3D::kRetained);
-  ASSERT_TRUE(retained.has_value());
-  EXPECT_TRUE(retained->validFor(&*following.next->route));
-  EXPECT_EQ(retained->observed_raw_world, newer_world);
-  EXPECT_EQ(retained->stop_boundary.raw_validated_through_revision,
+  EXPECT_FALSE(retained.has_value());
+  const std::optional<FiniteExecutionState3D> emergency = certify_against(
+      invalidation, newer_world, FiniteExecutionKind3D::kEmergencyBrakeTail);
+  ASSERT_TRUE(emergency.has_value());
+  EXPECT_TRUE(emergency->validFor(&*following.next->route));
+  EXPECT_EQ(emergency->observed_raw_world, newer_world);
+  EXPECT_EQ(emergency->stop_boundary.raw_validated_through_revision,
             invalidation.raw_revision);
   const auto* const retained_certificate =
-      std::get_if<ObservedRawRouteCertificate3D>(&retained->certificate);
+      std::get_if<ObservedRawRouteCertificate3D>(&emergency->certificate);
   const auto* const retained_lineage =
       std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
-          &retained->validation_proof.lineage);
+          &emergency->validation_proof.lineage);
   ASSERT_NE(retained_certificate, nullptr);
   ASSERT_NE(retained_lineage, nullptr);
   EXPECT_EQ(retained_certificate->validated_through_revision,
@@ -191,7 +194,7 @@ TEST(ExecutionRouteSnapshot3DTest,
             newer_world->contentFingerprint());
   FiniteExecutionCertification3D replayed_progress =
       SnapshotFixture3D::finiteCertificationForRoute(
-          *following.next->route, FiniteExecutionKind3D::kRetained, 103U);
+          *following.next->route, FiniteExecutionKind3D::kEmergencyBrakeTail, 103U);
   replayed_progress.execution_input = following.next->route->progress.execution_input;
   EXPECT_FALSE(certifyRawInvalidatedFiniteExecution3D(
                    *following.next,
@@ -202,7 +205,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                    })
                    .has_value());
   EXPECT_EQ(replaceFiniteExecution3D(
-                *following.next, SnapshotFixture3D::guard(*following.next), retained)
+                *following.next, SnapshotFixture3D::guard(*following.next), emergency)
                 .status,
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   const RouteLifecycleEvent3D superseded{
@@ -211,22 +214,18 @@ TEST(ExecutionRouteSnapshot3DTest,
   };
   EXPECT_EQ(retireCertifiedRoute3D(*following.next,
                                    SnapshotFixture3D::guard(*following.next),
-                                   superseded, retained)
+                                   superseded, emergency)
                 .status,
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   const ExecutionRouteTransitionResult3D retained_retirement =
       retireCertifiedRoute3D(*following.next, SnapshotFixture3D::guard(*following.next),
-                             invalidation, retained);
+                             invalidation, emergency);
   ASSERT_TRUE(retained_retirement.applied());
   ASSERT_NE(retained_retirement.next, nullptr);
   ASSERT_TRUE(retained_retirement.next->finite_execution.has_value());
   EXPECT_EQ(retained_retirement.next->phase, ExecutionRoutePhase3D::kBraking);
   EXPECT_EQ(retained_retirement.next->finite_execution->kind,
-            FiniteExecutionKind3D::kRetained);
-
-  EXPECT_TRUE(certify_against(invalidation, newer_world,
-                              FiniteExecutionKind3D::kEmergencyBrakeTail)
-                  .has_value());
+            FiniteExecutionKind3D::kEmergencyBrakeTail);
   EXPECT_FALSE(
       certify_against(invalidation, nullptr, FiniteExecutionKind3D::kEmergencyBrakeTail)
           .has_value());
@@ -472,6 +471,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ExecutionRouteActivation3D continuation_activation = fixture.activation();
   continuation_activation.proposal.reaches_mission_goal = false;
   continuation_activation.proposal.evidence.reaches_mission_target = false;
+  continuation_activation.geometry =
+      withTerminalMppiSpeed(continuation_activation.geometry, 4.0F);
   const std::optional<CertifiedRouteSuffix3D> suffix =
       certifyExecutionRoute3D(continuation_activation);
   ASSERT_TRUE(suffix.has_value());

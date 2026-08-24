@@ -3,6 +3,7 @@
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/route_execution_contract_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <memory>
@@ -13,12 +14,14 @@ namespace drone_city_nav {
 
 [[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
 makeMppiRoute2D(std::span<const Point2> route, double z_m, double reference_speed_mps,
+                RouteEndpointSemantics3D endpoint_semantics,
                 const MppiSpeedPolicyConfig& speed_policy_config = {});
 
 [[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
 makeMppiRoute3D(std::span<const RouteSample3D> route,
                 std::span<const ConstrainedRouteSpan> spans,
                 double unconstrained_speed_mps, double constrained_speed_mps,
+                RouteEndpointSemantics3D endpoint_semantics,
                 const MppiSpeedPolicyConfig& speed_policy_config = {});
 
 [[nodiscard]] std::shared_ptr<const std::vector<Point2>>

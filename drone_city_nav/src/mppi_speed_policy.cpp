@@ -105,6 +105,9 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.enabled = true;
   result.cruise_limit_mps = config.cruise_speed_mps;
   result.absolute_limit_mps = config.absolute_speed_limit_mps;
+  result.route_endpoint_semantics = input.route_endpoint_semantics;
+  result.route_endpoint_stop_required =
+      routeEndpointHasTerminalStop3D(input.route_endpoint_semantics);
   result.terminal_goal_limit_enabled = input.terminal_goal_limit_enabled;
   result.observation_limit_mps =
       stoppingLimitedSpeed(config.observation_distance_m - config.observation_margin_m,
@@ -117,7 +120,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     result.goal_limit_mps =
         stoppingLimitedSpeed(goal_distance, 0.0, config.stopping_capability);
   }
-  if (input.route_endpoint_remaining_m.has_value()) {
+  if (result.route_endpoint_stop_required &&
+      input.route_endpoint_remaining_m.has_value()) {
     const double route_endpoint_distance =
         std::max(0.0, *input.route_endpoint_remaining_m);
     result.route_endpoint_limit_mps =

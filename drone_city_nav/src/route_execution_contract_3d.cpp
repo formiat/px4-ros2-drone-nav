@@ -19,15 +19,42 @@ void hashValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
 
 RouteEndpointSemantics3D
 routeEndpointSemantics3D(const RouteIntent3D& intent, const bool reaches_intent_target,
-                         const bool reaches_mission_goal) noexcept {
+                         const bool reaches_mission_goal,
+                         const bool mission_endpoint_is_terminal) noexcept {
   if (reaches_mission_goal) {
-    return RouteEndpointSemantics3D::kMissionStop;
+    return mission_endpoint_is_terminal ? RouteEndpointSemantics3D::kMissionStop
+                                        : RouteEndpointSemantics3D::kContinuation;
   }
   if (intent.purpose == RouteIntentPurpose3D::kObservationFrontier &&
       reaches_intent_target) {
     return RouteEndpointSemantics3D::kObservationStop;
   }
   return RouteEndpointSemantics3D::kContinuation;
+}
+
+bool routeEndpointHasTerminalStop3D(const RouteEndpointSemantics3D semantics) noexcept {
+  switch (semantics) {
+    case RouteEndpointSemantics3D::kContinuation:
+      return false;
+    case RouteEndpointSemantics3D::kObservationStop:
+    case RouteEndpointSemantics3D::kMissionStop:
+    case RouteEndpointSemantics3D::kEmergencyBrakeTail:
+      return true;
+  }
+  return true;
+}
+
+bool routeEndpointUsesLocalBoundary3D(
+    const RouteEndpointSemantics3D semantics) noexcept {
+  switch (semantics) {
+    case RouteEndpointSemantics3D::kMissionStop:
+      return false;
+    case RouteEndpointSemantics3D::kContinuation:
+    case RouteEndpointSemantics3D::kObservationStop:
+    case RouteEndpointSemantics3D::kEmergencyBrakeTail:
+      return true;
+  }
+  return true;
 }
 
 std::uint64_t routeContinuityId3D(const RouteIntent3D& intent,

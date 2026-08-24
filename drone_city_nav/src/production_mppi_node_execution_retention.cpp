@@ -334,7 +334,8 @@ ProductionMppiNode::retainSnapshotFinitePath(
         .execution_input = execution_input,
         .latest_lidar_evidence = latest_lidar_evidence,
         .valid_from_ns = now_ns,
-        .kind = FiniteExecutionKind3D::kRetained,
+        .kind = raw_invalidation != nullptr ? FiniteExecutionKind3D::kEmergencyBrakeTail
+                                            : FiniteExecutionKind3D::kRetained,
     };
   };
   const std::optional<FiniteExecutionState3D> recertified =

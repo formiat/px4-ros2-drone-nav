@@ -26,6 +26,26 @@ namespace drone_city_nav {
 
 using namespace execution_route_snapshot_3d_internal;
 
+namespace {
+
+[[nodiscard]] bool endpointSpeedProfileMatchesSemantics3D(
+    const ExecutionRouteGeometry3D& geometry,
+    const MaterializedRouteProposal3D& proposal) noexcept {
+  if (geometry.mppi_route == nullptr || geometry.mppi_route->empty()) {
+    return false;
+  }
+  const RouteEndpointSemantics3D semantics = routeEndpointSemantics3D(
+      proposal.intent, proposal.evidence.reaches_intent_target,
+      proposal.reaches_mission_goal, !proposal.objective.continuous_tracking);
+  constexpr float kTerminalSpeedToleranceMps{1.0e-4F};
+  const float terminal_speed_mps = geometry.mppi_route->back().reference_speed_mps;
+  return routeEndpointHasTerminalStop3D(semantics)
+             ? std::abs(terminal_speed_mps) <= kTerminalSpeedToleranceMps
+             : terminal_speed_mps > kTerminalSpeedToleranceMps;
+}
+
+} // namespace
+
 bool CertifiedRouteProgress3D::valid() const noexcept {
   if (route_generation == 0U || geometry_revision == 0U || !std::isfinite(station_m) ||
       station_m < 0.0 || !finitePoint(last_observed_position)) {
@@ -103,6 +123,7 @@ bool executionRouteGeometryValid3D(const ExecutionRouteGeometry3D& geometry,
       !validRouteSamples(*geometry.route) ||
       routeFingerprint(*geometry.route) != geometry.physical_route_fingerprint ||
       !validMppiRoute(*geometry.mppi_route, *geometry.route) ||
+      !endpointSpeedProfileMatchesSemantics3D(geometry, identity.proposal) ||
       executionPassageGeometryRevision3D(geometry) == 0U) {
     return false;
   }
@@ -229,7 +250,8 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
       planned_endpoint_semantics !=
           routeEndpointSemantics3D(identity.proposal.intent,
                                    identity.proposal.evidence.reaches_intent_target,
-                                   identity.proposal.reaches_mission_goal)) {
+                                   identity.proposal.reaches_mission_goal,
+                                   !identity.proposal.objective.continuous_tracking)) {
     return false;
   }
   const double route_end_station_m = endStationM();

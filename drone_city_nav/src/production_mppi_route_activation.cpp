@@ -246,10 +246,15 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       adoptWorldResources(candidate, *snapshot.resident_world);
       candidate.route_3d = rebased_route;
       candidate.route_2d_projection = projectRouteTo2D(*rebased_route);
-      candidate.mppi_route =
-          makeMppiRoute3D(*rebased_route, *candidate.constrained_spans,
-                          speed_policy_config_.cruise_speed_mps,
-                          constrained_route_speed_limit_mps_, speed_policy_config_);
+      const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
+          candidate.route_intent,
+          candidate.route_segment_evidence.reaches_intent_target,
+          candidate.global_guide_reaches_mission_goal,
+          !search_world.search_objective.continuous_tracking);
+      candidate.mppi_route = makeMppiRoute3D(
+          *rebased_route, *candidate.constrained_spans,
+          speed_policy_config_.cruise_speed_mps, constrained_route_speed_limit_mps_,
+          endpoint_semantics, speed_policy_config_);
       candidate.global_guide_projection = projectOntoGlobalGuide(
           *candidate.route_2d_projection,
           Point2{snapshot.navigation.state.x, snapshot.navigation.state.y});

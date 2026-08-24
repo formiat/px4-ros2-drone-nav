@@ -536,7 +536,7 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
           retained_raw_lineage->producer_instance_id !=
               event.raw_producer_instance_id ||
           retained_raw_lineage->validated_through_raw_revision != event.raw_revision ||
-          next.finite_execution->kind == FiniteExecutionKind3D::kNominal) {
+          next.finite_execution->kind != FiniteExecutionKind3D::kEmergencyBrakeTail) {
         return transitionFailure(
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
       }

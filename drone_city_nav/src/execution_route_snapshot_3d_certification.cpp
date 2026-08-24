@@ -80,7 +80,8 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   }
   const RouteEndpointSemantics3D planned_endpoint_semantics = routeEndpointSemantics3D(
       activation.proposal.intent, activation.proposal.evidence.reaches_intent_target,
-      activation.proposal.reaches_mission_goal);
+      activation.proposal.reaches_mission_goal,
+      !activation.proposal.objective.continuous_tracking);
   const std::optional<ActivatedRouteIdentity3D> identity =
       activateRouteProposal3D(activation.proposal, activation.route_generation);
   if (!identity.has_value() || activation.geometry == nullptr) {

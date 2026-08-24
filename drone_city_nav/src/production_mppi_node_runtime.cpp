@@ -570,9 +570,20 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       active_route_objective = {};
     } else if (guide.get() != route_source.get() || !route_altitude_m.has_value() ||
                std::abs(*route_altitude_m - mission_goal.z) > 1.0e-3) {
+      const bool route_continuous_tracking =
+          activated_candidate.has_value()
+              ? activated_candidate->objective_continuous_tracking
+              : active_route_objective.continuous_tracking;
+      RouteEndpointSemantics3D endpoint_semantics =
+          RouteEndpointSemantics3D::kObservationStop;
+      if (active_status.reaches_mission_goal) {
+        endpoint_semantics = route_continuous_tracking
+                                 ? RouteEndpointSemantics3D::kContinuation
+                                 : RouteEndpointSemantics3D::kMissionStop;
+      }
       mppi_route =
           makeMppiRoute2D(*guide, mission_goal.z, speed_policy_config_.cruise_speed_mps,
-                          speed_policy_config_);
+                          endpoint_semantics, speed_policy_config_);
       route_source = guide;
       route_altitude_m = mission_goal.z;
     }
