@@ -294,8 +294,11 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
   result.sparse_anchor_count = sparse_indices.size();
   result.sparse_samples_removed = route.size() - sparse_indices.size();
   std::vector<Point3> anchors;
+  std::vector<double> anchor_stations_m;
   anchors.reserve(route.size());
+  anchor_stations_m.reserve(route.size());
   anchors.push_back(route.front().position);
+  anchor_stations_m.push_back(route.front().station_m);
   std::size_t current = 0U;
   const auto shortcut_validation_started = std::chrono::steady_clock::now();
   while (current + 1U < route.size()) {
@@ -344,6 +347,7 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
       ++result.shortcuts_applied;
     }
     anchors.push_back(route[selected].position);
+    anchor_stations_m.push_back(route[selected].station_m);
     current = selected;
   }
   result.shortcut_validation_ms =
@@ -358,7 +362,7 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     // swept-footprint validation as every other candidate.  Excluding their
     // corners here left right-angle passages with a tangent discontinuity.
     if (!geometry_config.frozen_prefix_end_station_m ||
-        distance3D(anchors.front(), anchors[index]) >
+        anchor_stations_m[index] >
             *geometry_config.frozen_prefix_end_station_m + 1.0e-9) {
       corner_candidates.push_back(index);
     }

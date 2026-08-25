@@ -172,6 +172,35 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
   }));
 }
 
+TEST(StaticRouteGeometryTest, FreezesPrefixByRouteStationNotEuclideanDistance) {
+  const mppi::EsdfGrid grid{100, 100, 1.0F, 0.0F, 0.0F, 20, 0.0F};
+  const std::vector<float> esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth),
+      std::numeric_limits<float>::infinity());
+  // The third corner returns close to the start in Euclidean space, while its
+  // station is still inside the frozen prefix.
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{10.0, 10.0, 5.0},
+                                        {40.0, 10.0, 5.0},
+                                        {40.0, 40.0, 5.0},
+                                        {10.0, 40.0, 5.0},
+                                        {10.0, 70.0, 5.0}},
+                    0.5, 20.0);
+  const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
+      route, {}, grid, esdf,
+      SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
+      StaticRouteGeometryConfig{.frozen_prefix_end_station_m = 90.0},
+      RouteEnvelopeConfig{});
+
+  ASSERT_FALSE(result.route.empty());
+  EXPECT_EQ(result.corners_smoothed, 0U);
+  const RouteSample3D frozen_corner = sampleRoute3DAtStation(route, 90.0);
+  const RouteSample3D optimized_corner = sampleRoute3DAtStation(result.route, 90.0);
+  EXPECT_NEAR(optimized_corner.position.x, frozen_corner.position.x, 1.0e-9);
+  EXPECT_NEAR(optimized_corner.position.y, frozen_corner.position.y, 1.0e-9);
+  EXPECT_NEAR(optimized_corner.position.z, frozen_corner.position.z, 1.0e-9);
+}
+
 TEST(StaticRouteGeometryTest, ParallelValidationPreservesDeterministicGeometry) {
   const mppi::EsdfGrid grid{100, 100, 1.0F, 0.0F, 0.0F, 20, 0.0F};
   const std::vector<float> esdf(
