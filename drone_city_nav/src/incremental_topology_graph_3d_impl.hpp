@@ -42,6 +42,12 @@ using incremental_topology_detail::polylineLength;
 using incremental_topology_detail::sampleCellKey;
 
 struct IncrementalTopologyGraph3D::Impl {
+  struct BuildCancelled final : std::exception {
+    [[nodiscard]] const char* what() const noexcept override {
+      return "incremental topology build deadline exhausted";
+    }
+  };
+
   struct BlockComponent {
     IncrementalTopologyNodeId id{};
     std::vector<GridIndex3D> cells;
@@ -150,9 +156,12 @@ struct IncrementalTopologyGraph3D::Impl {
   }
 
   template<typename Occupancy>
-  [[nodiscard]] BuiltBlock
-  buildBlock(const Occupancy& occupancy,
-             const IncrementalTopologyBlockIndex3D block) const {
+  [[nodiscard]] BuiltBlock buildBlock(
+      const Occupancy& occupancy, const IncrementalTopologyBlockIndex3D block,
+      const std::optional<std::chrono::steady_clock::time_point>& deadline) const {
+    const auto cancelled = [&deadline]() {
+      return deadline.has_value() && std::chrono::steady_clock::now() >= *deadline;
+    };
     const int minimum_x = block.x * config.block_size_cells;
     const int minimum_y = block.y * config.block_size_cells;
     const int minimum_z = block.z * config.block_size_cells;
@@ -173,6 +182,9 @@ struct IncrementalTopologyGraph3D::Impl {
              y += stride_cells) {
           for (int x = firstAlignedCell(minimum_x, stride_cells); x < maximum_x;
                x += stride_cells) {
+            if (cancelled()) {
+              throw BuildCancelled{};
+            }
             const GridIndex3D cell{x, y, z};
             if (navigableAt(occupancy, occupancy.cellCenter(cell), config.footprint,
                             config.require_known_free_space)) {
@@ -203,6 +215,9 @@ struct IncrementalTopologyGraph3D::Impl {
     std::vector<bool> visited(navigable_cells.size(), false);
     std::vector<BlockComponent> components;
     for (std::size_t seed = 0U; seed < navigable_cells.size(); ++seed) {
+      if (cancelled()) {
+        throw BuildCancelled{};
+      }
       if (visited[seed]) {
         continue;
       }
@@ -213,6 +228,9 @@ struct IncrementalTopologyGraph3D::Impl {
       component.parent_by_cell.emplace(sampleCellKey(bounds, navigable_cells[seed]),
                                        navigable_cells[seed]);
       while (!pending.empty()) {
+        if (cancelled()) {
+          throw BuildCancelled{};
+        }
         const std::size_t index = pending.front();
         pending.pop_front();
         const GridIndex3D cell = navigable_cells[index];
@@ -234,6 +252,9 @@ struct IncrementalTopologyGraph3D::Impl {
         }
       }
       std::ranges::sort(component.cells, cellLess);
+      if (cancelled()) {
+        throw BuildCancelled{};
+      }
       component.representative_cell = representativeCellFor(occupancy, component.cells);
       component.representative = occupancy.cellCenter(component.representative_cell);
       rerootParentTree(component);
@@ -943,7 +964,11 @@ struct IncrementalTopologyGraph3D::Impl {
       if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
         break;
       }
-      replacements.push_back(buildBlock(occupancy, block));
+      try {
+        replacements.push_back(buildBlock(occupancy, block, deadline));
+      } catch (const BuildCancelled&) {
+        break;
+      }
       ++built_block_count;
       stats.adaptively_refined_blocks +=
           replacements.back().adaptively_refined ? 1U : 0U;
