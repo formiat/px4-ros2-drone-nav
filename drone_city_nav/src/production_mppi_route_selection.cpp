@@ -129,29 +129,47 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
   std::vector<ProductionRouteSearchCandidate3D> candidates;
   candidates.reserve(2U);
 
-  const auto plan_lattice = [&](const Lattice3DStrategicDirective& directive) {
-    RiskAwareLattice3DConfig search_config = lattice_3d_config_;
-    if (directive.route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
-      search_config.goal_tolerance_m =
-          std::min(search_config.goal_tolerance_m, 0.5 * search_config.vertical_step_m);
-    }
-    RCLCPP_INFO(get_logger(),
-                "ROUTE_PROPOSAL_SEARCH3D stage=begin revision=%" PRIu64
-                " purpose=%s target=(%.2f,%.2f,%.2f)",
-                world.revision, lattice3DRoutePurposeName(directive.route_purpose),
-                directive.planning_goal.x, directive.planning_goal.y,
-                directive.planning_goal.z);
-    RiskAwareLattice3DResult result = planRiskAwareLattice3D(
-        world.grid, *world.distances_m, search_start, directive.preferred_direction,
-        mission_goal, std::span<const PassageTraversalEdge>{}, search_config,
-        planning_worker_pool_.get(), &directive);
-    RCLCPP_INFO(get_logger(),
-                "ROUTE_PROPOSAL_SEARCH3D stage=complete revision=%" PRIu64
-                " purpose=%s status=%s points=%zu",
-                world.revision, lattice3DRoutePurposeName(directive.route_purpose),
-                lattice3DStatusName(result.status), result.points.size());
-    return result;
-  };
+  const auto plan_lattice =
+      [&](const Lattice3DStrategicDirective& directive,
+          const std::optional<std::chrono::steady_clock::time_point> deadline =
+              std::nullopt) {
+        RiskAwareLattice3DConfig search_config = lattice_3d_config_;
+        if (directive.route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
+          search_config.goal_tolerance_m = std::min(
+              search_config.goal_tolerance_m, 0.5 * search_config.vertical_step_m);
+        }
+        if (deadline.has_value()) {
+          const double remaining_ms = std::chrono::duration<double, std::milli>(
+                                          *deadline - std::chrono::steady_clock::now())
+                                          .count();
+          if (!(remaining_ms > 0.0)) {
+            RCLCPP_INFO(get_logger(),
+                        "ROUTE_PROPOSAL_SEARCH3D stage=skipped reason=control_deadline "
+                        "revision=%" PRIu64 " purpose=%s",
+                        world.revision,
+                        lattice3DRoutePurposeName(directive.route_purpose));
+            return std::optional<RiskAwareLattice3DResult>{};
+          }
+          search_config.maximum_search_time_ms =
+              std::min(search_config.maximum_search_time_ms, remaining_ms);
+        }
+        RCLCPP_INFO(get_logger(),
+                    "ROUTE_PROPOSAL_SEARCH3D stage=begin revision=%" PRIu64
+                    " purpose=%s target=(%.2f,%.2f,%.2f)",
+                    world.revision, lattice3DRoutePurposeName(directive.route_purpose),
+                    directive.planning_goal.x, directive.planning_goal.y,
+                    directive.planning_goal.z);
+        RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+            world.grid, *world.distances_m, search_start, directive.preferred_direction,
+            mission_goal, std::span<const PassageTraversalEdge>{}, search_config,
+            planning_worker_pool_.get(), &directive);
+        RCLCPP_INFO(get_logger(),
+                    "ROUTE_PROPOSAL_SEARCH3D stage=complete revision=%" PRIu64
+                    " purpose=%s status=%s points=%zu",
+                    world.revision, lattice3DRoutePurposeName(directive.route_purpose),
+                    lattice3DStatusName(result.status), result.points.size());
+        return std::optional<RiskAwareLattice3DResult>{std::move(result)};
+      };
   const auto add_candidate =
       [&](RouteIntent3D intent, const Lattice3DStrategicDirective& directive,
           RiskAwareLattice3DResult lattice,
@@ -211,7 +229,9 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       };
       intent.id = makeRouteIntentId3D(intent.source, intent.purpose,
                                       intent.mission_target, intent.intent_target);
-      add_candidate(intent, directive, plan_lattice(directive));
+      if (auto lattice = plan_lattice(directive)) {
+        add_candidate(intent, directive, std::move(*lattice));
+      }
     }
   } else {
     direct_mission_candidate = true;
@@ -238,7 +258,9 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     };
     intent.id = makeRouteIntentId3D(intent.source, intent.purpose,
                                     intent.mission_target, intent.intent_target);
-    add_candidate(intent, directive, plan_lattice(directive));
+    if (auto lattice = plan_lattice(directive)) {
+      add_candidate(intent, directive, std::move(*lattice));
+    }
   }
 
   const bool direct_candidate_executable =
@@ -321,7 +343,14 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       intent.id =
           makeRouteIntentId3D(intent.source, intent.purpose, intent.mission_target,
                               intent.intent_target, intent.target_identity);
-      add_candidate(intent, directive, plan_lattice(directive), std::move(topology));
+      if (auto lattice = plan_lattice(directive, topology_deadline)) {
+        add_candidate(intent, directive, std::move(*lattice), std::move(topology));
+      } else {
+        RCLCPP_INFO(get_logger(),
+                    "INCREMENTAL_TOPOLOGY3D_SEARCH status=deferred_control_deadline "
+                    "graph_revision=%" PRIu64 " strategic_plan_id=%" PRIu64,
+                    topology.plan.planned_on_revision, topology.plan.strategic_plan_id);
+      }
     }
   } else if (direct_mission_candidate) {
     RCLCPP_INFO(get_logger(),
