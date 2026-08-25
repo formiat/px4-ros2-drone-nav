@@ -93,6 +93,13 @@ TEST(MissionWaypointCaptureGateTest,
   EXPECT_TRUE(observe(gate, validObservation(3'000'000'000)).ready);
 }
 
+TEST(MissionWaypointCaptureGateTest, AcceptsBoundedReceiptClockLag) {
+  MissionWaypointCaptureGate gate;
+  MissionWaypointCaptureObservation observation = validObservation(1'000'000'000);
+  observation.feedback_receive_stamp_ns = observation.feedback_source_stamp_ns - 1;
+  EXPECT_TRUE(observe(gate, observation).evidence_valid);
+}
+
 TEST(MissionWaypointCaptureGateTest,
      AcceptsNominalTwoHertzVehicleStatusAndRejectsAfterBudget) {
   MissionWaypointCaptureGate gate;

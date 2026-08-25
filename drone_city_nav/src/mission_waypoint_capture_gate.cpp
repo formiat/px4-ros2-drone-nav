@@ -212,8 +212,7 @@ bool MissionWaypointCaptureGate::evidenceValid(
                       maximum_feedback_age_ns_)) {
     return false;
   }
-  if (observation.feedback_receive_stamp_ns < observation.feedback_source_stamp_ns ||
-      observation.horizon_valid_from_ns <= 0 ||
+  if (observation.horizon_valid_from_ns <= 0 ||
       observation.horizon_valid_until_ns <= observation.horizon_valid_from_ns ||
       observation.stamp_ns < observation.horizon_valid_from_ns ||
       observation.stamp_ns >= observation.horizon_valid_until_ns ||
