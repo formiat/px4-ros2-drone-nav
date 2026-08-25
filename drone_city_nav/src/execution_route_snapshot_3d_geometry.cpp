@@ -73,7 +73,7 @@ ExecutionRouteGeometryValidation3D validateExecutionRouteGeometrySamples3D(
         sample.reference_speed_mps < 0.0) {
       return {Failure::kNonFiniteSample, index};
     }
-    if (!nearlyEqual(tangent_norm, 1.0, 1.0e-3)) {
+    if (!execution_route_snapshot_3d_internal::nearlyEqual(tangent_norm, 1.0, 1.0e-3)) {
       return {Failure::kInvalidTangent, index};
     }
     if (sample.station_m <= previous_station_m) {
