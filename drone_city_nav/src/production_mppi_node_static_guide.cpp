@@ -322,8 +322,9 @@ void ProductionMppiNode::processGuideSearch3D(
   }
   const char* const route_space =
       world.observed_occupancy ? "observed_occupancy_3d" : "static_occupancy_3d";
-  const char* const topology_acceleration =
-      world.topological_graph ? "incremental_topological_graph" : "unavailable";
+  const char* const topology_acceleration = strategicTopologyGraphFor(world)
+                                                ? "incremental_topological_graph"
+                                                : "unavailable";
   if (topology_route_used) {
     logIncrementalTopologyRoute3D(topology, lattice, validation, activation_status,
                                   certified_pending);

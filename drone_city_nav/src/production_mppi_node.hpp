@@ -555,6 +555,8 @@ private:
   void initializeRuntimeInterfaces();
   void configureIncrementalTopology3D();
   void initializeStaticTopology3D();
+  [[nodiscard]] std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
+  strategicTopologyGraphFor(const ProductionMppiPreparedEsdf& world);
   [[nodiscard]] ProductionIncrementalTopologySearch3D
   selectIncrementalTopologyRoute3D(const ProductionMppiPreparedEsdf& world,
                                    const Point3& position, const Point3& mission_goal,

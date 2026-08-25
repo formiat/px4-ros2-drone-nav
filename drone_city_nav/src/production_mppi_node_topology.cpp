@@ -138,35 +138,6 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
         raw_world.version.producer_instance_id;
     latest_observed_topological_graph_update_ = update.graph;
   }
-  bool coherent_world_rejected{false};
-  {
-    const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
-    if (prepared_esdf_ && update.snapshot &&
-        prepared_esdf_->producer_instance_id ==
-            raw_world.version.producer_instance_id &&
-        update.snapshot->revision() <= prepared_esdf_->source_raw_revision &&
-        update.snapshot->revision() >= prepared_esdf_->topology_source_raw_revision) {
-      ProductionMppiPreparedEsdf coherent_world = *prepared_esdf_;
-      coherent_world.topological_graph = update.snapshot;
-      coherent_world.topological_graph_update = update.graph;
-      coherent_world.topology_source_raw_revision = update.snapshot->revision();
-      // Topology is a strategic, asynchronously refreshed resource. It must
-      // not mint a new control generation because raw occupancy, local ESDF,
-      // and its GPU residency are unchanged.
-      if (productionWorldGenerationCoherent(coherent_world)) {
-        prepared_esdf_ = std::move(coherent_world);
-      } else {
-        coherent_world_rejected = true;
-      }
-    }
-  }
-  if (coherent_world_rejected) {
-    rejected_world_generation_publications_.fetch_add(1U, std::memory_order_relaxed);
-    RCLCPP_ERROR(get_logger(),
-                 "INCREMENTAL_TOPOLOGY3D_UPDATE rejected revision=%" PRIu64
-                 " reason=mixed_local_world_generation",
-                 update.graph.revision);
-  }
   RCLCPP_INFO(
       get_logger(),
       "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64
@@ -378,26 +349,48 @@ void ProductionMppiNode::initializeStaticTopology3D() {
               update.graph.sampled_navigable_cells, build_ms);
 }
 
+std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
+ProductionMppiNode::strategicTopologyGraphFor(const ProductionMppiPreparedEsdf& world) {
+  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> graph;
+  {
+    const std::scoped_lock lock{topology_state_mutex_};
+    if (latest_observed_topological_graph_ &&
+        latest_observed_topological_producer_instance_id_ ==
+            world.producer_instance_id &&
+        latest_observed_topological_graph_->revision() <= world.source_raw_revision) {
+      graph = latest_observed_topological_graph_;
+    }
+  }
+  if (graph) {
+    return graph;
+  }
+  if (world.topological_graph &&
+      world.topological_graph->revision() <= world.source_raw_revision) {
+    return world.topological_graph;
+  }
+  return nullptr;
+}
+
 ProductionIncrementalTopologySearch3D
 ProductionMppiNode::selectIncrementalTopologyRoute3D(
     const ProductionMppiPreparedEsdf& world, const Point3& position,
     const Point3& mission_goal, const std::chrono::steady_clock::time_point deadline) {
   ProductionIncrementalTopologySearch3D result;
-  if (!topological_navigation_3d_ || !world.topological_graph) {
+  const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> graph =
+      strategicTopologyGraphFor(world);
+  if (!topological_navigation_3d_ || !graph) {
     return result;
   }
 
-  result.graph_node_count = world.topological_graph->nodes().size();
-  result.graph_edge_count = world.topological_graph->edges().size();
+  result.graph_node_count = graph->nodes().size();
+  result.graph_edge_count = graph->edges().size();
   result.observation = topological_navigation_3d_->observePosition(
-      world.topological_graph, position, world.observed_occupancy.get());
+      graph, position, world.observed_occupancy.get());
   result.plan =
       world.observed_occupancy
-          ? topological_navigation_3d_->planObserved(world.topological_graph,
-                                                     *world.observed_occupancy,
+          ? topological_navigation_3d_->planObserved(graph, *world.observed_occupancy,
                                                      position, mission_goal, deadline)
-          : topological_navigation_3d_->plan(world.topological_graph, position,
-                                             mission_goal, deadline);
+          : topological_navigation_3d_->plan(graph, position, mission_goal, deadline);
   result.directive = topological_navigation_3d_->makeLatticeDirective(
       result.plan, position, topological_lattice_adapter_3d_config_);
   if (!topological_backtracking_enabled_ &&
@@ -651,8 +644,8 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
 void ProductionMppiNode::maybeObserveIncrementalTopology3D(
     const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
     const std::int64_t now_ns) {
-  const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph =
-      world.topological_graph;
+  const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> graph =
+      strategicTopologyGraphFor(world);
   if (!topological_navigation_3d_ || !graph || !navigation.valid || now_ns <= 0) {
     return;
   }
