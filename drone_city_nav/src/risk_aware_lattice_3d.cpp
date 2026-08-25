@@ -43,6 +43,9 @@ struct Key {
   int x{0};
   int y{0};
   int z{0};
+  int incoming_dx{0};
+  int incoming_dy{0};
+  int incoming_dz{0};
   int passage_index{-1};
   bool reversed{false};
   TopologyProgress topology_progress{TopologyProgress::kPassageNotTraversed};
@@ -58,6 +61,9 @@ struct KeyHash {
     };
     combine(std::hash<int>{}(key.y));
     combine(std::hash<int>{}(key.z));
+    combine(std::hash<int>{}(key.incoming_dx));
+    combine(std::hash<int>{}(key.incoming_dy));
+    combine(std::hash<int>{}(key.incoming_dz));
     combine(std::hash<int>{}(key.passage_index));
     combine(std::hash<unsigned>{}(static_cast<unsigned>(key.kind)));
     combine(std::hash<bool>{}(key.reversed));
@@ -565,6 +571,9 @@ reconstruct(const Key& terminal, const Point3& origin,
                          .x = lattice_base.x + dx,
                          .y = lattice_base.y + dy,
                          .z = lattice_base.z + dz,
+                         .incoming_dx = dx,
+                         .incoming_dy = dy,
+                         .incoming_dz = dz,
                          .topology_progress = entry.key.topology_progress};
           lattice_evaluations.push_back(LatticeEvaluation{
               .next = next,

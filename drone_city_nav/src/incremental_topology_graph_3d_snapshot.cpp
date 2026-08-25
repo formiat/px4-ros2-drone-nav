@@ -144,6 +144,20 @@ std::uint64_t IncrementalTopologyGraph3DSnapshot::revision() const noexcept {
   return revision_;
 }
 
+std::uint64_t IncrementalTopologyGraph3DSnapshot::sourceSeenRevision() const noexcept {
+  return source_seen_revision_;
+}
+
+std::uint64_t
+IncrementalTopologyGraph3DSnapshot::materializedRevision() const noexcept {
+  return materialized_revision_;
+}
+
+std::uint64_t
+IncrementalTopologyGraph3DSnapshot::coverageCompleteThroughRevision() const noexcept {
+  return coverage_complete_through_revision_;
+}
+
 const GridBounds3D& IncrementalTopologyGraph3DSnapshot::bounds() const noexcept {
   return bounds_;
 }

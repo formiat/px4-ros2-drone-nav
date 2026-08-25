@@ -135,6 +135,10 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
   };
   const SegmentEvidenceWorld3D evidence_world =
       evidenceWorld(world, latest_raw_world, lattice_3d_config_, footprint);
+  const std::span<const PassageTraversalEdge> passage_traversals =
+      world.passage_traversals
+          ? std::span<const PassageTraversalEdge>{*world.passage_traversals}
+          : std::span<const PassageTraversalEdge>{};
   std::vector<ProductionRouteSearchCandidate3D> candidates;
   candidates.reserve(2U);
 
@@ -170,7 +174,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                     directive.planning_goal.z);
         RiskAwareLattice3DResult result = planRiskAwareLattice3D(
             world.grid, *world.distances_m, search_start, directive.preferred_direction,
-            mission_goal, std::span<const PassageTraversalEdge>{}, search_config,
+            mission_goal, passage_traversals, search_config,
             planning_worker_pool_.get(), &directive);
         RCLCPP_INFO(get_logger(),
                     "ROUTE_PROPOSAL_SEARCH3D stage=complete revision=%" PRIu64
@@ -279,16 +283,18 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 search_started)
           .count();
-  const bool topology_budget_available =
-      direct_selection_ms <= topological_strategy_budget_ms_;
+  const auto topology_started = std::chrono::steady_clock::now();
   const auto topology_deadline =
-      search_started +
+      topology_started +
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double, std::milli>{topological_strategy_budget_ms_});
-  if (direct_mission_candidate &&
-      (!direct_candidate_executable || topology_budget_available)) {
+  double topology_selection_ms{0.0};
+  if (direct_mission_candidate) {
     ProductionIncrementalTopologySearch3D topology = selectIncrementalTopologyRoute3D(
         world, search_start, mission_goal, topology_deadline);
+    topology_selection_ms = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - topology_started)
+                                .count();
     RCLCPP_INFO(get_logger(),
                 "INCREMENTAL_TOPOLOGY3D_SEARCH graph_revision=%" PRIu64
                 " strategic_plan_id=%" PRIu64
@@ -352,22 +358,20 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       intent.id =
           makeRouteIntentId3D(intent.source, intent.purpose, intent.mission_target,
                               intent.intent_target, intent.target_identity);
-      if (auto lattice = plan_lattice(directive, topology_deadline)) {
+      if (auto lattice = plan_lattice(directive)) {
         add_candidate(intent, directive, std::move(*lattice), std::move(topology));
-      } else {
-        RCLCPP_INFO(get_logger(),
-                    "INCREMENTAL_TOPOLOGY3D_SEARCH status=deferred_control_deadline "
-                    "graph_revision=%" PRIu64 " strategic_plan_id=%" PRIu64,
-                    topology.plan.planned_on_revision, topology.plan.strategic_plan_id);
       }
     }
-  } else if (direct_mission_candidate) {
-    RCLCPP_INFO(get_logger(),
-                "INCREMENTAL_TOPOLOGY3D_SEARCH status=deferred_control_budget "
-                "direct_selection_ms=%.2f budget_ms=%.2f direct_executable=%s",
-                direct_selection_ms, topological_strategy_budget_ms_,
-                direct_candidate_executable ? "true" : "false");
   }
+  RCLCPP_INFO(get_logger(),
+              "ROUTE_STRATEGY_BUDGET direct_selection_ms=%.2f "
+              "topology_selection_ms=%.2f topology_budget_ms=%.2f "
+              "direct_executable=%s passage_policy=%s passage_edges=%zu",
+              direct_selection_ms, topology_selection_ms,
+              topological_strategy_budget_ms_,
+              direct_candidate_executable ? "true" : "false",
+              passage_traversals.empty() ? "generic_raw_safe" : "constrained_topology",
+              passage_traversals.size());
 
   for (std::size_t index = 0U; index < candidates.size(); ++index) {
     const ProductionRouteSearchCandidate3D& candidate = candidates[index];

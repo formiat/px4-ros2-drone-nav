@@ -119,7 +119,7 @@ TEST(IncrementalTopologyGraph3DTest,
 }
 
 TEST(IncrementalTopologyGraph3DTest,
-     ExpiredDeadlineDefersBlocksAndTheSameRevisionResumesThem) {
+     ExpiredDeadlineGuaranteesOneBlockAndTheSameRevisionResumesTheRest) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 8, 8, 8}};
   fillFreeBox(occupancy, 0, 7, 0, 7, 0, 7);
   IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
@@ -127,14 +127,24 @@ TEST(IncrementalTopologyGraph3DTest,
   const IncrementalTopologyGraph3DUpdate deferred = graph.update(
       occupancy, 1U, {}, true, std::nullopt, std::chrono::steady_clock::now());
   EXPECT_TRUE(deferred.deadline_exhausted);
-  EXPECT_EQ(deferred.rebuilt_blocks, 0U);
+  EXPECT_TRUE(deferred.minimum_progress_guaranteed);
+  EXPECT_EQ(deferred.rebuilt_blocks, 1U);
   EXPECT_GT(deferred.pending_blocks, 0U);
+  EXPECT_EQ(deferred.source_seen_revision, 1U);
+  EXPECT_EQ(deferred.materialized_revision, 1U);
+  EXPECT_EQ(deferred.coverage_complete_through_revision, 0U);
+
+  const IncrementalTopologyGraph3DSnapshot partial = graph.snapshot();
+  EXPECT_EQ(partial.sourceSeenRevision(), 1U);
+  EXPECT_EQ(partial.materializedRevision(), 1U);
+  EXPECT_EQ(partial.coverageCompleteThroughRevision(), 0U);
 
   const IncrementalTopologyGraph3DUpdate resumed =
       graph.update(occupancy, 1U, {}, false);
   EXPECT_FALSE(resumed.deadline_exhausted);
   EXPECT_GT(resumed.rebuilt_blocks, 0U);
   EXPECT_EQ(resumed.pending_blocks, 0U);
+  EXPECT_EQ(resumed.coverage_complete_through_revision, 1U);
 }
 
 TEST(IncrementalTopologyGraph3DTest, DrainsPendingBlocksWithoutANewerRawRevision) {

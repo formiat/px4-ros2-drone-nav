@@ -930,6 +930,25 @@ struct IncrementalTopologyGraph3D::Impl {
     }
   }
 
+  [[nodiscard]] std::uint64_t coverageCompleteThroughRevision() const noexcept {
+    if (block_complete_through.empty()) {
+      return 0U;
+    }
+    std::uint64_t watermark = std::numeric_limits<std::uint64_t>::max();
+    for (const auto& [block, revision] : block_complete_through) {
+      static_cast<void>(block);
+      watermark = std::min(watermark, revision);
+    }
+    for (const IncrementalTopologyBlockIndex3D block : observed_blocks.pending()) {
+      const auto completed = block_complete_through.find(block);
+      if (completed == block_complete_through.end()) {
+        return 0U;
+      }
+      watermark = std::min(watermark, completed->second);
+    }
+    return watermark;
+  }
+
   template<typename Occupancy>
   [[nodiscard]] IncrementalTopologyGraph3DUpdate rebuild(
       const Occupancy& occupancy, const std::uint64_t update_revision,
@@ -961,11 +980,18 @@ struct IncrementalTopologyGraph3D::Impl {
     auto stage_started = std::chrono::steady_clock::now();
     std::size_t built_block_count{0U};
     for (const IncrementalTopologyBlockIndex3D block : rebuilt_blocks) {
-      if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+      const bool guarantee_first_block =
+          built_block_count == 0U && deadline.has_value();
+      if (!guarantee_first_block && deadline.has_value() &&
+          std::chrono::steady_clock::now() >= *deadline) {
         break;
       }
       try {
-        replacements.push_back(buildBlock(occupancy, block, deadline));
+        replacements.push_back(
+            buildBlock(occupancy, block,
+                       guarantee_first_block
+                           ? std::optional<std::chrono::steady_clock::time_point>{}
+                           : deadline));
       } catch (const BuildCancelled&) {
         break;
       }
@@ -984,6 +1010,8 @@ struct IncrementalTopologyGraph3D::Impl {
     }
     rebuilt_blocks.resize(built_block_count);
     stats.rebuilt_blocks = built_block_count;
+    stats.minimum_progress_guaranteed =
+        deadline.has_value() && !rebuilt_blocks.empty() && built_block_count > 0U;
     stats.block_build_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - stage_started)
                                .count();
@@ -1014,6 +1042,8 @@ struct IncrementalTopologyGraph3D::Impl {
   IncrementalTopologyGraph3DConfig config{};
   GridBounds3D bounds{};
   std::uint64_t graph_revision{0U};
+  std::uint64_t source_seen_revision{0U};
+  std::uint64_t materialized_revision{0U};
   std::unordered_map<IncrementalTopologyBlockIndex3D, BlockData,
                      IncrementalTopologyBlockIndex3DHash>
       blocks;

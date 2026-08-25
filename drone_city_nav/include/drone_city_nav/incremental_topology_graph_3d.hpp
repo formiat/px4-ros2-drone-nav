@@ -137,6 +137,9 @@ struct IncrementalTopologyGraph3DConfig {
 
 struct IncrementalTopologyGraph3DUpdate {
   std::uint64_t revision{0U};
+  std::uint64_t source_seen_revision{0U};
+  std::uint64_t materialized_revision{0U};
+  std::uint64_t coverage_complete_through_revision{0U};
   std::size_t requested_dirty_chunks{0U};
   std::size_t discovered_dirty_blocks{0U};
   std::size_t rebuilt_blocks{0U};
@@ -162,6 +165,7 @@ struct IncrementalTopologyGraph3DUpdate {
   bool full_reset{false};
   bool backlog_boosted{false};
   bool deadline_exhausted{false};
+  bool minimum_progress_guaranteed{false};
 };
 
 struct IncrementalTopologyBuildPriority3D {
@@ -193,6 +197,9 @@ struct IncrementalTopologySampleBlock3D {
 class IncrementalTopologyGraph3DSnapshot {
 public:
   [[nodiscard]] std::uint64_t revision() const noexcept;
+  [[nodiscard]] std::uint64_t sourceSeenRevision() const noexcept;
+  [[nodiscard]] std::uint64_t materializedRevision() const noexcept;
+  [[nodiscard]] std::uint64_t coverageCompleteThroughRevision() const noexcept;
   [[nodiscard]] const GridBounds3D& bounds() const noexcept;
   [[nodiscard]] std::span<const IncrementalTopologyNode3D> nodes() const noexcept;
   [[nodiscard]] std::span<const IncrementalTopologyEdge3D> edges() const noexcept;
@@ -220,6 +227,9 @@ private:
   friend class IncrementalTopologyGraph3D;
 
   std::uint64_t revision_{0U};
+  std::uint64_t source_seen_revision_{0U};
+  std::uint64_t materialized_revision_{0U};
+  std::uint64_t coverage_complete_through_revision_{0U};
   GridBounds3D bounds_{};
   std::vector<IncrementalTopologyNode3D> nodes_;
   std::vector<IncrementalTopologyEdge3D> edges_;

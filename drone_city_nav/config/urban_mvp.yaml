@@ -242,6 +242,12 @@ production_mppi_node:
     topological_graph_3d_local_priority_radius_m: 12.0
     topological_graph_3d_forward_corridor_radius_m: 8.0
     topological_graph_3d_forward_corridor_lookahead_m: 60.0
+    topological_graph_3d_update_budget_ms: 50.0
+    topological_graph_3d_zero_progress_initial_backoff_ms: 5
+    topological_graph_3d_zero_progress_maximum_backoff_ms: 250
+    topological_graph_3d_zero_progress_warning_streak: 3
+    # Strategic selection owns this budget independently of direct lattice search.
+    topological_strategy_budget_ms: 50.0
     topological_planner_3d_start_anchor_distance_m: 20.0
     # Return routes from confirmed topological dead ends are opt-in. Normal
     # Manhattan validation keeps goal-directed navigation only.

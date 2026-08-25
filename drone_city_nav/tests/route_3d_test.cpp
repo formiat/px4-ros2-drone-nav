@@ -726,6 +726,10 @@ TEST(Route3DTest, ComparesReachedRoutesAcrossAllRiskStages) {
   config.planning_goal_distance_m = 30.0;
   config.preferred_distance_m = 2.0;
   config.critical_distance_m = 0.1;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_lower_extent_m = 0.0;
+  config.physical_footprint_upper_extent_m = 0.0;
+  config.physical_footprint_samples = 0U;
   config.maximum_search_time_ms = 3000.0;
   config.maximum_expansions = 500000U;
   config.heading_bias_cost_per_rad = 0.0;
@@ -734,7 +738,10 @@ TEST(Route3DTest, ComparesReachedRoutesAcrossAllRiskStages) {
       planRiskAwareLattice3D(grid, field.distancesM(), Point3{2.5, 9.5, 1.5},
                              Vec3{1.0, 0.0, 0.0}, Point3{21.5, 9.5, 1.5}, {}, config);
 
-  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal)
+      << "termination=" << static_cast<int>(result.termination)
+      << " expansions=" << result.expansions << " records_peak=" << result.records_peak
+      << " topology_candidates=" << result.topology_candidates.size();
   EXPECT_EQ(result.topology_candidates.size(), 3U);
   EXPECT_TRUE(
       std::ranges::any_of(result.topology_candidates,

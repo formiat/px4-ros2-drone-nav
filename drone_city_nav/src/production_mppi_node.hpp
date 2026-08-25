@@ -17,6 +17,7 @@
 #include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/incremental_topological_lattice_adapter_3d.hpp"
 #include "drone_city_nav/incremental_topological_navigation_3d.hpp"
+#include "drone_city_nav/incremental_topology_block_scheduler_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
@@ -524,7 +525,7 @@ private:
       const ProductionMppiNavigation& navigation,
       const ProductionMppiAppliedControl& applied_control,
       const ProductionMppiExecutionHorizonOwner& execution_horizon_owner);
-  [[nodiscard]] std::size_t
+  [[nodiscard]] IncrementalTopologyGraph3DUpdate
   processObservedTopology3D(const ProductionMppiRawWorld3D& raw_world);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
   void guideWorker(std::stop_token stop_token);
@@ -836,6 +837,7 @@ private:
   IncrementalTopologicalLatticeAdapter3DConfig topological_lattice_adapter_3d_config_{};
   double topological_strategy_budget_ms_{50.0};
   double topological_graph_update_budget_ms_{50.0};
+  IncrementalTopologyProgressWatchdog3D topology_progress_watchdog_{};
   bool topological_backtracking_enabled_{false};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};

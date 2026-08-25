@@ -44,9 +44,16 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
        (revision == impl_->graph_revision && !continue_pending_revision))) {
     return IncrementalTopologyGraph3DUpdate{
         .revision = impl_->graph_revision,
+        .source_seen_revision = impl_->source_seen_revision,
+        .materialized_revision = impl_->materialized_revision,
+        .coverage_complete_through_revision = impl_->coverageCompleteThroughRevision(),
         .node_count = impl_->nodes.size(),
         .edge_count = impl_->edges.size(),
     };
+  }
+  impl_->source_seen_revision = revision;
+  if (reset_required) {
+    impl_->materialized_revision = 0U;
   }
   impl_->bounds = occupancy.bounds();
   const std::vector<OccupancyChunkIndex3D> complete_snapshot_chunks =
@@ -119,6 +126,9 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
       impl_->classifyNodes(revision);
     }
   }
+  if (result.rebuilt_blocks > 0U || result.refreshed_observation_blocks > 0U) {
+    impl_->materialized_revision = revision;
+  }
   result.dirty_block_discovery_ms = dirty_block_discovery_ms;
   result.graph_rebuild_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - rebuild_started)
@@ -131,6 +141,9 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
   result.oldest_preserved_blocks = selection.oldest_preserved_blocks;
   result.backlog_boosted = selection.backlog_boosted;
   result.deadline_exhausted = !deferred_blocks.empty();
+  result.source_seen_revision = impl_->source_seen_revision;
+  result.materialized_revision = impl_->materialized_revision;
+  result.coverage_complete_through_revision = impl_->coverageCompleteThroughRevision();
   if (reset_required) {
     impl_->observed_blocks.replaceObservedSnapshot(occupancy.chunks());
   }
@@ -146,14 +159,23 @@ IncrementalTopologyGraph3D::reset(const OccupancyGrid3D& occupancy,
   impl_->bounds = occupancy.bounds();
   impl_->observed_blocks.clearPending();
   impl_->observed_blocks.clearObservedSnapshot();
-  return impl_->rebuild(occupancy, revision,
-                        impl_->observed_blocks.allStaticBlocks(impl_->bounds), 0U,
-                        true);
+  impl_->source_seen_revision = revision;
+  IncrementalTopologyGraph3DUpdate result =
+      impl_->rebuild(occupancy, revision,
+                     impl_->observed_blocks.allStaticBlocks(impl_->bounds), 0U, true);
+  impl_->materialized_revision = result.rebuilt_blocks > 0U ? revision : 0U;
+  result.source_seen_revision = impl_->source_seen_revision;
+  result.materialized_revision = impl_->materialized_revision;
+  result.coverage_complete_through_revision = impl_->coverageCompleteThroughRevision();
+  return result;
 }
 
 IncrementalTopologyGraph3DSnapshot IncrementalTopologyGraph3D::snapshot() const {
   IncrementalTopologyGraph3DSnapshot result;
   result.revision_ = impl_->graph_revision;
+  result.source_seen_revision_ = impl_->source_seen_revision;
+  result.materialized_revision_ = impl_->materialized_revision;
+  result.coverage_complete_through_revision_ = impl_->coverageCompleteThroughRevision();
   result.bounds_ = impl_->bounds;
   result.nodes_.reserve(impl_->nodes.size());
   for (const auto& [node_id, node] : impl_->nodes) {

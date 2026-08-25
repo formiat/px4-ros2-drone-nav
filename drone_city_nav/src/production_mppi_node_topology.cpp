@@ -69,13 +69,35 @@ void ProductionMppiNode::topologyWorker(const std::stop_token stop_token) {
       raw_world = std::exchange(pending_topology_world_3d_, nullptr);
     }
     if (raw_world) {
-      const std::size_t pending_blocks = processObservedTopology3D(*raw_world);
-      if (pending_blocks > 0U) {
+      const IncrementalTopologyGraph3DUpdate update =
+          processObservedTopology3D(*raw_world);
+      const IncrementalTopologyProgressWatchdog3DState progress =
+          topology_progress_watchdog_.observe(update.pending_blocks,
+                                              update.rebuilt_blocks);
+      if (progress.stalled) {
+        RCLCPP_ERROR_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "INCREMENTAL_TOPOLOGY3D_WATCHDOG zero_progress_streak=%zu "
+            "pending_blocks=%zu source_seen_revision=%" PRIu64
+            " materialized_revision=%" PRIu64 " retry_backoff_ms=%" PRId64,
+            progress.zero_progress_streak, update.pending_blocks,
+            update.source_seen_revision, update.materialized_revision,
+            progress.retry_backoff.count());
+      }
+      if (update.pending_blocks > 0U) {
         auto continuation = std::make_shared<ProductionMppiRawWorld3D>(*raw_world);
         continuation->dirty_chunks.clear();
         continuation->full_reset = false;
         {
-          const std::scoped_lock lock{topology_queue_mutex_};
+          std::unique_lock lock{topology_queue_mutex_};
+          if (progress.retry_backoff.count() > 0) {
+            topology_queue_condition_.wait_for(
+                lock, stop_token, progress.retry_backoff,
+                [this]() { return pending_topology_world_3d_ != nullptr; });
+          }
+          if (stop_token.stop_requested()) {
+            return;
+          }
           if (!pending_topology_world_3d_) {
             pending_topology_world_3d_ = std::move(continuation);
           }
@@ -86,10 +108,10 @@ void ProductionMppiNode::topologyWorker(const std::stop_token stop_token) {
   }
 }
 
-std::size_t ProductionMppiNode::processObservedTopology3D(
+IncrementalTopologyGraph3DUpdate ProductionMppiNode::processObservedTopology3D(
     const ProductionMppiRawWorld3D& raw_world) {
   if (!topological_navigation_3d_ || !raw_world.occupancy) {
-    return 0U;
+    return {};
   }
 
   ProductionMppiNavigation navigation;
@@ -140,7 +162,8 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
   }
   RCLCPP_INFO(
       get_logger(),
-      "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64
+      "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64 " source_seen_revision=%" PRIu64
+      " materialized_revision=%" PRIu64 " coverage_complete_through_revision=%" PRIu64
       " full_reset=%s dirty_chunks=%zu discovered_dirty_blocks=%zu "
       "rebuilt_blocks=%zu refreshed_observation_blocks=%zu pending_blocks=%zu "
       "budget=%zu backlog_boosted=%s local_priority=%zu forward_corridor=%zu "
@@ -149,11 +172,15 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
       "refined_resolution_m=%.3f retained_nodes=%zu created_nodes=%zu "
       "retired_nodes=%zu nodes=%zu edges=%zu dirty_discovery_ms=%.2f "
       "block_build_ms=%.2f block_replace_ms=%.2f block_connect_ms=%.2f "
-      "node_classification_ms=%.2f rebuild_ms=%.2f update_ms=%.2f",
-      update.graph.revision, update.graph.full_reset ? "true" : "false",
-      update.graph.requested_dirty_chunks, update.graph.discovered_dirty_blocks,
-      update.graph.rebuilt_blocks, update.graph.refreshed_observation_blocks,
-      update.graph.pending_blocks, update.graph.scheduled_block_budget,
+      "node_classification_ms=%.2f rebuild_ms=%.2f update_ms=%.2f "
+      "minimum_progress_guaranteed=%s",
+      update.graph.revision, update.graph.source_seen_revision,
+      update.graph.materialized_revision,
+      update.graph.coverage_complete_through_revision,
+      update.graph.full_reset ? "true" : "false", update.graph.requested_dirty_chunks,
+      update.graph.discovered_dirty_blocks, update.graph.rebuilt_blocks,
+      update.graph.refreshed_observation_blocks, update.graph.pending_blocks,
+      update.graph.scheduled_block_budget,
       update.graph.backlog_boosted ? "true" : "false",
       update.graph.local_priority_blocks, update.graph.forward_corridor_blocks,
       update.graph.oldest_preserved_blocks, update.graph.adaptively_refined_blocks,
@@ -166,8 +193,9 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
       update.graph.retired_nodes, update.graph.node_count, update.graph.edge_count,
       update.graph.dirty_block_discovery_ms, update.graph.block_build_ms,
       update.graph.block_replace_ms, update.graph.block_connect_ms,
-      update.graph.node_classification_ms, update.graph.graph_rebuild_ms, update_ms);
-  return update.graph.pending_blocks;
+      update.graph.node_classification_ms, update.graph.graph_rebuild_ms, update_ms,
+      update.graph.minimum_progress_guaranteed ? "true" : "false");
+  return update.graph;
 }
 
 void ProductionMppiNode::configureIncrementalTopology3D() {
@@ -225,6 +253,27 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
     throw std::invalid_argument{
         "topological_graph_3d_update_budget_ms must be positive"};
   }
+  const auto topology_zero_progress_initial_backoff_ms = checkedPositiveSizeParameter(
+      declare_parameter<std::int64_t>(
+          "topological_graph_3d_zero_progress_initial_backoff_ms", 5),
+      "topological_graph_3d_zero_progress_initial_backoff_ms");
+  const auto topology_zero_progress_maximum_backoff_ms = checkedPositiveSizeParameter(
+      declare_parameter<std::int64_t>(
+          "topological_graph_3d_zero_progress_maximum_backoff_ms", 250),
+      "topological_graph_3d_zero_progress_maximum_backoff_ms");
+  topology_progress_watchdog_ =
+      IncrementalTopologyProgressWatchdog3D{IncrementalTopologyProgressWatchdog3DConfig{
+          .initial_backoff =
+              std::chrono::milliseconds{static_cast<std::chrono::milliseconds::rep>(
+                  topology_zero_progress_initial_backoff_ms)},
+          .maximum_backoff =
+              std::chrono::milliseconds{static_cast<std::chrono::milliseconds::rep>(
+                  topology_zero_progress_maximum_backoff_ms)},
+          .warning_streak = checkedPositiveSizeParameter(
+              declare_parameter<std::int64_t>(
+                  "topological_graph_3d_zero_progress_warning_streak", 3),
+              "topological_graph_3d_zero_progress_warning_streak"),
+      }};
 
   topological_planner_3d_config_.maximum_start_anchor_distance_m =
       declare_parameter<double>("topological_planner_3d_start_anchor_distance_m", 20.0);

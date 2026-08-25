@@ -74,5 +74,29 @@ TEST(IncrementalTopologyBlockScheduler3DTest,
   EXPECT_EQ(selected[2], (IncrementalTopologyBlockIndex3D{0, 2, 2}));
 }
 
+TEST(IncrementalTopologyBlockScheduler3DTest,
+     ZeroProgressWatchdogBacksOffExponentiallyAndResetsOnProgress) {
+  IncrementalTopologyProgressWatchdog3D watchdog{
+      IncrementalTopologyProgressWatchdog3DConfig{
+          .initial_backoff = std::chrono::milliseconds{5},
+          .maximum_backoff = std::chrono::milliseconds{20},
+          .warning_streak = 3U,
+      }};
+
+  const auto first = watchdog.observe(8U, 0U);
+  EXPECT_EQ(first.zero_progress_streak, 1U);
+  EXPECT_EQ(first.retry_backoff, std::chrono::milliseconds{5});
+  EXPECT_FALSE(first.stalled);
+  const auto second = watchdog.observe(8U, 0U);
+  EXPECT_EQ(second.retry_backoff, std::chrono::milliseconds{10});
+  const auto third = watchdog.observe(8U, 0U);
+  EXPECT_EQ(third.retry_backoff, std::chrono::milliseconds{20});
+  EXPECT_TRUE(third.stalled);
+  EXPECT_EQ(watchdog.observe(8U, 0U).retry_backoff, std::chrono::milliseconds{20});
+
+  EXPECT_EQ(watchdog.observe(7U, 1U).zero_progress_streak, 0U);
+  EXPECT_EQ(watchdog.observe(0U, 0U).retry_backoff, std::chrono::milliseconds{0});
+}
+
 } // namespace
 } // namespace drone_city_nav

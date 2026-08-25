@@ -65,6 +65,42 @@ buildPriorityMetrics(const IncrementalTopologyBlockIndex3D block,
 
 } // namespace
 
+IncrementalTopologyProgressWatchdog3D::IncrementalTopologyProgressWatchdog3D(
+    const IncrementalTopologyProgressWatchdog3DConfig& config)
+    : config_{config} {
+  if (config_.initial_backoff.count() <= 0 ||
+      config_.maximum_backoff < config_.initial_backoff ||
+      config_.warning_streak == 0U) {
+    throw std::invalid_argument{"invalid topology progress watchdog configuration"};
+  }
+}
+
+IncrementalTopologyProgressWatchdog3DState
+IncrementalTopologyProgressWatchdog3D::observe(
+    const std::size_t pending_blocks, const std::size_t rebuilt_blocks) noexcept {
+  if (pending_blocks == 0U || rebuilt_blocks > 0U) {
+    reset();
+    return {};
+  }
+  ++zero_progress_streak_;
+  const std::size_t shift = std::min<std::size_t>(zero_progress_streak_ - 1U, 16U);
+  using BackoffRep = std::chrono::milliseconds::rep;
+  const BackoffRep factor = static_cast<BackoffRep>(std::uint64_t{1U} << shift);
+  const BackoffRep maximum_count = config_.maximum_backoff.count();
+  const BackoffRep initial_count = config_.initial_backoff.count();
+  const std::chrono::milliseconds scaled{
+      initial_count > maximum_count / factor ? maximum_count : initial_count * factor};
+  return IncrementalTopologyProgressWatchdog3DState{
+      .zero_progress_streak = zero_progress_streak_,
+      .retry_backoff = std::min(scaled, config_.maximum_backoff),
+      .stalled = zero_progress_streak_ >= config_.warning_streak,
+  };
+}
+
+void IncrementalTopologyProgressWatchdog3D::reset() noexcept {
+  zero_progress_streak_ = 0U;
+}
+
 IncrementalTopologyBlockPriorityTier3D incrementalTopologyBlockPriorityTier3D(
     const IncrementalTopologyBlockIndex3D block, const GridBounds3D& bounds,
     const int block_size_cells,

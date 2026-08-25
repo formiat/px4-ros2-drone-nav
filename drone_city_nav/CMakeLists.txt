@@ -1268,7 +1268,8 @@ if(BUILD_TESTING)
   enable_project_warnings(static_esdf_cache_test)
 
   ament_add_gtest(route_3d_test tests/route_3d_test.cpp
-                  tests/route_3d_lattice_geometry_test.cpp)
+                  tests/route_3d_lattice_geometry_test.cpp
+                  tests/risk_aware_lattice_3d_state_test.cpp)
   target_compile_features(route_3d_test PRIVATE cxx_std_20)
   target_include_directories(route_3d_test PRIVATE src)
   target_link_libraries(route_3d_test drone_city_nav_core)
