@@ -406,6 +406,12 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     report_commit_failure("horizon_time_window_not_current");
     return false;
   }
+  const OffboardSessionPublicationCurrentnessStatus offboard_currentness =
+      assessOffboardSessionPublicationCurrentness(
+          offboard_session_admission_, offboard_session_receive_stamp_ns_,
+          cycle.offboard_session, cycle.offboard_session_receive_stamp_ns,
+          owner.target_offboard_instance_id, publication_now_ns,
+          maximum_control_feedback_age_ms_);
   const char* const cycle_currentness_failure = [&]() -> const char* {
     if (requested_execution_revocation_.load(std::memory_order_acquire) !=
         handled_execution_revocation_request_) {
@@ -417,36 +423,8 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     if (!navigation_.valid) {
       return "navigation_invalid";
     }
-    if (!offboard_session_admission_.valid() ||
-        offboard_session_admission_.latest_source_stamp_ns <= 0 ||
-        offboard_session_receive_stamp_ns_ <= 0) {
-      return "offboard_session_invalid";
-    }
-    if (publication_now_ns < offboard_session_admission_.latest_source_stamp_ns ||
-        publication_now_ns < offboard_session_receive_stamp_ns_) {
-      return "offboard_session_from_future";
-    }
-    if (static_cast<double>(publication_now_ns -
-                            offboard_session_admission_.latest_source_stamp_ns) *
-                1.0e-6 >
-            maximum_control_feedback_age_ms_ ||
-        static_cast<double>(publication_now_ns - offboard_session_receive_stamp_ns_) *
-                1.0e-6 >
-            maximum_control_feedback_age_ms_) {
-      return "offboard_session_stale";
-    }
-    if (offboard_session_admission_.current_producer_instance_id !=
-            owner.target_offboard_instance_id ||
-        offboard_session_admission_.current_producer_instance_id !=
-            cycle.offboard_session.current_producer_instance_id) {
-      return "offboard_producer_changed";
-    }
-    if (offboard_session_admission_.latest_source_stamp_ns !=
-        cycle.offboard_session.latest_source_stamp_ns) {
-      return "offboard_source_advanced";
-    }
-    if (offboard_session_receive_stamp_ns_ != cycle.offboard_session_receive_stamp_ns) {
-      return "offboard_receive_advanced";
+    if (offboard_currentness != OffboardSessionPublicationCurrentnessStatus::kCurrent) {
+      return offboardSessionPublicationCurrentnessStatusName(offboard_currentness);
     }
     if (navigation_.revision != cycle.execution_input->poseRevision()) {
       return "navigation_revision_advanced";

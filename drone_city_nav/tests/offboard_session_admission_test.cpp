@@ -120,5 +120,51 @@ TEST(OffboardSessionAdmissionTest, RetirementCapacityFailsClosedWithoutEviction)
   EXPECT_TRUE(oldest_replay.stale);
 }
 
+TEST(OffboardSessionAdmissionTest,
+     PublicationAcceptsNewerHeartbeatFromTheCapturedProducer) {
+  const OffboardSessionAdmissionState captured = initialState();
+  const OffboardSessionAdmissionResult advanced =
+      admitOffboardSession(captured, candidate(7U, 110));
+  ASSERT_TRUE(advanced.accept);
+
+  EXPECT_EQ(assessOffboardSessionPublicationCurrentness(
+                advanced.next_state, 1'010, captured, 1'000, 7U, 2'000, 1.0),
+            OffboardSessionPublicationCurrentnessStatus::kCurrent);
+  EXPECT_STREQ(offboardSessionPublicationCurrentnessStatusName(
+                   OffboardSessionPublicationCurrentnessStatus::kCurrent),
+               "current");
+}
+
+TEST(OffboardSessionAdmissionTest,
+     PublicationRejectsHeartbeatRegressionAndProducerHandoff) {
+  const OffboardSessionAdmissionState captured = initialState();
+  OffboardSessionAdmissionState source_regressed = captured;
+  source_regressed.latest_source_stamp_ns = 99;
+  EXPECT_EQ(assessOffboardSessionPublicationCurrentness(
+                source_regressed, 1'000, captured, 1'000, 7U, 2'000, 1.0),
+            OffboardSessionPublicationCurrentnessStatus::kSourceRegressed);
+  EXPECT_EQ(assessOffboardSessionPublicationCurrentness(captured, 999, captured, 1'000,
+                                                        7U, 2'000, 1.0),
+            OffboardSessionPublicationCurrentnessStatus::kReceiveRegressed);
+
+  const OffboardSessionAdmissionResult handoff =
+      admitOffboardSession(captured, candidate(8U, 110));
+  ASSERT_TRUE(handoff.accept);
+  ASSERT_TRUE(handoff.transitioned);
+  EXPECT_EQ(assessOffboardSessionPublicationCurrentness(
+                handoff.next_state, 1'010, captured, 1'000, 7U, 2'000, 1.0),
+            OffboardSessionPublicationCurrentnessStatus::kProducerChanged);
+}
+
+TEST(OffboardSessionAdmissionTest, PublicationRejectsFutureAndStaleHeartbeatEvidence) {
+  const OffboardSessionAdmissionState captured = initialState();
+  EXPECT_EQ(assessOffboardSessionPublicationCurrentness(captured, 1'100, captured,
+                                                        1'000, 7U, 1'050, 1.0),
+            OffboardSessionPublicationCurrentnessStatus::kFromFuture);
+  EXPECT_EQ(assessOffboardSessionPublicationCurrentness(captured, 1'000, captured,
+                                                        1'000, 7U, 2'000'001, 1.0),
+            OffboardSessionPublicationCurrentnessStatus::kStale);
+}
+
 } // namespace
 } // namespace drone_city_nav

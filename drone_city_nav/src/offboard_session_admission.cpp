@@ -1,5 +1,7 @@
 #include "drone_city_nav/offboard_session_admission.hpp"
 
+#include <cmath>
+
 namespace drone_city_nav {
 namespace {
 
@@ -111,6 +113,64 @@ admitOffboardSession(const OffboardSessionAdmissionState& state,
   result.accept = true;
   result.transitioned = true;
   return result;
+}
+
+OffboardSessionPublicationCurrentnessStatus assessOffboardSessionPublicationCurrentness(
+    const OffboardSessionAdmissionState& current,
+    const std::int64_t current_receive_stamp_ns,
+    const OffboardSessionAdmissionState& captured,
+    const std::int64_t captured_receive_stamp_ns,
+    const std::uint64_t expected_producer_instance_id,
+    const std::int64_t publication_now_ns, const double maximum_age_ms) noexcept {
+  if (!current.valid() || !captured.valid() || current_receive_stamp_ns <= 0 ||
+      captured_receive_stamp_ns <= 0 || expected_producer_instance_id == 0U ||
+      publication_now_ns <= 0 || !std::isfinite(maximum_age_ms) ||
+      maximum_age_ms < 0.0) {
+    return OffboardSessionPublicationCurrentnessStatus::kInvalidInput;
+  }
+  if (current.current_producer_instance_id != expected_producer_instance_id ||
+      captured.current_producer_instance_id != expected_producer_instance_id) {
+    return OffboardSessionPublicationCurrentnessStatus::kProducerChanged;
+  }
+  if (current.latest_source_stamp_ns < captured.latest_source_stamp_ns) {
+    return OffboardSessionPublicationCurrentnessStatus::kSourceRegressed;
+  }
+  if (current_receive_stamp_ns < captured_receive_stamp_ns) {
+    return OffboardSessionPublicationCurrentnessStatus::kReceiveRegressed;
+  }
+  if (publication_now_ns < current.latest_source_stamp_ns ||
+      publication_now_ns < current_receive_stamp_ns) {
+    return OffboardSessionPublicationCurrentnessStatus::kFromFuture;
+  }
+  if (static_cast<double>(publication_now_ns - current.latest_source_stamp_ns) *
+              1.0e-6 >
+          maximum_age_ms ||
+      static_cast<double>(publication_now_ns - current_receive_stamp_ns) * 1.0e-6 >
+          maximum_age_ms) {
+    return OffboardSessionPublicationCurrentnessStatus::kStale;
+  }
+  return OffboardSessionPublicationCurrentnessStatus::kCurrent;
+}
+
+const char* offboardSessionPublicationCurrentnessStatusName(
+    const OffboardSessionPublicationCurrentnessStatus status) noexcept {
+  switch (status) {
+    case OffboardSessionPublicationCurrentnessStatus::kCurrent:
+      return "current";
+    case OffboardSessionPublicationCurrentnessStatus::kInvalidInput:
+      return "invalid_input";
+    case OffboardSessionPublicationCurrentnessStatus::kProducerChanged:
+      return "producer_changed";
+    case OffboardSessionPublicationCurrentnessStatus::kSourceRegressed:
+      return "source_regressed";
+    case OffboardSessionPublicationCurrentnessStatus::kReceiveRegressed:
+      return "receive_regressed";
+    case OffboardSessionPublicationCurrentnessStatus::kFromFuture:
+      return "from_future";
+    case OffboardSessionPublicationCurrentnessStatus::kStale:
+      return "stale";
+  }
+  return "unknown";
 }
 
 } // namespace drone_city_nav

@@ -35,6 +35,16 @@ struct OffboardSessionAdmissionResult {
   bool invalid{false};
 };
 
+enum class OffboardSessionPublicationCurrentnessStatus : std::uint8_t {
+  kCurrent,
+  kInvalidInput,
+  kProducerChanged,
+  kSourceRegressed,
+  kReceiveRegressed,
+  kFromFuture,
+  kStale,
+};
+
 // Admits a liveness heartbeat for one offboard process. An equal-stamp replay
 // is idempotently accepted and reported, so callers do not refresh receive-time
 // liveness. Retired producers are never evicted; exhausting the bounded history
@@ -42,5 +52,19 @@ struct OffboardSessionAdmissionResult {
 [[nodiscard]] OffboardSessionAdmissionResult
 admitOffboardSession(const OffboardSessionAdmissionState& state,
                      const OffboardSessionCandidate& candidate) noexcept;
+
+// A heartbeat for the same producer may advance while a horizon is prepared.
+// Publication requires the live session to be at least as new as the captured
+// session, while producer handoff, time regression, future evidence, and stale
+// evidence remain fail-closed.
+[[nodiscard]] OffboardSessionPublicationCurrentnessStatus
+assessOffboardSessionPublicationCurrentness(
+    const OffboardSessionAdmissionState& current, std::int64_t current_receive_stamp_ns,
+    const OffboardSessionAdmissionState& captured,
+    std::int64_t captured_receive_stamp_ns, std::uint64_t expected_producer_instance_id,
+    std::int64_t publication_now_ns, double maximum_age_ms) noexcept;
+
+[[nodiscard]] const char* offboardSessionPublicationCurrentnessStatusName(
+    OffboardSessionPublicationCurrentnessStatus status) noexcept;
 
 } // namespace drone_city_nav
