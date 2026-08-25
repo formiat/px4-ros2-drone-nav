@@ -1,5 +1,7 @@
 #include "production_mppi_noncooperative_diagnostics.hpp"
 
+#include "drone_city_nav/json_output.hpp"
+
 #include <iomanip>
 #include <sstream>
 
@@ -33,7 +35,8 @@ primaryThreatFields(const NonCooperativeAvoidanceUpdate& update) noexcept {
   };
 }
 
-void appendFields(std::ostringstream& output,
+template<typename Stream>
+void appendFields(Stream& output,
                   const ProductionMppiNonCooperativeUpdate& noncooperative,
                   const mppi::MppiTickResult& result, const bool json) {
   const NonCooperativeAvoidanceUpdate& update = noncooperative.avoidance;
@@ -150,7 +153,7 @@ nonCooperativeInfoFields(const ProductionMppiNonCooperativeUpdate& noncooperativ
 std::string
 nonCooperativeJsonFields(const ProductionMppiNonCooperativeUpdate& noncooperative,
                          const mppi::MppiTickResult& result) {
-  std::ostringstream output;
+  JsonOutputStream output;
   output << std::fixed << std::setprecision(3);
   appendFields(output, noncooperative, result, true);
   return output.str();

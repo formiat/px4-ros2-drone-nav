@@ -27,6 +27,7 @@ struct ProductionRouteActivationResult3D {
   RouteProposalReplacementAssessment3D replacement{};
   mppi::StaticRouteHandoffResult handoff{};
   RouteSpliceCertificationResult3D splice{};
+  ExecutionRouteGeometryValidation3D geometry_validation{};
   StaticRouteActivationStatus activation_status{
       StaticRouteActivationStatus::kNotAttempted};
   std::uint64_t candidate_generation{0U};
@@ -40,6 +41,7 @@ struct ProductionRouteActivationResult3D {
   bool observed_world_rebased{false};
   bool publication_world_advanced{false};
   bool certified_pending{false};
+  bool commit_assessment_performed{false};
 
   [[nodiscard]] bool executionGeometryValid() const noexcept;
   [[nodiscard]] bool readyForArbitration() const noexcept;

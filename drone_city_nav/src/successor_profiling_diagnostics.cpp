@@ -1,13 +1,13 @@
 #include "successor_profiling_diagnostics.hpp"
 
-#include <sstream>
+#include "drone_city_nav/json_output.hpp"
 
 namespace drone_city_nav::detail {
 
 std::string
 successorProfilingJsonFields(const LatticeSuccessorProfiling& lattice_2d,
                              const Lattice3DSuccessorProfiling& lattice_3d) {
-  std::ostringstream output;
+  JsonOutputStream output;
   output
       << ",\"successor_search_batches\":" << lattice_2d.search.collection_calls
       << ",\"successor_search_parallel_batches\":"

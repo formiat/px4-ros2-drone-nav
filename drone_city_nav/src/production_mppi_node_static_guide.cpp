@@ -131,6 +131,7 @@ void ProductionMppiNode::processGuideSearch3D(
         " source=%s purpose=%s lease_reason=%s return_lineage=%" PRIu64
         " return_anchor=%" PRIu64 " "
         "physical=%s activation_eligible=%s validation=%.*s handoff=%s "
+        "execution_geometry=%s execution_geometry_sample=%zu "
         "raw_connector_validated=%s raw_suffix_validated=%s "
         "route_length_m=%.2f mission_progress_m=%.2f objective=%.3f",
         world.revision, index,
@@ -149,6 +150,9 @@ void ProductionMppiNode::processGuideSearch3D(
             staticRouteCandidateStatusName(activation.validation.status).size()),
         staticRouteCandidateStatusName(activation.validation.status).data(),
         mppi::staticRouteHandoffStatusName(activation.handoff.status),
+        executionRouteGeometryFailureReasonName3D(
+            activation.geometry_validation.reason),
+        activation.geometry_validation.sample_index,
         activation.assessment.raw_validation.connector_validated ? "true" : "false",
         activation.assessment.raw_validation.suffix_validated ? "true" : "false",
         proposal.evidence.route_length_m, proposal.evidence.mission_progress_m,
@@ -244,6 +248,16 @@ void ProductionMppiNode::processGuideSearch3D(
   const bool observed_world_rebased = activation.observed_world_rebased;
   const bool certified_pending = activation.certified_pending;
   const mppi::StaticRouteHandoffResult& handoff = activation.handoff;
+  const auto commitAssessmentName =
+      [performed = activation.commit_assessment_performed](const bool accepted) {
+        if (!performed) {
+          return "not_attempted";
+        }
+        return accepted ? "true" : "false";
+      };
+  const char* const generation_assessment = commitAssessmentName(generation_matches);
+  const char* const snapshot_assessment =
+      commitAssessmentName(activation_snapshot_current);
 
   bool strategy_outcome_recorded{certified_pending};
   RouteStrategyArbitrationState3D strategy_state;
@@ -405,11 +419,11 @@ void ProductionMppiNode::processGuideSearch3D(
       staticRouteActivationStatusName(activation_status).data(),
       static_cast<int>(routePublicationStatus3DName(publication_status).size()),
       routePublicationStatus3DName(publication_status).data(),
-      world_compatible ? "true" : "false",
-      activation_snapshot_current ? "true" : "false", activation.snapshot_pose_revision,
-      activation.snapshot_raw_revision, generation_matches ? "true" : "false",
-      objective_matches ? "true" : "false", prepared.global_guide_generation,
-      route_space, observed_world_rebased ? "true" : "false",
+      world_compatible ? "true" : "false", snapshot_assessment,
+      activation.snapshot_pose_revision, activation.snapshot_raw_revision,
+      generation_assessment, objective_matches ? "true" : "false",
+      prepared.global_guide_generation, route_space,
+      observed_world_rebased ? "true" : "false",
       publication_world_advanced ? "true" : "false",
       lattice3DRoutePurposeName(lattice.route_purpose), topology_acceleration,
       observation_frontier ? observation_frontier->id.value : 0U,

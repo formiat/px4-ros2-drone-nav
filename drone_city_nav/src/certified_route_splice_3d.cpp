@@ -349,6 +349,8 @@ bool routeSpliceWindowExpired3D(const CertifiedRouteSplice3D& splice,
 std::string_view routeSpliceCertificationStatus3DName(
     const RouteSpliceCertificationStatus3D status) noexcept {
   switch (status) {
+    case RouteSpliceCertificationStatus3D::kNotAttempted:
+      return "not_attempted";
     case RouteSpliceCertificationStatus3D::kCertified:
       return "certified";
     case RouteSpliceCertificationStatus3D::kInvalidConfig:

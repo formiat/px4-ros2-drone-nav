@@ -88,6 +88,8 @@ StaticRouteHandoffResult validateStaticRouteHandoff(
 const char*
 staticRouteHandoffStatusName(const StaticRouteHandoffStatus status) noexcept {
   switch (status) {
+    case StaticRouteHandoffStatus::kNotAttempted:
+      return "not_attempted";
     case StaticRouteHandoffStatus::kAccepted:
       return "accepted";
     case StaticRouteHandoffStatus::kInvalidInput:

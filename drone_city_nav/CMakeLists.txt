@@ -910,6 +910,11 @@ if(BUILD_TESTING)
   target_link_libraries(navigation_state_prediction_test drone_city_nav_core)
   enable_project_warnings(navigation_state_prediction_test)
 
+  ament_add_gtest(json_output_test tests/json_output_test.cpp)
+  target_compile_features(json_output_test PRIVATE cxx_std_20)
+  target_include_directories(json_output_test PRIVATE include)
+  enable_project_warnings(json_output_test)
+
   ament_add_gtest(navigation_angular_derivative_test
                   tests/navigation_angular_derivative_test.cpp)
   target_compile_features(navigation_angular_derivative_test PRIVATE cxx_std_20)

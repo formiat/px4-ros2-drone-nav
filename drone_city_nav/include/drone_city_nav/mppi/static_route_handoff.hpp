@@ -8,6 +8,7 @@
 namespace drone_city_nav::mppi {
 
 enum class StaticRouteHandoffStatus : std::uint8_t {
+  kNotAttempted,
   kAccepted,
   kInvalidInput,
   kInvalidProjection,
@@ -17,7 +18,7 @@ enum class StaticRouteHandoffStatus : std::uint8_t {
 };
 
 struct StaticRouteHandoffResult {
-  StaticRouteHandoffStatus status{StaticRouteHandoffStatus::kInvalidInput};
+  StaticRouteHandoffStatus status{StaticRouteHandoffStatus::kNotAttempted};
   float cross_track_m{0.0F};
   float minimum_clearance_m{0.0F};
   float critical_exposure_m{0.0F};

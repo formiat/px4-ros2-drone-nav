@@ -1,5 +1,7 @@
 #include "production_mppi_execution_diagnostics.hpp"
 
+#include "drone_city_nav/json_output.hpp"
+
 #include <sstream>
 
 #include "production_mppi_node.hpp"
@@ -43,7 +45,7 @@ std::string executionInfoFields(const ProductionMppiExecutionPublication& execut
 }
 
 std::string executionJsonFields(const ProductionMppiExecutionPublication& execution) {
-  std::ostringstream fields;
+  JsonOutputStream fields;
   fields << ",\"execution_mode\":\"" << productionMppiExecutionModeName(execution.mode)
          << "\",\"execution_reason\":\""
          << productionMppiExecutionReasonName(execution.reason) << '"'
@@ -106,7 +108,7 @@ rollingRouteInfoFields(const RollingRouteTelemetryObservation3D& observation) {
 
 std::string
 rollingRouteJsonFields(const RollingRouteTelemetryObservation3D& observation) {
-  std::ostringstream fields;
+  JsonOutputStream fields;
   fields << ",\"route_endpoint_semantics\":\""
          << routeEndpointSemantics3DName(observation.endpoint_semantics) << '"'
          << ",\"route_continuity_id\":" << observation.continuity_id

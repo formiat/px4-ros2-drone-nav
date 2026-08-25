@@ -117,13 +117,7 @@ nextPendingPublicationSequence(std::atomic<std::uint64_t>& sequence) noexcept {
 } // namespace
 
 bool ProductionRouteActivationResult3D::executionGeometryValid() const noexcept {
-  const ProductionRouteGeometry3D& geometry = proposal.geometry;
-  const ActivatedRouteIdentity3D candidate_identity{
-      .generation = candidate_generation,
-      .proposal = proposal.identity,
-  };
-  return candidate_generation != 0U &&
-         executionRouteGeometryValid3D(geometry, candidate_identity);
+  return geometry_validation.valid();
 }
 
 bool ProductionRouteActivationResult3D::readyForArbitration() const noexcept {
@@ -440,6 +434,23 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       .geometry = std::move(execution_geometry),
   };
 
+  if (result.proposal.geometry.route == nullptr) {
+    result.geometry_validation = {ExecutionRouteGeometryFailureReason3D::kMissingRoute,
+                                  0U};
+  } else {
+    result.geometry_validation =
+        validateExecutionRouteGeometrySamples3D(*result.proposal.geometry.route);
+    const ActivatedRouteIdentity3D candidate_identity{
+        .generation = candidate_generation,
+        .proposal = result.proposal.identity,
+    };
+    if (result.geometry_validation.valid() &&
+        !executionRouteGeometryValid3D(result.proposal.geometry, candidate_identity)) {
+      result.geometry_validation.reason =
+          ExecutionRouteGeometryFailureReason3D::kDerivedResourceMismatch;
+    }
+  }
+
   const bool handoff_control_fresh = appliedControlAuthoritativeForExecution(
       snapshot.applied_control, snapshot.execution_horizon_owner, snapshot.stamp_ns,
       maximum_control_feedback_age_ms_);
@@ -458,7 +469,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       result.proposal.identity.activation_eligible && result.assessment.accepted() &&
       result.handoff.accepted && result.proposal.geometry.route &&
       result.proposal.geometry.constrained_spans && result.world_compatible &&
-      result.objective_matches;
+      result.objective_matches && result.geometry_validation.valid();
 
   if (result.validation.accepted && !result.world_compatible) {
     result.activation_status = StaticRouteActivationStatus::kWorldPublicationRejected;
@@ -485,6 +496,8 @@ void ProductionMppiNode::commitRouteActivation3D(
   ProductionMppiPreparedEsdf& candidate = result.prepared;
   const ProductionMaterializedRouteProposal3D& materialized_proposal = result.proposal;
   const bool raw_validation_required = candidate.observed_occupancy != nullptr;
+  result.commit_assessment_performed = true;
+  candidate.static_route_generation_assessed = true;
 
   const std::shared_ptr<const ExecutionRouteSnapshot3D> current_execution =
       execution_route_store_.snapshot();
@@ -518,28 +531,17 @@ void ProductionMppiNode::commitRouteActivation3D(
       .generation = candidate_generation,
       .proposal = materialized_proposal.identity,
   };
-  ExecutionRouteGeometryValidation3D execution_geometry_validation{
-      .reason = ExecutionRouteGeometryFailureReason3D::kMissingRoute,
-      .sample_index = 0U,
-  };
-  if (materialized_proposal.geometry.route != nullptr) {
-    execution_geometry_validation =
-        validateExecutionRouteGeometrySamples3D(*materialized_proposal.geometry.route);
-  }
   const bool execution_geometry_valid =
       result.candidate_generation == candidate_generation &&
+      result.geometry_validation.valid() &&
       executionRouteGeometryValid3D(materialized_proposal.geometry, candidate_identity);
   if (!execution_geometry_valid) {
-    if (execution_geometry_validation.valid()) {
-      execution_geometry_validation.reason =
-          ExecutionRouteGeometryFailureReason3D::kDerivedResourceMismatch;
-    }
     RCLCPP_WARN(
         get_logger(),
         "EXECUTION_ROUTE_GEOMETRY valid=false reason=%s sample_index=%zu "
         "route_generation=%" PRIu64,
-        executionRouteGeometryFailureReasonName3D(execution_geometry_validation.reason),
-        execution_geometry_validation.sample_index, candidate_generation);
+        executionRouteGeometryFailureReasonName3D(result.geometry_validation.reason),
+        result.geometry_validation.sample_index, candidate_generation);
   }
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
   std::shared_ptr<const VersionedStaticWorld3D> static_owner;

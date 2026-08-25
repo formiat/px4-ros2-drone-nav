@@ -1,5 +1,7 @@
 #include "production_mppi_cooperative_diagnostics.hpp"
 
+#include "drone_city_nav/json_output.hpp"
+
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -13,8 +15,8 @@ namespace {
   return std::isfinite(value) ? value : -1.0F;
 }
 
-void appendFields(std::ostringstream& output,
-                  const ProductionMppiCooperativeUpdate& cooperative,
+template<typename Stream>
+void appendFields(Stream& output, const ProductionMppiCooperativeUpdate& cooperative,
                   const mppi::MppiTickResult& result, const bool json) {
   if (json) {
     output << ",\"cooperative_command_generation\":" << cooperative.command_generation
@@ -149,7 +151,7 @@ std::string cooperativeInfoFields(const ProductionMppiCooperativeUpdate& coopera
 
 std::string cooperativeJsonFields(const ProductionMppiCooperativeUpdate& cooperative,
                                   const mppi::MppiTickResult& result) {
-  std::ostringstream output;
+  JsonOutputStream output;
   output << std::fixed << std::setprecision(3);
   appendFields(output, cooperative, result, true);
   return output.str();

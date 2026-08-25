@@ -29,6 +29,8 @@ namespace drone_city_nav {
 const char* executionRouteGeometryFailureReasonName3D(
     const ExecutionRouteGeometryFailureReason3D reason) noexcept {
   switch (reason) {
+    case ExecutionRouteGeometryFailureReason3D::kNotAttempted:
+      return "not_attempted";
     case ExecutionRouteGeometryFailureReason3D::kValid:
       return "valid";
     case ExecutionRouteGeometryFailureReason3D::kMissingRoute:
@@ -112,7 +114,7 @@ ExecutionRouteGeometryValidation3D validateExecutionRouteGeometrySamples3D(
     previous_position = sample.position;
     previous_tangent = sample.tangent;
   }
-  return {};
+  return {Failure::kValid, route.size() - 1U};
 }
 
 } // namespace drone_city_nav

@@ -33,6 +33,7 @@ struct ExecutionRouteGeometry3D {
 };
 
 enum class ExecutionRouteGeometryFailureReason3D : std::uint8_t {
+  kNotAttempted,
   kValid,
   kMissingRoute,
   kTooFewSamples,
@@ -47,7 +48,7 @@ enum class ExecutionRouteGeometryFailureReason3D : std::uint8_t {
 
 struct ExecutionRouteGeometryValidation3D {
   ExecutionRouteGeometryFailureReason3D reason{
-      ExecutionRouteGeometryFailureReason3D::kValid};
+      ExecutionRouteGeometryFailureReason3D::kNotAttempted};
   std::size_t sample_index{0U};
 
   [[nodiscard]] bool valid() const noexcept {

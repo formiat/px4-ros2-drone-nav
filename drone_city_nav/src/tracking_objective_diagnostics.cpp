@@ -1,5 +1,6 @@
 #include "tracking_objective_diagnostics.hpp"
 
+#include "drone_city_nav/json_output.hpp"
 #include "drone_city_nav/mppi_debug_markers.hpp"
 
 #include <algorithm>
@@ -108,7 +109,7 @@ std::string trackingPursuitInfoFields(const TrackingPursuitDiagnostics& diagnost
 std::string trackingPursuitJsonFields(const TrackingPursuitDiagnostics& diagnostics,
                                       const MppiSpeedPolicyResult& speed_policy,
                                       const mppi::MppiTickResult& result) {
-  std::ostringstream output;
+  JsonOutputStream output;
   output << ",\"commanded_speed_mps\":" << diagnostics.commanded_speed_mps
          << ",\"actual_speed_mps\":" << diagnostics.actual_speed_mps
          << ",\"active_speed_limiter\":\""
@@ -144,7 +145,7 @@ trackingObjectiveJsonFields(const ProductionNavigationObjective* navigation_obje
   const ProductionTrackingObjective& data =
       objective != nullptr ? *objective : empty_objective;
   const bool active = objective != nullptr;
-  std::ostringstream output;
+  JsonOutputStream output;
   output << ",\"tracking_objective_active\":" << (active ? "true" : "false")
          << ",\"tracking_guidance_mode\":\""
          << (active ? interceptGuidanceModeName(data.guidance_mode) : "none") << '"'

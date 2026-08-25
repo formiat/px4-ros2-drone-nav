@@ -24,6 +24,7 @@ struct CertifiedRouteSpliceConfig3D {
 certifiedRouteSpliceConfig3DValid(const CertifiedRouteSpliceConfig3D& config) noexcept;
 
 enum class RouteSpliceCertificationStatus3D : std::uint8_t {
+  kNotAttempted,
   kCertified,
   kInvalidConfig,
   kInvalidRoute,
@@ -63,7 +64,7 @@ struct CertifiedRouteSplice3D {
 
 struct RouteSpliceCertificationResult3D {
   RouteSpliceCertificationStatus3D status{
-      RouteSpliceCertificationStatus3D::kInvalidRoute};
+      RouteSpliceCertificationStatus3D::kNotAttempted};
   std::optional<CertifiedRouteSplice3D> splice;
   double available_base_overlap_m{0.0};
   double available_successor_overlap_m{0.0};

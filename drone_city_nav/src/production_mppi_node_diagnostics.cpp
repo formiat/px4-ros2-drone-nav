@@ -1,3 +1,5 @@
+#include "drone_city_nav/json_output.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
@@ -79,6 +81,11 @@ void ProductionMppiNode::processDiagnostics(
       route_envelope_config_, route_constraint_diagnostics_distance_m_);
   const ProductionMppiPlanningState planning_state = snapshot.planning_state;
   const std::string_view target_source = snapshot.target_source;
+  const char* static_route_generation_matches = "not_attempted";
+  if (esdf.static_route_generation_assessed) {
+    static_route_generation_matches =
+        esdf.static_route_generation_matches ? "true" : "false";
+  }
   const auto rviz_started = std::chrono::steady_clock::now();
   publishRviz(snapshot);
   const double rviz_ms = std::chrono::duration<double, std::milli>(
@@ -242,8 +249,7 @@ void ProductionMppiNode::processDiagnostics(
       << routePublicationStatus3DName(esdf.static_route_publication_status)
       << " static_route_world_compatible="
       << (esdf.static_route_world_compatible ? "true" : "false")
-      << " static_route_generation_matches="
-      << (esdf.static_route_generation_matches ? "true" : "false")
+      << " static_route_generation_matches=" << static_route_generation_matches
       << " topology_objective=" << esdf.topology_objective_cost
       << " topology_route_length_m=" << esdf.topology_route_length_m
       << " topology_travel_time_s=" << esdf.topology_travel_time_s
@@ -523,454 +529,461 @@ void ProductionMppiNode::processDiagnostics(
       now_ns < last_diagnostics_file_stamp_ns_ ||
       now_ns - last_diagnostics_file_stamp_ns_ >= diagnostics_file_period_ns_;
   if (diagnostics_stream_ && (diagnostics_file_due || new_error_episode)) {
-    std::ostringstream json;
-    json
-        << "{\"tick\":" << snapshot.tick_sequence
-        << ",\"pose_revision\":" << input.pose_revision
-        << ",\"raw_revision\":" << input.obstacle_revision
-        << ",\"esdf_revision\":" << result.esdf_revision
-        << ",\"pose_age_ms\":" << snapshot.pose_age_ms
-        << ",\"observation_age_ms\":" << snapshot.observation_age_ms
-        << ",\"esdf_content_age_ms\":" << snapshot.esdf_age_ms
-        << ",\"local_world_generation\":" << esdf.local_world_generation.generation
-        << ",\"control_feedback_age_ms\":" << snapshot.control_feedback_age_ms
-        << ",\"previous_control_source\":\""
-        << productionMppiPreviousControlSourceName(snapshot.previous_control_source)
-        << '"' << ",\"previous_control_ax_mps2\":"
-        << (input.previous_applied_control ? input.previous_applied_control->ax : 0.0F)
-        << ",\"previous_control_ay_mps2\":"
-        << (input.previous_applied_control ? input.previous_applied_control->ay : 0.0F)
-        << ",\"previous_control_az_mps2\":"
-        << (input.previous_applied_control ? input.previous_applied_control->az : 0.0F)
-        << ",\"mppi_target_x_m\":" << input.target.x
-        << ",\"mppi_target_y_m\":" << input.target.y
-        << ",\"mppi_target_z_m\":" << input.target.z << ",\"planning_mode\":\""
-        << (use_static_map_ ? "static" : "no_static") << '"'
-        << ",\"esdf_build_ms\":" << esdf.build_ms
-        << ",\"esdf_x_pass_ms\":" << esdf.esdf_x_pass_ms
-        << ",\"esdf_y_pass_ms\":" << esdf.esdf_y_pass_ms
-        << ",\"esdf_z_pass_ms\":" << esdf.esdf_z_pass_ms
-        << ",\"esdf_finalize_ms\":" << esdf.esdf_finalize_ms
-        << ",\"guide_search_ms\":" << esdf.global_guide_search_ms
-        << ",\"continuation_validation_ms\":" << esdf.continuation_validation_ms
-        << detail::successorProfilingJsonFields(esdf.lattice_successor_profiling,
-                                                esdf.lattice_3d_successor_profiling)
-        << ",\"route_smoothing_ms\":" << esdf.route_smoothing_ms
-        << ",\"route_shortcuts_applied\":" << esdf.route_shortcuts_applied
-        << ",\"route_corners_smoothed\":" << esdf.route_corners_smoothed
-        << ",\"candidate_validation_ms\":" << esdf.candidate_validation_ms
-        << ",\"route_fingerprint\":" << esdf.route_fingerprint
-        << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
-        << '"' << detail::executionJsonFields(snapshot.execution)
-        << ",\"state_x_m\":" << input.initial_state.x
-        << ",\"state_y_m\":" << input.initial_state.y
-        << ",\"state_z_m\":" << input.initial_state.z
-        << ",\"state_vx_mps\":" << input.initial_state.vx
-        << ",\"state_vy_mps\":" << input.initial_state.vy
-        << ",\"state_vz_mps\":" << input.initial_state.vz << ",\"target_source\":\""
-        << target_source << '"'
-        << detail::trackingObjectiveJsonFields(objective.get(), mission_goal, now_ns)
-        << ",\"horizon_s\":"
-        << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
-        << ",\"speed_cap_mps\":" << mppi_config_.dynamics.maximum_horizontal_speed_mps
-        << ",\"acceleration_cap_mps2\":"
-        << mppi_config_.dynamics.maximum_horizontal_acceleration_mps2
-        << ",\"jerk_cap_mps3\":" << mppi_config_.dynamics.maximum_control_jerk_mps3
-        << ",\"speed_tracking_weight\":" << mppi_config_.costs.speed_tracking_weight
-        << ",\"guide_generation\":" << esdf.global_guide_generation
-        << ",\"route_objective_epoch\":" << esdf.route_objective.mission_epoch
-        << ",\"route_objective_sample\":" << esdf.route_objective.sample_sequence
-        << ",\"route_assignment_generation\":"
-        << esdf.route_objective.assignment_generation
-        << ",\"route_target_detection_id\":" << esdf.route_objective.target_detection_id
-        << ",\"route_target_track_id\":" << esdf.route_objective.target_track_id
-        << ",\"search_objective_epoch\":" << esdf.search_objective.mission_epoch
-        << ",\"search_objective_sample\":" << esdf.search_objective.sample_sequence
-        << ",\"search_assignment_generation\":"
-        << esdf.search_objective.assignment_generation
-        << ",\"search_target_detection_id\":"
-        << esdf.search_objective.target_detection_id
-        << ",\"search_target_track_id\":" << esdf.search_objective.target_track_id
-        << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
-        << ",\"guide_reaches_mission_goal\":"
-        << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
-        << ",\"route_intent_id\":" << esdf.route_intent.id
-        << ",\"route_intent_source\":\""
-        << routeIntentSource3DName(esdf.route_intent.source) << '"'
-        << ",\"strategic_plan_id\":" << esdf.route_intent.strategic_plan_id
-        << ",\"route_intent_purpose\":\""
-        << routeIntentPurpose3DName(esdf.route_intent.purpose) << '"'
-        << ",\"route_intent_planned_on\":" << esdf.route_intent.planned_on_revision
-        << ",\"route_validated_through\":"
-        << esdf.route_segment_evidence.validated_through_revision
-        << ",\"route_segment_evidence\":\""
-        << segmentEvidenceStatus3DName(esdf.route_segment_evidence.status) << '"'
-        << ",\"route_unknown_exposure\":"
-        << (esdf.route_segment_evidence.unknown_exposure ? "true" : "false")
-        << ",\"route_known_clearance\":"
-        << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
-        << ",\"route_intent_target_reached\":"
-        << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
-        << ",\"route_intent_reaches_mission_target\":"
-        << (esdf.route_intent.intent_reaches_mission_target ? "true" : "false")
-        << ",\"route_strategic_mission_continuation\":"
-        << (esdf.route_intent.strategic_mission_continuation ? "true" : "false")
-        << ",\"route_proposal_candidates\":" << esdf.route_proposal_candidate_count
-        << ",\"route_proposal_eligible\":" << esdf.route_proposal_eligible_count
-        << ",\"route_proposal_selection\":\""
-        << routeProposalSelectionReason3DName(esdf.route_proposal_selection_reason)
-        << '"' << ",\"goal_capture_latched\":"
-        << (snapshot.goal_capture.latched ? "true" : "false")
-        << ",\"goal_distance_m\":" << snapshot.goal_capture.distance_m
-        << ",\"guide_release\":\""
-        << globalGuideReleaseReasonName(esdf.global_guide_release_reason) << '"'
-        << ",\"guide_heading_source\":\""
-        << globalGuideHeadingSourceName(esdf.global_guide_heading_source) << '"'
-        << ",\"guide_risk\":\"" << globalGuideRiskTierName(esdf.global_guide_risk)
-        << '"' << ",\"guide_acceptance\":\""
-        << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason) << '"'
-        << ",\"guide_station_m\":" << snapshot.route_station_m
-        << ",\"guide_remaining_m\":" << snapshot.route_remaining_m
-        << ",\"route_constraint_phase\":\""
-        << constrainedRoutePhaseName(route_constraint.phase) << '"'
-        << ",\"route_constraint_passage\":\""
-        << (route_constraint.passage_traversal_id.empty()
-                ? "none"
-                : route_constraint.passage_traversal_id)
-        << '"' << ",\"route_constraint_span_available\":"
-        << (route_constraint.span_available ? "true" : "false")
-        << ",\"route_constraint_span_index\":"
-        << (route_constraint.span_available
-                ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
-                : static_cast<std::ptrdiff_t>(-1))
-        << ",\"route_constraint_span_count\":" << route_constraint.span_count
-        << ",\"route_constraint_station_m\":" << route_constraint.station_m
-        << ",\"route_constraint_begin_station_m\":" << route_constraint.begin_station_m
-        << ",\"route_constraint_end_station_m\":" << route_constraint.end_station_m
-        << ",\"route_constraint_distance_to_entry_m\":"
-        << route_constraint.distance_to_entry_m
-        << ",\"route_constraint_distance_to_exit_m\":"
-        << route_constraint.distance_to_exit_m
-        << ",\"route_constraint_entry_x_m\":" << route_constraint.entry_position.x
-        << ",\"route_constraint_entry_y_m\":" << route_constraint.entry_position.y
-        << ",\"route_constraint_entry_z_m\":" << route_constraint.entry_position.z
-        << ",\"route_constraint_exit_x_m\":" << route_constraint.exit_position.x
-        << ",\"route_constraint_exit_y_m\":" << route_constraint.exit_position.y
-        << ",\"route_constraint_exit_z_m\":" << route_constraint.exit_position.z
-        << ",\"route_constraint_reference_z_m\":" << route_constraint.reference_z_m
-        << ",\"route_constraint_min_z_m\":" << route_constraint.min_z_m
-        << ",\"route_constraint_max_z_m\":" << route_constraint.max_z_m
-        << ",\"route_constraint_lateral_free_left_m\":"
-        << route_constraint.lateral_free_left_m
-        << ",\"route_constraint_lateral_free_right_m\":"
-        << route_constraint.lateral_free_right_m
-        << ",\"route_constraint_lateral_width_m\":" << route_constraint.lateral_width_m
-        << ",\"route_constraint_vertical_height_m\":"
-        << route_constraint.vertical_height_m << ",\"route_constraint_lateral\":"
-        << (route_constraint.lateral_constrained ? "true" : "false")
-        << ",\"route_constraint_vertical\":"
-        << (route_constraint.vertical_constrained ? "true" : "false")
-        << ",\"route_constraint_vertical_error_m\":"
-        << route_constraint.vertical_error_m
-        << ",\"route_constraint_cross_track_error_m\":"
-        << route_constraint.cross_track_error_m
-        << ",\"route_constraint_vertical_window_ok\":"
-        << (route_constraint.within_vertical_window ? "true" : "false")
-        << ",\"route_constraint_reference_speed_mps\":"
-        << route_constraint.reference_speed_mps
-        << ",\"route_constraint_actual_horizontal_speed_mps\":"
-        << route_constraint.actual_horizontal_speed_mps
-        << ",\"route_constraint_actual_vertical_speed_mps\":"
-        << route_constraint.actual_vertical_speed_mps << ",\"guide_progress_action\":\""
-        << globalGuideProgressActionName(snapshot.guide_progress.action) << '"'
-        << ",\"guide_local_reseed_generation\":"
-        << snapshot.guide_progress.local_reseed_generation
-        << ",\"planning_search_kind\":\""
-        << productionPlanningSearchKindName(esdf.planning_search_kind) << '"'
-        << ",\"planning_search_start_x\":" << esdf.planning_search_start.x
-        << ",\"planning_search_start_y\":" << esdf.planning_search_start.y
-        << ",\"planning_search_start_z\":" << esdf.planning_search_start.z
-        << ",\"planning_search_goal_x\":" << esdf.planning_search_goal.x
-        << ",\"planning_search_goal_y\":" << esdf.planning_search_goal.y
-        << ",\"planning_search_goal_z\":" << esdf.planning_search_goal.z
-        << ",\"planning_candidate_endpoint_x\":" << esdf.planning_candidate_endpoint.x
-        << ",\"planning_candidate_endpoint_y\":" << esdf.planning_candidate_endpoint.y
-        << ",\"planning_candidate_endpoint_z\":" << esdf.planning_candidate_endpoint.z
-        << ",\"planning_search_direction_x\":" << esdf.planning_search_direction.x
-        << ",\"planning_search_direction_y\":" << esdf.planning_search_direction.y
-        << ",\"planning_search_direction_z\":" << esdf.planning_search_direction.z
-        << ",\"planning_candidate_points\":" << esdf.planning_candidate_points
-        << ",\"planning_candidate_samples\":" << esdf.planning_candidate_samples
-        << ",\"lattice_search_performed\":"
-        << (esdf.lattice_search_performed ? "true" : "false")
-        << ",\"lattice_executable\":" << (esdf.lattice_executable ? "true" : "false")
-        << ",\"lattice_status\":\"" << planningStatusName(esdf) << '"'
-        << ",\"lattice_termination\":\"" << planningTerminationName(esdf) << '"'
-        << ",\"lattice_continuation_attempt\":" << esdf.lattice_continuation_attempt
-        << ",\"lattice_search_session_age_ms\":" << esdf.lattice_search_session_age_ms
-        << ",\"no_static_cycle_detected\":"
-        << (esdf.no_static_cycle_detected ? "true" : "false")
-        << ",\"no_static_adaptive_search\":"
-        << (esdf.no_static_adaptive_search ? "true" : "false")
-        << ",\"no_static_soft_tabu_entries\":" << esdf.no_static_soft_tabu_entries
-        << ",\"lattice_search_session_resumed\":"
-        << (esdf.lattice_search_session_resumed ? "true" : "false")
-        << ",\"lattice_search_session_complete\":"
-        << (esdf.lattice_search_session_complete ? "true" : "false")
-        << ",\"lattice_search_revision\":" << esdf.lattice_search_revision
-        << ",\"lattice_validation_revision\":" << esdf.lattice_validation_revision
-        << ",\"lattice_raw_validation\":\""
-        << rawGuideValidationStatusName(esdf.lattice_raw_validation_status) << '"'
-        << ",\"guide_candidate_validation\":\""
-        << productionGuideCandidateValidationStatusName(
-               esdf.guide_candidate_validation_status)
-        << '"' << ",\"lattice_risk_stage\":\"" << planningRiskStageName(esdf) << '"'
-        << ",\"lattice_route_purpose\":\"" << planningRoutePurposeName(esdf) << '"'
-        << ",\"observation_frontier_id\":"
-        << (esdf.lattice_3d_observation_frontier
-                ? esdf.lattice_3d_observation_frontier->id.value
-                : 0U)
-        << ",\"observation_frontier_revision\":"
-        << (esdf.lattice_3d_observation_frontier
-                ? esdf.lattice_3d_observation_frontier->supporting_map_revision
-                : 0U)
-        << ",\"observation_frontier_supporting_rays\":"
-        << (esdf.lattice_3d_observation_frontier
-                ? esdf.lattice_3d_observation_frontier->supporting_rays
-                : 0U)
-        << ",\"observation_frontier_information_gain_voxels\":"
-        << (esdf.lattice_3d_observation_frontier
-                ? esdf.lattice_3d_observation_frontier->information_gain_voxels
-                : 0U)
-        << ",\"observation_route_replacement\":\""
-        << observationRouteReplacementStatusName(
-               esdf.observation_route_replacement_status)
-        << '"'
-        << ",\"lattice_3d_minimum_clearance_m\":" << esdf.lattice_3d_minimum_clearance_m
-        << ",\"static_route_candidate\":\""
-        << staticRouteCandidateStatusName(esdf.static_route_candidate_status) << '"'
-        << ",\"static_route_activation\":\""
-        << staticRouteActivationStatusName(esdf.static_route_activation_status) << '"'
-        << ",\"static_route_publication_status\":\""
-        << routePublicationStatus3DName(esdf.static_route_publication_status) << '"'
-        << ",\"static_route_world_compatible\":"
-        << (esdf.static_route_world_compatible ? "true" : "false")
-        << ",\"static_route_generation_matches\":"
-        << (esdf.static_route_generation_matches ? "true" : "false")
-        << ",\"topology_objective\":" << esdf.topology_objective_cost
-        << ",\"topology_route_length_m\":" << esdf.topology_route_length_m
-        << ",\"topology_travel_time_s\":" << esdf.topology_travel_time_s
-        << ",\"topology_vertical_alignment_time_s\":"
-        << esdf.topology_vertical_alignment_time_s
-        << ",\"topology_planning_exposure_m\":" << esdf.topology_planning_exposure_m
-        << ",\"topology_critical_exposure_m\":" << esdf.topology_critical_exposure_m
-        << ",\"topology_selected_passage_count\":"
-        << (esdf.selected_passage_traversal_ids
-                ? esdf.selected_passage_traversal_ids->size()
-                : 0U)
-        << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
-        << ",\"lattice_open_peak\":" << esdf.lattice_open_peak
-        << ",\"lattice_records_peak\":" << esdf.lattice_records_peak
-        << ",\"lattice_continuation_reachable_states\":"
-        << esdf.lattice_continuation_reachable_states
-        << ",\"lattice_reachable_depth_m\":" << esdf.lattice_reachable_depth_m
-        << ",\"lattice_frontier_endpoint_displacement_m\":"
-        << esdf.lattice_frontier_endpoint_displacement_m
-        << ",\"lattice_frontier_selection_score\":"
-        << esdf.lattice_frontier_selection_score
-        << ",\"lattice_frontier_candidates_considered\":"
-        << esdf.lattice_frontier_candidates_considered
-        << ",\"lattice_frontier_sampled_free_voxels\":"
-        << esdf.lattice_frontier_sampled_free_voxels
-        << ",\"lattice_frontier_boundary_candidates\":"
-        << esdf.lattice_frontier_boundary_candidates
-        << ",\"lattice_frontier_evaluated_candidates\":"
-        << esdf.lattice_frontier_evaluated_candidates
-        << ",\"lattice_frontier_searches\":" << esdf.lattice_frontier_searches
-        << ",\"lattice_frontier_evaluation_budget_exhausted\":"
-        << (esdf.lattice_frontier_evaluation_budget_exhausted ? "true" : "false")
-        << ",\"lattice_successors_generated\":"
-        << esdf.lattice_successor_diagnostics.generated
-        << ",\"lattice_successors_accepted\":"
-        << esdf.lattice_successor_diagnostics.accepted
-        << ",\"lattice_successors_rejected_outside_roi\":"
-        << esdf.lattice_successor_diagnostics.rejected_outside_roi
-        << ",\"lattice_successors_rejected_outside_grid\":"
-        << esdf.lattice_successor_diagnostics.rejected_outside_grid
-        << ",\"lattice_successors_rejected_invalid_clearance\":"
-        << esdf.lattice_successor_diagnostics.rejected_invalid_clearance
-        << ",\"lattice_successors_rejected_raw_collision\":"
-        << esdf.lattice_successor_diagnostics.rejected_raw_collision
-        << ",\"lattice_successors_rejected_risk_stage\":"
-        << esdf.lattice_successor_diagnostics.rejected_risk_stage
-        << ",\"lattice_successors_rejected_blacklisted_failure\":"
-        << esdf.lattice_successor_diagnostics.rejected_blacklisted_failure
-        << ",\"lattice_successors_rejected_no_cost_improvement\":"
-        << esdf.lattice_successor_diagnostics.rejected_no_cost_improvement
-        << ",\"lattice_successor_soft_tabu_penalties\":"
-        << esdf.lattice_successor_diagnostics.soft_tabu_penalties_applied
-        << ",\"lattice_3d_successors_generated\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_generated
-        << ",\"lattice_3d_successors_accepted\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_accepted
-        << ",\"lattice_3d_successors_rejected_edge\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
-        << ",\"lattice_3d_successors_rejected_zero_length\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
-        << ",\"lattice_3d_successors_rejected_outside_roi\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
-        << ",\"lattice_3d_successors_rejected_unknown_space\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_unknown_space
-        << ",\"lattice_3d_successors_rejected_flight_envelope\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
-        << ",\"lattice_3d_successors_rejected_invalid_esdf\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
-        << ",\"lattice_3d_successors_rejected_raw_collision\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_raw_collision
-        << ",\"lattice_3d_successors_rejected_risk_stage\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
-        << ",\"lattice_3d_successors_rejected_no_cost_improvement\":"
-        << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
-        << ",\"passage_successors_generated\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_generated
-        << ",\"passage_successors_accepted\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_accepted
-        << ",\"passage_successors_rejected\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected
-        << ",\"passage_successors_rejected_connection_distance\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected_connection_distance
-        << ",\"passage_successors_rejected_outside_roi\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected_outside_grid
-        << ",\"passage_successors_rejected_unknown_space\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected_unknown_space
-        << ",\"passage_successors_rejected_flight_envelope\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected_flight_envelope
-        << ",\"passage_successors_rejected_invalid_esdf\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected_invalid_esdf
-        << ",\"passage_successors_rejected_raw_collision\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected_raw_collision
-        << ",\"passage_successors_rejected_risk_stage\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected_risk_stage
-        << ",\"passage_successors_rejected_no_cost_improvement\":"
-        << esdf.lattice_3d_successor_diagnostics.passage_rejected_no_cost_improvement
-        << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
-        << ",\"lattice_planning_goal_reached\":"
-        << (esdf.lattice_planning_goal_reached ? "true" : "false")
-        << ",\"lattice_achieved_progress_m\":" << esdf.lattice_achieved_progress_m
-        << ",\"lattice_guide_length_m\":" << esdf.lattice_guide_length_m
-        << ",\"lattice_remaining_goal_distance_m\":"
-        << esdf.lattice_remaining_goal_distance_m
-        << ",\"lattice_terminal_successors\":" << esdf.lattice_terminal_successor_count
-        << ",\"target_lookahead_m\":" << speed_policy.target_lookahead_m
-        << ",\"reference_speed_mps\":" << input.reference_speed_mps
-        << detail::trackingPursuitJsonFields(pursuit_diagnostics, speed_policy, result)
-        << ",\"curvature_speed_limit_mps\":"
-        << finiteOrNegative(speed_policy.curvature_limit_mps)
-        << ",\"observation_speed_limit_mps\":"
-        << finiteOrNegative(speed_policy.observation_limit_mps)
-        << ",\"goal_speed_limit_mps\":" << finiteOrNegative(speed_policy.goal_limit_mps)
-        << ",\"route_endpoint_speed_limit_mps\":"
-        << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
-        << ",\"active_rollouts\":" << result.active_rollouts
-        << ",\"rollout_budget_reason\":\""
-        << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason) << '"'
-        << detail::cooperativeJsonFields(snapshot.cooperative, result)
-        << detail::nonCooperativeJsonFields(snapshot.noncooperative, result)
-        << ",\"gpu_warm_start_ms\":" << result.timings.warm_start_ms
-        << ",\"gpu_noise_generation_ms\":" << result.timings.noise_generation_ms
-        << ",\"gpu_rollout_simulation_ms\":" << result.timings.rollout_simulation_ms
-        << ",\"gpu_risk_reduction_ms\":" << result.timings.risk_reduction_ms
-        << ",\"gpu_weight_calculation_ms\":" << result.timings.weight_calculation_ms
-        << ",\"gpu_control_update_ms\":" << result.timings.control_update_ms
-        << ",\"gpu_repair_validation_ms\":" << result.timings.repair_validation_ms
-        << ",\"post_update_evaluation_ms\":" << result.timings.post_update_evaluation_ms
-        << ",\"gpu_ms\":" << result.timings.gpu_total_ms
-        << ",\"horizon_reconstruction_ms\":" << result.timings.horizon_reconstruction_ms
-        << ",\"total_ms\":" << result.timings.host_total_ms
-        << ",\"snapshot_ms\":" << snapshot.snapshot_ms
-        << ",\"stability_ms\":" << snapshot.stability_ms << ",\"rviz_ms\":" << rviz_ms
-        << ",\"altitude_envelope_violation\":"
-        << (result.altitude_envelope_violation ? "true" : "false")
-        << ",\"raw_collision\":" << (result.raw_collision ? "true" : "false")
-        << ",\"known_solid_collision\":"
-        << (result.known_solid_collision ? "true" : "false") << ",\"risk_tier\":\""
-        << mppi::mppiRiskTierName(result.selected_tier) << '"'
-        << ",\"feasible_available\":"
-        << (result.feasibility_contract.available ? "true" : "false")
-        << ",\"feasible_weight_sum\":"
-        << finiteOrNegative(result.feasibility_contract.weight_sum)
-        << ",\"post_update_classification\":\""
-        << mppi::mppiPostUpdateClassificationName(
-               result.post_update_classification.classification)
-        << '"' << ",\"control_selection\":\""
-        << mppi::mppiControlSelectionName(result.control_selection) << '"'
-        << ",\"post_update_executable\":"
-        << (result.post_update_classification.executable ? "true" : "false")
-        << ",\"post_update_repair\":\""
-        << mppi::mppiPostUpdateRepairName(result.post_update_repair) << '"'
-        << ",\"post_update_backtrack_ratio\":" << result.post_update_backtrack_ratio
-        << ",\"critical_exposure_m\":" << result.critical_exposure_m
-        << ",\"planning_exposure_m\":" << result.planning_exposure_m
-        << ",\"critical_clearance_proximity_s\":"
-        << result.critical_clearance_proximity_s
-        << ",\"obstacle_approach_m2_s\":" << result.obstacle_approach_m2_s
-        << ",\"head_progress_m\":" << result.head_progress_m
-        << ",\"terminal_progress_m\":" << result.terminal_progress_m
-        << ",\"route_progress_integral_m_s\":" << result.route_progress_integral_m_s
-        << ",\"warm_start_shift_ms\":" << result.warm_start_shift_s * 1000.0
-        << ",\"nominal_reseeded\":" << (result.nominal_reseeded ? "true" : "false")
-        << ",\"direct_maneuver_reseed\":"
-        << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
-        << ",\"direct_maneuver_reason\":\""
-        << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
-        << '"' << ",\"direct_bearing_change_rad\":"
-        << snapshot.direct_tracking_maneuver.bearing_change_rad
-        << ",\"direct_closing_speed_mps\":"
-        << snapshot.direct_tracking_maneuver.closing_speed_mps
-        << ",\"direct_no_closing_duration_s\":"
-        << snapshot.direct_tracking_maneuver.no_closing_duration_s
-        << ",\"target_directed_candidate_injected\":"
-        << (result.target_directed_candidate_injected ? "true" : "false")
-        << ",\"target_directed_candidate_raw_safe\":"
-        << (result.target_directed_candidate_raw_safe ? "true" : "false")
-        << ",\"target_directed_candidate_best_feasible\":"
-        << (result.target_directed_candidate_best_feasible ? "true" : "false")
-        << ",\"target_directed_candidate_weight\":"
-        << result.target_directed_candidate_weight
-        << ",\"route_directed_candidate_injected\":"
-        << (result.route_directed_candidate_injected ? "true" : "false")
-        << ",\"route_directed_candidate_raw_safe\":"
-        << (result.route_directed_candidate_raw_safe ? "true" : "false")
-        << ",\"route_directed_candidate_best_feasible\":"
-        << (result.route_directed_candidate_best_feasible ? "true" : "false")
-        << ",\"route_directed_candidate_weight\":"
-        << result.route_directed_candidate_weight
-        << ",\"route_directed_candidate_generation\":"
-        << result.route_directed_candidate_generation
-        << ",\"temporary_frontier_is_terminal\":"
-        << (snapshot.temporary_frontier_is_terminal ? "true" : "false")
-        << detail::rollingRouteJsonFields(snapshot.rolling_route)
-        << ",\"no_eligible_phase\":\""
-        << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase) << '"'
-        << ",\"no_eligible_recovery_generation\":"
-        << snapshot.no_eligible_recovery.no_eligible_recovery_generation
-        << ",\"no_eligible_guide_replan\":"
-        << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
-        << ",\"liveness_state\":\"" << mppiLivenessStateName(liveness.state) << '"'
-        << ",\"liveness_actual_displacement_m\":" << liveness.actual_displacement_m
-        << ",\"liveness_actual_route_progress_m\":" << liveness.actual_route_progress_m
-        << ",\"liveness_route_progress_used\":"
-        << (liveness.used_route_progress ? "true" : "false")
-        << ",\"liveness_reseed_generation\":" << liveness.reseed_generation
-        << ",\"route_required_risk_tier\":\""
-        << mppi::mppiRiskTierName(snapshot.route_required_risk_tier) << '"'
-        << ",\"maximum_acceleration_mps2\":" << result.maximum_acceleration_mps2
-        << ",\"maximum_jerk_mps3\":" << result.maximum_jerk_mps3
-        << ",\"first_control_delta\":" << result.first_control_delta
-        << ",\"stability_rms_m\":"
-        << (stability.valid ? stability.position_rms_m : -1.0)
-        << ",\"dropped_diagnostics\":"
-        << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed) << "}\n";
+    JsonOutputStream json;
+    json << "{\"tick\":" << snapshot.tick_sequence
+         << ",\"pose_revision\":" << input.pose_revision
+         << ",\"raw_revision\":" << input.obstacle_revision
+         << ",\"esdf_revision\":" << result.esdf_revision
+         << ",\"pose_age_ms\":" << snapshot.pose_age_ms
+         << ",\"observation_age_ms\":" << snapshot.observation_age_ms
+         << ",\"esdf_content_age_ms\":" << snapshot.esdf_age_ms
+         << ",\"local_world_generation\":" << esdf.local_world_generation.generation
+         << ",\"control_feedback_age_ms\":" << snapshot.control_feedback_age_ms
+         << ",\"previous_control_source\":\""
+         << productionMppiPreviousControlSourceName(snapshot.previous_control_source)
+         << '"' << ",\"previous_control_ax_mps2\":"
+         << (input.previous_applied_control ? input.previous_applied_control->ax : 0.0F)
+         << ",\"previous_control_ay_mps2\":"
+         << (input.previous_applied_control ? input.previous_applied_control->ay : 0.0F)
+         << ",\"previous_control_az_mps2\":"
+         << (input.previous_applied_control ? input.previous_applied_control->az : 0.0F)
+         << ",\"mppi_target_x_m\":" << input.target.x
+         << ",\"mppi_target_y_m\":" << input.target.y
+         << ",\"mppi_target_z_m\":" << input.target.z << ",\"planning_mode\":\""
+         << (use_static_map_ ? "static" : "no_static") << '"'
+         << ",\"esdf_build_ms\":" << esdf.build_ms
+         << ",\"esdf_x_pass_ms\":" << esdf.esdf_x_pass_ms
+         << ",\"esdf_y_pass_ms\":" << esdf.esdf_y_pass_ms
+         << ",\"esdf_z_pass_ms\":" << esdf.esdf_z_pass_ms
+         << ",\"esdf_finalize_ms\":" << esdf.esdf_finalize_ms
+         << ",\"guide_search_ms\":" << esdf.global_guide_search_ms
+         << ",\"continuation_validation_ms\":" << esdf.continuation_validation_ms
+         << detail::successorProfilingJsonFields(esdf.lattice_successor_profiling,
+                                                 esdf.lattice_3d_successor_profiling)
+         << ",\"route_smoothing_ms\":" << esdf.route_smoothing_ms
+         << ",\"route_shortcuts_applied\":" << esdf.route_shortcuts_applied
+         << ",\"route_corners_smoothed\":" << esdf.route_corners_smoothed
+         << ",\"candidate_validation_ms\":" << esdf.candidate_validation_ms
+         << ",\"route_fingerprint\":" << esdf.route_fingerprint
+         << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
+         << '"' << detail::executionJsonFields(snapshot.execution)
+         << ",\"state_x_m\":" << input.initial_state.x
+         << ",\"state_y_m\":" << input.initial_state.y
+         << ",\"state_z_m\":" << input.initial_state.z
+         << ",\"state_vx_mps\":" << input.initial_state.vx
+         << ",\"state_vy_mps\":" << input.initial_state.vy
+         << ",\"state_vz_mps\":" << input.initial_state.vz << ",\"target_source\":\""
+         << target_source << '"'
+         << detail::trackingObjectiveJsonFields(objective.get(), mission_goal, now_ns)
+         << ",\"horizon_s\":"
+         << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
+         << ",\"speed_cap_mps\":" << mppi_config_.dynamics.maximum_horizontal_speed_mps
+         << ",\"acceleration_cap_mps2\":"
+         << mppi_config_.dynamics.maximum_horizontal_acceleration_mps2
+         << ",\"jerk_cap_mps3\":" << mppi_config_.dynamics.maximum_control_jerk_mps3
+         << ",\"speed_tracking_weight\":" << mppi_config_.costs.speed_tracking_weight
+         << ",\"guide_generation\":" << esdf.global_guide_generation
+         << ",\"route_objective_epoch\":" << esdf.route_objective.mission_epoch
+         << ",\"route_objective_sample\":" << esdf.route_objective.sample_sequence
+         << ",\"route_assignment_generation\":"
+         << esdf.route_objective.assignment_generation
+         << ",\"route_target_detection_id\":"
+         << esdf.route_objective.target_detection_id
+         << ",\"route_target_track_id\":" << esdf.route_objective.target_track_id
+         << ",\"search_objective_epoch\":" << esdf.search_objective.mission_epoch
+         << ",\"search_objective_sample\":" << esdf.search_objective.sample_sequence
+         << ",\"search_assignment_generation\":"
+         << esdf.search_objective.assignment_generation
+         << ",\"search_target_detection_id\":"
+         << esdf.search_objective.target_detection_id
+         << ",\"search_target_track_id\":" << esdf.search_objective.target_track_id
+         << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
+         << ",\"guide_reaches_mission_goal\":"
+         << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
+         << ",\"route_intent_id\":" << esdf.route_intent.id
+         << ",\"route_intent_source\":\""
+         << routeIntentSource3DName(esdf.route_intent.source) << '"'
+         << ",\"strategic_plan_id\":" << esdf.route_intent.strategic_plan_id
+         << ",\"route_intent_purpose\":\""
+         << routeIntentPurpose3DName(esdf.route_intent.purpose) << '"'
+         << ",\"route_intent_planned_on\":" << esdf.route_intent.planned_on_revision
+         << ",\"route_validated_through\":"
+         << esdf.route_segment_evidence.validated_through_revision
+         << ",\"route_segment_evidence\":\""
+         << segmentEvidenceStatus3DName(esdf.route_segment_evidence.status) << '"'
+         << ",\"route_unknown_exposure\":"
+         << (esdf.route_segment_evidence.unknown_exposure ? "true" : "false")
+         << ",\"route_known_clearance\":"
+         << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
+         << ",\"route_intent_target_reached\":"
+         << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
+         << ",\"route_intent_reaches_mission_target\":"
+         << (esdf.route_intent.intent_reaches_mission_target ? "true" : "false")
+         << ",\"route_strategic_mission_continuation\":"
+         << (esdf.route_intent.strategic_mission_continuation ? "true" : "false")
+         << ",\"route_proposal_candidates\":" << esdf.route_proposal_candidate_count
+         << ",\"route_proposal_eligible\":" << esdf.route_proposal_eligible_count
+         << ",\"route_proposal_selection\":\""
+         << routeProposalSelectionReason3DName(esdf.route_proposal_selection_reason)
+         << '"' << ",\"goal_capture_latched\":"
+         << (snapshot.goal_capture.latched ? "true" : "false")
+         << ",\"goal_distance_m\":" << snapshot.goal_capture.distance_m
+         << ",\"guide_release\":\""
+         << globalGuideReleaseReasonName(esdf.global_guide_release_reason) << '"'
+         << ",\"guide_heading_source\":\""
+         << globalGuideHeadingSourceName(esdf.global_guide_heading_source) << '"'
+         << ",\"guide_risk\":\"" << globalGuideRiskTierName(esdf.global_guide_risk)
+         << '"' << ",\"guide_acceptance\":\""
+         << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason) << '"'
+         << ",\"guide_station_m\":" << snapshot.route_station_m
+         << ",\"guide_remaining_m\":" << snapshot.route_remaining_m
+         << ",\"route_constraint_phase\":\""
+         << constrainedRoutePhaseName(route_constraint.phase) << '"'
+         << ",\"route_constraint_passage\":\""
+         << (route_constraint.passage_traversal_id.empty()
+                 ? "none"
+                 : route_constraint.passage_traversal_id)
+         << '"' << ",\"route_constraint_span_available\":"
+         << (route_constraint.span_available ? "true" : "false")
+         << ",\"route_constraint_span_index\":"
+         << (route_constraint.span_available
+                 ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
+                 : static_cast<std::ptrdiff_t>(-1))
+         << ",\"route_constraint_span_count\":" << route_constraint.span_count
+         << ",\"route_constraint_station_m\":" << route_constraint.station_m
+         << ",\"route_constraint_begin_station_m\":" << route_constraint.begin_station_m
+         << ",\"route_constraint_end_station_m\":" << route_constraint.end_station_m
+         << ",\"route_constraint_distance_to_entry_m\":"
+         << route_constraint.distance_to_entry_m
+         << ",\"route_constraint_distance_to_exit_m\":"
+         << route_constraint.distance_to_exit_m
+         << ",\"route_constraint_entry_x_m\":" << route_constraint.entry_position.x
+         << ",\"route_constraint_entry_y_m\":" << route_constraint.entry_position.y
+         << ",\"route_constraint_entry_z_m\":" << route_constraint.entry_position.z
+         << ",\"route_constraint_exit_x_m\":" << route_constraint.exit_position.x
+         << ",\"route_constraint_exit_y_m\":" << route_constraint.exit_position.y
+         << ",\"route_constraint_exit_z_m\":" << route_constraint.exit_position.z
+         << ",\"route_constraint_reference_z_m\":" << route_constraint.reference_z_m
+         << ",\"route_constraint_min_z_m\":" << route_constraint.min_z_m
+         << ",\"route_constraint_max_z_m\":" << route_constraint.max_z_m
+         << ",\"route_constraint_lateral_free_left_m\":"
+         << route_constraint.lateral_free_left_m
+         << ",\"route_constraint_lateral_free_right_m\":"
+         << route_constraint.lateral_free_right_m
+         << ",\"route_constraint_lateral_width_m\":" << route_constraint.lateral_width_m
+         << ",\"route_constraint_vertical_height_m\":"
+         << route_constraint.vertical_height_m << ",\"route_constraint_lateral\":"
+         << (route_constraint.lateral_constrained ? "true" : "false")
+         << ",\"route_constraint_vertical\":"
+         << (route_constraint.vertical_constrained ? "true" : "false")
+         << ",\"route_constraint_vertical_error_m\":"
+         << route_constraint.vertical_error_m
+         << ",\"route_constraint_cross_track_error_m\":"
+         << route_constraint.cross_track_error_m
+         << ",\"route_constraint_vertical_window_ok\":"
+         << (route_constraint.within_vertical_window ? "true" : "false")
+         << ",\"route_constraint_reference_speed_mps\":"
+         << route_constraint.reference_speed_mps
+         << ",\"route_constraint_actual_horizontal_speed_mps\":"
+         << route_constraint.actual_horizontal_speed_mps
+         << ",\"route_constraint_actual_vertical_speed_mps\":"
+         << route_constraint.actual_vertical_speed_mps
+         << ",\"guide_progress_action\":\""
+         << globalGuideProgressActionName(snapshot.guide_progress.action) << '"'
+         << ",\"guide_local_reseed_generation\":"
+         << snapshot.guide_progress.local_reseed_generation
+         << ",\"planning_search_kind\":\""
+         << productionPlanningSearchKindName(esdf.planning_search_kind) << '"'
+         << ",\"planning_search_start_x\":" << esdf.planning_search_start.x
+         << ",\"planning_search_start_y\":" << esdf.planning_search_start.y
+         << ",\"planning_search_start_z\":" << esdf.planning_search_start.z
+         << ",\"planning_search_goal_x\":" << esdf.planning_search_goal.x
+         << ",\"planning_search_goal_y\":" << esdf.planning_search_goal.y
+         << ",\"planning_search_goal_z\":" << esdf.planning_search_goal.z
+         << ",\"planning_candidate_endpoint_x\":" << esdf.planning_candidate_endpoint.x
+         << ",\"planning_candidate_endpoint_y\":" << esdf.planning_candidate_endpoint.y
+         << ",\"planning_candidate_endpoint_z\":" << esdf.planning_candidate_endpoint.z
+         << ",\"planning_search_direction_x\":" << esdf.planning_search_direction.x
+         << ",\"planning_search_direction_y\":" << esdf.planning_search_direction.y
+         << ",\"planning_search_direction_z\":" << esdf.planning_search_direction.z
+         << ",\"planning_candidate_points\":" << esdf.planning_candidate_points
+         << ",\"planning_candidate_samples\":" << esdf.planning_candidate_samples
+         << ",\"lattice_search_performed\":"
+         << (esdf.lattice_search_performed ? "true" : "false")
+         << ",\"lattice_executable\":" << (esdf.lattice_executable ? "true" : "false")
+         << ",\"lattice_status\":\"" << planningStatusName(esdf) << '"'
+         << ",\"lattice_termination\":\"" << planningTerminationName(esdf) << '"'
+         << ",\"lattice_continuation_attempt\":" << esdf.lattice_continuation_attempt
+         << ",\"lattice_search_session_age_ms\":" << esdf.lattice_search_session_age_ms
+         << ",\"no_static_cycle_detected\":"
+         << (esdf.no_static_cycle_detected ? "true" : "false")
+         << ",\"no_static_adaptive_search\":"
+         << (esdf.no_static_adaptive_search ? "true" : "false")
+         << ",\"no_static_soft_tabu_entries\":" << esdf.no_static_soft_tabu_entries
+         << ",\"lattice_search_session_resumed\":"
+         << (esdf.lattice_search_session_resumed ? "true" : "false")
+         << ",\"lattice_search_session_complete\":"
+         << (esdf.lattice_search_session_complete ? "true" : "false")
+         << ",\"lattice_search_revision\":" << esdf.lattice_search_revision
+         << ",\"lattice_validation_revision\":" << esdf.lattice_validation_revision
+         << ",\"lattice_raw_validation\":\""
+         << rawGuideValidationStatusName(esdf.lattice_raw_validation_status) << '"'
+         << ",\"guide_candidate_validation\":\""
+         << productionGuideCandidateValidationStatusName(
+                esdf.guide_candidate_validation_status)
+         << '"' << ",\"lattice_risk_stage\":\"" << planningRiskStageName(esdf) << '"'
+         << ",\"lattice_route_purpose\":\"" << planningRoutePurposeName(esdf) << '"'
+         << ",\"observation_frontier_id\":"
+         << (esdf.lattice_3d_observation_frontier
+                 ? esdf.lattice_3d_observation_frontier->id.value
+                 : 0U)
+         << ",\"observation_frontier_revision\":"
+         << (esdf.lattice_3d_observation_frontier
+                 ? esdf.lattice_3d_observation_frontier->supporting_map_revision
+                 : 0U)
+         << ",\"observation_frontier_supporting_rays\":"
+         << (esdf.lattice_3d_observation_frontier
+                 ? esdf.lattice_3d_observation_frontier->supporting_rays
+                 : 0U)
+         << ",\"observation_frontier_information_gain_voxels\":"
+         << (esdf.lattice_3d_observation_frontier
+                 ? esdf.lattice_3d_observation_frontier->information_gain_voxels
+                 : 0U)
+         << ",\"observation_route_replacement\":\""
+         << observationRouteReplacementStatusName(
+                esdf.observation_route_replacement_status)
+         << '"' << ",\"lattice_3d_minimum_clearance_m\":"
+         << esdf.lattice_3d_minimum_clearance_m << ",\"static_route_candidate\":\""
+         << staticRouteCandidateStatusName(esdf.static_route_candidate_status) << '"'
+         << ",\"static_route_activation\":\""
+         << staticRouteActivationStatusName(esdf.static_route_activation_status) << '"'
+         << ",\"static_route_publication_status\":\""
+         << routePublicationStatus3DName(esdf.static_route_publication_status) << '"'
+         << ",\"static_route_world_compatible\":"
+         << (esdf.static_route_world_compatible ? "true" : "false")
+         << ",\"static_route_generation_matches\":";
+    if (esdf.static_route_generation_assessed) {
+      json << (esdf.static_route_generation_matches ? "true" : "false");
+    } else {
+      json << "null";
+    }
+    json << ",\"topology_objective\":" << esdf.topology_objective_cost
+         << ",\"topology_route_length_m\":" << esdf.topology_route_length_m
+         << ",\"topology_travel_time_s\":" << esdf.topology_travel_time_s
+         << ",\"topology_vertical_alignment_time_s\":"
+         << esdf.topology_vertical_alignment_time_s
+         << ",\"topology_planning_exposure_m\":" << esdf.topology_planning_exposure_m
+         << ",\"topology_critical_exposure_m\":" << esdf.topology_critical_exposure_m
+         << ",\"topology_selected_passage_count\":"
+         << (esdf.selected_passage_traversal_ids
+                 ? esdf.selected_passage_traversal_ids->size()
+                 : 0U)
+         << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
+         << ",\"lattice_open_peak\":" << esdf.lattice_open_peak
+         << ",\"lattice_records_peak\":" << esdf.lattice_records_peak
+         << ",\"lattice_continuation_reachable_states\":"
+         << esdf.lattice_continuation_reachable_states
+         << ",\"lattice_reachable_depth_m\":" << esdf.lattice_reachable_depth_m
+         << ",\"lattice_frontier_endpoint_displacement_m\":"
+         << esdf.lattice_frontier_endpoint_displacement_m
+         << ",\"lattice_frontier_selection_score\":"
+         << esdf.lattice_frontier_selection_score
+         << ",\"lattice_frontier_candidates_considered\":"
+         << esdf.lattice_frontier_candidates_considered
+         << ",\"lattice_frontier_sampled_free_voxels\":"
+         << esdf.lattice_frontier_sampled_free_voxels
+         << ",\"lattice_frontier_boundary_candidates\":"
+         << esdf.lattice_frontier_boundary_candidates
+         << ",\"lattice_frontier_evaluated_candidates\":"
+         << esdf.lattice_frontier_evaluated_candidates
+         << ",\"lattice_frontier_searches\":" << esdf.lattice_frontier_searches
+         << ",\"lattice_frontier_evaluation_budget_exhausted\":"
+         << (esdf.lattice_frontier_evaluation_budget_exhausted ? "true" : "false")
+         << ",\"lattice_successors_generated\":"
+         << esdf.lattice_successor_diagnostics.generated
+         << ",\"lattice_successors_accepted\":"
+         << esdf.lattice_successor_diagnostics.accepted
+         << ",\"lattice_successors_rejected_outside_roi\":"
+         << esdf.lattice_successor_diagnostics.rejected_outside_roi
+         << ",\"lattice_successors_rejected_outside_grid\":"
+         << esdf.lattice_successor_diagnostics.rejected_outside_grid
+         << ",\"lattice_successors_rejected_invalid_clearance\":"
+         << esdf.lattice_successor_diagnostics.rejected_invalid_clearance
+         << ",\"lattice_successors_rejected_raw_collision\":"
+         << esdf.lattice_successor_diagnostics.rejected_raw_collision
+         << ",\"lattice_successors_rejected_risk_stage\":"
+         << esdf.lattice_successor_diagnostics.rejected_risk_stage
+         << ",\"lattice_successors_rejected_blacklisted_failure\":"
+         << esdf.lattice_successor_diagnostics.rejected_blacklisted_failure
+         << ",\"lattice_successors_rejected_no_cost_improvement\":"
+         << esdf.lattice_successor_diagnostics.rejected_no_cost_improvement
+         << ",\"lattice_successor_soft_tabu_penalties\":"
+         << esdf.lattice_successor_diagnostics.soft_tabu_penalties_applied
+         << ",\"lattice_3d_successors_generated\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_generated
+         << ",\"lattice_3d_successors_accepted\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_accepted
+         << ",\"lattice_3d_successors_rejected_edge\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
+         << ",\"lattice_3d_successors_rejected_zero_length\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
+         << ",\"lattice_3d_successors_rejected_outside_roi\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
+         << ",\"lattice_3d_successors_rejected_unknown_space\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_unknown_space
+         << ",\"lattice_3d_successors_rejected_flight_envelope\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
+         << ",\"lattice_3d_successors_rejected_invalid_esdf\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
+         << ",\"lattice_3d_successors_rejected_raw_collision\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_raw_collision
+         << ",\"lattice_3d_successors_rejected_risk_stage\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
+         << ",\"lattice_3d_successors_rejected_no_cost_improvement\":"
+         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
+         << ",\"passage_successors_generated\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_generated
+         << ",\"passage_successors_accepted\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_accepted
+         << ",\"passage_successors_rejected\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected
+         << ",\"passage_successors_rejected_connection_distance\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected_connection_distance
+         << ",\"passage_successors_rejected_outside_roi\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected_outside_grid
+         << ",\"passage_successors_rejected_unknown_space\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected_unknown_space
+         << ",\"passage_successors_rejected_flight_envelope\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected_flight_envelope
+         << ",\"passage_successors_rejected_invalid_esdf\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected_invalid_esdf
+         << ",\"passage_successors_rejected_raw_collision\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected_raw_collision
+         << ",\"passage_successors_rejected_risk_stage\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected_risk_stage
+         << ",\"passage_successors_rejected_no_cost_improvement\":"
+         << esdf.lattice_3d_successor_diagnostics.passage_rejected_no_cost_improvement
+         << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
+         << ",\"lattice_planning_goal_reached\":"
+         << (esdf.lattice_planning_goal_reached ? "true" : "false")
+         << ",\"lattice_achieved_progress_m\":" << esdf.lattice_achieved_progress_m
+         << ",\"lattice_guide_length_m\":" << esdf.lattice_guide_length_m
+         << ",\"lattice_remaining_goal_distance_m\":"
+         << esdf.lattice_remaining_goal_distance_m
+         << ",\"lattice_terminal_successors\":" << esdf.lattice_terminal_successor_count
+         << ",\"target_lookahead_m\":" << speed_policy.target_lookahead_m
+         << ",\"reference_speed_mps\":" << input.reference_speed_mps
+         << detail::trackingPursuitJsonFields(pursuit_diagnostics, speed_policy, result)
+         << ",\"curvature_speed_limit_mps\":"
+         << finiteOrNegative(speed_policy.curvature_limit_mps)
+         << ",\"observation_speed_limit_mps\":"
+         << finiteOrNegative(speed_policy.observation_limit_mps)
+         << ",\"goal_speed_limit_mps\":"
+         << finiteOrNegative(speed_policy.goal_limit_mps)
+         << ",\"route_endpoint_speed_limit_mps\":"
+         << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
+         << ",\"active_rollouts\":" << result.active_rollouts
+         << ",\"rollout_budget_reason\":\""
+         << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason) << '"'
+         << detail::cooperativeJsonFields(snapshot.cooperative, result)
+         << detail::nonCooperativeJsonFields(snapshot.noncooperative, result)
+         << ",\"gpu_warm_start_ms\":" << result.timings.warm_start_ms
+         << ",\"gpu_noise_generation_ms\":" << result.timings.noise_generation_ms
+         << ",\"gpu_rollout_simulation_ms\":" << result.timings.rollout_simulation_ms
+         << ",\"gpu_risk_reduction_ms\":" << result.timings.risk_reduction_ms
+         << ",\"gpu_weight_calculation_ms\":" << result.timings.weight_calculation_ms
+         << ",\"gpu_control_update_ms\":" << result.timings.control_update_ms
+         << ",\"gpu_repair_validation_ms\":" << result.timings.repair_validation_ms
+         << ",\"post_update_evaluation_ms\":"
+         << result.timings.post_update_evaluation_ms
+         << ",\"gpu_ms\":" << result.timings.gpu_total_ms
+         << ",\"horizon_reconstruction_ms\":"
+         << result.timings.horizon_reconstruction_ms
+         << ",\"total_ms\":" << result.timings.host_total_ms
+         << ",\"snapshot_ms\":" << snapshot.snapshot_ms
+         << ",\"stability_ms\":" << snapshot.stability_ms << ",\"rviz_ms\":" << rviz_ms
+         << ",\"altitude_envelope_violation\":"
+         << (result.altitude_envelope_violation ? "true" : "false")
+         << ",\"raw_collision\":" << (result.raw_collision ? "true" : "false")
+         << ",\"known_solid_collision\":"
+         << (result.known_solid_collision ? "true" : "false") << ",\"risk_tier\":\""
+         << mppi::mppiRiskTierName(result.selected_tier) << '"'
+         << ",\"feasible_available\":"
+         << (result.feasibility_contract.available ? "true" : "false")
+         << ",\"feasible_weight_sum\":"
+         << finiteOrNegative(result.feasibility_contract.weight_sum)
+         << ",\"post_update_classification\":\""
+         << mppi::mppiPostUpdateClassificationName(
+                result.post_update_classification.classification)
+         << '"' << ",\"control_selection\":\""
+         << mppi::mppiControlSelectionName(result.control_selection) << '"'
+         << ",\"post_update_executable\":"
+         << (result.post_update_classification.executable ? "true" : "false")
+         << ",\"post_update_repair\":\""
+         << mppi::mppiPostUpdateRepairName(result.post_update_repair) << '"'
+         << ",\"post_update_backtrack_ratio\":" << result.post_update_backtrack_ratio
+         << ",\"critical_exposure_m\":" << result.critical_exposure_m
+         << ",\"planning_exposure_m\":" << result.planning_exposure_m
+         << ",\"critical_clearance_proximity_s\":"
+         << result.critical_clearance_proximity_s
+         << ",\"obstacle_approach_m2_s\":" << result.obstacle_approach_m2_s
+         << ",\"head_progress_m\":" << result.head_progress_m
+         << ",\"terminal_progress_m\":" << result.terminal_progress_m
+         << ",\"route_progress_integral_m_s\":" << result.route_progress_integral_m_s
+         << ",\"warm_start_shift_ms\":" << result.warm_start_shift_s * 1000.0
+         << ",\"nominal_reseeded\":" << (result.nominal_reseeded ? "true" : "false")
+         << ",\"direct_maneuver_reseed\":"
+         << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
+         << ",\"direct_maneuver_reason\":\""
+         << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
+         << '"' << ",\"direct_bearing_change_rad\":"
+         << snapshot.direct_tracking_maneuver.bearing_change_rad
+         << ",\"direct_closing_speed_mps\":"
+         << snapshot.direct_tracking_maneuver.closing_speed_mps
+         << ",\"direct_no_closing_duration_s\":"
+         << snapshot.direct_tracking_maneuver.no_closing_duration_s
+         << ",\"target_directed_candidate_injected\":"
+         << (result.target_directed_candidate_injected ? "true" : "false")
+         << ",\"target_directed_candidate_raw_safe\":"
+         << (result.target_directed_candidate_raw_safe ? "true" : "false")
+         << ",\"target_directed_candidate_best_feasible\":"
+         << (result.target_directed_candidate_best_feasible ? "true" : "false")
+         << ",\"target_directed_candidate_weight\":"
+         << result.target_directed_candidate_weight
+         << ",\"route_directed_candidate_injected\":"
+         << (result.route_directed_candidate_injected ? "true" : "false")
+         << ",\"route_directed_candidate_raw_safe\":"
+         << (result.route_directed_candidate_raw_safe ? "true" : "false")
+         << ",\"route_directed_candidate_best_feasible\":"
+         << (result.route_directed_candidate_best_feasible ? "true" : "false")
+         << ",\"route_directed_candidate_weight\":"
+         << result.route_directed_candidate_weight
+         << ",\"route_directed_candidate_generation\":"
+         << result.route_directed_candidate_generation
+         << ",\"temporary_frontier_is_terminal\":"
+         << (snapshot.temporary_frontier_is_terminal ? "true" : "false")
+         << detail::rollingRouteJsonFields(snapshot.rolling_route)
+         << ",\"no_eligible_phase\":\""
+         << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase) << '"'
+         << ",\"no_eligible_recovery_generation\":"
+         << snapshot.no_eligible_recovery.no_eligible_recovery_generation
+         << ",\"no_eligible_guide_replan\":"
+         << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
+         << ",\"liveness_state\":\"" << mppiLivenessStateName(liveness.state) << '"'
+         << ",\"liveness_actual_displacement_m\":" << liveness.actual_displacement_m
+         << ",\"liveness_actual_route_progress_m\":" << liveness.actual_route_progress_m
+         << ",\"liveness_route_progress_used\":"
+         << (liveness.used_route_progress ? "true" : "false")
+         << ",\"liveness_reseed_generation\":" << liveness.reseed_generation
+         << ",\"route_required_risk_tier\":\""
+         << mppi::mppiRiskTierName(snapshot.route_required_risk_tier) << '"'
+         << ",\"maximum_acceleration_mps2\":" << result.maximum_acceleration_mps2
+         << ",\"maximum_jerk_mps3\":" << result.maximum_jerk_mps3
+         << ",\"first_control_delta\":" << result.first_control_delta
+         << ",\"stability_rms_m\":"
+         << (stability.valid ? stability.position_rms_m : -1.0)
+         << ",\"dropped_diagnostics\":"
+         << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed) << "}\n";
     std::string json_line = json.str();
     diagnostics_stream_ << json_line;
     last_diagnostics_file_stamp_ns_ = now_ns;

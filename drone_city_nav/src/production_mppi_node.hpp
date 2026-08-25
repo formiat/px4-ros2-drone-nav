@@ -296,6 +296,7 @@ struct ProductionMppiPreparedEsdf {
   RoutePublicationStatus3D static_route_publication_status{
       RoutePublicationStatus3D::kNotAssessed};
   bool static_route_world_compatible{false};
+  bool static_route_generation_assessed{false};
   bool static_route_generation_matches{false};
 };
 
