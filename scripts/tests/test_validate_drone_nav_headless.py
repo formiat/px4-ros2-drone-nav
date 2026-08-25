@@ -37,7 +37,9 @@ class MappingPipelineValidationTest(unittest.TestCase):
             "guide_reaches_mission_goal=true target_source=global_route_3d\n"
             "EXECUTION_HORIZON published=true producer=7 sequence=9 mode=planned\n"
             "EXECUTION_HORIZON accepted=true producer=7 sequence=9 mode=planned\n"
-            "OFFBOARD_PLANNED_HORIZON_APPLIED producer=7 sequence=9\n",
+            "OFFBOARD_PLANNED_HORIZON_APPLIED producer=7 sequence=9\n"
+            "PRODUCTION_MPPI_DIAGNOSTICS liveness_route_progress_used=true "
+            "liveness_actual_route_progress_m=0.25\n",
             errors,
         )
         self.assertEqual(errors, [])
