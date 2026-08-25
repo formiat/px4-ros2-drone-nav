@@ -60,6 +60,7 @@ rosidl_generate_interfaces(
   "msg/MppiHorizonPoint.msg"
   "msg/MppiTrajectoryHorizon.msg"
   "msg/MppiControlFeedback.msg"
+  "msg/NavigationHealth.msg"
   "msg/MissionWaypointAcknowledgement.msg"
   "msg/NavigationObjective.msg"
   "msg/RadarDetection.msg"
@@ -289,6 +290,7 @@ add_library(
   src/mppi_speed_policy.cpp
   src/pending_certified_route_3d.cpp
   src/navigation_angular_derivative.cpp
+  src/navigation_health_supervisor.cpp
   src/navigation_state_prediction.cpp
   src/noncooperative_collision_avoidance.cpp
   src/no_static_route_cycle.cpp
@@ -620,6 +622,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node.cpp
     src/production_mppi_node_route_strategy.cpp
     src/production_mppi_node_interfaces.cpp
+    src/production_mppi_node_health.cpp
     src/production_mppi_node_mission.cpp
     src/production_mppi_node_names.cpp
     src/production_mppi_node_cooperative.cpp
@@ -910,6 +913,12 @@ if(BUILD_TESTING)
   target_compile_features(navigation_state_prediction_test PRIVATE cxx_std_20)
   target_link_libraries(navigation_state_prediction_test drone_city_nav_core)
   enable_project_warnings(navigation_state_prediction_test)
+
+  ament_add_gtest(navigation_health_supervisor_test
+                  tests/navigation_health_supervisor_test.cpp)
+  target_compile_features(navigation_health_supervisor_test PRIVATE cxx_std_20)
+  target_link_libraries(navigation_health_supervisor_test drone_city_nav_core)
+  enable_project_warnings(navigation_health_supervisor_test)
 
   ament_add_gtest(json_output_test tests/json_output_test.cpp)
   target_compile_features(json_output_test PRIVATE cxx_std_20)

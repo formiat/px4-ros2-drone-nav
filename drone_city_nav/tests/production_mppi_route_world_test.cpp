@@ -388,5 +388,59 @@ TEST(ProductionMppiRouteWorldTest,
       vehicleStatusAuthoritativeForExecution(status, true, 999'999'999, 100.0));
 }
 
+TEST(ProductionMppiRouteWorldTest,
+     PendingStatusRequiresACompleteMatchingPayloadBeforeItIsSatisfied) {
+  const ProductionMppiPendingRawWorldUpdate pending{
+      .authority_generation = 3U,
+      .producer_instance_id = 7U,
+      .announced_sequence = 42U,
+      .minimum_source_stamp_ns = 1'000'000'000,
+  };
+  const ProducerEvidenceAdmissionState matching{
+      .authority_generation = 3U,
+      .producer_instance_id = 7U,
+      .sequence = 42U,
+      .source_stamp_ns = 1'000'000'000,
+  };
+  const RawMapVersion committed{
+      .producer_instance_id = 7U,
+      .base_snapshot_revision = 40U,
+      .revision = 42U,
+  };
+
+  EXPECT_TRUE(pending.valid());
+  EXPECT_TRUE(pending.satisfiedBy(matching, committed));
+
+  ProducerEvidenceAdmissionState incomplete = matching;
+  incomplete.sequence = 41U;
+  EXPECT_FALSE(pending.satisfiedBy(incomplete, committed));
+  incomplete = matching;
+  incomplete.current_identity_conflicted = true;
+  EXPECT_FALSE(pending.satisfiedBy(incomplete, committed));
+}
+
+TEST(ProductionMppiRouteWorldTest, CommittedPayloadOwnsObservationFreshness) {
+  const ProductionMppiRawWorld3D committed{
+      .version =
+          RawMapVersion{
+              .producer_instance_id = 7U,
+              .base_snapshot_revision = 40U,
+              .revision = 42U,
+          },
+      .source_stamp_ns = 1'000'000'000,
+      .receive_stamp_ns = 1'010'000'000,
+      .ready_stamp_ns = 1'020'000'000,
+      .reconstruction_ms = 1.0,
+      .occupancy = nullptr,
+      .execution_owner = nullptr,
+      .dirty_chunks = {},
+      .full_reset = false,
+  };
+
+  EXPECT_DOUBLE_EQ(committedRawWorldAgeMs(&committed, 1'030'000'000), 30.0);
+  EXPECT_TRUE(std::isinf(
+      committedRawWorldAgeMs<ProductionMppiRawWorld3D>(nullptr, 1'030'000'000)));
+}
+
 } // namespace
 } // namespace drone_city_nav

@@ -224,7 +224,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     stats.invalid_beams = scan.beams.size();
     return stats;
   }
-  const double evidence_interval_s = evidenceIntervalSeconds(scan, stats);
+  static_cast<void>(evidenceIntervalSeconds(scan, stats));
   if (stats.stale_acquisition) {
     return stats;
   }
@@ -244,8 +244,6 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     stats.miss_beams += beam.hit ? 0U : 1U;
     integrateRay(scan.origin_map, beam, scan_evidence, stats);
   }
-  const double evidence_scale =
-      evidence_interval_s / config_.nominal_evidence_interval_s;
   for (const auto& [chunk_index, chunk_evidence] : scan_evidence) {
     for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
          ++word_index) {
@@ -258,8 +256,8 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
                                (std::uint64_t{1U} << bit_offset)) != 0U;
         const double delta = occupied ? static_cast<double>(config_.hit_weight)
                                       : -static_cast<double>(config_.miss_weight);
-        static_cast<void>(applyEvidence(cellFromChunkBit(chunk_index, bit_index),
-                                        evidence_scale * delta, stats));
+        static_cast<void>(
+            applyEvidence(cellFromChunkBit(chunk_index, bit_index), delta, stats));
         stats.occupied_voxel_updates += occupied ? 1U : 0U;
         stats.free_voxel_updates += occupied ? 0U : 1U;
         remaining &= remaining - 1U;

@@ -416,7 +416,7 @@ private:
     readiness.data = ready;
     navigation_readiness_pub_->publish(readiness);
     last_navigation_readiness_ = ready;
-    RCLCPP_INFO(get_logger(), "NAVIGATION_READINESS ready=%s",
+    RCLCPP_INFO(get_logger(), "BOOTSTRAP_TAKEOFF_READINESS ready=%s",
                 ready ? "true" : "false");
   }
 

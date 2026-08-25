@@ -10,11 +10,13 @@ namespace drone_city_nav {
 ObstacleMemory3DWorker::ObstacleMemory3DWorker(
     rclcpp::Node& node, const GridBounds3D& bounds,
     const ObstacleMemory3DConfig& memory_config,
-    const double minimum_mapping_altitude_m, std::string frame_id)
+    const double minimum_mapping_altitude_m, std::string frame_id,
+    const std::size_t scan_queue_capacity)
     : node_{node},
       memory_{bounds, memory_config},
       mapping_lifecycle_{minimum_mapping_altitude_m},
       transport_{node, std::move(frame_id)},
+      mailbox_{scan_queue_capacity},
       worker_{[this](const std::stop_token token) { workerLoop(token); }} {
 }
 
@@ -32,11 +34,11 @@ void ObstacleMemory3DWorker::updateArmed(const bool armed) noexcept {
 }
 
 bool ObstacleMemory3DWorker::enqueue(PersistentLidarScan3D scan) {
-  const bool replaced = mailbox_.push(std::move(scan));
-  if (replaced) {
-    coalesced_scans_.fetch_add(1U, std::memory_order_relaxed);
+  const bool dropped = mailbox_.push(std::move(scan));
+  if (dropped) {
+    dropped_scans_.fetch_add(1U, std::memory_order_relaxed);
   }
-  return replaced;
+  return dropped;
 }
 
 void ObstacleMemory3DWorker::workerLoop(const std::stop_token stop_token) {
@@ -99,7 +101,7 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       "self_filtered=%zu persistent_self_filtered=%zu dynamic_filtered=%zu "
       "dynamic_forgotten=%zu transitions=%zu revision=%" PRIu64
       " queue_age_ms=%.3f integration_ms=%.3f transport_enqueue_ms=%.3f "
-      "evidence_interval_ms=%.3f stale_acquisition=%s scan_coalesced_total=%" PRIu64
+      "evidence_interval_ms=%.3f stale_acquisition=%s scan_dropped_total=%" PRIu64
       " transport_coalesced=%s debug=%s",
       scan.acquisition_stamp_ns, scan.source_beams, stats.processed_beams,
       stats.hit_beams, stats.miss_beams, stats.invalid_beams + scan.projection_invalid,
@@ -108,7 +110,7 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       forgotten_tracked_voxels + forgotten_cooperative_voxels, stats.state_transitions,
       memory_.revision(), queue_age_ms, integration_ms, transport_enqueue_ms,
       1000.0 * stats.evidence_interval_s, stats.stale_acquisition ? "true" : "false",
-      coalesced_scans_.load(std::memory_order_relaxed),
+      dropped_scans_.load(std::memory_order_relaxed),
       transport_coalesced ? "true" : "false", scan.publish_debug ? "true" : "false");
 }
 

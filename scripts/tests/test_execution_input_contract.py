@@ -202,8 +202,13 @@ class ExecutionInputContractTest(unittest.TestCase):
         status_revoke = status.index("requestExecutionRevocation(")
         self.assertLess(status_admission, status_sync)
         self.assertLess(status_sync, status_revoke)
-        self.assertIn("required_raw_world_source_stamp_ns_", status)
+        self.assertIn("pending_raw_world_update_", status)
         self.assertIn("statusAnnouncesRawUpdate(message)", status)
+        pending_join = status.split("if (!installed_through_status)", maxsplit=1)[
+            1
+        ].split("} else {", maxsplit=1)[0]
+        self.assertNotIn("clear_current_raw", pending_join)
+        self.assertNotIn("requestExecutionRevocation", pending_join)
 
         for source, snapshot_fingerprint, delta_fingerprint in (
             (
@@ -230,19 +235,20 @@ class ExecutionInputContractTest(unittest.TestCase):
         planning_raw_gate = planning_tick.split(
             "double observation_age_ms", maxsplit=1
         )[1].split("const bool observation_fresh", maxsplit=1)[0]
-        self.assertIn("required_raw_world_source_stamp_ns == 0", planning_raw_gate)
+        self.assertIn("committedRawWorldAgeMs", planning_raw_gate)
+        self.assertIn("latest_raw_world_3d", planning_raw_gate)
         self.assertIn("!raw_world_identity_conflicted", planning_raw_gate)
-        self.assertNotIn("raw_ready_stamp_ns", planning_raw_gate)
+        self.assertNotIn("latest_observation.ageMs", planning_raw_gate)
 
         commit = publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
         input_lock = commit.index("input_lock{input_mutex_}")
-        raw_currentness = commit.index("required_raw_world_source_stamp_ns_")
+        raw_currentness = commit.index("committed_world_current")
         snapshot_commit = commit.index("switch (commit.kind)")
         self.assertLess(input_lock, raw_currentness)
         self.assertLess(raw_currentness, snapshot_commit)
-        self.assertIn("latest_observation_tracker_.latest()", commit)
+        self.assertIn("committedRawWorldAgeMs", commit)
         self.assertIn("cycle.esdf.producer_instance_id", commit)
 
     def test_producer_claims_raise_exact_once_sequence_high_water(self) -> None:

@@ -34,6 +34,7 @@
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
+#include "drone_city_nav/msg/navigation_health.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
 #include "drone_city_nav/msg/obstacle_memory_status.hpp"
 #include "drone_city_nav/msg/radar_track_mode_command.hpp"
@@ -43,6 +44,7 @@
 #include "drone_city_nav/msg/raw_obstacle_snapshot3_d.hpp"
 #include "drone_city_nav/msg/target_track_array.hpp"
 #include "drone_city_nav/navigation_angular_derivative.hpp"
+#include "drone_city_nav/navigation_health_supervisor.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 #include "drone_city_nav/no_static_route_cycle.hpp"
 #include "drone_city_nav/noncooperative_collision_avoidance.hpp"
@@ -474,6 +476,13 @@ private:
   void requestStaticEsdfWork(bool force_refresh = false);
   void completeStaticEsdfWork(bool world_ready) noexcept;
   void publishWorldReadiness(bool ready);
+  [[nodiscard]] NavigationHealthAssessment updateNavigationHealth(
+      const std::shared_ptr<const ProductionNavigationObjective>& objective,
+      const ProductionMppiAppliedControl& applied_control,
+      const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
+      const std::shared_ptr<const ExecutionRouteSnapshot3D>& execution_snapshot,
+      bool legacy_route_ready, bool world_current, std::int64_t now_ns);
+  void publishNavigationHealth(const NavigationHealthAssessment& assessment);
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
   navigationObjective() const;
   void requestGuideRelease(GlobalGuideReleaseReason reason,
@@ -646,6 +655,8 @@ private:
       const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
       const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
           latest_lidar_evidence,
+      const OffboardSessionAdmissionState& offboard_session,
+      std::int64_t offboard_session_receive_stamp_ns,
       ProductionMppiPlanningState planning_state, std::int64_t now_ns);
   [[nodiscard]] msg::MppiTrajectoryHorizon
   makeExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
@@ -803,6 +814,7 @@ private:
   bool global_guide_stall_recovery_enabled_{false};
   bool no_static_cycle_recovery_enabled_{false};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
+  std::unique_ptr<NavigationHealthSupervisor> navigation_health_supervisor_;
   MppiNominalReseedTracker nominal_reseed_tracker_{};
   std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
   std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
@@ -889,7 +901,7 @@ private:
   std::optional<ProductionMppiCooperativeCommand> cooperative_command_;
   ProductionMppiNonCooperativeTracks noncooperative_tracks_{};
   LatestObservationTracker latest_observation_tracker_{};
-  std::int64_t required_raw_world_source_stamp_ns_{0};
+  ProductionMppiPendingRawWorldUpdate pending_raw_world_update_{};
   bool raw_world_identity_conflicted_{false};
   std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
       navigation_objective_;
@@ -903,6 +915,8 @@ private:
   std::condition_variable_any raw_queue_condition_;
   LatestWinsDeferredScheduler<std::shared_ptr<const ProductionMppiRawWorld2D>>
       raw_world_scheduler_{};
+  // The committed immutable payload remains authoritative while an announced
+  // successor is still pending its status/payload join.
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
   LatestWinsDeferredScheduler<std::shared_ptr<const ProductionMppiRawWorld3D>>
       raw_world_scheduler_3d_{};
@@ -978,6 +992,10 @@ private:
   std::uint64_t tick_sequence_{0U};
   std::uint64_t execution_horizon_sequence_{0U};
   std::uint64_t execution_horizon_producer_instance_id_{0U};
+  std::uint64_t navigation_health_producer_instance_id_{0U};
+  std::uint64_t navigation_health_sequence_{0U};
+  std::atomic<std::uint64_t> navigation_recovery_sequence_{0U};
+  std::optional<NavigationHealthAssessment> last_navigation_health_assessment_;
   std::uint64_t mission_waypoint_acknowledgement_sequence_{0U};
   bool mission_goal_capture_attempt_invalidated_{false};
   std::uint64_t completed_ticks_{0U};
@@ -1041,6 +1059,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr world_readiness_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr planner_health_pub_;
+  rclcpp::Publisher<msg::NavigationHealth>::SharedPtr navigation_health_pub_;
   rclcpp::Publisher<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_pub_;
   rclcpp::Publisher<msg::MissionWaypointAcknowledgement>::SharedPtr
       mission_waypoint_acknowledgement_pub_;

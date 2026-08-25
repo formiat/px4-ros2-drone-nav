@@ -256,9 +256,14 @@ public:
         1.0e9);
     static_cast<void>(declare_parameter<double>("max_pose_staleness_s", 1.0));
     min_mapping_altitude_m_ = declare_parameter<double>("min_mapping_altitude_m", 0.0);
+    const std::size_t memory_scan_queue_capacity =
+        static_cast<std::size_t>(std::clamp<std::int64_t>(
+            declare_parameter<std::int64_t>("lidar_memory_scan_queue_capacity", 8), 1,
+            128));
     if (persistent_memory_enabled_) {
       memory_worker_ = std::make_unique<ObstacleMemory3DWorker>(
-          *this, bounds_, memory_config, min_mapping_altitude_m_, frame_id_);
+          *this, bounds_, memory_config, min_mapping_altitude_m_, frame_id_,
+          memory_scan_queue_capacity);
     }
 
     projection_config_.max_lidar_range_m = scan_config_.maximum_range_m;
@@ -776,9 +781,9 @@ private:
           hit_points_map, rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME}, frame_id_));
     }
 
-    bool memory_coalesced{false};
+    bool memory_scan_dropped{false};
     if (memory_worker_) {
-      memory_coalesced = memory_worker_->enqueue(PersistentLidarScan3D{
+      memory_scan_dropped = memory_worker_->enqueue(PersistentLidarScan3D{
           .origin_map = ray_origin,
           .beams = std::move(memory_beams),
           .dynamic_filter_plan = std::move(filter_plan),
@@ -807,10 +812,11 @@ private:
         "LIDAR3D_CURRENT_SCAN accepted=true stamp_ns=%" PRId64 " sequence=%" PRIu64
         " source=%zu hits=%zu invalid=%zu "
         "acquisition_age_ms=%.3f processing_ms=%.3f alignment_coalesced=%" PRIu64
-        " memory_coalesced=%s debug=%s",
+        " memory_scan_dropped=%s debug=%s",
         acquisition_stamp_ns, latest_scan_sequence_, decoded.beams.size(),
         hit_points_body.size(), latest.invalid_beam_count, acquisition_age_ms,
-        processing_ms, alignment_coalesced_clouds_, memory_coalesced ? "true" : "false",
+        processing_ms, alignment_coalesced_clouds_,
+        memory_scan_dropped ? "true" : "false",
         publish_current_cloud ? "true" : "false");
     return PendingPointCloudDisposition::kConsumed;
   }

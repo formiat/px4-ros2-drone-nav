@@ -72,6 +72,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     const std::shared_ptr<const ProductionNavigationObjective>& objective,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
     const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence,
+    const OffboardSessionAdmissionState& offboard_session,
+    const std::int64_t offboard_session_receive_stamp_ns,
     const ProductionMppiPlanningState planning_state, const std::int64_t now_ns) {
   ProductionMppiExecutionPublication publication;
   if (!execution_horizon_pub_) {
@@ -99,24 +101,17 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const mppi::State& exact_initial_state = execution_input->state();
   const mppi::Control& exact_previous_control = execution_input->previousControl();
   std::uint64_t target_offboard_instance_id{0U};
-  {
-    const std::scoped_lock lock{input_mutex_};
-    const bool offboard_session_fresh =
-        offboard_session_admission_.valid() &&
-        offboard_session_admission_.latest_source_stamp_ns > 0 &&
-        offboard_session_receive_stamp_ns_ > 0 &&
-        now_ns >= offboard_session_admission_.latest_source_stamp_ns &&
-        now_ns >= offboard_session_receive_stamp_ns_ &&
-        static_cast<double>(now_ns -
-                            offboard_session_admission_.latest_source_stamp_ns) *
-                1.0e-6 <=
-            maximum_control_feedback_age_ms_ &&
-        static_cast<double>(now_ns - offboard_session_receive_stamp_ns_) * 1.0e-6 <=
-            maximum_control_feedback_age_ms_;
-    if (offboard_session_fresh) {
-      target_offboard_instance_id =
-          offboard_session_admission_.current_producer_instance_id;
-    }
+  const bool offboard_session_fresh =
+      offboard_session.valid() && offboard_session.latest_source_stamp_ns > 0 &&
+      offboard_session_receive_stamp_ns > 0 &&
+      now_ns >= offboard_session.latest_source_stamp_ns &&
+      now_ns >= offboard_session_receive_stamp_ns &&
+      static_cast<double>(now_ns - offboard_session.latest_source_stamp_ns) * 1.0e-6 <=
+          maximum_control_feedback_age_ms_ &&
+      static_cast<double>(now_ns - offboard_session_receive_stamp_ns) * 1.0e-6 <=
+          maximum_control_feedback_age_ms_;
+  if (offboard_session_fresh) {
+    target_offboard_instance_id = offboard_session.current_producer_instance_id;
   }
   if (target_offboard_instance_id == 0U) {
     RCLCPP_WARN_THROTTLE(
@@ -350,6 +345,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .objective = objective,
       .execution_input = execution_input,
       .latest_lidar_evidence = latest_lidar_evidence,
+      .offboard_session = offboard_session,
+      .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
       .planning_state = planning_state,
       .now_ns = now_ns,
       .publication = publication,

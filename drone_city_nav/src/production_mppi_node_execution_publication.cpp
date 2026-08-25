@@ -367,13 +367,28 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     return false;
   }
   if (!use_static_map_) {
-    const LatestObservation& current_observation = latest_observation_tracker_.latest();
     const double maximum_observation_age_ms =
         maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
-    if (required_raw_world_source_stamp_ns_ != 0 || raw_world_identity_conflicted_ ||
-        !current_observation.available() ||
-        current_observation.producer_instance_id != cycle.esdf.producer_instance_id ||
-        current_observation.ageMs(publication_now_ns) > maximum_observation_age_ms) {
+    const bool observed_3d_world =
+        no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+    const std::shared_ptr<const ProductionMppiRawWorld2D> committed_2d =
+        observed_3d_world ? nullptr : latest_raw_world_.load(std::memory_order_acquire);
+    const std::shared_ptr<const ProductionMppiRawWorld3D> committed_3d =
+        observed_3d_world ? latest_raw_world_3d_.load(std::memory_order_acquire)
+                          : nullptr;
+    const bool committed_world_current =
+        observed_3d_world
+            ? (committed_3d != nullptr &&
+               committed_3d->version.producer_instance_id ==
+                   cycle.esdf.producer_instance_id &&
+               committedRawWorldAgeMs(committed_3d.get(), publication_now_ns) <=
+                   maximum_observation_age_ms)
+            : (committed_2d != nullptr &&
+               committed_2d->version.producer_instance_id ==
+                   cycle.esdf.producer_instance_id &&
+               committedRawWorldAgeMs(committed_2d.get(), publication_now_ns) <=
+                   maximum_observation_age_ms);
+    if (raw_world_identity_conflicted_ || !committed_world_current) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       return false;
     }
@@ -399,6 +414,11 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
           maximum_control_feedback_age_ms_ ||
       offboard_session_admission_.current_producer_instance_id !=
           owner.target_offboard_instance_id ||
+      offboard_session_admission_.current_producer_instance_id !=
+          cycle.offboard_session.current_producer_instance_id ||
+      offboard_session_admission_.latest_source_stamp_ns !=
+          cycle.offboard_session.latest_source_stamp_ns ||
+      offboard_session_receive_stamp_ns_ != cycle.offboard_session_receive_stamp_ns ||
       navigation_.revision != cycle.execution_input->poseRevision() ||
       navigation_.source_timestamp_us !=
           cycle.execution_input->poseSourceTimestampUs() ||

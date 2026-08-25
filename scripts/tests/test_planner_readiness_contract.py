@@ -728,11 +728,15 @@ class PlannerReadinessContractTest(unittest.TestCase):
         owner_commit = EXECUTION_PUBLICATION.read_text(encoding="utf-8").split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
-        for section in (target_selection, owner_commit):
-            self.assertIn(
-                "offboard_session_admission_.latest_source_stamp_ns", section
-            )
-            self.assertIn("offboard_session_receive_stamp_ns_", section)
+        self.assertIn("offboard_session.latest_source_stamp_ns", target_selection)
+        self.assertIn("offboard_session_receive_stamp_ns", target_selection)
+        self.assertNotIn("offboard_session_admission_", target_selection)
+        self.assertIn(
+            "offboard_session_admission_.latest_source_stamp_ns", owner_commit
+        )
+        self.assertIn("cycle.offboard_session.latest_source_stamp_ns", owner_commit)
+        self.assertIn("offboard_session_receive_stamp_ns_", owner_commit)
+        self.assertIn("cycle.offboard_session_receive_stamp_ns", owner_commit)
 
         self.assertIn("MissionWaypointCaptureGate", planner_mission)
         self.assertIn("navigation.state.vz", planner_mission)

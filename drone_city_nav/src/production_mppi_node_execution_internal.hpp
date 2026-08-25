@@ -40,6 +40,8 @@ struct ProductionMppiExecutionCycle {
   const std::shared_ptr<const ProductionNavigationObjective>& objective;
   const std::shared_ptr<const VersionedExecutionInput3D>& execution_input;
   const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence;
+  OffboardSessionAdmissionState offboard_session{};
+  std::int64_t offboard_session_receive_stamp_ns{0};
   ProductionMppiPlanningState planning_state;
   std::int64_t now_ns;
   ProductionMppiExecutionPublication& publication;

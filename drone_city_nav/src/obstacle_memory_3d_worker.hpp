@@ -41,7 +41,8 @@ class ObstacleMemory3DWorker final {
 public:
   ObstacleMemory3DWorker(rclcpp::Node& node, const GridBounds3D& bounds,
                          const ObstacleMemory3DConfig& memory_config,
-                         double minimum_mapping_altitude_m, std::string frame_id);
+                         double minimum_mapping_altitude_m, std::string frame_id,
+                         std::size_t scan_queue_capacity = 8U);
   ~ObstacleMemory3DWorker();
 
   ObstacleMemory3DWorker(const ObstacleMemory3DWorker&) = delete;
@@ -60,10 +61,10 @@ private:
   ObstacleMemory3D memory_;
   MappingLifecycle mapping_lifecycle_;
   ObstacleMemoryTransport3D transport_;
-  LatestValueMailbox<PersistentLidarScan3D> mailbox_;
+  BoundedFifoMailbox<PersistentLidarScan3D> mailbox_;
   std::atomic<bool> armed_seen_{false};
   std::atomic<bool> armed_{false};
-  std::atomic<std::uint64_t> coalesced_scans_{0U};
+  std::atomic<std::uint64_t> dropped_scans_{0U};
   std::jthread worker_;
 };
 

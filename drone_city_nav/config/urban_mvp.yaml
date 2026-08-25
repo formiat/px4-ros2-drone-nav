@@ -254,6 +254,11 @@ production_mppi_node:
     # valid while persistent integration catches up. This budget must exceed the
     # mapper's allowed pose-alignment wait plus transport and executor jitter.
     latest_lidar_obstacle_maximum_age_ms: 1000.0
+    navigation_health_topic: /drone_city_nav/mppi/navigation_health
+    maximum_unavailable_world_age_ms: 30000.0
+    maximum_no_executable_route_age_ms: 30000.0
+    maximum_unacknowledged_horizon_age_ms: 10000.0
+    maximum_navigation_recovery_attempts: 64
     minimum_target_lookahead_m: 30.0
     maximum_target_lookahead_m: 100.0
     use_static_map: true
@@ -304,6 +309,7 @@ production_mppi_node:
     navigation_objective_topic: /drone_city_nav/navigation_objective
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     mission_waypoint_acknowledgement_topic: /drone_city_nav/mission_waypoint_acknowledgement
+    navigation_health_topic: /drone_city_nav/mppi/navigation_health
     dynamic_objective_replan_distance_m: 5.0
     dynamic_objective_replan_period_s: 0.25
     tracking_objective_ray_sample_spacing_m: 0.25

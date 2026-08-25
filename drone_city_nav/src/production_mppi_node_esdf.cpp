@@ -150,7 +150,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       continue;
     }
     const std::int64_t source_stamp_ns =
-        use_static_map_ ? get_clock()->now().nanoseconds() : raw_world->ready_stamp_ns;
+        use_static_map_ ? get_clock()->now().nanoseconds() : raw_world->source_stamp_ns;
     if (use_static_map_ && !static_occupancy_3d_) {
       RCLCPP_ERROR(get_logger(),
                    "STATIC_ESDF3D rejected reason=resident_occupancy_unavailable");

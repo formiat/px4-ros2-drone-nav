@@ -281,7 +281,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   world_update.revision = field.occupancy_fingerprint;
   world_update.source_raw_revision = raw_world.version.revision;
   world_update.source_occupied_fingerprint = local_fingerprint;
-  world_update.source_stamp_ns = raw_world.ready_stamp_ns;
+  world_update.source_stamp_ns = raw_world.source_stamp_ns;
   world_update.ready_stamp_ns = get_clock()->now().nanoseconds();
   world_update.build_ms =
       field.stats.distance_field.duration_ms + field.stats.classification_ms;

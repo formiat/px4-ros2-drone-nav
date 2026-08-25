@@ -82,7 +82,7 @@ TEST(ObstacleMemory3D, IntegratesHitAndMissEvidenceAlongFullRay) {
   EXPECT_GT(memory.revision(), 0U);
 }
 
-TEST(ObstacleMemory3D, NormalizesEvidenceToElapsedAcquisitionTime) {
+TEST(ObstacleMemory3D, DoesNotAmplifyOneScanAcrossAnAcquisitionGap) {
   ObstacleMemory3D memory{kBounds,
                           ObstacleMemory3DConfig{.maximum_range_m = 20.0,
                                                  .minimum_range_m = 0.1,
@@ -107,7 +107,7 @@ TEST(ObstacleMemory3D, NormalizesEvidenceToElapsedAcquisitionTime) {
                             .acquisition_stamp_ns = 1'500'000'000});
 
   EXPECT_NEAR(stats.evidence_interval_s, 0.5, 1.0e-12);
-  EXPECT_TRUE(memory.grid().isKnownFree({9, 1, 2}));
+  EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2}));
 }
 
 TEST(ObstacleMemory3D, RejectsReplayedAcquisitionWithoutChangingEvidence) {

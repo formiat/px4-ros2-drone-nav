@@ -182,6 +182,8 @@ void ProductionMppiNode::queueRawWorld(const RawObstacleGridUpdate& update,
                   .base_snapshot_revision = update.state.base_snapshot_revision,
                   .revision = update.state.obstacle_snapshot_revision,
               },
+          .source_stamp_ns = update.evidence_observation.source_stamp_ns,
+          .receive_stamp_ns = update.evidence_observation.receive_stamp_ns,
           .ready_stamp_ns = ready_stamp_ns,
           .reconstruction_ms = reconstruction_ms,
           .occupancy = update.state.occupancy,
@@ -203,11 +205,8 @@ void ProductionMppiNode::queueRawWorld(const RawObstacleGridUpdate& update,
                                       ready_stamp_ns)) {
       latest_raw_world_.store(world, std::memory_order_release);
       raw_world_identity_conflicted_ = false;
-      if (required_raw_world_source_stamp_ns_ == 1 ||
-          (required_raw_world_source_stamp_ns_ > 1 &&
-           update.evidence_observation.source_stamp_ns >=
-               required_raw_world_source_stamp_ns_)) {
-        required_raw_world_source_stamp_ns_ = 0;
+      if (pending_raw_world_update_.satisfiedBy(evidence, world->version)) {
+        pending_raw_world_update_ = {};
       }
       const auto submission = raw_world_scheduler_.submit(world);
       if (submission.replaced_pending) {
@@ -330,6 +329,8 @@ void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
   }
   auto world = std::make_shared<ProductionMppiRawWorld3D>(ProductionMppiRawWorld3D{
       .version = version,
+      .source_stamp_ns = update.evidence_observation.source_stamp_ns,
+      .receive_stamp_ns = update.evidence_observation.receive_stamp_ns,
       .ready_stamp_ns = ready_stamp_ns,
       .reconstruction_ms = reconstruction_ms,
       .occupancy = update.state.occupancy,
@@ -364,11 +365,8 @@ void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
     static_cast<void>(raw_world_scheduler_3d_.submit(immutable_world));
     latest_raw_world_3d_.store(immutable_world, std::memory_order_release);
     raw_world_identity_conflicted_ = false;
-    if (required_raw_world_source_stamp_ns_ == 1 ||
-        (required_raw_world_source_stamp_ns_ > 1 &&
-         update.evidence_observation.source_stamp_ns >=
-             required_raw_world_source_stamp_ns_)) {
-      required_raw_world_source_stamp_ns_ = 0;
+    if (pending_raw_world_update_.satisfiedBy(evidence, immutable_world->version)) {
+      pending_raw_world_update_ = {};
     }
   }
   no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
@@ -408,17 +406,12 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
   {
     const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_,
                                 raw_reconstruction_mutex_};
-    const ProducerEpochAdmissionState previous_state =
-        latest_observation_tracker_.admissionState();
     const ProducerEpochAdmissionResult admission = latest_observation_tracker_.observe(
         config, observation, now_ns, message.header.frame_id == frame_id_);
-    const bool pending_opened = previous_state.pending_producer_instance_id == 0U &&
-                                admission.next_state.pending_producer_instance_id != 0U;
     const bool authority_boundary =
         admission.status == ProducerEpochAdmissionStatus::kAcceptedInitial ||
         admission.producer_handoff;
-    bool request_revocation =
-        pending_opened || authority_boundary || admission.current_identity_conflict;
+    bool request_revocation = admission.current_identity_conflict;
     const auto clear_current_raw = [this]() noexcept {
       if (no_static_world_model_ ==
           ProductionNoStaticWorldModel::kObservedOccupancy3D) {
@@ -429,12 +422,7 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
     };
     if (authority_boundary) {
       raw_world_identity_conflicted_ = false;
-      required_raw_world_source_stamp_ns_ =
-          statusAnnouncesRawUpdate(message) ? source_stamp_ns : 1;
-      // Keep the last fully committed world as a safe immutable fallback until
-      // the new producer's complete payload joins. The required source stamp
-      // gates planning and execution, so the old payload cannot be used under
-      // the new authority while status and delta are temporarily out of order.
+      pending_raw_world_update_ = {};
     }
     if (admission.current_identity_conflict) {
       raw_world_identity_conflicted_ = true;
@@ -466,12 +454,26 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
           evidence.producer_instance_id == authority.producer_instance_id &&
           evidence.source_stamp_ns >= source_stamp_ns && raw_pointer_current;
       if (!installed_through_status) {
-        const bool newly_pending = required_raw_world_source_stamp_ns_ == 0;
-        required_raw_world_source_stamp_ns_ =
-            std::max(required_raw_world_source_stamp_ns_, source_stamp_ns);
-        if (newly_pending) {
-          clear_current_raw();
-          request_revocation = true;
+        pending_raw_world_update_ = ProductionMppiPendingRawWorldUpdate{
+            .authority_generation = authority.generation,
+            .producer_instance_id = authority.producer_instance_id,
+            .announced_sequence = message.sequence,
+            .minimum_source_stamp_ns = source_stamp_ns,
+        };
+      } else {
+        const RawMapVersion* committed_version = nullptr;
+        if (no_static_world_model_ ==
+                ProductionNoStaticWorldModel::kObservedOccupancy3D &&
+            raw_world_3d != nullptr) {
+          committed_version = std::addressof(raw_world_3d->version);
+        } else if (no_static_world_model_ ==
+                       ProductionNoStaticWorldModel::kOccupancy2D &&
+                   raw_world_2d != nullptr) {
+          committed_version = std::addressof(raw_world_2d->version);
+        }
+        if (committed_version != nullptr &&
+            pending_raw_world_update_.satisfiedBy(evidence, *committed_version)) {
+          pending_raw_world_update_ = {};
         }
       }
     }

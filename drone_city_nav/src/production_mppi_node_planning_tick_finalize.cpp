@@ -112,7 +112,8 @@ void ProductionMppiNode::finalizePlanningTick(
   ++tick_sequence_;
   ProductionMppiExecutionPublication execution = publishExecutionHorizon(
       input, result, *esdf, route_execution, objective, execution_input,
-      latest_lidar_evidence, planning_state, now_ns);
+      latest_lidar_evidence, finalization.offboard_session,
+      finalization.offboard_session_receive_stamp_ns, planning_state, now_ns);
   const std::shared_ptr<const ExecutionRouteSnapshot3D> committed_execution_snapshot =
       uses_3d_route ? execution_route_store_.snapshot() : nullptr;
   const CertifiedRouteSuffix3D* const committed_route =

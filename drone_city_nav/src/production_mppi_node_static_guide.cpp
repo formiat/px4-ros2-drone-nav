@@ -209,6 +209,19 @@ void ProductionMppiNode::processGuideSearch3D(
     commitRouteActivation3D(world, activation_snapshot, candidate_generation,
                             strategy_decision, topology_effect, activation);
   }
+  const bool recovery_without_active_route =
+      (activation_snapshot.execution_snapshot == nullptr ||
+       !activation_snapshot.execution_snapshot->route.has_value()) &&
+      !activation.certified_pending;
+  if (recovery_without_active_route) {
+    std::uint64_t current =
+        navigation_recovery_sequence_.load(std::memory_order_relaxed);
+    while (current != std::numeric_limits<std::uint64_t>::max() &&
+           !navigation_recovery_sequence_.compare_exchange_weak(
+               current, current + 1U, std::memory_order_release,
+               std::memory_order_relaxed)) {
+    }
+  }
   const double route_planning_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 planning_started)

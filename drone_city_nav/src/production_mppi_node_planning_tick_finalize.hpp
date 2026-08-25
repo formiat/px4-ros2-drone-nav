@@ -11,6 +11,8 @@ struct ProductionMppiPlanningTickFinalization {
   const ProductionRouteExecutionSelection3D& route_execution;
   const std::shared_ptr<const VersionedExecutionInput3D>& execution_input;
   const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence;
+  const OffboardSessionAdmissionState& offboard_session;
+  std::int64_t offboard_session_receive_stamp_ns;
   const ProductionMppiNavigation& navigation;
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>>& execution_mppi_route;
   const std::shared_ptr<const std::vector<PassageTraversalId>>&

@@ -37,8 +37,8 @@ struct ObstacleMemory3DConfig {
   int maximum_score{12};
   int occupied_score{3};
   int free_score{-1};
-  // Evidence is normalized to this sensor cadence so coalescing does not make
-  // the occupancy hysteresis depend on mapper throughput.
+  // Intervals are retained for diagnostics and stale-order rejection only.
+  // Every integrated scan contributes exactly one physical observation.
   double nominal_evidence_interval_s{0.1};
   double maximum_evidence_interval_s{0.5};
 };

@@ -151,6 +151,10 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
       declare_parameter<std::string>("planner_health_topic",
                                      "/drone_city_nav/mppi/planner_alive"),
       rclcpp::QoS{1}.reliable().transient_local());
+  navigation_health_pub_ = create_publisher<msg::NavigationHealth>(
+      declare_parameter<std::string>("navigation_health_topic",
+                                     "/drone_city_nav/mppi/navigation_health"),
+      rclcpp::QoS{1}.reliable().transient_local());
   execution_horizon_pub_ = create_publisher<msg::MppiTrajectoryHorizon>(
       declare_parameter<std::string>("execution_horizon_topic",
                                      "/drone_city_nav/mppi/execution_horizon"),

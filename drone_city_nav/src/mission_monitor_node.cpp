@@ -1,6 +1,7 @@
 #include "drone_city_nav/mission_waypoint_acknowledgement_admission.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
+#include "drone_city_nav/msg/navigation_health.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -132,6 +133,23 @@ void appendAcknowledgementFingerprint(std::uint64_t& fingerprint,
   return "invalid";
 }
 
+[[nodiscard]] const char* navigationFailureReason(const std::uint8_t reason) noexcept {
+  switch (reason) {
+    case msg::NavigationHealth::FAILURE_NONE:
+      return "none";
+    case msg::NavigationHealth::FAILURE_UNAVAILABLE_WORLD:
+      return "navigation_unavailable_world";
+    case msg::NavigationHealth::FAILURE_NO_EXECUTABLE_ROUTE:
+      return "navigation_no_executable_route";
+    case msg::NavigationHealth::FAILURE_NO_ACKNOWLEDGED_HORIZON:
+      return "navigation_no_acknowledged_horizon";
+    case msg::NavigationHealth::FAILURE_RECOVERY_BUDGET_EXHAUSTED:
+      return "navigation_recovery_budget_exhausted";
+    default:
+      return "navigation_invalid_failure_reason";
+  }
+}
+
 } // namespace
 
 class MissionMonitorNode final : public rclcpp::Node {
@@ -201,6 +219,13 @@ public:
             [this](const msg::MissionWaypointAcknowledgement::SharedPtr message) {
               onWaypointAcknowledgement(*message);
             });
+    navigation_health_sub_ = create_subscription<msg::NavigationHealth>(
+        declare_parameter<std::string>("navigation_health_topic",
+                                       "/drone_city_nav/mppi/navigation_health"),
+        rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const msg::NavigationHealth::SharedPtr message) {
+          onNavigationHealth(*message);
+        });
     summary_timer_ =
         create_wall_timer(std::chrono::seconds{5}, [this] { logSummary(); });
     RCLCPP_INFO(get_logger(),
@@ -210,6 +235,36 @@ public:
   }
 
 private:
+  void onNavigationHealth(const msg::NavigationHealth& health) {
+    if (result_reported_ || health.header.frame_id != frame_id_ ||
+        health.producer_instance_id == 0U || health.sequence == 0U ||
+        health.stage > msg::NavigationHealth::STAGE_TERMINAL_FAILURE ||
+        health.failure_reason >
+            msg::NavigationHealth::FAILURE_RECOVERY_BUDGET_EXHAUSTED ||
+        !std::isfinite(health.stage_age_ms) || health.stage_age_ms < 0.0) {
+      return;
+    }
+    if (health.producer_instance_id == navigation_health_producer_instance_id_ &&
+        health.sequence <= navigation_health_sequence_) {
+      return;
+    }
+    if (health.producer_instance_id != navigation_health_producer_instance_id_) {
+      navigation_health_producer_instance_id_ = health.producer_instance_id;
+      navigation_health_sequence_ = 0U;
+    }
+    navigation_health_sequence_ = health.sequence;
+    if (health.mission_ready && !navigation_mission_ready_) {
+      navigation_mission_ready_ = true;
+      RCLCPP_INFO(get_logger(),
+                  "MISSION_READINESS ready=true mission_epoch=%" PRIu64
+                  " health_sequence=%" PRIu64,
+                  health.mission_epoch, health.sequence);
+    }
+    if (health.terminal) {
+      report(false, navigationFailureReason(health.failure_reason));
+    }
+  }
+
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message) {
     if (result_reported_ || !message.xy_valid || !message.z_valid ||
         !message.v_xy_valid || !message.v_z_valid || !std::isfinite(message.x) ||
@@ -411,7 +466,10 @@ private:
   bool moved_{false};
   bool armed_seen_{false};
   bool result_reported_{false};
+  bool navigation_mission_ready_{false};
   bool shutdown_on_result_{false};
+  std::uint64_t navigation_health_producer_instance_id_{0U};
+  std::uint64_t navigation_health_sequence_{0U};
   MissionWaypointAcknowledgementAdmissionState waypoint_acknowledgement_admission_{};
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
@@ -419,6 +477,7 @@ private:
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<msg::MissionWaypointAcknowledgement>::SharedPtr
       waypoint_acknowledgement_sub_;
+  rclcpp::Subscription<msg::NavigationHealth>::SharedPtr navigation_health_sub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
   rclcpp::TimerBase::SharedPtr shutdown_timer_;
 };

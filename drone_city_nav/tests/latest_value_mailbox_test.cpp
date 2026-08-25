@@ -40,5 +40,27 @@ TEST(LatestValueMailboxTest, StopRequestUnblocksEmptyWait) {
   EXPECT_FALSE(mailbox.waitPop(stop_source.get_token()).has_value());
 }
 
+TEST(BoundedFifoMailboxTest, PreservesObservationOrderWithinCapacity) {
+  BoundedFifoMailbox<int> mailbox{3U};
+
+  EXPECT_FALSE(mailbox.push(1));
+  EXPECT_FALSE(mailbox.push(2));
+  EXPECT_FALSE(mailbox.push(3));
+  EXPECT_EQ(mailbox.tryPop(), 1);
+  EXPECT_EQ(mailbox.tryPop(), 2);
+  EXPECT_EQ(mailbox.tryPop(), 3);
+}
+
+TEST(BoundedFifoMailboxTest, DropsOldestWithoutDuplicatingNewestEvidence) {
+  BoundedFifoMailbox<int> mailbox{2U};
+
+  EXPECT_FALSE(mailbox.push(1));
+  EXPECT_FALSE(mailbox.push(2));
+  EXPECT_TRUE(mailbox.push(3));
+  EXPECT_EQ(mailbox.tryPop(), 2);
+  EXPECT_EQ(mailbox.tryPop(), 3);
+  EXPECT_FALSE(mailbox.tryPop().has_value());
+}
+
 } // namespace
 } // namespace drone_city_nav

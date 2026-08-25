@@ -18,6 +18,24 @@
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] ProductionMppiExecutionReason
+terminalExecutionReason(const NavigationTerminalFailure failure) noexcept {
+  switch (failure) {
+    case NavigationTerminalFailure::kUnavailableWorld:
+      return ProductionMppiExecutionReason::kUnavailableWorld;
+    case NavigationTerminalFailure::kNoAcknowledgedHorizon:
+      return ProductionMppiExecutionReason::kNoExecutableHorizon;
+    case NavigationTerminalFailure::kNone:
+    case NavigationTerminalFailure::kNoExecutableRoute:
+    case NavigationTerminalFailure::kRecoveryBudgetExhausted:
+      return ProductionMppiExecutionReason::kNoExecutableRoute;
+  }
+  return ProductionMppiExecutionReason::kNoExecutableRoute;
+}
+
+} // namespace
 
 void ProductionMppiNode::planningTick() {
   if (!engine_) {
@@ -86,7 +104,6 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiNonCooperativeTracks noncooperative_tracks;
   LatestObservation latest_observation;
   std::uint64_t memory_sequence{0U};
-  std::int64_t required_raw_world_source_stamp_ns{0};
   bool raw_world_identity_conflicted{false};
   {
     const std::scoped_lock lock{input_mutex_};
@@ -109,7 +126,6 @@ void ProductionMppiNode::planningTick() {
     noncooperative_tracks = noncooperative_tracks_;
     latest_observation = latest_observation_tracker_.latest();
     memory_sequence = latest_observation.sequence;
-    required_raw_world_source_stamp_ns = required_raw_world_source_stamp_ns_;
     raw_world_identity_conflicted = raw_world_identity_conflicted_;
   }
   std::optional<ProductionMppiPreparedEsdf> esdf;
@@ -127,6 +143,11 @@ void ProductionMppiNode::planningTick() {
       latest_lidar_evidence_identity_conflicted
           ? nullptr
           : latest_lidar_evidence_.load(std::memory_order_acquire);
+  const bool uses_3d_route =
+      use_static_map_ ||
+      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+      uses_3d_route ? execution_route_store_.snapshot() : nullptr;
   const double pose_age_ms =
       static_cast<double>(now_ns - navigation.receive_stamp_ns) / 1.0e6;
   double esdf_age_ms = std::numeric_limits<double>::infinity();
@@ -138,16 +159,35 @@ void ProductionMppiNode::planningTick() {
   double observation_age_ms = std::numeric_limits<double>::infinity();
   if (use_static_map_) {
     observation_age_ms = 0.0;
-  } else if (esdf.has_value() && latest_observation.available() &&
-             latest_observation.producer_instance_id == esdf->producer_instance_id &&
-             required_raw_world_source_stamp_ns == 0 &&
-             !raw_world_identity_conflicted) {
-    observation_age_ms = latest_observation.ageMs(now_ns);
+  } else if (esdf.has_value() && !raw_world_identity_conflicted) {
+    if (observed_3d_world && latest_raw_world_3d != nullptr &&
+        latest_raw_world_3d->version.producer_instance_id ==
+            esdf->producer_instance_id) {
+      observation_age_ms = committedRawWorldAgeMs(latest_raw_world_3d.get(), now_ns);
+    } else if (!observed_3d_world && latest_raw_world != nullptr &&
+               latest_raw_world->version.producer_instance_id ==
+                   esdf->producer_instance_id) {
+      observation_age_ms = committedRawWorldAgeMs(latest_raw_world.get(), now_ns);
+    }
   }
   const double control_feedback_age_ms =
       applied_control.valid
           ? static_cast<double>(now_ns - applied_control.receive_stamp_ns) / 1.0e6
           : std::numeric_limits<double>::infinity();
+  const bool world_current =
+      world_ready_.load(std::memory_order_acquire) && esdf.has_value() &&
+      observation_age_ms >= 0.0 &&
+      observation_age_ms <= maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
+  const NavigationHealthAssessment navigation_health = updateNavigationHealth(
+      objective, applied_control, execution_horizon_owner, execution_snapshot,
+      !uses_3d_route && esdf.has_value() && esdf->global_guide_generation != 0U &&
+          esdf->route_2d_projection != nullptr && !esdf->route_2d_projection->empty(),
+      world_current, now_ns);
+  if (navigation_health.terminal) {
+    publishFailClosedExecutionRevocation(
+        terminalExecutionReason(navigation_health.failure), now_ns);
+    return;
+  }
   if (!vehicleStatusAuthoritativeForExecution(vehicle_status,
                                               vehicle_status_epoch_stable, now_ns,
                                               maximum_vehicle_status_age_ms_)) {
@@ -241,11 +281,6 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const std::uint64_t execution_input_sequence = ++execution_input_capture_sequence_;
-  const bool uses_3d_route =
-      use_static_map_ ||
-      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
-      uses_3d_route ? execution_route_store_.snapshot() : nullptr;
   const bool stationary_capture_rearm = stationaryCaptureRearmEligibleForPlanningTick(
       ProductionMppiStationaryCaptureRearmContext{
           .objective = objective.get(),
@@ -964,6 +999,8 @@ void ProductionMppiNode::planningTick() {
       .route_execution = route_execution,
       .execution_input = execution_input,
       .latest_lidar_evidence = latest_lidar_evidence,
+      .offboard_session = offboard_session,
+      .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
       .navigation = navigation,
       .execution_mppi_route = execution_mppi_route,
       .execution_selected_passage_traversal_ids =

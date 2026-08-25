@@ -76,8 +76,11 @@ noStaticWorldModelName(const ProductionNoStaticWorldModel model) noexcept {
 ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     : Node{"production_mppi_node", options} {
   constexpr std::uint64_t kExecutionHorizonProducerDomain{0x45584543484f5249ULL};
+  constexpr std::uint64_t kNavigationHealthProducerDomain{0x4e41564845414c54ULL};
   execution_horizon_producer_instance_id_ =
       createProducerInstanceId(kExecutionHorizonProducerDomain);
+  navigation_health_producer_instance_id_ =
+      createProducerInstanceId(kNavigationHealthProducerDomain);
   tick_rate_hz_ = declare_parameter<double>("tick_rate_hz", 50.0);
   rviz_rate_hz_ = declare_parameter<double>("rviz_rate_hz", 10.0);
   diagnostics_info_rate_hz_ =
@@ -104,6 +107,19 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("maximum_control_feedback_age_ms", 200.0);
   latest_lidar_obstacle_maximum_age_ms_ =
       declare_parameter<double>("latest_lidar_obstacle_maximum_age_ms", 1000.0);
+  navigation_health_supervisor_ =
+      std::make_unique<NavigationHealthSupervisor>(NavigationHealthConfig{
+          .maximum_unavailable_world_age_ms =
+              declare_parameter<double>("maximum_unavailable_world_age_ms", 30'000.0),
+          .maximum_no_executable_route_age_ms =
+              declare_parameter<double>("maximum_no_executable_route_age_ms", 30'000.0),
+          .maximum_unacknowledged_horizon_age_ms = declare_parameter<double>(
+              "maximum_unacknowledged_horizon_age_ms", 10'000.0),
+          .maximum_recovery_attempts = static_cast<std::uint32_t>(
+              std::clamp<std::int64_t>(declare_parameter<std::int64_t>(
+                                           "maximum_navigation_recovery_attempts", 64),
+                                       1, 10'000)),
+      });
   const std::int64_t planner_worker_count =
       declare_parameter<std::int64_t>("planner_worker_count", 4);
   if (planner_worker_count < 1 || planner_worker_count > 8) {
