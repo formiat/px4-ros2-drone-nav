@@ -3,6 +3,7 @@
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -76,7 +77,13 @@ public:
   [[nodiscard]] ObstacleMemory3DChanges takeChanges();
 
 private:
-  using ScanEvidence = std::unordered_map<std::uint64_t, bool>;
+  struct ScanEvidenceChunk {
+    OccupancyGrid3D::Chunk observed{};
+    OccupancyGrid3D::Chunk occupied{};
+  };
+
+  using ScanEvidence = std::unordered_map<OccupancyChunkIndex3D, ScanEvidenceChunk,
+                                          OccupancyChunkIndex3DHash>;
 
   struct EvidenceChunk {
     std::array<double, OccupancyGrid3D::kVoxelsPerChunk> scores{};
@@ -86,10 +93,12 @@ private:
                                    ObstacleMemory3DStats& stats);
   [[nodiscard]] double evidenceIntervalSeconds(const LidarScan3DView& scan,
                                                ObstacleMemory3DStats& stats);
+  void recordScanEvidence(GridIndex3D index, bool occupied,
+                          ScanEvidence& scan_evidence) const;
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
                     ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;
-  [[nodiscard]] std::uint64_t cellKey(GridIndex3D index) const noexcept;
-  [[nodiscard]] GridIndex3D cellFromKey(std::uint64_t key) const noexcept;
+  [[nodiscard]] static GridIndex3D cellFromChunkBit(OccupancyChunkIndex3D chunk,
+                                                    std::size_t bit_index) noexcept;
 
   ObstacleMemory3DConfig config_{};
   ObservedOccupancyGrid3D grid_;

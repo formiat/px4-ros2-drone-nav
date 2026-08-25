@@ -246,12 +246,25 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   }
   const double evidence_scale =
       evidence_interval_s / config_.nominal_evidence_interval_s;
-  for (const auto& [key, occupied] : scan_evidence) {
-    const double delta = occupied ? static_cast<double>(config_.hit_weight)
-                                  : -static_cast<double>(config_.miss_weight);
-    static_cast<void>(applyEvidence(cellFromKey(key), evidence_scale * delta, stats));
-    stats.occupied_voxel_updates += occupied ? 1U : 0U;
-    stats.free_voxel_updates += occupied ? 0U : 1U;
+  for (const auto& [chunk_index, chunk_evidence] : scan_evidence) {
+    for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
+         ++word_index) {
+      std::uint64_t remaining = chunk_evidence.observed.at(word_index);
+      while (remaining != 0U) {
+        const std::size_t bit_offset =
+            static_cast<std::size_t>(std::countr_zero(remaining));
+        const std::size_t bit_index = word_index * 64U + bit_offset;
+        const bool occupied = (chunk_evidence.occupied.at(word_index) &
+                               (std::uint64_t{1U} << bit_offset)) != 0U;
+        const double delta = occupied ? static_cast<double>(config_.hit_weight)
+                                      : -static_cast<double>(config_.miss_weight);
+        static_cast<void>(applyEvidence(cellFromChunkBit(chunk_index, bit_index),
+                                        evidence_scale * delta, stats));
+        stats.occupied_voxel_updates += occupied ? 1U : 0U;
+        stats.free_voxel_updates += occupied ? 0U : 1U;
+        remaining &= remaining - 1U;
+      }
+    }
   }
   if (stats.state_transitions > 0U) {
     ++revision_;
@@ -280,24 +293,31 @@ double ObstacleMemory3D::evidenceIntervalSeconds(const LidarScan3DView& scan,
   return stats.evidence_interval_s;
 }
 
-std::uint64_t ObstacleMemory3D::cellKey(const GridIndex3D index) const noexcept {
-  const GridBounds3D& bounds = grid_.bounds();
-  return (static_cast<std::uint64_t>(index.z) *
-              static_cast<std::uint64_t>(bounds.height_cells) +
-          static_cast<std::uint64_t>(index.y)) *
-             static_cast<std::uint64_t>(bounds.width_cells) +
-         static_cast<std::uint64_t>(index.x);
+GridIndex3D ObstacleMemory3D::cellFromChunkBit(const OccupancyChunkIndex3D chunk,
+                                               const std::size_t bit_index) noexcept {
+  constexpr std::size_t kChunkSize =
+      static_cast<std::size_t>(OccupancyGrid3D::kChunkSize);
+  const std::size_t local_z = bit_index / (kChunkSize * kChunkSize);
+  const std::size_t local_y = (bit_index / kChunkSize) % kChunkSize;
+  const std::size_t local_x = bit_index % kChunkSize;
+  return GridIndex3D{
+      .x = chunk.x * OccupancyGrid3D::kChunkSize + static_cast<int>(local_x),
+      .y = chunk.y * OccupancyGrid3D::kChunkSize + static_cast<int>(local_y),
+      .z = chunk.z * OccupancyGrid3D::kChunkSize + static_cast<int>(local_z),
+  };
 }
 
-GridIndex3D ObstacleMemory3D::cellFromKey(const std::uint64_t key) const noexcept {
-  const GridBounds3D& bounds = grid_.bounds();
-  const std::uint64_t width = static_cast<std::uint64_t>(bounds.width_cells);
-  const std::uint64_t height = static_cast<std::uint64_t>(bounds.height_cells);
-  return GridIndex3D{
-      .x = static_cast<int>(key % width),
-      .y = static_cast<int>((key / width) % height),
-      .z = static_cast<int>(key / (width * height)),
-  };
+void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool occupied,
+                                          ScanEvidence& scan_evidence) const {
+  const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(index);
+  ScanEvidenceChunk& chunk = scan_evidence[chunk_index];
+  const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(index);
+  const std::size_t word_index = bit_index / 64U;
+  const std::uint64_t bit = std::uint64_t{1U} << (bit_index % 64U);
+  chunk.observed.at(word_index) |= bit;
+  if (occupied) {
+    chunk.occupied.at(word_index) |= bit;
+  }
 }
 
 std::size_t ObstacleMemory3D::forgetDynamicVolumes(
@@ -446,11 +466,11 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   }
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
-      static_cast<void>(scan_evidence.try_emplace(cellKey(cell), false));
+      recordScanEvidence(cell, false, scan_evidence);
     }
   });
   if (hit_cell.has_value()) {
-    scan_evidence[cellKey(*hit_cell)] = true;
+    recordScanEvidence(*hit_cell, true, scan_evidence);
   }
 }
 
