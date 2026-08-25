@@ -6,9 +6,11 @@
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace drone_city_nav {
@@ -29,6 +31,35 @@ struct ExecutionRouteGeometry3D {
   std::uint64_t physical_route_fingerprint{0U};
   std::uint64_t executable_geometry_revision{0U};
 };
+
+enum class ExecutionRouteGeometryFailureReason3D : std::uint8_t {
+  kValid,
+  kMissingRoute,
+  kTooFewSamples,
+  kNonFiniteSample,
+  kInvalidTangent,
+  kNonMonotonicStation,
+  kSegmentStationMismatch,
+  kIncomingTangentMismatch,
+  kTerminalTangentMismatch,
+  kDerivedResourceMismatch,
+};
+
+struct ExecutionRouteGeometryValidation3D {
+  ExecutionRouteGeometryFailureReason3D reason{
+      ExecutionRouteGeometryFailureReason3D::kValid};
+  std::size_t sample_index{0U};
+
+  [[nodiscard]] bool valid() const noexcept {
+    return reason == ExecutionRouteGeometryFailureReason3D::kValid;
+  }
+};
+
+[[nodiscard]] const char* executionRouteGeometryFailureReasonName3D(
+    ExecutionRouteGeometryFailureReason3D reason) noexcept;
+
+[[nodiscard]] ExecutionRouteGeometryValidation3D
+validateExecutionRouteGeometrySamples3D(std::span<const RouteSample3D> route) noexcept;
 
 using ProductionRouteGeometry3D = ExecutionRouteGeometry3D;
 

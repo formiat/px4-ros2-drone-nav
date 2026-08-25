@@ -1,3 +1,5 @@
+#include "drone_city_nav/execution_route_geometry_3d.hpp"
+
 #include "execution_route_snapshot_3d_test_support.hpp"
 
 namespace drone_city_nav {
@@ -692,6 +694,27 @@ TEST(ExecutionRouteSnapshot3DTest,
   fixture.geometry = std::move(geometry);
   fixture.geometry_revision = fixture.geometry->executable_geometry_revision;
   EXPECT_FALSE(fixture.activeSnapshot());
+}
+
+TEST(ExecutionRouteSnapshot3DTest, GeometryValidationReportsTypedTerminalFailure) {
+  const std::vector<RouteSample3D> route{RouteSample3D{.position = {0.0, 0.0, 5.0},
+                                                       .tangent = {1.0, 0.0, 0.0},
+                                                       .station_m = 0.0,
+                                                       .reference_speed_mps = 4.0},
+                                         RouteSample3D{.position = {4.0, 0.0, 5.0},
+                                                       .tangent = {-1.0, 0.0, 0.0},
+                                                       .station_m = 4.0,
+                                                       .reference_speed_mps = 4.0}};
+
+  const ExecutionRouteGeometryValidation3D validation =
+      validateExecutionRouteGeometrySamples3D(route);
+
+  EXPECT_FALSE(validation.valid());
+  EXPECT_EQ(validation.reason,
+            ExecutionRouteGeometryFailureReason3D::kTerminalTangentMismatch);
+  EXPECT_EQ(validation.sample_index, 1U);
+  EXPECT_STREQ(executionRouteGeometryFailureReasonName3D(validation.reason),
+               "terminal_tangent_mismatch");
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
