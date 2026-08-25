@@ -406,33 +406,62 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     report_commit_failure("horizon_time_window_not_current");
     return false;
   }
-  if (requested_execution_revocation_.load(std::memory_order_acquire) !=
-          handled_execution_revocation_request_ ||
-      navigation_objective_.load(std::memory_order_acquire) != cycle.objective ||
-      !navigation_.valid || !offboard_session_admission_.valid() ||
-      offboard_session_admission_.latest_source_stamp_ns <= 0 ||
-      offboard_session_receive_stamp_ns_ <= 0 ||
-      publication_now_ns < offboard_session_admission_.latest_source_stamp_ns ||
-      publication_now_ns < offboard_session_receive_stamp_ns_ ||
-      static_cast<double>(publication_now_ns -
-                          offboard_session_admission_.latest_source_stamp_ns) *
-              1.0e-6 >
-          maximum_control_feedback_age_ms_ ||
-      static_cast<double>(publication_now_ns - offboard_session_receive_stamp_ns_) *
-              1.0e-6 >
-          maximum_control_feedback_age_ms_ ||
-      offboard_session_admission_.current_producer_instance_id !=
-          owner.target_offboard_instance_id ||
-      offboard_session_admission_.current_producer_instance_id !=
-          cycle.offboard_session.current_producer_instance_id ||
-      offboard_session_admission_.latest_source_stamp_ns !=
-          cycle.offboard_session.latest_source_stamp_ns ||
-      offboard_session_receive_stamp_ns_ != cycle.offboard_session_receive_stamp_ns ||
-      navigation_.revision != cycle.execution_input->poseRevision() ||
-      navigation_.source_timestamp_us !=
-          cycle.execution_input->poseSourceTimestampUs() ||
-      navigation_.receive_stamp_ns != cycle.execution_input->poseReceiveStampNs()) {
-    report_commit_failure("cycle_input_not_current");
+  const char* const cycle_currentness_failure = [&]() -> const char* {
+    if (requested_execution_revocation_.load(std::memory_order_acquire) !=
+        handled_execution_revocation_request_) {
+      return "revocation_epoch_changed";
+    }
+    if (navigation_objective_.load(std::memory_order_acquire) != cycle.objective) {
+      return "objective_changed";
+    }
+    if (!navigation_.valid) {
+      return "navigation_invalid";
+    }
+    if (!offboard_session_admission_.valid() ||
+        offboard_session_admission_.latest_source_stamp_ns <= 0 ||
+        offboard_session_receive_stamp_ns_ <= 0) {
+      return "offboard_session_invalid";
+    }
+    if (publication_now_ns < offboard_session_admission_.latest_source_stamp_ns ||
+        publication_now_ns < offboard_session_receive_stamp_ns_) {
+      return "offboard_session_from_future";
+    }
+    if (static_cast<double>(publication_now_ns -
+                            offboard_session_admission_.latest_source_stamp_ns) *
+                1.0e-6 >
+            maximum_control_feedback_age_ms_ ||
+        static_cast<double>(publication_now_ns - offboard_session_receive_stamp_ns_) *
+                1.0e-6 >
+            maximum_control_feedback_age_ms_) {
+      return "offboard_session_stale";
+    }
+    if (offboard_session_admission_.current_producer_instance_id !=
+            owner.target_offboard_instance_id ||
+        offboard_session_admission_.current_producer_instance_id !=
+            cycle.offboard_session.current_producer_instance_id) {
+      return "offboard_producer_changed";
+    }
+    if (offboard_session_admission_.latest_source_stamp_ns !=
+        cycle.offboard_session.latest_source_stamp_ns) {
+      return "offboard_source_advanced";
+    }
+    if (offboard_session_receive_stamp_ns_ != cycle.offboard_session_receive_stamp_ns) {
+      return "offboard_receive_advanced";
+    }
+    if (navigation_.revision != cycle.execution_input->poseRevision()) {
+      return "navigation_revision_advanced";
+    }
+    if (navigation_.source_timestamp_us !=
+        cycle.execution_input->poseSourceTimestampUs()) {
+      return "navigation_source_advanced";
+    }
+    if (navigation_.receive_stamp_ns != cycle.execution_input->poseReceiveStampNs()) {
+      return "navigation_receive_advanced";
+    }
+    return nullptr;
+  }();
+  if (cycle_currentness_failure != nullptr) {
+    report_commit_failure(cycle_currentness_failure);
     return false;
   }
   const ExecutionRouteSnapshot3D* publication_snapshot{nullptr};
