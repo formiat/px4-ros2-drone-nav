@@ -11,6 +11,8 @@
 #include <unordered_set>
 #include <utility>
 
+#include "observed_esdf_3d_regions.hpp"
+
 namespace drone_city_nav {
 namespace {
 
@@ -461,12 +463,6 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
   return result;
 }
 
-struct ChangedCellRegion3D {
-  GridIndex3D minimum{};
-  GridIndex3D maximum_exclusive{};
-  std::size_t count{0U};
-};
-
 [[nodiscard]] GridIndex3D chunkCell(const OccupancyChunkIndex3D chunk_index,
                                     const std::size_t bit_index) noexcept {
   return GridIndex3D{
@@ -502,6 +498,7 @@ void includeChangedCell(ChangedCellRegion3D& region, const GridIndex3D cell) {
     region.maximum_exclusive.z = std::max(region.maximum_exclusive.z, cell.z + 1);
   }
   ++region.count;
+  region.cells.push_back(cell);
 }
 
 [[nodiscard]] ChangedCellRegion3D
@@ -935,34 +932,37 @@ ObservedEsdf3D updateObservedEsdf3D(
     throw std::overflow_error{"incremental observed ESDF radius exceeds int"};
   }
   const int radius_cells = static_cast<int>(radius_cells_value);
-  const SourceCellRegion changed_region{
-      .minimum_x = changed.minimum.x,
-      .minimum_y = changed.minimum.y,
-      .minimum_z = changed.minimum.z,
-      .maximum_x_exclusive = changed.maximum_exclusive.x,
-      .maximum_y_exclusive = changed.maximum_exclusive.y,
-      .maximum_z_exclusive = changed.maximum_exclusive.z,
-  };
-  const SourceCellRegion target_region =
-      expandedRegion(changed_region, radius_cells, local_bounds);
-  const SourceCellRegion patch_region =
-      expandedRegion(target_region, radius_cells, local_bounds);
+  const std::vector<ChangedCellRegion3D> changed_regions =
+      splitChangedCellRegions3D(changed, local_bounds);
   const std::size_t total_voxels = voxelCount(local_bounds);
-  const std::size_t target_voxels = regionVoxelCount(target_region);
-  const std::size_t patch_voxels = regionVoxelCount(patch_region);
-  const double rebuild_ratio =
-      static_cast<double>(patch_voxels) / static_cast<double>(total_voxels);
-  if (target_voxels >= total_voxels || rebuild_ratio > maximum_rebuild_ratio) {
-    ObservedEsdf3D result = buildFullObservedEsdf3D(
-        classified, maximum_distance_m, worker_pool, dirty_chunks.size(), true);
-    result.stats.changed_voxels = changed.count;
-    return result;
+  std::vector<std::pair<SourceCellRegion, SourceCellRegion>> regions;
+  regions.reserve(changed_regions.size());
+  for (const ChangedCellRegion3D& changed_region : changed_regions) {
+    const SourceCellRegion source_region{
+        .minimum_x = changed_region.minimum.x,
+        .minimum_y = changed_region.minimum.y,
+        .minimum_z = changed_region.minimum.z,
+        .maximum_x_exclusive = changed_region.maximum_exclusive.x,
+        .maximum_y_exclusive = changed_region.maximum_exclusive.y,
+        .maximum_z_exclusive = changed_region.maximum_exclusive.z,
+    };
+    const SourceCellRegion target_region =
+        expandedRegion(source_region, radius_cells, local_bounds);
+    const SourceCellRegion patch_region =
+        expandedRegion(target_region, radius_cells, local_bounds);
+    if (regionVoxelCount(target_region) >= total_voxels ||
+        static_cast<double>(regionVoxelCount(patch_region)) /
+                static_cast<double>(total_voxels) >
+            maximum_rebuild_ratio) {
+      ObservedEsdf3D result = buildFullObservedEsdf3D(
+          classified, maximum_distance_m, worker_pool, dirty_chunks.size(), true);
+      result.stats.changed_voxels = changed.count;
+      return result;
+    }
+    regions.emplace_back(target_region, patch_region);
   }
 
   const OccupancyGrid3D occupied = classified.occupancy->occupiedSnapshot();
-  const DistanceField3D patch =
-      DistanceField3D::buildLocal(occupied, boundsForRegion(local_bounds, patch_region),
-                                  maximum_distance_m, worker_pool);
   ObservedEsdf3D result{
       .grid = esdfGrid(local_bounds),
       .distances_m = std::vector<float>(previous->distances_m.begin(),
@@ -972,26 +972,40 @@ ObservedEsdf3D updateObservedEsdf3D(
       .maximum_distance_m = maximum_distance_m,
       .stats = classified.stats,
   };
-  for (int z = target_region.minimum_z; z < target_region.maximum_z_exclusive; ++z) {
-    for (int y = target_region.minimum_y; y < target_region.maximum_y_exclusive; ++y) {
-      for (int x = target_region.minimum_x; x < target_region.maximum_x_exclusive;
-           ++x) {
-        const GridIndex3D local_cell{x, y, z};
-        const std::size_t output_index = localLinearIndex(local_bounds, local_cell);
-        if (classified.occupancy->state(local_cell) == ObservedVoxelState::kUnknown) {
-          result.distances_m[output_index] = mppi::kUnknownEsdfDistanceM;
-          continue;
+  std::size_t recomputed_voxels{0U};
+  double patch_build_ms{0.0};
+  for (const auto& [target_region, patch_region] : regions) {
+    const auto patch_started = std::chrono::steady_clock::now();
+    const DistanceField3D patch = DistanceField3D::buildLocal(
+        occupied, boundsForRegion(local_bounds, patch_region), maximum_distance_m,
+        worker_pool);
+    patch_build_ms += std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - patch_started)
+                          .count();
+    recomputed_voxels += regionVoxelCount(target_region);
+    for (int z = target_region.minimum_z; z < target_region.maximum_z_exclusive; ++z) {
+      for (int y = target_region.minimum_y; y < target_region.maximum_y_exclusive;
+           ++y) {
+        for (int x = target_region.minimum_x; x < target_region.maximum_x_exclusive;
+             ++x) {
+          const GridIndex3D local_cell{x, y, z};
+          const std::size_t output_index = localLinearIndex(local_bounds, local_cell);
+          if (classified.occupancy->state(local_cell) == ObservedVoxelState::kUnknown) {
+            result.distances_m[output_index] = mppi::kUnknownEsdfDistanceM;
+            continue;
+          }
+          result.distances_m[output_index] = patch.distanceAt(
+              GridIndex3D{x - patch_region.minimum_x, y - patch_region.minimum_y,
+                          z - patch_region.minimum_z});
         }
-        result.distances_m[output_index] = patch.distanceAt(
-            GridIndex3D{x - patch_region.minimum_x, y - patch_region.minimum_y,
-                        z - patch_region.minimum_z});
       }
     }
   }
-  result.stats.distance_field = patch.stats();
+  result.stats.distance_field.duration_ms = patch_build_ms;
   result.stats.changed_voxels = changed.count;
-  result.stats.recomputed_voxels = target_voxels;
-  result.stats.reused_voxels = total_voxels - target_voxels;
+  result.stats.recomputed_voxels = recomputed_voxels;
+  result.stats.reused_voxels =
+      total_voxels > recomputed_voxels ? total_voxels - recomputed_voxels : 0U;
   result.stats.dirty_chunks = dirty_chunks.size();
   result.stats.mode = ObservedEsdf3DBuildMode::kIncremental;
   return result;

@@ -355,6 +355,32 @@ TEST(ObservedEsdf3DTest, IncrementalClassificationChangeMatchesFullRebuild) {
 }
 
 TEST(ObservedEsdf3DTest,
+     DistributedChangesUseIndependentIncrementalRegionsInsteadOfGlobalAabb) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  fillKnownFree(occupancy);
+  const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, bounds, 3.0);
+  const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
+  const GridIndex3D first{5, 5, 5};
+  const GridIndex3D second{40, 25, 18};
+  const OccupancyChunkIndex3D dirty_chunks[] = {
+      ObservedOccupancyGrid3D::chunkIndex(first),
+      ObservedOccupancyGrid3D::chunkIndex(second),
+  };
+  static_cast<void>(occupancy.setState(first, ObservedVoxelState::kOccupied));
+  static_cast<void>(occupancy.setState(second, ObservedVoxelState::kOccupied));
+
+  const ObservedEsdf3D incremental = updateObservedEsdf3D(
+      occupancy, bounds, 3.0, &previous, dirty_chunks, false, 0.75);
+  const ObservedEsdf3D full = buildObservedEsdf3D(occupancy, bounds, 3.0);
+
+  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
+  EXPECT_EQ(incremental.distances_m, full.distances_m);
+  EXPECT_LT(incremental.stats.recomputed_voxels, incremental.distances_m.size());
+  EXPECT_EQ(incremental.stats.changed_voxels, 2U);
+}
+
+TEST(ObservedEsdf3DTest,
      EvidenceOnlyClassificationChangeIsIncrementalWithoutDirtyChunks) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
   ObservedOccupancyGrid3D occupancy{bounds};

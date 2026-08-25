@@ -34,7 +34,7 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         ):
             self.assertIn(token, header)
         target_halo = implementation.index(
-            "expandedRegion(changed_region, radius_cells"
+            "expandedRegion(source_region, radius_cells"
         )
         source_halo = implementation.index(
             "expandedRegion(target_region, radius_cells", target_halo

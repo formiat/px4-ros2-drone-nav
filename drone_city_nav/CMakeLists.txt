@@ -294,7 +294,8 @@ add_library(
   src/obstacle_memory.cpp
   src/obstacle_memory_3d.cpp
   src/obstacle_memory_transport_policy_3d.cpp
-  src/observed_esdf_3d.cpp
+    src/observed_esdf_3d.cpp
+    src/observed_esdf_3d_regions.cpp
   src/observed_esdf_3d_fingerprint.cpp
   src/observed_esdf_3d_metadata.cpp
   src/observed_occupancy_grid_3d.cpp
