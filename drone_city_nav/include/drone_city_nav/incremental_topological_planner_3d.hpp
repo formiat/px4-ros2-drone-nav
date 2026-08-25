@@ -7,6 +7,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -21,6 +22,7 @@ enum class IncrementalTopologicalPlanStatus3D : std::uint8_t {
   kMissionContinuationRoute,
   kFrontierRoute,
   kBacktrackRoute,
+  kDeadlineExceeded,
   kNoRoute,
 };
 
@@ -135,14 +137,18 @@ public:
 
   [[nodiscard]] IncrementalTopologicalPlan3D
   plan(const IncrementalTopologyGraph3DSnapshot& graph, const Point3& start,
-       const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const;
+       const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
+       std::optional<std::chrono::steady_clock::time_point> deadline =
+           std::nullopt) const;
 
   [[nodiscard]] IncrementalTopologicalPlan3D
   planObserved(const IncrementalTopologyGraph3DSnapshot& graph,
                const ObservedOccupancyGrid3D& occupancy,
                const SensorObservabilityConfig& observability, const Point3& start,
                const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
-               std::optional<ObservationFrontier> active_frontier = std::nullopt) const;
+               std::optional<ObservationFrontier> active_frontier = std::nullopt,
+               std::optional<std::chrono::steady_clock::time_point> deadline =
+                   std::nullopt) const;
 
   [[nodiscard]] const IncrementalTopologicalPlanner3DConfig& config() const noexcept;
 
@@ -152,7 +158,8 @@ private:
            const ObservedOccupancyGrid3D* occupancy,
            const SensorObservabilityConfig* observability, const Point3& start,
            const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
-           std::optional<ObservationFrontier> active_frontier) const;
+           std::optional<ObservationFrontier> active_frontier,
+           std::optional<std::chrono::steady_clock::time_point> deadline) const;
 
   IncrementalTopologicalPlanner3DConfig config_{};
 };

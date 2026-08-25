@@ -48,8 +48,10 @@ IncrementalTopologicalPlanner3D::IncrementalTopologicalPlanner3D(
 
 IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::plan(
     const IncrementalTopologyGraph3DSnapshot& graph, const Point3& start,
-    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory) const {
-  return planImpl(graph, nullptr, nullptr, start, mission_goal, memory, std::nullopt);
+    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) const {
+  return planImpl(graph, nullptr, nullptr, start, mission_goal, memory, std::nullopt,
+                  deadline);
 }
 
 IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planObserved(
@@ -57,9 +59,10 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planObserved(
     const ObservedOccupancyGrid3D& occupancy,
     const SensorObservabilityConfig& observability, const Point3& start,
     const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
-    const std::optional<ObservationFrontier> active_frontier) const {
+    const std::optional<ObservationFrontier> active_frontier,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) const {
   return planImpl(graph, &occupancy, &observability, start, mission_goal, memory,
-                  active_frontier);
+                  active_frontier, deadline);
 }
 
 const IncrementalTopologicalPlanner3DConfig&
@@ -88,6 +91,8 @@ const char* incrementalTopologicalPlanStatus3DName(
       return "frontier_route";
     case IncrementalTopologicalPlanStatus3D::kBacktrackRoute:
       return "backtrack_route";
+    case IncrementalTopologicalPlanStatus3D::kDeadlineExceeded:
+      return "deadline_exceeded";
     case IncrementalTopologicalPlanStatus3D::kNoRoute:
       return "no_route";
   }

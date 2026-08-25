@@ -5,6 +5,7 @@
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/strategic_route_manager_3d.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -65,11 +66,13 @@ public:
 
   [[nodiscard]] IncrementalTopologicalPlan3D
   plan(const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-       const Point3& start, const Point3& mission_goal);
-  [[nodiscard]] IncrementalTopologicalPlan3D
-  planObserved(const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-               const ObservedOccupancyGrid3D& occupancy, const Point3& start,
-               const Point3& mission_goal);
+       const Point3& start, const Point3& mission_goal,
+       std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
+  [[nodiscard]] IncrementalTopologicalPlan3D planObserved(
+      const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
+      const ObservedOccupancyGrid3D& occupancy, const Point3& start,
+      const Point3& mission_goal,
+      std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
   [[nodiscard]] std::optional<IncrementalTopologicalLatticeDirective3D>
   makeLatticeDirective(const IncrementalTopologicalPlan3D& plan, const Point3& position,
                        const IncrementalTopologicalLatticeAdapter3DConfig& config = {});

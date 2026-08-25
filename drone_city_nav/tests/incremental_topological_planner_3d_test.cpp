@@ -136,6 +136,24 @@ TEST(IncrementalTopologicalPlanner3DTest, KnownMissionRouteHasPriority) {
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,
+     ExpiredDeadlineCannotProduceAnExecutableTopologyRoute) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 24, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 2, 45, 9, 11, 5, 7);
+  const IncrementalTopologyGraph3DSnapshot graph = buildGraph(occupancy);
+  IncrementalTopologicalPlanner3D planner;
+  TopologicalExplorationMemory3D memory;
+
+  const IncrementalTopologicalPlan3D plan =
+      planner.plan(graph, {3.5, 10.5, 6.5}, {44.5, 10.5, 6.5}, memory,
+                   std::chrono::steady_clock::now() - std::chrono::milliseconds{1});
+
+  EXPECT_EQ(plan.status, IncrementalTopologicalPlanStatus3D::kDeadlineExceeded);
+  EXPECT_FALSE(plan.executableTargetSelected());
+  EXPECT_TRUE(plan.guidance_points.empty());
+}
+
+TEST(IncrementalTopologicalPlanner3DTest,
      KnownConnectivityContinuesTowardAnUnanchoredMissionGoal) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 64, 40, 16}};
   fillOccupied(occupancy);

@@ -250,10 +250,14 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
           .count();
   const bool topology_budget_available =
       direct_selection_ms <= topological_strategy_budget_ms_;
+  const auto topology_deadline =
+      search_started +
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+          std::chrono::duration<double, std::milli>{topological_strategy_budget_ms_});
   if (direct_mission_candidate &&
       (!direct_candidate_executable || topology_budget_available)) {
-    ProductionIncrementalTopologySearch3D topology =
-        selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
+    ProductionIncrementalTopologySearch3D topology = selectIncrementalTopologyRoute3D(
+        world, search_start, mission_goal, topology_deadline);
     RCLCPP_INFO(get_logger(),
                 "INCREMENTAL_TOPOLOGY3D_SEARCH graph_revision=%" PRIu64
                 " strategic_plan_id=%" PRIu64

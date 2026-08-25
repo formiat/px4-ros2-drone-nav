@@ -379,7 +379,7 @@ void ProductionMppiNode::initializeStaticTopology3D() {
 ProductionIncrementalTopologySearch3D
 ProductionMppiNode::selectIncrementalTopologyRoute3D(
     const ProductionMppiPreparedEsdf& world, const Point3& position,
-    const Point3& mission_goal) {
+    const Point3& mission_goal, const std::chrono::steady_clock::time_point deadline) {
   ProductionIncrementalTopologySearch3D result;
   if (!topological_navigation_3d_ || !world.topological_graph) {
     return result;
@@ -389,12 +389,13 @@ ProductionMppiNode::selectIncrementalTopologyRoute3D(
   result.graph_edge_count = world.topological_graph->edges().size();
   result.observation = topological_navigation_3d_->observePosition(
       world.topological_graph, position, world.observed_occupancy.get());
-  result.plan = world.observed_occupancy
-                    ? topological_navigation_3d_->planObserved(
-                          world.topological_graph, *world.observed_occupancy, position,
-                          mission_goal)
-                    : topological_navigation_3d_->plan(world.topological_graph,
-                                                       position, mission_goal);
+  result.plan =
+      world.observed_occupancy
+          ? topological_navigation_3d_->planObserved(world.topological_graph,
+                                                     *world.observed_occupancy,
+                                                     position, mission_goal, deadline)
+          : topological_navigation_3d_->plan(world.topological_graph, position,
+                                             mission_goal, deadline);
   result.directive = topological_navigation_3d_->makeLatticeDirective(
       result.plan, position, topological_lattice_adapter_3d_config_);
   if (!topological_backtracking_enabled_ &&

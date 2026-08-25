@@ -557,7 +557,8 @@ private:
   void initializeStaticTopology3D();
   [[nodiscard]] ProductionIncrementalTopologySearch3D
   selectIncrementalTopologyRoute3D(const ProductionMppiPreparedEsdf& world,
-                                   const Point3& position, const Point3& mission_goal);
+                                   const Point3& position, const Point3& mission_goal,
+                                   std::chrono::steady_clock::time_point deadline);
   void commitIncrementalTopologyRoute3D(ProductionIncrementalTopologySearch3D& search);
   void rejectIncrementalTopologyRoute3D(
       const ProductionIncrementalTopologySearch3D& search,

@@ -135,7 +135,8 @@ IncrementalTopologicalNavigation3D::makeLatticeDirective(
 
 IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
     const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
-    const Point3& start, const Point3& mission_goal) {
+    const Point3& start, const Point3& mission_goal,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) {
   if (!graph) {
     return {};
   }
@@ -145,7 +146,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
     memory_snapshot = memory_;
   }
   IncrementalTopologicalPlan3D result =
-      planner_.plan(*graph, start, mission_goal, memory_snapshot);
+      planner_.plan(*graph, start, mission_goal, memory_snapshot, deadline);
   {
     const std::scoped_lock lock{memory_mutex_};
     result.strategic_plan_id = strategic_route_manager_.previewPlanId(result);
@@ -156,7 +157,8 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
 IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
     const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
     const ObservedOccupancyGrid3D& occupancy, const Point3& start,
-    const Point3& mission_goal) {
+    const Point3& mission_goal,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) {
   if (!graph || !sameBounds(graph->bounds(), occupancy.bounds())) {
     return {};
   }
@@ -171,7 +173,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
   }
   IncrementalTopologicalPlan3D result =
       planner_.planObserved(*graph, occupancy, observability_, start, mission_goal,
-                            memory_snapshot, std::nullopt);
+                            memory_snapshot, std::nullopt, deadline);
   {
     const std::scoped_lock lock{memory_mutex_};
     result.strategic_plan_id = strategic_route_manager_.previewPlanId(result);
