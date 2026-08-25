@@ -92,6 +92,13 @@ def validate_execution_chain(ros_log: str, errors: list[str]) -> None:
         print(f"OK: exact planner horizon is accepted and applied ({len(chain)})")
     else:
         errors.append("FAIL: exact planner horizon is accepted and applied")
+    require(
+        "measured execution route progress is positive",
+        ros_log,
+        r"PRODUCTION_MPPI_DIAGNOSTICS .*liveness_route_progress_used=true .*"
+        r"liveness_actual_route_progress_m=(?:0\.0*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)",
+        errors,
+    )
 
 
 def validate_mapping_pipeline(
