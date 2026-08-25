@@ -21,9 +21,7 @@ sameLidarIdentity(const VersionedLatestLidarEvidence3D& expected,
 
 [[nodiscard]] bool sameRawLineage(const RawMapVersion& expected,
                                   const RawMapVersion& current) noexcept {
-  return expected.producer_instance_id == current.producer_instance_id &&
-         expected.base_snapshot_revision == current.base_snapshot_revision &&
-         current.revision > expected.revision;
+  return expected.sameLineage(current) && current.revision > expected.revision;
 }
 
 [[nodiscard]] bool

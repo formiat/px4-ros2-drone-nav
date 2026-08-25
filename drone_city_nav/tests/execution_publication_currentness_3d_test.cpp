@@ -158,6 +158,13 @@ TEST(ExecutionPublicationCurrentness3DTest,
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
             ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired);
 
+  RawMapVersion rebased_successor_version = rawVersion(5U);
+  rebased_successor_version.base_snapshot_revision = 5U;
+  check.current_raw_world = rawWorld(observation, rebased_successor_version);
+  ASSERT_NE(check.current_raw_world, nullptr);
+  EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
+            ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired);
+
   RawMapVersion changed_base_version = rawVersion();
   ++changed_base_version.base_snapshot_revision;
   check.current_raw_world = rawWorld(observation, changed_base_version);
