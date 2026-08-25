@@ -26,15 +26,18 @@ void ProductionMppiNode::queueLatestObservedWorldForPose(
         prepared_esdf_->grid.depth <= 1 || !prepared_esdf_->grid.outside_is_unknown) {
       local_world_required = true;
     } else {
-      const GridBounds3D local_bounds{
-          .origin_x = prepared_esdf_->grid.origin_x_m,
-          .origin_y = prepared_esdf_->grid.origin_y_m,
-          .origin_z = prepared_esdf_->grid.origin_z_m,
-          .resolution_m = prepared_esdf_->grid.resolution_m,
-          .width_cells = prepared_esdf_->grid.width,
-          .height_cells = prepared_esdf_->grid.height,
-          .depth_cells = prepared_esdf_->grid.depth,
-      };
+      const GridBounds3D local_bounds =
+          prepared_esdf_->observed_esdf_resource.local_occupancy
+              ? prepared_esdf_->observed_esdf_resource.local_occupancy->bounds()
+              : GridBounds3D{
+                    .origin_x = prepared_esdf_->grid.origin_x_m,
+                    .origin_y = prepared_esdf_->grid.origin_y_m,
+                    .origin_z = prepared_esdf_->grid.origin_z_m,
+                    .resolution_m = prepared_esdf_->grid.resolution_m,
+                    .width_cells = prepared_esdf_->grid.width,
+                    .height_cells = prepared_esdf_->grid.height,
+                    .depth_cells = prepared_esdf_->grid.depth,
+                };
       const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
       local_world_required =
           localObservedEsdfNeedsRecenter(local_bounds, raw_world->occupancy->bounds(),

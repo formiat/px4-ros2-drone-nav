@@ -35,8 +35,16 @@ bool incrementalTopologyGraph3DConfigIsValid(
          config.coarse_sample_stride_cells <= config.block_size_cells &&
          config.coarse_sample_stride_cells % config.refined_sample_stride_cells == 0 &&
          config.maximum_observed_blocks_per_update > 0U &&
+         config.maximum_backlog_blocks_per_update > 0U &&
+         config.backlog_boost_threshold_blocks > 0U &&
          config.minimum_oldest_blocks_per_update <=
              config.maximum_observed_blocks_per_update &&
+         std::isfinite(config.local_priority_radius_m) &&
+         config.local_priority_radius_m > 0.0 &&
+         std::isfinite(config.forward_corridor_radius_m) &&
+         config.forward_corridor_radius_m > 0.0 &&
+         std::isfinite(config.forward_corridor_lookahead_m) &&
+         config.forward_corridor_lookahead_m > 0.0 &&
          std::isfinite(config.footprint.radius_m) &&
          std::isfinite(config.footprint.lower_extent_m) &&
          std::isfinite(config.footprint.upper_extent_m) &&

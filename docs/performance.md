@@ -66,8 +66,11 @@ record `active_rollouts` so timing changes can be compared by actual GPU work.
 ## ESDF
 
 Full CPU ESDF construction is substantially more expensive than one resident
-MPPI tick. It therefore runs asynchronously by obstacle revision. MPPI uses the
-latest complete immutable field and logs ESDF age and raw-to-ready latency.
+MPPI tick. No-static 3D therefore classifies immutable local observed grids and
+uses dirty-lineage-verified incremental EDT patches, with a bounded full-rebuild
+fallback. Unchanged fields reuse both host distances and the resident GPU
+texture while rebasing the exact raw generation. Diagnostics report build mode,
+fallback, distance-field work, and recomputed/reused voxel totals.
 
 High ESDF age is a world-update problem even when MPPI GPU timing is excellent.
 

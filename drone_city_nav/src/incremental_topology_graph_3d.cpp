@@ -83,17 +83,19 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
                                                 discovery_started)
           .count();
   const std::size_t discovered_dirty_blocks = dirty_blocks.size();
-  std::vector<IncrementalTopologyBlockIndex3D> rebuilt_blocks;
+  incremental_topology_detail::ObservedBlockSelection3D selection;
   if (reset_required) {
     impl_->observed_blocks.clearPending();
     impl_->observed_blocks.enqueue(dirty_blocks);
-    rebuilt_blocks = impl_->observed_blocks.takePending(impl_->bounds, priority, false);
+    selection = impl_->observed_blocks.takePending(impl_->bounds, priority, false);
   } else if (continue_pending_revision) {
-    rebuilt_blocks = impl_->observed_blocks.takePending(impl_->bounds, priority, true);
+    selection = impl_->observed_blocks.takePending(impl_->bounds, priority, true);
   } else {
     impl_->observed_blocks.enqueue(dirty_blocks);
-    rebuilt_blocks = impl_->observed_blocks.takePending(impl_->bounds, priority, true);
+    selection = impl_->observed_blocks.takePending(impl_->bounds, priority, true);
   }
+  std::vector<IncrementalTopologyBlockIndex3D> rebuilt_blocks =
+      std::move(selection.blocks);
   const auto rebuild_started = std::chrono::steady_clock::now();
   const std::vector<IncrementalTopologyBlockIndex3D> rebuilt_block_copy =
       rebuilt_blocks;
@@ -113,6 +115,11 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
                                 .count();
   result.discovered_dirty_blocks = discovered_dirty_blocks;
   result.pending_blocks = impl_->observed_blocks.pendingCount();
+  result.scheduled_block_budget = selection.budget;
+  result.local_priority_blocks = selection.local_priority_blocks;
+  result.forward_corridor_blocks = selection.forward_corridor_blocks;
+  result.oldest_preserved_blocks = selection.oldest_preserved_blocks;
+  result.backlog_boosted = selection.backlog_boosted;
   if (reset_required) {
     impl_->observed_blocks.replaceObservedSnapshot(occupancy.chunks());
   }

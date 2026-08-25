@@ -133,6 +133,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("no_static_3d_esdf_horizontal_recenter_margin_m", 12.0);
   no_static_3d_esdf_window_.vertical_recenter_margin_m =
       declare_parameter<double>("no_static_3d_esdf_vertical_recenter_margin_m", 9.0);
+  no_static_3d_esdf_incremental_maximum_rebuild_ratio_ = declare_parameter<double>(
+      "no_static_3d_esdf_incremental_maximum_rebuild_ratio", 0.65);
   constrained_route_speed_limit_mps_ = static_cast<float>(
       declare_parameter<double>("constrained_route_speed_limit_mps", 10.0));
   route_constraint_diagnostics_distance_m_ =
@@ -802,6 +804,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       no_static_esdf_recenter_margin_m_ >= no_static_esdf_half_extent_m_ ||
       !(no_static_3d_esdf_update_rate_hz_ > 0.0) ||
       !localObservedEsdfWindow3DIsValid(no_static_3d_esdf_window_) ||
+      !(no_static_3d_esdf_incremental_maximum_rebuild_ratio_ > 0.0) ||
+      no_static_3d_esdf_incremental_maximum_rebuild_ratio_ > 1.0 ||
       no_static_cycle_config_.minimum_generation_changes < 2U) {
     throw std::invalid_argument{"invalid production MPPI configuration"};
   }
@@ -957,7 +961,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
               "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
               "planner_tick_phase_ms=%.1f no_static_world=%s "
               "no_static_esdf=(2d=%.1fHz/%.1f/%.1fm,"
-              "3d=%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm)",
+              "3d=%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm/incremental_ratio=%.2f)",
               mppi_config_.rollouts, rollout_budget_config_.open_static_rollouts,
               rollout_budget_config_.direct_tracking_rollouts,
               rollout_budget_config_.minimum_reduced_clearance_m, mppi_config_.steps,
@@ -989,7 +993,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
               no_static_3d_esdf_window_.horizontal_half_extent_m,
               no_static_3d_esdf_window_.vertical_half_extent_m,
               no_static_3d_esdf_window_.horizontal_recenter_margin_m,
-              no_static_3d_esdf_window_.vertical_recenter_margin_m);
+              no_static_3d_esdf_window_.vertical_recenter_margin_m,
+              no_static_3d_esdf_incremental_maximum_rebuild_ratio_);
 }
 
 } // namespace drone_city_nav

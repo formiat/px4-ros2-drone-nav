@@ -16,6 +16,15 @@ struct ObservedBlockChanges3D {
   std::vector<IncrementalTopologyBlockIndex3D> observation_evidence;
 };
 
+struct ObservedBlockSelection3D {
+  std::vector<IncrementalTopologyBlockIndex3D> blocks;
+  std::size_t budget{0U};
+  std::size_t local_priority_blocks{0U};
+  std::size_t forward_corridor_blocks{0U};
+  std::size_t oldest_preserved_blocks{0U};
+  bool backlog_boosted{false};
+};
+
 class ObservedBlockLifecycle3D {
 public:
   explicit ObservedBlockLifecycle3D(const IncrementalTopologyGraph3DConfig& config);
@@ -32,7 +41,7 @@ public:
 
   void clearPending();
   void enqueue(std::span<const IncrementalTopologyBlockIndex3D> dirty_blocks);
-  [[nodiscard]] std::vector<IncrementalTopologyBlockIndex3D>
+  [[nodiscard]] ObservedBlockSelection3D
   takePending(const GridBounds3D& bounds,
               const std::optional<IncrementalTopologyBuildPriority3D>& priority,
               bool preserve_oldest_work);

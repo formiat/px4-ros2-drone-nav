@@ -229,13 +229,19 @@ production_mppi_node:
     no_static_3d_esdf_vertical_half_extent_m: 15.0
     no_static_3d_esdf_horizontal_recenter_margin_m: 12.0
     no_static_3d_esdf_vertical_recenter_margin_m: 9.0
+    no_static_3d_esdf_incremental_maximum_rebuild_ratio: 0.65
     topological_graph_3d_coarse_sample_stride_cells: 2
     topological_graph_3d_refined_sample_stride_cells: 1
     topological_graph_3d_block_size_cells: 16
-    # Region graph updates reserve capacity for both mission-local and oldest
-    # pending blocks. Frontier extraction is performed once at planning time.
+    # Region graph updates preserve local safety, then the forward mission corridor,
+    # plus oldest pending work. Large backlogs receive a bounded catch-up budget.
     topological_graph_3d_maximum_observed_blocks_per_update: 16
+    topological_graph_3d_maximum_backlog_blocks_per_update: 64
+    topological_graph_3d_backlog_boost_threshold_blocks: 256
     topological_graph_3d_minimum_oldest_blocks_per_update: 4
+    topological_graph_3d_local_priority_radius_m: 12.0
+    topological_graph_3d_forward_corridor_radius_m: 8.0
+    topological_graph_3d_forward_corridor_lookahead_m: 60.0
     topological_planner_3d_start_anchor_distance_m: 20.0
     # Return routes from confirmed topological dead ends are opt-in. Normal
     # Manhattan validation keeps goal-directed navigation only.

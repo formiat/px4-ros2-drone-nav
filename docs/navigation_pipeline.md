@@ -37,9 +37,15 @@ asynchronously. Static mode extracts a local dense ESDF3D from the precomputed
 chunked cache associated with canonical Occupancy3D. Fingerprint or format
 mismatch falls back to the exact runtime EDT. No-static 2D mode builds a local
 ESDF2D. No-static 3D mode reconstructs the revisioned observed occupancy and
-builds a recentered local ESDF3D that retains explicit unknown-space state.
-MPPI continues using the last complete immutable field until a newer revision
-is ready.
+builds a recentered local ESDF3D that retains explicit unknown-space state. A
+dirty observed update classifies a new immutable local grid, verifies raw
+changes against the dirty-chunk lineage, and recomputes only the bounded EDT
+region affected by raw or execution-evidence classification changes. A second
+source halo makes obstacle removal exact. Broad, reset, incompatible, or
+incomplete-lineage work falls back to a full local rebuild. An unchanged field
+is rebound to the new raw revision without another GPU upload. MPPI continues
+using the last complete immutable field until a newer coherent generation is
+ready.
 
 Coherent-world publication and route activation serialize through the same
 resident-state transaction. A completed asynchronous ESDF build replaces only
@@ -53,6 +59,9 @@ pending state is processed when the rate deadline arrives even if no later
 sensor message appears. A pose-driven recenter request is urgent and may build a
 new local generation before that deadline. Planning starts only when the
 captured CPU generation names the ESDF revision active in the GPU engine.
+Observed generations additionally carry a coverage certificate naming their
+exact raw source and incremental parent, local/raw fingerprints, maximum
+distance, and recomputed versus reused voxel counts.
 
 Distance classifications are:
 
@@ -116,6 +125,13 @@ segment count, validation revision, last complete geometry revision, and
 geometry lineage. Route steps preserve those records and the plan reports their
 minimum revisions and aggregate unknown exposure. Unknown remains traversable
 and receives no topology cost or execution penalty.
+
+Dirty topology blocks are scheduled in three tiers: the vehicle's local safety
+envelope, the bounded forward mission corridor, and the remaining backlog. A
+reserved oldest-work share prevents recurrent local updates from starving older
+regions. When the pending queue crosses its configured threshold, one update may
+use a larger bounded catch-up budget; coverage revisions still expose every
+block that remains pending.
 
 An observation-frontier connector follows the sampled component's stored
 parent-cell path from its supporting viewpoint back to the representative. It

@@ -1,8 +1,42 @@
 #include "production_mppi_route_world.hpp"
 
+#include <cmath>
+
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] bool observedEsdfCoverageMatches(const ProductionMppiPreparedEsdf& world,
+                                               const RawMapVersion& raw) noexcept {
+  const ObservedEsdfResource3D& resource = world.observed_esdf_resource;
+  if (!resource.local_occupancy || !resource.coverage.coherent()) {
+    return false;
+  }
+  const ObservedEsdfCoverage3D& coverage = resource.coverage;
+  const GridBounds3D& bounds = resource.local_occupancy->bounds();
+  const std::size_t voxel_count = static_cast<std::size_t>(world.grid.width) *
+                                  static_cast<std::size_t>(world.grid.height) *
+                                  static_cast<std::size_t>(world.grid.depth);
+  constexpr double kTolerance{1.0e-5};
+  return coverage.source_raw_version.producer_instance_id == raw.producer_instance_id &&
+         coverage.source_raw_version.base_snapshot_revision ==
+             raw.base_snapshot_revision &&
+         coverage.source_raw_version.revision == raw.revision &&
+         coverage.raw_local_fingerprint == world.source_occupied_fingerprint &&
+         coverage.esdf_fingerprint == world.revision &&
+         coverage.total_voxels == world.distances_m->size() &&
+         coverage.total_voxels == voxel_count && world.grid.outside_is_unknown &&
+         bounds.width_cells == world.grid.width &&
+         bounds.height_cells == world.grid.height &&
+         bounds.depth_cells == world.grid.depth &&
+         std::abs(bounds.resolution_m - world.grid.resolution_m) <= kTolerance &&
+         std::abs(bounds.origin_x - world.grid.origin_x_m) <= kTolerance &&
+         std::abs(bounds.origin_y - world.grid.origin_y_m) <= kTolerance &&
+         std::abs(bounds.origin_z - world.grid.origin_z_m) <= kTolerance;
+}
+
+} // namespace
 
 ProductionWorldGenerationStatus
 assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcept {
@@ -43,6 +77,9 @@ assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcep
         std::addressof(owner->occupancy()) != world.observed_occupancy.get()) {
       return ProductionWorldGenerationStatus::kObservedOwnerMismatch;
     }
+    if (!observedEsdfCoverageMatches(world, raw)) {
+      return ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch;
+    }
   } else if (world.raw_occupancy) {
     if (world.producer_instance_id != raw.producer_instance_id ||
         world.source_raw_revision != raw.revision) {
@@ -78,6 +115,8 @@ std::string_view productionWorldGenerationStatusName(
       return "raw_version_mismatch";
     case ProductionWorldGenerationStatus::kObservedOwnerMismatch:
       return "observed_owner_mismatch";
+    case ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch:
+      return "observed_esdf_coverage_mismatch";
     case ProductionWorldGenerationStatus::kTopologyRevisionMismatch:
       return "topology_revision_mismatch";
   }
@@ -121,6 +160,7 @@ void adoptWorldResources(ProductionMppiPreparedEsdf& target,
   target.raw_occupancy = source.raw_occupancy;
   target.observed_occupancy = source.observed_occupancy;
   target.observed_raw_world_owner = source.observed_raw_world_owner;
+  target.observed_esdf_resource = source.observed_esdf_resource;
   target.proprioceptive_free_space_seed = source.proprioceptive_free_space_seed;
   target.launch_support_contact = source.launch_support_contact;
   target.launch_support_resolution_pending = source.launch_support_resolution_pending;

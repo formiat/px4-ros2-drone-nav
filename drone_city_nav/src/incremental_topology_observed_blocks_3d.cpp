@@ -7,6 +7,7 @@
 #include <cmath>
 #include <ranges>
 #include <tuple>
+#include <utility>
 
 namespace drone_city_nav::incremental_topology_detail {
 namespace {
@@ -220,19 +221,23 @@ void ObservedBlockLifecycle3D::enqueue(
   }
 }
 
-std::vector<IncrementalTopologyBlockIndex3D> ObservedBlockLifecycle3D::takePending(
+ObservedBlockSelection3D ObservedBlockLifecycle3D::takePending(
     const GridBounds3D& bounds,
     const std::optional<IncrementalTopologyBuildPriority3D>& priority,
     const bool preserve_oldest_work) {
   const std::vector<IncrementalTopologyBlockIndex3D> pending{pending_blocks_.begin(),
                                                              pending_blocks_.end()};
+  const bool backlog_boosted =
+      pending.size() >= config_.backlog_boost_threshold_blocks &&
+      config_.maximum_backlog_blocks_per_update >
+          config_.maximum_observed_blocks_per_update;
+  const std::size_t budget = std::min(
+      pending.size(), backlog_boosted ? config_.maximum_backlog_blocks_per_update
+                                      : config_.maximum_observed_blocks_per_update);
   const std::size_t oldest_budget =
-      preserve_oldest_work && priority.has_value()
-          ? std::min(config_.minimum_oldest_blocks_per_update,
-                     config_.maximum_observed_blocks_per_update - 1U)
-          : 0U;
-  const std::size_t priority_budget =
-      config_.maximum_observed_blocks_per_update - oldest_budget;
+      preserve_oldest_work ? std::min(config_.minimum_oldest_blocks_per_update, budget)
+                           : 0U;
+  const std::size_t priority_budget = budget - oldest_budget;
   std::vector<IncrementalTopologyBlockIndex3D> ordered =
       selectIncrementalTopologyBlocks3D(pending, priority_budget, bounds,
                                         config_.block_size_cells, priority);
@@ -244,19 +249,45 @@ std::vector<IncrementalTopologyBlockIndex3D> ObservedBlockLifecycle3D::takePendi
     return std::tie(pending_sequence_.at(first), first.z, first.y, first.x) <
            std::tie(pending_sequence_.at(second), second.z, second.y, second.x);
   });
+  std::size_t oldest_preserved_blocks{0U};
   for (const IncrementalTopologyBlockIndex3D block : oldest) {
-    if (ordered.size() >= config_.maximum_observed_blocks_per_update) {
+    if (ordered.size() >= budget) {
       break;
     }
     if (selected.insert(block).second) {
       ordered.push_back(block);
+      ++oldest_preserved_blocks;
+    }
+  }
+  std::size_t local_priority_blocks{0U};
+  std::size_t forward_corridor_blocks{0U};
+  if (priority.has_value()) {
+    for (const IncrementalTopologyBlockIndex3D block : ordered) {
+      switch (incrementalTopologyBlockPriorityTier3D(
+          block, bounds, config_.block_size_cells, *priority)) {
+        case IncrementalTopologyBlockPriorityTier3D::kLocalSafety:
+          ++local_priority_blocks;
+          break;
+        case IncrementalTopologyBlockPriorityTier3D::kForwardCorridor:
+          ++forward_corridor_blocks;
+          break;
+        case IncrementalTopologyBlockPriorityTier3D::kBacklog:
+          break;
+      }
     }
   }
   for (const IncrementalTopologyBlockIndex3D block : ordered) {
     pending_blocks_.erase(block);
     pending_sequence_.erase(block);
   }
-  return ordered;
+  return ObservedBlockSelection3D{
+      .blocks = std::move(ordered),
+      .budget = budget,
+      .local_priority_blocks = local_priority_blocks,
+      .forward_corridor_blocks = forward_corridor_blocks,
+      .oldest_preserved_blocks = oldest_preserved_blocks,
+      .backlog_boosted = backlog_boosted,
+  };
 }
 
 const std::unordered_set<IncrementalTopologyBlockIndex3D,

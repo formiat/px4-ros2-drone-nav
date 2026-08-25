@@ -1,11 +1,7 @@
 #include "drone_city_nav/observed_esdf_3d.hpp"
 
-#include <algorithm>
-#include <array>
 #include <chrono>
 #include <cinttypes>
-#include <cmath>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -63,194 +59,27 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   }
   const GridBounds3D& world_bounds = occupancy->bounds();
   const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
-  const std::optional<FootprintBodyAxis> current_body_axis =
-      authoritativeBodyAxisForExecution(applied_control, execution_horizon_owner,
-                                        navigation, get_clock()->now().nanoseconds(),
-                                        maximum_control_feedback_age_ms_,
-                                        maximum_pose_age_ms_);
   const std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed =
-      current_body_axis.has_value()
-          ? std::optional<ProprioceptiveFreeSpaceSeed3D>{ProprioceptiveFreeSpaceSeed3D{
-                .position = position,
-                .body_axis = *current_body_axis,
-                .footprint = physical_footprint_config_,
-            }}
-          : std::nullopt;
-  if (!launch_support_seed_ && free_space_seed.has_value()) {
-    launch_support_seed_ = free_space_seed;
-  }
-  if (!launch_support_evaluated_ && launch_support_seed_.has_value()) {
-    const bool vehicle_land_contact_received =
-        vehicle_land_contact_received_.load(std::memory_order_acquire);
-    const bool vehicle_launch_support_confirmed =
-        launch_support_confirmed_by_land_detector_.load(std::memory_order_acquire);
-    if (vehicle_launch_support_confirmed) {
-      launch_support_contact_ =
-          makeVehicleLandedSupportContact3D(occupancy->bounds(), *launch_support_seed_);
-    } else {
-      launch_support_contact_ =
-          detectLaunchSupportContact3D(*occupancy, *launch_support_seed_);
-      if (!launch_support_contact_ && vehicle_land_contact_received) {
-        const SweptFootprintResult without_support = validateRawFootprintAt(
-            *occupancy, launch_support_seed_->position, launch_support_seed_->body_axis,
-            physical_footprint_config_);
-        if (without_support.accepted()) {
-          launch_support_evaluated_ = true;
-          RCLCPP_INFO(get_logger(),
-                      "LAUNCH_SUPPORT_CONTACT state=not_present source="
-                      "observed_known_free revision=%" PRIu64,
-                      raw_world.version.revision);
-        }
-      }
-    }
-    if (launch_support_contact_) {
-      launch_support_evaluated_ = true;
-      RCLCPP_INFO(get_logger(),
-                  "LAUNCH_SUPPORT_CONTACT state=active revision=%" PRIu64
-                  " source=%s cells=%zu occupied_evidence=%zu"
-                  " anchor=(%.3f,%.3f,%.3f)",
-                  raw_world.version.revision,
-                  launch_support_contact_->evidence_source ==
-                          LaunchSupportEvidenceSource::kVehicleLandDetector
-                      ? "vehicle_land_detector"
-                      : "observed_occupancy",
-                  launch_support_contact_->contact_cells.size(),
-                  launch_support_contact_->occupied_evidence_cells,
-                  launch_support_seed_->position.x, launch_support_seed_->position.y,
-                  launch_support_seed_->position.z);
-    } else if (!launch_support_evaluated_ &&
-               distance3D(position, launch_support_seed_->position) >
-                   std::max(0.5, physical_footprint_config_.radius_m)) {
-      launch_support_evaluated_ = true;
-      RCLCPP_INFO(get_logger(),
-                  "LAUNCH_SUPPORT_CONTACT state=not_detected_after_departure"
-                  " revision=%" PRIu64 " position=(%.3f,%.3f,%.3f)",
-                  raw_world.version.revision, position.x, position.y, position.z);
-    } else if (!launch_support_evaluated_) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "LAUNCH_SUPPORT_CONTACT state=awaiting_evidence revision=%" PRIu64
-          " anchor=(%.3f,%.3f,%.3f)",
-          raw_world.version.revision, launch_support_seed_->position.x,
-          launch_support_seed_->position.y, launch_support_seed_->position.z);
-    }
-  }
-  if (launch_support_contact_) {
-    if (updateLaunchSupportSettling(*launch_support_contact_, position)) {
-      RCLCPP_INFO(get_logger(),
-                  "LAUNCH_SUPPORT_CONTACT state=settled revision=%" PRIu64
-                  " minimum_axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
-                  raw_world.version.revision,
-                  launch_support_contact_->minimum_axial_departure_m, position.x,
-                  position.y, position.z);
-    }
-    if (current_body_axis.has_value() && free_space_seed.has_value()) {
-      const SweptFootprintResult without_support =
-          validateRawFootprintAt(*occupancy, position, *current_body_axis,
-                                 physical_footprint_config_, &*free_space_seed);
-      const FootprintBodyAxis support_axis = launch_support_contact_->seed.body_axis;
-      const Point3 support_delta{
-          position.x - launch_support_contact_->seed.position.x,
-          position.y - launch_support_contact_->seed.position.y,
-          position.z - launch_support_contact_->seed.position.z,
-      };
-      const double support_axial_departure_m = support_delta.x * support_axis.x +
-                                               support_delta.y * support_axis.y +
-                                               support_delta.z * support_axis.z;
-      if (without_support.accepted() &&
-          support_axial_departure_m > occupancy->bounds().resolution_m) {
-        RCLCPP_INFO(get_logger(),
-                    "LAUNCH_SUPPORT_CONTACT state=released revision=%" PRIu64
-                    " axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
-                    raw_world.version.revision, support_axial_departure_m, position.x,
-                    position.y, position.z);
-        launch_support_contact_.reset();
-      }
-    }
-  }
+      prepareObservedExecutionEvidence3D(raw_world, navigation, applied_control,
+                                         execution_horizon_owner);
   const LaunchSupportContact3D* const launch_support_contact =
       launch_support_contact_ ? &*launch_support_contact_ : nullptr;
-  const std::optional<SweptFootprintResult> current_footprint =
-      current_body_axis.has_value() && free_space_seed.has_value()
-          ? std::optional<SweptFootprintResult>{validateRawFootprintAt(
-                *occupancy, position, *current_body_axis, physical_footprint_config_,
-                &*free_space_seed, launch_support_contact)}
-          : std::nullopt;
-  double support_axial_departure_m{0.0};
-  double support_lateral_departure_m{0.0};
-  bool failure_is_launch_support_cell{false};
-  if (launch_support_contact != nullptr && current_footprint.has_value()) {
-    const FootprintBodyAxis axis = launch_support_contact->seed.body_axis;
-    const Point3 delta{position.x - launch_support_contact->seed.position.x,
-                       position.y - launch_support_contact->seed.position.y,
-                       position.z - launch_support_contact->seed.position.z};
-    support_axial_departure_m = delta.x * axis.x + delta.y * axis.y + delta.z * axis.z;
-    support_lateral_departure_m = std::sqrt(
-        std::max(0.0, delta.x * delta.x + delta.y * delta.y + delta.z * delta.z -
-                          support_axial_departure_m * support_axial_departure_m));
-    constexpr double kCellContainmentToleranceM{1.0e-6};
-    failure_is_launch_support_cell = std::ranges::any_of(
-        launch_support_contact->contact_cells, [&](const AxisAlignedBox3D& cell) {
-          return current_footprint->failure_point.x >=
-                     cell.minimum.x - kCellContainmentToleranceM &&
-                 current_footprint->failure_point.x <=
-                     cell.maximum.x + kCellContainmentToleranceM &&
-                 current_footprint->failure_point.y >=
-                     cell.minimum.y - kCellContainmentToleranceM &&
-                 current_footprint->failure_point.y <=
-                     cell.maximum.y + kCellContainmentToleranceM &&
-                 current_footprint->failure_point.z >=
-                     cell.minimum.z - kCellContainmentToleranceM &&
-                 current_footprint->failure_point.z <=
-                     cell.maximum.z + kCellContainmentToleranceM;
-        });
-  }
-  if (current_footprint.has_value()) {
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "OBSERVED_FOOTPRINT_READINESS revision=%" PRIu64
-        " status=%s position=(%.3f,%.3f,%.3f) failure_point=(%.3f,%.3f,%.3f)"
-        " launch_support_active=%s support_failure_cell=%s"
-        " support_axial_departure_m=%.3f support_lateral_departure_m=%.3f"
-        " support_maximum_lateral_departure_m=%.3f"
-        " support_minimum_axial_departure_m=%.3f"
-        " support_maximum_axial_settling_m=%.3f",
-        raw_world.version.revision, sweptFootprintStatusName(current_footprint->status),
-        position.x, position.y, position.z, current_footprint->failure_point.x,
-        current_footprint->failure_point.y, current_footprint->failure_point.z,
-        launch_support_contact != nullptr ? "true" : "false",
-        failure_is_launch_support_cell ? "true" : "false", support_axial_departure_m,
-        support_lateral_departure_m,
-        launch_support_contact != nullptr
-            ? launch_support_contact->maximum_lateral_departure_m
-            : 0.0,
-        launch_support_contact != nullptr
-            ? launch_support_contact->minimum_axial_departure_m
-            : 0.0,
-        launch_support_contact != nullptr
-            ? launch_support_contact->maximum_axial_settling_m
-            : 0.0);
-  } else {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "OBSERVED_FOOTPRINT_READINESS revision=%" PRIu64
-                         " status=body_axis_unavailable position=(%.3f,%.3f,%.3f)"
-                         " proprioceptive_free_space=false",
-                         raw_world.version.revision, position.x, position.y,
-                         position.z);
-  }
   GridBounds3D local_bounds;
   bool recenter = true;
   if (active_prepared && active_prepared->distances_m &&
       active_prepared->grid.depth > 1 && active_prepared->grid.outside_is_unknown) {
-    local_bounds = GridBounds3D{
-        .origin_x = active_prepared->grid.origin_x_m,
-        .origin_y = active_prepared->grid.origin_y_m,
-        .origin_z = active_prepared->grid.origin_z_m,
-        .resolution_m = active_prepared->grid.resolution_m,
-        .width_cells = active_prepared->grid.width,
-        .height_cells = active_prepared->grid.height,
-        .depth_cells = active_prepared->grid.depth,
-    };
+    local_bounds =
+        active_prepared->observed_esdf_resource.local_occupancy
+            ? active_prepared->observed_esdf_resource.local_occupancy->bounds()
+            : GridBounds3D{
+                  .origin_x = active_prepared->grid.origin_x_m,
+                  .origin_y = active_prepared->grid.origin_y_m,
+                  .origin_z = active_prepared->grid.origin_z_m,
+                  .resolution_m = active_prepared->grid.resolution_m,
+                  .width_cells = active_prepared->grid.width,
+                  .height_cells = active_prepared->grid.height,
+                  .depth_cells = active_prepared->grid.depth,
+              };
     recenter = localObservedEsdfNeedsRecenter(local_bounds, world_bounds, position,
                                               no_static_3d_esdf_window_);
   }
@@ -282,27 +111,42 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       free_space_seed_unchanged && launch_support_unchanged;
   if (active_prepared && !execution_evidence_unchanged) {
     {
-      const std::scoped_lock lock{world_generation_publication_mutex_,
-                                  esdf_state_mutex_};
-      prepared_esdf_.reset();
-    }
-    {
       const std::scoped_lock lock{guide_queue_mutex_};
       pending_guide_world_.reset();
     }
-    active_prepared.reset();
     RCLCPP_INFO(get_logger(),
-                "EXECUTION_EVIDENCE_WORLD_INVALIDATED raw_revision=%" PRIu64
-                " free_space_seed=%s support_active=%s resolution_pending=%s",
+                "EXECUTION_EVIDENCE_WORLD_CHANGED raw_revision=%" PRIu64
+                " free_space_seed=%s support_active=%s resolution_pending=%s"
+                " incremental_refresh=true",
                 raw_world.version.revision,
                 free_space_seed.has_value() ? "true" : "false",
                 launch_support_contact != nullptr ? "true" : "false",
                 launch_support_resolution_pending ? "true" : "false");
   }
-  const bool local_occupancy_unchanged =
+  const double maximum_distance_m = requiredObservedEsdfMaximumDistanceM(
+      static_cast<double>(mppi_config_.risk.preferred_distance_m),
+      physical_footprint_config_, local_bounds.resolution_m);
+  const bool active_incremental_parent_available =
       active_prepared && active_prepared->distances_m && !recenter &&
-      active_prepared->source_occupied_fingerprint == local_fingerprint &&
-      execution_evidence_unchanged;
+      active_prepared->observed_occupancy &&
+      productionWorldGenerationCoherent(*active_prepared) &&
+      active_prepared->observed_esdf_resource.local_occupancy &&
+      active_prepared->observed_esdf_resource.coverage.coherent() &&
+      active_prepared->observed_esdf_resource.coverage.source_raw_version.revision ==
+          active_prepared->source_raw_revision &&
+      active_prepared->observed_esdf_resource.coverage.maximum_distance_m ==
+          maximum_distance_m;
+  const bool same_raw_lineage =
+      active_incremental_parent_available && !raw_world.full_reset &&
+      active_prepared->observed_esdf_resource.coverage.source_raw_version
+              .producer_instance_id == raw_world.version.producer_instance_id &&
+      active_prepared->observed_esdf_resource.coverage.source_raw_version
+              .base_snapshot_revision == raw_world.version.base_snapshot_revision &&
+      active_prepared->observed_esdf_resource.coverage.source_raw_version.revision <=
+          raw_world.version.revision;
+  const bool local_occupancy_unchanged =
+      same_raw_lineage && execution_evidence_unchanged &&
+      active_prepared->source_occupied_fingerprint == local_fingerprint;
   const auto build_started_at = std::chrono::steady_clock::now();
   const bool first_build =
       no_static_esdf_last_build_time_ == std::chrono::steady_clock::time_point{};
@@ -310,11 +154,14 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       first_build ||
       std::chrono::duration<double>(build_started_at - no_static_esdf_last_build_time_)
               .count() >= 1.0 / no_static_3d_esdf_update_rate_hz_;
-  if (local_occupancy_unchanged) {
+  const bool already_current =
+      local_occupancy_unchanged &&
+      active_prepared->source_raw_revision == raw_world.version.revision;
+  if (already_current) {
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "NO_STATIC_ESDF3D_DEFERRED raw_revision=%" PRIu64
-        " reason=observed_unchanged reconstruction_ms=%.2f raw_updates=%" PRIu64
+        " reason=already_current reconstruction_ms=%.2f raw_updates=%" PRIu64
         " builds=%" PRIu64 " throttled=%" PRIu64,
         raw_world.version.revision, raw_world.reconstruction_ms,
         no_static_raw_updates_.load(std::memory_order_relaxed),
@@ -322,7 +169,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
         no_static_esdf_throttled_updates_.load(std::memory_order_relaxed));
     return std::nullopt;
   }
-  if (active_prepared && !recenter && !build_rate_due) {
+  if (!local_occupancy_unchanged && active_prepared && !recenter && !build_rate_due) {
     no_static_esdf_throttled_updates_.fetch_add(1U, std::memory_order_relaxed);
     const auto update_period =
         std::chrono::duration<double>{1.0 / no_static_3d_esdf_update_rate_hz_};
@@ -355,14 +202,79 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     return std::nullopt;
   }
 
-  ObservedEsdf3D field = buildObservedEsdf3D(
-      *occupancy, local_bounds,
-      static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
-      planning_worker_pool_.get(),
-      free_space_seed.has_value() ? std::addressof(*free_space_seed) : nullptr,
-      launch_support_contact);
-  auto host_distances =
-      std::make_shared<const std::vector<float>>(std::move(field.distances_m));
+  std::optional<PreviousObservedEsdf3D> previous;
+  if (same_raw_lineage) {
+    previous = PreviousObservedEsdf3D{
+        .grid = active_prepared->grid,
+        .distances_m = *active_prepared->distances_m,
+        .source_occupancy = active_prepared->observed_occupancy,
+        .local_occupancy = active_prepared->observed_esdf_resource.local_occupancy,
+        .occupancy_fingerprint = active_prepared->revision,
+        .maximum_distance_m =
+            active_prepared->observed_esdf_resource.coverage.maximum_distance_m,
+    };
+  }
+  ObservedEsdf3D field;
+  std::shared_ptr<const std::vector<float>> host_distances;
+  if (local_occupancy_unchanged) {
+    field.grid = active_prepared->grid;
+    field.local_occupancy = active_prepared->observed_esdf_resource.local_occupancy;
+    field.occupancy_fingerprint = active_prepared->revision;
+    field.maximum_distance_m = maximum_distance_m;
+    field.stats.known_voxels = field.local_occupancy->knownVoxelCount();
+    field.stats.free_voxels = field.local_occupancy->freeVoxelCount();
+    field.stats.occupied_voxels = field.local_occupancy->occupiedVoxelCount();
+    field.stats.unknown_voxels =
+        active_prepared->distances_m->size() - field.stats.known_voxels;
+    field.stats.reused_voxels = active_prepared->distances_m->size();
+    field.stats.dirty_chunks = raw_world.dirty_chunks.size();
+    field.stats.mode = ObservedEsdf3DBuildMode::kReused;
+    host_distances = active_prepared->distances_m;
+  } else {
+    field = updateObservedEsdf3D(
+        *occupancy, local_bounds, maximum_distance_m,
+        previous.has_value() ? std::addressof(*previous) : nullptr,
+        raw_world.dirty_chunks, raw_world.full_reset || recenter,
+        no_static_3d_esdf_incremental_maximum_rebuild_ratio_,
+        planning_worker_pool_.get(),
+        free_space_seed.has_value() ? std::addressof(*free_space_seed) : nullptr,
+        launch_support_contact);
+    if (field.stats.mode == ObservedEsdf3DBuildMode::kReused && active_prepared &&
+        active_prepared->revision == field.occupancy_fingerprint) {
+      host_distances = active_prepared->distances_m;
+    } else {
+      host_distances =
+          std::make_shared<const std::vector<float>>(std::move(field.distances_m));
+    }
+  }
+
+  const RawMapVersion parent_raw_version =
+      field.stats.mode == ObservedEsdf3DBuildMode::kFull
+          ? RawMapVersion{}
+          : active_prepared->observed_esdf_resource.coverage.source_raw_version;
+  const std::uint64_t parent_esdf_fingerprint =
+      field.stats.mode == ObservedEsdf3DBuildMode::kFull ? 0U
+                                                         : active_prepared->revision;
+  const ObservedEsdfCoverage3D coverage{
+      .source_raw_version = raw_world.version,
+      .parent_raw_version = parent_raw_version,
+      .raw_local_fingerprint = local_fingerprint,
+      .esdf_fingerprint = field.occupancy_fingerprint,
+      .parent_esdf_fingerprint = parent_esdf_fingerprint,
+      .total_voxels = host_distances->size(),
+      .recomputed_voxels = field.stats.recomputed_voxels,
+      .reused_voxels = field.stats.reused_voxels,
+      .maximum_distance_m = maximum_distance_m,
+      .mode = field.stats.mode,
+  };
+  if (!coverage.coherent()) {
+    RCLCPP_ERROR(get_logger(),
+                 "PRODUCTION_MPPI_ESDF3D_ONLINE rejected revision=%" PRIu64
+                 " reason=invalid_coverage mode=%s",
+                 raw_world.version.revision,
+                 observedEsdf3DBuildModeName(field.stats.mode));
+    return std::nullopt;
+  }
 
   ProductionMppiPreparedEsdf world_update;
   world_update.producer_instance_id = raw_world.version.producer_instance_id;
@@ -383,6 +295,8 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   world_update.distances_m = host_distances;
   world_update.observed_occupancy = occupancy;
   world_update.observed_raw_world_owner = observed_raw_world_owner;
+  world_update.observed_esdf_resource = ObservedEsdfResource3D{
+      .local_occupancy = field.local_occupancy, .coverage = coverage};
   world_update.proprioceptive_free_space_seed = free_space_seed;
   world_update.launch_support_contact = launch_support_contact_;
   world_update.launch_support_resolution_pending = launch_support_resolution_pending;
@@ -404,11 +318,51 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       navigationObjective();
   ProductionMppiPreparedEsdf prepared;
   bool local_world_generation_valid{false};
+  bool resident_parent_valid{true};
+  const bool parent_required = field.stats.mode != ObservedEsdf3DBuildMode::kFull;
+  const bool upload_required = field.stats.mode != ObservedEsdf3DBuildMode::kReused;
   std::unique_lock generation_lock{world_generation_publication_mutex_};
-  const mppi::EsdfUploadResult upload = engine_->updateEsdf(
-      mppi::EsdfSnapshot{field.grid, *host_distances, field.occupancy_fingerprint});
-  if (!upload.accepted) {
-    return std::nullopt;
+  {
+    const std::scoped_lock lock{esdf_state_mutex_};
+    if (prepared_esdf_) {
+      prepared = *prepared_esdf_;
+    }
+    if (parent_required) {
+      const ObservedEsdfCoverage3D& resident_coverage =
+          prepared.observed_esdf_resource.coverage;
+      resident_parent_valid =
+          active_prepared.has_value() && prepared_esdf_.has_value() &&
+          productionWorldGenerationCoherent(prepared) &&
+          prepared.revision == parent_esdf_fingerprint &&
+          prepared.distances_m == active_prepared->distances_m &&
+          prepared.observed_occupancy == active_prepared->observed_occupancy &&
+          prepared.observed_esdf_resource.local_occupancy ==
+              active_prepared->observed_esdf_resource.local_occupancy &&
+          resident_coverage.source_raw_version.producer_instance_id ==
+              parent_raw_version.producer_instance_id &&
+          resident_coverage.source_raw_version.base_snapshot_revision ==
+              parent_raw_version.base_snapshot_revision &&
+          resident_coverage.source_raw_version.revision ==
+              parent_raw_version.revision &&
+          prepared.local_world_generation.gpu_esdf_revision == parent_esdf_fingerprint;
+    }
+  }
+  if (!resident_parent_valid) {
+    generation_lock.unlock();
+    RCLCPP_INFO(get_logger(),
+                "PRODUCTION_MPPI_ESDF3D_ONLINE deferred raw_revision=%" PRIu64
+                " reason=superseded_esdf_parent",
+                raw_world.version.revision);
+    return std::chrono::steady_clock::now();
+  }
+  mppi::EsdfUploadResult upload{
+      .accepted = true, .upload_ms = 0.0, .revision = field.occupancy_fingerprint};
+  if (upload_required) {
+    upload = engine_->updateEsdf(
+        mppi::EsdfSnapshot{field.grid, *host_distances, field.occupancy_fingerprint});
+    if (!upload.accepted) {
+      return std::nullopt;
+    }
   }
   world_update.upload_ms = upload.upload_ms;
   {
@@ -459,7 +413,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
         prepared_esdf_ = prepared;
       }
     }
-    if (!local_world_generation_valid) {
+    if (!local_world_generation_valid && upload_required) {
       prepared_esdf_.reset();
     }
   }
@@ -475,8 +429,29 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
                  raw_world.version.revision);
     return std::nullopt;
   }
-  no_static_esdf_last_build_time_ = build_started_at;
-  no_static_esdf_builds_.fetch_add(1U, std::memory_order_relaxed);
+  if (field.stats.mode != ObservedEsdf3DBuildMode::kReused) {
+    no_static_esdf_last_build_time_ = build_started_at;
+    no_static_esdf_builds_.fetch_add(1U, std::memory_order_relaxed);
+  }
+  std::atomic<std::uint64_t>* mode_counter = nullptr;
+  switch (field.stats.mode) {
+    case ObservedEsdf3DBuildMode::kFull:
+      mode_counter = &observed_esdf_3d_counters_.full_builds;
+      break;
+    case ObservedEsdf3DBuildMode::kIncremental:
+      mode_counter = &observed_esdf_3d_counters_.incremental_builds;
+      break;
+    case ObservedEsdf3DBuildMode::kReused:
+      mode_counter = &observed_esdf_3d_counters_.reused_builds;
+      break;
+  }
+  if (mode_counter != nullptr) {
+    mode_counter->fetch_add(1U, std::memory_order_relaxed);
+  }
+  observed_esdf_3d_counters_.recomputed_voxels.fetch_add(field.stats.recomputed_voxels,
+                                                         std::memory_order_relaxed);
+  observed_esdf_3d_counters_.reused_voxels.fetch_add(field.stats.reused_voxels,
+                                                     std::memory_order_relaxed);
   const std::uint64_t blocked_raw_revision =
       observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
   const std::uint64_t dispatched_raw_revision =
@@ -522,14 +497,20 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       "PRODUCTION_MPPI_ESDF3D_ONLINE revision=%" PRIu64 " raw_revision=%" PRIu64
       " build_ms=%.2f classify_ms=%.2f upload_ms=%.2f dimensions=%dx%dx%d "
       "known=%zu free=%zu occupied=%zu unknown=%zu proprioceptive_free=%zu "
-      "launch_support=%zu "
+      "launch_support=%zu mode=%s fallback=%s changed=%zu recomputed=%zu reused=%zu "
+      "distance_work=%zu maximum_distance_m=%.2f "
       "recenter=%s local_world_generation=%" PRIu64 " route_generation=%" PRIu64
-      " route_search=%s builds=%" PRIu64 " throttled=%" PRIu64 " dropped_raw=%" PRIu64,
+      " route_search=%s builds=%" PRIu64 " throttled=%" PRIu64 " dropped_raw=%" PRIu64
+      " mode_totals=(full=%" PRIu64 ",incremental=%" PRIu64 ",reused=%" PRIu64 ")",
       prepared.revision, raw_world.version.revision, prepared.build_ms,
       field.stats.classification_ms, prepared.upload_ms, prepared.grid.width,
       prepared.grid.height, prepared.grid.depth, field.stats.known_voxels,
       field.stats.free_voxels, field.stats.occupied_voxels, field.stats.unknown_voxels,
       field.stats.proprioceptive_free_voxels, field.stats.launch_support_voxels,
+      observedEsdf3DBuildModeName(field.stats.mode),
+      field.stats.incremental_fallback ? "true" : "false", field.stats.changed_voxels,
+      field.stats.recomputed_voxels, field.stats.reused_voxels,
+      field.stats.distance_field.voxel_count, maximum_distance_m,
       recenter ? "true" : "false", prepared.local_world_generation.generation,
       prepared.global_guide_generation,
       !initial_route_search_required
@@ -540,7 +521,10 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
                                                          : "initial_not_queued")),
       no_static_esdf_builds_.load(std::memory_order_relaxed),
       no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
-      dropped_raw_snapshots_.load(std::memory_order_relaxed));
+      dropped_raw_snapshots_.load(std::memory_order_relaxed),
+      observed_esdf_3d_counters_.full_builds.load(std::memory_order_relaxed),
+      observed_esdf_3d_counters_.incremental_builds.load(std::memory_order_relaxed),
+      observed_esdf_3d_counters_.reused_builds.load(std::memory_order_relaxed));
   return std::nullopt;
 }
 

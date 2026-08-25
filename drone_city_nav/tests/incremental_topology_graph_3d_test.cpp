@@ -600,6 +600,41 @@ TEST(IncrementalTopologyGraph3DTest,
 }
 
 TEST(IncrementalTopologyGraph3DTest,
+     LargeBacklogUsesBoundedBoostAndStillReservesOldestWork) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 16, 8}};
+  fillFreeBox(occupancy, 0, 47, 0, 15, 0, 7);
+  IncrementalTopologyGraph3DConfig config = makeKnownSpaceConfig();
+  config.maximum_observed_blocks_per_update = 2U;
+  config.maximum_backlog_blocks_per_update = 5U;
+  config.backlog_boost_threshold_blocks = 4U;
+  config.minimum_oldest_blocks_per_update = 1U;
+  IncrementalTopologyGraph3D graph{config};
+  const IncrementalTopologyBuildPriority3D priority{
+      .position = {2.0, 2.0, 2.0},
+      .target = {46.0, 2.0, 2.0},
+      .local_radius_m = 2.0,
+      .forward_corridor_radius_m = 4.0,
+      .forward_corridor_lookahead_m = 44.0,
+  };
+
+  const IncrementalTopologyGraph3DUpdate first =
+      graph.update(occupancy, 1U, {}, true, priority);
+  ASSERT_TRUE(first.backlog_boosted);
+  EXPECT_EQ(first.scheduled_block_budget, 5U);
+  EXPECT_EQ(first.rebuilt_blocks, 5U);
+  EXPECT_GT(first.pending_blocks, 0U);
+  EXPECT_GT(first.local_priority_blocks, 0U);
+  EXPECT_GT(first.forward_corridor_blocks, 0U);
+
+  const IncrementalTopologyGraph3DUpdate second =
+      graph.update(occupancy, 1U, {}, false, priority);
+  EXPECT_TRUE(second.backlog_boosted);
+  EXPECT_EQ(second.rebuilt_blocks, 5U);
+  EXPECT_EQ(second.oldest_preserved_blocks, 1U);
+  EXPECT_LT(second.pending_blocks, first.pending_blocks);
+}
+
+TEST(IncrementalTopologyGraph3DTest,
      StoresRawSafePortalPolylinesWhenTheRepresentativeChordIsBlocked) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 12, 6}};
   fillStateBox(occupancy, 0, 15, 0, 11, 0, 5, ObservedVoxelState::kOccupied);

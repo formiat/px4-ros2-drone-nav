@@ -4,14 +4,23 @@
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
+#include "drone_city_nav/world_generation.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace drone_city_nav {
+
+enum class ObservedEsdf3DBuildMode : std::uint8_t {
+  kFull,
+  kIncremental,
+  kReused,
+};
 
 struct ObservedEsdf3DBuildStats {
   DistanceField3DBuildStats distance_field{};
@@ -21,7 +30,13 @@ struct ObservedEsdf3DBuildStats {
   std::size_t unknown_voxels{0U};
   std::size_t proprioceptive_free_voxels{0U};
   std::size_t launch_support_voxels{0U};
+  std::size_t changed_voxels{0U};
+  std::size_t recomputed_voxels{0U};
+  std::size_t reused_voxels{0U};
+  std::size_t dirty_chunks{0U};
   double classification_ms{0.0};
+  ObservedEsdf3DBuildMode mode{ObservedEsdf3DBuildMode::kFull};
+  bool incremental_fallback{false};
 };
 
 struct ObservedEsdf3D {
@@ -29,7 +44,45 @@ struct ObservedEsdf3D {
   std::vector<float> distances_m;
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
   std::uint64_t occupancy_fingerprint{0U};
+  double maximum_distance_m{0.0};
   ObservedEsdf3DBuildStats stats{};
+};
+
+struct PreviousObservedEsdf3D {
+  mppi::EsdfGrid grid{};
+  std::span<const float> distances_m;
+  std::shared_ptr<const ObservedOccupancyGrid3D> source_occupancy;
+  std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
+  std::uint64_t occupancy_fingerprint{0U};
+  double maximum_distance_m{0.0};
+};
+
+struct ObservedEsdfCoverage3D {
+  RawMapVersion source_raw_version{};
+  RawMapVersion parent_raw_version{};
+  std::uint64_t raw_local_fingerprint{0U};
+  std::uint64_t esdf_fingerprint{0U};
+  std::uint64_t parent_esdf_fingerprint{0U};
+  std::size_t total_voxels{0U};
+  std::size_t recomputed_voxels{0U};
+  std::size_t reused_voxels{0U};
+  double maximum_distance_m{0.0};
+  ObservedEsdf3DBuildMode mode{ObservedEsdf3DBuildMode::kFull};
+
+  [[nodiscard]] bool coherent() const noexcept;
+};
+
+struct ObservedEsdfResource3D {
+  std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
+  ObservedEsdfCoverage3D coverage{};
+};
+
+struct ObservedEsdf3DRuntimeCounters {
+  std::atomic<std::uint64_t> full_builds{0U};
+  std::atomic<std::uint64_t> incremental_builds{0U};
+  std::atomic<std::uint64_t> reused_builds{0U};
+  std::atomic<std::uint64_t> recomputed_voxels{0U};
+  std::atomic<std::uint64_t> reused_voxels{0U};
 };
 
 struct LocalObservedEsdfWindow3D {
@@ -80,5 +133,21 @@ buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
                     BoundedWorkerPool* worker_pool = nullptr,
                     const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
                     const LaunchSupportContact3D* launch_support_contact = nullptr);
+
+[[nodiscard]] ObservedEsdf3D updateObservedEsdf3D(
+    const ObservedOccupancyGrid3D& occupancy, const GridBounds3D& local_bounds,
+    double maximum_distance_m, const PreviousObservedEsdf3D* previous,
+    std::span<const OccupancyChunkIndex3D> dirty_chunks, bool full_reset,
+    double maximum_rebuild_ratio, BoundedWorkerPool* worker_pool = nullptr,
+    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
+    const LaunchSupportContact3D* launch_support_contact = nullptr);
+
+[[nodiscard]] double
+requiredObservedEsdfMaximumDistanceM(double preferred_distance_m,
+                                     const SweptFootprintConfig& footprint,
+                                     double resolution_m) noexcept;
+
+[[nodiscard]] const char*
+observedEsdf3DBuildModeName(ObservedEsdf3DBuildMode mode) noexcept;
 
 } // namespace drone_city_nav

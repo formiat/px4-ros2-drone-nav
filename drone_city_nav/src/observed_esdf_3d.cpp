@@ -14,30 +14,6 @@
 namespace drone_city_nav {
 namespace {
 
-constexpr std::uint64_t kFnvOffsetBasis{14695981039346656037ULL};
-constexpr std::uint64_t kFnvPrime{1099511628211ULL};
-
-void hashWord(std::uint64_t& hash, const std::uint64_t value) noexcept {
-  for (unsigned int shift = 0U; shift < 64U; shift += 8U) {
-    hash ^= (value >> shift) & 0xFFU;
-    hash *= kFnvPrime;
-  }
-}
-
-void hashInteger(std::uint64_t& hash, const int value) noexcept {
-  hashWord(hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(value)));
-}
-
-void hashBounds(std::uint64_t& hash, const GridBounds3D& bounds) noexcept {
-  hashWord(hash, std::bit_cast<std::uint64_t>(bounds.origin_x));
-  hashWord(hash, std::bit_cast<std::uint64_t>(bounds.origin_y));
-  hashWord(hash, std::bit_cast<std::uint64_t>(bounds.origin_z));
-  hashWord(hash, std::bit_cast<std::uint64_t>(bounds.resolution_m));
-  hashInteger(hash, bounds.width_cells);
-  hashInteger(hash, bounds.height_cells);
-  hashInteger(hash, bounds.depth_cells);
-}
-
 [[nodiscard]] bool sameResolution(const GridBounds3D& first,
                                   const GridBounds3D& second) noexcept {
   return std::abs(first.resolution_m - second.resolution_m) <= 1.0e-9;
@@ -119,7 +95,7 @@ struct SourceCellRegion {
 
 template<typename Callback>
 void forEachObservedVoxel(const ObservedOccupancyGrid3D& occupancy,
-                          const SourceCellRegion& region, Callback&& callback) {
+                          const SourceCellRegion& region, Callback callback) {
   for (const auto& [chunk_index, storage] : occupancy.chunks()) {
     const ObservedOccupancyGrid3D::Chunk& chunk = storage.get();
     if (!overlaps(chunk_index, region)) {
@@ -127,7 +103,7 @@ void forEachObservedVoxel(const ObservedOccupancyGrid3D& occupancy,
     }
     for (std::size_t word_index = 0U; word_index < chunk.observed.size();
          ++word_index) {
-      std::uint64_t observed_bits = chunk.observed[word_index];
+      std::uint64_t observed_bits = chunk.observed.at(word_index);
       while (observed_bits != 0U) {
         const int bit_offset = std::countr_zero(observed_bits);
         const std::size_t bit_index =
@@ -149,7 +125,7 @@ void forEachObservedVoxel(const ObservedOccupancyGrid3D& occupancy,
             source.y >= region.minimum_y && source.y < region.maximum_y_exclusive &&
             source.z >= region.minimum_z && source.z < region.maximum_z_exclusive) {
           const bool occupied =
-              (chunk.occupied[word_index] &
+              (chunk.occupied.at(word_index) &
                (std::uint64_t{1U} << static_cast<unsigned int>(bit_offset))) != 0U;
           callback(source, occupied ? ObservedVoxelState::kOccupied
                                     : ObservedVoxelState::kFree);
@@ -295,6 +271,399 @@ makeLaunchSupportContact3D(const GridBounds3D& bounds,
   return contact;
 }
 
+[[nodiscard]] bool sameBounds(const GridBounds3D& first,
+                              const GridBounds3D& second) noexcept {
+  constexpr double kTolerance{1.0e-9};
+  return std::abs(first.origin_x - second.origin_x) <= kTolerance &&
+         std::abs(first.origin_y - second.origin_y) <= kTolerance &&
+         std::abs(first.origin_z - second.origin_z) <= kTolerance &&
+         std::abs(first.resolution_m - second.resolution_m) <= kTolerance &&
+         first.width_cells == second.width_cells &&
+         first.height_cells == second.height_cells &&
+         first.depth_cells == second.depth_cells;
+}
+
+[[nodiscard]] std::size_t voxelCount(const GridBounds3D& bounds) noexcept {
+  return static_cast<std::size_t>(bounds.width_cells) *
+         static_cast<std::size_t>(bounds.height_cells) *
+         static_cast<std::size_t>(bounds.depth_cells);
+}
+
+[[nodiscard]] mppi::EsdfGrid esdfGrid(const GridBounds3D& bounds) noexcept {
+  return mppi::EsdfGrid{
+      .width = bounds.width_cells,
+      .height = bounds.height_cells,
+      .resolution_m = static_cast<float>(bounds.resolution_m),
+      .origin_x_m = static_cast<float>(bounds.origin_x),
+      .origin_y_m = static_cast<float>(bounds.origin_y),
+      .depth = bounds.depth_cells,
+      .origin_z_m = static_cast<float>(bounds.origin_z),
+      .outside_is_unknown = true,
+  };
+}
+
+struct ClassifiedObservedGrid3D {
+  std::shared_ptr<ObservedOccupancyGrid3D> occupancy;
+  std::uint64_t fingerprint{0U};
+  ObservedEsdf3DBuildStats stats{};
+};
+
+[[nodiscard]] ClassifiedObservedGrid3D
+classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
+                       const GridBounds3D& local_bounds,
+                       const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
+                       const LaunchSupportContact3D* const launch_support_contact) {
+  const auto started = std::chrono::steady_clock::now();
+  const SourceCellRegion source_region =
+      sourceCellRegion(occupancy.bounds(), local_bounds);
+  auto local_occupancy = std::make_shared<ObservedOccupancyGrid3D>(local_bounds);
+  ObservedEsdf3DBuildStats stats;
+  const std::vector<GridIndex3D> support_cells =
+      launchSupportCells(occupancy, launch_support_contact);
+  std::unordered_set<std::uint64_t> support_cell_keys;
+  support_cell_keys.reserve(support_cells.size());
+  for (const GridIndex3D cell : support_cells) {
+    support_cell_keys.insert(cellKey(occupancy.bounds(), cell));
+  }
+  const auto sourceToLocal = [&source_region](const GridIndex3D source) {
+    return GridIndex3D{source.x - source_region.minimum_x,
+                       source.y - source_region.minimum_y,
+                       source.z - source_region.minimum_z};
+  };
+  forEachObservedVoxel(
+      occupancy, source_region,
+      [&](const GridIndex3D source, const ObservedVoxelState state) {
+        const bool launch_support_cell =
+            support_cell_keys.contains(cellKey(occupancy.bounds(), source));
+        static_cast<void>(local_occupancy->setState(
+            sourceToLocal(source),
+            launch_support_cell ? ObservedVoxelState::kFree : state));
+        stats.launch_support_voxels +=
+            launch_support_cell && state != ObservedVoxelState::kFree ? 1U : 0U;
+      });
+
+  for (const GridIndex3D source : support_cells) {
+    if (source.x < source_region.minimum_x ||
+        source.x >= source_region.maximum_x_exclusive ||
+        source.y < source_region.minimum_y ||
+        source.y >= source_region.maximum_y_exclusive ||
+        source.z < source_region.minimum_z ||
+        source.z >= source_region.maximum_z_exclusive) {
+      continue;
+    }
+    const GridIndex3D local_cell = sourceToLocal(source);
+    if (local_occupancy->state(local_cell) != ObservedVoxelState::kFree) {
+      static_cast<void>(
+          local_occupancy->setState(local_cell, ObservedVoxelState::kFree));
+      ++stats.launch_support_voxels;
+    }
+  }
+
+  if (free_space_seed != nullptr) {
+    const double seed_extent_m =
+        std::max(0.0, free_space_seed->footprint.radius_m) +
+        std::max(std::max(0.0, free_space_seed->footprint.lower_extent_m),
+                 std::max(0.0, free_space_seed->footprint.upper_extent_m)) +
+        local_bounds.resolution_m;
+    const int minimum_x =
+        clampedCell(free_space_seed->position.x - seed_extent_m, local_bounds.origin_x,
+                    local_bounds.resolution_m, local_bounds.width_cells);
+    const int maximum_x =
+        clampedCell(free_space_seed->position.x + seed_extent_m, local_bounds.origin_x,
+                    local_bounds.resolution_m, local_bounds.width_cells);
+    const int minimum_y =
+        clampedCell(free_space_seed->position.y - seed_extent_m, local_bounds.origin_y,
+                    local_bounds.resolution_m, local_bounds.height_cells);
+    const int maximum_y =
+        clampedCell(free_space_seed->position.y + seed_extent_m, local_bounds.origin_y,
+                    local_bounds.resolution_m, local_bounds.height_cells);
+    const int minimum_z =
+        clampedCell(free_space_seed->position.z - seed_extent_m, local_bounds.origin_z,
+                    local_bounds.resolution_m, local_bounds.depth_cells);
+    const int maximum_z =
+        clampedCell(free_space_seed->position.z + seed_extent_m, local_bounds.origin_z,
+                    local_bounds.resolution_m, local_bounds.depth_cells);
+    for (int z = minimum_z; z <= maximum_z; ++z) {
+      for (int y = minimum_y; y <= maximum_y; ++y) {
+        for (int x = minimum_x; x <= maximum_x; ++x) {
+          const GridIndex3D local_cell{x, y, z};
+          if (local_occupancy->state(local_cell) != ObservedVoxelState::kUnknown) {
+            continue;
+          }
+          const Point3 cell_minimum{
+              local_bounds.origin_x +
+                  static_cast<double>(x) * local_bounds.resolution_m,
+              local_bounds.origin_y +
+                  static_cast<double>(y) * local_bounds.resolution_m,
+              local_bounds.origin_z +
+                  static_cast<double>(z) * local_bounds.resolution_m,
+          };
+          const Point3 cell_maximum{
+              cell_minimum.x + local_bounds.resolution_m,
+              cell_minimum.y + local_bounds.resolution_m,
+              cell_minimum.z + local_bounds.resolution_m,
+          };
+          if (!footprintIntersectsAxisAlignedBox(
+                  free_space_seed->position, free_space_seed->body_axis,
+                  free_space_seed->footprint, cell_minimum, cell_maximum)) {
+            continue;
+          }
+          static_cast<void>(
+              local_occupancy->setState(local_cell, ObservedVoxelState::kFree));
+          ++stats.proprioceptive_free_voxels;
+        }
+      }
+    }
+  }
+
+  stats.known_voxels = local_occupancy->knownVoxelCount();
+  stats.free_voxels = local_occupancy->freeVoxelCount();
+  stats.occupied_voxels = local_occupancy->occupiedVoxelCount();
+  stats.unknown_voxels = voxelCount(local_bounds) - stats.known_voxels;
+  stats.classification_ms = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - started)
+                                .count();
+  const std::uint64_t fingerprint =
+      observedOccupancyFingerprint(*local_occupancy, local_bounds);
+  return {.occupancy = std::move(local_occupancy),
+          .fingerprint = fingerprint,
+          .stats = stats};
+}
+
+[[nodiscard]] ObservedEsdf3D buildFullObservedEsdf3D(
+    const ClassifiedObservedGrid3D& classified, const double maximum_distance_m,
+    BoundedWorkerPool* const worker_pool, const std::size_t dirty_chunks,
+    const bool incremental_fallback) {
+  const GridBounds3D& bounds = classified.occupancy->bounds();
+  const OccupancyGrid3D occupied = classified.occupancy->occupiedSnapshot();
+  const DistanceField3D field =
+      DistanceField3D::build(occupied, maximum_distance_m, worker_pool);
+  ObservedEsdf3D result{
+      .grid = esdfGrid(bounds),
+      .distances_m =
+          std::vector<float>(voxelCount(bounds), mppi::kUnknownEsdfDistanceM),
+      .local_occupancy = classified.occupancy,
+      .occupancy_fingerprint = classified.fingerprint,
+      .maximum_distance_m = maximum_distance_m,
+      .stats = classified.stats,
+  };
+  const SourceCellRegion region = sourceCellRegion(bounds, bounds);
+  forEachObservedVoxel(*classified.occupancy, region,
+                       [&](const GridIndex3D cell, const ObservedVoxelState) {
+                         result.distances_m.at(localLinearIndex(bounds, cell)) =
+                             field.distanceAt(cell);
+                       });
+  result.stats.distance_field = field.stats();
+  result.stats.recomputed_voxels = result.distances_m.size();
+  result.stats.dirty_chunks = dirty_chunks;
+  result.stats.mode = ObservedEsdf3DBuildMode::kFull;
+  result.stats.incremental_fallback = incremental_fallback;
+  return result;
+}
+
+struct ChangedCellRegion3D {
+  GridIndex3D minimum{};
+  GridIndex3D maximum_exclusive{};
+  std::size_t count{0U};
+};
+
+[[nodiscard]] GridIndex3D chunkCell(const OccupancyChunkIndex3D chunk_index,
+                                    const std::size_t bit_index) noexcept {
+  return GridIndex3D{
+      chunk_index.x * ObservedOccupancyGrid3D::kChunkSize +
+          static_cast<int>(bit_index % ObservedOccupancyGrid3D::kChunkSize),
+      chunk_index.y * ObservedOccupancyGrid3D::kChunkSize +
+          static_cast<int>((bit_index / ObservedOccupancyGrid3D::kChunkSize) %
+                           ObservedOccupancyGrid3D::kChunkSize),
+      chunk_index.z * ObservedOccupancyGrid3D::kChunkSize +
+          static_cast<int>(bit_index / static_cast<std::size_t>(
+                                           ObservedOccupancyGrid3D::kChunkSize *
+                                           ObservedOccupancyGrid3D::kChunkSize)),
+  };
+}
+
+[[nodiscard]] bool inside(const GridIndex3D cell,
+                          const SourceCellRegion& region) noexcept {
+  return cell.x >= region.minimum_x && cell.x < region.maximum_x_exclusive &&
+         cell.y >= region.minimum_y && cell.y < region.maximum_y_exclusive &&
+         cell.z >= region.minimum_z && cell.z < region.maximum_z_exclusive;
+}
+
+void includeChangedCell(ChangedCellRegion3D& region, const GridIndex3D cell) {
+  if (region.count == 0U) {
+    region.minimum = cell;
+    region.maximum_exclusive = {cell.x + 1, cell.y + 1, cell.z + 1};
+  } else {
+    region.minimum.x = std::min(region.minimum.x, cell.x);
+    region.minimum.y = std::min(region.minimum.y, cell.y);
+    region.minimum.z = std::min(region.minimum.z, cell.z);
+    region.maximum_exclusive.x = std::max(region.maximum_exclusive.x, cell.x + 1);
+    region.maximum_exclusive.y = std::max(region.maximum_exclusive.y, cell.y + 1);
+    region.maximum_exclusive.z = std::max(region.maximum_exclusive.z, cell.z + 1);
+  }
+  ++region.count;
+}
+
+[[nodiscard]] ChangedCellRegion3D
+changedCellRegion3D(const ObservedOccupancyGrid3D& previous,
+                    const ObservedOccupancyGrid3D& current) {
+  std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash> chunk_indices;
+  chunk_indices.reserve(previous.chunks().size() + current.chunks().size());
+  for (const auto& [index, storage] : previous.chunks()) {
+    static_cast<void>(storage);
+    chunk_indices.insert(index);
+  }
+  for (const auto& [index, storage] : current.chunks()) {
+    static_cast<void>(storage);
+    chunk_indices.insert(index);
+  }
+  ChangedCellRegion3D result;
+  for (const OccupancyChunkIndex3D chunk_index : chunk_indices) {
+    const ObservedOccupancyGrid3D::Chunk* const before =
+        previous.findChunk(chunk_index);
+    const ObservedOccupancyGrid3D::Chunk* const after = current.findChunk(chunk_index);
+    for (std::size_t word = 0U; word < OccupancyGrid3D::kWordsPerChunk; ++word) {
+      const std::uint64_t before_observed =
+          before != nullptr ? before->observed.at(word) : 0U;
+      const std::uint64_t before_occupied =
+          before != nullptr ? before->occupied.at(word) : 0U;
+      const std::uint64_t after_observed =
+          after != nullptr ? after->observed.at(word) : 0U;
+      const std::uint64_t after_occupied =
+          after != nullptr ? after->occupied.at(word) : 0U;
+      std::uint64_t changed =
+          (before_observed ^ after_observed) | (before_occupied ^ after_occupied);
+      while (changed != 0U) {
+        const int bit_offset = std::countr_zero(changed);
+        const std::size_t bit_index = word * 64U + static_cast<std::size_t>(bit_offset);
+        const GridIndex3D cell = chunkCell(chunk_index, bit_index);
+        if (current.contains(cell)) {
+          includeChangedCell(result, cell);
+        }
+        changed &= changed - 1U;
+      }
+    }
+  }
+  return result;
+}
+
+[[nodiscard]] bool rawChangesCoveredByDirtyChunks(
+    const ObservedOccupancyGrid3D& previous, const ObservedOccupancyGrid3D& current,
+    const GridBounds3D& local_bounds,
+    const std::span<const OccupancyChunkIndex3D> dirty_chunk_span) {
+  if (!sameBounds(previous.bounds(), current.bounds())) {
+    return false;
+  }
+  const SourceCellRegion region = sourceCellRegion(current.bounds(), local_bounds);
+  const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>
+      dirty_chunks{dirty_chunk_span.begin(), dirty_chunk_span.end()};
+  constexpr int kChunkSize{ObservedOccupancyGrid3D::kChunkSize};
+  const OccupancyChunkIndex3D first{region.minimum_x / kChunkSize,
+                                    region.minimum_y / kChunkSize,
+                                    region.minimum_z / kChunkSize};
+  const OccupancyChunkIndex3D last{(region.maximum_x_exclusive - 1) / kChunkSize,
+                                   (region.maximum_y_exclusive - 1) / kChunkSize,
+                                   (region.maximum_z_exclusive - 1) / kChunkSize};
+  for (int z = first.z; z <= last.z; ++z) {
+    for (int y = first.y; y <= last.y; ++y) {
+      for (int x = first.x; x <= last.x; ++x) {
+        const OccupancyChunkIndex3D chunk_index{x, y, z};
+        if (dirty_chunks.contains(chunk_index)) {
+          continue;
+        }
+        const ObservedOccupancyGrid3D::Chunk* const before =
+            previous.findChunk(chunk_index);
+        const ObservedOccupancyGrid3D::Chunk* const after =
+            current.findChunk(chunk_index);
+        for (std::size_t word = 0U; word < OccupancyGrid3D::kWordsPerChunk; ++word) {
+          const std::uint64_t before_observed =
+              before != nullptr ? before->observed.at(word) : 0U;
+          const std::uint64_t before_occupied =
+              before != nullptr ? before->occupied.at(word) : 0U;
+          const std::uint64_t after_observed =
+              after != nullptr ? after->observed.at(word) : 0U;
+          const std::uint64_t after_occupied =
+              after != nullptr ? after->occupied.at(word) : 0U;
+          std::uint64_t changed =
+              (before_observed ^ after_observed) | (before_occupied ^ after_occupied);
+          while (changed != 0U) {
+            const int bit_offset = std::countr_zero(changed);
+            const std::size_t bit_index =
+                word * 64U + static_cast<std::size_t>(bit_offset);
+            if (inside(chunkCell(chunk_index, bit_index), region)) {
+              return false;
+            }
+            changed &= changed - 1U;
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+previousObservedEsdfIsCompatible(const PreviousObservedEsdf3D& previous,
+                                 const ObservedOccupancyGrid3D& source_occupancy,
+                                 const GridBounds3D& bounds,
+                                 const double maximum_distance_m) {
+  if (!previous.source_occupancy || !previous.local_occupancy ||
+      !sameBounds(previous.source_occupancy->bounds(), source_occupancy.bounds()) ||
+      !sameBounds(previous.local_occupancy->bounds(), bounds) ||
+      previous.distances_m.size() != voxelCount(bounds) ||
+      previous.occupancy_fingerprint == 0U ||
+      std::abs(previous.maximum_distance_m - maximum_distance_m) > 1.0e-9) {
+    return false;
+  }
+  const mppi::EsdfGrid expected = esdfGrid(bounds);
+  constexpr float kGridTolerance{1.0e-5F};
+  return previous.grid.width == expected.width &&
+         previous.grid.height == expected.height &&
+         previous.grid.depth == expected.depth && previous.grid.outside_is_unknown &&
+         std::abs(previous.grid.resolution_m - expected.resolution_m) <=
+             kGridTolerance &&
+         std::abs(previous.grid.origin_x_m - expected.origin_x_m) <= kGridTolerance &&
+         std::abs(previous.grid.origin_y_m - expected.origin_y_m) <= kGridTolerance &&
+         std::abs(previous.grid.origin_z_m - expected.origin_z_m) <= kGridTolerance &&
+         observedOccupancyFingerprint(*previous.local_occupancy, bounds) ==
+             previous.occupancy_fingerprint;
+}
+
+[[nodiscard]] SourceCellRegion expandedRegion(const SourceCellRegion& region,
+                                              const int cells,
+                                              const GridBounds3D& bounds) noexcept {
+  return SourceCellRegion{
+      .minimum_x = std::max(0, region.minimum_x - cells),
+      .minimum_y = std::max(0, region.minimum_y - cells),
+      .minimum_z = std::max(0, region.minimum_z - cells),
+      .maximum_x_exclusive =
+          std::min(bounds.width_cells, region.maximum_x_exclusive + cells),
+      .maximum_y_exclusive =
+          std::min(bounds.height_cells, region.maximum_y_exclusive + cells),
+      .maximum_z_exclusive =
+          std::min(bounds.depth_cells, region.maximum_z_exclusive + cells),
+  };
+}
+
+[[nodiscard]] std::size_t regionVoxelCount(const SourceCellRegion& region) noexcept {
+  return static_cast<std::size_t>(region.maximum_x_exclusive - region.minimum_x) *
+         static_cast<std::size_t>(region.maximum_y_exclusive - region.minimum_y) *
+         static_cast<std::size_t>(region.maximum_z_exclusive - region.minimum_z);
+}
+
+[[nodiscard]] GridBounds3D boundsForRegion(const GridBounds3D& bounds,
+                                           const SourceCellRegion& region) noexcept {
+  return GridBounds3D{
+      .origin_x = bounds.origin_x + region.minimum_x * bounds.resolution_m,
+      .origin_y = bounds.origin_y + region.minimum_y * bounds.resolution_m,
+      .origin_z = bounds.origin_z + region.minimum_z * bounds.resolution_m,
+      .resolution_m = bounds.resolution_m,
+      .width_cells = region.maximum_x_exclusive - region.minimum_x,
+      .height_cells = region.maximum_y_exclusive - region.minimum_y,
+      .depth_cells = region.maximum_z_exclusive - region.minimum_z,
+  };
+}
+
 } // namespace
 
 GridBounds3D selectLocalObservedEsdfBounds(const GridBounds3D& world_bounds,
@@ -391,38 +760,6 @@ bool localObservedEsdfWindow3DIsValid(
          std::isfinite(window.vertical_recenter_margin_m) &&
          window.vertical_recenter_margin_m >= 0.0 &&
          window.vertical_recenter_margin_m < window.vertical_half_extent_m;
-}
-
-std::uint64_t observedOccupancyFingerprint(const ObservedOccupancyGrid3D& occupancy,
-                                           const GridBounds3D& local_bounds) {
-  const SourceCellRegion region = sourceCellRegion(occupancy.bounds(), local_bounds);
-  using ChunkEntry = std::pair<OccupancyChunkIndex3D, const ObservedOccupancyChunk3D*>;
-  std::vector<ChunkEntry> chunks;
-  chunks.reserve(occupancy.chunks().size());
-  for (const auto& [index, storage] : occupancy.chunks()) {
-    const ObservedOccupancyGrid3D::Chunk& chunk = storage.get();
-    if (overlaps(index, region)) {
-      chunks.emplace_back(index, &chunk);
-    }
-  }
-  std::ranges::sort(chunks, {}, [](const ChunkEntry& entry) {
-    return std::tuple{entry.first.z, entry.first.y, entry.first.x};
-  });
-
-  std::uint64_t hash = kFnvOffsetBasis;
-  hashBounds(hash, local_bounds);
-  for (const auto& [index, chunk] : chunks) {
-    hashInteger(hash, index.x);
-    hashInteger(hash, index.y);
-    hashInteger(hash, index.z);
-    for (const std::uint64_t word : chunk->observed) {
-      hashWord(hash, word);
-    }
-    for (const std::uint64_t word : chunk->occupied) {
-      hashWord(hash, word);
-    }
-  }
-  return hash;
 }
 
 std::optional<LaunchSupportContact3D>
@@ -538,148 +875,125 @@ buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
                     BoundedWorkerPool* const worker_pool,
                     const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
                     const LaunchSupportContact3D* const launch_support_contact) {
-  const SourceCellRegion source_region =
-      sourceCellRegion(occupancy.bounds(), local_bounds);
-  OccupancyGrid3D occupied = occupancy.occupiedSnapshot();
-  const std::vector<GridIndex3D> support_cells =
-      launchSupportCells(occupancy, launch_support_contact);
-  std::unordered_set<std::uint64_t> support_cell_keys;
-  support_cell_keys.reserve(support_cells.size());
-  for (const GridIndex3D cell : support_cells) {
-    occupied.clearOccupied(cell);
-    support_cell_keys.insert(cellKey(occupancy.bounds(), cell));
+  return updateObservedEsdf3D(occupancy, local_bounds, maximum_distance_m, nullptr, {},
+                              true, 1.0, worker_pool, free_space_seed,
+                              launch_support_contact);
+}
+
+ObservedEsdf3D updateObservedEsdf3D(
+    const ObservedOccupancyGrid3D& occupancy, const GridBounds3D& local_bounds,
+    const double maximum_distance_m, const PreviousObservedEsdf3D* const previous,
+    const std::span<const OccupancyChunkIndex3D> dirty_chunks, const bool full_reset,
+    const double maximum_rebuild_ratio, BoundedWorkerPool* const worker_pool,
+    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
+    const LaunchSupportContact3D* const launch_support_contact) {
+  static_cast<void>(sourceCellRegion(occupancy.bounds(), local_bounds));
+  if (!std::isfinite(maximum_distance_m) || maximum_distance_m <= 0.0 ||
+      !std::isfinite(maximum_rebuild_ratio) || maximum_rebuild_ratio <= 0.0 ||
+      maximum_rebuild_ratio > 1.0) {
+    throw std::invalid_argument{"invalid incremental observed ESDF request"};
   }
-  const DistanceField3D field = DistanceField3D::buildLocal(
-      occupied, local_bounds, maximum_distance_m, worker_pool);
-  auto local_occupancy = std::make_shared<ObservedOccupancyGrid3D>(local_bounds);
+  const ClassifiedObservedGrid3D classified = classifyObservedGrid3D(
+      occupancy, local_bounds, free_space_seed, launch_support_contact);
+  const bool previous_compatible =
+      previous != nullptr &&
+      previousObservedEsdfIsCompatible(*previous, occupancy, local_bounds,
+                                       maximum_distance_m);
+  if (full_reset || !previous_compatible) {
+    return buildFullObservedEsdf3D(classified, maximum_distance_m, worker_pool,
+                                   dirty_chunks.size(), previous != nullptr);
+  }
+
+  const ChangedCellRegion3D changed =
+      changedCellRegion3D(*previous->local_occupancy, *classified.occupancy);
+  if (!rawChangesCoveredByDirtyChunks(*previous->source_occupancy, occupancy,
+                                      local_bounds, dirty_chunks)) {
+    ObservedEsdf3D result = buildFullObservedEsdf3D(
+        classified, maximum_distance_m, worker_pool, dirty_chunks.size(), true);
+    result.stats.changed_voxels = changed.count;
+    return result;
+  }
+  if (changed.count == 0U) {
+    ObservedEsdf3D result{
+        .grid = previous->grid,
+        .distances_m = std::vector<float>(previous->distances_m.begin(),
+                                          previous->distances_m.end()),
+        .local_occupancy = previous->local_occupancy,
+        .occupancy_fingerprint = classified.fingerprint,
+        .maximum_distance_m = maximum_distance_m,
+        .stats = classified.stats,
+    };
+    result.stats.reused_voxels = result.distances_m.size();
+    result.stats.dirty_chunks = dirty_chunks.size();
+    result.stats.mode = ObservedEsdf3DBuildMode::kReused;
+    return result;
+  }
+
+  const double radius_cells_value =
+      std::ceil(maximum_distance_m / local_bounds.resolution_m);
+  if (radius_cells_value > static_cast<double>(std::numeric_limits<int>::max())) {
+    throw std::overflow_error{"incremental observed ESDF radius exceeds int"};
+  }
+  const int radius_cells = static_cast<int>(radius_cells_value);
+  const SourceCellRegion changed_region{
+      .minimum_x = changed.minimum.x,
+      .minimum_y = changed.minimum.y,
+      .minimum_z = changed.minimum.z,
+      .maximum_x_exclusive = changed.maximum_exclusive.x,
+      .maximum_y_exclusive = changed.maximum_exclusive.y,
+      .maximum_z_exclusive = changed.maximum_exclusive.z,
+  };
+  const SourceCellRegion target_region =
+      expandedRegion(changed_region, radius_cells, local_bounds);
+  const SourceCellRegion patch_region =
+      expandedRegion(target_region, radius_cells, local_bounds);
+  const std::size_t total_voxels = voxelCount(local_bounds);
+  const std::size_t target_voxels = regionVoxelCount(target_region);
+  const std::size_t patch_voxels = regionVoxelCount(patch_region);
+  const double rebuild_ratio =
+      static_cast<double>(patch_voxels) / static_cast<double>(total_voxels);
+  if (target_voxels >= total_voxels || rebuild_ratio > maximum_rebuild_ratio) {
+    ObservedEsdf3D result = buildFullObservedEsdf3D(
+        classified, maximum_distance_m, worker_pool, dirty_chunks.size(), true);
+    result.stats.changed_voxels = changed.count;
+    return result;
+  }
+
+  const OccupancyGrid3D occupied = classified.occupancy->occupiedSnapshot();
+  const DistanceField3D patch =
+      DistanceField3D::buildLocal(occupied, boundsForRegion(local_bounds, patch_region),
+                                  maximum_distance_m, worker_pool);
   ObservedEsdf3D result{
-      .grid =
-          mppi::EsdfGrid{
-              .width = local_bounds.width_cells,
-              .height = local_bounds.height_cells,
-              .resolution_m = static_cast<float>(local_bounds.resolution_m),
-              .origin_x_m = static_cast<float>(local_bounds.origin_x),
-              .origin_y_m = static_cast<float>(local_bounds.origin_y),
-              .depth = local_bounds.depth_cells,
-              .origin_z_m = static_cast<float>(local_bounds.origin_z),
-              .outside_is_unknown = true,
-          },
-      .distances_m =
-          std::vector<float>(field.distancesM().size(), mppi::kUnknownEsdfDistanceM),
-      .local_occupancy = local_occupancy,
-      .occupancy_fingerprint = 0U,
+      .grid = esdfGrid(local_bounds),
+      .distances_m = std::vector<float>(previous->distances_m.begin(),
+                                        previous->distances_m.end()),
+      .local_occupancy = classified.occupancy,
+      .occupancy_fingerprint = classified.fingerprint,
+      .maximum_distance_m = maximum_distance_m,
+      .stats = classified.stats,
   };
-  result.stats.distance_field = field.stats();
-
-  const auto classification_started = std::chrono::steady_clock::now();
-  const auto sourceToLocal = [&source_region](const GridIndex3D source) {
-    return GridIndex3D{source.x - source_region.minimum_x,
-                       source.y - source_region.minimum_y,
-                       source.z - source_region.minimum_z};
-  };
-  const auto publishKnownDistance = [&](const GridIndex3D local_cell) {
-    result.distances_m.at(localLinearIndex(local_bounds, local_cell)) =
-        field.distanceAt(local_cell);
-  };
-  forEachObservedVoxel(
-      occupancy, source_region,
-      [&](const GridIndex3D source, const ObservedVoxelState state) {
-        const GridIndex3D local_cell = sourceToLocal(source);
-        const bool launch_support_cell =
-            support_cell_keys.contains(cellKey(occupancy.bounds(), source));
-        static_cast<void>(local_occupancy->setState(
-            local_cell, launch_support_cell ? ObservedVoxelState::kFree : state));
-        publishKnownDistance(local_cell);
-        result.stats.launch_support_voxels +=
-            launch_support_cell && state != ObservedVoxelState::kFree ? 1U : 0U;
-      });
-
-  for (const GridIndex3D source : support_cells) {
-    if (source.x < source_region.minimum_x ||
-        source.x >= source_region.maximum_x_exclusive ||
-        source.y < source_region.minimum_y ||
-        source.y >= source_region.maximum_y_exclusive ||
-        source.z < source_region.minimum_z ||
-        source.z >= source_region.maximum_z_exclusive) {
-      continue;
-    }
-    const GridIndex3D local_cell = sourceToLocal(source);
-    if (local_occupancy->state(local_cell) != ObservedVoxelState::kFree) {
-      static_cast<void>(
-          local_occupancy->setState(local_cell, ObservedVoxelState::kFree));
-      publishKnownDistance(local_cell);
-      ++result.stats.launch_support_voxels;
-    }
-  }
-
-  if (free_space_seed != nullptr) {
-    const double seed_extent_m =
-        std::max(0.0, free_space_seed->footprint.radius_m) +
-        std::max(std::max(0.0, free_space_seed->footprint.lower_extent_m),
-                 std::max(0.0, free_space_seed->footprint.upper_extent_m)) +
-        local_bounds.resolution_m;
-    const int minimum_x =
-        clampedCell(free_space_seed->position.x - seed_extent_m, local_bounds.origin_x,
-                    local_bounds.resolution_m, local_bounds.width_cells);
-    const int maximum_x =
-        clampedCell(free_space_seed->position.x + seed_extent_m, local_bounds.origin_x,
-                    local_bounds.resolution_m, local_bounds.width_cells);
-    const int minimum_y =
-        clampedCell(free_space_seed->position.y - seed_extent_m, local_bounds.origin_y,
-                    local_bounds.resolution_m, local_bounds.height_cells);
-    const int maximum_y =
-        clampedCell(free_space_seed->position.y + seed_extent_m, local_bounds.origin_y,
-                    local_bounds.resolution_m, local_bounds.height_cells);
-    const int minimum_z =
-        clampedCell(free_space_seed->position.z - seed_extent_m, local_bounds.origin_z,
-                    local_bounds.resolution_m, local_bounds.depth_cells);
-    const int maximum_z =
-        clampedCell(free_space_seed->position.z + seed_extent_m, local_bounds.origin_z,
-                    local_bounds.resolution_m, local_bounds.depth_cells);
-    for (int z = minimum_z; z <= maximum_z; ++z) {
-      for (int y = minimum_y; y <= maximum_y; ++y) {
-        for (int x = minimum_x; x <= maximum_x; ++x) {
-          const GridIndex3D local_cell{x, y, z};
-          if (local_occupancy->state(local_cell) != ObservedVoxelState::kUnknown) {
-            continue;
-          }
-          const Point3 cell_minimum{
-              local_bounds.origin_x +
-                  static_cast<double>(x) * local_bounds.resolution_m,
-              local_bounds.origin_y +
-                  static_cast<double>(y) * local_bounds.resolution_m,
-              local_bounds.origin_z +
-                  static_cast<double>(z) * local_bounds.resolution_m,
-          };
-          const Point3 cell_maximum{
-              cell_minimum.x + local_bounds.resolution_m,
-              cell_minimum.y + local_bounds.resolution_m,
-              cell_minimum.z + local_bounds.resolution_m,
-          };
-          if (!footprintIntersectsAxisAlignedBox(
-                  free_space_seed->position, free_space_seed->body_axis,
-                  free_space_seed->footprint, cell_minimum, cell_maximum)) {
-            continue;
-          }
-          static_cast<void>(
-              local_occupancy->setState(local_cell, ObservedVoxelState::kFree));
-          publishKnownDistance(local_cell);
-          ++result.stats.proprioceptive_free_voxels;
+  for (int z = target_region.minimum_z; z < target_region.maximum_z_exclusive; ++z) {
+    for (int y = target_region.minimum_y; y < target_region.maximum_y_exclusive; ++y) {
+      for (int x = target_region.minimum_x; x < target_region.maximum_x_exclusive;
+           ++x) {
+        const GridIndex3D local_cell{x, y, z};
+        const std::size_t output_index = localLinearIndex(local_bounds, local_cell);
+        if (classified.occupancy->state(local_cell) == ObservedVoxelState::kUnknown) {
+          result.distances_m[output_index] = mppi::kUnknownEsdfDistanceM;
+          continue;
         }
+        result.distances_m[output_index] = patch.distanceAt(
+            GridIndex3D{x - patch_region.minimum_x, y - patch_region.minimum_y,
+                        z - patch_region.minimum_z});
       }
     }
   }
-
-  result.stats.known_voxels = local_occupancy->knownVoxelCount();
-  result.stats.free_voxels = local_occupancy->freeVoxelCount();
-  result.stats.occupied_voxels = local_occupancy->occupiedVoxelCount();
-  result.stats.unknown_voxels = result.distances_m.size() - result.stats.known_voxels;
-  result.occupancy_fingerprint =
-      observedOccupancyFingerprint(*local_occupancy, local_bounds);
-  result.stats.classification_ms =
-      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                classification_started)
-          .count();
+  result.stats.distance_field = patch.stats();
+  result.stats.changed_voxels = changed.count;
+  result.stats.recomputed_voxels = target_voxels;
+  result.stats.reused_voxels = total_voxels - target_voxels;
+  result.stats.dirty_chunks = dirty_chunks.size();
+  result.stats.mode = ObservedEsdf3DBuildMode::kIncremental;
   return result;
 }
 

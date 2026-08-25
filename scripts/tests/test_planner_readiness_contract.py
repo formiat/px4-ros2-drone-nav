@@ -16,6 +16,7 @@ INPUTS_3D = SOURCE / "production_mppi_node_inputs_3d.cpp"
 CONTROL_FEEDBACK = SOURCE / "production_mppi_node_control_feedback.cpp"
 ESDF = SOURCE / "production_mppi_node_esdf.cpp"
 OBSERVED_ESDF = SOURCE / "production_mppi_node_observed_esdf.cpp"
+OBSERVED_EVIDENCE = SOURCE / "production_mppi_node_observed_evidence.cpp"
 PLANNER = SOURCE / "production_mppi_node.cpp"
 PLANNER_INTERFACES = SOURCE / "production_mppi_node_interfaces.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
@@ -421,6 +422,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         inputs = INPUTS.read_text(encoding="utf-8")
         control_feedback = CONTROL_FEEDBACK.read_text(encoding="utf-8")
         observed_esdf = OBSERVED_ESDF.read_text(encoding="utf-8")
+        observed_evidence = OBSERVED_EVIDENCE.read_text(encoding="utf-8")
         evidence = EXECUTION_EVIDENCE_HEADER.read_text(encoding="utf-8")
         horizon_admission = HORIZON_ADMISSION.read_text(encoding="utf-8")
         horizon_timing = HORIZON_TIMING.read_text(encoding="utf-8")
@@ -509,10 +511,10 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn(
             "previousControlSourceProducerInstanceId", execution
         )
-        self.assertIn("authoritativeBodyAxisForExecution", observed_esdf)
-        self.assertIn("free_space_seed.has_value()", observed_esdf)
+        self.assertIn("authoritativeBodyAxisForExecution", observed_evidence)
+        self.assertIn("free_space_seed.has_value()", observed_evidence)
         self.assertNotIn(
-            "value_or(FootprintBodyAxis{})", observed_esdf
+            "value_or(FootprintBodyAxis{})", observed_evidence
         )
 
     def test_stage2_every_horizon_consumer_validates_before_authority_handoff(

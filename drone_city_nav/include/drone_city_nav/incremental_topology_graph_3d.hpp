@@ -124,7 +124,12 @@ struct IncrementalTopologyGraph3DConfig {
   int coarse_sample_stride_cells{2};
   int refined_sample_stride_cells{1};
   std::size_t maximum_observed_blocks_per_update{16U};
+  std::size_t maximum_backlog_blocks_per_update{64U};
+  std::size_t backlog_boost_threshold_blocks{256U};
   std::size_t minimum_oldest_blocks_per_update{4U};
+  double local_priority_radius_m{12.0};
+  double forward_corridor_radius_m{8.0};
+  double forward_corridor_lookahead_m{60.0};
   SweptFootprintConfig footprint{};
   bool require_known_free_space{false};
 };
@@ -136,6 +141,10 @@ struct IncrementalTopologyGraph3DUpdate {
   std::size_t rebuilt_blocks{0U};
   std::size_t refreshed_observation_blocks{0U};
   std::size_t pending_blocks{0U};
+  std::size_t scheduled_block_budget{0U};
+  std::size_t local_priority_blocks{0U};
+  std::size_t forward_corridor_blocks{0U};
+  std::size_t oldest_preserved_blocks{0U};
   std::size_t adaptively_refined_blocks{0U};
   std::size_t sampled_navigable_cells{0U};
   std::size_t retained_node_ids{0U};
@@ -150,11 +159,15 @@ struct IncrementalTopologyGraph3DUpdate {
   double node_classification_ms{0.0};
   double graph_rebuild_ms{0.0};
   bool full_reset{false};
+  bool backlog_boosted{false};
 };
 
 struct IncrementalTopologyBuildPriority3D {
   Point3 position{};
   Point3 target{};
+  double local_radius_m{12.0};
+  double forward_corridor_radius_m{8.0};
+  double forward_corridor_lookahead_m{60.0};
 };
 
 struct IncrementalTopologyConnector3D {

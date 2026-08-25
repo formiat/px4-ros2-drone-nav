@@ -97,6 +97,7 @@
 
 #include "production_mppi_execution_control.hpp"
 #include "production_mppi_node_types.hpp"
+#include "production_mppi_raw_world.hpp"
 
 namespace drone_city_nav {
 
@@ -130,23 +131,6 @@ struct ProductionMppiExecutionCycle;
 struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 
-struct ProductionMppiRawWorld2D {
-  RawMapVersion version{};
-  std::int64_t ready_stamp_ns{0};
-  double reconstruction_ms{0.0};
-  std::shared_ptr<const OccupancyGrid2D> occupancy;
-};
-
-struct ProductionMppiRawWorld3D {
-  RawMapVersion version{};
-  std::int64_t ready_stamp_ns{0};
-  double reconstruction_ms{0.0};
-  std::shared_ptr<const ObservedOccupancyGrid3D> occupancy;
-  std::shared_ptr<const VersionedObservedRawWorld3D> execution_owner;
-  std::vector<OccupancyChunkIndex3D> dirty_chunks;
-  bool full_reset{false};
-};
-
 struct ProductionGuideCandidateValidation {
   std::shared_ptr<const ProductionMppiPreparedEsdf> publication_world;
   RawGuideValidationResult raw_validation{};
@@ -166,8 +150,7 @@ struct ProductionMppiPreparedEsdf {
   LocalWorldGeneration local_world_generation{};
   std::uint64_t producer_instance_id{0U};
   std::uint64_t revision{0U};
-  // Raw-observation revision used to build this local ESDF. This keeps route
-  // replanning causal when a newer lidar observation blocks an active route.
+  // Raw observation that causally anchors this local ESDF generation.
   std::uint64_t source_raw_revision{0U};
   std::uint64_t source_occupied_fingerprint{0U};
   std::int64_t source_stamp_ns{0};
@@ -199,6 +182,7 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner;
+  ObservedEsdfResource3D observed_esdf_resource{};
   std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
   std::optional<LaunchSupportContact3D> launch_support_contact;
   bool launch_support_resolution_pending{false};
@@ -521,6 +505,12 @@ private:
   void topologyWorker(std::stop_token stop_token);
   [[nodiscard]] std::optional<std::chrono::steady_clock::time_point>
   processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);
+  [[nodiscard]] std::optional<ProprioceptiveFreeSpaceSeed3D>
+  prepareObservedExecutionEvidence3D(
+      const ProductionMppiRawWorld3D& raw_world,
+      const ProductionMppiNavigation& navigation,
+      const ProductionMppiAppliedControl& applied_control,
+      const ProductionMppiExecutionHorizonOwner& execution_horizon_owner);
   [[nodiscard]] std::size_t
   processObservedTopology3D(const ProductionMppiRawWorld3D& raw_world);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
@@ -738,6 +728,7 @@ private:
   double no_static_esdf_recenter_margin_m_{70.0};
   double no_static_3d_esdf_update_rate_hz_{1.0};
   LocalObservedEsdfWindow3D no_static_3d_esdf_window_{};
+  double no_static_3d_esdf_incremental_maximum_rebuild_ratio_{0.65};
   std::size_t planner_worker_count_{4U};
   MppiRolloutBudgetConfig rollout_budget_config_{};
   double planning_tick_phase_offset_s_{0.0};
@@ -923,6 +914,7 @@ private:
   std::atomic<std::uint64_t> no_static_raw_updates_{0U};
   std::atomic<std::uint64_t> no_static_esdf_builds_{0U};
   std::atomic<std::uint64_t> no_static_esdf_throttled_updates_{0U};
+  ObservedEsdf3DRuntimeCounters observed_esdf_3d_counters_{};
   std::atomic<std::uint64_t> rejected_lidar_obstacle_scans_{0U};
   bool pending_static_esdf_work_{false};
   bool static_esdf_work_in_progress_{false};
@@ -941,9 +933,7 @@ private:
   std::optional<GlobalGuideCandidate> pending_global_guide_;
   std::vector<LatticeFrontierBlacklistEntry> frontier_blacklist_;
 
-  // Linearizes the active GPU ESDF with its exact immutable CPU world. Planning
-  // holds this gate only while revalidating and executing the GPU tick; heavy
-  // host-side snapshot preparation remains outside the critical section.
+  // Linearizes the active GPU ESDF with its exact immutable CPU world.
   mutable std::mutex world_generation_publication_mutex_;
   mutable std::mutex esdf_state_mutex_;
   std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;

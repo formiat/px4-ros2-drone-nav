@@ -74,8 +74,12 @@ No-static 3D world:
   `obstacle_memory_3d_snapshot_maximum_period_s`, and
   `obstacle_memory_3d_snapshot_rebase_dirty_ratio` control adaptive base
   rebasing without coupling it to lidar cadence;
-- local ESDF half extent, recenter margin, and update rate bound the dense GPU
-  resource built from sparse observed occupancy;
+- local ESDF half extent, recenter margin, update rate, and incremental rebuild
+  ratio bound the dense GPU resource built from sparse observed occupancy;
+- the observed ESDF distance cap is derived from preferred clearance, the full
+  oriented-footprint bounding radius, and conservative voxel-query correction;
+- topology block budgets, backlog threshold/catch-up budget, local radius, and
+  forward-corridor radius/lookahead control incremental coverage scheduling;
 - outside-ROI and unknown voxels remain unavailable for execution rather than
   becoming occupied.
 

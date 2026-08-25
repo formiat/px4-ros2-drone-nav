@@ -105,6 +105,11 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
                 .position = {navigation.state.x, navigation.state.y,
                              navigation.state.z},
                 .target = objective->goal,
+                .local_radius_m = topological_graph_3d_config_.local_priority_radius_m,
+                .forward_corridor_radius_m =
+                    topological_graph_3d_config_.forward_corridor_radius_m,
+                .forward_corridor_lookahead_m =
+                    topological_graph_3d_config_.forward_corridor_lookahead_m,
             }}
           : std::nullopt;
 
@@ -172,7 +177,8 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
       "INCREMENTAL_TOPOLOGY3D_UPDATE revision=%" PRIu64
       " full_reset=%s dirty_chunks=%zu discovered_dirty_blocks=%zu "
       "rebuilt_blocks=%zu refreshed_observation_blocks=%zu pending_blocks=%zu "
-      "refined_blocks=%zu "
+      "budget=%zu backlog_boosted=%s local_priority=%zu forward_corridor=%zu "
+      "oldest_preserved=%zu refined_blocks=%zu "
       "base_resolution_m=%.3f coarse_resolution_m=%.3f "
       "refined_resolution_m=%.3f retained_nodes=%zu created_nodes=%zu "
       "retired_nodes=%zu nodes=%zu edges=%zu dirty_discovery_ms=%.2f "
@@ -181,7 +187,10 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
       update.graph.revision, update.graph.full_reset ? "true" : "false",
       update.graph.requested_dirty_chunks, update.graph.discovered_dirty_blocks,
       update.graph.rebuilt_blocks, update.graph.refreshed_observation_blocks,
-      update.graph.pending_blocks, update.graph.adaptively_refined_blocks,
+      update.graph.pending_blocks, update.graph.scheduled_block_budget,
+      update.graph.backlog_boosted ? "true" : "false",
+      update.graph.local_priority_blocks, update.graph.forward_corridor_blocks,
+      update.graph.oldest_preserved_blocks, update.graph.adaptively_refined_blocks,
       raw_world.occupancy->bounds().resolution_m,
       raw_world.occupancy->bounds().resolution_m *
           static_cast<double>(topological_graph_3d_config_.coarse_sample_stride_cells),
@@ -218,6 +227,22 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
           declare_parameter<std::int64_t>(
               "topological_graph_3d_minimum_oldest_blocks_per_update", 4),
           "topological_graph_3d_minimum_oldest_blocks_per_update");
+  topological_graph_3d_config_.maximum_backlog_blocks_per_update =
+      checkedPositiveSizeParameter(
+          declare_parameter<std::int64_t>(
+              "topological_graph_3d_maximum_backlog_blocks_per_update", 64),
+          "topological_graph_3d_maximum_backlog_blocks_per_update");
+  topological_graph_3d_config_.backlog_boost_threshold_blocks =
+      checkedPositiveSizeParameter(
+          declare_parameter<std::int64_t>(
+              "topological_graph_3d_backlog_boost_threshold_blocks", 256),
+          "topological_graph_3d_backlog_boost_threshold_blocks");
+  topological_graph_3d_config_.local_priority_radius_m =
+      declare_parameter<double>("topological_graph_3d_local_priority_radius_m", 12.0);
+  topological_graph_3d_config_.forward_corridor_radius_m =
+      declare_parameter<double>("topological_graph_3d_forward_corridor_radius_m", 8.0);
+  topological_graph_3d_config_.forward_corridor_lookahead_m = declare_parameter<double>(
+      "topological_graph_3d_forward_corridor_lookahead_m", 60.0);
   topological_graph_3d_config_.footprint = physical_footprint_config_;
   topological_graph_3d_config_.require_known_free_space =
       require_known_free_space_for_goal_;

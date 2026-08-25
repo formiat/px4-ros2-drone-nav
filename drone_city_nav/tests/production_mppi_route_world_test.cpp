@@ -15,7 +15,12 @@ namespace {
   world.producer_instance_id = 7U;
   world.revision = 99U;
   world.source_raw_revision = 451U;
-  world.grid = mppi::EsdfGrid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  world.source_occupied_fingerprint = 88U;
+  world.grid = mppi::EsdfGrid{.width = 4,
+                              .height = 4,
+                              .resolution_m = 1.0F,
+                              .depth = 4,
+                              .outside_is_unknown = true};
   world.distances_m = std::make_shared<const std::vector<float>>(64U, 2.0F);
   world.observed_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4});
@@ -23,6 +28,22 @@ namespace {
       RawMapVersion{
           .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 451U},
       world.observed_occupancy, std::nullopt, std::nullopt);
+  world.observed_esdf_resource = ObservedEsdfResource3D{
+      .local_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
+          GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4}),
+      .coverage =
+          ObservedEsdfCoverage3D{
+              .source_raw_version = {.producer_instance_id = 7U,
+                                     .base_snapshot_revision = 400U,
+                                     .revision = 451U},
+              .raw_local_fingerprint = 88U,
+              .esdf_fingerprint = 99U,
+              .total_voxels = 64U,
+              .recomputed_voxels = 64U,
+              .maximum_distance_m = 7.0,
+              .mode = ObservedEsdf3DBuildMode::kFull,
+          },
+  };
   world.local_world_generation = LocalWorldGeneration{
       .generation = 12U,
       .raw_map = {.producer_instance_id = 7U,
@@ -69,6 +90,23 @@ TEST(ProductionMppiRouteWorldTest, ObservedOwnerMustMatchExactRawSnapshot) {
 
   EXPECT_EQ(assessProductionWorldGeneration(world),
             ProductionWorldGenerationStatus::kObservedOwnerMismatch);
+}
+
+TEST(ProductionMppiRouteWorldTest, ObservedCoverageMustMatchExactWorldResources) {
+  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  ++world.observed_esdf_resource.coverage.source_raw_version.revision;
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch);
+
+  world = coherentObservedWorld();
+  ++world.observed_esdf_resource.coverage.raw_local_fingerprint;
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch);
+
+  world = coherentObservedWorld();
+  --world.observed_esdf_resource.coverage.recomputed_voxels;
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch);
 }
 
 TEST(ProductionMppiRouteWorldTest, StaticWorldUsesItsEsdfAsRawGenerationAnchor) {
@@ -145,12 +183,18 @@ TEST(ProductionMppiRouteWorldTest,
   ProductionMppiPreparedEsdf completed_world_build;
   completed_world_build.observed_occupancy = observed_occupancy;
   completed_world_build.observed_raw_world_owner = observed_owner;
+  completed_world_build.observed_esdf_resource = ObservedEsdfResource3D{
+      .local_occupancy = observed_occupancy,
+      .coverage = ObservedEsdfCoverage3D{.raw_local_fingerprint = 91U},
+  };
   ProductionMppiPreparedEsdf resident;
 
   adoptWorldResources(resident, completed_world_build);
 
   EXPECT_EQ(resident.observed_occupancy, observed_occupancy);
   EXPECT_EQ(resident.observed_raw_world_owner, observed_owner);
+  EXPECT_EQ(resident.observed_esdf_resource.local_occupancy, observed_occupancy);
+  EXPECT_EQ(resident.observed_esdf_resource.coverage.raw_local_fingerprint, 91U);
   ASSERT_NE(resident.observed_raw_world_owner, nullptr);
   EXPECT_EQ(std::addressof(resident.observed_raw_world_owner->occupancy()),
             resident.observed_occupancy.get());

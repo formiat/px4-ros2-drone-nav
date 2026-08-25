@@ -295,6 +295,8 @@ add_library(
   src/obstacle_memory_3d.cpp
   src/obstacle_memory_transport_policy_3d.cpp
   src/observed_esdf_3d.cpp
+  src/observed_esdf_3d_fingerprint.cpp
+  src/observed_esdf_3d_metadata.cpp
   src/observed_occupancy_grid_3d.cpp
   src/observation_frontier.cpp
   src/occupancy_grid.cpp
@@ -622,6 +624,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_noncooperative_diagnostics.cpp
     src/production_mppi_node_esdf.cpp
     src/production_mppi_node_observed_esdf.cpp
+    src/production_mppi_node_observed_evidence.cpp
     src/production_mppi_node_topology.cpp
     src/production_mppi_node_inputs.cpp
     src/production_mppi_node_navigation_input.cpp
