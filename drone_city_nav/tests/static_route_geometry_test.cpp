@@ -167,7 +167,7 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
   ASSERT_GT(result.constrained_spans.front().envelope.size(), 1U);
   EXPECT_LT(result.constrained_spans.front().envelope.front().min_z_m,
             result.constrained_spans.front().envelope.back().min_z_m);
-  EXPECT_TRUE(std::ranges::any_of(result.route, [](const RouteSample3D& sample) {
+  EXPECT_FALSE(std::ranges::any_of(result.route, [](const RouteSample3D& sample) {
     return distance3D(sample.position, Point3{15.0, 5.0, 5.0}) < 0.25;
   }));
 }

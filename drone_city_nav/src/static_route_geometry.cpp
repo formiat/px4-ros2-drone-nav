@@ -343,24 +343,12 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
           .count();
 
   const auto corner_validation_started = std::chrono::steady_clock::now();
-  std::vector<bool> protected_corners(anchors.size(), true);
   std::vector<std::size_t> corner_candidates;
   for (std::size_t index = 1U; index + 1U < anchors.size(); ++index) {
-    const RouteProjection3D projection = projectOntoRoute3D(route, anchors[index]);
-    const RouteProjection3D previous_projection =
-        projectOntoRoute3D(route, anchors[index - 1U]);
-    const RouteProjection3D next_projection =
-        projectOntoRoute3D(route, anchors[index + 1U]);
-    protected_corners[index] =
-        (projection.valid &&
-         protectedStation(projection.station_m, constrained_spans)) ||
-        (previous_projection.valid &&
-         protectedStation(previous_projection.station_m, constrained_spans)) ||
-        (next_projection.valid &&
-         protectedStation(next_projection.station_m, constrained_spans));
-    if (!protected_corners[index]) {
-      corner_candidates.push_back(index);
-    }
+    // Constrained spans retain their safety contract through the same raw
+    // swept-footprint validation as every other candidate.  Excluding their
+    // corners here left right-angle passages with a tangent discontinuity.
+    corner_candidates.push_back(index);
   }
   std::vector<std::optional<std::vector<Point3>>> curves(anchors.size());
   const auto validate_corner = [&](const std::size_t candidate_index) {
