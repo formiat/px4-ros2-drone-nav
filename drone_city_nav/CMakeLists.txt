@@ -257,6 +257,7 @@ add_library(
   src/producer_epoch_admission.cpp
   src/producer_instance_id.cpp
   src/route_3d.cpp
+  src/route_3d_spans.cpp
   src/route_time_parameterization.cpp
   src/route_execution_contract_3d.cpp
   src/route_lifecycle_3d.cpp
