@@ -516,7 +516,22 @@ ConstrainedRouteControl ConstrainedRouteCoordinator::update(
   const double acceleration =
       std::max(1.0e-6, config.maximum_vertical_acceleration_mps2);
   const double maximum_speed = std::max(1.0e-6, config.maximum_vertical_speed_mps);
-  const double distance = std::max(0.0, observation.vertical_error_m);
+  // Align to the admissible capture interval, rather than only correcting a
+  // positive error from the envelope reference.  The latter made an approach
+  // from below appear to need no climb at all.
+  const double capture_target_z =
+      std::clamp(observation.reference_z_m, capture_min, capture_max);
+  const double displacement_to_capture_m = capture_target_z - observation.actual_z_m;
+  const double direction_to_capture = displacement_to_capture_m > 0.0   ? 1.0
+                                      : displacement_to_capture_m < 0.0 ? -1.0
+                                                                        : 0.0;
+  const double speed_toward_capture_mps =
+      direction_to_capture * observation.actual_vertical_speed_mps;
+  const double braking_distance_m =
+      speed_toward_capture_mps < 0.0
+          ? speed_toward_capture_mps * speed_toward_capture_mps / (2.0 * acceleration)
+          : 0.0;
+  const double distance = std::abs(displacement_to_capture_m) + braking_distance_m;
   const double acceleration_distance = maximum_speed * maximum_speed / acceleration;
   const double motion_time_s =
       distance <= acceleration_distance

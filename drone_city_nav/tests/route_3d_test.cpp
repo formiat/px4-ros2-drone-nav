@@ -157,6 +157,38 @@ TEST(Route3DTest, CoordinatesVerticalAlignmentBeforePassageEntry) {
   EXPECT_FALSE(ready.hold_xy);
 }
 
+TEST(Route3DTest, CoordinatesVerticalClimbBeforePassageEntry) {
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 1.0}, {100.0, 0.0, 5.0}}, 1.0, 20.0);
+  const std::vector<ConstrainedRouteSpan> spans{ConstrainedRouteSpan{
+      .passage_traversal_id = "passage",
+      .route_generation = 5U,
+      .direction_sign = 1,
+      .begin_station_m = 50.0,
+      .end_station_m = route.back().station_m,
+      .envelope = {RouteEnvelopeSample{.station_m = 50.0,
+                                       .min_z_m = 1.5,
+                                       .max_z_m = 8.5,
+                                       .reference_z_m = 5.0,
+                                       .reference_speed_mps = 10.0}},
+      .segment_spans = {},
+  }};
+  const ConstrainedRouteObservation approach =
+      observeConstrainedRoute(route, spans, 5U, 10.0, Point3{10.0, 0.0, 1.0},
+                              Vec3{20.0, 0.0, 0.0}, RouteEnvelopeConfig{}, 180.0);
+
+  ConstrainedRouteCoordinator coordinator;
+  const ConstrainedRouteControl control =
+      coordinator.update(approach, 20.0, ConstrainedRouteControlConfig{});
+
+  EXPECT_TRUE(control.active);
+  EXPECT_FALSE(control.vertical_ready);
+  EXPECT_FALSE(control.hold_xy);
+  EXPECT_GT(control.required_alignment_time_s, 0.0);
+  EXPECT_GT(control.alignment_start_distance_m, 40.0);
+  EXPECT_LT(control.speed_limit_mps, 20.0);
+}
+
 TEST(Route3DTest, ObservesConstrainedSpanLifecycleAndMotionMetrics) {
   const std::vector<Point3> route_points{{0.0, 0.0, 0.0}, {100.0, 0.0, 10.0}};
   const std::vector<RouteSample3D> route = sampleRoute3D(route_points, 5.0, 20.0);
