@@ -196,12 +196,17 @@ public:
         rclcpp::QoS{1}.reliable().transient_local());
     publishNavigationReadiness(false);
     require_planner_health_ = declare_parameter<bool>("require_planner_health", true);
+    planner_health_timeout_s_ =
+        declare_parameter<double>("planner_health_timeout_s", 1.0);
+    planner_health_land_after_s_ =
+        declare_parameter<double>("planner_health_land_after_s", 5.0);
     planner_health_sub_ = create_subscription<std_msgs::msg::Bool>(
         declare_parameter<std::string>("planner_health_topic",
                                        "/drone_city_nav/mppi/planner_alive"),
         rclcpp::QoS{1}.reliable().transient_local(),
         [this](const std_msgs::msg::Bool::SharedPtr health) {
           planner_healthy_ = health->data;
+          planner_health_received_at_ = std::chrono::steady_clock::now();
         });
     applied_control_feedback_frame_id_ =
         declare_parameter<std::string>("applied_control_feedback_frame_id", "map");
@@ -660,6 +665,32 @@ private:
     const bool takeoff_ready =
         position_valid_ && takeoff_complete_stamp_.has_value() &&
         (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
+    const bool planner_heartbeat_fresh =
+        planner_health_received_at_.has_value() &&
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      *planner_health_received_at_)
+                .count() <= planner_health_timeout_s_;
+    const bool planner_authorized =
+        !require_planner_health_ || (planner_healthy_ && planner_heartbeat_fresh);
+    if (takeoff_ready && !planner_authorized) {
+      if (!planner_health_loss_started_at_.has_value()) {
+        planner_health_loss_started_at_ = std::chrono::steady_clock::now();
+        RCLCPP_ERROR(get_logger(), "PLANNER_HEALTH lost=true action=position_hold");
+      }
+      publishUnavailablePathHoldSetpoint();
+      const double loss_s =
+          std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                        *planner_health_loss_started_at_)
+              .count();
+      if (!planner_health_land_sent_ && loss_s >= planner_health_land_after_s_) {
+        publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND, 0.0F);
+        planner_health_land_sent_ = true;
+        RCLCPP_ERROR(get_logger(), "PLANNER_HEALTH lost=true action=land");
+      }
+      publishUnavailableControlFeedback();
+      return;
+    }
+    planner_health_loss_started_at_.reset();
     const bool navigating =
         takeoff_ready && (!require_mission_start_signal_ || mission_started_);
     const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
@@ -704,7 +735,6 @@ private:
     if ((current - last_command_time_).seconds() < command_resend_period_s_) {
       return;
     }
-    const bool planner_authorized = !require_planner_health_ || planner_healthy_;
     if (!planner_authorized) {
       return;
     }
@@ -969,6 +999,11 @@ private:
   bool require_planner_health_{true};
   bool mission_started_{false};
   bool planner_healthy_{false};
+  double planner_health_timeout_s_{1.0};
+  double planner_health_land_after_s_{5.0};
+  bool planner_health_land_sent_{false};
+  std::optional<std::chrono::steady_clock::time_point> planner_health_received_at_;
+  std::optional<std::chrono::steady_clock::time_point> planner_health_loss_started_at_;
   Px4MapFrameTransform px4_map_transform_{};
   VehicleCommandEndpoint endpoint_{};
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;

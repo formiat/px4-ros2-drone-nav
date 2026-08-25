@@ -165,6 +165,11 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
   std_msgs::msg::Bool planner_alive;
   planner_alive.data = true;
   planner_health_pub_->publish(planner_alive);
+  planner_health_timer_ = create_wall_timer(std::chrono::milliseconds{250}, [this]() {
+    std_msgs::msg::Bool heartbeat;
+    heartbeat.data = true;
+    planner_health_pub_->publish(heartbeat);
+  });
 
   diagnostics_worker_ =
       std::jthread([this](const std::stop_token token) { diagnosticsWorker(token); });

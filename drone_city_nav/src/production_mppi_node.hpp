@@ -1033,6 +1033,7 @@ private:
       cooperative_passage_state_pub_;
   rclcpp::TimerBase::SharedPtr planning_start_timer_;
   rclcpp::TimerBase::SharedPtr planning_timer_;
+  rclcpp::TimerBase::SharedPtr planner_health_timer_;
 };
 
 } // namespace drone_city_nav
