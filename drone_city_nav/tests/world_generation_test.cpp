@@ -148,14 +148,14 @@ TEST(WorldGenerationTest, GenerationMatchesOnlyTheExactCapturedComponents) {
   const LocalWorldGeneration generation =
       counter.issue(raw, 21U, 99U, 99U, 13U).value();
 
-  EXPECT_TRUE(generation.matches(raw, 21U, 99U, 99U, 13U));
+  EXPECT_TRUE(generation.matches(raw, 21U, 99U, 99U));
   EXPECT_FALSE(generation.matches(RawMapVersion{.producer_instance_id = 7U,
                                                 .base_snapshot_revision = 11U,
                                                 .revision = 14U},
-                                  21U, 99U, 99U, 13U));
-  EXPECT_FALSE(generation.matches(raw, 22U, 99U, 99U, 13U));
-  EXPECT_FALSE(generation.matches(raw, 21U, 100U, 100U, 13U));
-  EXPECT_FALSE(generation.matches(raw, 21U, 99U, 99U, 12U));
+                                  21U, 99U, 99U));
+  EXPECT_FALSE(generation.matches(raw, 22U, 99U, 99U));
+  EXPECT_FALSE(generation.matches(raw, 21U, 100U, 100U));
+  EXPECT_FALSE(generation.matches(raw, 21U, 99U, 98U));
 }
 
 TEST(WorldGenerationTest, SameSnapshotRequiresGenerationAndAllComponents) {
@@ -169,7 +169,7 @@ TEST(WorldGenerationTest, SameSnapshotRequiresGenerationAndAllComponents) {
   ++copy.generation;
   EXPECT_FALSE(first.sameSnapshot(copy));
   copy = first;
-  ++copy.topology_revision;
+  ++copy.esdf_revision;
   EXPECT_FALSE(first.sameSnapshot(copy));
 }
 

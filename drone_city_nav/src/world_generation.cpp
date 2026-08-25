@@ -69,30 +69,27 @@ bool RawMapVersion::sameLineage(const RawMapVersion& other) const noexcept {
 
 bool LocalWorldGeneration::coherent() const noexcept {
   return generation != 0U && raw_map.valid() && pose_revision != 0U &&
-         esdf_revision != 0U && gpu_esdf_revision == esdf_revision &&
-         topology_revision <= raw_map.revision;
+         esdf_revision != 0U && gpu_esdf_revision == esdf_revision;
 }
 
 bool LocalWorldGeneration::matches(
     const RawMapVersion& expected_raw_map, const std::uint64_t expected_pose_revision,
     const std::uint64_t expected_esdf_revision,
-    const std::uint64_t expected_gpu_esdf_revision,
-    const std::uint64_t expected_topology_revision) const noexcept {
+    const std::uint64_t expected_gpu_esdf_revision) const noexcept {
   return coherent() && expected_raw_map.valid() &&
          raw_map.producer_instance_id == expected_raw_map.producer_instance_id &&
          raw_map.base_snapshot_revision == expected_raw_map.base_snapshot_revision &&
          raw_map.revision == expected_raw_map.revision &&
          pose_revision == expected_pose_revision &&
          esdf_revision == expected_esdf_revision &&
-         gpu_esdf_revision == expected_gpu_esdf_revision &&
-         topology_revision == expected_topology_revision;
+         gpu_esdf_revision == expected_gpu_esdf_revision;
 }
 
 bool LocalWorldGeneration::sameSnapshot(
     const LocalWorldGeneration& other) const noexcept {
   return generation == other.generation &&
          matches(other.raw_map, other.pose_revision, other.esdf_revision,
-                 other.gpu_esdf_revision, other.topology_revision) &&
+                 other.gpu_esdf_revision) &&
          other.coherent();
 }
 
@@ -105,7 +102,6 @@ std::optional<LocalWorldGeneration> LocalWorldGenerationCounter::issue(
       .pose_revision = pose_revision,
       .esdf_revision = esdf_revision,
       .gpu_esdf_revision = gpu_esdf_revision,
-      .topology_revision = topology_revision,
   };
   if (!raw_map.valid() || pose_revision == 0U || esdf_revision == 0U ||
       gpu_esdf_revision != esdf_revision || topology_revision > raw_map.revision) {

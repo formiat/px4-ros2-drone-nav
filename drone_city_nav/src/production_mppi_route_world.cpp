@@ -53,8 +53,7 @@ assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcep
     return ProductionWorldGenerationStatus::kEsdfRevisionMismatch;
   }
   const bool topology_present = world.topological_graph != nullptr;
-  if (generation.topology_revision != world.topology_source_raw_revision ||
-      topology_present != (world.topology_source_raw_revision != 0U) ||
+  if (topology_present != (world.topology_source_raw_revision != 0U) ||
       (topology_present &&
        (world.topological_graph->revision() != world.topology_source_raw_revision ||
         world.topological_graph_update.revision !=
