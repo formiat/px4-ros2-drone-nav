@@ -195,6 +195,14 @@ public:
                                        "/drone_city_nav/navigation_ready"),
         rclcpp::QoS{1}.reliable().transient_local());
     publishNavigationReadiness(false);
+    require_planner_health_ = declare_parameter<bool>("require_planner_health", true);
+    planner_health_sub_ = create_subscription<std_msgs::msg::Bool>(
+        declare_parameter<std::string>("planner_health_topic",
+                                       "/drone_city_nav/mppi/planner_alive"),
+        rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const std_msgs::msg::Bool::SharedPtr health) {
+          planner_healthy_ = health->data;
+        });
     applied_control_feedback_frame_id_ =
         declare_parameter<std::string>("applied_control_feedback_frame_id", "map");
     applied_control_feedback_pub_ = create_publisher<msg::MppiControlFeedback>(
@@ -691,6 +699,10 @@ private:
     if ((current - last_command_time_).seconds() < command_resend_period_s_) {
       return;
     }
+    const bool planner_authorized = !require_planner_health_ || planner_healthy_;
+    if (!planner_authorized) {
+      return;
+    }
     if (auto_offboard_ && vehicle_status_.nav_state !=
                               px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD) {
       publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1.0F,
@@ -944,7 +956,9 @@ private:
   bool execution_horizon_rearm_required_{false};
   bool destruction_disarm_confirmed_logged_{false};
   bool require_mission_start_signal_{false};
+  bool require_planner_health_{true};
   bool mission_started_{false};
+  bool planner_healthy_{false};
   Px4MapFrameTransform px4_map_transform_{};
   VehicleCommandEndpoint endpoint_{};
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
@@ -977,6 +991,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_start_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr planner_health_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoint_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr command_pub_;

@@ -147,6 +147,10 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
       declare_parameter<std::string>("world_readiness_topic",
                                      "/drone_city_nav/mppi/world_ready"),
       rclcpp::QoS{1}.reliable().transient_local());
+  planner_health_pub_ = create_publisher<std_msgs::msg::Bool>(
+      declare_parameter<std::string>("planner_health_topic",
+                                     "/drone_city_nav/mppi/planner_alive"),
+      rclcpp::QoS{1}.reliable().transient_local());
   execution_horizon_pub_ = create_publisher<msg::MppiTrajectoryHorizon>(
       declare_parameter<std::string>("execution_horizon_topic",
                                      "/drone_city_nav/mppi/execution_horizon"),
@@ -158,6 +162,9 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
               "/drone_city_nav/mission_waypoint_acknowledgement"),
           rclcpp::QoS{32}.reliable().transient_local());
   publishWorldReadiness(false);
+  std_msgs::msg::Bool planner_alive;
+  planner_alive.data = true;
+  planner_health_pub_->publish(planner_alive);
 
   diagnostics_worker_ =
       std::jthread([this](const std::stop_token token) { diagnosticsWorker(token); });

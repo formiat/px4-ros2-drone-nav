@@ -90,6 +90,17 @@ def read_execution_sources() -> str:
 
 
 class PlannerReadinessContractTest(unittest.TestCase):
+
+    def test_offboard_auto_arm_requires_transient_planner_health(self) -> None:
+        offboard = (PACKAGE / "src" / "mppi_offboard_node.cpp").read_text(
+            encoding="utf-8"
+        )
+        interfaces = PLANNER_INTERFACES.read_text(encoding="utf-8")
+        self.assertIn('"planner_health_topic"', interfaces)
+        self.assertIn("planner_health_pub_->publish(planner_alive)", interfaces)
+        self.assertIn("require_planner_health_", offboard)
+        self.assertIn("planner_authorized", offboard)
+        self.assertLess(offboard.index("if (!planner_authorized)"), offboard.index("if (auto_offboard_"))
     def test_execution_horizon_carries_typed_route_purpose(self) -> None:
         text = HORIZON_MESSAGE.read_text(encoding="utf-8")
         point = HORIZON_POINT_MESSAGE.read_text(encoding="utf-8")

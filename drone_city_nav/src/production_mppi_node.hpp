@@ -1024,6 +1024,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr world_readiness_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr planner_health_pub_;
   rclcpp::Publisher<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_pub_;
   rclcpp::Publisher<msg::MissionWaypointAcknowledgement>::SharedPtr
       mission_waypoint_acknowledgement_pub_;
