@@ -400,7 +400,10 @@ assessExecutionControlFeedback(const msg::MppiControlFeedback& feedback,
     return assessment;
   }
 
-  if (source_stamp_ns <= 0 || receive_stamp_ns < source_stamp_ns) {
+  // Source time identifies the offboard control sample while receipt time is
+  // local evidence of delivery.  ROS /clock is distributed asynchronously in
+  // simulation, so their ordering is not an authority invariant.
+  if (source_stamp_ns <= 0 || receive_stamp_ns <= 0) {
     assessment.status = ExecutionControlFeedbackStatus::kInvalidTiming;
     return assessment;
   }

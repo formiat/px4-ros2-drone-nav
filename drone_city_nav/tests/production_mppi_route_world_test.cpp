@@ -319,6 +319,18 @@ TEST(ProductionMppiRouteWorldTest,
   EXPECT_TRUE(
       appliedControlAuthoritativeForExecution(applied, owner, 1'030'000'000, 100.0));
 
+  ProductionMppiAppliedControl bounded_clock_skew = applied;
+  bounded_clock_skew.source_stamp_ns = 1'050'000'000;
+  bounded_clock_skew.receive_stamp_ns = 1'045'000'000;
+  EXPECT_TRUE(appliedControlAuthoritativeForExecution(bounded_clock_skew, owner,
+                                                      1'040'000'000, 100.0));
+
+  ProductionMppiAppliedControl future_feedback = bounded_clock_skew;
+  future_feedback.source_stamp_ns = 1'200'000'000;
+  future_feedback.receive_stamp_ns = 1'200'000'000;
+  EXPECT_FALSE(appliedControlAuthoritativeForExecution(future_feedback, owner,
+                                                       1'040'000'000, 100.0));
+
   ProductionMppiAppliedControl wrong_offboard = applied;
   ++wrong_offboard.producer_instance_id;
   EXPECT_FALSE(appliedControlAuthoritativeForExecution(wrong_offboard, owner,

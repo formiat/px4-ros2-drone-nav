@@ -396,6 +396,17 @@ TEST(ExecutionHorizonContractRosTest,
 }
 
 TEST(ExecutionHorizonContractRosTest,
+     AcceptsStructurallyValidFeedbackWhenReceiptClockLagsSourceClock) {
+  msg::MppiControlFeedback feedback = validPlannedFeedback();
+  const ExecutionControlFeedbackAssessment assessment =
+      assessExecutionControlFeedback(feedback, "map", 10 * kSecondNs - 1);
+
+  EXPECT_TRUE(assessment.valid());
+  EXPECT_EQ(assessment.candidate.source_stamp_ns, 10 * kSecondNs);
+  EXPECT_EQ(assessment.candidate.receive_stamp_ns, 10 * kSecondNs - 1);
+}
+
+TEST(ExecutionHorizonContractRosTest,
      WrongFrameClaimsRawSourceAndOnlyHigherSourceCanRecover) {
   msg::MppiControlFeedback heartbeat = validPlannedFeedback();
   setTime(heartbeat.header.stamp, 8 * kSecondNs);

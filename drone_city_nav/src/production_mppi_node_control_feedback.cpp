@@ -38,11 +38,10 @@ bool appliedControlAuthoritativeForExecution(
       control.execution_mode != msg::MppiControlFeedback::EXECUTION_MODE_PLANNED ||
       owner.execution_mode != msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED ||
       control.horizon_sequence == 0U || control.horizon_sequence != owner.sequence ||
-      control.source_stamp_ns <= 0 ||
-      control.receive_stamp_ns < control.source_stamp_ns || now_ns < 0 ||
-      now_ns < control.receive_stamp_ns || owner.valid_from_ns <= 0 ||
-      owner.valid_until_ns <= owner.valid_from_ns || now_ns < owner.valid_from_ns ||
-      now_ns >= owner.valid_until_ns || control.source_stamp_ns < owner.valid_from_ns ||
+      control.source_stamp_ns <= 0 || control.receive_stamp_ns <= 0 || now_ns < 0 ||
+      owner.valid_from_ns <= 0 || owner.valid_until_ns <= owner.valid_from_ns ||
+      now_ns < owner.valid_from_ns || now_ns >= owner.valid_until_ns ||
+      control.source_stamp_ns < owner.valid_from_ns ||
       control.source_stamp_ns >= owner.valid_until_ns ||
       !std::isfinite(maximum_age_ms) || !(maximum_age_ms > 0.0)) {
     return false;
@@ -51,8 +50,11 @@ bool appliedControlAuthoritativeForExecution(
       static_cast<double>(now_ns - control.source_stamp_ns) * 1.0e-6;
   const double receive_age_ms =
       static_cast<double>(now_ns - control.receive_stamp_ns) * 1.0e-6;
-  return source_age_ms >= 0.0 && source_age_ms <= maximum_age_ms &&
-         receive_age_ms >= 0.0 && receive_age_ms <= maximum_age_ms;
+  // Simulated /clock may reach the subscriber slightly before the publisher's
+  // source stamp.  Admit only a bounded skew; a delayed or far-future ACK is
+  // still non-authoritative.
+  return std::abs(source_age_ms) <= maximum_age_ms &&
+         std::abs(receive_age_ms) <= maximum_age_ms;
 }
 
 std::optional<FootprintBodyAxis> authoritativeBodyAxisForExecution(
