@@ -328,7 +328,7 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const ExecutionRouteGeometry3D& geometry, const std::span<const mppi::State> states,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, const double maximum_cross_track_m,
-    const double stop_tolerance_m, const double requested_sweep_step_m);
+    const double terminal_cross_track_tolerance_m, const double requested_sweep_step_m);
 
 [[nodiscard]] bool validMppiRoute(const std::span<const mppi::RouteSample3D> mppi_route,
                                   const std::span<const RouteSample3D> route) noexcept;

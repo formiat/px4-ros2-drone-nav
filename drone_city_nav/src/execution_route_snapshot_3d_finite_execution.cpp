@@ -278,10 +278,14 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
   }
+  // Route adherence bounds the whole finite path, including its terminal rest,
+  // to the certified corridor. The tighter stop-boundary tolerance below governs
+  // later execution against the immutable terminal position, not route centerline
+  // alignment during certification.
   const RouteAdherenceAssessment3D route_adherence = validateFiniteRouteAdherence(
       *target_route.geometry, validated_horizon.states, execution_begin_station_m,
       certificate_view.suffix_start_station_m, certificate_view.certified_end_station_m,
-      kMaximumRouteCrossTrackM, kFiniteStopPositionToleranceM,
+      kMaximumRouteCrossTrackM, kMaximumRouteCrossTrackM,
       policy->sweptFootprint().sweep_step_m);
   if (!route_adherence.accepted) {
     return rejectedFiniteExecution(

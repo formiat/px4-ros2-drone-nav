@@ -818,12 +818,14 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const ExecutionRouteGeometry3D& geometry, const std::span<const mppi::State> states,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, const double maximum_cross_track_m,
-    const double stop_tolerance_m, const double requested_sweep_step_m) {
+    const double terminal_cross_track_tolerance_m,
+    const double requested_sweep_step_m) {
   RouteAdherenceAssessment3D result;
   if (states.empty() || !std::isfinite(initial_station_m) ||
       !std::isfinite(minimum_station_m) || !std::isfinite(maximum_station_m) ||
       !std::isfinite(maximum_cross_track_m) || maximum_cross_track_m <= 0.0 ||
-      !std::isfinite(stop_tolerance_m) || stop_tolerance_m <= 0.0 ||
+      !std::isfinite(terminal_cross_track_tolerance_m) ||
+      terminal_cross_track_tolerance_m <= 0.0 ||
       !std::isfinite(requested_sweep_step_m) || requested_sweep_step_m <= 0.0) {
     result.status = FiniteExecutionRouteAdherenceStatus3D::kInvalidInput;
     return result;
@@ -949,7 +951,7 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     previous_point = state_position;
   }
   result.stop = previous_projection;
-  if (previous_projection.distance_m > stop_tolerance_m) {
+  if (previous_projection.distance_m > terminal_cross_track_tolerance_m) {
     result.status = FiniteExecutionRouteAdherenceStatus3D::kTerminalCrossTrackExceeded;
     result.failure_state_index = states.size() - 1U;
     result.failure_distance_m = previous_projection.distance_m;

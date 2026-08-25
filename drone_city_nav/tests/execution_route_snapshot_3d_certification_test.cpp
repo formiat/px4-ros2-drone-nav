@@ -585,6 +585,54 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     FiniteCertificationKeepsTerminalRestInsideTheCertifiedRouteCorridor) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  FiniteExecutionCertification3D certification =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          *active->route, FiniteExecutionKind3D::kNominal, 102U);
+  ASSERT_NE(certification.execution_input, nullptr);
+  ASSERT_GE(certification.horizon.controls.size(), 101U);
+
+  constexpr std::size_t kAccelerationControlCount{50U};
+  constexpr float kTerminalLateralOffsetM{0.4F};
+  const float lateral_acceleration_mps2 = kTerminalLateralOffsetM / 25.0F;
+  for (std::size_t index = 0U; index < kAccelerationControlCount; ++index) {
+    certification.horizon.controls[index].ay = lateral_acceleration_mps2;
+  }
+  for (std::size_t index = kAccelerationControlCount;
+       index < 2U * kAccelerationControlCount; ++index) {
+    certification.horizon.controls[index].ay = -lateral_acceleration_mps2;
+  }
+  certification.horizon.states.front() = certification.execution_input->state();
+  for (std::size_t index = 0U; index < certification.horizon.controls.size(); ++index) {
+    certification.horizon.states[index + 1U] = mppi::integrateReference(
+        certification.horizon.states[index], certification.horizon.controls[index],
+        active->route->validation_policy->dynamics());
+  }
+  ASSERT_TRUE(mppi::finiteHorizonHasTerminalRestState(certification.horizon));
+  EXPECT_GT(certification.horizon.states.back().y, 0.25F);
+  EXPECT_LT(certification.horizon.states.back().y, 2.0F);
+
+  const FiniteExecutionCertificationResult3D result = certifyFiniteExecution3DDetailed(
+      *active, *active->route, std::move(certification));
+
+  ASSERT_TRUE(result.certified())
+      << "status=" << finiteExecutionCertificationStatus3DName(result.status)
+      << " route_adherence_status="
+      << finiteExecutionRouteAdherenceStatus3DName(result.route_adherence_status)
+      << " route_adherence_failure_distance_m="
+      << result.route_adherence_failure_distance_m;
+  ASSERT_TRUE(result.execution.has_value());
+  EXPECT_DOUBLE_EQ(result.execution->stop_boundary.position_tolerance_m, 0.25);
+  EXPECT_GT(result.execution->stop_boundary.position.y, 0.25);
+  EXPECT_LT(result.execution->stop_boundary.position.y, 2.0);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      FiniteCertificationDoesNotExtendAConstrainedSpanPastItsBoundary) {
   SnapshotFixture3D fixture;
   constexpr double kForwardTangentComponent{0.01};
