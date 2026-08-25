@@ -177,9 +177,25 @@ void ProductionMppiNode::processGuideSearch3D(
   activation.prepared.route_proposal_eligible_count =
       proposal_selection.eligible_candidates;
   activation.prepared.global_guide_search_ms = candidate_set.search_ms;
+  const bool topology_route_selected =
+      proposal_selection.selected_index.has_value() &&
+      *proposal_selection.selected_index < candidate_set.candidates.size() &&
+      candidate_set.candidates[*proposal_selection.selected_index].topology.has_value();
+  const PendingTopologyEffect3D topology_effect = topology_route_selected
+      ? PendingTopologyEffect3D{
+            .kind = PendingTopologyEffectKind3D::kCommitAcceptedPlan,
+            .plan = candidate_set.candidates[*proposal_selection.selected_index]
+                        .topology->plan,
+        }
+      : PendingTopologyEffect3D{
+            .kind = topological_navigation_3d_ != nullptr
+                        ? PendingTopologyEffectKind3D::kSupersedeAcceptedPlan
+                        : PendingTopologyEffectKind3D::kNone,
+            .plan = std::nullopt,
+        };
   if (proposal_selection.selected_index.has_value()) {
     commitRouteActivation3D(world, activation_snapshot, candidate_generation,
-                            strategy_decision, activation);
+                            strategy_decision, topology_effect, activation);
   }
   const double route_planning_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
@@ -273,16 +289,6 @@ void ProductionMppiNode::processGuideSearch3D(
       retired_lineage != nullptr ? retired_lineage->target_identity : 0U,
       retired_lineage != nullptr ? retired_lineage->return_lineage_id : 0U);
 
-  if (certified_pending) {
-    if (topology_route_used) {
-      commitIncrementalTopologyRoute3D(topology);
-    } else if (topological_navigation_3d_ &&
-               topological_navigation_3d_->supersedeAcceptedPlan()) {
-      RCLCPP_INFO(
-          get_logger(),
-          "INCREMENTAL_TOPOLOGY3D_PLAN_SUPERSEDED replacement=non_topology_route");
-    }
-  }
   if (certified_pending && prepared.cooperative_passage_assignments) {
     for (const CooperativePassageAssignment& assignment :
          *prepared.cooperative_passage_assignments) {

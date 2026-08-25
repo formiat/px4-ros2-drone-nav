@@ -81,6 +81,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = testRouteSplice(*active->route, *successor),
           .strategy_decision = std::nullopt,
+          .topology_effect = {},
           .route = *successor,
       });
   auto second_value = *first;
@@ -135,6 +136,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = testRouteSplice(*active->route, *successor),
           .strategy_decision = std::nullopt,
+          .topology_effect = {},
           .route = *successor,
       });
   const std::shared_ptr<const PendingCertifiedRoute3D> const_alias = mutable_candidate;
@@ -176,6 +178,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = std::nullopt,
           .strategy_decision = std::nullopt,
+          .topology_effect = {},
           .route = *successor,
       });
 
@@ -201,6 +204,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = std::nullopt,
           .strategy_decision = std::nullopt,
+          .topology_effect = {},
           .route = *suffix,
       });
 
@@ -289,6 +293,7 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = splice,
           .strategy_decision = std::nullopt,
+          .topology_effect = {},
           .route = *successor,
       });
   PendingCertifiedRouteMailbox3D mailbox;
@@ -329,6 +334,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = std::nullopt,
           .strategy_decision = std::nullopt,
+          .topology_effect = {},
           .route = *suffix,
       });
   auto newer_value = *first;
@@ -401,6 +407,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*active->route, *successor),
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -445,6 +452,7 @@ TEST(ExecutionRouteSnapshot3DTest, PendingInitialLineageDoesNotAliasRevokedOwner
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = *first_route,
   };
   ASSERT_TRUE(initial_pending.valid());
@@ -489,6 +497,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -609,6 +618,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*active->route, *successor),
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = *successor,
   };
   ASSERT_TRUE(route_pending.valid());
@@ -632,6 +642,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_direct_tracking_identity = direct_identity,
       .route_splice = std::nullopt,
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = *successor,
   };
   ASSERT_TRUE(direct_pending.valid());
@@ -685,6 +696,7 @@ TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) 
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = *successor,
   };
   ASSERT_FALSE(pending.valid());
@@ -827,6 +839,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_direct_tracking_identity = updated_identity,
       .route_splice = std::nullopt,
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -847,6 +860,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*route_owner->route, *successor),
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = *successor,
   };
   ASSERT_TRUE(pre_direct_pending.valid());

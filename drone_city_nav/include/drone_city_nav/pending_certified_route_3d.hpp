@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
+#include "drone_city_nav/incremental_topological_navigation_3d.hpp"
 #include "drone_city_nav/route_strategy_arbitrator_3d.hpp"
 
 #include <cstdint>
@@ -18,6 +19,20 @@ enum class PendingExecutionBaseKind3D : std::uint8_t {
   kRevoked,
 };
 
+// A topology mutation is deliberately deferred until the exact pending route
+// becomes the execution owner.  Planning may publish a successor candidate,
+// but only execution admission is allowed to make it strategic state.
+enum class PendingTopologyEffectKind3D : std::uint8_t {
+  kNone,
+  kCommitAcceptedPlan,
+  kSupersedeAcceptedPlan,
+};
+
+struct PendingTopologyEffect3D {
+  PendingTopologyEffectKind3D kind{PendingTopologyEffectKind3D::kNone};
+  std::optional<IncrementalTopologicalPlan3D> plan;
+};
+
 struct PendingCertifiedRoute3D {
   std::uint64_t publication_sequence{0U};
   std::uint64_t base_execution_owner_epoch{0U};
@@ -30,6 +45,8 @@ struct PendingCertifiedRoute3D {
   // Exact strategy token resolved with the mailbox/execution CAS, not a
   // node-local sidecar installed after the route becomes observable.
   std::optional<RouteStrategyArbitrationDecision3D> strategy_decision;
+  // Topology has the same execution-admission boundary as the strategy lease.
+  PendingTopologyEffect3D topology_effect{};
   CertifiedRouteSuffix3D route{};
 
   [[nodiscard]] bool valid() const noexcept;

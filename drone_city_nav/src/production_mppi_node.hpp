@@ -539,6 +539,7 @@ private:
                           const ProductionRouteActivationSnapshot3D& snapshot,
                           std::uint64_t candidate_generation,
                           const RouteStrategyArbitrationDecision3D& strategy_decision,
+                          const PendingTopologyEffect3D& topology_effect,
                           ProductionRouteActivationResult3D& result);
   [[nodiscard]] ProductionRouteMaterialization3D materializeRouteCandidate3D(
       const ProductionMppiPreparedEsdf& world,

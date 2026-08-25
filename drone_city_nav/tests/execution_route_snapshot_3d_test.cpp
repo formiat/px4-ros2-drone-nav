@@ -26,6 +26,7 @@ pendingForSnapshot(const ExecutionRouteSnapshot3D& snapshot,
                                 *snapshot.route, route)}
                           : std::nullopt,
       .strategy_decision = std::nullopt,
+      .topology_effect = {},
       .route = route,
   };
 }

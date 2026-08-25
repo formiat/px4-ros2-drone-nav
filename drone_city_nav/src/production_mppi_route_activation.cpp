@@ -467,6 +467,7 @@ void ProductionMppiNode::commitRouteActivation3D(
     const ProductionRouteActivationSnapshot3D& snapshot,
     const std::uint64_t candidate_generation,
     const RouteStrategyArbitrationDecision3D& strategy_decision,
+    const PendingTopologyEffect3D& topology_effect,
     ProductionRouteActivationResult3D& result) {
   ProductionMppiPreparedEsdf& candidate = result.prepared;
   const ProductionMaterializedRouteProposal3D& materialized_proposal = result.proposal;
@@ -634,6 +635,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                         : std::nullopt,
                 .route_splice = route_base ? result.splice.splice : std::nullopt,
                 .strategy_decision = strategy_decision,
+                .topology_effect = topology_effect,
                 .route = *certified_route,
             })
           : nullptr;
