@@ -69,17 +69,21 @@ void ProductionMppiNode::processGuideSearch3D(
   ProductionRouteCandidateSet3D candidate_set =
       generateRouteCandidates3D(world, navigation, mission_goal, latest_raw_world_3d);
   const std::uint64_t candidate_generation = nextRouteGeneration3D();
+  const ProductionRouteActivationSnapshot3D activation_snapshot =
+      captureRouteActivationSnapshot3D();
+  const CertifiedRouteSuffix3D* const active_route =
+      activation_snapshot.execution_snapshot &&
+              activation_snapshot.execution_snapshot->route.has_value()
+          ? std::addressof(*activation_snapshot.execution_snapshot->route)
+          : nullptr;
 
   std::vector<ProductionRouteMaterialization3D> materializations;
   materializations.reserve(candidate_set.candidates.size());
   for (const ProductionRouteSearchCandidate3D& candidate : candidate_set.candidates) {
     materializations.push_back(materializeRouteCandidate3D(
         world, navigation, mission_goal, candidate, candidate_generation,
-        active_observation_segment_completed));
+        active_observation_segment_completed, active_route));
   }
-
-  const ProductionRouteActivationSnapshot3D activation_snapshot =
-      captureRouteActivationSnapshot3D();
   std::vector<ProductionRouteActivationResult3D> activations;
   std::vector<RouteProposal3D> final_proposals;
   activations.reserve(materializations.size());

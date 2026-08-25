@@ -9,18 +9,88 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] std::vector<ConstrainedRouteSpan>
+clipConstrainedSpans(const std::span<const ConstrainedRouteSpan> spans,
+                     const double minimum_station_m, const double maximum_station_m) {
+  std::vector<ConstrainedRouteSpan> clipped;
+  for (const ConstrainedRouteSpan& source : spans) {
+    const double begin = std::max(source.begin_station_m, minimum_station_m);
+    const double end = std::min(source.end_station_m, maximum_station_m);
+    if (end <= begin + 1.0e-9) {
+      continue;
+    }
+    ConstrainedRouteSpan span = source;
+    span.begin_station_m = begin;
+    span.end_station_m = end;
+    std::erase_if(span.envelope, [begin, end](const RouteEnvelopeSample& sample) {
+      return sample.station_m + 1.0e-6 < begin || sample.station_m - 1.0e-6 > end;
+    });
+    std::erase_if(span.segment_spans,
+                  [begin, end](PassageTraversalSegmentSpan& segment) {
+                    segment.begin_station_m = std::max(segment.begin_station_m, begin);
+                    segment.end_station_m = std::min(segment.end_station_m, end);
+                    return segment.end_station_m <= segment.begin_station_m + 1.0e-9;
+                  });
+    clipped.push_back(std::move(span));
+  }
+  return clipped;
+}
+
+void mergeAdjacentConstrainedSpans(std::vector<ConstrainedRouteSpan>& spans) {
+  std::ranges::sort(
+      spans, [](const ConstrainedRouteSpan& first, const ConstrainedRouteSpan& second) {
+        return std::tie(first.passage_traversal_id, first.direction_sign,
+                        first.begin_station_m) < std::tie(second.passage_traversal_id,
+                                                          second.direction_sign,
+                                                          second.begin_station_m);
+      });
+  std::vector<ConstrainedRouteSpan> merged;
+  for (ConstrainedRouteSpan& span : spans) {
+    if (!merged.empty() &&
+        merged.back().passage_traversal_id == span.passage_traversal_id &&
+        merged.back().direction_sign == span.direction_sign &&
+        span.begin_station_m <= merged.back().end_station_m + 1.0e-6) {
+      ConstrainedRouteSpan& previous = merged.back();
+      previous.end_station_m = std::max(previous.end_station_m, span.end_station_m);
+      previous.envelope.insert(previous.envelope.end(), span.envelope.begin(),
+                               span.envelope.end());
+      previous.segment_spans.insert(previous.segment_spans.end(),
+                                    span.segment_spans.begin(),
+                                    span.segment_spans.end());
+      continue;
+    }
+    merged.push_back(std::move(span));
+  }
+  for (ConstrainedRouteSpan& span : merged) {
+    std::ranges::sort(span.envelope, {}, &RouteEnvelopeSample::station_m);
+    span.envelope.erase(std::unique(span.envelope.begin(), span.envelope.end(),
+                                    [](const RouteEnvelopeSample& first,
+                                       const RouteEnvelopeSample& second) {
+                                      return std::abs(first.station_m -
+                                                      second.station_m) <= 1.0e-6;
+                                    }),
+                        span.envelope.end());
+  }
+  spans = std::move(merged);
+}
+
+} // namespace
 
 ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D(
     const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
     const Point3& mission_goal, const ProductionRouteSearchCandidate3D& candidate,
     const std::uint64_t candidate_generation,
-    const bool active_observation_segment_completed) {
+    const bool active_observation_segment_completed,
+    const CertifiedRouteSuffix3D* const active_route) {
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   const RiskAwareLattice3DResult& lattice = candidate.lattice;
   ProductionRouteMaterialization3D result;
@@ -173,7 +243,43 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(lattice.route);
   std::vector<ConstrainedRouteSpan> initial_spans = makeConstrainedRouteSpans(
       *mutable_route, route_traversals, candidate_generation, route_envelope_config_);
+  std::optional<FrozenRoutePrefix3D> frozen_prefix;
+  if ((world.static_route_extension_request || world.static_route_replan_request) &&
+      active_route != nullptr && active_route->valid() && active_route->geometry &&
+      active_route->geometry->route && active_route->geometry->constrained_spans) {
+    frozen_prefix = materializeFrozenRoutePrefix3D(
+        *active_route->geometry->route, lattice.route, search_start,
+        static_route_extension_config_.required_certified_overlap_m);
+    if (!frozen_prefix.has_value()) {
+      result.validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
+      return result;
+    }
+    const std::vector<ConstrainedRouteSpan> active_prefix_spans = clipConstrainedSpans(
+        *active_route->geometry->constrained_spans,
+        frozen_prefix->active_begin_station_m, frozen_prefix->stitch_station_m);
+    const std::vector<ConstrainedRouteSpan> successor_suffix_spans =
+        clipConstrainedSpans(initial_spans, frozen_prefix->successor_stitch_station_m,
+                             std::numeric_limits<double>::infinity());
+    initial_spans =
+        remapConstrainedRouteSpans(*active_route->geometry->route, active_prefix_spans,
+                                   frozen_prefix->route, route_envelope_config_);
+    const std::vector<ConstrainedRouteSpan> remapped_successor_spans =
+        remapConstrainedRouteSpans(lattice.route, successor_suffix_spans,
+                                   frozen_prefix->route, route_envelope_config_);
+    initial_spans.insert(initial_spans.end(), remapped_successor_spans.begin(),
+                         remapped_successor_spans.end());
+    mergeAdjacentConstrainedSpans(initial_spans);
+    *mutable_route = frozen_prefix->route;
+  }
+  const std::size_t expected_span_count = initial_spans.size();
+  const std::vector<RouteSample3D> canonical_route = *mutable_route;
   const auto smoothing_started = std::chrono::steady_clock::now();
+  StaticRouteGeometryConfig geometry_config = static_route_geometry_config_;
+  if (frozen_prefix.has_value()) {
+    geometry_config.frozen_prefix_end_station_m =
+        frozen_prefix->stitch_station_m - frozen_prefix->active_begin_station_m;
+  }
   StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
       *mutable_route, initial_spans, world.grid, *world.distances_m,
       SweptFootprintConfig{
@@ -184,8 +290,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
           .radial_rings = physical_footprint_config_.radial_rings,
           .axial_samples = physical_footprint_config_.axial_samples,
           .sweep_step_m = physical_footprint_config_.sweep_step_m},
-      static_route_geometry_config_, route_envelope_config_,
-      planning_worker_pool_.get());
+      geometry_config, route_envelope_config_, planning_worker_pool_.get());
   prepared.route_smoothing_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 smoothing_started)
@@ -215,7 +320,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       mppi_config_.risk.critical_distance_m, mppi_config_.risk.preferred_distance_m,
       lattice_3d_config_.require_known_free_space);
   if (!optimized_risk_assignment.accepted()) {
-    *mutable_route = lattice.route;
+    *mutable_route = canonical_route;
     geometry.constrained_spans = initial_spans;
     prepared.route_shortcuts_applied = 0U;
     prepared.route_corners_smoothed = 0U;
@@ -356,7 +461,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
 
   const std::shared_ptr<const std::vector<RouteSample3D>> route = mutable_route;
   const std::shared_ptr<const std::vector<ConstrainedRouteSpan>> spans = mutable_spans;
-  if (result.validation.accepted && spans->size() != initial_spans.size()) {
+  if (result.validation.accepted && spans->size() != expected_span_count) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
   }

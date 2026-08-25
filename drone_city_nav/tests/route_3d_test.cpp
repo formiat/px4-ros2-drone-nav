@@ -71,6 +71,40 @@ TEST(Route3DTest, MaterializesAnExactActivePrefixBeforeSuccessorContinuation) {
   }
 }
 
+TEST(Route3DTest, RemapsPassageContractsOntoCanonicalFrozenRoute) {
+  const std::vector<RouteSample3D> source = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 0.5,
+      4.0);
+  const std::vector<SelectedPassageTraversal> traversals{
+      SelectedPassageTraversal{.passage_traversal_id = "opening",
+                               .direction_sign = 1,
+                               .begin_station_m = 3.0,
+                               .end_station_m = 9.0,
+                               .min_z_m = 2.0,
+                               .max_z_m = 8.0,
+                               .width_m = 8.0,
+                               .height_m = 6.0,
+                               .minimum_clearance_m = 2.0,
+                               .speed_limit_mps = 3.0,
+                               .segment_spans = {}}};
+  const std::vector<ConstrainedRouteSpan> source_spans =
+      makeConstrainedRouteSpans(source, traversals, 7U, RouteEnvelopeConfig{});
+  const std::vector<RouteSample3D> canonical = sampleRoute3D(
+      std::vector<Point3>{{2.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 0.5,
+      4.0);
+
+  const std::vector<ConstrainedRouteSpan> remapped = remapConstrainedRouteSpans(
+      source, source_spans, canonical, RouteEnvelopeConfig{});
+
+  ASSERT_EQ(remapped.size(), 1U);
+  EXPECT_EQ(remapped.front().passage_traversal_id, "opening");
+  EXPECT_EQ(remapped.front().route_generation, 7U);
+  EXPECT_NEAR(remapped.front().begin_station_m, 1.0, 1.0e-6);
+  EXPECT_NEAR(remapped.front().end_station_m, 7.0, 1.0e-6);
+  ASSERT_FALSE(remapped.front().envelope.empty());
+  EXPECT_NEAR(remapped.front().envelope.front().reference_z_m, 5.0, 1.0e-6);
+}
+
 TEST(Route3DTest, BoundedProjectionStaysLocalAtSelfCrossing) {
   const std::vector<RouteSample3D> route = sampleRoute3D(
       std::vector<Point3>{

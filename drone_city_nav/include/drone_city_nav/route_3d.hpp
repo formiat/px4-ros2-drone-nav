@@ -311,6 +311,8 @@ struct FrozenRoutePrefix3D {
   std::vector<RouteSample3D> route;
   double active_begin_station_m{0.0};
   double stitch_station_m{0.0};
+  double successor_begin_station_m{0.0};
+  double successor_stitch_station_m{0.0};
 
   [[nodiscard]] bool valid() const noexcept;
 };
@@ -368,6 +370,14 @@ makeConstrainedRouteSpans(std::span<const RouteSample3D> route,
                           std::span<const SelectedPassageTraversal> traversals,
                           std::uint64_t route_generation,
                           const RouteEnvelopeConfig& config);
+
+// Reprojects passage contracts after canonical route geometry changes while
+// preserving their ordered station lineage and per-segment envelopes.
+[[nodiscard]] std::vector<ConstrainedRouteSpan>
+remapConstrainedRouteSpans(std::span<const RouteSample3D> source_route,
+                           std::span<const ConstrainedRouteSpan> source_spans,
+                           std::span<const RouteSample3D> destination_route,
+                           const RouteEnvelopeConfig& config);
 
 [[nodiscard]] bool validateConstrainedRouteSpans(
     std::span<const RouteSample3D> route, std::span<const ConstrainedRouteSpan> spans,
