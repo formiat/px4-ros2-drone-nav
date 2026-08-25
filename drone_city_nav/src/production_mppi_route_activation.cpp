@@ -3,6 +3,7 @@
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 
 #include <algorithm>
+#include <cinttypes>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -505,9 +506,29 @@ void ProductionMppiNode::commitRouteActivation3D(
       .generation = candidate_generation,
       .proposal = materialized_proposal.identity,
   };
+  ExecutionRouteGeometryValidation3D execution_geometry_validation{
+      .reason = ExecutionRouteGeometryFailureReason3D::kMissingRoute,
+      .sample_index = 0U,
+  };
+  if (materialized_proposal.geometry.route != nullptr) {
+    execution_geometry_validation =
+        validateExecutionRouteGeometrySamples3D(*materialized_proposal.geometry.route);
+  }
   const bool execution_geometry_valid =
       result.candidate_generation == candidate_generation &&
       executionRouteGeometryValid3D(materialized_proposal.geometry, candidate_identity);
+  if (!execution_geometry_valid) {
+    if (execution_geometry_validation.valid()) {
+      execution_geometry_validation.reason =
+          ExecutionRouteGeometryFailureReason3D::kDerivedResourceMismatch;
+    }
+    RCLCPP_WARN(
+        get_logger(),
+        "EXECUTION_ROUTE_GEOMETRY valid=false reason=%s sample_index=%zu "
+        "route_generation=%" PRIu64,
+        executionRouteGeometryFailureReasonName3D(execution_geometry_validation.reason),
+        execution_geometry_validation.sample_index, candidate_generation);
+  }
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
   std::shared_ptr<const VersionedStaticWorld3D> static_owner;
   if (raw_validation_required && snapshot.raw_world != nullptr &&
