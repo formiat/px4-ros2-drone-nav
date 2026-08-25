@@ -816,6 +816,7 @@ private:
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};
   IncrementalTopologicalLatticeAdapter3DConfig topological_lattice_adapter_3d_config_{};
   double topological_strategy_budget_ms_{50.0};
+  double topological_graph_update_budget_ms_{50.0};
   bool topological_backtracking_enabled_{false};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};

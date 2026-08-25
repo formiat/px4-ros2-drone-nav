@@ -28,7 +28,8 @@ IncrementalTopologyGraph3D::operator=(IncrementalTopologyGraph3D&&) noexcept = d
 IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
     const ObservedOccupancyGrid3D& occupancy, const std::uint64_t revision,
     const std::span<const OccupancyChunkIndex3D> dirty_chunks, const bool full_reset,
-    const std::optional<IncrementalTopologyBuildPriority3D> priority) {
+    const std::optional<IncrementalTopologyBuildPriority3D> priority,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) {
   if (revision == 0U) {
     throw std::invalid_argument{"incremental topology revision must be non-zero"};
   }
@@ -96,12 +97,21 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
   }
   std::vector<IncrementalTopologyBlockIndex3D> rebuilt_blocks =
       std::move(selection.blocks);
+  const std::vector<IncrementalTopologyBlockIndex3D> selected_blocks = rebuilt_blocks;
   const auto rebuild_started = std::chrono::steady_clock::now();
+  std::vector<IncrementalTopologyBlockIndex3D> deferred_blocks;
+  IncrementalTopologyGraph3DUpdate result = impl_->rebuild(
+      occupancy, revision, std::move(rebuilt_blocks), effective_dirty_chunks.size(),
+      reset_required, deadline, std::addressof(deferred_blocks));
+  if (!deferred_blocks.empty()) {
+    impl_->observed_blocks.enqueue(deferred_blocks);
+  }
   const std::vector<IncrementalTopologyBlockIndex3D> rebuilt_block_copy =
-      rebuilt_blocks;
-  IncrementalTopologyGraph3DUpdate result =
-      impl_->rebuild(occupancy, revision, std::move(rebuilt_blocks),
-                     effective_dirty_chunks.size(), reset_required);
+      [&result, &selected_blocks]() {
+        std::vector<IncrementalTopologyBlockIndex3D> completed = selected_blocks;
+        completed.resize(result.rebuilt_blocks);
+        return completed;
+      }();
   if (!reset_required && !impl_->config.require_known_free_space) {
     result.refreshed_observation_blocks = impl_->refreshObservationEvidence(
         occupancy, observation_evidence_blocks, rebuilt_block_copy, revision);
@@ -120,6 +130,7 @@ IncrementalTopologyGraph3DUpdate IncrementalTopologyGraph3D::update(
   result.forward_corridor_blocks = selection.forward_corridor_blocks;
   result.oldest_preserved_blocks = selection.oldest_preserved_blocks;
   result.backlog_boosted = selection.backlog_boosted;
+  result.deadline_exhausted = !deferred_blocks.empty();
   if (reset_required) {
     impl_->observed_blocks.replaceObservedSnapshot(occupancy.chunks());
   }

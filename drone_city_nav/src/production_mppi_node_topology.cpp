@@ -119,11 +119,15 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
               raw_world.version.revision, raw_world.full_reset ? "true" : "false",
               raw_world.dirty_chunks.size());
   const auto started = std::chrono::steady_clock::now();
+  const auto deadline =
+      started + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double, std::milli>{
+                        topological_graph_update_budget_ms_});
   const IncrementalTopologicalWorldUpdate3D update =
       topological_navigation_3d_->updateObserved(
           *raw_world.occupancy, raw_world.version.producer_instance_id,
           raw_world.version.revision, raw_world.dirty_chunks, raw_world.full_reset,
-          priority);
+          priority, deadline);
   const double update_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - started)
                                .count();
@@ -251,6 +255,13 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
   if (!std::isfinite(topological_strategy_budget_ms_) ||
       topological_strategy_budget_ms_ <= 0.0) {
     throw std::invalid_argument{"topological_strategy_budget_ms must be positive"};
+  }
+  topological_graph_update_budget_ms_ =
+      declare_parameter<double>("topological_graph_3d_update_budget_ms", 50.0);
+  if (!std::isfinite(topological_graph_update_budget_ms_) ||
+      topological_graph_update_budget_ms_ <= 0.0) {
+    throw std::invalid_argument{
+        "topological_graph_3d_update_budget_ms must be positive"};
   }
 
   topological_planner_3d_config_.maximum_start_anchor_distance_m =

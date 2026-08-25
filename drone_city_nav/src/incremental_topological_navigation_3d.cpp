@@ -163,7 +163,8 @@ IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateOb
     const std::uint64_t revision,
     const std::span<const OccupancyChunkIndex3D> dirty_chunks,
     const bool complete_snapshot,
-    const std::optional<IncrementalTopologyBuildPriority3D> priority) {
+    const std::optional<IncrementalTopologyBuildPriority3D> priority,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) {
   bool producer_changed = false;
   IncrementalTopologicalWorldUpdate3D result;
   {
@@ -174,8 +175,8 @@ IncrementalTopologicalWorldUpdate3D IncrementalTopologicalNavigation3D::updateOb
       observed_producer_instance_id_ = producer_instance_id;
       producer_changed = true;
     }
-    result.graph =
-        graph_.update(occupancy, revision, dirty_chunks, complete_snapshot, priority);
+    result.graph = graph_.update(occupancy, revision, dirty_chunks, complete_snapshot,
+                                 priority, deadline);
     result.snapshot =
         std::make_shared<const IncrementalTopologyGraph3DSnapshot>(graph_.snapshot());
     snapshot_ = result.snapshot;

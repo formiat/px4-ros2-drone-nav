@@ -910,14 +910,17 @@ struct IncrementalTopologyGraph3D::Impl {
   }
 
   template<typename Occupancy>
-  [[nodiscard]] IncrementalTopologyGraph3DUpdate
-  rebuild(const Occupancy& occupancy, const std::uint64_t update_revision,
-          std::vector<IncrementalTopologyBlockIndex3D> rebuilt_blocks,
-          const std::size_t requested_dirty_chunks, const bool full_reset) {
+  [[nodiscard]] IncrementalTopologyGraph3DUpdate rebuild(
+      const Occupancy& occupancy, const std::uint64_t update_revision,
+      std::vector<IncrementalTopologyBlockIndex3D> rebuilt_blocks,
+      const std::size_t requested_dirty_chunks, const bool full_reset,
+      const std::optional<std::chrono::steady_clock::time_point> deadline =
+          std::nullopt,
+      std::vector<IncrementalTopologyBlockIndex3D>* const deferred_blocks = nullptr) {
     IncrementalTopologyGraph3DUpdate stats{
         .revision = update_revision,
         .requested_dirty_chunks = requested_dirty_chunks,
-        .rebuilt_blocks = rebuilt_blocks.size(),
+        .rebuilt_blocks = 0U,
         .full_reset = full_reset,
     };
     if (full_reset) {
@@ -935,14 +938,27 @@ struct IncrementalTopologyGraph3D::Impl {
     std::vector<BuiltBlock> replacements;
     replacements.reserve(rebuilt_blocks.size());
     auto stage_started = std::chrono::steady_clock::now();
+    std::size_t built_block_count{0U};
     for (const IncrementalTopologyBlockIndex3D block : rebuilt_blocks) {
+      if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+        break;
+      }
       replacements.push_back(buildBlock(occupancy, block));
+      ++built_block_count;
       stats.adaptively_refined_blocks +=
           replacements.back().adaptively_refined ? 1U : 0U;
       for (const BlockComponent& component : replacements.back().components) {
         stats.sampled_navigable_cells += component.cells.size();
       }
     }
+    if (deferred_blocks != nullptr && built_block_count < rebuilt_blocks.size()) {
+      deferred_blocks->insert(deferred_blocks->end(),
+                              rebuilt_blocks.begin() +
+                                  static_cast<std::ptrdiff_t>(built_block_count),
+                              rebuilt_blocks.end());
+    }
+    rebuilt_blocks.resize(built_block_count);
+    stats.rebuilt_blocks = built_block_count;
     stats.block_build_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - stage_started)
                                .count();

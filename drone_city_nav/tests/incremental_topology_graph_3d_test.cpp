@@ -118,6 +118,25 @@ TEST(IncrementalTopologyGraph3DTest,
   }));
 }
 
+TEST(IncrementalTopologyGraph3DTest,
+     ExpiredDeadlineDefersBlocksAndTheSameRevisionResumesThem) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 8, 8, 8}};
+  fillFreeBox(occupancy, 0, 7, 0, 7, 0, 7);
+  IncrementalTopologyGraph3D graph{makeKnownSpaceConfig()};
+
+  const IncrementalTopologyGraph3DUpdate deferred = graph.update(
+      occupancy, 1U, {}, true, std::nullopt, std::chrono::steady_clock::now());
+  EXPECT_TRUE(deferred.deadline_exhausted);
+  EXPECT_EQ(deferred.rebuilt_blocks, 0U);
+  EXPECT_GT(deferred.pending_blocks, 0U);
+
+  const IncrementalTopologyGraph3DUpdate resumed =
+      graph.update(occupancy, 1U, {}, false);
+  EXPECT_FALSE(resumed.deadline_exhausted);
+  EXPECT_GT(resumed.rebuilt_blocks, 0U);
+  EXPECT_EQ(resumed.pending_blocks, 0U);
+}
+
 TEST(IncrementalTopologyGraph3DTest, DrainsPendingBlocksWithoutANewerRawRevision) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 16, 8}};
   fillFreeBox(occupancy, 0, 23, 0, 15, 0, 7);

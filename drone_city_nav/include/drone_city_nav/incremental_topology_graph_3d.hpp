@@ -5,6 +5,7 @@
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <chrono>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -160,6 +161,7 @@ struct IncrementalTopologyGraph3DUpdate {
   double graph_rebuild_ms{0.0};
   bool full_reset{false};
   bool backlog_boosted{false};
+  bool deadline_exhausted{false};
 };
 
 struct IncrementalTopologyBuildPriority3D {
@@ -244,7 +246,8 @@ public:
   [[nodiscard]] IncrementalTopologyGraph3DUpdate
   update(const ObservedOccupancyGrid3D& occupancy, std::uint64_t revision,
          std::span<const OccupancyChunkIndex3D> dirty_chunks, bool full_reset,
-         std::optional<IncrementalTopologyBuildPriority3D> priority = std::nullopt);
+         std::optional<IncrementalTopologyBuildPriority3D> priority = std::nullopt,
+         std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
 
   [[nodiscard]] IncrementalTopologyGraph3DUpdate reset(const OccupancyGrid3D& occupancy,
                                                        std::uint64_t revision);

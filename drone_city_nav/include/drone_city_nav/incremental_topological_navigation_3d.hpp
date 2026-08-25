@@ -60,7 +60,8 @@ public:
       const ObservedOccupancyGrid3D& occupancy, std::uint64_t producer_instance_id,
       std::uint64_t revision, std::span<const OccupancyChunkIndex3D> dirty_chunks,
       bool complete_snapshot,
-      std::optional<IncrementalTopologyBuildPriority3D> priority = std::nullopt);
+      std::optional<IncrementalTopologyBuildPriority3D> priority = std::nullopt,
+      std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
   [[nodiscard]] IncrementalTopologicalWorldUpdate3D
   resetStatic(const OccupancyGrid3D& occupancy, std::uint64_t revision);
 
