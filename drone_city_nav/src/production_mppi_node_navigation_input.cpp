@@ -134,7 +134,7 @@ void ProductionMppiNode::onLocalPosition(
       navigationPayloadFingerprint(message);
 
   {
-    const std::scoped_lock lock{input_mutex_};
+    std::unique_lock lock{input_mutex_};
     const NavigationAngularDerivativeEstimate angular_derivative =
         navigation_angular_derivative_estimator_.observe(NavigationAngularObservation{
             .sample_timestamp_us = message.timestamp_sample,
@@ -267,6 +267,13 @@ void ProductionMppiNode::onLocalPosition(
           "source_timestamp_us=%" PRIu64 " world_state=%s heading=%s",
           navigation.source_timestamp_us, position_velocity_contract ? "true" : "false",
           heading_contract ? "true" : "false");
+      if (navigation.world_state_authoritative) {
+        lock.unlock();
+        queueLatestObservedWorldForPose(navigation);
+        if (use_static_map_ && navigationObjective() && !world_ready_.load()) {
+          requestStaticEsdfWork();
+        }
+      }
       return;
     }
 
