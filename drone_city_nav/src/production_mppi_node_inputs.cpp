@@ -133,6 +133,13 @@ currentTrackingTarget(const geometry_msgs::msg::Point& observed,
 } // namespace
 
 void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& message) {
+  // PX4 source timestamps are ordered against a local monotonic receipt clock.
+  // ROS /clock can pause or jump with the simulator and therefore cannot be
+  // the authority for epoch/reacquisition admission.
+  const std::int64_t monotonic_receive_stamp_ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count();
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   const bool armed =
       message.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
@@ -147,7 +154,7 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
       Px4TimestampEpochObservation{
           .primary_timestamp_us = message.timestamp,
           .corroborating_timestamp_us = 0U,
-          .receive_timestamp_ns = receive_stamp_ns,
+          .receive_timestamp_ns = monotonic_receive_stamp_ns,
       });
   const bool timestamp_probation_opened =
       vehicle_status_timestamp_admission_.pending_confirmation_count == 0U &&

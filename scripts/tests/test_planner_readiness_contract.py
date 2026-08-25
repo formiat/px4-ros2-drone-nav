@@ -682,6 +682,11 @@ class PlannerReadinessContractTest(unittest.TestCase):
         )
         self.assertLess(timestamp_admission, timestamp_state_advance)
         self.assertLess(timestamp_state_advance, payload_acceptance)
+        self.assertIn("std::chrono::steady_clock::now()", vehicle_status_callback)
+        self.assertIn(
+            ".receive_timestamp_ns = monotonic_receive_stamp_ns",
+            vehicle_status_callback,
+        )
         self.assertIn("vehicle_status_epoch_probation_", vehicle_status_callback)
         self.assertIn(
             "vehicle_status_timestamp_admission_.pending_confirmation_count != 0U",
