@@ -59,9 +59,9 @@ void ProductionMppiNode::configureStaticRouteExtension(
       "static_global_guide_splice_sample_step_m", lattice_3d_config_.sample_step_m);
   certified_route_splice_config_.maximum_position_separation_m =
       declare_parameter<double>(
-          "static_global_guide_splice_maximum_position_separation_m", 2.0);
+          "static_global_guide_splice_maximum_position_separation_m", 0.05);
   certified_route_splice_config_.minimum_tangent_alignment = declare_parameter<double>(
-      "static_global_guide_splice_minimum_tangent_alignment", 0.5);
+      "static_global_guide_splice_minimum_tangent_alignment", 0.995);
   certified_route_splice_config_.activation_station_tolerance_m =
       declare_parameter<double>(
           "static_global_guide_splice_activation_station_tolerance_m", 1.0);

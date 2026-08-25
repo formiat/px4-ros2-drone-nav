@@ -95,6 +95,29 @@ TEST(CertifiedRouteSplice3DTest, RejectsACommonStartThatDivergesBeforeOverlapEnd
   EXPECT_FALSE(certification.splice.has_value());
 }
 
+TEST(CertifiedRouteSplice3DTest,
+     StrictFrozenPrefixContractRejectsAParallelButDisplacedSuccessor) {
+  SnapshotFixture3D fixture;
+  const std::vector<RouteSample3D> displaced =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.04, 5.0}, {10.0, 0.04, 5.0}}, 0.5, 4.0);
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifySuccessor(fixture, displaced);
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(successor.has_value());
+
+  CertifiedRouteSpliceConfig3D strict = spliceConfig();
+  strict.maximum_position_separation_m = 0.01;
+  strict.minimum_tangent_alignment = 0.995;
+  const RouteSpliceCertificationResult3D certification =
+      certifyRouteSplice3D(*active->route, *successor, Point3{2.0, 0.0, 5.0}, strict);
+
+  EXPECT_EQ(certification.status, RouteSpliceCertificationStatus3D::kGeometryDiverged);
+  EXPECT_FALSE(certification.splice.has_value());
+}
+
 TEST(CertifiedRouteSplice3DTest, RejectsOpposedTangentsInsideSharedGeometry) {
   SnapshotFixture3D fixture;
   const std::vector<RouteSample3D> opposed =

@@ -11,8 +11,12 @@ namespace drone_city_nav {
 struct CertifiedRouteSpliceConfig3D {
   double required_overlap_m{8.0};
   double sample_step_m{0.5};
-  double maximum_position_separation_m{2.0};
-  double minimum_tangent_alignment{0.5};
+  // The successor must retain the executable prefix, not merely follow a
+  // nearby corridor.  These defaults bound any numerical resampling error
+  // while rejecting a route that would require a lateral or heading step at
+  // handoff.
+  double maximum_position_separation_m{0.05};
+  double minimum_tangent_alignment{0.995};
   double activation_station_tolerance_m{1.0};
 };
 
