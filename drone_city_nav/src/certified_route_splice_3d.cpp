@@ -171,9 +171,7 @@ certifyRouteSplice3D(const CertifiedRouteSuffix3D& base,
       projectInsideRouteSuffix(base, activation_position);
   const RouteProjection3D successor_projection =
       projectInsideRouteSuffix(successor, activation_position);
-  if (!base_projection.valid || !successor_projection.valid ||
-      base_projection.distance_m > config.maximum_position_separation_m ||
-      successor_projection.distance_m > config.maximum_position_separation_m) {
+  if (!base_projection.valid || !successor_projection.valid) {
     result.status = RouteSpliceCertificationStatus3D::kProjectionUnavailable;
     return result;
   }

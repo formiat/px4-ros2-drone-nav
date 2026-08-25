@@ -60,14 +60,19 @@ TEST(Route3DTest, MaterializesAnExactActivePrefixBeforeSuccessorContinuation) {
       materializeFrozenRoutePrefix3D(active, successor, Point3{2.0, 0.0, 5.0}, 6.0);
 
   ASSERT_TRUE(frozen.has_value());
-  ASSERT_TRUE(frozen->valid());
-  EXPECT_NEAR(frozen->route.front().position.x, 2.0, 1.0e-6);
-  EXPECT_GT(frozen->route.back().station_m, 18.0);
-  const RouteSample3D stitch = sampleRoute3DAtStation(frozen->route, 6.0);
+  if (!frozen.has_value()) {
+    return;
+  }
+  const FrozenRoutePrefix3D& frozen_prefix = frozen.value();
+  ASSERT_TRUE(frozen_prefix.valid());
+  EXPECT_NEAR(frozen_prefix.route.front().position.x, 2.0, 1.0e-6);
+  EXPECT_GT(frozen_prefix.route.back().station_m, 18.0);
+  const RouteSample3D stitch = sampleRoute3DAtStation(frozen_prefix.route, 6.0);
   EXPECT_NEAR(stitch.position.x, 8.0, 1.0e-6);
   EXPECT_NEAR(stitch.position.y, 0.0, 1.0e-6);
-  for (std::size_t index = 1U; index < frozen->route.size(); ++index) {
-    EXPECT_GT(frozen->route[index].station_m, frozen->route[index - 1U].station_m);
+  for (std::size_t index = 1U; index < frozen_prefix.route.size(); ++index) {
+    EXPECT_GT(frozen_prefix.route[index].station_m,
+              frozen_prefix.route[index - 1U].station_m);
   }
 }
 
@@ -83,10 +88,14 @@ TEST(Route3DTest, MaterializesSuccessorPlannedFromFutureStitchStation) {
       materializeFrozenRoutePrefix3D(active, successor, Point3{2.0, 0.0, 5.0}, 6.0);
 
   ASSERT_TRUE(frozen.has_value());
-  EXPECT_NEAR(frozen->stitch_station_m, 8.0, 1.0e-6);
-  EXPECT_NEAR(frozen->successor_begin_station_m, 0.0, 1.0e-6);
-  EXPECT_NEAR(frozen->successor_stitch_station_m, 0.0, 1.0e-6);
-  EXPECT_NEAR(sampleRoute3DAtStation(frozen->route, 6.0).position.x, 8.0, 1.0e-6);
+  if (!frozen.has_value()) {
+    return;
+  }
+  const FrozenRoutePrefix3D& frozen_prefix = frozen.value();
+  EXPECT_NEAR(frozen_prefix.stitch_station_m, 8.0, 1.0e-6);
+  EXPECT_NEAR(frozen_prefix.successor_begin_station_m, 0.0, 1.0e-6);
+  EXPECT_NEAR(frozen_prefix.successor_stitch_station_m, 0.0, 1.0e-6);
+  EXPECT_NEAR(sampleRoute3DAtStation(frozen_prefix.route, 6.0).position.x, 8.0, 1.0e-6);
 }
 
 TEST(Route3DTest, RemapsPassageContractsOntoCanonicalFrozenRoute) {
@@ -1091,6 +1100,36 @@ TEST(Route3DTest, MaterializedContinuationCommitsToGoalDirectedWallDetour) {
   EXPECT_LT(distance3D(result.points.back(), goal), distance3D(start, goal));
   EXPECT_GT(std::abs(result.points.back().y - start.y), 1.0);
   EXPECT_NEAR(result.points.back().z, start.z, 1.0e-9);
+}
+
+TEST(Route3DTest, ClipsSpanWithInterpolatedBoundaryEnvelopeSamples) {
+  ConstrainedRouteSpan span{
+      .passage_traversal_id = PassageTraversalId{"passage"},
+      .route_generation = 7U,
+      .direction_sign = 1,
+      .begin_station_m = 1.0,
+      .end_station_m = 5.0,
+      .envelope =
+          {
+              RouteEnvelopeSample{
+                  .station_m = 1.0, .reference_z_m = 2.0, .reference_speed_mps = 3.0},
+              RouteEnvelopeSample{
+                  .station_m = 5.0, .reference_z_m = 6.0, .reference_speed_mps = 7.0},
+          },
+      .segment_spans = {},
+  };
+
+  const std::vector<ConstrainedRouteSpan> clipped =
+      clipConstrainedRouteSpans({&span, 1U}, 2.0, 4.0);
+
+  ASSERT_EQ(clipped.size(), 1U);
+  ASSERT_EQ(clipped.front().envelope.size(), 2U);
+  EXPECT_DOUBLE_EQ(clipped.front().begin_station_m, 2.0);
+  EXPECT_DOUBLE_EQ(clipped.front().end_station_m, 4.0);
+  EXPECT_DOUBLE_EQ(clipped.front().envelope.front().station_m, 2.0);
+  EXPECT_DOUBLE_EQ(clipped.front().envelope.front().reference_z_m, 3.0);
+  EXPECT_DOUBLE_EQ(clipped.front().envelope.back().station_m, 4.0);
+  EXPECT_DOUBLE_EQ(clipped.front().envelope.back().reference_speed_mps, 6.0);
 }
 
 } // namespace

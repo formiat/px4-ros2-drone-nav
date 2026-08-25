@@ -1,9 +1,13 @@
+#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/route_compiler_3d.hpp"
+
 #include <gtest/gtest.h>
 
 #include <array>
 #include <span>
 #include <vector>
 
+#include "production_mppi_route_activation.hpp"
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
@@ -72,6 +76,58 @@ TEST(ProductionMppiRouteHelpersTest,
   ASSERT_NE(route, nullptr);
   ASSERT_FALSE(route->empty());
   EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 5.0F);
+}
+
+TEST(ProductionMppiRouteHelpersTest,
+     CompiledCandidatePassesTheCompletePreArbitrationGeometryContract) {
+  const std::vector<RouteSample3D> candidate =
+      sampleRoute3D(std::array<Point3, 3>{Point3{0.0, 0.0, 5.0}, Point3{5.0, 0.0, 5.0},
+                                          Point3{5.0, 5.0, 5.0}},
+                    0.5, 4.0);
+  const std::uint64_t fingerprint = routeFingerprint(candidate);
+  RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
+      .route = candidate,
+      .constrained_spans = {},
+      .passage_volumes = {},
+      .cooperative_passage_assignments = {},
+      .selected_passage_traversal_ids = {},
+      .passage_volume_config = PassageVolumeConfig{},
+      .route_purpose = Lattice3DRoutePurpose::kMissionTransit,
+      .observation_frontier = std::nullopt,
+      .endpoint_semantics = RouteEndpointSemantics3D::kContinuation,
+      .materialized_route_fingerprint = fingerprint,
+      .config = RouteCompilerConfig3D{},
+  });
+  ASSERT_TRUE(compilation.compiled());
+  ASSERT_NE(compilation.geometry, nullptr);
+
+  ProductionRouteActivationResult3D prepared;
+  prepared.proposal.identity = MaterializedRouteProposal3D{
+      .route_fingerprint = fingerprint,
+      .route_sample_count = compilation.geometry->route->size(),
+      .activation_eligible = true,
+  };
+  prepared.proposal.geometry = *compilation.geometry;
+  prepared.assessment = RouteActivationAssessment3D{
+      .publication =
+          RoutePublicationAssessment3D{.status = RoutePublicationStatus3D::kCompatible},
+      .projection = RouteProjection3D{.valid = true},
+      .raw_validation =
+          RawRouteSuffixValidation3D{.status = RawRouteSuffixStatus3D::kValid},
+      .objective_matches = true,
+      .cross_track_accepted = true,
+      .raw_world_compatible = true,
+  };
+  prepared.handoff = mppi::StaticRouteHandoffResult{
+      .status = mppi::StaticRouteHandoffStatus::kAccepted,
+      .accepted = true,
+  };
+  prepared.geometry_validation = compilation.validation;
+  prepared.world_compatible = true;
+  prepared.objective_matches = true;
+
+  EXPECT_TRUE(prepared.executionGeometryValid());
+  EXPECT_TRUE(prepared.readyForArbitration());
 }
 
 } // namespace

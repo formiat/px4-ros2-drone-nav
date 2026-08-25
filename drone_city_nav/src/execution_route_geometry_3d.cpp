@@ -181,6 +181,7 @@ void hashRoute(GeometryHasher& hash, const std::vector<RouteSample3D>& route) no
     hash.number(sample.station_m);
     hash.number(sample.reference_speed_mps);
     hash.value(static_cast<std::uint64_t>(sample.required_risk_tier));
+    hash.value(static_cast<std::uint64_t>(sample.transition));
   }
 }
 

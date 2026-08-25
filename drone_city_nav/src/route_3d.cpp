@@ -171,6 +171,7 @@ materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route
   }
 
   FrozenRoutePrefix3D result{
+      .route = {},
       .active_begin_station_m = active_projection.station_m,
       .stitch_station_m = stitch_station,
       .successor_begin_station_m = successor_starts_at_stitch
@@ -624,9 +625,12 @@ ConstrainedRouteControl ConstrainedRouteCoordinator::update(
   const double capture_target_z =
       std::clamp(observation.reference_z_m, capture_min, capture_max);
   const double displacement_to_capture_m = capture_target_z - observation.actual_z_m;
-  const double direction_to_capture = displacement_to_capture_m > 0.0   ? 1.0
-                                      : displacement_to_capture_m < 0.0 ? -1.0
-                                                                        : 0.0;
+  double direction_to_capture{0.0};
+  if (displacement_to_capture_m > 0.0) {
+    direction_to_capture = 1.0;
+  } else if (displacement_to_capture_m < 0.0) {
+    direction_to_capture = -1.0;
+  }
   const double speed_toward_capture_mps =
       direction_to_capture * observation.actual_vertical_speed_mps;
   const double braking_distance_m =
@@ -719,9 +723,66 @@ std::vector<RouteSample3D> sampleRoute3D(const std::span<const Point3> points,
     station_m += length;
   }
   if (result.size() >= 2U) {
-    result.front().tangent = result[1U].tangent;
+    constexpr double kDefaultMinimumContinuousTurnAlignment{0.7071067811865476};
+    if (!canonicalizeRouteKinematics3D(result,
+                                       kDefaultMinimumContinuousTurnAlignment)) {
+      return {};
+    }
   }
   return result;
+}
+
+bool canonicalizeRouteKinematics3D(const std::span<RouteSample3D> route,
+                                   const double minimum_continuous_turn_alignment,
+                                   std::size_t* const stop_turn_count) noexcept {
+  if (stop_turn_count != nullptr) {
+    *stop_turn_count = 0U;
+  }
+  if (route.size() < 2U || !std::isfinite(minimum_continuous_turn_alignment) ||
+      minimum_continuous_turn_alignment < -1.0 ||
+      minimum_continuous_turn_alignment > 1.0) {
+    return false;
+  }
+  std::vector<Vec3> directions;
+  directions.reserve(route.size() - 1U);
+  for (std::size_t index = 1U; index < route.size(); ++index) {
+    const double length_m =
+        distance3D(route[index - 1U].position, route[index].position);
+    if (!(length_m > 1.0e-9) || !std::isfinite(length_m)) {
+      return false;
+    }
+    directions.push_back(Vec3{
+        (route[index].position.x - route[index - 1U].position.x) / length_m,
+        (route[index].position.y - route[index - 1U].position.y) / length_m,
+        (route[index].position.z - route[index - 1U].position.z) / length_m,
+    });
+  }
+  double station_m{0.0};
+  route.front().station_m = 0.0;
+  route.front().tangent = directions.front();
+  route.front().transition = RouteKinematicTransition3D::kContinuous;
+  for (std::size_t index = 1U; index < route.size(); ++index) {
+    station_m += distance3D(route[index - 1U].position, route[index].position);
+    route[index].station_m = station_m;
+    route[index].tangent =
+        index + 1U < route.size() ? directions[index] : directions.back();
+    route[index].transition = RouteKinematicTransition3D::kContinuous;
+    if (index + 1U >= route.size()) {
+      continue;
+    }
+    const Vec3& incoming = directions[index - 1U];
+    const Vec3& outgoing = directions[index];
+    const double alignment =
+        incoming.x * outgoing.x + incoming.y * outgoing.y + incoming.z * outgoing.z;
+    if (alignment < minimum_continuous_turn_alignment) {
+      route[index].transition = RouteKinematicTransition3D::kStopAndTurn;
+      route[index].reference_speed_mps = 0.0;
+      if (stop_turn_count != nullptr) {
+        ++*stop_turn_count;
+      }
+    }
+  }
+  return true;
 }
 
 RouteRiskTierAssignmentResult assignRouteRiskTiers(

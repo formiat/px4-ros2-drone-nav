@@ -49,6 +49,16 @@ const char* executionRouteGeometryFailureReasonName3D(
       return "incoming_tangent_mismatch";
     case ExecutionRouteGeometryFailureReason3D::kTerminalTangentMismatch:
       return "terminal_tangent_mismatch";
+    case ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile:
+      return "invalid_time_profile";
+    case ExecutionRouteGeometryFailureReason3D::kInvalidProjection:
+      return "invalid_projection";
+    case ExecutionRouteGeometryFailureReason3D::kInvalidConstrainedSpans:
+      return "invalid_constrained_spans";
+    case ExecutionRouteGeometryFailureReason3D::kInvalidPassageResources:
+      return "invalid_passage_resources";
+    case ExecutionRouteGeometryFailureReason3D::kInvalidFingerprint:
+      return "invalid_fingerprint";
     case ExecutionRouteGeometryFailureReason3D::kDerivedResourceMismatch:
       return "derived_resource_mismatch";
   }
@@ -72,7 +82,9 @@ ExecutionRouteGeometryValidation3D validateExecutionRouteGeometrySamples3D(
         !execution_route_snapshot_3d_internal::finiteVector(sample.tangent) ||
         !std::isfinite(sample.station_m) ||
         !std::isfinite(sample.reference_speed_mps) || sample.station_m < 0.0 ||
-        sample.reference_speed_mps < 0.0) {
+        sample.reference_speed_mps < 0.0 ||
+        (sample.transition == RouteKinematicTransition3D::kStopAndTurn &&
+         sample.reference_speed_mps > 1.0e-6)) {
       return {Failure::kNonFiniteSample, index};
     }
     if (!execution_route_snapshot_3d_internal::nearlyEqual(tangent_norm, 1.0, 1.0e-3)) {

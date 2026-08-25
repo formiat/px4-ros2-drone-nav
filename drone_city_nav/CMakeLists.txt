@@ -258,6 +258,7 @@ add_library(
   src/producer_instance_id.cpp
   src/route_3d.cpp
   src/route_3d_spans.cpp
+  src/route_compiler_3d.cpp
   src/route_time_parameterization.cpp
   src/route_execution_contract_3d.cpp
   src/route_lifecycle_3d.cpp
@@ -1279,6 +1280,11 @@ if(BUILD_TESTING)
   target_compile_features(route_lifecycle_3d_test PRIVATE cxx_std_20)
   target_link_libraries(route_lifecycle_3d_test drone_city_nav_core)
   enable_project_warnings(route_lifecycle_3d_test)
+
+  ament_add_gtest(route_compiler_3d_test tests/route_compiler_3d_test.cpp)
+  target_compile_features(route_compiler_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(route_compiler_3d_test drone_city_nav_core)
+  enable_project_warnings(route_compiler_3d_test)
 
   ament_add_gtest(execution_route_snapshot_3d_test
                   tests/execution_route_snapshot_3d_test.cpp

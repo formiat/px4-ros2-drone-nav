@@ -43,6 +43,11 @@ enum class ExecutionRouteGeometryFailureReason3D : std::uint8_t {
   kSegmentStationMismatch,
   kIncomingTangentMismatch,
   kTerminalTangentMismatch,
+  kInvalidTimeProfile,
+  kInvalidProjection,
+  kInvalidConstrainedSpans,
+  kInvalidPassageResources,
+  kInvalidFingerprint,
   kDerivedResourceMismatch,
 };
 

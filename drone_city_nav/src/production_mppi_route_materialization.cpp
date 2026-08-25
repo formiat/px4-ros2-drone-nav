@@ -1,6 +1,7 @@
 #include "production_mppi_route_materialization.hpp"
 
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/route_compiler_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
 #include <algorithm>
@@ -9,81 +10,12 @@
 #include <ranges>
 #include <span>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] std::vector<ConstrainedRouteSpan>
-clipConstrainedSpans(const std::span<const ConstrainedRouteSpan> spans,
-                     const double minimum_station_m, const double maximum_station_m) {
-  std::vector<ConstrainedRouteSpan> clipped;
-  for (const ConstrainedRouteSpan& source : spans) {
-    const double begin = std::max(source.begin_station_m, minimum_station_m);
-    const double end = std::min(source.end_station_m, maximum_station_m);
-    if (end <= begin + 1.0e-9) {
-      continue;
-    }
-    ConstrainedRouteSpan span = source;
-    span.begin_station_m = begin;
-    span.end_station_m = end;
-    std::erase_if(span.envelope, [begin, end](const RouteEnvelopeSample& sample) {
-      return sample.station_m + 1.0e-6 < begin || sample.station_m - 1.0e-6 > end;
-    });
-    std::erase_if(span.segment_spans,
-                  [begin, end](PassageTraversalSegmentSpan& segment) {
-                    segment.begin_station_m = std::max(segment.begin_station_m, begin);
-                    segment.end_station_m = std::min(segment.end_station_m, end);
-                    return segment.end_station_m <= segment.begin_station_m + 1.0e-9;
-                  });
-    clipped.push_back(std::move(span));
-  }
-  return clipped;
-}
-
-void mergeAdjacentConstrainedSpans(std::vector<ConstrainedRouteSpan>& spans) {
-  std::ranges::sort(
-      spans, [](const ConstrainedRouteSpan& first, const ConstrainedRouteSpan& second) {
-        return std::tie(first.passage_traversal_id, first.direction_sign,
-                        first.begin_station_m) < std::tie(second.passage_traversal_id,
-                                                          second.direction_sign,
-                                                          second.begin_station_m);
-      });
-  std::vector<ConstrainedRouteSpan> merged;
-  for (ConstrainedRouteSpan& span : spans) {
-    if (!merged.empty() &&
-        merged.back().passage_traversal_id == span.passage_traversal_id &&
-        merged.back().direction_sign == span.direction_sign &&
-        span.begin_station_m <= merged.back().end_station_m + 1.0e-6) {
-      ConstrainedRouteSpan& previous = merged.back();
-      previous.end_station_m = std::max(previous.end_station_m, span.end_station_m);
-      previous.envelope.insert(previous.envelope.end(), span.envelope.begin(),
-                               span.envelope.end());
-      previous.segment_spans.insert(previous.segment_spans.end(),
-                                    span.segment_spans.begin(),
-                                    span.segment_spans.end());
-      continue;
-    }
-    merged.push_back(std::move(span));
-  }
-  for (ConstrainedRouteSpan& span : merged) {
-    std::ranges::sort(span.envelope, {}, &RouteEnvelopeSample::station_m);
-    span.envelope.erase(std::unique(span.envelope.begin(), span.envelope.end(),
-                                    [](const RouteEnvelopeSample& first,
-                                       const RouteEnvelopeSample& second) {
-                                      return std::abs(first.station_m -
-                                                      second.station_m) <= 1.0e-6;
-                                    }),
-                        span.envelope.end());
-  }
-  spans = std::move(merged);
-}
-
-} // namespace
 
 ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D(
     const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
@@ -96,6 +28,16 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   ProductionRouteMaterialization3D result;
   ProductionMppiPreparedEsdf& prepared = result.prepared;
   prepared = world;
+  prepared.mppi_route.reset();
+  prepared.route_3d.reset();
+  prepared.compiled_route_geometry.reset();
+  prepared.route_compilation_validation = {};
+  prepared.route_stop_turn_count = 0U;
+  prepared.route_2d_projection.reset();
+  prepared.constrained_spans.reset();
+  prepared.passage_volumes.reset();
+  prepared.cooperative_passage_assignments.reset();
+  prepared.selected_passage_traversal_ids.reset();
   prepared.passage_traversals.reset();
   prepared.route_intent = candidate.intent;
   prepared.route_segment_evidence = candidate.evidence;
@@ -255,12 +197,14 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
           .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
       return result;
     }
-    const std::vector<ConstrainedRouteSpan> active_prefix_spans = clipConstrainedSpans(
-        *active_route->geometry->constrained_spans,
-        frozen_prefix->active_begin_station_m, frozen_prefix->stitch_station_m);
+    const std::vector<ConstrainedRouteSpan> active_prefix_spans =
+        clipConstrainedRouteSpans(*active_route->geometry->constrained_spans,
+                                  frozen_prefix->active_begin_station_m,
+                                  frozen_prefix->stitch_station_m);
     const std::vector<ConstrainedRouteSpan> successor_suffix_spans =
-        clipConstrainedSpans(initial_spans, frozen_prefix->successor_stitch_station_m,
-                             std::numeric_limits<double>::infinity());
+        clipConstrainedRouteSpans(initial_spans,
+                                  frozen_prefix->successor_stitch_station_m,
+                                  std::numeric_limits<double>::infinity());
     initial_spans =
         remapConstrainedRouteSpans(*active_route->geometry->route, active_prefix_spans,
                                    frozen_prefix->route, route_envelope_config_);
@@ -269,7 +213,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
                                    frozen_prefix->route, route_envelope_config_);
     initial_spans.insert(initial_spans.end(), remapped_successor_spans.begin(),
                          remapped_successor_spans.end());
-    mergeAdjacentConstrainedSpans(initial_spans);
+    mergeAdjacentConstrainedRouteSpans(initial_spans);
     *mutable_route = frozen_prefix->route;
   }
   const std::size_t expected_span_count = initial_spans.size();
@@ -497,27 +441,54 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       selected_passage_traversal_ids.push_back(span.passage_traversal_id);
     }
   }
-  prepared.route_3d = route;
-  prepared.route_2d_projection = projectRouteTo2D(*route);
-  prepared.constrained_spans = spans;
-  prepared.passage_volumes = std::move(passage_volumes);
-  prepared.cooperative_passage_assignments =
-      std::make_shared<const std::vector<CooperativePassageAssignment>>(
-          std::move(passage_assignments));
-  prepared.selected_passage_traversal_ids =
-      std::make_shared<const std::vector<PassageTraversalId>>(
-          std::move(selected_passage_traversal_ids));
   const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
       prepared.route_intent, prepared.route_segment_evidence.reaches_intent_target,
       prepared.global_guide_reaches_mission_goal,
       !world.search_objective.continuous_tracking);
-  prepared.mppi_route =
-      makeMppiRoute3D(*route, *spans, speed_policy_config_.cruise_speed_mps,
-                      constrained_route_speed_limit_mps_, endpoint_semantics,
-                      speed_policy_config_, mppi_config_.dynamics);
+  prepared.route_fingerprint = routeFingerprint(*route, route_traversals);
+  RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
+      .route = *route,
+      .constrained_spans = *spans,
+      .passage_volumes = *passage_volumes,
+      .cooperative_passage_assignments = std::move(passage_assignments),
+      .selected_passage_traversal_ids = std::move(selected_passage_traversal_ids),
+      .passage_volume_config = cooperative_passage_volume_config_,
+      .route_purpose = prepared.lattice_3d_route_purpose,
+      .observation_frontier = prepared.lattice_3d_observation_frontier,
+      .endpoint_semantics = endpoint_semantics,
+      .materialized_route_fingerprint = prepared.route_fingerprint,
+      .config =
+          RouteCompilerConfig3D{
+              .unconstrained_speed_mps = speed_policy_config_.cruise_speed_mps,
+              .constrained_speed_mps = constrained_route_speed_limit_mps_,
+              .speed_policy = speed_policy_config_,
+              .dynamics = mppi_config_.dynamics,
+          },
+  });
+  prepared.route_compilation_validation = compilation.validation;
+  prepared.route_stop_turn_count = compilation.stop_turn_count;
+  const bool route_compiled = compilation.compiled();
+  prepared.compiled_route_geometry = std::move(compilation.geometry);
+  if (prepared.compiled_route_geometry != nullptr) {
+    prepared.mppi_route = prepared.compiled_route_geometry->mppi_route;
+    prepared.route_3d = prepared.compiled_route_geometry->route;
+    prepared.route_2d_projection =
+        prepared.compiled_route_geometry->route_2d_projection;
+    prepared.constrained_spans = prepared.compiled_route_geometry->constrained_spans;
+    prepared.passage_volumes = prepared.compiled_route_geometry->passage_volumes;
+    prepared.cooperative_passage_assignments =
+        prepared.compiled_route_geometry->cooperative_passage_assignments;
+    prepared.selected_passage_traversal_ids =
+        prepared.compiled_route_geometry->selected_passage_traversal_ids;
+  }
+  if (result.validation.accepted && !route_compiled) {
+    prepared.lattice_executable = false;
+  }
+  if (prepared.route_2d_projection == nullptr) {
+    prepared.route_2d_projection = projectRouteTo2D(*route);
+  }
   prepared.global_guide_projection = projectOntoGlobalGuide(
       *prepared.route_2d_projection, Point2{navigation.state.x, navigation.state.y});
-  prepared.route_fingerprint = routeFingerprint(*route, route_traversals);
   prepared.candidate_validation_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 validation_started)

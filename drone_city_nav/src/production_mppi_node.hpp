@@ -191,6 +191,9 @@ struct ProductionMppiPreparedEsdf {
   IncrementalTopologyGraph3DUpdate topological_graph_update{};
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
+  std::shared_ptr<const ProductionRouteGeometry3D> compiled_route_geometry;
+  ExecutionRouteGeometryValidation3D route_compilation_validation{};
+  std::size_t route_stop_turn_count{0U};
   RouteIntent3D route_intent{};
   SegmentEvidence3D route_segment_evidence{};
   RouteProposalSelectionReason3D route_proposal_selection_reason{

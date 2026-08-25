@@ -37,7 +37,7 @@ TEST(RouteTimeParameterizationTest,
 TEST(RouteTimeParameterizationTest, CurvatureAndVerticalMotionCapTheSameProfile) {
   const std::vector<RouteSample3D> turn_route{
       {.position = {0.0, 0.0, 0.0}, .tangent = {1.0, 0.0, 0.0}, .station_m = 0.0},
-      {.position = {2.0, 0.0, 0.0}, .tangent = {1.0, 0.0, 0.0}, .station_m = 2.0},
+      {.position = {2.0, 0.0, 0.0}, .tangent = {0.0, 1.0, 0.0}, .station_m = 2.0},
       {.position = {2.0, 2.0, 0.0}, .tangent = {0.0, 1.0, 0.0}, .station_m = 4.0},
       {.position = {2.0, 4.0, 0.0}, .tangent = {0.0, 1.0, 0.0}, .station_m = 6.0},
   };

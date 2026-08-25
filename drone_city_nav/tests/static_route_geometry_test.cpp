@@ -193,7 +193,9 @@ TEST(StaticRouteGeometryTest, FreezesPrefixByRouteStationNotEuclideanDistance) {
       RouteEnvelopeConfig{});
 
   ASSERT_FALSE(result.route.empty());
-  EXPECT_EQ(result.corners_smoothed, 0U);
+  // Geometry after the frozen boundary remains optimizable; only the prefix
+  // through station 90 is immutable.
+  EXPECT_EQ(result.corners_smoothed, 1U);
   const RouteSample3D frozen_corner = sampleRoute3DAtStation(route, 90.0);
   const RouteSample3D optimized_corner = sampleRoute3DAtStation(result.route, 90.0);
   EXPECT_NEAR(optimized_corner.position.x, frozen_corner.position.x, 1.0e-9);

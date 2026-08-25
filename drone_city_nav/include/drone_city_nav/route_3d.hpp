@@ -13,12 +13,18 @@
 
 namespace drone_city_nav {
 
+enum class RouteKinematicTransition3D : std::uint8_t {
+  kContinuous,
+  kStopAndTurn,
+};
+
 struct RouteSample3D {
   Point3 position{};
   Vec3 tangent{};
   double station_m{0.0};
   double reference_speed_mps{0.0};
   mppi::RiskTier required_risk_tier{mppi::RiskTier::kPreferred};
+  RouteKinematicTransition3D transition{RouteKinematicTransition3D::kContinuous};
 };
 
 struct RouteProjection3D {
@@ -300,6 +306,15 @@ observeConstrainedRoute(std::span<const RouteSample3D> route,
                                                        double sample_step_m,
                                                        double reference_speed_mps);
 
+// Rebuilds stations and outgoing tangents from physical sample positions. A
+// corner sharper than the configured alignment becomes an explicit stop-turn
+// boundary, so the time profile never commands finite speed through a tangent
+// discontinuity.
+[[nodiscard]] bool
+canonicalizeRouteKinematics3D(std::span<RouteSample3D> route,
+                              double minimum_continuous_turn_alignment,
+                              std::size_t* stop_turn_count = nullptr) noexcept;
+
 [[nodiscard]] RouteSample3D sampleRoute3DAtStation(std::span<const RouteSample3D> route,
                                                    double station_m) noexcept;
 
@@ -378,6 +393,12 @@ remapConstrainedRouteSpans(std::span<const RouteSample3D> source_route,
                            std::span<const ConstrainedRouteSpan> source_spans,
                            std::span<const RouteSample3D> destination_route,
                            const RouteEnvelopeConfig& config);
+
+[[nodiscard]] std::vector<ConstrainedRouteSpan>
+clipConstrainedRouteSpans(std::span<const ConstrainedRouteSpan> spans,
+                          double minimum_station_m, double maximum_station_m);
+
+void mergeAdjacentConstrainedRouteSpans(std::vector<ConstrainedRouteSpan>& spans);
 
 [[nodiscard]] bool validateConstrainedRouteSpans(
     std::span<const RouteSample3D> route, std::span<const ConstrainedRouteSpan> spans,

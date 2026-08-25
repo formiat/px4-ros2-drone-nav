@@ -19,7 +19,7 @@ constexpr double kEpsilon{1.0e-6};
     return 0.0;
   }
   const Vec3& before = route[index - 1U].tangent;
-  const Vec3& after = route[index + 1U].tangent;
+  const Vec3& after = route[index].tangent;
   const double before_norm = vectorNorm(before);
   const double after_norm = vectorNorm(after);
   const double distance_m = route[index + 1U].station_m - route[index - 1U].station_m;
@@ -149,6 +149,9 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
         {base_speed,
          constrainedLimit(route[index], constrained_spans, constrained_speed_mps),
          curvature_limit, vertical_limit});
+    if (route[index].transition == RouteKinematicTransition3D::kStopAndTurn) {
+      result.reference_speeds_mps[index] = 0.0;
+    }
   }
   if (routeEndpointHasTerminalStop3D(endpoint_semantics)) {
     result.reference_speeds_mps.back() = 0.0;

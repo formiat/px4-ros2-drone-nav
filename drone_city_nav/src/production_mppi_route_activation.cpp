@@ -1,6 +1,7 @@
 #include "production_mppi_route_activation.hpp"
 
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/route_compiler_3d.hpp"
 #include "drone_city_nav/route_time_parameterization.hpp"
 
 #include <algorithm>
@@ -16,6 +17,14 @@
 
 namespace drone_city_nav {
 namespace {
+
+template<typename T>
+[[nodiscard]] const T* optionalAddress(const std::optional<T>& value) noexcept {
+  if (!value.has_value()) {
+    return nullptr;
+  }
+  return std::addressof(value.value());
+}
 
 [[nodiscard]] StaticRouteCandidateStatus
 candidateStatusFromRiskAssignment(const RouteRiskTierAssignmentStatus status) noexcept {
@@ -59,15 +68,24 @@ exclusiveExecutionHold(const ExecutionRouteSnapshot3D& snapshot) noexcept {
       first->routeGenerationHighWater() != second->routeGenerationHighWater()) {
     return false;
   }
+  const StationaryExecutionHold3D* const first_hold =
+      optionalAddress(first->stationary_hold);
+  const StationaryExecutionHold3D* const second_hold =
+      optionalAddress(second->stationary_hold);
   if (exclusiveExecutionHold(*first)) {
-    return exclusiveExecutionHold(*second) &&
-           first->stationary_hold->hold_id == second->stationary_hold->hold_id;
+    return exclusiveExecutionHold(*second) && first_hold != nullptr &&
+           second_hold != nullptr && first_hold->hold_id == second_hold->hold_id;
   }
-  if (first->direct_tracking_execution.has_value()) {
-    const DirectTrackingOwnerIdentity3D& left =
-        first->direct_tracking_execution->identity;
-    const DirectTrackingOwnerIdentity3D& right =
-        second->direct_tracking_execution->identity;
+  const DirectTrackingFiniteExecution3D* const first_direct =
+      optionalAddress(first->direct_tracking_execution);
+  const DirectTrackingFiniteExecution3D* const second_direct =
+      optionalAddress(second->direct_tracking_execution);
+  if (first_direct != nullptr) {
+    if (second_direct == nullptr) {
+      return false;
+    }
+    const DirectTrackingOwnerIdentity3D& left = first_direct->identity;
+    const DirectTrackingOwnerIdentity3D& right = second_direct->identity;
     return left.mission_epoch == right.mission_epoch &&
            left.assignment_generation == right.assignment_generation &&
            left.target_detection_id == right.target_detection_id &&
@@ -75,14 +93,17 @@ exclusiveExecutionHold(const ExecutionRouteSnapshot3D& snapshot) noexcept {
            left.objective_sample_sequence == right.objective_sample_sequence &&
            left.line_of_sight_generation == right.line_of_sight_generation;
   }
-  if (!first->route.has_value()) {
+  const CertifiedRouteSuffix3D* const first_route = optionalAddress(first->route);
+  const CertifiedRouteSuffix3D* const second_route = optionalAddress(second->route);
+  if (first_route == nullptr) {
     return first->phase == second->phase;
   }
-  return first->route->identity.generation == second->route->identity.generation &&
-         first->route->geometry != nullptr && second->route->geometry != nullptr &&
-         first->route->geometry->executable_geometry_revision ==
-             second->route->geometry->executable_geometry_revision &&
-         first->route->continuity_id == second->route->continuity_id;
+  return second_route != nullptr &&
+         first_route->identity.generation == second_route->identity.generation &&
+         first_route->geometry != nullptr && second_route->geometry != nullptr &&
+         first_route->geometry->executable_geometry_revision ==
+             second_route->geometry->executable_geometry_revision &&
+         first_route->continuity_id == second_route->continuity_id;
 }
 
 [[nodiscard]] PendingExecutionBaseKind3D
@@ -195,6 +216,8 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
 
   if (result.validation.accepted && result.world_compatible &&
       snapshot.resident_world && candidate.route_3d && candidate.constrained_spans &&
+      candidate.passage_volumes && candidate.cooperative_passage_assignments &&
+      candidate.selected_passage_traversal_ids &&
       snapshot.resident_world->distances_m &&
       snapshot.resident_world->local_world_generation.generation !=
           candidate.local_world_generation.generation) {
@@ -246,10 +269,44 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           candidate.route_segment_evidence.reaches_intent_target,
           candidate.global_guide_reaches_mission_goal,
           !search_world.search_objective.continuous_tracking);
-      candidate.mppi_route = makeMppiRoute3D(
-          *rebased_route, *candidate.constrained_spans,
-          speed_policy_config_.cruise_speed_mps, constrained_route_speed_limit_mps_,
-          endpoint_semantics, speed_policy_config_, mppi_config_.dynamics);
+      RouteCompilationResult3D compilation =
+          compileExecutionRoute3D(RouteCompilerInput3D{
+              .route = *rebased_route,
+              .constrained_spans = *candidate.constrained_spans,
+              .passage_volumes = *candidate.passage_volumes,
+              .cooperative_passage_assignments =
+                  *candidate.cooperative_passage_assignments,
+              .selected_passage_traversal_ids =
+                  *candidate.selected_passage_traversal_ids,
+              .passage_volume_config = cooperative_passage_volume_config_,
+              .route_purpose = candidate.lattice_3d_route_purpose,
+              .observation_frontier = candidate.lattice_3d_observation_frontier,
+              .endpoint_semantics = endpoint_semantics,
+              .materialized_route_fingerprint = candidate.route_fingerprint,
+              .config =
+                  RouteCompilerConfig3D{
+                      .unconstrained_speed_mps = speed_policy_config_.cruise_speed_mps,
+                      .constrained_speed_mps = constrained_route_speed_limit_mps_,
+                      .speed_policy = speed_policy_config_,
+                      .dynamics = mppi_config_.dynamics,
+                  },
+          });
+      candidate.route_compilation_validation = compilation.validation;
+      candidate.route_stop_turn_count = compilation.stop_turn_count;
+      candidate.compiled_route_geometry = std::move(compilation.geometry);
+      if (candidate.compiled_route_geometry != nullptr) {
+        candidate.mppi_route = candidate.compiled_route_geometry->mppi_route;
+        candidate.route_3d = candidate.compiled_route_geometry->route;
+        candidate.route_2d_projection =
+            candidate.compiled_route_geometry->route_2d_projection;
+        candidate.constrained_spans =
+            candidate.compiled_route_geometry->constrained_spans;
+        candidate.passage_volumes = candidate.compiled_route_geometry->passage_volumes;
+        candidate.cooperative_passage_assignments =
+            candidate.compiled_route_geometry->cooperative_passage_assignments;
+        candidate.selected_passage_traversal_ids =
+            candidate.compiled_route_geometry->selected_passage_traversal_ids;
+      }
       candidate.global_guide_projection = projectOntoGlobalGuide(
           *candidate.route_2d_projection,
           Point2{snapshot.navigation.state.x, snapshot.navigation.state.y});
@@ -399,23 +456,9 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   validated_world_certificate.raw_validated_through_revision =
       result.assessment.raw_validated_through_revision;
 
-  ProductionRouteGeometry3D execution_geometry{
-      .mppi_route = candidate.mppi_route,
-      .route = candidate.route_3d,
-      .route_2d_projection = candidate.route_2d_projection,
-      .constrained_spans = candidate.constrained_spans,
-      .passage_volumes = candidate.passage_volumes,
-      .cooperative_passage_assignments = candidate.cooperative_passage_assignments,
-      .selected_passage_traversal_ids = candidate.selected_passage_traversal_ids,
-      .passage_volume_config = cooperative_passage_volume_config_,
-      .route_purpose = candidate.lattice_3d_route_purpose,
-      .observation_frontier = candidate.lattice_3d_observation_frontier,
-      .materialized_route_fingerprint = candidate.route_fingerprint,
-      .physical_route_fingerprint =
-          candidate.route_3d ? routeFingerprint(*candidate.route_3d) : 0U,
-  };
-  execution_geometry.executable_geometry_revision =
-      executionRouteGeometryRevision3D(execution_geometry);
+  const ProductionRouteGeometry3D execution_geometry =
+      candidate.compiled_route_geometry != nullptr ? *candidate.compiled_route_geometry
+                                                   : ProductionRouteGeometry3D{};
 
   result.proposal = ProductionMaterializedRouteProposal3D{
       .identity =
@@ -431,13 +474,16 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
               .reaches_mission_goal = candidate.global_guide_reaches_mission_goal,
               .activation_eligible = activation_evidence.physical_executable,
           },
-      .geometry = std::move(execution_geometry),
+      .geometry = execution_geometry,
   };
 
-  if (result.proposal.geometry.route == nullptr) {
+  result.geometry_validation = candidate.route_compilation_validation;
+  if (result.proposal.geometry.route == nullptr &&
+      result.geometry_validation.reason ==
+          ExecutionRouteGeometryFailureReason3D::kNotAttempted) {
     result.geometry_validation = {ExecutionRouteGeometryFailureReason3D::kMissingRoute,
                                   0U};
-  } else {
+  } else if (result.proposal.geometry.route != nullptr) {
     result.geometry_validation =
         validateExecutionRouteGeometrySamples3D(*result.proposal.geometry.route);
     const ActivatedRouteIdentity3D candidate_identity{
@@ -501,6 +547,13 @@ void ProductionMppiNode::commitRouteActivation3D(
 
   const std::shared_ptr<const ExecutionRouteSnapshot3D> current_execution =
       execution_route_store_.snapshot();
+  const CertifiedRouteSuffix3D* const current_route =
+      current_execution != nullptr ? optionalAddress(current_execution->route)
+                                   : nullptr;
+  const DirectTrackingFiniteExecution3D* const current_direct =
+      current_execution != nullptr
+          ? optionalAddress(current_execution->direct_tracking_execution)
+          : nullptr;
   const std::uint64_t base_generation =
       current_execution != nullptr ? current_execution->routeGenerationHighWater() : 0U;
   const std::uint64_t required_base_generation =
@@ -517,9 +570,7 @@ void ProductionMppiNode::commitRouteActivation3D(
   result.snapshot_current =
       sameExecutionRouteBase(snapshot.execution_snapshot, current_execution);
   const ActivatedRouteIdentity3D* const active_identity =
-      current_execution != nullptr && current_execution->route.has_value()
-          ? std::addressof(current_execution->route->identity)
-          : nullptr;
+      current_route != nullptr ? std::addressof(current_route->identity) : nullptr;
   result.replacement = assessRouteProposalReplacement3D(
       active_identity, materialized_proposal.identity,
       RouteProposalReplacementObservation3D{
@@ -624,10 +675,9 @@ void ProductionMppiNode::commitRouteActivation3D(
             })
           : std::nullopt;
 
-  const bool route_base =
-      current_execution != nullptr && current_execution->route.has_value();
-  if (certified_route.has_value() && route_base) {
-    result.splice = certifyRouteSplice3D(*current_execution->route, *certified_route,
+  const bool route_base = current_route != nullptr;
+  if (certified_route.has_value() && current_route != nullptr) {
+    result.splice = certifyRouteSplice3D(*current_route, certified_route.value(),
                                          Point3{snapshot.navigation.state.x,
                                                 snapshot.navigation.state.y,
                                                 snapshot.navigation.state.z},
@@ -652,26 +702,20 @@ void ProductionMppiNode::commitRouteActivation3D(
                                  : PendingExecutionBaseKind3D::kEmpty,
                 .base_route_generation = base_generation,
                 .base_geometry_revision =
-                    current_execution != nullptr && current_execution->route.has_value()
-                        ? current_execution->route->geometry
-                              ->executable_geometry_revision
+                    current_route != nullptr && current_route->geometry != nullptr
+                        ? current_route->geometry->executable_geometry_revision
                         : 0U,
                 .base_continuity_id =
-                    current_execution != nullptr && current_execution->route.has_value()
-                        ? current_execution->route->continuity_id
-                        : 0U,
+                    current_route != nullptr ? current_route->continuity_id : 0U,
                 .base_direct_tracking_identity =
-                    current_execution != nullptr &&
-                            current_execution->direct_tracking_execution.has_value()
-                        ? std::optional<
-                              DirectTrackingOwnerIdentity3D>{current_execution
-                                                                 ->direct_tracking_execution
-                                                                 ->identity}
+                    current_direct != nullptr
+                        ? std::optional<DirectTrackingOwnerIdentity3D>{current_direct
+                                                                           ->identity}
                         : std::nullopt,
                 .route_splice = route_base ? result.splice.splice : std::nullopt,
                 .strategy_decision = strategy_decision,
                 .topology_effect = topology_effect,
-                .route = *certified_route,
+                .route = certified_route.value(),
             })
           : nullptr;
 
