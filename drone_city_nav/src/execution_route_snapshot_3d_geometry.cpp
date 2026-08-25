@@ -818,8 +818,8 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const ExecutionRouteGeometry3D& geometry, const std::span<const mppi::State> states,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, const double maximum_cross_track_m,
-    const double terminal_cross_track_tolerance_m,
-    const double requested_sweep_step_m) {
+    const double terminal_cross_track_tolerance_m, const double requested_sweep_step_m,
+    const bool allow_initial_handoff) {
   RouteAdherenceAssessment3D result;
   if (states.empty() || !std::isfinite(initial_station_m) ||
       !std::isfinite(minimum_station_m) || !std::isfinite(maximum_station_m) ||
@@ -846,7 +846,15 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     result.status = FiniteExecutionRouteAdherenceStatus3D::kInitialProjectionInvalid;
     return result;
   }
-  if (previous_projection.distance_m > maximum_cross_track_m) {
+  // Initial activation may begin on the separately certified handoff connector.
+  // Preserve that measured envelope for the finite path, while the terminal
+  // tolerance below still requires convergence into the route corridor.
+  const double effective_maximum_cross_track_m =
+      allow_initial_handoff
+          ? std::max(maximum_cross_track_m,
+                     previous_projection.distance_m + 0.5 * sweep_step_m)
+          : maximum_cross_track_m;
+  if (previous_projection.distance_m > effective_maximum_cross_track_m) {
     result.status = FiniteExecutionRouteAdherenceStatus3D::kInitialCrossTrackExceeded;
     result.failure_distance_m = previous_projection.distance_m;
     return result;
@@ -909,7 +917,7 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
       const double cross_track_with_margin_m =
           std::max(previous_projection.distance_m, projection.distance_m) +
           continuous_margin_m;
-      if (cross_track_with_margin_m > maximum_cross_track_m) {
+      if (cross_track_with_margin_m > effective_maximum_cross_track_m) {
         result.status = FiniteExecutionRouteAdherenceStatus3D::kCrossTrackExceeded;
         result.failure_state_index = state_index;
         result.failure_distance_m = cross_track_with_margin_m;

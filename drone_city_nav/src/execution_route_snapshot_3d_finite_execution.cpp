@@ -242,7 +242,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
         *target_route.geometry, connector_states, target_route.progress.station_m,
         certificate_view.suffix_start_station_m, connector_maximum_station_m,
         kMaximumRouteCrossTrackM, kMaximumRouteCrossTrackM,
-        policy->sweptFootprint().sweep_step_m);
+        policy->sweptFootprint().sweep_step_m, false);
     const mppi::Control& previous_route_control =
         target_route.progress.execution_input->previousControl();
     const mppi::Control& current_execution_control =
@@ -286,7 +286,8 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       *target_route.geometry, validated_horizon.states, execution_begin_station_m,
       certificate_view.suffix_start_station_m, certificate_view.certified_end_station_m,
       kMaximumRouteCrossTrackM, kMaximumRouteCrossTrackM,
-      policy->sweptFootprint().sweep_step_m);
+      policy->sweptFootprint().sweep_step_m,
+      targets_initial_route || targets_direct_successor);
   if (!route_adherence.accepted) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kRouteAdherenceRejected,

@@ -191,7 +191,7 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
       *route.geometry, observed_path, route.progress.station_m,
       old_certificate.suffix_start_station_m, old_certificate.certified_end_station_m,
       observation.maximum_cross_track_m, observation.maximum_cross_track_m,
-      observation.footprint.sweep_step_m);
+      observation.footprint.sweep_step_m, false);
   if (!observed_adherence.accepted) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
