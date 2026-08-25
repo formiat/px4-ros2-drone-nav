@@ -114,7 +114,7 @@ bool FrozenRoutePrefix3D::valid() const noexcept {
          std::isfinite(stitch_station_m) && std::isfinite(successor_begin_station_m) &&
          std::isfinite(successor_stitch_station_m) &&
          stitch_station_m > active_begin_station_m &&
-         successor_stitch_station_m > successor_begin_station_m;
+         successor_stitch_station_m >= successor_begin_station_m;
 }
 
 std::optional<FrozenRoutePrefix3D>
@@ -128,19 +128,27 @@ materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route
   }
   const RouteProjection3D active_projection =
       projectOntoRoute3D(active_route, current_position);
-  const RouteProjection3D successor_projection =
-      projectOntoRoute3D(successor_route, current_position);
-  if (!active_projection.valid || !successor_projection.valid) {
+  if (!active_projection.valid) {
     return std::nullopt;
   }
   const double stitch_station = active_projection.station_m + frozen_prefix_length_m;
-  const double successor_stitch_station =
-      successor_projection.station_m + frozen_prefix_length_m;
-  if (stitch_station > active_route.back().station_m ||
-      successor_stitch_station > successor_route.back().station_m) {
+  if (stitch_station > active_route.back().station_m) {
     return std::nullopt;
   }
   const RouteSample3D active_stitch = sampleAtStation(active_route, stitch_station);
+  const RouteProjection3D successor_projection =
+      projectOntoRoute3D(successor_route, current_position);
+  const bool successor_starts_at_stitch =
+      distance3D(successor_route.front().position, active_stitch.position) <=
+      kFrozenPrefixMaximumStitchSeparationM;
+  const double successor_stitch_station =
+      successor_starts_at_stitch
+          ? successor_route.front().station_m
+          : successor_projection.station_m + frozen_prefix_length_m;
+  if ((!successor_starts_at_stitch && !successor_projection.valid) ||
+      successor_stitch_station > successor_route.back().station_m) {
+    return std::nullopt;
+  }
   const RouteSample3D successor_stitch =
       sampleAtStation(successor_route, successor_stitch_station);
   const double active_norm =
@@ -165,7 +173,9 @@ materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route
   FrozenRoutePrefix3D result{
       .active_begin_station_m = active_projection.station_m,
       .stitch_station_m = stitch_station,
-      .successor_begin_station_m = successor_projection.station_m,
+      .successor_begin_station_m = successor_starts_at_stitch
+                                       ? successor_route.front().station_m
+                                       : successor_projection.station_m,
       .successor_stitch_station_m = successor_stitch_station,
   };
   const auto append = [&result, &active_projection](RouteSample3D sample) noexcept {

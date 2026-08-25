@@ -106,7 +106,16 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     const Point3& mission_goal,
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world) {
   const auto search_started = std::chrono::steady_clock::now();
-  const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
+  Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
+  if ((world.static_route_extension_request || world.static_route_replan_request) &&
+      world.route_3d && world.global_guide_projection.valid) {
+    const double stitch_station_m =
+        world.global_guide_projection.station_m +
+        static_route_extension_config_.required_certified_overlap_m;
+    if (stitch_station_m <= world.route_3d->back().station_m) {
+      search_start = sampleRoute3DAtStation(*world.route_3d, stitch_station_m).position;
+    }
+  }
   Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
                            static_cast<double>(navigation.state.vy),
                            static_cast<double>(navigation.state.vz)};

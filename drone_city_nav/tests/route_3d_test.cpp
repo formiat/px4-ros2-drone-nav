@@ -71,6 +71,24 @@ TEST(Route3DTest, MaterializesAnExactActivePrefixBeforeSuccessorContinuation) {
   }
 }
 
+TEST(Route3DTest, MaterializesSuccessorPlannedFromFutureStitchStation) {
+  const std::vector<RouteSample3D> active = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0,
+      4.0);
+  const std::vector<RouteSample3D> successor = sampleRoute3D(
+      std::vector<Point3>{{8.0, 0.0, 5.0}, {14.0, 0.0, 5.0}, {20.0, 6.0, 5.0}}, 1.0,
+      4.0);
+
+  const std::optional<FrozenRoutePrefix3D> frozen =
+      materializeFrozenRoutePrefix3D(active, successor, Point3{2.0, 0.0, 5.0}, 6.0);
+
+  ASSERT_TRUE(frozen.has_value());
+  EXPECT_NEAR(frozen->stitch_station_m, 8.0, 1.0e-6);
+  EXPECT_NEAR(frozen->successor_begin_station_m, 0.0, 1.0e-6);
+  EXPECT_NEAR(frozen->successor_stitch_station_m, 0.0, 1.0e-6);
+  EXPECT_NEAR(sampleRoute3DAtStation(frozen->route, 6.0).position.x, 8.0, 1.0e-6);
+}
+
 TEST(Route3DTest, RemapsPassageContractsOntoCanonicalFrozenRoute) {
   const std::vector<RouteSample3D> source = sampleRoute3D(
       std::vector<Point3>{{0.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 0.5,
