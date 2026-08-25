@@ -56,6 +56,32 @@ TEST(StaticRouteGeometryTest, SparseBatchesAvoidDenseAllPairsOnLongRoute) {
   EXPECT_NEAR(result.route.back().position.x, 125.0, 1.0e-9);
 }
 
+TEST(StaticRouteGeometryTest, MaterializesRawSafeRightAngleAsFillet) {
+  const mppi::EsdfGrid grid{80, 80, 1.0F, 0.0F, 0.0F, 20, 0.0F};
+  const std::vector<float> esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth),
+      std::numeric_limits<float>::infinity());
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{
+          {5.0, 5.0, 5.0}, {20.0, 5.0, 5.0}, {20.0, 20.0, 5.0}, {35.0, 20.0, 5.0}},
+      0.5, 20.0);
+
+  const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
+      route, {}, grid, esdf,
+      SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
+      StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
+
+  EXPECT_GT(result.corners_smoothed, 0U);
+  ASSERT_GE(result.route.size(), 2U);
+  for (std::size_t index = 1U; index < result.route.size(); ++index) {
+    EXPECT_TRUE(validateSweptFootprint(
+                    grid, esdf, result.route[index - 1U].position,
+                    result.route[index].position,
+                    SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U})
+                    .accepted());
+  }
+}
+
 TEST(StaticRouteGeometryTest, SparseShortcutsRemainRawFootprintSafe) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 40, 10}};
   for (int y = 0; y <= 25; ++y) {

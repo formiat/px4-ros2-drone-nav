@@ -229,7 +229,11 @@ smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
   const double outgoing_length = distance3D(corner, next);
   const double smoothing_m = std::min({geometry_config.corner_smoothing_distance_m,
                                        incoming_length * 0.4, outgoing_length * 0.4});
-  if (!(smoothing_m > geometry_config.sample_step_m)) {
+  // The final route is resampled after corner materialization. A fillet must
+  // therefore not be rejected merely because its radius is smaller than the
+  // sampling interval; that rejected valid fillet is what leaves a raw-safe
+  // Manhattan corner as an execution-time tangent discontinuity.
+  if (!(smoothing_m > 1.0e-3)) {
     return std::nullopt;
   }
   const Point3 entry = lerpPoint(corner, previous, smoothing_m / incoming_length);
