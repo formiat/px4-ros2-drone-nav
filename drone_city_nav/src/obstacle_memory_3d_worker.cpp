@@ -72,7 +72,9 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
         forgotten_cooperative_voxels);
   }
   const ObstacleMemory3DStats stats = memory_.integrateScan(
-      LidarScan3DView{.origin_map = scan.origin_map, .beams = scan.beams});
+      LidarScan3DView{.origin_map = scan.origin_map,
+                      .beams = scan.beams,
+                      .acquisition_stamp_ns = scan.acquisition_stamp_ns});
   const ObstacleMemory3DChanges changes = memory_.takeChanges();
   const auto integration_finished = std::chrono::steady_clock::now();
   const bool transport_coalesced = transport_.enqueue(
@@ -97,13 +99,15 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       "self_filtered=%zu persistent_self_filtered=%zu dynamic_filtered=%zu "
       "dynamic_forgotten=%zu transitions=%zu revision=%" PRIu64
       " queue_age_ms=%.3f integration_ms=%.3f transport_enqueue_ms=%.3f "
-      "scan_coalesced_total=%" PRIu64 " transport_coalesced=%s debug=%s",
+      "evidence_interval_ms=%.3f stale_acquisition=%s scan_coalesced_total=%" PRIu64
+      " transport_coalesced=%s debug=%s",
       scan.acquisition_stamp_ns, scan.source_beams, stats.processed_beams,
       stats.hit_beams, stats.miss_beams, stats.invalid_beams + scan.projection_invalid,
       scan.self_filtered, scan.persistent_self_filtered,
       scan.tracked_agent_filtered + scan.cooperative_filtered,
       forgotten_tracked_voxels + forgotten_cooperative_voxels, stats.state_transitions,
       memory_.revision(), queue_age_ms, integration_ms, transport_enqueue_ms,
+      1000.0 * stats.evidence_interval_s, stats.stale_acquisition ? "true" : "false",
       coalesced_scans_.load(std::memory_order_relaxed),
       transport_coalesced ? "true" : "false", scan.publish_debug ? "true" : "false");
 }

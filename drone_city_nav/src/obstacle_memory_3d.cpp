@@ -200,7 +200,11 @@ cellIntersectsVolume(const GridBounds3D& bounds, const GridIndex3D cell,
          config.hit_weight > 0 && config.miss_weight > 0 &&
          config.minimum_score <= config.free_score && config.free_score < 0 &&
          config.occupied_score > 0 && config.occupied_score <= config.maximum_score &&
-         config.free_score < config.occupied_score;
+         config.free_score < config.occupied_score &&
+         std::isfinite(config.nominal_evidence_interval_s) &&
+         config.nominal_evidence_interval_s > 0.0 &&
+         std::isfinite(config.maximum_evidence_interval_s) &&
+         config.maximum_evidence_interval_s >= config.nominal_evidence_interval_s;
 }
 
 } // namespace
@@ -220,6 +224,10 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     stats.invalid_beams = scan.beams.size();
     return stats;
   }
+  const double evidence_interval_s = evidenceIntervalSeconds(scan, stats);
+  if (stats.stale_acquisition) {
+    return stats;
+  }
   const std::size_t stride = static_cast<std::size_t>(config_.scan_stride);
   ScanEvidence scan_evidence;
   for (std::size_t index = 0U; index < scan.beams.size(); index += stride) {
@@ -236,9 +244,12 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     stats.miss_beams += beam.hit ? 0U : 1U;
     integrateRay(scan.origin_map, beam, scan_evidence, stats);
   }
+  const double evidence_scale =
+      evidence_interval_s / config_.nominal_evidence_interval_s;
   for (const auto& [key, occupied] : scan_evidence) {
-    static_cast<void>(applyEvidence(
-        cellFromKey(key), occupied ? config_.hit_weight : -config_.miss_weight, stats));
+    const double delta = occupied ? static_cast<double>(config_.hit_weight)
+                                  : -static_cast<double>(config_.miss_weight);
+    static_cast<void>(applyEvidence(cellFromKey(key), evidence_scale * delta, stats));
     stats.occupied_voxel_updates += occupied ? 1U : 0U;
     stats.free_voxel_updates += occupied ? 0U : 1U;
   }
@@ -246,6 +257,27 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     ++revision_;
   }
   return stats;
+}
+
+double ObstacleMemory3D::evidenceIntervalSeconds(const LidarScan3DView& scan,
+                                                 ObstacleMemory3DStats& stats) {
+  if (scan.acquisition_stamp_ns <= 0) {
+    stats.evidence_interval_s = config_.nominal_evidence_interval_s;
+    return stats.evidence_interval_s;
+  }
+  if (last_evidence_stamp_ns_ > 0 &&
+      scan.acquisition_stamp_ns <= last_evidence_stamp_ns_) {
+    stats.stale_acquisition = true;
+    return 0.0;
+  }
+  const double interval_s =
+      last_evidence_stamp_ns_ <= 0
+          ? config_.nominal_evidence_interval_s
+          : 1.0e-9 * static_cast<double>(scan.acquisition_stamp_ns -
+                                         last_evidence_stamp_ns_);
+  last_evidence_stamp_ns_ = scan.acquisition_stamp_ns;
+  stats.evidence_interval_s = std::min(interval_s, config_.maximum_evidence_interval_s);
+  return stats.evidence_interval_s;
 }
 
 std::uint64_t ObstacleMemory3D::cellKey(const GridIndex3D index) const noexcept {
@@ -331,6 +363,7 @@ void ObstacleMemory3D::reset() {
   grid_.clear();
   evidence_.clear();
   dirty_chunks_.clear();
+  last_evidence_stamp_ns_ = 0;
   ++revision_;
   full_reset_pending_ = true;
 }
@@ -366,7 +399,7 @@ ObstacleMemory3DChanges ObstacleMemory3D::takeChanges() {
   return changes;
 }
 
-bool ObstacleMemory3D::applyEvidence(const GridIndex3D index, const int delta,
+bool ObstacleMemory3D::applyEvidence(const GridIndex3D index, const double delta,
                                      ObstacleMemory3DStats& stats) {
   if (!grid_.contains(index)) {
     return false;
@@ -374,10 +407,11 @@ bool ObstacleMemory3D::applyEvidence(const GridIndex3D index, const int delta,
   const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(index);
   EvidenceChunk& evidence = evidence_[chunk_index];
   const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(index);
-  const int before_score = evidence.scores.at(bit_index);
-  const int after_score =
-      std::clamp(before_score + delta, config_.minimum_score, config_.maximum_score);
-  evidence.scores.at(bit_index) = static_cast<std::int16_t>(after_score);
+  const double before_score = evidence.scores.at(bit_index);
+  const double after_score =
+      std::clamp(before_score + delta, static_cast<double>(config_.minimum_score),
+                 static_cast<double>(config_.maximum_score));
+  evidence.scores.at(bit_index) = after_score;
   const ObservedVoxelState before = grid_.state(index);
   ObservedVoxelState after = ObservedVoxelState::kUnknown;
   if (after_score >= config_.occupied_score) {

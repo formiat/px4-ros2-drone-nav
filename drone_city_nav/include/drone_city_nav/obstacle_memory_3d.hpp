@@ -21,6 +21,9 @@ struct LidarBeam3D {
 struct LidarScan3DView {
   Point3 origin_map{};
   std::span<const LidarBeam3D> beams{};
+  // ROS acquisition time of this physical observation. A non-positive value
+  // preserves the single-observation behaviour used by timestamp-less inputs.
+  std::int64_t acquisition_stamp_ns{0};
 };
 
 struct ObstacleMemory3DConfig {
@@ -33,6 +36,10 @@ struct ObstacleMemory3DConfig {
   int maximum_score{12};
   int occupied_score{3};
   int free_score{-1};
+  // Evidence is normalized to this sensor cadence so coalescing does not make
+  // the occupancy hysteresis depend on mapper throughput.
+  double nominal_evidence_interval_s{0.1};
+  double maximum_evidence_interval_s{0.5};
 };
 
 struct ObstacleMemory3DStats {
@@ -45,6 +52,8 @@ struct ObstacleMemory3DStats {
   std::size_t occupied_voxel_updates{0U};
   std::size_t state_transitions{0U};
   std::size_t outside_endpoints{0U};
+  double evidence_interval_s{0.0};
+  bool stale_acquisition{false};
 };
 
 struct ObstacleMemory3DChanges {
@@ -70,11 +79,13 @@ private:
   using ScanEvidence = std::unordered_map<std::uint64_t, bool>;
 
   struct EvidenceChunk {
-    std::array<std::int16_t, OccupancyGrid3D::kVoxelsPerChunk> scores{};
+    std::array<double, OccupancyGrid3D::kVoxelsPerChunk> scores{};
   };
 
-  [[nodiscard]] bool applyEvidence(GridIndex3D index, int delta,
+  [[nodiscard]] bool applyEvidence(GridIndex3D index, double delta,
                                    ObstacleMemory3DStats& stats);
+  [[nodiscard]] double evidenceIntervalSeconds(const LidarScan3DView& scan,
+                                               ObstacleMemory3DStats& stats);
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
                     ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;
   [[nodiscard]] std::uint64_t cellKey(GridIndex3D index) const noexcept;
@@ -87,6 +98,7 @@ private:
   std::unordered_map<OccupancyChunkIndex3D, bool, OccupancyChunkIndex3DHash>
       dirty_chunks_;
   std::uint64_t revision_{0U};
+  std::int64_t last_evidence_stamp_ns_{0};
   bool full_reset_pending_{true};
 };
 
