@@ -176,9 +176,7 @@ ProductionMppiExecutionInputPreparation prepareExecutionInputForPlanningTick(
 
   std::optional<PreviousControlEvidence3D> previous_control_evidence;
   if (result.control_feedback_fresh && applied_control.horizon_sequence != 0U &&
-      applied_control.source_stamp_ns > 0 &&
-      applied_control.source_stamp_ns <= applied_control.receive_stamp_ns &&
-      applied_control.receive_stamp_ns <= now_ns) {
+      applied_control.source_stamp_ns > 0 && applied_control.receive_stamp_ns > 0) {
     previous_control_evidence = PreviousControlEvidence3D{
         .control = applied_control.control,
         .source = ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback,
