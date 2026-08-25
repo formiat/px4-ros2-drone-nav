@@ -221,8 +221,15 @@ void ProductionMppiNode::processGuideSearch3D(
   const bool certified_pending = activation.certified_pending;
   const mppi::StaticRouteHandoffResult& handoff = activation.handoff;
 
-  const bool strategy_outcome_recorded =
-      route_strategy_arbitrator_3d_.recordOutcome(strategy_decision, certified_pending);
+  bool strategy_outcome_recorded{false};
+  if (certified_pending) {
+    const std::scoped_lock strategy_lock{execution_evidence_commit_mutex_};
+    pending_route_strategy_decision_ = strategy_decision;
+    strategy_outcome_recorded = true;
+  } else {
+    strategy_outcome_recorded =
+        route_strategy_arbitrator_3d_.recordOutcome(strategy_decision, false);
+  }
   const RouteStrategyArbitrationState3D& strategy_state =
       route_strategy_arbitrator_3d_.state();
   const RouteStrategyLease3D* const strategy_lease =

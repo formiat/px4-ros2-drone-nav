@@ -459,6 +459,10 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   if (!owner_committed) {
     return false;
   }
+  if (commit.kind ==
+      ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition) {
+    commitPendingRouteStrategyDecision();
+  }
   applied_control_ = {};
   execution_horizon_owner_ = owner;
   execution_horizon_pub_->publish(horizon);

@@ -331,6 +331,9 @@ void ProductionMppiNode::planningTick() {
                 .execution_owner_available = route_execution.execution_owner_available,
                 .pending_activation = route_execution.pending_activation,
             });
+    if (pending_recovery.pending_acknowledged) {
+      rollbackPendingRouteStrategyDecision();
+    }
     if (pending_recovery.request_successor) {
       requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide, 0U);
     }

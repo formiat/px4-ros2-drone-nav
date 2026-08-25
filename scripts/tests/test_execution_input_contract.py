@@ -32,8 +32,9 @@ class ExecutionInputContractTest(unittest.TestCase):
         )[1].split("navigation.source_timestamp_us", maxsplit=1)[0]
 
         self.assertIn(
-            ".receive_timestamp_ns = navigation.receive_stamp_ns", callback
+            ".receive_timestamp_ns = monotonic_receive_stamp_ns", callback
         )
+        self.assertIn("std::chrono::steady_clock::now()", callback)
         self.assertIn(
             ".source_payload_fingerprint = source_payload_fingerprint", callback
         )
