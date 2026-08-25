@@ -68,19 +68,35 @@ void hashText(std::uint64_t& hash, const std::string_view text) noexcept {
   const double ratio =
       span_m > 1.0e-9 ? std::clamp((station_m - first.station_m) / span_m, 0.0, 1.0)
                       : 0.0;
+  Vec3 tangent{std::lerp(first.tangent.x, second.tangent.x, ratio),
+               std::lerp(first.tangent.y, second.tangent.y, ratio),
+               std::lerp(first.tangent.z, second.tangent.z, ratio)};
+  const double tangent_norm = std::hypot(std::hypot(tangent.x, tangent.y), tangent.z);
+  if (tangent_norm > 1.0e-9) {
+    tangent.x /= tangent_norm;
+    tangent.y /= tangent_norm;
+    tangent.z /= tangent_norm;
+  } else {
+    tangent = normalized(first.position, second.position);
+  }
+  RouteKinematicTransition3D transition{RouteKinematicTransition3D::kContinuous};
+  if (ratio >= 1.0 - 1.0e-9) {
+    transition = second.transition;
+  } else if (ratio <= 1.0e-9) {
+    transition = first.transition;
+  }
   return RouteSample3D{
       .position = Point3{std::lerp(first.position.x, second.position.x, ratio),
                          std::lerp(first.position.y, second.position.y, ratio),
                          std::lerp(first.position.z, second.position.z, ratio)},
-      .tangent = Vec3{std::lerp(first.tangent.x, second.tangent.x, ratio),
-                      std::lerp(first.tangent.y, second.tangent.y, ratio),
-                      std::lerp(first.tangent.z, second.tangent.z, ratio)},
+      .tangent = tangent,
       .station_m = std::lerp(first.station_m, second.station_m, ratio),
       .reference_speed_mps =
           std::lerp(first.reference_speed_mps, second.reference_speed_mps, ratio),
       .required_risk_tier = static_cast<mppi::RiskTier>(
           std::max(static_cast<std::uint8_t>(first.required_risk_tier),
                    static_cast<std::uint8_t>(second.required_risk_tier))),
+      .transition = transition,
   };
 }
 

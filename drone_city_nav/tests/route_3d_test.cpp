@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -46,6 +47,33 @@ TEST(Route3DTest, ProjectsProgressUsingThreeDimensionalStation) {
   ASSERT_TRUE(projection.valid);
   EXPECT_NEAR(projection.station_m, 15.0, 1.0e-6);
   EXPECT_NEAR(projection.remaining_m, 5.0, 1.0e-6);
+}
+
+TEST(Route3DTest, InterpolatedSamplesRetainUnitTangentsAndExactTransitions) {
+  const std::vector<RouteSample3D> route{
+      RouteSample3D{
+          .position = Point3{0.0, 0.0, 5.0},
+          .tangent = Vec3{1.0, 0.0, 0.0},
+          .station_m = 0.0,
+      },
+      RouteSample3D{
+          .position = Point3{2.0, 0.0, 5.0},
+          .tangent = Vec3{0.0, 1.0, 0.0},
+          .station_m = 2.0,
+          .transition = RouteKinematicTransition3D::kStopAndTurn,
+      },
+  };
+
+  const RouteSample3D interpolated = sampleRoute3DAtStation(route, 1.0);
+  const RouteSample3D endpoint = sampleRoute3DAtStation(route, 2.0);
+
+  EXPECT_NEAR(std::hypot(std::hypot(interpolated.tangent.x, interpolated.tangent.y),
+                         interpolated.tangent.z),
+              1.0, 1.0e-9);
+  EXPECT_EQ(interpolated.transition, RouteKinematicTransition3D::kContinuous);
+  EXPECT_EQ(endpoint.transition, RouteKinematicTransition3D::kStopAndTurn);
+  EXPECT_DOUBLE_EQ(endpoint.tangent.x, 0.0);
+  EXPECT_DOUBLE_EQ(endpoint.tangent.y, 1.0);
 }
 
 TEST(Route3DTest, MaterializesAnExactActivePrefixBeforeSuccessorContinuation) {
