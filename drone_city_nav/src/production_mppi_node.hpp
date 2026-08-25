@@ -660,6 +660,9 @@ private:
   void recordPendingRouteStrategyOutcome(
       const std::shared_ptr<const PendingCertifiedRoute3D>& pending,
       bool selection_committed) noexcept;
+  void recordPendingRouteStrategyOutcomeLocked(
+      const std::shared_ptr<const PendingCertifiedRoute3D>& pending,
+      bool selection_committed) noexcept;
   [[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>
   exactSnapshotValidationWorld(
       const ProductionMppiExecutionCycle& cycle, const CertifiedRouteSuffix3D& route,
@@ -804,6 +807,9 @@ private:
   RiskAwareLattice3DConfig lattice_3d_config_{};
   RouteProposalSelection3DConfig route_proposal_selection_3d_config_{};
   RouteStrategyArbitrator3D route_strategy_arbitrator_3d_{};
+  // Serializes the observable pending-route transaction with strategy and
+  // topology effects.  The execution-store/mailbox CAS is its linearization.
+  std::mutex pending_route_transaction_mutex_;
   std::mutex route_strategy_arbitrator_mutex_;
   IncrementalTopologyGraph3DConfig topological_graph_3d_config_{};
   IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};

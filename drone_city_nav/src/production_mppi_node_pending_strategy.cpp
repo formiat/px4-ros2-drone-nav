@@ -5,6 +5,13 @@ namespace drone_city_nav {
 void ProductionMppiNode::recordPendingRouteStrategyOutcome(
     const std::shared_ptr<const PendingCertifiedRoute3D>& pending,
     const bool selection_committed) noexcept {
+  const std::scoped_lock lock{pending_route_transaction_mutex_};
+  recordPendingRouteStrategyOutcomeLocked(pending, selection_committed);
+}
+
+void ProductionMppiNode::recordPendingRouteStrategyOutcomeLocked(
+    const std::shared_ptr<const PendingCertifiedRoute3D>& pending,
+    const bool selection_committed) noexcept {
   if (pending == nullptr) {
     return;
   }

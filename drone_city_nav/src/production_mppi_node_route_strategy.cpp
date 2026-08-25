@@ -41,7 +41,8 @@ void ProductionMppiNode::configureRouteStrategyArbitration() {
       !routeStrategyArbitration3DConfigIsValid(config)) {
     throw std::invalid_argument{"invalid route strategy arbitration configuration"};
   }
-  const std::scoped_lock lock{route_strategy_arbitrator_mutex_};
+  const std::scoped_lock lock{pending_route_transaction_mutex_,
+                              route_strategy_arbitrator_mutex_};
   route_strategy_arbitrator_3d_ = RouteStrategyArbitrator3D{config};
 }
 

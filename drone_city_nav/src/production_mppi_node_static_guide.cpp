@@ -111,7 +111,8 @@ void ProductionMppiNode::processGuideSearch3D(
   };
   RouteStrategyArbitrationDecision3D strategy_decision;
   {
-    const std::scoped_lock lock{route_strategy_arbitrator_mutex_};
+    const std::scoped_lock lock{pending_route_transaction_mutex_,
+                                route_strategy_arbitrator_mutex_};
     strategy_decision = route_strategy_arbitrator_3d_.evaluate(
         final_proposals, route_proposal_selection_3d_config_, strategy_observation);
   }
@@ -243,7 +244,8 @@ void ProductionMppiNode::processGuideSearch3D(
   bool strategy_outcome_recorded{certified_pending};
   RouteStrategyArbitrationState3D strategy_state;
   {
-    const std::scoped_lock lock{route_strategy_arbitrator_mutex_};
+    const std::scoped_lock lock{pending_route_transaction_mutex_,
+                                route_strategy_arbitrator_mutex_};
     if (!certified_pending) {
       strategy_outcome_recorded =
           route_strategy_arbitrator_3d_.recordOutcome(strategy_decision, false);

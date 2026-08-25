@@ -546,21 +546,21 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       owner_committed = commit.expected_snapshot != nullptr &&
                         execution_route_store_.snapshot() == commit.expected_snapshot;
       break;
-    case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition:
+    case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition: {
+      const std::scoped_lock transaction_lock{pending_route_transaction_mutex_};
       owner_committed = commit.expected_snapshot != nullptr &&
                         commit.transition != nullptr &&
                         commit.expected_pending != nullptr &&
                         pending_certified_route_mailbox_.commitExecutionIfSame(
                             commit.expected_pending, execution_route_store_,
                             commit.expected_snapshot, *commit.transition);
-      break;
+      if (owner_committed) {
+        recordPendingRouteStrategyOutcomeLocked(commit.expected_pending, true);
+      }
+    } break;
   }
   if (!owner_committed) {
     return false;
-  }
-  if (commit.kind ==
-      ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition) {
-    recordPendingRouteStrategyOutcome(commit.expected_pending, true);
   }
   applied_control_ = {};
   execution_horizon_owner_ = owner;
