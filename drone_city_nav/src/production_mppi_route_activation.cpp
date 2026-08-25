@@ -282,6 +282,12 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           distance3D((*candidate.route_3d)[index - 1U].position,
                      (*candidate.route_3d)[index].position);
     }
+    // Arbitration must rank the executable, smoothed route rather than the
+    // pre-materialization lattice estimate.  The speed policy is the same
+    // authority used by execution for its unconstrained transit baseline.
+    activation_evidence.objective_cost =
+        activation_evidence.route_length_m /
+        std::max(1.0e-6, speed_policy_config_.cruise_speed_mps);
     activation_evidence.endpoint_displacement_m =
         distance3D(snapshot_position, candidate.route_3d->back().position);
     activation_evidence.mission_progress_m =
