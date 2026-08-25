@@ -88,6 +88,18 @@ TEST(WorldGenerationTest, ObservationAgeIncludesDelayedSourceContent) {
   EXPECT_DOUBLE_EQ(tracker.latest().ageMs(5'050'000'000LL), 4'950.0);
 }
 
+TEST(WorldGenerationTest, ObservationAgeAcceptsBoundedFutureClockSkew) {
+  const LatestObservation latest{
+      .producer_instance_id = 7U,
+      .sequence = 12U,
+      .source_stamp_ns = 1'000'000'010LL,
+      .receive_stamp_ns = 1'000'000'005LL,
+      .content_fingerprint = 99U,
+      .producer_epoch_generation = 1U,
+  };
+  EXPECT_DOUBLE_EQ(latest.ageMs(1'000'000'000LL), 0.00001);
+}
+
 TEST(WorldGenerationTest, ConflictedHeartbeatIdentityIsUnavailableUntilNewer) {
   LatestObservationTracker tracker;
   ASSERT_TRUE(tracker

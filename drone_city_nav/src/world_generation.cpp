@@ -12,11 +12,14 @@ bool LatestObservation::available() const noexcept {
 }
 
 double LatestObservation::ageMs(const std::int64_t now_ns) const noexcept {
-  if (!available() || now_ns < source_stamp_ns || now_ns < receive_stamp_ns) {
+  if (!available() || now_ns <= 0) {
     return std::numeric_limits<double>::infinity();
   }
-  return static_cast<double>(
-             std::max(now_ns - source_stamp_ns, now_ns - receive_stamp_ns)) *
+  const auto absoluteAgeNs = [now_ns](const std::int64_t stamp_ns) noexcept {
+    return now_ns >= stamp_ns ? now_ns - stamp_ns : stamp_ns - now_ns;
+  };
+  return static_cast<double>(std::max(absoluteAgeNs(source_stamp_ns),
+                                      absoluteAgeNs(receive_stamp_ns))) *
          1.0e-6;
 }
 
