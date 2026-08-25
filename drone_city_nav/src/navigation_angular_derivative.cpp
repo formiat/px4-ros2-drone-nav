@@ -109,9 +109,6 @@ timestampBackwardByAtLeast(const std::uint64_t high_water_us,
          (state.pending_kind == Px4TimestampEpochAdmissionPendingKind::kEpochReset ||
           state.pending_kind ==
               Px4TimestampEpochAdmissionPendingKind::kForwardReacquisition) &&
-         (state.pending_kind !=
-              Px4TimestampEpochAdmissionPendingKind::kForwardReacquisition ||
-          state.post_reset_replay_guard_active) &&
          (!config.require_corroborating_timestamp_for_reset ||
           (state.pending_primary_timestamp_us != 0U &&
            state.pending_corroborating_timestamp_us != 0U));
@@ -287,25 +284,33 @@ admitPx4TimestampEpoch(const Px4TimestampEpochAdmissionConfig& config,
       observation.corroborating_timestamp_us >
           state.corroborating_timestamp_high_water_us;
   if (primary_forward && corroborating_forward) {
-    if (!timestampProgressPlausible(
+    const bool initial = state.primary_timestamp_high_water_us == 0U &&
+                         state.corroborating_timestamp_high_water_us == 0U;
+    const bool progress_plausible =
+        timestampProgressPlausible(
             state.primary_timestamp_high_water_us, state.primary_timestamp_receive_ns,
             observation.primary_timestamp_us, observation.receive_timestamp_ns,
-            config.maximum_source_timestamp_lead_s) ||
-        !timestampProgressPlausible(state.corroborating_timestamp_high_water_us,
-                                    state.corroborating_timestamp_receive_ns,
-                                    observation.corroborating_timestamp_us,
-                                    observation.receive_timestamp_ns,
-                                    config.maximum_source_timestamp_lead_s)) {
+            config.maximum_source_timestamp_lead_s) &&
+        timestampProgressPlausible(state.corroborating_timestamp_high_water_us,
+                                   state.corroborating_timestamp_receive_ns,
+                                   observation.corroborating_timestamp_us,
+                                   observation.receive_timestamp_ns,
+                                   config.maximum_source_timestamp_lead_s);
+    // After a confirmed backward epoch reset, an implausibly far-ahead sample
+    // is indistinguishable from delayed replay of the retired epoch. Keep the
+    // replay guard strict; ordinary time-sync corrections are handled below.
+    if (!progress_plausible && state.post_reset_replay_guard_active) {
       clearPendingTimestampAdmission(result.next_state);
       result.status =
           Px4TimestampEpochAdmissionStatus::kRejectedImplausibleTimestampProgress;
       return result;
     }
-    const bool initial = state.primary_timestamp_high_water_us == 0U &&
-                         state.corroborating_timestamp_high_water_us == 0U;
+    // A coordinated PX4 time-sync correction can advance source time farther
+    // than wall receive time. Treat it as a bounded new-epoch probation rather
+    // than permanently pinning the high-water mark behind the correction.
     const bool forward_reacquisition_required =
-        !initial &&
-        postResetReceiveGapRequiresReacquisition(config, state, observation);
+        !initial && (!progress_plausible || postResetReceiveGapRequiresReacquisition(
+                                                config, state, observation));
     if (forward_reacquisition_required) {
       if (config.require_corroborating_timestamp_for_reset &&
           (!has_primary || !has_corroborating)) {

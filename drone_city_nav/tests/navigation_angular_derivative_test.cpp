@@ -148,6 +148,43 @@ TEST(Px4TimestampEpochAdmissionTest,
 }
 
 TEST(Px4TimestampEpochAdmissionTest,
+     ForwardClockCorrectionRebasesAfterBoundedProbation) {
+  const Px4TimestampEpochAdmissionConfig config;
+  Px4TimestampEpochAdmissionState state;
+  state = admitPx4TimestampEpoch(
+              config, state,
+              Px4TimestampEpochObservation{.primary_timestamp_us = 1'000'000U,
+                                           .receive_timestamp_ns = 10'000'000'000})
+              .next_state;
+
+  const Px4TimestampEpochAdmissionResult first = admitPx4TimestampEpoch(
+      config, state,
+      Px4TimestampEpochObservation{.primary_timestamp_us = 1'316'500U,
+                                   .receive_timestamp_ns = 10'010'000'000});
+  EXPECT_EQ(first.status,
+            Px4TimestampEpochAdmissionStatus::kPendingForwardReacquisition);
+  EXPECT_EQ(first.next_state.primary_timestamp_high_water_us, 1'000'000U);
+  state = first.next_state;
+
+  const Px4TimestampEpochAdmissionResult second = admitPx4TimestampEpoch(
+      config, state,
+      Px4TimestampEpochObservation{.primary_timestamp_us = 1'326'500U,
+                                   .receive_timestamp_ns = 10'020'000'000});
+  EXPECT_EQ(second.status,
+            Px4TimestampEpochAdmissionStatus::kPendingForwardReacquisition);
+  state = second.next_state;
+
+  const Px4TimestampEpochAdmissionResult confirmed = admitPx4TimestampEpoch(
+      config, state,
+      Px4TimestampEpochObservation{.primary_timestamp_us = 1'336'500U,
+                                   .receive_timestamp_ns = 10'030'000'000});
+  EXPECT_EQ(confirmed.status,
+            Px4TimestampEpochAdmissionStatus::kAcceptedForwardReacquisition);
+  EXPECT_TRUE(confirmed.forward_reacquisition);
+  EXPECT_EQ(confirmed.next_state.primary_timestamp_high_water_us, 1'336'500U);
+}
+
+TEST(Px4TimestampEpochAdmissionTest,
      LongGapOldEpochReplayCannotSilentlyReacquireAfterReset) {
   Px4TimestampEpochAdmissionConfig config;
   config.maximum_post_reset_unprobated_receive_gap_s = 0.5;
