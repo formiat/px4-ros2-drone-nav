@@ -91,6 +91,13 @@ TEST(RawObstacle3DRos, SnapshotAndCumulativeDeltaRoundTripTriStateChunks) {
   EXPECT_TRUE(updated.state.occupancy->isOccupied({35, 3, 4}));
   EXPECT_EQ(updated.state.base_snapshot_revision, 1U);
   EXPECT_EQ(updated.state.obstacle_snapshot_revision, 2U);
+
+  const msg::RawObstacleDelta3D repeated_delta =
+      makeRawObstacleDelta3D(producer, headerAt(3'000'000'000LL), 42U, 1U, 3U, dirty);
+  const RawObstacleGridUpdate3D repeated =
+      applyDelta(accumulator, repeated_delta, epoch, 3'010'000'000LL);
+  ASSERT_TRUE(repeated.accepted());
+  EXPECT_TRUE(repeated.dirty_chunks.empty());
 }
 
 TEST(RawObstacle3DRos, RejectsDeltaFromDifferentBase) {

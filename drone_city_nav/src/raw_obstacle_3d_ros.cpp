@@ -225,20 +225,6 @@ applyChunks(ObservedOccupancyGrid3D& grid,
          first.depth_cells == second.depth_cells;
 }
 
-[[nodiscard]] std::vector<OccupancyChunkIndex3D>
-changedChunkIndices(const std::span<const msg::ObservedObstacleChunk3D> chunks) {
-  std::vector<OccupancyChunkIndex3D> indices;
-  indices.reserve(chunks.size());
-  for (const msg::ObservedObstacleChunk3D& chunk : chunks) {
-    indices.push_back(OccupancyChunkIndex3D{chunk.x, chunk.y, chunk.z});
-  }
-  std::ranges::sort(indices, [](const OccupancyChunkIndex3D first,
-                                const OccupancyChunkIndex3D second) {
-    return std::tie(first.z, first.y, first.x) < std::tie(second.z, second.y, second.x);
-  });
-  return indices;
-}
-
 [[nodiscard]] bool
 chunksEqual(const ObservedOccupancyGrid3D::Chunk* const first,
             const ObservedOccupancyGrid3D::Chunk* const second) noexcept {
@@ -648,7 +634,8 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
   if (!admitted.accepted()) {
     return admitted;
   }
-  ObservedOccupancyGrid3D updated = *state_.occupancy;
+  const ObservedOccupancyGrid3D& previous = *state_.occupancy;
+  ObservedOccupancyGrid3D updated = previous;
   if (!applyChunks(updated, delta.chunks)) {
     return admitted;
   }
@@ -656,10 +643,14 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
   candidate.obstacle_snapshot_revision = delta.obstacle_snapshot_revision;
   candidate.occupancy =
       std::make_shared<const ObservedOccupancyGrid3D>(std::move(updated));
+  const std::vector<OccupancyChunkIndex3D> actual_dirty_chunks =
+      changedChunkIndices(previous, *candidate.occupancy);
   state_ = std::move(candidate);
   pruneProspectiveIdentities(observation.producer_instance_id, observation.sequence);
   admitted.state = state_;
-  admitted.dirty_chunks = changedChunkIndices(delta.chunks);
+  // Delta transport may repeat chunks cumulatively.  Only content changes are
+  // allowed to invalidate ESDF/topology consumers.
+  admitted.dirty_chunks = actual_dirty_chunks;
   return admitted;
 }
 
