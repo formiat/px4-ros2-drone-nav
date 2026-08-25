@@ -121,53 +121,7 @@ namespace drone_city_nav::execution_route_snapshot_3d_internal {
 
 [[nodiscard]] bool
 validRouteSamples(const std::span<const RouteSample3D> route) noexcept {
-  if (route.size() < 2U) {
-    return false;
-  }
-  double previous_station_m{-std::numeric_limits<double>::infinity()};
-  Point3 previous_position{};
-  Vec3 previous_tangent{};
-  for (std::size_t index = 0U; index < route.size(); ++index) {
-    const RouteSample3D& sample = route[index];
-    const double tangent_norm =
-        std::hypot(std::hypot(sample.tangent.x, sample.tangent.y), sample.tangent.z);
-    if (!finitePoint(sample.position) || !finiteVector(sample.tangent) ||
-        !nearlyEqual(tangent_norm, 1.0, 1.0e-3) || !std::isfinite(sample.station_m) ||
-        sample.station_m < 0.0 || !std::isfinite(sample.reference_speed_mps) ||
-        sample.reference_speed_mps < 0.0 || sample.station_m <= previous_station_m) {
-      return false;
-    }
-    if (index == 0U) {
-      if (!nearlyEqual(sample.station_m, 0.0, kStationToleranceM)) {
-        return false;
-      }
-    } else {
-      const double segment_length_m = distance3D(previous_position, sample.position);
-      const double station_delta_m = sample.station_m - previous_station_m;
-      if (segment_length_m <= kStationToleranceM) {
-        return false;
-      }
-      const Vec3 segment_direction{
-          (sample.position.x - previous_position.x) / segment_length_m,
-          (sample.position.y - previous_position.y) / segment_length_m,
-          (sample.position.z - previous_position.z) / segment_length_m};
-      const double previous_alignment = previous_tangent.x * segment_direction.x +
-                                        previous_tangent.y * segment_direction.y +
-                                        previous_tangent.z * segment_direction.z;
-      const double current_alignment = sample.tangent.x * segment_direction.x +
-                                       sample.tangent.y * segment_direction.y +
-                                       sample.tangent.z * segment_direction.z;
-      if (!nearlyEqual(station_delta_m, segment_length_m, 1.0e-4) ||
-          previous_alignment <= 0.0 ||
-          (index + 1U == route.size() && current_alignment <= 0.0)) {
-        return false;
-      }
-    }
-    previous_station_m = sample.station_m;
-    previous_position = sample.position;
-    previous_tangent = sample.tangent;
-  }
-  return true;
+  return validateExecutionRouteGeometrySamples3D(route).valid();
 }
 
 [[nodiscard]] double vectorNorm(const Vec3& vector) noexcept {
