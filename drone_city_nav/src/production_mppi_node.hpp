@@ -758,6 +758,7 @@ private:
   double no_static_3d_esdf_update_rate_hz_{1.0};
   LocalObservedEsdfWindow3D no_static_3d_esdf_window_{};
   double no_static_3d_esdf_incremental_maximum_rebuild_ratio_{0.65};
+  std::size_t no_static_3d_esdf_full_audit_interval_builds_{120U};
   std::size_t planner_worker_count_{4U};
   MppiRolloutBudgetConfig rollout_budget_config_{};
   double planning_tick_phase_offset_s_{0.0};

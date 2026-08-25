@@ -30,7 +30,8 @@ constexpr double kLargeSquaredDistance = 1.0e20;
   return plane * depth;
 }
 
-void transform1D(const std::vector<double>& input, std::vector<double>& output) {
+void transform1D(const std::vector<double>& input, std::vector<double>& output,
+                 std::vector<int>& source_locations) {
   const int size = static_cast<int>(input.size());
   std::vector<int> locations(static_cast<std::size_t>(size), 0);
   std::vector<double> boundaries(static_cast<std::size_t>(size + 1), 0.0);
@@ -67,6 +68,7 @@ void transform1D(const std::vector<double>& input, std::vector<double>& output) 
     }
   }
   output.resize(input.size());
+  source_locations.resize(input.size());
   envelope_size = 0;
   for (int position = 0; position < size; ++position) {
     while (boundaries[static_cast<std::size_t>(envelope_size) + 1U] <
@@ -77,6 +79,7 @@ void transform1D(const std::vector<double>& input, std::vector<double>& output) 
     const double delta = static_cast<double>(position - location);
     output[static_cast<std::size_t>(position)] =
         delta * delta + input[static_cast<std::size_t>(location)];
+    source_locations[static_cast<std::size_t>(position)] = location;
   }
 }
 
@@ -104,6 +107,7 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
   const std::size_t voxel_count = checkedVoxelCount(field.bounds_);
   field.stats_.voxel_count = voxel_count;
   std::vector<float> squared(voxel_count, static_cast<float>(kLargeSquaredDistance));
+  field.nearest_source_linear_indices_.assign(voxel_count, kNoNearestSource);
   const int width = field.bounds_.width_cells;
   const int height = field.bounds_.height_cells;
   const int depth = field.bounds_.depth_cells;
@@ -122,6 +126,9 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
     const int y = static_cast<int>(line_index % static_cast<std::size_t>(height));
     std::vector<double> input(static_cast<std::size_t>(width), kLargeSquaredDistance);
     std::vector<double> output;
+    std::vector<int> source_locations;
+    std::vector<std::size_t> source_indices(static_cast<std::size_t>(width),
+                                            kNoNearestSource);
     for (int x = 0; x < width; ++x) {
       const std::optional<GridIndex3D> source_cell = occupancy.worldToCell(
           Point3{field.bounds_.origin_x +
@@ -133,11 +140,17 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
       const bool occupied =
           source_cell.has_value() && occupancy.isOccupied(*source_cell);
       input[static_cast<std::size_t>(x)] = occupied ? 0.0 : kLargeSquaredDistance;
+      if (occupied) {
+        source_indices[static_cast<std::size_t>(x)] = index(x, y, z);
+      }
       source_counts[line_index] += occupied ? 1U : 0U;
     }
-    transform1D(input, output);
+    transform1D(input, output, source_locations);
     for (int x = 0; x < width; ++x) {
       squared[index(x, y, z)] = static_cast<float>(output[static_cast<std::size_t>(x)]);
+      field.nearest_source_linear_indices_[index(x, y, z)] =
+          source_indices[static_cast<std::size_t>(
+              source_locations[static_cast<std::size_t>(x)])];
     }
   };
   if (worker_pool != nullptr) {
@@ -162,12 +175,20 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
     const int x = static_cast<int>(line_index % static_cast<std::size_t>(width));
     std::vector<double> input(static_cast<std::size_t>(height), kLargeSquaredDistance);
     std::vector<double> output;
+    std::vector<int> source_locations;
+    std::vector<std::size_t> source_indices(static_cast<std::size_t>(height),
+                                            kNoNearestSource);
     for (int y = 0; y < height; ++y) {
       input[static_cast<std::size_t>(y)] = static_cast<double>(squared[index(x, y, z)]);
+      source_indices[static_cast<std::size_t>(y)] =
+          field.nearest_source_linear_indices_[index(x, y, z)];
     }
-    transform1D(input, output);
+    transform1D(input, output, source_locations);
     for (int y = 0; y < height; ++y) {
       squared[index(x, y, z)] = static_cast<float>(output[static_cast<std::size_t>(y)]);
+      field.nearest_source_linear_indices_[index(x, y, z)] =
+          source_indices[static_cast<std::size_t>(
+              source_locations[static_cast<std::size_t>(y)])];
     }
   };
   if (worker_pool != nullptr) {
@@ -190,12 +211,20 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
     const int x = static_cast<int>(line_index % static_cast<std::size_t>(width));
     std::vector<double> input(static_cast<std::size_t>(depth), kLargeSquaredDistance);
     std::vector<double> output;
+    std::vector<int> source_locations;
+    std::vector<std::size_t> source_indices(static_cast<std::size_t>(depth),
+                                            kNoNearestSource);
     for (int z = 0; z < depth; ++z) {
       input[static_cast<std::size_t>(z)] = static_cast<double>(squared[index(x, y, z)]);
+      source_indices[static_cast<std::size_t>(z)] =
+          field.nearest_source_linear_indices_[index(x, y, z)];
     }
-    transform1D(input, output);
+    transform1D(input, output, source_locations);
     for (int z = 0; z < depth; ++z) {
       squared[index(x, y, z)] = static_cast<float>(output[static_cast<std::size_t>(z)]);
+      field.nearest_source_linear_indices_[index(x, y, z)] =
+          source_indices[static_cast<std::size_t>(
+              source_locations[static_cast<std::size_t>(z)])];
     }
   };
   if (worker_pool != nullptr) {
@@ -218,12 +247,16 @@ DistanceField3D DistanceField3D::buildLocal(const OccupancyGrid3D& occupancy,
     if (field.stats_.source_voxels == 0U ||
         !(squared_cells < kLargeSquaredDistance * 0.5)) {
       field.distances_m_[voxel] = std::numeric_limits<float>::infinity();
+      field.nearest_source_linear_indices_[voxel] = kNoNearestSource;
       continue;
     }
     const double distance_m = std::sqrt(squared_cells) * field.bounds_.resolution_m;
-    field.distances_m_[voxel] = capped && distance_m > maximum_distance_m
-                                    ? std::numeric_limits<float>::infinity()
-                                    : static_cast<float>(distance_m);
+    if (capped && distance_m > maximum_distance_m) {
+      field.distances_m_[voxel] = std::numeric_limits<float>::infinity();
+      field.nearest_source_linear_indices_[voxel] = kNoNearestSource;
+    } else {
+      field.distances_m_[voxel] = static_cast<float>(distance_m);
+    }
   }
   field.stats_.finalize_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - finalize_started)
@@ -263,8 +296,19 @@ float DistanceField3D::distanceAt(const GridIndex3D index) const {
   return distances_m_.at(linearIndex(index));
 }
 
+std::optional<std::size_t>
+DistanceField3D::nearestSourceLinearIndexAt(const GridIndex3D index) const {
+  const std::size_t source = nearest_source_linear_indices_.at(linearIndex(index));
+  return source == kNoNearestSource ? std::nullopt : std::optional<std::size_t>{source};
+}
+
 std::span<const float> DistanceField3D::distancesM() const noexcept {
   return distances_m_;
+}
+
+std::span<const std::size_t>
+DistanceField3D::nearestSourceLinearIndices() const noexcept {
+  return nearest_source_linear_indices_;
 }
 
 const DistanceField3DBuildStats& DistanceField3D::stats() const noexcept {

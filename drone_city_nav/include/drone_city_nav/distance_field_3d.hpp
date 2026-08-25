@@ -3,6 +3,8 @@
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 
 #include <cstddef>
+#include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -23,6 +25,9 @@ struct DistanceField3DBuildStats {
 
 class DistanceField3D {
 public:
+  static constexpr std::size_t kNoNearestSource =
+      std::numeric_limits<std::size_t>::max();
+
   [[nodiscard]] static DistanceField3D build(const OccupancyGrid3D& occupancy,
                                              double maximum_distance_m,
                                              BoundedWorkerPool* worker_pool = nullptr);
@@ -35,7 +40,11 @@ public:
   [[nodiscard]] bool contains(GridIndex3D index) const noexcept;
   [[nodiscard]] std::size_t linearIndex(GridIndex3D index) const;
   [[nodiscard]] float distanceAt(GridIndex3D index) const;
+  [[nodiscard]] std::optional<std::size_t>
+  nearestSourceLinearIndexAt(GridIndex3D index) const;
   [[nodiscard]] std::span<const float> distancesM() const noexcept;
+  [[nodiscard]] std::span<const std::size_t>
+  nearestSourceLinearIndices() const noexcept;
   [[nodiscard]] const DistanceField3DBuildStats& stats() const noexcept;
 
 private:
@@ -44,6 +53,7 @@ private:
   GridBounds3D bounds_{};
   double maximum_distance_m_{0.0};
   std::vector<float> distances_m_;
+  std::vector<std::size_t> nearest_source_linear_indices_;
   DistanceField3DBuildStats stats_{};
 };
 

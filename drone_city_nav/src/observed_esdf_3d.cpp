@@ -1,6 +1,7 @@
 #include "drone_city_nav/observed_esdf_3d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <chrono>
 #include <cmath>
@@ -138,13 +139,6 @@ void forEachObservedVoxel(const ObservedOccupancyGrid3D& occupancy,
   }
 }
 
-[[nodiscard]] int clampedCell(const double coordinate, const double origin,
-                              const double resolution_m,
-                              const int cell_count) noexcept {
-  return std::clamp(static_cast<int>(std::floor((coordinate - origin) / resolution_m)),
-                    0, cell_count - 1);
-}
-
 [[nodiscard]] std::uint64_t cellKey(const GridBounds3D& bounds,
                                     const GridIndex3D cell) noexcept {
   return (static_cast<std::uint64_t>(cell.z) *
@@ -172,105 +166,6 @@ launchSupportCells(const ObservedOccupancyGrid3D& occupancy,
     }
   }
   return result;
-}
-
-struct LaunchSupportCellCandidate {
-  GridIndex3D index{};
-  AxisAlignedBox3D bounds{};
-};
-
-[[nodiscard]] bool launchSupportEnvelopeIntersectsCell(
-    const ProprioceptiveFreeSpaceSeed3D& seed, const double resolution_m,
-    const Point3& cell_minimum, const Point3& cell_maximum) noexcept {
-  const double axis_norm =
-      std::hypot(std::hypot(seed.body_axis.x, seed.body_axis.y), seed.body_axis.z);
-  if (!(axis_norm > 1.0e-9) || !(resolution_m > 0.0)) {
-    return false;
-  }
-  const FootprintBodyAxis axis{seed.body_axis.x / axis_norm,
-                               seed.body_axis.y / axis_norm,
-                               seed.body_axis.z / axis_norm};
-  const double lower_extent_m = std::max(0.0, seed.footprint.lower_extent_m);
-  const double maximum_axial_extent_m =
-      std::max(lower_extent_m, std::max(0.0, seed.footprint.upper_extent_m));
-  const Point3 contact_center{seed.position.x - lower_extent_m * axis.x,
-                              seed.position.y - lower_extent_m * axis.y,
-                              seed.position.z - lower_extent_m * axis.z};
-  const SweptFootprintConfig contact_envelope{
-      .radius_m =
-          std::hypot(std::max(0.0, seed.footprint.radius_m), maximum_axial_extent_m) +
-          resolution_m,
-      .lower_extent_m = resolution_m,
-      .upper_extent_m = resolution_m,
-  };
-  return footprintIntersectsAxisAlignedBox(contact_center, axis, contact_envelope,
-                                           cell_minimum, cell_maximum);
-}
-
-[[nodiscard]] std::vector<LaunchSupportCellCandidate>
-launchSupportCellCandidates(const GridBounds3D& bounds,
-                            const ProprioceptiveFreeSpaceSeed3D& seed) {
-  const double broad_extent_m = std::max(0.0, seed.footprint.radius_m) +
-                                std::max(std::max(0.0, seed.footprint.lower_extent_m),
-                                         std::max(0.0, seed.footprint.upper_extent_m)) +
-                                bounds.resolution_m;
-  const int minimum_x = clampedCell(seed.position.x - broad_extent_m, bounds.origin_x,
-                                    bounds.resolution_m, bounds.width_cells);
-  const int maximum_x = clampedCell(seed.position.x + broad_extent_m, bounds.origin_x,
-                                    bounds.resolution_m, bounds.width_cells);
-  const int minimum_y = clampedCell(seed.position.y - broad_extent_m, bounds.origin_y,
-                                    bounds.resolution_m, bounds.height_cells);
-  const int maximum_y = clampedCell(seed.position.y + broad_extent_m, bounds.origin_y,
-                                    bounds.resolution_m, bounds.height_cells);
-  const int minimum_z = clampedCell(seed.position.z - broad_extent_m, bounds.origin_z,
-                                    bounds.resolution_m, bounds.depth_cells);
-  const int maximum_z = clampedCell(seed.position.z + broad_extent_m, bounds.origin_z,
-                                    bounds.resolution_m, bounds.depth_cells);
-
-  std::vector<LaunchSupportCellCandidate> result;
-  for (int z = minimum_z; z <= maximum_z; ++z) {
-    for (int y = minimum_y; y <= maximum_y; ++y) {
-      for (int x = minimum_x; x <= maximum_x; ++x) {
-        const Point3 minimum{
-            bounds.origin_x + static_cast<double>(x) * bounds.resolution_m,
-            bounds.origin_y + static_cast<double>(y) * bounds.resolution_m,
-            bounds.origin_z + static_cast<double>(z) * bounds.resolution_m};
-        const Point3 maximum{minimum.x + bounds.resolution_m,
-                             minimum.y + bounds.resolution_m,
-                             minimum.z + bounds.resolution_m};
-        if (launchSupportEnvelopeIntersectsCell(seed, bounds.resolution_m, minimum,
-                                                maximum)) {
-          result.push_back(LaunchSupportCellCandidate{
-              .index = GridIndex3D{x, y, z},
-              .bounds = AxisAlignedBox3D{.minimum = minimum, .maximum = maximum},
-          });
-        }
-      }
-    }
-  }
-  return result;
-}
-
-[[nodiscard]] LaunchSupportContact3D
-makeLaunchSupportContact3D(const GridBounds3D& bounds,
-                           const ProprioceptiveFreeSpaceSeed3D& seed,
-                           const LaunchSupportEvidenceSource evidence_source,
-                           const std::size_t occupied_evidence_cells,
-                           const std::vector<LaunchSupportCellCandidate>& candidates) {
-  LaunchSupportContact3D contact{
-      .seed = seed,
-      .contact_cells = {},
-      .occupied_evidence_cells = occupied_evidence_cells,
-      .evidence_source = evidence_source,
-      .maximum_lateral_departure_m = bounds.resolution_m,
-      .minimum_axial_departure_m = 0.0,
-      .maximum_axial_settling_m = bounds.resolution_m,
-  };
-  contact.contact_cells.reserve(candidates.size());
-  std::ranges::transform(
-      candidates, std::back_inserter(contact.contact_cells),
-      [](const LaunchSupportCellCandidate& candidate) { return candidate.bounds; });
-  return contact;
 }
 
 [[nodiscard]] bool sameBounds(const GridBounds3D& first,
@@ -306,6 +201,7 @@ makeLaunchSupportContact3D(const GridBounds3D& bounds,
 
 struct ClassifiedObservedGrid3D {
   std::shared_ptr<ObservedOccupancyGrid3D> occupancy;
+  std::vector<GridIndex3D> override_cells;
   std::uint64_t fingerprint{0U};
   ObservedEsdf3DBuildStats stats{};
 };
@@ -313,7 +209,6 @@ struct ClassifiedObservedGrid3D {
 [[nodiscard]] ClassifiedObservedGrid3D
 classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
                        const GridBounds3D& local_bounds,
-                       const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
                        const LaunchSupportContact3D* const launch_support_contact) {
   const auto started = std::chrono::steady_clock::now();
   const SourceCellRegion source_region =
@@ -332,6 +227,8 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
                        source.y - source_region.minimum_y,
                        source.z - source_region.minimum_z};
   };
+  std::vector<GridIndex3D> override_cells;
+  override_cells.reserve(support_cells.size());
   forEachObservedVoxel(
       occupancy, source_region,
       [&](const GridIndex3D source, const ObservedVoxelState state) {
@@ -354,6 +251,7 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
       continue;
     }
     const GridIndex3D local_cell = sourceToLocal(source);
+    override_cells.push_back(local_cell);
     if (local_occupancy->state(local_cell) != ObservedVoxelState::kFree) {
       static_cast<void>(
           local_occupancy->setState(local_cell, ObservedVoxelState::kFree));
@@ -361,75 +259,131 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
     }
   }
 
-  if (free_space_seed != nullptr) {
-    const double seed_extent_m =
-        std::max(0.0, free_space_seed->footprint.radius_m) +
-        std::max(std::max(0.0, free_space_seed->footprint.lower_extent_m),
-                 std::max(0.0, free_space_seed->footprint.upper_extent_m)) +
-        local_bounds.resolution_m;
-    const int minimum_x =
-        clampedCell(free_space_seed->position.x - seed_extent_m, local_bounds.origin_x,
-                    local_bounds.resolution_m, local_bounds.width_cells);
-    const int maximum_x =
-        clampedCell(free_space_seed->position.x + seed_extent_m, local_bounds.origin_x,
-                    local_bounds.resolution_m, local_bounds.width_cells);
-    const int minimum_y =
-        clampedCell(free_space_seed->position.y - seed_extent_m, local_bounds.origin_y,
-                    local_bounds.resolution_m, local_bounds.height_cells);
-    const int maximum_y =
-        clampedCell(free_space_seed->position.y + seed_extent_m, local_bounds.origin_y,
-                    local_bounds.resolution_m, local_bounds.height_cells);
-    const int minimum_z =
-        clampedCell(free_space_seed->position.z - seed_extent_m, local_bounds.origin_z,
-                    local_bounds.resolution_m, local_bounds.depth_cells);
-    const int maximum_z =
-        clampedCell(free_space_seed->position.z + seed_extent_m, local_bounds.origin_z,
-                    local_bounds.resolution_m, local_bounds.depth_cells);
-    for (int z = minimum_z; z <= maximum_z; ++z) {
-      for (int y = minimum_y; y <= maximum_y; ++y) {
-        for (int x = minimum_x; x <= maximum_x; ++x) {
-          const GridIndex3D local_cell{x, y, z};
-          if (local_occupancy->state(local_cell) != ObservedVoxelState::kUnknown) {
-            continue;
-          }
-          const Point3 cell_minimum{
-              local_bounds.origin_x +
-                  static_cast<double>(x) * local_bounds.resolution_m,
-              local_bounds.origin_y +
-                  static_cast<double>(y) * local_bounds.resolution_m,
-              local_bounds.origin_z +
-                  static_cast<double>(z) * local_bounds.resolution_m,
-          };
-          const Point3 cell_maximum{
-              cell_minimum.x + local_bounds.resolution_m,
-              cell_minimum.y + local_bounds.resolution_m,
-              cell_minimum.z + local_bounds.resolution_m,
-          };
-          if (!footprintIntersectsAxisAlignedBox(
-                  free_space_seed->position, free_space_seed->body_axis,
-                  free_space_seed->footprint, cell_minimum, cell_maximum)) {
-            continue;
-          }
-          static_cast<void>(
-              local_occupancy->setState(local_cell, ObservedVoxelState::kFree));
-          ++stats.proprioceptive_free_voxels;
-        }
-      }
-    }
-  }
-
   stats.known_voxels = local_occupancy->knownVoxelCount();
   stats.free_voxels = local_occupancy->freeVoxelCount();
   stats.occupied_voxels = local_occupancy->occupiedVoxelCount();
   stats.unknown_voxels = voxelCount(local_bounds) - stats.known_voxels;
+  stats.classified_voxels = voxelCount(local_bounds);
   stats.classification_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - started)
                                 .count();
   const std::uint64_t fingerprint =
       observedOccupancyFingerprint(*local_occupancy, local_bounds);
   return {.occupancy = std::move(local_occupancy),
+          .override_cells = std::move(override_cells),
           .fingerprint = fingerprint,
           .stats = stats};
+}
+
+[[nodiscard]] GridIndex3D localCellFromLinear(const GridBounds3D& bounds,
+                                              const std::size_t index) noexcept {
+  const std::size_t width = static_cast<std::size_t>(bounds.width_cells);
+  const std::size_t height = static_cast<std::size_t>(bounds.height_cells);
+  const std::size_t plane = width * height;
+  return GridIndex3D{
+      .x = static_cast<int>(index % width),
+      .y = static_cast<int>((index / width) % height),
+      .z = static_cast<int>(index / plane),
+  };
+}
+
+[[nodiscard]] ClassifiedObservedGrid3D classifyObservedGrid3DIncremental(
+    const ObservedOccupancyGrid3D& occupancy, const GridBounds3D& local_bounds,
+    const ObservedOccupancyGrid3D& previous_local_occupancy,
+    const std::span<const GridIndex3D> previous_override_cells,
+    const std::span<const OccupancyChunkIndex3D> dirty_chunks,
+    const LaunchSupportContact3D* const launch_support_contact) {
+  const auto started = std::chrono::steady_clock::now();
+  const SourceCellRegion source_region =
+      sourceCellRegion(occupancy.bounds(), local_bounds);
+  auto local_occupancy =
+      std::make_shared<ObservedOccupancyGrid3D>(previous_local_occupancy);
+  std::unordered_set<std::size_t> affected_cells;
+  affected_cells.reserve(dirty_chunks.size() * 64U + previous_override_cells.size());
+  for (const GridIndex3D cell : previous_override_cells) {
+    if (local_occupancy->contains(cell)) {
+      affected_cells.insert(localLinearIndex(local_bounds, cell));
+    }
+  }
+
+  constexpr int kChunkSize{ObservedOccupancyGrid3D::kChunkSize};
+  for (const OccupancyChunkIndex3D chunk : dirty_chunks) {
+    const int minimum_x = std::max(source_region.minimum_x, chunk.x * kChunkSize);
+    const int minimum_y = std::max(source_region.minimum_y, chunk.y * kChunkSize);
+    const int minimum_z = std::max(source_region.minimum_z, chunk.z * kChunkSize);
+    const int maximum_x =
+        std::min(source_region.maximum_x_exclusive, (chunk.x + 1) * kChunkSize);
+    const int maximum_y =
+        std::min(source_region.maximum_y_exclusive, (chunk.y + 1) * kChunkSize);
+    const int maximum_z =
+        std::min(source_region.maximum_z_exclusive, (chunk.z + 1) * kChunkSize);
+    for (int z = minimum_z; z < maximum_z; ++z) {
+      for (int y = minimum_y; y < maximum_y; ++y) {
+        for (int x = minimum_x; x < maximum_x; ++x) {
+          affected_cells.insert(
+              localLinearIndex(local_bounds, GridIndex3D{x - source_region.minimum_x,
+                                                         y - source_region.minimum_y,
+                                                         z - source_region.minimum_z}));
+        }
+      }
+    }
+  }
+
+  std::vector<GridIndex3D> override_cells;
+  const std::vector<GridIndex3D> support_cells =
+      launchSupportCells(occupancy, launch_support_contact);
+  override_cells.reserve(support_cells.size());
+  std::unordered_set<std::size_t> override_indices;
+  override_indices.reserve(support_cells.size());
+  for (const GridIndex3D source : support_cells) {
+    if (source.x < source_region.minimum_x ||
+        source.x >= source_region.maximum_x_exclusive ||
+        source.y < source_region.minimum_y ||
+        source.y >= source_region.maximum_y_exclusive ||
+        source.z < source_region.minimum_z ||
+        source.z >= source_region.maximum_z_exclusive) {
+      continue;
+    }
+    const GridIndex3D local{source.x - source_region.minimum_x,
+                            source.y - source_region.minimum_y,
+                            source.z - source_region.minimum_z};
+    const std::size_t index = localLinearIndex(local_bounds, local);
+    override_cells.push_back(local);
+    override_indices.insert(index);
+    affected_cells.insert(index);
+  }
+
+  ObservedEsdf3DBuildStats stats;
+  for (const std::size_t index : affected_cells) {
+    const GridIndex3D local = localCellFromLinear(local_bounds, index);
+    const GridIndex3D source{local.x + source_region.minimum_x,
+                             local.y + source_region.minimum_y,
+                             local.z + source_region.minimum_z};
+    const ObservedVoxelState raw_state = occupancy.state(source);
+    const bool overridden = override_indices.contains(index);
+    static_cast<void>(local_occupancy->setState(
+        local, overridden ? ObservedVoxelState::kFree : raw_state));
+    stats.launch_support_voxels +=
+        overridden && raw_state != ObservedVoxelState::kFree ? 1U : 0U;
+  }
+  stats.known_voxels = local_occupancy->knownVoxelCount();
+  stats.free_voxels = local_occupancy->freeVoxelCount();
+  stats.occupied_voxels = local_occupancy->occupiedVoxelCount();
+  const std::size_t total_voxels = voxelCount(local_bounds);
+  stats.unknown_voxels = total_voxels - stats.known_voxels;
+  stats.classified_voxels = affected_cells.size();
+  stats.reused_classification_voxels = total_voxels - affected_cells.size();
+  stats.classification_ms = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - started)
+                                .count();
+  const std::uint64_t fingerprint =
+      observedOccupancyFingerprint(*local_occupancy, local_bounds);
+  return ClassifiedObservedGrid3D{
+      .occupancy = std::move(local_occupancy),
+      .override_cells = std::move(override_cells),
+      .fingerprint = fingerprint,
+      .stats = stats,
+  };
 }
 
 [[nodiscard]] ObservedEsdf3D buildFullObservedEsdf3D(
@@ -444,7 +398,12 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
       .grid = esdfGrid(bounds),
       .distances_m =
           std::vector<float>(voxelCount(bounds), mppi::kUnknownEsdfDistanceM),
+      .nearest_obstacle_indices =
+          std::vector<std::size_t>(field.nearestSourceLinearIndices().begin(),
+                                   field.nearestSourceLinearIndices().end()),
       .local_occupancy = classified.occupancy,
+      .classification_override_cells = classified.override_cells,
+      .dirty_regions = {},
       .occupancy_fingerprint = classified.fingerprint,
       .maximum_distance_m = maximum_distance_m,
       .stats = classified.stats,
@@ -608,6 +567,7 @@ previousObservedEsdfIsCompatible(const PreviousObservedEsdf3D& previous,
       !sameBounds(previous.source_occupancy->bounds(), source_occupancy.bounds()) ||
       !sameBounds(previous.local_occupancy->bounds(), bounds) ||
       previous.distances_m.size() != voxelCount(bounds) ||
+      previous.nearest_obstacle_indices.size() != voxelCount(bounds) ||
       previous.occupancy_fingerprint == 0U ||
       std::abs(previous.maximum_distance_m - maximum_distance_m) > 1.0e-9) {
     return false;
@@ -642,282 +602,15 @@ previousObservedEsdfIsCompatible(const PreviousObservedEsdf3D& previous,
   };
 }
 
-[[nodiscard]] std::size_t regionVoxelCount(const SourceCellRegion& region) noexcept {
-  return static_cast<std::size_t>(region.maximum_x_exclusive - region.minimum_x) *
-         static_cast<std::size_t>(region.maximum_y_exclusive - region.minimum_y) *
-         static_cast<std::size_t>(region.maximum_z_exclusive - region.minimum_z);
-}
-
-[[nodiscard]] GridBounds3D boundsForRegion(const GridBounds3D& bounds,
-                                           const SourceCellRegion& region) noexcept {
-  return GridBounds3D{
-      .origin_x = bounds.origin_x + region.minimum_x * bounds.resolution_m,
-      .origin_y = bounds.origin_y + region.minimum_y * bounds.resolution_m,
-      .origin_z = bounds.origin_z + region.minimum_z * bounds.resolution_m,
-      .resolution_m = bounds.resolution_m,
-      .width_cells = region.maximum_x_exclusive - region.minimum_x,
-      .height_cells = region.maximum_y_exclusive - region.minimum_y,
-      .depth_cells = region.maximum_z_exclusive - region.minimum_z,
-  };
-}
-
-[[nodiscard]] bool regionsTouchOrOverlap(const SourceCellRegion& first,
-                                         const SourceCellRegion& second) noexcept {
-  return first.minimum_x <= second.maximum_x_exclusive &&
-         second.minimum_x <= first.maximum_x_exclusive &&
-         first.minimum_y <= second.maximum_y_exclusive &&
-         second.minimum_y <= first.maximum_y_exclusive &&
-         first.minimum_z <= second.maximum_z_exclusive &&
-         second.minimum_z <= first.maximum_z_exclusive;
-}
-
-[[nodiscard]] SourceCellRegion unionRegion(const SourceCellRegion& first,
-                                           const SourceCellRegion& second) noexcept {
-  return SourceCellRegion{
-      .minimum_x = std::min(first.minimum_x, second.minimum_x),
-      .minimum_y = std::min(first.minimum_y, second.minimum_y),
-      .minimum_z = std::min(first.minimum_z, second.minimum_z),
-      .maximum_x_exclusive =
-          std::max(first.maximum_x_exclusive, second.maximum_x_exclusive),
-      .maximum_y_exclusive =
-          std::max(first.maximum_y_exclusive, second.maximum_y_exclusive),
-      .maximum_z_exclusive =
-          std::max(first.maximum_z_exclusive, second.maximum_z_exclusive),
-  };
-}
-
-void mergeTouchingRegions(std::vector<SourceCellRegion>& regions) {
-  bool merged{true};
-  while (merged) {
-    merged = false;
-    for (std::size_t first = 0U; first < regions.size() && !merged; ++first) {
-      for (std::size_t second = first + 1U; second < regions.size(); ++second) {
-        if (!regionsTouchOrOverlap(regions[first], regions[second])) {
-          continue;
-        }
-        regions[first] = unionRegion(regions[first], regions[second]);
-        regions.erase(regions.begin() + static_cast<std::ptrdiff_t>(second));
-        merged = true;
-        break;
-      }
-    }
-  }
-}
-
 } // namespace
-
-GridBounds3D selectLocalObservedEsdfBounds(const GridBounds3D& world_bounds,
-                                           const Point3& position,
-                                           const LocalObservedEsdfWindow3D& window) {
-  if (!(world_bounds.resolution_m > 0.0) || world_bounds.width_cells <= 0 ||
-      world_bounds.height_cells <= 0 || world_bounds.depth_cells <= 0 ||
-      !localObservedEsdfWindow3DIsValid(window) || !std::isfinite(position.x) ||
-      !std::isfinite(position.y) || !std::isfinite(position.z)) {
-    throw std::invalid_argument{"invalid local observed ESDF bounds request"};
-  }
-  const int minimum_x =
-      clampedCell(position.x - window.horizontal_half_extent_m, world_bounds.origin_x,
-                  world_bounds.resolution_m, world_bounds.width_cells);
-  const int maximum_x =
-      clampedCell(position.x + window.horizontal_half_extent_m, world_bounds.origin_x,
-                  world_bounds.resolution_m, world_bounds.width_cells);
-  const int minimum_y =
-      clampedCell(position.y - window.horizontal_half_extent_m, world_bounds.origin_y,
-                  world_bounds.resolution_m, world_bounds.height_cells);
-  const int maximum_y =
-      clampedCell(position.y + window.horizontal_half_extent_m, world_bounds.origin_y,
-                  world_bounds.resolution_m, world_bounds.height_cells);
-  const int minimum_z =
-      clampedCell(position.z - window.vertical_half_extent_m, world_bounds.origin_z,
-                  world_bounds.resolution_m, world_bounds.depth_cells);
-  const int maximum_z =
-      clampedCell(position.z + window.vertical_half_extent_m, world_bounds.origin_z,
-                  world_bounds.resolution_m, world_bounds.depth_cells);
-  return GridBounds3D{
-      .origin_x = world_bounds.origin_x +
-                  static_cast<double>(minimum_x) * world_bounds.resolution_m,
-      .origin_y = world_bounds.origin_y +
-                  static_cast<double>(minimum_y) * world_bounds.resolution_m,
-      .origin_z = world_bounds.origin_z +
-                  static_cast<double>(minimum_z) * world_bounds.resolution_m,
-      .resolution_m = world_bounds.resolution_m,
-      .width_cells = maximum_x - minimum_x + 1,
-      .height_cells = maximum_y - minimum_y + 1,
-      .depth_cells = maximum_z - minimum_z + 1,
-  };
-}
-
-bool localObservedEsdfNeedsRecenter(const GridBounds3D& local_bounds,
-                                    const GridBounds3D& world_bounds,
-                                    const Point3& position,
-                                    const LocalObservedEsdfWindow3D& window) noexcept {
-  if (!sameResolution(local_bounds, world_bounds) ||
-      !localObservedEsdfWindow3DIsValid(window) || !std::isfinite(position.x) ||
-      !std::isfinite(position.y) || !std::isfinite(position.z)) {
-    return true;
-  }
-  const double local_maximum_x =
-      local_bounds.origin_x + local_bounds.width_cells * local_bounds.resolution_m;
-  const double local_maximum_y =
-      local_bounds.origin_y + local_bounds.height_cells * local_bounds.resolution_m;
-  const double local_maximum_z =
-      local_bounds.origin_z + local_bounds.depth_cells * local_bounds.resolution_m;
-  const double world_maximum_x =
-      world_bounds.origin_x + world_bounds.width_cells * world_bounds.resolution_m;
-  const double world_maximum_y =
-      world_bounds.origin_y + world_bounds.height_cells * world_bounds.resolution_m;
-  const double world_maximum_z =
-      world_bounds.origin_z + world_bounds.depth_cells * world_bounds.resolution_m;
-  const bool room_left = local_bounds.origin_x > world_bounds.origin_x + 1.0e-9;
-  const bool room_right = local_maximum_x < world_maximum_x - 1.0e-9;
-  const bool room_down = local_bounds.origin_y > world_bounds.origin_y + 1.0e-9;
-  const bool room_up = local_maximum_y < world_maximum_y - 1.0e-9;
-  const bool room_below = local_bounds.origin_z > world_bounds.origin_z + 1.0e-9;
-  const bool room_above = local_maximum_z < world_maximum_z - 1.0e-9;
-  return (room_left &&
-          position.x - local_bounds.origin_x < window.horizontal_recenter_margin_m) ||
-         (room_right &&
-          local_maximum_x - position.x < window.horizontal_recenter_margin_m) ||
-         (room_down &&
-          position.y - local_bounds.origin_y < window.horizontal_recenter_margin_m) ||
-         (room_up &&
-          local_maximum_y - position.y < window.horizontal_recenter_margin_m) ||
-         (room_below &&
-          position.z - local_bounds.origin_z < window.vertical_recenter_margin_m) ||
-         (room_above &&
-          local_maximum_z - position.z < window.vertical_recenter_margin_m);
-}
-
-bool localObservedEsdfWindow3DIsValid(
-    const LocalObservedEsdfWindow3D& window) noexcept {
-  return std::isfinite(window.horizontal_half_extent_m) &&
-         window.horizontal_half_extent_m > 0.0 &&
-         std::isfinite(window.vertical_half_extent_m) &&
-         window.vertical_half_extent_m > 0.0 &&
-         std::isfinite(window.horizontal_recenter_margin_m) &&
-         window.horizontal_recenter_margin_m >= 0.0 &&
-         window.horizontal_recenter_margin_m < window.horizontal_half_extent_m &&
-         std::isfinite(window.vertical_recenter_margin_m) &&
-         window.vertical_recenter_margin_m >= 0.0 &&
-         window.vertical_recenter_margin_m < window.vertical_half_extent_m;
-}
-
-std::optional<LaunchSupportContact3D>
-detectLaunchSupportContact3D(const ObservedOccupancyGrid3D& occupancy,
-                             const ProprioceptiveFreeSpaceSeed3D& seed) {
-  const GridBounds3D& bounds = occupancy.bounds();
-  const std::vector<LaunchSupportCellCandidate> candidates =
-      launchSupportCellCandidates(bounds, seed);
-  const std::size_t occupied_evidence_cells = static_cast<std::size_t>(
-      std::ranges::count_if(candidates, [&](const LaunchSupportCellCandidate& cell) {
-        return occupancy.state(cell.index) == ObservedVoxelState::kOccupied;
-      }));
-  if (occupied_evidence_cells == 0U) {
-    return std::nullopt;
-  }
-  return makeLaunchSupportContact3D(bounds, seed,
-                                    LaunchSupportEvidenceSource::kObservedOccupancy,
-                                    occupied_evidence_cells, candidates);
-}
-
-LaunchSupportContact3D
-makeVehicleLandedSupportContact3D(const GridBounds3D& bounds,
-                                  const ProprioceptiveFreeSpaceSeed3D& seed) {
-  const std::vector<LaunchSupportCellCandidate> candidates =
-      launchSupportCellCandidates(bounds, seed);
-  return makeLaunchSupportContact3D(
-      bounds, seed, LaunchSupportEvidenceSource::kVehicleLandDetector, 0U, candidates);
-}
-
-LaunchSupportDeparture3D planLaunchSupportDeparture3D(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& current_position,
-    const LaunchSupportContact3D& contact, const double minimum_departure_m) {
-  LaunchSupportDeparture3D result;
-  const GridBounds3D& bounds = occupancy.bounds();
-  const FootprintBodyAxis& requested_axis = contact.seed.body_axis;
-  const double axis_norm =
-      std::hypot(std::hypot(requested_axis.x, requested_axis.y), requested_axis.z);
-  if (!(bounds.resolution_m > 0.0) || !(axis_norm > 1.0e-9) ||
-      !std::isfinite(minimum_departure_m) || minimum_departure_m < 0.0 ||
-      contact.contact_cells.empty()) {
-    return result;
-  }
-  const FootprintBodyAxis axis{requested_axis.x / axis_norm,
-                               requested_axis.y / axis_norm,
-                               requested_axis.z / axis_norm};
-  double contact_maximum_axial_m{-std::numeric_limits<double>::infinity()};
-  for (const AxisAlignedBox3D& cell : contact.contact_cells) {
-    for (const double x : {cell.minimum.x, cell.maximum.x}) {
-      for (const double y : {cell.minimum.y, cell.maximum.y}) {
-        for (const double z : {cell.minimum.z, cell.maximum.z}) {
-          const Point3 offset{x - contact.seed.position.x, y - contact.seed.position.y,
-                              z - contact.seed.position.z};
-          contact_maximum_axial_m =
-              std::max(contact_maximum_axial_m,
-                       offset.x * axis.x + offset.y * axis.y + offset.z * axis.z);
-        }
-      }
-    }
-  }
-  const double required_axial_departure_m = std::max(
-      minimum_departure_m, contact_maximum_axial_m +
-                               std::max(0.0, contact.seed.footprint.lower_extent_m) +
-                               bounds.resolution_m);
-  const double maximum_search_departure_m =
-      required_axial_departure_m +
-      std::max({bounds.resolution_m * 4.0,
-                std::max(0.0, contact.seed.footprint.lower_extent_m) +
-                    std::max(0.0, contact.seed.footprint.upper_extent_m),
-                std::max(0.0, contact.seed.footprint.radius_m)});
-  const Point3 seed_offset{current_position.x - contact.seed.position.x,
-                           current_position.y - contact.seed.position.y,
-                           current_position.z - contact.seed.position.z};
-  const double current_axial_departure_m =
-      seed_offset.x * axis.x + seed_offset.y * axis.y + seed_offset.z * axis.z;
-  const int first_step =
-      std::max(1, static_cast<int>(std::ceil(
-                      (required_axial_departure_m - current_axial_departure_m) /
-                      bounds.resolution_m)));
-  const int maximum_step =
-      std::max(first_step, static_cast<int>(std::ceil((maximum_search_departure_m -
-                                                       current_axial_departure_m) /
-                                                      bounds.resolution_m)));
-  for (int step = first_step; step <= maximum_step; ++step) {
-    const double displacement_m = static_cast<double>(step) * bounds.resolution_m;
-    const Point3 target{current_position.x + axis.x * displacement_m,
-                        current_position.y + axis.y * displacement_m,
-                        current_position.z + axis.z * displacement_m};
-    const SweptFootprintResult target_validation = validateRawFootprintAt(
-        occupancy, target, axis, contact.seed.footprint, nullptr, nullptr);
-    if (!target_validation.accepted()) {
-      result.validation = target_validation;
-      continue;
-    }
-    const SweptFootprintResult path_validation =
-        validateRawSweptFootprint(occupancy, current_position, axis, target, axis,
-                                  contact.seed.footprint, &contact.seed, &contact);
-    if (!path_validation.accepted()) {
-      result.validation = path_validation;
-      continue;
-    }
-    result.target = target;
-    result.validation = path_validation;
-    result.axial_departure_m = current_axial_departure_m + displacement_m;
-    result.executable = true;
-    return result;
-  }
-  return result;
-}
 
 ObservedEsdf3D
 buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
                     const GridBounds3D& local_bounds, const double maximum_distance_m,
                     BoundedWorkerPool* const worker_pool,
-                    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
                     const LaunchSupportContact3D* const launch_support_contact) {
   return updateObservedEsdf3D(occupancy, local_bounds, maximum_distance_m, nullptr, {},
-                              true, 1.0, worker_pool, free_space_seed,
-                              launch_support_contact);
+                              true, 1.0, worker_pool, launch_support_contact);
 }
 
 ObservedEsdf3D updateObservedEsdf3D(
@@ -925,7 +618,6 @@ ObservedEsdf3D updateObservedEsdf3D(
     const double maximum_distance_m, const PreviousObservedEsdf3D* const previous,
     const std::span<const OccupancyChunkIndex3D> dirty_chunks, const bool full_reset,
     const double maximum_rebuild_ratio, BoundedWorkerPool* const worker_pool,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) {
   static_cast<void>(sourceCellRegion(occupancy.bounds(), local_bounds));
   if (!std::isfinite(maximum_distance_m) || maximum_distance_m <= 0.0 ||
@@ -933,32 +625,43 @@ ObservedEsdf3D updateObservedEsdf3D(
       maximum_rebuild_ratio > 1.0) {
     throw std::invalid_argument{"invalid incremental observed ESDF request"};
   }
-  const ClassifiedObservedGrid3D classified = classifyObservedGrid3D(
-      occupancy, local_bounds, free_space_seed, launch_support_contact);
   const bool previous_compatible =
       previous != nullptr &&
       previousObservedEsdfIsCompatible(*previous, occupancy, local_bounds,
                                        maximum_distance_m);
   if (full_reset || !previous_compatible) {
+    const ClassifiedObservedGrid3D classified =
+        classifyObservedGrid3D(occupancy, local_bounds, launch_support_contact);
     return buildFullObservedEsdf3D(classified, maximum_distance_m, worker_pool,
                                    dirty_chunks.size(), previous != nullptr);
   }
-
-  const ChangedCellRegion3D changed =
-      changedCellRegion3D(*previous->local_occupancy, *classified.occupancy);
   if (!rawChangesCoveredByDirtyChunks(*previous->source_occupancy, occupancy,
                                       local_bounds, dirty_chunks)) {
+    const ClassifiedObservedGrid3D classified =
+        classifyObservedGrid3D(occupancy, local_bounds, launch_support_contact);
+    const ChangedCellRegion3D changed =
+        changedCellRegion3D(*previous->local_occupancy, *classified.occupancy);
     ObservedEsdf3D result = buildFullObservedEsdf3D(
         classified, maximum_distance_m, worker_pool, dirty_chunks.size(), true);
     result.stats.changed_voxels = changed.count;
     return result;
   }
+  const ClassifiedObservedGrid3D classified = classifyObservedGrid3DIncremental(
+      occupancy, local_bounds, *previous->local_occupancy,
+      previous->classification_override_cells, dirty_chunks, launch_support_contact);
+  const ChangedCellRegion3D changed =
+      changedCellRegion3D(*previous->local_occupancy, *classified.occupancy);
   if (changed.count == 0U) {
     ObservedEsdf3D result{
         .grid = previous->grid,
         .distances_m = std::vector<float>(previous->distances_m.begin(),
                                           previous->distances_m.end()),
+        .nearest_obstacle_indices =
+            std::vector<std::size_t>(previous->nearest_obstacle_indices.begin(),
+                                     previous->nearest_obstacle_indices.end()),
         .local_occupancy = previous->local_occupancy,
+        .classification_override_cells = classified.override_cells,
+        .dirty_regions = {},
         .occupancy_fingerprint = classified.fingerprint,
         .maximum_distance_m = maximum_distance_m,
         .stats = classified.stats,
@@ -975,38 +678,63 @@ ObservedEsdf3D updateObservedEsdf3D(
     throw std::overflow_error{"incremental observed ESDF radius exceeds int"};
   }
   const int radius_cells = static_cast<int>(radius_cells_value);
-  const std::vector<ChangedCellRegion3D> changed_regions =
-      splitChangedCellRegions3D(changed, local_bounds);
+  const double maximum_squared_cells =
+      std::pow(maximum_distance_m / local_bounds.resolution_m, 2.0);
   const std::size_t total_voxels = voxelCount(local_bounds);
-  std::vector<SourceCellRegion> target_regions;
-  target_regions.reserve(changed_regions.size());
-  for (const ChangedCellRegion3D& changed_region : changed_regions) {
-    const SourceCellRegion source_region{
-        .minimum_x = changed_region.minimum.x,
-        .minimum_y = changed_region.minimum.y,
-        .minimum_z = changed_region.minimum.z,
-        .maximum_x_exclusive = changed_region.maximum_exclusive.x,
-        .maximum_y_exclusive = changed_region.maximum_exclusive.y,
-        .maximum_z_exclusive = changed_region.maximum_exclusive.z,
-    };
-    const SourceCellRegion target_region =
-        expandedRegion(source_region, radius_cells, local_bounds);
-    target_regions.push_back(target_region);
+  std::unordered_set<std::size_t> inserted_sources;
+  std::unordered_set<std::size_t> removed_sources;
+  std::vector<std::uint8_t> recompute_mask(total_voxels, 0U);
+  std::size_t scheduled_voxels{0U};
+  const auto schedule = [&](const std::size_t index) {
+    if (recompute_mask[index] == 0U) {
+      recompute_mask[index] = 1U;
+      ++scheduled_voxels;
+    }
+  };
+  for (const GridIndex3D cell : changed.cells) {
+    const std::size_t index = localLinearIndex(local_bounds, cell);
+    const ObservedVoxelState before = previous->local_occupancy->state(cell);
+    const ObservedVoxelState after = classified.occupancy->state(cell);
+    if (before == ObservedVoxelState::kOccupied &&
+        after != ObservedVoxelState::kOccupied) {
+      removed_sources.insert(index);
+    }
+    if (before != ObservedVoxelState::kOccupied &&
+        after == ObservedVoxelState::kOccupied) {
+      inserted_sources.insert(index);
+    }
+    schedule(index);
   }
-  // Each region needs a maximum-distance halo.  Merge first so overlapping
-  // halos are built once and the budget reflects their global unique work.
-  mergeTouchingRegions(target_regions);
-  std::vector<std::pair<SourceCellRegion, SourceCellRegion>> regions;
-  regions.reserve(target_regions.size());
-  std::size_t global_patch_voxels{0U};
-  for (const SourceCellRegion target_region : target_regions) {
-    const SourceCellRegion patch_region =
-        expandedRegion(target_region, radius_cells, local_bounds);
-    global_patch_voxels += regionVoxelCount(patch_region);
-    regions.emplace_back(target_region, patch_region);
+  for (std::size_t index = 0U; index < total_voxels; ++index) {
+    if (removed_sources.contains(previous->nearest_obstacle_indices[index])) {
+      schedule(index);
+    }
   }
-  if (global_patch_voxels >= total_voxels ||
-      static_cast<double>(global_patch_voxels) / static_cast<double>(total_voxels) >
+  for (const std::size_t source_index : inserted_sources) {
+    const GridIndex3D source = localCellFromLinear(local_bounds, source_index);
+    const SourceCellRegion affected =
+        expandedRegion(SourceCellRegion{.minimum_x = source.x,
+                                        .minimum_y = source.y,
+                                        .minimum_z = source.z,
+                                        .maximum_x_exclusive = source.x + 1,
+                                        .maximum_y_exclusive = source.y + 1,
+                                        .maximum_z_exclusive = source.z + 1},
+                       radius_cells, local_bounds);
+    for (int z = affected.minimum_z; z < affected.maximum_z_exclusive; ++z) {
+      for (int y = affected.minimum_y; y < affected.maximum_y_exclusive; ++y) {
+        for (int x = affected.minimum_x; x < affected.maximum_x_exclusive; ++x) {
+          const double dx = static_cast<double>(x - source.x);
+          const double dy = static_cast<double>(y - source.y);
+          const double dz = static_cast<double>(z - source.z);
+          if (dx * dx + dy * dy + dz * dz <= maximum_squared_cells) {
+            schedule(localLinearIndex(local_bounds, GridIndex3D{x, y, z}));
+          }
+        }
+      }
+    }
+  }
+  if (scheduled_voxels >= total_voxels ||
+      static_cast<double>(scheduled_voxels) / static_cast<double>(total_voxels) >
           maximum_rebuild_ratio) {
     ObservedEsdf3D result = buildFullObservedEsdf3D(
         classified, maximum_distance_m, worker_pool, dirty_chunks.size(), true);
@@ -1014,62 +742,187 @@ ObservedEsdf3D updateObservedEsdf3D(
     return result;
   }
 
-  const OccupancyGrid3D occupied = classified.occupancy->occupiedSnapshot();
+  const auto dynamic_started = std::chrono::steady_clock::now();
   ObservedEsdf3D result{
       .grid = esdfGrid(local_bounds),
       .distances_m = std::vector<float>(previous->distances_m.begin(),
                                         previous->distances_m.end()),
+      .nearest_obstacle_indices =
+          std::vector<std::size_t>(previous->nearest_obstacle_indices.begin(),
+                                   previous->nearest_obstacle_indices.end()),
       .local_occupancy = classified.occupancy,
+      .classification_override_cells = classified.override_cells,
+      .dirty_regions = {},
       .occupancy_fingerprint = classified.fingerprint,
       .maximum_distance_m = maximum_distance_m,
       .stats = classified.stats,
   };
-  std::size_t recomputed_voxels{0U};
-  double patch_build_ms{0.0};
-  for (const auto& [target_region, patch_region] : regions) {
-    const auto patch_started = std::chrono::steady_clock::now();
-    const DistanceField3D patch = DistanceField3D::buildLocal(
-        occupied, boundsForRegion(local_bounds, patch_region), maximum_distance_m,
-        worker_pool);
-    patch_build_ms += std::chrono::duration<double, std::milli>(
-                          std::chrono::steady_clock::now() - patch_started)
-                          .count();
-    recomputed_voxels += regionVoxelCount(target_region);
-    for (int z = target_region.minimum_z; z < target_region.maximum_z_exclusive; ++z) {
-      for (int y = target_region.minimum_y; y < target_region.maximum_y_exclusive;
-           ++y) {
-        for (int x = target_region.minimum_x; x < target_region.maximum_x_exclusive;
-             ++x) {
-          const GridIndex3D local_cell{x, y, z};
-          const std::size_t output_index = localLinearIndex(local_bounds, local_cell);
-          if (classified.occupancy->state(local_cell) == ObservedVoxelState::kUnknown) {
-            result.distances_m[output_index] = mppi::kUnknownEsdfDistanceM;
+  std::unordered_set<std::size_t> replacement_sources = inserted_sources;
+  constexpr std::array<int, 3U> kOffsets{-1, 0, 1};
+  for (std::size_t index = 0U; index < total_voxels; ++index) {
+    if (recompute_mask[index] == 0U ||
+        !removed_sources.contains(previous->nearest_obstacle_indices[index])) {
+      continue;
+    }
+    const GridIndex3D cell = localCellFromLinear(local_bounds, index);
+    if (classified.occupancy->isOccupied(cell)) {
+      replacement_sources.insert(index);
+    }
+    for (const int dz : kOffsets) {
+      for (const int dy : kOffsets) {
+        for (const int dx : kOffsets) {
+          if (dx == 0 && dy == 0 && dz == 0) {
             continue;
           }
-          result.distances_m[output_index] = patch.distanceAt(
-              GridIndex3D{x - patch_region.minimum_x, y - patch_region.minimum_y,
-                          z - patch_region.minimum_z});
+          const GridIndex3D neighbor{cell.x + dx, cell.y + dy, cell.z + dz};
+          if (!classified.occupancy->contains(neighbor)) {
+            continue;
+          }
+          const std::size_t neighbor_index = localLinearIndex(local_bounds, neighbor);
+          if (recompute_mask[neighbor_index] != 0U &&
+              removed_sources.contains(
+                  previous->nearest_obstacle_indices[neighbor_index])) {
+            continue;
+          }
+          const std::size_t source = previous->nearest_obstacle_indices[neighbor_index];
+          if (source != DistanceField3D::kNoNearestSource && source < total_voxels &&
+              classified.occupancy->isOccupied(
+                  localCellFromLinear(local_bounds, source))) {
+            replacement_sources.insert(source);
+          }
         }
       }
     }
   }
-  result.stats.distance_field.duration_ms = patch_build_ms;
+
+  std::vector<GridIndex3D> replacement_source_cells;
+  replacement_source_cells.reserve(replacement_sources.size());
+  for (const std::size_t source : replacement_sources) {
+    replacement_source_cells.push_back(localCellFromLinear(local_bounds, source));
+  }
+  std::size_t dependency_invalidated_voxels{0U};
+  for (std::size_t index = 0U; index < total_voxels; ++index) {
+    if (recompute_mask[index] == 0U ||
+        !removed_sources.contains(previous->nearest_obstacle_indices[index])) {
+      continue;
+    }
+    ++dependency_invalidated_voxels;
+    const GridIndex3D cell = localCellFromLinear(local_bounds, index);
+    double best_squared_cells = std::numeric_limits<double>::infinity();
+    std::size_t best_source = DistanceField3D::kNoNearestSource;
+    for (const GridIndex3D source : replacement_source_cells) {
+      const double dx = static_cast<double>(cell.x - source.x);
+      const double dy = static_cast<double>(cell.y - source.y);
+      const double dz = static_cast<double>(cell.z - source.z);
+      const double squared_cells = dx * dx + dy * dy + dz * dz;
+      if (squared_cells < best_squared_cells) {
+        best_squared_cells = squared_cells;
+        best_source = localLinearIndex(local_bounds, source);
+      }
+    }
+    if (best_squared_cells <= maximum_squared_cells) {
+      result.distances_m[index] =
+          static_cast<float>(std::sqrt(best_squared_cells) * local_bounds.resolution_m);
+      result.nearest_obstacle_indices[index] = best_source;
+    } else {
+      result.distances_m[index] = std::numeric_limits<float>::infinity();
+      result.nearest_obstacle_indices[index] = DistanceField3D::kNoNearestSource;
+    }
+  }
+
+  std::size_t lowered_voxels{0U};
+  for (const std::size_t source_index : inserted_sources) {
+    const GridIndex3D source = localCellFromLinear(local_bounds, source_index);
+    const SourceCellRegion affected =
+        expandedRegion(SourceCellRegion{.minimum_x = source.x,
+                                        .minimum_y = source.y,
+                                        .minimum_z = source.z,
+                                        .maximum_x_exclusive = source.x + 1,
+                                        .maximum_y_exclusive = source.y + 1,
+                                        .maximum_z_exclusive = source.z + 1},
+                       radius_cells, local_bounds);
+    for (int z = affected.minimum_z; z < affected.maximum_z_exclusive; ++z) {
+      for (int y = affected.minimum_y; y < affected.maximum_y_exclusive; ++y) {
+        for (int x = affected.minimum_x; x < affected.maximum_x_exclusive; ++x) {
+          const GridIndex3D cell{x, y, z};
+          const double dx = static_cast<double>(x - source.x);
+          const double dy = static_cast<double>(y - source.y);
+          const double dz = static_cast<double>(z - source.z);
+          const double squared_cells = dx * dx + dy * dy + dz * dz;
+          if (squared_cells > maximum_squared_cells) {
+            continue;
+          }
+          const std::size_t index = localLinearIndex(local_bounds, cell);
+          double previous_squared_cells = std::numeric_limits<double>::infinity();
+          if (result.nearest_obstacle_indices[index] !=
+              DistanceField3D::kNoNearestSource) {
+            const GridIndex3D previous_source = localCellFromLinear(
+                local_bounds, result.nearest_obstacle_indices[index]);
+            const double previous_dx = static_cast<double>(x - previous_source.x);
+            const double previous_dy = static_cast<double>(y - previous_source.y);
+            const double previous_dz = static_cast<double>(z - previous_source.z);
+            previous_squared_cells = previous_dx * previous_dx +
+                                     previous_dy * previous_dy +
+                                     previous_dz * previous_dz;
+          }
+          const float distance_m =
+              static_cast<float>(std::sqrt(squared_cells) * local_bounds.resolution_m);
+          if (squared_cells < previous_squared_cells) {
+            result.distances_m[index] = distance_m;
+            result.nearest_obstacle_indices[index] = source_index;
+            ++lowered_voxels;
+          }
+        }
+      }
+    }
+  }
+
+  ChangedCellRegion3D recomputed;
+  for (std::size_t index = 0U; index < total_voxels; ++index) {
+    if (recompute_mask[index] == 0U) {
+      continue;
+    }
+    const GridIndex3D cell = localCellFromLinear(local_bounds, index);
+    if (classified.occupancy->state(cell) == ObservedVoxelState::kUnknown) {
+      result.distances_m[index] = mppi::kUnknownEsdfDistanceM;
+    } else if (result.nearest_obstacle_indices[index] !=
+               DistanceField3D::kNoNearestSource) {
+      const GridIndex3D source =
+          localCellFromLinear(local_bounds, result.nearest_obstacle_indices[index]);
+      const double dx = static_cast<double>(cell.x - source.x);
+      const double dy = static_cast<double>(cell.y - source.y);
+      const double dz = static_cast<double>(cell.z - source.z);
+      result.distances_m[index] = static_cast<float>(
+          std::hypot(std::hypot(dx, dy), dz) * local_bounds.resolution_m);
+    } else {
+      result.distances_m[index] = std::numeric_limits<float>::infinity();
+    }
+    includeChangedCell(recomputed, cell);
+  }
+  result.stats.distance_field.voxel_count = recomputed.count;
+  result.stats.distance_field.duration_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                dynamic_started)
+          .count();
   result.stats.changed_voxels = changed.count;
-  result.stats.recomputed_voxels = recomputed_voxels;
+  result.stats.recomputed_voxels = recomputed.count;
   result.stats.reused_voxels =
-      total_voxels > recomputed_voxels ? total_voxels - recomputed_voxels : 0U;
+      total_voxels > recomputed.count ? total_voxels - recomputed.count : 0U;
+  result.stats.dependency_invalidated_voxels = dependency_invalidated_voxels;
+  result.stats.lowered_voxels = lowered_voxels;
   result.stats.dirty_chunks = dirty_chunks.size();
   result.stats.mode = ObservedEsdf3DBuildMode::kIncremental;
-  result.dirty_regions.reserve(regions.size());
-  for (const auto& [target_region, unused_patch_region] : regions) {
-    static_cast<void>(unused_patch_region);
+  const std::vector<ChangedCellRegion3D> dirty_regions =
+      splitChangedCellRegions3D(recomputed, local_bounds);
+  result.dirty_regions.reserve(dirty_regions.size());
+  for (const ChangedCellRegion3D& region : dirty_regions) {
     result.dirty_regions.push_back(ObservedEsdfDirtyRegion3D{
-        .minimum_x = target_region.minimum_x,
-        .minimum_y = target_region.minimum_y,
-        .minimum_z = target_region.minimum_z,
-        .maximum_x_exclusive = target_region.maximum_x_exclusive,
-        .maximum_y_exclusive = target_region.maximum_y_exclusive,
-        .maximum_z_exclusive = target_region.maximum_z_exclusive,
+        .minimum_x = region.minimum.x,
+        .minimum_y = region.minimum.y,
+        .minimum_z = region.minimum.z,
+        .maximum_x_exclusive = region.maximum_exclusive.x,
+        .maximum_y_exclusive = region.maximum_exclusive.y,
+        .maximum_z_exclusive = region.maximum_exclusive.z,
     });
   }
   return result;

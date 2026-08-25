@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <memory>
 #include <numbers>
@@ -27,9 +28,11 @@ previousField(const ObservedEsdf3D& field,
   return PreviousObservedEsdf3D{
       .grid = field.grid,
       .distances_m = field.distances_m,
+      .nearest_obstacle_indices = field.nearest_obstacle_indices,
       .source_occupancy =
           std::make_shared<const ObservedOccupancyGrid3D>(source_occupancy),
       .local_occupancy = field.local_occupancy,
+      .classification_override_cells = field.classification_override_cells,
       .occupancy_fingerprint = field.occupancy_fingerprint,
       .maximum_distance_m = field.maximum_distance_m,
   };
@@ -109,12 +112,11 @@ TEST(ObservedEsdf3DTest, FingerprintIgnoresCellsOutsideExactLocalBounds) {
   EXPECT_NE(observedOccupancyFingerprint(occupancy, local), empty);
 }
 
-TEST(ObservedEsdf3DTest,
-     ProprioceptiveSeedChangesOnlyPlanningClassificationAndNeverOccupiedCells) {
+TEST(ObservedEsdf3DTest, ProprioceptiveSeedRemainsTransientRawValidationEvidence) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
   ObservedOccupancyGrid3D occupancy{bounds};
   static_cast<void>(
-      occupancy.setState(GridIndex3D{8, 8, 8}, ObservedVoxelState::kOccupied));
+      occupancy.setState(GridIndex3D{12, 12, 12}, ObservedVoxelState::kOccupied));
   const ProprioceptiveFreeSpaceSeed3D seed{
       .position = Point3{2.0, 2.0, 2.0},
       .body_axis = FootprintBodyAxis{},
@@ -122,19 +124,24 @@ TEST(ObservedEsdf3DTest,
                                         .lower_extent_m = 0.25,
                                         .upper_extent_m = 0.25},
   };
-  const ObservedEsdf3D field =
-      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed);
+  const ObservedEsdf3D field = buildObservedEsdf3D(occupancy, bounds, 10.0);
 
   ASSERT_TRUE(field.local_occupancy);
-  EXPECT_GT(field.stats.proprioceptive_free_voxels, 0U);
-  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{8, 8, 8}),
-            ObservedVoxelState::kOccupied);
+  EXPECT_EQ(field.stats.proprioceptive_free_voxels, 0U);
   EXPECT_EQ(occupancy.state(GridIndex3D{7, 8, 8}), ObservedVoxelState::kUnknown);
   EXPECT_EQ(field.local_occupancy->state(GridIndex3D{7, 8, 8}),
-            ObservedVoxelState::kFree);
+            ObservedVoxelState::kUnknown);
+  EXPECT_FALSE(validateObservedFootprintAt(
+                   occupancy, seed.position, seed.body_axis, seed.footprint,
+                   ObservedSpaceValidationPolicy::kRequireKnownFree)
+                   .accepted());
+  EXPECT_TRUE(validateObservedFootprintAt(
+                  occupancy, seed.position, seed.body_axis, seed.footprint,
+                  ObservedSpaceValidationPolicy::kRequireKnownFree, &seed)
+                  .accepted());
 }
 
-TEST(ObservedEsdf3DTest, TiltedProprioceptiveSeedPromotesOnlyItsActualBodyVolume) {
+TEST(ObservedEsdf3DTest, TiltedProprioceptiveSeedIsBoundedToItsBodyVolume) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
   const ObservedOccupancyGrid3D occupancy{bounds};
   const ProprioceptiveFreeSpaceSeed3D tilted_seed{
@@ -144,18 +151,16 @@ TEST(ObservedEsdf3DTest, TiltedProprioceptiveSeedPromotesOnlyItsActualBodyVolume
                                         .lower_extent_m = 0.2,
                                         .upper_extent_m = 1.0},
   };
-  const GridIndex3D tilted_only_cell{10, 8, 10};
-
-  const ObservedEsdf3D without_seed = buildObservedEsdf3D(occupancy, bounds, 10.0);
-  const ObservedEsdf3D with_tilted_seed =
-      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &tilted_seed);
-
-  ASSERT_TRUE(without_seed.local_occupancy);
-  ASSERT_TRUE(with_tilted_seed.local_occupancy);
-  EXPECT_EQ(without_seed.local_occupancy->state(tilted_only_cell),
-            ObservedVoxelState::kUnknown);
-  EXPECT_EQ(with_tilted_seed.local_occupancy->state(tilted_only_cell),
-            ObservedVoxelState::kFree);
+  EXPECT_TRUE(validateObservedFootprintAt(
+                  occupancy, tilted_seed.position, tilted_seed.body_axis,
+                  tilted_seed.footprint,
+                  ObservedSpaceValidationPolicy::kRequireKnownFree, &tilted_seed)
+                  .accepted());
+  EXPECT_FALSE(validateObservedFootprintAt(
+                   occupancy, Point3{3.5, 2.125, 2.125}, tilted_seed.body_axis,
+                   tilted_seed.footprint,
+                   ObservedSpaceValidationPolicy::kRequireKnownFree, &tilted_seed)
+                   .accepted());
 }
 
 TEST(ObservedEsdf3DTest,
@@ -176,9 +181,8 @@ TEST(ObservedEsdf3DTest,
   ASSERT_TRUE(support.has_value());
 
   const ObservedEsdf3D field =
-      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed, &*support);
-  const ObservedEsdf3D unmasked =
-      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed);
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &*support);
+  const ObservedEsdf3D unmasked = buildObservedEsdf3D(occupancy, bounds, 10.0);
 
   ASSERT_TRUE(field.local_occupancy);
   EXPECT_GT(field.stats.launch_support_voxels, 1U);
@@ -294,7 +298,7 @@ TEST(ObservedEsdf3DTest, LaunchSupportCoversTheBoundedDepartureEnvelope) {
   ASSERT_TRUE(support.has_value());
   EXPECT_EQ(support->occupied_evidence_cells, 1U);
   const ObservedEsdf3D field =
-      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &seed, &*support);
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &*support);
   ASSERT_TRUE(field.local_occupancy);
   EXPECT_EQ(field.local_occupancy->state(swept_support_cell),
             ObservedVoxelState::kFree);
@@ -355,6 +359,43 @@ TEST(ObservedEsdf3DTest, IncrementalClassificationChangeMatchesFullRebuild) {
 }
 
 TEST(ObservedEsdf3DTest,
+     RepeatedSourceRemovalReassignsExactNearestObstacleDependencies) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  fillKnownFree(occupancy);
+  const GridIndex3D first{12, 16, 12};
+  const GridIndex3D second{24, 16, 12};
+  const GridIndex3D third{36, 16, 12};
+  ASSERT_TRUE(occupancy.setState(first, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(occupancy.setState(second, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(occupancy.setState(third, ObservedVoxelState::kOccupied));
+  const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, bounds, 8.0);
+  const PreviousObservedEsdf3D initial_previous = previousField(initial, occupancy);
+
+  ASSERT_TRUE(occupancy.setState(second, ObservedVoxelState::kFree));
+  const OccupancyChunkIndex3D second_dirty =
+      ObservedOccupancyGrid3D::chunkIndex(second);
+  const ObservedEsdf3D first_update =
+      updateObservedEsdf3D(occupancy, bounds, 8.0, &initial_previous,
+                           std::span{&second_dirty, 1U}, false, 0.75);
+  const ObservedEsdf3D first_full = buildObservedEsdf3D(occupancy, bounds, 8.0);
+  ASSERT_EQ(first_update.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
+  EXPECT_EQ(first_update.distances_m, first_full.distances_m);
+
+  const PreviousObservedEsdf3D first_previous = previousField(first_update, occupancy);
+  ASSERT_TRUE(occupancy.setState(first, ObservedVoxelState::kFree));
+  const OccupancyChunkIndex3D first_dirty = ObservedOccupancyGrid3D::chunkIndex(first);
+  const ObservedEsdf3D second_update =
+      updateObservedEsdf3D(occupancy, bounds, 8.0, &first_previous,
+                           std::span{&first_dirty, 1U}, false, 0.75);
+  const ObservedEsdf3D second_full = buildObservedEsdf3D(occupancy, bounds, 8.0);
+
+  EXPECT_EQ(second_update.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
+  EXPECT_GT(second_update.stats.dependency_invalidated_voxels, 0U);
+  EXPECT_EQ(second_update.distances_m, second_full.distances_m);
+}
+
+TEST(ObservedEsdf3DTest,
      DistributedChangesUseIndependentIncrementalRegionsInsteadOfGlobalAabb) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
   ObservedOccupancyGrid3D occupancy{bounds};
@@ -363,7 +404,7 @@ TEST(ObservedEsdf3DTest,
   const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
   const GridIndex3D first{5, 5, 5};
   const GridIndex3D second{40, 25, 18};
-  const OccupancyChunkIndex3D dirty_chunks[] = {
+  const std::array<OccupancyChunkIndex3D, 2U> dirty_chunks{
       ObservedOccupancyGrid3D::chunkIndex(first),
       ObservedOccupancyGrid3D::chunkIndex(second),
   };
@@ -380,8 +421,7 @@ TEST(ObservedEsdf3DTest,
   EXPECT_EQ(incremental.stats.changed_voxels, 2U);
 }
 
-TEST(ObservedEsdf3DTest,
-     EvidenceOnlyClassificationChangeIsIncrementalWithoutDirtyChunks) {
+TEST(ObservedEsdf3DTest, LaunchSupportOverlayChangeIsIncrementalWithoutDirtyChunks) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
   ObservedOccupancyGrid3D occupancy{bounds};
   static_cast<void>(
@@ -398,17 +438,23 @@ TEST(ObservedEsdf3DTest,
       .body_axis = FootprintBodyAxis{},
       .footprint = footprint,
   };
+  const LaunchSupportContact3D first_support =
+      makeVehicleLandedSupportContact3D(bounds, first_seed);
+  const LaunchSupportContact3D second_support =
+      makeVehicleLandedSupportContact3D(bounds, second_seed);
   const ObservedEsdf3D initial =
-      buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &first_seed);
+      buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &first_support);
   const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
 
   const ObservedEsdf3D incremental = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &previous, {}, false, 0.75, nullptr, &second_seed);
+      occupancy, bounds, 3.0, &previous, {}, false, 0.75, nullptr, &second_support);
   const ObservedEsdf3D full =
-      buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &second_seed);
+      buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &second_support);
 
   EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
   EXPECT_GT(incremental.stats.changed_voxels, 0U);
+  EXPECT_LT(incremental.stats.classified_voxels, incremental.distances_m.size());
+  EXPECT_GT(incremental.stats.reused_classification_voxels, 0U);
   EXPECT_EQ(incremental.distances_m, full.distances_m);
   EXPECT_EQ(incremental.occupancy_fingerprint, full.occupancy_fingerprint);
 }
@@ -425,15 +471,18 @@ TEST(ObservedEsdf3DTest,
                                         .lower_extent_m = 0.5,
                                         .upper_extent_m = 0.5},
   };
+  const LaunchSupportContact3D support =
+      makeVehicleLandedSupportContact3D(bounds, seed);
+  ASSERT_TRUE(occupancy.setState(changed_cell, ObservedVoxelState::kOccupied));
   const ObservedEsdf3D initial =
-      buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &seed);
+      buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &support);
   const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
   ASSERT_TRUE(initial.local_occupancy);
   ASSERT_EQ(initial.local_occupancy->state(changed_cell), ObservedVoxelState::kFree);
   ASSERT_TRUE(occupancy.setState(changed_cell, ObservedVoxelState::kFree));
 
-  const ObservedEsdf3D update = updateObservedEsdf3D(occupancy, bounds, 3.0, &previous,
-                                                     {}, false, 0.75, nullptr, &seed);
+  const ObservedEsdf3D update = updateObservedEsdf3D(
+      occupancy, bounds, 3.0, &previous, {}, false, 0.75, nullptr, &support);
 
   EXPECT_EQ(update.stats.mode, ObservedEsdf3DBuildMode::kFull);
   EXPECT_TRUE(update.stats.incremental_fallback);
@@ -492,7 +541,7 @@ TEST(ObservedEsdf3DTest, FallsBackWhenDirtyLineageOrPatchBudgetIsInsufficient) {
   const OccupancyChunkIndex3D dirty =
       ObservedOccupancyGrid3D::chunkIndex(GridIndex3D{20, 15, 10});
   const ObservedEsdf3D over_budget = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &previous, std::span{&dirty, 1U}, false, 0.01);
+      occupancy, bounds, 3.0, &previous, std::span{&dirty, 1U}, false, 0.001);
   EXPECT_EQ(over_budget.stats.mode, ObservedEsdf3DBuildMode::kFull);
   EXPECT_TRUE(over_budget.stats.incremental_fallback);
 }
@@ -547,6 +596,15 @@ TEST(ObservedEsdf3DTest, MaximumDistanceCoversFootprintAndVoxelCorrection) {
 
   EXPECT_DOUBLE_EQ(required, 6.0 + std::hypot(0.82, 0.35) + std::numbers::sqrt3 * 0.25);
   EXPECT_TRUE(std::isnan(requiredObservedEsdfMaximumDistanceM(-1.0, footprint, 0.25)));
+}
+
+TEST(ObservedEsdf3DTest, PeriodicFullAuditSkipsStartupAndFiresOnExactIntervals) {
+  EXPECT_FALSE(observedEsdfFullAuditDue(0U, 120U));
+  EXPECT_FALSE(observedEsdfFullAuditDue(119U, 120U));
+  EXPECT_TRUE(observedEsdfFullAuditDue(120U, 120U));
+  EXPECT_FALSE(observedEsdfFullAuditDue(121U, 120U));
+  EXPECT_TRUE(observedEsdfFullAuditDue(240U, 120U));
+  EXPECT_FALSE(observedEsdfFullAuditDue(120U, 0U));
 }
 
 TEST(ObservedEsdf3DTest, RecenterHonorsWorldEdges) {

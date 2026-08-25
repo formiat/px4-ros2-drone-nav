@@ -19,6 +19,9 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         implementation = (SOURCE / "observed_esdf_3d.cpp").read_text(
             encoding="utf-8"
         )
+        window = (SOURCE / "observed_esdf_3d_window.cpp").read_text(
+            encoding="utf-8"
+        )
         production = (SOURCE / "production_mppi_node_observed_esdf.cpp").read_text(
             encoding="utf-8"
         )
@@ -31,34 +34,39 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
             "PreviousObservedEsdf3D",
             "ObservedEsdfCoverage3D",
             "updateObservedEsdf3D",
+            "nearest_obstacle_indices",
+            "classification_override_cells",
         ):
             self.assertIn(token, header)
-        target_halo = implementation.index(
-            "expandedRegion(source_region, radius_cells"
-        )
-        source_halo = implementation.index(
-            "expandedRegion(target_region, radius_cells", target_halo
-        )
-        patch_build = implementation.index("DistanceField3D::buildLocal", source_halo)
-        self.assertLess(target_halo, source_halo)
-        self.assertLess(source_halo, patch_build)
-        self.assertIn("rawChangesCoveredByDirtyChunks", implementation)
+        for token in (
+            "classifyObservedGrid3DIncremental",
+            "rawChangesCoveredByDirtyChunks",
+            "inserted_sources",
+            "removed_sources",
+            "nearest_obstacle_indices",
+            "dependency_invalidated_voxels",
+            "maximum_rebuild_ratio",
+        ):
+            self.assertIn(token, implementation)
+        self.assertNotIn("DistanceField3D::buildLocal", implementation)
         self.assertIn("source_occupancy", header)
         self.assertIn("field.stats.mode != ObservedEsdf3DBuildMode::kReused", production)
         parent_validation = production.index("resident_parent_valid")
         gpu_upload = production.index("engine_->updateEsdf", parent_validation)
         self.assertLess(parent_validation, gpu_upload)
         self.assertIn("reason=superseded_esdf_parent", production)
-        evidence_change = production.index(
-            "if (active_prepared && !execution_evidence_unchanged)"
-        )
+        evidence_change = production.index("if (active_prepared && !launch_support_unchanged)")
         parent_selection = production.index(
             "active_incremental_parent_available", evidence_change
         )
         evidence_refresh = production[evidence_change:parent_selection]
         self.assertIn("incremental_refresh=true", evidence_refresh)
         self.assertNotIn("prepared_esdf_.reset()", evidence_refresh)
+        self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_CHANGED", production)
+        self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_REFRESHED", production)
+        self.assertIn("observedEsdfFullAuditDue", production)
         self.assertNotIn("preferred_distance_m) + 20.0", production)
+        self.assertIn("planLaunchSupportDeparture3D", window)
         self.assertIn(
             "observed_esdf_resource.local_occupancy->bounds()", pose_recenter
         )

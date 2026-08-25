@@ -64,6 +64,12 @@ double requiredObservedEsdfMaximumDistanceM(const double preferred_distance_m,
   return preferred_distance_m + bounding_radius_m + std::numbers::sqrt3 * resolution_m;
 }
 
+bool observedEsdfFullAuditDue(const std::uint64_t completed_builds,
+                              const std::size_t audit_interval_builds) noexcept {
+  return completed_builds != 0U && audit_interval_builds != 0U &&
+         completed_builds % audit_interval_builds == 0U;
+}
+
 const char* observedEsdf3DBuildModeName(const ObservedEsdf3DBuildMode mode) noexcept {
   switch (mode) {
     case ObservedEsdf3DBuildMode::kFull:

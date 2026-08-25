@@ -31,6 +31,10 @@ namespace {
   world.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
           GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4}),
+      .nearest_obstacle_indices =
+          std::make_shared<const std::vector<std::size_t>>(64U, 0U),
+      .classification_override_cells =
+          std::make_shared<const std::vector<GridIndex3D>>(),
       .coverage =
           ObservedEsdfCoverage3D{
               .source_raw_version = {.producer_instance_id = 7U,
@@ -185,6 +189,10 @@ TEST(ProductionMppiRouteWorldTest,
   completed_world_build.observed_raw_world_owner = observed_owner;
   completed_world_build.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = observed_occupancy,
+      .nearest_obstacle_indices =
+          std::make_shared<const std::vector<std::size_t>>(64U, 0U),
+      .classification_override_cells =
+          std::make_shared<const std::vector<GridIndex3D>>(),
       .coverage = ObservedEsdfCoverage3D{.raw_local_fingerprint = 91U},
   };
   ProductionMppiPreparedEsdf resident;

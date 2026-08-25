@@ -24,16 +24,19 @@ TEST(DistanceField3D, ComputesEuclideanDistanceInThreeAxes) {
   EXPECT_GE(field.stats().duration_ms, field.stats().x_pass_ms +
                                            field.stats().y_pass_ms +
                                            field.stats().z_pass_ms);
+  EXPECT_EQ(field.nearestSourceLinearIndexAt({2, 2, 2}), 31U);
 }
 
 TEST(DistanceField3D, KeepsFarAndSourceFreeWorldAtInfinity) {
   OccupancyGrid3D empty{GridBounds3D{0.0, 0.0, 0.0, 0.5, 3, 3, 3}};
   const DistanceField3D empty_field = DistanceField3D::build(empty, 2.0);
   EXPECT_TRUE(std::isinf(empty_field.distanceAt({1, 1, 1})));
+  EXPECT_FALSE(empty_field.nearestSourceLinearIndexAt({1, 1, 1}).has_value());
 
   empty.setOccupied({0, 0, 0});
   const DistanceField3D capped = DistanceField3D::build(empty, 0.75);
   EXPECT_TRUE(std::isinf(capped.distanceAt({2, 2, 2})));
+  EXPECT_FALSE(capped.nearestSourceLinearIndexAt({2, 2, 2}).has_value());
 }
 
 TEST(DistanceField3D, BuildsAlignedDenseLocalRegionFromSparseWorld) {
@@ -62,6 +65,8 @@ TEST(DistanceField3D, ParallelBuildMatchesSerialBuildExactly) {
   ASSERT_EQ(serial.distancesM().size(), parallel.distancesM().size());
   for (std::size_t index = 0U; index < serial.distancesM().size(); ++index) {
     EXPECT_EQ(serial.distancesM()[index], parallel.distancesM()[index]);
+    EXPECT_EQ(serial.nearestSourceLinearIndices()[index],
+              parallel.nearestSourceLinearIndices()[index]);
   }
   EXPECT_EQ(serial.stats().source_voxels, parallel.stats().source_voxels);
 }

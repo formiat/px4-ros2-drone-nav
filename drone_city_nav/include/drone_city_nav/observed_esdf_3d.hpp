@@ -32,9 +32,13 @@ struct ObservedEsdf3DBuildStats {
   std::size_t unknown_voxels{0U};
   std::size_t proprioceptive_free_voxels{0U};
   std::size_t launch_support_voxels{0U};
+  std::size_t classified_voxels{0U};
+  std::size_t reused_classification_voxels{0U};
   std::size_t changed_voxels{0U};
   std::size_t recomputed_voxels{0U};
   std::size_t reused_voxels{0U};
+  std::size_t dependency_invalidated_voxels{0U};
+  std::size_t lowered_voxels{0U};
   std::size_t dirty_chunks{0U};
   double classification_ms{0.0};
   ObservedEsdf3DBuildMode mode{ObservedEsdf3DBuildMode::kFull};
@@ -44,7 +48,9 @@ struct ObservedEsdf3DBuildStats {
 struct ObservedEsdf3D {
   mppi::EsdfGrid grid{};
   std::vector<float> distances_m;
+  std::vector<std::size_t> nearest_obstacle_indices;
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
+  std::vector<GridIndex3D> classification_override_cells;
   std::vector<ObservedEsdfDirtyRegion3D> dirty_regions;
   std::uint64_t occupancy_fingerprint{0U};
   double maximum_distance_m{0.0};
@@ -54,8 +60,10 @@ struct ObservedEsdf3D {
 struct PreviousObservedEsdf3D {
   mppi::EsdfGrid grid{};
   std::span<const float> distances_m;
+  std::span<const std::size_t> nearest_obstacle_indices;
   std::shared_ptr<const ObservedOccupancyGrid3D> source_occupancy;
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
+  std::span<const GridIndex3D> classification_override_cells;
   std::uint64_t occupancy_fingerprint{0U};
   double maximum_distance_m{0.0};
 };
@@ -77,6 +85,8 @@ struct ObservedEsdfCoverage3D {
 
 struct ObservedEsdfResource3D {
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
+  std::shared_ptr<const std::vector<std::size_t>> nearest_obstacle_indices;
+  std::shared_ptr<const std::vector<GridIndex3D>> classification_override_cells;
   ObservedEsdfCoverage3D coverage{};
 };
 
@@ -134,7 +144,6 @@ struct LaunchSupportDeparture3D {
 buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
                     const GridBounds3D& local_bounds, double maximum_distance_m,
                     BoundedWorkerPool* worker_pool = nullptr,
-                    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
                     const LaunchSupportContact3D* launch_support_contact = nullptr);
 
 [[nodiscard]] ObservedEsdf3D updateObservedEsdf3D(
@@ -142,13 +151,15 @@ buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
     double maximum_distance_m, const PreviousObservedEsdf3D* previous,
     std::span<const OccupancyChunkIndex3D> dirty_chunks, bool full_reset,
     double maximum_rebuild_ratio, BoundedWorkerPool* worker_pool = nullptr,
-    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
     const LaunchSupportContact3D* launch_support_contact = nullptr);
 
 [[nodiscard]] double
 requiredObservedEsdfMaximumDistanceM(double preferred_distance_m,
                                      const SweptFootprintConfig& footprint,
                                      double resolution_m) noexcept;
+
+[[nodiscard]] bool observedEsdfFullAuditDue(std::uint64_t completed_builds,
+                                            std::size_t audit_interval_builds) noexcept;
 
 [[nodiscard]] const char*
 observedEsdf3DBuildModeName(ObservedEsdf3DBuildMode mode) noexcept;

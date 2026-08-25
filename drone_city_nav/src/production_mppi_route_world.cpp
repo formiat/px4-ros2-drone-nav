@@ -10,7 +10,8 @@ namespace {
 [[nodiscard]] bool observedEsdfCoverageMatches(const ProductionMppiPreparedEsdf& world,
                                                const RawMapVersion& raw) noexcept {
   const ObservedEsdfResource3D& resource = world.observed_esdf_resource;
-  if (!resource.local_occupancy || !resource.coverage.coherent()) {
+  if (!resource.local_occupancy || !resource.nearest_obstacle_indices ||
+      !resource.classification_override_cells || !resource.coverage.coherent()) {
     return false;
   }
   const ObservedEsdfCoverage3D& coverage = resource.coverage;
@@ -26,6 +27,7 @@ namespace {
          coverage.raw_local_fingerprint == world.source_occupied_fingerprint &&
          coverage.esdf_fingerprint == world.revision &&
          coverage.total_voxels == world.distances_m->size() &&
+         coverage.total_voxels == resource.nearest_obstacle_indices->size() &&
          coverage.total_voxels == voxel_count && world.grid.outside_is_unknown &&
          bounds.width_cells == world.grid.width &&
          bounds.height_cells == world.grid.height &&

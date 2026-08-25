@@ -230,6 +230,7 @@ production_mppi_node:
     no_static_3d_esdf_horizontal_recenter_margin_m: 12.0
     no_static_3d_esdf_vertical_recenter_margin_m: 9.0
     no_static_3d_esdf_incremental_maximum_rebuild_ratio: 0.65
+    no_static_3d_esdf_full_audit_interval_builds: 120
     topological_graph_3d_coarse_sample_stride_cells: 2
     topological_graph_3d_refined_sample_stride_cells: 1
     topological_graph_3d_block_size_cells: 16
