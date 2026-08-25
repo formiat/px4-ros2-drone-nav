@@ -661,6 +661,49 @@ previousObservedEsdfIsCompatible(const PreviousObservedEsdf3D& previous,
   };
 }
 
+[[nodiscard]] bool regionsTouchOrOverlap(const SourceCellRegion& first,
+                                         const SourceCellRegion& second) noexcept {
+  return first.minimum_x <= second.maximum_x_exclusive &&
+         second.minimum_x <= first.maximum_x_exclusive &&
+         first.minimum_y <= second.maximum_y_exclusive &&
+         second.minimum_y <= first.maximum_y_exclusive &&
+         first.minimum_z <= second.maximum_z_exclusive &&
+         second.minimum_z <= first.maximum_z_exclusive;
+}
+
+[[nodiscard]] SourceCellRegion unionRegion(const SourceCellRegion& first,
+                                           const SourceCellRegion& second) noexcept {
+  return SourceCellRegion{
+      .minimum_x = std::min(first.minimum_x, second.minimum_x),
+      .minimum_y = std::min(first.minimum_y, second.minimum_y),
+      .minimum_z = std::min(first.minimum_z, second.minimum_z),
+      .maximum_x_exclusive =
+          std::max(first.maximum_x_exclusive, second.maximum_x_exclusive),
+      .maximum_y_exclusive =
+          std::max(first.maximum_y_exclusive, second.maximum_y_exclusive),
+      .maximum_z_exclusive =
+          std::max(first.maximum_z_exclusive, second.maximum_z_exclusive),
+  };
+}
+
+void mergeTouchingRegions(std::vector<SourceCellRegion>& regions) {
+  bool merged{true};
+  while (merged) {
+    merged = false;
+    for (std::size_t first = 0U; first < regions.size() && !merged; ++first) {
+      for (std::size_t second = first + 1U; second < regions.size(); ++second) {
+        if (!regionsTouchOrOverlap(regions[first], regions[second])) {
+          continue;
+        }
+        regions[first] = unionRegion(regions[first], regions[second]);
+        regions.erase(regions.begin() + static_cast<std::ptrdiff_t>(second));
+        merged = true;
+        break;
+      }
+    }
+  }
+}
+
 } // namespace
 
 GridBounds3D selectLocalObservedEsdfBounds(const GridBounds3D& world_bounds,
@@ -935,8 +978,8 @@ ObservedEsdf3D updateObservedEsdf3D(
   const std::vector<ChangedCellRegion3D> changed_regions =
       splitChangedCellRegions3D(changed, local_bounds);
   const std::size_t total_voxels = voxelCount(local_bounds);
-  std::vector<std::pair<SourceCellRegion, SourceCellRegion>> regions;
-  regions.reserve(changed_regions.size());
+  std::vector<SourceCellRegion> target_regions;
+  target_regions.reserve(changed_regions.size());
   for (const ChangedCellRegion3D& changed_region : changed_regions) {
     const SourceCellRegion source_region{
         .minimum_x = changed_region.minimum.x,
@@ -948,18 +991,27 @@ ObservedEsdf3D updateObservedEsdf3D(
     };
     const SourceCellRegion target_region =
         expandedRegion(source_region, radius_cells, local_bounds);
+    target_regions.push_back(target_region);
+  }
+  // Each region needs a maximum-distance halo.  Merge first so overlapping
+  // halos are built once and the budget reflects their global unique work.
+  mergeTouchingRegions(target_regions);
+  std::vector<std::pair<SourceCellRegion, SourceCellRegion>> regions;
+  regions.reserve(target_regions.size());
+  std::size_t global_patch_voxels{0U};
+  for (const SourceCellRegion target_region : target_regions) {
     const SourceCellRegion patch_region =
         expandedRegion(target_region, radius_cells, local_bounds);
-    if (regionVoxelCount(target_region) >= total_voxels ||
-        static_cast<double>(regionVoxelCount(patch_region)) /
-                static_cast<double>(total_voxels) >
-            maximum_rebuild_ratio) {
-      ObservedEsdf3D result = buildFullObservedEsdf3D(
-          classified, maximum_distance_m, worker_pool, dirty_chunks.size(), true);
-      result.stats.changed_voxels = changed.count;
-      return result;
-    }
+    global_patch_voxels += regionVoxelCount(patch_region);
     regions.emplace_back(target_region, patch_region);
+  }
+  if (global_patch_voxels >= total_voxels ||
+      static_cast<double>(global_patch_voxels) / static_cast<double>(total_voxels) >
+          maximum_rebuild_ratio) {
+    ObservedEsdf3D result = buildFullObservedEsdf3D(
+        classified, maximum_distance_m, worker_pool, dirty_chunks.size(), true);
+    result.stats.changed_voxels = changed.count;
+    return result;
   }
 
   const OccupancyGrid3D occupied = classified.occupancy->occupiedSnapshot();
