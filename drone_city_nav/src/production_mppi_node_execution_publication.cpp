@@ -827,6 +827,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   {
     const std::scoped_lock input_lock{input_mutex_};
     const std::int64_t publication_now_ns = get_clock()->now().nanoseconds();
+    // A revoked snapshot with no live horizon owner already represents the
+    // requested tombstone. Do not emit a fresh transport sequence for every
+    // duplicate callback; publish only while there is an owner to revoke.
+    if (!transition_required && !execution_horizon_owner_.valid) {
+      return publication;
+    }
     const bool current_session =
         offboard_session_admission_.valid() &&
         offboard_session_admission_.latest_source_stamp_ns > 0 &&
