@@ -29,6 +29,11 @@ struct ProductionMppiNavigation {
   bool yaw_rate_authoritative{false};
   bool linear_acceleration_authoritative{false};
   bool yaw_acceleration_authoritative{false};
+  // World construction needs a coherent position and velocity, whereas MPPI
+  // execution additionally needs a current heading and yaw-rate. Keep these
+  // authorities separate so a transient yaw fault cannot freeze raw/ESDF
+  // evidence while it still correctly prevents horizon publication.
+  bool world_state_authoritative{false};
   bool full_state_authoritative{false};
   bool measured_acceleration_valid{false};
   bool valid{false};

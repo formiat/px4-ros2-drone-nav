@@ -121,8 +121,15 @@ void ProductionMppiNode::onLocalPosition(
       std::isfinite(navigation.state.y) && std::isfinite(navigation.state.z) &&
       std::isfinite(navigation.state.vx) && std::isfinite(navigation.state.vy) &&
       std::isfinite(navigation.state.vz) && std::isfinite(navigation.state.yaw);
+  const bool world_state_contract =
+      position_velocity_contract && std::isfinite(map_position.x) &&
+      std::isfinite(map_position.y) && std::isfinite(map_velocity.x) &&
+      std::isfinite(map_velocity.y) && std::isfinite(navigation.state.x) &&
+      std::isfinite(navigation.state.y) && std::isfinite(navigation.state.z) &&
+      std::isfinite(navigation.state.vx) && std::isfinite(navigation.state.vy) &&
+      std::isfinite(navigation.state.vz);
   const bool authoritative_state_contract =
-      position_velocity_contract && heading_contract && converted_state_contract;
+      world_state_contract && heading_contract && converted_state_contract;
   const std::uint64_t source_payload_fingerprint =
       navigationPayloadFingerprint(message);
 
@@ -240,6 +247,13 @@ void ProductionMppiNode::onLocalPosition(
       return;
     }
     if (!authoritative_state_contract) {
+      navigation.position_velocity_authoritative = world_state_contract;
+      navigation.heading_authoritative = false;
+      navigation.yaw_rate_authoritative = false;
+      navigation.world_state_authoritative =
+          world_state_contract && !navigation_frame_reset_unresolved_;
+      navigation.full_state_authoritative = false;
+      navigation.valid = false;
       navigation.revision = navigation_.revision + 1U;
       navigation_ = navigation;
       latest_prediction_error_ = {};
@@ -250,7 +264,7 @@ void ProductionMppiNode::onLocalPosition(
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "LOCAL_POSITION rejected=true reason=non_authoritative_state "
-          "source_timestamp_us=%" PRIu64 " position_velocity=%s heading=%s",
+          "source_timestamp_us=%" PRIu64 " world_state=%s heading=%s",
           navigation.source_timestamp_us, position_velocity_contract ? "true" : "false",
           heading_contract ? "true" : "false");
       return;
@@ -284,6 +298,8 @@ void ProductionMppiNode::onLocalPosition(
     navigation.full_state_authoritative = navigation.position_velocity_authoritative &&
                                           navigation.heading_authoritative &&
                                           navigation.yaw_rate_authoritative;
+    navigation.world_state_authoritative = navigation.position_velocity_authoritative &&
+                                           !navigation_frame_reset_unresolved_;
     navigation.measured_acceleration_valid =
         navigation.linear_acceleration_authoritative &&
         navigation.yaw_acceleration_authoritative;
@@ -313,11 +329,11 @@ void ProductionMppiNode::onLocalPosition(
       latest_prediction_error_.valid = true;
     }
   }
-  if (navigation.valid) {
+  if (navigation.world_state_authoritative) {
     queueLatestObservedWorldForPose(navigation);
   }
-  if (navigation.valid && use_static_map_ && navigationObjective() &&
-      !world_ready_.load()) {
+  if (navigation.world_state_authoritative && use_static_map_ &&
+      navigationObjective() && !world_ready_.load()) {
     requestStaticEsdfWork();
   }
 }

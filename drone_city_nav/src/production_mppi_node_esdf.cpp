@@ -210,7 +210,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           const std::scoped_lock lock{input_mutex_};
           navigation = navigation_;
         }
-        if (!navigation.valid) {
+        if (!navigation.world_state_authoritative) {
           if (proactive_roi_refresh) {
             finish_roi_refresh();
           }

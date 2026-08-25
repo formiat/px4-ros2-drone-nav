@@ -48,7 +48,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     applied_control = applied_control_;
     execution_horizon_owner = execution_horizon_owner_;
   }
-  if (!navigation.valid) {
+  if (!navigation.world_state_authoritative) {
     return std::nullopt;
   }
 
