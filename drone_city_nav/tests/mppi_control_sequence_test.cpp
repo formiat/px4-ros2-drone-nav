@@ -14,6 +14,42 @@
 namespace drone_city_nav::mppi {
 namespace {
 
+TEST(MppiControlSequenceTest, UploadsInteriorEsdfDirtyRegion) {
+  BenchmarkConfig config;
+  config.rollouts = 64U;
+  config.steps = 8U;
+  MppiCudaEngine engine{config};
+  const EsdfGrid grid{
+      .width = 161,
+      .height = 161,
+      .resolution_m = 0.25F,
+      .depth = 121,
+  };
+  std::vector<float> esdf(static_cast<std::size_t>(grid.width) *
+                              static_cast<std::size_t>(grid.height) *
+                              static_cast<std::size_t>(grid.depth),
+                          20.0F);
+
+  ASSERT_TRUE(engine.updateEsdf(EsdfSnapshot{grid, esdf, 1U}).accepted);
+  esdf[(60U * static_cast<std::size_t>(grid.height) + 80U) *
+           static_cast<std::size_t>(grid.width) +
+       80U] = 0.0F;
+  const std::array dirty_regions{EsdfDirtyRegion{
+      .minimum_x = 80,
+      .minimum_y = 80,
+      .minimum_z = 60,
+      .maximum_x_exclusive = 81,
+      .maximum_y_exclusive = 81,
+      .maximum_z_exclusive = 61,
+  }};
+
+  const EsdfUploadResult patched =
+      engine.updateEsdf(EsdfSnapshot{grid, esdf, 2U, dirty_regions});
+
+  EXPECT_TRUE(patched.accepted);
+  EXPECT_EQ(patched.revision, 2U);
+}
+
 TEST(MppiControlSequenceTest, FractionalShiftInterpolatesWithoutDroppingWholeTick) {
   const std::array<Control, 3> controls{
       Control{.ax = 0.0F},

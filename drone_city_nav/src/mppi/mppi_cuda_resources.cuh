@@ -98,6 +98,16 @@ private:
   return elapsed_ms;
 }
 
+[[nodiscard]] inline cudaPitchedPtr
+hostEsdfPitchedPtr(const EsdfSnapshot& snapshot, const std::size_t x_offset = 0U) {
+  const std::size_t row_width_bytes =
+      static_cast<std::size_t>(snapshot.grid.width) * sizeof(float);
+  return make_cudaPitchedPtr(const_cast<float*>(snapshot.distances_m.data()) + x_offset,
+                             row_width_bytes,
+                             static_cast<std::size_t>(snapshot.grid.width) - x_offset,
+                             static_cast<std::size_t>(snapshot.grid.height));
+}
+
 class EsdfTexture {
 public:
   EsdfTexture() = default;
@@ -134,11 +144,7 @@ public:
           "cudaCreateTextureObject");
     }
     cudaMemcpy3DParms copy{};
-    copy.srcPtr = make_cudaPitchedPtr(const_cast<float*>(snapshot.distances_m.data()),
-                                      static_cast<std::size_t>(snapshot.grid.width) *
-                                          sizeof(float),
-                                      static_cast<std::size_t>(snapshot.grid.width),
-                                      static_cast<std::size_t>(snapshot.grid.height));
+    copy.srcPtr = hostEsdfPitchedPtr(snapshot);
     copy.dstArray = array_;
     copy.extent =
         make_cudaExtent(static_cast<std::size_t>(snapshot.grid.width),
@@ -177,15 +183,10 @@ public:
         throw std::invalid_argument{"invalid ESDF dirty region"};
       }
       cudaMemcpy3DParms copy{};
-      copy.srcPtr = make_cudaPitchedPtr(const_cast<float*>(snapshot.distances_m.data()),
-                                        static_cast<std::size_t>(snapshot.grid.width) *
-                                            sizeof(float),
-                                        static_cast<std::size_t>(snapshot.grid.width),
-                                        static_cast<std::size_t>(snapshot.grid.height));
-      copy.srcPos =
-          make_cudaPos(static_cast<std::size_t>(region.minimum_x) * sizeof(float),
-                       static_cast<std::size_t>(region.minimum_y),
-                       static_cast<std::size_t>(region.minimum_z));
+      copy.srcPtr =
+          hostEsdfPitchedPtr(snapshot, static_cast<std::size_t>(region.minimum_x));
+      copy.srcPos = make_cudaPos(0U, static_cast<std::size_t>(region.minimum_y),
+                                 static_cast<std::size_t>(region.minimum_z));
       copy.dstArray = array_;
       copy.dstPos = make_cudaPos(static_cast<std::size_t>(region.minimum_x),
                                  static_cast<std::size_t>(region.minimum_y),
