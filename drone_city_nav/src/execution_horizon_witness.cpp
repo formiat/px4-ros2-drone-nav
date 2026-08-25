@@ -34,17 +34,28 @@ feedbackAuthorityCoherent(const ExecutionHorizonWitnessMode mode,
 
 [[nodiscard]] bool timestampPairValid(const std::int64_t source_stamp_ns,
                                       const std::int64_t receive_stamp_ns) noexcept {
-  return source_stamp_ns > 0 && receive_stamp_ns >= source_stamp_ns;
+  // Source and receipt clocks are independently authoritative.  Their order
+  // is not meaningful under distributed ROS /clock delivery.
+  return source_stamp_ns > 0 && receive_stamp_ns > 0;
+}
+
+[[nodiscard]] bool timestampFreshAt(const std::int64_t timestamp_ns,
+                                    const std::int64_t now_ns,
+                                    const std::int64_t maximum_age_ns) noexcept {
+  if (timestamp_ns <= 0 || now_ns <= 0 || maximum_age_ns <= 0) {
+    return false;
+  }
+  return timestamp_ns <= now_ns ? now_ns - timestamp_ns <= maximum_age_ns
+                                : timestamp_ns - now_ns <= maximum_age_ns;
 }
 
 [[nodiscard]] bool timestampPairFreshAt(const std::int64_t source_stamp_ns,
                                         const std::int64_t receive_stamp_ns,
                                         const std::int64_t now_ns,
                                         const std::int64_t maximum_age_ns) noexcept {
-  return timestampPairValid(source_stamp_ns, receive_stamp_ns) && now_ns > 0 &&
-         maximum_age_ns > 0 && source_stamp_ns <= now_ns &&
-         receive_stamp_ns <= now_ns && now_ns - source_stamp_ns <= maximum_age_ns &&
-         now_ns - receive_stamp_ns <= maximum_age_ns;
+  return timestampPairValid(source_stamp_ns, receive_stamp_ns) &&
+         timestampFreshAt(source_stamp_ns, now_ns, maximum_age_ns) &&
+         timestampFreshAt(receive_stamp_ns, now_ns, maximum_age_ns);
 }
 
 [[nodiscard]] bool
@@ -465,8 +476,7 @@ bool ExecutionHorizonWitnessState::valid() const noexcept {
       return false;
     }
   } else {
-    if (latest_session_receive_stamp_ns < offboard_session.latest_source_stamp_ns ||
-        !feedback_source_identity.valid()) {
+    if (!feedback_source_identity.valid()) {
       return false;
     }
 

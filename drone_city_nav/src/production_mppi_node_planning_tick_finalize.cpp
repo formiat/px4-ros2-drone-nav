@@ -185,7 +185,8 @@ void ProductionMppiNode::finalizePlanningTick(
               std::max(0.5, distance3D(direct_points.front(), direct_points.back())),
               speed_policy.reference_speed_mps),
           {}, speed_policy.reference_speed_mps, speed_policy.reference_speed_mps,
-          RouteEndpointSemantics3D::kContinuation, speed_policy_config_);
+          RouteEndpointSemantics3D::kContinuation, speed_policy_config_,
+          mppi_config_.dynamics);
     }
     rviz = ProductionMppiRvizSnapshot{
         .candidate_horizon = result.horizon,

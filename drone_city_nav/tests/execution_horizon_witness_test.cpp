@@ -696,7 +696,7 @@ TEST(ExecutionHorizonWitnessTest, RejectsMalformedFeedbackContracts) {
 
   candidate = feedback();
   candidate.receive_stamp_ns = candidate.source_stamp_ns - 1;
-  EXPECT_TRUE(admitExecutionHorizonFeedback(session, candidate).invalid);
+  EXPECT_FALSE(admitExecutionHorizonFeedback(session, candidate).invalid);
 
   candidate = feedback();
   candidate.content_fingerprint = 0U;
@@ -858,9 +858,9 @@ TEST(ExecutionHorizonWitnessTest, FreshnessRejectsStaleAndFutureEvidence) {
   EXPECT_FALSE(offboardSessionFreshAt(state, 2'100'000'001LL, kMaximumAgeNs));
   EXPECT_FALSE(executionHorizonWitnessFreshAt(state, requirement(), 2'100'000'001LL,
                                               kMaximumAgeNs));
-  EXPECT_FALSE(offboardSessionFreshAt(state, kHeartbeatReceiveNs - 1, kMaximumAgeNs));
-  EXPECT_FALSE(executionHorizonWitnessFreshAt(state, requirement(), 1'025'000'000LL,
-                                              kMaximumAgeNs));
+  EXPECT_TRUE(offboardSessionFreshAt(state, kHeartbeatReceiveNs - 1, kMaximumAgeNs));
+  EXPECT_TRUE(executionHorizonWitnessFreshAt(state, requirement(), 1'025'000'000LL,
+                                             kMaximumAgeNs));
   EXPECT_FALSE(offboardSessionFreshAt(state, 1'100'000'000LL, 0));
 
   ExecutionHorizonWitnessState future_witness = state;

@@ -590,9 +590,9 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
                                  ? RouteEndpointSemantics3D::kContinuation
                                  : RouteEndpointSemantics3D::kMissionStop;
       }
-      mppi_route =
-          makeMppiRoute2D(*guide, mission_goal.z, speed_policy_config_.cruise_speed_mps,
-                          endpoint_semantics, speed_policy_config_);
+      mppi_route = makeMppiRoute2D(
+          *guide, mission_goal.z, speed_policy_config_.cruise_speed_mps,
+          endpoint_semantics, speed_policy_config_, mppi_config_.dynamics);
       route_source = guide;
       route_altitude_m = mission_goal.z;
     }

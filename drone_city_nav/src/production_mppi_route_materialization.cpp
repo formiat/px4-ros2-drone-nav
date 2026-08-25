@@ -406,9 +406,10 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       prepared.route_intent, prepared.route_segment_evidence.reaches_intent_target,
       prepared.global_guide_reaches_mission_goal,
       !world.search_objective.continuous_tracking);
-  prepared.mppi_route = makeMppiRoute3D(
-      *route, *spans, speed_policy_config_.cruise_speed_mps,
-      constrained_route_speed_limit_mps_, endpoint_semantics, speed_policy_config_);
+  prepared.mppi_route =
+      makeMppiRoute3D(*route, *spans, speed_policy_config_.cruise_speed_mps,
+                      constrained_route_speed_limit_mps_, endpoint_semantics,
+                      speed_policy_config_, mppi_config_.dynamics);
   prepared.global_guide_projection = projectOntoGlobalGuide(
       *prepared.route_2d_projection, Point2{navigation.state.x, navigation.state.y});
   prepared.route_fingerprint = routeFingerprint(*route, route_traversals);

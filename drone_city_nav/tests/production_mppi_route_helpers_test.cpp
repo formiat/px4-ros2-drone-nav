@@ -26,13 +26,13 @@ profile(const RouteEndpointSemantics3D semantics) {
 }
 
 TEST(ProductionMppiRouteHelpersTest,
-     ContinuationKeepsANonzeroNominalSpeedAtTheLocalBoundary) {
+     ContinuationUsesTheCanonicalPolicyLimitedSpeedAtTheLocalBoundary) {
   const auto route = profile(RouteEndpointSemantics3D::kContinuation);
 
   ASSERT_NE(route, nullptr);
   ASSERT_EQ(route->size(), 3U);
-  EXPECT_FLOAT_EQ(route->front().reference_speed_mps, 8.0F);
-  EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 8.0F);
+  EXPECT_FLOAT_EQ(route->front().reference_speed_mps, 5.0F);
+  EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 5.0F);
 }
 
 TEST(ProductionMppiRouteHelpersTest, RealStopsTaperTheNominalProfileToRest) {
@@ -58,7 +58,8 @@ TEST(ProductionMppiRouteHelpersTest, UnknownEndpointSemanticsFailsClosedToRest) 
   EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 0.0F);
 }
 
-TEST(ProductionMppiRouteHelpersTest, TwoDimensionalContinuationAlsoKeepsBoundarySpeed) {
+TEST(ProductionMppiRouteHelpersTest,
+     TwoDimensionalContinuationAlsoUsesTheCanonicalPolicyLimitedSpeed) {
   const std::array<Point2, 3> points{
       Point2{0.0, 0.0},
       Point2{5.0, 0.0},
@@ -70,7 +71,7 @@ TEST(ProductionMppiRouteHelpersTest, TwoDimensionalContinuationAlsoKeepsBoundary
 
   ASSERT_NE(route, nullptr);
   ASSERT_FALSE(route->empty());
-  EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 6.0F);
+  EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 5.0F);
 }
 
 } // namespace

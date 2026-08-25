@@ -1,6 +1,7 @@
 #include "production_mppi_route_activation.hpp"
 
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/route_time_parameterization.hpp"
 
 #include <algorithm>
 #include <cinttypes>
@@ -254,7 +255,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       candidate.mppi_route = makeMppiRoute3D(
           *rebased_route, *candidate.constrained_spans,
           speed_policy_config_.cruise_speed_mps, constrained_route_speed_limit_mps_,
-          endpoint_semantics, speed_policy_config_);
+          endpoint_semantics, speed_policy_config_, mppi_config_.dynamics);
       candidate.global_guide_projection = projectOntoGlobalGuide(
           *candidate.route_2d_projection,
           Point2{snapshot.navigation.state.x, snapshot.navigation.state.y});
@@ -282,12 +283,17 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           distance3D((*candidate.route_3d)[index - 1U].position,
                      (*candidate.route_3d)[index].position);
     }
-    // Arbitration must rank the executable, smoothed route rather than the
-    // pre-materialization lattice estimate.  The speed policy is the same
-    // authority used by execution for its unconstrained transit baseline.
-    activation_evidence.objective_cost =
-        activation_evidence.route_length_m /
-        std::max(1.0e-6, speed_policy_config_.cruise_speed_mps);
+    const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
+        candidate.route_intent, candidate.route_segment_evidence.reaches_intent_target,
+        candidate.global_guide_reaches_mission_goal,
+        !search_world.search_objective.continuous_tracking);
+    const RouteTimeParameterization3D time_parameterization = parameterizeRouteTime3D(
+        *candidate.route_3d, *candidate.constrained_spans,
+        speed_policy_config_.cruise_speed_mps, constrained_route_speed_limit_mps_,
+        endpoint_semantics, speed_policy_config_, mppi_config_.dynamics);
+    activation_evidence.objective_cost = time_parameterization.valid
+                                             ? time_parameterization.travel_time_s
+                                             : std::numeric_limits<double>::infinity();
     activation_evidence.endpoint_displacement_m =
         distance3D(snapshot_position, candidate.route_3d->back().position);
     activation_evidence.mission_progress_m =

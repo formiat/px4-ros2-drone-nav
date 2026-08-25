@@ -257,6 +257,7 @@ add_library(
   src/producer_epoch_admission.cpp
   src/producer_instance_id.cpp
   src/route_3d.cpp
+  src/route_time_parameterization.cpp
   src/route_execution_contract_3d.cpp
   src/route_lifecycle_3d.cpp
   src/route_planning_3d.cpp
@@ -953,6 +954,11 @@ if(BUILD_TESTING)
   target_compile_features(mppi_speed_policy_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_speed_policy_test_current drone_city_nav_core)
   enable_project_warnings(mppi_speed_policy_test_current)
+
+  ament_add_gtest(route_time_parameterization_test tests/route_time_parameterization_test.cpp)
+  target_compile_features(route_time_parameterization_test PRIVATE cxx_std_20)
+  target_link_libraries(route_time_parameterization_test drone_city_nav_core)
+  enable_project_warnings(route_time_parameterization_test)
 
   ament_add_gtest(mppi_rollout_budget_test tests/mppi_rollout_budget_test.cpp)
   target_compile_features(mppi_rollout_budget_test PRIVATE cxx_std_20)
