@@ -515,7 +515,7 @@ successorEvidenceNotOlder(const CertifiedRouteSuffix3D& current_route,
 certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
                             const bool reuse_sealed_geometry_owner);
 
-[[nodiscard]] std::optional<FiniteExecutionState3D>
+[[nodiscard]] FiniteExecutionCertificationResult3D
 certifyFiniteExecutionAgainstOwnedWorld3D(
     const ExecutionRouteSnapshot3D& current, const CertifiedRouteSuffix3D& target_route,
     FiniteExecutionCertification3D certification,

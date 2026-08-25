@@ -191,21 +191,31 @@ TEST(ExecutionRouteSnapshot3DTest,
         };
       };
 
-  const std::optional<FiniteExecutionState3D> accepted = certifyFiniteExecution3D(
-      *active, route,
-      make_certification(*baseline.horizon, baseline.execution_input,
-                         baseline.latest_lidar_evidence));
-  ASSERT_TRUE(accepted.has_value());
-  EXPECT_NE(accepted->validation_proof.validation_contract_fingerprint, 0U);
-  EXPECT_NE(accepted->validation_proof.artifact_fingerprint, 0U);
+  const FiniteExecutionCertificationResult3D accepted =
+      certifyFiniteExecution3DDetailed(
+          *active, route,
+          make_certification(*baseline.horizon, baseline.execution_input,
+                             baseline.latest_lidar_evidence));
+  ASSERT_TRUE(accepted.certified());
+  ASSERT_TRUE(accepted.execution.has_value());
+  EXPECT_EQ(accepted.status, FiniteExecutionCertificationStatus3D::kCertified);
+  EXPECT_EQ(finiteExecutionCertificationStatus3DName(accepted.status), "certified");
+  EXPECT_NE(accepted.execution->validation_proof.validation_contract_fingerprint, 0U);
+  EXPECT_NE(accepted.execution->validation_proof.artifact_fingerprint, 0U);
 
   mppi::FiniteHorizon inconsistent = *baseline.horizon;
   inconsistent.states.at(1).x += 1.0F;
-  EXPECT_FALSE(certifyFiniteExecution3D(
-                   *active, route,
-                   make_certification(std::move(inconsistent), baseline.execution_input,
-                                      baseline.latest_lidar_evidence))
-                   .has_value());
+  const FiniteExecutionCertificationResult3D inconsistent_result =
+      certifyFiniteExecution3DDetailed(
+          *active, route,
+          make_certification(std::move(inconsistent), baseline.execution_input,
+                             baseline.latest_lidar_evidence));
+  EXPECT_FALSE(inconsistent_result.certified());
+  EXPECT_FALSE(inconsistent_result.execution.has_value());
+  EXPECT_EQ(inconsistent_result.status,
+            FiniteExecutionCertificationStatus3D::kHorizonContractRejected);
+  EXPECT_EQ(finiteExecutionCertificationStatus3DName(inconsistent_result.status),
+            "horizon_contract_rejected");
 
   ASSERT_NE(baseline.execution_input, nullptr);
   ExecutionInputCapture3D mismatched_input_capture{

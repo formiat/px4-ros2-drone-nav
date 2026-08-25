@@ -615,8 +615,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         return publishNoExecutablePathHold(
             cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
       }
-      const std::optional<FiniteExecutionState3D> certified_execution =
-          certifyFiniteExecution3D(
+      const FiniteExecutionCertificationResult3D certified_execution =
+          certifyFiniteExecution3DDetailed(
               *expected, *target_route,
               FiniteExecutionCertification3D{
                   .trajectory_revision = previous_trajectory_revision + 1U,
@@ -626,10 +626,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                   .valid_from_ns = now_ns,
                   .kind = FiniteExecutionKind3D::kNominal,
               });
-      if (!certified_execution.has_value()) {
+      if (!certified_execution.certified()) {
+        const std::string_view status_name =
+            finiteExecutionCertificationStatus3DName(certified_execution.status);
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "FINITE_EXECUTION_CERTIFICATION certified=false status=%.*s "
+            "snapshot_version=%" PRIu64 " route_generation=%" PRIu64
+            " geometry_revision=%" PRIu64 " trajectory_revision=%" PRIu64,
+            static_cast<int>(status_name.size()), status_name.data(), expected->version,
+            target_route->identity.generation,
+            target_route->geometry->executable_geometry_revision,
+            previous_trajectory_revision + 1U);
         return publishNoExecutablePathHold(
             cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
       }
+      const FiniteExecutionState3D& execution = *certified_execution.execution;
       if (route_execution.pending_activation && expected->route.has_value() &&
           (route_execution.pending_route == nullptr ||
            !route_execution.pending_route->route_splice.has_value())) {
@@ -638,12 +650,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       }
       const ExecutionRouteTransitionResult3D transition = [&] {
         if (expected->phase == ExecutionRoutePhase3D::kDirectTracking) {
-          return transferDirectTrackingToCertifiedRoute3D(
-              *expected, expected->version, *target_route, *certified_execution);
+          return transferDirectTrackingToCertifiedRoute3D(*expected, expected->version,
+                                                          *target_route, execution);
         }
         if (!expected->route.has_value()) {
           return activateCertifiedRoute3D(*expected, expected->version, *target_route,
-                                          *certified_execution);
+                                          execution);
         }
         const ExecutionRouteTransitionGuard3D guard{
             .expected_snapshot_version = expected->version,
@@ -653,9 +665,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         };
         return route_execution.pending_activation
                    ? replaceCertifiedRoute3D(
-                         *expected, guard, *target_route, *certified_execution,
+                         *expected, guard, *target_route, execution,
                          *route_execution.pending_route->route_splice)
-                   : replaceFiniteExecution3D(*expected, guard, *certified_execution);
+                   : replaceFiniteExecution3D(*expected, guard, execution);
       }();
       if (!transition.applied() || transition.next == nullptr ||
           !transition.next->route.has_value() ||

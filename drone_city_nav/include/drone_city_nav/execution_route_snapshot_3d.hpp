@@ -360,6 +360,36 @@ struct FiniteExecutionCertification3D {
   FiniteExecutionKind3D kind{FiniteExecutionKind3D::kNominal};
 };
 
+enum class FiniteExecutionCertificationStatus3D : std::uint8_t {
+  kCertified,
+  kInvalidInput,
+  kTargetRelationRejected,
+  kProgressRelationRejected,
+  kRawInvalidationContractRejected,
+  kEvidenceContractRejected,
+  kCollisionPolicyInvalid,
+  kHorizonContractRejected,
+  kInitialStateMismatch,
+  kExecutionBindingRejected,
+  kRawInvalidationConnectorRejected,
+  kRouteAdherenceRejected,
+  kTerminalBoundaryInvalid,
+  kPathValidationRejected,
+  kStaticWorldFingerprintMismatch,
+  kRawValidationLineageRejected,
+  kValidationLineageRejected,
+  kValidationContractInvalid,
+  kInvalidArtifact,
+};
+
+struct FiniteExecutionCertificationResult3D {
+  FiniteExecutionCertificationStatus3D status{
+      FiniteExecutionCertificationStatus3D::kInvalidInput};
+  std::optional<FiniteExecutionState3D> execution;
+
+  [[nodiscard]] bool certified() const noexcept;
+};
+
 struct RawInvalidatedFiniteExecutionCertification3D {
   RouteLifecycleEvent3D invalidation{};
   std::shared_ptr<const VersionedObservedRawWorld3D> invalidating_observed_raw_world;
@@ -461,6 +491,11 @@ certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
                          const CertifiedRouteSuffix3D& target_route,
                          FiniteExecutionCertification3D certification);
 
+[[nodiscard]] FiniteExecutionCertificationResult3D
+certifyFiniteExecution3DDetailed(const ExecutionRouteSnapshot3D& current,
+                                 const CertifiedRouteSuffix3D& target_route,
+                                 FiniteExecutionCertification3D certification);
+
 [[nodiscard]] std::optional<FiniteExecutionState3D>
 certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
                          FiniteExecutionCertification3D certification);
@@ -551,6 +586,9 @@ executionRouteEndpointSemantics3D(const ExecutionRouteSnapshot3D& snapshot) noex
 
 [[nodiscard]] std::string_view
 finiteExecutionKind3DName(FiniteExecutionKind3D kind) noexcept;
+
+[[nodiscard]] std::string_view finiteExecutionCertificationStatus3DName(
+    FiniteExecutionCertificationStatus3D status) noexcept;
 
 [[nodiscard]] std::string_view
 executionRoutePhase3DName(ExecutionRoutePhase3D phase) noexcept;
