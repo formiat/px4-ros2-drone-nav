@@ -375,6 +375,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("nodes.append(", self.launch_text)
         self.assertIn('executable="production_mppi_node"', self.launch_text)
 
+    def test_planner_exit_is_a_terminal_launch_failure(self) -> None:
+        self.assertIn("target_action=production_mppi", self.launch_text)
+        self.assertIn('Shutdown(reason="production MPPI exited")', self.launch_text)
+
     def test_point_to_point_scenario_drives_spawn_and_navigation_contract(self) -> None:
         self.assertIn("POINT_TO_POINT_SCENARIO_PATH", self.text)
         self.assertIn("load_point_to_point_sim_scenario", self.intercept_runtime_text)

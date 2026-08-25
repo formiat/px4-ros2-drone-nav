@@ -420,6 +420,13 @@ def generate_launch_description():
             condition=IfCondition(enable_mission_monitor),
             parameters=mission_monitor_parameters,
         )
+        production_mppi = Node(
+            package="drone_city_nav",
+            executable="production_mppi_node",
+            name="production_mppi_node",
+            output="screen",
+            parameters=production_mppi_parameters,
+        )
         nodes.extend(
             [
                 Node(
@@ -429,12 +436,20 @@ def generate_launch_description():
                     output="screen",
                     parameters=obstacle_memory_parameters,
                 ),
-                Node(
-                    package="drone_city_nav",
-                    executable="production_mppi_node",
-                    name="production_mppi_node",
-                    output="screen",
-                    parameters=production_mppi_parameters,
+                production_mppi,
+                RegisterEventHandler(
+                    OnProcessExit(
+                        target_action=production_mppi,
+                        on_exit=[
+                            LogInfo(
+                                msg=(
+                                    "Production MPPI exited; shutting down the "
+                                    "launch because planner liveness is required."
+                                )
+                            ),
+                            Shutdown(reason="production MPPI exited"),
+                        ],
+                    )
                 ),
                 mission_monitor,
                 RegisterEventHandler(
