@@ -53,7 +53,7 @@ TEST(Route3DTest, MaterializesAnExactActivePrefixBeforeSuccessorContinuation) {
       std::vector<Point3>{{0.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0,
       4.0);
   const std::vector<RouteSample3D> successor = sampleRoute3D(
-      std::vector<Point3>{{0.0, 0.5, 5.0}, {10.0, 0.5, 5.0}, {20.0, 8.0, 5.0}}, 1.0,
+      std::vector<Point3>{{0.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 8.0, 5.0}}, 1.0,
       4.0);
 
   const std::optional<FrozenRoutePrefix3D> frozen =

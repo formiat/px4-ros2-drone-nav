@@ -15,6 +15,8 @@ namespace {
 
 constexpr std::uint64_t kFnvOffsetBasis = 14695981039346656037ULL;
 constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+constexpr double kFrozenPrefixMaximumStitchSeparationM{0.05};
+constexpr double kFrozenPrefixMinimumTangentAlignment{0.995};
 
 void hashByte(std::uint64_t& hash, const std::uint8_t value) noexcept {
   hash ^= value;
@@ -134,6 +136,27 @@ materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route
       successor_stitch_station > successor_route.back().station_m) {
     return std::nullopt;
   }
+  const RouteSample3D active_stitch = sampleAtStation(active_route, stitch_station);
+  const RouteSample3D successor_stitch =
+      sampleAtStation(successor_route, successor_stitch_station);
+  const double active_norm =
+      std::hypot(std::hypot(active_stitch.tangent.x, active_stitch.tangent.y),
+                 active_stitch.tangent.z);
+  const double successor_norm =
+      std::hypot(std::hypot(successor_stitch.tangent.x, successor_stitch.tangent.y),
+                 successor_stitch.tangent.z);
+  const double tangent_alignment =
+      active_norm > 1.0e-9 && successor_norm > 1.0e-9
+          ? (active_stitch.tangent.x * successor_stitch.tangent.x +
+             active_stitch.tangent.y * successor_stitch.tangent.y +
+             active_stitch.tangent.z * successor_stitch.tangent.z) /
+                (active_norm * successor_norm)
+          : -1.0;
+  if (distance3D(active_stitch.position, successor_stitch.position) >
+          kFrozenPrefixMaximumStitchSeparationM ||
+      tangent_alignment < kFrozenPrefixMinimumTangentAlignment) {
+    return std::nullopt;
+  }
 
   FrozenRoutePrefix3D result{.active_begin_station_m = active_projection.station_m,
                              .stitch_station_m = stitch_station};
@@ -151,7 +174,7 @@ materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route
       append(sample);
     }
   }
-  append(sampleAtStation(active_route, stitch_station));
+  append(active_stitch);
   const double successor_offset = stitch_station - successor_stitch_station;
   for (const RouteSample3D& source : successor_route) {
     if (source.station_m <= successor_stitch_station) {
