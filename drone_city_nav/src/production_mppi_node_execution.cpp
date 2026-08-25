@@ -681,6 +681,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       if (!transition.applied() || transition.next == nullptr ||
           !transition.next->route.has_value() ||
           !transition.next->finite_execution.has_value()) {
+        const std::string_view status_name =
+            executionRouteTransitionStatus3DName(transition.status);
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                             "FINITE_EXECUTION_TRANSITION applied=false status=%.*s "
+                             "snapshot_version=%" PRIu64 " route_generation=%" PRIu64,
+                             static_cast<int>(status_name.size()), status_name.data(),
+                             expected->version, target_route->identity.generation);
         return publishNoExecutablePathHold(
             cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
       }
@@ -697,6 +704,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           ? committed_snapshot->direct_tracking_execution->horizon.get()
           : std::addressof(executable_path);
   if (committed_path == nullptr) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_PUBLICATION published=false stage=missing_committed_path");
     return publishNoExecutablePathHold(
         cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
@@ -763,6 +773,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
              committed_snapshot->finite_execution.has_value()) {
     if (!production_mppi_execution_detail::bindHorizonRouteMetadata(
             horizon, *committed_snapshot->route)) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "FINITE_EXECUTION_PUBLICATION published=false "
+                           "stage=invalid_route_metadata");
       return publishNoExecutablePathHold(
           cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
     }
@@ -774,6 +787,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
           horizon, execution_states, execution_controls, exact_previous_control,
           finite_path_control_interval_ns)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_PUBLICATION published=false "
+        "stage=invalid_finite_execution_points states=%zu controls=%zu",
+        execution_states.size(), execution_controls.size());
     return publishNoExecutablePathHold(
         cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
@@ -785,6 +803,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
             cycle, route_execution.source_snapshot, *snapshot_transition, horizon,
             route_execution.pending_activation ? route_execution.pending_route
                                                : nullptr)) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "FINITE_EXECUTION_PUBLICATION published=false "
+                           "stage=snapshot_horizon_commit pending_activation=%s",
+                           route_execution.pending_activation ? "true" : "false");
       return publishNoExecutablePathHold(
           cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
     }

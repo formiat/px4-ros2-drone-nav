@@ -321,6 +321,10 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     const ProductionMppiHorizonCommit& commit) {
   using production_mppi_execution_detail::sameControl;
   using production_mppi_execution_detail::timeToNanoseconds;
+  const auto report_commit_failure = [this](const char* const stage) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "EXECUTION_HORIZON_COMMIT committed=false stage=%s", stage);
+  };
 
   if (cycle.execution_input == nullptr || !cycle.execution_input->valid() ||
       assessExecutionHorizonPayload(horizon,
@@ -328,6 +332,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
                                         .expected_frame_id = frame_id_,
                                         .flight_envelope = &flight_envelope_config_,
                                     }) != ExecutionHorizonPayloadStatus::kValid) {
+    report_commit_failure("invalid_input_or_payload");
     return false;
   }
   ProductionMppiExecutionHorizonOwner owner{
@@ -352,6 +357,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       owner.target_offboard_instance_id != 0U &&
       owner.execution_mode <= msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD;
   if (!owner.valid) {
+    report_commit_failure("invalid_owner");
     return false;
   }
   const std::scoped_lock input_lock{input_mutex_};
@@ -364,6 +370,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     if (execution_horizon_owner_.valid) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
+    report_commit_failure("vehicle_status_not_authoritative");
     return false;
   }
   if (!use_static_map_) {
@@ -390,11 +397,13 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
                    maximum_observation_age_ms);
     if (raw_world_identity_conflicted_ || !committed_world_current) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
+      report_commit_failure("raw_world_not_current");
       return false;
     }
   }
   if (publication_now_ns < owner.valid_from_ns ||
       publication_now_ns >= owner.valid_until_ns) {
+    report_commit_failure("horizon_time_window_not_current");
     return false;
   }
   if (requested_execution_revocation_.load(std::memory_order_acquire) !=
@@ -423,6 +432,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       navigation_.source_timestamp_us !=
           cycle.execution_input->poseSourceTimestampUs() ||
       navigation_.receive_stamp_ns != cycle.execution_input->poseReceiveStampNs()) {
+    report_commit_failure("cycle_input_not_current");
     return false;
   }
   const ExecutionRouteSnapshot3D* publication_snapshot{nullptr};
@@ -438,6 +448,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
                commit.expected_snapshot != nullptr) {
       publication_snapshot = commit.expected_snapshot.get();
     } else {
+      report_commit_failure("invalid_snapshot_commit_contract");
       return false;
     }
   }
@@ -457,6 +468,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     if (cycle.snapshot_owner_required || execution_horizon_owner_.valid) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
     }
+    report_commit_failure("execution_input_not_fresh");
     return false;
   }
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> publication_lidar =
@@ -472,6 +484,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
            publication_policy->latestLidarMaximumAgeMs())
            .fresh) {
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
+    report_commit_failure("lidar_evidence_not_current");
     return false;
   }
   const bool legacy_raw_2d_required =
@@ -481,6 +494,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       (cycle.latest_raw_world == nullptr ||
        latest_raw_world_.load(std::memory_order_acquire) != cycle.latest_raw_world)) {
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
+    report_commit_failure("legacy_raw_world_not_current");
     return false;
   }
   const StationaryExecutionHold3D* const capture_hold =
@@ -543,6 +557,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     control_evidence_current = stationary_capture_rearm_commit;
   }
   if (!control_evidence_current) {
+    report_commit_failure("control_evidence_not_current");
     return false;
   }
 
@@ -580,6 +595,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     } break;
   }
   if (!owner_committed) {
+    report_commit_failure("snapshot_owner_commit_rejected");
     return false;
   }
   applied_control_ = {};
@@ -611,6 +627,9 @@ bool ProductionMppiNode::commitExecutionSnapshotHorizon(
     const msg::MppiTrajectoryHorizon& horizon,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending) {
   if (expected == nullptr || !transition.applied() || transition.next == nullptr) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "EXECUTION_SNAPSHOT_COMMIT committed=false stage=invalid_transition");
     return false;
   }
   const std::shared_ptr<const VersionedObservedRawWorld3D> expected_raw =
@@ -620,6 +639,12 @@ bool ProductionMppiNode::commitExecutionSnapshotHorizon(
   const std::shared_ptr<const VersionedExecutionValidationPolicy3D> policy =
       snapshotValidationPolicy(*transition.next);
   if (expected_lidar == nullptr || policy == nullptr || !policy->valid()) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "EXECUTION_SNAPSHOT_COMMIT committed=false "
+                         "stage=missing_lidar_or_validation_policy lidar_present=%s "
+                         "policy_present=%s",
+                         expected_lidar != nullptr ? "true" : "false",
+                         policy != nullptr ? "true" : "false");
     return false;
   }
 

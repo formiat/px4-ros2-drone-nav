@@ -587,13 +587,14 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      FiniteCertificationKeepsTerminalRestInsideTheCertifiedRouteCorridor) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
-  ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
+  ASSERT_TRUE(suffix.has_value());
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+      makeInitialExecutionRouteSnapshot3D();
+  ASSERT_NE(initial, nullptr);
   FiniteExecutionCertification3D certification =
       SnapshotFixture3D::finiteCertificationForRoute(
-          *active->route, FiniteExecutionKind3D::kNominal, 102U);
+          *suffix, FiniteExecutionKind3D::kNominal, 102U);
   ASSERT_NE(certification.execution_input, nullptr);
   ASSERT_GE(certification.horizon.controls.size(), 101U);
 
@@ -611,14 +612,14 @@ TEST(ExecutionRouteSnapshot3DTest,
   for (std::size_t index = 0U; index < certification.horizon.controls.size(); ++index) {
     certification.horizon.states[index + 1U] = mppi::integrateReference(
         certification.horizon.states[index], certification.horizon.controls[index],
-        active->route->validation_policy->dynamics());
+        suffix->validation_policy->dynamics());
   }
   ASSERT_TRUE(mppi::finiteHorizonHasTerminalRestState(certification.horizon));
   EXPECT_GT(certification.horizon.states.back().y, 0.25F);
   EXPECT_LT(certification.horizon.states.back().y, 2.0F);
 
-  const FiniteExecutionCertificationResult3D result = certifyFiniteExecution3DDetailed(
-      *active, *active->route, std::move(certification));
+  const FiniteExecutionCertificationResult3D result =
+      certifyFiniteExecution3DDetailed(*initial, *suffix, std::move(certification));
 
   ASSERT_TRUE(result.certified())
       << "status=" << finiteExecutionCertificationStatus3DName(result.status)
@@ -630,6 +631,11 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_DOUBLE_EQ(result.execution->stop_boundary.position_tolerance_m, 0.25);
   EXPECT_GT(result.execution->stop_boundary.position.y, 0.25);
   EXPECT_LT(result.execution->stop_boundary.position.y, 2.0);
+  const ExecutionRouteTransitionResult3D activation =
+      activateCertifiedRoute3D(*initial, initial->version, *suffix, *result.execution);
+  ASSERT_TRUE(activation.applied())
+      << "transition_status="
+      << executionRouteTransitionStatus3DName(activation.status);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
