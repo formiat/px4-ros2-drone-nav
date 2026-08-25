@@ -571,6 +571,11 @@ private:
         horizon_->execution_reason != horizon.execution_reason;
     horizon_ = horizon;
     unavailable_path_hold_target_.reset();
+    RCLCPP_INFO(get_logger(),
+                "EXECUTION_HORIZON accepted=true producer=%" PRIu64 " sequence=%" PRIu64
+                " mode=%s",
+                horizon.producer_instance_id, horizon.sequence,
+                executionModeName(horizon.execution_mode));
     if (execution_changed) {
       RCLCPP_INFO(get_logger(),
                   "EXECUTION_HORIZON mode=%s reason=%s sequence=%" PRIu64 " hold=%s"
@@ -841,6 +846,11 @@ private:
     publishAppliedControlFeedback(map_acceleration, vertical_acceleration, map_yaw_rate,
                                   map_yaw_acceleration, true,
                                   msg::MppiControlFeedback::EXECUTION_MODE_PLANNED);
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "OFFBOARD_PLANNED_HORIZON_APPLIED producer=%" PRIu64
+                         " sequence=%" PRIu64,
+                         horizon_admission_.current_producer_instance_id,
+                         horizon_admission_.current_sequence);
     return true;
   }
 

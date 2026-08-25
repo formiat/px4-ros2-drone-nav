@@ -565,6 +565,14 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   applied_control_ = {};
   execution_horizon_owner_ = owner;
   execution_horizon_pub_->publish(horizon);
+  RCLCPP_INFO(get_logger(),
+              "EXECUTION_HORIZON published=true producer=%" PRIu64 " sequence=%" PRIu64
+              " mode=%s",
+              horizon.producer_instance_id, horizon.sequence,
+              horizon.execution_mode ==
+                      msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED
+                  ? "planned"
+                  : "non_planned");
   return true;
 }
 

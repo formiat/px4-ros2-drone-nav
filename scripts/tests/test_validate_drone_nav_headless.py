@@ -18,6 +18,29 @@ SPEC.loader.exec_module(VALIDATOR)
 
 
 class MappingPipelineValidationTest(unittest.TestCase):
+
+    def test_execution_chain_rejects_safe_unpublished_ticks(self) -> None:
+        errors: list[str] = []
+        VALIDATOR.validate_execution_chain(
+            "PRODUCTION_MPPI_TICK execution_published=false execution_mode=position_hold "
+            "raw_collision=false known_solid_collision=false "
+            "target_source=global_route_3d guide_reaches_mission_goal=false\n",
+            errors,
+        )
+        self.assertIn("FAIL: exact planner horizon is accepted and applied", errors)
+
+    def test_execution_chain_requires_one_exact_identity_through_offboard(self) -> None:
+        errors: list[str] = []
+        VALIDATOR.validate_execution_chain(
+            "PRODUCTION_MPPI_TICK execution_published=true execution_mode=planned "
+            "raw_collision=false known_solid_collision=false "
+            "guide_reaches_mission_goal=true target_source=global_route_3d\n"
+            "EXECUTION_HORIZON published=true producer=7 sequence=9 mode=planned\n"
+            "EXECUTION_HORIZON accepted=true producer=7 sequence=9 mode=planned\n"
+            "OFFBOARD_PLANNED_HORIZON_APPLIED producer=7 sequence=9\n",
+            errors,
+        )
+        self.assertEqual(errors, [])
     def test_3d_pipeline_accepts_hit_miss_memory_and_selected_debug_clouds(
         self,
     ) -> None:

@@ -57,6 +57,43 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def validate_execution_chain(ros_log: str, errors: list[str]) -> None:
+    """Require a mission route, publication, offboard admission, and application."""
+    require(
+        "mission-reaching global route is active",
+        ros_log,
+        r"PRODUCTION_MPPI_TICK .*target_source=global_route_3d.*"
+        r"guide_reaches_mission_goal=true|"
+        r"PRODUCTION_MPPI_TICK .*guide_reaches_mission_goal=true.*"
+        r"target_source=global_route_3d",
+        errors,
+    )
+    require(
+        "published collision-free planned horizon",
+        ros_log,
+        r"PRODUCTION_MPPI_TICK .*execution_published=true .*"
+        r"execution_mode=planned .*raw_collision=false .*known_solid_collision=false",
+        errors,
+    )
+    published = set(re.findall(
+        r"EXECUTION_HORIZON published=true producer=([1-9][0-9]*) sequence=([1-9][0-9]*)",
+        ros_log,
+    ))
+    accepted = set(re.findall(
+        r"EXECUTION_HORIZON accepted=true producer=([1-9][0-9]*) sequence=([1-9][0-9]*) mode=planned",
+        ros_log,
+    ))
+    applied = set(re.findall(
+        r"OFFBOARD_PLANNED_HORIZON_APPLIED producer=([1-9][0-9]*) sequence=([1-9][0-9]*)",
+        ros_log,
+    ))
+    chain = published & accepted & applied
+    if chain:
+        print(f"OK: exact planner horizon is accepted and applied ({len(chain)})")
+    else:
+        errors.append("FAIL: exact planner horizon is accepted and applied")
+
+
 def validate_mapping_pipeline(
     ros_log: str,
     lidar_profile: str,
@@ -859,19 +896,7 @@ def main() -> int:
         r"PRODUCTION_MPPI_ESDF(?:3D(?:_ONLINE)?)? .*revision=",
         errors,
     )
-    require(
-        "global guide is available",
-        ros_log,
-        r"PRODUCTION_MPPI_GUIDE .*guide_valid=true|target_source=global_route_3d",
-        errors,
-    )
-    require(
-        "production MPPI publishes collision-free horizons",
-        ros_log,
-        r"PRODUCTION_MPPI_TICK .*raw_collision=false "
-        r".*known_solid_collision=false",
-        errors,
-    )
+    validate_execution_chain(ros_log, errors)
     require(
         "production offboard is ready",
         ros_log,
