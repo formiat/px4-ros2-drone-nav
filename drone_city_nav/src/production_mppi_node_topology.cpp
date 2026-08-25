@@ -150,20 +150,11 @@ std::size_t ProductionMppiNode::processObservedTopology3D(
       coherent_world.topological_graph = update.snapshot;
       coherent_world.topological_graph_update = update.graph;
       coherent_world.topology_source_raw_revision = update.snapshot->revision();
-      const LocalWorldGeneration& previous_generation =
-          coherent_world.local_world_generation;
-      const std::optional<LocalWorldGeneration> generation =
-          local_world_generation_counter_.issue(
-              previous_generation.raw_map, previous_generation.pose_revision,
-              previous_generation.esdf_revision, previous_generation.gpu_esdf_revision,
-              coherent_world.topology_source_raw_revision);
-      if (generation.has_value()) {
-        coherent_world.local_world_generation = *generation;
-        if (productionWorldGenerationCoherent(coherent_world)) {
-          prepared_esdf_ = std::move(coherent_world);
-        } else {
-          coherent_world_rejected = true;
-        }
+      // Topology is a strategic, asynchronously refreshed resource. It must
+      // not mint a new control generation because raw occupancy, local ESDF,
+      // and its GPU residency are unchanged.
+      if (productionWorldGenerationCoherent(coherent_world)) {
+        prepared_esdf_ = std::move(coherent_world);
       } else {
         coherent_world_rejected = true;
       }
