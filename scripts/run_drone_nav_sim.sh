@@ -350,6 +350,14 @@ if [[ -n "${custom_world_sdf_path}" && ! -f "${custom_world_sdf_path}" ]]; then
   exit 1
 fi
 
+# This runs inside the same container and dynamic-runtime environment as the
+# planner, before any PX4 or Gazebo child can start.  A visible GPU alone is
+# insufficient: a driver/runtime mismatch fails only when CUDA is initialized.
+if ! python3 "${repo_root}/scripts/cuda_preflight.py"; then
+  echo "CUDA preflight failed; refusing to start PX4, Gazebo, or ROS launch." >&2
+  exit 2
+fi
+
 read_ros_float_parameter() {
   local node_name="$1"
   local parameter_name="$2"

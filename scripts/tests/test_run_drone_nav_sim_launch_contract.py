@@ -379,6 +379,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("target_action=production_mppi", self.launch_text)
         self.assertIn('Shutdown(reason="production MPPI exited")', self.launch_text)
 
+    def test_simulation_performs_cuda_allocation_preflight_before_gazebo(self) -> None:
+        preflight = RUNNER.with_name("cuda_preflight.py")
+        self.assertTrue(preflight.is_file())
+        source = preflight.read_text(encoding="utf-8")
+        self.assertIn("cudaMalloc", source)
+        self.assertIn("cudaFree", source)
+        invocation = self.text.index("cuda_preflight.py")
+        gazebo = self.text.index("gz sim")
+        self.assertLess(invocation, gazebo)
+
     def test_point_to_point_scenario_drives_spawn_and_navigation_contract(self) -> None:
         self.assertIn("POINT_TO_POINT_SCENARIO_PATH", self.text)
         self.assertIn("load_point_to_point_sim_scenario", self.intercept_runtime_text)
