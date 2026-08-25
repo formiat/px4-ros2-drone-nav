@@ -258,4 +258,13 @@ struct EsdfGrid {
   bool outside_is_unknown{false};
 };
 
+struct EsdfDirtyRegion {
+  int minimum_x{0};
+  int minimum_y{0};
+  int minimum_z{0};
+  int maximum_x_exclusive{0};
+  int maximum_y_exclusive{0};
+  int maximum_z_exclusive{0};
+};
+
 } // namespace drone_city_nav::mppi

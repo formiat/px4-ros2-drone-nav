@@ -154,6 +154,56 @@ public:
         .count();
   }
 
+  [[nodiscard]] bool compatibleWith(const EsdfSnapshot& snapshot) const noexcept {
+    return array_ != nullptr && grid_.width == snapshot.grid.width &&
+           grid_.height == snapshot.grid.height && grid_.depth == snapshot.grid.depth &&
+           grid_.resolution_m == snapshot.grid.resolution_m &&
+           grid_.origin_x_m == snapshot.grid.origin_x_m &&
+           grid_.origin_y_m == snapshot.grid.origin_y_m &&
+           grid_.origin_z_m == snapshot.grid.origin_z_m &&
+           grid_.outside_is_unknown == snapshot.grid.outside_is_unknown;
+  }
+
+  double patch(const EsdfSnapshot& snapshot, cudaStream_t stream) {
+    const auto started = std::chrono::steady_clock::now();
+    for (const EsdfDirtyRegion& region : snapshot.dirty_regions) {
+      if (region.minimum_x < 0 || region.minimum_y < 0 || region.minimum_z < 0 ||
+          region.maximum_x_exclusive <= region.minimum_x ||
+          region.maximum_y_exclusive <= region.minimum_y ||
+          region.maximum_z_exclusive <= region.minimum_z ||
+          region.maximum_x_exclusive > snapshot.grid.width ||
+          region.maximum_y_exclusive > snapshot.grid.height ||
+          region.maximum_z_exclusive > snapshot.grid.depth) {
+        throw std::invalid_argument{"invalid ESDF dirty region"};
+      }
+      cudaMemcpy3DParms copy{};
+      copy.srcPtr = make_cudaPitchedPtr(const_cast<float*>(snapshot.distances_m.data()),
+                                        static_cast<std::size_t>(snapshot.grid.width) *
+                                            sizeof(float),
+                                        static_cast<std::size_t>(snapshot.grid.width),
+                                        static_cast<std::size_t>(snapshot.grid.height));
+      copy.srcPos =
+          make_cudaPos(static_cast<std::size_t>(region.minimum_x) * sizeof(float),
+                       static_cast<std::size_t>(region.minimum_y),
+                       static_cast<std::size_t>(region.minimum_z));
+      copy.dstArray = array_;
+      copy.dstPos = make_cudaPos(static_cast<std::size_t>(region.minimum_x),
+                                 static_cast<std::size_t>(region.minimum_y),
+                                 static_cast<std::size_t>(region.minimum_z));
+      copy.extent = make_cudaExtent(
+          static_cast<std::size_t>(region.maximum_x_exclusive - region.minimum_x),
+          static_cast<std::size_t>(region.maximum_y_exclusive - region.minimum_y),
+          static_cast<std::size_t>(region.maximum_z_exclusive - region.minimum_z));
+      copy.kind = cudaMemcpyHostToDevice;
+      checkCuda(cudaMemcpy3DAsync(&copy, stream), "cudaMemcpy3DAsync ESDF patch");
+    }
+    checkCuda(cudaStreamSynchronize(stream), "synchronize ESDF patch upload");
+    revision_ = snapshot.revision;
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                     started)
+        .count();
+  }
+
   [[nodiscard]] cudaTextureObject_t texture() const noexcept {
     return texture_;
   }

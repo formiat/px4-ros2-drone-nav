@@ -1060,6 +1060,18 @@ ObservedEsdf3D updateObservedEsdf3D(
       total_voxels > recomputed_voxels ? total_voxels - recomputed_voxels : 0U;
   result.stats.dirty_chunks = dirty_chunks.size();
   result.stats.mode = ObservedEsdf3DBuildMode::kIncremental;
+  result.dirty_regions.reserve(regions.size());
+  for (const auto& [target_region, unused_patch_region] : regions) {
+    static_cast<void>(unused_patch_region);
+    result.dirty_regions.push_back(ObservedEsdfDirtyRegion3D{
+        .minimum_x = target_region.minimum_x,
+        .minimum_y = target_region.minimum_y,
+        .minimum_z = target_region.minimum_z,
+        .maximum_x_exclusive = target_region.maximum_x_exclusive,
+        .maximum_y_exclusive = target_region.maximum_y_exclusive,
+        .maximum_z_exclusive = target_region.maximum_z_exclusive,
+    });
+  }
   return result;
 }
 

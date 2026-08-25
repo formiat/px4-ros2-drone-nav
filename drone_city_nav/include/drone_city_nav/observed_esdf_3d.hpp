@@ -22,6 +22,8 @@ enum class ObservedEsdf3DBuildMode : std::uint8_t {
   kReused,
 };
 
+using ObservedEsdfDirtyRegion3D = mppi::EsdfDirtyRegion;
+
 struct ObservedEsdf3DBuildStats {
   DistanceField3DBuildStats distance_field{};
   std::size_t known_voxels{0U};
@@ -43,6 +45,7 @@ struct ObservedEsdf3D {
   mppi::EsdfGrid grid{};
   std::vector<float> distances_m;
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
+  std::vector<ObservedEsdfDirtyRegion3D> dirty_regions;
   std::uint64_t occupancy_fingerprint{0U};
   double maximum_distance_m{0.0};
   ObservedEsdf3DBuildStats stats{};

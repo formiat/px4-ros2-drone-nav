@@ -170,11 +170,14 @@ public:
         snapshot.distances_m.size() != expected) {
       return {};
     }
-    const std::size_t inactive = 1U - active_texture_;
-    const double upload_ms = textures_[inactive].upload(snapshot, stream_);
-    esdf_host_[inactive].assign(snapshot.distances_m.begin(),
-                                snapshot.distances_m.end());
-    active_texture_ = inactive;
+    const bool partial_update = !snapshot.dirty_regions.empty() &&
+                                textures_[active_texture_].compatibleWith(snapshot);
+    const std::size_t target = partial_update ? active_texture_ : 1U - active_texture_;
+    const double upload_ms = partial_update
+                                 ? textures_[target].patch(snapshot, stream_)
+                                 : textures_[target].upload(snapshot, stream_);
+    esdf_host_[target].assign(snapshot.distances_m.begin(), snapshot.distances_m.end());
+    active_texture_ = target;
     return EsdfUploadResult{true, upload_ms, snapshot.revision};
   }
 

@@ -16,6 +16,7 @@ struct EsdfSnapshot {
   EsdfGrid grid{};
   std::span<const float> distances_m;
   std::uint64_t revision{0U};
+  std::span<const EsdfDirtyRegion> dirty_regions{};
 };
 
 struct KnownSolid {

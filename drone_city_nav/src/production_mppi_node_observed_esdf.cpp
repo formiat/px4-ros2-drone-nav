@@ -358,8 +358,8 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   mppi::EsdfUploadResult upload{
       .accepted = true, .upload_ms = 0.0, .revision = field.occupancy_fingerprint};
   if (upload_required) {
-    upload = engine_->updateEsdf(
-        mppi::EsdfSnapshot{field.grid, *host_distances, field.occupancy_fingerprint});
+    upload = engine_->updateEsdf(mppi::EsdfSnapshot{
+        field.grid, *host_distances, field.occupancy_fingerprint, field.dirty_regions});
     if (!upload.accepted) {
       return std::nullopt;
     }
