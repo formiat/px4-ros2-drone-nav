@@ -14,13 +14,15 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] bool
-protectedStation(const double station_m,
-                 const std::span<const ConstrainedRouteSpan> spans) noexcept {
-  return std::ranges::any_of(spans, [station_m](const ConstrainedRouteSpan& span) {
-    return station_m + 1.0e-9 >= span.begin_station_m &&
-           station_m <= span.end_station_m + 1.0e-9;
-  });
+[[nodiscard]] bool protectedStation(
+    const double station_m, const std::span<const ConstrainedRouteSpan> spans,
+    const std::optional<double> frozen_prefix_end_station_m = std::nullopt) noexcept {
+  return (frozen_prefix_end_station_m &&
+          station_m <= *frozen_prefix_end_station_m + 1.0e-9) ||
+         std::ranges::any_of(spans, [station_m](const ConstrainedRouteSpan& span) {
+           return station_m + 1.0e-9 >= span.begin_station_m &&
+                  station_m <= span.end_station_m + 1.0e-9;
+         });
 }
 
 [[nodiscard]] Point3 lerpPoint(const Point3& first, const Point3& second,
@@ -70,13 +72,15 @@ protectedStation(const double station_m,
 [[nodiscard]] std::vector<std::size_t>
 sparseRouteIndices(const std::span<const RouteSample3D> route,
                    const std::span<const ConstrainedRouteSpan> constrained_spans,
-                   const double deviation_tolerance_m) {
+                   const double deviation_tolerance_m,
+                   const std::optional<double> frozen_prefix_end_station_m) {
   std::vector<bool> retained(route.size(), false);
   retained.front() = true;
   retained.back() = true;
   for (std::size_t index = 0U; index < route.size(); ++index) {
     retained[index] =
-        retained[index] || protectedStation(route[index].station_m, constrained_spans);
+        retained[index] || protectedStation(route[index].station_m, constrained_spans,
+                                            frozen_prefix_end_station_m);
   }
   for (std::size_t index = 1U; index + 1U < route.size(); ++index) {
     const Vec3 incoming =
@@ -178,12 +182,14 @@ shortcutWithinTurnBudget(const std::span<const RouteSample3D> route,
 maximumShortcutIndex(const std::span<const RouteSample3D> route,
                      const std::size_t current,
                      const std::span<const ConstrainedRouteSpan> constrained_spans,
-                     const double maximum_shortcut_length_m) noexcept {
+                     const double maximum_shortcut_length_m,
+                     const std::optional<double> frozen_prefix_end_station_m) noexcept {
   std::size_t maximum = current + 1U;
   while (maximum + 1U < route.size() &&
          route[maximum + 1U].station_m - route[current].station_m <=
              maximum_shortcut_length_m + 1.0e-9 &&
-         !protectedStation(route[maximum + 1U].station_m, constrained_spans)) {
+         !protectedStation(route[maximum + 1U].station_m, constrained_spans,
+                           frozen_prefix_end_station_m)) {
     ++maximum;
   }
   return maximum;
@@ -195,11 +201,13 @@ maximumShortcutIndex(const std::span<const RouteSample3D> route,
     const std::span<const ConstrainedRouteSpan> constrained_spans,
     const StaticRouteGeometryConfig& config, std::size_t& turn_budget_rejections) {
   std::vector<std::size_t> candidates;
-  if (protectedStation(route[current].station_m, constrained_spans)) {
+  if (protectedStation(route[current].station_m, constrained_spans,
+                       config.frozen_prefix_end_station_m)) {
     return candidates;
   }
   const std::size_t maximum = maximumShortcutIndex(route, current, constrained_spans,
-                                                   config.maximum_shortcut_length_m);
+                                                   config.maximum_shortcut_length_m,
+                                                   config.frozen_prefix_end_station_m);
   if (maximum <= current + 1U) {
     return candidates;
   }
@@ -281,7 +289,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
   }
 
   const std::vector<std::size_t> sparse_indices = sparseRouteIndices(
-      route, constrained_spans, geometry_config.sparse_deviation_tolerance_m);
+      route, constrained_spans, geometry_config.sparse_deviation_tolerance_m,
+      geometry_config.frozen_prefix_end_station_m);
   result.sparse_anchor_count = sparse_indices.size();
   result.sparse_samples_removed = route.size() - sparse_indices.size();
   std::vector<Point3> anchors;
@@ -348,7 +357,11 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     // Constrained spans retain their safety contract through the same raw
     // swept-footprint validation as every other candidate.  Excluding their
     // corners here left right-angle passages with a tangent discontinuity.
-    corner_candidates.push_back(index);
+    if (!geometry_config.frozen_prefix_end_station_m ||
+        distance3D(anchors.front(), anchors[index]) >
+            *geometry_config.frozen_prefix_end_station_m + 1.0e-9) {
+      corner_candidates.push_back(index);
+    }
   }
   std::vector<std::optional<std::vector<Point3>>> curves(anchors.size());
   const auto validate_corner = [&](const std::size_t candidate_index) {

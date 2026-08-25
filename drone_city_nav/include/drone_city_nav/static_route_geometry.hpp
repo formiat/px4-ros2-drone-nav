@@ -4,6 +4,7 @@
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -19,6 +20,9 @@ struct StaticRouteGeometryConfig {
   std::size_t shortcut_validation_batch_size{4U};
   double corner_smoothing_distance_m{2.0};
   std::size_t corner_curve_samples{4U};
+  // An activated route prefix is already executable evidence. Geometry
+  // optimization may only operate after this station.
+  std::optional<double> frozen_prefix_end_station_m;
 };
 
 struct StaticRouteGeometryResult {
