@@ -431,7 +431,10 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
       raw_world_identity_conflicted_ = false;
       required_raw_world_source_stamp_ns_ =
           statusAnnouncesRawUpdate(message) ? source_stamp_ns : 1;
-      clear_current_raw();
+      // Keep the last fully committed world as a safe immutable fallback until
+      // the new producer's complete payload joins. The required source stamp
+      // gates planning and execution, so the old payload cannot be used under
+      // the new authority while status and delta are temporarily out of order.
     }
     if (admission.current_identity_conflict) {
       raw_world_identity_conflicted_ = true;
