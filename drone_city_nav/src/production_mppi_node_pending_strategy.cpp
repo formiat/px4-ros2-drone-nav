@@ -9,6 +9,7 @@ void ProductionMppiNode::recordPendingRouteStrategyOutcome(
     return;
   }
   if (pending->strategy_decision.has_value()) {
+    const std::scoped_lock lock{route_strategy_arbitrator_mutex_};
     static_cast<void>(route_strategy_arbitrator_3d_.recordOutcome(
         *pending->strategy_decision, selection_committed));
   }

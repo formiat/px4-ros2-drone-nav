@@ -804,6 +804,7 @@ private:
   RiskAwareLattice3DConfig lattice_3d_config_{};
   RouteProposalSelection3DConfig route_proposal_selection_3d_config_{};
   RouteStrategyArbitrator3D route_strategy_arbitrator_3d_{};
+  std::mutex route_strategy_arbitrator_mutex_;
   IncrementalTopologyGraph3DConfig topological_graph_3d_config_{};
   IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};

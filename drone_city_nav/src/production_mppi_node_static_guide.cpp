@@ -109,9 +109,12 @@ void ProductionMppiNode::processGuideSearch3D(
                                  world.route_intent.valid &&
                                  world.route_intent.segment_reaches_intent_target,
   };
-  const RouteStrategyArbitrationDecision3D strategy_decision =
-      route_strategy_arbitrator_3d_.evaluate(
-          final_proposals, route_proposal_selection_3d_config_, strategy_observation);
+  RouteStrategyArbitrationDecision3D strategy_decision;
+  {
+    const std::scoped_lock lock{route_strategy_arbitrator_mutex_};
+    strategy_decision = route_strategy_arbitrator_3d_.evaluate(
+        final_proposals, route_proposal_selection_3d_config_, strategy_observation);
+  }
   const RouteProposalSelection3D& proposal_selection = strategy_decision.selection;
   for (std::size_t index = 0U; index < final_proposals.size(); ++index) {
     const RouteProposal3D& proposal = final_proposals[index];
@@ -237,11 +240,16 @@ void ProductionMppiNode::processGuideSearch3D(
   const bool certified_pending = activation.certified_pending;
   const mppi::StaticRouteHandoffResult& handoff = activation.handoff;
 
-  const bool strategy_outcome_recorded =
-      certified_pending ||
-      route_strategy_arbitrator_3d_.recordOutcome(strategy_decision, false);
-  const RouteStrategyArbitrationState3D& strategy_state =
-      route_strategy_arbitrator_3d_.state();
+  bool strategy_outcome_recorded{certified_pending};
+  RouteStrategyArbitrationState3D strategy_state;
+  {
+    const std::scoped_lock lock{route_strategy_arbitrator_mutex_};
+    if (!certified_pending) {
+      strategy_outcome_recorded =
+          route_strategy_arbitrator_3d_.recordOutcome(strategy_decision, false);
+    }
+    strategy_state = route_strategy_arbitrator_3d_.state();
+  }
   const RouteStrategyLease3D* const strategy_lease =
       strategy_state.lease ? std::addressof(*strategy_state.lease) : nullptr;
   const RetiredRouteStrategyLineage3D* const retired_lineage =
