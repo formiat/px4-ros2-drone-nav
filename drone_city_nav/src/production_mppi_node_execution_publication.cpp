@@ -15,7 +15,9 @@
 #include <utility>
 #include <vector>
 
+#include "execution_publication_navigation_rebase_3d.hpp"
 #include "production_mppi_node_execution_internal.hpp"
+#include "production_mppi_node_planning_tick_rearm.hpp"
 
 namespace drone_city_nav {
 
@@ -192,8 +194,34 @@ struct FiniteExecutionEvidenceView {
   const VersionedExecutionInput3D* execution_input{nullptr};
   const VersionedExecutionValidationPolicy3D* policy{nullptr};
   const VersionedStaticWorld3D* static_world{nullptr};
+  std::int64_t valid_from_ns{0};
+  std::int64_t valid_until_ns{0};
   std::int64_t control_interval_ns{0};
 };
+
+[[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
+timedExecutionPathPoints(const FiniteExecutionEvidenceView& view) {
+  std::vector<mppi::TimedExecutionPathPoint> points;
+  if (view.horizon == nullptr || view.execution_input == nullptr ||
+      view.control_interval_ns <= 0 || view.horizon->controls.empty() ||
+      view.horizon->states.size() != view.horizon->controls.size() + 1U) {
+    return points;
+  }
+  const double step_s = static_cast<double>(view.control_interval_ns) * 1.0e-9;
+  if (!std::isfinite(step_s) || step_s <= 0.0) {
+    return points;
+  }
+  points.reserve(view.horizon->states.size());
+  for (std::size_t index = 0U; index < view.horizon->states.size(); ++index) {
+    points.push_back(mppi::TimedExecutionPathPoint{
+        .time_from_start_s = static_cast<double>(index) * step_s,
+        .state = view.horizon->states[index],
+        .control = index == 0U ? view.execution_input->previousControl()
+                               : view.horizon->controls[index - 1U],
+    });
+  }
+  return points;
+}
 
 [[nodiscard]] std::optional<FiniteExecutionEvidenceView>
 finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
@@ -210,6 +238,8 @@ finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
         .execution_input = execution.execution_input.get(),
         .policy = execution.validation_policy.get(),
         .static_world = execution.static_world.get(),
+        .valid_from_ns = execution.valid_from_ns,
+        .valid_until_ns = execution.valid_until_ns,
         .control_interval_ns = execution.control_interval_ns,
     };
   };
@@ -242,19 +272,10 @@ finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
       (static_world && !view->static_world->valid())) {
     return false;
   }
-  const double step_s = static_cast<double>(view->control_interval_ns) * 1.0e-9;
-  if (!std::isfinite(step_s) || step_s <= 0.0) {
+  const std::vector<mppi::TimedExecutionPathPoint> points =
+      timedExecutionPathPoints(*view);
+  if (points.empty()) {
     return false;
-  }
-  std::vector<mppi::TimedExecutionPathPoint> points;
-  points.reserve(view->horizon->states.size());
-  for (std::size_t index = 0U; index < view->horizon->states.size(); ++index) {
-    points.push_back(mppi::TimedExecutionPathPoint{
-        .time_from_start_s = static_cast<double>(index) * step_s,
-        .state = view->horizon->states[index],
-        .control = index == 0U ? view->execution_input->previousControl()
-                               : view->horizon->controls[index - 1U],
-    });
   }
   const std::optional<ProprioceptiveFreeSpaceSeed3D>& seed =
       !static_world ? latest_raw->proprioceptiveFreeSpaceSeed()
@@ -326,8 +347,13 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
                          "EXECUTION_HORIZON_COMMIT committed=false stage=%s", stage);
   };
 
-  if (cycle.execution_input == nullptr || !cycle.execution_input->valid() ||
-      assessExecutionHorizonPayload(horizon,
+  msg::MppiTrajectoryHorizon publication_horizon = horizon;
+  std::shared_ptr<const VersionedExecutionInput3D> publication_execution_input =
+      cycle.execution_input;
+  std::optional<ExecutionRouteTransitionResult3D> rebased_transition;
+  ProductionMppiHorizonCommit publication_commit = commit;
+  if (publication_execution_input == nullptr || !publication_execution_input->valid() ||
+      assessExecutionHorizonPayload(publication_horizon,
                                     ExecutionHorizonPayloadValidationConfig{
                                         .expected_frame_id = frame_id_,
                                         .flight_envelope = &flight_envelope_config_,
@@ -336,19 +362,21 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     return false;
   }
   ProductionMppiExecutionHorizonOwner owner{
-      .route_target = Point3{horizon.route_target.x, horizon.route_target.y,
-                             horizon.route_target.z},
+      .route_target =
+          Point3{publication_horizon.route_target.x, publication_horizon.route_target.y,
+                 publication_horizon.route_target.z},
       .stationary_hold_position =
-          Point3{horizon.stationary_hold_position.x, horizon.stationary_hold_position.y,
-                 horizon.stationary_hold_position.z},
-      .valid_from_ns = timeToNanoseconds(horizon.valid_from),
-      .valid_until_ns = timeToNanoseconds(horizon.valid_until),
-      .producer_instance_id = horizon.producer_instance_id,
-      .target_offboard_instance_id = horizon.target_offboard_instance_id,
-      .sequence = horizon.sequence,
-      .execution_mode = horizon.execution_mode,
-      .execution_reason = horizon.execution_reason,
-      .stationary_position_hold = horizon.stationary_position_hold,
+          Point3{publication_horizon.stationary_hold_position.x,
+                 publication_horizon.stationary_hold_position.y,
+                 publication_horizon.stationary_hold_position.z},
+      .valid_from_ns = timeToNanoseconds(publication_horizon.valid_from),
+      .valid_until_ns = timeToNanoseconds(publication_horizon.valid_until),
+      .producer_instance_id = publication_horizon.producer_instance_id,
+      .target_offboard_instance_id = publication_horizon.target_offboard_instance_id,
+      .sequence = publication_horizon.sequence,
+      .execution_mode = publication_horizon.execution_mode,
+      .execution_reason = publication_horizon.execution_reason,
+      .stationary_position_hold = publication_horizon.stationary_position_hold,
   };
   owner.valid =
       owner.producer_instance_id == execution_horizon_producer_instance_id_ &&
@@ -373,6 +401,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     report_commit_failure("vehicle_status_not_authoritative");
     return false;
   }
+  std::shared_ptr<const ProductionMppiRawWorld3D> committed_3d;
   if (!use_static_map_) {
     const double maximum_observation_age_ms =
         maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
@@ -380,9 +409,9 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
         no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
     const std::shared_ptr<const ProductionMppiRawWorld2D> committed_2d =
         observed_3d_world ? nullptr : latest_raw_world_.load(std::memory_order_acquire);
-    const std::shared_ptr<const ProductionMppiRawWorld3D> committed_3d =
-        observed_3d_world ? latest_raw_world_3d_.load(std::memory_order_acquire)
-                          : nullptr;
+    committed_3d = observed_3d_world
+                       ? latest_raw_world_3d_.load(std::memory_order_acquire)
+                       : nullptr;
     const bool committed_world_current =
         observed_3d_world
             ? (committed_3d != nullptr &&
@@ -426,34 +455,130 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     if (offboard_currentness != OffboardSessionPublicationCurrentnessStatus::kCurrent) {
       return offboardSessionPublicationCurrentnessStatusName(offboard_currentness);
     }
-    if (navigation_.revision != cycle.execution_input->poseRevision()) {
-      return "navigation_revision_advanced";
-    }
-    if (navigation_.source_timestamp_us !=
-        cycle.execution_input->poseSourceTimestampUs()) {
-      return "navigation_source_advanced";
-    }
-    if (navigation_.receive_stamp_ns != cycle.execution_input->poseReceiveStampNs()) {
-      return "navigation_receive_advanced";
-    }
     return nullptr;
   }();
   if (cycle_currentness_failure != nullptr) {
     report_commit_failure(cycle_currentness_failure);
     return false;
   }
+  const bool navigation_advanced =
+      navigation_.revision != publication_execution_input->poseRevision() ||
+      navigation_.source_timestamp_us !=
+          publication_execution_input->poseSourceTimestampUs() ||
+      navigation_.receive_stamp_ns != publication_execution_input->poseReceiveStampNs();
+  if (navigation_advanced) {
+    const auto rebase_for_current_navigation = [&]() -> const char* {
+      const bool planned_snapshot_transition =
+          publication_horizon.execution_mode ==
+              msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+          (commit.kind == ProductionMppiHorizonCommitKind::kPublishSnapshotTransition ||
+           commit.kind ==
+               ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition) &&
+          commit.expected_snapshot != nullptr && commit.transition != nullptr &&
+          commit.transition->applied() && commit.transition->next != nullptr;
+      if (!planned_snapshot_transition) {
+        return "navigation_advanced_without_rebase_contract";
+      }
+      if (execution_input_capture_sequence_ ==
+          std::numeric_limits<std::uint64_t>::max()) {
+        return "late_rebase_input_sequence_exhausted";
+      }
+      const ProductionMppiExecutionInputPreparation current_input_preparation =
+          prepareExecutionInputForPlanningTick(
+              navigation_, applied_control_, execution_horizon_owner_,
+              ++execution_input_capture_sequence_, publication_now_ns,
+              maximum_control_feedback_age_ms_, false, false);
+      const std::shared_ptr<const VersionedExecutionInput3D>& current_input =
+          current_input_preparation.execution_input;
+      if (!current_input_preparation.previous_control_available ||
+          current_input == nullptr || !current_input->valid() ||
+          !current_input->nominalStateAuthoritative()) {
+        return "late_rebase_execution_input_unavailable";
+      }
+
+      const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
+          latest_lidar_evidence_.load(std::memory_order_acquire);
+      const std::shared_ptr<const VersionedObservedRawWorld3D> current_raw =
+          committed_3d != nullptr ? committed_3d->execution_owner : nullptr;
+      ExecutionPublicationNavigationRebaseResult3D rebase =
+          rebaseExecutionPublicationForCurrentNavigation3D(
+              ExecutionPublicationNavigationRebaseRequest3D{
+                  .expected_snapshot = commit.expected_snapshot.get(),
+                  .candidate_snapshot = commit.transition->next.get(),
+                  .expected_pending = commit.expected_pending.get(),
+                  .current_execution_input = current_input,
+                  .current_lidar_evidence = current_lidar,
+                  .current_observed_raw_world = current_raw,
+                  .publication_now_ns = publication_now_ns,
+                  .arrival_search_step_controls = cycle.arrival_search_step_controls,
+                  .finite_horizon_config = &finite_horizon_config_,
+                  .terminal_boundary = cycle.execution_path_world.terminal_boundary,
+              });
+      if (!rebase.rebased() || !rebase.transition.has_value() ||
+          rebase.transition->next == nullptr) {
+        return executionPublicationNavigationRebaseStatus3DName(rebase.status);
+      }
+      ExecutionRouteTransitionResult3D current_transition =
+          std::move(*rebase.transition);
+
+      const std::optional<FiniteExecutionEvidenceView> rebased_view =
+          finiteExecutionEvidenceView(*current_transition.next);
+      if (!rebased_view.has_value() || rebased_view->horizon == nullptr ||
+          rebased_view->execution_input == nullptr) {
+        return "late_rebase_transition_invalid";
+      }
+      publication_horizon.points.clear();
+      publication_horizon.valid_from =
+          production_mppi_execution_detail::timeFromNanoseconds(publication_now_ns);
+      const std::int64_t rebased_valid_until_ns = rebased_view->valid_until_ns;
+      publication_horizon.valid_until =
+          production_mppi_execution_detail::timeFromNanoseconds(rebased_valid_until_ns);
+      publication_horizon.pose_revision = navigation_.revision;
+      publication_horizon.control_interval_ns = rebased_view->control_interval_ns;
+      if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
+              publication_horizon, rebased_view->horizon->states,
+              rebased_view->horizon->controls, current_input->previousControl(),
+              rebased_view->control_interval_ns) ||
+          assessExecutionHorizonPayload(publication_horizon,
+                                        ExecutionHorizonPayloadValidationConfig{
+                                            .expected_frame_id = frame_id_,
+                                            .flight_envelope = &flight_envelope_config_,
+                                        }) != ExecutionHorizonPayloadStatus::kValid) {
+        return "late_rebase_payload_invalid";
+      }
+      publication_execution_input = current_input;
+      rebased_transition.emplace(std::move(current_transition));
+      publication_commit.transition = std::addressof(*rebased_transition);
+      owner.valid_from_ns = publication_now_ns;
+      owner.valid_until_ns = rebased_valid_until_ns;
+      return nullptr;
+    };
+    if (const char* const rebase_failure = rebase_for_current_navigation();
+        rebase_failure != nullptr) {
+      report_commit_failure(rebase_failure);
+      return false;
+    }
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "EXECUTION_HORIZON_COMMIT late_rebase=true source_pose_revision=%" PRIu64
+        " publication_pose_revision=%" PRIu64,
+        cycle.execution_input->poseRevision(),
+        publication_execution_input->poseRevision());
+  }
   const ExecutionRouteSnapshot3D* publication_snapshot{nullptr};
   if (cycle.snapshot_owner_required) {
-    if ((commit.kind == ProductionMppiHorizonCommitKind::kPublishSnapshotTransition ||
-         commit.kind ==
+    if ((publication_commit.kind ==
+             ProductionMppiHorizonCommitKind::kPublishSnapshotTransition ||
+         publication_commit.kind ==
              ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition) &&
-        commit.transition != nullptr && commit.transition->applied() &&
-        commit.transition->next != nullptr) {
-      publication_snapshot = commit.transition->next.get();
-    } else if (commit.kind ==
+        publication_commit.transition != nullptr &&
+        publication_commit.transition->applied() &&
+        publication_commit.transition->next != nullptr) {
+      publication_snapshot = publication_commit.transition->next.get();
+    } else if (publication_commit.kind ==
                    ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged &&
-               commit.expected_snapshot != nullptr) {
-      publication_snapshot = commit.expected_snapshot.get();
+               publication_commit.expected_snapshot != nullptr) {
+      publication_snapshot = publication_commit.expected_snapshot.get();
     } else {
       report_commit_failure("invalid_snapshot_commit_contract");
       return false;
@@ -470,7 +595,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
           ? cycle.selected_policy
           : execution_validation_policy_.get();
   if (publication_policy == nullptr || !publication_policy->valid() ||
-      !executionInputFreshAt(*cycle.execution_input, *publication_policy,
+      !executionInputFreshAt(*publication_execution_input, *publication_policy,
                              publication_now_ns)) {
     if (cycle.snapshot_owner_required || execution_horizon_owner_.valid) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
@@ -485,7 +610,8 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       latest_lidar_evidence_.load(std::memory_order_acquire);
   if (latest_lidar_evidence_identity_conflicted_.load(std::memory_order_acquire) ||
       publication_lidar == nullptr ||
-      (publication_lidar != current_lidar && !commit.latest_evidence_revalidated) ||
+      (publication_lidar != current_lidar &&
+       !publication_commit.latest_evidence_revalidated) ||
       !assessLatestLidarEvidenceFreshness3D(
            *publication_lidar, publication_now_ns,
            publication_policy->latestLidarMaximumAgeMs())
@@ -505,21 +631,23 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     return false;
   }
   const StationaryExecutionHold3D* const capture_hold =
-      commit.transition != nullptr && commit.transition->next != nullptr &&
-              commit.transition->next->stationary_hold.has_value()
-          ? std::addressof(*commit.transition->next->stationary_hold)
+      publication_commit.transition != nullptr &&
+              publication_commit.transition->next != nullptr &&
+              publication_commit.transition->next->stationary_hold.has_value()
+          ? std::addressof(*publication_commit.transition->next->stationary_hold)
           : nullptr;
   const bool stationary_capture_rearm_commit =
       cycle.planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold &&
-      cycle.execution_input->stationaryCaptureStateAuthoritative() &&
-      commit.kind == ProductionMppiHorizonCommitKind::kPublishSnapshotTransition &&
-      commit.expected_snapshot != nullptr &&
-      commit.expected_snapshot->phase == ExecutionRoutePhase3D::kRevoked &&
-      commit.transition != nullptr && commit.transition->applied() &&
-      capture_hold != nullptr &&
+      publication_execution_input->stationaryCaptureStateAuthoritative() &&
+      publication_commit.kind ==
+          ProductionMppiHorizonCommitKind::kPublishSnapshotTransition &&
+      publication_commit.expected_snapshot != nullptr &&
+      publication_commit.expected_snapshot->phase == ExecutionRoutePhase3D::kRevoked &&
+      publication_commit.transition != nullptr &&
+      publication_commit.transition->applied() && capture_hold != nullptr &&
       capture_hold->origin ==
           StationaryExecutionHoldOrigin3D::kStationaryCaptureRearm &&
-      capture_hold->terminal_execution_input == cycle.execution_input &&
+      capture_hold->terminal_execution_input == publication_execution_input &&
       capture_hold->position.x == owner.stationary_hold_position.x &&
       capture_hold->position.y == owner.stationary_hold_position.y &&
       capture_hold->position.z == owner.stationary_hold_position.z &&
@@ -530,36 +658,37 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       owner.stationary_position_hold && !execution_horizon_owner_.valid &&
       !applied_control_.valid &&
       production_mppi_execution_detail::sameState(navigation_.state,
-                                                  cycle.execution_input->state());
+                                                  publication_execution_input->state());
   bool control_evidence_current{false};
-  if (cycle.execution_input->previousControlSource() ==
+  if (publication_execution_input->previousControlSource() ==
       ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback) {
     control_evidence_current =
         appliedControlAuthoritativeForExecution(
             applied_control_, execution_horizon_owner_, publication_now_ns,
             maximum_control_feedback_age_ms_) &&
         applied_control_.horizon_producer_instance_id ==
-            cycle.execution_input->previousControlSourceProducerInstanceId() &&
+            publication_execution_input->previousControlSourceProducerInstanceId() &&
         applied_control_.horizon_sequence ==
-            cycle.execution_input->previousControlSourceSequence() &&
+            publication_execution_input->previousControlSourceSequence() &&
         applied_control_.source_stamp_ns ==
-            cycle.execution_input->previousControlSourceStampNs() &&
+            publication_execution_input->previousControlSourceStampNs() &&
         applied_control_.receive_stamp_ns ==
-            cycle.execution_input->previousControlReceiveStampNs() &&
-        sameControl(applied_control_.control, cycle.execution_input->previousControl());
-  } else if (cycle.execution_input->previousControlSource() ==
+            publication_execution_input->previousControlReceiveStampNs() &&
+        sameControl(applied_control_.control,
+                    publication_execution_input->previousControl());
+  } else if (publication_execution_input->previousControlSource() ==
              ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration) {
     control_evidence_current =
         navigation_.measured_acceleration_valid &&
         navigation_.source_timestamp_us ==
-            cycle.execution_input->previousControlSourceSequence() &&
+            publication_execution_input->previousControlSourceSequence() &&
         navigation_.receive_stamp_ns ==
-            cycle.execution_input->previousControlSourceStampNs() &&
+            publication_execution_input->previousControlSourceStampNs() &&
         navigation_.receive_stamp_ns ==
-            cycle.execution_input->previousControlReceiveStampNs() &&
+            publication_execution_input->previousControlReceiveStampNs() &&
         sameControl(navigation_.measured_equivalent_control,
-                    cycle.execution_input->previousControl());
-  } else if (cycle.execution_input->previousControlSource() ==
+                    publication_execution_input->previousControl());
+  } else if (publication_execution_input->previousControlSource() ==
              ExecutionPreviousControlEvidenceSource3D::kAssumedZero) {
     control_evidence_current = stationary_capture_rearm_commit;
   }
@@ -569,7 +698,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   }
 
   bool owner_committed{false};
-  switch (commit.kind) {
+  switch (publication_commit.kind) {
     case ProductionMppiHorizonCommitKind::kNoOp:
       owner_committed = true;
       break;
@@ -578,26 +707,30 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       owner_committed = true;
       break;
     case ProductionMppiHorizonCommitKind::kPublishSnapshotTransition:
-      owner_committed = commit.expected_snapshot != nullptr &&
-                        commit.transition != nullptr &&
-                        execution_route_store_.publish(commit.expected_snapshot,
-                                                       *commit.transition) ==
-                            ExecutionRoutePublicationStatus3D::kPublished;
+      owner_committed =
+          publication_commit.expected_snapshot != nullptr &&
+          publication_commit.transition != nullptr &&
+          execution_route_store_.publish(publication_commit.expected_snapshot,
+                                         *publication_commit.transition) ==
+              ExecutionRoutePublicationStatus3D::kPublished;
       break;
     case ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged:
-      owner_committed = commit.expected_snapshot != nullptr &&
-                        execution_route_store_.snapshot() == commit.expected_snapshot;
+      owner_committed =
+          publication_commit.expected_snapshot != nullptr &&
+          execution_route_store_.snapshot() == publication_commit.expected_snapshot;
       break;
     case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition: {
       const std::scoped_lock transaction_lock{pending_route_transaction_mutex_};
-      owner_committed = commit.expected_snapshot != nullptr &&
-                        commit.transition != nullptr &&
-                        commit.expected_pending != nullptr &&
-                        pending_certified_route_mailbox_.commitExecutionIfSame(
-                            commit.expected_pending, execution_route_store_,
-                            commit.expected_snapshot, *commit.transition);
+      owner_committed =
+          publication_commit.expected_snapshot != nullptr &&
+          publication_commit.transition != nullptr &&
+          publication_commit.expected_pending != nullptr &&
+          pending_certified_route_mailbox_.commitExecutionIfSame(
+              publication_commit.expected_pending, execution_route_store_,
+              publication_commit.expected_snapshot, *publication_commit.transition);
       if (owner_committed) {
-        recordPendingRouteStrategyOutcomeLocked(commit.expected_pending, true);
+        recordPendingRouteStrategyOutcomeLocked(publication_commit.expected_pending,
+                                                true);
       }
     } break;
   }
@@ -607,12 +740,12 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   }
   applied_control_ = {};
   execution_horizon_owner_ = owner;
-  execution_horizon_pub_->publish(horizon);
+  execution_horizon_pub_->publish(publication_horizon);
   RCLCPP_INFO(get_logger(),
               "EXECUTION_HORIZON published=true producer=%" PRIu64 " sequence=%" PRIu64
               " mode=%s",
-              horizon.producer_instance_id, horizon.sequence,
-              horizon.execution_mode ==
+              publication_horizon.producer_instance_id, publication_horizon.sequence,
+              publication_horizon.execution_mode ==
                       msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED
                   ? "planned"
                   : "non_planned");
