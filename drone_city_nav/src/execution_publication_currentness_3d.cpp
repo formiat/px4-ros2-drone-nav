@@ -19,6 +19,20 @@ sameLidarIdentity(const VersionedLatestLidarEvidence3D& expected,
          expected.acquisitionStampNs() == current.acquisitionStampNs();
 }
 
+[[nodiscard]] bool sameRawLineage(const RawMapVersion& expected,
+                                  const RawMapVersion& current) noexcept {
+  return expected.producer_instance_id == current.producer_instance_id &&
+         expected.base_snapshot_revision == current.base_snapshot_revision &&
+         current.revision > expected.revision;
+}
+
+[[nodiscard]] bool
+lidarEvidenceAdvanced(const VersionedLatestLidarEvidence3D& expected,
+                      const VersionedLatestLidarEvidence3D& current) noexcept {
+  return expected.producerInstanceId() == current.producerInstanceId() &&
+         current.sequence() > expected.sequence();
+}
+
 } // namespace
 
 ExecutionPublicationCurrentnessStatus3D assessExecutionPublicationCurrentness3D(
@@ -50,15 +64,21 @@ ExecutionPublicationCurrentnessStatus3D assessExecutionPublicationCurrentness3D(
   if (expected_raw_present != current_raw_present) {
     return ExecutionPublicationCurrentnessStatus3D::kRawEvidencePresenceChanged;
   }
+  bool revalidation_required{false};
   if (expected_raw_present) {
     if (!check.expected_raw_world->valid() || !check.current_raw_world->valid()) {
       return ExecutionPublicationCurrentnessStatus3D::kRawEvidenceInvalid;
     }
     if (!sameRawVersion(check.expected_raw_world->version(),
                         check.current_raw_world->version())) {
-      return ExecutionPublicationCurrentnessStatus3D::kRawVersionChanged;
+      if (!sameRawLineage(check.expected_raw_world->version(),
+                          check.current_raw_world->version())) {
+        return ExecutionPublicationCurrentnessStatus3D::kRawVersionChanged;
+      }
+      revalidation_required = true;
     }
-    if (!check.expected_raw_world->sharesObservationOwner(*check.current_raw_world)) {
+    if (!revalidation_required &&
+        !check.expected_raw_world->sharesObservationOwner(*check.current_raw_world)) {
       return ExecutionPublicationCurrentnessStatus3D::kRawObservationOwnerChanged;
     }
   }
@@ -73,14 +93,19 @@ ExecutionPublicationCurrentnessStatus3D assessExecutionPublicationCurrentness3D(
   }
   if (!sameLidarIdentity(*check.expected_lidar_evidence,
                          *check.current_lidar_evidence)) {
-    return ExecutionPublicationCurrentnessStatus3D::kLidarIdentityChanged;
-  }
-  if (check.expected_lidar_evidence->contentFingerprint() !=
-      check.current_lidar_evidence->contentFingerprint()) {
-    return ExecutionPublicationCurrentnessStatus3D::kLidarContentChanged;
-  }
-  if (check.expected_lidar_evidence != check.current_lidar_evidence) {
-    return ExecutionPublicationCurrentnessStatus3D::kLidarOwnerChanged;
+    if (!lidarEvidenceAdvanced(*check.expected_lidar_evidence,
+                               *check.current_lidar_evidence)) {
+      return ExecutionPublicationCurrentnessStatus3D::kLidarIdentityChanged;
+    }
+    revalidation_required = true;
+  } else {
+    if (check.expected_lidar_evidence->contentFingerprint() !=
+        check.current_lidar_evidence->contentFingerprint()) {
+      return ExecutionPublicationCurrentnessStatus3D::kLidarContentChanged;
+    }
+    if (check.expected_lidar_evidence != check.current_lidar_evidence) {
+      return ExecutionPublicationCurrentnessStatus3D::kLidarOwnerChanged;
+    }
   }
 
   const LatestLidarEvidenceFreshness3D freshness = assessLatestLidarEvidenceFreshness3D(
@@ -89,8 +114,12 @@ ExecutionPublicationCurrentnessStatus3D assessExecutionPublicationCurrentness3D(
   if (freshness.age_ms < 0.0) {
     return ExecutionPublicationCurrentnessStatus3D::kInvalidPublicationTime;
   }
-  return freshness.fresh ? ExecutionPublicationCurrentnessStatus3D::kCurrent
-                         : ExecutionPublicationCurrentnessStatus3D::kLidarNotFresh;
+  if (!freshness.fresh) {
+    return ExecutionPublicationCurrentnessStatus3D::kLidarNotFresh;
+  }
+  return revalidation_required
+             ? ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired
+             : ExecutionPublicationCurrentnessStatus3D::kCurrent;
 }
 
 std::string_view executionPublicationCurrentnessStatus3DName(
@@ -98,6 +127,8 @@ std::string_view executionPublicationCurrentnessStatus3DName(
   switch (status) {
     case ExecutionPublicationCurrentnessStatus3D::kCurrent:
       return "current";
+    case ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired:
+      return "revalidation_required";
     case ExecutionPublicationCurrentnessStatus3D::kInvalidRawRequirement:
       return "invalid_raw_requirement";
     case ExecutionPublicationCurrentnessStatus3D::kSnapshotMissing:

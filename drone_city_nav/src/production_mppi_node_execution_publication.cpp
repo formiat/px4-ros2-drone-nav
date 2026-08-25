@@ -1,9 +1,11 @@
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 #include "drone_city_nav/execution_publication_currentness_3d.hpp"
+#include "drone_city_nav/mppi/finite_execution_path.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <cinttypes>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -11,6 +13,7 @@
 #include <ranges>
 #include <span>
 #include <utility>
+#include <vector>
 
 #include "production_mppi_node_execution_internal.hpp"
 
@@ -184,6 +187,101 @@ snapshotValidationPolicy(const ExecutionRouteSnapshot3D& snapshot) {
   return snapshot.route.has_value() ? snapshot.route->validation_policy : nullptr;
 }
 
+struct FiniteExecutionEvidenceView {
+  const mppi::FiniteHorizon* horizon{nullptr};
+  const VersionedExecutionInput3D* execution_input{nullptr};
+  const VersionedExecutionValidationPolicy3D* policy{nullptr};
+  const VersionedStaticWorld3D* static_world{nullptr};
+  std::int64_t control_interval_ns{0};
+};
+
+[[nodiscard]] std::optional<FiniteExecutionEvidenceView>
+finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
+  const auto make_view =
+      [](const auto& execution) noexcept -> std::optional<FiniteExecutionEvidenceView> {
+    if (execution.horizon == nullptr || execution.execution_input == nullptr ||
+        execution.validation_policy == nullptr ||
+        (execution.observed_raw_world == nullptr) ==
+            (execution.static_world == nullptr)) {
+      return std::nullopt;
+    }
+    return FiniteExecutionEvidenceView{
+        .horizon = execution.horizon.get(),
+        .execution_input = execution.execution_input.get(),
+        .policy = execution.validation_policy.get(),
+        .static_world = execution.static_world.get(),
+        .control_interval_ns = execution.control_interval_ns,
+    };
+  };
+  if (snapshot.finite_execution.has_value()) {
+    return make_view(*snapshot.finite_execution);
+  }
+  if (snapshot.direct_tracking_execution.has_value()) {
+    return make_view(*snapshot.direct_tracking_execution);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool revalidateFiniteExecutionAgainstLatestEvidence(
+    const ExecutionRouteSnapshot3D& snapshot,
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
+        latest_lidar) noexcept {
+  const std::optional<FiniteExecutionEvidenceView> view =
+      finiteExecutionEvidenceView(snapshot);
+  if (!view.has_value() || view->horizon == nullptr ||
+      view->execution_input == nullptr || view->policy == nullptr ||
+      !view->policy->valid() || latest_lidar == nullptr || !latest_lidar->valid() ||
+      view->control_interval_ns <= 0 ||
+      view->horizon->states.size() != view->horizon->controls.size() + 1U ||
+      view->horizon->controls.empty()) {
+    return false;
+  }
+  const bool static_world = view->static_world != nullptr;
+  if ((!static_world && (latest_raw == nullptr || !latest_raw->valid())) ||
+      (static_world && !view->static_world->valid())) {
+    return false;
+  }
+  const double step_s = static_cast<double>(view->control_interval_ns) * 1.0e-9;
+  if (!std::isfinite(step_s) || step_s <= 0.0) {
+    return false;
+  }
+  std::vector<mppi::TimedExecutionPathPoint> points;
+  points.reserve(view->horizon->states.size());
+  for (std::size_t index = 0U; index < view->horizon->states.size(); ++index) {
+    points.push_back(mppi::TimedExecutionPathPoint{
+        .time_from_start_s = static_cast<double>(index) * step_s,
+        .state = view->horizon->states[index],
+        .control = index == 0U ? view->execution_input->previousControl()
+                               : view->horizon->controls[index - 1U],
+    });
+  }
+  const std::optional<ProprioceptiveFreeSpaceSeed3D>& seed =
+      !static_world ? latest_raw->proprioceptiveFreeSpaceSeed()
+                    : std::optional<ProprioceptiveFreeSpaceSeed3D>{};
+  const std::optional<LaunchSupportContact3D>& launch_support =
+      !static_world ? latest_raw->launchSupportContact()
+                    : std::optional<LaunchSupportContact3D>{};
+  const mppi::FiniteExecutionPathWorld world{
+      .flight_envelope = &view->policy->flightEnvelope(),
+      .dynamics = &view->policy->dynamics(),
+      .altitude_envelope = &view->policy->altitudeEnvelope(),
+      .footprint = &view->policy->sweptFootprint(),
+      .static_occupancy = static_world ? &view->static_world->occupancy() : nullptr,
+      .observed_occupancy = !static_world ? &latest_raw->occupancy() : nullptr,
+      .require_known_free_space = static_world,
+      .proprioceptive_free_space_seed = seed ? std::addressof(*seed) : nullptr,
+      .launch_support_contact =
+          launch_support ? std::addressof(*launch_support) : nullptr,
+      .raw_occupancy = nullptr,
+      .latest_lidar_obstacle_points = latest_lidar->hitPointsMapM(),
+      .terminal_boundary = std::nullopt,
+  };
+  return mppi::validateCompleteFiniteExecutionPath(
+             points, view->execution_input->previousControl(), world)
+      .accepted();
+}
+
 } // namespace
 
 msg::MppiTrajectoryHorizon
@@ -347,7 +445,8 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       latest_lidar_evidence_.load(std::memory_order_acquire);
   if (latest_lidar_evidence_identity_conflicted_.load(std::memory_order_acquire) ||
-      publication_lidar == nullptr || publication_lidar != current_lidar ||
+      publication_lidar == nullptr ||
+      (publication_lidar != current_lidar && !commit.latest_evidence_revalidated) ||
       !assessLatestLidarEvidenceFreshness3D(
            *publication_lidar, publication_now_ns,
            publication_policy->latestLidarMaximumAgeMs())
@@ -519,7 +618,13 @@ bool ProductionMppiNode::commitExecutionSnapshotHorizon(
           .publication_now_ns = get_clock()->now().nanoseconds(),
           .maximum_lidar_age_ms = policy->latestLidarMaximumAgeMs(),
       });
-  if (currentness != ExecutionPublicationCurrentnessStatus3D::kCurrent) {
+  const bool latest_evidence_revalidated =
+      currentness == ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired &&
+      revalidateFiniteExecutionAgainstLatestEvidence(
+          *transition.next, current_raw,
+          latest_lidar_evidence_.load(std::memory_order_acquire));
+  if (currentness != ExecutionPublicationCurrentnessStatus3D::kCurrent &&
+      !latest_evidence_revalidated) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "EXECUTION_HORIZON published=false reason=evidence_not_current "
@@ -537,6 +642,7 @@ bool ProductionMppiNode::commitExecutionSnapshotHorizon(
       .expected_snapshot = expected,
       .transition = &transition,
       .expected_pending = expected_pending,
+      .latest_evidence_revalidated = latest_evidence_revalidated,
   };
   return commitAndPublishExecutionHorizon(cycle, horizon, commit);
 }

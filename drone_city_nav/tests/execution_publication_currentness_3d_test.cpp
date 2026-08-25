@@ -133,7 +133,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
 }
 
 TEST(ExecutionPublicationCurrentness3DTest,
-     RawRequirementRejectsMissingPresenceVersionAndObservationChanges) {
+     RawRequirementRejectsMissingPresenceAndLineageChanges) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
   const auto lidar = lidarEvidence();
   const auto observation = rawObservation();
@@ -156,7 +156,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
   check.current_raw_world = rawWorld(observation, rawVersion(5U));
   ASSERT_NE(check.current_raw_world, nullptr);
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
-            ExecutionPublicationCurrentnessStatus3D::kRawVersionChanged);
+            ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired);
 
   RawMapVersion changed_base_version = rawVersion();
   ++changed_base_version.base_snapshot_revision;
@@ -214,7 +214,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
 }
 
 TEST(ExecutionPublicationCurrentness3DTest,
-     RejectsLidarIdentityContentAndOwnerChanges) {
+     RequiresRevalidationForAdvancedLidarAndRejectsIdentityContentOwnerChanges) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
   const auto expected_lidar = lidarEvidence();
   ASSERT_NE(snapshot, nullptr);
@@ -228,7 +228,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
   check.current_lidar_evidence = lidarEvidence(12U);
   ASSERT_NE(check.current_lidar_evidence, nullptr);
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
-            ExecutionPublicationCurrentnessStatus3D::kLidarIdentityChanged);
+            ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired);
 
   LatestLidarEvidenceCapture3D changed_content = lidarCapture();
   changed_content.hit_points_map_m.front().x += 1.0;
@@ -274,7 +274,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
 }
 
 TEST(ExecutionPublicationCurrentness3DTest,
-     ConcurrentNewerLidarEvidenceRejectsTheCapturedPublicationInput) {
+     ConcurrentNewerLidarEvidenceRequiresPublicationRevalidation) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
   const auto initial_lidar = lidarEvidence();
   const auto newer_lidar = lidarEvidence(12U);
@@ -307,7 +307,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
   publisher.join();
   updater.join();
 
-  EXPECT_EQ(status, ExecutionPublicationCurrentnessStatus3D::kLidarIdentityChanged);
+  EXPECT_EQ(status, ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired);
 }
 
 } // namespace

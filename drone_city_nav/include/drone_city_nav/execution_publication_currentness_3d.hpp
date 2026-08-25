@@ -15,6 +15,10 @@ enum class ExecutionPublicationRawRequirement3D : std::uint8_t {
 
 enum class ExecutionPublicationCurrentnessStatus3D : std::uint8_t {
   kCurrent,
+  // The execution owner has not changed, but continuous raw/lidar evidence
+  // advanced on the same lineage. Publication may proceed only after the
+  // candidate swept horizon is validated against that latest evidence.
+  kRevalidationRequired,
   kInvalidRawRequirement,
   kSnapshotMissing,
   kSnapshotInvalid,

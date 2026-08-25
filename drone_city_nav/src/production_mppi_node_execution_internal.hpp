@@ -29,6 +29,7 @@ struct ProductionMppiHorizonCommit {
   std::shared_ptr<const ExecutionRouteSnapshot3D> expected_snapshot;
   const ExecutionRouteTransitionResult3D* transition{nullptr};
   std::shared_ptr<const PendingCertifiedRoute3D> expected_pending;
+  bool latest_evidence_revalidated{false};
 };
 
 struct ProductionMppiExecutionCycle {
