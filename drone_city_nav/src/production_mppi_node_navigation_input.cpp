@@ -1,6 +1,7 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
 #include <bit>
+#include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <cstddef>
@@ -80,6 +81,13 @@ void ProductionMppiNode::onLocalPosition(
     const px4_msgs::msg::VehicleLocalPosition& message) {
   ProductionMppiNavigation navigation;
   navigation.receive_stamp_ns = get_clock()->now().nanoseconds();
+  // PX4 source timestamps and ROS simulation time belong to different clock
+  // domains.  Timestamp admission uses the local monotonic receive clock;
+  // ROS time remains the contract timestamp stored in the navigation sample.
+  const std::int64_t monotonic_receive_stamp_ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count();
   const bool position_velocity_contract =
       message.xy_valid && message.z_valid && message.v_xy_valid && message.v_z_valid &&
       std::isfinite(message.x) && std::isfinite(message.y) &&
@@ -124,7 +132,7 @@ void ProductionMppiNode::onLocalPosition(
         navigation_angular_derivative_estimator_.observe(NavigationAngularObservation{
             .sample_timestamp_us = message.timestamp_sample,
             .publication_timestamp_us = message.timestamp,
-            .receive_timestamp_ns = navigation.receive_stamp_ns,
+            .receive_timestamp_ns = monotonic_receive_stamp_ns,
             .yaw_rad = map_yaw,
             .source_payload_fingerprint = source_payload_fingerprint,
             .xy_reset_counter = message.xy_reset_counter,
