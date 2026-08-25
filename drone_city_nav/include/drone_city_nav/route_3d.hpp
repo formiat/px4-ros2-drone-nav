@@ -303,6 +303,24 @@ observeConstrainedRoute(std::span<const RouteSample3D> route,
 [[nodiscard]] RouteSample3D sampleRoute3DAtStation(std::span<const RouteSample3D> route,
                                                    double station_m) noexcept;
 
+// Materializes a successor whose executable beginning is copied from the
+// active route through a future stitch station.  The caller must subsequently
+// derive spans, passage volumes, timing, and raw certificates from the
+// returned canonical route.
+struct FrozenRoutePrefix3D {
+  std::vector<RouteSample3D> route;
+  double active_begin_station_m{0.0};
+  double stitch_station_m{0.0};
+
+  [[nodiscard]] bool valid() const noexcept;
+};
+
+[[nodiscard]] std::optional<FrozenRoutePrefix3D>
+materializeFrozenRoutePrefix3D(std::span<const RouteSample3D> active_route,
+                               std::span<const RouteSample3D> successor_route,
+                               const Point3& current_position,
+                               double frozen_prefix_length_m) noexcept;
+
 [[nodiscard]] std::uint64_t
 routeFingerprint(std::span<const RouteSample3D> route,
                  std::span<const SelectedPassageTraversal> traversals = {}) noexcept;

@@ -48,6 +48,29 @@ TEST(Route3DTest, ProjectsProgressUsingThreeDimensionalStation) {
   EXPECT_NEAR(projection.remaining_m, 5.0, 1.0e-6);
 }
 
+TEST(Route3DTest, MaterializesAnExactActivePrefixBeforeSuccessorContinuation) {
+  const std::vector<RouteSample3D> active = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0,
+      4.0);
+  const std::vector<RouteSample3D> successor = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.5, 5.0}, {10.0, 0.5, 5.0}, {20.0, 8.0, 5.0}}, 1.0,
+      4.0);
+
+  const std::optional<FrozenRoutePrefix3D> frozen =
+      materializeFrozenRoutePrefix3D(active, successor, Point3{2.0, 0.0, 5.0}, 6.0);
+
+  ASSERT_TRUE(frozen.has_value());
+  ASSERT_TRUE(frozen->valid());
+  EXPECT_NEAR(frozen->route.front().position.x, 2.0, 1.0e-6);
+  EXPECT_GT(frozen->route.back().station_m, 18.0);
+  const RouteSample3D stitch = sampleRoute3DAtStation(frozen->route, 6.0);
+  EXPECT_NEAR(stitch.position.x, 8.0, 1.0e-6);
+  EXPECT_NEAR(stitch.position.y, 0.0, 1.0e-6);
+  for (std::size_t index = 1U; index < frozen->route.size(); ++index) {
+    EXPECT_GT(frozen->route[index].station_m, frozen->route[index - 1U].station_m);
+  }
+}
+
 TEST(Route3DTest, BoundedProjectionStaysLocalAtSelfCrossing) {
   const std::vector<RouteSample3D> route = sampleRoute3D(
       std::vector<Point3>{

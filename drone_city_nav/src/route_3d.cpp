@@ -106,6 +106,67 @@ RouteSample3D sampleRoute3DAtStation(const std::span<const RouteSample3D> route,
   return sampleAtStation(route, station_m);
 }
 
+bool FrozenRoutePrefix3D::valid() const noexcept {
+  return route.size() >= 2U && std::isfinite(active_begin_station_m) &&
+         std::isfinite(stitch_station_m) && stitch_station_m > active_begin_station_m;
+}
+
+std::optional<FrozenRoutePrefix3D>
+materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route,
+                               const std::span<const RouteSample3D> successor_route,
+                               const Point3& current_position,
+                               const double frozen_prefix_length_m) noexcept {
+  if (active_route.size() < 2U || successor_route.size() < 2U ||
+      !std::isfinite(frozen_prefix_length_m) || !(frozen_prefix_length_m > 0.0)) {
+    return std::nullopt;
+  }
+  const RouteProjection3D active_projection =
+      projectOntoRoute3D(active_route, current_position);
+  const RouteProjection3D successor_projection =
+      projectOntoRoute3D(successor_route, current_position);
+  if (!active_projection.valid || !successor_projection.valid) {
+    return std::nullopt;
+  }
+  const double stitch_station = active_projection.station_m + frozen_prefix_length_m;
+  const double successor_stitch_station =
+      successor_projection.station_m + frozen_prefix_length_m;
+  if (stitch_station > active_route.back().station_m ||
+      successor_stitch_station > successor_route.back().station_m) {
+    return std::nullopt;
+  }
+
+  FrozenRoutePrefix3D result{.active_begin_station_m = active_projection.station_m,
+                             .stitch_station_m = stitch_station};
+  const auto append = [&result, &active_projection](RouteSample3D sample) noexcept {
+    sample.station_m = std::max(0.0, sample.station_m - active_projection.station_m);
+    if (result.route.empty() ||
+        sample.station_m > result.route.back().station_m + 1.0e-6) {
+      result.route.push_back(sample);
+    }
+  };
+  append(sampleAtStation(active_route, active_projection.station_m));
+  for (const RouteSample3D& sample : active_route) {
+    if (sample.station_m > active_projection.station_m &&
+        sample.station_m < stitch_station) {
+      append(sample);
+    }
+  }
+  append(sampleAtStation(active_route, stitch_station));
+  const double successor_offset = stitch_station - successor_stitch_station;
+  for (const RouteSample3D& source : successor_route) {
+    if (source.station_m <= successor_stitch_station) {
+      continue;
+    }
+    RouteSample3D sample = source;
+    sample.station_m += successor_offset - active_projection.station_m;
+    if (sample.station_m > result.route.back().station_m + 1.0e-6) {
+      result.route.push_back(sample);
+    }
+  }
+  return result.valid() ? std::optional<FrozenRoutePrefix3D>{std::move(result)}
+                        : std::nullopt;
+}
+
 std::uint64_t
 routeFingerprint(const std::span<const RouteSample3D> route,
                  const std::span<const SelectedPassageTraversal> traversals) noexcept {
