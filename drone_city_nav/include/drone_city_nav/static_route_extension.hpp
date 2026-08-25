@@ -163,6 +163,11 @@ private:
   std::optional<std::uint64_t> generation_;
 };
 
+[[nodiscard]] std::uint64_t
+staticRouteSearchGeneration(bool snapshot_owned_execution,
+                            std::uint64_t prepared_guide_generation,
+                            std::uint64_t committed_route_generation) noexcept;
+
 enum class StaticRouteSearchRequestKind : std::uint8_t {
   kInvalid,
   kInitial,

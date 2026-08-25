@@ -271,6 +271,11 @@ void ProductionMppiNode::requestStaticRouteReplan(
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       navigationObjective();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+      execution_route_store_.snapshot();
+  const std::uint64_t committed_route_generation =
+      execution_snapshot != nullptr ? execution_snapshot->routeGenerationHighWater()
+                                    : 0U;
 
   std::shared_ptr<ProductionMppiPreparedEsdf> request;
   std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
@@ -317,29 +322,38 @@ void ProductionMppiNode::requestStaticRouteReplan(
           guide_generation, globalGuideReleaseReasonName(reason));
       return;
     }
-    const std::uint64_t resident_generation = prepared_esdf_->global_guide_generation;
-    if (resident_generation == 0U && !static_route_failed_search_latch_.latched()) {
+    const std::uint64_t prepared_guide_generation =
+        prepared_esdf_->global_guide_generation;
+    const bool snapshot_owned_execution =
+        use_static_map_ ||
+        no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+    const std::uint64_t search_generation =
+        staticRouteSearchGeneration(snapshot_owned_execution, prepared_guide_generation,
+                                    committed_route_generation);
+    if (prepared_guide_generation == 0U &&
+        !static_route_failed_search_latch_.latched()) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                            "STATIC_ROUTE_REPLAN_REQUEST status=waiting_initial_search "
                            "requested_generation=%" PRIu64 " reason=%s",
                            guide_generation, globalGuideReleaseReasonName(reason));
       return;
     }
-    if (guide_generation != 0U && resident_generation != guide_generation) {
+    if (guide_generation != 0U && search_generation != guide_generation) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "
           "resident_generation=%" PRIu64 " requested_generation=%" PRIu64 " reason=%s",
-          resident_generation, guide_generation, globalGuideReleaseReasonName(reason));
+          search_generation, guide_generation, globalGuideReleaseReasonName(reason));
       return;
     }
     request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
     if (objective) {
       request->search_objective = makeStaticRouteObjective(*objective);
     }
+    request->global_guide_generation = search_generation;
     request->global_guide_release_reason = reason;
     request->static_route_replan_request = true;
-    request->static_route_replan_base_generation = resident_generation;
+    request->static_route_replan_base_generation = search_generation;
     request->static_route_replan_reason = reason;
   }
 

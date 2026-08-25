@@ -664,6 +664,12 @@ TEST(StaticRouteExtensionTest, CoalescesInitialRouteSearchGeneration) {
   EXPECT_FALSE(gate.inFlight());
 }
 
+TEST(StaticRouteExtensionTest, SnapshotOwnedSearchUsesOnlyTheCommittedRouteGeneration) {
+  EXPECT_EQ(staticRouteSearchGeneration(true, 1U, 0U), 0U);
+  EXPECT_EQ(staticRouteSearchGeneration(true, 2U, 1U), 1U);
+  EXPECT_EQ(staticRouteSearchGeneration(false, 2U, 1U), 2U);
+}
+
 TEST(StaticRouteExtensionTest, SuppressesEquivalentFailedSearchUntilRetryInterval) {
   StaticRouteFailedSearchLatch latch;
   const StaticRouteSearchContext failure{

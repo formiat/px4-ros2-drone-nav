@@ -181,6 +181,14 @@ std::uint64_t StaticRouteReplanGate::generation() const noexcept {
   return generation_.value_or(0U);
 }
 
+std::uint64_t
+staticRouteSearchGeneration(const bool snapshot_owned_execution,
+                            const std::uint64_t prepared_guide_generation,
+                            const std::uint64_t committed_route_generation) noexcept {
+  return snapshot_owned_execution ? committed_route_generation
+                                  : prepared_guide_generation;
+}
+
 bool StaticRouteSearchRequestIdentity::valid() const noexcept {
   return kind != StaticRouteSearchRequestKind::kInvalid;
 }
