@@ -534,10 +534,12 @@ private:
                            const Point3& mission_goal,
                            std::uint64_t candidate_generation,
                            const ProductionRouteActivationSnapshot3D& snapshot);
-  void commitRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
-                               const ProductionRouteActivationSnapshot3D& snapshot,
-                               std::uint64_t candidate_generation,
-                               ProductionRouteActivationResult3D& result);
+  void
+  commitRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
+                          const ProductionRouteActivationSnapshot3D& snapshot,
+                          std::uint64_t candidate_generation,
+                          const RouteStrategyArbitrationDecision3D& strategy_decision,
+                          ProductionRouteActivationResult3D& result);
   [[nodiscard]] ProductionRouteMaterialization3D materializeRouteCandidate3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
@@ -653,8 +655,9 @@ private:
       const ExecutionRouteTransitionResult3D& transition,
       const msg::MppiTrajectoryHorizon& horizon,
       const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending);
-  void commitPendingRouteStrategyDecision() noexcept;
-  void rollbackPendingRouteStrategyDecision() noexcept;
+  void recordPendingRouteStrategyOutcome(
+      const std::shared_ptr<const PendingCertifiedRoute3D>& pending,
+      bool selection_committed) noexcept;
   [[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>
   exactSnapshotValidationWorld(
       const ProductionMppiExecutionCycle& cycle, const CertifiedRouteSuffix3D& route,
@@ -799,9 +802,6 @@ private:
   RiskAwareLattice3DConfig lattice_3d_config_{};
   RouteProposalSelection3DConfig route_proposal_selection_3d_config_{};
   RouteStrategyArbitrator3D route_strategy_arbitrator_3d_{};
-  // A guide decision is provisional while its route is only in the pending
-  // mailbox. It becomes committed only when the execution-owner CAS succeeds.
-  std::optional<RouteStrategyArbitrationDecision3D> pending_route_strategy_decision_;
   IncrementalTopologyGraph3DConfig topological_graph_3d_config_{};
   IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};

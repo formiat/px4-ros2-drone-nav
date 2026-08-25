@@ -179,7 +179,7 @@ void ProductionMppiNode::processGuideSearch3D(
   activation.prepared.global_guide_search_ms = candidate_set.search_ms;
   if (proposal_selection.selected_index.has_value()) {
     commitRouteActivation3D(world, activation_snapshot, candidate_generation,
-                            activation);
+                            strategy_decision, activation);
   }
   const double route_planning_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
@@ -221,15 +221,9 @@ void ProductionMppiNode::processGuideSearch3D(
   const bool certified_pending = activation.certified_pending;
   const mppi::StaticRouteHandoffResult& handoff = activation.handoff;
 
-  bool strategy_outcome_recorded{false};
-  if (certified_pending) {
-    const std::scoped_lock strategy_lock{execution_evidence_commit_mutex_};
-    pending_route_strategy_decision_ = strategy_decision;
-    strategy_outcome_recorded = true;
-  } else {
-    strategy_outcome_recorded =
-        route_strategy_arbitrator_3d_.recordOutcome(strategy_decision, false);
-  }
+  const bool strategy_outcome_recorded =
+      certified_pending ||
+      route_strategy_arbitrator_3d_.recordOutcome(strategy_decision, false);
   const RouteStrategyArbitrationState3D& strategy_state =
       route_strategy_arbitrator_3d_.state();
   const RouteStrategyLease3D* const strategy_lease =

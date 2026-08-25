@@ -560,7 +560,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   }
   if (commit.kind ==
       ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition) {
-    commitPendingRouteStrategyDecision();
+    recordPendingRouteStrategyOutcome(commit.expected_pending, true);
   }
   applied_control_ = {};
   execution_horizon_owner_ = owner;

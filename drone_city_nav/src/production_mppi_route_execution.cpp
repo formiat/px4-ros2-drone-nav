@@ -434,8 +434,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   if (stale_pending != nullptr &&
       !pendingCertifiedRouteEligible3D(*stale_pending, *result.source_snapshot) &&
       pendingRoutePermanentlyObsolete(*stale_pending, *result.source_snapshot)) {
-    static_cast<void>(
-        pending_certified_route_mailbox_.acknowledgeIfSame(stale_pending));
+    if (pending_certified_route_mailbox_.acknowledgeIfSame(stale_pending)) {
+      recordPendingRouteStrategyOutcome(stale_pending, false);
+    }
   }
   if (result.direct_tracking_identity.has_value()) {
     return result;
@@ -626,6 +627,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                                        *result.source_snapshot) &&
       pendingRoutePermanentlyObsolete(*result.pending_route, *result.source_snapshot)) {
     if (pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route)) {
+      recordPendingRouteStrategyOutcome(result.pending_route, false);
       result.pending_route.reset();
     } else {
       // A newer publication defeated the exact acknowledgement. Preserve that
@@ -690,6 +692,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           permanently_unavailable ? "discard_and_replan" : "retain_active_route");
       if (permanently_unavailable &&
           pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route)) {
+        recordPendingRouteStrategyOutcome(result.pending_route, false);
         result.pending_route.reset();
       }
     }

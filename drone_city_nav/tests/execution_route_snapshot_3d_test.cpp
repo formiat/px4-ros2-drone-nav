@@ -25,6 +25,7 @@ pendingForSnapshot(const ExecutionRouteSnapshot3D& snapshot,
                           ? std::optional<CertifiedRouteSplice3D>{testRouteSplice(
                                 *snapshot.route, route)}
                           : std::nullopt,
+      .strategy_decision = std::nullopt,
       .route = route,
   };
 }

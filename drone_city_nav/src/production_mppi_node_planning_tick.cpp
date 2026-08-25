@@ -332,7 +332,7 @@ void ProductionMppiNode::planningTick() {
                 .pending_activation = route_execution.pending_activation,
             });
     if (pending_recovery.pending_acknowledged) {
-      rollbackPendingRouteStrategyDecision();
+      recordPendingRouteStrategyOutcome(route_execution.pending_route, false);
     }
     if (pending_recovery.request_successor) {
       requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide, 0U);
