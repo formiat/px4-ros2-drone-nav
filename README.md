@@ -63,11 +63,9 @@ formatted files remain owned by the invoking user. `./scripts/dev_shell.sh`
 remains available when you need an interactive container shell. Inside that
 shell, use these targets:
 
-`./scripts/build.sh` does not attach the NVIDIA runtime because compilation only
-needs the CUDA toolkit. `scripts/container_run.sh` accepts
-`DRONE_GAZEBO_CONTAINER_GPU=auto|off|required` for explicit control. Simulation
-and CUDA runtime tests should use `required`; formatting and compilation should
-use `off` on hosts where GPU runtime power cycling is undesirable.
+Every development container requires and receives the NVIDIA runtime. The
+container wrapper fails before starting if the host NVIDIA runtime is not
+available, so CUDA runtime failures are not deferred to ROS nodes or tests.
 
 ```bash
 make build
