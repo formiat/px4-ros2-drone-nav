@@ -241,7 +241,17 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     add_candidate(intent, directive, plan_lattice(directive));
   }
 
-  if (direct_mission_candidate) {
+  const bool direct_candidate_executable =
+      !candidates.empty() && candidates.front().evidence.physical_executable &&
+      latticeExecutable(candidates.front().lattice);
+  const double direct_selection_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                search_started)
+          .count();
+  const bool topology_budget_available =
+      direct_selection_ms <= topological_strategy_budget_ms_;
+  if (direct_mission_candidate &&
+      (!direct_candidate_executable || topology_budget_available)) {
     ProductionIncrementalTopologySearch3D topology =
         selectIncrementalTopologyRoute3D(world, search_start, mission_goal);
     RCLCPP_INFO(get_logger(),
@@ -309,6 +319,12 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                               intent.intent_target, intent.target_identity);
       add_candidate(intent, directive, plan_lattice(directive), std::move(topology));
     }
+  } else if (direct_mission_candidate) {
+    RCLCPP_INFO(get_logger(),
+                "INCREMENTAL_TOPOLOGY3D_SEARCH status=deferred_control_budget "
+                "direct_selection_ms=%.2f budget_ms=%.2f direct_executable=%s",
+                direct_selection_ms, topological_strategy_budget_ms_,
+                direct_candidate_executable ? "true" : "false");
   }
 
   for (std::size_t index = 0U; index < candidates.size(); ++index) {

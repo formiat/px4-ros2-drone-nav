@@ -246,6 +246,12 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
   topological_graph_3d_config_.footprint = physical_footprint_config_;
   topological_graph_3d_config_.require_known_free_space =
       require_known_free_space_for_goal_;
+  topological_strategy_budget_ms_ =
+      declare_parameter<double>("topological_strategy_budget_ms", 50.0);
+  if (!std::isfinite(topological_strategy_budget_ms_) ||
+      topological_strategy_budget_ms_ <= 0.0) {
+    throw std::invalid_argument{"topological_strategy_budget_ms must be positive"};
+  }
 
   topological_planner_3d_config_.maximum_start_anchor_distance_m =
       declare_parameter<double>("topological_planner_3d_start_anchor_distance_m", 20.0);
