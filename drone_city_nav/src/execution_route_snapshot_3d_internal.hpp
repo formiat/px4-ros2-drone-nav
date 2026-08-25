@@ -55,6 +55,10 @@ struct StationedRoutePoint3D {
 struct RouteAdherenceAssessment3D {
   RouteProjection3D begin{};
   RouteProjection3D stop{};
+  FiniteExecutionRouteAdherenceStatus3D status{
+      FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated};
+  std::size_t failure_state_index{0U};
+  double failure_distance_m{-1.0};
   bool accepted{false};
 };
 

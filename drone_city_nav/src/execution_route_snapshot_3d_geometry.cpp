@@ -819,12 +819,14 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, const double maximum_cross_track_m,
     const double stop_tolerance_m, const double requested_sweep_step_m) {
+  RouteAdherenceAssessment3D result;
   if (states.empty() || !std::isfinite(initial_station_m) ||
       !std::isfinite(minimum_station_m) || !std::isfinite(maximum_station_m) ||
       !std::isfinite(maximum_cross_track_m) || maximum_cross_track_m <= 0.0 ||
       !std::isfinite(stop_tolerance_m) || stop_tolerance_m <= 0.0 ||
       !std::isfinite(requested_sweep_step_m) || requested_sweep_step_m <= 0.0) {
-    return {};
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kInvalidInput;
+    return result;
   }
   constexpr double kMaximumAdherenceSweepStepM{0.1};
   const double sweep_step_m =
@@ -837,15 +839,29 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
       route, initial_point,
       std::max(minimum_station_m, initial_station_m - kExecutionBindingToleranceM),
       std::min(maximum_station_m, initial_station_m + kExecutionBindingToleranceM));
-  if (!previous_projection.valid ||
-      previous_projection.distance_m > maximum_cross_track_m ||
-      std::abs(previous_projection.station_m - initial_station_m) >
-          kExecutionBindingToleranceM ||
-      !constrainedPointAccepted(geometry, initial_point,
-                                previous_projection.station_m)) {
-    return {};
+  result.begin = previous_projection;
+  if (!previous_projection.valid) {
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kInitialProjectionInvalid;
+    return result;
   }
-  RouteAdherenceAssessment3D result{.begin = previous_projection};
+  if (previous_projection.distance_m > maximum_cross_track_m) {
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kInitialCrossTrackExceeded;
+    result.failure_distance_m = previous_projection.distance_m;
+    return result;
+  }
+  const double initial_station_error_m =
+      std::abs(previous_projection.station_m - initial_station_m);
+  if (initial_station_error_m > kExecutionBindingToleranceM) {
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kInitialStationMismatch;
+    result.failure_distance_m = initial_station_error_m;
+    return result;
+  }
+  if (!constrainedPointAccepted(geometry, initial_point,
+                                previous_projection.station_m)) {
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kInitialConstraintRejected;
+    result.failure_distance_m = previous_projection.distance_m;
+    return result;
+  }
   std::vector<StationedRoutePoint3D> stationed_path{StationedRoutePoint3D{
       .point = initial_point, .station_m = previous_projection.station_m}};
   Point3 previous_point = initial_point;
@@ -853,7 +869,9 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const Point3 state_position = statePoint(states[state_index]);
     const double state_segment_length_m = distance3D(previous_point, state_position);
     if (!std::isfinite(state_segment_length_m)) {
-      return {};
+      result.status = FiniteExecutionRouteAdherenceStatus3D::kNonFiniteSegment;
+      result.failure_state_index = state_index;
+      return result;
     }
     const std::size_t subdivision_count = std::max<std::size_t>(
         1U, static_cast<std::size_t>(std::ceil(state_segment_length_m / sweep_step_m)));
@@ -874,16 +892,35 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
                    previous_projection.station_m - kStationToleranceM),
           allowed_end_station_m);
       const double continuous_margin_m = 0.5 * physical_increment_m;
-      if (!projection.valid ||
-          projection.station_m + kStationToleranceM < previous_projection.station_m ||
-          previous_projection.distance_m + continuous_margin_m >
-              maximum_cross_track_m ||
-          projection.distance_m + continuous_margin_m > maximum_cross_track_m ||
-          !constrainedPointAccepted(geometry, sample, projection.station_m) ||
+      if (!projection.valid) {
+        result.status = FiniteExecutionRouteAdherenceStatus3D::kProjectionInvalid;
+        result.failure_state_index = state_index;
+        return result;
+      }
+      if (projection.station_m + kStationToleranceM < previous_projection.station_m) {
+        result.status = FiniteExecutionRouteAdherenceStatus3D::kStationRegression;
+        result.failure_state_index = state_index;
+        result.failure_distance_m =
+            previous_projection.station_m - projection.station_m;
+        return result;
+      }
+      const double cross_track_with_margin_m =
+          std::max(previous_projection.distance_m, projection.distance_m) +
+          continuous_margin_m;
+      if (cross_track_with_margin_m > maximum_cross_track_m) {
+        result.status = FiniteExecutionRouteAdherenceStatus3D::kCrossTrackExceeded;
+        result.failure_state_index = state_index;
+        result.failure_distance_m = cross_track_with_margin_m;
+        return result;
+      }
+      if (!constrainedPointAccepted(geometry, sample, projection.station_m) ||
           !constrainedSegmentAccepted(geometry, sample_begin,
                                       previous_projection.station_m, sample,
                                       projection.station_m)) {
-        return {};
+        result.status = FiniteExecutionRouteAdherenceStatus3D::kConstraintRejected;
+        result.failure_state_index = state_index;
+        result.failure_distance_m = projection.distance_m;
+        return result;
       }
       if (projection.station_m > previous_projection.station_m + kStationToleranceM) {
         const auto event_begin = std::ranges::upper_bound(
@@ -897,7 +934,10 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
           const Point3 event_point =
               interpolatePoint(sample_begin, sample, station_ratio);
           if (!constrainedPointAccepted(geometry, event_point, *event)) {
-            return {};
+            result.status = FiniteExecutionRouteAdherenceStatus3D::kConstraintRejected;
+            result.failure_state_index = state_index;
+            result.failure_distance_m = projection.distance_m;
+            return result;
           }
         }
       }
@@ -908,12 +948,20 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     }
     previous_point = state_position;
   }
-  if (previous_projection.distance_m > stop_tolerance_m ||
-      !validateOrderedPassageCrossings(geometry, stationed_path, result.begin.station_m,
-                                       previous_projection.station_m)) {
-    return {};
-  }
   result.stop = previous_projection;
+  if (previous_projection.distance_m > stop_tolerance_m) {
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kTerminalCrossTrackExceeded;
+    result.failure_state_index = states.size() - 1U;
+    result.failure_distance_m = previous_projection.distance_m;
+    return result;
+  }
+  if (!validateOrderedPassageCrossings(geometry, stationed_path, result.begin.station_m,
+                                       previous_projection.station_m)) {
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kPassageCrossingRejected;
+    result.failure_state_index = states.size() - 1U;
+    return result;
+  }
+  result.status = FiniteExecutionRouteAdherenceStatus3D::kAccepted;
   result.accepted = true;
   return result;
 }

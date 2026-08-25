@@ -629,12 +629,21 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       if (!certified_execution.certified()) {
         const std::string_view status_name =
             finiteExecutionCertificationStatus3DName(certified_execution.status);
+        const std::string_view adherence_status_name =
+            finiteExecutionRouteAdherenceStatus3DName(
+                certified_execution.route_adherence_status);
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 1000,
             "FINITE_EXECUTION_CERTIFICATION certified=false status=%.*s "
+            "route_adherence_status=%.*s route_adherence_state_index=%zu "
+            "route_adherence_failure_distance_m=%.3f "
             "snapshot_version=%" PRIu64 " route_generation=%" PRIu64
             " geometry_revision=%" PRIu64 " trajectory_revision=%" PRIu64,
-            static_cast<int>(status_name.size()), status_name.data(), expected->version,
+            static_cast<int>(status_name.size()), status_name.data(),
+            static_cast<int>(adherence_status_name.size()),
+            adherence_status_name.data(),
+            certified_execution.route_adherence_failure_state_index,
+            certified_execution.route_adherence_failure_distance_m, expected->version,
             target_route->identity.generation,
             target_route->geometry->executable_geometry_revision,
             previous_trajectory_revision + 1U);

@@ -7,6 +7,7 @@
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/world_generation.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -382,10 +383,31 @@ enum class FiniteExecutionCertificationStatus3D : std::uint8_t {
   kInvalidArtifact,
 };
 
+enum class FiniteExecutionRouteAdherenceStatus3D : std::uint8_t {
+  kNotEvaluated,
+  kAccepted,
+  kInvalidInput,
+  kInitialProjectionInvalid,
+  kInitialCrossTrackExceeded,
+  kInitialStationMismatch,
+  kInitialConstraintRejected,
+  kNonFiniteSegment,
+  kProjectionInvalid,
+  kStationRegression,
+  kCrossTrackExceeded,
+  kConstraintRejected,
+  kPassageCrossingRejected,
+  kTerminalCrossTrackExceeded,
+};
+
 struct FiniteExecutionCertificationResult3D {
   FiniteExecutionCertificationStatus3D status{
       FiniteExecutionCertificationStatus3D::kInvalidInput};
   std::optional<FiniteExecutionState3D> execution;
+  FiniteExecutionRouteAdherenceStatus3D route_adherence_status{
+      FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated};
+  std::size_t route_adherence_failure_state_index{0U};
+  double route_adherence_failure_distance_m{-1.0};
 
   [[nodiscard]] bool certified() const noexcept;
 };
@@ -589,6 +611,9 @@ finiteExecutionKind3DName(FiniteExecutionKind3D kind) noexcept;
 
 [[nodiscard]] std::string_view finiteExecutionCertificationStatus3DName(
     FiniteExecutionCertificationStatus3D status) noexcept;
+
+[[nodiscard]] std::string_view finiteExecutionRouteAdherenceStatus3DName(
+    FiniteExecutionRouteAdherenceStatus3D status) noexcept;
 
 [[nodiscard]] std::string_view
 executionRoutePhase3DName(ExecutionRoutePhase3D phase) noexcept;

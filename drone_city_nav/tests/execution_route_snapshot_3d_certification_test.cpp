@@ -200,6 +200,10 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(accepted.execution.has_value());
   EXPECT_EQ(accepted.status, FiniteExecutionCertificationStatus3D::kCertified);
   EXPECT_EQ(finiteExecutionCertificationStatus3DName(accepted.status), "certified");
+  EXPECT_EQ(accepted.route_adherence_status,
+            FiniteExecutionRouteAdherenceStatus3D::kAccepted);
+  EXPECT_EQ(finiteExecutionRouteAdherenceStatus3DName(accepted.route_adherence_status),
+            "accepted");
   EXPECT_NE(accepted.execution->validation_proof.validation_contract_fingerprint, 0U);
   EXPECT_NE(accepted.execution->validation_proof.artifact_fingerprint, 0U);
 
@@ -216,6 +220,8 @@ TEST(ExecutionRouteSnapshot3DTest,
             FiniteExecutionCertificationStatus3D::kHorizonContractRejected);
   EXPECT_EQ(finiteExecutionCertificationStatus3DName(inconsistent_result.status),
             "horizon_contract_rejected");
+  EXPECT_EQ(inconsistent_result.route_adherence_status,
+            FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated);
 
   ASSERT_NE(baseline.execution_input, nullptr);
   ExecutionInputCapture3D mismatched_input_capture{
