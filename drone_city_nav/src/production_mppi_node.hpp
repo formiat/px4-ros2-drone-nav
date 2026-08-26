@@ -181,6 +181,7 @@ struct ProductionMppiPreparedEsdf {
   bool passage_volume_resource_reused{false};
   double candidate_validation_ms{0.0};
   std::uint64_t route_fingerprint{0U};
+  RouteInstanceId3D bound_route_instance_id{};
   mppi::EsdfGrid grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
@@ -235,6 +236,7 @@ struct ProductionMppiPreparedEsdf {
   GlobalGuideProjection global_guide_projection{};
   ProductionPlanningSearchKind planning_search_kind{
       ProductionPlanningSearchKind::kNone};
+  RouteInstanceId3D planning_search_base_route_instance_id{};
   Point3 planning_search_start{};
   Point3 planning_search_goal{};
   Point3 planning_candidate_endpoint{};
@@ -364,6 +366,8 @@ enum class ProductionIncrementalTopologyRejectionReason3D : std::uint8_t {
 };
 
 struct ProductionRouteSearchCandidate3D {
+  Point3 search_start{};
+  RouteInstanceId3D search_base_route_instance_id{};
   RouteIntent3D intent{};
   SegmentEvidence3D evidence{};
   RiskAwareLattice3DResult lattice{};
@@ -567,7 +571,8 @@ private:
   [[nodiscard]] ProductionRouteCandidateSet3D generateRouteCandidates3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
-      const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world);
+      const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
+      const CertifiedRouteSuffix3D* active_route);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void initializeRuntimeInterfaces();

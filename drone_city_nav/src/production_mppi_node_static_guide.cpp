@@ -66,8 +66,14 @@ void ProductionMppiNode::processGuideSearch3D(
                         world.global_guide_generation);
   }
 
-  ProductionRouteCandidateSet3D candidate_set =
-      generateRouteCandidates3D(world, navigation, mission_goal, latest_raw_world_3d);
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> search_execution_snapshot =
+      execution_route_store_.snapshot();
+  const CertifiedRouteSuffix3D* const search_active_route =
+      search_execution_snapshot && search_execution_snapshot->route.has_value()
+          ? std::addressof(*search_execution_snapshot->route)
+          : nullptr;
+  ProductionRouteCandidateSet3D candidate_set = generateRouteCandidates3D(
+      world, navigation, mission_goal, latest_raw_world_3d, search_active_route);
   const std::uint64_t candidate_generation = nextRouteGeneration3D();
   const ProductionRouteActivationSnapshot3D activation_snapshot =
       captureRouteActivationSnapshot3D();
@@ -392,7 +398,8 @@ void ProductionMppiNode::processGuideSearch3D(
       "status=%s termination=%s "
       "points=%zu samples=%zu spans=%zu expansions=%zu expansion_limit=%zu "
       "deadline_ms=%.2f "
-      "risk_stage=%s start=(%.2f,%.2f,%.2f) planning_goal=(%.2f,%.2f,%.2f) "
+      "risk_stage=%s search_base_route_instance_id=%" PRIu64
+      " start=(%.2f,%.2f,%.2f) planning_goal=(%.2f,%.2f,%.2f) "
       "endpoint=(%.2f,%.2f,%.2f) direction=(%.3f,%.3f,%.3f) "
       "achieved_progress_m=%.2f minimum_clearance_m=%.2f stale_pops=%zu "
       "open_peak=%zu records_peak=%zu terminal_successors=%zu "
@@ -484,8 +491,9 @@ void ProductionMppiNode::processGuideSearch3D(
       prepared.constrained_spans ? prepared.constrained_spans->size() : 0U,
       lattice.expansions, lattice_3d_config_.maximum_expansions,
       lattice_3d_config_.maximum_search_time_ms,
-      lattice3DRiskStageName(lattice.risk_stage), search_start.x, search_start.y,
-      search_start.z, lattice.planning_goal.x, lattice.planning_goal.y,
+      lattice3DRiskStageName(lattice.risk_stage),
+      prepared.planning_search_base_route_instance_id.value, search_start.x,
+      search_start.y, search_start.z, lattice.planning_goal.x, lattice.planning_goal.y,
       lattice.planning_goal.z, prepared.planning_candidate_endpoint.x,
       prepared.planning_candidate_endpoint.y, prepared.planning_candidate_endpoint.z,
       preferred_direction.x, preferred_direction.y, preferred_direction.z,

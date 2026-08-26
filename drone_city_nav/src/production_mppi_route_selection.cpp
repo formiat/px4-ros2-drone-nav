@@ -104,16 +104,28 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
 ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
     const Point3& mission_goal,
-    const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world) {
+    const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
+    const CertifiedRouteSuffix3D* const active_route) {
   const auto search_started = std::chrono::steady_clock::now();
   Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
+  RouteInstanceId3D search_base_route_instance_id{};
+  const bool certified_stitch_base_available =
+      active_route != nullptr && active_route->route_instance_id.valid() &&
+      active_route->route_instance_id == world.bound_route_instance_id &&
+      active_route->geometry != nullptr && active_route->geometry->route != nullptr &&
+      active_route->progress.valid();
   if ((world.static_route_extension_request || world.static_route_replan_request) &&
-      world.route_3d && world.global_guide_projection.valid) {
+      certified_stitch_base_available) {
+    const std::vector<RouteSample3D>& active_geometry = *active_route->geometry->route;
     const double stitch_station_m =
-        world.global_guide_projection.station_m +
+        std::max(active_route->progress.station_m,
+                 world.global_guide_projection.valid
+                     ? world.global_guide_projection.station_m
+                     : active_route->progress.station_m) +
         static_route_extension_config_.required_certified_overlap_m;
-    if (stitch_station_m <= world.route_3d->back().station_m) {
-      search_start = sampleRoute3DAtStation(*world.route_3d, stitch_station_m).position;
+    if (stitch_station_m <= active_geometry.back().station_m) {
+      search_start = sampleRoute3DAtStation(active_geometry, stitch_station_m).position;
+      search_base_route_instance_id = active_route->route_instance_id;
     }
   }
   Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
@@ -195,6 +207,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
             reaches_segment, lattice.reached_mission_goal, lattice.objective_cost,
             evidence_world);
         candidates.push_back(ProductionRouteSearchCandidate3D{
+            .search_start = search_start,
+            .search_base_route_instance_id = search_base_route_instance_id,
             .intent = intent,
             .evidence = evidence,
             .lattice = std::move(lattice),

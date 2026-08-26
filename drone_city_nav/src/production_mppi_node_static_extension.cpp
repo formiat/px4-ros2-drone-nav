@@ -2,6 +2,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -76,6 +77,7 @@ void ProductionMppiNode::bindStaticRouteRequestToExecution(
     ProductionMppiPreparedEsdf& request, const CertifiedRouteSuffix3D& active_route,
     const GlobalGuideProjection& projection) {
   const ExecutionRouteGeometry3D& geometry = *active_route.geometry;
+  request.bound_route_instance_id = active_route.route_instance_id;
   request.global_guide_generation = active_route.identity.generation;
   request.global_guide_reaches_mission_goal =
       active_route.identity.proposal.reaches_mission_goal;
@@ -100,11 +102,15 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
     const ProductionRouteExecutionSelection3D& route_execution,
     const ProductionMppiNavigation& navigation, const std::int64_t now_ns) {
   if (route_execution.source_snapshot == nullptr ||
-      route_execution.source_snapshot->phase != ExecutionRoutePhase3D::kFollowing ||
-      !route_execution.source_snapshot->route.has_value()) {
+      route_execution.source_snapshot->phase != ExecutionRoutePhase3D::kFollowing) {
     return;
   }
-  const CertifiedRouteSuffix3D& active_route = *route_execution.source_snapshot->route;
+  const std::optional<CertifiedRouteSuffix3D>& route =
+      route_execution.source_snapshot->route;
+  if (!route.has_value()) {
+    return;
+  }
+  const CertifiedRouteSuffix3D& active_route = route.value();
   const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
       *active_route.geometry->route,
       Point3{navigation.state.x, navigation.state.y, navigation.state.z},
@@ -455,12 +461,18 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
   }
   const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
       execution_route_store_.snapshot();
-  if (execution_snapshot == nullptr || !execution_snapshot->route.has_value() ||
-      !execution_snapshot->route->valid()) {
+  if (execution_snapshot == nullptr) {
     return;
   }
-  const std::uint64_t active_generation =
-      execution_snapshot->route->identity.generation;
+  const std::optional<CertifiedRouteSuffix3D>& route = execution_snapshot->route;
+  if (!route.has_value()) {
+    return;
+  }
+  const CertifiedRouteSuffix3D& active_route = route.value();
+  if (!active_route.valid()) {
+    return;
+  }
+  const std::uint64_t active_generation = active_route.identity.generation;
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
   const Point3 planning_goal = staticRoutePlanningGoal(
       current, objective.goal, lattice_3d_config_.planning_goal_distance_m);

@@ -24,7 +24,9 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     const bool active_observation_segment_completed,
     const CertifiedRouteSuffix3D* const active_route,
     const ProductionMppiRawWorld3D* const activation_raw_world) {
-  const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
+  const Point3 current_position{navigation.state.x, navigation.state.y,
+                                navigation.state.z};
+  const Point3 search_start = candidate.search_start;
   const RiskAwareLattice3DResult& lattice = candidate.lattice;
   ProductionRouteMaterialization3D result;
   ProductionMppiPreparedEsdf& prepared = result.prepared;
@@ -43,6 +45,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   prepared.route_intent = candidate.intent;
   prepared.route_segment_evidence = candidate.evidence;
   prepared.planning_search_kind = ProductionPlanningSearchKind::kLattice3D;
+  prepared.planning_search_base_route_instance_id =
+      candidate.search_base_route_instance_id;
   prepared.planning_search_start = search_start;
   prepared.planning_search_goal = lattice.planning_goal;
   prepared.planning_candidate_endpoint =
@@ -100,6 +104,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   prepared.topology_critical_exposure_m = lattice.critical_exposure_m;
   prepared.continuation_validation_ms = lattice.continuation_validation_ms;
   prepared.route_fingerprint = lattice.route_fingerprint;
+  prepared.bound_route_instance_id = {};
 
   std::vector<SelectedPassageTraversal> route_traversals =
       lattice.selected_passage_traversals;
@@ -126,7 +131,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   if (lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier) {
     const bool active_observation_frontier_reached =
         world.lattice_3d_observation_frontier.has_value() &&
-        distance3D(search_start,
+        distance3D(current_position,
                    world.lattice_3d_observation_frontier->observation_pose) <=
             lattice_3d_config_.goal_tolerance_m;
     result.observation_replacement =
@@ -188,10 +193,12 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       *mutable_route, route_traversals, candidate_generation, route_envelope_config_);
   std::optional<FrozenRoutePrefix3D> frozen_prefix;
   if ((world.static_route_extension_request || world.static_route_replan_request) &&
-      active_route != nullptr && active_route->valid() && active_route->geometry &&
+      candidate.search_base_route_instance_id.valid() && active_route != nullptr &&
+      active_route->route_instance_id == candidate.search_base_route_instance_id &&
+      active_route->valid() && active_route->geometry &&
       active_route->geometry->route && active_route->geometry->constrained_spans) {
     frozen_prefix = materializeFrozenRoutePrefix3D(
-        *active_route->geometry->route, lattice.route, search_start,
+        *active_route->geometry->route, lattice.route, current_position,
         static_route_extension_config_.required_certified_overlap_m);
     if (!frozen_prefix.has_value()) {
       result.validation = StaticRouteCandidateValidation{
@@ -444,7 +451,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   const bool protected_suffix =
       world.route_3d && world.constrained_spans &&
       staticRouteReplacementProtected(
-          *world.route_3d, *world.constrained_spans, search_start,
+          *world.route_3d, *world.constrained_spans, current_position,
           world.route_objective, world.search_objective,
           static_route_extension_config_.protected_departure_m);
   if (result.validation.accepted && protected_suffix) {
