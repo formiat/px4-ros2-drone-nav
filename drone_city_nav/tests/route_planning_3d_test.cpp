@@ -125,6 +125,38 @@ TEST(RoutePlanning3DTest,
   EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kMissionProgress);
 }
 
+TEST(RoutePlanning3DTest,
+     PermissiveSelectionPrefersDisplacementWhenAllRoutesAreDetours) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
+               1.0, 2.0, 2.0, 23U, -1.0),
+      proposal(RouteIntentSource3D::kTopology, true, true, true, false, false, false,
+               2.0, 5.0, 6.0, 24U, -4.0, RouteIntentPurpose3D::kObservationFrontier),
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, RouteProposalSelection3DConfig{});
+
+  ASSERT_EQ(selection.selected_index, std::optional<std::size_t>{1U});
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kEndpointDisplacement);
+}
+
+TEST(RoutePlanning3DTest,
+     PermissiveDetourSelectionUsesDisplacementInsteadOfRouteLength) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
+               1.0, 1.0, 80.0, 25U, -0.5),
+      proposal(RouteIntentSource3D::kTopology, true, true, true, false, false, false,
+               2.0, 5.0, 6.0, 26U, -4.0, RouteIntentPurpose3D::kObservationFrontier),
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, RouteProposalSelection3DConfig{});
+
+  ASSERT_EQ(selection.selected_index, std::optional<std::size_t>{1U});
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kEndpointDisplacement);
+}
+
 TEST(RoutePlanning3DTest, StrategicBypassBeatsShorterGoalDirectedPrefix) {
   const std::vector<RouteProposal3D> proposals{
       proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,

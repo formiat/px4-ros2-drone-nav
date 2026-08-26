@@ -136,6 +136,7 @@ enum class RouteProposalSelectionReason3D : std::uint8_t {
   kOnlyEligibleCandidate,
   kMissionTarget,
   kMissionProgress,
+  kEndpointDisplacement,
   kIntentTarget,
   kStrategicMissionContinuation,
   kProductiveDirectTransit,
