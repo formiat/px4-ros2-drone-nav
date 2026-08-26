@@ -57,14 +57,16 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         self.assertIn("std::optional<CertifiedRouteSplice3D> route_splice", pending_header)
         route_validity = pending.split(
             "case PendingExecutionBaseKind3D::kRoute:", maxsplit=1
-        )[1].split("case PendingExecutionBaseKind3D::kDirectTracking:", maxsplit=1)[0]
+        )[1].split("case PendingExecutionBaseKind3D::kRouteHandoff:", maxsplit=1)[0]
         self.assertIn("route_splice.has_value()", route_validity)
         self.assertIn("route_splice->validFor", pending)
-        replacement = transitions.split("replaceCertifiedRoute3D", maxsplit=1)[1]
+        replacement = transitions.split("replaceCertifiedRouteImpl", maxsplit=1)[1]
         self.assertIn("const CertifiedRouteSplice3D& splice", replacement)
         self.assertIn("assessRouteSpliceReadiness3D", replacement)
         self.assertIn("certifyRouteSplice3D", activation)
-        self.assertIn(".route_splice = route_base ? result.splice.splice", activation)
+        self.assertIn(
+            ".route_splice = overlap_search ? result.splice.splice", activation
+        )
 
     def test_runtime_waits_for_the_proof_window_and_keeps_pending_on_cas_loss(self) -> None:
         execution = (SOURCE / "production_mppi_route_execution.cpp").read_text(
@@ -98,7 +100,8 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         )
 
         self.assertIn("maybeRequestStaticRouteExtensionFromExecution", planning)
-        self.assertIn("*route_execution.source_snapshot->route", extension)
+        self.assertIn("route_execution.source_snapshot->route", extension)
+        self.assertIn("const CertifiedRouteSuffix3D& active_route", extension)
         self.assertIn("maybeRequestStaticRouteExtension(", extension)
         self.assertIn("bindStaticRouteRequestToExecution", extension)
         self.assertIn("execution_route_store_.snapshot()", extension)

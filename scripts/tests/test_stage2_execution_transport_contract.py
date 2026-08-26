@@ -20,6 +20,7 @@ PLANNER_HEADER = SOURCE / "production_mppi_node.hpp"
 PLANNER_MISSION = SOURCE / "production_mppi_node_mission.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
+EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
 ROUTE_ACTIVATION = SOURCE / "production_mppi_route_activation.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
@@ -48,7 +49,7 @@ MISSION_MONITOR = SOURCE / "mission_monitor_node.cpp"
 def read_execution_sources() -> str:
     return "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (EXECUTION, EXECUTION_PUBLICATION, EXECUTION_RETENTION)
+        for path in (EXECUTION, EXECUTION_PUBLICATION, EXECUTION_HOLDS, EXECUTION_RETENTION)
     )
 
 
@@ -188,6 +189,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
 
     def test_raw_invalidation_recertifies_before_retirement(self) -> None:
         execution = read_execution_sources()
+        route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
         invalidation_consumer = execution.split(
             "ProductionMppiNode::retainSnapshotFinitePath", maxsplit=1
         )[1].split("ProductionMppiNode::retainDirectFinitePath", maxsplit=1)[0]
@@ -195,23 +197,26 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         lifecycle_event = invalidation_consumer.index(
             "RouteLifecycleEventKind3D::kRawInvalidated"
         )
-        derive_evidence = invalidation_consumer.index("deriveRouteEvidence")
         recertification = invalidation_consumer.index(
             "certifyRawInvalidatedFiniteExecution3D"
         )
         retirement = invalidation_consumer.index("retireCertifiedRoute3D")
         publication = invalidation_consumer.index("commitExecutionSnapshotHorizon")
-        self.assertRegex(
-            invalidation_consumer,
-            r"raw_invalidation != nullptr\s*\?\s*"
-            r"certifyRawInvalidatedFiniteExecution3D\(",
-        )
+        raw_recertification = invalidation_consumer.split(
+            "if (raw_invalidation != nullptr)", maxsplit=2
+        )[2].split("return recertified.has_value()", maxsplit=1)[0]
+        self.assertIn("certifyRawInvalidatedFiniteExecution3D", raw_recertification)
         self.assertRegex(
             invalidation_consumer,
             r"raw_invalidation != nullptr\s*\?\s*retireCertifiedRoute3D\(",
         )
-        self.assertLess(lifecycle_event, derive_evidence)
-        self.assertLess(derive_evidence, recertification)
+        evidence_derivation = route_execution.split(
+            "deriveLatestObservedRouteEvidence", maxsplit=1
+        )[1].split("observedRouteEvidenceIsCurrent", maxsplit=1)[0]
+        self.assertIn("deriveRouteEvidence", evidence_derivation)
+        self.assertIn("rawWorldExecutionOwnerExact", evidence_derivation)
+        self.assertIn("lifecycle_observed_raw_world", invalidation_consumer)
+        self.assertLess(lifecycle_event, recertification)
         self.assertLess(recertification, retirement)
         self.assertLess(retirement, publication)
 
@@ -519,8 +524,10 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         commit_lock = owner_commit.index("input_lock{input_mutex_}")
         status_state = owner_commit.index("const bool vehicle_status_epoch_stable")
         commit_status = owner_commit.index("vehicleStatusAuthoritativeForExecution(")
-        snapshot_commit = owner_commit.index("switch (commit.kind)")
-        dds_publish = owner_commit.index("execution_horizon_pub_->publish(horizon)")
+        snapshot_commit = owner_commit.index("switch (publication_commit.kind)")
+        dds_publish = owner_commit.index(
+            "execution_horizon_pub_->publish(publication_horizon)"
+        )
         self.assertLess(commit_lock, commit_status)
         self.assertLess(commit_status, snapshot_commit)
         self.assertLess(snapshot_commit, dds_publish)
@@ -611,7 +618,10 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             r"input_mutex_,\s*esdf_state_mutex_\};",
         )
 
-        execution_publication = EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+        execution_publication = (
+            EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+            + EXECUTION_HOLDS.read_text(encoding="utf-8")
+        )
         owner_commit = execution_publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
@@ -785,7 +795,10 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
 
     def test_revocation_is_fail_closed_current_and_reissued(self) -> None:
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
-        publication = EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+        publication = (
+            EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+            + EXECUTION_HOLDS.read_text(encoding="utf-8")
+        )
 
         self.assertIn(
             "EXECUTION_MODE_REVOKED=2",
@@ -820,8 +833,10 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         request_currentness = owner_commit.index(
             "requested_execution_revocation_.load(std::memory_order_acquire)"
         )
-        snapshot_cas = owner_commit.index("switch (commit.kind)")
-        dds_publish = owner_commit.index("execution_horizon_pub_->publish(horizon)")
+        snapshot_cas = owner_commit.index("switch (publication_commit.kind)")
+        dds_publish = owner_commit.index(
+            "execution_horizon_pub_->publish(publication_horizon)"
+        )
         self.assertLess(request_currentness, snapshot_cas)
         self.assertLess(request_currentness, dds_publish)
         snapshot_owner_commit = owner_commit.index("execution_route_store_.publish")

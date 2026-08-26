@@ -245,7 +245,7 @@ class ExecutionInputContractTest(unittest.TestCase):
         )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
         input_lock = commit.index("input_lock{input_mutex_}")
         raw_currentness = commit.index("committed_world_current")
-        snapshot_commit = commit.index("switch (commit.kind)")
+        snapshot_commit = commit.index("switch (publication_commit.kind)")
         self.assertLess(input_lock, raw_currentness)
         self.assertLess(raw_currentness, snapshot_commit)
         self.assertIn("committedRawWorldAgeMs", commit)

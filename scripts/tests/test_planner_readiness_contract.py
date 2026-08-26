@@ -25,10 +25,12 @@ PLANNING_TICK_FINALIZE = SOURCE / "production_mppi_node_planning_tick_finalize.c
 STATIC_EXTENSION = SOURCE / "production_mppi_node_static_extension.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
+EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
 ROUTE_ACTIVATION = SOURCE / "production_mppi_route_activation.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
+OFFBOARD_NAMES = SOURCE / "mppi_offboard_node_names.hpp"
 COOPERATIVE_AGENT = SOURCE / "cooperative_traffic_agent_node.cpp"
 COOPERATIVE_REFEREE = SOURCE / "cooperative_traffic_referee_node.cpp"
 COOPERATIVE_REFEREE_LIFECYCLE = (
@@ -85,7 +87,7 @@ MISSION_LAUNCH = PACKAGE / "launch" / "multi_vehicle_mission_launch.py"
 def read_execution_sources() -> str:
     return "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (EXECUTION, EXECUTION_PUBLICATION, EXECUTION_RETENTION)
+        for path in (EXECUTION, EXECUTION_PUBLICATION, EXECUTION_HOLDS, EXECUTION_RETENTION)
     )
 
 
@@ -174,7 +176,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         execution = read_execution_sources()
         route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
-        offboard = OFFBOARD.read_text(encoding="utf-8")
+        offboard = OFFBOARD.read_text(encoding="utf-8") + OFFBOARD_NAMES.read_text(
+            encoding="utf-8"
+        )
         planner = PLANNER.read_text(encoding="utf-8")
         horizon_message = HORIZON_MESSAGE.read_text(encoding="utf-8")
         speed_policy = SPEED_POLICY.read_text(encoding="utf-8")
@@ -731,10 +735,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("offboard_session.latest_source_stamp_ns", target_selection)
         self.assertIn("offboard_session_receive_stamp_ns", target_selection)
         self.assertNotIn("offboard_session_admission_", target_selection)
-        self.assertIn(
-            "offboard_session_admission_.latest_source_stamp_ns", owner_commit
-        )
-        self.assertIn("cycle.offboard_session.latest_source_stamp_ns", owner_commit)
+        self.assertIn("assessOffboardSessionPublicationCurrentness", owner_commit)
+        self.assertIn("offboard_session_admission_", owner_commit)
+        self.assertIn("cycle.offboard_session", owner_commit)
         self.assertIn("offboard_session_receive_stamp_ns_", owner_commit)
         self.assertIn("cycle.offboard_session_receive_stamp_ns", owner_commit)
 
@@ -843,7 +846,10 @@ class PlannerReadinessContractTest(unittest.TestCase):
     ) -> None:
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         planning_tick_rearm = PLANNING_TICK_REARM.read_text(encoding="utf-8")
-        publication = EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+        publication = (
+            EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+            + EXECUTION_HOLDS.read_text(encoding="utf-8")
+        )
         evidence = EXECUTION_EVIDENCE_HEADER.read_text(encoding="utf-8")
         snapshot_header = EXECUTION_SNAPSHOT_HEADER.read_text(encoding="utf-8")
         snapshot_hold = EXECUTION_SNAPSHOT_HOLD.read_text(encoding="utf-8")

@@ -257,7 +257,8 @@ add_library(
   src/execution_route_snapshot_3d_validation.cpp
   src/producer_epoch_admission.cpp
   src/producer_instance_id.cpp
-  src/route_3d.cpp
+    src/route_3d.cpp
+    src/route_3d_passage.cpp
   src/route_3d_spans.cpp
   src/route_compiler_3d.cpp
   src/route_time_parameterization.cpp
@@ -640,6 +641,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_inputs_3d.cpp
     src/production_mppi_node_raw_input.cpp
     src/production_mppi_node_planning_tick.cpp
+    src/production_mppi_node_planning_controller.cpp
     src/production_mppi_node_pending_strategy.cpp
     src/production_mppi_node_world_generation.cpp
     src/production_mppi_node_planning_tick_finalize.cpp
@@ -664,6 +666,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/execution_publication_navigation_rebase_3d.cpp
     src/production_mppi_node_execution.cpp
     src/production_mppi_node_execution_publication.cpp
+    src/production_mppi_node_execution_holds.cpp
     src/production_mppi_node_execution_retention.cpp)
   target_compile_features(drone_city_nav_production_mppi_component PRIVATE cxx_std_20)
   target_link_libraries(
@@ -1270,6 +1273,7 @@ if(BUILD_TESTING)
   enable_project_warnings(static_esdf_cache_test)
 
   ament_add_gtest(route_3d_test tests/route_3d_test.cpp
+                  tests/route_3d_search_test.cpp
                   tests/route_3d_lattice_geometry_test.cpp
                   tests/risk_aware_lattice_3d_state_test.cpp)
   target_compile_features(route_3d_test PRIVATE cxx_std_20)

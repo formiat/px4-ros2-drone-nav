@@ -17,14 +17,14 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
         contract = (SOURCE / "route_execution_contract_3d.cpp").read_text(
             encoding="utf-8"
         )
-        helper = (SOURCE / "production_mppi_route_helpers.cpp").read_text(
+        parameterization = (SOURCE / "route_time_parameterization.cpp").read_text(
             encoding="utf-8"
         )
         execution = (SOURCE / "production_mppi_node_execution.cpp").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("routeEndpointHasTerminalStop3D", helper)
+        self.assertIn("routeEndpointHasTerminalStop3D", parameterization)
         self.assertIn("routeEndpointUsesLocalBoundary3D", execution)
         self.assertRegex(
             contract,

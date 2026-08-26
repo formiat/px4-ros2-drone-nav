@@ -50,18 +50,21 @@ class Stage5RouteStrategyContractTest(unittest.TestCase):
         self.assertIn("pending_decision_sequence_", implementation)
         evaluation = guide.index("route_strategy_arbitrator_3d_.evaluate")
         activation = guide.index("commitRouteActivation3D")
-        outcome = guide.index("route_strategy_arbitrator_3d_.recordOutcome")
         self.assertLess(evaluation, activation)
-        self.assertLess(activation, outcome)
-        self.assertIn("pending_route_strategy_decision_ = strategy_decision", guide)
+        failure_outcome = guide.index("route_strategy_arbitrator_3d_.recordOutcome")
+        self.assertLess(activation, failure_outcome)
+        route_activation = (
+            SOURCE / "production_mppi_route_activation.cpp"
+        ).read_text(encoding="utf-8")
+        self.assertIn(".strategy_decision = strategy_decision", route_activation)
         publication = (SOURCE / "production_mppi_node_execution_publication.cpp").read_text(
             encoding="utf-8"
         )
-        self.assertIn("commitPendingRouteStrategyDecision()", publication)
+        self.assertIn("recordPendingRouteStrategyOutcomeLocked", publication)
         pending_strategy = (SOURCE / "production_mppi_node_pending_strategy.cpp").read_text(
             encoding="utf-8"
         )
-        self.assertIn("pending_route_strategy_decision_, true", pending_strategy)
+        self.assertIn("*pending->strategy_decision, selection_committed", pending_strategy)
 
     def test_topology_candidate_carries_generation_bound_return_lineage(self) -> None:
         selection = (SOURCE / "production_mppi_route_selection.cpp").read_text(

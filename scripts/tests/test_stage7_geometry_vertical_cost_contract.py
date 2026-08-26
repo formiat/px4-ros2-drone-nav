@@ -29,10 +29,15 @@ class Stage7GeometryVerticalCostContractTest(unittest.TestCase):
         sparse = implementation.index("sparseRouteIndices(")
         candidates = implementation.index("shortcutCandidateIndices(", sparse)
         batches = implementation.index("batch_begin", candidates)
-        raw_validation = implementation.index("validateSweptFootprint", batches)
+        raw_validation = implementation.index("segmentValid(", batches)
+        segment_validator = implementation.split(
+            "segmentValid", maxsplit=1
+        )[1].split("sparseRouteIndices", maxsplit=1)[0]
         self.assertLess(sparse, candidates)
         self.assertLess(candidates, batches)
         self.assertLess(batches, raw_validation)
+        self.assertIn("validateSweptFootprint", segment_validator)
+        self.assertIn("validateObservedSweptFootprint", segment_validator)
         self.assertIn("std::ranges::sort(candidates, std::greater<>{})", implementation)
 
     def test_sparse_shortcuts_remain_curvature_and_corridor_aware(self) -> None:

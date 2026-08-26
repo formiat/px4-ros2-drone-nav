@@ -9,7 +9,6 @@
 #include <limits>
 #include <memory>
 #include <span>
-#include <utility>
 
 #include "production_mppi_node.hpp"
 #include "production_mppi_node_planning_tick_context.hpp"
@@ -18,24 +17,6 @@
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] ProductionMppiExecutionReason
-terminalExecutionReason(const NavigationTerminalFailure failure) noexcept {
-  switch (failure) {
-    case NavigationTerminalFailure::kUnavailableWorld:
-      return ProductionMppiExecutionReason::kUnavailableWorld;
-    case NavigationTerminalFailure::kNoAcknowledgedHorizon:
-      return ProductionMppiExecutionReason::kNoExecutableHorizon;
-    case NavigationTerminalFailure::kNone:
-    case NavigationTerminalFailure::kNoExecutableRoute:
-    case NavigationTerminalFailure::kRecoveryBudgetExhausted:
-      return ProductionMppiExecutionReason::kNoExecutableRoute;
-  }
-  return ProductionMppiExecutionReason::kNoExecutableRoute;
-}
-
-} // namespace
 
 void ProductionMppiNode::planningTick() {
   if (!engine_) {
@@ -59,28 +40,17 @@ void ProductionMppiNode::planningTick() {
       !use_static_map_ &&
       no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
   if (handleRequestedExecutionRevocation(tick_entry_ns)) {
-    // A callback-requested epoch boundary is a hard barrier: never commit a new
-    // owner in the same tick, and retain the request until revoke publication
-    // has linearized with the exact snapshot.
+    // A callback-requested epoch is a hard barrier; retain it until revoke
+    // publication has linearized with the exact snapshot.
     return;
   }
   const std::uint64_t line_of_sight_generation =
       tracking_objective != nullptr ? tracking_objective->line_of_sight_generation : 0U;
   const std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity =
-      direct_tracking_interception
-          ? std::optional<DirectTrackingOwnerIdentity3D>{DirectTrackingOwnerIdentity3D{
-                .mission_epoch = objective->mission_epoch,
-                .assignment_generation = objective->assignment_generation,
-                .target_detection_id = objective->target_detection_id,
-                .target_track_id = objective->target_track_id,
-                .objective_sample_sequence = objective->sample_sequence,
-                .line_of_sight_generation = line_of_sight_generation,
-            }}
-          : std::nullopt;
-  const std::uint64_t effective_guide_generation =
-      direct_tracking_interception
-          ? (std::uint64_t{1} << 63U) | line_of_sight_generation
-          : 0U;
+      makeDirectTrackingOwnerIdentity(objective.get(), direct_tracking_interception,
+                                      line_of_sight_generation);
+  const std::uint64_t effective_guide_generation = directTrackingGuideGeneration(
+      direct_tracking_interception, line_of_sight_generation);
   const StaticRouteObjective current_route_objective =
       objective ? makeStaticRouteObjective(*objective) : StaticRouteObjective{};
   const std::uint64_t required_route_epoch =
@@ -910,15 +880,10 @@ void ProductionMppiNode::planningTick() {
                                     ? mppi::RiskTier::kPreferred
                                     : route_required_risk_tier,
       });
-  mppi::DeterministicCandidateKind deterministic_candidate =
-      mppi::DeterministicCandidateKind::kDisabled;
-  if (direct_tracking_interception) {
-    deterministic_candidate =
-        mppi::DeterministicCandidateKind::kTargetDirectedReacquisition;
-  } else if (planning_state == ProductionMppiPlanningState::kPlanned && route_usable &&
-             route_projection.valid && !route_control.hold_xy) {
-    deterministic_candidate = mppi::DeterministicCandidateKind::kRouteDirectedCruise;
-  }
+  const mppi::DeterministicCandidateKind deterministic_candidate =
+      planningDeterministicCandidate(direct_tracking_interception, planning_state,
+                                     route_usable, route_projection.valid,
+                                     route_control.hold_xy);
   mppi::MppiTickInput input{
       .initial_state = execution_input->state(),
       .target = target,
@@ -969,66 +934,26 @@ void ProductionMppiNode::planningTick() {
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
                                  .count();
-  mppi::MppiTickResult result;
-  MppiEligibleRolloutUpdate no_eligible_recovery{
-      .no_eligible_recovery_generation = nominal_reseed.no_eligible_recovery_generation,
-      .phase = nominal_reseed.no_eligible_phase,
-  };
-  if (planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold ||
-      planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold) {
-    result.horizon = {target, target};
-    result.controls = {mppi::Control{}};
-    result.selected_tier = mppi::RiskTier::kPreferred;
-    result.raw_collision = false;
-    result.known_solid_collision = false;
-    result.esdf_revision = esdf->revision;
-    result.timings.host_total_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  snapshot_started)
-            .count();
-  } else {
-    try {
-      std::optional<mppi::MppiTickResult> planned =
-          planOnCapturedWorldGeneration(*esdf, input);
-      if (!planned.has_value()) {
-        return;
-      }
-      result = std::move(*planned);
-    } catch (const std::exception& error) {
-      RCLCPP_ERROR(get_logger(), "PRODUCTION_MPPI_TICK failed: %s", error.what());
-      publishFailClosedExecutionRevocation(
-          ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
-      return;
-    }
-    if (result.route_directed_candidate_injected &&
-        !result.route_directed_candidate_raw_safe && !direct_tracking_interception) {
-      // A route-directed seed is only one controller candidate. Its rejection does
-      // not invalidate the certified route geometry while the remaining MPPI
-      // rollouts can still provide an executable control result.
-      bool event_applied{false};
-      const RouteLifecycleEvent3D event{
-          .kind = RouteLifecycleEventKind3D::kControlCandidateRejected,
-          .generation = route_generation,
-      };
-      if (!uses_3d_route) {
-        event_applied = legacy_execution_arbiter_.observe(event);
-      }
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "ROUTE_EXECUTION status=seed_not_executable route_generation=%" PRIu64
-          " cross_track_m=%.2f alternative_rollout_available=%s "
-          "event_applied=%s action=reject_control_candidate",
-          route_generation, route_projection.cross_track_m,
-          result.feasibility_contract.available ? "true" : "false",
-          event_applied ? "true" : "false");
-    }
-    no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
-        result.feasibility_contract.available, result.nominal_reseeded);
-    if (no_eligible_recovery.guide_replan_requested && !direct_tracking_interception) {
-      requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts,
-                          route_generation);
-    }
+  std::optional<ProductionMppiControllerTickResult> controller_tick =
+      runPlanningController(ProductionMppiControllerTick{
+          .esdf = *esdf,
+          .input = input,
+          .nominal_reseed = nominal_reseed,
+          .target = target,
+          .snapshot_started = snapshot_started,
+          .route_generation = route_generation,
+          .now_ns = now_ns,
+          .route_cross_track_m = route_projection.cross_track_m,
+          .planning_state = planning_state,
+          .direct_tracking_interception = direct_tracking_interception,
+          .uses_3d_route = uses_3d_route,
+      });
+  if (!controller_tick.has_value()) {
+    return;
   }
+  mppi::MppiTickResult& result = controller_tick->result;
+  const MppiEligibleRolloutUpdate& no_eligible_recovery =
+      controller_tick->no_eligible_recovery;
   finalizePlanningTick(ProductionMppiPlanningTickFinalization{
       .input = input,
       .result = result,

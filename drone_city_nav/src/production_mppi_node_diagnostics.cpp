@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
-#include <cmath>
 #include <iomanip>
 #include <numeric>
 #include <sstream>
@@ -11,46 +10,12 @@
 #include "production_mppi_cooperative_diagnostics.hpp"
 #include "production_mppi_execution_diagnostics.hpp"
 #include "production_mppi_node.hpp"
+#include "production_mppi_node_diagnostics_format.hpp"
 #include "production_mppi_noncooperative_diagnostics.hpp"
 #include "successor_profiling_diagnostics.hpp"
 #include "tracking_objective_diagnostics.hpp"
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] double finiteOrNegative(const double value) noexcept {
-  return std::isfinite(value) ? value : -1.0;
-}
-
-[[nodiscard]] const char*
-planningStatusName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
-             ? lattice3DStatusName(esdf.lattice_3d_status)
-             : latticePlanStatusName(esdf.lattice_status);
-}
-
-[[nodiscard]] const char*
-planningTerminationName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
-             ? lattice3DSearchTerminationName(esdf.lattice_3d_termination)
-             : latticeSearchTerminationName(esdf.lattice_termination);
-}
-
-[[nodiscard]] const char*
-planningRiskStageName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
-             ? lattice3DRiskStageName(esdf.lattice_3d_risk_stage)
-             : latticeRiskStageName(esdf.lattice_risk_stage);
-}
-
-[[nodiscard]] const char*
-planningRoutePurposeName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
-             ? lattice3DRoutePurposeName(esdf.lattice_3d_route_purpose)
-             : "mission_transit";
-}
-
-} // namespace
 
 void ProductionMppiNode::processDiagnostics(
     const ProductionMppiDiagnosticsSnapshot& snapshot) {
@@ -66,19 +31,8 @@ void ProductionMppiNode::processDiagnostics(
   const MppiSpeedPolicyResult& speed_policy = snapshot.speed_policy;
   const detail::TrackingPursuitDiagnostics pursuit_diagnostics =
       detail::trackingPursuitDiagnostics(objective.get(), input, snapshot.execution);
-  const std::span<const RouteSample3D> route =
-      snapshot.route_projection_valid && esdf.route_3d
-          ? std::span<const RouteSample3D>{*esdf.route_3d}
-          : std::span<const RouteSample3D>{};
-  const std::span<const ConstrainedRouteSpan> spans =
-      esdf.constrained_spans
-          ? std::span<const ConstrainedRouteSpan>{*esdf.constrained_spans}
-          : std::span<const ConstrainedRouteSpan>{};
-  const ConstrainedRouteObservation route_constraint = observeConstrainedRoute(
-      route, spans, esdf.global_guide_generation, snapshot.route_station_m,
-      Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
-      Vec3{input.initial_state.vx, input.initial_state.vy, input.initial_state.vz},
-      route_envelope_config_, route_constraint_diagnostics_distance_m_);
+  const ConstrainedRouteObservation route_constraint = diagnosticRouteConstraint(
+      snapshot, route_envelope_config_, route_constraint_diagnostics_distance_m_);
   const ProductionMppiPlanningState planning_state = snapshot.planning_state;
   const std::string_view target_source = snapshot.target_source;
   const char* static_route_generation_matches = "not_attempted";

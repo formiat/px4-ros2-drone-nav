@@ -15,6 +15,7 @@ PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 PLANNING_TICK_FINALIZE = SOURCE / "production_mppi_node_planning_tick_finalize.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
+EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 PLANNER_MISSION = SOURCE / "production_mppi_node_mission.cpp"
 
 
@@ -23,7 +24,10 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         finalization = PLANNING_TICK_FINALIZE.read_text(encoding="utf-8")
         execution = EXECUTION.read_text(encoding="utf-8")
-        publication = EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+        publication = (
+            EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+            + EXECUTION_HOLDS.read_text(encoding="utf-8")
+        )
         inputs = INPUTS.read_text(encoding="utf-8")
         raw_input = RAW_INPUT.read_text(encoding="utf-8")
         mission = PLANNER_MISSION.read_text(encoding="utf-8")
@@ -80,7 +84,11 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
             self.assertLess(barrier, wire_publication)
         self.assertIn("kConfirmSnapshotUnchanged", commit)
         self.assertIn("cycle.latest_lidar_evidence", commit)
-        self.assertIn("publication_lidar != current_lidar", commit)
+        self.assertIn("publication_lidar->evidenceId()", commit)
+        self.assertIn("current_lidar->evidenceId()", commit)
+        self.assertIn("publication_lidar->contentFingerprint()", commit)
+        self.assertIn("current_lidar->contentFingerprint()", commit)
+        self.assertNotIn("publication_lidar != current_lidar", commit)
         self.assertIn("latest_lidar_evidence_identity_conflicted_", commit)
         self.assertIn("publication_now_ns", commit)
 
