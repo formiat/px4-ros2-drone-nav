@@ -17,12 +17,19 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
 
   input_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  // Large lidar evidence messages must not compete with continuously ready PX4
+  // navigation inputs. Evidence admission has its own commit mutex and may run
+  // concurrently with the lightweight input callbacks.
+  lidar_evidence_callback_group_ =
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   world_input_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   planning_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions input_subscription_options;
   input_subscription_options.callback_group = input_callback_group_;
+  rclcpp::SubscriptionOptions lidar_evidence_subscription_options;
+  lidar_evidence_subscription_options.callback_group = lidar_evidence_callback_group_;
   rclcpp::SubscriptionOptions world_subscription_options;
   world_subscription_options.callback_group = world_input_callback_group_;
   const auto sensor_qos = rclcpp::SensorDataQoS{};
@@ -102,7 +109,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
       [this](const msg::LatestLidarObstacleScan::SharedPtr message) {
         onLatestLidarObstacleScan(*message);
       },
-      input_subscription_options);
+      lidar_evidence_subscription_options);
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
       declare_parameter<std::string>("obstacle_memory_status_topic",
                                      "/drone_city_nav/obstacle_memory_status"),

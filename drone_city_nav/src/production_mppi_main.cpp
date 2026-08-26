@@ -11,7 +11,9 @@ int main(int argc, char* argv[]) {
   try {
     auto node =
         std::make_shared<drone_city_nav::ProductionMppiNode>(rclcpp::NodeOptions{});
-    rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 3U};
+    // Planning, world reconstruction, high-rate vehicle input, and lidar evidence
+    // each have an independent mutually-exclusive callback group.
+    rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 4U};
     executor.add_node(node);
     executor.spin();
   } catch (const std::exception& error) {
