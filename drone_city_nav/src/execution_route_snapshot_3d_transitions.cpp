@@ -74,7 +74,6 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
     }
   }
   if (successor_execution->kind != FiniteExecutionKind3D::kNominal ||
-      !candidateFiniteExecutionValid(*successor_execution, current, &successor, true) ||
       !successorEvidenceNotOlder(*current_route, *current.finite_execution, successor,
                                  *successor_execution)) {
     return transitionFailure(
@@ -364,20 +363,20 @@ replaceFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
     }
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  } else if (execution->execution_input == nullptr ||
-             current_route->progress.execution_input == nullptr ||
-             executionInputProgressRelation(*execution->execution_input,
-                                            *current_route->progress.execution_input) ==
-                 ExecutionInputProgressRelation3D::kInvalid ||
-             !candidateFiniteExecutionValid(*execution, current, current_route, true) ||
-             current.phase == ExecutionRoutePhase3D::kStopped ||
-             finiteExecutionValidatedAgainstNewerRawWorld(*execution) ||
-             (current.phase == ExecutionRoutePhase3D::kFollowing &&
-              execution->kind == FiniteExecutionKind3D::kEmergencyBrakeTail) ||
-             (current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
-              execution->kind != FiniteExecutionKind3D::kNominal) ||
-             (current.phase == ExecutionRoutePhase3D::kBraking &&
-              execution->kind == FiniteExecutionKind3D::kNominal)) {
+  }
+  if (execution->execution_input == nullptr ||
+      current_route->progress.execution_input == nullptr ||
+      executionInputProgressRelation(*execution->execution_input,
+                                     *current_route->progress.execution_input) ==
+          ExecutionInputProgressRelation3D::kInvalid ||
+      current.phase == ExecutionRoutePhase3D::kStopped ||
+      finiteExecutionValidatedAgainstNewerRawWorld(*execution) ||
+      (current.phase == ExecutionRoutePhase3D::kFollowing &&
+       execution->kind == FiniteExecutionKind3D::kEmergencyBrakeTail) ||
+      (current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
+       execution->kind != FiniteExecutionKind3D::kNominal) ||
+      (current.phase == ExecutionRoutePhase3D::kBraking &&
+       execution->kind == FiniteExecutionKind3D::kNominal)) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
@@ -390,6 +389,10 @@ replaceFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
   bindProgressToExecutionInput(
       rebound_route->progress, execution->execution_input,
       std::max(current_route->progress.station_m, execution->begin_route_station_m));
+  if (!candidateFiniteExecutionValid(*execution, current, rebound_route, true)) {
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  }
   ++next.version;
   next.finite_execution = std::move(execution);
   next.stationary_hold.reset();
@@ -521,7 +524,11 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
 
   ExecutionRouteSnapshot3D next = current;
   if (retained_safe_execution.has_value()) {
-    const CertifiedRouteSuffix3D* validation_route = current_route;
+    CertifiedRouteSuffix3D* const rebound_route = routePointer(next);
+    if (rebound_route == nullptr) {
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+    }
     if (event.kind == RouteLifecycleEventKind3D::kRawInvalidated) {
       if (current_route->progress.execution_input == nullptr ||
           retained_safe_execution->execution_input == nullptr ||
@@ -550,8 +557,7 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
               std::min(current_route->endStationM(),
                        retained_safe_execution->begin_route_station_m +
                            kExecutionBindingToleranceM));
-      CertifiedRouteSuffix3D* const rebound_route = routePointer(next);
-      if (rebound_route == nullptr || !rebound_projection.valid ||
+      if (!rebound_projection.valid ||
           rebound_projection.distance_m > kExecutionBindingToleranceM ||
           std::abs(rebound_projection.station_m -
                    retained_safe_execution->begin_route_station_m) >
@@ -562,11 +568,8 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
       bindProgressToExecutionInput(rebound_route->progress,
                                    retained_safe_execution->execution_input,
                                    retained_safe_execution->begin_route_station_m);
-      validation_route = rebound_route;
     } else {
-      CertifiedRouteSuffix3D* const rebound_route = routePointer(next);
-      if (rebound_route == nullptr ||
-          current_route->progress.execution_input == nullptr ||
+      if (current_route->progress.execution_input == nullptr ||
           retained_safe_execution->execution_input == nullptr ||
           executionInputProgressRelation(*retained_safe_execution->execution_input,
                                          *current_route->progress.execution_input) ==
@@ -578,11 +581,10 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
           rebound_route->progress, retained_safe_execution->execution_input,
           std::max(current_route->progress.station_m,
                    retained_safe_execution->begin_route_station_m));
-      validation_route = rebound_route;
     }
     if (retained_safe_execution->kind == FiniteExecutionKind3D::kNominal ||
-        !candidateFiniteExecutionValid(*retained_safe_execution, current,
-                                       validation_route, true)) {
+        !candidateFiniteExecutionValid(*retained_safe_execution, current, rebound_route,
+                                       true)) {
       return transitionFailure(
           ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
     }

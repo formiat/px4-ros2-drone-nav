@@ -82,6 +82,90 @@ continuesCertifiedInitialHandoff(const ExecutionRouteSnapshot3D& current,
          initial_projection.distance_m > kMaximumRouteCrossTrackM;
 }
 
+[[nodiscard]] std::optional<RouteAdherenceAssessment3D>
+validateExecutionProgressConnector(
+    const CertifiedRouteSuffix3D& route, const Point3& execution_position,
+    const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
+    const std::span<const Point3> latest_lidar_obstacle_points) {
+  if (route.progress.execution_input == nullptr || execution_input == nullptr) {
+    return std::nullopt;
+  }
+  const double connector_travel_m =
+      distance3D(route.progress.last_observed_position, execution_position);
+  if (!std::isfinite(connector_travel_m)) {
+    return std::nullopt;
+  }
+  const CertificateView3D certificate_view = certificateView(route.certificate);
+  const double connector_maximum_station_m = std::min(
+      certificate_view.certified_end_station_m,
+      route.progress.station_m + kMaximumStationCreditPerTravel * connector_travel_m +
+          kStationToleranceM);
+  const std::array<mppi::State, 2U> connector_states{
+      mppi::State{.x = static_cast<float>(route.progress.last_observed_position.x),
+                  .y = static_cast<float>(route.progress.last_observed_position.y),
+                  .z = static_cast<float>(route.progress.last_observed_position.z)},
+      mppi::State{.x = static_cast<float>(execution_position.x),
+                  .y = static_cast<float>(execution_position.y),
+                  .z = static_cast<float>(execution_position.z)},
+  };
+  RouteAdherenceAssessment3D adherence = validateFiniteRouteAdherence(
+      *route.geometry, connector_states, route.progress.station_m,
+      certificate_view.suffix_start_station_m, connector_maximum_station_m,
+      kMaximumRouteCrossTrackM, kMaximumRouteCrossTrackM,
+      route.validation_policy->sweptFootprint().sweep_step_m, false);
+  if (!adherence.accepted) {
+    return std::nullopt;
+  }
+
+  const mppi::Control& previous_route_control =
+      route.progress.execution_input->previousControl();
+  const mppi::Control& current_execution_control = execution_input->previousControl();
+  const FootprintBodyAxis previous_route_axis = bodyAxisFromWorldAcceleration(Vec3{
+      previous_route_control.ax, previous_route_control.ay, previous_route_control.az});
+  const FootprintBodyAxis current_execution_axis = bodyAxisFromWorldAcceleration(
+      Vec3{current_execution_control.ax, current_execution_control.ay,
+           current_execution_control.az});
+  const auto* const raw_certificate =
+      std::get_if<ObservedRawRouteCertificate3D>(&route.certificate);
+  const ProprioceptiveFreeSpaceSeed3D* const free_space_seed =
+      raw_certificate != nullptr && observed_raw_world != nullptr
+          ? optionalAddress(observed_raw_world->proprioceptiveFreeSpaceSeed())
+          : nullptr;
+  const LaunchSupportContact3D* const launch_support_contact =
+      raw_certificate != nullptr && observed_raw_world != nullptr
+          ? optionalAddress(observed_raw_world->launchSupportContact())
+          : nullptr;
+  const bool world_safe =
+      raw_certificate != nullptr
+          ? observed_raw_world != nullptr &&
+                validateObservedSweptFootprint(
+                    observed_raw_world->occupancy(),
+                    route.progress.last_observed_position, previous_route_axis,
+                    execution_position, current_execution_axis,
+                    route.validation_policy->sweptFootprint(),
+                    ObservedSpaceValidationPolicy::kAllowUnknown, free_space_seed,
+                    launch_support_contact)
+                    .accepted()
+          : route.static_world != nullptr &&
+                validateKnownStaticSweptFootprint(
+                    route.static_world->occupancy(),
+                    route.progress.last_observed_position, previous_route_axis,
+                    execution_position, current_execution_axis,
+                    route.validation_policy->sweptFootprint())
+                    .accepted();
+  if (!world_safe ||
+      (!latest_lidar_obstacle_points.empty() &&
+       !validateRawPointCloudSweptFootprint(
+            latest_lidar_obstacle_points, route.progress.last_observed_position,
+            previous_route_axis, execution_position, current_execution_axis,
+            route.validation_policy->sweptFootprint(), launch_support_contact)
+            .accepted())) {
+    return std::nullopt;
+  }
+  return adherence;
+}
+
 [[nodiscard]] FiniteExecutionCertificationResult3D
 certifyFiniteExecutionAgainstOwnedWorld3D(
     const ExecutionRouteSnapshot3D& current, const CertifiedRouteSuffix3D& target_route,
@@ -210,13 +294,12 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   }
 
   const ProprioceptiveFreeSpaceSeed3D* const free_space_seed =
-      raw_mode && observed_raw_validation_world->proprioceptiveFreeSpaceSeed()
-          ? &*observed_raw_validation_world->proprioceptiveFreeSpaceSeed()
-          : nullptr;
+      raw_mode ? optionalAddress(
+                     observed_raw_validation_world->proprioceptiveFreeSpaceSeed())
+               : nullptr;
   const LaunchSupportContact3D* const launch_support_contact =
-      raw_mode && observed_raw_validation_world->launchSupportContact()
-          ? &*observed_raw_validation_world->launchSupportContact()
-          : nullptr;
+      raw_mode ? optionalAddress(observed_raw_validation_world->launchSupportContact())
+               : nullptr;
   const ObservedSpaceValidationPolicy observed_policy =
       raw_mode ? ObservedSpaceValidationPolicy::kAllowUnknown
                : ObservedSpaceValidationPolicy::kRequireKnownFree;
@@ -260,58 +343,28 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
           : std::span<const Point3>{};
   double execution_begin_station_m = target_route.progress.station_m;
   if (certifies_raw_invalidation) {
-    const double connector_travel_m = distance3D(
-        target_route.progress.last_observed_position, initial_state_position);
-    if (!std::isfinite(connector_travel_m)) {
+    const std::optional<RouteAdherenceAssessment3D> connector_adherence =
+        validateExecutionProgressConnector(
+            target_route, initial_state_position, certification.execution_input,
+            observed_raw_validation_world, latest_lidar_obstacle_points);
+    if (!connector_adherence.has_value()) {
       return rejectedFiniteExecution(
           FiniteExecutionCertificationStatus3D::kRawInvalidationConnectorRejected);
     }
-    const double connector_maximum_station_m = std::min(
-        certificate_view.certified_end_station_m,
-        target_route.progress.station_m +
-            kMaximumStationCreditPerTravel * connector_travel_m + kStationToleranceM);
-    const std::array<mppi::State, 2U> connector_states{
-        mppi::State{
-            .x = static_cast<float>(target_route.progress.last_observed_position.x),
-            .y = static_cast<float>(target_route.progress.last_observed_position.y),
-            .z = static_cast<float>(target_route.progress.last_observed_position.z),
-        },
-        initial_state,
-    };
-    const RouteAdherenceAssessment3D connector_adherence = validateFiniteRouteAdherence(
-        *target_route.geometry, connector_states, target_route.progress.station_m,
-        certificate_view.suffix_start_station_m, connector_maximum_station_m,
-        kMaximumRouteCrossTrackM, kMaximumRouteCrossTrackM,
-        policy->sweptFootprint().sweep_step_m, false);
-    const mppi::Control& previous_route_control =
-        target_route.progress.execution_input->previousControl();
-    const mppi::Control& current_execution_control =
-        certification.execution_input->previousControl();
-    const FootprintBodyAxis previous_route_axis = bodyAxisFromWorldAcceleration(
-        Vec3{previous_route_control.ax, previous_route_control.ay,
-             previous_route_control.az});
-    const FootprintBodyAxis current_execution_axis = bodyAxisFromWorldAcceleration(
-        Vec3{current_execution_control.ax, current_execution_control.ay,
-             current_execution_control.az});
-    if (!connector_adherence.accepted ||
-        !validateObservedSweptFootprint(
-             observed_raw_validation_world->occupancy(),
-             target_route.progress.last_observed_position, previous_route_axis,
-             initial_state_position, current_execution_axis, policy->sweptFootprint(),
-             ObservedSpaceValidationPolicy::kAllowUnknown, free_space_seed,
-             launch_support_contact)
-             .accepted() ||
-        (!latest_lidar_obstacle_points.empty() &&
-         !validateRawPointCloudSweptFootprint(
-              latest_lidar_obstacle_points,
-              target_route.progress.last_observed_position, previous_route_axis,
-              initial_state_position, current_execution_axis, policy->sweptFootprint(),
-              launch_support_contact)
-              .accepted())) {
+    execution_begin_station_m = connector_adherence->stop.station_m;
+  } else if (target_route.progress.execution_input != nullptr &&
+             distance3D(initial_state_position,
+                        target_route.progress.last_observed_position) >
+                 kExecutionBindingToleranceM) {
+    const std::optional<RouteAdherenceAssessment3D> connector_adherence =
+        validateExecutionProgressConnector(
+            target_route, initial_state_position, certification.execution_input,
+            observed_raw_validation_world, latest_lidar_obstacle_points);
+    if (!connector_adherence.has_value()) {
       return rejectedFiniteExecution(
-          FiniteExecutionCertificationStatus3D::kRawInvalidationConnectorRejected);
+          FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
     }
-    execution_begin_station_m = connector_adherence.stop.station_m;
+    execution_begin_station_m = connector_adherence->stop.station_m;
   } else if (distance3D(initial_state_position,
                         target_route.progress.last_observed_position) >
              kExecutionBindingToleranceM) {
@@ -492,7 +545,10 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   };
   execution.validation_proof.artifact_fingerprint =
       finiteExecutionArtifactFingerprint(execution);
-  if (!execution.validFor(certifies_raw_invalidation ? nullptr : &target_route)) {
+  CertifiedRouteSuffix3D rebound_route = target_route;
+  bindProgressToExecutionInput(rebound_route.progress, execution.execution_input,
+                               execution.begin_route_station_m);
+  if (!execution.validFor(certifies_raw_invalidation ? nullptr : &rebound_route)) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kInvalidArtifact);
   }
@@ -687,14 +743,12 @@ certifyDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
   }
 
   const ProprioceptiveFreeSpaceSeed3D* const free_space_seed =
-      raw_mode && certification.observed_raw_world->proprioceptiveFreeSpaceSeed()
-                      .has_value()
-          ? std::addressof(
-                *certification.observed_raw_world->proprioceptiveFreeSpaceSeed())
-          : nullptr;
+      raw_mode ? optionalAddress(
+                     certification.observed_raw_world->proprioceptiveFreeSpaceSeed())
+               : nullptr;
   const LaunchSupportContact3D* const launch_support_contact =
-      raw_mode && certification.observed_raw_world->launchSupportContact().has_value()
-          ? std::addressof(*certification.observed_raw_world->launchSupportContact())
+      raw_mode
+          ? optionalAddress(certification.observed_raw_world->launchSupportContact())
           : nullptr;
   const std::span<const Point3> latest_lidar_obstacle_points{
       certification.latest_lidar_evidence->hitPointsMapM()};
@@ -785,7 +839,7 @@ certifyDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
       .validation_proof =
           FiniteExecutionValidationProof3D{
               .validation_contract_fingerprint = validation_contract_fingerprint,
-              .lineage = std::move(lineage),
+              .lineage = lineage,
           },
   };
   execution.validation_proof.artifact_fingerprint =
