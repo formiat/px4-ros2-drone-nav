@@ -128,6 +128,46 @@ TEST(IncrementalTopologicalNavigation3DTest,
 }
 
 TEST(IncrementalTopologicalNavigation3DTest,
+     ReusesAnObservedRawValidatedStartAnchorForPlanning) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 24, 16}};
+  fillOccupied(occupancy);
+  fillFreeBox(occupancy, 3, 34, 9, 11, 5, 7);
+  IncrementalTopologyGraph3DConfig graph_config;
+  graph_config.block_size_cells = 4;
+  graph_config.coarse_sample_stride_cells = 1;
+  graph_config.refined_sample_stride_cells = 1;
+  graph_config.maximum_observed_blocks_per_update = 4096U;
+  graph_config.footprint = SweptFootprintConfig{.radius_m = 0.1,
+                                                .lower_extent_m = 0.1,
+                                                .upper_extent_m = 0.1,
+                                                .perimeter_samples = 4,
+                                                .radial_rings = 1,
+                                                .axial_samples = 2,
+                                                .sweep_step_m = 0.25};
+  IncrementalTopologicalNavigation3D navigation{
+      graph_config, {}, {}, observabilityFor(graph_config)};
+  const IncrementalTopologicalWorldUpdate3D world =
+      navigation.updateObserved(occupancy, 17U, 1U, {}, true);
+  const Point3 start{4.25, 10.25, 6.25};
+  const Point3 goal{32.5, 10.5, 6.5};
+
+  const IncrementalTopologicalNavigationObservation3D observation =
+      navigation.observePosition(world.snapshot, start, &occupancy);
+  if (!observation.current_anchor.has_value()) {
+    FAIL() << "observed position must retain its validated graph anchor";
+  }
+  const IncrementalTopologyConnector3D& anchor = observation.current_anchor.value();
+  ASSERT_FALSE(anchor.polyline.empty());
+  EXPECT_NEAR(distance3D(anchor.polyline.front(), start), 0.0, 1.0e-9);
+
+  const IncrementalTopologicalPlan3D plan = navigation.planObserved(
+      world.snapshot, occupancy, start, goal, std::nullopt, &observation);
+
+  EXPECT_TRUE(plan.executableTargetSelected());
+  EXPECT_EQ(plan.start_node, anchor.node);
+}
+
+TEST(IncrementalTopologicalNavigation3DTest,
      RepeatedPlanCommitDoesNotDuplicateSelectionOrDeadEndEvidence) {
   IncrementalTopologicalNavigation3D navigation;
   IncrementalTopologicalPlan3D frontier_plan;

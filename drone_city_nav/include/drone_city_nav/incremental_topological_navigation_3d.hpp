@@ -22,8 +22,12 @@ struct IncrementalTopologicalWorldUpdate3D {
 
 struct IncrementalTopologicalNavigationObservation3D {
   std::uint64_t graph_revision{0U};
+  Point3 position{};
   std::optional<IncrementalTopologyNodeId> previous_node;
   std::optional<IncrementalTopologyNodeId> current_node;
+  // This raw-validated anchor may only be reused with the same immutable graph
+  // and occupancy snapshots for which this observation was produced.
+  std::optional<IncrementalTopologyConnector3D> current_anchor;
   std::size_t traversed_edges{0U};
   std::size_t coverage_cells{0U};
   bool trail_reset{false};
@@ -73,7 +77,8 @@ public:
       const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
       const ObservedOccupancyGrid3D& occupancy, const Point3& start,
       const Point3& mission_goal,
-      std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
+      std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt,
+      const IncrementalTopologicalNavigationObservation3D* observation = nullptr);
   [[nodiscard]] std::optional<IncrementalTopologicalLatticeDirective3D>
   makeLatticeDirective(const IncrementalTopologicalPlan3D& plan, const Point3& position,
                        const IncrementalTopologicalLatticeAdapter3DConfig& config = {});

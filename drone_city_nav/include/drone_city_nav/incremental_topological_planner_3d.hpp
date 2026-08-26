@@ -15,6 +15,8 @@
 
 namespace drone_city_nav {
 
+class IncrementalTopologicalNavigation3D;
+
 enum class IncrementalTopologicalPlanStatus3D : std::uint8_t {
   kInvalidInput,
   kStartNotRepresented,
@@ -153,13 +155,25 @@ public:
   [[nodiscard]] const IncrementalTopologicalPlanner3DConfig& config() const noexcept;
 
 private:
+  friend class IncrementalTopologicalNavigation3D;
+
+  [[nodiscard]] IncrementalTopologicalPlan3D planObservedFromStartConnector(
+      const IncrementalTopologyGraph3DSnapshot& graph,
+      const ObservedOccupancyGrid3D& occupancy,
+      const SensorObservabilityConfig& observability, const Point3& start,
+      const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
+      const IncrementalTopologyConnector3D& start_connector,
+      std::optional<ObservationFrontier> active_frontier,
+      std::optional<std::chrono::steady_clock::time_point> deadline) const;
+
   [[nodiscard]] IncrementalTopologicalPlan3D
   planImpl(const IncrementalTopologyGraph3DSnapshot& graph,
            const ObservedOccupancyGrid3D* occupancy,
            const SensorObservabilityConfig* observability, const Point3& start,
            const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
            std::optional<ObservationFrontier> active_frontier,
-           std::optional<std::chrono::steady_clock::time_point> deadline) const;
+           std::optional<std::chrono::steady_clock::time_point> deadline,
+           const IncrementalTopologyConnector3D* start_connector) const;
 
   IncrementalTopologicalPlanner3DConfig config_{};
 };

@@ -898,7 +898,8 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     const SensorObservabilityConfig* const observability, const Point3& start,
     const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
     const std::optional<ObservationFrontier> active_frontier,
-    const std::optional<std::chrono::steady_clock::time_point> deadline) const {
+    const std::optional<std::chrono::steady_clock::time_point> deadline,
+    const IncrementalTopologyConnector3D* const supplied_start_connector) const {
   IncrementalTopologicalPlan3D result;
   result.planned_on_revision = graph.revision();
   result.mission_target = mission_goal;
@@ -907,10 +908,25 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   }
   const SweptFootprintConfig footprint =
       observability != nullptr ? observability->footprint : SweptFootprintConfig{};
+  const auto supplied_start_connector_valid = [&]() {
+    if (supplied_start_connector == nullptr || occupancy == nullptr ||
+        supplied_start_connector->polyline.empty() ||
+        distance3D(supplied_start_connector->polyline.front(), start) > 1.0e-6 ||
+        graph.findNode(supplied_start_connector->node) == nullptr ||
+        supplied_start_connector->evidence.support_segment_count == 0U ||
+        supplied_start_connector->evidence.validated_through_revision >
+            graph.revision()) {
+      return false;
+    }
+    return !config_.require_known_free_space ||
+           !supplied_start_connector->evidence.unknown_exposure;
+  }();
   const std::optional<IncrementalTopologyConnector3D> start_connector =
-      connectPointToGraph(graph, occupancy, start,
-                          config_.maximum_start_anchor_distance_m, footprint,
-                          config_.require_known_free_space, deadline);
+      supplied_start_connector_valid
+          ? std::optional<IncrementalTopologyConnector3D>{*supplied_start_connector}
+          : connectPointToGraph(graph, occupancy, start,
+                                config_.maximum_start_anchor_distance_m, footprint,
+                                config_.require_known_free_space, deadline);
   if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
     result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
     return result;

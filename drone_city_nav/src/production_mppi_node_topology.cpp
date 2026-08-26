@@ -438,7 +438,8 @@ ProductionMppiNode::selectIncrementalTopologyRoute3D(
   result.plan =
       world.observed_occupancy
           ? topological_navigation_3d_->planObserved(graph, *world.observed_occupancy,
-                                                     position, mission_goal, deadline)
+                                                     position, mission_goal, deadline,
+                                                     &result.observation)
           : topological_navigation_3d_->plan(graph, position, mission_goal, deadline);
   result.directive = topological_navigation_3d_->makeLatticeDirective(
       result.plan, position, topological_lattice_adapter_3d_config_);

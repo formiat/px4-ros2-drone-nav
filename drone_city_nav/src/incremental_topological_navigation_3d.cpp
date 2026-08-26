@@ -263,24 +263,23 @@ IncrementalTopologicalNavigation3D::observePosition(
   if (!graph) {
     return result;
   }
+  result.position = position;
   std::optional<IncrementalTopologyNodeId> observed_node;
-  if (const std::optional<GridIndex3D> cell = worldToCell(graph->bounds(), position)) {
+  if (occupancy != nullptr && sameBounds(graph->bounds(), occupancy->bounds())) {
+    result.current_anchor = graph->connectObserved(
+        *occupancy, position, planner_.config().maximum_start_anchor_distance_m,
+        observability_.footprint,
+        planner_.config().require_known_free_space
+            ? ObservedSpaceValidationPolicy::kRequireKnownFree
+            : ObservedSpaceValidationPolicy::kAllowUnknown);
+    if (result.current_anchor.has_value()) {
+      observed_node = result.current_anchor->node;
+    }
+  } else if (const std::optional<GridIndex3D> cell =
+                 worldToCell(graph->bounds(), position)) {
     observed_node = graph->nodeForSampleCell(*cell);
   }
-  if (!observed_node.has_value() && occupancy != nullptr) {
-    if (sameBounds(graph->bounds(), occupancy->bounds())) {
-      const std::optional<IncrementalTopologyConnector3D> connector =
-          graph->connectObserved(*occupancy, position,
-                                 planner_.config().maximum_start_anchor_distance_m,
-                                 observability_.footprint,
-                                 planner_.config().require_known_free_space
-                                     ? ObservedSpaceValidationPolicy::kRequireKnownFree
-                                     : ObservedSpaceValidationPolicy::kAllowUnknown);
-      if (connector.has_value()) {
-        observed_node = connector->node;
-      }
-    }
-  } else if (!observed_node.has_value()) {
+  if (!observed_node.has_value() && occupancy == nullptr) {
     observed_node =
         graph->nearestNode(position, planner_.config().maximum_start_anchor_distance_m);
   }

@@ -158,7 +158,8 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
     const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>& graph,
     const ObservedOccupancyGrid3D& occupancy, const Point3& start,
     const Point3& mission_goal,
-    const std::optional<std::chrono::steady_clock::time_point> deadline) {
+    const std::optional<std::chrono::steady_clock::time_point> deadline,
+    const IncrementalTopologicalNavigationObservation3D* const observation) {
   if (!graph || !sameBounds(graph->bounds(), occupancy.bounds())) {
     return {};
   }
@@ -171,9 +172,18 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
     const std::scoped_lock lock{memory_mutex_};
     memory_snapshot = memory_;
   }
+  const bool reusable_anchor = observation != nullptr &&
+                               observation->graph_revision == graph->revision() &&
+                               distance3D(observation->position, start) <= 1.0e-6 &&
+                               observation->current_anchor.has_value();
   IncrementalTopologicalPlan3D result =
-      planner_.planObserved(*graph, occupancy, observability_, start, mission_goal,
-                            memory_snapshot, std::nullopt, deadline);
+      reusable_anchor
+          ? planner_.planObservedFromStartConnector(
+                *graph, occupancy, observability_, start, mission_goal, memory_snapshot,
+                *observation->current_anchor, std::nullopt, deadline)
+          : planner_.planObserved(*graph, occupancy, observability_, start,
+                                  mission_goal, memory_snapshot, std::nullopt,
+                                  deadline);
   {
     const std::scoped_lock lock{memory_mutex_};
     result.strategic_plan_id = strategic_route_manager_.previewPlanId(result);

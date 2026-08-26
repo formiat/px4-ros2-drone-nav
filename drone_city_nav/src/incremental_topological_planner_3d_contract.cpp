@@ -51,7 +51,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::plan(
     const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
     const std::optional<std::chrono::steady_clock::time_point> deadline) const {
   return planImpl(graph, nullptr, nullptr, start, mission_goal, memory, std::nullopt,
-                  deadline);
+                  deadline, nullptr);
 }
 
 IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planObserved(
@@ -62,7 +62,20 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planObserved(
     const std::optional<ObservationFrontier> active_frontier,
     const std::optional<std::chrono::steady_clock::time_point> deadline) const {
   return planImpl(graph, &occupancy, &observability, start, mission_goal, memory,
-                  active_frontier, deadline);
+                  active_frontier, deadline, nullptr);
+}
+
+IncrementalTopologicalPlan3D
+IncrementalTopologicalPlanner3D::planObservedFromStartConnector(
+    const IncrementalTopologyGraph3DSnapshot& graph,
+    const ObservedOccupancyGrid3D& occupancy,
+    const SensorObservabilityConfig& observability, const Point3& start,
+    const Point3& mission_goal, const TopologicalExplorationMemory3D& memory,
+    const IncrementalTopologyConnector3D& start_connector,
+    const std::optional<ObservationFrontier> active_frontier,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) const {
+  return planImpl(graph, &occupancy, &observability, start, mission_goal, memory,
+                  active_frontier, deadline, &start_connector);
 }
 
 const IncrementalTopologicalPlanner3DConfig&
