@@ -836,6 +836,8 @@ reconstruct(const Key& terminal, const Point3& origin,
     result.terminal_successor_count = continuation.immediate_successors;
     result.continuation_reachable_states = continuation.reachable_states;
     result.continuation_reachable_depth_m = continuation.reachable_depth_m;
+    result.continuation_validation_budget_exhausted =
+        continuation.time_budget_exhausted;
     result.successor_profiling.continuation = continuation.successor_profile;
     result.continuation_validation_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
@@ -977,6 +979,8 @@ reconstruct(const Key& terminal, const Point3& origin,
     candidate.terminal_successor_count = result.terminal_successor_count;
     candidate.continuation_reachable_states = result.continuation_reachable_states;
     candidate.continuation_reachable_depth_m = result.continuation_reachable_depth_m;
+    candidate.continuation_validation_budget_exhausted =
+        result.continuation_validation_budget_exhausted;
   }
   return result;
 }

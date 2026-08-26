@@ -126,6 +126,7 @@ struct RiskAwareLattice3DConfig {
   double frontier_minimum_reachable_depth_m{8.0};
   double frontier_minimum_endpoint_displacement_m{2.0};
   std::size_t frontier_validation_maximum_states{2048U};
+  double frontier_validation_maximum_time_ms{50.0};
   double observation_frontier_replacement_minimum_score_improvement{0.5};
   SensorObservabilityConfig sensor_observability{};
   std::size_t maximum_topology_search_groups{3U};
@@ -155,6 +156,7 @@ struct Lattice3DTopologyCandidate {
   std::size_t terminal_successor_count{0U};
   std::size_t continuation_reachable_states{0U};
   double continuation_reachable_depth_m{0.0};
+  bool continuation_validation_budget_exhausted{false};
   std::string decision_reason;
   bool selected{false};
 };
@@ -173,6 +175,7 @@ struct RiskAwareLattice3DResult {
   std::size_t terminal_successor_count{0U};
   std::size_t continuation_reachable_states{0U};
   double continuation_reachable_depth_m{0.0};
+  bool continuation_validation_budget_exhausted{false};
   bool reached_mission_goal{false};
   double achieved_progress_m{0.0};
   double minimum_clearance_m{0.0};

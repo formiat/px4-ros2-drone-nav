@@ -498,6 +498,7 @@ void ProductionMppiNode::processGuideSearch3D(
       "achieved_progress_m=%.2f minimum_clearance_m=%.2f stale_pops=%zu "
       "open_peak=%zu records_peak=%zu terminal_successors=%zu "
       "continuation_states=%zu continuation_depth_m=%.2f "
+      "continuation_budget_exhausted=%s "
       "lattice_successor_generated=%zu lattice_successor_accepted=%zu "
       "lattice_successor_reject_edge=%zu lattice_successor_reject_zero=%zu "
       "lattice_successor_reject_outside_roi=%zu "
@@ -596,6 +597,7 @@ void ProductionMppiNode::processGuideSearch3D(
       lattice.stale_queue_pops, lattice.open_peak, lattice.records_peak,
       lattice.terminal_successor_count, lattice.continuation_reachable_states,
       lattice.continuation_reachable_depth_m,
+      lattice.continuation_validation_budget_exhausted ? "true" : "false",
       lattice.successor_diagnostics.lattice_generated,
       lattice.successor_diagnostics.lattice_accepted,
       lattice.successor_diagnostics.lattice_rejected_edge,

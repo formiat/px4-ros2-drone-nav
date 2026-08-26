@@ -43,6 +43,8 @@ struct TopologySearchBatch {
          config.route_shape_vertical_turn_cost_per_rad >= 0.0 &&
          config.passage_connection_distance_m > 0.0 &&
          config.frontier_minimum_endpoint_displacement_m > 0.0 &&
+         std::isfinite(config.frontier_validation_maximum_time_ms) &&
+         config.frontier_validation_maximum_time_ms > 0.0 &&
          evaluateFlightEnvelopeAltitude(start.z, config.flight_envelope) ==
              FlightEnvelopeStatus::kValid &&
          evaluateFlightEnvelopeAltitude(mission_goal.z, config.flight_envelope) ==

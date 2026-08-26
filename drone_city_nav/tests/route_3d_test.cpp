@@ -1216,6 +1216,36 @@ TEST(Route3DTest, ContinuationRejectsReachableSpaceThatOnlyLoopsBack) {
   EXPECT_TRUE(continuation.path.empty());
 }
 
+TEST(Route3DTest, ContinuationValidationHonorsItsTimeBudget) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 30, 30, 12}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 40.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.frontier_validation_maximum_states = 100000U;
+  config.frontier_validation_maximum_time_ms = 1.0e-9;
+  config.frontier_minimum_reachable_depth_m = 100.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+
+  const detail::Lattice3DContinuationMetrics continuation =
+      detail::evaluateLattice3DContinuation(
+          grid, field.distancesM(), Point3{2.5, 15.5, 5.5}, Point3{10.5, 15.5, 5.5},
+          Vec3{1.0, 0.0, 0.0}, Point3{25.5, 15.5, 5.5},
+          Lattice3DRiskStage::kPreferredOnly, config, nullptr);
+
+  EXPECT_TRUE(continuation.time_budget_exhausted);
+  EXPECT_TRUE(continuation.path.empty());
+}
+
 TEST(Route3DTest, MaterializedContinuationCommitsToGoalDirectedWallDetour) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 30, 12}};
   for (int y = 11; y <= 19; ++y) {

@@ -614,6 +614,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_3d_config_.frontier_validation_maximum_states =
       static_cast<std::size_t>(declare_parameter<std::int64_t>(
           "global_lattice_3d_frontier_validation_maximum_states", 2048));
+  lattice_3d_config_.frontier_validation_maximum_time_ms = declare_parameter<double>(
+      "global_lattice_3d_frontier_validation_maximum_time_ms", 50.0);
   lattice_3d_config_
       .observation_frontier_replacement_minimum_score_improvement = declare_parameter<
       double>(
@@ -789,6 +791,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_.frontier_minimum_reachable_depth_m > 0.0) ||
       !(lattice_3d_config_.frontier_minimum_endpoint_displacement_m > 0.0) ||
       lattice_3d_config_.frontier_validation_maximum_states == 0U ||
+      !(lattice_3d_config_.frontier_validation_maximum_time_ms > 0.0) ||
       !(lattice_3d_config_.observation_frontier_replacement_minimum_score_improvement >=
         0.0) ||
       !sensorObservabilityConfigIsValid(lattice_3d_config_.sensor_observability) ||

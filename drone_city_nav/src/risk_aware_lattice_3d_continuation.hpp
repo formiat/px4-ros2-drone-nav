@@ -17,6 +17,7 @@ struct Lattice3DContinuationMetrics {
   double reachable_depth_m{0.0};
   std::vector<Point3> path;
   Lattice3DSuccessorBatchProfile successor_profile{};
+  bool time_budget_exhausted{false};
 };
 
 // Returns a materializable path only when the validated continuation moves its

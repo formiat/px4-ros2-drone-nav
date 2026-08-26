@@ -66,6 +66,9 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
     const Point3& route_origin, const Point3& terminal, const Vec3& incoming_direction,
     const Point3& planning_goal, const Lattice3DRiskStage stage,
     const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool) {
+  using Clock = std::chrono::steady_clock;
+  const auto deadline = Clock::now() + std::chrono::duration<double, std::milli>(
+                                           config.frontier_validation_maximum_time_ms);
   constexpr std::array<int, 3> kHorizontalOffsets{-1, 0, 1};
   constexpr std::array<int, 3> kVerticalOffsets{0, 1, -1};
   const std::size_t maximum_states =
@@ -90,6 +93,10 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
   std::optional<Candidate> discovered_extension;
   const CandidateGreater candidate_greater;
   while (!pending.empty() && result.reachable_states < maximum_states) {
+    if (Clock::now() >= deadline) {
+      result.time_budget_exhausted = true;
+      break;
+    }
     const Candidate current = pending.top();
     pending.pop();
     const double current_depth_m = distance3D(terminal, current.point);
@@ -100,7 +107,7 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
       selected = current;
       break;
     }
-    const auto collection_started = std::chrono::steady_clock::now();
+    const auto collection_started = Clock::now();
 
     struct NeighborEvaluation {
       Candidate candidate{};
@@ -199,8 +206,7 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
     result.successor_profile.maximum_candidates =
         std::max(result.successor_profile.maximum_candidates, evaluations.size());
     result.successor_profile.worker_ms +=
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  collection_started)
+        std::chrono::duration<double, std::milli>(Clock::now() - collection_started)
             .count();
   }
   if (!selected.has_value()) {

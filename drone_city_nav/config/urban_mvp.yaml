@@ -405,6 +405,9 @@ production_mppi_node:
     global_lattice_3d_frontier_reachable_depth_m: 8.0
     global_lattice_3d_frontier_minimum_endpoint_displacement_m: 2.0
     global_lattice_3d_frontier_validation_maximum_states: 2048
+    # Bound negative continuation proofs so an exhausted local branch cannot
+    # monopolize the route worker beyond the online replanning cadence.
+    global_lattice_3d_frontier_validation_maximum_time_ms: 50.0
     global_lattice_3d_observation_frontier_replacement_minimum_score_improvement: 0.5
     # Probe one voxel beyond the lidar miss boundary so the adjacent unknown
     # volume becomes an observation frontier, not an artificial obstacle.
