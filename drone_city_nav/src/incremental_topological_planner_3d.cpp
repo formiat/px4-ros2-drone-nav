@@ -647,18 +647,18 @@ makeObservedFreeConnector(const IncrementalTopologyNodeId node,
   };
 }
 
-[[nodiscard]] std::optional<IncrementalTopologyConnector3D>
-connectPointToGraph(const IncrementalTopologyGraph3DSnapshot& graph,
-                    const ObservedOccupancyGrid3D* const occupancy, const Point3& point,
-                    const double maximum_distance_m,
-                    const SweptFootprintConfig& footprint,
-                    const bool require_known_free_space) {
+[[nodiscard]] std::optional<IncrementalTopologyConnector3D> connectPointToGraph(
+    const IncrementalTopologyGraph3DSnapshot& graph,
+    const ObservedOccupancyGrid3D* const occupancy, const Point3& point,
+    const double maximum_distance_m, const SweptFootprintConfig& footprint,
+    const bool require_known_free_space,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) {
   if (occupancy != nullptr) {
     const ObservedSpaceValidationPolicy validation_policy =
         require_known_free_space ? ObservedSpaceValidationPolicy::kRequireKnownFree
                                  : ObservedSpaceValidationPolicy::kAllowUnknown;
     return graph.connectObserved(*occupancy, point, maximum_distance_m, footprint,
-                                 validation_policy);
+                                 validation_policy, deadline);
   }
   const std::optional<IncrementalTopologyNodeId> node =
       graph.nearestNode(point, maximum_distance_m);
@@ -905,7 +905,11 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   const std::optional<IncrementalTopologyConnector3D> start_connector =
       connectPointToGraph(graph, occupancy, start,
                           config_.maximum_start_anchor_distance_m, footprint,
-                          config_.require_known_free_space);
+                          config_.require_known_free_space, deadline);
+  if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+    result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
+    return result;
+  }
   if (!start_connector.has_value()) {
     result.status = IncrementalTopologicalPlanStatus3D::kStartNotRepresented;
     return result;
@@ -914,7 +918,11 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   const std::optional<IncrementalTopologyConnector3D> goal_connector =
       connectPointToGraph(graph, occupancy, mission_goal,
                           config_.maximum_goal_anchor_distance_m, footprint,
-                          config_.require_known_free_space);
+                          config_.require_known_free_space, deadline);
+  if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+    result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
+    return result;
+  }
   if (goal_connector.has_value()) {
     result.goal_node = goal_connector->node;
   }

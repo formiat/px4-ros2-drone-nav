@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <optional>
@@ -868,6 +869,22 @@ TEST(IncrementalTopologyGraph3DTest, ObservedConnectorKeepsUnknownPolicyExplicit
   EXPECT_FALSE(snapshot
                    .connectObserved(occupancy, {12.5, 7.5, 2.5}, 20.0, config.footprint,
                                     ObservedSpaceValidationPolicy::kRequireKnownFree)
+                   .has_value());
+}
+
+TEST(IncrementalTopologyGraph3DTest, ObservedConnectorHonorsExpiredDeadline) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 12, 6}};
+  fillFreeBox(occupancy, 0, 19, 0, 11, 0, 5);
+  IncrementalTopologyGraph3DConfig config = makeConfig();
+  IncrementalTopologyGraph3D graph{config};
+  static_cast<void>(graph.update(occupancy, 1U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot snapshot = graph.snapshot();
+  const auto expired = std::chrono::steady_clock::now() - std::chrono::milliseconds{1};
+
+  EXPECT_FALSE(snapshot
+                   .connectObserved(occupancy, {5.5, 5.5, 2.5}, 20.0, config.footprint,
+                                    ObservedSpaceValidationPolicy::kRequireKnownFree,
+                                    expired)
                    .has_value());
 }
 

@@ -238,7 +238,8 @@ std::optional<IncrementalTopologyConnector3D>
 IncrementalTopologyGraph3DSnapshot::connectObserved(
     const ObservedOccupancyGrid3D& occupancy, const Point3& position,
     const double maximum_distance_m, const SweptFootprintConfig& footprint,
-    const ObservedSpaceValidationPolicy validation_policy) const {
+    const ObservedSpaceValidationPolicy validation_policy,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) const {
   if (!(maximum_distance_m >= 0.0) || !std::isfinite(maximum_distance_m) ||
       revision_ == 0U ||
       !incremental_topology_detail::sameBounds(bounds_, occupancy.bounds())) {
@@ -315,6 +316,15 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
 
   std::optional<IncrementalTopologyConnector3D> best;
   for (const Candidate& candidate : candidates) {
+    // Every connector through this sample is at least its straight-line distance.
+    // Once that lower bound cannot improve the incumbent, later sorted candidates
+    // cannot improve it either.
+    if (best.has_value() && candidate.distance_m + 1.0e-9 >= best->length_m) {
+      break;
+    }
+    if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+      break;
+    }
     const std::optional<SampleTreePath3D> tree = reconstructSampleTree(
         bounds_, *candidate.block, candidate.block->records[candidate.sample_index]);
     const IncrementalTopologyNode3D* const node = findNode(candidate.node);

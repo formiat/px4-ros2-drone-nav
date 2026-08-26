@@ -217,7 +217,9 @@ public:
   [[nodiscard]] std::optional<IncrementalTopologyConnector3D>
   connectObserved(const ObservedOccupancyGrid3D& occupancy, const Point3& position,
                   double maximum_distance_m, const SweptFootprintConfig& footprint,
-                  ObservedSpaceValidationPolicy validation_policy) const;
+                  ObservedSpaceValidationPolicy validation_policy,
+                  std::optional<std::chrono::steady_clock::time_point> deadline =
+                      std::nullopt) const;
   [[nodiscard]] std::optional<IncrementalTopologyConnector3D>
   connectObservedSample(const ObservedOccupancyGrid3D& occupancy, GridIndex3D cell,
                         const SweptFootprintConfig& footprint,
