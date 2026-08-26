@@ -829,10 +829,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     if (!snapshot_transition.has_value() ||
         (route_execution.pending_activation &&
          route_execution.pending_route == nullptr) ||
-        !commitExecutionSnapshotHorizon(
+        commitExecutionSnapshotHorizon(
             cycle, route_execution.source_snapshot, *snapshot_transition, horizon,
-            route_execution.pending_activation ? route_execution.pending_route
-                                               : nullptr)) {
+            route_execution.pending_activation
+                ? route_execution.pending_route
+                : nullptr) != ProductionMppiHorizonCommitStatus::kPublished) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                            "FINITE_EXECUTION_PUBLICATION published=false "
                            "stage=snapshot_horizon_commit pending_activation=%s",

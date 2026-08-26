@@ -39,6 +39,7 @@ struct ProductionMppiExecutionHorizonOwner {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t target_offboard_instance_id{0U};
   std::uint64_t sequence{0U};
+  std::uint64_t snapshot_execution_owner_epoch{0U};
   std::uint8_t execution_mode{msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD};
   std::uint8_t execution_reason{msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE};
   bool stationary_position_hold{false};
@@ -70,6 +71,29 @@ assessPlannedHorizonSupersession(const ProductionMppiExecutionHorizonOwner& owne
   return owner_witnessed
              ? ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner
              : ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingOwnerWitness;
+}
+
+struct ProductionMppiResidentOwnerContinuationCheck {
+  const ProductionMppiExecutionHorizonOwner* owner{nullptr};
+  std::int64_t now_ns{0};
+  bool retained_candidate{false};
+  bool exact_snapshot_current{false};
+  bool execution_owner_matches{false};
+  bool revocation_pending{false};
+  bool owner_witnessed{false};
+};
+
+// A failed retained replacement may defer to the already-published lease only
+// when that exact resident authority is still current and observed by offboard.
+// This decision never extends the lease and never authorizes another snapshot.
+[[nodiscard]] constexpr bool canContinueResidentPlannedOwner(
+    const ProductionMppiResidentOwnerContinuationCheck& check) noexcept {
+  return check.owner != nullptr && check.retained_candidate &&
+         check.exact_snapshot_current && check.execution_owner_matches &&
+         !check.revocation_pending &&
+         assessPlannedHorizonSupersession(*check.owner, check.owner_witnessed,
+                                          check.now_ns) ==
+             ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner;
 }
 
 enum class ProductionMppiExecutionMode : std::uint8_t {
@@ -110,6 +134,7 @@ struct ProductionMppiExecutionPublication {
   bool latest_lidar_obstacle_receive_time_fallback{false};
   bool latest_lidar_path_validation_backoff{false};
   bool retained_previous_finite_path{false};
+  bool resident_owner_continues{false};
   bool terminal_rest_state{false};
   bool first_control_available{false};
   bool published{false};

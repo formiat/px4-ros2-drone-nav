@@ -15,6 +15,8 @@ std::string executionInfoFields(const ProductionMppiExecutionPublication& execut
          << " execution_published=" << (execution.published ? "true" : "false")
          << " retained_previous_finite_path="
          << (execution.retained_previous_finite_path ? "true" : "false")
+         << " resident_owner_continues="
+         << (execution.resident_owner_continues ? "true" : "false")
          << " terminal_rest_state="
          << (execution.terminal_rest_state ? "true" : "false")
          << " planned_controls=" << execution.planned_control_count
@@ -52,6 +54,8 @@ std::string executionJsonFields(const ProductionMppiExecutionPublication& execut
          << ",\"execution_published\":" << (execution.published ? "true" : "false")
          << ",\"retained_previous_finite_path\":"
          << (execution.retained_previous_finite_path ? "true" : "false")
+         << ",\"resident_owner_continues\":"
+         << (execution.resident_owner_continues ? "true" : "false")
          << ",\"terminal_rest_state\":"
          << (execution.terminal_rest_state ? "true" : "false")
          << ",\"planned_control_count\":" << execution.planned_control_count

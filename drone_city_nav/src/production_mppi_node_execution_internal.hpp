@@ -24,6 +24,12 @@ enum class ProductionMppiHorizonCommitKind : std::uint8_t {
   kCommitPendingSnapshotTransition,
 };
 
+enum class ProductionMppiHorizonCommitStatus : std::uint8_t {
+  kPublished,
+  kDeferredResidentOwner,
+  kRejected,
+};
+
 struct ProductionMppiHorizonCommit {
   ProductionMppiHorizonCommitKind kind{ProductionMppiHorizonCommitKind::kNoOp};
   std::shared_ptr<const ExecutionRouteSnapshot3D> expected_snapshot;

@@ -336,7 +336,7 @@ ProductionMppiNode::makeExecutionHorizon(const ProductionMppiExecutionCycle& cyc
   return horizon;
 }
 
-bool ProductionMppiNode::commitAndPublishExecutionHorizon(
+ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionHorizon(
     const ProductionMppiExecutionCycle& cycle,
     const msg::MppiTrajectoryHorizon& horizon,
     const ProductionMppiHorizonCommit& commit) {
@@ -359,7 +359,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
                                         .flight_envelope = &flight_envelope_config_,
                                     }) != ExecutionHorizonPayloadStatus::kValid) {
     report_commit_failure("invalid_input_or_payload");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   ProductionMppiExecutionHorizonOwner owner{
       .route_target =
@@ -386,7 +386,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       owner.execution_mode <= msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD;
   if (!owner.valid) {
     report_commit_failure("invalid_owner");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const std::scoped_lock input_lock{input_mutex_};
   const std::int64_t publication_now_ns = get_clock()->now().nanoseconds();
@@ -399,7 +399,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
     report_commit_failure("vehicle_status_not_authoritative");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   std::shared_ptr<const ProductionMppiRawWorld3D> committed_3d;
   if (!use_static_map_) {
@@ -427,13 +427,13 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     if (raw_world_identity_conflicted_ || !committed_world_current) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       report_commit_failure("raw_world_not_current");
-      return false;
+      return ProductionMppiHorizonCommitStatus::kRejected;
     }
   }
   if (publication_now_ns < owner.valid_from_ns ||
       publication_now_ns >= owner.valid_until_ns) {
     report_commit_failure("horizon_time_window_not_current");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const OffboardSessionPublicationCurrentnessStatus offboard_currentness =
       assessOffboardSessionPublicationCurrentness(
@@ -459,7 +459,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   }();
   if (cycle_currentness_failure != nullptr) {
     report_commit_failure(cycle_currentness_failure);
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const bool navigation_advanced =
       navigation_.revision != publication_execution_input->poseRevision() ||
@@ -505,6 +505,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   const bool execution_input_advanced =
       navigation_advanced || !previous_control_evidence_current;
   if (execution_input_advanced) {
+    bool late_rebase_candidate_rejected{false};
     const auto rebase_for_current_navigation = [&]() -> const char* {
       const bool planned_snapshot_transition =
           publication_horizon.execution_mode ==
@@ -554,6 +555,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
               });
       if (!rebase.rebased() || !rebase.transition.has_value() ||
           rebase.transition->next == nullptr) {
+        late_rebase_candidate_rejected = true;
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 1000,
             "EXECUTION_HORIZON_REBASE rebased=false status=%s path_validation=%s "
@@ -617,7 +619,53 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     if (const char* const rebase_failure = rebase_for_current_navigation();
         rebase_failure != nullptr) {
       report_commit_failure(rebase_failure);
-      return false;
+      const ExecutionRouteSnapshot3D* const retained_candidate =
+          commit.transition != nullptr && commit.transition->next != nullptr
+              ? commit.transition->next.get()
+              : nullptr;
+      const bool retained_execution =
+          retained_candidate != nullptr &&
+          ((retained_candidate->finite_execution.has_value() &&
+            retained_candidate->finite_execution->kind ==
+                FiniteExecutionKind3D::kRetained) ||
+           (retained_candidate->direct_tracking_execution.has_value() &&
+            retained_candidate->direct_tracking_execution->kind ==
+                FiniteExecutionKind3D::kRetained));
+      const bool resident_owner_witnessed = appliedControlAuthoritativeForExecution(
+          applied_control_, execution_horizon_owner_, publication_now_ns,
+          maximum_control_feedback_age_ms_);
+      const bool no_revocation_pending =
+          requested_execution_revocation_.load(std::memory_order_acquire) ==
+          handled_execution_revocation_request_;
+      const bool exact_resident_snapshot =
+          commit.expected_snapshot != nullptr &&
+          execution_route_store_.snapshot() == commit.expected_snapshot;
+      const bool resident_execution_owner_matches =
+          commit.expected_snapshot != nullptr &&
+          execution_horizon_owner_.snapshot_execution_owner_epoch ==
+              commit.expected_snapshot->execution_owner_epoch;
+      const bool resident_owner_may_continue =
+          canContinueResidentPlannedOwner(ProductionMppiResidentOwnerContinuationCheck{
+              .owner = &execution_horizon_owner_,
+              .now_ns = publication_now_ns,
+              .retained_candidate = retained_execution,
+              .exact_snapshot_current = exact_resident_snapshot,
+              .execution_owner_matches = resident_execution_owner_matches,
+              .revocation_pending = !no_revocation_pending,
+              .owner_witnessed = resident_owner_witnessed,
+          });
+      if (late_rebase_candidate_rejected && resident_owner_may_continue) {
+        // The retained replacement lost only the final navigation race. The
+        // exact resident snapshot is still owned by a current, witnessed wire
+        // lease, so leave that immutable lease in force and retry next tick.
+        // No new snapshot or horizon is published on this disposition.
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                             "EXECUTION_HORIZON_COMMIT committed=false deferred=true "
+                             "stage=%s resident_sequence=%" PRIu64,
+                             rebase_failure, execution_horizon_owner_.sequence);
+        return ProductionMppiHorizonCommitStatus::kDeferredResidentOwner;
+      }
+      return ProductionMppiHorizonCommitStatus::kRejected;
     }
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
@@ -643,9 +691,12 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       publication_snapshot = publication_commit.expected_snapshot.get();
     } else {
       report_commit_failure("invalid_snapshot_commit_contract");
-      return false;
+      return ProductionMppiHorizonCommitStatus::kRejected;
     }
   }
+  owner.snapshot_execution_owner_epoch =
+      publication_snapshot != nullptr ? publication_snapshot->execution_owner_epoch
+                                      : 0U;
   const std::shared_ptr<const VersionedExecutionValidationPolicy3D>
       snapshot_publication_policy =
           publication_snapshot != nullptr
@@ -663,7 +714,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
     }
     report_commit_failure("execution_input_not_fresh");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> publication_lidar =
       publication_snapshot != nullptr ? snapshotLidarOwner(*publication_snapshot)
@@ -682,7 +733,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
            .fresh) {
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     report_commit_failure("lidar_evidence_not_current");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const bool legacy_raw_2d_required =
       !cycle.snapshot_owner_required && !use_static_map_ &&
@@ -692,7 +743,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
        latest_raw_world_.load(std::memory_order_acquire) != cycle.latest_raw_world)) {
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     report_commit_failure("legacy_raw_world_not_current");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const StationaryExecutionHold3D* const capture_hold =
       publication_commit.transition != nullptr &&
@@ -758,7 +809,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   }
   if (!control_evidence_current) {
     report_commit_failure("control_evidence_not_current");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
 
   bool owner_committed{false};
@@ -800,7 +851,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   }
   if (!owner_committed) {
     report_commit_failure("snapshot_owner_commit_rejected");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   applied_control_ = {};
   execution_horizon_owner_ = owner;
@@ -813,7 +864,7 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
                       msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED
                   ? "planned"
                   : "non_planned");
-  return true;
+  return ProductionMppiHorizonCommitStatus::kPublished;
 }
 
 bool ProductionMppiNode::publishLegacyExecutionHorizon(
@@ -822,10 +873,11 @@ bool ProductionMppiNode::publishLegacyExecutionHorizon(
   const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
                                        latest_lidar_evidence_commit_mutex_};
   return commitAndPublishExecutionHorizon(cycle, horizon,
-                                          ProductionMppiHorizonCommit{});
+                                          ProductionMppiHorizonCommit{}) ==
+         ProductionMppiHorizonCommitStatus::kPublished;
 }
 
-bool ProductionMppiNode::commitExecutionSnapshotHorizon(
+ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHorizon(
     const ProductionMppiExecutionCycle& cycle,
     const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected,
     const ExecutionRouteTransitionResult3D& transition,
@@ -835,7 +887,7 @@ bool ProductionMppiNode::commitExecutionSnapshotHorizon(
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "EXECUTION_SNAPSHOT_COMMIT committed=false stage=invalid_transition");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const std::shared_ptr<const VersionedObservedRawWorld3D> expected_raw =
       snapshotRawOwner(*transition.next);
@@ -850,7 +902,7 @@ bool ProductionMppiNode::commitExecutionSnapshotHorizon(
                          "policy_present=%s",
                          expected_lidar != nullptr ? "true" : "false",
                          policy != nullptr ? "true" : "false");
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
 
   const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
@@ -892,7 +944,7 @@ bool ProductionMppiNode::commitExecutionSnapshotHorizon(
             executionPublicationCurrentnessStatus3DName(currentness).size()),
         executionPublicationCurrentnessStatus3DName(currentness).data(),
         expected->version);
-    return false;
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const ProductionMppiHorizonCommit commit{
       .kind = expected_pending != nullptr
@@ -1100,7 +1152,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
     commit.kind = ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged;
     commit.expected_snapshot = hold_expected;
   }
-  if (!commitAndPublishExecutionHorizon(cycle, horizon, commit)) {
+  if (commitAndPublishExecutionHorizon(cycle, horizon, commit) !=
+      ProductionMppiHorizonCommitStatus::kPublished) {
     return publication;
   }
   publication.horizon = {

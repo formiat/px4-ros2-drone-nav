@@ -133,6 +133,7 @@ struct ProductionRouteMaterialization3D;
 struct ProductionMppiExecutionCycle;
 struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
+enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
 
 struct ProductionGuideCandidateValidation {
   std::shared_ptr<const ProductionMppiPreparedEsdf> publication_world;
@@ -665,14 +666,14 @@ private:
   makeExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
                        std::int64_t valid_until_ns, ProductionMppiExecutionMode mode,
                        ProductionMppiExecutionReason reason);
-  [[nodiscard]] bool
+  [[nodiscard]] ProductionMppiHorizonCommitStatus
   commitAndPublishExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
                                    const msg::MppiTrajectoryHorizon& horizon,
                                    const ProductionMppiHorizonCommit& commit);
   [[nodiscard]] bool
   publishLegacyExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
                                 const msg::MppiTrajectoryHorizon& horizon);
-  [[nodiscard]] bool commitExecutionSnapshotHorizon(
+  [[nodiscard]] ProductionMppiHorizonCommitStatus commitExecutionSnapshotHorizon(
       const ProductionMppiExecutionCycle& cycle,
       const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected,
       const ExecutionRouteTransitionResult3D& transition,

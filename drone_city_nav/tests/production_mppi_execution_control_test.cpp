@@ -46,5 +46,52 @@ TEST(ProductionMppiExecutionControlTest, RejectsOwnerOutsideItsLease) {
             ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent);
 }
 
+TEST(ProductionMppiExecutionControlTest,
+     ContinuesExactWitnessedResidentForRetainedRetry) {
+  const ProductionMppiExecutionHorizonOwner owner = plannedOwner();
+  EXPECT_TRUE(
+      canContinueResidentPlannedOwner(ProductionMppiResidentOwnerContinuationCheck{
+          .owner = &owner,
+          .now_ns = 1'500,
+          .retained_candidate = true,
+          .exact_snapshot_current = true,
+          .execution_owner_matches = true,
+          .revocation_pending = false,
+          .owner_witnessed = true,
+      }));
+}
+
+TEST(ProductionMppiExecutionControlTest,
+     RejectsResidentContinuationWithoutEveryAuthorityWitness) {
+  const ProductionMppiExecutionHorizonOwner owner = plannedOwner();
+  ProductionMppiResidentOwnerContinuationCheck check{
+      .owner = &owner,
+      .now_ns = 1'500,
+      .retained_candidate = true,
+      .exact_snapshot_current = true,
+      .execution_owner_matches = true,
+      .revocation_pending = false,
+      .owner_witnessed = true,
+  };
+
+  check.retained_candidate = false;
+  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
+  check.retained_candidate = true;
+  check.exact_snapshot_current = false;
+  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
+  check.exact_snapshot_current = true;
+  check.execution_owner_matches = false;
+  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
+  check.execution_owner_matches = true;
+  check.revocation_pending = true;
+  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
+  check.revocation_pending = false;
+  check.owner_witnessed = false;
+  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
+  check.owner_witnessed = true;
+  check.now_ns = owner.valid_until_ns;
+  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
+}
+
 } // namespace
 } // namespace drone_city_nav

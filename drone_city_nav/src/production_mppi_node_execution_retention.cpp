@@ -448,7 +448,9 @@ ProductionMppiNode::retainSnapshotFinitePath(
         transition.next->version);
     return std::nullopt;
   }
-  if (!commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr)) {
+  const ProductionMppiHorizonCommitStatus commit_status =
+      commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr);
+  if (commit_status == ProductionMppiHorizonCommitStatus::kRejected) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "FINITE_EXECUTION_SNAPSHOT retained=false stage=publication_commit_rejected "
@@ -456,15 +458,18 @@ ProductionMppiNode::retainSnapshotFinitePath(
         expected->version);
     return std::nullopt;
   }
+  const bool published = commit_status == ProductionMppiHorizonCommitStatus::kPublished;
+  const mppi::FiniteHorizon& reported_horizon =
+      published ? finite_horizon : *active.horizon;
   ProductionMppiExecutionPublication retained;
-  retained.horizon = finite_horizon.states;
+  retained.horizon = reported_horizon.states;
   retained.mode = ProductionMppiExecutionMode::kPlanned;
   retained.reason = replacement_failure_reason;
-  retained.planned_control_count = finite_horizon.controls.size();
-  retained.nominal_prefix_control_count = finite_horizon.nominal_prefix_control_count;
-  retained.arrival_control_count = finite_horizon.arrival_control_count;
+  retained.planned_control_count = reported_horizon.controls.size();
+  retained.nominal_prefix_control_count = reported_horizon.nominal_prefix_control_count;
+  retained.arrival_control_count = reported_horizon.arrival_control_count;
   retained.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
-  retained.first_control = finite_horizon.controls.front();
+  retained.first_control = reported_horizon.controls.front();
   retained.first_control_available = true;
   retained.latest_lidar_obstacle_sequence = latest_lidar_evidence->sequence();
   retained.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
@@ -473,15 +478,18 @@ ProductionMppiNode::retainSnapshotFinitePath(
   retained.latest_lidar_obstacle_receive_time_fallback =
       latest_lidar_obstacle_receive_time_fallback;
   retained.retained_previous_finite_path = true;
+  retained.resident_owner_continues = !published;
   retained.terminal_rest_state = true;
-  retained.published = true;
+  retained.published = published;
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "FINITE_EXECUTION_SNAPSHOT retained=true recertified=true "
+      "FINITE_EXECUTION_SNAPSHOT retained=true recertified=true published=%s "
       "snapshot_version=%" PRIu64 " trajectory_revision=%" PRIu64
       " raw_invalidation=%s actual_state_validation=%s "
       "trajectory_validation=%s",
-      transition.next->version, transition.next->finite_execution->trajectory_revision,
+      published ? "true" : "false",
+      published ? transition.next->version : expected->version,
+      published ? next_trajectory_revision : active.trajectory_revision,
       raw_invalidation != nullptr ? "true" : "false",
       mppi::finiteExecutionPathStatusName(actual_state_validation.status),
       mppi::finiteExecutionPathStatusName(trajectory_validation.status));
@@ -598,18 +606,23 @@ ProductionMppiNode::retainDirectFinitePath(
           exact_previous_control, committed.control_interval_ns)) {
     return std::nullopt;
   }
-  if (!commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr)) {
+  const ProductionMppiHorizonCommitStatus commit_status =
+      commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr);
+  if (commit_status == ProductionMppiHorizonCommitStatus::kRejected) {
     return std::nullopt;
   }
+  const bool published = commit_status == ProductionMppiHorizonCommitStatus::kPublished;
+  const mppi::FiniteHorizon& reported_horizon =
+      published ? finite_horizon : *active.horizon;
   ProductionMppiExecutionPublication retained;
-  retained.horizon = finite_horizon.states;
+  retained.horizon = reported_horizon.states;
   retained.mode = ProductionMppiExecutionMode::kPlanned;
   retained.reason = replacement_failure_reason;
-  retained.planned_control_count = finite_horizon.controls.size();
-  retained.nominal_prefix_control_count = finite_horizon.nominal_prefix_control_count;
-  retained.arrival_control_count = finite_horizon.arrival_control_count;
+  retained.planned_control_count = reported_horizon.controls.size();
+  retained.nominal_prefix_control_count = reported_horizon.nominal_prefix_control_count;
+  retained.arrival_control_count = reported_horizon.arrival_control_count;
   retained.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
-  retained.first_control = finite_horizon.controls.front();
+  retained.first_control = reported_horizon.controls.front();
   retained.first_control_available = true;
   retained.latest_lidar_obstacle_sequence = latest_lidar_evidence->sequence();
   retained.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
@@ -618,8 +631,9 @@ ProductionMppiNode::retainDirectFinitePath(
   retained.latest_lidar_obstacle_receive_time_fallback =
       latest_lidar_obstacle_receive_time_fallback;
   retained.retained_previous_finite_path = true;
+  retained.resident_owner_continues = !published;
   retained.terminal_rest_state = true;
-  retained.published = true;
+  retained.published = published;
   return retained;
 }
 
