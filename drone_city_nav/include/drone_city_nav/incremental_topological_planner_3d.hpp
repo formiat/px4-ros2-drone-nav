@@ -57,6 +57,18 @@ struct TopologicalDeadEndConclusion3D {
   std::uint64_t validated_through_revision{0U};
 };
 
+struct IncrementalTopologicalPlanningTiming3D {
+  double memory_snapshot_ms{0.0};
+  double start_connector_ms{0.0};
+  double goal_connector_ms{0.0};
+  double regional_graph_ms{0.0};
+  double mission_search_ms{0.0};
+  double exploration_search_ms{0.0};
+  double mission_selection_ms{0.0};
+  double frontier_selection_ms{0.0};
+  double backtrack_search_ms{0.0};
+};
+
 struct IncrementalTopologicalPlan3D {
   IncrementalTopologicalPlanStatus3D status{
       IncrementalTopologicalPlanStatus3D::kInvalidInput};
@@ -101,6 +113,7 @@ struct IncrementalTopologicalPlan3D {
   bool reaches_mission_goal{false};
   bool unknown_exposure{false};
   bool continued_from_active_plan{false};
+  IncrementalTopologicalPlanningTiming3D timing{};
 
   [[nodiscard]] bool executableTargetSelected() const noexcept;
 };

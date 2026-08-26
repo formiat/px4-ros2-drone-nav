@@ -327,32 +327,45 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                                 .count();
     topology_observation_ms = topology.observation_ms;
     topology_planning_ms = topology.planning_ms;
-    RCLCPP_INFO(get_logger(),
-                "INCREMENTAL_TOPOLOGY3D_SEARCH graph_revision=%" PRIu64
-                " strategic_plan_id=%" PRIu64
-                " graph_nodes=%zu graph_edges=%zu status=%s purpose=%s "
-                "start_node=%" PRIu64 " target_node=%" PRIu64 " goal_node=%" PRIu64
-                " route_nodes=%zu route_edges=%zu reaches_mission_goal=%s "
-                "continued_active_plan=%s "
-                "reachable_mission_continuations=%zu "
-                "maximum_mission_continuation_goal_progress_m=%.2f "
-                "reachable_frontiers=%zu goal_progress_m=%.2f directive_available=%s "
-                "no_executable_route_age_ms=%.2f",
-                topology.plan.planned_on_revision, topology.plan.strategic_plan_id,
-                topology.graph_node_count, topology.graph_edge_count,
-                incrementalTopologicalPlanStatus3DName(topology.plan.status),
-                incrementalTopologicalRoutePurpose3DName(topology.plan.purpose),
-                topology.plan.start_node.value, topology.plan.target_node.value,
-                topology.plan.goal_node.has_value() ? topology.plan.goal_node->value
-                                                    : 0U,
-                topology.plan.route_nodes.size(), topology.plan.route_steps.size(),
-                topology.plan.reaches_mission_goal ? "true" : "false",
-                topology.plan.continued_from_active_plan ? "true" : "false",
-                topology.plan.reachable_mission_continuation_count,
-                topology.plan.maximum_reachable_mission_continuation_goal_progress_m,
-                topology.plan.reachable_frontier_count, topology.plan.goal_progress_m,
-                topology.directive.has_value() ? "true" : "false",
-                topology.no_executable_route_age_ms);
+    RCLCPP_INFO(
+        get_logger(),
+        "INCREMENTAL_TOPOLOGY3D_SEARCH graph_revision=%" PRIu64
+        " strategic_plan_id=%" PRIu64
+        " graph_nodes=%zu graph_edges=%zu status=%s purpose=%s "
+        "start_node=%" PRIu64 " target_node=%" PRIu64 " goal_node=%" PRIu64
+        " route_nodes=%zu route_edges=%zu reaches_mission_goal=%s "
+        "continued_active_plan=%s "
+        "reachable_mission_continuations=%zu "
+        "maximum_mission_continuation_goal_progress_m=%.2f "
+        "reachable_frontiers=%zu goal_progress_m=%.2f directive_available=%s "
+        "no_executable_route_age_ms=%.2f "
+        "timing_memory_snapshot_ms=%.2f timing_start_connector_ms=%.2f "
+        "timing_goal_connector_ms=%.2f timing_regional_graph_ms=%.2f "
+        "timing_mission_search_ms=%.2f "
+        "timing_exploration_search_ms=%.2f "
+        "timing_mission_selection_ms=%.2f "
+        "timing_frontier_selection_ms=%.2f "
+        "timing_backtrack_search_ms=%.2f",
+        topology.plan.planned_on_revision, topology.plan.strategic_plan_id,
+        topology.graph_node_count, topology.graph_edge_count,
+        incrementalTopologicalPlanStatus3DName(topology.plan.status),
+        incrementalTopologicalRoutePurpose3DName(topology.plan.purpose),
+        topology.plan.start_node.value, topology.plan.target_node.value,
+        topology.plan.goal_node.has_value() ? topology.plan.goal_node->value : 0U,
+        topology.plan.route_nodes.size(), topology.plan.route_steps.size(),
+        topology.plan.reaches_mission_goal ? "true" : "false",
+        topology.plan.continued_from_active_plan ? "true" : "false",
+        topology.plan.reachable_mission_continuation_count,
+        topology.plan.maximum_reachable_mission_continuation_goal_progress_m,
+        topology.plan.reachable_frontier_count, topology.plan.goal_progress_m,
+        topology.directive.has_value() ? "true" : "false",
+        topology.no_executable_route_age_ms, topology.plan.timing.memory_snapshot_ms,
+        topology.plan.timing.start_connector_ms, topology.plan.timing.goal_connector_ms,
+        topology.plan.timing.regional_graph_ms, topology.plan.timing.mission_search_ms,
+        topology.plan.timing.exploration_search_ms,
+        topology.plan.timing.mission_selection_ms,
+        topology.plan.timing.frontier_selection_ms,
+        topology.plan.timing.backtrack_search_ms);
     if (topology.directive) {
       const Lattice3DStrategicDirective directive = topology.directive->lattice;
       const Point3 target = intentTarget(topology, directive);

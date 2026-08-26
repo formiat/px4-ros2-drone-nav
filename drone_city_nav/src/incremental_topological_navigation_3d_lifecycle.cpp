@@ -140,13 +140,19 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::plan(
   if (!graph) {
     return {};
   }
+  const auto memory_snapshot_started = std::chrono::steady_clock::now();
   TopologicalExplorationMemory3D memory_snapshot;
   {
     const std::scoped_lock lock{memory_mutex_};
     memory_snapshot = memory_;
   }
+  const double memory_snapshot_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                memory_snapshot_started)
+          .count();
   IncrementalTopologicalPlan3D result =
       planner_.plan(*graph, start, mission_goal, memory_snapshot, deadline);
+  result.timing.memory_snapshot_ms = memory_snapshot_ms;
   {
     const std::scoped_lock lock{memory_mutex_};
     result.strategic_plan_id = strategic_route_manager_.previewPlanId(result);
@@ -167,11 +173,16 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
           start, mission_goal, occupancy, graph->revision())) {
     return *continued;
   }
+  const auto memory_snapshot_started = std::chrono::steady_clock::now();
   TopologicalExplorationMemory3D memory_snapshot;
   {
     const std::scoped_lock lock{memory_mutex_};
     memory_snapshot = memory_;
   }
+  const double memory_snapshot_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                memory_snapshot_started)
+          .count();
   const bool reusable_anchor = observation != nullptr &&
                                observation->graph_revision == graph->revision() &&
                                distance3D(observation->position, start) <= 1.0e-6 &&
@@ -184,6 +195,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalNavigation3D::planObserved(
           : planner_.planObserved(*graph, occupancy, observability_, start,
                                   mission_goal, memory_snapshot, std::nullopt,
                                   deadline);
+  result.timing.memory_snapshot_ms = memory_snapshot_ms;
   {
     const std::scoped_lock lock{memory_mutex_};
     result.strategic_plan_id = strategic_route_manager_.previewPlanId(result);

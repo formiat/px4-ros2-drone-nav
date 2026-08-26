@@ -124,6 +124,13 @@ void recordFrontierSelectionDiagnostics(
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
 
+[[nodiscard]] double
+elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcept {
+  return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                   started)
+      .count();
+}
+
 [[nodiscard]] std::optional<GridIndex3D> cellForPoint(const GridBounds3D& bounds,
                                                       const Point3& point) noexcept {
   if (!finitePoint(point) || !(bounds.resolution_m > 0.0)) {
@@ -919,12 +926,14 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     return !config_.require_known_free_space ||
            !supplied_start_connector->evidence.unknown_exposure;
   }();
+  auto stage_started = std::chrono::steady_clock::now();
   const std::optional<IncrementalTopologyConnector3D> start_connector =
       supplied_start_connector_valid
           ? std::optional<IncrementalTopologyConnector3D>{*supplied_start_connector}
           : connectPointToGraph(graph, occupancy, start,
                                 config_.maximum_start_anchor_distance_m, footprint,
                                 config_.require_known_free_space, deadline);
+  result.timing.start_connector_ms = elapsedMilliseconds(stage_started);
   if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
     result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
     return result;
@@ -942,12 +951,14 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   // A connector validated under the known-free policy must contain the goal
   // centre. Avoid spending the bounded search budget testing graph samples
   // when that necessary condition is already known to be false.
+  stage_started = std::chrono::steady_clock::now();
   const std::optional<IncrementalTopologyConnector3D> goal_connector =
       goal_anchor_can_satisfy_policy
           ? connectPointToGraph(graph, occupancy, mission_goal,
                                 config_.maximum_goal_anchor_distance_m, footprint,
                                 config_.require_known_free_space, deadline)
           : std::nullopt;
+  result.timing.goal_connector_ms = elapsedMilliseconds(stage_started);
   if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
     result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
     return result;
@@ -959,18 +970,22 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   if (result.goal_node && *result.goal_node != result.start_node) {
     anchors.push_back(*result.goal_node);
   }
+  stage_started = std::chrono::steady_clock::now();
   const RegionalTopologyGraph3D regional = buildRegionalTopologyGraph3D(graph, anchors);
   const RegionalAdjacency adjacency = buildRegionalAdjacency(regional);
   const SourceEdges source_edges = indexSourceEdges(graph);
+  result.timing.regional_graph_ms = elapsedMilliseconds(stage_started);
   bool deadline_exceeded{false};
   if (result.goal_node && goal_connector.has_value()) {
     // A mission-mode shortest-path tree is only useful when the mission goal
     // is represented in this graph. Building the full tree for an unanchored
     // distant goal would consume the budget before exploration can select a
     // safe continuation toward it.
+    stage_started = std::chrono::steady_clock::now();
     const SearchRecords mission_records =
         runDijkstra(regional, adjacency, result.start_node, SearchMode::kMission, graph,
                     source_edges, memory, config_, deadline, deadline_exceeded);
+    result.timing.mission_search_ms = elapsedMilliseconds(stage_started);
     if (deadline_exceeded) {
       result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
       return result;
@@ -991,10 +1006,13 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
 
   std::size_t reachable_mission_continuations = 0U;
   double maximum_mission_continuation_goal_progress_m = 0.0;
+  stage_started = std::chrono::steady_clock::now();
   const SearchRecords exploration_records =
       runDijkstra(regional, adjacency, result.start_node, SearchMode::kExploration,
                   graph, source_edges, memory, config_, deadline, deadline_exceeded);
+  result.timing.exploration_search_ms = elapsedMilliseconds(stage_started);
   const bool exploration_deadline_exceeded = deadline_exceeded;
+  stage_started = std::chrono::steady_clock::now();
   const std::optional<TopologicalDeadEndConclusion3D> start_dead_end =
       deadEndConclusion(graph, result.start_node, memory);
   const std::optional<MissionContinuationCandidate> mission_continuation =
@@ -1004,6 +1022,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
                                       start, mission_goal, config_,
                                       reachable_mission_continuations,
                                       maximum_mission_continuation_goal_progress_m);
+  result.timing.mission_selection_ms = elapsedMilliseconds(stage_started);
   result.reachable_mission_continuation_count = reachable_mission_continuations;
   result.maximum_reachable_mission_continuation_goal_progress_m =
       maximum_mission_continuation_goal_progress_m;
@@ -1022,11 +1041,13 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   ObservationFrontierDiscovery fresh_discovery;
   if (!exploration_deadline_exceeded && occupancy != nullptr &&
       observability != nullptr) {
+    stage_started = std::chrono::steady_clock::now();
     frontier = selectFreshFrontier(graph, exploration_records, result.start_node, start,
                                    mission_goal, source_edges, memory, config_,
                                    *occupancy, *observability, fresh_discovery,
                                    reachable_frontiers, active_frontier,
                                    frontier_diagnostics, deadline, deadline_exceeded);
+    result.timing.frontier_selection_ms = elapsedMilliseconds(stage_started);
     if (deadline_exceeded && !mission_incumbent_available) {
       result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
       return result;
@@ -1094,9 +1115,11 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     result.backtrack_reason = backtrack_reason;
     return result;
   }
+  stage_started = std::chrono::steady_clock::now();
   const SearchRecords backtrack_records =
       runDijkstra(regional, adjacency, result.start_node, SearchMode::kBacktrack, graph,
                   source_edges, memory, config_, deadline, deadline_exceeded);
+  result.timing.backtrack_search_ms = elapsedMilliseconds(stage_started);
   if (deadline_exceeded) {
     result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
     return result;
