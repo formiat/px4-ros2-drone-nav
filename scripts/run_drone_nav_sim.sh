@@ -203,7 +203,13 @@ active_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-false}")"
 require_known_free_space="$(normalize_bool "${REQUIRE_KNOWN_FREE_SPACE:-false}")"
 enable_liveness_recovery="$(normalize_bool "${ENABLE_LIVENESS_RECOVERY:-false}")"
 enable_global_guide_stall_recovery="$(normalize_bool "${ENABLE_GLOBAL_GUIDE_STALL_RECOVERY:-false}")"
-enable_no_static_cycle_recovery="$(normalize_bool "${ENABLE_NO_STATIC_CYCLE_RECOVERY:-false}")"
+default_no_static_cycle_recovery="true"
+if bool_is_true "${active_static_map}"; then
+  default_no_static_cycle_recovery="false"
+fi
+enable_no_static_cycle_recovery="$(
+  normalize_bool "${ENABLE_NO_STATIC_CYCLE_RECOVERY:-${default_no_static_cycle_recovery}}"
+)"
 enable_topological_backtracking="$(normalize_bool "${ENABLE_TOPOLOGICAL_BACKTRACKING:-false}")"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"

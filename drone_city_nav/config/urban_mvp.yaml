@@ -489,7 +489,9 @@ production_mppi_node:
     global_guide_stall_minimum_progress_m: 0.5
     global_guide_stall_minimum_predicted_head_progress_m: 0.5
     global_guide_stall_recovery_enabled: false
-    no_static_cycle_recovery_enabled: false
+    # Directed soft tabu prevents repeatedly materialized local routes from
+    # owning no-static navigation without measured mission progress.
+    no_static_cycle_recovery_enabled: true
 
 mppi_offboard_node:
   ros__parameters:
