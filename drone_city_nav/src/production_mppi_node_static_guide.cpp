@@ -579,12 +579,23 @@ void ProductionMppiNode::processGuideSearch3D(
       observation_replacement.status ==
           ObservationRouteReplacementStatus::kSameFrontierRetained;
   if (world.static_route_replan_request || initial_route_search) {
+    const StaticRouteSearchRequestIdentity search_request =
+        identifyStaticRouteSearchRequest(world.global_guide_generation,
+                                         world.static_route_extension_request,
+                                         world.static_route_extension_base_generation,
+                                         world.static_route_replan_request,
+                                         world.static_route_replan_base_generation);
+    const std::shared_ptr<const ExecutionRouteSnapshot3D> resident_execution =
+        execution_route_store_.snapshot();
+    const std::uint64_t resident_route_generation =
+        resident_execution != nullptr ? resident_execution->routeGenerationHighWater()
+                                      : 0U;
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
     if (certified_pending) {
       static_route_failed_search_latch_.clear();
-    } else if (initial_route_search ||
-               (world_compatible && generation_matches && objective_matches &&
-                !same_observation_frontier_retained)) {
+    } else if (staticRouteSearchFailureLatchEligible(
+                   search_request, resident_route_generation, world_compatible,
+                   objective_matches, same_observation_frontier_retained)) {
       const std::uint64_t failed_generation =
           world.static_route_replan_request ? world.static_route_replan_base_generation
                                             : 0U;

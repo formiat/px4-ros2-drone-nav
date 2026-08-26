@@ -257,6 +257,18 @@ TEST(StaticRouteExtensionTest, FailedInitialSearchMayRetryGenerationZero) {
             StaticRouteSearchCurrencyStatus::kSupersededByResidentRoute);
 }
 
+TEST(StaticRouteExtensionTest,
+     CurrentSearchFailureLatchesWithoutCandidateActivationAssessment) {
+  const StaticRouteSearchRequestIdentity replan =
+      identifyStaticRouteSearchRequest(7U, false, 0U, true, 7U);
+
+  EXPECT_TRUE(staticRouteSearchFailureLatchEligible(replan, 7U, true, true, false));
+  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 8U, true, true, false));
+  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 7U, false, true, false));
+  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 7U, true, false, false));
+  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 7U, true, true, true));
+}
+
 TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterRejectedExtension) {
   StaticRouteDeferredReplanLatch latch;
   latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kStalled,
